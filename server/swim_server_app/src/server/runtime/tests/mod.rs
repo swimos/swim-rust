@@ -179,12 +179,12 @@ impl TestClient {
         assert!(matches!(message, Message::Close(_)));
     }
 
-    async fn expect_envelope<'a>(&'a mut self) -> RawEnvelope<'a> {
+    async fn expect_envelope(&mut self) -> RawEnvelope<'_> {
         let TestClient { ws, read_buffer } = self;
         read_buffer.clear();
         let message = ws.read(read_buffer).await.expect("Read failed.");
         assert_eq!(message, Message::Text);
-        let bytes: &'a [u8] = (*read_buffer).as_ref();
+        let bytes: &[u8] = (*read_buffer).as_ref();
         peel_envelope_header(bytes).expect("Invalid envelope")
     }
 

@@ -60,8 +60,13 @@ const LANE: &str = "lane";
 const DL_NODE: &str = "/remote";
 const DL_LANE: &str = "remote_lane";
 
-const AGENT_PATH: Path<BytesStr> = Path::from_static_strs(NODE, LANE);
-const DL_PATH: Path<BytesStr> = Path::from_static_strs(DL_NODE, DL_LANE);
+fn agent_path() -> Path<BytesStr> {
+    Path::from_static_strs(NODE, LANE)
+}
+
+fn dl_path() -> Path<BytesStr> {
+    Path::from_static_strs(DL_NODE, DL_LANE)
+}
 
 async fn test_registration_task<F, Fut>(test_case: F) -> Fut::Output
 where
@@ -220,12 +225,10 @@ where
             if node == NODE {
                 if let Some(agent) = agent.take() {
                     provider.send(Ok(agent)).expect("Task stopped.");
+                } else if let Some(agent) = agent_replace_rx.recv().await {
+                    provider.send(Ok(agent)).expect("Task stopped.");
                 } else {
-                    if let Some(agent) = agent_replace_rx.recv().await {
-                        provider.send(Ok(agent)).expect("Task stopped.");
-                    } else {
-                        panic!("Agent cannot be attached.");
-                    }
+                    panic!("Agent cannot be attached.");
                 }
             } else {
                 provider
@@ -348,7 +351,7 @@ async fn incoming_route_downlink_env() {
         } = dl_rx.recv().await;
 
         assert_eq!(origin, ID);
-        assert_eq!(path, DL_PATH);
+        assert_eq!(path, dl_path());
         match envelope {
             Notification::Event(body) => {
                 let body_str = std::str::from_utf8(body.as_ref()).expect("Invalid UTF8");
@@ -383,7 +386,7 @@ async fn check_env(n: i32, agent_rx: &mut AgentReader) {
     } = agent_rx.recv().await;
 
     assert_eq!(origin, ID);
-    assert_eq!(path, AGENT_PATH);
+    assert_eq!(path, agent_path());
 
     match envelope {
         Operation::Command(body) => {
@@ -1174,7 +1177,7 @@ async fn combined_downlink_io() {
         } = dl_rx.recv().await;
 
         assert_eq!(origin, ID);
-        assert_eq!(path, DL_PATH);
+        assert_eq!(path, dl_path());
 
         match envelope {
             Notification::Event(body) => {

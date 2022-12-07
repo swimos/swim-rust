@@ -50,19 +50,10 @@ pub struct RocksPrefixIterator<'p> {
 }
 
 impl<'d> EnginePrefixIterator for RocksPrefixIterator<'d> {
-    fn next(&mut self) -> Option<KvBytes> {
-        self.delegate.next()
-    }
-
-    fn valid(&self) -> Result<bool, StoreError> {
-        if self.delegate.valid() {
-            Ok(true)
-        } else {
-            match self.delegate.status() {
-                Ok(_) => Ok(false),
-                Err(e) => Err(StoreError::Delegate(Box::new(e))),
-            }
-        }
+    fn next(&mut self) -> Option<Result<KvBytes, StoreError>> {
+        self.delegate
+            .next()
+            .map(|r| r.map_err(|e| StoreError::Delegate(Box::new(e))))
     }
 }
 

@@ -71,8 +71,7 @@ impl AgentContext<TestAgent> for TestContext {
 #[tokio::test]
 async fn default_agent_lifecycle() {
     let context = TestContext;
-    let lifecycle = ();
 
     //We just check the life-cycle events don't generate panics.
-    lifecycle.starting(&context).await;
+    ().starting(&context).await;
 }

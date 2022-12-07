@@ -61,14 +61,14 @@ fn default_lane_opts() -> Options {
 pub(crate) fn incrementing_merge_operator(
     _new_key: &[u8],
     existing_value: Option<&[u8]>,
-    operands: &mut MergeOperands,
+    operands: &MergeOperands,
 ) -> Option<Vec<u8>> {
     let mut value = match existing_value {
         Some(bytes) => deserialize_key(bytes).unwrap(),
         None => 0,
     };
 
-    for op in operands {
+    for op in operands.iter() {
         let deserialized = deserialize_key(op).unwrap();
         value += deserialized;
     }

@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(feature = "persistence")]
-mod store_agent;
-
 mod data_macro_agent;
 mod declarative_macro_agent;
 mod derive;
@@ -84,6 +81,12 @@ pub mod stub_router {
         inner: mpsc::Sender<TaggedEnvelope>,
         _drop_tx: Arc<promise::Sender<ConnectionDropped>>,
         drop_rx: promise::Receiver<ConnectionDropped>,
+    }
+
+    impl Default for SingleChannelRouter {
+        fn default() -> Self {
+            Self::new()
+        }
     }
 
     impl SingleChannelRouter {
@@ -803,7 +806,7 @@ pub async fn run_agent_test<Agent, Config, Lifecycle>(
         clock.clone(),
         client,
         ReceiverStream::new(envelope_rx),
-        SingleChannelRouter::new(),
+        SingleChannelRouter::default(),
         MockNodeStore::mock(),
     );
 

@@ -107,14 +107,14 @@ pub mod rocks {
     pub fn incrementing_merge_operator(
         _new_key: &[u8],
         existing_value: Option<&[u8]>,
-        operands: &mut MergeOperands,
+        operands: &MergeOperands,
     ) -> Option<Vec<u8>> {
         let mut value = match existing_value {
             Some(bytes) => deserialize_key(bytes).expect(DESERIALIZATION_FAILURE),
             None => INITIAL,
         };
 
-        for op in operands {
+        for op in operands.iter() {
             let deserialized = deserialize_key(op).expect(DESERIALIZATION_FAILURE);
             value += deserialized;
         }
