@@ -1070,3 +1070,23 @@ impl<Context, K, V, H> OpenMapDownlink<Context, K, V> for H where
     H: HandlerAction<Context, Completion = MapDownlinkHandle<K, V>>
 {
 }
+
+impl<Context, H> HandlerAction<Context> for Option<H>
+where
+    H: HandlerAction<Context>,
+{
+    type Completion = Option<H::Completion>;
+
+    fn step(
+        &mut self,
+        action_context: ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        if let Some(inner) = self {
+            inner.step(action_context, meta, context).map(Option::Some)
+        } else {
+            StepResult::done(None)
+        }
+    }
+}

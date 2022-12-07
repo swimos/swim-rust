@@ -24,6 +24,7 @@ Contents
     * The `HandlerContext`.
     * Handler combinators.
     * Suspending futures.
+    * Unifying `EventHandler` types.
 3. [Agent Lifecycles](lifecycle.md)
     * The `AgentLifecycle` trait.
     * Attribute macro to generate agent lifecycles.
@@ -34,8 +35,10 @@ Contents
     * Borrowing from lifecycles.
     * Interior mutability in lifecycles.
 4. [Downlinks](downlink.md)
-    * Opening a downlink.
     * Downlink lifecycles.
+    * Building a stateless downlink.
+    * Building a stateful downlink.
+    * Opening a downlink.
     * How downlinks run.
 5. [Agents from Scratch](advanced_agents.md)
     * TODO

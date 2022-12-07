@@ -186,3 +186,27 @@ fn make_handler()(context: HandlerContext<AgentType>) => impl EventHandler<Agent
 
 This will suspend the function `long_operation` into the background where it will be executed concurrently with the rest of the agent. When it completes, it will create a header that prints the result of operation which will then be executed by the agent, as with any other event handler.
 
+As arbitrary futures may be suspended in this way, the resulting event handlers are necessarily executed by dynamic dispatch.
+
+Unifying `EventHandler` types
+-----------------------------
+
+All of the functions that associate an `EventHandler` with an event expect a return of:
+
+```rust
+impl EventHandler<AgentType>
+```
+
+This implies that the function is expected to return handlers of a single type only.
+
+The `HandlerAction` trait is implemented for `Option<H>` where `H: HandlerAction<..>` (resulting in `Option<H::Completion>`).
+
+For a fixed enumeration of `HandlerAction` types, it would be possible to manually implement the `HandlerAction` trait, however, in most cases this would be unnecessarily verbose.
+
+The `EventHandler` trait is object safe so, in situations where a little overhead is acceptable, it is possible to return an event handler as:
+
+```rust
+pub type BoxEventHandler<'a, Context> = Box<dyn EventHandler<Context> + 'a>;
+```
+
+by simply boxing the various types of handler being returned.
