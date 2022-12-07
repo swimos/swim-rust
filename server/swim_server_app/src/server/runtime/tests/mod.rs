@@ -15,6 +15,10 @@
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 
@@ -530,57 +534,130 @@ async fn explicit_unlink_from_agent_lane() {
     assert!(result.is_ok());
 }
 
-#[tokio::test]
+async fn run_server_with_config_debug<F, Fut>(
+    stage: Arc<AtomicU64>,
+    config: SwimServerConfig,
+    test_case: F,
+) -> (Result<(), std::io::Error>, Fut::Output)
+where
+    F: FnOnce(TestContext) -> Fut,
+    Fut: Future,
+{
+    let mut plane_builder = PlaneBuilder::default();
+    let pattern = RoutePattern::parse_str(NODE).expect("Invalid route.");
+
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+    let (report_tx, report_rx) = mpsc::unbounded_channel();
+
+    plane_builder.add_route(
+        pattern,
+        TestAgent::new(report_tx, event_tx, |uri, _conf| {
+            assert_eq!(uri, "/node");
+        }),
+    );
+
+    let plane = plane_builder.build().expect("Invalid plane definition.");
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8080);
+
+    let resolve = HashMap::new();
+    let remotes = HashMap::new();
+
+    let (incoming_tx, incoming_rx) = mpsc::unbounded_channel();
+
+    let (networking, networking_task) = TestConnections::new(resolve, remotes, incoming_rx);
+    let websockets = TestWs::default();
+
+    let server = SwimServer::new(plane, addr, networking, websockets, config);
+
+    let (server_task, handle) = server.run();
+    let context = TestContext {
+        event_rx,
+        report_rx,
+        handle,
+        incoming_tx,
+    };
+
+    let net = networking_task.run();
+
+    let test_task = test_case(context);
+
+    let r = tokio::time::timeout(TEST_TIMEOUT, join3(net, server_task, test_task)).await;
+    match r {
+        Ok((_, task_result, result)) => (task_result, result),
+        Err(_) => {
+            let count = stage.load(Ordering::Relaxed);
+            panic!("Stage: {}", count);
+        }
+    }
+}
+
+#[tokio::test(start_paused = true)]
 async fn agent_timeout() {
     let mut config = SwimServerConfig::default();
     config.agent_runtime.inactive_timeout = Duration::from_millis(250);
-    let (result, _) = run_server_with_config(config, |mut context| async move {
-        let TestContext {
-            incoming_tx,
-            event_rx,
-            report_rx,
-            ..
-        } = &mut context;
+    let stage = Arc::new(AtomicU64::new(0));
+    let (result, _) =
+        run_server_with_config_debug(stage.clone(), config, |mut context| async move {
+            let TestContext {
+                incoming_tx,
+                event_rx,
+                report_rx,
+                ..
+            } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+            let (client_sock, server_sock) = duplex(BUFFER_SIZE);
 
-        incoming_tx
-            .send((remote_addr(1), server_sock))
-            .expect("Listener closed.");
+            incoming_tx
+                .send((remote_addr(1), server_sock))
+                .expect("Listener closed.");
 
-        let mut client = TestClient::new(client_sock);
+            let mut client = TestClient::new(client_sock);
 
-        // Send a message causing the agent to be started.
-        client
-            .command(NODE, LANE, TestMessage::SetAndReport(56))
-            .await;
-        assert_eq!(
-            event_rx.recv().await.expect("Agent failed."),
-            AgentEvent::Started
-        );
+            // Send a message causing the agent to be started.
+            client
+                .command(NODE, LANE, TestMessage::SetAndReport(56))
+                .await;
 
-        assert_eq!(report_rx.recv().await.expect("Agent stopped."), 56);
+            stage.store(1, Ordering::Relaxed);
+            assert_eq!(
+                event_rx.recv().await.expect("Agent failed."),
+                AgentEvent::Started
+            );
 
-        // Wait for the agent to timeout and stop.
-        assert_eq!(
-            event_rx.recv().await.expect("Agent failed."),
-            AgentEvent::Stopped
-        );
+            stage.store(2, Ordering::Relaxed);
 
-        // Send another message causing the agent to be restarted.
-        client
-            .command(NODE, LANE, TestMessage::SetAndReport(-45))
-            .await;
+            assert_eq!(report_rx.recv().await.expect("Agent stopped."), 56);
 
-        assert_eq!(
-            event_rx.recv().await.expect("Agent failed."),
-            AgentEvent::Started
-        );
-        assert_eq!(report_rx.recv().await.expect("Agent stopped."), -45);
+            stage.store(3, Ordering::Relaxed);
 
-        context.handle.stop();
-        context
-    })
-    .await;
+            // Wait for the agent to timeout and stop.
+            assert_eq!(
+                event_rx.recv().await.expect("Agent failed."),
+                AgentEvent::Stopped
+            );
+
+            stage.store(4, Ordering::Relaxed);
+
+            // Send another message causing the agent to be restarted.
+            client
+                .command(NODE, LANE, TestMessage::SetAndReport(-45))
+                .await;
+
+            stage.store(5, Ordering::Relaxed);
+
+            assert_eq!(
+                event_rx.recv().await.expect("Agent failed."),
+                AgentEvent::Started
+            );
+
+            stage.store(6, Ordering::Relaxed);
+
+            assert_eq!(report_rx.recv().await.expect("Agent stopped."), -45);
+
+            stage.store(7, Ordering::Relaxed);
+            context.handle.stop();
+            context
+        })
+        .await;
     assert!(result.is_ok());
 }
