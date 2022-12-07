@@ -130,6 +130,10 @@ impl<S: Stream> MultiReader<S> {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.streams.is_empty()
+    }
+
     /// Add a stream to be polled when ready.
     #[inline]
     pub fn add(&mut self, stream: S) {

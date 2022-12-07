@@ -28,6 +28,7 @@ swim_async_runtime = { path = "../swim_async_runtime" }
 swim_warp = { path = "../../swim_warp" }
 swim_tracing = { path = "../../swim_utilities/swim_tracing", features = ["future"] }
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
+swim_messages = { path = "../swim_messages" }
 slab = "0.4.2"
 tracing = "0.1.16"
 tracing-futures = "0.2.4"

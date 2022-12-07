@@ -468,7 +468,7 @@ fn env_to_string(env: Envelope) -> String {
 }
 
 fn message_for(env: Envelope) -> WsMessage {
-    WsMessage::Text(format!("{}", print_recon_compact(&env)))
+    WsMessage::from(format!("{}", print_recon_compact(&env)))
 }
 
 #[tokio::test]
@@ -631,7 +631,7 @@ async fn task_receive_sync_message_missing_node() {
             .is_ok());
         let message = websocket_peer.read().await.unwrap();
         let envelope = Envelope::node_not_found("/missing", "/lane");
-        let expected = WsMessage::Text(envelope.into_value().to_string());
+        let expected = WsMessage::from(envelope.into_value().to_string());
 
         assert_eq!(message, expected);
     };

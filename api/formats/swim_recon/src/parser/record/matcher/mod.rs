@@ -83,6 +83,17 @@ where
     P: HeaderPeeler<'a>,
 {
     let text = std::str::from_utf8(bytes)?;
+    try_extract_header_str(text, peeler)
+}
+
+/// Run an implementation of [`HeaderPeeler`] against a string.
+pub fn try_extract_header_str<'a, P>(
+    text: &'a str,
+    peeler: P,
+) -> Result<P::Output, MessageExtractError>
+where
+    P: HeaderPeeler<'a>,
+{
     let span = Span::new(text);
     match peel_message(peeler)(span).finish() {
         Ok((_, output)) => Ok(output),

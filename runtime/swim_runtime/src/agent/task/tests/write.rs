@@ -19,6 +19,7 @@ use futures::{
     Future, StreamExt,
 };
 use swim_api::agent::UplinkKind;
+use swim_messages::protocol::Notification;
 use swim_model::Text;
 use swim_utilities::{
     io::byte_channel::{byte_channel, ByteWriter},
@@ -38,7 +39,6 @@ use crate::{
         },
         DisconnectionReason,
     },
-    compat::Notification,
     routing::RoutingAddr,
 };
 
@@ -136,7 +136,7 @@ struct TestContext {
     instr_tx: Instructions,
 }
 
-const AGENT_ID: RoutingAddr = RoutingAddr::plane(1);
+const AGENT_ID: Uuid = *RoutingAddr::plane(1).uuid();
 const NODE: &str = "/node";
 
 use std::fmt::Debug;

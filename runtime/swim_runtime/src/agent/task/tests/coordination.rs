@@ -44,6 +44,7 @@ use swim_utilities::{
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
+use uuid::Uuid;
 
 use super::{
     make_prune_config, LaneReader, MapLaneSender, ValueLaneSender, BUFFER_SIZE, DEFAULT_TIMEOUT,
@@ -304,11 +305,11 @@ struct TestContext {
     stop_tx: trigger::Sender,
 }
 
-const AGENT_ID: RoutingAddr = RoutingAddr::plane(1);
+const AGENT_ID: Uuid = *RoutingAddr::plane(1).uuid();
 const NODE: &str = "/node";
-const RID1: RoutingAddr = RoutingAddr::remote(5);
-const RID2: RoutingAddr = RoutingAddr::remote(89);
-const RID3: RoutingAddr = RoutingAddr::remote(222);
+const RID1: Uuid = *RoutingAddr::remote(5).uuid();
+const RID2: Uuid = *RoutingAddr::remote(89).uuid();
+const RID3: Uuid = *RoutingAddr::remote(222).uuid();
 
 async fn run_test_case<F, Fut>(
     inactive_timeout: Duration,
@@ -423,13 +424,13 @@ async fn immediate_shutdown() {
 }
 
 async fn attach_remote(
-    remote_id: RoutingAddr,
+    remote_id: Uuid,
     att_tx: &mpsc::Sender<AgentAttachmentRequest>,
 ) -> (RemoteSender, RemoteReceiver) {
     let (in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, out_rx) = byte_channel(BUFFER_SIZE);
     let (completion_tx, completion_rx) = promise::promise();
-    let req = AgentAttachmentRequest::new(remote_id.into(), (out_tx, in_rx), completion_tx);
+    let req = AgentAttachmentRequest::new(remote_id, (out_tx, in_rx), completion_tx);
     assert!(att_tx.send(req).await.is_ok());
 
     let tx = RemoteSender::new(NODE.to_string(), remote_id, in_tx);
@@ -488,6 +489,35 @@ async fn set_value() {
     )
     .await;
     assert_eq!(state.value_lanes.remove(VAL_LANE), Some(7));
+}
+
+#[tokio::test]
+async fn set_values() {
+    let (mut state, _) = run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx,
+                create_tx: _create_tx,
+                mut event_rx,
+                stop_tx,
+            } = context;
+            let (mut sender, receiver) = attach_remote(RID1, &att_tx).await;
+
+            for i in 7..17 {
+                sender.value_command(VAL_LANE, i).await;
+                event_rx.await_value_command(VAL_LANE, i).await;
+            }
+
+            stop_tx.trigger();
+
+            receiver.expect_clean_shutdown(vec![], None).await;
+        },
+    )
+    .await;
+    assert_eq!(state.value_lanes.remove(VAL_LANE), Some(16));
 }
 
 #[tokio::test]

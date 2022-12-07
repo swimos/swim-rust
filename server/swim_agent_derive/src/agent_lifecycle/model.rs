@@ -851,7 +851,7 @@ impl<'a> LaneLifecycle<'a> {
             LaneLifecycle::Command(CommandLifecycleDescriptor { name, .. }) => name,
             LaneLifecycle::Map(MapLifecycleDescriptor { name, .. }) => name,
         };
-        &*name
+        name.as_str()
     }
 
     pub fn lane_ident(&self) -> Ident {

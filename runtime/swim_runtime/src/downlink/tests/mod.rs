@@ -15,6 +15,7 @@
 use std::{num::NonZeroUsize, time::Duration};
 
 use swim_utilities::algebra::non_zero_usize;
+use uuid::Uuid;
 
 use crate::routing::RoutingAddr;
 
@@ -24,7 +25,7 @@ mod value;
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
 const CHANNEL_SIZE: usize = 16;
 const TEST_TIMEOUT: Duration = Duration::from_secs(10);
-const REMOTE_ADDR: RoutingAddr = RoutingAddr::remote(1);
+const REMOTE_ADDR: Uuid = *RoutingAddr::remote(1).uuid();
 const REMOTE_NODE: &str = "/remote";
 const REMOTE_LANE: &str = "remote_lane";
 const EMPTY_TIMEOUT: Duration = Duration::from_secs(2);

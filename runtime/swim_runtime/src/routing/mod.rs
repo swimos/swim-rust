@@ -97,7 +97,7 @@ impl RoutingAddr {
         inner.as_bytes()[0] == CLIENT
     }
 
-    pub fn uuid(&self) -> &Uuid {
+    pub const fn uuid(&self) -> &Uuid {
         &self.0
     }
 

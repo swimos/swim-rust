@@ -91,7 +91,7 @@ pub enum AgentTaskError {
     #[error("Failed to deserialize frame body: {0}")]
     DeserializationFailed(#[from] ReadError),
     #[error("Error in use code (likely an event handler): {0}")]
-    UserCodeError(Box<dyn std::error::Error>),
+    UserCodeError(Box<dyn std::error::Error + Send>),
 }
 
 /// Error type that is returned by implementations of the agent interface trait during the initialization phase.
@@ -102,7 +102,7 @@ pub enum AgentInitError {
     #[error("Multiple lanes with the same name: {0}")]
     DuplicateLane(Text),
     #[error("Error in use code (likely an event handler): {0}")]
-    UserCodeError(Box<dyn std::error::Error>),
+    UserCodeError(Box<dyn std::error::Error + Send>),
 }
 
 //TODO Make this more sophisticated.
