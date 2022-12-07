@@ -65,6 +65,8 @@ pub mod envelopes;
 mod tests;
 mod watch_adapter;
 
+type MapDownlinkChannel<K, V> = (TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>);
+
 #[derive(Clone, Debug)]
 pub struct Downlinks<Path: Addressable> {
     downlink_request_tx: mpsc::Sender<DownlinkRequest<Path>>,
@@ -190,7 +192,7 @@ impl<Path: Addressable> Downlinks<Path> {
     pub async fn subscribe_map<K, V>(
         &self,
         path: Path,
-    ) -> RequestResult<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), Path>
+    ) -> RequestResult<MapDownlinkChannel<K, V>, Path>
     where
         K: ValueSchema + Send + 'static,
         V: ValueSchema + Send + 'static,
