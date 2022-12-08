@@ -40,6 +40,12 @@ impl ExampleLifecycle {
 }
 ```
 
+With this annotation, the `ExampleLifecycle` type will now have a function with the signature:
+
+```rust
+pub fn into_lifecycle(self) -> impl AgentLifecycle + Clone + Send + 'static;
+```
+
 Agent lifecycle events
 ----------------------
 
