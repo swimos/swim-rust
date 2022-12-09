@@ -1,4 +1,4 @@
-/* // Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,9 +14,9 @@
 
 use std::collections::HashMap;
 
-use swim_agent::lanes::{MapLane, ValueLane};
-use swim_agent::projections;
-use swim_model::Text;
+use swim::agent::lanes::{MapLane, ValueLane};
+use swim::agent::projections;
+use swim::agent::model::Text;
 
 // Projections should work for an empty struct.
 #[projections]
@@ -105,4 +105,3 @@ fn projections_generic() {
         Text::new("hello")
     );
 }
- */

@@ -12,7 +12,7 @@ swim_form = { path = "../../api/swim_form" }
 swim_recon = { path = "../../api/formats/swim_recon" }
 swim_downlink = { path = "../../swim_downlink" }
 bytes = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }
 tokio-util = { workspace = true, features = ["codec"] }
 swim_api = { path = "../../api/swim_api" }
 tokio-stream = { workspace = true }
@@ -26,5 +26,5 @@ bitflags = { workspace = true }
 
 [dev-dependencies]
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
-tokio = { workspace = true, features = ["rt", "macros"]}
+tokio = { workspace = true, features = ["rt"]}
 parking_lot = { workspace = true }

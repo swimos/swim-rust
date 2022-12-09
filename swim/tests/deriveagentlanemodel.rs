@@ -1,4 +1,4 @@
-/* // Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,14 +14,14 @@
 
 use std::collections::{HashMap, HashSet};
 
-use bytes::BytesMut;
 use std::fmt::Write;
-use swim_agent::agent_model::{LaneFlags, LaneSpec};
-use swim_agent::lanes::{CommandLane, MapLane, ValueLane};
-use swim_agent::model::MapMessage;
-use swim_agent::AgentLaneModel;
-use swim_model::Text;
-use uuid::Uuid;
+use swim::agent::agent_model::{LaneFlags, LaneSpec};
+use swim::agent::lanes::{CommandLane, MapLane, ValueLane};
+use swim::agent::model::MapMessage;
+use swim::agent::model::Text;
+use swim::agent::reexport::bytes::BytesMut;
+use swim::agent::reexport::uuid::Uuid;
+use swim::agent::AgentLaneModel;
 
 const SYNC_ID: Uuid = Uuid::from_u128(85883);
 
@@ -103,7 +103,6 @@ fn get_i32_buffer(n: i32) -> BytesMut {
 #[test]
 fn single_value_lane() {
     #[derive(AgentLaneModel)]
-    #[agent_root(::swim_agent)]
     struct SingleValueLane {
         lane: ValueLane<i32>,
     }
@@ -114,7 +113,6 @@ fn single_value_lane() {
 #[test]
 fn single_map_lane() {
     #[derive(AgentLaneModel)]
-    #[agent_root(::swim_agent)]
     struct SingleMapLane {
         lane: MapLane<i32, i32>,
     }
@@ -125,7 +123,6 @@ fn single_map_lane() {
 #[test]
 fn single_command_lane() {
     #[derive(AgentLaneModel)]
-    #[agent_root(::swim_agent)]
     struct SingleCommandLane {
         lane: CommandLane<i32>,
     }
@@ -136,7 +133,6 @@ fn single_command_lane() {
 #[test]
 fn two_value_lanes() {
     #[derive(AgentLaneModel)]
-    #[agent_root(::swim_agent)]
     struct TwoValueLanes {
         first: ValueLane<i32>,
         second: ValueLane<i32>,
@@ -148,7 +144,6 @@ fn two_value_lanes() {
 #[test]
 fn two_map_lanes() {
     #[derive(AgentLaneModel)]
-    #[agent_root(::swim_agent)]
     struct TwoMapLanes {
         first: MapLane<i32, i32>,
         second: MapLane<i32, i32>,
@@ -159,8 +154,7 @@ fn two_map_lanes() {
 
 #[test]
 fn two_command_lanes() {
-    #[derive(/* AgentLaneModel */)]
-    #[agent_root(::swim_agent)]
+    #[derive(AgentLaneModel)]
     struct TwoCommandLanes {
         first: CommandLane<i32>,
         second: CommandLane<i32>,
@@ -172,7 +166,6 @@ fn two_command_lanes() {
 #[test]
 fn mixed_lanes() {
     #[derive(AgentLaneModel)]
-    #[agent_root(::swim_agent)]
     struct MixedLanes {
         first: ValueLane<i32>,
         second: MapLane<i32, i32>,
@@ -184,7 +177,6 @@ fn mixed_lanes() {
 #[test]
 fn multiple_lanes() {
     #[derive(AgentLaneModel)]
-    #[agent_root(::swim_agent)]
     struct MultipleLanes {
         first: ValueLane<i32>,
         second: MapLane<i32, i32>,
@@ -200,9 +192,8 @@ fn multiple_lanes() {
 }
 
 #[test]
-fn value_laned_tagged_transient() {
+fn value_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
-    #[agent_root(::swim_agent)]
     struct TwoValueLanes {
         #[transient]
         first: ValueLane<i32>,
@@ -215,7 +206,6 @@ fn value_laned_tagged_transient() {
 #[test]
 fn map_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
-    #[agent_root(::swim_agent)]
     struct TwoMapLanes {
         first: MapLane<i32, i32>,
         #[transient]
@@ -228,7 +218,6 @@ fn map_lane_tagged_transient() {
 #[test]
 fn command_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
-    #[agent_root(::swim_agent)]
     struct TwoCommandLanes {
         #[transient]
         first: CommandLane<i32>,
@@ -237,4 +226,3 @@ fn command_lane_tagged_transient() {
 
     check_agent::<TwoCommandLanes>(vec![transient("first"), transient("second")], vec![]);
 }
- */

@@ -19,10 +19,9 @@ pub trait AgentLaneModel: agent_model::AgentSpec {}
 impl<A> AgentLaneModel for A where A: agent_model::AgentSpec {}
 
 pub use swim_agent::reexport;
-
-pub mod event_handler {
-    pub use swim_agent::event_handler::UnitHandler;
-}
+pub use swim_agent::agent_lifecycle;
+pub use swim_agent::downlink_lifecycle;
+pub use swim_agent::event_handler;
 
 pub mod model {
     pub use swim_agent::model::{MapMessage, Text};
@@ -30,7 +29,7 @@ pub mod model {
 
 pub mod agent_model {
     pub use swim_agent::agent_model::{
-        AgentSpec, LaneInitializer, LaneSpec, MapLaneInitializer, ValueLaneInitializer, WriteResult,
+        AgentSpec, LaneInitializer, LaneSpec, LaneFlags, MapLaneInitializer, ValueLaneInitializer, WriteResult,
     };
 }
 
@@ -56,16 +55,5 @@ pub mod lanes {
         pub mod lifecycle {
             pub use swim_agent::lanes::map::lifecycle::StatefulMapLaneLifecycle;
         }
-    }
-}
-
-pub mod agent_lifecycle {
-    pub use swim_agent::agent_lifecycle::AgentLifecycle;
-    pub mod stateful {
-        pub use swim_agent::agent_lifecycle::stateful::StatefulAgentLifecycle;
-    }
-
-    pub mod lane_event {
-        pub use swim_agent::agent_lifecycle::lane_event::{CommandBranch, ValueBranch, MapBranch, HLeaf};
     }
 }
