@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+/* // Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -159,7 +159,7 @@ fn two_map_lanes() {
 
 #[test]
 fn two_command_lanes() {
-    #[derive(AgentLaneModel)]
+    #[derive(/* AgentLaneModel */)]
     #[agent_root(::swim_agent)]
     struct TwoCommandLanes {
         first: CommandLane<i32>,
@@ -237,3 +237,4 @@ fn command_lane_tagged_transient() {
 
     check_agent::<TwoCommandLanes>(vec![transient("first"), transient("second")], vec![]);
 }
+ */

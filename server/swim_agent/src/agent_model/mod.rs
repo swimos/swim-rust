@@ -99,7 +99,7 @@ impl LaneSpec {
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
 /// although it will not provided any lifecycle events for the agent or its lanes.
-pub trait AgentLaneModel: Sized + Send {
+pub trait AgentSpec: Sized + Send {
     /// The type of handler to run when a command is received for a value lane.
     type ValCommandHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
@@ -177,12 +177,12 @@ pub trait AgentLaneModel: Sized + Send {
 
 /// A factory to create agent lane model instances.
 pub trait LaneModelFactory: Send + Sync {
-    type LaneModel: AgentLaneModel;
+    type LaneModel: AgentSpec;
 
     fn create(&self) -> Self::LaneModel;
 }
 
-impl<F, LaneModel: AgentLaneModel> LaneModelFactory for F
+impl<F, LaneModel: AgentSpec> LaneModelFactory for F
 where
     F: Fn() -> LaneModel + Send + Sync,
 {
@@ -234,7 +234,7 @@ impl<LaneModel, Lifecycle> AgentModel<LaneModel, Lifecycle> {
 
 impl<LaneModel, Lifecycle> Agent for AgentModel<LaneModel, Lifecycle>
 where
-    LaneModel: AgentLaneModel + Send + 'static,
+    LaneModel: AgentSpec + Send + 'static,
     Lifecycle: AgentLifecycle<LaneModel> + Clone + Send + 'static,
 {
     fn run(
@@ -336,7 +336,7 @@ impl<Context> HostedDownlink<Context> {
 
 impl<LaneModel, Lifecycle> AgentModel<LaneModel, Lifecycle>
 where
-    LaneModel: AgentLaneModel + Send + 'static,
+    LaneModel: AgentSpec + Send + 'static,
     Lifecycle: AgentLifecycle<LaneModel> + 'static,
 {
     /// Initialize the agent, performing the initial setup for all of the lanes (including triggering the
@@ -353,7 +353,7 @@ where
         context: Box<dyn AgentContext + Send>,
     ) -> AgentInitResult
     where
-        LaneModel: AgentLaneModel,
+        LaneModel: AgentSpec,
         Lifecycle: AgentLifecycle<LaneModel>,
     {
         let AgentModel {
@@ -485,7 +485,7 @@ struct AgentTask<LaneModel, Lifecycle> {
 
 impl<LaneModel, Lifecycle> AgentTask<LaneModel, Lifecycle>
 where
-    LaneModel: AgentLaneModel + Send + 'static,
+    LaneModel: AgentSpec + Send + 'static,
     Lifecycle: AgentLifecycle<LaneModel> + 'static,
 {
     /// Core event loop for the agent that routes incoming data from the runtime to the lanes and

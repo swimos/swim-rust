@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[doc(hidden)]
-#[allow(unused_imports)]
-pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
+//#[doc(hidden)]
+//#[allow(unused_imports)]
+//pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 
 pub mod agent_lifecycle;
 pub mod agent_model;
@@ -27,7 +27,7 @@ pub mod meta;
 #[cfg(test)]
 mod test_context;
 
-pub use agent_model::AgentLaneModel;
+pub use agent_model::AgentSpec;
 
 pub mod model {
     pub use swim_api::protocol::map::{MapMessage, MapOperation};

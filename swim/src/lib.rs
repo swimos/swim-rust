@@ -72,4 +72,5 @@ pub mod server {
 }
 
 #[cfg(feature = "agent")]
-pub use swim_agent as agent;
+pub mod agent;
+
