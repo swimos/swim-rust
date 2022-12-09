@@ -23,3 +23,10 @@ exclude = [
 
 [profile.release]
 opt-level = 3
+
+[profile.ci]
+inherits = 'dev'
+
+[profile.ci.package.librocksdb-sys]
+debug = false
+opt-level = "z"
