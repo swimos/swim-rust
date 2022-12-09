@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub use swim_agent_derive::{AgentLaneModel, projections};
+pub use swim_agent_derive::{AgentLaneModel, projections, lifecycle};
 
 pub trait AgentLaneModel: agent_model::AgentSpec {}
 
@@ -39,13 +39,33 @@ pub mod lanes {
 
     pub mod command {
         pub use swim_agent::lanes::command::{decode_and_command, DecodeAndCommand};
+        pub mod lifecycle {
+            pub use swim_agent::lanes::command::lifecycle::StatefulCommandLaneLifecycle;
+        }
     }
 
     pub mod value {
         pub use swim_agent::lanes::value::{decode_and_set, DecodeAndSet, ValueLaneSync};
+        pub mod lifecycle {
+            pub use swim_agent::lanes::value::lifecycle::StatefulValueLaneLifecycle;
+        }
     }
 
     pub mod map {
         pub use swim_agent::lanes::map::{decode_and_apply, DecodeAndApply, MapLaneSync};
+        pub mod lifecycle {
+            pub use swim_agent::lanes::map::lifecycle::StatefulMapLaneLifecycle;
+        }
+    }
+}
+
+pub mod agent_lifecycle {
+    pub use swim_agent::agent_lifecycle::AgentLifecycle;
+    pub mod stateful {
+        pub use swim_agent::agent_lifecycle::stateful::StatefulAgentLifecycle;
+    }
+
+    pub mod lane_event {
+        pub use swim_agent::agent_lifecycle::lane_event::{CommandBranch, ValueBranch, MapBranch, HLeaf};
     }
 }
