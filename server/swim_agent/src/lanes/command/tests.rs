@@ -22,7 +22,9 @@ use tokio_util::codec::Decoder;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
+    event_handler::{
+        EventHandlerError, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
+    },
     lanes::{command::DoCommand, Lane},
     meta::AgentMetadata,
 };
@@ -30,6 +32,14 @@ use crate::{
 use super::CommandLane;
 
 const LANE_ID: u64 = 38;
+
+struct NoSpawn;
+
+impl<Context> Spawner<Context> for NoSpawn {
+    fn spawn_suspend(&self, _: HandlerFuture<Context>) {
+        panic!("No suspended futures expected.");
+    }
+}
 
 #[test]
 fn send_command() {
@@ -97,7 +107,7 @@ fn command_event_handler() {
 
     let mut handler = DoCommand::new(TestAgent::LANE, 546);
 
-    let result = handler.step(meta, &agent);
+    let result = handler.step(&NoSpawn, meta, &agent);
 
     assert!(matches!(
         result,
@@ -112,7 +122,7 @@ fn command_event_handler() {
 
     assert_eq!(agent.lane.with_prev(Clone::clone), Some(546));
 
-    let result = handler.step(meta, &agent);
+    let result = handler.step(&NoSpawn, meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

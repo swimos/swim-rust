@@ -17,6 +17,7 @@ use std::marker::PhantomData;
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
 use futures::future::Either;
+use static_assertions::assert_obj_safe;
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swim_utilities::routing::uri::RelativeUri;
@@ -25,8 +26,11 @@ use tokio_util::codec::Decoder;
 
 use crate::meta::AgentMetadata;
 
+mod suspend;
 #[cfg(test)]
 mod tests;
+
+pub use suspend::{HandlerFuture, Spawner, Suspend};
 
 /// Trait to desribe an action to be taken, within the context of an agent, when an event ocurrs. The
 /// execution of an event handler can be suspended (so that it can trigger the exection of other handlers).
@@ -47,12 +51,23 @@ pub trait HandlerAction<Context> {
     /// with a result or returning an error.
     ///
     /// # Arguments
+    /// * `suspend` - Allows for futures to be suspended into the agent task. The future will result in another event handler
+    /// which will be executed by the agent task upon completion.
     /// * `meta` - Provides access to agent instance metadata.
     /// * `context` - The execution context of the handler (providing access to the lanes of the agent).
-    fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion>;
+    fn step(
+        &mut self,
+        suspend: &dyn Spawner<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion>;
 }
 
 pub trait EventHandler<Context>: HandlerAction<Context, Completion = ()> {}
+
+assert_obj_safe!(EventHandler<()>);
+
+pub type BoxEventHandler<'a, Context> = Box<dyn EventHandler<Context> + 'a>;
 
 impl<Context, H> EventHandler<Context> for H where H: HandlerAction<Context, Completion = ()> {}
 
@@ -62,8 +77,29 @@ where
 {
     type Completion = H::Completion;
 
-    fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion> {
-        (*self).step(meta, context)
+    fn step(
+        &mut self,
+        suspend: &dyn Spawner<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        (*self).step(suspend, meta, context)
+    }
+}
+
+impl<H: ?Sized, Context> HandlerAction<Context> for Box<H>
+where
+    H: HandlerAction<Context>,
+{
+    type Completion = H::Completion;
+
+    fn step(
+        &mut self,
+        suspend: &dyn Spawner<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        (**self).step(suspend, meta, context)
     }
 }
 
@@ -179,7 +215,12 @@ where
 {
     type Completion = R;
 
-    fn step(&mut self, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        _suspend: &dyn Spawner<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
         if let Some(f) = self.0.take() {
             StepResult::done(f())
         } else {
@@ -194,7 +235,12 @@ where
 {
     type Completion = Vec<I::Item>;
 
-    fn step(&mut self, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        _suspend: &dyn Spawner<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
         let SideEffects { eff, results, done } = self;
         if *done {
             StepResult::after_done()
@@ -307,9 +353,14 @@ where
 {
     type Completion = T;
 
-    fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        suspend: &dyn Spawner<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
         if let Some((mut action, f)) = self.0.take() {
-            match action.step(meta, context) {
+            match action.step(suspend, meta, context) {
                 StepResult::Continue { modified_lane } => {
                     self.0 = Some((action, f));
                     StepResult::Continue { modified_lane }
@@ -337,9 +388,14 @@ where
 {
     type Completion = H2::Completion;
 
-    fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        suspend: &dyn Spawner<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
         match std::mem::take(self) {
-            AndThen::First { mut first, next } => match first.step(meta, context) {
+            AndThen::First { mut first, next } => match first.step(suspend, meta, context) {
                 StepResult::Fail(e) => StepResult::Fail(e),
                 StepResult::Complete {
                     modified_lane: dirty_lane,
@@ -361,7 +417,7 @@ where
                 }
             },
             AndThen::Second(mut second) => {
-                let step_result = second.step(meta, context);
+                let step_result = second.step(suspend, meta, context);
                 if step_result.is_cont() {
                     *self = AndThen::Second(second);
                 }
@@ -380,9 +436,14 @@ where
 {
     type Completion = H2::Completion;
 
-    fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        suspend: &dyn Spawner<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
         match std::mem::take(self) {
-            AndThenTry::First { mut first, next } => match first.step(meta, context) {
+            AndThenTry::First { mut first, next } => match first.step(suspend, meta, context) {
                 StepResult::Fail(e) => StepResult::Fail(e),
                 StepResult::Complete {
                     modified_lane: dirty_lane,
@@ -406,7 +467,7 @@ where
                 }
             },
             AndThenTry::Second(mut second) => {
-                let step_result = second.step(meta, context);
+                let step_result = second.step(suspend, meta, context);
                 if step_result.is_cont() {
                     *self = AndThenTry::Second(second);
                 }
@@ -424,9 +485,14 @@ where
 {
     type Completion = H2::Completion;
 
-    fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        suspend: &dyn Spawner<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
         match std::mem::take(self) {
-            FollowedBy::First { mut first, next } => match first.step(meta, context) {
+            FollowedBy::First { mut first, next } => match first.step(suspend, meta, context) {
                 StepResult::Fail(e) => StepResult::Fail(e),
                 StepResult::Complete {
                     modified_lane: dirty_lane,
@@ -447,7 +513,7 @@ where
                 }
             },
             FollowedBy::Second(mut second) => {
-                let step_result = second.step(meta, context);
+                let step_result = second.step(suspend, meta, context);
                 if step_result.is_cont() {
                     *self = FollowedBy::Second(second);
                 }
@@ -478,7 +544,12 @@ impl<T: Default> Default for ConstHandler<T> {
 impl<T, Context> HandlerAction<Context> for ConstHandler<T> {
     type Completion = T;
 
-    fn step(&mut self, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        _suspend: &dyn Spawner<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
         if let Some(value) = self.0.take() {
             StepResult::done(value)
         } else {
@@ -490,7 +561,12 @@ impl<T, Context> HandlerAction<Context> for ConstHandler<T> {
 impl<Context> HandlerAction<Context> for CNil {
     type Completion = ();
 
-    fn step(&mut self, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        _suspend: &dyn Spawner<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
         match *self {}
     }
 }
@@ -502,10 +578,15 @@ where
 {
     type Completion = ();
 
-    fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        suspend: &dyn Spawner<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
         match self {
-            Coproduct::Inl(h) => h.step(meta, context),
-            Coproduct::Inr(t) => t.step(meta, context),
+            Coproduct::Inl(h) => h.step(suspend, meta, context),
+            Coproduct::Inr(t) => t.step(suspend, meta, context),
         }
     }
 }
@@ -519,7 +600,12 @@ pub struct GetAgentUri {
 impl<Context> HandlerAction<Context> for GetAgentUri {
     type Completion = RelativeUri;
 
-    fn step(&mut self, meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        _suspend: &dyn Spawner<Context>,
+        meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
         let GetAgentUri { done } = self;
         if *done {
             StepResult::after_done()
@@ -551,7 +637,12 @@ impl<T> Decode<T> {
 impl<Context, T: RecognizerReadable> HandlerAction<Context> for Decode<T> {
     type Completion = T;
 
-    fn step(&mut self, _meta: AgentMetadata, _context: &Context) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        _suspend: &dyn Spawner<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
         let Decode {
             buffer, complete, ..
         } = self;
@@ -576,10 +667,15 @@ where
 {
     type Completion = H1::Completion;
 
-    fn step(&mut self, meta: AgentMetadata, context: &Context) -> StepResult<Self::Completion> {
+    fn step(
+        &mut self,
+        suspend: &dyn Spawner<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
         match self {
-            Either::Left(h1) => h1.step(meta, context),
-            Either::Right(h2) => h2.step(meta, context),
+            Either::Left(h1) => h1.step(suspend, meta, context),
+            Either::Right(h2) => h2.step(suspend, meta, context),
         }
     }
 }

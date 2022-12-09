@@ -14,9 +14,17 @@
 
 use crate::{
     agent_lifecycle::lane_event::{HLeaf, LaneEvent},
-    event_handler::{HandlerAction, StepResult},
+    event_handler::{HandlerAction, HandlerFuture, Spawner, StepResult},
     meta::AgentMetadata,
 };
+
+struct NoSpawn;
+
+impl<Context> Spawner<Context> for NoSpawn {
+    fn spawn_suspend(&self, _: HandlerFuture<Context>) {
+        panic!("No suspended futures expected.");
+    }
+}
 
 #[test]
 fn hleaf_lane_event() {
@@ -30,7 +38,7 @@ where
     H: HandlerAction<Agent, Completion = ()>,
 {
     loop {
-        match event_handler.step(meta, agent) {
+        match event_handler.step(&NoSpawn, meta, agent) {
             StepResult::Continue { modified_lane } => {
                 assert!(modified_lane.is_none());
             }

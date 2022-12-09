@@ -29,7 +29,7 @@ use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
 };
 
-use super::{MAP_LANE, VAL_LANE};
+use super::{CMD_LANE, MAP_LANE, VAL_LANE};
 
 #[derive(Debug, Default, Clone)]
 pub struct TestAgentContext {
@@ -37,13 +37,14 @@ pub struct TestAgentContext {
 }
 
 impl TestAgentContext {
-    pub fn take_lane_io(&self) -> (Option<Io>, Option<Io>) {
+    pub fn take_lane_io(&self) -> (Option<Io>, Option<Io>, Option<Io>) {
         let mut guard = self.inner.lock();
         let Inner {
             value_lane_io,
             map_lane_io,
+            cmd_lane_io,
         } = &mut *guard;
-        (value_lane_io.take(), map_lane_io.take())
+        (value_lane_io.take(), map_lane_io.take(), cmd_lane_io.take())
     }
 }
 
@@ -53,6 +54,7 @@ type Io = (ByteWriter, ByteReader);
 struct Inner {
     value_lane_io: Option<Io>,
     map_lane_io: Option<Io>,
+    cmd_lane_io: Option<Io>,
 }
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
@@ -77,6 +79,13 @@ impl AgentContext for TestAgentContext {
                 let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
                 let mut guard = self.inner.lock();
                 guard.map_lane_io = Some((tx_in, rx_out));
+                ready(Ok((tx_out, rx_in))).boxed()
+            }
+            (CMD_LANE, UplinkKind::Value) => {
+                let (tx_in, rx_in) = byte_channel(BUFFER_SIZE);
+                let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
+                let mut guard = self.inner.lock();
+                guard.cmd_lane_io = Some((tx_in, rx_out));
                 ready(Ok((tx_out, rx_in))).boxed()
             }
             ow => panic!("Unexpected lane registration: {:?}", ow),
