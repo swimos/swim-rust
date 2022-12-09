@@ -297,13 +297,15 @@ fn take_events(events: &Events) -> Vec<Event> {
 
 use super::super::test_support::run_handler;
 
+type NotificationsAndEvents = Vec<(
+    DownlinkNotification<MapMessage<i32, Text>>,
+    Option<Vec<Event>>,
+)>;
+
 async fn run_with_expectations(
     context: &mut TestContext,
     agent: &FakeAgent,
-    notifications: Vec<(
-        DownlinkNotification<MapMessage<i32, Text>>,
-        Option<Vec<Event>>,
-    )>,
+    notifications: NotificationsAndEvents,
 ) {
     let TestContext {
         channel,
@@ -434,8 +436,10 @@ async fn emit_event_handlers() {
 
 #[tokio::test]
 async fn emit_events_before_synced() {
-    let mut config = MapDownlinkConfig::default();
-    config.events_when_not_synced = true;
+    let config = MapDownlinkConfig {
+        events_when_not_synced: true,
+        ..Default::default()
+    };
     let mut context = make_hosted_input(config);
 
     let agent = FakeAgent;
@@ -605,8 +609,10 @@ async fn emit_drop_all_handlers() {
 
 #[tokio::test]
 async fn revive_unlinked_downlink() {
-    let mut config = MapDownlinkConfig::default();
-    config.terminate_on_unlinked = false;
+    let config = MapDownlinkConfig {
+        terminate_on_unlinked: false,
+        ..Default::default()
+    };
 
     let mut context = make_hosted_input(config);
 
