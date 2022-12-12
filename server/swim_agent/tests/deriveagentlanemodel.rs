@@ -240,7 +240,7 @@ fn command_lane_tagged_transient() {
 
 mod isolated {
 
-    use super::check_agent;
+    use super::{check_agent, persistent};
 
     #[test]
     fn multiple_lanes_qualified() {
@@ -254,7 +254,14 @@ mod isolated {
             fifth: swim_agent::lanes::CommandLane<i32>,
         }
 
-        check_agent::<MultipleLanes>(vec!["first", "third", "fifth"], vec!["second", "fourth"]);
+        check_agent::<MultipleLanes>(
+            vec![
+                persistent("first"),
+                persistent("third"),
+                persistent("fifth"),
+            ],
+            vec![persistent("second"), persistent("fourth")],
+        );
     }
 }
 
@@ -272,6 +279,6 @@ fn two_types_single_scope() {
         lane: ValueLane<Text>,
     }
 
-    check_agent::<First>(vec!["lane"], vec![]);
-    check_agent::<Second>(vec!["lane"], vec![]);
+    check_agent::<First>(vec![persistent("lane")], vec![]);
+    check_agent::<Second>(vec![persistent("lane")], vec![]);
 }
