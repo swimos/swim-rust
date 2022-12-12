@@ -240,7 +240,7 @@ fn command_lane_tagged_transient() {
 
 mod isolated {
 
-    use super::{check_agent, persistent};
+    use super::{check_agent, persistent, transient};
 
     #[test]
     fn multiple_lanes_qualified() {
@@ -258,7 +258,7 @@ mod isolated {
             vec![
                 persistent("first"),
                 persistent("third"),
-                persistent("fifth"),
+                transient("fifth"),
             ],
             vec![persistent("second"), persistent("fourth")],
         );
