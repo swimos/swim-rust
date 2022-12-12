@@ -255,11 +255,7 @@ mod isolated {
         }
 
         check_agent::<MultipleLanes>(
-            vec![
-                persistent("first"),
-                persistent("third"),
-                transient("fifth"),
-            ],
+            vec![persistent("first"), persistent("third"), transient("fifth")],
             vec![persistent("second"), persistent("fourth")],
         );
     }
