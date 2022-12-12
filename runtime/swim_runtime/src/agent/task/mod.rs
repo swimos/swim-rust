@@ -1551,7 +1551,7 @@ impl WriteTaskState {
         let RawLaneResponse { target, response } = response;
         if let Some(remote_id) = target {
             trace!(response = ?response, "Routing response to {}.", remote_id);
-            let write = if response.is_synced() && !links.is_linked(remote_id, id) {
+            let write = if !links.is_linked(remote_id, id) {
                 trace!(response = ?response, "Sending implicit linked message to {}.", remote_id);
                 links.insert(id, remote_id);
                 let write1 = write_tracker.push_special(SpecialAction::Linked(id), &remote_id);
