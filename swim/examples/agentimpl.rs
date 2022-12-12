@@ -1,4 +1,4 @@
-/* // Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,15 +14,13 @@
 
 use std::cell::RefCell;
 
-use swim_agent::{
-    agent_lifecycle::utility::HandlerContext,
-    agent_model::AgentModel,
-    event_handler::{EventHandler, HandlerActionExt},
-    lanes::ValueLane,
-    lifecycle, projections, AgentLaneModel,
-};
-use swim_api::agent::Agent;
-use swim_model::Text;
+use swim::agent::{AgentLaneModel, projections, lifecycle};
+use swim::api::Agent;
+use swim::agent::agent_model::AgentModel;
+use swim::agent::lanes::ValueLane;
+use swim::agent::model::Text;
+use swim::agent::agent_lifecycle::utility::HandlerContext;
+use swim::agent::event_handler::{EventHandler, HandlerActionExt};
 
 fn main() {
     let _ = make_agent();
@@ -42,7 +40,6 @@ fn make_agent() -> impl Agent + Send {
  */
 
 #[derive(Debug, AgentLaneModel)]
-#[agent_root(::swim_agent)]
 #[projections]
 pub struct MyAgent {
     first: ValueLane<i32>,
@@ -58,7 +55,7 @@ pub struct MyAgentLifecycle {
 impl MyAgentLifecycle {
     #[on_start]
     pub fn on_start(
-        &self, //This could be &mut self at the expense of the event handlers not being able to take the lifetime of the self ref. Possibly the macro could allow both with diffrent semantics (which could be a bit confusing).
+        &self, //This could be &mut self at the expense of the event handlers not being able to take the lifetime of the self ref. Possibly the macro could allow both with different semantics (which could be a bit confusing).
         context: HandlerContext<MyAgent>,
     ) -> impl EventHandler<MyAgent> {
         context
@@ -85,6 +82,3 @@ impl MyAgentLifecycle {
         })
     }
 }
- */
-
- fn main() {}

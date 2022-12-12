@@ -29,7 +29,7 @@ pub mod model {
 
 pub mod agent_model {
     pub use swim_agent::agent_model::{
-        AgentSpec, LaneInitializer, LaneSpec, LaneFlags, MapLaneInitializer, ValueLaneInitializer, WriteResult,
+        AgentSpec, AgentModel, LaneInitializer, LaneSpec, LaneFlags, MapLaneInitializer, ValueLaneInitializer, WriteResult,
     };
 }
 
