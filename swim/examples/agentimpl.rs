@@ -14,13 +14,13 @@
 
 use std::cell::RefCell;
 
-use swim::agent::{AgentLaneModel, projections, lifecycle};
-use swim::api::Agent;
+use swim::agent::agent_lifecycle::utility::HandlerContext;
 use swim::agent::agent_model::AgentModel;
+use swim::agent::event_handler::{EventHandler, HandlerActionExt};
 use swim::agent::lanes::ValueLane;
 use swim::agent::model::Text;
-use swim::agent::agent_lifecycle::utility::HandlerContext;
-use swim::agent::event_handler::{EventHandler, HandlerActionExt};
+use swim::agent::{lifecycle, projections, AgentLaneModel};
+use swim::api::Agent;
 
 fn main() {
     let _ = make_agent();

@@ -73,7 +73,7 @@ pub mod server {
 
 /// This module contains the API for implementing the [`crate::api::Agent`] trait in Rust. The key
 /// traits are:
-/// 
+///
 /// 1. [`crate::agent::AgentLaneModel`] - This defines the structure of the agent as a fixed collection
 /// of typed lanes. This trait has a derive macro which can be applied to any struct with named fields
 /// where each field is a lane type. See the documentation for the trait for instructions on how to use
@@ -81,6 +81,55 @@ pub mod server {
 /// 2. [`crate::agent::agent_lifecycle::AgentLifecycle`] - The trait defines custom behaviour that can be
 /// attached to an agent. An agent, and its lanes have associated lifecycle events (for example, the
 /// `on_start` event that triggers when an instance of the agent starts.)
+///
+/// [`crate::agent::agent_lifecycle::AgentLifecycle`]s can be created for an agent using the attribute
+/// macro [`crate::agent::lifecycle`]. To create a trivial lifecycle (that does nothing), create a new
+/// type and attach the attribute to an impl block:
+///
+/// ```no_run
+/// use swim::agent::{AgentLaneModel, lifecycle};
+///
+/// #[derive(AgentLaneModel)]
+/// struct ExampleAgent {
+///     lane: ValueLane<i32>
+/// }
+///
+/// struct ExampleLifecycle;
+///
+/// #[lifecycle(ExampleAgent)]
+/// impl ExampleLifecycle {}
+/// ```
+///
+/// This macro will add a function `into_lifecycle` that will convert an instance of `ExampleLifecycle` into
+/// an [`crate::agent::agent_lifecycle::AgentLifecycle`].
+///
+/// Lifecycle events can then be handled by adding handler functions to the impl block. For example,
+/// to attach an event to the `on_start` event, a function with the following signature could be
+/// added:
+///
+///  ```no_run
+/// use swim::agent::{AgentLaneModel, lifecycle};
+/// use swim::agent::agent_lifecycle::utility::HandlerContext;
+/// use swim::agent::event_handler::EventHandler;
+///
+/// #[derive(AgentLaneModel)]
+/// struct ExampleAgent {
+///     lane: ValueLane<i32>
+/// }
+///
+/// struct ExampleLifecycle;
+///
+/// #[lifecycle(ExampleAgent)]
+/// impl ExampleLifecycle {
+///     
+///     #[on_start]
+///     fn my_start_handler(&self, context: HandlerContext<ExampleAgent>) -> impl EventHandler<ExampleAgent> {
+///         context.effect(|| println!("Starting agent."))
+///     }
+/// }
+/// ```
+///
+/// For full instructions on implementing agents and lifecycles, please see the crate level documentation.
+///
 #[cfg(feature = "agent")]
 pub mod agent;
-

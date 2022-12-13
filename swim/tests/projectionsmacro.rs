@@ -15,8 +15,8 @@
 use std::collections::HashMap;
 
 use swim::agent::lanes::{MapLane, ValueLane};
-use swim::agent::projections;
 use swim::agent::model::Text;
+use swim::agent::projections;
 
 // Projections should work for an empty struct.
 #[projections]

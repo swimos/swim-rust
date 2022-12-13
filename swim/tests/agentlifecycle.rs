@@ -15,8 +15,6 @@
 use std::{collections::HashMap, sync::Arc};
 
 use parking_lot::Mutex;
-use swim_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
-use swim_agent::event_handler::{HandlerFuture, Spawner, WriteStream};
 use swim::agent::lifecycle;
 use swim::agent::{
     agent_lifecycle::{
@@ -26,6 +24,8 @@ use swim::agent::{
     lanes::{CommandLane, MapLane, ValueLane},
     AgentLaneModel,
 };
+use swim_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
+use swim_agent::event_handler::{HandlerFuture, Spawner, WriteStream};
 use swim_agent::meta::AgentMetadata;
 use swim_api::agent::AgentConfig;
 use swim_api::downlink::DownlinkKind;
