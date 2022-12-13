@@ -196,7 +196,6 @@ const TAG_LEN: usize = 1;
 const VAL_TAG: u8 = 0;
 const MAP_TAG: u8 = 1;
 
-const LBOUND: u8 = 0;
 const KEY: u8 = 1;
 const UBOUND: u8 = 2;
 
@@ -220,11 +219,9 @@ impl StoreKey {
                 writer.write_all(lane_id.encode_fixed_light())?;
                 if let Some(key) = key {
                     writer.write_all(&[KEY])?;
-                    let len = u64::try_from(key.len()).expect("Legnth does not fit into u64");
+                    let len = u64::try_from(key.len()).expect("Length does not fit into u64");
                     writer.write_all(len.encode_fixed_light())?;
                     writer.write_all(key)?;
-                } else {
-                    writer.write_all(&[LBOUND])?;
                 }
             }
             StoreKey::Value { lane_id } => {

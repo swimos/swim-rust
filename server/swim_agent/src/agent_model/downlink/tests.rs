@@ -45,7 +45,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::{handlers::BoxDownlinkChannel, OpenMapDownlink, OpenValueDownlink};
+use super::{handlers::BoxDownlinkChannel, OpenMapDownlinkAction, OpenValueDownlinkAction};
 
 struct TestAgent;
 
@@ -198,7 +198,7 @@ async fn open_value_downlink() {
     let meta = make_meta(&uri);
     let lifecycle = StatefulValueDownlinkLifecycle::<TestAgent, _, i32>::new(());
 
-    let handler = OpenValueDownlink::<i32, _>::new(
+    let handler = OpenValueDownlinkAction::<i32, _>::new(
         Address::text(Some(HOST), NODE, LANE),
         lifecycle,
         ValueDownlinkConfig::default(),
@@ -222,7 +222,7 @@ async fn open_map_downlink() {
     let meta = make_meta(&uri);
     let lifecycle = StatefulMapDownlinkLifecycle::<TestAgent, _, i32, Text>::new(());
 
-    let handler = OpenMapDownlink::<i32, Text, _>::new(
+    let handler = OpenMapDownlinkAction::<i32, Text, _>::new(
         Address::text(Some(HOST), NODE, LANE),
         lifecycle,
         MapDownlinkConfig::default(),

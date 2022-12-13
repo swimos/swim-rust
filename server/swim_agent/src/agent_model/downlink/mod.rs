@@ -48,7 +48,7 @@ struct Inner<LC> {
 
 /// [`HandlerAction`] that attempts to open a value downlink to a remote lane and results in
 /// a handle to the downlink.
-pub struct OpenValueDownlink<T, LC> {
+pub struct OpenValueDownlinkAction<T, LC> {
     _type: PhantomData<fn(T) -> T>,
     inner: Option<Inner<LC>>,
     config: ValueDownlinkConfig,
@@ -58,15 +58,15 @@ type KvInvariant<K, V> = fn(K, V) -> (K, V);
 
 /// [`HandlerAction`] that attempts to open a map downlink to a remote lane and results in
 /// a handle to the downlink.
-pub struct OpenMapDownlink<K, V, LC> {
+pub struct OpenMapDownlinkAction<K, V, LC> {
     _type: PhantomData<KvInvariant<K, V>>,
     inner: Option<Inner<LC>>,
     config: MapDownlinkConfig,
 }
 
-impl<T, LC> OpenValueDownlink<T, LC> {
+impl<T, LC> OpenValueDownlinkAction<T, LC> {
     pub fn new(address: Address<Text>, lifecycle: LC, config: ValueDownlinkConfig) -> Self {
-        OpenValueDownlink {
+        OpenValueDownlinkAction {
             _type: PhantomData,
             inner: Some(Inner { address, lifecycle }),
             config,
@@ -74,9 +74,9 @@ impl<T, LC> OpenValueDownlink<T, LC> {
     }
 }
 
-impl<K, V, LC> OpenMapDownlink<K, V, LC> {
+impl<K, V, LC> OpenMapDownlinkAction<K, V, LC> {
     pub fn new(address: Address<Text>, lifecycle: LC, config: MapDownlinkConfig) -> Self {
-        OpenMapDownlink {
+        OpenMapDownlinkAction {
             _type: PhantomData,
             inner: Some(Inner { address, lifecycle }),
             config,
@@ -84,7 +84,7 @@ impl<K, V, LC> OpenMapDownlink<K, V, LC> {
     }
 }
 
-impl<T, LC, Context> HandlerAction<Context> for OpenValueDownlink<T, LC>
+impl<T, LC, Context> HandlerAction<Context> for OpenValueDownlinkAction<T, LC>
 where
     Context: 'static,
     T: Form + Send + Sync + 'static,
@@ -99,7 +99,7 @@ where
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
-        let OpenValueDownlink { inner, config, .. } = self;
+        let OpenValueDownlinkAction { inner, config, .. } = self;
         if let Some(Inner {
             address: path,
             lifecycle,
@@ -133,7 +133,7 @@ where
     }
 }
 
-impl<K, V, LC, Context> HandlerAction<Context> for OpenMapDownlink<K, V, LC>
+impl<K, V, LC, Context> HandlerAction<Context> for OpenMapDownlinkAction<K, V, LC>
 where
     Context: 'static,
     K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
@@ -150,7 +150,7 @@ where
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
-        let OpenMapDownlink { inner, config, .. } = self;
+        let OpenMapDownlinkAction { inner, config, .. } = self;
         if let Some(Inner {
             address: path,
             lifecycle,

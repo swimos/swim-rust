@@ -69,12 +69,6 @@ pub enum UplinkResponse {
     Map(MapOperation<BytesMut, BytesMut>),
 }
 
-impl UplinkResponse {
-    pub fn is_synced(&self) -> bool {
-        matches!(self, UplinkResponse::Synced(_))
-    }
-}
-
 const UNREGISTERED_LANE: &str = "Unregistered lane ID.";
 
 impl Uplinks {
