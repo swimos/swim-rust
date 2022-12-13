@@ -59,8 +59,10 @@ where
     let (fake_context, test_context) = init(lane_config, lanes, init_rx, queries_rx, reg_rx);
     let context: Box<dyn AgentContext + Send + 'static> = Box::new(fake_context);
 
-    let mut config = AgentConfig::default();
-    config.default_lane_config = Some(lane_config);
+    let config = AgentConfig {
+        default_lane_config: Some(lane_config),
+    };
+
     let agent_task = async move {
         let agent = agent_fac(resolver);
         let run_agent = agent
@@ -108,7 +110,7 @@ pub fn init(
         let (out_tx, out_rx) = byte_channel(BUFFER_SIZE);
         let fake_lane = FakeRuntimeLane {
             kind,
-            expected_config: lane_config.clone(),
+            expected_config: lane_config,
             io: Some((out_tx, in_rx)),
         };
         expected.insert(name.clone(), fake_lane);

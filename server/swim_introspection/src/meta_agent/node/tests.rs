@@ -246,9 +246,10 @@ async fn node_meta_agent_pulse_lane() {
     };
     let route = "swim:meta:node/%2Fnode".parse().expect("Invalid route.");
 
-    let mut lanes = vec![];
-    lanes.push((PULSE_LANE.to_string(), LaneKind::Supply));
-    lanes.push((LANES_LANE.to_string(), LaneKind::DemandMap));
+    let lanes = vec![
+        (PULSE_LANE.to_string(), LaneKind::Supply),
+        (LANES_LANE.to_string(), LaneKind::DemandMap),
+    ];
 
     introspection_agent_test(
         expected_lane_config,
@@ -296,9 +297,10 @@ async fn node_meta_agent_laneinfo_lane() {
     };
     let route = "swim:meta:node/%2Fnode".parse().expect("Invalid route.");
 
-    let mut lanes = vec![];
-    lanes.push((PULSE_LANE.to_string(), LaneKind::Supply));
-    lanes.push((LANES_LANE.to_string(), LaneKind::DemandMap));
+    let lanes = vec![
+        (PULSE_LANE.to_string(), LaneKind::Supply),
+        (LANES_LANE.to_string(), LaneKind::DemandMap),
+    ];
 
     introspection_agent_test(
         expected_lane_config,

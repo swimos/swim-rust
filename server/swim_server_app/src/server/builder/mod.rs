@@ -211,7 +211,13 @@ where
         StoreConfig::RockStore { path, options } => {
             let store = super::store::rocks::create_rocks_store(path, options)?;
             Ok(with_websockets(
-                bind_to, routes, networking, config, deflate, store,
+                bind_to,
+                routes,
+                networking,
+                config,
+                deflate,
+                store,
+                introspection,
             ))
         }
         _ => Ok(with_websockets(

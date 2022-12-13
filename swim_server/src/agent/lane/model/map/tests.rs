@@ -533,7 +533,7 @@ struct It {
 }
 
 impl RangeConsumer for It {
-    fn consume_next<'a>(&'a mut self) -> Result<Option<(&'a [u8], &'a [u8])>, StoreError> {
+    fn consume_next(&mut self) -> Result<Option<(&[u8], &[u8])>, StoreError> {
         let It { index, entries } = self;
         let n = *index;
         *index += 1;

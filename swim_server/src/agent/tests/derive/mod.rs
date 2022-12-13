@@ -17,6 +17,7 @@ use trybuild::TestCases;
 mod pass;
 
 #[test]
+#[ignore]
 fn test_derive() {
     let t = TestCases::new();
 

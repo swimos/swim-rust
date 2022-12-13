@@ -82,6 +82,8 @@ impl<Path: Addressable> From<mpsc::error::SendError<DownlinkRequest<Path>>>
     }
 }
 
+type MapDlAndReceiver<K, V> = (TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>);
+
 /// Contains all running WARP downlinks and allows requests for downlink subscriptions.
 impl<Path: Addressable> Downlinks<Path> {
     /// Create tasks for opening remote connections and attaching them to downlinks.
@@ -197,7 +199,7 @@ impl<Path: Addressable> Downlinks<Path> {
     pub async fn subscribe_map<K, V>(
         &self,
         path: Path,
-    ) -> RequestResult<(TypedMapDownlink<K, V>, MapDownlinkReceiver<K, V>), Path>
+    ) -> RequestResult<MapDlAndReceiver<K, V>, Path>
     where
         K: ValueSchema + Send + 'static,
         V: ValueSchema + Send + 'static,
