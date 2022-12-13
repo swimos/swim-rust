@@ -504,6 +504,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
 
             let (initial_state_result, agent_task_result) =
                 join(runtime_init_task.run(), agent_init_task).await;
+
             let initial_state = initial_state_result?;
             let agent_task = agent_task_result?;
 

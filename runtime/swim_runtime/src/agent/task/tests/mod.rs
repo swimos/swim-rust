@@ -412,7 +412,10 @@ impl RemoteReceiver {
 
     async fn expect_linked(&mut self, lane: &str) {
         self.expect_envelope(lane, |envelope| {
-            assert!(matches!(envelope, Notification::Linked));
+            if !matches!(envelope, Notification::Linked) {
+                panic!("{:?}", envelope);
+            }
+            //assert!(matches!(envelope, Notification::Linked));
         })
         .await
     }
