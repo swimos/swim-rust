@@ -71,6 +71,16 @@ pub mod server {
     };
 }
 
+/// This module contains the API for implementing the [`crate::api::Agent`] trait in Rust. The key
+/// traits are:
+/// 
+/// 1. [`crate::agent::AgentLaneModel`] - This defines the structure of the agent as a fixed collection
+/// of typed lanes. This trait has a derive macro which can be applied to any struct with named fields
+/// where each field is a lane type. See the documentation for the trait for instructions on how to use
+/// the derive macro.
+/// 2. [`crate::agent::agent_lifecycle::AgentLifecycle`] - The trait defines custom behaviour that can be
+/// attached to an agent. An agent, and its lanes have associated lifecycle events (for example, the
+/// `on_start` event that triggers when an instance of the agent starts.)
 #[cfg(feature = "agent")]
 pub mod agent;
 
