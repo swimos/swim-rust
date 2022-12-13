@@ -69,7 +69,7 @@ impl<K, V> Default for MapDlState<K, V> {
     }
 }
 
-/// Operations that need to be supported by the state store of a mp downlink. The intention
+/// Operations that need to be supported by the state store of a map downlink. The intention
 /// of this trait is to abstract over a self contained store a store contained within the field
 /// of an agent. In both cases, the store itself will a [`RefCell`] containing a [`MapDlState`].
 trait MapDlStateOps<K, V, Context> {
@@ -142,7 +142,7 @@ trait MapDlStateOps<K, V, Context> {
             } else {
                 let ord = order.get_or_insert_with(|| map.keys().cloned().collect());
 
-                //Deconmpose the take into a sequence of removals.
+                //Decompose the take into a sequence of removals.
                 let to_remove: Vec<_> = ord.iter().take(n).cloned().collect();
                 if let Some(lifecycle) = lifecycle {
                     let expected = n.min(map.len());
@@ -185,7 +185,7 @@ trait MapDlStateOps<K, V, Context> {
             if to_drop > 0 {
                 let ord = order.get_or_insert_with(|| map.keys().cloned().collect());
 
-                //Deconmpose the drop into a sequence of removals.
+                //Decompose the drop into a sequence of removals.
                 let to_remove: Vec<_> = ord.iter().rev().take(to_drop).cloned().collect();
                 if let Some(lifecycle) = lifecycle {
                     let mut removed = Vec::with_capacity(to_drop);
