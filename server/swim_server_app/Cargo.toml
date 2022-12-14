@@ -32,7 +32,7 @@ rocksdb = { workspace = true, optional = true }
 
 [dev-dependencies]
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
-tokio = { workspace = true, features = ["rt", "macros"]}
+tokio = { workspace = true, features = ["rt", "macros", "test-util"]}
 swim_form = {path = "../../api/swim_form" }
 parking_lot = { workspace = true }
 swim_messages = { path = "../../runtime/swim_messages" }

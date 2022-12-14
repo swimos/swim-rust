@@ -14,5 +14,6 @@ syn = { workspace = true, features = ["full", "extra-traits"] }
 quote = { workspace = true }
 swim_utilities = { path = "../../swim_utilities", features = ["errors"] }
 bitflags = { workspace = true }
+macro_utilities = { path = "../../macro_utilities" }
 
 [dev-dependencies]
