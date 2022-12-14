@@ -20,7 +20,8 @@ use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::downlink::{DownlinkNotification, ValueNotificationDecoder};
 use swim_form::Form;
-use swim_model::path::Path;
+use swim_model::address::Address;
+use swim_model::Text;
 use swim_recon::printer::print_recon;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio_util::codec::FramedRead;
@@ -40,7 +41,7 @@ use crate::EventDownlinkModel;
 /// * `_output` - Output stream for messages from the downlink to the runtime.
 pub async fn event_dowinlink_task<T, LC>(
     model: EventDownlinkModel<T, LC>,
-    path: Path,
+    path: Address<Text>,
     config: DownlinkConfig,
     input: ByteReader,
     _output: ByteWriter,

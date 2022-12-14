@@ -86,19 +86,29 @@ struct Example {
 #[test]
 fn encode_clear_operation_raw() {
     let mut bytes = encode_raw_operation(MapOperation::Clear);
-    assert_eq!(bytes.len(), 1);
+    assert_eq!(bytes.len(), 9);
+    assert_eq!(bytes.get_u64(), 1);
     assert_eq!(bytes.get_u8(), CLEAR);
 }
 
 #[test]
 fn encode_clear_operation() {
     let mut bytes = encode_operation::<String, Example>(MapOperation::Clear);
-    assert_eq!(bytes.len(), 1);
+    assert_eq!(bytes.len(), 9);
+    assert_eq!(bytes.get_u64(), 1);
     assert_eq!(bytes.get_u8(), CLEAR);
 }
 
 const KEY: &str = "key";
 const VALUE: &str = "value";
+
+fn update_len(val_len: usize) -> usize {
+    KEY.len() + val_len + TAG_SIZE + LEN_SIZE
+}
+
+fn remove_len(key_len: usize) -> usize {
+    key_len + TAG_SIZE
+}
 
 #[test]
 fn encode_update_operation_raw() {
@@ -107,9 +117,9 @@ fn encode_update_operation_raw() {
         value: VALUE.as_bytes(),
     });
     assert!(bytes.len() > TAG_SIZE + 2 * LEN_SIZE);
+    assert_eq!(bytes.get_u64() as usize, update_len(VALUE.len()));
     assert_eq!(bytes.get_u8(), UPDATE);
     assert_eq!(bytes.get_u64() as usize, KEY.len());
-    assert_eq!(bytes.get_u64() as usize, VALUE.len());
     assert_eq!(bytes.len(), KEY.len() + VALUE.len());
 
     let key_str = std::str::from_utf8(&bytes.as_ref()[0..KEY.len()]).unwrap();
@@ -130,9 +140,9 @@ fn encode_update_operation() {
 
     let mut bytes = encode_operation(MapOperation::Update { key, value });
     assert!(bytes.len() > TAG_SIZE + 2 * LEN_SIZE);
+    assert_eq!(bytes.get_u64() as usize, update_len(expected_value.len()));
     assert_eq!(bytes.get_u8(), UPDATE);
     assert_eq!(bytes.get_u64() as usize, KEY.len());
-    assert_eq!(bytes.get_u64() as usize, expected_value.len());
     assert_eq!(bytes.len(), KEY.len() + expected_value.len());
 
     let key_str = std::str::from_utf8(&bytes.as_ref()[0..KEY.len()]).unwrap();
@@ -150,8 +160,8 @@ fn encode_remove_operation_raw() {
         key: KEY.as_bytes(),
     });
     assert!(bytes.len() > TAG_SIZE + LEN_SIZE);
+    assert_eq!(bytes.get_u64() as usize, remove_len(KEY.len()));
     assert_eq!(bytes.get_u8(), REMOVE);
-    assert_eq!(bytes.get_u64() as usize, KEY.len());
     assert_eq!(bytes.len(), KEY.len());
 
     let key_str = std::str::from_utf8(&bytes.as_ref()[0..KEY.len()]).unwrap();
@@ -167,8 +177,8 @@ fn encode_remove_operation() {
 
     let mut bytes = encode_operation::<Example, ()>(MapOperation::Remove { key });
     assert!(bytes.len() > TAG_SIZE + LEN_SIZE);
+    assert_eq!(bytes.get_u64() as usize, remove_len(expected_key.len()));
     assert_eq!(bytes.get_u8(), REMOVE);
-    assert_eq!(bytes.get_u64() as usize, expected_key.len());
     assert_eq!(bytes.len(), expected_key.len());
 
     let key_str = std::str::from_utf8(&bytes.as_ref()[0..expected_key.len()]).unwrap();
@@ -273,7 +283,8 @@ fn round_trip_message<K: Form, V: Form>(op: MapMessage<K, V>) -> MapMessage<K, V
 #[test]
 fn encode_take_message() {
     let mut bytes = encode_message::<String, String>(MapMessage::Take(7));
-    assert_eq!(bytes.len(), TAG_SIZE + LEN_SIZE);
+    assert_eq!(bytes.len(), TAG_SIZE + 2 * LEN_SIZE);
+    assert_eq!(bytes.get_u64() as usize, LEN_SIZE + TAG_SIZE);
     assert_eq!(bytes.get_u8(), TAKE);
     assert_eq!(bytes.get_u64(), 7);
 }
@@ -281,7 +292,8 @@ fn encode_take_message() {
 #[test]
 fn encode_drop_message() {
     let mut bytes = encode_message::<String, String>(MapMessage::Drop(9));
-    assert_eq!(bytes.len(), TAG_SIZE + LEN_SIZE);
+    assert_eq!(bytes.len(), TAG_SIZE + 2 * LEN_SIZE);
+    assert_eq!(bytes.get_u64() as usize, LEN_SIZE + TAG_SIZE);
     assert_eq!(bytes.get_u8(), DROP);
     assert_eq!(bytes.get_u64(), 9);
 }
@@ -289,7 +301,8 @@ fn encode_drop_message() {
 #[test]
 fn encode_op_message() {
     let mut bytes = encode_message::<String, String>(MapOperation::Clear.into());
-    assert_eq!(bytes.len(), TAG_SIZE);
+    assert_eq!(bytes.len(), TAG_SIZE + LEN_SIZE);
+    assert_eq!(bytes.get_u64() as usize, TAG_SIZE);
     assert_eq!(bytes.get_u8(), CLEAR);
 }
 

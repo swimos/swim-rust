@@ -23,8 +23,8 @@ use tokio_util::codec::Encoder;
 use crate::{
     agent_model::WriteResult,
     event_handler::{
-        AndThen, Decode, HandlerAction, HandlerActionExt, HandlerTrans, Modification, Spawner,
-        StepResult,
+        ActionContext, AndThen, Decode, HandlerAction, HandlerActionExt, HandlerTrans,
+        Modification, StepResult,
     },
     meta::AgentMetadata,
 };
@@ -105,7 +105,7 @@ impl<Context, T> HandlerAction<Context> for DoCommand<Context, T> {
 
     fn step(
         &mut self,
-        _suspend: &dyn Spawner<Context>,
+        _action_context: ActionContext<Context>,
         _meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {

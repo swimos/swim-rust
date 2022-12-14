@@ -32,6 +32,7 @@ use ratchet::{
     SplittableExtension, WebSocket, WebSocketStream,
 };
 use smallvec::SmallVec;
+use swim_api::error::DownlinkFailureReason;
 use swim_messages::{
     bytes_str::BytesStr,
     protocol::{
@@ -40,7 +41,7 @@ use swim_messages::{
         RequestMessage, ResponseMessage,
     },
 };
-use swim_model::Text;
+use swim_model::{address::RelativeAddress, Text};
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
@@ -74,11 +75,11 @@ pub enum AttachClient {
     },
     /// Attach a two way (downlink) client.
     AttachDownlink {
-        node: Text,
-        lane: Text,
+        downlink_id: Uuid,
+        path: RelativeAddress<Text>,
         sender: ByteWriter,
         receiver: ByteReader,
-        done: trigger::Sender,
+        done: oneshot::Sender<Result<(), DownlinkFailureReason>>,
     },
 }
 
@@ -277,8 +278,7 @@ where
 
 #[derive(Debug)]
 struct RegisterIncoming {
-    node: Text,
-    lane: Text,
+    path: RelativeAddress<Text>,
     sender: ByteWriter,
     done: trigger::Sender,
 }
@@ -317,9 +317,11 @@ async fn registration_task<F>(
     loop {
         let request = tokio::select! {
             done = trackers.next(), if !trackers.is_empty() => {
-                let done: Option<Option<trigger::Sender>> = done;
+                let done: Option<Option<oneshot::Sender<Result<(), DownlinkFailureReason>>>> = done;
                 if let Some(Some(done)) = done {
-                    done.trigger();
+                    if done.send(Ok(())).is_err() {
+                        info!("Downlink request dropped before it was satisfied.");
+                    };
                 }
                 continue;
             }
@@ -333,21 +335,20 @@ async fn registration_task<F>(
         };
         match request {
             AttachClient::AttachDownlink {
-                node,
-                lane,
+                path,
                 sender,
                 receiver,
                 done,
+                ..
             } => {
-                debug!(node = %node, lane = %lane, "Attaching new client downlink.");
+                debug!(path = %path, "Attaching new client downlink.");
                 if let (Ok(in_res), Ok(out_res)) =
                     join(incoming_tx.reserve(), outgoing_tx.reserve()).await
                 {
                     let (in_done_tx, in_done_rx) = trigger::trigger();
                     let (out_done_tx, out_done_rx) = trigger::trigger();
                     in_res.send(RegisterIncoming {
-                        node,
-                        lane,
+                        path,
                         sender,
                         done: in_done_tx,
                     });
@@ -559,8 +560,7 @@ impl IncomingTask {
 
             match event {
                 IncomingEvent::Register(RegisterIncoming {
-                    node,
-                    lane,
+                    path: RelativeAddress { node, lane },
                     sender,
                     done,
                 }) => {

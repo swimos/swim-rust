@@ -109,8 +109,10 @@ const DROP: u8 = 4;
 use super::{LEN_SIZE, TAG_SIZE};
 
 const OVERSIZE_KEY: &str = "Key too large.";
-const OVERSIZE_VALUE: &str = "Value too large.";
+const OVERSIZE_RECORD: &str = "Record too large.";
 const BAD_TAG: &str = "Invalid map operation tag: ";
+const BAD_RECORD_SIZE: &str = "Invalid record size: ";
+const BAD_KEY_SIZE: &str = "Invalid key size: ";
 
 impl<K: AsRef<[u8]>, V: AsRef<[u8]>> Encoder<MapOperation<K, V>> for RawMapOperationEncoder {
     type Error = std::io::Error;
@@ -120,25 +122,26 @@ impl<K: AsRef<[u8]>, V: AsRef<[u8]>> Encoder<MapOperation<K, V>> for RawMapOpera
             MapOperation::Update { key, value } => {
                 let key_bytes = key.as_ref();
                 let value_bytes = value.as_ref();
-                dst.reserve(TAG_SIZE + 2 * LEN_SIZE + key_bytes.len() + value_bytes.len());
+                let total_len = key_bytes.len() + value_bytes.len() + LEN_SIZE + TAG_SIZE;
+                dst.reserve(total_len + LEN_SIZE);
+                dst.put_u64(u64::try_from(total_len).expect(OVERSIZE_RECORD));
                 dst.put_u8(UPDATE);
                 let key_len = u64::try_from(key_bytes.len()).expect(OVERSIZE_KEY);
-                let value_len = u64::try_from(value_bytes.len()).expect(OVERSIZE_VALUE);
                 dst.put_u64(key_len);
-                dst.put_u64(value_len);
                 dst.put(key_bytes);
                 dst.put(value_bytes);
             }
             MapOperation::Remove { key } => {
                 let key_bytes = key.as_ref();
-                dst.reserve(TAG_SIZE + LEN_SIZE + key_bytes.len());
+                let total_len = key_bytes.len() + TAG_SIZE;
+                dst.reserve(total_len + LEN_SIZE);
+                dst.put_u64(u64::try_from(total_len).expect(OVERSIZE_RECORD));
                 dst.put_u8(REMOVE);
-                let key_len = u64::try_from(key_bytes.len()).expect("Key too large.");
-                dst.put_u64(key_len);
                 dst.put(key_bytes);
             }
             MapOperation::Clear => {
-                dst.reserve(TAG_SIZE);
+                dst.reserve(LEN_SIZE + TAG_SIZE);
+                dst.put_u64(TAG_SIZE as u64);
                 dst.put_u8(CLEAR);
             }
         }
@@ -152,50 +155,64 @@ impl Decoder for RawMapOperationDecoder {
     type Error = FrameIoError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        if src.is_empty() {
-            src.reserve(TAG_SIZE);
+        if src.remaining() < LEN_SIZE + TAG_SIZE {
+            src.reserve(LEN_SIZE + TAG_SIZE);
             return Ok(None);
         }
-        match src.as_ref()[0] {
+        let mut header = src.as_ref();
+        let total_len = header.get_u64() as usize;
+        let tag = header.get_u8();
+        match tag {
             UPDATE => {
-                if src.remaining() < TAG_SIZE + 2 * LEN_SIZE {
-                    let required = TAG_SIZE + 2 * LEN_SIZE;
-                    src.reserve(required - src.remaining());
-                    return Ok(None);
+                if total_len < LEN_SIZE + TAG_SIZE {
+                    return Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
+                        problem: Text::from(format!("{}{}", BAD_RECORD_SIZE, total_len)),
+                    }));
                 }
-                let mut header = &src.as_ref()[1..2 * LEN_SIZE + 1];
-                let key_len = header.get_u64() as usize;
-                let value_len = header.get_u64() as usize;
-                let required = TAG_SIZE + 2 * LEN_SIZE + key_len + value_len;
+                let required = LEN_SIZE + total_len;
                 if src.remaining() < required {
-                    src.reserve(required - src.remaining());
                     return Ok(None);
                 }
-                src.advance(TAG_SIZE + 2 * LEN_SIZE);
-                let key = src.split_to(key_len);
-                let value = src.split_to(value_len);
-                Ok(Some(RawMapOperationMut::Update { key, value }))
+                src.advance(LEN_SIZE);
+                let mut frame = src.split_to(total_len);
+                frame.advance(TAG_SIZE);
+                let key_len = frame.get_u64() as usize;
+
+                if key_len + LEN_SIZE + TAG_SIZE > total_len {
+                    return Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
+                        problem: Text::from(format!("{}{}", BAD_KEY_SIZE, key_len)),
+                    }));
+                }
+
+                let key = frame.split_to(key_len);
+
+                Ok(Some(RawMapOperationMut::Update { key, value: frame }))
             }
             REMOVE => {
-                if src.remaining() < TAG_SIZE + LEN_SIZE {
-                    let required = TAG_SIZE + LEN_SIZE;
-                    src.reserve(required - src.remaining());
-                    return Ok(None);
+                if total_len < TAG_SIZE {
+                    return Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
+                        problem: Text::from(format!("{}{}", BAD_RECORD_SIZE, total_len)),
+                    }));
                 }
-                let mut header = &src.as_ref()[1..LEN_SIZE + 1];
-                let key_len = header.get_u64() as usize;
-                let required = TAG_SIZE + LEN_SIZE + key_len;
+                let required = LEN_SIZE + total_len;
                 if src.remaining() < required {
-                    src.reserve(required - src.remaining());
                     return Ok(None);
                 }
-                src.advance(TAG_SIZE + LEN_SIZE);
-                let key = src.split_to(key_len);
-                Ok(Some(RawMapOperationMut::Remove { key }))
+                src.advance(LEN_SIZE);
+                let mut frame = src.split_to(total_len);
+                frame.advance(TAG_SIZE);
+
+                Ok(Some(RawMapOperationMut::Remove { key: frame }))
             }
             CLEAR => {
-                src.advance(TAG_SIZE);
-                Ok(Some(RawMapOperationMut::Clear))
+                if total_len == TAG_SIZE {
+                    src.advance(LEN_SIZE + TAG_SIZE);
+                    Ok(Some(RawMapOperationMut::Clear))
+                } else {
+                    Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
+                        problem: Text::from(format!("{}{}", BAD_RECORD_SIZE, total_len)),
+                    }))
+                }
             }
             ow => Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
                 problem: Text::from(format!("{}{}", BAD_TAG, ow)),
@@ -218,20 +235,31 @@ impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapOperationDecod
         loop {
             match state {
                 MapOperationDecoderState::ReadingHeader => {
-                    if src.remaining() < TAG_SIZE {
-                        src.reserve(TAG_SIZE);
+                    if src.remaining() < LEN_SIZE + TAG_SIZE {
+                        src.reserve(LEN_SIZE + TAG_SIZE);
                         break Ok(None);
                     }
-                    match src.as_ref()[0] {
+                    let mut header = src.as_ref();
+                    let total_len = header.get_u64() as usize;
+                    let tag = header.get_u8();
+                    match tag {
                         UPDATE => {
                             let required = TAG_SIZE + 2 * LEN_SIZE;
                             if src.remaining() < required {
                                 src.reserve(required - src.remaining());
                                 break Ok(None);
                             }
-                            let mut header = &src.as_ref()[1..2 * LEN_SIZE + 1];
                             let key_len = header.get_u64() as usize;
-                            let value_len = header.get_u64() as usize;
+                            let value_len = if let Some(l) =
+                                total_len.checked_sub(key_len + LEN_SIZE + TAG_SIZE)
+                            {
+                                l
+                            } else {
+                                break Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
+                                    problem: Text::from(format!("{}{}", BAD_KEY_SIZE, key_len)),
+                                }));
+                            };
+
                             src.advance(TAG_SIZE + 2 * LEN_SIZE);
                             *state = MapOperationDecoderState::ReadingKey {
                                 remaining: key_len,
@@ -239,21 +267,24 @@ impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapOperationDecod
                             };
                         }
                         REMOVE => {
-                            let required = TAG_SIZE + LEN_SIZE;
-                            if src.remaining() < required {
-                                src.reserve(required - src.remaining());
-                                break Ok(None);
-                            }
-                            let mut header = &src.as_ref()[1..LEN_SIZE + 1];
-                            let key_len = header.get_u64() as usize;
-                            src.advance(TAG_SIZE + LEN_SIZE);
+                            let key_len = if let Some(l) = total_len.checked_sub(TAG_SIZE) {
+                                l
+                            } else {
+                                break Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
+                                    problem: Text::from(format!(
+                                        "{}{}",
+                                        BAD_RECORD_SIZE, total_len
+                                    )),
+                                }));
+                            };
+                            src.advance(LEN_SIZE + TAG_SIZE);
                             *state = MapOperationDecoderState::ReadingKey {
                                 remaining: key_len,
                                 value_size: None,
                             };
                         }
                         CLEAR => {
-                            src.advance(1);
+                            src.advance(TAG_SIZE + LEN_SIZE);
                             break Ok(Some(MapOperation::Clear));
                         }
                         ow => {
@@ -393,14 +424,31 @@ impl<K: StructuralWritable, V: StructuralWritable> Encoder<MapOperation<K, V>>
         dst.reserve(TAG_SIZE);
         match item {
             MapOperation::Update { key, value } => {
-                dst.put_u8(UPDATE);
-                super::write_recon_kv(dst, &key, &value);
+                dst.reserve(2 * LEN_SIZE + TAG_SIZE);
+                let body_len_offset = dst.remaining();
+                dst.put_u64(0);
+                dst.put_u8(0);
+                dst.put_u64(0);
+                let key_len = super::write_recon(dst, &key);
+                let value_len = super::write_recon(dst, &value);
+                let total_len = key_len + value_len + LEN_SIZE + TAG_SIZE;
+                let mut rewound = &mut dst.as_mut()[body_len_offset..];
+                rewound.put_u64(u64::try_from(total_len).expect(OVERSIZE_KEY));
+                rewound.put_u8(UPDATE);
+                rewound.put_u64(u64::try_from(key_len).expect(OVERSIZE_RECORD));
             }
             MapOperation::Remove { key } => {
+                dst.reserve(LEN_SIZE + TAG_SIZE);
+                let body_len_offset = dst.remaining();
+                dst.put_u64(0);
                 dst.put_u8(REMOVE);
-                super::write_recon(dst, &key);
+                let key_len = super::write_recon(dst, &key);
+                let total_len = key_len + TAG_SIZE;
+                let mut rewound = &mut dst.as_mut()[body_len_offset..];
+                rewound.put_u64(u64::try_from(total_len).expect(OVERSIZE_KEY));
             }
             MapOperation::Clear => {
+                dst.put_u64(TAG_SIZE as u64);
                 dst.put_u8(CLEAR);
             }
         }
@@ -477,13 +525,15 @@ where
             MapMessage::Remove { key } => inner.encode(MapOperation::Remove { key }, dst),
             MapMessage::Clear => inner.encode(MapOperation::Clear, dst),
             MapMessage::Take(n) => {
-                dst.reserve(TAG_SIZE + LEN_SIZE);
+                dst.reserve(TAG_SIZE + 2 * LEN_SIZE);
+                dst.put_u64((TAG_SIZE + LEN_SIZE) as u64);
                 dst.put_u8(TAKE);
                 dst.put_u64(n);
                 Ok(())
             }
             MapMessage::Drop(n) => {
-                dst.reserve(TAG_SIZE + LEN_SIZE);
+                dst.reserve(TAG_SIZE + 2 * LEN_SIZE);
+                dst.put_u64((TAG_SIZE + LEN_SIZE) as u64);
                 dst.put_u8(DROP);
                 dst.put_u64(n);
                 Ok(())
@@ -494,26 +544,33 @@ where
 
 impl<K, V, Inner> Decoder for MapMessageDecoder<Inner>
 where
-    Inner: Decoder<Item = MapOperation<K, V>>,
+    Inner: Decoder<Item = MapOperation<K, V>, Error = FrameIoError>,
 {
     type Item = MapMessage<K, V>;
 
-    type Error = Inner::Error;
+    type Error = FrameIoError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         let MapMessageDecoder(inner) = self;
-        if src.remaining() < TAG_SIZE {
-            src.reserve(TAG_SIZE);
+        if src.remaining() < TAG_SIZE + LEN_SIZE {
+            src.reserve(TAG_SIZE + LEN_SIZE);
             return Ok(None);
         }
-        match src.as_ref()[0] {
+        let mut header = src.as_ref();
+        let total_len = header.get_u64() as usize;
+        match header.get_u8() {
             tag @ (TAKE | DROP) => {
-                let required = TAG_SIZE + LEN_SIZE;
+                if total_len != TAG_SIZE + LEN_SIZE {
+                    return Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
+                        problem: Text::new(BAD_RECORD_SIZE),
+                    }));
+                }
+                let required = TAG_SIZE + 2 * LEN_SIZE;
                 if src.remaining() < required {
                     src.reserve(required - src.remaining());
                     return Ok(None);
                 }
-                src.advance(TAG_SIZE);
+                src.advance(TAG_SIZE + LEN_SIZE);
                 let n = src.get_u64();
                 Ok(Some(if tag == TAKE {
                     MapMessage::Take(n)

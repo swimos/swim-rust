@@ -30,7 +30,7 @@ use swim_messages::protocol::{
     AgentMessageDecoder, MessageDecodeError, Operation, Path, RequestMessage, ResponseMessage,
     ResponseMessageEncoder,
 };
-use swim_model::{path::RelativePath, Text};
+use swim_model::{address::RelativeAddress, Text};
 use swim_utilities::{
     io::byte_channel::{self, ByteReader, ByteWriter},
     trigger::{self, promise},
@@ -321,6 +321,9 @@ where
         DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
+            abort_on_bad_frames: true,
+            remote_buffer_size: BUFFER_SIZE,
+            downlink_buffer_size: BUFFER_SIZE,
         },
         AlwaysAbortStrategy,
         test_block,
@@ -350,7 +353,7 @@ where
     let (in_tx, in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
     let (out_tx, out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
 
-    let path = RelativePath::new("/node", "lane");
+    let path = RelativeAddress::text("/node", "lane");
 
     let management_task = MapDownlinkRuntime::new(
         attach_rx,
@@ -738,6 +741,9 @@ async fn shutdowm_after_timeout_with_no_subscribers() {
         DownlinkRuntimeConfig {
             empty_timeout: Duration::from_millis(100),
             attachment_queue_size: ATT_QUEUE_SIZE,
+            abort_on_bad_frames: true,
+            remote_buffer_size: BUFFER_SIZE,
+            downlink_buffer_size: BUFFER_SIZE,
         },
         AlwaysAbortStrategy,
         |TestContext {
@@ -787,6 +793,9 @@ async fn use_bad_message_strategy() {
         DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
+            abort_on_bad_frames: true,
+            remote_buffer_size: BUFFER_SIZE,
+            downlink_buffer_size: BUFFER_SIZE,
         },
         test_strategy,
         move |TestContext {
@@ -1028,7 +1037,7 @@ where
     let (in_tx, in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
     let (out_tx, out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
 
-    let path = RelativePath::new("/node", "lane");
+    let path = RelativeAddress::text("/node", "lane");
 
     let management_task = MapDownlinkRuntime::new(
         attach_rx,
@@ -1150,6 +1159,9 @@ async fn sync_two_consumers() {
         DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
+            abort_on_bad_frames: true,
+            remote_buffer_size: BUFFER_SIZE,
+            downlink_buffer_size: BUFFER_SIZE,
         },
         |mut context| async move {
             sync_both(&mut context).await;
@@ -1187,6 +1199,9 @@ async fn receive_from_two_consumers() {
         DownlinkRuntimeConfig {
             empty_timeout: EMPTY_TIMEOUT,
             attachment_queue_size: ATT_QUEUE_SIZE,
+            abort_on_bad_frames: true,
+            remote_buffer_size: BUFFER_SIZE,
+            downlink_buffer_size: BUFFER_SIZE,
         },
         |mut context| async move {
             sync_both(&mut context).await;

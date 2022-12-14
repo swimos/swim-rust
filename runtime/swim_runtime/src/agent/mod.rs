@@ -18,10 +18,10 @@ use futures::{
 };
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, LaneConfig, UplinkKind},
-    downlink::{Downlink, DownlinkConfig},
+    downlink::DownlinkKind,
     error::{AgentInitError, AgentRuntimeError, AgentTaskError},
 };
-use swim_model::Text;
+use swim_model::{address::Address, Text};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     routing::uri::RelativeUri,
@@ -38,11 +38,35 @@ use std::{
     time::Duration,
 };
 
-use self::task::{AgentInitTask, NoLanes};
+use crate::downlink::DownlinkOptions;
+
+use self::task::AgentInitTask;
 
 mod task;
 
 use task::AgentRuntimeRequest;
+
+#[derive(Debug)]
+pub struct DownlinkRequest {
+    pub key: (Address<Text>, DownlinkKind),
+    pub options: DownlinkOptions,
+    pub promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+}
+
+impl DownlinkRequest {
+    pub fn new(
+        path: Address<Text>,
+        kind: DownlinkKind,
+        options: DownlinkOptions,
+        promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+    ) -> Self {
+        DownlinkRequest {
+            key: (path, kind),
+            options,
+            promise,
+        }
+    }
+}
 
 /// Implementaton of [`AgentContext`] that communicates with with another task over a channel
 /// to perform the supported operations.
@@ -58,16 +82,17 @@ impl AgentRuntimeContext {
 }
 
 impl AgentContext for AgentRuntimeContext {
-    fn add_lane<'a>(
-        &'a self,
+    fn add_lane(
+        &self,
         name: &str,
         uplink_kind: UplinkKind,
         config: Option<LaneConfig>,
-    ) -> BoxFuture<'a, Result<Io, AgentRuntimeError>> {
+    ) -> BoxFuture<'static, Result<Io, AgentRuntimeError>> {
         let name = Text::new(name);
+        let sender = self.tx.clone();
         async move {
             let (tx, rx) = oneshot::channel();
-            self.tx
+            sender
                 .send(AgentRuntimeRequest::AddLane {
                     name,
                     kind: uplink_kind,
@@ -82,17 +107,24 @@ impl AgentContext for AgentRuntimeContext {
 
     fn open_downlink(
         &self,
-        config: DownlinkConfig,
-        downlink: Box<dyn Downlink + Send>,
-    ) -> BoxFuture<'_, Result<(), AgentRuntimeError>> {
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        kind: DownlinkKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+        let host = host.map(Text::new);
+        let node = Text::new(node);
+        let lane = Text::new(lane);
+        let sender = self.tx.clone();
         async move {
             let (tx, rx) = oneshot::channel();
-            self.tx
-                .send(AgentRuntimeRequest::OpenDownlink {
-                    config,
-                    downlink,
-                    promise: tx,
-                })
+            sender
+                .send(AgentRuntimeRequest::OpenDownlink(DownlinkRequest::new(
+                    Address::new(host, node, lane),
+                    kind,
+                    DownlinkOptions::empty(),
+                    tx,
+                )))
                 .await?;
             rx.await?
         }
@@ -213,67 +245,105 @@ pub enum AgentExecError {
     /// The runtime loop of the agent failed.
     #[error("The agent task failed: {0}")]
     FailedTask(#[from] AgentTaskError),
+    /// Sending a downlink request to the runtime failed.
+    #[error("The runtime failed to handle a downlink request.")]
+    FailedDownlinkRequest,
 }
 
-impl From<NoLanes> for AgentExecError {
-    fn from(_: NoLanes) -> Self {
-        AgentExecError::NoInitialLanes
-    }
+pub struct AgentRoute {
+    pub identity: Uuid,
+    pub route: RelativeUri,
 }
 
-/// Run an agent.
-///
-/// #Arguments
-/// * `agent` - The agent instance.
-/// * `identity` - The routing ID that will be attached to outgoing envelopes.
-/// * `route` - The node URI that will be attached to outgoing envelopes.
-/// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
-/// * `stopping` - Instructs the agent task to stop.
-/// * `agent_config` - Configuration parameters for the user agent task.
-/// * `runtime_config` - Configuration for the runtime part of the agent task.
-pub fn run_agent<A>(
-    agent: &A,
+#[derive(Debug, Clone, Copy)]
+pub struct CombinedAgentConfig {
+    pub agent_config: AgentConfig,
+    pub runtime_config: AgentRuntimeConfig,
+}
+pub struct AgentRouteTask<'a, A> {
+    agent: &'a A,
     identity: Uuid,
     route: RelativeUri,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+    downlink_tx: mpsc::Sender<DownlinkRequest>,
     stopping: trigger::Receiver,
     agent_config: AgentConfig,
     runtime_config: AgentRuntimeConfig,
-) -> impl Future<Output = Result<(), AgentExecError>> + Send + 'static
-where
-    A: Agent + 'static,
-{
-    let node_uri = route.to_string().into();
-    let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
-    let (init_tx, init_rx) = trigger::trigger();
-    let runtime_init_task = AgentInitTask::new(runtime_rx, init_rx, runtime_config);
-    let context = Box::new(AgentRuntimeContext::new(runtime_tx));
+}
 
-    let agent_init = agent.run(route, agent_config, context);
-
-    async move {
-        let agent_init_task = async move {
-            let agent_task_result = agent_init.await;
-            drop(init_tx);
-            agent_task_result
-        };
-
-        let (initial_state_result, agent_task_result) =
-            join(runtime_init_task.run(), agent_init_task).await;
-        let initial_state = initial_state_result?;
-        let agent_task = agent_task_result?;
-
-        let runtime_task = initial_state.make_runtime_task(
-            identity,
-            node_uri,
+impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
+    /// Run an agent.
+    ///
+    /// #Arguments
+    /// * `agent` - The agent instance.
+    /// * `identity` - Routing identify of the agent instance..
+    /// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
+    /// * `stopping` - Instructs the agent task to stop.
+    /// * `config` - Configuration parameters for the user agent task and agent runtime.
+    pub fn new(
+        agent: &'a A,
+        identity: AgentRoute,
+        attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+        downlink_tx: mpsc::Sender<DownlinkRequest>,
+        stopping: trigger::Receiver,
+        config: CombinedAgentConfig,
+    ) -> Self {
+        AgentRouteTask {
+            agent,
+            identity: identity.identity,
+            route: identity.route,
             attachment_rx,
-            runtime_config,
+            downlink_tx,
             stopping,
-        );
+            agent_config: config.agent_config,
+            runtime_config: config.runtime_config,
+        }
+    }
 
-        let (_, agent_result) = join(runtime_task.run(), agent_task).await;
-        agent_result?;
-        Ok(())
+    pub fn run_agent(self) -> impl Future<Output = Result<(), AgentExecError>> + Send + 'static {
+        let AgentRouteTask {
+            agent,
+            identity,
+            route,
+            attachment_rx,
+            downlink_tx,
+            stopping,
+            agent_config,
+            runtime_config,
+        } = self;
+        let node_uri = route.to_string().into();
+        let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
+        let (init_tx, init_rx) = trigger::trigger();
+        let runtime_init_task =
+            AgentInitTask::new(runtime_rx, downlink_tx, init_rx, runtime_config);
+        let context = Box::new(AgentRuntimeContext::new(runtime_tx));
+
+        let agent_init = agent.run(route, agent_config, context);
+
+        async move {
+            let agent_init_task = async move {
+                let agent_task_result = agent_init.await;
+                drop(init_tx);
+                agent_task_result
+            };
+
+            let (initial_state_result, agent_task_result) =
+                join(runtime_init_task.run(), agent_init_task).await;
+            let initial_state = initial_state_result?;
+            let agent_task = agent_task_result?;
+
+            let runtime_task = initial_state.make_runtime_task(
+                identity,
+                node_uri,
+                attachment_rx,
+                runtime_config,
+                stopping,
+            );
+
+            let (_, agent_result) = join(runtime_task.run(), agent_task).await;
+            agent_result?;
+            Ok(())
+        }
     }
 }
 

@@ -18,17 +18,43 @@ use futures::future::BoxFuture;
 use futures::Future;
 use futures::FutureExt;
 use std::io;
+use std::sync::Arc;
 use tokio::net::lookup_host;
 
 /// A trait for defining DNS resolvers.
 pub trait DnsResolver {
     /// A future which resolves to either a vector of resolved socket addresses for the provided
     /// host and port, or an IO error.
-    type ResolveFuture: Future<Output = io::Result<Vec<SchemeSocketAddr>>> + 'static;
+    type ResolveFuture: Future<Output = io::Result<Vec<SchemeSocketAddr>>> + Send + 'static;
 
     /// Perform a DNS query for A and AAAA records for the provided address. This *may* resolve to
     /// multiple IP addresses.
     fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture;
+}
+
+pub type DnsFut = BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>>;
+pub type BoxDnsResolver = Box<dyn DnsResolver<ResolveFuture = DnsFut> + Send + 'static>;
+
+impl<R> DnsResolver for Box<R>
+where
+    R: DnsResolver + ?Sized,
+{
+    type ResolveFuture = R::ResolveFuture;
+
+    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
+        (**self).resolve(host)
+    }
+}
+
+impl<R> DnsResolver for Arc<R>
+where
+    R: DnsResolver,
+{
+    type ResolveFuture = R::ResolveFuture;
+
+    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
+        (**self).resolve(host)
+    }
 }
 
 /// A resolver which will use the operating system's `getaddrinfo` function to resolve the provided

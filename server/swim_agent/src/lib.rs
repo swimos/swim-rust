@@ -18,9 +18,14 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 
 pub mod agent_lifecycle;
 pub mod agent_model;
+pub mod config;
+pub mod downlink_lifecycle;
 pub mod event_handler;
+mod event_queue;
 pub mod lanes;
 pub mod meta;
+#[cfg(test)]
+mod test_context;
 
 pub use agent_model::AgentLaneModel;
 

@@ -45,6 +45,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use url::Url;
 
+use super::dns::BoxDnsResolver;
+
 pub type TlsStream = tokio_native_tls::TlsStream<TcpStream>;
 pub type TlsHandshakeResult = IoResult<(TlsStream, SocketAddr)>;
 type TcpHandshakeResult = io::Result<(TcpStream, SocketAddr)>;
@@ -165,6 +167,10 @@ impl ExternalConnections for TokioNetworking {
     ) -> BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>> {
         self.resolver.resolve(host).boxed()
     }
+
+    fn dns_resolver(&self) -> BoxDnsResolver {
+        Box::new(self.resolver.clone())
+    }
 }
 
 impl Listener for TlsListener {
@@ -230,6 +236,10 @@ impl ExternalConnections for TokioTlsNetworking {
 
     fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>> {
         self.resolver.resolve(host)
+    }
+
+    fn dns_resolver(&self) -> BoxDnsResolver {
+        Box::new(self.resolver.clone())
     }
 }
 

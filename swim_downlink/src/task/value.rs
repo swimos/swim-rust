@@ -24,7 +24,8 @@ use swim_api::protocol::downlink::{
 };
 use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
-use swim_model::path::Path;
+use swim_model::address::Address;
+use swim_model::Text;
 use swim_recon::printer::print_recon;
 use swim_utilities::future::immediate_or_join;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
@@ -48,7 +49,7 @@ use crate::ValueDownlinkModel;
 /// * `output` - Output stream for messages from the downlink to the runtime.
 pub async fn value_dowinlink_task<T, LC>(
     model: ValueDownlinkModel<T, LC>,
-    path: Path,
+    path: Address<Text>,
     config: DownlinkConfig,
     input: ByteReader,
     output: ByteWriter,
@@ -107,6 +108,7 @@ where
     let DownlinkConfig {
         events_when_not_synced,
         terminate_on_unlinked,
+        ..
     } = config;
     let mut state: State<T> = State::Unlinked;
     let mut framed_read = FramedRead::new(input, ValueNotificationDecoder::default());

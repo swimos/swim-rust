@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Display;
+
 use swim_form::structural::read::ReadError;
 use swim_model::Text;
 use swim_recon::parser::AsyncParseError;
 use swim_utilities::trigger::promise;
 use thiserror::Error;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 
 /// Indicates that an agent or downlink failed to read a frame from a byte stream.
 #[derive(Error, Debug)]
@@ -58,15 +60,57 @@ pub enum DownlinkTaskError {
     DeserializationFailed(#[from] ReadError),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DownlinkFailureReason {
+    Unresolvable,
+    ConnectionFailed,
+    WebsocketNegotiationFailed,
+    RemoteStopped,
+    DownlinkStopped,
+}
+
+impl Display for DownlinkFailureReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DownlinkFailureReason::Unresolvable => write!(f, "The lane was unresolvable."),
+            DownlinkFailureReason::ConnectionFailed => {
+                write!(f, "Connection to the remote host failed.")
+            }
+            DownlinkFailureReason::WebsocketNegotiationFailed => {
+                write!(f, "Could not negotiate a websocket connection.")
+            }
+            DownlinkFailureReason::RemoteStopped => {
+                write!(
+                    f,
+                    "The remote client stopped while the downlink was starting."
+                )
+            }
+            DownlinkFailureReason::DownlinkStopped => {
+                write!(f, "The downlink runtime task stopped during attachment.")
+            }
+        }
+    }
+}
+
 /// Error type for operations that communicate with the agent runtime.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, Copy)]
 pub enum AgentRuntimeError {
+    #[error("Opening a new downlink failed: {0}")]
+    DownlinkConnectionFailed(DownlinkFailureReason),
+    #[error("The agent runtime is stopping.")]
+    Stopping,
     #[error("The agent runtime has terminated.")]
     Terminated,
 }
 
 impl<T> From<mpsc::error::SendError<T>> for AgentRuntimeError {
     fn from(_: mpsc::error::SendError<T>) -> Self {
+        AgentRuntimeError::Terminated
+    }
+}
+
+impl<T> From<watch::error::SendError<T>> for AgentRuntimeError {
+    fn from(_: watch::error::SendError<T>) -> Self {
         AgentRuntimeError::Terminated
     }
 }

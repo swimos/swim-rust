@@ -28,6 +28,8 @@ use pin_project::pin_project;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
+use super::dns::BoxDnsResolver;
+
 /// Implementation of [`ExternalConnections`] using [`TcpListener`] and [`TcpStream`] from Tokio.
 #[derive(Debug, Clone)]
 pub struct TokioPlainTextNetworking {
@@ -63,6 +65,10 @@ impl ExternalConnections for TokioPlainTextNetworking {
 
     fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>> {
         self.resolver.resolve(host)
+    }
+
+    fn dns_resolver(&self) -> BoxDnsResolver {
+        Box::new(self.resolver.clone())
     }
 }
 

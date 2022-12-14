@@ -25,7 +25,7 @@ use swim_utilities::{
 };
 
 use crate::{
-    downlink::{Downlink, DownlinkConfig},
+    downlink::DownlinkKind,
     error::{AgentInitError, AgentRuntimeError, AgentTaskError},
 };
 
@@ -72,22 +72,26 @@ pub trait AgentContext: Sync {
     /// * `name` - The name of the lane.
     /// * `uplink_kind` - Protocol that the runtime uses to communicate with the lane.
     /// * `config` - Configuration parameters for the lane.
-    fn add_lane<'a>(
-        &'a self,
+    fn add_lane(
+        &self,
         name: &str,
         uplink_kind: UplinkKind,
         config: Option<LaneConfig>,
-    ) -> BoxFuture<'a, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
 
     /// Open a downlink to a lane on another agent.
     /// #Arguments
     /// * `config` - The configuration for the downlink.
-    /// * `downlink` - Downlink implementation.
+    /// * `host` - The host containing the node.
+    /// * `node` - The node URI for the agent.
+    /// * `kind` - The kind of the downlink for the runtime.
     fn open_downlink(
         &self,
-        config: DownlinkConfig,
-        downlink: Box<dyn Downlink + Send>,
-    ) -> BoxFuture<'_, Result<(), AgentRuntimeError>>;
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        kind: DownlinkKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
 }
 
 #[derive(Default, Debug, Clone, Copy)]

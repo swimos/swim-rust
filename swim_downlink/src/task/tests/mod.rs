@@ -26,7 +26,7 @@ use swim_api::{
     },
 };
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
-use swim_model::path::{Path, RelativePath};
+use swim_model::address::Address;
 use swim_recon::parser::{parse_recognize, Span};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
@@ -128,7 +128,7 @@ where
     F: FnOnce(TestWriter, TestReader) -> Fut,
     Fut: Future,
 {
-    let path = Path::Local(RelativePath::new("node", "lane"));
+    let path = Address::text(None, "node", "lane");
 
     let (in_tx, in_rx) = byte_channel(CHANNEL_SIZE);
     let (out_tx, out_rx) = byte_channel(CHANNEL_SIZE);

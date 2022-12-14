@@ -32,8 +32,8 @@ use uuid::Uuid;
 use crate::{
     agent_model::WriteResult,
     event_handler::{
-        AndThen, Decode, EventHandlerError, HandlerAction, HandlerActionExt, HandlerTrans,
-        Modification, Spawner, StepResult,
+        ActionContext, AndThen, Decode, EventHandlerError, HandlerAction, HandlerActionExt,
+        HandlerTrans, Modification, StepResult,
     },
     meta::AgentMetadata,
 };
@@ -201,7 +201,7 @@ impl<C, T: Clone> HandlerAction<C> for ValueLaneGet<C, T> {
 
     fn step(
         &mut self,
-        _suspend: &dyn Spawner<C>,
+        _action_context: ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -222,7 +222,7 @@ impl<C, T> HandlerAction<C> for ValueLaneSet<C, T> {
 
     fn step(
         &mut self,
-        _suspend: &dyn Spawner<C>,
+        _action_context: ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -245,7 +245,7 @@ impl<C, T> HandlerAction<C> for ValueLaneSync<C, T> {
 
     fn step(
         &mut self,
-        _suspend: &dyn Spawner<C>,
+        _action_context: ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {

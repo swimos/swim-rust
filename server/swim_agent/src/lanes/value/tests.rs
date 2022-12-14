@@ -33,6 +33,7 @@ use crate::{
         Lane,
     },
     meta::AgentMetadata,
+    test_context::dummy_context,
 };
 
 use super::{ValueLane, ValueLaneSet};
@@ -284,13 +285,13 @@ fn value_lane_set_event_handler() {
 
     let mut handler = ValueLaneSet::new(TestAgent::LANE, 84);
 
-    let result = handler.step(&NoSpawn, meta, &agent);
+    let result = handler.step(dummy_context(), meta, &agent);
     check_result(result, true, true, Some(()));
 
     assert!(agent.lane.dirty.get());
     assert_eq!(agent.lane.read(|n| *n), 84);
 
-    let result = handler.step(&NoSpawn, meta, &agent);
+    let result = handler.step(dummy_context(), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -305,10 +306,10 @@ fn value_lane_get_event_handler() {
 
     let mut handler = ValueLaneGet::new(TestAgent::LANE);
 
-    let result = handler.step(&NoSpawn, meta, &agent);
+    let result = handler.step(dummy_context(), meta, &agent);
     check_result(result, false, false, Some(0));
 
-    let result = handler.step(&NoSpawn, meta, &agent);
+    let result = handler.step(dummy_context(), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -323,10 +324,10 @@ fn value_lane_sync_event_handler() {
 
     let mut handler = ValueLaneSync::new(TestAgent::LANE, SYNC_ID1);
 
-    let result = handler.step(&NoSpawn, meta, &agent);
+    let result = handler.step(dummy_context(), meta, &agent);
     check_result(result, true, false, Some(()));
 
-    let result = handler.step(&NoSpawn, meta, &agent);
+    let result = handler.step(dummy_context(), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

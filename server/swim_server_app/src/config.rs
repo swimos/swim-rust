@@ -16,7 +16,7 @@ use std::{num::NonZeroUsize, time::Duration};
 
 use ratchet::WebSocketConfig;
 use swim_api::agent::AgentConfig;
-use swim_runtime::agent::AgentRuntimeConfig;
+use swim_runtime::{agent::AgentRuntimeConfig, downlink::DownlinkRuntimeConfig};
 use swim_utilities::algebra::non_zero_usize;
 
 /// Configuration parameters for a Swim server.
@@ -28,16 +28,22 @@ pub struct SwimServerConfig {
     pub agent: AgentConfig,
     /// Parameters for the agent runtime component.
     pub agent_runtime: AgentRuntimeConfig,
-    /// Size of the MPSC channel for requesting new downlinks.
+    /// Size of the MPSC channel for requesting new downlinks from a remote.
     pub client_attachment_buffer_size: NonZeroUsize,
+    /// Size of the MPSC channel for requesting new downlinks to the server.
+    pub client_request_channel_size: NonZeroUsize,
     /// Size of the MPSC channel for resolving agents.
-    pub find_route_buffer_size: NonZeroUsize,
+    pub find_route_channel_size: NonZeroUsize,
+    /// Size of the MPSC channel for opening new downlinks.
+    pub open_downlink_channel_size: NonZeroUsize,
     /// The buffer size for communication between remote sockets and agents.
     pub agent_runtime_buffer_size: NonZeroUsize,
     /// Timeout on attempting to connect a remote socket to an agent.
     pub attachment_timeout: Duration,
     /// Configuration for websocket connections.
     pub websockets: WebSocketConfig,
+    /// Parameters for the downlink runtime component.
+    pub downlink_runtime: DownlinkRuntimeConfig,
 }
 
 /// Configuration for remote socket management.
@@ -72,10 +78,19 @@ impl Default for SwimServerConfig {
                 shutdown_timeout: DEFAULT_TIMEOUT,
             },
             client_attachment_buffer_size: DEFAULT_CHANNEL_SIZE,
-            find_route_buffer_size: DEFAULT_CHANNEL_SIZE,
+            find_route_channel_size: DEFAULT_CHANNEL_SIZE,
+            open_downlink_channel_size: DEFAULT_CHANNEL_SIZE,
             agent_runtime_buffer_size: DEFAULT_BUFFER_SIZE,
             attachment_timeout: DEFAULT_TIMEOUT,
             websockets: Default::default(),
+            downlink_runtime: DownlinkRuntimeConfig {
+                empty_timeout: DEFAULT_TIMEOUT,
+                attachment_queue_size: DEFAULT_CHANNEL_SIZE,
+                abort_on_bad_frames: true,
+                remote_buffer_size: DEFAULT_BUFFER_SIZE,
+                downlink_buffer_size: DEFAULT_BUFFER_SIZE,
+            },
+            client_request_channel_size: DEFAULT_CHANNEL_SIZE,
         }
     }
 }

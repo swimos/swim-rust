@@ -256,7 +256,7 @@ where
                 dst.put_u128(id.as_u128());
             }
         }
-        super::write_recon(dst, &value);
+        super::write_recon_with_len(dst, &value);
         Ok(())
     }
 }

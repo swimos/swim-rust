@@ -17,8 +17,15 @@ use std::hash::Hash;
 use std::{collections::HashMap, marker::PhantomData};
 
 use futures::{Future, FutureExt};
+use swim_form::Form;
+use swim_model::address::Address;
 use swim_utilities::routing::uri::RelativeUri;
 
+use crate::agent_model::downlink::hosted::{MapDownlinkHandle, ValueDownlinkHandle};
+use crate::agent_model::downlink::{OpenMapDownlinkAction, OpenValueDownlinkAction};
+use crate::config::{MapDownlinkConfig, ValueDownlinkConfig};
+use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
+use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
 use crate::event_handler::{EventHandler, Suspend, UnitHandler};
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::map::MapLaneGetMap;
@@ -29,6 +36,13 @@ use crate::{
         value::{ValueLane, ValueLaneGet, ValueLaneSet},
     },
 };
+
+pub use self::downlink_builder::map::{StatefulMapDownlinkBuilder, StatelessMapDownlinkBuilder};
+pub use self::downlink_builder::value::{
+    StatefulValueDownlinkBuilder, StatelessValueDownlinkBuilder,
+};
+
+mod downlink_builder;
 
 /// A utility class to aid in the creation of event handlers for an agent. This has no data
 /// and is used to provide easy access to the agent type parameter to avoid the need for
@@ -42,8 +56,6 @@ impl<Agent> Debug for HandlerContext<Agent> {
         f.debug_struct("HandlerContext").finish()
     }
 }
-
-pub struct Action;
 
 impl<Agent> Default for HandlerContext<Agent> {
     fn default() -> Self {
@@ -225,5 +237,97 @@ impl<Agent: 'static> HandlerContext<Agent> {
         Fut: Future<Output = ()> + Send + 'static,
     {
         self.suspend(future.map(|_| UnitHandler::default()))
+    }
+
+    /// Open a value downlink to a lane on another agent.
+    ///
+    /// #Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `lifecycle` - Lifecycle events for the downlink.
+    /// * `config` - Configuration parameters for the downlink.
+    pub fn open_value_downlink<T, LC>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        lifecycle: LC,
+        config: ValueDownlinkConfig,
+    ) -> impl HandlerAction<Agent, Completion = ValueDownlinkHandle<T>> + Send + 'static
+    where
+        T: Form + Send + Sync + 'static,
+        LC: ValueDownlinkLifecycle<T, Agent> + Send + 'static,
+        T::Rec: Send,
+    {
+        OpenValueDownlinkAction::new(Address::text(host, node, lane), lifecycle, config)
+    }
+
+    /// Open a map downlink to a lane on another agent.
+    ///
+    /// #Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `config` - Configuration parameters for the downlink.
+    /// * `lifecycle` - Lifecycle events for the downlink.
+    pub fn open_map_downlink<K, V, LC>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        lifecycle: LC,
+        config: MapDownlinkConfig,
+    ) -> impl HandlerAction<Agent, Completion = MapDownlinkHandle<K, V>> + Send + 'static
+    where
+        K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
+        V: Form + Send + Sync + 'static,
+        LC: MapDownlinkLifecycle<K, V, Agent> + Send + 'static,
+        K::Rec: Send,
+        V::Rec: Send,
+    {
+        OpenMapDownlinkAction::new(Address::text(host, node, lane), lifecycle, config)
+    }
+
+    /// Create a builder to construct a request to open a value downlink.
+    /// #Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `config` - Configuration parameters for the downlink.
+    pub fn value_downlink_builder<T>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        config: ValueDownlinkConfig,
+    ) -> StatelessValueDownlinkBuilder<Agent, T>
+    where
+        T: Form + Send + Sync + 'static,
+        T::Rec: Send,
+    {
+        StatelessValueDownlinkBuilder::new(Address::text(host, node, lane), config)
+    }
+
+    /// Create a builder to construct a request to open a map downlink.
+    /// #Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `config` - Configuration parameters for the downlink.
+    pub fn map_downlink_builder<K, V>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        config: MapDownlinkConfig,
+    ) -> StatelessMapDownlinkBuilder<Agent, K, V>
+    where
+        K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
+        K::Rec: Send,
+        V: Form + Send + Sync + 'static,
+        V::Rec: Send,
+    {
+        StatelessMapDownlinkBuilder::new(Address::text(host, node, lane), config)
     }
 }

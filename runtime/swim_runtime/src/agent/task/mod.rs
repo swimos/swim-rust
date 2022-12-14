@@ -29,7 +29,7 @@ use self::prune::PruneRemotes;
 use self::remotes::{LaneRegistry, RemoteSender, RemoteTracker, UplinkResponse};
 use self::write_fut::{WriteResult, WriteTask};
 
-use super::{AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, Io};
+use super::{AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io};
 use bytes::{Bytes, BytesMut};
 use futures::ready;
 use futures::stream::FuturesUnordered;
@@ -40,7 +40,6 @@ use futures::{
 };
 use pin_utils::pin_mut;
 use swim_api::agent::LaneConfig;
-use swim_api::downlink::{Downlink, DownlinkConfig};
 use swim_api::protocol::agent::{LaneResponseKind, MapLaneResponse, ValueLaneResponse};
 use swim_api::{
     agent::UplinkKind,
@@ -78,12 +77,13 @@ mod remotes;
 mod timeout_coord;
 mod write_fut;
 
-pub use init::{AgentInitTask, NoLanes};
+pub use init::AgentInitTask;
 
 #[cfg(test)]
 mod tests;
 
 /// Type for requests that can be sent to the agent runtime task by an agent implementation.
+#[derive(Debug)]
 pub enum AgentRuntimeRequest {
     /// Attempt to open a new lane for the agent.
     AddLane {
@@ -93,38 +93,7 @@ pub enum AgentRuntimeRequest {
         promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
     },
     /// Attempt to open a downlink to a lane on another agent.
-    OpenDownlink {
-        config: DownlinkConfig,
-        downlink: Box<dyn Downlink + Send>,
-        promise: oneshot::Sender<Result<(), AgentRuntimeError>>,
-    },
-}
-
-impl Debug for AgentRuntimeRequest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::AddLane {
-                name,
-                kind,
-                config,
-                promise,
-            } => f
-                .debug_struct("AddLane")
-                .field("name", name)
-                .field("kind", kind)
-                .field("config", config)
-                .field("promise", promise)
-                .finish(),
-            Self::OpenDownlink {
-                config, promise, ..
-            } => f
-                .debug_struct("OpenDownlink")
-                .field("config", config)
-                .field("downlink", &"[[dyn Downlink]]")
-                .field("promise", promise)
-                .finish(),
-        }
-    }
+    OpenDownlink(DownlinkRequest),
 }
 
 /// A labelled channel endpoint (or pair) for a lane.

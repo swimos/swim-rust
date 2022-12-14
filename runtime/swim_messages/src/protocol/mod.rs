@@ -20,6 +20,7 @@ use std::str::Utf8Error;
 use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
 use swim_form::structural::write::StructuralWritable;
+use swim_model::address::RelativeAddress;
 use swim_model::{Text, Value};
 use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swim_recon::printer::print_recon_compact;
@@ -52,30 +53,12 @@ pub enum Notification<T, U> {
     Event(T),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct Path<P> {
-    pub node: P,
-    pub lane: P,
-}
+pub type Path<P> = RelativeAddress<P>;
 
-impl Path<Text> {
-    pub fn text(node: &str, lane: &str) -> Self {
-        Path::new(Text::new(node), Text::new(lane))
-    }
-}
-
-impl<P> Path<P> {
-    pub fn new(node: P, lane: P) -> Self {
-        Path { node, lane }
-    }
-}
-
-impl Path<BytesStr> {
-    pub fn from_static_strs(node: &'static str, lane: &'static str) -> Self {
-        Path {
-            node: BytesStr::from_static_str(node),
-            lane: BytesStr::from_static_str(lane),
-        }
+pub fn path_from_static_strs(node: &'static str, lane: &'static str) -> Path<BytesStr> {
+    Path {
+        node: BytesStr::from_static_str(node),
+        lane: BytesStr::from_static_str(lane),
     }
 }
 

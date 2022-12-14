@@ -25,6 +25,7 @@ mod task;
 mod tests;
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use crate::error::ConnectionDropped;
 use crate::error::Unresolvable;
@@ -44,6 +45,7 @@ use std::io::Error;
 use swim_utilities::future::request::Request;
 use swim_utilities::future::task::Spawner;
 use swim_utilities::trigger::promise;
+use thiserror::Error;
 use tokio::sync::mpsc;
 use tracing::{event, Level};
 use url::Url;
@@ -53,6 +55,8 @@ pub use router::{RemoteRouter, RemoteRouterFactory};
 use swim_model::Text;
 use swim_tracing::request::{RequestExt, TryRequestExt};
 use swim_utilities::routing::uri::RelativeUri;
+
+use self::net::dns::BoxDnsResolver;
 
 #[cfg(test)]
 pub mod test_fixture;
@@ -415,9 +419,11 @@ fn update_state<State: RemoteTasksState>(
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum BadUrl {
+    #[error("{0} is not a valid Warp scheme.")]
     BadScheme(String),
+    #[error("The URL did not contain a valid host.")]
     NoHost,
 }
 
@@ -476,8 +482,8 @@ type IoResult<T> = io::Result<T>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SchemeSocketAddr {
-    scheme: Scheme,
-    addr: SocketAddr,
+    pub scheme: Scheme,
+    pub addr: SocketAddr,
 }
 
 impl SchemeSocketAddr {
@@ -515,5 +521,35 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
         addr: SocketAddr,
     ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>>;
     fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;
+
+    fn dns_resolver(&self) -> BoxDnsResolver;
     fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>>;
+}
+
+impl<Conn> ExternalConnections for Arc<Conn>
+where
+    Conn: ExternalConnections,
+{
+    type Socket = Conn::Socket;
+
+    type ListenerType = Conn::ListenerType;
+
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
+        (**self).bind(addr)
+    }
+
+    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>> {
+        (**self).try_open(addr)
+    }
+
+    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>> {
+        (**self).lookup(host)
+    }
+
+    fn dns_resolver(&self) -> BoxDnsResolver {
+        (**self).dns_resolver()
+    }
 }

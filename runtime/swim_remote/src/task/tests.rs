@@ -26,12 +26,12 @@ use ratchet::{
 use swim_messages::{
     bytes_str::BytesStr,
     protocol::{
-        BytesRequestMessage, BytesResponseMessage, Notification, Operation, Path,
-        RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
+        path_from_static_strs, BytesRequestMessage, BytesResponseMessage, Notification, Operation,
+        Path, RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
         RawResponseMessageEncoder, RequestMessage, ResponseMessage,
     },
 };
-use swim_model::Text;
+use swim_model::{address::RelativeAddress, Text};
 use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{self, byte_channel, ByteReader, ByteWriter},
@@ -39,7 +39,7 @@ use swim_utilities::{
 };
 use tokio::{
     io::{duplex, DuplexStream},
-    sync::mpsc,
+    sync::{mpsc, oneshot},
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
@@ -61,11 +61,11 @@ const DL_NODE: &str = "/remote";
 const DL_LANE: &str = "remote_lane";
 
 fn agent_path() -> Path<BytesStr> {
-    Path::from_static_strs(NODE, LANE)
+    path_from_static_strs(NODE, LANE)
 }
 
 fn dl_path() -> Path<BytesStr> {
-    Path::from_static_strs(DL_NODE, DL_LANE)
+    path_from_static_strs(DL_NODE, DL_LANE)
 }
 
 async fn test_registration_task<F, Fut>(test_case: F) -> Fut::Output
@@ -111,11 +111,11 @@ async fn register_for_downlinks() {
     test_registration_task(|att_tx, mut in_rx, mut out_rx, stop_trigger| async move {
         let (tx1, rx1) = byte_channel::byte_channel(BUFFER_SIZE);
         let (tx2, rx2) = byte_channel::byte_channel(BUFFER_SIZE);
-        let (done_tx, done_rx) = trigger::trigger();
+        let (done_tx, done_rx) = oneshot::channel();
         att_tx
             .send(AttachClient::AttachDownlink {
-                node: Text::new(NODE),
-                lane: Text::new(LANE),
+                downlink_id: DL_ID,
+                path: RelativeAddress::text(NODE, LANE),
                 sender: tx1,
                 receiver: rx2,
                 done: done_tx,
@@ -125,8 +125,7 @@ async fn register_for_downlinks() {
 
         let (in_res, out_res) = join(in_rx.recv(), out_rx.recv()).await;
         let RegisterIncoming {
-            node,
-            lane,
+            path: RelativeAddress { node, lane },
             sender,
             done: done_in,
         } = in_res.expect("Channel closed.");
@@ -149,7 +148,7 @@ async fn register_for_downlinks() {
 
             done_out.trigger();
 
-            assert!(done_rx.await.is_ok());
+            assert!(matches!(done_rx.await, Ok(Ok(_))));
         } else {
             panic!("Incorrect message received.");
         }
@@ -327,8 +326,7 @@ async fn incoming_route_downlink_env() {
 
         attach_tx
             .send(RegisterIncoming {
-                node: Text::new(DL_NODE),
-                lane: Text::new(DL_LANE),
+                path: RelativeAddress::text(DL_NODE, DL_LANE),
                 sender: channel_tx,
                 done: done_tx,
             })
@@ -1149,11 +1147,11 @@ async fn combined_downlink_io() {
         } = &mut context;
         let (tx1, rx1) = byte_channel::byte_channel(BUFFER_SIZE);
         let (tx2, rx2) = byte_channel::byte_channel(BUFFER_SIZE);
-        let (done_tx, done_rx) = trigger::trigger();
+        let (done_tx, done_rx) = oneshot::channel();
         attach_tx
             .send(AttachClient::AttachDownlink {
-                node: Text::new(DL_NODE),
-                lane: Text::new(DL_LANE),
+                downlink_id: DL_ID,
+                path: RelativeAddress::text(DL_NODE, DL_LANE),
                 sender: tx1,
                 receiver: rx2,
                 done: done_tx,
@@ -1161,7 +1159,7 @@ async fn combined_downlink_io() {
             .await
             .expect("Channel closed.");
 
-        assert!(done_rx.await.is_ok());
+        assert!(matches!(done_rx.await, Ok(Ok(_))));
 
         let envelope_in = make_dl_envelope();
 

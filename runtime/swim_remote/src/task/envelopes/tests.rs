@@ -15,7 +15,10 @@
 use bytes::{Bytes, BytesMut};
 use swim_messages::{
     bytes_str::BytesStr,
-    protocol::{BytesRequestMessage, BytesResponseMessage, Path, RequestMessage, ResponseMessage},
+    protocol::{
+        path_from_static_strs, BytesRequestMessage, BytesResponseMessage, Path, RequestMessage,
+        ResponseMessage,
+    },
 };
 use swim_model::Text;
 use tokio_util::codec::Encoder;
@@ -30,7 +33,7 @@ const NODE: &str = "/node";
 const LANE: &str = "lane";
 
 fn path() -> Path<BytesStr> {
-    Path::from_static_strs(NODE, LANE)
+    path_from_static_strs(NODE, LANE)
 }
 
 #[test]

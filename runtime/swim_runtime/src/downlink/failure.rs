@@ -63,6 +63,70 @@ impl<E: std::error::Error> BadFrameStrategy<E> for AlwaysAbortStrategy {
     }
 }
 
+#[derive(Debug)]
+pub struct ErrReport {
+    message: String,
+}
+
+impl Display for ErrReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for ErrReport {}
+
+impl ErrReport {
+    fn new<E: std::error::Error>(err: E) -> Self {
+        ErrReport {
+            message: err.to_string(),
+        }
+    }
+}
+
+pub struct ReportStrategy<S> {
+    inner: S,
+}
+
+impl<S> ReportStrategy<S> {
+    pub fn new(inner: S) -> Self {
+        ReportStrategy { inner }
+    }
+}
+
+impl<S> ReportStrategy<S> {
+    pub fn boxed<E>(self) -> BoxedReportStrategy<'static, E>
+    where
+        S: BadFrameStrategy<E> + Send + 'static,
+    {
+        Box::new(self)
+    }
+}
+
+impl<S, E> BadFrameStrategy<E> for ReportStrategy<S>
+where
+    S: BadFrameStrategy<E>,
+{
+    type Report = ErrReport;
+
+    fn failed_with(&mut self, error: E) -> BadFrameResponse<Self::Report> {
+        match self.inner.failed_with(error) {
+            BadFrameResponse::Ignore => BadFrameResponse::Ignore,
+            BadFrameResponse::Abort(err) => BadFrameResponse::Abort(ErrReport::new(err)),
+        }
+    }
+}
+
+pub type BoxedReportStrategy<'a, E> = Box<dyn BadFrameStrategy<E, Report = ErrReport> + Send + 'a>;
+
+impl<'a, E> BadFrameStrategy<E> for BoxedReportStrategy<'a, E> {
+    type Report = ErrReport;
+
+    fn failed_with(&mut self, error: E) -> BadFrameResponse<Self::Report> {
+        (**self).failed_with(error)
+    }
+}
+
 /// A strategy that ignores all bad envelopes.
 #[derive(Debug, Default)]
 pub struct AlwaysIgnoreStrategy;
