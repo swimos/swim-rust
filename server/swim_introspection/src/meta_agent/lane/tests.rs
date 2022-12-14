@@ -48,8 +48,7 @@ async fn run_lane_meta_agent() {
         .parse()
         .expect("Invalid route.");
 
-    let mut lanes = vec![];
-    lanes.push((PULSE_LANE.to_string(), LaneKind::Supply));
+    let lanes = vec![(PULSE_LANE.to_string(), LaneKind::Supply)];
     introspection_agent_test(
         expected_lane_config,
         lanes,
