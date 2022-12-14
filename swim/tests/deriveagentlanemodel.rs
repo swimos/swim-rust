@@ -233,14 +233,13 @@ mod isolated {
 
     #[test]
     fn multiple_lanes_qualified() {
-        #[derive(swim_agent::AgentLaneModel)]
-        #[agent_root(::swim_agent)]
+        #[derive(swim::agent::AgentLaneModel)]
         struct MultipleLanes {
-            first: swim_agent::lanes::ValueLane<i32>,
-            second: swim_agent::lanes::MapLane<i32, i32>,
-            third: swim_agent::lanes::ValueLane<i32>,
-            fourth: swim_agent::lanes::MapLane<i32, i32>,
-            fifth: swim_agent::lanes::CommandLane<i32>,
+            first: swim::agent::lanes::ValueLane<i32>,
+            second: swim::agent::lanes::MapLane<i32, i32>,
+            third: swim::agent::lanes::ValueLane<i32>,
+            fourth: swim::agent::lanes::MapLane<i32, i32>,
+            fifth: swim::agent::lanes::CommandLane<i32>,
         }
 
         check_agent::<MultipleLanes>(
@@ -253,13 +252,11 @@ mod isolated {
 #[test]
 fn two_types_single_scope() {
     #[derive(AgentLaneModel)]
-    #[agent_root(::swim_agent)]
     struct First {
         lane: ValueLane<i32>,
     }
 
     #[derive(AgentLaneModel)]
-    #[agent_root(::swim_agent)]
     struct Second {
         lane: ValueLane<Text>,
     }
