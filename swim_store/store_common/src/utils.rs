@@ -36,7 +36,7 @@ pub fn deserialize_u64<B: AsRef<[u8]>>(bytes: B) -> Result<u64, StoreError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{MAX_ID_SIZE, serialize_u64, deserialize_u64};
+    use crate::{deserialize_u64, serialize_u64, MAX_ID_SIZE};
 
     fn round_trip(n: u64) {
         let mut buf = [0u8; MAX_ID_SIZE];

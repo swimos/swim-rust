@@ -182,7 +182,7 @@ impl<Store: AgentPersistence + Clone + Send + Sync> AgentInitTask<Store> {
                                     let lane_id = get_lane_id()?;
                                     Some(
                                         store
-                                            .init_value_lane(lane_id)
+                                            .init_map_lane(lane_id)
                                             .unwrap_or_else(|| no_map_init()),
                                     )
                                 }

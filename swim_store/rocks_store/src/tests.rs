@@ -19,8 +19,8 @@ use std::collections::HashMap;
 use std::mem::size_of;
 use std::ops::{Deref, Range};
 use store_common::{
-    deserialize_u64, EngineIterator, EngineRefIterator, Keyspace,
-    KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces, StoreBuilder, StoreError, serialize_u64_vec,
+    deserialize_u64, serialize_u64_vec, EngineIterator, EngineRefIterator, Keyspace,
+    KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces, StoreBuilder, StoreError,
 };
 use tempdir::TempDir;
 
@@ -165,7 +165,7 @@ fn engine_iterator() {
                 (Some(key), Some(value)) => {
                     let key = String::from_utf8(key.to_vec()).unwrap();
                     let (value, _) = i32::decode_var(value).unwrap();
-                    
+
                     match expected.remove(&key) {
                         Some(expected_value) => {
                             assert_eq!(expected_value, value)

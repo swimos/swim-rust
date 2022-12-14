@@ -15,7 +15,7 @@
 use crate::server::KeyspaceName;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use swim_store::{deserialize_u64, KeyspaceByteEngine, StoreError, serialize_u64, MAX_ID_SIZE};
+use swim_store::{deserialize_u64, serialize_u64, KeyspaceByteEngine, StoreError, MAX_ID_SIZE};
 use tokio::sync::oneshot;
 
 pub type KeyRequest = (String, oneshot::Sender<u64>);
@@ -77,11 +77,7 @@ impl<D: KeyspaceByteEngine> KeyStore<D> {
                 delegate.merge_keyspace(KeyspaceName::Lane, COUNTER_BYTES, STEP)?;
                 let mut buf = [0u8; MAX_ID_SIZE];
                 let serialized_id = serialize_u64(id, &mut buf);
-                delegate.put_keyspace(
-                    KeyspaceName::Lane,
-                    prefixed.as_bytes(),
-                    serialized_id,
-                )?;
+                delegate.put_keyspace(KeyspaceName::Lane, prefixed.as_bytes(), serialized_id)?;
 
                 Ok(id)
             }
@@ -120,7 +116,7 @@ pub mod rocks {
             let deserialized = deserialize_u64(op).expect(DESERIALIZATION_FAILURE);
             value += deserialized;
         }
-        
+
         Some(serialize_u64_vec(value))
     }
 }
@@ -190,16 +186,12 @@ mod tests {
             .get_keyspace(KeyspaceName::Lane, key.as_bytes())
             .unwrap()
             .expect("Missing key");
-        assert_eq!(
-            deserialize_u64(lane_id.as_slice()).unwrap(),
-            lane_count_at
-        );
-        
+        assert_eq!(deserialize_u64(lane_id.as_slice()).unwrap(), lane_count_at);
+
         let counter = store
             .get_keyspace(KeyspaceName::Lane, COUNTER_KEY.as_bytes())
             .unwrap()
             .expect("Missing counter");
         assert_eq!(deserialize_u64(counter.as_slice()).unwrap(), counter_at);
     }
-
 }

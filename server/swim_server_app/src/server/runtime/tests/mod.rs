@@ -15,7 +15,8 @@
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    time::Duration, num::NonZeroUsize,
+    num::NonZeroUsize,
+    time::Duration,
 };
 
 use bytes::BytesMut;
@@ -605,7 +606,7 @@ async fn explicit_unlink_from_agent_lane() {
     assert!(result.is_ok());
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn agent_timeout() {
     let mut config = SwimServerConfig::default();
     config.agent_runtime.inactive_timeout = Duration::from_millis(250);
@@ -629,6 +630,7 @@ async fn agent_timeout() {
         client
             .command(NODE, LANE, TestMessage::SetAndReport(56))
             .await;
+
         assert_eq!(
             event_rx.recv().await.expect("Agent failed."),
             AgentEvent::Started
@@ -651,6 +653,7 @@ async fn agent_timeout() {
             event_rx.recv().await.expect("Agent failed."),
             AgentEvent::Started
         );
+
         assert_eq!(report_rx.recv().await.expect("Agent stopped."), -45);
 
         context.handle.stop();
