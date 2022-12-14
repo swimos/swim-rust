@@ -296,7 +296,7 @@ where
     where
         Self: 'a;
 
-    fn on_clear<'a>(&'a self, before: HashMap<K, V>) -> Self::OnClearHandler<'a> {
+    fn on_clear(&self, before: HashMap<K, V>) -> Self::OnClearHandler<'_> {
         self.on_clear_handler(before)
     }
 }

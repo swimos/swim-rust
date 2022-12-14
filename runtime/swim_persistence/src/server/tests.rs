@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::{
-    server::{KEY, LBOUND, MAP_TAG, UBOUND, VAL_TAG},
+    server::{KEY, MAP_TAG, UBOUND, VAL_TAG},
     StoreKey,
 };
 use integer_encoding::FixedInt;
@@ -56,11 +56,10 @@ fn serialize_map_lbound() {
     let key = StoreKey::Map { lane_id, key: None };
 
     let bytes = key.serialize_as_bytes();
-    assert_eq!(bytes.len(), 10);
+    assert_eq!(bytes.len(), 9);
     assert_eq!(bytes[0], MAP_TAG);
 
     assert_eq!(u64::decode_fixed(&bytes[1..9]), lane_id);
-    assert_eq!(bytes[9], LBOUND);
 }
 
 #[test]

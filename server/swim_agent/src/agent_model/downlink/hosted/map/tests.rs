@@ -108,7 +108,7 @@ impl OnLinked<FakeAgent> for FakeLifecycle {
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a self) -> Self::OnLinkedHandler<'a> {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         SideEffect::from(move || {
             self.events.lock().push(Event::Linked);
         })
@@ -121,7 +121,7 @@ impl OnUnlinked<FakeAgent> for FakeLifecycle {
     where
         Self: 'a;
 
-    fn on_unlinked<'a>(&'a self) -> Self::OnUnlinkedHandler<'a> {
+    fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         SideEffect::from(move || {
             self.events.lock().push(Event::Unlinked);
         })
@@ -190,7 +190,7 @@ impl OnDownlinkClear<i32, Text, FakeAgent> for FakeLifecycle {
     where
         Self: 'a;
 
-    fn on_clear<'a>(&'a self, map: HashMap<i32, Text>) -> Self::OnClearHandler<'a> {
+    fn on_clear(&self, map: HashMap<i32, Text>) -> Self::OnClearHandler<'_> {
         SideEffect::from(move || {
             self.events.lock().push(Event::Cleared(map));
         })
@@ -309,13 +309,15 @@ fn take_events(events: &Events) -> Vec<Event> {
 
 use super::super::test_support::run_handler;
 
+type NotificationsAndEvents = Vec<(
+    DownlinkNotification<MapMessage<i32, Text>>,
+    Option<Vec<Event>>,
+)>;
+
 async fn run_with_expectations(
     context: &mut TestContext,
     agent: &FakeAgent,
-    notifications: Vec<(
-        DownlinkNotification<MapMessage<i32, Text>>,
-        Option<Vec<Event>>,
-    )>,
+    notifications: NotificationsAndEvents,
 ) {
     let TestContext {
         channel,
@@ -620,7 +622,7 @@ async fn emit_drop_all_handlers() {
 #[tokio::test]
 async fn revive_unlinked_downlink() {
     let config = MapDownlinkConfig {
-        events_when_not_synced: true,
+        terminate_on_unlinked: false,
         ..Default::default()
     };
 

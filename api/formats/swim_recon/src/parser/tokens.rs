@@ -23,14 +23,14 @@ use num_traits::Num;
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
-use std::ops::{Deref, Neg};
+use std::ops::Neg;
 use swim_form::structural::read::event::NumericValue;
 use swim_model::bigint::{BigInt, BigUint, ParseBigIntError, Sign};
 use swim_model::identifier::{is_identifier_char, is_identifier_start};
 use swim_model::Text;
 
 fn unwrap_span(span: Span<'_>) -> &str {
-    span.deref()
+    span.as_ref()
 }
 
 /// States for the automaton to unescape a Java escaped string.
