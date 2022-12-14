@@ -69,6 +69,19 @@ fn write_recon_body<T: StructuralWritable>(dst: &mut BytesMut, body: &T) -> usiz
     body_offset
 }
 
+/// Encodes a value as a Recon string following the length of the string as a 64 bit integer.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WithLenReconEncoder;
+
+impl<T: StructuralWritable> Encoder<T> for WithLenReconEncoder {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: T, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        write_recon_with_len(dst, &item);
+        Ok(())
+    }
+}
+
 fn write_recon_with_len<T: StructuralWritable>(dst: &mut BytesMut, body: &T) {
     dst.reserve(LEN_SIZE);
     let body_len_offset = dst.remaining();

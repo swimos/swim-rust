@@ -22,7 +22,7 @@ use ratchet::{
     deflate::{DeflateConfig, DeflateExtProvider},
     NoExtProvider, ProtocolRegistry, WebSocketStream,
 };
-use swim_api::agent::Agent;
+use swim_api::{agent::Agent, error::StoreError, store::StoreDisabled};
 use swim_runtime::{
     remote::{
         net::{dns::Resolver, plain::TokioPlainTextNetworking, tls::TokioTlsNetworking},
@@ -34,11 +34,11 @@ use swim_utilities::routing::route_pattern::RoutePattern;
 
 use crate::{
     config::SwimServerConfig,
-    error::AmbiguousRoutes,
+    error::ServerBuilderError,
     plane::{PlaneBuilder, PlaneModel},
 };
 
-use super::{runtime::SwimServer, BoxServer, Server};
+use super::{runtime::SwimServer, store::ServerPersistence, BoxServer, Server};
 
 /// Builder for a swim server that will listen on a socket and run a suite of agents.
 pub struct ServerBuilder {
@@ -47,23 +47,39 @@ pub struct ServerBuilder {
     enable_tls: bool,
     deflate: Option<DeflateConfig>,
     config: SwimServerConfig,
+    store_options: StoreConfig,
+}
+
+#[non_exhaustive]
+enum StoreConfig {
+    NoStore,
+    #[cfg(feature = "persistence")]
+    RockStore {
+        path: Option<PathBuf>,
+        options: crate::RocksOpts,
+    },
+}
+
+impl Default for StoreConfig {
+    fn default() -> Self {
+        StoreConfig::NoStore
+    }
 }
 
 const DEFAULT_PORT: u16 = 0;
 
-impl Default for ServerBuilder {
-    fn default() -> Self {
+impl ServerBuilder {
+    pub fn with_plane_name(name: &str) -> Self {
         Self {
             bind_to: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), DEFAULT_PORT)),
-            plane: Default::default(),
+            plane: PlaneBuilder::with_name(name),
             enable_tls: false,
             deflate: Default::default(),
             config: Default::default(),
+            store_options: Default::default(),
         }
     }
-}
 
-impl ServerBuilder {
     /// #Arguments
     ///
     /// * `addr` - The address to which the server will bind (default: 0.0.0.0:8080).
@@ -117,13 +133,14 @@ impl ServerBuilder {
 
     /// Attempt to make a server instance. This will fail if the routes specified for the
     /// agents are ambiguous.
-    pub async fn build(self) -> Result<BoxServer, AmbiguousRoutes> {
+    pub async fn build(self) -> Result<BoxServer, ServerBuilderError> {
         let ServerBuilder {
             bind_to,
             plane,
             enable_tls,
             deflate,
             config,
+            store_options,
         } = self;
         let routes = plane.build()?;
         let resolver = Arc::new(Resolver::new().await);
@@ -131,28 +148,71 @@ impl ServerBuilder {
             //TODO Make this support actual identities.
             let networking =
                 TokioTlsNetworking::new::<_, Box<PathBuf>>(std::iter::empty(), resolver);
-            Ok(BoxServer(with_websockets(
-                bind_to, routes, networking, config, deflate,
-            )))
+            Ok(BoxServer(with_store(
+                bind_to,
+                routes,
+                networking,
+                config,
+                deflate,
+                store_options,
+            )?))
         } else {
             let networking = TokioPlainTextNetworking::new(resolver);
-            Ok(BoxServer(with_websockets(
-                bind_to, routes, networking, config, deflate,
-            )))
+            Ok(BoxServer(with_store(
+                bind_to,
+                routes,
+                networking,
+                config,
+                deflate,
+                store_options,
+            )?))
         }
     }
 }
 
-fn with_websockets<N>(
+fn with_store<N>(
     bind_to: SocketAddr,
     routes: PlaneModel,
     networking: N,
     config: SwimServerConfig,
     deflate: Option<DeflateConfig>,
+    store_config: StoreConfig,
+) -> Result<Box<dyn Server>, StoreError>
+where
+    N: ExternalConnections,
+    N::Socket: WebSocketStream,
+{
+    match store_config {
+        #[cfg(feature = "persistence")]
+        StoreConfig::RockStore { path, options } => {
+            let store = super::store::rocks::create_rocks_store(path, options)?;
+            Ok(with_websockets(
+                bind_to, routes, networking, config, deflate, store,
+            ))
+        }
+        _ => Ok(with_websockets(
+            bind_to,
+            routes,
+            networking,
+            config,
+            deflate,
+            StoreDisabled,
+        )),
+    }
+}
+
+fn with_websockets<N, Store>(
+    bind_to: SocketAddr,
+    routes: PlaneModel,
+    networking: N,
+    config: SwimServerConfig,
+    deflate: Option<DeflateConfig>,
+    store: Store,
 ) -> Box<dyn Server>
 where
     N: ExternalConnections,
     N::Socket: WebSocketStream,
+    Store: ServerPersistence + Send + Sync + 'static,
 {
     let subprotocols = ProtocolRegistry::new(vec!["warp0"]).unwrap();
     if let Some(deflate_config) = deflate {
@@ -162,7 +222,7 @@ where
             subprotocols,
         };
         Box::new(SwimServer::new(
-            routes, bind_to, networking, websockets, config,
+            routes, bind_to, networking, websockets, config, store,
         ))
     } else {
         let websockets = RatchetNetworking {
@@ -171,7 +231,54 @@ where
             subprotocols,
         };
         Box::new(SwimServer::new(
-            routes, bind_to, networking, websockets, config,
+            routes, bind_to, networking, websockets, config, store,
         ))
     }
 }
+
+#[cfg(feature = "persistence")]
+const _: () = {
+    use swim_persistence::rocks::default_db_opts;
+    impl ServerBuilder {
+        pub fn enable_rocks_store(mut self) -> Self {
+            self.store_options = StoreConfig::RockStore {
+                path: None,
+                options: default_db_opts(),
+            };
+            self
+        }
+
+        pub fn set_store_path<P: AsRef<std::ffi::OsStr>>(mut self, base_path: P) -> Self {
+            let db_path = PathBuf::from(std::path::Path::new(&base_path));
+            match &mut self.store_options {
+                StoreConfig::RockStore { path, .. } => {
+                    *path = Some(db_path);
+                }
+                _ => {
+                    self.store_options = StoreConfig::RockStore {
+                        path: Some(db_path),
+                        options: default_db_opts(),
+                    };
+                }
+            }
+            self
+        }
+
+        pub fn modify_rocks_opts<F: FnOnce(&mut crate::RocksOpts)>(mut self, f: F) -> Self {
+            match &mut self.store_options {
+                StoreConfig::RockStore { options, .. } => {
+                    f(options);
+                }
+                _ => {
+                    let mut options = default_db_opts();
+                    f(&mut options);
+                    self.store_options = StoreConfig::RockStore {
+                        path: None,
+                        options,
+                    };
+                }
+            }
+            self
+        }
+    }
+};

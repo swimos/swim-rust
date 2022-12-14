@@ -12,13 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
+use bytes::BytesMut;
+use futures::{future::BoxFuture, pin_mut, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
     error::AgentTaskError,
     protocol::{
-        agent::{LaneRequest, LaneRequestDecoder, ValueLaneResponse, ValueLaneResponseEncoder},
-        WithLenRecognizerDecoder,
+        agent::{
+            LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder,
+            ValueLaneResponseEncoder,
+        },
+        WithLenRecognizerDecoder, WithLengthBytesCodec,
     },
 };
 use swim_form::{structural::read::recognizer::RecognizerReadable, Form};
@@ -78,11 +82,51 @@ impl Agent for TestAgent {
         let events = self.events.clone();
         let reporter = self.reporter.clone();
         async move {
-            let (tx, rx) = context.add_lane(LANE, UplinkKind::Value, None).await?;
+            let lane_conf = config.default_lane_config.unwrap_or_default();
+            let (mut tx, mut rx) = context.add_lane(LANE, UplinkKind::Value, lane_conf).await?;
+            if !lane_conf.transient {
+                run_lane_initializer(&mut tx, &mut rx).await;
+            }
+
             Ok(run_agent(tx, rx, events, reporter).boxed())
         }
         .boxed()
     }
+}
+
+pub async fn run_lane_initializer(tx: &mut ByteWriter, rx: &mut ByteReader) {
+    let stream = init_stream(rx);
+    pin_mut!(stream);
+    if stream.next().await.is_some() {
+        panic!("Unexpected initial value.")
+    } else {
+        let mut writer = FramedWrite::new(
+            tx,
+            LaneResponseEncoder::new(WithLengthBytesCodec::default()),
+        );
+        writer
+            .send(LaneResponse::<BytesMut>::Initialized)
+            .await
+            .expect("Failed to send initialized message.");
+    }
+}
+
+fn init_stream(reader: &mut ByteReader) -> impl Stream<Item = BytesMut> + '_ {
+    let framed = FramedRead::new(
+        reader,
+        LaneRequestDecoder::new(WithLengthBytesCodec::default()),
+    );
+    unfold(Some(framed), |maybe_framed| async move {
+        if let Some(mut framed) = maybe_framed {
+            match framed.next().await {
+                Some(Ok(LaneRequest::Command(body))) => Some((body, Some(framed))),
+                Some(Ok(LaneRequest::InitComplete)) => None,
+                _ => panic!("Lane init failed."),
+            }
+        } else {
+            None
+        }
+    })
 }
 
 async fn run_agent(
@@ -105,7 +149,11 @@ async fn run_agent(
         match result {
             Ok(LaneRequest::Sync(id)) => {
                 output
-                    .send(ValueLaneResponse::synced(id, state))
+                    .send(LaneResponse::sync_event(id, state))
+                    .await
+                    .expect("Channel stopped.");
+                output
+                    .send(LaneResponse::<i32>::synced(id))
                     .await
                     .expect("Channel stopped.");
             }
@@ -115,10 +163,11 @@ async fn run_agent(
             }
             Ok(LaneRequest::Command(TestMessage::Event)) => {
                 output
-                    .send(ValueLaneResponse::event(state))
+                    .send(LaneResponse::event(state))
                     .await
                     .expect("Channel stopped.");
             }
+            Ok(LaneRequest::InitComplete) => {}
             Err(e) => {
                 panic!("Bad frame: {}", e);
             }

@@ -29,6 +29,8 @@ use swim_agent::{
 };
 use swim_api::agent::AgentConfig;
 use swim_api::downlink::DownlinkKind;
+use swim_api::error::{DownlinkRuntimeError, OpenStoreError};
+use swim_api::store::StoreKind;
 use swim_model::Text;
 use swim_utilities::routing::uri::RelativeUri;
 
@@ -49,7 +51,7 @@ const NO_AGENT: DummyAgentContext = DummyAgentContext;
 pub fn no_downlink<Context>(
     _dl: BoxDownlinkChannel<Context>,
     _write_stream: WriteStream,
-) -> Result<(), AgentRuntimeError> {
+) -> Result<(), DownlinkRuntimeError> {
     panic!("Launching downlinks no supported.");
 }
 
@@ -68,7 +70,7 @@ impl AgentContext for DummyAgentContext {
         &self,
         _name: &str,
         _uplink_kind: UplinkKind,
-        _config: Option<LaneConfig>,
+        _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Dummy context used.");
     }
@@ -79,7 +81,15 @@ impl AgentContext for DummyAgentContext {
         _node: &str,
         _lane: &str,
         _kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
+        panic!("Dummy context used.");
+    }
+
+    fn add_store(
+        &self,
+        _name: &str,
+        _kind: StoreKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
         panic!("Dummy context used.");
     }
 }
@@ -141,7 +151,7 @@ impl LifecycleInner {
     }
 }
 
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
 fn make_uri() -> RelativeUri {

@@ -22,7 +22,8 @@ use parking_lot::Mutex;
 use swim_api::{
     agent::{AgentContext, LaneConfig, UplinkKind},
     downlink::DownlinkKind,
-    error::AgentRuntimeError,
+    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    store::StoreKind,
 };
 use swim_utilities::{
     algebra::non_zero_usize,
@@ -64,7 +65,7 @@ impl AgentContext for TestAgentContext {
         &self,
         name: &str,
         uplink_kind: UplinkKind,
-        _config: Option<LaneConfig>,
+        _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         match (name, uplink_kind) {
             (VAL_LANE, UplinkKind::Value) => {
@@ -98,7 +99,15 @@ impl AgentContext for TestAgentContext {
         _node: &str,
         _lane: &str,
         _kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
         panic!("Opening downlinks from agents not yet supported.")
+    }
+
+    fn add_store(
+        &self,
+        _name: &str,
+        _kind: StoreKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), swim_api::error::OpenStoreError>> {
+        ready(Err(OpenStoreError::StoresNotSupported)).boxed()
     }
 }

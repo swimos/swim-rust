@@ -135,6 +135,7 @@ impl FakeAgent {
                 name,
                 kind,
                 io: (io_tx, io_rx),
+                ..
             } = endpoint;
             match kind {
                 UplinkKind::Value => {
@@ -149,6 +150,7 @@ impl FakeAgent {
             lanes.push(LaneReader::new(LaneEndpoint {
                 name,
                 kind,
+                transient: false,
                 io: io_rx,
             }));
         }
@@ -161,6 +163,9 @@ impl FakeAgent {
                             Ok(Either::Left(message)) => {
                                 if let Some((value, sender)) = value_lanes.get_mut(name.as_str()) {
                                     match message {
+                                        LaneRequest::InitComplete => {
+                                            panic!("Unexpected InitComplete");
+                                        }
                                         LaneRequest::Command(v) => {
                                             assert!(event_tx.send(Event::ValueCommand { name: name.clone(), n: v }).is_ok());
                                             *value = v;
@@ -175,6 +180,9 @@ impl FakeAgent {
                             Ok(Either::Right(message)) => {
                                 if let Some((map, sender)) = map_lanes.get_mut(name.as_str()) {
                                     match message {
+                                        LaneRequest::InitComplete => {
+                                            panic!("Unexpected InitComplete.");
+                                        }
                                         LaneRequest::Command(msg) => {
                                             assert!(event_tx.send(Event::MapCommand { name: name.clone(), cmd: msg.clone() }).is_ok());
                                             match msg {
@@ -232,7 +240,7 @@ impl FakeAgent {
                     if let Some(CreateLane { name, kind }) = maybe_create {
                         let (tx, rx) = oneshot::channel();
                         assert!(request_tx.send(AgentRuntimeRequest::AddLane {
-                             name: name.clone(), kind, config: None, promise: tx,
+                             name: name.clone(), kind, config: Default::default(), promise: tx,
                             }).await.is_ok());
                         let (io_tx, io_rx) = rx.await
                             .expect("Failed to receive response.")
@@ -246,7 +254,7 @@ impl FakeAgent {
                                 map_lanes.insert(name.clone(), (m, MapLaneSender::new(io_tx)));
                             }
                         }
-                        lanes.push(LaneReader::new(LaneEndpoint { name, kind, io: io_rx }));
+                        lanes.push(LaneReader::new(LaneEndpoint { name, kind, transient: false, io: io_rx }));
                     } else {
                         break;
                     }
@@ -339,22 +347,26 @@ where
     runtime_endpoints.push(LaneEndpoint::new(
         Text::new(VAL_LANE),
         UplinkKind::Value,
+        false,
         (tx_in_val, rx_out_val),
     ));
     runtime_endpoints.push(LaneEndpoint::new(
         Text::new(MAP_LANE),
         UplinkKind::Map,
+        false,
         (tx_in_map, rx_out_map),
     ));
 
     agent_endpoints.push(LaneEndpoint::new(
         Text::new(VAL_LANE),
         UplinkKind::Value,
+        false,
         (tx_out_val, rx_in_val),
     ));
     agent_endpoints.push(LaneEndpoint::new(
         Text::new(MAP_LANE),
         UplinkKind::Map,
+        false,
         (tx_out_map, rx_in_map),
     ));
 

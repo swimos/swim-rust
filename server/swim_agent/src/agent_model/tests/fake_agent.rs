@@ -14,15 +14,12 @@
 
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
 };
 
 use bytes::BytesMut;
 use swim_api::protocol::{
-    agent::{
-        LaneResponseKind, MapLaneResponse, MapLaneResponseEncoder, ValueLaneResponse,
-        ValueLaneResponseEncoder,
-    },
+    agent::{LaneResponse, MapLaneResponse, MapLaneResponseEncoder, ValueLaneResponseEncoder},
     map::{MapMessage, MapOperation},
 };
 use swim_model::Text;
@@ -31,7 +28,7 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use crate::{
-    agent_model::{AgentLaneModel, WriteResult},
+    agent_model::{AgentLaneModel, LaneFlags, LaneSpec, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
 };
@@ -102,12 +99,17 @@ impl AgentLaneModel for TestAgent {
 
     type OnSyncHandler = TestHandler;
 
-    fn value_like_lanes() -> HashSet<&'static str> {
-        [VAL_LANE, CMD_LANE].into_iter().collect()
+    fn value_like_lane_specs() -> HashMap<&'static str, crate::agent_model::LaneSpec> {
+        let mut lanes = HashMap::new();
+        lanes.insert(VAL_LANE, LaneSpec::new(LaneFlags::TRANSIENT));
+        lanes.insert(CMD_LANE, LaneSpec::new(LaneFlags::TRANSIENT));
+        lanes
     }
 
-    fn map_like_lanes() -> HashSet<&'static str> {
-        [MAP_LANE].into_iter().collect()
+    fn map_like_lane_specs() -> HashMap<&'static str, crate::agent_model::LaneSpec> {
+        let mut lanes = HashMap::new();
+        lanes.insert(MAP_LANE, LaneSpec::new(LaneFlags::TRANSIENT));
+        lanes
     }
 
     fn lane_ids() -> HashMap<u64, Text> {
@@ -163,14 +165,15 @@ impl AgentLaneModel for TestAgent {
     fn write_event(&self, lane: &str, buffer: &mut bytes::BytesMut) -> Option<WriteResult> {
         match lane {
             VAL_LANE => {
-                let mut encoder = ValueLaneResponseEncoder;
+                let mut encoder = ValueLaneResponseEncoder::default();
                 if let Some(id) = self.sync_ids.borrow_mut().pop_front() {
-                    let response = ValueLaneResponse {
-                        kind: LaneResponseKind::SyncEvent(id),
-                        value: SYNC_VALUE,
-                    };
+                    let sync_message = LaneResponse::sync_event(id, SYNC_VALUE);
+                    let synced_message = LaneResponse::<i32>::Synced(id);
                     encoder
-                        .encode(response, buffer)
+                        .encode(sync_message, buffer)
+                        .expect("Serialization failed.");
+                    encoder
+                        .encode(synced_message, buffer)
                         .expect("Serialization failed.");
                     if self.staged_value.borrow().is_some() {
                         Some(WriteResult::DataStillAvailable)
@@ -180,10 +183,7 @@ impl AgentLaneModel for TestAgent {
                 } else {
                     let mut guard = self.staged_value.borrow_mut();
                     if let Some(body) = guard.take() {
-                        let response = ValueLaneResponse {
-                            kind: LaneResponseKind::StandardEvent,
-                            value: body,
-                        };
+                        let response = LaneResponse::event(body);
                         encoder
                             .encode(response, buffer)
                             .expect("Serialization failed.");
@@ -197,10 +197,7 @@ impl AgentLaneModel for TestAgent {
                 let mut guard = self.staged_map.borrow_mut();
                 if let Some(body) = guard.take() {
                     let mut encoder = MapLaneResponseEncoder::default();
-                    let response = MapLaneResponse::Event {
-                        kind: LaneResponseKind::StandardEvent,
-                        operation: body,
-                    };
+                    let response = MapLaneResponse::event(body);
                     encoder
                         .encode(response, buffer)
                         .expect("Serialization failed.");
@@ -211,6 +208,32 @@ impl AgentLaneModel for TestAgent {
             }
             _ => None,
         }
+    }
+
+    fn init_value_like_lane(
+        &self,
+        _lane: &str,
+    ) -> Option<Box<dyn crate::agent_model::LaneInitializer<Self, BytesMut> + Send + 'static>>
+    where
+        Self: 'static,
+    {
+        None
+    }
+
+    fn init_map_like_lane(
+        &self,
+        _lane: &str,
+    ) -> Option<
+        Box<
+            dyn crate::agent_model::LaneInitializer<Self, MapMessage<BytesMut, BytesMut>>
+                + Send
+                + 'static,
+        >,
+    >
+    where
+        Self: 'static,
+    {
+        None
     }
 }
 

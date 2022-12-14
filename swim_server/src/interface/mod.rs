@@ -26,7 +26,6 @@ use crate::routing::{PlaneRoutingRequest, TopLevelServerRouter, TopLevelServerRo
 use either::Either;
 use futures::{io, join};
 use ratchet::{NoExtProvider, ProtocolRegistry, WebSocketConfig};
-use server_store::plane::PlaneStore;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -38,6 +37,7 @@ use swim_client::downlink::subscription::DownlinksTask;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
 use swim_model::path::Addressable;
+use swim_persistence::plane::PlaneStore;
 use swim_runtime::configuration::{DownlinkConfig, DownlinkConnectionsConfig, DownlinksConfig};
 use swim_runtime::ws::ext::RatchetNetworking;
 use swim_utilities::future::open_ended::OpenEndedFutures;
@@ -46,12 +46,12 @@ use tokio::sync::mpsc;
 use url::Url;
 
 use crate::PlaneBuilder;
-#[cfg(feature = "persistence")]
-use server_store::rocks;
-use server_store::{ServerStore, SwimStore};
 use swim_client::downlink::error::SubscriptionError;
 use swim_client::router::{ClientConnectionFactory, ClientRouterTask};
 use swim_model::path::Path;
+#[cfg(feature = "persistence")]
+use swim_persistence::rocks;
+use swim_persistence::{ServerStore, SwimStore};
 use swim_runtime::error::RoutingError;
 use swim_runtime::remote::config::RemoteConnectionsConfig;
 use swim_runtime::remote::net::dns::Resolver;

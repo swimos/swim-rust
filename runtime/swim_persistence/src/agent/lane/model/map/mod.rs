@@ -26,8 +26,6 @@ use crate::server::StoreKey;
 pub use io::MapLaneStoreIo;
 use swim_store::{deserialize, serialize, serialize_then, StoreError};
 
-const INCONSISTENT_DB: &str = "Missing key or value in store";
-
 /// A single event that occurred during a transaction.
 #[derive(Debug, PartialEq, Eq)]
 pub enum MapStoreEvent<K, V> {
@@ -119,17 +117,12 @@ where
         };
 
         self.delegate.load_ranged_snapshot(store_key, |key, value| {
-            let store_key = deserialize::<StoreKey>(key)?;
+            let key_bytes = StoreKey::extract_map_key(key)?;
 
-            match store_key {
-                StoreKey::Map { key, .. } => {
-                    let key = deserialize::<K>(&key.ok_or(StoreError::KeyNotFound)?)?;
-                    let value = deserialize::<V>(value)?;
+            let key = deserialize::<K>(key_bytes)?;
+            let value = deserialize::<V>(value)?;
 
-                    Ok((key, value))
-                }
-                StoreKey::Value { .. } => Err(StoreError::Decoding(INCONSISTENT_DB.to_string())),
-            }
+            Ok((key, value))
         })
     }
 }

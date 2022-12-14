@@ -26,7 +26,10 @@ use swim_utilities::{
 
 use crate::{
     downlink::DownlinkKind,
-    error::{AgentInitError, AgentRuntimeError, AgentTaskError},
+    error::{
+        AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
+    },
+    store::StoreKind,
 };
 
 /// Indicates the sub-protocol that a lane uses to communicate its state.
@@ -52,6 +55,8 @@ pub struct LaneConfig {
     pub input_buffer_size: NonZeroUsize,
     /// Size of the output buffer in bytes.
     pub output_buffer_size: NonZeroUsize,
+    /// A transient lane does not have associated persitent storage.
+    pub transient: bool,
 }
 
 const DEFAULT_BUFFER: NonZeroUsize = non_zero_usize!(4096);
@@ -61,6 +66,7 @@ impl Default for LaneConfig {
         Self {
             input_buffer_size: DEFAULT_BUFFER,
             output_buffer_size: DEFAULT_BUFFER,
+            transient: false,
         }
     }
 }
@@ -76,7 +82,7 @@ pub trait AgentContext: Sync {
         &self,
         name: &str,
         uplink_kind: UplinkKind,
-        config: Option<LaneConfig>,
+        config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
 
     /// Open a downlink to a lane on another agent.
@@ -91,12 +97,39 @@ pub trait AgentContext: Sync {
         node: &str,
         lane: &str,
         kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>>;
+
+    /// Add a new named store that will persist a (possibly compound) value in the agent state.
+    /// #Arguments
+    /// * `name` - The name of the store.
+    /// * `kind` - The kind of the store.
+    fn add_store(
+        &self,
+        name: &str,
+        kind: StoreKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>>;
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct AgentConfig {
-    //TODO Add parameters.
+    pub default_lane_config: Option<LaneConfig>,
+}
+
+impl AgentConfig {
+    //TODO: Remove this once const impls are stable.
+    pub const DEFAULT: AgentConfig = AgentConfig {
+        default_lane_config: Some(LaneConfig {
+            input_buffer_size: DEFAULT_BUFFER,
+            output_buffer_size: DEFAULT_BUFFER,
+            transient: true,
+        }),
+    };
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
 }
 
 /// Type of the task for a running agent.

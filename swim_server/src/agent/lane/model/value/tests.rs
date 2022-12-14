@@ -15,13 +15,15 @@
 use super::*;
 use crate::agent::lane::tests::ExactlyOnce;
 use futures::future::join;
-use server_store::agent::lane::error::StoreErrorHandler;
-use server_store::plane::mock::MockPlaneStore;
-use server_store::{StoreEngine, StoreKey};
 use std::sync::Mutex;
 use std::time::Duration;
 use stm::transaction::atomically;
 use stm::var::observer::ObserverSubscriber;
+use swim_persistence::agent::lane::error::StoreErrorHandler;
+use swim_persistence::agent::PrefixNodeStore;
+use swim_persistence::plane::mock::MockPlaneStore;
+use swim_persistence::{StoreEngine, StoreKey};
+use swim_store::nostore::NoRange;
 use swim_store::{serialize, EngineInfo, StoreError};
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::sync::topic::TryRecvError;
@@ -130,6 +132,14 @@ struct TrackingValueStore {
     value: Arc<Mutex<Option<Vec<u8>>>>,
 }
 
+impl<'a> PrefixNodeStore<'a> for TrackingValueStore {
+    type RangeCon = NoRange;
+
+    fn ranged_snapshot_consumer(&'a self, _prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
+        Ok(NoRange)
+    }
+}
+
 impl NodeStore for TrackingValueStore {
     type Delegate = MockPlaneStore;
 
@@ -153,6 +163,10 @@ impl NodeStore for TrackingValueStore {
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         panic!("Unexpected snapshot request")
+    }
+
+    fn delete_map(&self, _lane_id: u64) -> Result<(), StoreError> {
+        panic!("Unexpected map deletion request")
     }
 }
 

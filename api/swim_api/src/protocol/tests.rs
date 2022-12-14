@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{BufMut, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::Text;
-use tokio_util::codec::Decoder;
+use tokio_util::codec::{Decoder, Encoder};
 
-use super::WithLenRecognizerDecoder;
+use super::{WithLenRecognizerDecoder, WithLenReconEncoder};
 
 #[test]
 fn recognizer_decode_with_len() {
@@ -50,4 +50,18 @@ fn recognizer_decode_with_len_fails_on_overrun() {
     let result = decoder.decode(&mut data);
 
     assert!(result.is_err());
+}
+
+#[test]
+fn encode_recon_with_length() {
+    let mut encoder = WithLenReconEncoder::default();
+    let mut buffer = BytesMut::new();
+
+    assert!(encoder.encode(Text::new("hello"), &mut buffer).is_ok());
+
+    assert_eq!(buffer.len(), 13);
+
+    let len = buffer.get_u64();
+    assert_eq!(len, 5);
+    assert_eq!(buffer.as_ref(), b"hello");
 }

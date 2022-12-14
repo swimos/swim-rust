@@ -15,7 +15,10 @@
 use crate::agent::{NodeStore, SwimNodeStore};
 use crate::plane::mock::MockPlaneStore;
 use crate::server::{StoreEngine, StoreKey};
+use swim_store::nostore::NoRange;
 use swim_store::{EngineInfo, StoreError};
+
+use super::PrefixNodeStore;
 
 #[derive(Clone, Debug)]
 pub struct MockNodeStore {
@@ -26,6 +29,14 @@ impl MockNodeStore {
     pub fn mock() -> SwimNodeStore<MockPlaneStore> {
         let plane_store = MockPlaneStore;
         SwimNodeStore::new(plane_store, "test_node")
+    }
+}
+
+impl<'a> PrefixNodeStore<'a> for MockNodeStore {
+    type RangeCon = NoRange;
+
+    fn ranged_snapshot_consumer(&'a self, _prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
+        Ok(NoRange)
     }
 }
 
@@ -52,6 +63,10 @@ impl NodeStore for MockNodeStore {
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         Ok(None)
+    }
+
+    fn delete_map(&self, _lane_id: u64) -> Result<(), StoreError> {
+        Ok(())
     }
 }
 

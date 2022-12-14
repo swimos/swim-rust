@@ -48,21 +48,6 @@ impl LaneRegistry {
         id
     }
 
-    /// Remove a lane from the registry, by ID.
-    pub fn remove(&mut self, id: u64) -> Option<Text> {
-        let LaneRegistry {
-            lane_names,
-            lane_names_rev,
-            ..
-        } = self;
-        if let Some(name) = lane_names_rev.remove(&id) {
-            lane_names.remove(&name);
-            Some(name)
-        } else {
-            None
-        }
-    }
-
     pub fn id_for(&self, name: &str) -> Option<u64> {
         self.lane_names.get(name).copied()
     }
@@ -85,15 +70,5 @@ mod tests {
 
         assert_eq!(registry.id_for("lane"), Some(id));
         assert_eq!(registry.name_for(id), Some("lane"));
-    }
-
-    #[test]
-    fn remove_endpoint() {
-        let mut registry = LaneRegistry::default();
-        let id = registry.add_endpoint(Text::new("lane"));
-        registry.remove(id);
-
-        assert!(registry.id_for("lane").is_none());
-        assert!(registry.name_for(id).is_none());
     }
 }

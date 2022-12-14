@@ -189,7 +189,7 @@ impl<'a> LaneEvent<'a, TestAgent> for TestLifecycle {
 }
 
 const NODE_URI: &str = "/node";
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 
 fn make_uri() -> RelativeUri {
     RelativeUri::try_from(NODE_URI).expect("Bad URI.")

@@ -15,7 +15,7 @@
 use bytes::BytesMut;
 use swim_api::{
     agent::AgentConfig,
-    protocol::agent::{LaneResponseKind, ValueLaneResponse, ValueLaneResponseDecoder},
+    protocol::agent::{LaneResponse, ValueLaneResponseDecoder},
 };
 use swim_utilities::routing::uri::RelativeUri;
 use tokio_util::codec::Decoder;
@@ -68,12 +68,14 @@ fn write_command_to_buffer() {
         .expect("Invalid frame.")
         .expect("Incomplete frame.");
 
-    let ValueLaneResponse { kind, value } = content;
-    assert_eq!(kind, LaneResponseKind::StandardEvent);
-    assert_eq!(value.as_ref(), b"45");
+    if let LaneResponse::StandardEvent(value) = content {
+        assert_eq!(value.as_ref(), b"45");
+    } else {
+        panic!("Unexpected response.");
+    }
 }
 
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
 fn make_uri() -> RelativeUri {

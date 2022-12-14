@@ -14,11 +14,15 @@
 
 use std::{collections::HashMap, time::Duration};
 
+use bytes::BytesMut;
 use futures::{
     future::{join, join3},
     Future, StreamExt,
 };
-use swim_api::agent::UplinkKind;
+use swim_api::{
+    agent::UplinkKind,
+    store::{NodePersistenceBase, StoreDisabled},
+};
 use swim_messages::protocol::Notification;
 use swim_model::Text;
 use swim_utilities::{
@@ -31,7 +35,9 @@ use uuid::Uuid;
 
 use crate::{
     agent::{
+        store::{AgentPersistence, StorePersistence},
         task::{
+            fake_store::FakeStore,
             tests::RemoteReceiver,
             timeout_coord::{self, VoteResult},
             write_task, LaneEndpoint, RwCoorindationMessage, WriteTaskConfiguration,
@@ -76,7 +82,7 @@ impl FakeAgent {
         let mut value_lanes = HashMap::new();
         let mut map_lanes = HashMap::new();
         for endpoint in initial {
-            let LaneEndpoint { name, kind, io } = endpoint;
+            let LaneEndpoint { name, kind, io, .. } = endpoint;
             match kind {
                 UplinkKind::Value => {
                     value_lanes.insert(name, ValueLaneSender::new(io));
@@ -147,6 +153,20 @@ where
     Fut: Future + Send,
     Fut::Output: Debug,
 {
+    run_test_case_with_store(inactive_timeout, StoreDisabled, test_case).await
+}
+
+async fn run_test_case_with_store<F, Fut, Store>(
+    inactive_timeout: Duration,
+    store: Store,
+    test_case: F,
+) -> Fut::Output
+where
+    F: FnOnce(TestContext) -> Fut,
+    Fut: Future + Send,
+    Fut::Output: Debug,
+    Store: AgentPersistence + Clone + Send + Sync,
+{
     let (stop_tx, stop_rx) = trigger::trigger();
     let config = make_config(inactive_timeout);
 
@@ -154,12 +174,14 @@ where
         LaneEndpoint {
             name: Text::new(VAL_LANE),
             kind: UplinkKind::Value,
-            io: byte_channel(config.default_lane_config.input_buffer_size),
+            transient: false,
+            io: byte_channel(BUFFER_SIZE),
         },
         LaneEndpoint {
             name: Text::new(MAP_LANE),
             kind: UplinkKind::Map,
-            io: byte_channel(config.default_lane_config.input_buffer_size),
+            transient: false,
+            io: byte_channel(BUFFER_SIZE),
         },
     ];
 
@@ -170,7 +192,14 @@ where
 
     let fake_agent = FakeAgent::new(endpoints_tx, stop_rx.clone(), instr_rx);
     let write_config = WriteTaskConfiguration::new(AGENT_ID, Text::new(NODE), config);
-    let write = write_task(write_config, endpoints_rx, messages_rx, vote1, stop_rx);
+    let write = write_task(
+        write_config,
+        endpoints_rx,
+        messages_rx,
+        vote1,
+        stop_rx,
+        store,
+    );
 
     let context = TestContext {
         stop_sender: stop_tx,
@@ -791,4 +820,78 @@ async fn backpressure_relief_on_map_lanes_with_synced() {
         reader.expect_clean_shutdown(vec![MAP_LANE], None).await;
     })
     .await;
+}
+
+#[tokio::test]
+async fn value_lane_events_persisted() {
+    let store = FakeStore::new(vec![VAL_LANE, MAP_LANE]);
+    let persistence = StorePersistence(store.clone());
+
+    run_test_case_with_store(DEFAULT_TIMEOUT, persistence, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            instr_tx,
+        } = context;
+
+        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+        link_remote(RID1.into(), VAL_LANE, &messages_tx).await;
+        reader.expect_linked(VAL_LANE).await;
+
+        instr_tx.value_event(VAL_LANE, 747);
+        reader.expect_value_event(VAL_LANE, 747).await;
+
+        stop_sender.trigger();
+        reader.expect_clean_shutdown(vec![VAL_LANE], None).await;
+    })
+    .await;
+
+    let id = store.id_for(VAL_LANE).expect("Lane not valid.");
+    let mut buffer = BytesMut::new();
+    store.get_value(id, &mut buffer).expect("Key not found.");
+    assert_eq!(buffer.as_ref(), b"747");
+}
+
+#[tokio::test]
+async fn map_lane_events_persisted() {
+    let store = FakeStore::new(vec![VAL_LANE, MAP_LANE]);
+    let persistence = StorePersistence(store.clone());
+
+    run_test_case_with_store(DEFAULT_TIMEOUT, persistence, |context| async move {
+        let TestContext {
+            stop_sender,
+            messages_tx,
+            vote2: _vote2,
+            vote_rx: _vote_rx,
+            instr_tx,
+        } = context;
+
+        let mut reader = attach_remote(RID1.into(), &messages_tx).await;
+        link_remote(RID1.into(), MAP_LANE, &messages_tx).await;
+        reader.expect_linked(MAP_LANE).await;
+
+        instr_tx.map_event(MAP_LANE, "a", 1);
+        reader.expect_map_event(MAP_LANE, "a", 1).await;
+        instr_tx.map_event(MAP_LANE, "b", 2);
+        reader.expect_map_event(MAP_LANE, "b", 2).await;
+        instr_tx.map_event(MAP_LANE, "c", 3);
+        reader.expect_map_event(MAP_LANE, "c", 3).await;
+
+        stop_sender.trigger();
+        reader.expect_clean_shutdown(vec![MAP_LANE], None).await;
+    })
+    .await;
+
+    let id = store.id_for(MAP_LANE).expect("Lane not valid.");
+    let store_map = store
+        .get_map(id)
+        .expect("Bad ID")
+        .expect("No map in store.");
+    let mut expected = HashMap::new();
+    expected.insert(b"a".to_vec(), b"1".to_vec());
+    expected.insert(b"b".to_vec(), b"2".to_vec());
+    expected.insert(b"c".to_vec(), b"3".to_vec());
+    assert_eq!(store_map, expected);
 }

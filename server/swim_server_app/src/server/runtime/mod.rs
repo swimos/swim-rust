@@ -25,7 +25,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_api::agent::BoxAgent;
-use swim_api::error::{AgentRuntimeError, DownlinkFailureReason};
+use swim_api::error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError};
+use swim_api::store::PlanePersistence;
 use swim_model::address::RelativeAddress;
 use swim_model::Text;
 use swim_remote::{AgentResolutionError, AttachClient, FindNode, NoSuchAgent, RemoteTask};
@@ -57,7 +58,8 @@ use crate::server::ServerHandle;
 use self::downlinks::{DownlinkConnectionTask, ServerConnector};
 use self::ids::{IdIssuer, IdKind};
 
-use super::Server;
+use super::store::ServerPersistence;
+use super::{Server, ServerError};
 
 mod downlinks;
 mod ids;
@@ -66,12 +68,13 @@ mod tests;
 
 /// A swim server task that listens for incoming connections on a socket and runs the
 /// agents specified in a [`PlaneModel`].
-pub struct SwimServer<Net, Ws> {
+pub struct SwimServer<Net, Ws, Store> {
     plane: PlaneModel,
     addr: SocketAddr,
     networking: Net,
     websockets: Ws,
     config: SwimServerConfig,
+    store: Store,
 }
 
 type ClientPromiseTx = oneshot::Sender<Result<EstablishedClient, NewClientError>>;
@@ -131,16 +134,17 @@ impl ClientRegistration {
     }
 }
 
-impl<Net, Ws> Server for SwimServer<Net, Ws>
+impl<Net, Ws, Store> Server for SwimServer<Net, Ws, Store>
 where
     Net: ExternalConnections + Clone,
     Net::Socket: WebSocketStream,
     Ws: WsConnections<Net::Socket> + Send + Sync + 'static,
+    Store: ServerPersistence + Send + Sync + 'static,
 {
     fn run(
         self,
     ) -> (
-        futures::future::BoxFuture<'static, Result<(), std::io::Error>>,
+        futures::future::BoxFuture<'static, Result<(), ServerError>>,
         ServerHandle,
     ) {
         let config = &self.config;
@@ -163,7 +167,7 @@ where
     fn run_box(
         self: Box<Self>,
     ) -> (
-        futures::future::BoxFuture<'static, Result<(), std::io::Error>>,
+        futures::future::BoxFuture<'static, Result<(), ServerError>>,
         ServerHandle,
     ) {
         (*self).run()
@@ -186,11 +190,12 @@ enum TaskState {
     StoppingRemotes, //The server is shutting down, all agents have stopped, and the remote connections are being closed.
 }
 
-impl<Net, Ws> SwimServer<Net, Ws>
+impl<Net, Ws, Store> SwimServer<Net, Ws, Store>
 where
     Net: ExternalConnections,
     Net::Socket: WebSocketStream,
     Ws: WsConnections<Net::Socket> + Send + Sync,
+    Store: ServerPersistence + Send + Sync + 'static,
 {
     pub fn new(
         plane: PlaneModel,
@@ -198,6 +203,7 @@ where
         networking: Net,
         websockets: Ws,
         config: SwimServerConfig,
+        store: Store,
     ) -> Self {
         SwimServer {
             plane,
@@ -205,14 +211,23 @@ where
             networking,
             websockets,
             config,
+            store,
         }
     }
+}
 
+impl<Net, Ws, Store> SwimServer<Net, Ws, Store>
+where
+    Net: ExternalConnections,
+    Net::Socket: WebSocketStream,
+    Ws: WsConnections<Net::Socket> + Send + Sync,
+    Store: ServerPersistence + Send + Sync + 'static,
+{
     pub fn run_server(
         self,
         server_conn: ServerConnector,
     ) -> (
-        impl Future<Output = Result<(), std::io::Error>> + Send,
+        impl Future<Output = Result<(), ServerError>> + Send,
         ServerHandle,
     ) {
         let (tx, rx) = trigger::trigger();
@@ -226,17 +241,20 @@ where
         stop_signal: trigger::Receiver,
         addr_tx: oneshot::Sender<SocketAddr>,
         mut server_conn: ServerConnector,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<(), ServerError> {
         let SwimServer {
             plane,
             addr,
             networking,
             websockets,
             config,
+            store,
         } = self;
 
         let networking = Arc::new(networking);
         let websockets = Arc::new(websockets);
+
+        let plane_store = store.open_plane(plane.name.as_str())?;
 
         let (bound_addr, listener) = networking.bind(addr).await?;
         let _ = addr_tx.send(bound_addr);
@@ -445,9 +463,11 @@ where
                     provider,
                 }) => {
                     info!(source = %source, node = %node, "Attempting to connect an agent to a remote.");
-                    let result = agents.resolve_agent(node, |name, route_task| {
-                        let task = route_task.run_agent();
-                        agent_tasks.push(attach_node(name, task));
+                    let node_store = plane_store.node_store(node.as_str())?;
+                    let agent_tasks_ref = &agent_tasks;
+                    let result = agents.resolve_agent(node, move |name, route_task| {
+                        let task = route_task.run_agent_with_store(node_store);
+                        agent_tasks_ref.push(attach_node(name, task));
                     });
                     match result {
                         Ok((agent_id, agent_tx)) => {
@@ -532,8 +552,9 @@ where
                 }) => {
                     let RelativeAddress { node, .. } = path;
                     info!(source = %downlink_id, node = %node, "Attempting to connect a downlink to an agent.");
+                    let node_store = plane_store.node_store(node.as_str())?;
                     let result = agents.resolve_agent(node, |name, route_task| {
-                        let task = route_task.run_agent();
+                        let task = route_task.run_agent_with_store(node_store);
                         agent_tasks.push(attach_node(name, task));
                     });
                     match result {
@@ -816,21 +837,25 @@ enum NewClientError {
     ServerStopped,
 }
 
-impl From<NewClientError> for AgentRuntimeError {
+impl From<NewClientError> for DownlinkRuntimeError {
     fn from(err: NewClientError) -> Self {
         match err {
             NewClientError::InvalidUrl(_) | NewClientError::BadWarpUrl(_) => {
-                AgentRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::Unresolvable)
+                DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::Unresolvable)
             }
             NewClientError::OpeningSocketFailed { .. } => {
-                AgentRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::ConnectionFailed)
+                DownlinkRuntimeError::DownlinkConnectionFailed(
+                    DownlinkFailureReason::ConnectionFailed,
+                )
             }
             NewClientError::WsNegotationFailed { .. } => {
-                AgentRuntimeError::DownlinkConnectionFailed(
+                DownlinkRuntimeError::DownlinkConnectionFailed(
                     DownlinkFailureReason::WebsocketNegotiationFailed,
                 )
             }
-            NewClientError::ServerStopped => AgentRuntimeError::Stopping,
+            NewClientError::ServerStopped => {
+                DownlinkRuntimeError::RuntimeError(AgentRuntimeError::Stopping)
+            }
         }
     }
 }

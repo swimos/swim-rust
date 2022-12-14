@@ -17,3 +17,4 @@ pub mod downlink;
 pub mod error;
 pub mod handlers;
 pub mod protocol;
+pub mod store;

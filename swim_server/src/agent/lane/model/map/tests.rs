@@ -19,12 +19,6 @@ use crate::agent::lane::model::DeferredSubscription;
 use crate::agent::lane::tests::ExactlyOnce;
 use futures::future::ready;
 use futures::{FutureExt, Stream, StreamExt};
-use server_store::agent::lane::error::StoreErrorHandler;
-use server_store::agent::lane::map::{MapDataModel, MapLaneStoreIo};
-use server_store::agent::lane::StoreIo;
-use server_store::agent::NodeStore;
-use server_store::plane::mock::MockPlaneStore;
-use server_store::{StoreEngine, StoreKey};
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::ops::Deref;
@@ -33,7 +27,13 @@ use stm::stm::Stm;
 use stm::transaction::{atomically, TransactionRunner};
 use swim_form::Form;
 use swim_model::{Attr, Item, Value};
-use swim_store::{serialize, EngineInfo, StoreError};
+use swim_persistence::agent::lane::error::StoreErrorHandler;
+use swim_persistence::agent::lane::map::{MapDataModel, MapLaneStoreIo};
+use swim_persistence::agent::lane::StoreIo;
+use swim_persistence::agent::{NodeStore, PrefixNodeStore};
+use swim_persistence::plane::mock::MockPlaneStore;
+use swim_persistence::{StoreEngine, StoreKey};
+use swim_store::{serialize, EngineInfo, RangeConsumer, StoreError};
 use swim_utilities::algebra::non_zero_usize;
 
 fn buffer_size() -> NonZeroUsize {
@@ -527,6 +527,41 @@ fn make_store_key(lane_id: u64, key: String) -> StoreKey {
     }
 }
 
+struct It {
+    index: usize,
+    entries: Vec<(Vec<u8>, Vec<u8>)>,
+}
+
+impl RangeConsumer for It {
+    fn consume_next(&mut self) -> Result<Option<(&[u8], &[u8])>, StoreError> {
+        let It { index, entries } = self;
+        let n = *index;
+        *index += 1;
+        Ok(entries.get(n).map(|(k, v)| (k.as_ref(), v.as_ref())))
+    }
+}
+
+impl<'a> PrefixNodeStore<'a> for TrackingMapStore {
+    type RangeCon = It;
+
+    fn ranged_snapshot_consumer(&'a self, prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
+        let prefix = prefix.serialize_as_bytes();
+        let guard = self.values.lock().unwrap();
+        let entries = guard
+            .deref()
+            .iter()
+            .filter_map(|(k, v)| {
+                if k.starts_with(&prefix) {
+                    Some((k.clone(), v.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        Ok(It { entries, index: 0 })
+    }
+}
+
 #[derive(Debug, Clone)]
 struct TrackingMapStore {
     values: Arc<Mutex<HashMap<Vec<u8>, Vec<u8>>>>,
@@ -554,7 +589,7 @@ impl NodeStore for TrackingMapStore {
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
-        let prefix = serialize(&prefix)?;
+        let prefix = prefix.serialize_as_bytes();
         let guard = self.values.lock().unwrap();
         let mut entries = guard.deref().clone().into_iter();
         let mapped = entries.try_fold(Vec::new(), |mut entries, (k, v)| {
@@ -577,6 +612,18 @@ impl NodeStore for TrackingMapStore {
             Ok(Some(mapped))
         }
     }
+
+    fn delete_map(&self, lane_id: u64) -> Result<(), StoreError> {
+        let start = StoreKey::Map { lane_id, key: None }.serialize_as_bytes();
+        let ubound = StoreKey::map_ubound_bytes(lane_id);
+        let mut guard = self.values.lock().unwrap();
+        let map = &mut *guard;
+        *map = std::mem::take(map)
+            .into_iter()
+            .filter(|(k, _)| !(&start..&ubound).contains(&k))
+            .collect();
+        Ok(())
+    }
 }
 
 impl StoreEngine for TrackingMapStore {
@@ -584,7 +631,7 @@ impl StoreEngine for TrackingMapStore {
         match key {
             k @ StoreKey::Map { .. } => {
                 let mut guard = self.values.lock().unwrap();
-                guard.insert(serialize(&k)?, value.to_vec());
+                guard.insert(k.serialize_as_bytes(), value.to_vec());
                 Ok(())
             }
             StoreKey::Value { .. } => {
@@ -597,7 +644,7 @@ impl StoreEngine for TrackingMapStore {
         match key {
             k @ StoreKey::Map { .. } => {
                 let guard = self.values.lock().unwrap();
-                Ok(guard.get(serialize(&k)?.as_slice()).cloned())
+                Ok(guard.get(k.serialize_as_bytes().as_slice()).cloned())
             }
             StoreKey::Value { .. } => {
                 panic!("Expected a map key")
@@ -609,7 +656,7 @@ impl StoreEngine for TrackingMapStore {
         match key {
             k @ StoreKey::Map { .. } => {
                 let mut guard = self.values.lock().unwrap();
-                guard.remove(serialize(&k)?.as_slice());
+                guard.remove(k.serialize_as_bytes().as_slice());
                 Ok(())
             }
             StoreKey::Value { .. } => {
@@ -640,7 +687,7 @@ async fn io_load_some() {
         .into_iter()
         .fold(HashMap::new(), |mut map, (k, v)| {
             let store_key = make_store_key(0, k);
-            map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
+            map.insert(store_key.serialize_as_bytes(), serialize(&v).unwrap());
             map
         });
 
@@ -648,7 +695,7 @@ async fn io_load_some() {
         .into_iter()
         .fold(HashMap::new(), |mut map, (k, v)| {
             let store_key = make_store_key(1, k);
-            map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
+            map.insert(store_key.serialize_as_bytes(), serialize(&v).unwrap());
             map
         });
 
@@ -686,7 +733,7 @@ async fn io_crud() {
         .into_iter()
         .fold(HashMap::new(), |mut map, (k, v)| {
             let store_key = make_store_key(0, k);
-            map.insert(serialize(&store_key).unwrap(), serialize(&v).unwrap());
+            map.insert(store_key.serialize_as_bytes(), serialize(&v).unwrap());
             map
         });
 

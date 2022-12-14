@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_api::error::AgentRuntimeError;
+use swim_api::error::DownlinkRuntimeError;
 
 use crate::{agent_model::downlink::handlers::BoxDownlinkChannel, meta::AgentMetadata};
 
@@ -40,7 +40,7 @@ impl<Context> RegisterHostedDownlink<Context> {
 }
 
 impl<Context> HandlerAction<Context> for RegisterHostedDownlink<Context> {
-    type Completion = Result<(), AgentRuntimeError>;
+    type Completion = Result<(), DownlinkRuntimeError>;
 
     fn step(
         &mut self,

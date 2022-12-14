@@ -30,7 +30,6 @@ use crate::routing::TopLevelServerRouterFactory;
 use crate::{
     action_lifecycle, agent_lifecycle, command_lifecycle, map_lifecycle, value_lifecycle, SwimAgent,
 };
-use server_store::agent::mock::MockNodeStore;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::Debug;
@@ -41,6 +40,7 @@ use stm::transaction::atomically;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
 use swim_client::router::ClientConnectionFactory;
+use swim_persistence::agent::mock::MockNodeStore;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::routing::uri::RelativeUri;

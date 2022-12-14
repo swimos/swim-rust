@@ -18,7 +18,6 @@ use crate::agent::{AgentParameters, AgentResult, SwimAgent};
 use crate::plane::{AgentInternals, AgentRoute, RouteAndParameters};
 use futures::future::BoxFuture;
 use futures::{FutureExt, Stream};
-use server_store::agent::NodeStore;
 use std::any::Any;
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
@@ -26,6 +25,7 @@ use std::sync::Arc;
 use swim_async_runtime::time::clock::Clock;
 use swim_client::interface::ClientContext;
 use swim_model::path::Path;
+use swim_persistence::agent::NodeStore;
 use swim_runtime::routing::{Router, TaggedEnvelope};
 
 /// [`AgentRoute`] implementation that spawns agents with a fixed configuration.

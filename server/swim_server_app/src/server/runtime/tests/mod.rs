@@ -24,7 +24,7 @@ use futures::{
     Future,
 };
 use ratchet::{Message, NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
-use swim_api::error::DownlinkFailureReason;
+use swim_api::{error::DownlinkFailureReason, store::StoreDisabled};
 use swim_form::structural::write::StructuralWritable;
 use swim_model::address::RelativeAddress;
 use swim_recon::printer::print_recon_compact;
@@ -46,7 +46,10 @@ use uuid::Uuid;
 
 use crate::{
     plane::PlaneBuilder,
-    server::runtime::{ClientRegistration, NewClientError},
+    server::{
+        runtime::{ClientRegistration, NewClientError},
+        ServerError,
+    },
     ServerHandle, SwimServerConfig,
 };
 
@@ -84,7 +87,7 @@ fn remote_addr(p: u8) -> SocketAddr {
     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 0, p)), 50000)
 }
 
-async fn run_server<F, Fut>(test_case: F) -> (Result<(), std::io::Error>, Fut::Output)
+async fn run_server<F, Fut>(test_case: F) -> (Result<(), ServerError>, Fut::Output)
 where
     F: FnOnce(TestContext) -> Fut,
     Fut: Future,
@@ -96,12 +99,12 @@ async fn run_server_with_config_and_dl<F, Fut>(
     config: SwimServerConfig,
     remotes: HashMap<SocketAddr, DuplexStream>,
     test_case: F,
-) -> (Result<(), std::io::Error>, Fut::Output)
+) -> (Result<(), ServerError>, Fut::Output)
 where
     F: FnOnce(DlTestContext) -> Fut,
     Fut: Future,
 {
-    let mut plane_builder = PlaneBuilder::default();
+    let mut plane_builder = PlaneBuilder::with_name("plane");
     let pattern = RoutePattern::parse_str(NODE).expect("Invalid route.");
 
     let (event_tx, event_rx) = mpsc::unbounded_channel();
@@ -122,7 +125,7 @@ where
     let (networking, networking_task) = TestConnections::new(HashMap::new(), remotes, incoming_rx);
     let websockets = TestWs::default();
 
-    let server = SwimServer::new(plane, addr, networking, websockets, config);
+    let server = SwimServer::new(plane, addr, networking, websockets, config, StoreDisabled);
 
     let (server_conn, dl_conn) = downlink_task_connector(
         config.client_request_channel_size,
@@ -155,7 +158,7 @@ where
 async fn run_server_with_config<F, Fut>(
     config: SwimServerConfig,
     test_case: F,
-) -> (Result<(), std::io::Error>, Fut::Output)
+) -> (Result<(), ServerError>, Fut::Output)
 where
     F: FnOnce(TestContext) -> Fut,
     Fut: Future,

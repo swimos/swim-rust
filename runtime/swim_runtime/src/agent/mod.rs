@@ -19,7 +19,11 @@ use futures::{
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, LaneConfig, UplinkKind},
     downlink::DownlinkKind,
-    error::{AgentInitError, AgentRuntimeError, AgentTaskError},
+    error::{
+        AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
+        StoreError,
+    },
+    store::{NodePersistence, StoreKind},
 };
 use swim_model::{address::Address, Text};
 use swim_utilities::{
@@ -40,8 +44,12 @@ use std::{
 
 use crate::downlink::DownlinkOptions;
 
-use self::task::AgentInitTask;
+use self::{
+    store::{StoreInitError, StorePersistence},
+    task::AgentInitTask,
+};
 
+mod store;
 mod task;
 
 use task::AgentRuntimeRequest;
@@ -50,7 +58,7 @@ use task::AgentRuntimeRequest;
 pub struct DownlinkRequest {
     pub key: (Address<Text>, DownlinkKind),
     pub options: DownlinkOptions,
-    pub promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+    pub promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 }
 
 impl DownlinkRequest {
@@ -58,7 +66,7 @@ impl DownlinkRequest {
         path: Address<Text>,
         kind: DownlinkKind,
         options: DownlinkOptions,
-        promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+        promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
     ) -> Self {
         DownlinkRequest {
             key: (path, kind),
@@ -86,7 +94,7 @@ impl AgentContext for AgentRuntimeContext {
         &self,
         name: &str,
         uplink_kind: UplinkKind,
-        config: Option<LaneConfig>,
+        config: LaneConfig,
     ) -> BoxFuture<'static, Result<Io, AgentRuntimeError>> {
         let name = Text::new(name);
         let sender = self.tx.clone();
@@ -111,7 +119,7 @@ impl AgentContext for AgentRuntimeContext {
         node: &str,
         lane: &str,
         kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
         let host = host.map(Text::new);
         let node = Text::new(node);
         let lane = Text::new(lane);
@@ -129,6 +137,14 @@ impl AgentContext for AgentRuntimeContext {
             rx.await?
         }
         .boxed()
+    }
+
+    fn add_store(
+        &self,
+        _name: &str,
+        _kind: StoreKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
+        todo!("Non-lane stores not yet implemented.")
     }
 }
 
@@ -219,8 +235,6 @@ impl AgentAttachmentRequest {
 /// Configuration parameters for the aget runtime task.
 #[derive(Debug, Clone, Copy)]
 pub struct AgentRuntimeConfig {
-    /// Default configuration parameters to use for lanes that do not specify their own.
-    pub default_lane_config: LaneConfig,
     /// Size of the queue for hanlding requests to attach remotes to the task.
     pub attachment_queue_size: NonZeroUsize,
     /// If the task is idle for more than this length of time, the agent will stop.
@@ -231,6 +245,8 @@ pub struct AgentRuntimeConfig {
     /// If the clean-shutdown mechanism for the task takes longer than this, it will be
     /// terminated.
     pub shutdown_timeout: Duration,
+    /// If initializing a lane from the store takes longer than this, the agent will fail.
+    pub lane_init_timeout: Duration,
 }
 
 /// Ways in which the agent runtime task can fail.
@@ -248,6 +264,14 @@ pub enum AgentExecError {
     /// Sending a downlink request to the runtime failed.
     #[error("The runtime failed to handle a downlink request.")]
     FailedDownlinkRequest,
+    #[error("Restoring the state of the lane `{lane_name}` failed: {error}")]
+    FailedRestoration {
+        lane_name: Text,
+        #[source]
+        error: StoreInitError,
+    },
+    #[error("Persisting a change to the state of a lan failed: {0}")]
+    PersistenceFailure(#[from] StoreError),
 }
 
 pub struct AgentRoute {
@@ -314,8 +338,12 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let node_uri = route.to_string().into();
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
         let (init_tx, init_rx) = trigger::trigger();
-        let runtime_init_task =
-            AgentInitTask::new(runtime_rx, downlink_tx, init_rx, runtime_config);
+        let runtime_init_task = AgentInitTask::new(
+            runtime_rx,
+            downlink_tx,
+            init_rx,
+            runtime_config.lane_init_timeout,
+        );
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
         let agent_init = agent.run(route, agent_config, context);
@@ -340,7 +368,68 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 stopping,
             );
 
-            let (_, agent_result) = join(runtime_task.run(), agent_task).await;
+            let (runtime_result, agent_result) = join(runtime_task.run(), agent_task).await;
+            runtime_result?;
+            agent_result?;
+            Ok(())
+        }
+    }
+
+    pub fn run_agent_with_store<Store>(
+        self,
+        store: Store,
+    ) -> impl Future<Output = Result<(), AgentExecError>> + Send + 'static
+    where
+        Store: NodePersistence + Clone + Send + Sync + 'static,
+    {
+        let AgentRouteTask {
+            agent,
+            identity,
+            route,
+            attachment_rx,
+            downlink_tx,
+            stopping,
+            agent_config,
+            runtime_config,
+        } = self;
+        let node_uri = route.to_string().into();
+        let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
+        let (init_tx, init_rx) = trigger::trigger();
+        let runtime_init_task = AgentInitTask::with_store(
+            runtime_rx,
+            downlink_tx,
+            init_rx,
+            runtime_config.lane_init_timeout,
+            StorePersistence(store.clone()),
+        );
+        let context = Box::new(AgentRuntimeContext::new(runtime_tx));
+
+        let agent_init = agent.run(route, agent_config, context);
+
+        async move {
+            let agent_init_task = async move {
+                let agent_task_result = agent_init.await;
+                drop(init_tx);
+                agent_task_result
+            };
+
+            let (initial_state_result, agent_task_result) =
+                join(runtime_init_task.run(), agent_init_task).await;
+
+            let initial_state = initial_state_result?;
+            let agent_task = agent_task_result?;
+
+            let runtime_task = initial_state.make_runtime_task_with_store(
+                identity,
+                node_uri,
+                attachment_rx,
+                runtime_config,
+                stopping,
+                StorePersistence(store),
+            );
+
+            let (runtime_result, agent_result) = join(runtime_task.run(), agent_task).await;
+            runtime_result?;
             agent_result?;
             Ok(())
         }

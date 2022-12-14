@@ -15,30 +15,39 @@
 use std::collections::HashSet;
 
 use swim_api::agent::{Agent, BoxAgent};
+use swim_model::Text;
 use swim_utilities::routing::route_pattern::RoutePattern;
 
 use crate::{error::AmbiguousRoutes, util::AgentExt};
 
 /// A plane is a collection of agents which are all served by a single TCP listener. This mode
 /// describes all of the kinds of agents that are defined in the lane and maps them to URI routes.
-#[derive(Default)]
 pub struct PlaneModel {
+    pub(crate) name: Text,
     pub(crate) routes: Vec<(RoutePattern, BoxAgent)>,
 }
 
 /// A builder that will construct a [`PlaneModel`]. The consistency of the routes that are supplied
 /// is only checked when the `build` method is called.
-#[derive(Default)]
 pub struct PlaneBuilder {
     model: PlaneModel,
 }
 
 impl PlaneBuilder {
+    pub fn with_name(name: &str) -> Self {
+        PlaneBuilder {
+            model: PlaneModel {
+                name: Text::new(name),
+                routes: Default::default(),
+            },
+        }
+    }
+
     /// Attempt to construct the model. If any of the routes that were provided are ambiguous,
     /// this will fail.
     pub fn build(self) -> Result<PlaneModel, AmbiguousRoutes> {
         let PlaneBuilder {
-            model: PlaneModel { routes },
+            model: PlaneModel { name, routes },
         } = self;
         let template = routes.iter().map(|(r, _)| r).enumerate();
 
@@ -70,7 +79,7 @@ impl PlaneBuilder {
                 .collect();
             Err(AmbiguousRoutes::new(bad))
         } else {
-            Ok(PlaneModel { routes })
+            Ok(PlaneModel { name, routes })
         }
     }
 
@@ -110,12 +119,13 @@ mod tests {
 
     #[test]
     fn single_route() {
-        let mut builder = super::PlaneBuilder::default();
+        let mut builder = super::PlaneBuilder::with_name("plane");
         let route = RoutePattern::parse_str("/node").expect("Bad route.");
         builder.add_route(route.clone(), DummyAgent);
 
-        let PlaneModel { routes } = builder.build().expect("Building plane failed.");
+        let PlaneModel { name, routes } = builder.build().expect("Building plane failed.");
 
+        assert_eq!(name, "plane");
         match routes.as_slice() {
             [(pattern, _)] => {
                 assert_eq!(pattern, &route);
@@ -126,14 +136,15 @@ mod tests {
 
     #[test]
     fn two_disjoint_routes() {
-        let mut builder = super::PlaneBuilder::default();
+        let mut builder = super::PlaneBuilder::with_name("plane");
         let route1 = RoutePattern::parse_str("/node").expect("Bad route.");
         let route2 = RoutePattern::parse_str("/other/:id").expect("Bad route.");
         builder.add_route(route1.clone(), DummyAgent);
         builder.add_route(route2.clone(), DummyAgent);
 
-        let PlaneModel { routes } = builder.build().expect("Building plane failed.");
+        let PlaneModel { name, routes } = builder.build().expect("Building plane failed.");
 
+        assert_eq!(name, "plane");
         match routes.as_slice() {
             [(pattern1, _), (pattern2, _)] => {
                 assert!(
@@ -147,7 +158,7 @@ mod tests {
 
     #[test]
     fn two_ambiguous_routes() {
-        let mut builder = super::PlaneBuilder::default();
+        let mut builder = super::PlaneBuilder::with_name("plane");
         let route1 = RoutePattern::parse_str("/node").expect("Bad route.");
         let route2 = RoutePattern::parse_str("/:id").expect("Bad route.");
         builder.add_route(route1.clone(), DummyAgent);
@@ -168,7 +179,7 @@ mod tests {
 
     #[test]
     fn two_ambiguous_with_good_routes() {
-        let mut builder = super::PlaneBuilder::default();
+        let mut builder = super::PlaneBuilder::with_name("plane");
         let route1 = RoutePattern::parse_str("/first/node").expect("Bad route.");
         let route2 = RoutePattern::parse_str("/first/:id").expect("Bad route.");
         let route3 = RoutePattern::parse_str("/second").expect("Bad route.");

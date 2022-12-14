@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use server_store::plane::SwimPlaneStore;
-use server_store::NoStore;
 use std::fmt::Debug;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use swim_model::path::{AbsolutePath, RelativePath};
 use swim_model::Value;
+use swim_persistence::plane::SwimPlaneStore;
+use swim_persistence::NoStore;
 use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::channels::update::StmRetryStrategy;
 use swim_server::agent::lane::model::command::CommandLane;

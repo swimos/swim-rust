@@ -13,16 +13,25 @@
 // limitations under the License.
 
 use crate::agent::lane::model::value::ValueDataModel;
-use crate::agent::NodeStore;
+use crate::agent::{NodeStore, PrefixNodeStore};
 use crate::plane::mock::MockPlaneStore;
 use crate::server::{StoreEngine, StoreKey};
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
+use swim_store::nostore::NoRange;
 use swim_store::{serialize, EngineInfo, StoreError};
 
 #[derive(Clone, Debug)]
 struct TrackingValueStore {
     value: Arc<Mutex<Option<Vec<u8>>>>,
+}
+
+impl<'a> PrefixNodeStore<'a> for TrackingValueStore {
+    type RangeCon = NoRange;
+
+    fn ranged_snapshot_consumer(&'a self, _prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
+        panic!("Unexpected snapshot request")
+    }
 }
 
 impl NodeStore for TrackingValueStore {
@@ -48,6 +57,10 @@ impl NodeStore for TrackingValueStore {
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
     {
         panic!("Unexpected snapshot request")
+    }
+
+    fn delete_map(&self, _lane_id: u64) -> Result<(), StoreError> {
+        panic!("Unexpected map deletion request")
     }
 }
 

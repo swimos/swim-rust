@@ -113,7 +113,7 @@ impl<'a, T: Clone + Send + 'static> OnCommand<'a, T, TestAgent> for FakeLifecycl
     }
 }
 
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
 fn make_uri() -> RelativeUri {

@@ -71,11 +71,6 @@ impl RemoteTracker {
         self.remotes.contains_key(&remote_id)
     }
 
-    /// Remove a lane from the registry.
-    pub fn remove_lane(&mut self, id: u64) -> Option<Text> {
-        self.lane_registry().remove(id)
-    }
-
     /// Get a reference to the lane registry.
     pub fn lane_registry(&mut self) -> &mut LaneRegistry {
         &mut self.registry

@@ -57,23 +57,12 @@ pub struct Uplinks {
 /// The type of entries that can be pushed into the queue.
 #[derive(Debug, Clone)]
 pub enum UplinkResponse {
-    /// A synced message for value type lane.
-    SyncedValue(Bytes),
-    /// A synced message for a map type lane.
-    SyncedMap,
+    /// A synced message.
+    Synced(UplinkKind),
     /// An event message for a value type lane.
     Value(Bytes),
     /// An event message for a map type lane.
     Map(MapOperation<BytesMut, BytesMut>),
-}
-
-impl UplinkResponse {
-    pub fn is_synced(&self) -> bool {
-        matches!(
-            self,
-            UplinkResponse::SyncedValue(_) | UplinkResponse::SyncedMap
-        )
-    }
 }
 
 const UNREGISTERED_LANE: &str = "Unregistered lane ID.";
@@ -183,21 +172,19 @@ impl Uplinks {
                         *queued = true;
                     }
                 }
-                UplinkResponse::SyncedValue(body) => {
+                UplinkResponse::Synced(UplinkKind::Value) => {
                     let Uplink {
                         queued,
                         send_synced,
-                        backpressure,
                         ..
                     } = value_uplinks.entry(lane_id).or_default();
-                    backpressure.push_bytes(body);
                     *send_synced = true;
                     if !*queued {
                         write_queue.push_back((UplinkKind::Value, lane_id));
                         *queued = true;
                     }
                 }
-                UplinkResponse::SyncedMap => {
+                UplinkResponse::Synced(UplinkKind::Map) => {
                     let Uplink {
                         queued,
                         send_synced,
@@ -257,7 +244,7 @@ impl Uplinks {
                                 let synced = std::mem::replace(send_synced, false);
                                 backpressure.prepare_write(&mut buffer);
                                 let action = if synced {
-                                    WriteAction::EventAndSynced
+                                    WriteAction::ValueSynced(true)
                                 } else {
                                     WriteAction::Event
                                 };
@@ -325,20 +312,15 @@ struct Uplink<B> {
     backpressure: B,   //Backpressure relief queue (varying implementation based on uplink kind).
 }
 
-/// Writ the body of a response directly into a buffer (used when backpressure relief is not
+/// Write the body of a response directly into a buffer (used when backpressure relief is not
 /// required).
 fn write_to_buffer(
     response: UplinkResponse,
     buffer: &mut BytesMut,
 ) -> Result<WriteAction, InvalidKey> {
     let action = match response {
-        UplinkResponse::SyncedValue(body) => {
-            buffer.clear();
-            buffer.reserve(body.len());
-            buffer.put(body);
-            WriteAction::EventAndSynced
-        }
-        UplinkResponse::SyncedMap => WriteAction::MapSynced(None),
+        UplinkResponse::Synced(UplinkKind::Value) => WriteAction::ValueSynced(false),
+        UplinkResponse::Synced(UplinkKind::Map) => WriteAction::MapSynced(None),
         UplinkResponse::Value(body) => {
             buffer.clear();
             buffer.reserve(body.len());

@@ -31,13 +31,13 @@ use crate::agent::{
 };
 use futures::future::{ready, BoxFuture, Ready};
 use futures::FutureExt;
-use server_store::agent::NodeStore;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 use stm::stm::Stm;
 use stm::transaction::atomically;
+use swim_persistence::agent::NodeStore;
 use tokio::sync::{mpsc, Mutex};
 
 /// An agent for use in tests of the agent execution loop. All events that occur in the lifecycle

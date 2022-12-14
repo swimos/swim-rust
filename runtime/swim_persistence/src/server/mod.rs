@@ -15,17 +15,19 @@
 pub mod keystore;
 #[cfg(test)]
 pub mod mock;
+#[cfg(test)]
+mod tests;
 
 #[cfg(feature = "rocks")]
 pub mod rocks;
 
-use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Formatter};
-use std::io;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use swim_store::{Keyspace, Keyspaces, StoreBuilder, StoreError};
 
 use crate::plane::{open_plane, PlaneStore, SwimPlaneStore};
+use integer_encoding::FixedInt;
 pub use swim_store::nostore::NoStore;
 use swim_utilities::io::fs::Dir;
 
@@ -69,7 +71,7 @@ pub trait SwimStore {
     ///
     /// # Errors
     /// Errors if the delegate database could not be created.
-    fn plane_store<I>(&mut self, plane_name: I) -> Result<Self::PlaneStore, StoreError>
+    fn plane_store<I>(&self, plane_name: I) -> Result<Self::PlaneStore, StoreError>
     where
         I: ToString;
 }
@@ -153,7 +155,7 @@ where
 {
     type PlaneStore = SwimPlaneStore<D::Store>;
 
-    fn plane_store<I: ToString>(&mut self, plane_name: I) -> Result<Self::PlaneStore, StoreError> {
+    fn plane_store<I: ToString>(&self, plane_name: I) -> Result<Self::PlaneStore, StoreError> {
         let ServerStore {
             builder,
             keyspaces,
@@ -167,7 +169,7 @@ where
 }
 
 /// A lane key that is either a map lane key or a value lane key.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialOrd, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialOrd, PartialEq, Eq)]
 pub enum StoreKey {
     /// A map lane key.
     ///
@@ -178,7 +180,6 @@ pub enum StoreKey {
         lane_id: u64,
         /// An optional, serialized, key. This is optional as ranged snapshots to not require the
         /// key.
-        #[serde(skip_serializing_if = "Option::is_none")]
         key: Option<Vec<u8>>,
     },
     /// A value lane key.
@@ -188,11 +189,102 @@ pub enum StoreKey {
     },
 }
 
+const ID_LEN: usize = 8;
+const SIZE_LEN: usize = 8;
+const TAG_LEN: usize = 1;
+
+const VAL_TAG: u8 = 0;
+const MAP_TAG: u8 = 1;
+
+const KEY: u8 = 1;
+const UBOUND: u8 = 2;
+
 impl StoreKey {
+    pub const MAP_KEY_PREFIX_SIZE: usize = ID_LEN + 2 * TAG_LEN + SIZE_LEN;
+
     pub fn keyspace_name(&self) -> KeyspaceName {
         match self {
             StoreKey::Map { .. } => KeyspaceName::Map,
             StoreKey::Value { .. } => KeyspaceName::Value,
+        }
+    }
+
+    pub fn write_into<W>(&self, mut writer: W) -> Result<(), std::io::Error>
+    where
+        W: Write,
+    {
+        match self {
+            StoreKey::Map { lane_id, key } => {
+                writer.write_all(&[MAP_TAG])?;
+                writer.write_all(lane_id.encode_fixed_light())?;
+                if let Some(key) = key {
+                    writer.write_all(&[KEY])?;
+                    let len = u64::try_from(key.len()).expect("Length does not fit into u64");
+                    writer.write_all(len.encode_fixed_light())?;
+                    writer.write_all(key)?;
+                }
+            }
+            StoreKey::Value { lane_id } => {
+                writer.write_all(&[VAL_TAG])?;
+                writer.write_all(lane_id.encode_fixed_light())?;
+            }
+        }
+        Ok(())
+    }
+
+    fn ser_len(&self) -> usize {
+        match self {
+            StoreKey::Map {
+                key: Some(key_bytes),
+                ..
+            } => key_bytes.len() + ID_LEN + 2 * TAG_LEN + SIZE_LEN,
+            Self::Map { .. } => ID_LEN + 2 * TAG_LEN,
+            StoreKey::Value { .. } => ID_LEN + TAG_LEN,
+        }
+    }
+
+    pub fn serialize_as_bytes(&self) -> Vec<u8> {
+        let mut target = Vec::with_capacity(self.ser_len());
+        self.write_into(&mut target)
+            .expect("Writing into a Vec should be infallible.");
+        target
+    }
+
+    pub fn write_map_ubound<W>(lane_id: u64, mut writer: W) -> Result<(), std::io::Error>
+    where
+        W: Write,
+    {
+        writer.write_all(&[MAP_TAG])?;
+        writer.write_all(lane_id.encode_fixed_light())?;
+        writer.write_all(&[UBOUND])?;
+        Ok(())
+    }
+
+    pub fn map_ubound_bytes(lane_id: u64) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(ID_LEN + 2 * TAG_LEN);
+        Self::write_map_ubound(lane_id, &mut bytes)
+            .expect("Writing into a Vec should be infallible.");
+        bytes
+    }
+
+    pub fn extract_map_key(bytes: &[u8]) -> Result<&[u8], StoreError> {
+        match bytes {
+            b @ [1, ..] if b.len() >= ID_LEN + 2 * TAG_LEN + SIZE_LEN => {
+                let mut rem = &b[ID_LEN + TAG_LEN..];
+                if rem[0] != 1 {
+                    return Err(StoreError::Decoding("Invalid map key.".to_string()));
+                }
+                let len = u64::decode_fixed(&rem[TAG_LEN..SIZE_LEN + TAG_LEN]);
+                rem = &rem[SIZE_LEN + TAG_LEN..];
+                if rem.len() != len as usize {
+                    Err(StoreError::Decoding("Inconsistent key length.".to_string()))
+                } else {
+                    Ok(rem)
+                }
+            }
+            _ => Err(StoreError::Decoding(
+                "Bytes do not contain a map key.".to_string(),
+            )),
         }
     }
 }

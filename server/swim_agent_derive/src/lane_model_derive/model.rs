@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bitflags::bitflags;
+use std::hash::Hash;
 use swim_utilities::errors::{
     validation::{Validation, ValidationItExt},
     Errors,
 };
 use syn::{
-    AngleBracketedGenericArguments, Data, DataStruct, DeriveInput, Field, GenericArgument, Ident,
-    PathArguments, PathSegment, Type, TypePath,
+    AngleBracketedGenericArguments, Attribute, Data, DataStruct, DeriveInput, Field,
+    GenericArgument, Ident, PathArguments, PathSegment, Type, TypePath,
 };
 
 /// Model of a struct type for the AgentLaneModel derivation macro.
@@ -45,25 +47,46 @@ pub enum LaneKind<'a> {
     Map(&'a Type, &'a Type),
 }
 
+impl<'a> LaneKind<'a> {
+    pub fn is_stateful(&self) -> bool {
+        matches!(self, LaneKind::Value(_) | LaneKind::Map(_, _))
+    }
+}
+
+bitflags! {
+
+    pub struct LaneFlags: u8 {
+        /// The state of the lane should not be persistend.
+        const TRANSIENT = 0b01;
+    }
+}
+
 /// Description of a lane (its name the the kind of the lane, along with types).
 #[derive(Clone, Copy)]
 pub struct LaneModel<'a> {
     pub name: &'a Ident,
     pub kind: LaneKind<'a>,
+    pub flags: LaneFlags,
 }
 
 impl<'a> LaneModel<'a> {
     /// #Arguments
     /// * `name` - The name of the field in the struct (mapped to the name of the lane in the agent).
     /// * `kind` - The kind of the lane, along with any types.
-    fn new(name: &'a Ident, kind: LaneKind<'a>) -> LaneModel<'a> {
-        LaneModel { name, kind }
+    /// * `flags` - Modifiers applied to the lane.
+    fn new(name: &'a Ident, kind: LaneKind<'a>, flags: LaneFlags) -> LaneModel<'a> {
+        LaneModel { name, kind, flags }
     }
 
     /// The name of the lane as a string literal.
     pub fn literal(&self) -> proc_macro2::Literal {
         let name_str = self.name.to_string();
         proc_macro2::Literal::string(name_str.as_str())
+    }
+
+    /// Determine if the lane needs to persist its state.
+    pub fn is_stateful(&self) -> bool {
+        self.kind.is_stateful() && !self.flags.contains(LaneFlags::TRANSIENT)
     }
 }
 
@@ -73,6 +96,8 @@ const NO_GENERICS: &str = "Generic agents are not yet supported.";
 const NOT_LANE_TYPE: &str = "Field is not of a lane type.";
 const NO_TUPLES: &str = "Tuple structs are not supported.";
 const BAD_PARAMS: &str = "Lane generic parameters are invalid.";
+const INVALID_FIELD_ATTR: &str = "Invalid field attribute. Valid attributes are: '[#transient]'.";
+const TRANSIENT_ATTR_NAME: &str = "transient";
 
 /// Extract the model of the type from the type definition, collecting any
 /// errors.
@@ -127,18 +152,31 @@ fn extract_lane_model(field: &Field) -> Result<LaneModel<'_>, syn::Error> {
     {
         if let Some(PathSegment { ident, arguments }) = path.segments.last() {
             let type_name = ident.to_string();
+            let lane_flags = if has_transient_attr(&field.attrs)? {
+                LaneFlags::TRANSIENT
+            } else {
+                LaneFlags::empty()
+            };
             match type_name.as_str() {
                 COMMAND_LANE_NAME => {
                     let param = single_param(arguments)?;
-                    Ok(LaneModel::new(fld_name, LaneKind::Command(param)))
+                    Ok(LaneModel::new(
+                        fld_name,
+                        LaneKind::Command(param),
+                        LaneFlags::TRANSIENT, //Command lanes are always transient.
+                    ))
                 }
                 VALUE_LANE_NAME => {
                     let param = single_param(arguments)?;
-                    Ok(LaneModel::new(fld_name, LaneKind::Value(param)))
+                    Ok(LaneModel::new(fld_name, LaneKind::Value(param), lane_flags))
                 }
                 MAP_LANE_NAME => {
                     let (param1, param2) = two_params(arguments)?;
-                    Ok(LaneModel::new(fld_name, LaneKind::Map(param1, param2)))
+                    Ok(LaneModel::new(
+                        fld_name,
+                        LaneKind::Map(param1, param2),
+                        lane_flags,
+                    ))
                 }
                 _ => Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE)),
             }
@@ -150,6 +188,27 @@ fn extract_lane_model(field: &Field) -> Result<LaneModel<'_>, syn::Error> {
     } else {
         Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE))
     }
+}
+
+fn has_transient_attr(attrs: &[Attribute]) -> Result<bool, syn::Error> {
+    let mut has_transient = false;
+    for attr in attrs {
+        let meta = attr.parse_meta()?;
+        match meta {
+            syn::Meta::Path(path) => match path.segments.first() {
+                Some(seg)
+                    if path.segments.len() == 1
+                        && seg.arguments.is_empty()
+                        && seg.ident == TRANSIENT_ATTR_NAME =>
+                {
+                    has_transient = true;
+                }
+                _ => return Err(syn::Error::new_spanned(attr, INVALID_FIELD_ATTR)),
+            },
+            _ => return Err(syn::Error::new_spanned(attr, INVALID_FIELD_ATTR)),
+        }
+    }
+    Ok(has_transient)
 }
 
 fn single_param(args: &PathArguments) -> Result<&Type, syn::Error> {

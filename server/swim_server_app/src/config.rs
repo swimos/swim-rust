@@ -56,6 +56,7 @@ pub struct RemoteConnectionsConfig {
 const DEFAULT_CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(16);
 const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_INIT_TIMEOUT: Duration = Duration::from_secs(1);
 
 impl Default for RemoteConnectionsConfig {
     fn default() -> Self {
@@ -71,11 +72,11 @@ impl Default for SwimServerConfig {
             remote: Default::default(),
             agent: Default::default(),
             agent_runtime: AgentRuntimeConfig {
-                default_lane_config: Default::default(),
                 attachment_queue_size: DEFAULT_CHANNEL_SIZE,
                 inactive_timeout: DEFAULT_TIMEOUT,
                 prune_remote_delay: DEFAULT_TIMEOUT,
                 shutdown_timeout: DEFAULT_TIMEOUT,
+                lane_init_timeout: DEFAULT_INIT_TIMEOUT,
             },
             client_attachment_buffer_size: DEFAULT_CHANNEL_SIZE,
             find_route_channel_size: DEFAULT_CHANNEL_SIZE,

@@ -14,6 +14,7 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::sync::Arc;
 
 use bytes::BytesMut;
@@ -24,7 +25,9 @@ use futures::{
     stream::{FuturesUnordered, SelectAll},
     StreamExt,
 };
-use swim_api::error::AgentRuntimeError;
+use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError};
+use swim_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
+use swim_api::protocol::WithLengthBytesCodec;
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
     error::{AgentInitError, AgentTaskError, FrameIoError},
@@ -47,13 +50,18 @@ use crate::{
 };
 
 pub mod downlink;
+mod init;
 mod io;
 #[cfg(test)]
 mod tests;
 
 use io::{LaneReader, LaneWriter};
 
+use bitflags::bitflags;
+
 use self::downlink::handlers::BoxDownlinkChannel;
+use self::init::{run_lane_initializer, InitializedLane};
+pub use init::{LaneInitializer, MapLaneInitializer, ValueLaneInitializer};
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,6 +72,29 @@ pub enum WriteResult {
     Done,
     // The lane has written data to the buffer and will have more to write on a subsequent call.
     DataStillAvailable,
+}
+
+pub type InitFn<Agent> = Box<dyn FnOnce(&Agent) + Send + 'static>;
+
+bitflags! {
+
+    #[derive(Default)]
+    pub struct LaneFlags: u8 {
+        /// The state of the lane should not be persistend.
+        const TRANSIENT = 0b01;
+    }
+
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct LaneSpec {
+    pub flags: LaneFlags,
+}
+
+impl LaneSpec {
+    pub fn new(flags: LaneFlags) -> Self {
+        LaneSpec { flags }
+    }
 }
 
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
@@ -79,11 +110,11 @@ pub trait AgentLaneModel: Sized + Send {
     /// The type of handler to run when a request is received to sync with a lane.
     type OnSyncHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
-    /// The names of all value like lanes (value lanes, command lanes, etc) in the agent.
-    fn value_like_lanes() -> HashSet<&'static str>;
+    /// The names and falgs of all value like lanes (value lanes, command lanes, etc) in the agent.
+    fn value_like_lane_specs() -> HashMap<&'static str, LaneSpec>;
 
-    /// The names of all map like lanes in the agent.
-    fn map_like_lanes() -> HashSet<&'static str>;
+    /// The names and flags of all map like lanes in the agent.
+    fn map_like_lane_specs() -> HashMap<&'static str, LaneSpec>;
 
     /// Mapping from lane identifiers to lane names for all lanes in the agent.
     fn lane_ids() -> HashMap<u64, Text>;
@@ -93,9 +124,31 @@ pub trait AgentLaneModel: Sized + Send {
     /// accept commands.
     ///
     /// #Arguments
-    ///  * `lane` - The name of the lane.
+    /// * `lane` - The name of the lane.
     /// * `body` - The content of the command.
     fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler>;
+
+    /// Create an initializer that will consume the state of a value-like lane, as reported by the runtime.
+    ///
+    /// #Arguments
+    /// * `lane` - The name of the lane.
+    fn init_value_like_lane(
+        &self,
+        lane: &str,
+    ) -> Option<Box<dyn LaneInitializer<Self, BytesMut> + Send + 'static>>
+    where
+        Self: 'static;
+
+    /// Create an initializer that will consume the state of a map-like lane, as reported by the runtime.
+    ///
+    /// #Arguments
+    /// * `lane` - The name of the lane.
+    fn init_map_like_lane(
+        &self,
+        lane: &str,
+    ) -> Option<Box<dyn LaneInitializer<Self, MapMessage<BytesMut, BytesMut>> + Send + 'static>>
+    where
+        Self: 'static;
 
     /// Create a handler that will update the state of the agent when a command is received
     /// for a map lane. There will be no handler if the lane does not exist or does not
@@ -314,27 +367,80 @@ where
         let mut value_lane_io = HashMap::new();
         let mut map_lane_io = HashMap::new();
 
-        let val_lane_names = LaneModel::value_like_lanes();
-        let map_lane_names = LaneModel::map_like_lanes();
+        let val_lane_specs = LaneModel::value_like_lane_specs();
+        let map_lane_specs = LaneModel::map_like_lane_specs();
         let lane_ids = LaneModel::lane_ids();
 
         let suspended = FuturesUnordered::new();
         let downlink_channels = RefCell::new(vec![]);
 
-        // Set up the lanes of the agent.
-        for name in val_lane_names {
-            let io = context.add_lane(name, UplinkKind::Value, None).await?;
-            value_lane_io.insert(Text::new(name), io);
-        }
-        for name in map_lane_names {
-            if value_lane_io.contains_key(name) {
-                return Err(AgentInitError::DuplicateLane(Text::new(name)));
+        let lane_model = lane_model_fac.create();
+
+        {
+            let mut lane_init_tasks = FuturesUnordered::new();
+            let default_lane_config = config.default_lane_config.unwrap_or_default();
+            // Set up the lanes of the agent.
+            for (name, spec) in val_lane_specs {
+                let mut lane_conf = default_lane_config;
+                if spec.flags.contains(LaneFlags::TRANSIENT) {
+                    lane_conf.transient = true;
+                }
+                let io = context.add_lane(name, UplinkKind::Value, lane_conf).await?;
+                if lane_conf.transient {
+                    value_lane_io.insert(Text::new(name), io);
+                } else if let Some(init) = lane_model.init_value_like_lane(name) {
+                    let init_task = run_lane_initializer(
+                        name,
+                        UplinkKind::Value,
+                        io,
+                        WithLengthBytesCodec::default(),
+                        init,
+                    );
+                    lane_init_tasks.push(init_task.boxed());
+                } else {
+                    value_lane_io.insert(Text::new(name), io);
+                }
             }
-            let io = context.add_lane(name, UplinkKind::Map, None).await?;
-            map_lane_io.insert(Text::new(name), io);
+            for (name, spec) in map_lane_specs {
+                if value_lane_io.contains_key(name) {
+                    return Err(AgentInitError::DuplicateLane(Text::new(name)));
+                }
+                let mut lane_conf = default_lane_config;
+                if spec.flags.contains(LaneFlags::TRANSIENT) {
+                    lane_conf.transient = true;
+                }
+                let io = context.add_lane(name, UplinkKind::Map, lane_conf).await?;
+                if lane_conf.transient {
+                    map_lane_io.insert(Text::new(name), io);
+                } else if let Some(init) = lane_model.init_map_like_lane(name) {
+                    let init_task = run_lane_initializer(
+                        name,
+                        UplinkKind::Map,
+                        io,
+                        MapMessageDecoder::new(RawMapOperationDecoder::default()),
+                        init,
+                    );
+                    lane_init_tasks.push(init_task.boxed());
+                } else {
+                    map_lane_io.insert(Text::new(name), io);
+                }
+            }
+
+            while let Some(result) = lane_init_tasks.next().await {
+                let InitializedLane {
+                    name,
+                    kind,
+                    init_fn,
+                    io,
+                } = result.map_err(AgentInitError::LaneInitializationFailure)?;
+                init_fn(&lane_model);
+                match kind {
+                    UplinkKind::Value => value_lane_io.insert(Text::new(name), io),
+                    UplinkKind::Map => map_lane_io.insert(Text::new(name), io),
+                };
+            }
         }
 
-        let lane_model = lane_model_fac.create();
         // Run the agent's `on_start` event handler.
         let on_start_handler = lifecycle.on_start();
 
@@ -570,6 +676,7 @@ where
                                 }
                             }
                         }
+                        LaneRequest::InitComplete => {}
                     }
                 }
                 TaskEvent::MapRequest { id, request } => {
@@ -605,6 +712,7 @@ where
                                 }
                             }
                         }
+                        LaneRequest::InitComplete => {}
                     }
                 }
                 TaskEvent::RequestError { id, error } => {
@@ -634,7 +742,11 @@ where
         }?;
         // Try to run the `on_stop` handler before we stop.
         let on_stop_handler = lifecycle.on_stop();
-        let discard = |_, _| Err(AgentRuntimeError::Stopping);
+        let discard = |_, _| {
+            Err(DownlinkRuntimeError::RuntimeError(
+                AgentRuntimeError::Stopping,
+            ))
+        };
         if let Err(e) = run_handler(
             ActionContext::new(&suspended, &*context, &discard),
             meta,

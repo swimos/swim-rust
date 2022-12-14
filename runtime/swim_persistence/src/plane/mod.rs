@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use swim_model::Text;
-use swim_store::{serialize, EngineInfo, Store, StoreError};
+use swim_store::{EngineInfo, KeyValue, PrefixRangeByteEngine, RangeConsumer, Store, StoreError};
 
 use crate::agent::{NodeStore, SwimNodeStore};
 use crate::server::keystore::KeyStore;
@@ -44,10 +44,19 @@ where
         .join(plane_name.as_ref())
 }
 
+pub trait PrefixPlaneStore<'a> {
+    type RangeCon: RangeConsumer + Send + 'a;
+
+    /// Executes a ranged snapshot read prefixed by a lane key.
+    ///
+    /// #Arguments
+    /// * `prefix` - Common prefix for the records to read.
+    fn ranged_snapshot_consumer(&'a self, prefix: StoreKey) -> Result<Self::RangeCon, StoreError>;
+}
+
 /// A trait for defining plane stores which will create node stores.
-pub trait PlaneStore
-where
-    Self: StoreEngine + Sized + Debug + Send + Sync + Clone + 'static,
+pub trait PlaneStore:
+    for<'a> PrefixPlaneStore<'a> + StoreEngine + Sized + Debug + Send + Sync + Clone + 'static
 {
     /// The type of node stores which are created.
     type NodeStore: NodeStore;
@@ -69,6 +78,9 @@ where
     ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
+
+    /// Delete all values for a map lane.
+    fn delete_map(&self, lane_id: u64) -> Result<(), StoreError>;
 
     /// Returns information about the delegate store
     fn engine_info(&self) -> EngineInfo;
@@ -110,8 +122,45 @@ where
     F: Fn(KeyspaceName, Vec<u8>) -> Result<O, StoreError>,
 {
     match key {
-        s @ StoreKey::Map { .. } => f(KeyspaceName::Map, serialize(&s)?),
-        s @ StoreKey::Value { .. } => f(KeyspaceName::Value, serialize(&s)?),
+        s @ StoreKey::Map { .. } => f(KeyspaceName::Map, s.serialize_as_bytes()),
+        s @ StoreKey::Value { .. } => f(KeyspaceName::Value, s.serialize_as_bytes()),
+    }
+}
+
+pub struct PrefixStrippedRangeConsumer<C> {
+    inner: C,
+}
+
+impl<C: RangeConsumer> RangeConsumer for PrefixStrippedRangeConsumer<C> {
+    fn consume_next(&mut self) -> Result<Option<KeyValue<'_>>, StoreError> {
+        let maybe_entry = self.inner.consume_next()?;
+        if let Some((k, v)) = maybe_entry {
+            if k.len() < StoreKey::MAP_KEY_PREFIX_SIZE {
+                Err(StoreError::InvalidKey)
+            } else {
+                Ok(Some((&k[StoreKey::MAP_KEY_PREFIX_SIZE..], v)))
+            }
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl<'a, D> PrefixPlaneStore<'a> for SwimPlaneStore<D>
+where
+    D: Store,
+{
+    type RangeCon = PrefixStrippedRangeConsumer<<D as PrefixRangeByteEngine<'a>>::RangeCon>;
+
+    fn ranged_snapshot_consumer(&'a self, prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
+        let namespace = match &prefix {
+            StoreKey::Map { .. } => KeyspaceName::Map,
+            StoreKey::Value { .. } => KeyspaceName::Value,
+        };
+
+        self.delegate
+            .get_prefix_range_consumer(namespace, prefix.serialize_as_bytes().as_slice())
+            .map(|consumer| PrefixStrippedRangeConsumer { inner: consumer })
     }
 }
 
@@ -142,7 +191,7 @@ where
         };
 
         self.delegate
-            .get_prefix_range(namespace, serialize(&prefix)?.as_slice(), map_fn)
+            .get_prefix_range(namespace, prefix.serialize_as_bytes().as_slice(), map_fn)
     }
 
     fn engine_info(&self) -> EngineInfo {
@@ -154,6 +203,13 @@ where
         I: Into<String>,
     {
         self.keystore.id_for(lane.into())
+    }
+
+    fn delete_map(&self, lane_id: u64) -> Result<(), StoreError> {
+        let start = StoreKey::Map { lane_id, key: None }.serialize_as_bytes();
+        let ubound = StoreKey::map_ubound_bytes(lane_id);
+        self.delegate
+            .delete_key_range(KeyspaceName::Map, &start, &ubound)
     }
 }
 

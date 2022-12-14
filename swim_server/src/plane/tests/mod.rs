@@ -22,7 +22,6 @@ use crate::plane::{
 };
 use crate::routing::TopLevelServerRouterFactory;
 use futures::future::join;
-use server_store::plane::mock::MockPlaneStore;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_async_runtime::time::clock::Clock;
@@ -30,6 +29,7 @@ use swim_async_runtime::time::timeout;
 use swim_client::downlink::Downlinks;
 use swim_client::interface::ClientContext;
 use swim_client::router::ClientConnectionFactory;
+use swim_persistence::plane::mock::MockPlaneStore;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_runtime::routing::Router;
 use swim_utilities::future::open_ended::OpenEndedFutures;

@@ -17,15 +17,15 @@ mod tests;
 
 mod iterator;
 
-pub use crate::iterator::{RocksIterator, RocksPrefixIterator};
+pub use crate::iterator::{RocksIterator, RocksPrefixIterator, RocksRawPrefixIterator};
 
-use rocksdb::{ColumnFamily, ColumnFamilyDescriptor};
+use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, ReadOptions};
 use rocksdb::{Options, DB};
 use std::path::Path;
 use std::sync::Arc;
 use store_common::{
     serialize, EngineInfo, EnginePrefixIterator, EngineRefIterator, Keyspace, KeyspaceByteEngine,
-    KeyspaceResolver, Keyspaces, Store, StoreBuilder, StoreError,
+    KeyspaceResolver, Keyspaces, PrefixRangeByteEngine, Store, StoreBuilder, StoreError,
 };
 
 /// A Rocks database engine.
@@ -114,6 +114,29 @@ where
     }
 }
 
+impl<'a> PrefixRangeByteEngine<'a> for RocksEngine {
+    type RangeCon = RocksRawPrefixIterator<'a>;
+
+    fn get_prefix_range_consumer<S>(
+        &'a self,
+        keyspace: S,
+        prefix: &[u8],
+    ) -> Result<Self::RangeCon, StoreError>
+    where
+        S: Keyspace,
+    {
+        let resolved = self
+            .resolve_keyspace(&keyspace)
+            .ok_or(StoreError::KeyspaceNotFound)?;
+
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_prefix_same_as_start(true);
+        let mut iter = self.delegate.raw_iterator_cf_opt(resolved, read_opts);
+        iter.seek(prefix);
+        Ok(RocksRawPrefixIterator::new(iter))
+    }
+}
+
 impl KeyspaceByteEngine for RocksEngine {
     fn put_keyspace<K: Keyspace>(
         &self,
@@ -186,5 +209,19 @@ impl KeyspaceByteEngine for RocksEngine {
         } else {
             Ok(Some(data))
         }
+    }
+
+    fn delete_key_range<S>(
+        &self,
+        keyspace: S,
+        start: &[u8],
+        ubound: &[u8],
+    ) -> Result<(), StoreError>
+    where
+        S: Keyspace,
+    {
+        exec_keyspace(&self.delegate, keyspace, move |delegate, keyspace| {
+            delegate.delete_range_cf(keyspace, start, ubound)
+        })
     }
 }
