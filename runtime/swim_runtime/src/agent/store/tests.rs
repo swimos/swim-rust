@@ -172,7 +172,7 @@ impl NodePersistence for FakeStore {
     where
         Self: 'a;
 
-    fn read_map<'a>(&'a self, id: Self::LaneId) -> Result<Self::MapCon<'a>, StoreError> {
+    fn read_map(&self, id: Self::LaneId) -> Result<Self::MapCon<'_>, StoreError> {
         if id == Id::Map {
             Ok(FakeConsumer {
                 entries: self

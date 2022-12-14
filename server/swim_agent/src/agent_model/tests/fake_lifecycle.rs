@@ -62,7 +62,7 @@ impl TestLifecycle {
 impl OnStart<TestAgent> for TestLifecycle {
     type OnStartHandler<'a> = LifecycleHandler where Self: 'a;
 
-    fn on_start<'a>(&'a self) -> Self::OnStartHandler<'a> {
+    fn on_start(&self) -> Self::OnStartHandler<'_> {
         self.make_handler(LifecycleEvent::Start)
     }
 }
@@ -72,7 +72,7 @@ impl OnStop<TestAgent> for TestLifecycle {
     where
         Self: 'a;
 
-    fn on_stop<'a>(&'a self) -> Self::OnStopHandler<'a> {
+    fn on_stop(&self) -> Self::OnStopHandler<'_> {
         self.make_handler(LifecycleEvent::Stop)
     }
 }

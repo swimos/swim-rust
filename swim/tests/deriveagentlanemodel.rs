@@ -226,3 +226,44 @@ fn command_lane_tagged_transient() {
 
     check_agent::<TwoCommandLanes>(vec![transient("first"), transient("second")], vec![]);
 }
+
+mod isolated {
+
+    use super::{check_agent, persistent, transient};
+
+    #[test]
+    fn multiple_lanes_qualified() {
+        #[derive(swim_agent::AgentLaneModel)]
+        #[agent_root(::swim_agent)]
+        struct MultipleLanes {
+            first: swim_agent::lanes::ValueLane<i32>,
+            second: swim_agent::lanes::MapLane<i32, i32>,
+            third: swim_agent::lanes::ValueLane<i32>,
+            fourth: swim_agent::lanes::MapLane<i32, i32>,
+            fifth: swim_agent::lanes::CommandLane<i32>,
+        }
+
+        check_agent::<MultipleLanes>(
+            vec![persistent("first"), persistent("third"), transient("fifth")],
+            vec![persistent("second"), persistent("fourth")],
+        );
+    }
+}
+
+#[test]
+fn two_types_single_scope() {
+    #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
+    struct First {
+        lane: ValueLane<i32>,
+    }
+
+    #[derive(AgentLaneModel)]
+    #[agent_root(::swim_agent)]
+    struct Second {
+        lane: ValueLane<Text>,
+    }
+
+    check_agent::<First>(vec![persistent("lane")], vec![]);
+    check_agent::<Second>(vec![persistent("lane")], vec![]);
+}

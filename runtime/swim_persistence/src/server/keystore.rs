@@ -97,8 +97,6 @@ pub mod rocks {
 
     #[cfg(feature = "rocks")]
     const DESERIALIZATION_FAILURE: &str = "Failed to deserialize key";
-    #[cfg(feature = "rocks")]
-    const SERIALIZATION_FAILURE: &str = "Failed to serialize key";
 
     #[cfg(feature = "rocks")]
     #[allow(clippy::unnecessary_wraps)]
