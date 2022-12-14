@@ -38,7 +38,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
         let root = model.inner.root;
         let mut new_generics = (*generics).clone();
         super::add_bounds(
-            *generics,
+            generics,
             &mut new_generics,
             parse_quote!(#root::structural::read::recognizer::RecognizerReadable),
         );
@@ -194,7 +194,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
 
         let mut new_generics = (*generics).clone();
         super::add_bounds(
-            *generics,
+            generics,
             &mut new_generics,
             parse_quote!(#root::structural::read::recognizer::RecognizerReadable),
         );
@@ -436,7 +436,7 @@ impl<'a> ToTokens for RecognizerState<'a> {
                             let header_rep = HeaderFieldsState { tag_body: ow, header_fields };
                             let recog_state = HeaderRecognizerState {
                                 root,
-                                target: *target,
+                                target,
                                 tag_body: ow,
                                 header_fields,
                             };
@@ -515,7 +515,7 @@ impl<'a> ToTokens for HeaderRecognizerState<'a> {
 
         let fields_state = HeaderFieldsState {
             tag_body: *tag_body,
-            header_fields: *header_fields,
+            header_fields,
         };
 
         let recognizer_types = it.map(|fld| {
@@ -1237,7 +1237,7 @@ impl<'a> ToTokens for StructReadableImpl<'a> {
         };
 
         let make_fld_recog = ConstructFieldRecognizers {
-            fields: *fields,
+            fields,
             variant: None,
         };
         let num_fields = fields.inner.fields_model.fields.len() as u32;
@@ -1246,7 +1246,7 @@ impl<'a> ToTokens for StructReadableImpl<'a> {
 
         let target = parse_quote!(#name #gen_params);
         let builder = parse_quote!(#builder_name #gen_params);
-        let (recog_ty, vtable_ty) = compound_recognizer(*fields, &target, &builder);
+        let (recog_ty, vtable_ty) = compound_recognizer(fields, &target, &builder);
 
         let select_index = select_index_name();
         let select_feed = select_feed_name();
@@ -1634,9 +1634,9 @@ impl<'a> ToTokens for HeaderRecognizerFns<'a> {
         let (builder_name, select_feed_name, on_reset_name) = header_identifiers(*variant);
 
         let header_builder_type =
-            HeaderRecognizerState::new(root, *target, *tag_body, *header_fields);
-        let select_index = HeaderSelectIndexFn::new(root, *tag_body, *header_fields, *variant);
-        let select_feed = HeaderFeedFn::new(root, *tag_body, *header_fields);
+            HeaderRecognizerState::new(root, target, *tag_body, header_fields);
+        let select_index = HeaderSelectIndexFn::new(root, *tag_body, header_fields, *variant);
+        let select_feed = HeaderFeedFn::new(root, *tag_body, header_fields);
         let num_fields = if tag_body.is_some() {
             header_fields.len() + 1
         } else {

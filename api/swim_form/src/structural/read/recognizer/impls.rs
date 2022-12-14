@@ -210,7 +210,7 @@ impl Recognizer for RetryStrategyRecognizer {
                         ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                     },
                     ReadEvent::EndRecord => Some(Ok(RetryStrategy::immediate(
-                        retries.unwrap_or_else(|| DEFAULT_IMMEDIATE_RETRIES),
+                        retries.unwrap_or(DEFAULT_IMMEDIATE_RETRIES),
                     ))),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
@@ -240,7 +240,7 @@ impl Recognizer for RetryStrategyRecognizer {
                     },
                     ReadEvent::EndRecord => Some(Ok(RetryStrategy::interval(
                         delay.unwrap_or_else(|| Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
-                        retries.unwrap_or_else(|| Quantity::Finite(DEFAULT_INTERVAL_RETRIES)),
+                        retries.unwrap_or(Quantity::Finite(DEFAULT_INTERVAL_RETRIES)),
                     ))),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),

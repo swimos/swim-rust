@@ -124,7 +124,7 @@ impl Text {
             TextInner::Small(len, arr) => {
                 let str_len = string.len();
                 if *len + str_len <= SMALL_SIZE {
-                    (&mut arr[*len..*len + str_len]).clone_from_slice(string.as_bytes());
+                    arr[*len..*len + str_len].clone_from_slice(string.as_bytes());
                     *len += str_len;
                 } else {
                     let mut replacement = small_str(*len, arr).to_string();
@@ -221,7 +221,7 @@ impl From<&Text> for Text {
 
 impl From<&mut Text> for Text {
     fn from(text: &mut Text) -> Self {
-        (&*text).clone()
+        (*text).clone()
     }
 }
 
@@ -529,7 +529,7 @@ where
 fn small_from_str(string: &str) -> Text {
     let len = string.len();
     let mut arr = [0; SMALL_SIZE];
-    (&mut arr[..len]).copy_from_slice(string.as_bytes());
+    arr[..len].copy_from_slice(string.as_bytes());
     Text(TextInner::Small(len, arr))
 }
 

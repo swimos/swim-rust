@@ -138,7 +138,7 @@ impl AgentIntrospectionHandle {
         } = &**inner;
         if aggregate_reporter.is_active() {
             let mut guard = lanes.lock();
-            let lanes_cpy = clear_closed(&mut *guard);
+            let lanes_cpy = clear_closed(&mut guard);
             *current_epoch = epoch.load(Ordering::Relaxed);
             Some(AgentSnapshot {
                 lanes: lanes_cpy,
