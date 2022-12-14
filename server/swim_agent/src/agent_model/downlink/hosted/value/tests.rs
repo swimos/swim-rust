@@ -65,7 +65,7 @@ impl OnLinked<FakeAgent> for FakeLifecycle {
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a self) -> Self::OnLinkedHandler<'a> {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         let state = self.inner.clone();
         SideEffect::from(move || {
             state.lock().push(Event::Linked);
@@ -79,7 +79,7 @@ impl OnUnlinked<FakeAgent> for FakeLifecycle {
     where
         Self: 'a;
 
-    fn on_unlinked<'a>(&'a self) -> Self::OnUnlinkedHandler<'a> {
+    fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         let state = self.inner.clone();
         SideEffect::from(move || {
             state.lock().push(Event::Unlinked);

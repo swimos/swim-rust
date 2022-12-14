@@ -15,7 +15,7 @@
 #![cfg(feature = "rocks")]
 
 use bytes::BytesMut;
-use swim_api::store::PlanePersistence;
+use swim_api::store::{NodePersistence, PlanePersistence};
 use swim_persistence::{
     agent::StoreWrapper,
     rocks::{default_db_opts, default_keyspaces},
@@ -202,7 +202,7 @@ fn clear_map() {
     assert!(node_store.update_map(id, b"b", &[4, 5, 6]).is_ok());
     assert!(node_store.update_map(id, b"c", &[]).is_ok());
 
-    assert!(node_store.clear(id).is_ok());
+    assert!(node_store.clear_map(id).is_ok());
 
     let mut consumer = node_store.read_map(id).expect(GET_MAP_FAILURE);
     assert!(matches!(consumer.consume_next(), Ok(None)));
@@ -260,7 +260,7 @@ fn populate_two_maps_and_clear() {
     assert!(node_store.update_map(id2, b"b", &[4, 5, 6]).is_ok());
     assert!(node_store.update_map(id2, b"c", &[]).is_ok());
 
-    assert!(node_store.clear(id1).is_ok());
+    assert!(node_store.clear_map(id1).is_ok());
 
     let mut consumer1 = node_store.read_map(id1).expect(GET_MAP_FAILURE);
     let mut consumer2 = node_store.read_map(id2).expect(GET_MAP_FAILURE);

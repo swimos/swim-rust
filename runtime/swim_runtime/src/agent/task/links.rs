@@ -197,7 +197,10 @@ impl Links {
 
     /// Get the remotes linked from a specific lane.
     pub fn linked_from(&self, id: u64) -> Option<&HashSet<Uuid>> {
-        self.forward.get(&id).map(|links| &links.remotes)
+        self.forward
+            .get(&id)
+            .map(|links| &links.remotes)
+            .filter(|s| !s.is_empty())
     }
 
     /// Report a single event to the reporter for a lane (if present).

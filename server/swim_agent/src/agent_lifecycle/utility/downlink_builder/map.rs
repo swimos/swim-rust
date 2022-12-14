@@ -20,7 +20,7 @@ use swim_form::Form;
 use swim_model::{address::Address, Text};
 
 use crate::{
-    agent_model::downlink::{hosted::MapDownlinkHandle, OpenMapDownlink},
+    agent_model::downlink::{hosted::MapDownlinkHandle, OpenMapDownlinkAction},
     config::MapDownlinkConfig,
     downlink_lifecycle::{
         map::{
@@ -358,7 +358,7 @@ where
             config,
             inner,
         } = self;
-        OpenMapDownlink::new(address, inner, config)
+        OpenMapDownlinkAction::new(address, inner, config)
     }
 }
 
@@ -569,6 +569,6 @@ where
             config,
             inner,
         } = self;
-        OpenMapDownlink::new(address, inner, config)
+        OpenMapDownlinkAction::new(address, inner, config)
     }
 }

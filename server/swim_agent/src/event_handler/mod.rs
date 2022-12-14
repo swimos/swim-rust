@@ -33,7 +33,13 @@ use swim_utilities::{
 use thiserror::Error;
 use tokio_util::codec::Decoder;
 
-use crate::{agent_model::downlink::handlers::BoxDownlinkChannel, meta::AgentMetadata};
+use crate::{
+    agent_model::downlink::{
+        handlers::BoxDownlinkChannel,
+        hosted::{MapDownlinkHandle, ValueDownlinkHandle},
+    },
+    meta::AgentMetadata,
+};
 
 mod handler_fn;
 mod register_downlink;
@@ -323,6 +329,23 @@ impl<C> StepResult<C> {
 
     fn is_cont(&self) -> bool {
         matches!(self, StepResult::Continue { .. })
+    }
+
+    pub fn map<F, D>(self, f: F) -> StepResult<D>
+    where
+        F: FnOnce(C) -> D,
+    {
+        match self {
+            StepResult::Continue { modified_lane } => StepResult::Continue { modified_lane },
+            StepResult::Fail(err) => StepResult::Fail(err),
+            StepResult::Complete {
+                modified_lane,
+                result,
+            } => StepResult::Complete {
+                modified_lane,
+                result: f(result),
+            },
+        }
     }
 }
 
@@ -877,6 +900,14 @@ pub trait HandlerActionExt<Context>: HandlerAction<Context> {
     {
         FollowedBy::new(self, eff.into())
     }
+
+    /// Create a new handler that runs this handler then discards its result.
+    fn discard(self) -> Discard<Self>
+    where
+        Self: Sized,
+    {
+        Discard::new(self)
+    }
 }
 
 impl<Context, H: HandlerAction<Context>> HandlerActionExt<Context> for H {}
@@ -993,4 +1024,49 @@ where
             }
         }
     }
+}
+
+/// Event handler that runs another handler and discards its result.
+pub struct Discard<H>(H);
+
+impl<H> Discard<H> {
+    pub fn new(handler: H) -> Discard<H> {
+        Discard(handler)
+    }
+}
+
+impl<Context, H: HandlerAction<Context>> HandlerAction<Context> for Discard<H> {
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let Discard(inner) = self;
+        inner.step(action_context, meta, context).map(|_| ())
+    }
+}
+
+/// Shorthand for a handler action that will open a value downlink.
+pub trait OpenValueDownlink<Context, T>:
+    HandlerAction<Context, Completion = ValueDownlinkHandle<T>>
+{
+}
+
+impl<Context, T, H> OpenValueDownlink<Context, T> for H where
+    H: HandlerAction<Context, Completion = ValueDownlinkHandle<T>>
+{
+}
+
+/// Shorthand for a handler action that will open a map downlink.
+pub trait OpenMapDownlink<Context, K, V>:
+    HandlerAction<Context, Completion = MapDownlinkHandle<K, V>>
+{
+}
+
+impl<Context, K, V, H> OpenMapDownlink<Context, K, V> for H where
+    H: HandlerAction<Context, Completion = MapDownlinkHandle<K, V>>
+{
 }

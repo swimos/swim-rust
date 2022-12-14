@@ -48,6 +48,8 @@ pub struct FakeStore {
     inner: Arc<Mutex<FakeStoreInner>>,
 }
 
+type ByteMap = HashMap<Vec<u8>, Vec<u8>>;
+
 impl FakeStore {
     pub fn new<'a, I: IntoIterator<Item = &'a str>>(valid: I) -> Self {
         let inner = FakeStoreInner {
@@ -77,7 +79,7 @@ impl FakeStore {
         }
     }
 
-    pub fn get_map(&self, id: u64) -> Result<Option<HashMap<Vec<u8>, Vec<u8>>>, StoreError> {
+    pub fn get_map(&self, id: u64) -> Result<Option<ByteMap>, StoreError> {
         let mut guard = self.inner.lock();
         let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
         if !ids_back.contains_key(&id) {
@@ -236,7 +238,7 @@ impl NodePersistence for FakeStore {
     where
         Self: 'a;
 
-    fn read_map<'a>(&'a self, id: Self::LaneId) -> Result<Self::MapCon<'a>, StoreError> {
+    fn read_map(&self, id: Self::LaneId) -> Result<Self::MapCon<'_>, StoreError> {
         let mut guard = self.inner.lock();
         let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
         if !ids_back.contains_key(&id) {
