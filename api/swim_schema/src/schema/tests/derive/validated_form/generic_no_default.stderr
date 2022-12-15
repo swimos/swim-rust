@@ -40,7 +40,7 @@ error[E0277]: the trait bound `S<Invalid>: RecognizerReadable` is not satisfied
              (T0, T1, T2, T3, T4, T5, T6)
              (T0, T1, T2, T3, T4, T5, T6, T7)
            and $N others
-   = note: required because of the requirements on the impl of `StructuralReadable` for `S<Invalid>`
+   = note: required for `S<Invalid>` to implement `StructuralReadable`
 note: required by a bound in `as_value`
   --> $WORKSPACE/api/swim_form/src/lib.rs
    |
