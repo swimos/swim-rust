@@ -17,6 +17,15 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_num::non_zero_usize;
 
+macro_rules! non_zero_usize {
+    (0) => {
+        compile_error!("Must be non-zero")
+    };
+    ($n:literal) => {
+        unsafe { std::num::NonZeroUsize::new_unchecked($n) }
+    };
+}
+
 pub const DEFAULT_EXPONENTIAL_MAX_INTERVAL: Duration = Duration::from_secs(16);
 pub const DEFAULT_EXPONENTIAL_MAX_BACKOFF: Duration = Duration::from_secs(300);
 pub const DEFAULT_IMMEDIATE_RETRIES: NonZeroUsize = non_zero_usize!(16);

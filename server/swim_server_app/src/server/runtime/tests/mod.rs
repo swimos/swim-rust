@@ -15,7 +15,8 @@
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    time::Duration, num::NonZeroUsize,
+    num::NonZeroUsize,
+    time::Duration,
 };
 
 use bytes::BytesMut;

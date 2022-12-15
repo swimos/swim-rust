@@ -46,7 +46,7 @@ use swim_runtime::{
     net::{dns::DnsResolver, BadUrl, SchemeHostPort, SchemeSocketAddr},
 };
 use swim_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter, BudgetedFutureExt},
+    io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter},
     trigger,
 };
 use thiserror::Error;
@@ -82,9 +82,12 @@ impl<Dns> DownlinkConnectionTask<Dns> {
     /// * `connector` - Communication channels between this task and the main server task.
     /// * `config` - Configuration for downlink runtime tasks.
     /// * `dns` - DNS resolver implementation.
-    pub fn new(connector: DownlinksConnector, 
+    pub fn new(
+        connector: DownlinksConnector,
         coop_budget: Option<NonZeroUsize>,
-        config: DownlinkRuntimeConfig, dns: Dns) -> Self {
+        config: DownlinkRuntimeConfig,
+        dns: Dns,
+    ) -> Self {
         DownlinkConnectionTask {
             connector,
             coop_budget,
@@ -309,13 +312,17 @@ where
                             handle.insert(key.clone(), attach_tx.clone());
                             let key_cpy = key.clone();
                             tasks.push(
-                                tokio::spawn(runtime.run(connector.stop_handle(), config).with_budget_or_default(coop_budget))
-                                    .map(move |result| Event::RuntimeTerminated {
-                                        socket_addr: remote_address,
-                                        key: key_cpy,
-                                        result,
-                                    })
-                                    .boxed(),
+                                tokio::spawn(
+                                    runtime
+                                        .run(connector.stop_handle(), config)
+                                        .with_budget_or_default(coop_budget),
+                                )
+                                .map(move |result| Event::RuntimeTerminated {
+                                    socket_addr: remote_address,
+                                    key: key_cpy,
+                                    result,
+                                })
+                                .boxed(),
                             );
 
                             for request in pending.dl_ready(remote_address, &key) {

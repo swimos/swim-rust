@@ -488,11 +488,7 @@ where
                     let agent_tasks_ref = &agent_tasks;
                     let result = agents.resolve_agent(node, move |name, route_task| {
                         let task = route_task.run_agent_with_store(node_store);
-                        agent_tasks_ref.push(attach_node(
-                            name,
-                            config.channel_coop_budget,
-                            task,
-                        ));
+                        agent_tasks_ref.push(attach_node(name, config.channel_coop_budget, task));
                     });
                     match result {
                         Ok((agent_id, agent_tx)) => {
@@ -580,11 +576,7 @@ where
                     let node_store = plane_store.node_store(node.as_str())?;
                     let result = agents.resolve_agent(node, |name, route_task| {
                         let task = route_task.run_agent_with_store(node_store);
-                        agent_tasks.push(attach_node(
-                            name,
-                            config.channel_coop_budget,
-                            task,
-                        ));
+                        agent_tasks.push(attach_node(name, config.channel_coop_budget, task));
                     });
                     match result {
                         Ok((agent_id, agent_tx)) => {

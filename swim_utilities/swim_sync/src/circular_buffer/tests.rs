@@ -16,13 +16,13 @@ use crate::circular_buffer::error::{RecvError, SendError};
 use crate::circular_buffer::{InternalQueue, OneItemQueue, LARGE_BOUNDARY};
 use futures::task::ArcWake;
 use futures::StreamExt;
-use swim_num::non_zero_usize;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use swim_num::non_zero_usize;
 use tokio::sync::Barrier;
 
 static LARGE_BOUNDARY_INC: NonZeroUsize = large();
