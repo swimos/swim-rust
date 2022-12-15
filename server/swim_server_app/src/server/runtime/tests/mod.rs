@@ -15,6 +15,7 @@
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    num::NonZeroUsize,
     time::Duration,
 };
 
@@ -82,7 +83,7 @@ struct DlTestContext {
 
 const NODE: &str = "/node";
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
-const BUFFER_SIZE: usize = 4096;
+const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 fn remote_addr(p: u8) -> SocketAddr {
     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 0, p)), 50000)
 }
@@ -326,7 +327,7 @@ async fn message_for_nonexistent_agent() {
     let (result, _) = run_server(|mut context| async move {
         let TestContext { incoming_tx, .. } = &context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -357,7 +358,7 @@ async fn command_to_agent() {
             ..
         } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -388,7 +389,7 @@ async fn commands_to_agent() {
             ..
         } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -416,7 +417,7 @@ async fn link_to_agent_lane() {
     let (result, _) = run_server(|mut context| async move {
         let TestContext { incoming_tx, .. } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -444,7 +445,7 @@ async fn sync_with_agent_lane() {
     let (result, _) = run_server(|mut context| async move {
         let TestContext { incoming_tx, .. } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -473,7 +474,7 @@ async fn trigger_event() {
     let (result, _) = run_server(|mut context| async move {
         let TestContext { incoming_tx, .. } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -509,8 +510,8 @@ async fn broadcast_events() {
             ..
         } = &mut context;
 
-        let (client_sock1, server_sock1) = duplex(BUFFER_SIZE);
-        let (client_sock2, server_sock2) = duplex(BUFFER_SIZE);
+        let (client_sock1, server_sock1) = duplex(BUFFER_SIZE.get());
+        let (client_sock2, server_sock2) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock1))
@@ -578,7 +579,7 @@ async fn explicit_unlink_from_agent_lane() {
     let (result, _) = run_server(|mut context| async move {
         let TestContext { incoming_tx, .. } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -617,7 +618,7 @@ async fn agent_timeout() {
             ..
         } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -690,7 +691,7 @@ async fn open_new_client() {
     let host_str = host.to_string();
     let sock_addr: SocketAddr = "192.168.0.1:40000".parse().unwrap();
     let mut remotes = HashMap::new();
-    let (_remote, client) = duplex(BUFFER_SIZE);
+    let (_remote, client) = duplex(BUFFER_SIZE.get());
     remotes.insert(sock_addr, client);
 
     let (result, _) =
@@ -762,8 +763,8 @@ async fn downlink_to_local() {
                 downlink_connector,
             } = context;
 
-            let (tx_in, _rx_in) = byte_channel(non_zero_usize!(BUFFER_SIZE));
-            let (_tx_out, rx_out) = byte_channel(non_zero_usize!(BUFFER_SIZE));
+            let (tx_in, _rx_in) = byte_channel(BUFFER_SIZE);
+            let (_tx_out, rx_out) = byte_channel(BUFFER_SIZE);
             let (done_tx, done_rx) = oneshot::channel();
             assert!(downlink_connector
                 .local_handle()
@@ -807,8 +808,8 @@ async fn downlink_to_local_nonexistent() {
                 downlink_connector,
             } = context;
 
-            let (tx_in, _rx_in) = byte_channel(non_zero_usize!(BUFFER_SIZE));
-            let (_tx_out, rx_out) = byte_channel(non_zero_usize!(BUFFER_SIZE));
+            let (tx_in, _rx_in) = byte_channel(BUFFER_SIZE);
+            let (_tx_out, rx_out) = byte_channel(BUFFER_SIZE);
             let (done_tx, done_rx) = oneshot::channel();
             assert!(downlink_connector
                 .local_handle()

@@ -36,7 +36,6 @@ use swim_utilities::future::retryable::strategy::{
     DEFAULT_INTERVAL_DELAY, DEFAULT_INTERVAL_RETRIES,
 };
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
-use swim_utilities::non_zero_usize;
 use url::Url;
 
 enum RetryStrategyStage {
@@ -212,11 +211,9 @@ impl Recognizer for RetryStrategyRecognizer {
                         }
                         ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                     },
-                    ReadEvent::EndRecord => {
-                        Some(Ok(RetryStrategy::immediate(retries.unwrap_or_else(|| {
-                            non_zero_usize!(DEFAULT_IMMEDIATE_RETRIES)
-                        }))))
-                    }
+                    ReadEvent::EndRecord => Some(Ok(RetryStrategy::immediate(
+                        retries.unwrap_or(DEFAULT_IMMEDIATE_RETRIES),
+                    ))),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
                         ExpectedEvent::EndOfRecord,
@@ -245,9 +242,7 @@ impl Recognizer for RetryStrategyRecognizer {
                     },
                     ReadEvent::EndRecord => Some(Ok(RetryStrategy::interval(
                         delay.unwrap_or_else(|| Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
-                        retries.unwrap_or_else(|| {
-                            Quantity::Finite(non_zero_usize!(DEFAULT_INTERVAL_RETRIES))
-                        }),
+                        retries.unwrap_or(Quantity::Finite(DEFAULT_INTERVAL_RETRIES)),
                     ))),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
