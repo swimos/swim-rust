@@ -82,12 +82,15 @@ pub mod server {
 /// attached to an agent. An agent, and its lanes have associated lifecycle events (for example, the
 /// `on_start` event that triggers when an instance of the agent starts.)
 ///
+/// # The [`crate::agent::lifecycle`] Macro
+///
 /// [`crate::agent::agent_lifecycle::AgentLifecycle`]s can be created for an agent using the attribute
 /// macro [`crate::agent::lifecycle`]. To create a trivial lifecycle (that does nothing), create a new
 /// type and attach the attribute to an impl block:
 ///
 /// ```no_run
 /// use swim::agent::{AgentLaneModel, lifecycle};
+/// use swim::agent::lanes::ValueLane;
 ///
 /// #[derive(AgentLaneModel)]
 /// struct ExampleAgent {
@@ -111,6 +114,7 @@ pub mod server {
 /// use swim::agent::{AgentLaneModel, lifecycle};
 /// use swim::agent::agent_lifecycle::utility::HandlerContext;
 /// use swim::agent::event_handler::EventHandler;
+/// use swim::agent::lanes::ValueLane;
 ///
 /// #[derive(AgentLaneModel)]
 /// struct ExampleAgent {
@@ -130,6 +134,30 @@ pub mod server {
 /// ```
 ///
 /// For full instructions on implementing agents and lifecycles, please see the crate level documentation.
+///
+/// # The [`crate::agent::projections`] Macro
+///
+/// Many [`crate::agent::event_handler::EventHandler`]s that operate on agents' lanes required projections
+/// onto the fields of an agent type (a function taking a reference to the agent type and returning a
+/// reference to the lane of interest). These can be tedious to write and make coder harder to read.
+/// Therefore, the [`crate::agent::projections`] is provided to generate projections for all fields
+/// of a struct as constant members of the type. The names of the projections will be the names of
+/// the corresponding fields in upper case. For example:
+///
+/// ```no_run
+/// use swim::agent::projections;
+/// use swim::agent::lanes::{ValueLane, MapLane};
+///
+/// #[projections]
+/// struct ExampleAgent {
+///     value_lane: ValueLane<i32>,
+///     map_lane: MapLane<String, i32>,
+/// }
+/// ```
+///
+/// This will generate constants called `VALUE_LANE` and `MAP_LANE` with types
+/// `fn(&ExampleAgent) -> &ValueLane<i32>` and `fn(&ExampleAgent) -> &MapLane<String, i32>`,
+/// respectively.
 ///
 #[cfg(feature = "agent")]
 pub mod agent;
