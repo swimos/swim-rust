@@ -97,6 +97,7 @@ pub mod server {
 ///     lane: ValueLane<i32>
 /// }
 ///
+/// #[derive(Clone, Copy)]
 /// struct ExampleLifecycle;
 ///
 /// #[lifecycle(ExampleAgent)]
@@ -121,6 +122,7 @@ pub mod server {
 ///     lane: ValueLane<i32>
 /// }
 ///
+/// #[derive(Clone, Copy)]
 /// struct ExampleLifecycle;
 ///
 /// #[lifecycle(ExampleAgent)]
