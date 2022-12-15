@@ -28,7 +28,8 @@ use crate::{
     },
     error::InvalidKey,
     pressure::{
-        recon::MapOperationReconEncoder, BackpressureStrategy, MapBackpressure, ValueBackpressure,
+        recon::MapOperationReconEncoder, BackpressureStrategy, MapBackpressure, SupplyBackpressure,
+        ValueBackpressure,
     },
 };
 
@@ -48,6 +49,7 @@ use super::{LaneRegistry, RemoteSender};
 pub struct Uplinks {
     writer: Option<(RemoteSender, BytesMut)>, //Holds the sender and associated buffer when it has not been leant out.
     value_uplinks: HashMap<u64, Uplink<ValueBackpressure>>, //Uplinks for value lanes.
+    supply_uplinks: HashMap<u64, Uplink<SupplyBackpressure>>, //Uplinks for supply lanes.
     map_uplinks: HashMap<u64, Uplink<MapBackpressure>>, //Uplinks for map lanes.
     write_queue: VecDeque<(UplinkKind, u64)>, //Queue tracking which uplink should be written next.
     special_queue: VecDeque<SpecialAction>, //Queue of special actions (primarily link/unlink messages) which take precedence over uplinks.
@@ -61,6 +63,8 @@ pub enum UplinkResponse {
     Synced(UplinkKind),
     /// An event message for a value type lane.
     Value(Bytes),
+    /// An event message for a supply value type lane.
+    Supply(Bytes),
     /// An event message for a map type lane.
     Map(MapOperation<BytesMut, BytesMut>),
 }
@@ -85,6 +89,7 @@ impl Uplinks {
         Uplinks {
             writer: Some((sender, Default::default())),
             value_uplinks: Default::default(),
+            supply_uplinks: Default::default(),
             map_uplinks: Default::default(),
             write_queue: Default::default(),
             special_queue: Default::default(),
@@ -105,6 +110,7 @@ impl Uplinks {
         let Uplinks {
             writer,
             value_uplinks,
+            supply_uplinks,
             map_uplinks,
             special_queue,
             ..
@@ -116,6 +122,7 @@ impl Uplinks {
         } else {
             if let SpecialAction::Unlinked { lane_id, .. } = &action {
                 value_uplinks.remove(lane_id);
+                supply_uplinks.remove(lane_id);
                 map_uplinks.remove(lane_id);
             }
             special_queue.push_back(action);
@@ -137,6 +144,7 @@ impl Uplinks {
         let Uplinks {
             writer,
             value_uplinks,
+            supply_uplinks,
             map_uplinks,
             write_queue,
             ..
@@ -157,6 +165,18 @@ impl Uplinks {
                     backpressure.push_bytes(body);
                     if !*queued {
                         write_queue.push_back((UplinkKind::Value, lane_id));
+                        *queued = true;
+                    }
+                }
+                UplinkResponse::Supply(body) => {
+                    let Uplink {
+                        queued,
+                        backpressure,
+                        ..
+                    } = supply_uplinks.entry(lane_id).or_default();
+                    backpressure.push_bytes(body);
+                    if !*queued {
+                        write_queue.push_back((UplinkKind::Supply, lane_id));
                         *queued = true;
                     }
                 }
@@ -181,6 +201,18 @@ impl Uplinks {
                     *send_synced = true;
                     if !*queued {
                         write_queue.push_back((UplinkKind::Value, lane_id));
+                        *queued = true;
+                    }
+                }
+                UplinkResponse::Synced(UplinkKind::Supply) => {
+                    let Uplink {
+                        queued,
+                        send_synced,
+                        ..
+                    } = supply_uplinks.entry(lane_id).or_default();
+                    *send_synced = true;
+                    if !*queued {
+                        write_queue.push_back((UplinkKind::Supply, lane_id));
                         *queued = true;
                     }
                 }
@@ -216,6 +248,7 @@ impl Uplinks {
         let Uplinks {
             writer,
             value_uplinks,
+            supply_uplinks,
             map_uplinks,
             write_queue,
             special_queue,
@@ -252,6 +285,37 @@ impl Uplinks {
                                     registry.name_for(lane_id).expect(UNREGISTERED_LANE);
                                 sender.update_lane(lane_name);
                                 break Some(WriteTask::new(sender, buffer, action));
+                            }
+                        }
+                        UplinkKind::Supply => {
+                            if let Some(Uplink {
+                                queued,
+                                send_synced,
+                                backpressure,
+                            }) = supply_uplinks.get_mut(&lane_id)
+                            {
+                                let synced = std::mem::replace(send_synced, false);
+
+                                let had_data = backpressure.has_data();
+                                backpressure.prepare_write(&mut buffer);
+                                if backpressure.has_data() {
+                                    write_queue.push_back((UplinkKind::Supply, lane_id));
+                                } else {
+                                    *queued = false;
+                                }
+                                let maybe_action = if synced {
+                                    Some(WriteAction::ValueSynced(had_data))
+                                } else if had_data {
+                                    Some(WriteAction::Event)
+                                } else {
+                                    None
+                                };
+                                if let Some(action) = maybe_action {
+                                    let lane_name =
+                                        registry.name_for(lane_id).expect(UNREGISTERED_LANE);
+                                    sender.update_lane(lane_name);
+                                    break Some(WriteTask::new(sender, buffer, action));
+                                }
                             }
                         }
                         UplinkKind::Map => {
@@ -319,9 +383,11 @@ fn write_to_buffer(
     buffer: &mut BytesMut,
 ) -> Result<WriteAction, InvalidKey> {
     let action = match response {
-        UplinkResponse::Synced(UplinkKind::Value) => WriteAction::ValueSynced(false),
+        UplinkResponse::Synced(UplinkKind::Value | UplinkKind::Supply) => {
+            WriteAction::ValueSynced(false)
+        }
         UplinkResponse::Synced(UplinkKind::Map) => WriteAction::MapSynced(None),
-        UplinkResponse::Value(body) => {
+        UplinkResponse::Value(body) | UplinkResponse::Supply(body) => {
             buffer.clear();
             buffer.reserve(body.len());
             buffer.put(body);

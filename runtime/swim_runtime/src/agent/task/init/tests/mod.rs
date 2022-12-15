@@ -107,11 +107,11 @@ fn check_connected(first: &mut Io, second: &mut Io) {
 }
 
 #[derive(Default)]
-struct DummtInit {
+struct DummyInit {
     error: Option<StoreInitError>,
 }
 
-impl<'a> Initializer<'a> for DummtInit {
+impl<'a> Initializer<'a> for DummyInit {
     fn initialize<'b>(self: Box<Self>, writer: &'b mut ByteWriter) -> InitFut<'b>
     where
         'a: 'b,
@@ -147,7 +147,7 @@ async fn run_initializer_success() {
             LANE_INIT_TIMEOUT,
             tx_in,
             rx_out,
-            Box::new(DummtInit::default()),
+            Box::new(DummyInit::default()),
         );
 
         let test_task = async {
@@ -184,7 +184,7 @@ async fn run_initializer_failed_init() {
     tokio::time::timeout(TEST_TIMEOUT, async {
         let (tx_in, _rx_in) = byte_channel(BUFFER_SIZE);
         let (_tx_out, rx_out) = byte_channel(BUFFER_SIZE);
-        let init = DummtInit {
+        let init = DummyInit {
             error: Some(StoreInitError::Store(StoreError::KeyspaceNotFound)),
         };
         let init_task = super::lane_initialization(
@@ -222,7 +222,7 @@ async fn run_initializer_bad_response() {
             LANE_INIT_TIMEOUT,
             tx_in,
             rx_out,
-            Box::new(DummtInit::default()),
+            Box::new(DummyInit::default()),
         );
 
         let test_task = async {
@@ -271,7 +271,7 @@ async fn run_initializer_timeout() {
             Duration::from_millis(100),
             tx_in,
             rx_out,
-            Box::new(DummtInit::default()),
+            Box::new(DummyInit::default()),
         );
 
         let test_task = async {

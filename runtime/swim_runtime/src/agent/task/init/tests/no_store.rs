@@ -336,6 +336,7 @@ async fn two_lanes() {
                     assert_eq!(name, "map_lane");
                     check_connected(&mut map, &mut io);
                 }
+                _ => panic!("Unexpected supply uplink."),
             }
         }
     }

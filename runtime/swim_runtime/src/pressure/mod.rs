@@ -14,7 +14,7 @@
 
 use std::{convert::Infallible, fmt::Display};
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use swim_api::protocol::{
     downlink::DownlinkOperation,
     map::{RawMapOperation, RawMapOperationMut},
@@ -29,6 +29,9 @@ pub mod recon;
 use recon::MapOperationReconEncoder;
 
 use crate::error::InvalidKey;
+
+#[cfg(test)]
+mod tests;
 
 /// Backpressure strategy for the output task of a downlink. This is used to encode the
 /// difference in behaviour between different kinds of downlink (particuarly value and
@@ -53,7 +56,7 @@ pub trait BackpressureStrategy {
     fn prepare_write(&mut self, buffer: &mut BytesMut);
 }
 
-/// Backpressure implementation for value-like downlinks. This contains a buffer which
+/// Backpressure implementation for value-like uplinks/downlinks. This contains a buffer which
 /// is repeatedly overwritten each time a new record is pushed.
 #[derive(Debug, Default)]
 pub struct ValueBackpressure {
@@ -74,7 +77,30 @@ impl ValueBackpressure {
     }
 }
 
-/// Backpressure implementation for map-like downlinks. Map updates are pushed into a
+/// Backpressure implementation for supply uplinks. This, in fact, provides no backpressure
+/// relief at all and is simply an unbounded buffer.
+#[derive(Debug, Default)]
+pub struct SupplyBackpressure {
+    buffer: BytesMut,
+}
+
+const LEN_SIZE: usize = std::mem::size_of::<u64>();
+
+impl SupplyBackpressure {
+    pub fn push_bytes(&mut self, body: Bytes) {
+        let SupplyBackpressure { buffer } = self;
+        buffer.reserve(body.len() + LEN_SIZE);
+        let len = u64::try_from(body.len()).expect("Length does not fit into a u64.");
+        buffer.put_u64(len);
+        buffer.put(body);
+    }
+
+    pub fn has_data(&self) -> bool {
+        !self.buffer.is_empty()
+    }
+}
+
+/// Backpressure implementation for map-like uplinks/downlinks. Map updates are pushed into a
 /// [`MapOperationQueue`] that relieves backpressure on a per-key basis.
 #[derive(Debug, Default)]
 pub struct MapBackpressure {
@@ -116,7 +142,40 @@ impl BackpressureStrategy for ValueBackpressure {
 
     fn prepare_write(&mut self, buffer: &mut BytesMut) {
         std::mem::swap(&mut self.current, buffer);
-        self.current.clear()
+        self.current.clear();
+    }
+}
+
+impl BackpressureStrategy for SupplyBackpressure {
+    type Operation = DownlinkOperation<Bytes>;
+
+    type Err = Infallible;
+
+    fn push_operation(&mut self, op: Self::Operation) -> Result<(), Self::Err> {
+        let DownlinkOperation { body } = op;
+        self.push_bytes(body);
+        Ok(())
+    }
+
+    fn write_direct(&mut self, op: Self::Operation, buffer: &mut BytesMut) {
+        let DownlinkOperation { body } = op;
+        buffer.clear();
+        buffer.reserve(body.len());
+        buffer.put(body);
+    }
+
+    fn has_data(&self) -> bool {
+        SupplyBackpressure::has_data(self)
+    }
+
+    fn prepare_write(&mut self, target: &mut BytesMut) {
+        target.clear();
+        if self.has_data() {
+            let SupplyBackpressure { buffer } = self;
+            let len = usize::try_from(buffer.get_u64()).expect("u64 does not fit into a usize.");
+            target.reserve(len);
+            target.put((buffer).take(len));
+        }
     }
 }
 
