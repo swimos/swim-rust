@@ -15,6 +15,6 @@ rand = { workspace = true }
 swim_num = { path = "../swim_num"}
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["sync", "rt", "macros"] }
+tokio = { workspace = true, features = ["sync", "time", "rt", "macros"] }
 tokio-stream = { workspace = true }
 parking_lot = { workspace = true }
