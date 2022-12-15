@@ -33,7 +33,7 @@ impl<T: Display + Debug> Display for Address<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Address(host = {:?}, ode = {}, lane = {})",
+            "Address(host = {:?}, node = {}, lane = {})",
             self.host, self.node, self.lane
         )
     }
