@@ -113,9 +113,11 @@ impl Display for SchemeSocketAddr {
 
 /// Trait for servers that listen for incoming remote connections. This is primarily used to
 /// abstract over [`std::net::TcpListener`] for testing purposes.
-pub trait Listener {
-    type Socket: Unpin + Send + Sync + 'static;
-    type AcceptStream: FusedStream<Item = IoResult<(Self::Socket, SchemeSocketAddr)>>
+pub trait Listener<Socket>
+where
+    Socket: Unpin + Send + Sync + 'static,
+{
+    type AcceptStream: FusedStream<Item = IoResult<(Socket, SchemeSocketAddr)>>
         + Send
         + Sync
         + Unpin;
@@ -183,7 +185,7 @@ impl<'a> TryFrom<&'a Url> for SchemeHostPort {
 /// used to abstract over [`std::net::TcpListener`] and [`std::net::TcpStream`] for testing purposes.
 pub trait ExternalConnections: Clone + Send + Sync + 'static {
     type Socket: Unpin + Send + Sync + 'static;
-    type ListenerType: Listener<Socket = Self::Socket> + Send + Sync;
+    type ListenerType: Listener<Self::Socket> + Send + Sync;
 
     fn bind(
         &self,

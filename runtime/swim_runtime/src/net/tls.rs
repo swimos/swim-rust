@@ -61,8 +61,7 @@ pub(crate) enum MaybeTlsListener {
     Tls(TlsListener),
 }
 
-impl Listener for MaybeTlsListener {
-    type Socket = Either<TcpStream, TlsStream>;
+impl Listener<Either<TcpStream, TlsStream>> for MaybeTlsListener {
     type AcceptStream = Fuse<EitherStream>;
 
     fn into_stream(self) -> Self::AcceptStream {
@@ -172,8 +171,7 @@ impl ExternalConnections for TokioNetworking {
     }
 }
 
-impl Listener for TlsListener {
-    type Socket = TlsStream;
+impl Listener<TlsStream> for TlsListener {
     type AcceptStream = Fuse<Self>;
 
     fn into_stream(self) -> Self::AcceptStream {

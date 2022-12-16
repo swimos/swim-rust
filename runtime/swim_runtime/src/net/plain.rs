@@ -86,8 +86,7 @@ impl Stream for WithPeer {
     }
 }
 
-impl Listener for TcpListener {
-    type Socket = TcpStream;
+impl Listener<TcpStream> for TcpListener {
     type AcceptStream = Fuse<WithPeer>;
 
     fn into_stream(self) -> Self::AcceptStream {

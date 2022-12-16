@@ -176,10 +176,8 @@ impl ExternalConnections for TestConnections {
 
 pub type BoxedAcc<T> = Pin<Box<dyn Stream<Item = T> + Send + Sync + 'static>>;
 
-impl Listener for TestListener {
-    type Socket = DuplexStream;
-
-    type AcceptStream = Fuse<BoxedAcc<io::Result<(Self::Socket, SchemeSocketAddr)>>>;
+impl Listener<DuplexStream> for TestListener {
+    type AcceptStream = Fuse<BoxedAcc<io::Result<(DuplexStream, SchemeSocketAddr)>>>;
 
     fn into_stream(self) -> Self::AcceptStream {
         self.0.fuse()
