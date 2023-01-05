@@ -19,8 +19,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
 
-use either::Either;
+use futures::TryStreamExt;
 use futures::future::BoxFuture;
+use futures::future::Either;
 use futures::stream::unfold;
 use futures::stream::BoxStream;
 use futures::stream::Fuse;
@@ -28,6 +29,9 @@ use futures::stream::FuturesUnordered;
 use futures::Future;
 use futures::StreamExt;
 use futures::Stream;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
+use tokio::io::ReadBuf;
 use tokio::macros::support::Poll;
 use tokio::net::{TcpListener, TcpStream};
 
@@ -51,12 +55,60 @@ pub type TlsHandshakeResult = IoResult<(TlsStream, SocketAddr)>;
 
 type BoxListenerStream<Socket> = BoxStream<'static, ListenerResult<(Socket, SchemeSocketAddr)>>;
 
-impl Listener<TlsStream> for TlsListener {
-    type AcceptStream = Fuse<BoxListenerStream<TlsStream>>;
+#[pin_project(project = MaybeTlsProj)]
+pub enum MaybeTlsStream {
+    Plain(#[pin] TcpStream),
+    Tls(#[pin] TlsStream),
+}
+
+impl AsyncRead for MaybeTlsStream {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        match self.project() {
+            MaybeTlsProj::Plain(s) => s.poll_read(cx, buf),
+            MaybeTlsProj::Tls(s) => s.poll_read(cx, buf),
+        }
+    }
+}
+
+impl AsyncWrite for MaybeTlsStream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        match self.project() {
+            MaybeTlsProj::Plain(s) => s.poll_write(cx, buf),
+            MaybeTlsProj::Tls(s) => s.poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        match self.project() {
+            MaybeTlsProj::Plain(s) => s.poll_flush(cx),
+            MaybeTlsProj::Tls(s) => s.poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        match self.project() {
+            MaybeTlsProj::Plain(s) => s.poll_shutdown(cx),
+            MaybeTlsProj::Tls(s) => s.poll_shutdown(cx),
+        }
+    }
+}
+
+impl Listener<MaybeTlsStream> for TlsListener {
+    type AcceptStream = Fuse<BoxListenerStream<MaybeTlsStream>>;
 
     fn into_stream(self) -> Self::AcceptStream {
         let TlsListener { listener, acceptor } = self;
-        tls_accept_stream(listener, acceptor).boxed().fuse()
+        tls_accept_stream(listener, acceptor)
+            .map_ok(|(sock, addr)| (MaybeTlsStream::Tls(sock), addr))
+            .boxed().fuse()
     }
 }
 
@@ -83,7 +135,7 @@ impl TokioTlsNetworking {
 }
 
 impl ExternalConnections for TokioTlsNetworking {
-    type Socket = TlsStream;
+    type Socket = MaybeTlsStream;
     type ListenerType = TlsListener;
 
     fn bind(
@@ -113,6 +165,7 @@ impl ExternalConnections for TokioTlsNetworking {
             stream
                 .connect(&host, socket)
                 .await
+                .map(MaybeTlsStream::Tls)
                 .map_err(|e| io::Error::new(ErrorKind::ConnectionRefused, e.to_string()))
         })
     }
