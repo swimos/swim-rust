@@ -40,7 +40,7 @@ use swim_runtime::agent::{
 };
 use swim_utilities::routing::route_uri::RouteUri;
 
-use swim_runtime::net::{BadUrl, ExternalConnections, Listener, SchemeSocketAddr, ListenerError};
+use swim_runtime::net::{BadUrl, ExternalConnections, Listener, SchemeSocketAddr, ListenerError, Scheme};
 use swim_runtime::ws::{RatchetError, WsConnections};
 use swim_utilities::io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
 use swim_utilities::routing::route_pattern::RoutePattern;
@@ -977,7 +977,8 @@ where
     let mut conn_failures = vec![];
     let mut sock = None;
     for addr in addrs {
-        match networking.try_open(addr).await {
+        //TODO Pass scheme properly.
+        match networking.try_open(SchemeSocketAddr::new(Scheme::Ws, addr)).await {
             Ok(socket) => {
                 sock = Some((addr, socket));
                 break;

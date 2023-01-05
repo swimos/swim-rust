@@ -59,8 +59,8 @@ impl ExternalConnections for TokioPlainTextNetworking {
         bind_to(addr).boxed()
     }
 
-    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>> {
-        TcpStream::connect(addr).boxed()
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>> {
+        TcpStream::connect(addr.addr).boxed()
     }
 
     fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>> {

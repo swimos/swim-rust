@@ -151,10 +151,10 @@ impl ExternalConnections for TokioTlsNetworking {
         })
     }
 
-    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>> {
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>> {
         Box::pin(async move {
-            let host = addr.to_string();
-            let socket = TcpStream::connect(addr).await?;
+            let host = addr.addr.to_string();
+            let socket = TcpStream::connect(addr.addr).await?;
             let tls_conn_builder = NativeTlsConnector::builder();
 
             let connector = tls_conn_builder

@@ -149,12 +149,12 @@ impl ExternalConnections for TestConnections {
         .boxed()
     }
 
-    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, io::Result<Self::Socket>> {
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, io::Result<Self::Socket>> {
         let sender = self.requests.clone();
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(ConnReq::Remote(addr, tx))
+                .send(ConnReq::Remote(addr.addr, tx))
                 .await
                 .expect("Channel closed.");
             rx.await.expect("Connections task stopped.")
