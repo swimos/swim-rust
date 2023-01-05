@@ -61,7 +61,7 @@ use swim_messages::protocol::{Operation, Path, RawRequestMessageDecoder, Request
 use swim_model::path::RelativePath;
 use swim_model::Text;
 use swim_recon::parser::MessageExtractError;
-use swim_utilities::future::{immediate_or_join, StopAfterError, SwimStreamExt};
+use swim_utilities::future::{immediate_or_join, StopAfterError};
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swim_utilities::trigger::{self, promise};
 use tokio::sync::{mpsc, oneshot};
@@ -182,15 +182,15 @@ impl LaneEndpoint<ByteReader> {
         Ok(match kind {
             UplinkKind::Value => {
                 let receiver = ValueLikeLaneReceiver::value(id, store_id, reader);
-                Either::Left(receiver).stop_after_error()
+                StopAfterError::new(Either::Left(receiver))
             }
             UplinkKind::Supply => {
                 let receiver = ValueLikeLaneReceiver::supply(id, store_id, reader);
-                Either::Left(receiver).stop_after_error()
+                StopAfterError::new(Either::Left(receiver))
             }
             UplinkKind::Map => {
                 let receiver = MapLaneReceiver::new(id, store_id, reader);
-                Either::Right(receiver).stop_after_error()
+                StopAfterError::new(Either::Right(receiver))
             }
         })
     }
@@ -943,7 +943,7 @@ async fn read_task(
                     on_attached,
                 } => {
                     info!("Reading from new remote endpoint.");
-                    let rx = remote_receiver(reader).stop_after_error();
+                    let rx = StopAfterError::new(remote_receiver(reader));
                     remotes.push(rx);
                     if let Some(on_attached) = on_attached {
                         on_attached.trigger();

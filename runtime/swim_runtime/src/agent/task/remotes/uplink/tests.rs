@@ -21,21 +21,18 @@ use swim_api::{
 };
 use swim_model::Text;
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader},
+    non_zero_usize,
     trigger::promise,
 };
 use uuid::Uuid;
 
-use crate::{
-    agent::{
-        task::{
-            remotes::{LaneRegistry, UplinkResponse},
-            write_fut::WriteTask,
-        },
-        DisconnectionReason,
+use crate::agent::{
+    task::{
+        remotes::{LaneRegistry, UplinkResponse},
+        write_fut::WriteTask,
     },
-    routing::RoutingAddr,
+    DisconnectionReason,
 };
 
 use super::{RemoteSender, SpecialAction, Uplinks, WriteAction};
@@ -50,7 +47,7 @@ fn make_uplinks() -> (Uplinks, ByteReader, promise::Receiver<DisconnectionReason
     (
         Uplinks::new(
             Text::new(NODE_URI),
-            *RoutingAddr::plane(0).uuid(),
+            Uuid::from_u128(0),
             REMOTE_ID,
             tx,
             completion_tx,
@@ -279,7 +276,7 @@ fn make_uplinks_writing() -> (
     let (completion_tx, completion_rx) = promise::promise();
     let mut uplinks = Uplinks::new(
         Text::new(NODE_URI),
-        *RoutingAddr::plane(0).uuid(),
+        Uuid::from_u128(0),
         REMOTE_ID,
         tx,
         completion_tx,

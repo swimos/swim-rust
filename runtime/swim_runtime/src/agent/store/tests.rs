@@ -31,7 +31,7 @@ use swim_api::{
     },
     store::{KeyValue, MapPersistence, NodePersistenceBase, RangeConsumer},
 };
-use swim_utilities::{algebra::non_zero_usize, io::byte_channel::byte_channel};
+use swim_utilities::{io::byte_channel::byte_channel, non_zero_usize};
 use tokio_util::codec::FramedRead;
 
 use crate::agent::store::{AgentPersistence, StorePersistence};

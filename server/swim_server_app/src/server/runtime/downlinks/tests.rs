@@ -45,16 +45,14 @@ use swim_remote::AttachClient;
 use swim_runtime::{
     agent::DownlinkRequest,
     downlink::{DownlinkOptions, DownlinkRuntimeConfig, Io},
-    remote::{
-        net::dns::{DnsFut, DnsResolver},
-        table::SchemeHostPort,
-        Scheme, SchemeSocketAddr,
+    net::{
+        dns::{DnsFut, DnsResolver},
+        Scheme, SchemeHostPort, SchemeSocketAddr,
     },
 };
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{ByteReader, ByteWriter},
-    trigger,
+    non_zero_usize, trigger,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::codec::{FramedRead, FramedWrite};

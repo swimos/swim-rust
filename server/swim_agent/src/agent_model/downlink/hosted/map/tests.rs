@@ -23,8 +23,8 @@ use swim_api::protocol::{
 };
 use swim_model::{address::Address, Text};
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{self, ByteWriter},
+    non_zero_usize,
 };
 use tokio::{io::AsyncWriteExt, sync::mpsc};
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};

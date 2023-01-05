@@ -24,8 +24,8 @@ use ratchet::{
 };
 use swim_api::{agent::Agent, error::StoreError, store::StoreDisabled};
 use swim_runtime::{
-    remote::{
-        net::{dns::Resolver, plain::TokioPlainTextNetworking, tls::TokioTlsNetworking},
+    net::{
+        dns::Resolver, plain::TokioPlainTextNetworking, tls::TokioTlsNetworking,
         ExternalConnections,
     },
     ws::ext::RatchetNetworking,

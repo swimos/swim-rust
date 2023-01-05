@@ -20,7 +20,7 @@ use swim_api::{
     protocol::downlink::DownlinkNotification,
 };
 
-use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::non_zero_usize;
 use tokio::sync::mpsc;
 
 use super::run_downlink_task;

@@ -17,8 +17,8 @@ use std::num::NonZeroUsize;
 use futures::future::BoxFuture;
 use swim_model::{address::Address, Text};
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{ByteReader, ByteWriter},
+    non_zero_usize,
 };
 
 use crate::error::DownlinkTaskError;

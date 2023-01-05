@@ -19,8 +19,8 @@ use std::{
 
 use futures::future::BoxFuture;
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{ByteReader, ByteWriter},
+    non_zero_usize,
     routing::route_uri::RouteUri,
 };
 

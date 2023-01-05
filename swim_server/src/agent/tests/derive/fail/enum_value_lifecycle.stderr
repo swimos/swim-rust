@@ -1,5 +1,0 @@
-error: Lifecycle cannot be created from Enum.
-  --> $DIR/enum_value_lifecycle.rs:24:10
-   |
-24 |     enum ValueLifecycle {}
-   |          ^^^^^^^^^^^^^^

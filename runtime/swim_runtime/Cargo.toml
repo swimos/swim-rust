@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
+[features]
+default = []
+tls = ["tokio-native-tls"]
+
 [dependencies]
 bitflags = "1.3.2"
 ratchet = { package = "ratchet_rs", version = "0.2.0", features = ["deflate", "split"] }
@@ -16,17 +20,15 @@ futures-util = "0.3.4"
 http = "0.2.3"
 pin-project = "1.0.5"
 pin-utils = "0.1.0"
-tokio = { version = "1.1.1", features = ["sync", "rt"] }
-tokio-native-tls = "0.3"
+tokio = { version = "1.1.1", features = ["sync", "rt", "macros"] }
+tokio-native-tls = { version = "0.3", optional = true }
 tokio-util = { version = "0.6.8", features = ["codec"] }
-swim_utilities = { path = "../../swim_utilities", features = ["circular_buffer", "errors", "future", "lrucache", "io"] }
+swim_utilities = { path = "../../swim_utilities", features = ["sync", "errors", "future", "io"] }
 url = "2.1.1"
 swim_api = { path = "../../api/swim_api" }
 swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
-swim_async_runtime = { path = "../swim_async_runtime" }
-swim_warp = { path = "../../swim_warp" }
-swim_tracing = { path = "../../swim_utilities/swim_tracing", features = ["future"] }
+swim_tracing = { path = "../../swim_utilities/swim_tracing" }
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
 swim_messages = { path = "../swim_messages" }
 slab = "0.4.2"
@@ -39,7 +41,7 @@ uuid = "0.8.2"
 static_assertions = "1.1.0"
 
 [dev-dependencies]
-tokio = { version = "1.1.1", features = ["macros", "test-util"] }
+tokio = { version = "1.1.1", features = ["test-util"] }
 parking_lot = "0.11.0"
 tokio-stream = "0.1.2"
 uuid = { version = "0.8.2", features = ["v4"] }

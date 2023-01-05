@@ -16,7 +16,7 @@ use futures::future::join;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_utilities::future::SwimFutureExt;
+use swim_utilities::future::NotifyOnBlocked;
 use tokio::sync::Notify;
 use tokio::time::timeout;
 
@@ -53,7 +53,7 @@ async fn complete_async() {
 
     let notify = Arc::new(Notify::new());
 
-    let wait_task = rx.notify_on_blocked(notify.clone());
+    let wait_task = NotifyOnBlocked::new(rx, notify.clone());
 
     let vote_task = async move {
         notify.notified().await;
@@ -70,7 +70,7 @@ async fn complete_async2() {
 
     let notify = Arc::new(Notify::new());
 
-    let wait_task = rx.notify_on_blocked(notify.clone());
+    let wait_task = NotifyOnBlocked::new(rx, notify.clone());
 
     let vote_task = async move {
         notify.notified().await;
@@ -92,7 +92,7 @@ async fn complete_async_wait_between_votes() {
 
     let wait_task = async move {
         notify1.notified().await;
-        rx.notify_on_blocked(notify2).await;
+        NotifyOnBlocked::new(rx, notify2).await;
     };
 
     let vote_task = async move {
@@ -116,7 +116,7 @@ async fn rescind_vote() {
 
     let wait_task = async move {
         notify1.notified().await;
-        rx.notify_on_blocked(notify2).await;
+        NotifyOnBlocked::new(rx, notify2).await;
     };
 
     let vote_task = async move {

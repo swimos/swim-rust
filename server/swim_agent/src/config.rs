@@ -14,7 +14,7 @@
 
 use std::num::NonZeroUsize;
 
-use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::non_zero_usize;
 
 /// Configuration parameters for hosted value downlinks.
 #[derive(Debug, Clone, Copy)]

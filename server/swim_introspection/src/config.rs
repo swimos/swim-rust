@@ -14,7 +14,7 @@
 
 use std::{num::NonZeroUsize, time::Duration};
 
-use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::non_zero_usize;
 
 const DEFAULT_PULSE_INTERVAL: Duration = Duration::from_secs(5);
 const DEFAULT_REG_CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(8);

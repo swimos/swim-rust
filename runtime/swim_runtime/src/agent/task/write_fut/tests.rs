@@ -23,20 +23,20 @@ use swim_messages::{
 };
 use swim_model::Text;
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader},
+    non_zero_usize,
 };
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;
 
-use crate::{agent::task::remotes::RemoteSender, pressure::MapBackpressure, routing::RoutingAddr};
+use crate::{agent::task::remotes::RemoteSender, backpressure::MapBackpressure};
 
 use super::{SpecialAction, WriteAction, WriteTask};
 
 type Reader = FramedRead<ByteReader, RawResponseMessageDecoder>;
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
-const ADDR: Uuid = *RoutingAddr::plane(5).uuid();
+const ADDR: Uuid = Uuid::from_u128(5);
 const REMOTE_ID: Uuid = Uuid::from_u128(2847743);
 const NODE: &str = "/node";
 const LANE: &str = "lane";

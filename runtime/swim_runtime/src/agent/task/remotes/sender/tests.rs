@@ -17,17 +17,15 @@ use futures::StreamExt;
 use swim_messages::protocol::{Notification, RawResponseMessageDecoder, ResponseMessage};
 use swim_model::Text;
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader},
+    non_zero_usize,
 };
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;
 
-use crate::routing::RoutingAddr;
-
 use super::RemoteSender;
 
-const ID: Uuid = *RoutingAddr::plane(1).uuid();
+const ID: Uuid = Uuid::from_u128(1);
 const REMOTE_ID: Uuid = Uuid::from_u128(8573923);
 const NODE: &str = "node_uri";
 

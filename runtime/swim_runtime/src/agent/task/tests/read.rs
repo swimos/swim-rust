@@ -32,17 +32,14 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
 
-use crate::{
-    agent::{
-        reporting::{UplinkReporter, UplinkSnapshot},
-        task::{
-            read_task,
-            tests::{RemoteSender, BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT},
-            timeout_coord::{self, VoteResult},
-            LaneEndpoint, ReadTaskMessages, RwCoorindationMessage, WriteTaskMessage,
-        },
+use crate::agent::{
+    reporting::{UplinkReporter, UplinkSnapshot},
+    task::{
+        read_task,
+        tests::{RemoteSender, BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT},
+        timeout_coord::{self, VoteResult},
+        LaneEndpoint, ReadTaskMessages, RwCoorindationMessage, WriteTaskMessage,
     },
-    routing::RoutingAddr,
 };
 
 use super::{
@@ -224,8 +221,8 @@ async fn shutdown_no_remotes() {
     assert!(events.is_empty());
 }
 
-const RID: Uuid = *RoutingAddr::remote(0).uuid();
-const RID2: Uuid = *RoutingAddr::remote(1).uuid();
+const RID: Uuid = Uuid::from_u128(0);
+const RID2: Uuid = Uuid::from_u128(1);
 const NODE: &str = "node";
 
 async fn attach_remote_with(rid: Uuid, reg_tx: &mpsc::Sender<ReadTaskMessages>) -> RemoteSender {

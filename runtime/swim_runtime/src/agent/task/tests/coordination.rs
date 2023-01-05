@@ -17,15 +17,12 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    agent::{
-        task::{
-            tests::{RemoteReceiver, RemoteSender},
-            AgentRuntimeTask, InitialEndpoints, LaneEndpoint, NodeDescriptor,
-        },
-        AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io,
+use crate::agent::{
+    task::{
+        tests::{RemoteReceiver, RemoteSender},
+        AgentRuntimeTask, InitialEndpoints, LaneEndpoint, NodeDescriptor,
     },
-    routing::RoutingAddr,
+    AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io,
 };
 use futures::{
     future::{join, join3, Either},
@@ -322,11 +319,11 @@ struct TestContext {
     stop_tx: trigger::Sender,
 }
 
-const AGENT_ID: Uuid = *RoutingAddr::plane(1).uuid();
+const AGENT_ID: Uuid = Uuid::from_u128(1);
 const NODE: &str = "/node";
-const RID1: Uuid = *RoutingAddr::remote(5).uuid();
-const RID2: Uuid = *RoutingAddr::remote(89).uuid();
-const RID3: Uuid = *RoutingAddr::remote(222).uuid();
+const RID1: Uuid = Uuid::from_u128(5);
+const RID2: Uuid = Uuid::from_u128(89);
+const RID3: Uuid = Uuid::from_u128(222);
 
 async fn run_test_case<F, Fut>(
     inactive_timeout: Duration,
