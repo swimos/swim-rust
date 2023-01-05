@@ -164,7 +164,7 @@ impl ExternalConnections for TokioTlsNetworking {
             let host = addr.to_string();
             let socket = TcpStream::connect(addr).await?;
             match scheme {
-                Scheme::Ws => todo!(),
+                Scheme::Ws => Ok(MaybeTlsStream::Plain(socket)),
                 Scheme::Wss => {
                     let tls_conn_builder = NativeTlsConnector::builder();
 
