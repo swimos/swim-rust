@@ -18,7 +18,7 @@ use std::fmt::Write;
 use bytes::BytesMut;
 use swim_api::agent::AgentConfig;
 use swim_recon::parser::AsyncParseError;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::{
     event_handler::{
@@ -38,11 +38,11 @@ use super::{
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
-fn make_uri() -> RelativeUri {
-    RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+fn make_uri() -> RouteUri {
+    RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
+fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
     AgentMetadata::new(uri, &CONFIG)
 }
 
@@ -183,7 +183,7 @@ fn map_handler() {
     let uri = make_uri();
     let meta = make_meta(&uri);
     let mut handler =
-        HandlerActionExt::<DummyAgent>::map(GetAgentUri::default(), move |uri: RelativeUri| {
+        HandlerActionExt::<DummyAgent>::map(GetAgentUri::default(), move |uri: RouteUri| {
             uri.to_string()
         });
 
@@ -212,14 +212,12 @@ fn and_then_handler() {
 
     let mut output = None;
     let output_ref = &mut output;
-    let mut handler = HandlerActionExt::<DummyAgent>::and_then(
-        GetAgentUri::default(),
-        move |uri: RelativeUri| {
+    let mut handler =
+        HandlerActionExt::<DummyAgent>::and_then(GetAgentUri::default(), move |uri: RouteUri| {
             SideEffect::from(move || {
                 *output_ref = Some(uri.to_string());
             })
-        },
-    );
+        });
 
     let result = handler.step(dummy_context(), meta, &DUMMY);
     assert!(matches!(

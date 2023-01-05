@@ -21,7 +21,7 @@ use futures::future::BoxFuture;
 use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
+    routing::route_uri::RouteUri,
 };
 
 use crate::{
@@ -29,6 +29,7 @@ use crate::{
     error::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
     },
+    meta::lane::LaneKind,
     store::StoreKind,
 };
 
@@ -51,7 +52,7 @@ impl Display for UplinkKind {
 }
 
 /// Configuration parameters for a lane.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LaneConfig {
     /// Size of the input buffer in bytes.
     pub input_buffer_size: NonZeroUsize,
@@ -78,12 +79,13 @@ pub trait AgentContext: Sync {
     /// Add a new lane endpoint to the runtime for this agent.
     /// #Arguments
     /// * `name` - The name of the lane.
-    /// * `uplink_kind` - Protocol that the runtime uses to communicate with the lane.
+    /// * `land_kind` - Kind of the lane, determining the protocol that the runtime uses
+    /// to communicate with the lane.
     /// * `config` - Configuration parameters for the lane.
     fn add_lane(
         &self,
         name: &str,
-        uplink_kind: UplinkKind,
+        lane_kind: LaneKind,
         config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
 
@@ -152,7 +154,7 @@ pub trait Agent {
     /// * `context` - Context through which the agent can interact with the runtime.
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult>;
@@ -165,7 +167,7 @@ pub type BoxAgent = Box<dyn Agent + Send + 'static>;
 impl Agent for BoxAgent {
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
@@ -179,7 +181,7 @@ where
 {
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {

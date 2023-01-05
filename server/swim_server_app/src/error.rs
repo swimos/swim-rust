@@ -25,23 +25,51 @@ use swim_utilities::{format::comma_sep, routing::route_pattern::RoutePattern};
 
 /// Indicates that the routes specified for plane are ambiguous (overlap with each other).
 #[derive(Debug)]
-pub struct AmbiguousRoutes {
-    pub routes: Vec<RoutePattern>,
+pub enum AmbiguousRoutes {
+    Overlapping {
+        routes: Vec<RoutePattern>,
+    },
+    MetaCollision {
+        meta_routes: Vec<RoutePattern>,
+        routes: Vec<RoutePattern>,
+    },
 }
 
 impl AmbiguousRoutes {
     pub fn new(routes: Vec<RoutePattern>) -> Self {
-        AmbiguousRoutes { routes }
+        AmbiguousRoutes::Overlapping { routes }
+    }
+
+    pub fn collision(meta_routes: Vec<RoutePattern>, routes: Vec<RoutePattern>) -> Self {
+        AmbiguousRoutes::MetaCollision {
+            meta_routes,
+            routes,
+        }
     }
 }
 
 impl Display for AmbiguousRoutes {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Agent route patterns are ambiguous: [{}]",
-            comma_sep(&self.routes)
-        )
+        match self {
+            AmbiguousRoutes::Overlapping { routes } => {
+                write!(
+                    f,
+                    "Agent route patterns are ambiguous: [{}]",
+                    comma_sep(routes)
+                )
+            }
+            AmbiguousRoutes::MetaCollision {
+                meta_routes,
+                routes,
+            } => {
+                write!(
+                    f,
+                    "Agent route patterns [{}] are ambiguous with the meta-agent routes: [{}]",
+                    comma_sep(routes),
+                    comma_sep(meta_routes),
+                )
+            }
+        }
     }
 }
 
@@ -65,12 +93,13 @@ pub enum ServerBuilderError {
 
 #[cfg(test)]
 mod tests {
+    use swim_introspection::route::{lane_pattern, node_pattern};
     use swim_utilities::routing::route_pattern::RoutePattern;
 
     use super::AmbiguousRoutes;
 
     #[test]
-    fn ambiguous_routes_display() {
+    fn ambiguous_routes_overlapping_display() {
         let pat1 = RoutePattern::parse_str("/node").expect("Invalid route.");
         let pat2 = RoutePattern::parse_str("/:id").expect("Invalid route.");
 
@@ -81,6 +110,22 @@ mod tests {
         assert_eq!(
             err_string,
             "Agent route patterns are ambiguous: [/node, /:id]"
+        );
+    }
+
+    #[test]
+    fn ambiguous_routes_meta_display() {
+        let pat1 = RoutePattern::parse_str("/node").expect("Invalid route.");
+        let pat2 = RoutePattern::parse_str("/:id").expect("Invalid route.");
+
+        let err =
+            AmbiguousRoutes::collision(vec![node_pattern(), lane_pattern()], vec![pat1, pat2]);
+
+        let err_string = err.to_string();
+
+        assert_eq!(
+            err_string,
+            "Agent route patterns [/node, /:id] are ambiguous with the meta-agent routes: [swim:meta:node/:node_uri, swim:meta:node/:node_uri/lane/:lane_name]"
         );
     }
 }

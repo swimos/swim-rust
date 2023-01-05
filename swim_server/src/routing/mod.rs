@@ -25,7 +25,7 @@ use swim_runtime::remote::{RawOutRoute, RemoteRoutingRequest};
 use swim_runtime::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 
 use swim_utilities::future::request::Request;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
 use swim_client::router::ClientEndpointRequest;
 use tokio::sync::mpsc;
@@ -34,7 +34,7 @@ use url::Url;
 
 type AgentRequest = Request<Result<Arc<dyn Any + Send + Sync>, NoAgentAtRoute>>;
 type EndpointRequest = Request<Result<RawOutRoute, Unresolvable>>;
-type RoutesRequest = Request<HashSet<RelativeUri>>;
+type RoutesRequest = Request<HashSet<RouteUri>>;
 type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
 
 /// Requests that can be serviced by the plane event loop.
@@ -42,7 +42,7 @@ type ResolutionRequest = Request<Result<RoutingAddr, RouterError>>;
 pub enum PlaneRoutingRequest {
     /// Get a handle to an agent (starting it where necessary).
     Agent {
-        name: RelativeUri,
+        name: RouteUri,
         request: AgentRequest,
     },
     /// Get channel to route messages to a specified routing address.
@@ -52,7 +52,7 @@ pub enum PlaneRoutingRequest {
     },
     /// Resolve the routing address for an agent.
     Resolve {
-        name: RelativeUri,
+        name: RouteUri,
         request: ResolutionRequest,
     },
     /// Get all of the active routes for the plane.
@@ -95,7 +95,7 @@ impl RouterFactory for TopLevelServerRouterFactory {
     fn lookup(
         &mut self,
         host: Option<Url>,
-        route: RelativeUri,
+        route: RouteUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
             let TopLevelServerRouterFactory {
@@ -137,7 +137,7 @@ async fn lookup_inner(
     plane_sender: &mpsc::Sender<PlaneRoutingRequest>,
     remote_sender: &mpsc::Sender<RemoteRoutingRequest>,
     host: Option<Url>,
-    route: RelativeUri,
+    route: RouteUri,
 ) -> Result<RoutingAddr, RouterError> {
     if let Some(host) = host {
         let (tx, rx) = oneshot::channel();
@@ -253,7 +253,7 @@ impl Router for TopLevelServerRouter {
     fn lookup(
         &mut self,
         host: Option<Url>,
-        route: RelativeUri,
+        route: RouteUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         async move {
             let TopLevelServerRouter {

@@ -31,7 +31,7 @@ use swim_runtime::routing::{
 };
 use swim_tracing::request::RequestExt;
 use swim_utilities::future::request::Request;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
@@ -319,7 +319,7 @@ impl Router for ClientRouter {
     fn lookup(
         &mut self,
         _host: Option<Url>,
-        _node_uri: RelativeUri,
+        _node_uri: RouteUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         futures::future::ready(Err(RouterError::ConnectionFailure(
             ConnectionError::Resolution("Client router cannot resolve endpoints.".to_string()),
@@ -350,7 +350,7 @@ impl<RF: RouterFactory> ClientConnectionFactory<RF> {
     pub async fn get_sender(
         &mut self,
         host: Option<Url>,
-        node_uri: RelativeUri,
+        node_uri: RouteUri,
     ) -> Result<Route, RouterError> {
         let addr = self.router_factory.lookup(host, node_uri).await?;
         let endpoint_addr = self.new_unroutable().await?;
@@ -367,7 +367,7 @@ impl<RF: RouterFactory> ClientConnectionFactory<RF> {
     pub async fn create_endpoint(
         &mut self,
         host: Option<Url>,
-        node_uri: RelativeUri,
+        node_uri: RouteUri,
         lane: Text,
     ) -> Result<ClientRoute, RouterError> {
         let addr = self.router_factory.lookup(host, node_uri.clone()).await?;

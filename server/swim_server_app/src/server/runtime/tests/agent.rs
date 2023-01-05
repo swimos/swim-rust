@@ -15,8 +15,9 @@
 use bytes::BytesMut;
 use futures::{future::BoxFuture, pin_mut, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
 use swim_api::{
-    agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
+    agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::AgentTaskError,
+    meta::lane::LaneKind,
     protocol::{
         agent::{
             LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder,
@@ -28,7 +29,7 @@ use swim_api::{
 use swim_form::{structural::read::recognizer::RecognizerReadable, Form};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
+    routing::route_uri::RouteUri,
 };
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
@@ -54,14 +55,14 @@ pub enum AgentEvent {
 pub struct TestAgent {
     reporter: mpsc::UnboundedSender<i32>,
     events: mpsc::UnboundedSender<AgentEvent>,
-    check_meta: fn(RelativeUri, AgentConfig),
+    check_meta: fn(RouteUri, AgentConfig),
 }
 
 impl TestAgent {
     pub fn new(
         reporter: mpsc::UnboundedSender<i32>, //Reports each time the state changes.
         events: mpsc::UnboundedSender<AgentEvent>, //Reports when the agent is started or stopped.
-        check_meta: fn(RelativeUri, AgentConfig), //Check to perform on the agent metadata on startup.
+        check_meta: fn(RouteUri, AgentConfig), //Check to perform on the agent metadata on startup.
     ) -> Self {
         TestAgent {
             reporter,
@@ -74,7 +75,7 @@ impl TestAgent {
 impl Agent for TestAgent {
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
@@ -83,7 +84,7 @@ impl Agent for TestAgent {
         let reporter = self.reporter.clone();
         async move {
             let lane_conf = config.default_lane_config.unwrap_or_default();
-            let (mut tx, mut rx) = context.add_lane(LANE, UplinkKind::Value, lane_conf).await?;
+            let (mut tx, mut rx) = context.add_lane(LANE, LaneKind::Value, lane_conf).await?;
             if !lane_conf.transient {
                 run_lane_initializer(&mut tx, &mut rx).await;
             }

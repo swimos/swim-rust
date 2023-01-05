@@ -24,9 +24,13 @@ use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_api::agent::BoxAgent;
+use swim_api::agent::{Agent, BoxAgent};
+use swim_api::error::introspection::IntrospectionStopped;
 use swim_api::error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError};
 use swim_api::store::PlanePersistence;
+use swim_introspection::route::{lane_pattern, node_pattern};
+use swim_introspection::{init_introspection, IntrospectionResolver};
+use swim_introspection::{IntrospectionConfig, LaneMetaAgent, NodeMetaAgent};
 use swim_model::address::RelativeAddress;
 use swim_model::Text;
 use swim_remote::{AgentResolutionError, AttachClient, FindNode, NoSuchAgent, RemoteTask};
@@ -34,6 +38,7 @@ use swim_runtime::agent::{
     AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteTask, CombinedAgentConfig,
     DisconnectionReason, DownlinkRequest,
 };
+use swim_utilities::routing::route_uri::RouteUri;
 
 use swim_runtime::error::ConnectionError;
 use swim_runtime::remote::{BadUrl, ExternalConnections};
@@ -41,7 +46,6 @@ use swim_runtime::remote::{Listener, SchemeSocketAddr};
 use swim_runtime::ws::WsConnections;
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swim_utilities::routing::route_pattern::RoutePattern;
-use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::trigger::{self, promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
@@ -75,6 +79,7 @@ pub struct SwimServer<Net, Ws, Store> {
     websockets: Ws,
     config: SwimServerConfig,
     store: Store,
+    introspection: Option<IntrospectionConfig>,
 }
 
 type ClientPromiseTx = oneshot::Sender<Result<EstablishedClient, NewClientError>>;
@@ -204,6 +209,7 @@ where
         websockets: Ws,
         config: SwimServerConfig,
         store: Store,
+        introspection: Option<IntrospectionConfig>,
     ) -> Self {
         SwimServer {
             plane,
@@ -212,6 +218,7 @@ where
             websockets,
             config,
             store,
+            introspection,
         }
     }
 }
@@ -249,6 +256,7 @@ where
             websockets,
             config,
             store,
+            introspection,
         } = self;
 
         let networking = Arc::new(networking);
@@ -276,14 +284,20 @@ where
         let (remote_stop_tx, remote_stop_rx) = trigger::trigger();
         let mut remote_stop = Some(remote_stop_tx);
 
+        let mut routes = plane.routes.into_iter().collect();
+
+        let introspection_resolver = introspection
+            .map(|config| start_introspection(config, remote_stop_rx.clone(), &mut routes));
+
         let mut agents = Agents::new(
-            Routes::new(plane.routes),
+            routes,
             CombinedAgentConfig {
                 agent_config: config.agent,
                 runtime_config: config.agent_runtime,
             },
             agent_stop_rx,
             server_conn.dl_requests(),
+            introspection_resolver,
         );
 
         let mut state = TaskState::Running;
@@ -417,7 +431,9 @@ where
                     }
                 }
                 ServerEvent::AgentStopped(route, result) => {
-                    agents.agent_channels.remove(&route);
+                    if agents.remove_agent(route.as_str()).is_err() {
+                        warn!("Attempted to deregister an agent from metadata reporting but the reporting system had stopped.");
+                    }
                     match result {
                         Err(error) => {
                             error!(error = %error, route = %route, "Agent task panicked.");
@@ -637,6 +653,7 @@ struct Agents {
     config: CombinedAgentConfig,
     agent_stop_rx: trigger::Receiver,
     open_dl_tx: mpsc::Sender<DownlinkRequest>,
+    introspection_resolver: Option<IntrospectionResolver>,
 }
 
 impl Agents {
@@ -645,6 +662,7 @@ impl Agents {
         config: CombinedAgentConfig,
         agent_stop_rx: trigger::Receiver,
         open_dl_tx: mpsc::Sender<DownlinkRequest>,
+        introspection_resolver: Option<IntrospectionResolver>,
     ) -> Self {
         Agents {
             plane_issuer: IdIssuer::new(IdKind::Plane),
@@ -653,6 +671,7 @@ impl Agents {
             config,
             agent_stop_rx,
             open_dl_tx,
+            introspection_resolver,
         }
     }
 
@@ -671,6 +690,7 @@ impl Agents {
             config,
             agent_stop_rx,
             open_dl_tx,
+            introspection_resolver,
         } = self;
         match agent_channels.entry(node) {
             Entry::Occupied(entry) => {
@@ -680,23 +700,49 @@ impl Agents {
             }
             Entry::Vacant(entry) => {
                 debug!("Attempting to start new agent instance.");
-                if let Some((route, agent)) = RelativeUri::from_str(entry.key().as_str())
+                if let Some((route_uri, route)) = RouteUri::from_str(entry.key().as_str())
                     .ok()
-                    .and_then(|route| routes.find_route(&route).map(move |agent| (route, agent)))
+                    .and_then(|route_uri| {
+                        routes
+                            .find_route(&route_uri)
+                            .map(move |route| (route_uri, route))
+                    })
                 {
                     let id = plane_issuer.next_id();
                     let (attachment_tx, attachment_rx) =
                         mpsc::channel(config.runtime_config.attachment_queue_size.get());
+
+                    let Route {
+                        agent,
+                        disable_introspection,
+                        ..
+                    } = route;
+
+                    let node_reporting = if *disable_introspection {
+                        None
+                    } else if let Some(resolver) = introspection_resolver {
+                        match resolver.register_agent(id, route_uri.clone()) {
+                            Ok(reporting) => Some(reporting),
+                            Err(_) => {
+                                *introspection_resolver = None;
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    };
+
                     let route_task = AgentRouteTask::new(
                         agent,
                         AgentRoute {
                             identity: id,
-                            route,
+                            route: route_uri,
                         },
                         attachment_rx,
                         open_dl_tx.clone(),
                         agent_stop_rx.clone(),
                         *config,
+                        node_reporting,
                     );
                     let name = entry.key().clone();
                     spawn_task(name, route_task);
@@ -708,21 +754,66 @@ impl Agents {
             }
         }
     }
+
+    fn remove_agent(&mut self, route: &str) -> Result<(), IntrospectionStopped> {
+        let Agents {
+            agent_channels,
+            introspection_resolver,
+            ..
+        } = self;
+
+        if let Some((id, _)) = agent_channels.remove(route) {
+            if let Some(resolver) = introspection_resolver {
+                resolver.close_agent(id)?;
+            }
+        }
+        Ok(())
+    }
 }
 
-struct Routes(Vec<(RoutePattern, BoxAgent)>);
+#[derive(Default)]
+struct Routes(Vec<Route>);
+
+struct Route {
+    pattern: RoutePattern,
+    agent: BoxAgent,
+    disable_introspection: bool,
+}
+
+impl Route {
+    fn new(pattern: RoutePattern, agent: BoxAgent, disable_introspection: bool) -> Self {
+        Route {
+            pattern,
+            agent,
+            disable_introspection,
+        }
+    }
+}
+
+impl FromIterator<(RoutePattern, BoxAgent)> for Routes {
+    fn from_iter<T: IntoIterator<Item = (RoutePattern, BoxAgent)>>(iter: T) -> Self {
+        Routes(
+            iter.into_iter()
+                .map(|(pattern, agent)| Route::new(pattern, agent, false))
+                .collect(),
+        )
+    }
+}
 
 impl Routes {
-    fn new(routes: Vec<(RoutePattern, BoxAgent)>) -> Self {
-        Routes(routes)
+    fn append<A>(&mut self, route_pattern: RoutePattern, agent: A)
+    where
+        A: Agent + Send + 'static,
+    {
+        let Routes(routes) = self;
+        routes.push(Route::new(route_pattern, Box::new(agent), true));
     }
 
-    fn find_route<'a>(&'a self, node: &RelativeUri) -> Option<&'a BoxAgent> {
+    fn find_route<'a>(&'a self, node: &RouteUri) -> Option<&'a Route> {
         let Routes(routes) = self;
         routes
             .iter()
-            .find(|(route, _)| route.unapply_relative_uri(node).is_ok())
-            .map(|(_, agent)| agent)
+            .find(|Route { pattern, .. }| pattern.unapply_route_uri(node).is_ok())
     }
 }
 
@@ -896,4 +987,18 @@ where
         .await
         .map(move |ws| (addr, ws))
         .map_err(|e| NewClientError::WsNegotationFailed { error: e.into() })
+}
+
+fn start_introspection(
+    config: IntrospectionConfig,
+    stopping: trigger::Receiver,
+    routes: &mut Routes,
+) -> IntrospectionResolver {
+    let (resolver, task) = init_introspection(stopping, config.registration_channel_size);
+    let node_meta = NodeMetaAgent::new(config, resolver.clone());
+    let lane_meta = LaneMetaAgent::new(config, resolver.clone());
+    routes.append(node_pattern(), node_meta);
+    routes.append(lane_pattern(), lane_meta);
+    tokio::spawn(task);
+    resolver
 }

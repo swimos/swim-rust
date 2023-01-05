@@ -13,26 +13,26 @@
 // limitations under the License.
 
 use swim_api::agent::AgentConfig;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
 /// Metadata to describe a running agent instance.
 #[derive(Clone, Copy, Debug)]
 pub struct AgentMetadata<'a> {
     // The URI of the instance.
-    path: &'a RelativeUri,
+    path: &'a RouteUri,
     // Specific configuration for the instance.
     configuration: &'a AgentConfig,
 }
 
 impl<'a> AgentMetadata<'a> {
-    pub fn new(path: &'a RelativeUri, configuration: &'a AgentConfig) -> Self {
+    pub fn new(path: &'a RouteUri, configuration: &'a AgentConfig) -> Self {
         AgentMetadata {
             path,
             configuration,
         }
     }
 
-    pub fn agent_uri(&self) -> &'a RelativeUri {
+    pub fn agent_uri(&self) -> &'a RouteUri {
         self.path
     }
 

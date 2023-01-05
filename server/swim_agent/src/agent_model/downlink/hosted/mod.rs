@@ -29,14 +29,15 @@ enum DlState {
 mod test_support {
     use futures::future::BoxFuture;
     use swim_api::{
-        agent::{AgentConfig, AgentContext, LaneConfig, UplinkKind},
+        agent::{AgentConfig, AgentContext, LaneConfig},
         downlink::DownlinkKind,
         error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+        meta::lane::LaneKind,
         store::StoreKind,
     };
     use swim_utilities::{
         io::byte_channel::{ByteReader, ByteWriter},
-        routing::uri::RelativeUri,
+        routing::route_uri::RouteUri,
     };
 
     use crate::{
@@ -72,7 +73,7 @@ mod test_support {
         fn add_lane(
             &self,
             _name: &str,
-            _uplink_kind: UplinkKind,
+            _lane_kind: LaneKind,
             _config: LaneConfig,
         ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
             panic!("Unexpected runtime interaction.");
@@ -100,11 +101,11 @@ mod test_support {
     const NODE_URI: &str = "/node";
     const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 
-    fn make_uri() -> RelativeUri {
-        RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+    fn make_uri() -> RouteUri {
+        RouteUri::try_from(NODE_URI).expect("Bad URI.")
     }
 
-    fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
+    fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
         AgentMetadata::new(uri, &CONFIG)
     }
 

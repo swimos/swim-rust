@@ -18,7 +18,6 @@ use swim_server::agent::command_lifecycle;
 use swim_server::agent::lane::model::command::CommandLane;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
-use swim_server::uri::RelativeUri;
 
 #[derive(Debug, SwimAgent)]
 pub struct UnitAgent {
@@ -68,6 +67,6 @@ impl PublishValueLifecycle {
     }
 }
 
-fn log_message<T: Display>(node_uri: &RelativeUri, message: &T) {
+fn log_message<T: Display>(node_uri: &RouteUri, message: &T) {
     println!("{}: {}", node_uri, message);
 }

@@ -18,6 +18,7 @@ use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use swim_api::{
     agent::{LaneConfig, UplinkKind},
     error::StoreError,
+    meta::lane::LaneKind,
     protocol::{
         agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
         map::{
@@ -129,7 +130,7 @@ impl TestInit for SingleValueLane {
             requests
                 .send(AgentRuntimeRequest::AddLane {
                     name: Text::new(VAL_LANE),
-                    kind: UplinkKind::Value,
+                    kind: LaneKind::Value,
                     config,
                     promise: promise_tx,
                 })
@@ -250,7 +251,7 @@ impl TestInit for SingleMapLane {
             requests
                 .send(AgentRuntimeRequest::AddLane {
                     name: Text::new(MAP_LANE),
-                    kind: UplinkKind::Map,
+                    kind: LaneKind::Map,
                     config,
                     promise: promise_tx,
                 })

@@ -25,7 +25,7 @@ use swim_utilities::errors::Recoverable;
 use thiserror::Error;
 
 use crate::meta::{LANES_URI, LANE_URI, PULSE_URI, UPLINK_URI};
-use swim_utilities::routing::uri::{BadRelativeUri, PathSegmentIterator, RelativeUri};
+use swim_utilities::routing::route_uri::{InvalidRouteUri, PathSegmentIterator, RouteUri};
 
 /// Errors that are produced when parsing an invalid node or lane URI.
 #[derive(Debug, PartialEq, Eq, Error)]
@@ -39,12 +39,9 @@ pub enum MetaParseErr {
     NotMetaAddressed,
 }
 
-impl From<BadRelativeUri> for MetaParseErr {
-    fn from(e: BadRelativeUri) -> Self {
-        match e {
-            BadRelativeUri::Invalid(m) => MetaParseErr::InvalidUri(InvalidUri(m.to_string())),
-            BadRelativeUri::Absolute(u) => MetaParseErr::InvalidUri(InvalidUri(u.to_string())),
-        }
+impl From<InvalidRouteUri> for MetaParseErr {
+    fn from(e: InvalidRouteUri) -> Self {
+        MetaParseErr::InvalidUri(InvalidUri(e.to_string()))
     }
 }
 
@@ -78,7 +75,7 @@ fn decode_to_text(s: &str) -> Text {
 
 /// Parses `node_uri` and `lane_uri` into `MetaNodeAddressed`.
 pub fn parse(
-    node_uri: RelativeUri,
+    node_uri: RouteUri,
     target_lane: impl AsRef<str>,
 ) -> Result<MetaNodeAddressed, MetaParseErr> {
     let mut node_iter = node_uri.path_iter();

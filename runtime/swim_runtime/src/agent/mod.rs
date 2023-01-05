@@ -17,18 +17,19 @@ use futures::{
     FutureExt,
 };
 use swim_api::{
-    agent::{Agent, AgentConfig, AgentContext, LaneConfig, UplinkKind},
+    agent::{Agent, AgentConfig, AgentContext, LaneConfig},
     downlink::DownlinkKind,
     error::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
         StoreError,
     },
+    meta::lane::LaneKind,
     store::{NodePersistence, StoreKind},
 };
 use swim_model::{address::Address, Text};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
+    routing::route_uri::RouteUri,
     trigger::{self, promise},
 };
 use thiserror::Error;
@@ -45,14 +46,17 @@ use std::{
 use crate::downlink::DownlinkOptions;
 
 use self::{
+    reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
     task::AgentInitTask,
 };
 
+pub mod reporting;
 mod store;
 mod task;
 
 use task::AgentRuntimeRequest;
+use tracing::error;
 
 #[derive(Debug)]
 pub struct DownlinkRequest {
@@ -93,7 +97,7 @@ impl AgentContext for AgentRuntimeContext {
     fn add_lane(
         &self,
         name: &str,
-        uplink_kind: UplinkKind,
+        lane_kind: LaneKind,
         config: LaneConfig,
     ) -> BoxFuture<'static, Result<Io, AgentRuntimeError>> {
         let name = Text::new(name);
@@ -103,7 +107,7 @@ impl AgentContext for AgentRuntimeContext {
             sender
                 .send(AgentRuntimeRequest::AddLane {
                     name,
-                    kind: uplink_kind,
+                    kind: lane_kind,
                     config,
                     promise: tx,
                 })
@@ -206,6 +210,83 @@ pub struct AgentAttachmentRequest {
     on_attached: Option<trigger::Sender>,
 }
 
+/// A request from an agent to register a new lane for metadata reporting.
+pub struct UplinkReporterRegistration {
+    pub agent_id: Uuid,
+    pub lane_name: Text,
+    pub kind: LaneKind,
+    pub reader: UplinkReportReader,
+}
+
+impl UplinkReporterRegistration {
+    pub fn new(
+        agent_id: Uuid,
+        lane_name: Text,
+        kind: LaneKind,
+        reader: UplinkReportReader,
+    ) -> Self {
+        UplinkReporterRegistration {
+            agent_id,
+            lane_name,
+            kind,
+            reader,
+        }
+    }
+}
+
+/// Context to be passed into an agent runtime to allow it to report the traffic over the uplinks
+/// of its lanes.
+#[derive(Debug, Clone)]
+pub struct NodeReporting {
+    agent_id: Uuid,
+    aggregate_reporter: UplinkReporter,
+    lane_registrations: mpsc::Sender<UplinkReporterRegistration>,
+}
+
+impl NodeReporting {
+    /// #Arguments
+    /// * `agent_id` - The unique ID of the agent that will hold this context.
+    /// * `aggregate_reporter` - Used to report the aggregated values for all lanes.
+    /// * `lane_registrations` - Used by the agent to register a new lane for reporting.
+    pub fn new(
+        agent_id: Uuid,
+        aggregate_reporter: UplinkReporter,
+        lane_registrations: mpsc::Sender<UplinkReporterRegistration>,
+    ) -> Self {
+        NodeReporting {
+            agent_id,
+            aggregate_reporter,
+            lane_registrations,
+        }
+    }
+
+    /// Register a new lane for reporting.
+    async fn register(&self, name: Text, kind: LaneKind) -> Option<UplinkReporter> {
+        let NodeReporting {
+            agent_id,
+            lane_registrations,
+            ..
+        } = self;
+        let reporter = UplinkReporter::default();
+        let reader = reporter.reader();
+        let registration = UplinkReporterRegistration::new(*agent_id, name.clone(), kind, reader);
+        if lane_registrations.send(registration).await.is_err() {
+            error!(
+                "Failed to register lane {} for agent {} for reporting.",
+                name, agent_id
+            );
+            None
+        } else {
+            Some(reporter)
+        }
+    }
+
+    /// Get an aggregate reporter for all lanes of the agent.
+    fn aggregate(&self) -> UplinkReporter {
+        self.aggregate_reporter.clone()
+    }
+}
+
 impl AgentAttachmentRequest {
     pub fn new(id: Uuid, io: Io, completion: promise::Sender<DisconnectionReason>) -> Self {
         AgentAttachmentRequest {
@@ -276,7 +357,7 @@ pub enum AgentExecError {
 
 pub struct AgentRoute {
     pub identity: Uuid,
-    pub route: RelativeUri,
+    pub route: RouteUri,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -287,12 +368,13 @@ pub struct CombinedAgentConfig {
 pub struct AgentRouteTask<'a, A> {
     agent: &'a A,
     identity: Uuid,
-    route: RelativeUri,
+    route: RouteUri,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
     downlink_tx: mpsc::Sender<DownlinkRequest>,
     stopping: trigger::Receiver,
     agent_config: AgentConfig,
     runtime_config: AgentRuntimeConfig,
+    reporting: Option<NodeReporting>,
 }
 
 impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
@@ -304,6 +386,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
     /// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
     /// * `stopping` - Instructs the agent task to stop.
     /// * `config` - Configuration parameters for the user agent task and agent runtime.
+    /// * `reporting` - Uplink metrics reporters.
     pub fn new(
         agent: &'a A,
         identity: AgentRoute,
@@ -311,6 +394,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         downlink_tx: mpsc::Sender<DownlinkRequest>,
         stopping: trigger::Receiver,
         config: CombinedAgentConfig,
+        reporting: Option<NodeReporting>,
     ) -> Self {
         AgentRouteTask {
             agent,
@@ -321,6 +405,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             stopping,
             agent_config: config.agent_config,
             runtime_config: config.runtime_config,
+            reporting,
         }
     }
 
@@ -334,6 +419,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             stopping,
             agent_config,
             runtime_config,
+            reporting,
         } = self;
         let node_uri = route.to_string().into();
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
@@ -343,6 +429,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             downlink_tx,
             init_rx,
             runtime_config.lane_init_timeout,
+            reporting,
         );
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
@@ -391,6 +478,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             stopping,
             agent_config,
             runtime_config,
+            reporting,
         } = self;
         let node_uri = route.to_string().into();
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
@@ -400,6 +488,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             downlink_tx,
             init_rx,
             runtime_config.lane_init_timeout,
+            reporting,
             StorePersistence(store.clone()),
         );
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));

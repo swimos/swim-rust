@@ -20,7 +20,7 @@ use url::Url;
 use swim_runtime::error::{ConnectionError, ResolutionError, RouterError};
 use swim_runtime::routing::RouterFactory;
 use swim_runtime::routing::{Route, Router, RoutingAddr};
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
 struct MockRouterFactory;
 impl RouterFactory for MockRouterFactory {
@@ -33,7 +33,7 @@ impl RouterFactory for MockRouterFactory {
     fn lookup(
         &mut self,
         _host: Option<Url>,
-        _route: RelativeUri,
+        _route: RouteUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         async {
             Err(RouterError::ConnectionFailure(
@@ -54,7 +54,7 @@ impl Router for MockRouter {
     fn lookup(
         &mut self,
         _host: Option<Url>,
-        _route: RelativeUri,
+        _route: RouteUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         async {
             Err(RouterError::ConnectionFailure(

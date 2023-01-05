@@ -33,7 +33,7 @@ use swim_persistence::plane::mock::MockPlaneStore;
 use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_runtime::error::{ResolutionError, RouterError};
 use swim_runtime::routing::{Route, Router, RoutingAddr};
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
@@ -54,7 +54,7 @@ impl Router for MockRouter {
     fn lookup(
         &mut self,
         _host: Option<Url>,
-        _route: RelativeUri,
+        _route: RouteUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         unimplemented!()
     }
@@ -93,7 +93,7 @@ fn simple_accessors() {
         schedule_context,
         meta_context_sink(),
         client,
-        RelativeUri::try_from("/mock/router".to_string()).unwrap(),
+        RouteUri::try_from("/mock/router".to_string()).unwrap(),
         MockNodeStore::mock(),
     );
 
@@ -150,7 +150,7 @@ fn create_context(
         schedule_context,
         meta_context_sink(),
         client,
-        RelativeUri::try_from("/mock/router".to_string()).unwrap(),
+        RouteUri::try_from("/mock/router".to_string()).unwrap(),
         MockNodeStore::mock(),
     )
 }

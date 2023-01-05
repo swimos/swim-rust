@@ -20,6 +20,7 @@ use std::io::ErrorKind;
 use std::str::Utf8Error;
 use std::sync::Arc;
 use std::time::Duration;
+use swim_utilities::routing::route_uri::RouteUri;
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError as MpscSendError;
 
@@ -34,7 +35,6 @@ pub use routing::*;
 use swim_utilities::errors::Recoverable;
 use swim_utilities::future::item_sink::SendError;
 use swim_utilities::future::request::request_future::RequestError;
-use swim_utilities::routing::uri::RelativeUri;
 use swim_utilities::sync::circular_buffer;
 use thiserror::Error as ThisError;
 pub use tls::*;
@@ -262,7 +262,7 @@ pub(crate) fn format_cause(cause: &Option<String>) -> String {
 #[derive(Debug, PartialEq)]
 pub enum RouterError {
     /// For a local endpoint it can be determined that no agent exists.
-    NoAgentAtRoute(RelativeUri),
+    NoAgentAtRoute(RouteUri),
     /// Connecting to a remote endpoint failed (the endpoint may or may not exist).
     ConnectionFailure(ConnectionError),
     /// The router was dropped (the application is likely stopping).
@@ -308,7 +308,7 @@ impl Error for Unresolvable {}
 
 /// Error indicating that request to route to a plane-local agent failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NoAgentAtRoute(pub RelativeUri);
+pub struct NoAgentAtRoute(pub RouteUri);
 
 impl Display for NoAgentAtRoute {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

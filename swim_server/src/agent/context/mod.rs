@@ -27,7 +27,7 @@ use swim_metrics::NodeMetricAggregator;
 use swim_model::path::Path;
 use swim_persistence::agent::NodeStore;
 use swim_runtime::routing::Router;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
@@ -46,7 +46,7 @@ pub(super) struct ContextImpl<Agent, Clk, R, Store> {
     schedule_context: SchedulerContext<Clk>,
     meta_context: Arc<MetaContext>,
     client_context: ClientContext<Path>,
-    agent_uri: RelativeUri,
+    agent_uri: RouteUri,
     pub(crate) uplinks_idle_since: Arc<AtomicInstant>,
     store: Store,
 }
@@ -58,7 +58,7 @@ impl<Agent, Clk, R: Router + Clone + 'static, Store> ContextImpl<Agent, Clk, R, 
         schedule_context: SchedulerContext<Clk>,
         meta_context: MetaContext,
         client_context: ClientContext<Path>,
-        agent_uri: RelativeUri,
+        agent_uri: RouteUri,
         store: Store,
     ) -> Self {
         ContextImpl {
@@ -96,13 +96,13 @@ where
 
 #[derive(Debug)]
 pub(super) struct RoutingContext<R> {
-    uri: RelativeUri,
+    uri: RouteUri,
     router: R,
     parameters: HashMap<String, String>,
 }
 
 impl<R: Router + Clone + 'static> RoutingContext<R> {
-    pub(super) fn new(uri: RelativeUri, router: R, parameters: HashMap<String, String>) -> Self {
+    pub(super) fn new(uri: RouteUri, router: R, parameters: HashMap<String, String>) -> Self {
         RoutingContext {
             uri,
             router,
@@ -145,7 +145,7 @@ where
         self.agent_ref.as_ref()
     }
 
-    fn node_uri(&self) -> &RelativeUri {
+    fn node_uri(&self) -> &RouteUri {
         &self.routing_context.uri
     }
 
@@ -178,7 +178,7 @@ pub trait AgentExecutionContext {
     fn spawner(&self) -> mpsc::Sender<Eff>;
 
     /// Return the relative uri of this agent.
-    fn uri(&self) -> &RelativeUri;
+    fn uri(&self) -> &RouteUri;
 
     /// Provides an observer factory that can be used to create observers that register events that
     /// happen on nodes, lanes, and uplinks.
@@ -208,7 +208,7 @@ where
         self.schedule_context.schedule_tx()
     }
 
-    fn uri(&self) -> &RelativeUri {
+    fn uri(&self) -> &RouteUri {
         &self.agent_uri
     }
 

@@ -44,6 +44,7 @@ use std::io;
 use std::io::Error;
 use swim_utilities::future::request::Request;
 use swim_utilities::future::task::Spawner;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger::promise;
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -54,7 +55,6 @@ use ratchet::WebSocketStream;
 pub use router::{RemoteRouter, RemoteRouterFactory};
 use swim_model::Text;
 use swim_tracing::request::{RequestExt, TryRequestExt};
-use swim_utilities::routing::uri::RelativeUri;
 
 use self::net::dns::BoxDnsResolver;
 
@@ -83,13 +83,13 @@ type ClientRequest = Request<Result<UnroutableClient, Unresolvable>>;
 #[derive(Debug)]
 pub struct AttachClientRequest {
     pub addr: RoutingAddr,
-    pub node: RelativeUri,
+    pub node: RouteUri,
     pub lane: Text,
     pub request: ClientRequest,
 }
 
 impl AttachClientRequest {
-    pub fn new(addr: RoutingAddr, node: RelativeUri, lane: Text, request: ClientRequest) -> Self {
+    pub fn new(addr: RoutingAddr, node: RouteUri, lane: Text, request: ClientRequest) -> Self {
         AttachClientRequest {
             addr,
             node,

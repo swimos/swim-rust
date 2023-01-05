@@ -39,7 +39,7 @@ use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
 use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::algebra::non_zero_usize;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::{Envelope, EnvelopeKind};
 use tokio::sync::mpsc;
@@ -162,7 +162,7 @@ impl Router for MockRouter {
     fn lookup(
         &mut self,
         _host: Option<Url>,
-        _route: RelativeUri,
+        _route: RouteUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
@@ -171,7 +171,7 @@ impl Router for MockRouter {
 #[tokio::test]
 async fn lane_info_sync() {
     let (tx, mut rx) = mpsc::channel(5);
-    let uri = RelativeUri::try_from("/test").unwrap();
+    let uri = RouteUri::try_from("/test").unwrap();
     let buffer_size = non_zero_usize!(10);
     let clock = TestClock::default();
     let exec_config = AgentExecutionConfig::with(

@@ -24,5 +24,9 @@ pub use self::{
     util::AgentExt,
 };
 
+pub mod introspection {
+    pub use swim_introspection::IntrospectionConfig;
+}
+
 #[cfg(feature = "persistence")]
 pub use swim_persistence::rocks::RocksOpts;

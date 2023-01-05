@@ -34,7 +34,6 @@ use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 use swim_server::agent::map_lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
-use swim_server::uri::RelativeUri;
 use swim_server::RetryStrategy;
 
 #[derive(Debug, SwimAgent)]
@@ -184,6 +183,6 @@ async fn did_update(
         .await;
 }
 
-fn log_message<T: Display>(node_uri: &RelativeUri, message: &T) {
+fn log_message<T: Display>(node_uri: &RouteUri, message: &T) {
     println!("{}: {}", node_uri, message);
 }

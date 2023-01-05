@@ -20,7 +20,7 @@ use crate::error::{RouterError, Unresolvable};
 use crate::routing::RoutingAddr;
 use std::io::ErrorKind;
 use std::time::Duration;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
 #[test]
 fn connection_error_display() {
@@ -78,7 +78,7 @@ fn resolution_error_display() {
 
 #[test]
 fn router_error_display() {
-    let uri: RelativeUri = "/name".parse().unwrap();
+    let uri: RouteUri = "/name".parse().unwrap();
     let string = RouterError::NoAgentAtRoute(uri).to_string();
     assert_eq!(string, "No agent at: '/name'");
 

@@ -46,7 +46,7 @@ use swim_utilities::errors::Recoverable;
 use swim_utilities::future::open_ended::OpenEndedFutures;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::future::task::Spawner;
-use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri};
+use swim_utilities::routing::route_uri::{InvalidRouteUri, RouteUri};
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::{Envelope, EnvelopeHeader};
@@ -336,7 +336,7 @@ where
 /// Error type indicating a failure to route an incoming message.
 #[derive(Debug)]
 enum DispatchError {
-    BadNodeUri(BadRelativeUri),
+    BadNodeUri(InvalidRouteUri),
     Unresolvable(ResolutionError),
     RoutingProblem(RouterError),
     Dropped(ConnectionDropped),
@@ -345,7 +345,7 @@ enum DispatchError {
 impl Display for DispatchError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            DispatchError::BadNodeUri(err) => write!(f, "Invalid relative URI: '{}'", err),
+            DispatchError::BadNodeUri(err) => write!(f, "Invalid route URI: '{}'", err),
             DispatchError::Unresolvable(err) => {
                 write!(f, "Could not resolve a router endpoint: '{}'", err)
             }
@@ -381,8 +381,8 @@ impl Recoverable for DispatchError {
     }
 }
 
-impl From<BadRelativeUri> for DispatchError {
-    fn from(err: BadRelativeUri) -> Self {
+impl From<InvalidRouteUri> for DispatchError {
+    fn from(err: InvalidRouteUri) -> Self {
         DispatchError::BadNodeUri(err)
     }
 }
@@ -514,7 +514,7 @@ where
     R: Router,
 {
     let target_addr = router
-        .lookup(None, RelativeUri::from_str(target.node.as_str())?)
+        .lookup(None, RouteUri::from_str(target.node.as_str())?)
         .await?;
     Ok(router.resolve_sender(target_addr).await?)
 }

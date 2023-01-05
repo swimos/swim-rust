@@ -30,13 +30,14 @@ use swim_agent::{
 use swim_api::agent::AgentConfig;
 use swim_api::downlink::DownlinkKind;
 use swim_api::error::{DownlinkRuntimeError, OpenStoreError};
+use swim_api::meta::lane::LaneKind;
 use swim_api::store::StoreKind;
 use swim_model::Text;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
 use futures::future::BoxFuture;
 use swim_api::{
-    agent::{AgentContext, LaneConfig, UplinkKind},
+    agent::{AgentContext, LaneConfig},
     error::AgentRuntimeError,
 };
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
@@ -69,7 +70,7 @@ impl AgentContext for DummyAgentContext {
     fn add_lane(
         &self,
         _name: &str,
-        _uplink_kind: UplinkKind,
+        _lane_kind: LaneKind,
         _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Dummy context used.");
@@ -154,11 +155,11 @@ impl LifecycleInner {
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
-fn make_uri() -> RelativeUri {
-    RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+fn make_uri() -> RouteUri {
+    RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
+fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
     AgentMetadata::new(uri, &CONFIG)
 }
 

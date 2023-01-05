@@ -21,7 +21,7 @@ use swim_runtime::error::{ConnectionError, ResolutionError, RouterError, Unresol
 use swim_runtime::remote::RawOutRoute;
 use swim_runtime::routing::{Route, Router, RouterFactory, RoutingAddr, TaggedSender};
 use swim_utilities::future::request::Request;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::routing::PlaneRoutingRequest;
 
@@ -62,7 +62,7 @@ impl<DelegateFac: RouterFactory> RouterFactory for PlaneRouterFactory<DelegateFa
     fn lookup(
         &mut self,
         host: Option<Url>,
-        route: RelativeUri,
+        route: RouteUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         async move {
             let PlaneRouterFactory { request_sender, .. } = self;
@@ -97,7 +97,7 @@ impl<Delegate> PlaneRouter<Delegate> {
 async fn lookup_inner(
     request_sender: &mpsc::Sender<PlaneRoutingRequest>,
     host: Option<Url>,
-    route: RelativeUri,
+    route: RouteUri,
 ) -> Result<RoutingAddr, RouterError> {
     if let Some(host) = host {
         Err(RouterError::ConnectionFailure(ConnectionError::Resolution(
@@ -162,7 +162,7 @@ impl<Delegate: Router> Router for PlaneRouter<Delegate> {
     fn lookup(
         &mut self,
         host: Option<Url>,
-        route: RelativeUri,
+        route: RouteUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         async move {
             let PlaneRouter { request_sender, .. } = self;

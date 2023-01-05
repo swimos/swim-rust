@@ -21,7 +21,7 @@ use crate::{
     agent::{
         task::{
             tests::{RemoteReceiver, RemoteSender},
-            AgentRuntimeTask, InitialEndpoints, LaneEndpoint,
+            AgentRuntimeTask, InitialEndpoints, LaneEndpoint, NodeDescriptor,
         },
         AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io,
     },
@@ -35,6 +35,7 @@ use futures::{
 use std::fmt::Debug;
 use swim_api::{
     agent::UplinkKind,
+    meta::lane::LaneKind,
     protocol::{agent::LaneRequest, map::MapMessage},
 };
 use swim_model::Text;
@@ -65,7 +66,7 @@ enum Event {
 
 struct CreateLane {
     name: Text,
-    kind: UplinkKind,
+    kind: LaneKind,
 }
 
 #[derive(Default)]
@@ -155,6 +156,7 @@ impl FakeAgent {
                 kind,
                 transient: false,
                 io: io_rx,
+                reporter: None,
             }));
         }
         let mut create_stream = UnboundedReceiverStream::new(create_rx).take_until(stopping);
@@ -248,7 +250,8 @@ impl FakeAgent {
                         let (io_tx, io_rx) = rx.await
                             .expect("Failed to receive response.")
                             .expect("Failed to add new lane.");
-                        match kind {
+                        let uplink_kind = kind.uplink_kind();
+                        match uplink_kind {
                             UplinkKind::Value => {
                                 value_lanes.insert(name.clone(), (0, ValueLikeLaneSender::new(io_tx)));
                             }
@@ -260,7 +263,7 @@ impl FakeAgent {
                                 panic!("Unexpected supply uplink.");
                             }
                         }
-                        lanes.push(LaneReader::new(LaneEndpoint { name, kind, transient: false, io: io_rx }));
+                        lanes.push(LaneReader::new(LaneEndpoint { name, kind: uplink_kind, transient: false, io: io_rx, reporter: None }));
                     } else {
                         break;
                     }
@@ -355,12 +358,14 @@ where
         UplinkKind::Value,
         false,
         (tx_in_val, rx_out_val),
+        None,
     ));
     runtime_endpoints.push(LaneEndpoint::new(
         Text::new(MAP_LANE),
         UplinkKind::Map,
         false,
         (tx_in_map, rx_out_map),
+        None,
     ));
 
     agent_endpoints.push(LaneEndpoint::new(
@@ -368,19 +373,20 @@ where
         UplinkKind::Value,
         false,
         (tx_out_val, rx_in_val),
+        None,
     ));
     agent_endpoints.push(LaneEndpoint::new(
         Text::new(MAP_LANE),
         UplinkKind::Map,
         false,
         (tx_out_map, rx_in_map),
+        None,
     ));
 
-    let init = InitialEndpoints::new(req_rx, runtime_endpoints);
+    let init = InitialEndpoints::new(None, req_rx, runtime_endpoints);
 
     let agent_task = AgentRuntimeTask::new(
-        AGENT_ID,
-        Text::new(NODE),
+        NodeDescriptor::new(AGENT_ID, Text::new(NODE)),
         init,
         att_rx,
         stop_rx.clone(),

@@ -15,6 +15,7 @@
 use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use swim_api::{
     agent::{LaneConfig, UplinkKind},
+    meta::lane::LaneKind,
     protocol::{
         agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
         map::{MapMessageDecoder, RawMapOperation, RawMapOperationDecoder, RawMapOperationEncoder},
@@ -32,7 +33,10 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 
 use super::{check_connected, run_test, TestInit, CONFIGS, INIT_STOPPED, NO_LANE, NO_RESPONSE};
 use crate::agent::{
-    task::{AgentRuntimeRequest, InitialEndpoints, LaneEndpoint},
+    task::{
+        init::tests::{run_test_with_reporting, AGENT_ID},
+        AgentRuntimeRequest, InitialEndpoints, LaneEndpoint,
+    },
     AgentExecError, DownlinkRequest, Io,
 };
 
@@ -152,7 +156,7 @@ impl SingleLaneInitTask {
         requests
             .send(AgentRuntimeRequest::AddLane {
                 name: Text::new("my_lane"),
-                kind: UplinkKind::Value,
+                kind: LaneKind::Value,
                 config,
                 promise: lane_tx,
             })
@@ -202,10 +206,45 @@ async fn single_lane() {
 
         assert_eq!(endpoints.len(), 1);
         let LaneEndpoint {
-            name, kind, mut io, ..
+            name,
+            kind,
+            mut io,
+            transient,
+            reporter,
         } = endpoints.pop().unwrap();
         assert_eq!(name, "my_lane");
         assert_eq!(kind, UplinkKind::Value);
+        assert_eq!(transient, config.transient);
+        assert!(reporter.is_none());
+        check_connected(&mut agent_io, &mut io);
+    }
+}
+
+#[tokio::test]
+async fn single_lane_with_reporting() {
+    for config in CONFIGS {
+        let init = SingleLaneInit { config: *config };
+        let (initial_result, mut agent_io) = run_test_with_reporting(
+            init,
+            vec![(AGENT_ID, Text::new("my_lane"), LaneKind::Value)],
+        )
+        .await;
+        let initial = initial_result.expect("No lanes were registered.");
+
+        let InitialEndpoints { mut endpoints, .. } = initial;
+
+        assert_eq!(endpoints.len(), 1);
+        let LaneEndpoint {
+            name,
+            kind,
+            mut io,
+            transient,
+            reporter,
+        } = endpoints.pop().unwrap();
+        assert_eq!(name, "my_lane");
+        assert_eq!(kind, UplinkKind::Value);
+        assert_eq!(transient, config.transient);
+        assert!(reporter.is_some());
         check_connected(&mut agent_io, &mut io);
     }
 }
@@ -254,7 +293,7 @@ impl TwoLanesInitTask {
         requests
             .send(AgentRuntimeRequest::AddLane {
                 name: Text::new("value_lane"),
-                kind: UplinkKind::Value,
+                kind: LaneKind::Value,
                 config,
                 promise: lane_tx1,
             })
@@ -264,7 +303,7 @@ impl TwoLanesInitTask {
         requests
             .send(AgentRuntimeRequest::AddLane {
                 name: Text::new("map_lane"),
-                kind: UplinkKind::Map,
+                kind: LaneKind::Map,
                 config,
                 promise: lane_tx2,
             })
@@ -320,7 +359,11 @@ async fn two_lanes() {
         let TwoLanes { mut value, mut map } = agent_lanes;
 
         for LaneEndpoint {
-            name, kind, mut io, ..
+            name,
+            kind,
+            mut io,
+            transient,
+            reporter,
         } in endpoints
         {
             match kind {
@@ -338,6 +381,8 @@ async fn two_lanes() {
                 }
                 _ => panic!("Unexpected supply uplink."),
             }
+            assert_eq!(transient, config.transient);
+            assert!(reporter.is_none());
         }
     }
 }

@@ -21,16 +21,17 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swim_api::{
-    agent::{AgentConfig, AgentContext, LaneConfig, UplinkKind},
+    agent::{AgentConfig, AgentContext, LaneConfig},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    meta::lane::LaneKind,
     store::StoreKind,
 };
 use swim_model::{address::Address, Text};
 use swim_utilities::{
     algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
+    routing::route_uri::RouteUri,
 };
 
 use crate::{
@@ -105,7 +106,7 @@ impl AgentContext for TestContext {
     fn add_lane(
         &self,
         _name: &str,
-        _uplink_kind: UplinkKind,
+        _lane_kind: LaneKind,
         _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Unexpected request to open a lane.")
@@ -140,11 +141,11 @@ const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
-fn make_uri() -> RelativeUri {
-    RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+fn make_uri() -> RouteUri {
+    RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
+fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
     AgentMetadata::new(uri, &CONFIG)
 }
 

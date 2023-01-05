@@ -39,7 +39,7 @@ use swim_form::structural::Tag;
 use swim_form::Form;
 use swim_model::time::Timestamp;
 use swim_model::Value;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
@@ -138,18 +138,13 @@ pub struct LogEntry {
     #[form(tag)]
     level: LogLevel,
     /// The node URI that produced this entry.
-    node: RelativeUri,
+    node: RouteUri,
     /// The lane URI that produced this entry.
     lane: String,
 }
 
 impl LogEntry {
-    pub fn make<F>(
-        message: F,
-        level: LogLevel,
-        node: RelativeUri,
-        lane: impl Into<String>,
-    ) -> LogEntry
+    pub fn make<F>(message: F, level: LogLevel, node: RouteUri, lane: impl Into<String>) -> LogEntry
     where
         F: Form,
     {
@@ -173,7 +168,7 @@ pub struct NodeLogger {
     /// Channel to the internal send task.
     sender: mpsc::Sender<LogEntry>,
     /// The node URI that this logger is attched to.
-    node_uri: RelativeUri,
+    node_uri: RouteUri,
 }
 
 impl Debug for NodeLogger {
@@ -225,7 +220,7 @@ impl LogLanes {
 
 impl NodeLogger {
     fn new(
-        node_uri: RelativeUri,
+        node_uri: RouteUri,
         yield_after: NonZeroUsize,
         stop_rx: trigger::Receiver,
         log_lanes: LogLanes,
@@ -424,7 +419,7 @@ impl LogTask {
 }
 
 #[cfg(test)]
-pub(crate) fn make_node_logger(node_uri: RelativeUri) -> NodeLogger {
+pub(crate) fn make_node_logger(node_uri: RouteUri) -> NodeLogger {
     NodeLogger {
         sender: mpsc::channel(1).0,
         node_uri,
@@ -433,7 +428,7 @@ pub(crate) fn make_node_logger(node_uri: RelativeUri) -> NodeLogger {
 
 /// Opens log lanes for `node_uri` using the provided configuration.
 pub fn open_log_lanes<Config, Agent, Context>(
-    node_uri: RelativeUri,
+    node_uri: RouteUri,
     config: LogConfig,
     stop_rx: trigger::Receiver,
     yield_after: NonZeroUsize,

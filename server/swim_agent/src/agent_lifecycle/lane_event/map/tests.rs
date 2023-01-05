@@ -17,7 +17,7 @@ use std::{collections::HashMap, sync::Arc};
 use parking_lot::Mutex;
 use swim_api::agent::AgentConfig;
 use swim_model::Text;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::{
     agent_lifecycle::lane_event::{tests::run_handler, HLeaf, LaneEvent, MapBranch, MapLeaf},
@@ -291,11 +291,11 @@ where
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
-fn make_uri() -> RelativeUri {
-    RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+fn make_uri() -> RouteUri {
+    RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
+fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
     AgentMetadata::new(uri, &CONFIG)
 }
 

@@ -12,21 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{num::NonZeroUsize, time::Duration};
+use std::{collections::HashMap, num::NonZeroUsize, time::Duration};
 
 use futures::{
-    future::{join, BoxFuture},
+    future::{join, join3, BoxFuture},
     FutureExt, SinkExt, StreamExt,
 };
 use swim_api::{
     agent::{LaneConfig, UplinkKind},
     error::StoreError,
+    meta::lane::LaneKind,
     protocol::{
         agent::{
             LaneRequest, LaneRequestDecoder, LaneRequestEncoder, LaneResponse, LaneResponseEncoder,
         },
         WithLengthBytesCodec,
     },
+    store::StoreDisabled,
 };
 use swim_model::Text;
 use swim_utilities::{
@@ -36,11 +38,14 @@ use swim_utilities::{
 };
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
+use uuid::Uuid;
 
 use crate::agent::{
+    reporting::UplinkReporter,
     store::{AgentPersistence, InitFut, Initializer, StoreInitError},
     task::{InitialEndpoints, LaneEndpoint},
-    AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io,
+    AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io, NodeReporting,
+    UplinkReporterRegistration,
 };
 
 mod no_store;
@@ -92,7 +97,8 @@ where
     let (done_tx, done_rx) = trigger::trigger();
     let (dl_tx, dl_rx) = mpsc::channel(DL_CHAN_SIZE);
 
-    let runtime = super::AgentInitTask::with_store(req_rx, dl_tx, done_rx, INIT_TIMEOUT, store);
+    let runtime =
+        super::AgentInitTask::with_store(req_rx, dl_tx, done_rx, INIT_TIMEOUT, None, store);
     let test = init.run_test(req_tx, dl_rx, done_tx);
 
     join(runtime.run(), test).await
@@ -143,8 +149,9 @@ async fn run_initializer_success() {
         let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
         let init_task = super::lane_initialization(
             Text::new("lane"),
-            UplinkKind::Value,
+            LaneKind::Value,
             LANE_INIT_TIMEOUT,
+            None,
             tx_in,
             rx_out,
             Box::new(DummyInit::default()),
@@ -189,8 +196,9 @@ async fn run_initializer_failed_init() {
         };
         let init_task = super::lane_initialization(
             Text::new("lane"),
-            UplinkKind::Value,
+            LaneKind::Value,
             LANE_INIT_TIMEOUT,
+            None,
             tx_in,
             rx_out,
             Box::new(init),
@@ -218,8 +226,9 @@ async fn run_initializer_bad_response() {
         let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
         let init_task = super::lane_initialization(
             Text::new("lane"),
-            UplinkKind::Value,
+            LaneKind::Value,
             LANE_INIT_TIMEOUT,
+            None,
             tx_in,
             rx_out,
             Box::new(DummyInit::default()),
@@ -267,8 +276,9 @@ async fn run_initializer_timeout() {
         let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
         let init_task = super::lane_initialization(
             Text::new("lane"),
-            UplinkKind::Value,
+            LaneKind::Value,
             Duration::from_millis(100),
+            None,
             tx_in,
             rx_out,
             Box::new(DummyInit::default()),
@@ -300,4 +310,61 @@ async fn run_initializer_timeout() {
     })
     .await
     .expect("Test timed out.")
+}
+
+async fn provide_reporting(
+    mut rx: mpsc::Receiver<UplinkReporterRegistration>,
+    expected: Vec<(Uuid, Text, LaneKind)>,
+) {
+    let mut expected_map: HashMap<_, _> = expected
+        .into_iter()
+        .map(|(id, name, kind)| (id, (name, kind)))
+        .collect();
+    while let Some(UplinkReporterRegistration {
+        agent_id,
+        lane_name,
+        kind,
+        ..
+    }) = rx.recv().await
+    {
+        let (expected_name, expected_kind) = expected_map.remove(&agent_id).expect("Unexpected ID");
+        assert_eq!(lane_name, expected_name);
+        assert_eq!(kind, expected_kind);
+        if expected_map.is_empty() {
+            break;
+        }
+    }
+    assert!(expected_map.is_empty());
+}
+
+const AGENT_ID: Uuid = Uuid::from_u128(123);
+
+async fn run_test_with_reporting<T: TestInit>(
+    init: T,
+    expected: Vec<(Uuid, Text, LaneKind)>,
+) -> (
+    Result<InitialEndpoints, AgentExecError>,
+    <T as TestInit>::Output,
+) {
+    let (req_tx, req_rx) = mpsc::channel(8);
+    let (done_tx, done_rx) = trigger::trigger();
+    let (dl_tx, dl_rx) = mpsc::channel(DL_CHAN_SIZE);
+
+    let aggregate_reporter = UplinkReporter::default();
+    let (reg_tx, reg_rx) = mpsc::channel(8);
+    let reporting = NodeReporting::new(AGENT_ID, aggregate_reporter, reg_tx);
+
+    let runtime = super::AgentInitTask::with_store(
+        req_rx,
+        dl_tx,
+        done_rx,
+        INIT_TIMEOUT,
+        Some(reporting),
+        StoreDisabled::default(),
+    );
+    let test = init.run_test(req_tx, dl_rx, done_tx);
+    let reporting_task = provide_reporting(reg_rx, expected);
+
+    let (res, output, _) = join3(runtime.run(), test, reporting_task).await;
+    (res, output)
 }

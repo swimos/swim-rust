@@ -20,7 +20,7 @@ use crate::routing::{Router, RoutingAddr, TaggedEnvelope};
 use futures::future::join;
 use futures::io::ErrorKind;
 use futures::{FutureExt, StreamExt};
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::Envelope;
@@ -71,7 +71,7 @@ fn test_url() -> Url {
     "swim://remote:80".parse().unwrap()
 }
 
-fn path() -> RelativeUri {
+fn path() -> RouteUri {
     "/agent/lane".parse().unwrap()
 }
 

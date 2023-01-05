@@ -23,7 +23,7 @@ use http::StatusCode;
 use parking_lot::Mutex;
 use std::collections::{hash_map, HashMap};
 use std::sync::Arc;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger::promise;
 use tokio::sync::mpsc;
 use url::Url;
@@ -39,7 +39,7 @@ struct Entry {
 #[derive(Debug, Default)]
 pub struct LocalRoutesInner {
     routes: HashMap<RoutingAddr, Entry>,
-    uri_mappings: HashMap<RelativeUri, (RoutingAddr, u8)>,
+    uri_mappings: HashMap<RouteUri, (RoutingAddr, u8)>,
     counter: u32,
 }
 
@@ -79,7 +79,7 @@ impl Router for LocalRoutes {
     fn lookup(
         &mut self,
         host: Option<Url>,
-        route: RelativeUri,
+        route: RouteUri,
     ) -> BoxFuture<'_, Result<RoutingAddr, RouterError>> {
         let mut lock = self.1.lock();
         let result = if let Some(host_name) = host {
@@ -110,7 +110,7 @@ impl Router for LocalRoutes {
 impl LocalRoutes {
     pub fn add_with_countdown(
         &self,
-        uri: RelativeUri,
+        uri: RouteUri,
         countdown: u8,
     ) -> mpsc::Receiver<TaggedEnvelope> {
         let (tx, rx) = mpsc::channel(8);
@@ -118,13 +118,13 @@ impl LocalRoutes {
         rx
     }
 
-    pub fn add_sender(&self, uri: RelativeUri, tx: mpsc::Sender<TaggedEnvelope>) {
+    pub fn add_sender(&self, uri: RouteUri, tx: mpsc::Sender<TaggedEnvelope>) {
         self.add_sender_with_countdown(uri, tx, 0);
     }
 
     fn add_sender_with_countdown(
         &self,
-        uri: RelativeUri,
+        uri: RouteUri,
         tx: mpsc::Sender<TaggedEnvelope>,
         countdown: u8,
     ) {
@@ -157,11 +157,11 @@ impl LocalRoutes {
         }
     }
 
-    pub fn add(&self, uri: RelativeUri) -> mpsc::Receiver<TaggedEnvelope> {
+    pub fn add(&self, uri: RouteUri) -> mpsc::Receiver<TaggedEnvelope> {
         self.add_with_countdown(uri, 0)
     }
 
-    pub fn remove(&self, uri: RelativeUri) -> promise::Sender<ConnectionDropped> {
+    pub fn remove(&self, uri: RouteUri) -> promise::Sender<ConnectionDropped> {
         let LocalRoutesInner {
             routes,
             uri_mappings,
@@ -186,7 +186,7 @@ impl RouterFactory for LocalRoutes {
     fn lookup(
         &mut self,
         host: Option<Url>,
-        route: RelativeUri,
+        route: RouteUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         Router::lookup(self, host, route)
     }

@@ -125,7 +125,15 @@ where
     let (networking, networking_task) = TestConnections::new(HashMap::new(), remotes, incoming_rx);
     let websockets = TestWs::default();
 
-    let server = SwimServer::new(plane, addr, networking, websockets, config, StoreDisabled);
+    let server = SwimServer::new(
+        plane,
+        addr,
+        networking,
+        websockets,
+        config,
+        StoreDisabled,
+        None,
+    );
 
     let (server_conn, dl_conn) = downlink_task_connector(
         config.client_request_channel_size,

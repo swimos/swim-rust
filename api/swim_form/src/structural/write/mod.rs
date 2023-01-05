@@ -28,7 +28,7 @@ use swim_utilities::future::retryable::strategy::Quantity;
 #[doc(hidden)]
 pub use swim_form_derive::StructuralWritable;
 use swim_model::time::Timestamp;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use url::Url;
 
 use crate::structural::write::to_model::ValueInterpreter;
@@ -613,7 +613,7 @@ impl StructuralWritable for Text {
     }
 }
 
-impl StructuralWritable for RelativeUri {
+impl StructuralWritable for RouteUri {
     fn num_attributes(&self) -> usize {
         0
     }
@@ -622,14 +622,14 @@ impl StructuralWritable for RelativeUri {
         &self,
         writer: W,
     ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        writer.write_text(self.to_string())
+        writer.write_text(self.as_str())
     }
 
     fn write_into<W: StructuralWriter>(
         self,
         writer: W,
     ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        writer.write_text(self.to_string())
+        writer.write_text(self.as_str())
     }
 }
 

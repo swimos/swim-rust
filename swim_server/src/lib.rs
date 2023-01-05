@@ -41,7 +41,7 @@ pub use stringify_attr::{stringify_attr, stringify_attr_raw};
 pub use swim_utilities::future::retryable::RetryStrategy;
 pub use swim_utilities::future::SwimStreamExt;
 pub use swim_utilities::routing::route_pattern::RoutePattern;
-pub use swim_utilities::routing::uri;
+pub use swim_utilities::routing::route_uri;
 
 #[doc(hidden)]
 pub mod store {

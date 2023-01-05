@@ -35,6 +35,7 @@ use swim_utilities::routing::route_pattern::RoutePattern;
 use crate::{
     config::SwimServerConfig,
     error::ServerBuilderError,
+    introspection::IntrospectionConfig,
     plane::{PlaneBuilder, PlaneModel},
 };
 
@@ -48,6 +49,7 @@ pub struct ServerBuilder {
     deflate: Option<DeflateConfig>,
     config: SwimServerConfig,
     store_options: StoreConfig,
+    introspection: Option<IntrospectionConfig>,
 }
 
 #[non_exhaustive]
@@ -77,6 +79,7 @@ impl ServerBuilder {
             deflate: Default::default(),
             config: Default::default(),
             store_options: Default::default(),
+            introspection: Default::default(),
         }
     }
 
@@ -131,6 +134,20 @@ impl ServerBuilder {
         self
     }
 
+    /// Enable agent and lane introspection in the server.
+    pub fn enable_introspection(mut self) -> Self {
+        self.introspection = Some(IntrospectionConfig::default());
+        self
+    }
+
+    /// Configure the introspection system (this implicitly enables introspection).
+    /// #Arguments
+    /// * `config` - Configuration parameters for the introspection system.
+    pub fn configure_introspection(mut self, config: IntrospectionConfig) -> Self {
+        self.introspection = Some(config);
+        self
+    }
+
     /// Attempt to make a server instance. This will fail if the routes specified for the
     /// agents are ambiguous.
     pub async fn build(self) -> Result<BoxServer, ServerBuilderError> {
@@ -141,8 +158,12 @@ impl ServerBuilder {
             deflate,
             config,
             store_options,
+            introspection,
         } = self;
         let routes = plane.build()?;
+        if introspection.is_some() {
+            routes.check_meta_collisions()?;
+        }
         let resolver = Arc::new(Resolver::new().await);
         if enable_tls {
             //TODO Make this support actual identities.
@@ -155,6 +176,7 @@ impl ServerBuilder {
                 config,
                 deflate,
                 store_options,
+                introspection,
             )?))
         } else {
             let networking = TokioPlainTextNetworking::new(resolver);
@@ -165,6 +187,7 @@ impl ServerBuilder {
                 config,
                 deflate,
                 store_options,
+                introspection,
             )?))
         }
     }
@@ -177,6 +200,7 @@ fn with_store<N>(
     config: SwimServerConfig,
     deflate: Option<DeflateConfig>,
     store_config: StoreConfig,
+    introspection: Option<IntrospectionConfig>,
 ) -> Result<Box<dyn Server>, StoreError>
 where
     N: ExternalConnections,
@@ -187,7 +211,13 @@ where
         StoreConfig::RockStore { path, options } => {
             let store = super::store::rocks::create_rocks_store(path, options)?;
             Ok(with_websockets(
-                bind_to, routes, networking, config, deflate, store,
+                bind_to,
+                routes,
+                networking,
+                config,
+                deflate,
+                store,
+                introspection,
             ))
         }
         _ => Ok(with_websockets(
@@ -197,6 +227,7 @@ where
             config,
             deflate,
             StoreDisabled,
+            introspection,
         )),
     }
 }
@@ -208,6 +239,7 @@ fn with_websockets<N, Store>(
     config: SwimServerConfig,
     deflate: Option<DeflateConfig>,
     store: Store,
+    introspection: Option<IntrospectionConfig>,
 ) -> Box<dyn Server>
 where
     N: ExternalConnections,
@@ -222,7 +254,13 @@ where
             subprotocols,
         };
         Box::new(SwimServer::new(
-            routes, bind_to, networking, websockets, config, store,
+            routes,
+            bind_to,
+            networking,
+            websockets,
+            config,
+            store,
+            introspection,
         ))
     } else {
         let websockets = RatchetNetworking {
@@ -231,7 +269,13 @@ where
             subprotocols,
         };
         Box::new(SwimServer::new(
-            routes, bind_to, networking, websockets, config, store,
+            routes,
+            bind_to,
+            networking,
+            websockets,
+            config,
+            store,
+            introspection,
         ))
     }
 }

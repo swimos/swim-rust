@@ -40,7 +40,7 @@ use swim_persistence::agent::mock::MockNodeStore;
 use swim_persistence::agent::SwimNodeStore;
 use swim_persistence::plane::mock::MockPlaneStore;
 use swim_runtime::error::ResolutionError;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::time::AtomicInstant;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
@@ -82,18 +82,13 @@ impl Router for TestRouter {
     fn lookup(
         &mut self,
         _host: Option<Url>,
-        _route: RelativeUri,
+        _route: RouteUri,
     ) -> BoxFuture<'static, Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
 }
 
-struct TestContext(
-    TestRouter,
-    mpsc::Sender<Eff>,
-    RelativeUri,
-    Arc<AtomicInstant>,
-);
+struct TestContext(TestRouter, mpsc::Sender<Eff>, RouteUri, Arc<AtomicInstant>);
 
 impl AgentExecutionContext for TestContext {
     type Router = TestRouter;
@@ -107,13 +102,13 @@ impl AgentExecutionContext for TestContext {
         self.1.clone()
     }
 
-    fn uri(&self) -> &RelativeUri {
+    fn uri(&self) -> &RouteUri {
         &self.2
     }
 
     fn metrics(&self) -> NodeMetricAggregator {
         NodeMetricAggregator::new(
-            RelativeUri::try_from("/test").unwrap(),
+            RouteUri::try_from("/test").unwrap(),
             trigger::trigger().1,
             MetricAggregatorConfig::default(),
             MetaPulseLanes {

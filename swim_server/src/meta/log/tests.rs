@@ -41,7 +41,7 @@ use swim_runtime::configuration::DownlinkConnectionsConfig;
 use swim_runtime::error::{ConnectionDropped, ResolutionError, RouterError};
 use swim_runtime::routing::{Route, Router, RoutingAddr, TaggedEnvelope, TaggedSender};
 use swim_utilities::algebra::non_zero_usize;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
 use swim_warp::envelope::Envelope;
@@ -128,7 +128,7 @@ impl Router for MockRouter {
     fn lookup(
         &mut self,
         _host: Option<Url>,
-        _route: RelativeUri,
+        _route: RouteUri,
     ) -> BoxFuture<Result<RoutingAddr, RouterError>> {
         panic!("Unexpected resolution attempt.")
     }
@@ -137,7 +137,7 @@ impl Router for MockRouter {
 #[tokio::test]
 async fn agent_log() {
     let (tx, mut rx) = mpsc::channel(5);
-    let uri = RelativeUri::try_from("/test").unwrap();
+    let uri = RouteUri::try_from("/test").unwrap();
     let buffer_size = non_zero_usize!(10);
     let clock = TestClock::default();
     let exec_config = AgentExecutionConfig::with(
@@ -275,7 +275,7 @@ async fn agent_log() {
         LogEntry::make(
             TEST_MSG.to_string(),
             LogLevel::Info,
-            RelativeUri::from_str("/test").unwrap(),
+            RouteUri::from_str("/test").unwrap(),
             "lane".to_string()
         )
     );
@@ -294,7 +294,7 @@ fn log_entry(level: LogLevel, message: &str) -> LogEntry {
     LogEntry::make(
         message.to_string(),
         level,
-        RelativeUri::from_str("/node").unwrap(),
+        RouteUri::from_str("/node").unwrap(),
         "lane".to_string(),
     )
 }
@@ -352,7 +352,7 @@ async fn flushes() {
     let config = make_config(flush_interval, FlushStrategy::Buffer(non_zero_usize!(6)));
 
     let (node_logger, task) = NodeLogger::new(
-        RelativeUri::from_str("/node").unwrap(),
+        RouteUri::from_str("/node").unwrap(),
         non_zero_usize!(256),
         stop_rx,
         log_lanes,
@@ -398,7 +398,7 @@ async fn node_logger_buffered() {
     let config = make_config(flush_interval, FlushStrategy::Buffer(non_zero_usize!(6)));
 
     let (node_logger, task) = NodeLogger::new(
-        RelativeUri::from_str("/node").unwrap(),
+        RouteUri::from_str("/node").unwrap(),
         non_zero_usize!(256),
         stop_rx,
         log_lanes,
@@ -493,7 +493,7 @@ async fn node_logger_immediate() {
     let config = make_config(flush_interval, FlushStrategy::Immediate);
 
     let (node_logger, task) = NodeLogger::new(
-        RelativeUri::from_str("/node").unwrap(),
+        RouteUri::from_str("/node").unwrap(),
         non_zero_usize!(256),
         stop_rx,
         log_lanes,

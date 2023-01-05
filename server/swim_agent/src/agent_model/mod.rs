@@ -26,6 +26,7 @@ use futures::{
     StreamExt,
 };
 use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError};
+use swim_api::meta::lane::LaneKind;
 use swim_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
 use swim_api::protocol::WithLengthBytesCodec;
 use swim_api::{
@@ -34,10 +35,8 @@ use swim_api::{
     protocol::{agent::LaneRequest, map::MapMessage},
 };
 use swim_model::Text;
-use swim_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
-};
+use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swim_utilities::routing::route_uri::RouteUri;
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -240,7 +239,7 @@ where
 {
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
@@ -349,7 +348,7 @@ where
     /// * `context` - Context through which to communicate with the runtime.
     async fn initialize_agent(
         self,
-        route: RelativeUri,
+        route: RouteUri,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> AgentInitResult
@@ -385,7 +384,7 @@ where
                 if spec.flags.contains(LaneFlags::TRANSIENT) {
                     lane_conf.transient = true;
                 }
-                let io = context.add_lane(name, UplinkKind::Value, lane_conf).await?;
+                let io = context.add_lane(name, LaneKind::Value, lane_conf).await?;
                 if lane_conf.transient {
                     value_like_lane_io.insert(Text::new(name), io);
                 } else if let Some(init) = lane_model.init_value_like_lane(name) {
@@ -409,7 +408,7 @@ where
                 if spec.flags.contains(LaneFlags::TRANSIENT) {
                     lane_conf.transient = true;
                 }
-                let io = context.add_lane(name, UplinkKind::Map, lane_conf).await?;
+                let io = context.add_lane(name, LaneKind::Map, lane_conf).await?;
                 if lane_conf.transient {
                     map_lane_io.insert(Text::new(name), io);
                 } else if let Some(init) = lane_model.init_map_like_lane(name) {
@@ -475,7 +474,7 @@ where
 struct AgentTask<LaneModel, Lifecycle> {
     lane_model: LaneModel,
     lifecycle: Lifecycle,
-    route: RelativeUri,
+    route: RouteUri,
     config: AgentConfig,
     lane_ids: HashMap<u64, Text>,
     value_like_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
