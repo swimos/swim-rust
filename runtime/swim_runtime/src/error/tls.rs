@@ -67,7 +67,7 @@ impl Display for TlsError {
             }
             TlsErrorKind::InvalidKey => {
                 write!(f, "Invalid key.{}", cause)
-            },
+            }
             TlsErrorKind::InvalidCertificate => {
                 write!(f, "Invalid certificate.{}", cause)
             }

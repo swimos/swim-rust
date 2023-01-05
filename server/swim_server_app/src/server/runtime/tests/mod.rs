@@ -701,7 +701,8 @@ async fn open_new_client() {
                 downlink_connector,
             } = context;
 
-            let (request, rx) = ClientRegistration::new(host_str.into(), vec![sock_addr]);
+            let (request, rx) =
+                ClientRegistration::new(Scheme::Ws, host_str.into(), vec![sock_addr]);
 
             assert!(downlink_connector.register(request).await.is_ok());
             let client = rx
@@ -734,7 +735,8 @@ async fn fail_to_open_client() {
                 downlink_connector,
             } = context;
 
-            let (request, rx) = ClientRegistration::new(host_str.into(), vec![sock_addr]);
+            let (request, rx) =
+                ClientRegistration::new(Scheme::Ws, host_str.into(), vec![sock_addr]);
 
             assert!(downlink_connector.register(request).await.is_ok());
             let error = rx

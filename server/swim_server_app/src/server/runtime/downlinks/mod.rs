@@ -43,7 +43,7 @@ use swim_runtime::{
         failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy},
         AttachAction, DownlinkRuntimeConfig, Io, MapDownlinkRuntime, ValueDownlinkRuntime,
     },
-    net::{dns::DnsResolver, BadUrl, SchemeHostPort, SchemeSocketAddr},
+    net::{dns::DnsResolver, BadUrl, Scheme, SchemeHostPort},
 };
 use swim_utilities::{
     io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter},
@@ -134,11 +134,17 @@ where
                 match event {
                     Event::Request(request) => {
                         if let Some(host) = request.key.0.host.clone() {
-                            if let Ok(target) = process_host(host.as_str()) {
+                            if let Ok(SchemeHostPort(scheme, host_name, port)) =
+                                process_host(host.as_str())
+                            {
                                 pending.push_remote(host.clone(), request);
                                 tasks.push(
-                                    dns.resolve(target)
-                                        .map(move |result| Event::Resolved { host, result })
+                                    dns.resolve(host_name, port)
+                                        .map(move |result| Event::Resolved {
+                                            scheme,
+                                            host,
+                                            result,
+                                        })
                                         .boxed(),
                                 );
                             } else {
@@ -183,14 +189,13 @@ where
                         }
                     }
                     Event::Resolved {
+                        scheme,
                         host,
                         result: Ok(sock_addrs),
                     } => {
-                        if let Some((addr, handle)) =
-                            sock_addrs.iter().map(|s| s.addr).find_map(|addr| {
-                                downlink_channels.get(&addr).map(move |inner| (addr, inner))
-                            })
-                        {
+                        if let Some((addr, handle)) = sock_addrs.iter().find_map(|addr| {
+                            downlink_channels.get(&addr).map(move |inner| (addr, inner))
+                        }) {
                             let waiting_map = pending.take_socket_ready(&host);
                             for (key, requests) in waiting_map {
                                 if let Some(attach_tx) = handle.get(&key) {
@@ -205,12 +210,12 @@ where
                                         );
                                     }
                                 } else {
-                                    pending.push_for_socket(addr, key.clone(), requests);
+                                    pending.push_for_socket(*addr, key.clone(), requests);
                                     let identity = id_issuer.next_id();
                                     tasks.push(
                                         start_downlink_runtime(
                                             identity,
-                                            Some(addr),
+                                            Some(*addr),
                                             key,
                                             handle.client_tx.clone(),
                                             config,
@@ -220,9 +225,9 @@ where
                                 }
                             }
                         } else {
-                            let addr_vec = sock_addrs.into_iter().map(|s| s.addr).collect();
+                            let addr_vec = sock_addrs.into_iter().collect();
                             let (registration, rx) =
-                                ClientRegistration::new(host.clone(), addr_vec);
+                                ClientRegistration::new(scheme, host.clone(), addr_vec);
                             if connector.register(registration).await.is_err() {
                                 break;
                             }
@@ -242,6 +247,7 @@ where
                     Event::Resolved {
                         host,
                         result: Err(_),
+                        ..
                     } => {
                         for request in pending.open_client_failed(&host) {
                             let DownlinkRequest { promise, .. } = request;
@@ -431,8 +437,9 @@ enum Event {
     Request(DownlinkRequest),
     // A DNS resolution has completed.
     Resolved {
+        scheme: Scheme,
         host: Text,
-        result: Result<Vec<SchemeSocketAddr>, std::io::Error>,
+        result: Result<Vec<SocketAddr>, std::io::Error>,
     },
     // A request to the main server task to open a new socket has completed.
     NewClientResult {

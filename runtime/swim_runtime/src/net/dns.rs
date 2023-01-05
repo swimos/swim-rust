@@ -16,24 +16,22 @@ use futures::future::BoxFuture;
 use futures::Future;
 use futures::FutureExt;
 use std::io;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::lookup_host;
-
-use super::SchemeHostPort;
-use super::SchemeSocketAddr;
 
 /// A trait for defining DNS resolvers.
 pub trait DnsResolver {
     /// A future which resolves to either a vector of resolved socket addresses for the provided
     /// host and port, or an IO error.
-    type ResolveFuture: Future<Output = io::Result<Vec<SchemeSocketAddr>>> + Send + 'static;
+    type ResolveFuture: Future<Output = io::Result<Vec<SocketAddr>>> + Send + 'static;
 
     /// Perform a DNS query for A and AAAA records for the provided address. This *may* resolve to
     /// multiple IP addresses.
-    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture;
+    fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture;
 }
 
-pub type DnsFut = BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>>;
+pub type DnsFut = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 pub type BoxDnsResolver = Box<dyn DnsResolver<ResolveFuture = DnsFut> + Send + 'static>;
 
 impl<R> DnsResolver for Box<R>
@@ -42,8 +40,8 @@ where
 {
     type ResolveFuture = R::ResolveFuture;
 
-    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
-        (**self).resolve(host)
+    fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {
+        (**self).resolve(host, port)
     }
 }
 
@@ -53,8 +51,8 @@ where
 {
     type ResolveFuture = R::ResolveFuture;
 
-    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
-        (**self).resolve(host)
+    fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {
+        (**self).resolve(host, port)
     }
 }
 
@@ -64,17 +62,13 @@ where
 pub struct GetAddressInfoResolver;
 
 impl DnsResolver for GetAddressInfoResolver {
-    type ResolveFuture = BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>>;
+    type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
-    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
-        let (scheme, host, port) = host.split();
-
-        Box::pin(lookup_host(format!("{}:{}", host, port)).map(move |r| {
-            r.map(|it| {
-                it.map(|socket_addr| SchemeSocketAddr::new(scheme, socket_addr))
-                    .collect::<Vec<_>>()
-            })
-        }))
+    fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {
+        Box::pin(
+            lookup_host(format!("{}:{}", host, port))
+                .map(move |r| r.map(|it| it.collect::<Vec<_>>())),
+        )
     }
 }
 
@@ -100,14 +94,14 @@ impl Resolver {
 }
 
 impl DnsResolver for Resolver {
-    type ResolveFuture = BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>>;
+    type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
-    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
+    fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {
         match self {
             #[cfg(not(feature = "trust-dns"))]
-            Resolver::GetAddressInfo(resolver) => resolver.resolve(host).boxed(),
+            Resolver::GetAddressInfo(resolver) => resolver.resolve(host, port).boxed(),
             #[cfg(feature = "trust-dns")]
-            Resolver::TrustDns(resolver) => resolver.resolve(host).boxed(),
+            Resolver::TrustDns(resolver) => resolver.resolve(host, port).boxed(),
         }
     }
 }
@@ -140,10 +134,9 @@ mod trust_dns_impl {
     impl DnsResolver for TrustDnsResolver {
         type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
-        fn resolve(&self, host_and_port: SchemeHostPort) -> Self::ResolveFuture {
+        fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {
             let resolver = self.inner.clone();
             Box::pin(async move {
-                let (host, port) = host_and_port.split();
                 let lookup = resolver.lookup_ip(host).await?;
                 let mut addresses = Vec::new();
 

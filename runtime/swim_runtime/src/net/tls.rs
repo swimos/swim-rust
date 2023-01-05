@@ -43,7 +43,7 @@ use tracing::error;
 
 use crate::net::dns::Resolver;
 use crate::net::{ExternalConnections, IoResult, Listener};
-use crate::net::{Scheme, SchemeHostPort, SchemeSocketAddr};
+use crate::net::{Scheme, SchemeSocketAddr};
 use pin_project::pin_project;
 
 use super::dns::BoxDnsResolver;
@@ -184,8 +184,8 @@ impl ExternalConnections for TokioTlsNetworking {
         .boxed()
     }
 
-    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>> {
-        self.resolver.resolve(host)
+    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+        self.resolver.resolve(host, port)
     }
 
     fn dns_resolver(&self) -> BoxDnsResolver {

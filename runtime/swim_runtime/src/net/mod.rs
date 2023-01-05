@@ -124,13 +124,13 @@ pub enum ListenerError {
 impl From<std::io::Error> for ListenerError {
     fn from(err: std::io::Error) -> Self {
         match err.kind() {
-            io::ErrorKind::ConnectionReset |
-            io::ErrorKind::ConnectionAborted|
-            io::ErrorKind::BrokenPipe |
-            io::ErrorKind::InvalidInput |
-            io::ErrorKind::InvalidData |
-            io::ErrorKind::TimedOut |
-            io::ErrorKind::UnexpectedEof => ListenerError::AcceptFailed(err),
+            io::ErrorKind::ConnectionReset
+            | io::ErrorKind::ConnectionAborted
+            | io::ErrorKind::BrokenPipe
+            | io::ErrorKind::InvalidInput
+            | io::ErrorKind::InvalidData
+            | io::ErrorKind::TimedOut
+            | io::ErrorKind::UnexpectedEof => ListenerError::AcceptFailed(err),
             _ => ListenerError::ListenerFailed(err),
         }
     }
@@ -144,16 +144,14 @@ pub trait Listener<Socket>
 where
     Socket: Unpin + Send + Sync + 'static,
 {
-    type AcceptStream: FusedStream<Item = ListenerResult<(Socket, SchemeSocketAddr)>>
-        + Send
-        + Unpin;
+    type AcceptStream: FusedStream<Item = ListenerResult<(Socket, SchemeSocketAddr)>> + Send + Unpin;
 
     fn into_stream(self) -> Self::AcceptStream;
 }
 
 /// A combination of host name and port to be used as a key into the routing table.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SchemeHostPort(Scheme, String, u16);
+pub struct SchemeHostPort(pub Scheme, pub String, pub u16);
 
 impl SchemeHostPort {
     pub fn new(scheme: Scheme, host: String, port: u16) -> Self {
@@ -170,11 +168,6 @@ impl SchemeHostPort {
 
     pub fn port(&self) -> u16 {
         self.2
-    }
-
-    pub fn split(self) -> (Scheme, String, u16) {
-        let SchemeHostPort(scheme, host, port) = self;
-        (scheme, host, port)
     }
 }
 
@@ -220,7 +213,7 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
     fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
-    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>>;
+    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
 }
 
 impl<Conn> ExternalConnections for Arc<Conn>
@@ -242,8 +235,8 @@ where
         (**self).try_open(addr)
     }
 
-    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>> {
-        (**self).lookup(host)
+    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+        (**self).lookup(host, port)
     }
 
     fn dns_resolver(&self) -> BoxDnsResolver {

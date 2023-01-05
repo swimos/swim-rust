@@ -12,7 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{num::NonZeroUsize, time::Duration, path::{Path, PathBuf}, ffi::OsStr};
+use std::{
+    ffi::OsStr,
+    num::NonZeroUsize,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use ratchet::WebSocketConfig;
 use swim_api::agent::AgentConfig;
@@ -65,37 +70,36 @@ pub struct TlsConfig {
 }
 
 impl TlsConfig {
-
     pub fn der(body: Vec<u8>, password: &str) -> Self {
-        TlsConfig { 
-            identity_kind: TlsIdentityKind::DER, 
-            body: TlsIdentityBody::InMemory(body), 
+        TlsConfig {
+            identity_kind: TlsIdentityKind::DER,
+            body: TlsIdentityBody::InMemory(body),
             key: password.as_bytes().to_vec(),
-         }
+        }
     }
 
     pub fn der_from_file<N: AsRef<OsStr>>(path: N, password: &str) -> Self {
-        TlsConfig { 
-            identity_kind: TlsIdentityKind::DER, 
-            body: TlsIdentityBody::FromFile(Path::new(&path).to_owned()), 
+        TlsConfig {
+            identity_kind: TlsIdentityKind::DER,
+            body: TlsIdentityBody::FromFile(Path::new(&path).to_owned()),
             key: password.as_bytes().to_vec(),
-         }
+        }
     }
 
     pub fn pem(body: Vec<u8>, key: &[u8]) -> Self {
-        TlsConfig { 
-            identity_kind: TlsIdentityKind::PEM, 
-            body: TlsIdentityBody::InMemory(body), 
+        TlsConfig {
+            identity_kind: TlsIdentityKind::PEM,
+            body: TlsIdentityBody::InMemory(body),
             key: key.to_vec(),
         }
     }
 
     pub fn pem_from_file<N: AsRef<OsStr>>(path: N, key: &[u8]) -> Self {
-        TlsConfig { 
-            identity_kind: TlsIdentityKind::DER, 
-            body: TlsIdentityBody::FromFile(Path::new(&path).to_owned()), 
+        TlsConfig {
+            identity_kind: TlsIdentityKind::DER,
+            body: TlsIdentityBody::FromFile(Path::new(&path).to_owned()),
             key: key.to_vec(),
-         }
+        }
     }
 }
 

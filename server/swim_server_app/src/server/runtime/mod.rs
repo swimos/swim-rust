@@ -40,7 +40,9 @@ use swim_runtime::agent::{
 };
 use swim_utilities::routing::route_uri::RouteUri;
 
-use swim_runtime::net::{BadUrl, ExternalConnections, Listener, SchemeSocketAddr, ListenerError, Scheme};
+use swim_runtime::net::{
+    BadUrl, ExternalConnections, Listener, ListenerError, Scheme, SchemeSocketAddr,
+};
 use swim_runtime::ws::{RatchetError, WsConnections};
 use swim_utilities::io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
 use swim_utilities::routing::route_pattern::RoutePattern;
@@ -117,6 +119,8 @@ impl EstablishedClient {
 pub struct ClientRegistration {
     /// Original host URL that was resolved.
     host: Text,
+    /// Scheme to use for connection.
+    scheme: Scheme,
     /// Addresses to try to connect to the remote.
     sock_addrs: Vec<SocketAddr>,
     /// Reply channel for the server task.
@@ -124,10 +128,11 @@ pub struct ClientRegistration {
 }
 
 impl ClientRegistration {
-    fn new(host: Text, sock_addrs: Vec<SocketAddr>) -> (Self, ClientPromiseRx) {
+    fn new(scheme: Scheme, host: Text, sock_addrs: Vec<SocketAddr>) -> (Self, ClientPromiseRx) {
         let (tx, rx) = oneshot::channel();
         (
             ClientRegistration {
+                scheme,
                 host,
                 sock_addrs,
                 responder: tx,
@@ -516,6 +521,7 @@ where
                 }
                 ServerEvent::RemoteClientRequest(ClientRegistration {
                     host,
+                    scheme,
                     sock_addrs,
                     responder,
                 }) => {
@@ -533,7 +539,7 @@ where
                         let net = networking.clone();
                         let ws = websockets.clone();
                         client_tasks.push(async move {
-                            let result = open_client(host, sock_addrs, net, ws).await;
+                            let result = open_client(scheme, host, sock_addrs, net, ws).await;
                             ServerEvent::NewClient(result, responder)
                         });
                     }
@@ -964,6 +970,7 @@ impl From<NewClientError> for DownlinkRuntimeError {
 }
 
 async fn open_client<Net, Ws>(
+    scheme: Scheme,
     host: Text,
     addrs: Vec<SocketAddr>,
     networking: Arc<Net>,
@@ -977,8 +984,10 @@ where
     let mut conn_failures = vec![];
     let mut sock = None;
     for addr in addrs {
-        //TODO Pass scheme properly.
-        match networking.try_open(SchemeSocketAddr::new(Scheme::Ws, addr)).await {
+        match networking
+            .try_open(SchemeSocketAddr::new(scheme, addr))
+            .await
+        {
             Ok(socket) => {
                 sock = Some((addr, socket));
                 break;

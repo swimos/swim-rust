@@ -22,7 +22,7 @@ use futures::future::ready;
 use futures::{future::BoxFuture, stream::Fuse, FutureExt, Stream, StreamExt};
 use ratchet::{NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use swim_runtime::net::dns::{DnsFut, DnsResolver};
-use swim_runtime::net::{ExternalConnections, Listener, Scheme, SchemeHostPort, SchemeSocketAddr, ListenerResult};
+use swim_runtime::net::{ExternalConnections, Listener, ListenerResult, Scheme, SchemeSocketAddr};
 use swim_runtime::ws::{RatchetError, WsConnections, WsOpenFuture};
 use tokio::{
     io::{self, DuplexStream},
@@ -33,10 +33,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 #[derive(Debug)]
 enum ConnReq {
     Remote(SocketAddr, oneshot::Sender<io::Result<DuplexStream>>),
-    Resolve(
-        SchemeHostPort,
-        oneshot::Sender<io::Result<Vec<SchemeSocketAddr>>>,
-    ),
+    Resolve(String, u16, oneshot::Sender<io::Result<Vec<SocketAddr>>>),
     Listener(SocketAddr, oneshot::Sender<io::Result<TestListener>>),
 }
 
@@ -89,7 +86,7 @@ const CHAN_SIZE: usize = 8;
 
 impl TestConnections {
     pub fn new(
-        resolve: HashMap<SchemeHostPort, SocketAddr>,
+        resolve: HashMap<(String, u16), SocketAddr>,
         remotes: HashMap<SocketAddr, DuplexStream>,
         incoming: mpsc::UnboundedReceiver<(SocketAddr, DuplexStream)>,
     ) -> (Self, TestConnectionsTask) {
@@ -112,12 +109,12 @@ impl Debug for TestListener {
 impl DnsResolver for TestConnections {
     type ResolveFuture = DnsFut;
 
-    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
+    fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {
         let sender = self.requests.clone();
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(ConnReq::Resolve(host, tx))
+                .send(ConnReq::Resolve(host, port, tx))
                 .await
                 .expect("Channel closed.");
             rx.await.expect("Connections task stopped.")
@@ -162,11 +159,8 @@ impl ExternalConnections for TestConnections {
         .boxed()
     }
 
-    fn lookup(
-        &self,
-        host: SchemeHostPort,
-    ) -> BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>> {
-        self.resolve(host)
+    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
+        self.resolve(host, port)
     }
 
     fn dns_resolver(&self) -> swim_runtime::net::dns::BoxDnsResolver {
@@ -185,7 +179,7 @@ impl Listener<DuplexStream> for TestListener {
 }
 
 pub struct TestConnectionsTask {
-    resolve: HashMap<SchemeHostPort, SocketAddr>,
+    resolve: HashMap<(String, u16), SocketAddr>,
     remotes: HashMap<SocketAddr, DuplexStream>,
     incoming: Option<mpsc::UnboundedReceiver<(SocketAddr, DuplexStream)>>,
     receiver: mpsc::Receiver<ConnReq>,
@@ -193,7 +187,7 @@ pub struct TestConnectionsTask {
 
 impl TestConnectionsTask {
     fn new(
-        resolve: HashMap<SchemeHostPort, SocketAddr>,
+        resolve: HashMap<(String, u16), SocketAddr>,
         remotes: HashMap<SocketAddr, DuplexStream>,
         incoming: mpsc::UnboundedReceiver<(SocketAddr, DuplexStream)>,
         receiver: mpsc::Receiver<ConnReq>,
@@ -223,9 +217,9 @@ impl TestConnectionsTask {
                     };
                     tx.send(result).expect("Oneshot dropped.");
                 }
-                ConnReq::Resolve(host, tx) => {
-                    let result = if let Some(addr) = resolve.get(&host).cloned() {
-                        Ok(vec![SchemeSocketAddr::new(Scheme::Ws, addr)])
+                ConnReq::Resolve(host, port, tx) => {
+                    let result = if let Some(addr) = resolve.get(&(host, port)).cloned() {
+                        Ok(vec![addr])
                     } else {
                         Err(io::Error::from(ErrorKind::NotFound))
                     };

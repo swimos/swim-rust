@@ -45,10 +45,7 @@ use swim_remote::AttachClient;
 use swim_runtime::{
     agent::DownlinkRequest,
     downlink::{DownlinkOptions, DownlinkRuntimeConfig, Io},
-    net::{
-        dns::{DnsFut, DnsResolver},
-        Scheme, SchemeHostPort, SchemeSocketAddr,
-    },
+    net::dns::{DnsFut, DnsResolver},
 };
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
@@ -72,13 +69,6 @@ fn addr(port: u16) -> SocketAddr {
     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 0, 5)), port)
 }
 
-fn scheme_addr(scheme: Scheme, port: u16) -> SchemeSocketAddr {
-    SchemeSocketAddr {
-        scheme,
-        addr: addr(port),
-    }
-}
-
 const HOST: &str = "example.swim";
 const URL: &str = "warp://example.swim:40000";
 const BAD_URL: &str = "warp://other.swim:40000";
@@ -87,9 +77,9 @@ const PORT: u16 = 40000;
 impl DnsResolver for FakeDns {
     type ResolveFuture = DnsFut;
 
-    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
-        let result = match host.host().as_str() {
-            HOST => Ok(vec![scheme_addr(*host.scheme(), host.port())]),
+    fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {
+        let result = match host.as_str() {
+            HOST => Ok(vec![addr(port)]),
             _ => Err(std::io::Error::from(ErrorKind::NotFound)),
         };
         ready(result).boxed()
@@ -224,6 +214,7 @@ impl FakeServerTask {
                     host,
                     sock_addrs,
                     responder,
+                    ..
                 }))) => {
                     assert_eq!(host, URL);
                     let result = if sock_addrs.iter().any(|a| a == &addr) {

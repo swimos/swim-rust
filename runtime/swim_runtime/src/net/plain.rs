@@ -18,7 +18,7 @@ use std::pin::Pin;
 
 use crate::net::dns::{DnsResolver, Resolver};
 use crate::net::{ExternalConnections, IoResult, Listener};
-use crate::net::{Scheme, SchemeHostPort, SchemeSocketAddr};
+use crate::net::{Scheme, SchemeSocketAddr};
 use futures::future::BoxFuture;
 use futures::stream::Fuse;
 use futures::task::{Context, Poll};
@@ -28,8 +28,8 @@ use pin_project::pin_project;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
-use super::ListenerResult;
 use super::dns::BoxDnsResolver;
+use super::ListenerResult;
 
 /// Implementation of [`ExternalConnections`] using [`TcpListener`] and [`TcpStream`] from Tokio.
 #[derive(Debug, Clone)]
@@ -65,13 +65,17 @@ impl ExternalConnections for TokioPlainTextNetworking {
         async move {
             match scheme {
                 Scheme::Ws => TcpStream::connect(addr).await,
-                Scheme::Wss => Err(std::io::Error::new(ErrorKind::Other, "TLS connections not supported.")),
+                Scheme::Wss => Err(std::io::Error::new(
+                    ErrorKind::Other,
+                    "TLS connections not supported.",
+                )),
             }
-        }.boxed()   
+        }
+        .boxed()
     }
 
-    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>> {
-        self.resolver.resolve(host)
+    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+        self.resolver.resolve(host, port)
     }
 
     fn dns_resolver(&self) -> BoxDnsResolver {
@@ -84,11 +88,9 @@ impl ExternalConnections for TokioPlainTextNetworking {
 pub struct WithPeer(#[pin] TcpListener);
 
 impl WithPeer {
-
     pub fn new(listener: TcpListener) -> Self {
         WithPeer(listener)
     }
-
 }
 
 impl Stream for WithPeer {

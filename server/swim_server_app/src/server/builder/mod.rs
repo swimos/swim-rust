@@ -218,7 +218,11 @@ async fn init_tls(
         TlsIdentityBody::InMemory(bytes) => bytes,
         TlsIdentityBody::FromFile(path) => tokio::fs::read(path).await?,
     };
-    Ok(TokioTlsNetworking::parse_identity(resolver, kind, &cert_bytes)?)
+    Ok(TokioTlsNetworking::parse_identity(
+        resolver,
+        kind,
+        &cert_bytes,
+    )?)
 }
 
 fn with_store<N>(
