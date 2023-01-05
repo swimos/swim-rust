@@ -38,6 +38,8 @@ pub enum TlsErrorKind {
     Io,
     /// An OpenSSL error.
     Ssl,
+    /// The provided certificate key is invalid.
+    InvalidKey,
     /// The provided certificate is invalid.
     InvalidCertificate,
 }
@@ -63,6 +65,9 @@ impl Display for TlsError {
             TlsErrorKind::Ssl => {
                 write!(f, "SSL error.{}", cause)
             }
+            TlsErrorKind::InvalidKey => {
+                write!(f, "Invalid key.{}", cause)
+            },
             TlsErrorKind::InvalidCertificate => {
                 write!(f, "Invalid certificate.{}", cause)
             }

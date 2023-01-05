@@ -40,7 +40,7 @@ use swim_runtime::agent::{
 };
 use swim_utilities::routing::route_uri::RouteUri;
 
-use swim_runtime::net::{BadUrl, ExternalConnections, Listener, SchemeSocketAddr};
+use swim_runtime::net::{BadUrl, ExternalConnections, Listener, SchemeSocketAddr, ListenerError};
 use swim_runtime::ws::{RatchetError, WsConnections};
 use swim_utilities::io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
 use swim_utilities::routing::route_pattern::RoutePattern;
@@ -84,7 +84,7 @@ type ClientPromiseTx = oneshot::Sender<Result<EstablishedClient, NewClientError>
 type ClientPromiseRx = oneshot::Receiver<Result<EstablishedClient, NewClientError>>;
 
 enum ServerEvent<Sock, Ext> {
-    NewConnection(Result<(Sock, SchemeSocketAddr), std::io::Error>),
+    NewConnection(Result<(Sock, SchemeSocketAddr), ListenerError>),
     FindRoute(FindNode),
     FailRoute(FindNode),
     RemoteStopped(SocketAddr, Result<(), JoinError>),

@@ -12,189 +12,73 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::Context;
 
 use either::Either;
 use futures::future::BoxFuture;
+use futures::stream::unfold;
+use futures::stream::BoxStream;
 use futures::stream::Fuse;
 use futures::stream::FuturesUnordered;
-use futures::FutureExt;
+use futures::Future;
 use futures::StreamExt;
-use futures::{select, Stream};
+use futures::Stream;
 use tokio::macros::support::Poll;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
-use tokio_native_tls::native_tls::{Identity, TlsConnector as NativeTlsConnector};
-use tokio_native_tls::{TlsAcceptor, TlsConnector};
-use tokio_stream::wrappers::ReceiverStream;
-use tracing::{event, Level};
 
-use crate::net::dns::{DnsResolver, Resolver};
-use crate::net::plain::TokioPlainTextNetworking;
+use tokio_native_tls::native_tls::Identity;
+use tokio_native_tls::native_tls::{TlsConnector as NativeTlsConnector};
+use tokio_native_tls::{TlsAcceptor, TlsConnector};
+use tracing::error;
+
+use crate::net::dns::Resolver;
 use crate::net::{ExternalConnections, IoResult, Listener};
 use crate::net::{Scheme, SchemeHostPort, SchemeSocketAddr};
 use pin_project::pin_project;
-use std::path::PathBuf;
-use std::sync::Arc;
-use url::Url;
 
+use super::ListenerError;
 use super::dns::BoxDnsResolver;
+use super::dns::DnsResolver;
+use super::ListenerResult;
 
 pub type TlsStream = tokio_native_tls::TlsStream<TcpStream>;
 pub type TlsHandshakeResult = IoResult<(TlsStream, SocketAddr)>;
-type TcpHandshakeResult = io::Result<(TcpStream, SocketAddr)>;
 
-const DEFAULT_BUFFER: usize = 10;
-const PENDING_ERR: &str = "TLS connection receiver buffer overflow";
-
-/// HTTP protocol over TLS/SSL
-const HTTPS_PORT: u16 = 443;
-
-pub(crate) enum MaybeTlsListener {
-    PlainText(TcpListener),
-    Tls(TlsListener),
-}
-
-impl Listener<Either<TcpStream, TlsStream>> for MaybeTlsListener {
-    type AcceptStream = Fuse<EitherStream>;
-
-    fn into_stream(self) -> Self::AcceptStream {
-        EitherStream(self).fuse()
-    }
-}
-
-pub(crate) struct EitherStream(MaybeTlsListener);
-
-impl Stream for EitherStream {
-    type Item = IoResult<(Either<TcpStream, TlsStream>, SchemeSocketAddr)>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match &mut self.0 {
-            MaybeTlsListener::PlainText(listener) => match listener.poll_accept(cx) {
-                Poll::Ready(Ok((stream, addr))) => Poll::Ready(Some(Ok((
-                    Either::Left(stream),
-                    SchemeSocketAddr::new(Scheme::Ws, addr),
-                )))),
-                Poll::Ready(Err(e)) => Poll::Ready(Some(Err(e))),
-                Poll::Pending => Poll::Pending,
-            },
-            MaybeTlsListener::Tls(ref mut listener) => match listener.poll_next_unpin(cx) {
-                Poll::Ready(Some(Ok((stream, addr)))) => {
-                    Poll::Ready(Some(Ok((Either::Right(stream), addr))))
-                }
-                Poll::Ready(None) => Poll::Ready(None),
-                Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
-                Poll::Pending => Poll::Pending,
-            },
-        }
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct TokioNetworking {
-    resolver: Arc<Resolver>,
-    plain: TokioPlainTextNetworking,
-    tls: Arc<TokioTlsNetworking>,
-}
-
-impl TokioNetworking {
-    #[allow(dead_code)]
-    pub async fn new<I, A>(identities: I) -> Result<TokioNetworking, ()>
-    where
-        I: IntoIterator<Item = (A, Url)>,
-        A: AsRef<PathBuf>,
-    {
-        let resolver = Arc::new(Resolver::new().await);
-        let tls = TokioTlsNetworking::new(identities, resolver.clone());
-        let plain = TokioPlainTextNetworking::new(resolver.clone());
-
-        Ok(TokioNetworking {
-            resolver,
-            plain,
-            tls: Arc::new(tls),
-        })
-    }
-}
-
-impl ExternalConnections for TokioNetworking {
-    type Socket = Either<TcpStream, TlsStream>;
-    type ListenerType = MaybeTlsListener;
-
-    fn bind(
-        &self,
-        addr: SocketAddr,
-    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
-        let this = self.clone();
-
-        if addr.port() == HTTPS_PORT {
-            Box::pin(async move {
-                this.tls
-                    .bind(addr)
-                    .await
-                    .map(|(addr, listener)| (addr, MaybeTlsListener::Tls(listener)))
-            })
-        } else {
-            Box::pin(async move {
-                this.plain
-                    .bind(addr)
-                    .await
-                    .map(|(addr, listener)| (addr, MaybeTlsListener::PlainText(listener)))
-            })
-        }
-    }
-
-    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>> {
-        let this = self.clone();
-
-        if addr.port() == HTTPS_PORT {
-            Box::pin(async move { this.tls.try_open(addr).await.map(Either::Right) })
-        } else {
-            Box::pin(async move { this.plain.try_open(addr).await.map(Either::Left) })
-        }
-    }
-
-    fn lookup(
-        &self,
-        host: SchemeHostPort,
-    ) -> BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>> {
-        self.resolver.resolve(host).boxed()
-    }
-
-    fn dns_resolver(&self) -> BoxDnsResolver {
-        Box::new(self.resolver.clone())
-    }
-}
+type BoxListenerStream<Socket> = BoxStream<'static, ListenerResult<(Socket, SchemeSocketAddr)>>;
 
 impl Listener<TlsStream> for TlsListener {
-    type AcceptStream = Fuse<Self>;
+    type AcceptStream = Fuse<BoxListenerStream<TlsStream>>;
 
     fn into_stream(self) -> Self::AcceptStream {
-        self.fuse()
+        let TlsListener { listener, acceptor } = self;
+        tls_accept_stream(listener, acceptor).boxed().fuse()
     }
 }
 
 #[derive(Clone)]
 pub struct TokioTlsNetworking {
     resolver: Arc<Resolver>,
-    _identities: HashMap<Url, Identity>,
+    acceptor: TlsAcceptor,
 }
 
 impl TokioTlsNetworking {
-    pub fn new<I, A>(_identities: I, resolver: Arc<Resolver>) -> TokioTlsNetworking
-    where
-        I: IntoIterator<Item = (A, Url)>,
-        A: AsRef<PathBuf>,
-    {
-        TokioTlsNetworking {
-            resolver,
-            _identities: HashMap::new(),
-        }
+    pub fn new(resolver: Arc<Resolver>, acceptor: TlsAcceptor) -> TokioTlsNetworking {
+        TokioTlsNetworking { resolver, acceptor }
+    }
+
+    pub fn from_identity(resolver: Arc<Resolver>, id: Identity) -> TlsResult<Self> {
+        let acceptor = accepter_from_id(id)?;
+        Ok(Self::new(resolver, acceptor))
+    }
+
+    pub fn parse_identity(resolver: Arc<Resolver>, format: CertKind<'_>, bytes: &[u8]) -> TlsResult<Self> {
+        let acceptor = accepter_from_cert(format, bytes)?;
+        Ok(Self::new(resolver, acceptor))
     }
 }
 
@@ -206,10 +90,12 @@ impl ExternalConnections for TokioTlsNetworking {
         &self,
         addr: SocketAddr,
     ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
+        let TokioTlsNetworking { acceptor, .. } = self;
+        let acc = acceptor.clone();
         Box::pin(async move {
             let listener = TcpListener::bind(addr).await?;
             let addr = listener.local_addr()?;
-            Ok((addr, TlsListener::new(listener)))
+            Ok((addr, TlsListener::new(listener, acc)))
         })
     }
 
@@ -242,37 +128,134 @@ impl ExternalConnections for TokioTlsNetworking {
 
 #[pin_project]
 pub struct TlsListener {
-    _jh: JoinHandle<()>,
-    #[pin]
-    receiver: ReceiverStream<TlsHandshakeResult>,
+    listener: TcpListener,
+    acceptor: TlsAcceptor,
 }
 
 impl TlsListener {
-    fn new(listener: TcpListener) -> TlsListener {
-        // todo
-        let cert = Identity::from_pkcs12(&[1, 2], "pw").unwrap();
-        let tls_acceptor = tokio_native_tls::native_tls::TlsAcceptor::builder(cert)
-            .build()
-            .unwrap();
-        let tls_acceptor = TlsAcceptor::from(tls_acceptor);
+    
+    fn new(listener: TcpListener,
+        acceptor: TlsAcceptor) -> Self {
+            TlsListener { listener, acceptor }
+        }
 
-        let (jh, pending_rx) = PendingTlsConnections::accept(listener, tls_acceptor);
+}
 
-        TlsListener {
-            _jh: jh,
-            receiver: ReceiverStream::new(pending_rx),
+pub enum CertKind<'a> {
+    DER {
+        password: &'a str,
+    },
+    PEM {
+        key: &'a[u8]
+    }
+}
+
+impl<'a> CertKind<'a> {
+
+    fn parse_identity(&self, bytes: &[u8]) -> TlsResult<Identity> {
+        let cert = match self {
+            CertKind::DER { password } => Identity::from_pkcs12(bytes, password)?,
+            CertKind::PEM { key } => Identity::from_pkcs8(bytes,key)?,
+        };
+        Ok(cert)
+    }
+
+}
+
+fn accepter_from_id(identity: Identity) -> TlsResult<TlsAcceptor> {
+    let tls_acceptor = tokio_native_tls::native_tls::TlsAcceptor::builder(identity)
+        .build()?;
+    Ok(TlsAcceptor::from(tls_acceptor))
+}
+
+fn accepter_from_cert(format: CertKind<'_>, bytes: &[u8]) -> TlsResult<TlsAcceptor> {
+    let cert = format.parse_identity(bytes)?;
+    accepter_from_id(cert)
+}
+
+struct AcceptState<F> {
+    listener: TcpListener,
+    pending: FuturesUnordered<F>,
+}
+
+impl<F> AcceptState<F> {
+    fn new(listener: TcpListener) -> Self {
+        AcceptState {
+            listener,
+            pending: Default::default(),
         }
     }
 }
 
-impl Stream for TlsListener {
-    type Item = IoResult<(TlsStream, SchemeSocketAddr)>;
+type TlsError = tokio_native_tls::native_tls::Error;
+type TlsResult<T> = Result<T, TlsError>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.project().receiver.poll_next(cx)?.map(|result| {
-            result.map(|(stream, addr)| Ok((stream, SchemeSocketAddr::new(Scheme::Wss, addr))))
-        })
+impl<F: Future> AcceptState<F>
+where
+    F: Future<Output = Result<(TlsStream, SocketAddr), TlsError>>,
+{
+    fn push(&self, fut: F) {
+        self.pending.push(fut);
     }
+
+    async fn next_pending(
+        &mut self,
+    ) -> Option<Either<IoResult<(TcpStream, SocketAddr)>, TlsResult<(TlsStream, SocketAddr)>>> {
+        let AcceptState { listener, pending } = self;
+        tokio::select! {
+            biased;
+            handshake_result = pending.next(), if !pending.is_empty() => handshake_result.map(Either::Right),
+            incoming_result = listener.accept() => Some(Either::Left(incoming_result)),
+        }
+    }
+}
+
+fn tls_accept_stream(
+    listener: TcpListener,
+    acceptor: TlsAcceptor,
+) -> impl Stream<Item = ListenerResult<(TlsStream, SchemeSocketAddr)>> + Send + 'static {
+    let state = AcceptState::new(listener);
+    unfold(
+        Some((state, Arc::new(acceptor))),
+        move |maybe_state| async move {
+            if let Some((mut state, acceptor)) = maybe_state {
+                loop {
+                    match state.next_pending().await {
+                        Some(Either::Left(Ok((tcp_stream, addr)))) => {
+                            let acc = acceptor.clone();
+                            let fut = async move {
+                                let result = acc.accept(tcp_stream).await;
+                                result.map(move |s| (s, addr))
+                            };
+                            state.push(fut);
+                        }
+                        Some(Either::Left(Err(e))) => {
+                            let err = ListenerError::from(e);
+                            if matches!(err, ListenerError::ListenerFailed(_)) {
+                                break Some((Err(err), None));
+                            } else {
+                                break Some((Err(err), Some((state, acceptor))));
+                            }
+                        }
+                        Some(Either::Right(Ok((tls_stream, addr)))) => {
+                            let scheme_addr = SchemeSocketAddr::new(Scheme::Wss, addr);
+                            break Some((Ok((tls_stream, scheme_addr)), Some((state, acceptor))));
+                        }
+                        Some(Either::Right(Err(e))) => {
+                            error!(error = ?e, "TLS handshake failed.");
+                            break Some((
+                                Err(ListenerError::NegotiationFailed(Box::new(e))),
+                                Some((state, acceptor)),
+                            ));
+                        }
+                        None => break None,
+                    }
+                }
+            } else {
+                None
+            }
+        },
+    )
 }
 
 struct TcpListenerWithPeer(TcpListener);
@@ -282,74 +265,5 @@ impl Stream for TcpListenerWithPeer {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.0.poll_accept(cx).map(Some)
-    }
-}
-
-pub struct PendingTlsConnections {
-    listener: TcpListenerWithPeer,
-    acceptor: TlsAcceptor,
-    sender: mpsc::Sender<TlsHandshakeResult>,
-}
-
-impl PendingTlsConnections {
-    pub fn accept(
-        listener: TcpListener,
-        acceptor: TlsAcceptor,
-    ) -> (JoinHandle<()>, mpsc::Receiver<TlsHandshakeResult>) {
-        let (tx, rx) = mpsc::channel(DEFAULT_BUFFER);
-
-        let pending = PendingTlsConnections {
-            listener: TcpListenerWithPeer(listener),
-            acceptor,
-            sender: tx,
-        };
-
-        let jh = tokio::spawn(pending.run());
-
-        (jh, rx)
-    }
-
-    async fn run(self) {
-        let PendingTlsConnections {
-            listener,
-            acceptor,
-            sender,
-        } = self;
-
-        let mut fused_accept = listener.fuse();
-        let mut pending = FuturesUnordered::new();
-
-        loop {
-            let next: Option<Either<TcpHandshakeResult, TlsHandshakeResult>> = select! {
-                stream = fused_accept.next() => stream.map(Either::Left),
-                result = pending.next() => result.map(Either::Right),
-            };
-
-            match next {
-                Some(Either::Left(result)) => match result {
-                    Ok((stream, addr)) => {
-                        let accept_future = acceptor.accept(stream).map(move |r| match r {
-                            Ok(stream) => Ok((stream, addr)),
-                            Err(e) => Err(io::Error::new(ErrorKind::Other, e)),
-                        });
-
-                        pending.push(Box::pin(accept_future));
-                    }
-                    Err(e) => {
-                        if sender.send(Err(e)).await.is_err() {
-                            event!(Level::ERROR, PENDING_ERR)
-                        }
-                    }
-                },
-                Some(Either::Right(result)) => {
-                    if sender.send(result).await.is_err() {
-                        event!(Level::ERROR, PENDING_ERR)
-                    }
-                }
-                None => {
-                    return;
-                }
-            }
-        }
     }
 }

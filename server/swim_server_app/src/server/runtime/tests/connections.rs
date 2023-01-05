@@ -22,7 +22,7 @@ use futures::future::ready;
 use futures::{future::BoxFuture, stream::Fuse, FutureExt, Stream, StreamExt};
 use ratchet::{NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use swim_runtime::net::dns::{DnsFut, DnsResolver};
-use swim_runtime::net::{ExternalConnections, Listener, Scheme, SchemeHostPort, SchemeSocketAddr};
+use swim_runtime::net::{ExternalConnections, Listener, Scheme, SchemeHostPort, SchemeSocketAddr, ListenerResult};
 use swim_runtime::ws::{RatchetError, WsConnections, WsOpenFuture};
 use tokio::{
     io::{self, DuplexStream},
@@ -101,7 +101,7 @@ impl TestConnections {
     }
 }
 
-pub struct TestListener(BoxedAcc<io::Result<(DuplexStream, SchemeSocketAddr)>>);
+pub struct TestListener(BoxedAcc<ListenerResult<(DuplexStream, SchemeSocketAddr)>>);
 
 impl Debug for TestListener {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -177,7 +177,7 @@ impl ExternalConnections for TestConnections {
 pub type BoxedAcc<T> = Pin<Box<dyn Stream<Item = T> + Send + Sync + 'static>>;
 
 impl Listener<DuplexStream> for TestListener {
-    type AcceptStream = Fuse<BoxedAcc<io::Result<(DuplexStream, SchemeSocketAddr)>>>;
+    type AcceptStream = Fuse<BoxedAcc<ListenerResult<(DuplexStream, SchemeSocketAddr)>>>;
 
     fn into_stream(self) -> Self::AcceptStream {
         self.0.fuse()

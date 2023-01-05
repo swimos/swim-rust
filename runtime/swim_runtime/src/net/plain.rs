@@ -27,6 +27,7 @@ use pin_project::pin_project;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
+use super::ListenerResult;
 use super::dns::BoxDnsResolver;
 
 /// Implementation of [`ExternalConnections`] using [`TcpListener`] and [`TcpStream`] from Tokio.
@@ -75,8 +76,16 @@ impl ExternalConnections for TokioPlainTextNetworking {
 #[derive(Debug)]
 pub struct WithPeer(#[pin] TcpListener);
 
+impl WithPeer {
+
+    pub fn new(listener: TcpListener) -> Self {
+        WithPeer(listener)
+    }
+
+}
+
 impl Stream for WithPeer {
-    type Item = IoResult<(TcpStream, SchemeSocketAddr)>;
+    type Item = ListenerResult<(TcpStream, SchemeSocketAddr)>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.project()

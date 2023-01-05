@@ -111,15 +111,41 @@ impl Display for SchemeSocketAddr {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum ListenerError {
+    #[error("Listening for incoming connections failed: {0}")]
+    ListenerFailed(#[source] std::io::Error),
+    #[error("Accepting a new connection failed: {0}")]
+    AcceptFailed(#[source] std::io::Error),
+    #[error("Negotiating a new connection failed: {0}")]
+    NegotiationFailed(#[source] Box<dyn std::error::Error + Send>),
+}
+
+impl From<std::io::Error> for ListenerError {
+    fn from(err: std::io::Error) -> Self {
+        match err.kind() {
+            io::ErrorKind::ConnectionReset |
+            io::ErrorKind::ConnectionAborted|
+            io::ErrorKind::BrokenPipe |
+            io::ErrorKind::InvalidInput |
+            io::ErrorKind::InvalidData |
+            io::ErrorKind::TimedOut |
+            io::ErrorKind::UnexpectedEof => ListenerError::AcceptFailed(err),
+            _ => ListenerError::ListenerFailed(err),
+        }
+    }
+}
+
+pub type ListenerResult<T> = Result<T, ListenerError>;
+
 /// Trait for servers that listen for incoming remote connections. This is primarily used to
 /// abstract over [`std::net::TcpListener`] for testing purposes.
 pub trait Listener<Socket>
 where
     Socket: Unpin + Send + Sync + 'static,
 {
-    type AcceptStream: FusedStream<Item = IoResult<(Socket, SchemeSocketAddr)>>
+    type AcceptStream: FusedStream<Item = ListenerResult<(Socket, SchemeSocketAddr)>>
         + Send
-        + Sync
         + Unpin;
 
     fn into_stream(self) -> Self::AcceptStream;

@@ -19,6 +19,7 @@ use std::{
 };
 
 use swim_api::error::StoreError;
+use swim_runtime::error::tls::TlsError;
 use thiserror::Error;
 
 use swim_utilities::{format::comma_sep, routing::route_pattern::RoutePattern};
@@ -89,6 +90,8 @@ pub enum ServerBuilderError {
     BadRoutes(#[from] AmbiguousRoutes),
     #[error("Opening the store failed: {0}")]
     Persistence(#[from] StoreError),
+    #[error("Invalid TLS configuration/certificate: {0}")]
+    Tls(#[from] TlsError),
 }
 
 #[cfg(test)]
