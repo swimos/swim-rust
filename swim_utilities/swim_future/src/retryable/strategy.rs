@@ -15,6 +15,7 @@
 use rand::Rng;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swim_num::non_zero_usize;
 
 macro_rules! non_zero_usize {
     (0) => {

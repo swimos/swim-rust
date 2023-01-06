@@ -107,7 +107,7 @@ where
     tokio::time::timeout(TIMEOUT, async move {
         let (server_end, downlinks_end) = downlink_task_connector(CHAN_SIZE, CHAN_SIZE);
 
-        let task = DownlinkConnectionTask::new(downlinks_end, config, FakeDns);
+        let task = DownlinkConnectionTask::new(downlinks_end, None, config, FakeDns);
 
         let test_task = test_case(TestContext {
             connector: server_end,

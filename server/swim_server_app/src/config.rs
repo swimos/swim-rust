@@ -44,6 +44,8 @@ pub struct SwimServerConfig {
     pub websockets: WebSocketConfig,
     /// Parameters for the downlink runtime component.
     pub downlink_runtime: DownlinkRuntimeConfig,
+    /// Budget for byte stream futures (causes streams with constantly available data to periodically yield).
+    pub channel_coop_budget: Option<NonZeroUsize>,
 }
 
 /// Configuration for remote socket management.
@@ -92,6 +94,7 @@ impl Default for SwimServerConfig {
                 downlink_buffer_size: DEFAULT_BUFFER_SIZE,
             },
             client_request_channel_size: DEFAULT_CHANNEL_SIZE,
+            channel_coop_budget: None,
         }
     }
 }

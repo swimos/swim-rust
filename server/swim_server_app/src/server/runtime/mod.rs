@@ -42,7 +42,7 @@ use swim_utilities::routing::route_uri::RouteUri;
 
 use swim_runtime::net::{BadUrl, ExternalConnections, Listener, SchemeSocketAddr};
 use swim_runtime::ws::{RatchetError, WsConnections};
-use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
+use swim_utilities::io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
 use swim_utilities::routing::route_pattern::RoutePattern;
 use swim_utilities::trigger::{self, promise};
 use thiserror::Error;
@@ -157,6 +157,7 @@ where
         );
         let downlinks = DownlinkConnectionTask::new(
             dl_conn,
+            config.channel_coop_budget,
             config.downlink_runtime,
             self.networking.dns_resolver(),
         );
@@ -284,8 +285,14 @@ where
 
         let mut routes = plane.routes.into_iter().collect();
 
-        let introspection_resolver = introspection
-            .map(|config| start_introspection(config, remote_stop_rx.clone(), &mut routes));
+        let introspection_resolver = introspection.map(|intro_config| {
+            start_introspection(
+                intro_config,
+                config.channel_coop_budget,
+                remote_stop_rx.clone(),
+                &mut routes,
+            )
+        });
 
         let mut agents = Agents::new(
             routes,
@@ -481,7 +488,7 @@ where
                     let agent_tasks_ref = &agent_tasks;
                     let result = agents.resolve_agent(node, move |name, route_task| {
                         let task = route_task.run_agent_with_store(node_store);
-                        agent_tasks_ref.push(attach_node(name, task));
+                        agent_tasks_ref.push(attach_node(name, config.channel_coop_budget, task));
                     });
                     match result {
                         Ok((agent_id, agent_tx)) => {
@@ -569,7 +576,7 @@ where
                     let node_store = plane_store.node_store(node.as_str())?;
                     let result = agents.resolve_agent(node, |name, route_task| {
                         let task = route_task.run_agent_with_store(node_store);
-                        agent_tasks.push(attach_node(name, task));
+                        agent_tasks.push(attach_node(name, config.channel_coop_budget, task));
                     });
                     match result {
                         Ok((agent_id, agent_tx)) => {
@@ -603,12 +610,13 @@ where
 
 async fn attach_node<F>(
     node: Text,
+    budget: Option<NonZeroUsize>,
     task: F,
 ) -> (Text, Result<Result<(), AgentExecError>, JoinError>)
 where
     F: Future<Output = Result<(), AgentExecError>> + Send + 'static,
 {
-    let result = tokio::spawn(task).await;
+    let result = tokio::spawn(task.with_budget_or_default(budget)).await;
     (node, result)
 }
 
@@ -640,7 +648,13 @@ where
 
     (
         attach_tx,
-        with_sock_addr(sock_addr, tokio::spawn(task.run())),
+        with_sock_addr(
+            sock_addr,
+            tokio::spawn(
+                task.run()
+                    .with_budget_or_default(config.channel_coop_budget),
+            ),
+        ),
     )
 }
 
@@ -989,6 +1003,7 @@ where
 
 fn start_introspection(
     config: IntrospectionConfig,
+    coop_budget: Option<NonZeroUsize>,
     stopping: trigger::Receiver,
     routes: &mut Routes,
 ) -> IntrospectionResolver {
@@ -997,6 +1012,6 @@ fn start_introspection(
     let lane_meta = LaneMetaAgent::new(config, resolver.clone());
     routes.append(node_pattern(), node_meta);
     routes.append(lane_pattern(), lane_meta);
-    tokio::spawn(task);
+    tokio::spawn(task.with_budget_or_default(coop_budget));
     resolver
 }

@@ -65,14 +65,4 @@ pub mod sync {
 #[cfg(feature = "test-util")]
 pub use swim_test_util as test_util;
 
-pub mod num {
-    #[macro_export]
-    macro_rules! non_zero_usize {
-        (0) => {
-            compile_error!("Must be non-zero")
-        };
-        ($n:literal) => {
-            unsafe { std::num::NonZeroUsize::new_unchecked($n) }
-        };
-    }
-}
+pub use swim_num::non_zero_usize;

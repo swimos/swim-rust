@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swim_num::non_zero_usize;
+
 use crate::rectangles::{Point2D, Point3D};
 use crate::{
-    non_zero_usize, BoxBounded, ChildrenSizeError, DuplicateLabelError, Label, RTree, RTreeError,
-    Rect, SplitStrategy,
+    BoxBounded, ChildrenSizeError, DuplicateLabelError, Label, RTree, RTreeError, Rect,
+    SplitStrategy,
 };
 use std::fs;
 use std::ops::Sub;

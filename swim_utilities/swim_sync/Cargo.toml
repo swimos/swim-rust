@@ -9,10 +9,9 @@ crossbeam-queue = { version = "0.3" }
 futures = { version = "0.3.23" }
 parking_lot = { version = "0.11.0" }
 swim_future = { path = "../swim_future" }
-swim_algebra = { path = "../swim_algebra"}
+swim_num = { path = "../swim_num"}
 
 [dev-dependencies]
 futures = "0.3.23"
 tokio = { version = "1.1.1", features = ["rt", "macros"] }
 swim_trigger = { path = "../swim_trigger"}
-
