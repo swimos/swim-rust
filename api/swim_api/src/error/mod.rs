@@ -17,11 +17,15 @@ use std::{fmt::Display, io};
 use swim_form::structural::read::ReadError;
 use swim_model::Text;
 use swim_recon::parser::AsyncParseError;
-use swim_utilities::trigger::promise;
+use swim_utilities::{routing::route_pattern::UnapplyError, trigger::promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::store::StoreKind;
+
+use self::introspection::{LaneIntrospectionError, NodeIntrospectionError};
+
+pub mod introspection;
 
 /// Indicates that an agent or downlink failed to read a frame from a byte stream.
 #[derive(Error, Debug)]
@@ -198,8 +202,14 @@ pub enum AgentInitError {
     DuplicateLane(Text),
     #[error("Error in use code (likely an event handler): {0}")]
     UserCodeError(Box<dyn std::error::Error + Send>),
-    #[error("Initializing the state of an anget lane failed: {0}")]
+    #[error("Initializing the state of an agent lane failed: {0}")]
     LaneInitializationFailure(FrameIoError),
+    #[error("The parameters passed to the agent were invalid: {0}")]
+    InvalidParameters(#[from] UnapplyError),
+    #[error("Failed to initialize introspection for an agent: {0}")]
+    NodeIntrospection(#[from] NodeIntrospectionError),
+    #[error("Failed to initialize introspection for a labe: {0}")]
+    LaneIntrospection(#[from] LaneIntrospectionError),
 }
 
 //TODO Make this more sophisticated.
