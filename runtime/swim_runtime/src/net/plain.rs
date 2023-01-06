@@ -20,10 +20,9 @@ use crate::net::dns::{DnsResolver, Resolver};
 use crate::net::{ExternalConnections, IoResult, Listener};
 use crate::net::{Scheme, SchemeSocketAddr};
 use futures::future::BoxFuture;
-use futures::stream::Fuse;
 use futures::task::{Context, Poll};
 use futures::FutureExt;
-use futures::{Stream, StreamExt};
+use futures::Stream;
 use pin_project::pin_project;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
@@ -105,9 +104,9 @@ impl Stream for WithPeer {
 }
 
 impl Listener<TcpStream> for TcpListener {
-    type AcceptStream = Fuse<WithPeer>;
+    type AcceptStream = WithPeer;
 
     fn into_stream(self) -> Self::AcceptStream {
-        WithPeer(self).fuse()
+        WithPeer(self)
     }
 }

@@ -19,7 +19,7 @@ use std::{net::SocketAddr, pin::Pin};
 
 use bytes::BytesMut;
 use futures::future::ready;
-use futures::{future::BoxFuture, stream::Fuse, FutureExt, Stream, StreamExt};
+use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use ratchet::{NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use swim_runtime::net::dns::{DnsFut, DnsResolver};
 use swim_runtime::net::{ExternalConnections, Listener, ListenerResult, Scheme, SchemeSocketAddr};
@@ -171,10 +171,10 @@ impl ExternalConnections for TestConnections {
 pub type BoxedAcc<T> = Pin<Box<dyn Stream<Item = T> + Send + Sync + 'static>>;
 
 impl Listener<DuplexStream> for TestListener {
-    type AcceptStream = Fuse<BoxedAcc<ListenerResult<(DuplexStream, SchemeSocketAddr)>>>;
+    type AcceptStream = BoxedAcc<ListenerResult<(DuplexStream, SchemeSocketAddr)>>;
 
     fn into_stream(self) -> Self::AcceptStream {
-        self.0.fuse()
+        self.0
     }
 }
 

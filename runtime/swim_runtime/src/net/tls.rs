@@ -23,7 +23,6 @@ use futures::future::BoxFuture;
 use futures::future::Either;
 use futures::stream::unfold;
 use futures::stream::BoxStream;
-use futures::stream::Fuse;
 use futures::stream::FuturesUnordered;
 use futures::Future;
 use futures::FutureExt;
@@ -104,14 +103,13 @@ impl AsyncWrite for MaybeTlsStream {
 }
 
 impl Listener<MaybeTlsStream> for TlsListener {
-    type AcceptStream = Fuse<BoxListenerStream<MaybeTlsStream>>;
+    type AcceptStream = BoxListenerStream<MaybeTlsStream>;
 
     fn into_stream(self) -> Self::AcceptStream {
         let TlsListener { listener, acceptor } = self;
         tls_accept_stream(listener, acceptor)
             .map_ok(|(sock, addr)| (MaybeTlsStream::Tls(sock), addr))
             .boxed()
-            .fuse()
     }
 }
 

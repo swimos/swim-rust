@@ -15,8 +15,8 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use futures::Stream;
 use futures::future::BoxFuture;
-use futures::stream::FusedStream;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io;
@@ -144,7 +144,7 @@ pub trait Listener<Socket>
 where
     Socket: Unpin + Send + Sync + 'static,
 {
-    type AcceptStream: FusedStream<Item = ListenerResult<(Socket, SchemeSocketAddr)>> + Send + Unpin;
+    type AcceptStream: Stream<Item = ListenerResult<(Socket, SchemeSocketAddr)>> + Send + Unpin;
 
     fn into_stream(self) -> Self::AcceptStream;
 }
