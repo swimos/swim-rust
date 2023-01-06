@@ -140,7 +140,7 @@ async fn sync_lane_descriptors() {
         let TestContext { updater, .. } = &context;
 
         for (name, kind, reporter) in &entries {
-            updater.add_lane(Text::new(*name), *kind, reporter.reader());
+            updater.add_lane(Text::new(name), *kind, reporter.reader());
         }
         async move {
             let TestContext {
@@ -167,7 +167,7 @@ async fn sync_lane_descriptors() {
 
     let expected: HashMap<_, _> = entries
         .iter()
-        .map(|(name, kind, _)| (Text::new(*name), LaneInfo::new(Text::new(*name), *kind)))
+        .map(|(name, kind, _)| (Text::new(name), LaneInfo::new(Text::new(name), *kind)))
         .collect();
     assert_eq!(result_map, expected);
 }
@@ -185,7 +185,7 @@ async fn resync_lane_descriptors() {
         let TestContext { updater, .. } = &context;
 
         for (name, kind, reporter) in &entries1 {
-            updater.add_lane(Text::new(*name), *kind, reporter.reader());
+            updater.add_lane(Text::new(name), *kind, reporter.reader());
         }
         async move {
             let TestContext {
@@ -205,7 +205,7 @@ async fn resync_lane_descriptors() {
             }
 
             for (name, kind, reporter) in entries2 {
-                updater.add_lane(Text::new(*name), *kind, reporter.reader());
+                updater.add_lane(Text::new(name), *kind, reporter.reader());
             }
 
             sender.sync().await;
@@ -224,14 +224,14 @@ async fn resync_lane_descriptors() {
 
     let mut expected: HashMap<_, _> = entries1
         .iter()
-        .map(|(name, kind, _)| (Text::new(*name), LaneInfo::new(Text::new(*name), *kind)))
+        .map(|(name, kind, _)| (Text::new(name), LaneInfo::new(Text::new(name), *kind)))
         .collect();
     assert_eq!(result_map1, expected);
 
     expected.extend(
         entries2
             .iter()
-            .map(|(name, kind, _)| (Text::new(*name), LaneInfo::new(Text::new(*name), *kind))),
+            .map(|(name, kind, _)| (Text::new(name), LaneInfo::new(Text::new(name), *kind))),
     );
 
     assert_eq!(result_map2, expected);

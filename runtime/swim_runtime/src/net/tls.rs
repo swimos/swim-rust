@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
@@ -38,7 +39,6 @@ use crate::net::dns::{DnsResolver, Resolver};
 use crate::net::plain::TokioPlainTextNetworking;
 use crate::net::{ExternalConnections, IoResult, Listener};
 use crate::net::{Scheme, SchemeHostPort, SchemeSocketAddr};
-use im::HashMap;
 use pin_project::pin_project;
 use std::path::PathBuf;
 use std::sync::Arc;

@@ -4,26 +4,26 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bytes = "1.0"
+bytes = { workspace = true }
 byte_channel= { path = "../byte_channel" }
-parking_lot = "0.11.0"
+parking_lot = { workspace = true }
 waker-fn = "1.1.0"
-slab = "0.4.4"
-tokio-util = { version = "0.6.8", features = ["codec"] }
-futures-util = "0.3.4"
-smallvec = "1.7.0"
+slab = { workspace = true }
+tokio-util = { workspace = true, features = ["codec"] }
+futures-util ={ workspace = true }
+smallvec = { workspace = true }
 
 [dev-dependencies]
-tokio = { version = "1.1.1", features = ["rt-multi-thread", "test-util", "macros"] }
-futures = { version = "0.3.23", features = ["io-compat", "compat"] }
-criterion = { version = "0.3", features = ["async_tokio"] }
-rand = "0.8.4"
+tokio = { workspace = true, features = ["rt-multi-thread", "test-util", "macros"] }
+futures = { workspace = true, features = ["io-compat", "compat"] }
+criterion = { workspace = true, features = ["async_tokio"] }
+rand = { workspace = true }
 swim_api = { path = "../../api/swim_api" }
 swim_runtime = { path = "../../runtime/swim_runtime" }
 swim_messages = {path = "../../runtime/swim_messages" }
 swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
-uuid = "0.8.2"
+uuid = { workspace = true }
 
 [[bench]]
 name = "multi_reader_throughput"

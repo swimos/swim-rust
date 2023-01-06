@@ -14,13 +14,14 @@
 
 use std::{borrow::Cow, fmt::Display, num::ParseFloatError};
 
-use super::EnvelopeKind;
 use smallvec::{smallvec, SmallVec};
 use swim_recon::parser::{
     parse_text, try_extract_header, try_extract_header_str, HeaderPeeler, MessageExtractError, Span,
 };
 use swim_utilities::format::comma_sep;
 use thiserror::Error;
+
+use super::EnvelopeKind;
 
 #[cfg(test)]
 mod tests;

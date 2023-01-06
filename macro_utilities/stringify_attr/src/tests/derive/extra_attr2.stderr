@@ -1,5 +1,0 @@
-error: Expected a list. Found `extra = "C"`
-  --> $DIR/extra_attr2.rs:20:38
-   |
-20 |         #[stringify(serde(rename(B), extra = "C"))]
-   |                                      ^^^^^^^^^^^

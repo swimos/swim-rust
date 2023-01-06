@@ -77,8 +77,8 @@ where
 
     let expected_keys = (0..expected_len).map(|n| n as u64).collect::<HashSet<_>>();
     let mut expected_names = HashSet::new();
-    expected_names.extend(val_expected.keys().map(|s| Text::new(*s)));
-    expected_names.extend(map_expected.keys().map(|s| Text::new(*s)));
+    expected_names.extend(val_expected.keys().map(|s| Text::new(s)));
+    expected_names.extend(map_expected.keys().map(|s| Text::new(s)));
 
     assert_eq!(keys, expected_keys);
     assert_eq!(names, expected_names);

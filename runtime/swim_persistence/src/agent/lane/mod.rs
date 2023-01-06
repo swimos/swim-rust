@@ -19,14 +19,11 @@ pub use tests::store_err_partial_eq;
 mod tests;
 
 pub mod error;
-mod model;
 pub mod task;
 
 use crate::agent::lane::error::{LaneStoreErrorReport, StoreErrorHandler};
 use futures::future::{ready, BoxFuture};
 use futures::FutureExt;
-
-pub use model::*;
 
 /// Deferred lane store IO attachment task.
 pub trait StoreIo: Send + 'static {

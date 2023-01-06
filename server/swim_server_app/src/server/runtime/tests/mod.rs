@@ -315,7 +315,7 @@ impl TestClient {
             } => {
                 assert_eq!(node_uri, node);
                 assert_eq!(lane_uri, lane);
-                f(*body)
+                f(body.as_ref())
             }
             ow => panic!("Unexpected envelope: {:?}", ow),
         }

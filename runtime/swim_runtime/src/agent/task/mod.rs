@@ -38,14 +38,13 @@ use super::{
     NodeReporting,
 };
 use bytes::{Bytes, BytesMut};
-use futures::ready;
 use futures::stream::FuturesUnordered;
 use futures::{
     future::{join, select as fselect, Either},
     stream::{select as sselect, SelectAll},
     Stream, StreamExt,
 };
-use pin_utils::pin_mut;
+use futures::{pin_mut, ready};
 use swim_api::agent::LaneConfig;
 use swim_api::error::StoreError;
 use swim_api::meta::lane::LaneKind;
@@ -58,7 +57,6 @@ use swim_api::{
 };
 use swim_messages::bytes_str::BytesStr;
 use swim_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
-use swim_model::path::RelativePath;
 use swim_model::Text;
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError};
@@ -303,7 +301,7 @@ pub struct AgentRuntimeTask<Store = StoreDisabled> {
 #[derive(Debug, Clone)]
 enum RwCoorindationMessage {
     /// An envelope was received for an unknown lane (and so the write task should issue an appropriate error response).
-    UnknownLane { origin: Uuid, path: RelativePath },
+    UnknownLane { origin: Uuid, path: Path<Text> },
     /// An envelope that was invalid for the subprotocol used by the specified lane was received.
     BadEnvelope {
         origin: Uuid,
@@ -1073,10 +1071,7 @@ async fn read_task(
                     let send_err = write_tx.send(WriteTaskMessage::Coord(
                         RwCoorindationMessage::UnknownLane {
                             origin,
-                            path: RelativePath::new(
-                                Text::new(path.node.as_str()),
-                                Text::new(path.lane.as_str()),
-                            ),
+                            path: Path::text(path.node.as_str(), path.lane.as_str()),
                         },
                     ));
                     let (_, result) = join(flush, send_err).await;

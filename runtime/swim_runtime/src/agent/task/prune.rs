@@ -90,8 +90,7 @@ mod tests {
     use std::time::Duration;
 
     use super::PruneRemotes;
-    use futures::StreamExt;
-    use pin_utils::pin_mut;
+    use futures::{pin_mut, StreamExt};
     use tokio::time::Instant;
     use uuid::Uuid;
 

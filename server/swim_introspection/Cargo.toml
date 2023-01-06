@@ -5,21 +5,21 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-futures = "0.3.4"
+futures = { workspace = true }
 swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger", "text"] }
 swim_runtime = { path = "../../runtime/swim_runtime" }
-bytes = "1.0"
-tokio = { version = "1.1.1", features = ["sync", "time"] }
-tokio-util = { version = "0.6.8", features = ["codec"] }
+bytes = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time"] }
+tokio-util = { workspace = true, features = ["codec"] }
 swim_model = {path = "../../api/swim_model" }
 swim_api = { path = "../../api/swim_api" }
 swim_form = { path = "../../api/swim_form" }
-tokio-stream = "0.1.2"
-tracing = "0.1.16"
-tracing-futures = "0.2.4"
-uuid = { version = "0.8.2" }
-thiserror = "1.0"
-parking_lot = "0.11.0"
+tokio-stream = { workspace = true }
+tracing = { workspace = true }
+tracing-futures = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+parking_lot = { workspace = true }
 
 [dev-dependencies]
-tokio = { version = "1.1.1", features = ["rt", "macros", "time", "test-util"]}
+tokio = { workspace = true, features = ["rt", "macros", "time", "test-util"]}

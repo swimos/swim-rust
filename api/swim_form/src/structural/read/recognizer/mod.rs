@@ -37,7 +37,6 @@ use swim_model::bigint::{BigInt, BigUint};
 use swim_model::time::Timestamp;
 use swim_model::{Blob, Text, Value, ValueKind};
 use swim_utilities::routing::route_uri::RouteUri;
-use url::Url;
 
 /// [`Recognizer`] implementations for config types.
 pub mod impls;
@@ -249,52 +248,6 @@ impl Recognizer for RouteUriRecognizer {
                     message: Text::new("Not a valid relative URI."),
                 });
                 Some(uri)
-            }
-            ow => Some(Err(
-                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text))
-            )),
-        }
-    }
-
-    fn reset(&mut self) {}
-}
-
-impl RecognizerReadable for Url {
-    type Rec = UrlRecognizer;
-    type AttrRec = SimpleAttrBody<UrlRecognizer>;
-    type BodyRec = SimpleRecBody<UrlRecognizer>;
-
-    fn make_recognizer() -> Self::Rec {
-        UrlRecognizer
-    }
-
-    fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(UrlRecognizer)
-    }
-
-    fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(UrlRecognizer)
-    }
-
-    fn is_simple() -> bool {
-        true
-    }
-}
-
-pub struct UrlRecognizer;
-
-impl Recognizer for UrlRecognizer {
-    type Target = Url;
-
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        match input {
-            ReadEvent::TextValue(txt) => {
-                let result = Url::from_str(txt.borrow());
-                let url = result.map_err(move |_| ReadError::Malformatted {
-                    text: Text::from(txt),
-                    message: Text::new("Not a valid URL."),
-                });
-                Some(url)
             }
             ow => Some(Err(
                 ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text))
@@ -2362,7 +2315,7 @@ impl<T> Recognizer for UnitStructRecognizer<T> {
                     }
                 } else {
                     Some(Err(
-                        input.kind_error(ExpectedEvent::Attribute(Some(Text::new(*tag))))
+                        input.kind_error(ExpectedEvent::Attribute(Some(Text::new(tag))))
                     ))
                 }
             }

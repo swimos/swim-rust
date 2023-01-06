@@ -1,5 +1,0 @@
-error: Expected an outer attribute in a list format
-  --> $DIR/raw_no_attrs.rs:20:11
-   |
-20 |         #[stringify_raw]
-   |           ^^^^^^^^^^^^^

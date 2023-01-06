@@ -20,8 +20,7 @@ use bitflags::bitflags;
 use bytes::BytesMut;
 use futures::future::{join, select, Either};
 use futures::stream::SelectAll;
-use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
-use pin_utils::pin_mut;
+use futures::{pin_mut, Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use swim_api::protocol::downlink::{DownlinkNotification, DownlinkNotificationEncoder};
 use swim_messages::protocol::{
     Notification, Operation, Path, RawRequestMessage, RawRequestMessageEncoder,

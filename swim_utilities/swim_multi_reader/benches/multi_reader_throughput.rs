@@ -121,13 +121,13 @@ fn multi_reader_benchmark(c: &mut Criterion) {
         ));
 
         group.bench_with_input(
-            BenchmarkId::new("Select all", &params),
+            BenchmarkId::new("Select all", params),
             &params,
             |bencher, params| bencher.to_async(&runtime).iter(|| select_all_test(*params)),
         );
 
         group.bench_with_input(
-            BenchmarkId::new("Multi reader", &params),
+            BenchmarkId::new("Multi reader", params),
             &params,
             |bencher, params| {
                 bencher

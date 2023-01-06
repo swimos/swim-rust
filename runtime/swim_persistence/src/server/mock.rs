@@ -18,8 +18,8 @@ use std::sync::Mutex;
 
 use crate::server::keystore::STEP;
 use swim_store::{
-    deserialize, nostore::NoRange, serialize, Keyspace, KeyspaceByteEngine, PrefixRangeByteEngine,
-    StoreError,
+    deserialize_u64, nostore::NoRange, serialize_u64_vec, Keyspace, KeyspaceByteEngine,
+    PrefixRangeByteEngine, StoreError,
 };
 
 type Keyspaces = HashMap<String, HashMap<Vec<u8>, Vec<u8>>>;
@@ -108,13 +108,13 @@ impl KeyspaceByteEngine for MockStore {
 
         match keyspace.entry(key.to_vec()) {
             Entry::Occupied(mut entry) => {
-                let mut value = deserialize::<u64>(entry.get()).unwrap();
+                let mut value = deserialize_u64(entry.get()).unwrap();
                 value += step;
-                *entry.get_mut() = serialize(&value).unwrap();
+                *entry.get_mut() = serialize_u64_vec(value);
                 Ok(())
             }
             Entry::Vacant(entry) => {
-                entry.insert(serialize(&STEP).unwrap());
+                entry.insert(serialize_u64_vec(STEP));
                 Ok(())
             }
         }

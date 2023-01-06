@@ -6,12 +6,12 @@ edition = "2021"
 
 [dependencies]
 crossbeam-queue = { version = "0.3" }
-futures = { version = "0.3.23" }
-parking_lot = { version = "0.11.0" }
+futures = { workspace = true }
+parking_lot = { workspace = true }
 swim_future = { path = "../swim_future" }
 swim_num = { path = "../swim_num"}
 
 [dev-dependencies]
-futures = "0.3.23"
-tokio = { version = "1.1.1", features = ["rt", "macros"] }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 swim_trigger = { path = "../swim_trigger"}

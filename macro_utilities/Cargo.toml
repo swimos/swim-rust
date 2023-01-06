@@ -5,6 +5,6 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-proc-macro2 = "1.0"
-syn = { version = "1.0.34", features = ["printing", "visit", "visit-mut", "parsing"] }
-quote = "1.0.3"
+proc-macro2 = { workspace = true }
+syn = { workspace = true, features = ["printing", "visit", "visit-mut", "parsing"] }
+quote = { workspace = true }

@@ -18,7 +18,6 @@ use crate::Text;
 use either::Either;
 use num_traits::Signed;
 use num_traits::ToPrimitive;
-use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
@@ -30,7 +29,7 @@ use crate::{num, Attr, Item};
 
 /// The core Swim model type. A recursive data type that can be represented in text as a Recon
 /// document.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub enum Value {
     /// A defined but empty value.
     Extant,
@@ -742,7 +741,7 @@ impl Hash for Value {
             }
             Value::BooleanValue(p) => {
                 state.write_u8(BOOLEAN_HASH);
-                state.write_u8(if *p { 1 } else { 0 })
+                state.write_u8(u8::from(*p))
             }
             Value::Text(s) => {
                 state.write_u8(TEXT_HASH);
