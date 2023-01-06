@@ -13,15 +13,14 @@
 // limitations under the License.
 
 use std::{
-    ffi::OsStr,
     num::NonZeroUsize,
-    path::{Path, PathBuf},
+    path::PathBuf,
     time::Duration,
 };
 
 use ratchet::WebSocketConfig;
 use swim_api::agent::AgentConfig;
-use swim_runtime::{agent::AgentRuntimeConfig, downlink::DownlinkRuntimeConfig};
+use swim_runtime::{agent::AgentRuntimeConfig, downlink::DownlinkRuntimeConfig, net::tls::CertKind};
 use swim_utilities::non_zero_usize;
 
 /// Configuration parameters for a Swim server.
@@ -53,54 +52,49 @@ pub struct SwimServerConfig {
     pub channel_coop_budget: Option<NonZeroUsize>,
 }
 
-pub enum TlsIdentityBody {
+pub enum CertBody {
     InMemory(Vec<u8>),
     FromFile(PathBuf),
 }
 
-pub enum TlsIdentityKind {
-    DER,
-    PEM,
-}
-
-pub struct TlsConfig {
-    pub identity_kind: TlsIdentityKind,
-    pub body: TlsIdentityBody,
+pub struct TlsIdentity {
+    pub kind: CertKind,
+    pub body: CertBody,
     pub key: Vec<u8>,
 }
 
+impl TlsIdentity {
+
+    pub fn new(kind: CertKind, body: CertBody, key: Vec<u8>) -> Self {
+        TlsIdentity { kind, body, key }
+    }
+
+}
+
+pub struct TlsRoot {
+    pub kind: CertKind,
+    pub body: CertBody,
+}
+
+impl TlsRoot {
+
+    pub fn new(kind: CertKind, body: CertBody) -> Self {
+        TlsRoot { kind, body }
+    }
+
+}
+
+pub struct TlsConfig {
+    pub identity: TlsIdentity,
+    pub roots: Vec<TlsRoot>,
+}
+
 impl TlsConfig {
-    pub fn der(body: Vec<u8>, password: &str) -> Self {
-        TlsConfig {
-            identity_kind: TlsIdentityKind::DER,
-            body: TlsIdentityBody::InMemory(body),
-            key: password.as_bytes().to_vec(),
-        }
+
+    pub fn new(identity: TlsIdentity, roots: Vec<TlsRoot>) -> Self {
+        TlsConfig { identity, roots }
     }
 
-    pub fn der_from_file<N: AsRef<OsStr>>(path: N, password: &str) -> Self {
-        TlsConfig {
-            identity_kind: TlsIdentityKind::DER,
-            body: TlsIdentityBody::FromFile(Path::new(&path).to_owned()),
-            key: password.as_bytes().to_vec(),
-        }
-    }
-
-    pub fn pem(body: Vec<u8>, key: &[u8]) -> Self {
-        TlsConfig {
-            identity_kind: TlsIdentityKind::PEM,
-            body: TlsIdentityBody::InMemory(body),
-            key: key.to_vec(),
-        }
-    }
-
-    pub fn pem_from_file<N: AsRef<OsStr>>(path: N, key: &[u8]) -> Self {
-        TlsConfig {
-            identity_kind: TlsIdentityKind::DER,
-            body: TlsIdentityBody::FromFile(Path::new(&path).to_owned()),
-            key: key.to_vec(),
-        }
-    }
 }
 
 /// Configuration for remote socket management.

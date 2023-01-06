@@ -210,7 +210,7 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
         &self,
         addr: SocketAddr,
     ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>>;
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>>;
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, IoResult<Self::Socket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
     fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
@@ -231,7 +231,7 @@ where
         (**self).bind(addr)
     }
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>> {
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, IoResult<Self::Socket>> {
         (**self).try_open(addr)
     }
 

@@ -23,11 +23,11 @@ use ratchet::{
 };
 use swim_api::{agent::Agent, error::StoreError, store::StoreDisabled};
 use swim_runtime::{
-    error::tls::{TlsError, TlsErrorKind},
+    error::tls::TlsError,
     net::{
         dns::Resolver,
         plain::TokioPlainTextNetworking,
-        tls::{CertKind, TokioTlsNetworking},
+        tls::{TokioTlsNetworking, IdentityCert, RootCert},
         ExternalConnections,
     },
     ws::ext::RatchetNetworking,
@@ -35,7 +35,7 @@ use swim_runtime::{
 use swim_utilities::routing::route_pattern::RoutePattern;
 
 use crate::{
-    config::{SwimServerConfig, TlsConfig, TlsIdentityBody, TlsIdentityKind},
+    config::{SwimServerConfig, TlsConfig, TlsIdentity, CertBody, TlsRoot},
     error::ServerBuilderError,
     introspection::IntrospectionConfig,
     plane::{PlaneBuilder, PlaneModel},
@@ -168,6 +168,7 @@ impl ServerBuilder {
         }
         let resolver = Arc::new(Resolver::new().await);
         if let Some(tls_conf) = tls_config {
+            //TODO Add certs.
             let networking = init_tls(resolver, tls_conf).await?;
             Ok(BoxServer(with_store(
                 bind_to,
@@ -193,35 +194,44 @@ impl ServerBuilder {
     }
 }
 
+
 async fn init_tls(
     resolver: Arc<Resolver>,
     config: TlsConfig,
 ) -> Result<TokioTlsNetworking, TlsError> {
     let TlsConfig {
-        identity_kind,
-        body,
-        key,
+        identity,
+        roots,
     } = config;
-    let kind = match identity_kind {
-        TlsIdentityKind::DER => {
-            let password = std::str::from_utf8(key.as_ref()).map_err(|_| {
-                TlsError::new(
-                    TlsErrorKind::InvalidKey,
-                    Some("DER passwords must be valid strings.".to_string()),
-                )
-            })?;
-            CertKind::DER { password }
-        }
-        TlsIdentityKind::PEM => CertKind::PEM { key: &key },
+
+    let TlsIdentity { kind, body, key } = identity;
+
+    let id_bytes = match body {
+        CertBody::InMemory(bytes) => bytes,
+        CertBody::FromFile(path) => tokio::fs::read(path).await?,
     };
-    let cert_bytes = match body {
-        TlsIdentityBody::InMemory(bytes) => bytes,
-        TlsIdentityBody::FromFile(path) => tokio::fs::read(path).await?,
+
+    let id_cert = IdentityCert {
+        kind,
+        key: &key,
+        body: &id_bytes,
     };
+
+    let mut root_bodies = vec![];
+    for TlsRoot { kind, body } in roots {
+        let root_bytes = match body {
+            CertBody::InMemory(bytes) => bytes,
+            CertBody::FromFile(path) => tokio::fs::read(path).await?,
+        };
+        root_bodies.push((kind, root_bytes));
+    }
+    
+    let root_certs = root_bodies.iter().map(|(kind, body)| RootCert { kind: *kind, body: body.as_ref() }).collect::<Vec<_>>();
+    
     Ok(TokioTlsNetworking::parse_identity(
         resolver,
-        kind,
-        &cert_bytes,
+        id_cert,
+        root_certs.as_ref()
     )?)
 }
 

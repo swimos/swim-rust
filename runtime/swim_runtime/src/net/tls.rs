@@ -36,6 +36,7 @@ use tokio::io::ReadBuf;
 use tokio::macros::support::Poll;
 use tokio::net::{TcpListener, TcpStream};
 
+use tokio_native_tls::native_tls::Certificate;
 use tokio_native_tls::native_tls::Identity;
 use tokio_native_tls::native_tls::TlsConnector as NativeTlsConnector;
 use tokio_native_tls::{TlsAcceptor, TlsConnector};
@@ -118,25 +119,39 @@ impl Listener<MaybeTlsStream> for TlsListener {
 pub struct TokioTlsNetworking {
     resolver: Arc<Resolver>,
     acceptor: TlsAcceptor,
+    connector: TlsConnector,
 }
 
 impl TokioTlsNetworking {
-    pub fn new(resolver: Arc<Resolver>, acceptor: TlsAcceptor) -> TokioTlsNetworking {
-        TokioTlsNetworking { resolver, acceptor }
+    pub fn new(resolver: Arc<Resolver>, connector: TlsConnector, acceptor: TlsAcceptor) -> TokioTlsNetworking {
+        TokioTlsNetworking { resolver, acceptor, connector }
     }
 
-    pub fn from_identity(resolver: Arc<Resolver>, id: Identity) -> TlsResult<Self> {
-        let acceptor = accepter_from_id(id)?;
-        Ok(Self::new(resolver, acceptor))
+    pub fn from_identity(resolver: Arc<Resolver>, 
+        roots: Vec<Certificate>, 
+        server_id: Identity) -> TlsResult<Self> {
+        let acceptor = accepter_from_id(server_id)?;
+        let mut tls_conn_builder = NativeTlsConnector::builder();
+        for cert in roots {
+            tls_conn_builder.add_root_certificate(cert);
+        }
+
+        let connector = tls_conn_builder
+            .build()?;
+
+        Ok(Self::new(resolver, TlsConnector::from(connector), acceptor))
     }
 
     pub fn parse_identity(
         resolver: Arc<Resolver>,
-        format: CertKind<'_>,
-        bytes: &[u8],
+        id: IdentityCert<'_>,
+        roots: &[RootCert<'_>]
     ) -> TlsResult<Self> {
-        let acceptor = accepter_from_cert(format, bytes)?;
-        Ok(Self::new(resolver, acceptor))
+        let acceptor = accepter_from_cert(id)?;
+        
+        let connector = connector_from_certs(roots)?;
+        
+        Ok(Self::new(resolver, connector, acceptor))
     }
 }
 
@@ -158,7 +173,7 @@ impl ExternalConnections for TokioTlsNetworking {
         .boxed()
     }
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>> {
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, IoResult<Self::Socket>> {
         async move {
             let SchemeSocketAddr { scheme, addr } = addr;
             let host = addr.to_string();
@@ -166,14 +181,7 @@ impl ExternalConnections for TokioTlsNetworking {
             match scheme {
                 Scheme::Ws => Ok(MaybeTlsStream::Plain(socket)),
                 Scheme::Wss => {
-                    let tls_conn_builder = NativeTlsConnector::builder();
-
-                    let connector = tls_conn_builder
-                        .build()
-                        .map_err(|e| io::Error::new(ErrorKind::PermissionDenied, e.to_string()))?;
-                    let stream = TlsConnector::from(connector);
-
-                    stream
+                    self.connector
                         .connect(&host, socket)
                         .await
                         .map(MaybeTlsStream::Tls)
@@ -205,19 +213,21 @@ impl TlsListener {
     }
 }
 
-pub enum CertKind<'a> {
-    DER { password: &'a str },
-    PEM { key: &'a [u8] },
+#[derive(Clone, Copy)]
+pub enum CertKind {
+    DER,
+    PEM
 }
 
-impl<'a> CertKind<'a> {
-    fn parse_identity(&self, bytes: &[u8]) -> TlsResult<Identity> {
-        let cert = match self {
-            CertKind::DER { password } => Identity::from_pkcs12(bytes, password)?,
-            CertKind::PEM { key } => Identity::from_pkcs8(bytes, key)?,
-        };
-        Ok(cert)
-    }
+pub struct IdentityCert<'a> {
+    pub kind: CertKind,
+    pub key: &'a [u8],
+    pub body: &'a [u8],
+}
+
+pub struct RootCert<'a> {
+    pub kind: CertKind,
+    pub body: &'a [u8],
 }
 
 fn accepter_from_id(identity: Identity) -> TlsResult<TlsAcceptor> {
@@ -225,9 +235,31 @@ fn accepter_from_id(identity: Identity) -> TlsResult<TlsAcceptor> {
     Ok(TlsAcceptor::from(tls_acceptor))
 }
 
-fn accepter_from_cert(format: CertKind<'_>, bytes: &[u8]) -> TlsResult<TlsAcceptor> {
-    let cert = format.parse_identity(bytes)?;
+fn accepter_from_cert(cert: IdentityCert<'_>) -> TlsResult<TlsAcceptor> {
+    let IdentityCert { kind, key, body } = cert;
+    let cert = match kind {
+        CertKind::DER => {
+            let password = std::str::from_utf8(key).unwrap();
+            Identity::from_pkcs12(body, password)?
+        },
+        CertKind::PEM => Identity::from_pkcs8(body, key)?,
+    };
     accepter_from_id(cert)
+}
+
+fn connector_from_certs<'a, I: IntoIterator<Item = &'a RootCert<'a>>>(roots: I) -> TlsResult<TlsConnector> {
+    let mut tls_conn_builder = NativeTlsConnector::builder();
+    for RootCert { kind, body } in roots {
+        let cert = match kind {
+            CertKind::DER => Certificate::from_der(body)?,
+            CertKind::PEM => Certificate::from_pem(body)?,
+        };
+        tls_conn_builder.add_root_certificate(cert);
+    }
+    let connector = tls_conn_builder
+        .build()?;
+
+    Ok(TlsConnector::from(connector))
 }
 
 struct AcceptState<F> {
