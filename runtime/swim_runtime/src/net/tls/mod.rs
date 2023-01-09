@@ -18,42 +18,27 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
 
-use futures::future::BoxFuture;
-use futures::future::Either;
-use futures::stream::unfold;
-use futures::stream::BoxStream;
-use futures::stream::FuturesUnordered;
-use futures::Future;
-use futures::FutureExt;
-use futures::Stream;
-use futures::StreamExt;
-use futures::TryFutureExt;
-use futures::TryStreamExt;
-use tokio::io::AsyncRead;
-use tokio::io::AsyncWrite;
-use tokio::io::ReadBuf;
+use futures::future::{BoxFuture, Either};
+use futures::stream::{unfold, BoxStream, FuturesUnordered};
+use futures::{Future, FutureExt, Stream, StreamExt, TryFutureExt, TryStreamExt};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::macros::support::Poll;
 use tokio::net::{TcpListener, TcpStream};
 
-use tokio_native_tls::native_tls::Certificate;
-use tokio_native_tls::native_tls::Identity;
-use tokio_native_tls::native_tls::TlsConnector as NativeTlsConnector;
-use tokio_native_tls::{TlsAcceptor, TlsConnector};
+use tokio_native_tls::{
+    native_tls::{Certificate, Identity, TlsConnector as NativeTlsConnector},
+    TlsAcceptor, TlsConnector,
+};
 use tracing::error;
 
-use crate::net::dns::Resolver;
-use crate::net::Scheme;
-use crate::net::{IoResult, Listener};
+use crate::net::{dns::Resolver, IoResult, Listener, Scheme};
 use pin_project::pin_project;
 
-use super::dns::BoxDnsResolver;
-use super::dns::DnsResolver;
-use super::ClientConnections;
-use super::ConnResult;
-use super::ConnectionError;
-use super::ListenerError;
-use super::ListenerResult;
-use super::ServerConnections;
+use super::dns::{BoxDnsResolver, DnsResolver};
+use super::{
+    ClientConnections, ConnResult, ConnectionError, ListenerError, ListenerResult,
+    ServerConnections,
+};
 
 pub type TlsStream = tokio_native_tls::TlsStream<TcpStream>;
 pub type TlsHandshakeResult = IoResult<(TlsStream, SocketAddr)>;
