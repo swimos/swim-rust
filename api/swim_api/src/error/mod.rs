@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::error::Error;
 use std::{fmt::Display, io};
 
 use swim_form::structural::read::ReadError;
@@ -72,6 +73,8 @@ pub enum DownlinkFailureReason {
     RemoteStopped,
     DownlinkStopped,
 }
+
+impl Error for DownlinkFailureReason {}
 
 impl Display for DownlinkFailureReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

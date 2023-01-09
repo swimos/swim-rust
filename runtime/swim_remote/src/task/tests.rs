@@ -208,7 +208,7 @@ where
         stop_rx,
         ReceiverStream::new(in_rx),
         attach_rx,
-        find_tx,
+        Some(find_tx),
         outgoing_tx,
     );
 
@@ -1015,7 +1015,7 @@ where
         stop_rx,
         server,
         attach_rx,
-        find_tx,
+        Some(find_tx),
         non_zero_usize!(CHAN_SIZE),
     );
 

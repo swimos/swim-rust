@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::error::Error;
 use std::fmt::{Debug, Formatter};
 
 use futures::future::BoxFuture;
@@ -55,7 +56,7 @@ where
     Socket: Send + Sync + Unpin,
 {
     type Ext: SplittableExtension + Send + Sync + 'static;
-    type Error: Into<ConnectionError>;
+    type Error: Error + Send + Sync + Into<ConnectionError> + 'static;
 
     /// Negotiate a new client connection.
     fn open_connection(

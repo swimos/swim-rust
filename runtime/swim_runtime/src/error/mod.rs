@@ -129,7 +129,7 @@ impl From<SendFailed> for RoutingError {
 /// An error denoting that a connection error has occurred.
 #[derive(Debug, Clone)]
 pub enum ConnectionError {
-    /// A HTTP detailing either a malformatted request/response or a peer error.
+    /// A HTTP detailing either a malformed request/response or a peer error.
     Http(HttpError),
     /// A TLS error that may be produced when reading a certificate or through a connection.
     Tls(TlsError),

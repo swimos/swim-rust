@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 pub use on_event::{OnEvent, OnEventShared};
 pub use on_linked::{OnLinked, OnLinkedShared};
@@ -387,7 +388,7 @@ where
 {
     type OnSetFut = FSet::OnSetFut;
 
-    fn on_set(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut {
+    fn on_set(&'a mut self, existing: Option<&'a Arc<T>>, new_value: &'a T) -> Self::OnSetFut {
         self.on_set.on_set(existing, new_value)
     }
 }
@@ -605,7 +606,7 @@ where
         FUnlinked,
     >
     where
-        F: FnMut(&mut Shared, Option<&T>, &T),
+        F: FnMut(&mut Shared, Option<&Arc<T>>, &T),
     {
         StatefulValueDownlinkLifecycle {
             _value_type: PhantomData,
@@ -734,7 +735,7 @@ where
 {
     type OnSetFut = FSet::OnSetFut;
 
-    fn on_set(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut {
+    fn on_set(&'a mut self, existing: Option<&'a Arc<T>>, new_value: &'a T) -> Self::OnSetFut {
         let StatefulValueDownlinkLifecycle { shared, on_set, .. } = self;
         on_set.on_set(shared, existing, new_value)
     }

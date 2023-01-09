@@ -14,6 +14,7 @@
 
 use futures::future::{ready, Ready};
 use std::future::Future;
+use std::sync::Arc;
 use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
 /// Trait for event handlers to be called when a value changes.
@@ -23,7 +24,7 @@ pub trait OnSet<'a, T>: Send {
     /// #Arguments
     /// * `existing` - The existing value, if it is defined.
     /// * `new_value` - The replacement value.
-    fn on_set(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut;
+    fn on_set(&'a mut self, existing: Option<&'a Arc<T>>, new_value: &'a T) -> Self::OnSetFut;
 }
 
 /// Trait for event handlers, that share state with other handlers, called when a downlink
@@ -38,7 +39,7 @@ pub trait OnSetShared<'a, T, Shared>: Send {
     fn on_set(
         &'a mut self,
         shared: &'a mut Shared,
-        existing: Option<&'a T>,
+        existing: Option<&'a Arc<T>>,
         new_value: &'a T,
     ) -> Self::OnSetFut;
 }
@@ -46,7 +47,7 @@ pub trait OnSetShared<'a, T, Shared>: Send {
 impl<'a, T> OnSet<'a, T> for NoHandler {
     type OnSetFut = Ready<()>;
 
-    fn on_set(&'a mut self, _existing: Option<&'a T>, _new_value: &'a T) -> Self::OnSetFut {
+    fn on_set(&'a mut self, _existing: Option<&'a Arc<T>>, _new_value: &'a T) -> Self::OnSetFut {
         ready(())
     }
 }
@@ -54,12 +55,12 @@ impl<'a, T> OnSet<'a, T> for NoHandler {
 impl<'a, T, F, Fut> OnSet<'a, T> for FnMutHandler<F>
 where
     T: 'static,
-    F: FnMut(Option<&'a T>, &'a T) -> Fut + Send,
+    F: FnMut(Option<&'a Arc<T>>, &'a T) -> Fut + Send,
     Fut: Future<Output = ()> + Send + 'a,
 {
     type OnSetFut = Fut;
 
-    fn on_set(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut {
+    fn on_set(&'a mut self, existing: Option<&'a Arc<T>>, new_value: &'a T) -> Self::OnSetFut {
         let FnMutHandler(f) = self;
         f(existing, new_value)
     }
@@ -71,7 +72,7 @@ impl<'a, T, Shared> OnSetShared<'a, T, Shared> for NoHandler {
     fn on_set(
         &'a mut self,
         _shared: &'a mut Shared,
-        _existing: Option<&'a T>,
+        _existing: Option<&'a Arc<T>>,
         _new_value: &'a T,
     ) -> Self::OnSetFut {
         ready(())
@@ -82,7 +83,7 @@ impl<'a, T, Shared, F, Fut> OnSetShared<'a, T, Shared> for FnMutHandler<F>
 where
     T: 'static,
     Shared: 'static,
-    F: FnMut(&'a mut Shared, Option<&'a T>, &'a T) -> Fut + Send,
+    F: FnMut(&'a mut Shared, Option<&'a Arc<T>>, &'a T) -> Fut + Send,
     Fut: Future<Output = ()> + Send + 'a,
 {
     type OnSetFut = Fut;
@@ -90,7 +91,7 @@ where
     fn on_set(
         &'a mut self,
         shared: &'a mut Shared,
-        existing: Option<&'a T>,
+        existing: Option<&'a Arc<T>>,
         new_value: &'a T,
     ) -> Self::OnSetFut {
         let FnMutHandler(f) = self;
@@ -107,7 +108,7 @@ where
     fn on_set(
         &'a mut self,
         _shared: &'a mut Shared,
-        existing: Option<&'a T>,
+        existing: Option<&'a Arc<T>>,
         new_value: &'a T,
     ) -> Self::OnSetFut {
         self.0.on_set(existing, new_value)
@@ -117,11 +118,11 @@ where
 impl<'a, F, T> OnSet<'a, T> for BlockingHandler<F>
 where
     T: 'static,
-    F: FnMut(Option<&'a T>, &'a T) + Send,
+    F: FnMut(Option<&'a Arc<T>>, &'a T) + Send,
 {
     type OnSetFut = Ready<()>;
 
-    fn on_set(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut {
+    fn on_set(&'a mut self, existing: Option<&'a Arc<T>>, new_value: &'a T) -> Self::OnSetFut {
         let BlockingHandler(f) = self;
         f(existing, new_value);
         ready(())
@@ -132,14 +133,14 @@ impl<'a, T, F, Shared> OnSetShared<'a, T, Shared> for BlockingHandler<F>
 where
     Shared: 'static,
     T: 'static,
-    F: FnMut(&'a mut Shared, Option<&'a T>, &'a T) + Send,
+    F: FnMut(&'a mut Shared, Option<&'a Arc<T>>, &'a T) + Send,
 {
     type OnSetFut = Ready<()>;
 
     fn on_set(
         &'a mut self,
         shared: &'a mut Shared,
-        existing: Option<&'a T>,
+        existing: Option<&'a Arc<T>>,
         new_value: &'a T,
     ) -> Self::OnSetFut {
         let BlockingHandler(f) = self;
@@ -151,13 +152,13 @@ where
 #[macro_export]
 macro_rules! on_set_handler {
     ($t:ty, |$before:ident, $after:ident| $body:expr) => {{
-        async fn handler($before: core::option::Option<&$t>, $after: &$t) {
+        async fn handler($before: core::Option::Option<&$t>, $after: &$t) {
             $body
         }
         handler
     }};
     ($t:ty, $s:ty, |$shared:ident, $before:ident, $after:ident| $body:expr) => {{
-        async fn handler($shared: &mut $s, $before: core::option::Option<&$t>, $after: &$t) {
+        async fn handler($shared: &mut $s, $before: core::Option::Option<&$t>, $after: &$t) {
             $body
         }
         handler
