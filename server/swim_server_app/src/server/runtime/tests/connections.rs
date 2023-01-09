@@ -22,9 +22,7 @@ use futures::future::ready;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use ratchet::{NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use swim_runtime::net::dns::{DnsFut, DnsResolver};
-use swim_runtime::net::{
-    ConnectionError, ExternalConnections, Listener, ListenerResult, Scheme, SchemeSocketAddr,
-};
+use swim_runtime::net::{ConnectionError, ExternalConnections, Listener, ListenerResult, Scheme};
 use swim_runtime::ws::{RatchetError, WsConnections, WsOpenFuture};
 use tokio::{
     io::{self, DuplexStream},
@@ -35,6 +33,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 #[derive(Debug)]
 enum ConnReq {
     Remote(
+        Scheme,
         SocketAddr,
         oneshot::Sender<Result<DuplexStream, ConnectionError>>,
     ),
@@ -106,7 +105,7 @@ impl TestConnections {
     }
 }
 
-pub struct TestListener(BoxedAcc<ListenerResult<(DuplexStream, SchemeSocketAddr)>>);
+pub struct TestListener(BoxedAcc<ListenerResult<(DuplexStream, Scheme, SocketAddr)>>);
 
 impl Debug for TestListener {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -156,13 +155,14 @@ impl ExternalConnections for TestConnections {
 
     fn try_open(
         &self,
-        addr: SchemeSocketAddr,
+        scheme: Scheme,
+        addr: SocketAddr,
     ) -> BoxFuture<'static, Result<Self::Socket, ConnectionError>> {
         let sender = self.requests.clone();
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(ConnReq::Remote(addr.addr, tx))
+                .send(ConnReq::Remote(scheme, addr, tx))
                 .await
                 .expect("Channel closed.");
             rx.await.expect("Connections task stopped.")
@@ -182,7 +182,7 @@ impl ExternalConnections for TestConnections {
 pub type BoxedAcc<T> = Pin<Box<dyn Stream<Item = T> + Send + Sync + 'static>>;
 
 impl Listener<DuplexStream> for TestListener {
-    type AcceptStream = BoxedAcc<ListenerResult<(DuplexStream, SchemeSocketAddr)>>;
+    type AcceptStream = BoxedAcc<ListenerResult<(DuplexStream, Scheme, SocketAddr)>>;
 
     fn into_stream(self) -> Self::AcceptStream {
         self.0
@@ -220,7 +220,7 @@ impl TestConnectionsTask {
         } = self;
         while let Some(req) = receiver.recv().await {
             match req {
-                ConnReq::Remote(addr, tx) => {
+                ConnReq::Remote(_, addr, tx) => {
                     let result = if let Some(stream) = remotes.remove(&addr) {
                         Ok(stream)
                     } else {
@@ -240,7 +240,7 @@ impl TestConnectionsTask {
                     let result = if let Some(incoming) = incoming.take() {
                         let stream = Box::pin(
                             UnboundedReceiverStream::new(incoming)
-                                .map(|(addr, s)| Ok((s, SchemeSocketAddr::new(Scheme::Ws, addr)))),
+                                .map(|(addr, s)| Ok((s, Scheme::Ws, addr))),
                         );
                         let listener = TestListener(stream);
                         Ok(listener)

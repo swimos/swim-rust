@@ -16,8 +16,8 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 
 use crate::net::dns::{DnsResolver, Resolver};
+use crate::net::Scheme;
 use crate::net::{IoResult, Listener};
-use crate::net::{Scheme, SchemeSocketAddr};
 use futures::future::BoxFuture;
 use futures::task::{Context, Poll};
 use futures::FutureExt;
@@ -58,9 +58,9 @@ impl ClientConnections for TokioPlainTextNetworking {
 
     fn try_open(
         &self,
-        addr: SchemeSocketAddr,
+        scheme: Scheme,
+        addr: SocketAddr,
     ) -> BoxFuture<'static, ConnResult<Self::ClientSocket>> {
-        let SchemeSocketAddr { scheme, addr } = addr;
         async move {
             match scheme {
                 Scheme::Ws => Ok(TcpStream::connect(addr).await?),
@@ -103,13 +103,13 @@ impl WithPeer {
 }
 
 impl Stream for WithPeer {
-    type Item = ListenerResult<(TcpStream, SchemeSocketAddr)>;
+    type Item = ListenerResult<(TcpStream, Scheme, SocketAddr)>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.project()
             .0
             .poll_accept(cx)?
-            .map(|(stream, addr)| Some(Ok((stream, SchemeSocketAddr::new(Scheme::Ws, addr)))))
+            .map(|(stream, addr)| Some(Ok((stream, Scheme::Ws, addr))))
     }
 }
 

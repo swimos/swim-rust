@@ -42,8 +42,8 @@ use tokio_native_tls::{TlsAcceptor, TlsConnector};
 use tracing::error;
 
 use crate::net::dns::Resolver;
+use crate::net::Scheme;
 use crate::net::{IoResult, Listener};
-use crate::net::{Scheme, SchemeSocketAddr};
 use pin_project::pin_project;
 
 use super::dns::BoxDnsResolver;
@@ -58,7 +58,7 @@ use super::ServerConnections;
 pub type TlsStream = tokio_native_tls::TlsStream<TcpStream>;
 pub type TlsHandshakeResult = IoResult<(TlsStream, SocketAddr)>;
 
-type BoxListenerStream<Socket> = BoxStream<'static, ListenerResult<(Socket, SchemeSocketAddr)>>;
+type BoxListenerStream<Socket> = BoxStream<'static, ListenerResult<(Socket, Scheme, SocketAddr)>>;
 
 #[pin_project(project = MaybeTlsProj)]
 pub enum MaybeTlsStream {
@@ -193,9 +193,12 @@ impl TokioTlsServerNetworking {
 impl ClientConnections for TokioTlsClientNetworking {
     type ClientSocket = MaybeTlsStream;
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
+    fn try_open(
+        &self,
+        scheme: Scheme,
+        addr: SocketAddr,
+    ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
         async move {
-            let SchemeSocketAddr { scheme, addr } = addr;
             let host = addr.to_string();
             let socket = TcpStream::connect(addr).await?;
             match scheme {
@@ -277,8 +280,12 @@ impl TokioTlsNetworking {
 impl ClientConnections for TokioTlsNetworking {
     type ClientSocket = MaybeTlsStream;
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
-        self.client.try_open(addr)
+    fn try_open(
+        &self,
+        scheme: Scheme,
+        addr: SocketAddr,
+    ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
+        self.client.try_open(scheme, addr)
     }
 
     fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
@@ -408,7 +415,7 @@ where
 fn tls_accept_stream(
     listener: TcpListener,
     acceptor: TlsAcceptor,
-) -> impl Stream<Item = ListenerResult<(TlsStream, SchemeSocketAddr)>> + Send + 'static {
+) -> impl Stream<Item = ListenerResult<(TlsStream, Scheme, SocketAddr)>> + Send + 'static {
     let state = AcceptState::new(listener);
     unfold(
         Some((state, Arc::new(acceptor))),
@@ -433,8 +440,10 @@ fn tls_accept_stream(
                             }
                         }
                         Some(Either::Right(Ok((tls_stream, addr)))) => {
-                            let scheme_addr = SchemeSocketAddr::new(Scheme::Wss, addr);
-                            break Some((Ok((tls_stream, scheme_addr)), Some((state, acceptor))));
+                            break Some((
+                                Ok((tls_stream, Scheme::Wss, addr)),
+                                Some((state, acceptor)),
+                            ));
                         }
                         Some(Either::Right(Err(e))) => {
                             error!(error = ?e, "TLS handshake failed.");
@@ -481,7 +490,7 @@ impl Listener<MaybeTlsStream> for MaybeTlsListener {
             inner: TlsListener { listener, acceptor },
         } = self;
         tls_accept_stream(listener, acceptor)
-            .map_ok(|(sock, addr)| (MaybeTlsStream::Tls(sock), addr))
+            .map_ok(|(sock, scheme, addr)| (MaybeTlsStream::Tls(sock), scheme, addr))
             .boxed()
     }
 }

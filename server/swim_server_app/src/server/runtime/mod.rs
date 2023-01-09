@@ -41,7 +41,7 @@ use swim_runtime::agent::{
 use swim_utilities::routing::route_uri::RouteUri;
 
 use swim_runtime::net::{
-    BadUrl, ConnectionError, ExternalConnections, Listener, ListenerError, Scheme, SchemeSocketAddr,
+    BadUrl, ConnectionError, ExternalConnections, Listener, ListenerError, Scheme,
 };
 use swim_runtime::ws::{RatchetError, WsConnections};
 use swim_utilities::io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
@@ -86,7 +86,7 @@ type ClientPromiseTx = oneshot::Sender<Result<EstablishedClient, NewClientError>
 type ClientPromiseRx = oneshot::Receiver<Result<EstablishedClient, NewClientError>>;
 
 enum ServerEvent<Sock, Ext> {
-    NewConnection(Result<(Sock, SchemeSocketAddr), ListenerError>),
+    NewConnection(Result<(Sock, Scheme, SocketAddr), ListenerError>),
     FindRoute(FindNode),
     FailRoute(FindNode),
     RemoteStopped(SocketAddr, Result<(), JoinError>),
@@ -409,11 +409,11 @@ where
             };
 
             match event {
-                ServerEvent::NewConnection(Ok((sock, addr))) => {
+                ServerEvent::NewConnection(Ok((sock, _, addr))) => {
                     info!(peer = %addr, "Accepting new client connection.");
                     match websockets.accept_connection(sock).await {
                         Ok(websocket) => {
-                            let sock_addr = addr.addr;
+                            let sock_addr = addr;
                             let id = remote_issuer.next_id();
                             let (attach_tx, task) = register_remote(
                                 id,
@@ -990,10 +990,7 @@ where
     let mut conn_failures = vec![];
     let mut sock = None;
     for addr in addrs {
-        match networking
-            .try_open(SchemeSocketAddr::new(scheme, addr))
-            .await
-        {
+        match networking.try_open(scheme, addr).await {
             Ok(socket) => {
                 sock = Some((addr, socket));
                 break;

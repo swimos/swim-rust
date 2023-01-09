@@ -95,24 +95,6 @@ impl Display for Scheme {
 type IoResult<T> = io::Result<T>;
 type ConnResult<T> = Result<T, ConnectionError>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SchemeSocketAddr {
-    pub scheme: Scheme,
-    pub addr: SocketAddr,
-}
-
-impl SchemeSocketAddr {
-    pub fn new(scheme: Scheme, addr: SocketAddr) -> SchemeSocketAddr {
-        SchemeSocketAddr { scheme, addr }
-    }
-}
-
-impl Display for SchemeSocketAddr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}://{}/", self.scheme, self.addr)
-    }
-}
-
 #[derive(Debug, Error)]
 pub enum ConnectionError {
     #[error("Opening a new connection failed: {0}")]
@@ -158,7 +140,7 @@ pub trait Listener<Socket>
 where
     Socket: Unpin + Send + Sync + 'static,
 {
-    type AcceptStream: Stream<Item = ListenerResult<(Socket, SchemeSocketAddr)>> + Send + Unpin;
+    type AcceptStream: Stream<Item = ListenerResult<(Socket, Scheme, SocketAddr)>> + Send + Unpin;
 
     fn into_stream(self) -> Self::AcceptStream;
 }
@@ -216,7 +198,11 @@ impl<'a> TryFrom<&'a Url> for SchemeHostPort {
 
 pub trait ClientConnections: Clone + Send + Sync + 'static {
     type ClientSocket: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static;
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, ConnResult<Self::ClientSocket>>;
+    fn try_open(
+        &self,
+        scheme: Scheme,
+        addr: SocketAddr,
+    ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
     fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
@@ -242,7 +228,8 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
         &self,
         addr: SocketAddr,
     ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>>;
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, ConnResult<Self::Socket>>;
+    fn try_open(&self, scheme: Scheme, addr: SocketAddr)
+        -> BoxFuture<'_, ConnResult<Self::Socket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
     fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
@@ -263,8 +250,12 @@ where
         <Self as ServerConnections>::bind(self, addr)
     }
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, ConnResult<Self::Socket>> {
-        <Self as ClientConnections>::try_open(self, addr)
+    fn try_open(
+        &self,
+        scheme: Scheme,
+        addr: SocketAddr,
+    ) -> BoxFuture<'_, ConnResult<Self::Socket>> {
+        <Self as ClientConnections>::try_open(self, scheme, addr)
     }
 
     fn dns_resolver(&self) -> BoxDnsResolver {
@@ -291,8 +282,12 @@ where
         (**self).bind(addr)
     }
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, ConnResult<Self::Socket>> {
-        (**self).try_open(addr)
+    fn try_open(
+        &self,
+        scheme: Scheme,
+        addr: SocketAddr,
+    ) -> BoxFuture<'_, ConnResult<Self::Socket>> {
+        (**self).try_open(scheme, addr)
     }
 
     fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
