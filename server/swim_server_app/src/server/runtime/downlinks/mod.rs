@@ -503,7 +503,7 @@ enum BadHost {
         url::ParseError,
     ),
     #[error("Host URL is not a valid Warp URL.")]
-    InvaludUrl(
+    InvalidUrl(
         #[from]
         #[source]
         BadUrl,

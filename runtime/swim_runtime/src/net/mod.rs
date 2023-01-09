@@ -95,24 +95,35 @@ impl Display for Scheme {
 type IoResult<T> = io::Result<T>;
 type ConnResult<T> = Result<T, ConnectionError>;
 
+/// Error to indicate why attempting to open a new connection failed.
 #[derive(Debug, Error)]
 pub enum ConnectionError {
+    /// The connection could not be established at all.
     #[error("Opening a new connection failed: {0}")]
     ConnectionFailed(
         #[source]
         #[from]
         std::io::Error,
     ),
+    /// A connection could not be negotiated (for example, a TLS handshake failed).
     #[error("Negotiating a new connection failed: {0}")]
     NegotiationFailed(#[source] Box<dyn std::error::Error + Send>),
 }
 
+/// Errors that can be generated when listening for incoming connections. Particularly, this
+/// distinguishes between an error in the listening process itself (after which we should stop
+/// listening) and error with an incoming connection (after which we can attempt to carry on
+/// listening).
 #[derive(Debug, Error)]
 pub enum ListenerError {
+    /// Listening for new connections failed.
     #[error("Listening for incoming connections failed: {0}")]
     ListenerFailed(#[source] std::io::Error),
+    /// A failure occurred trying to accept an incoming connection.
     #[error("Accepting a new connection failed: {0}")]
     AcceptFailed(#[source] std::io::Error),
+    /// An incoming connection was established but the connection could not be negotiated (for example,
+    /// a TLS handshake failed).
     #[error("Negotiating a new connection failed: {0}")]
     NegotiationFailed(#[source] Box<dyn std::error::Error + Send>),
 }
@@ -196,6 +207,7 @@ impl<'a> TryFrom<&'a Url> for SchemeHostPort {
     }
 }
 
+/// Provides all networking functionality required for a Warp client (DNS resolution and opening sockets).
 pub trait ClientConnections: Clone + Send + Sync + 'static {
     type ClientSocket: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static;
     fn try_open(
@@ -208,6 +220,30 @@ pub trait ClientConnections: Clone + Send + Sync + 'static {
     fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
 }
 
+impl<C> ClientConnections for Arc<C>
+where
+    C: ClientConnections,
+{
+    type ClientSocket = C::ClientSocket;
+
+    fn try_open(
+        &self,
+        scheme: Scheme,
+        addr: SocketAddr,
+    ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
+        (**self).try_open(scheme, addr)
+    }
+
+    fn dns_resolver(&self) -> BoxDnsResolver {
+        (**self).dns_resolver()
+    }
+
+    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+        (**self).lookup(host, port)
+    }
+}
+
+/// Provides all networking functionality required for a Warp server (listening for incoming connections).
 pub trait ServerConnections: Clone + Send + Sync + 'static {
     type ServerSocket: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static;
     type ListenerType: Listener<Self::ServerSocket> + Send + Sync;
@@ -218,8 +254,24 @@ pub trait ServerConnections: Clone + Send + Sync + 'static {
     ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>>;
 }
 
+impl<C> ServerConnections for Arc<C>
+where
+    C: ServerConnections,
+{
+    type ServerSocket = C::ServerSocket;
+
+    type ListenerType = C::ListenerType;
+
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
+        (**self).bind(addr)
+    }
+}
+
 /// Trait for types that can create remote network connections asynchronously. This is primarily
-/// used to abstract over [`std::net::TcpListener`] and [`std::net::TcpStream`] for testing purposes.
+/// used to abstract over ordinary sockets and sockets with TLS support.
 pub trait ExternalConnections: Clone + Send + Sync + 'static {
     type Socket: Unpin + Send + Sync + 'static;
     type ListenerType: Listener<Self::Socket> + Send + Sync;
@@ -264,37 +316,5 @@ where
 
     fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
         <Self as ClientConnections>::lookup(self, host, port)
-    }
-}
-
-impl<Conn> ExternalConnections for Arc<Conn>
-where
-    Conn: ExternalConnections,
-{
-    type Socket = Conn::Socket;
-
-    type ListenerType = Conn::ListenerType;
-
-    fn bind(
-        &self,
-        addr: SocketAddr,
-    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
-        (**self).bind(addr)
-    }
-
-    fn try_open(
-        &self,
-        scheme: Scheme,
-        addr: SocketAddr,
-    ) -> BoxFuture<'_, ConnResult<Self::Socket>> {
-        (**self).try_open(scheme, addr)
-    }
-
-    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
-        (**self).lookup(host, port)
-    }
-
-    fn dns_resolver(&self) -> BoxDnsResolver {
-        (**self).dns_resolver()
     }
 }
