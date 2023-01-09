@@ -608,6 +608,7 @@ fn on_update_handler() {
             map: &HashMap<i32, Text>,
             key: i32,
             prev: Option<Text>,
+            _new_value: &Text,
         ) -> impl EventHandler<TestAgent> + '_ {
             let map_state = map.clone();
             context.effect(move || {
@@ -728,6 +729,7 @@ fn all_handlers() {
             map: &HashMap<i32, Text>,
             key: i32,
             prev: Option<Text>,
+            _new_value: &Text,
         ) -> impl EventHandler<TestAgent> + '_ {
             let map_state = map.clone();
             context.effect(move || {

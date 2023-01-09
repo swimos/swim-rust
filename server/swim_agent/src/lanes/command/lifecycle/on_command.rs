@@ -16,84 +16,97 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{EventFn, EventHandler, UnitHandler},
 };
 
 /// Lifecycle event for the `on_command` event of a command lane.
-pub trait OnCommand<'a, T, Context>: Send {
-    type OnCommandHandler: EventHandler<Context> + 'a;
+pub trait OnCommand<T, Context>: Send {
+    type OnCommandHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a;
 
     /// #Arguments
     /// * `value` - The command value.
-    fn on_command(&'a self, value: &T) -> Self::OnCommandHandler;
+    fn on_command<'a>(&'a self, value: &T) -> Self::OnCommandHandler<'a>;
 }
 
 /// Lifecycle event for the `on_command` event of a command lane where the event handler
 /// has shared state with other handlers for the same agent.
-pub trait OnCommandShared<'a, T, Context, Shared>: Send {
-    type OnCommandHandler: EventHandler<Context> + 'a;
+pub trait OnCommandShared<T, Context, Shared>: Send {
+    type OnCommandHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `value` - The command value.
-    fn on_command(
+    fn on_command<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         value: &T,
-    ) -> Self::OnCommandHandler;
+    ) -> Self::OnCommandHandler<'a>;
 }
 
-impl<'a, T, Context> OnCommand<'a, T, Context> for NoHandler {
-    type OnCommandHandler = UnitHandler;
+impl<T, Context> OnCommand<T, Context> for NoHandler {
+    type OnCommandHandler<'a> = UnitHandler
+    where
+        Self: 'a;
 
-    fn on_command(&'a self, _value: &T) -> Self::OnCommandHandler {
+    fn on_command<'a>(&'a self, _value: &T) -> Self::OnCommandHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<'a, T, Context, Shared> OnCommandShared<'a, T, Context, Shared> for NoHandler {
-    type OnCommandHandler = UnitHandler;
+impl<T, Context, Shared> OnCommandShared<T, Context, Shared> for NoHandler {
+    type OnCommandHandler<'a> = UnitHandler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_command(
+    fn on_command<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         _value: &T,
-    ) -> Self::OnCommandHandler {
+    ) -> Self::OnCommandHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<'a, T, Context, F, H> OnCommand<'a, T, Context> for FnHandler<F>
+impl<T, Context, F, H> OnCommand<T, Context> for FnHandler<F>
 where
-    F: Fn(&T) -> H + Send + 'a,
-    H: EventHandler<Context> + 'a,
+    F: Fn(&T) -> H + Send,
+    H: EventHandler<Context> + 'static,
 {
-    type OnCommandHandler = H;
+    type OnCommandHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_command(&'a self, value: &T) -> Self::OnCommandHandler {
+    fn on_command<'a>(&'a self, value: &T) -> Self::OnCommandHandler<'a> {
         let FnHandler(f) = self;
         f(value)
     }
 }
 
-impl<'a, T, Context, Shared, F, H> OnCommandShared<'a, T, Context, Shared> for FnHandler<F>
+impl<T, Context, Shared, F> OnCommandShared<T, Context, Shared> for FnHandler<F>
 where
-    F: Fn(&'a Shared, HandlerContext<Context>, &T) -> H + Send + 'a,
-    H: EventHandler<Context> + 'a,
-    Shared: 'static,
+    F: for<'a> EventFn<'a, Context, Shared, T> + Send,
 {
-    type OnCommandHandler = H;
+    type OnCommandHandler<'a> = <F as EventFn<'a, Context, Shared, T>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_command(
+    fn on_command<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         value: &T,
-    ) -> Self::OnCommandHandler {
+    ) -> Self::OnCommandHandler<'a> {
         let FnHandler(f) = self;
-        f(shared, handler_context, value)
+        f.make_handler(shared, handler_context, value)
     }
 }

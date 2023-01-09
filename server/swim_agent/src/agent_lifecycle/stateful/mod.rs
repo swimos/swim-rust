@@ -76,17 +76,17 @@ impl<Context, State> StatefulAgentLifecycle<Context, State> {
     }
 }
 
-impl<'a, FStart, FStop, LaneEv, Context, State> OnStart<'a, Context>
+impl<FStart, FStop, LaneEv, Context, State> OnStart<Context>
     for StatefulAgentLifecycle<Context, State, FStart, FStop, LaneEv>
 where
     State: Send,
-    FStart: OnStartShared<'a, Context, State>,
+    FStart: OnStartShared<Context, State>,
     FStop: Send,
     LaneEv: Send,
 {
-    type OnStartHandler = FStart::OnStartHandler;
+    type OnStartHandler<'a> = FStart::OnStartHandler<'a> where Self: 'a;
 
-    fn on_start(&'a self) -> Self::OnStartHandler {
+    fn on_start(&self) -> Self::OnStartHandler<'_> {
         let StatefulAgentLifecycle {
             state,
             handler_context,
@@ -97,17 +97,19 @@ where
     }
 }
 
-impl<'a, FStart, FStop, LaneEv, Context, State> OnStop<'a, Context>
+impl<FStart, FStop, LaneEv, Context, State> OnStop<Context>
     for StatefulAgentLifecycle<Context, State, FStart, FStop, LaneEv>
 where
     State: Send,
-    FStop: OnStopShared<'a, Context, State>,
+    FStop: OnStopShared<Context, State>,
     FStart: Send,
     LaneEv: Send,
 {
-    type OnStopHandler = FStop::OnStopHandler;
+    type OnStopHandler<'a> = FStop::OnStopHandler<'a>
+    where
+        Self: 'a;
 
-    fn on_stop(&'a self) -> Self::OnStopHandler {
+    fn on_stop(&self) -> Self::OnStopHandler<'_> {
         let StatefulAgentLifecycle {
             state,
             handler_context,
@@ -118,17 +120,23 @@ where
     }
 }
 
-impl<'a, FStart, FStop, LaneEv, Context, State> LaneEvent<'a, Context>
+impl<FStart, FStop, LaneEv, Context, State> LaneEvent<Context>
     for StatefulAgentLifecycle<Context, State, FStart, FStop, LaneEv>
 where
     State: Send,
     FStart: Send,
     FStop: Send,
-    LaneEv: LaneEventShared<'a, Context, State>,
+    LaneEv: LaneEventShared<Context, State>,
 {
-    type LaneEventHandler = LaneEv::LaneEventHandler;
+    type LaneEventHandler<'a> = LaneEv::LaneEventHandler<'a>
+    where
+        Self: 'a;
 
-    fn lane_event(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler> {
+    fn lane_event<'a>(
+        &'a self,
+        context: &Context,
+        lane_name: &str,
+    ) -> Option<Self::LaneEventHandler<'a>> {
         let StatefulAgentLifecycle {
             state,
             handler_context,
@@ -148,7 +156,7 @@ impl<Context, State, FStart, FStop, LaneEv>
         f: F,
     ) -> StatefulAgentLifecycle<Context, State, FnHandler<F>, FStop, LaneEv>
     where
-        FnHandler<F>: for<'a> OnStartShared<'a, Context, State>,
+        FnHandler<F>: OnStartShared<Context, State>,
     {
         let StatefulAgentLifecycle {
             handler_context,
@@ -172,7 +180,7 @@ impl<Context, State, FStart, FStop, LaneEv>
         f: F,
     ) -> StatefulAgentLifecycle<Context, State, FStart, FnHandler<F>, LaneEv>
     where
-        FnHandler<F>: for<'a> OnStopShared<'a, Context, State>,
+        FnHandler<F>: OnStopShared<Context, State>,
     {
         let StatefulAgentLifecycle {
             handler_context,
@@ -196,7 +204,7 @@ impl<Context, State, FStart, FStop, LaneEv>
         handler: H,
     ) -> StatefulAgentLifecycle<Context, State, FStart, FStop, H>
     where
-        H: for<'a> LaneEventShared<'a, Context, State>,
+        H: LaneEventShared<Context, State>,
     {
         let StatefulAgentLifecycle {
             handler_context,

@@ -25,8 +25,7 @@ use std::path::Path;
 use std::sync::Arc;
 use store_common::{
     serialize_u64, EngineInfo, EnginePrefixIterator, EngineRefIterator, Keyspace,
-    KeyspaceByteEngine, KeyspaceResolver, Keyspaces, PrefixRangeByteEngine, Store, StoreBuilder,
-    StoreError, MAX_ID_SIZE,
+    KeyspaceByteEngine, KeyspaceResolver, Keyspaces, Store, StoreBuilder, StoreError, MAX_ID_SIZE,
 };
 
 /// A Rocks database engine.
@@ -115,14 +114,16 @@ where
     }
 }
 
-impl<'a> PrefixRangeByteEngine<'a> for RocksEngine {
-    type RangeCon = RocksRawPrefixIterator<'a>;
+impl KeyspaceByteEngine for RocksEngine {
+    type RangeCon<'a> = RocksRawPrefixIterator<'a>
+    where
+        Self: 'a;
 
-    fn get_prefix_range_consumer<S>(
+    fn get_prefix_range_consumer<'a, S>(
         &'a self,
         keyspace: S,
         prefix: &[u8],
-    ) -> Result<Self::RangeCon, StoreError>
+    ) -> Result<Self::RangeCon<'a>, StoreError>
     where
         S: Keyspace,
     {
@@ -136,9 +137,7 @@ impl<'a> PrefixRangeByteEngine<'a> for RocksEngine {
         iter.seek(prefix);
         Ok(RocksRawPrefixIterator::new(iter))
     }
-}
 
-impl KeyspaceByteEngine for RocksEngine {
     fn put_keyspace<K: Keyspace>(
         &self,
         keyspace: K,

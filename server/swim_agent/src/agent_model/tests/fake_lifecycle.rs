@@ -59,30 +59,34 @@ impl TestLifecycle {
     }
 }
 
-impl<'a> OnStart<'a, TestAgent> for TestLifecycle {
-    type OnStartHandler = LifecycleHandler;
+impl OnStart<TestAgent> for TestLifecycle {
+    type OnStartHandler<'a> = LifecycleHandler where Self: 'a;
 
-    fn on_start(&'a self) -> Self::OnStartHandler {
+    fn on_start(&self) -> Self::OnStartHandler<'_> {
         self.make_handler(LifecycleEvent::Start)
     }
 }
 
-impl<'a> OnStop<'a, TestAgent> for TestLifecycle {
-    type OnStopHandler = LifecycleHandler;
+impl OnStop<TestAgent> for TestLifecycle {
+    type OnStopHandler<'a> = LifecycleHandler
+    where
+        Self: 'a;
 
-    fn on_stop(&'a self) -> Self::OnStopHandler {
+    fn on_stop(&self) -> Self::OnStopHandler<'_> {
         self.make_handler(LifecycleEvent::Stop)
     }
 }
 
-impl<'a> LaneEvent<'a, TestAgent> for TestLifecycle {
-    type LaneEventHandler = LifecycleHandler;
+impl LaneEvent<TestAgent> for TestLifecycle {
+    type LaneEventHandler<'a> = LifecycleHandler
+    where
+        Self: 'a;
 
-    fn lane_event(
+    fn lane_event<'a>(
         &'a self,
         _context: &TestAgent,
         lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
+    ) -> Option<Self::LaneEventHandler<'a>> {
         Some(self.make_handler(LifecycleEvent::Lane(Text::new(lane_name))))
     }
 }

@@ -60,10 +60,12 @@ struct FakeLifecycle {
     inner: Arc<Mutex<Vec<Event>>>,
 }
 
-impl<'a> OnLinked<'a, FakeAgent> for FakeLifecycle {
-    type OnLinkedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnLinked<FakeAgent> for FakeLifecycle {
+    type OnLinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_linked(&'a self) -> Self::OnLinkedHandler {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         let state = self.inner.clone();
         SideEffect::from(move || {
             state.lock().push(Event::Linked);
@@ -72,10 +74,12 @@ impl<'a> OnLinked<'a, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnUnlinked<'a, FakeAgent> for FakeLifecycle {
-    type OnUnlinkedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnUnlinked<FakeAgent> for FakeLifecycle {
+    type OnUnlinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_unlinked(&'a self) -> Self::OnUnlinkedHandler {
+    fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         let state = self.inner.clone();
         SideEffect::from(move || {
             state.lock().push(Event::Unlinked);
@@ -84,10 +88,12 @@ impl<'a> OnUnlinked<'a, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnSynced<'a, i32, FakeAgent> for FakeLifecycle {
-    type OnSyncedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnSynced<i32, FakeAgent> for FakeLifecycle {
+    type OnSyncedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_synced(&'a self, value: &i32) -> Self::OnSyncedHandler {
+    fn on_synced<'a>(&'a self, value: &i32) -> Self::OnSyncedHandler<'a> {
         let state = self.inner.clone();
         let n = *value;
         SideEffect::from(move || {
@@ -97,10 +103,12 @@ impl<'a> OnSynced<'a, i32, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnDownlinkEvent<'a, i32, FakeAgent> for FakeLifecycle {
-    type OnEventHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnDownlinkEvent<i32, FakeAgent> for FakeLifecycle {
+    type OnEventHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_event(&'a self, value: &i32) -> Self::OnEventHandler {
+    fn on_event<'a>(&'a self, value: &i32) -> Self::OnEventHandler<'a> {
         let state = self.inner.clone();
         let n = *value;
         SideEffect::from(move || {
@@ -110,10 +118,12 @@ impl<'a> OnDownlinkEvent<'a, i32, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnDownlinkSet<'a, i32, FakeAgent> for FakeLifecycle {
-    type OnSetHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnDownlinkSet<i32, FakeAgent> for FakeLifecycle {
+    type OnSetHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_set(&'a self, previous: Option<i32>, new_value: &i32) -> Self::OnSetHandler {
+    fn on_set<'a>(&'a self, previous: Option<i32>, new_value: &i32) -> Self::OnSetHandler<'a> {
         let state = self.inner.clone();
         let n = *new_value;
         SideEffect::from(move || {

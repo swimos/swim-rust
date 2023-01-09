@@ -16,92 +16,107 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{EventHandler, HandlerFn0, UnitHandler},
 };
 
 use super::{LiftShared, WithHandlerContext};
 
 /// Lifecycle event for the `on_linked` event of a downlink, from an agent.
-pub trait OnLinked<'a, Context>: Send {
-    type OnLinkedHandler: EventHandler<Context> + 'a;
+pub trait OnLinked<Context>: Send {
+    type OnLinkedHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a;
 
-    fn on_linked(&'a self) -> Self::OnLinkedHandler;
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_>;
 }
 
 /// Lifecycle event for the `on_linked` event of a downlink, from an agent,where the event
 /// handler has shared state with other handlers for the same downlink.
-pub trait OnLinkedShared<'a, Context, Shared>: Send {
-    type OnLinkedHandler: EventHandler<Context> + 'a;
+pub trait OnLinkedShared<Context, Shared>: Send {
+    type OnLinkedHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
-    fn on_linked(
+    fn on_linked<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-    ) -> Self::OnLinkedHandler;
+    ) -> Self::OnLinkedHandler<'a>;
 }
 
-impl<'a, Context> OnLinked<'a, Context> for NoHandler {
-    type OnLinkedHandler = UnitHandler;
+impl<Context> OnLinked<Context> for NoHandler {
+    type OnLinkedHandler<'a> = UnitHandler
+    where
+        Self: 'a;
 
-    fn on_linked(&'a self) -> Self::OnLinkedHandler {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         UnitHandler::default()
     }
 }
 
-impl<'a, Context, Shared> OnLinkedShared<'a, Context, Shared> for NoHandler {
-    type OnLinkedHandler = UnitHandler;
+impl<Context, Shared> OnLinkedShared<Context, Shared> for NoHandler {
+    type OnLinkedHandler<'a> = UnitHandler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_linked(
+    fn on_linked<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
-    ) -> Self::OnLinkedHandler {
+    ) -> Self::OnLinkedHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<'a, Context, F, H> OnLinked<'a, Context> for FnHandler<F>
+impl<Context, F, H> OnLinked<Context> for FnHandler<F>
 where
-    F: Fn() -> H + Send + 'a,
-    H: EventHandler<Context> + 'a,
+    F: Fn() -> H + Send,
+    H: EventHandler<Context> + 'static,
 {
-    type OnLinkedHandler = H;
+    type OnLinkedHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_linked(&'a self) -> Self::OnLinkedHandler {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         let FnHandler(f) = self;
         f()
     }
 }
 
-impl<'a, Context, Shared, F, H> OnLinkedShared<'a, Context, Shared> for FnHandler<F>
+impl<Context, Shared, F> OnLinkedShared<Context, Shared> for FnHandler<F>
 where
-    F: Fn(&'a Shared, HandlerContext<Context>) -> H + Send + 'a,
-    Shared: 'a,
-    H: EventHandler<Context> + 'a,
+    F: for<'a> HandlerFn0<'a, Context, Shared> + Send,
 {
-    type OnLinkedHandler = H;
+    type OnLinkedHandler<'a> = <F as HandlerFn0<'a, Context, Shared>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_linked(
+    fn on_linked<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-    ) -> Self::OnLinkedHandler {
+    ) -> Self::OnLinkedHandler<'a> {
         let FnHandler(f) = self;
-        f(shared, handler_context)
+        f.make_handler(shared, handler_context)
     }
 }
 
-impl<'a, Context, F, H> OnLinked<'a, Context> for WithHandlerContext<Context, F>
+impl<Context, F, H> OnLinked<Context> for WithHandlerContext<Context, F>
 where
     F: Fn(HandlerContext<Context>) -> H + Send,
-    H: EventHandler<Context> + 'a,
+    H: EventHandler<Context> + 'static,
 {
-    type OnLinkedHandler = H;
+    type OnLinkedHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_linked(&'a self) -> Self::OnLinkedHandler {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         let WithHandlerContext {
             inner,
             handler_context,
@@ -110,17 +125,20 @@ where
     }
 }
 
-impl<'a, Context, Shared, F> OnLinkedShared<'a, Context, Shared> for LiftShared<F, Shared>
+impl<Context, Shared, F> OnLinkedShared<Context, Shared> for LiftShared<F, Shared>
 where
-    F: OnLinked<'a, Context> + Send,
+    F: OnLinked<Context> + Send,
 {
-    type OnLinkedHandler = F::OnLinkedHandler;
+    type OnLinkedHandler<'a> = F::OnLinkedHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_linked(
+    fn on_linked<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
-    ) -> Self::OnLinkedHandler {
+    ) -> Self::OnLinkedHandler<'a> {
         let LiftShared { inner, .. } = self;
         inner.on_linked()
     }

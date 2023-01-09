@@ -287,7 +287,7 @@ fn validate_method_as<'a>(
                     Validation::valid(acc)
                 })
             }
-            HandlerKind::Update => Validation::join(acc, validate_typed_sig(sig, 3, true))
+            HandlerKind::Update => Validation::join(acc, validate_typed_sig(sig, 4, true))
                 .and_then(|(mut acc, t)| {
                     for target in targets {
                         if let Err(e) = acc.add_on_update(target, t, &sig.ident) {

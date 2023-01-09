@@ -18,8 +18,6 @@ use crate::server::{StoreEngine, StoreKey};
 use swim_store::nostore::NoRange;
 use swim_store::{EngineInfo, StoreError};
 
-use super::PrefixNodeStore;
-
 #[derive(Clone, Debug)]
 pub struct MockNodeStore {
     _priv: (),
@@ -32,16 +30,19 @@ impl MockNodeStore {
     }
 }
 
-impl<'a> PrefixNodeStore<'a> for MockNodeStore {
-    type RangeCon = NoRange;
-
-    fn ranged_snapshot_consumer(&'a self, _prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
-        Ok(NoRange)
-    }
-}
-
 impl NodeStore for MockNodeStore {
     type Delegate = MockPlaneStore;
+
+    type RangeCon<'a> = NoRange
+    where
+        Self: 'a;
+
+    fn ranged_snapshot_consumer(
+        &self,
+        _prefix: StoreKey,
+    ) -> Result<Self::RangeCon<'_>, StoreError> {
+        Ok(NoRange)
+    }
 
     fn engine_info(&self) -> EngineInfo {
         EngineInfo {

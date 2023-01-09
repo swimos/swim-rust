@@ -21,7 +21,7 @@ use bytes::BufMut;
 use parking_lot::Mutex;
 use swim_api::{
     error::StoreError,
-    store::{KeyValue, MapPersistence, NodePersistenceBase, RangeConsumer},
+    store::{KeyValue, NodePersistence, RangeConsumer},
 };
 use swim_form::structural::write::StructuralWritable;
 use swim_model::Text;
@@ -126,23 +126,7 @@ impl RangeConsumer for FakeConsumer {
     }
 }
 
-impl<'a> MapPersistence<'a> for FakeStore {
-    type MapCon = FakeConsumer;
-
-    fn read_map(&'a self, id: Self::LaneId) -> Result<Self::MapCon, StoreError> {
-        let mut guard = self.inner.lock();
-        let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
-        if !ids_back.contains_key(&id) {
-            Err(StoreError::KeyNotFound)
-        } else if let Some(FakeMapLaneStore { data, staged_error }) = maps.get_mut(&id) {
-            Ok(FakeConsumer::new(data, staged_error.take()))
-        } else {
-            Err(StoreError::KeyNotFound)
-        }
-    }
-}
-
-impl NodePersistenceBase for FakeStore {
+impl NodePersistence for FakeStore {
     type LaneId = u64;
 
     fn id_for(&self, name: &str) -> Result<Self::LaneId, StoreError> {
@@ -247,6 +231,22 @@ impl NodePersistenceBase for FakeStore {
         } else {
             values.remove(&id);
             Ok(())
+        }
+    }
+
+    type MapCon<'a> = FakeConsumer
+    where
+        Self: 'a;
+
+    fn read_map(&self, id: Self::LaneId) -> Result<Self::MapCon<'_>, StoreError> {
+        let mut guard = self.inner.lock();
+        let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
+        if !ids_back.contains_key(&id) {
+            Err(StoreError::KeyNotFound)
+        } else if let Some(FakeMapLaneStore { data, staged_error }) = maps.get_mut(&id) {
+            Ok(FakeConsumer::new(data, staged_error.take()))
+        } else {
+            Err(StoreError::KeyNotFound)
         }
     }
 }

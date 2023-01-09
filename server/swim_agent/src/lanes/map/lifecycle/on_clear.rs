@@ -18,84 +18,97 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{EventHandler, TakeFn, UnitHandler},
 };
 
 /// Lifecycle event for the `on_clear` event of a map lane.
-pub trait OnClear<'a, K, V, Context>: Send {
-    type OnClearHandler: EventHandler<Context> + 'a;
+pub trait OnClear<K, V, Context>: Send {
+    type OnClearHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a;
 
     /// #Arguments
     /// * `before` - The contents of the map before it was cleared.
-    fn on_clear(&'a self, before: HashMap<K, V>) -> Self::OnClearHandler;
+    fn on_clear(&self, before: HashMap<K, V>) -> Self::OnClearHandler<'_>;
 }
 
 /// Lifecycle event for the `on_clear` event of a map lane where the event handler
 /// has shared state with other handlers for the same agent.
-pub trait OnClearShared<'a, K, V, Context, Shared>: Send {
-    type OnClearHandler: EventHandler<Context> + 'a;
+pub trait OnClearShared<K, V, Context, Shared>: Send {
+    type OnClearHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `before` - The contents of the map before it was cleared.
-    fn on_clear(
+    fn on_clear<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         before: HashMap<K, V>,
-    ) -> Self::OnClearHandler;
+    ) -> Self::OnClearHandler<'a>;
 }
 
-impl<'a, K, V, Context> OnClear<'a, K, V, Context> for NoHandler {
-    type OnClearHandler = UnitHandler;
+impl<K, V, Context> OnClear<K, V, Context> for NoHandler {
+    type OnClearHandler<'a> = UnitHandler
+    where
+        Self: 'a;
 
-    fn on_clear(&'a self, _before: HashMap<K, V>) -> Self::OnClearHandler {
+    fn on_clear(&self, _before: HashMap<K, V>) -> Self::OnClearHandler<'_> {
         UnitHandler::default()
     }
 }
 
-impl<'a, K, V, Context, Shared> OnClearShared<'a, K, V, Context, Shared> for NoHandler {
-    type OnClearHandler = UnitHandler;
+impl<K, V, Context, Shared> OnClearShared<K, V, Context, Shared> for NoHandler {
+    type OnClearHandler<'a> = UnitHandler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_clear(
+    fn on_clear<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         _before: HashMap<K, V>,
-    ) -> Self::OnClearHandler {
+    ) -> Self::OnClearHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<'a, K, V, Context, F, H> OnClear<'a, K, V, Context> for FnHandler<F>
+impl<K, V, Context, F, H> OnClear<K, V, Context> for FnHandler<F>
 where
     F: Fn(HashMap<K, V>) -> H + Send,
-    H: EventHandler<Context> + 'a,
+    H: EventHandler<Context> + 'static,
 {
-    type OnClearHandler = H;
+    type OnClearHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_clear(&'a self, before: HashMap<K, V>) -> Self::OnClearHandler {
+    fn on_clear(&self, before: HashMap<K, V>) -> Self::OnClearHandler<'_> {
         let FnHandler(f) = self;
         f(before)
     }
 }
 
-impl<'a, K, V, Context, Shared, F, H> OnClearShared<'a, K, V, Context, Shared> for FnHandler<F>
+impl<K, V, Context, Shared, F> OnClearShared<K, V, Context, Shared> for FnHandler<F>
 where
-    Shared: 'static,
-    F: Fn(&'a Shared, HandlerContext<Context>, HashMap<K, V>) -> H + Send,
-    H: EventHandler<Context> + 'a,
+    F: for<'a> TakeFn<'a, Context, Shared, HashMap<K, V>> + Send,
 {
-    type OnClearHandler = H;
+    type OnClearHandler<'a> = <F as TakeFn<'a, Context, Shared, HashMap<K, V>>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_clear(
+    fn on_clear<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         before: HashMap<K, V>,
-    ) -> Self::OnClearHandler {
+    ) -> Self::OnClearHandler<'a> {
         let FnHandler(f) = self;
-        f(shared, handler_context, before)
+        f.make_handler(shared, handler_context, before)
     }
 }

@@ -818,7 +818,7 @@ fn run_handler<Context, Lifecycle, Handler, Collector>(
     collector: &mut Collector,
 ) -> Result<(), EventHandlerError>
 where
-    Lifecycle: for<'a> LaneEvent<'a, Context>,
+    Lifecycle: LaneEvent<Context>,
     Handler: EventHandler<Context>,
     Collector: IdCollector,
 {

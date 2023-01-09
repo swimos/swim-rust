@@ -105,10 +105,12 @@ impl<T> FakeLifecycle<T> {
     }
 }
 
-impl<'a, T: Clone + Send + 'static> OnCommand<'a, T, TestAgent> for FakeLifecycle<T> {
-    type OnCommandHandler = OnCommandHandler<T>;
+impl<T: Clone + Send + 'static> OnCommand<T, TestAgent> for FakeLifecycle<T> {
+    type OnCommandHandler<'a> = OnCommandHandler<T>
+    where
+        Self: 'a;
 
-    fn on_command(&'a self, value: &T) -> Self::OnCommandHandler {
+    fn on_command<'a>(&'a self, value: &T) -> Self::OnCommandHandler<'a> {
         self.on_command_handler(value.clone())
     }
 }

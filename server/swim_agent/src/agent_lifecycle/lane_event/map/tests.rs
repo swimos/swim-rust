@@ -120,6 +120,7 @@ impl<K: Clone, V: Clone> HandlerAction<TestAgent> for OnUpdateHandler<K, V> {
             previous,
             state,
             done,
+            ..
         } = self;
         if *done {
             StepResult::after_done()
@@ -247,43 +248,55 @@ impl<K, V> FakeLifecycle<K, V> {
     }
 }
 
-impl<'a, K, V> OnUpdate<'a, K, V, TestAgent> for FakeLifecycle<K, V>
+impl<K, V> OnUpdate<K, V, TestAgent> for FakeLifecycle<K, V>
 where
     K: Clone + Send + 'static,
     V: Clone + Send + 'static,
 {
-    type OnUpdateHandler = OnUpdateHandler<K, V>;
+    type OnUpdateHandler<'a> = OnUpdateHandler<K, V>
+    where
+        Self: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
-    ) -> Self::OnUpdateHandler {
+        _new_value: &V,
+    ) -> Self::OnUpdateHandler<'a> {
         self.on_update_handler(map.clone(), key, prev_value)
     }
 }
 
-impl<'a, K, V> OnRemove<'a, K, V, TestAgent> for FakeLifecycle<K, V>
+impl<K, V> OnRemove<K, V, TestAgent> for FakeLifecycle<K, V>
 where
     K: Clone + Send + 'static,
     V: Clone + Send + 'static,
 {
-    type OnRemoveHandler = OnRemoveHandler<K, V>;
+    type OnRemoveHandler<'a> = OnRemoveHandler<K, V>
+    where
+        Self: 'a;
 
-    fn on_remove(&'a self, map: &HashMap<K, V>, key: K, prev_value: V) -> Self::OnRemoveHandler {
+    fn on_remove<'a>(
+        &'a self,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: V,
+    ) -> Self::OnRemoveHandler<'a> {
         self.on_remove_handler(map.clone(), key, prev_value)
     }
 }
 
-impl<'a, K, V> OnClear<'a, K, V, TestAgent> for FakeLifecycle<K, V>
+impl<K, V> OnClear<K, V, TestAgent> for FakeLifecycle<K, V>
 where
     K: Clone + Send + 'static,
     V: Clone + Send + 'static,
 {
-    type OnClearHandler = OnClearHandler<K, V>;
+    type OnClearHandler<'a> = OnClearHandler<K, V>
+    where
+        Self: 'a;
 
-    fn on_clear(&'a self, before: HashMap<K, V>) -> Self::OnClearHandler {
+    fn on_clear(&self, before: HashMap<K, V>) -> Self::OnClearHandler<'_> {
         self.on_clear_handler(before)
     }
 }

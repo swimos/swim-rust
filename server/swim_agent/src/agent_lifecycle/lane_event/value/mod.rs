@@ -121,40 +121,46 @@ impl<Context, T, LC, L: HTree, R: HTree> HTree for ValueBranch<Context, T, LC, L
 }
 
 pub type ValueLifecycleHandler<'a, Context, T, LC> = FollowedBy<
-    <LC as OnEvent<'a, T, Context>>::OnEventHandler,
-    <LC as OnSet<'a, T, Context>>::OnSetHandler,
+    <LC as OnEvent<T, Context>>::OnEventHandler<'a>,
+    <LC as OnSet<T, Context>>::OnSetHandler<'a>,
 >;
 
 pub type ValueLifecycleHandlerShared<'a, Context, Shared, T, LC> = FollowedBy<
-    <LC as OnEventShared<'a, T, Context, Shared>>::OnEventHandler,
-    <LC as OnSetShared<'a, T, Context, Shared>>::OnSetHandler,
+    <LC as OnEventShared<T, Context, Shared>>::OnEventHandler<'a>,
+    <LC as OnSetShared<T, Context, Shared>>::OnSetHandler<'a>,
 >;
 
 type ValueBranchHandler<'a, Context, T, LC, L, R> = Either<
-    <L as LaneEvent<'a, Context>>::LaneEventHandler,
+    <L as LaneEvent<Context>>::LaneEventHandler<'a>,
     Either<
         ValueLifecycleHandler<'a, Context, T, LC>,
-        <R as LaneEvent<'a, Context>>::LaneEventHandler,
+        <R as LaneEvent<Context>>::LaneEventHandler<'a>,
     >,
 >;
 
 type ValueBranchHandlerShared<'a, Context, Shared, T, LC, L, R> = Either<
-    <L as LaneEventShared<'a, Context, Shared>>::LaneEventHandler,
+    <L as LaneEventShared<Context, Shared>>::LaneEventHandler<'a>,
     Either<
         ValueLifecycleHandlerShared<'a, Context, Shared, T, LC>,
-        <R as LaneEventShared<'a, Context, Shared>>::LaneEventHandler,
+        <R as LaneEventShared<Context, Shared>>::LaneEventHandler<'a>,
     >,
 >;
 
-impl<'a, Context, T, LC, L, R> LaneEvent<'a, Context> for ValueBranch<Context, T, LC, L, R>
+impl<Context, T, LC, L, R> LaneEvent<Context> for ValueBranch<Context, T, LC, L, R>
 where
     LC: ValueLaneLifecycle<T, Context>,
-    L: HTree + LaneEvent<'a, Context>,
-    R: HTree + LaneEvent<'a, Context>,
+    L: HTree + LaneEvent<Context>,
+    R: HTree + LaneEvent<Context>,
 {
-    type LaneEventHandler = ValueBranchHandler<'a, Context, T, LC, L, R>;
+    type LaneEventHandler<'a> = ValueBranchHandler<'a, Context, T, LC, L, R>
+    where
+        Self: 'a;
 
-    fn lane_event(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler> {
+    fn lane_event<'a>(
+        &'a self,
+        context: &Context,
+        lane_name: &str,
+    ) -> Option<Self::LaneEventHandler<'a>> {
         let ValueBranch {
             label,
             projection,
@@ -180,22 +186,25 @@ where
     }
 }
 
-impl<'a, Context, Shared, T, LC, L, R> LaneEventShared<'a, Context, Shared>
+impl<Context, Shared, T, LC, L, R> LaneEventShared<Context, Shared>
     for ValueBranch<Context, T, LC, L, R>
 where
     LC: ValueLaneLifecycleShared<T, Context, Shared>,
-    L: HTree + LaneEventShared<'a, Context, Shared>,
-    R: HTree + LaneEventShared<'a, Context, Shared>,
+    L: HTree + LaneEventShared<Context, Shared>,
+    R: HTree + LaneEventShared<Context, Shared>,
 {
-    type LaneEventHandler = ValueBranchHandlerShared<'a, Context, Shared, T, LC, L, R>;
+    type LaneEventHandler<'a> = ValueBranchHandlerShared<'a, Context, Shared, T, LC, L, R>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn lane_event(
+    fn lane_event<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         context: &Context,
         lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
+    ) -> Option<Self::LaneEventHandler<'a>> {
         let ValueBranch {
             label,
             projection,

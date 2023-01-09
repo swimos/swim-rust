@@ -37,12 +37,11 @@ impl Display for StoreKind {
 
 /// Defines that operations that must be provided for a store implementation that allows
 /// a Swim agent to persist its state.
-pub trait NodePersistence: NodePersistenceBase + for<'a> MapPersistence<'a> {}
+pub trait NodePersistence {
+    type MapCon<'a>: RangeConsumer + Send + 'a
+    where
+        Self: 'a;
 
-impl<P> NodePersistence for P where P: NodePersistenceBase + for<'a> MapPersistence<'a> {}
-
-/// Operations for [`NodePersistence`] that do not produce a long lived borrow of the store.
-pub trait NodePersistenceBase {
     /// The store assigns IDs of this type to each named state in the store.
     type LaneId: Copy + Unpin + Send + Sync + Eq + 'static;
 
@@ -75,6 +74,9 @@ pub trait NodePersistenceBase {
 
     /// Clear all entries for a map in the store.
     fn clear_map(&self, id: Self::LaneId) -> Result<(), StoreError>;
+
+    /// Produce a [`RangeConsumer`] that will enumerate the entries for a map in the store.
+    fn read_map(&self, id: Self::LaneId) -> Result<Self::MapCon<'_>, StoreError>;
 }
 
 /// View of a entry from a map in a store.
@@ -84,13 +86,6 @@ pub type KeyValue<'a> = (&'a [u8], &'a [u8]);
 /// can borrow from the consumer.
 pub trait RangeConsumer {
     fn consume_next(&mut self) -> Result<Option<KeyValue<'_>>, StoreError>;
-}
-
-pub trait MapPersistence<'a>: NodePersistenceBase {
-    type MapCon: RangeConsumer + Send + 'a;
-
-    /// Produce a [`RangeConsumer`] that will enumerate the entries for a map in the store.
-    fn read_map(&'a self, id: Self::LaneId) -> Result<Self::MapCon, StoreError>;
 }
 
 /// Implementors of this trait can produce a family of independent stores, keyed by name, for
@@ -112,15 +107,7 @@ impl RangeConsumer for StoreDisabled {
     }
 }
 
-impl<'a> MapPersistence<'a> for StoreDisabled {
-    type MapCon = StoreDisabled;
-
-    fn read_map(&'a self, _id: Self::LaneId) -> Result<Self::MapCon, StoreError> {
-        Ok(StoreDisabled)
-    }
-}
-
-impl NodePersistenceBase for StoreDisabled {
+impl NodePersistence for StoreDisabled {
     type LaneId = ();
 
     fn id_for(&self, _name: &str) -> Result<Self::LaneId, StoreError> {
@@ -153,6 +140,14 @@ impl NodePersistenceBase for StoreDisabled {
 
     fn delete_value(&self, _id: Self::LaneId) -> Result<(), StoreError> {
         Ok(())
+    }
+
+    type MapCon<'a> = StoreDisabled
+    where
+        Self: 'a;
+
+    fn read_map(&self, _id: Self::LaneId) -> Result<Self::MapCon<'_>, StoreError> {
+        Ok(StoreDisabled)
     }
 }
 

@@ -14,79 +14,90 @@
 
 use swim_api::handlers::{FnHandler, NoHandler};
 
-use crate::event_handler::{EventHandler, UnitHandler};
+use crate::event_handler::{EventHandler, HandlerFn0, UnitHandler};
 
 use super::utility::HandlerContext;
 
 /// Lifecycle event for the `on_start` event of an agent.
-pub trait OnStart<'a, Context>: Send {
-    type OnStartHandler: EventHandler<Context> + 'a;
+pub trait OnStart<Context>: Send {
+    type OnStartHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a;
 
-    fn on_start(&'a self) -> Self::OnStartHandler;
+    fn on_start(&self) -> Self::OnStartHandler<'_>;
 }
 
 /// Lifecycle event for the `on_start` event of an agent where the event handler
 /// has shared state with other handlers for the same agent.
-pub trait OnStartShared<'a, Context, Shared>: Send {
-    type OnStartHandler: EventHandler<Context> + 'a;
+pub trait OnStartShared<Context, Shared>: Send {
+    type OnStartHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
-    fn on_start(
+    fn on_start<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-    ) -> Self::OnStartHandler;
+    ) -> Self::OnStartHandler<'a>;
 }
 
-impl<'a, Context> OnStart<'a, Context> for NoHandler {
-    type OnStartHandler = UnitHandler;
+impl<Context> OnStart<Context> for NoHandler {
+    type OnStartHandler<'a> = UnitHandler where Self: 'a;
 
-    fn on_start(&'a self) -> Self::OnStartHandler {
+    fn on_start(&self) -> Self::OnStartHandler<'_> {
         Default::default()
     }
 }
 
-impl<'a, Context, Shared> OnStartShared<'a, Context, Shared> for NoHandler {
-    type OnStartHandler = UnitHandler;
-
-    fn on_start(
-        &'a self,
-        _shared: &'a Shared,
-        _handler_context: HandlerContext<Context>,
-    ) -> Self::OnStartHandler {
-        Default::default()
-    }
-}
-
-impl<'a, Context, F, H> OnStart<'a, Context> for FnHandler<F>
+impl<Context, F, H> OnStart<Context> for FnHandler<F>
 where
-    F: Fn() -> H + Send + 'a,
-    H: EventHandler<Context> + 'a,
+    F: Fn() -> H + Send,
+    H: EventHandler<Context> + 'static,
 {
-    type OnStartHandler = H;
+    type OnStartHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_start(&'a self) -> Self::OnStartHandler {
+    fn on_start(&self) -> Self::OnStartHandler<'_> {
         let FnHandler(f) = self;
         f()
     }
 }
 
-impl<'a, Context, F, H, Shared> OnStartShared<'a, Context, Shared> for FnHandler<F>
-where
-    Shared: 'static,
-    F: Fn(&'a Shared, HandlerContext<Context>) -> H + Send + 'a,
-    H: EventHandler<Context> + 'a,
-{
-    type OnStartHandler = H;
+impl<Context, Shared> OnStartShared<Context, Shared> for NoHandler {
+    type OnStartHandler<'a> = UnitHandler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_start(
+    fn on_start<'a>(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+    ) -> Self::OnStartHandler<'a> {
+        Default::default()
+    }
+}
+
+impl<Context, Shared, F> OnStartShared<Context, Shared> for FnHandler<F>
+where
+    F: for<'a> HandlerFn0<'a, Context, Shared> + Send,
+{
+    type OnStartHandler<'a> = <F as HandlerFn0<'a, Context, Shared>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_start<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-    ) -> Self::OnStartHandler {
+    ) -> Self::OnStartHandler<'a> {
         let FnHandler(f) = self;
-        f(shared, handler_context)
+        f.make_handler(shared, handler_context)
     }
 }

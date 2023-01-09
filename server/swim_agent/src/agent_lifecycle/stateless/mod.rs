@@ -49,44 +49,52 @@ impl<Context> Default for BasicAgentLifecycle<Context> {
 
 assert_impl_all!(BasicAgentLifecycle<()>: AgentLifecycle<()>, Send);
 
-impl<'a, FStart, FStop, LaneEv, Context> OnStart<'a, Context>
+impl<FStart, FStop, LaneEv, Context> OnStart<Context>
     for BasicAgentLifecycle<Context, FStart, FStop, LaneEv>
 where
-    FStart: OnStart<'a, Context>,
+    FStart: OnStart<Context>,
     FStop: Send,
     LaneEv: Send,
 {
-    type OnStartHandler = FStart::OnStartHandler;
+    type OnStartHandler<'a> = FStart::OnStartHandler<'a> where Self: 'a;
 
-    fn on_start(&'a self) -> Self::OnStartHandler {
+    fn on_start(&self) -> Self::OnStartHandler<'_> {
         self.on_start.on_start()
     }
 }
 
-impl<'a, FStart, FStop, LaneEv, Context> OnStop<'a, Context>
+impl<FStart, FStop, LaneEv, Context> OnStop<Context>
     for BasicAgentLifecycle<Context, FStart, FStop, LaneEv>
 where
-    FStop: OnStop<'a, Context>,
+    FStop: OnStop<Context>,
     FStart: Send,
     LaneEv: Send,
 {
-    type OnStopHandler = FStop::OnStopHandler;
+    type OnStopHandler<'a> = FStop::OnStopHandler<'a>
+    where
+        Self: 'a;
 
-    fn on_stop(&'a self) -> Self::OnStopHandler {
+    fn on_stop(&self) -> Self::OnStopHandler<'_> {
         self.on_stop.on_stop()
     }
 }
 
-impl<'a, FStart, FStop, LaneEv, Context> LaneEvent<'a, Context>
+impl<FStart, FStop, LaneEv, Context> LaneEvent<Context>
     for BasicAgentLifecycle<Context, FStart, FStop, LaneEv>
 where
     FStop: Send,
     FStart: Send,
-    LaneEv: LaneEvent<'a, Context>,
+    LaneEv: LaneEvent<Context>,
 {
-    type LaneEventHandler = LaneEv::LaneEventHandler;
+    type LaneEventHandler<'a> = LaneEv::LaneEventHandler<'a>
+    where
+        Self: 'a;
 
-    fn lane_event(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler> {
+    fn lane_event<'a>(
+        &'a self,
+        context: &Context,
+        lane_name: &str,
+    ) -> Option<Self::LaneEventHandler<'a>> {
         self.lane_event.lane_event(context, lane_name)
     }
 }
@@ -94,7 +102,7 @@ where
 impl<Context, FStart, FStop, LaneEv> BasicAgentLifecycle<Context, FStart, FStop, LaneEv> {
     pub fn on_start<F>(self, f: F) -> BasicAgentLifecycle<Context, FnHandler<F>, FStop, LaneEv>
     where
-        FnHandler<F>: for<'a> OnStart<'a, Context>,
+        FnHandler<F>: OnStart<Context>,
     {
         let BasicAgentLifecycle {
             on_stop,
@@ -111,7 +119,7 @@ impl<Context, FStart, FStop, LaneEv> BasicAgentLifecycle<Context, FStart, FStop,
 
     pub fn on_stop<F>(self, f: F) -> BasicAgentLifecycle<Context, FStart, FnHandler<F>, LaneEv>
     where
-        FnHandler<F>: for<'a> OnStop<'a, Context>,
+        FnHandler<F>: OnStop<Context>,
     {
         let BasicAgentLifecycle {
             on_start,
@@ -128,7 +136,7 @@ impl<Context, FStart, FStop, LaneEv> BasicAgentLifecycle<Context, FStart, FStop,
 
     pub fn on_lane_event<H>(self, handler: H) -> BasicAgentLifecycle<Context, FStart, FStop, H>
     where
-        H: for<'a> LaneEvent<'a, Context>,
+        H: LaneEvent<Context>,
     {
         let BasicAgentLifecycle {
             on_start, on_stop, ..

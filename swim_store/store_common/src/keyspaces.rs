@@ -53,25 +53,25 @@ impl<O> Keyspaces<O> {
     }
 }
 
-pub trait PrefixRangeByteEngine<'a> {
-    type RangeCon: RangeConsumer + Send + 'a;
+/// A trait for abstracting over database engines and partitioning data by a logical keyspace.
+pub trait KeyspaceByteEngine: Send + Sync + 'static {
+    type RangeCon<'a>: RangeConsumer + Send + 'a
+    where
+        Self: 'a;
 
     /// Read a range of records from a specific keyspace, with a shared prefix.
     /// #Arguments
     ///
     /// * `keyspace` - The keyspace to query.
     /// * `prefix` - The shared keyspace.
-    fn get_prefix_range_consumer<S>(
+    fn get_prefix_range_consumer<'a, S>(
         &'a self,
         keyspace: S,
         prefix: &[u8],
-    ) -> Result<Self::RangeCon, StoreError>
+    ) -> Result<Self::RangeCon<'a>, StoreError>
     where
         S: Keyspace;
-}
 
-/// A trait for abstracting over database engines and partitioning data by a logical keyspace.
-pub trait KeyspaceByteEngine: for<'a> PrefixRangeByteEngine<'a> + Send + Sync + 'static {
     /// Put a key-value pair into the specified keyspace.
     fn put_keyspace<K: Keyspace>(
         &self,

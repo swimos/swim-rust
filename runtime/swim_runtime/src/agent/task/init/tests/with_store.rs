@@ -27,7 +27,7 @@ use swim_api::{
         },
         WithLenRecognizerDecoder, WithLengthBytesCodec,
     },
-    store::NodePersistenceBase,
+    store::NodePersistence,
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::Text;

@@ -173,14 +173,16 @@ fn chose_lane(lane_name: &str) -> Option<Lane> {
     }
 }
 
-impl<'a> LaneEvent<'a, TestAgent> for TestLifecycle {
-    type LaneEventHandler = Handler;
+impl LaneEvent<TestAgent> for TestLifecycle {
+    type LaneEventHandler<'a> = Handler
+    where
+        Self: 'a;
 
-    fn lane_event(
+    fn lane_event<'a>(
         &'a self,
         _context: &TestAgent,
         lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
+    ) -> Option<Self::LaneEventHandler<'a>> {
         let TestLifecycle { template } = self;
         chose_lane(lane_name)
             .and_then(|lane| template.get(&lane))

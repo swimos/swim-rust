@@ -16,96 +16,119 @@ use futures::future::{ready, Ready};
 use std::future::Future;
 use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
-/// Trait for event handlers to be called when a downlink disconnects.
-pub trait OnUnlinked<'a>: Send {
-    type OnUnlinkedFut: Future<Output = ()> + Send + 'a;
+use super::SharedHandlerFn0;
 
-    fn on_unlinked(&'a mut self) -> Self::OnUnlinkedFut;
+/// Trait for event handlers to be called when a downlink disconnects.
+pub trait OnUnlinked: Send {
+    type OnUnlinkedFut<'a>: Future<Output = ()> + Send + 'a
+    where
+        Self: 'a;
+
+    fn on_unlinked(&mut self) -> Self::OnUnlinkedFut<'_>;
 }
 
 /// Trait for event handlers, that share state with other handlers, called when a downlink
 /// disconnects.
-pub trait OnUnlinkedShared<'a, Shared>: Send {
-    type OnUnlinkedFut: Future<Output = ()> + Send + 'a;
+pub trait OnUnlinkedShared<Shared>: Send {
+    type OnUnlinkedFut<'a>: Future<Output = ()> + Send + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_unlinked(&'a mut self, shared: &'a mut Shared) -> Self::OnUnlinkedFut;
+    fn on_unlinked<'a>(&'a mut self, shared: &'a mut Shared) -> Self::OnUnlinkedFut<'a>;
 }
 
-impl<'a> OnUnlinked<'a> for NoHandler {
-    type OnUnlinkedFut = Ready<()>;
+impl OnUnlinked for NoHandler {
+    type OnUnlinkedFut<'a> = Ready<()>
+    where
+        Self: 'a;
 
-    fn on_unlinked(&'a mut self) -> Self::OnUnlinkedFut {
+    fn on_unlinked(&mut self) -> Self::OnUnlinkedFut<'_> {
         ready(())
     }
 }
 
-impl<'a, F, Fut> OnUnlinked<'a> for FnMutHandler<F>
+impl<F, Fut> OnUnlinked for FnMutHandler<F>
 where
     F: FnMut() -> Fut + Send,
-    Fut: Future<Output = ()> + Send + 'a,
+    Fut: Future<Output = ()> + Send + 'static,
 {
-    type OnUnlinkedFut = Fut;
+    type OnUnlinkedFut<'a> = Fut
+    where
+        Self: 'a;
 
-    fn on_unlinked(&'a mut self) -> Self::OnUnlinkedFut {
+    fn on_unlinked(&mut self) -> Self::OnUnlinkedFut<'_> {
         let FnMutHandler(f) = self;
         f()
     }
 }
 
-impl<'a, Shared> OnUnlinkedShared<'a, Shared> for NoHandler {
-    type OnUnlinkedFut = Ready<()>;
+impl<Shared> OnUnlinkedShared<Shared> for NoHandler {
+    type OnUnlinkedFut<'a> = Ready<()>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_unlinked(&'a mut self, _shared: &'a mut Shared) -> Self::OnUnlinkedFut {
+    fn on_unlinked<'a>(&'a mut self, _shared: &'a mut Shared) -> Self::OnUnlinkedFut<'a> {
         ready(())
     }
 }
 
-impl<'a, Shared, F, Fut> OnUnlinkedShared<'a, Shared> for FnMutHandler<F>
+impl<Shared, F> OnUnlinkedShared<Shared> for FnMutHandler<F>
 where
-    Shared: 'static,
-    F: FnMut(&'a mut Shared) -> Fut + Send,
-    Fut: Future<Output = ()> + Send + 'a,
+    F: for<'a> SharedHandlerFn0<'a, Shared> + Send,
 {
-    type OnUnlinkedFut = Fut;
+    type OnUnlinkedFut<'a> = <F as SharedHandlerFn0<'a, Shared>>::Fut
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_unlinked(&'a mut self, shared: &'a mut Shared) -> Self::OnUnlinkedFut {
+    fn on_unlinked<'a>(&'a mut self, shared: &'a mut Shared) -> Self::OnUnlinkedFut<'a> {
         let FnMutHandler(f) = self;
-        f(shared)
+        f.apply(shared)
     }
 }
 
-impl<'a, H, Shared> OnUnlinkedShared<'a, Shared> for WithShared<H>
+impl<H, Shared> OnUnlinkedShared<Shared> for WithShared<H>
 where
-    H: OnUnlinked<'a>,
+    H: OnUnlinked,
 {
-    type OnUnlinkedFut = H::OnUnlinkedFut;
+    type OnUnlinkedFut<'a> = H::OnUnlinkedFut<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_unlinked(&'a mut self, _state: &'a mut Shared) -> Self::OnUnlinkedFut {
+    fn on_unlinked<'a>(&'a mut self, _state: &'a mut Shared) -> Self::OnUnlinkedFut<'a> {
         self.0.on_unlinked()
     }
 }
 
-impl<'a, F> OnUnlinked<'a> for BlockingHandler<F>
+impl<F> OnUnlinked for BlockingHandler<F>
 where
     F: FnMut() + Send,
 {
-    type OnUnlinkedFut = Ready<()>;
+    type OnUnlinkedFut<'a> = Ready<()>
+    where
+        Self: 'a;
 
-    fn on_unlinked(&'a mut self) -> Self::OnUnlinkedFut {
+    fn on_unlinked(&mut self) -> Self::OnUnlinkedFut<'_> {
         let BlockingHandler(f) = self;
         f();
         ready(())
     }
 }
 
-impl<'a, Shared, F> OnUnlinkedShared<'a, Shared> for BlockingHandler<F>
+impl<Shared, F> OnUnlinkedShared<Shared> for BlockingHandler<F>
 where
     Shared: 'static,
-    F: FnMut(&'a mut Shared) + Send,
+    F: FnMut(&mut Shared) + Send,
 {
-    type OnUnlinkedFut = Ready<()>;
+    type OnUnlinkedFut<'a> = Ready<()>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_unlinked(&'a mut self, shared: &'a mut Shared) -> Self::OnUnlinkedFut {
+    fn on_unlinked<'a>(&'a mut self, shared: &'a mut Shared) -> Self::OnUnlinkedFut<'a> {
         let BlockingHandler(f) = self;
         f(shared);
         ready(())

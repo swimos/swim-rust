@@ -103,10 +103,12 @@ struct FakeLifecycle {
     events: Events,
 }
 
-impl<'a> OnLinked<'a, FakeAgent> for FakeLifecycle {
-    type OnLinkedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnLinked<FakeAgent> for FakeLifecycle {
+    type OnLinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_linked(&'a self) -> Self::OnLinkedHandler {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         SideEffect::from(move || {
             self.events.lock().push(Event::Linked);
         })
@@ -114,10 +116,12 @@ impl<'a> OnLinked<'a, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnUnlinked<'a, FakeAgent> for FakeLifecycle {
-    type OnUnlinkedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnUnlinked<FakeAgent> for FakeLifecycle {
+    type OnUnlinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_unlinked(&'a self) -> Self::OnUnlinkedHandler {
+    fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         SideEffect::from(move || {
             self.events.lock().push(Event::Unlinked);
         })
@@ -125,10 +129,12 @@ impl<'a> OnUnlinked<'a, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnSynced<'a, HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
-    type OnSyncedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnSynced<HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
+    type OnSyncedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_synced(&'a self, value: &HashMap<i32, Text>) -> Self::OnSyncedHandler {
+    fn on_synced<'a>(&'a self, value: &HashMap<i32, Text>) -> Self::OnSyncedHandler<'a> {
         let map = value.clone();
         SideEffect::from(move || {
             self.events.lock().push(Event::Synced(map));
@@ -137,16 +143,18 @@ impl<'a> OnSynced<'a, HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnDownlinkUpdate<'a, i32, Text, FakeAgent> for FakeLifecycle {
-    type OnUpdateHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnDownlinkUpdate<i32, Text, FakeAgent> for FakeLifecycle {
+    type OnUpdateHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         key: i32,
         map: &HashMap<i32, Text>,
         previous: Option<Text>,
         new_value: &Text,
-    ) -> Self::OnUpdateHandler {
+    ) -> Self::OnUpdateHandler<'a> {
         let map = map.clone();
         let new_value = new_value.clone();
         SideEffect::from(move || {
@@ -158,15 +166,17 @@ impl<'a> OnDownlinkUpdate<'a, i32, Text, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnDownlinkRemove<'a, i32, Text, FakeAgent> for FakeLifecycle {
-    type OnRemoveHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnDownlinkRemove<i32, Text, FakeAgent> for FakeLifecycle {
+    type OnRemoveHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_remove(
+    fn on_remove<'a>(
         &'a self,
         key: i32,
         map: &HashMap<i32, Text>,
         removed: Text,
-    ) -> Self::OnRemoveHandler {
+    ) -> Self::OnRemoveHandler<'a> {
         let map = map.clone();
         SideEffect::from(move || {
             self.events.lock().push(Event::Removed(key, removed, map));
@@ -175,10 +185,12 @@ impl<'a> OnDownlinkRemove<'a, i32, Text, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnDownlinkClear<'a, i32, Text, FakeAgent> for FakeLifecycle {
-    type OnClearHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnDownlinkClear<i32, Text, FakeAgent> for FakeLifecycle {
+    type OnClearHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_clear(&'a self, map: HashMap<i32, Text>) -> Self::OnClearHandler {
+    fn on_clear(&self, map: HashMap<i32, Text>) -> Self::OnClearHandler<'_> {
         SideEffect::from(move || {
             self.events.lock().push(Event::Cleared(map));
         })

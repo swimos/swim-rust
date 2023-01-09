@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
+use std::{collections::HashMap, marker::PhantomData};
 
 use swim_api::handlers::{FnHandler, NoHandler};
+
+use crate::agent_lifecycle::utility::HandlerContext;
 
 use self::{
     on_clear::{OnClear, OnClearShared},
@@ -32,52 +34,27 @@ pub mod on_update;
 /// * `K` - The type of the map keys.
 /// * `V` - The type of the map values.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
-pub trait MapLaneLifecycle<K, V, Context>: for<'a> MapLaneHandlers<'a, K, V, Context> {}
-
-/// Trait for the lifecycle of a map lane where the lifecycle has access to some shared state (shared
-/// with all other lifecycles in the agent).
-///
-/// #Type Parameters
-/// * `K` - The type of the map keys.
-/// * `V` - The type of the map values.
-/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
-/// * `Shared` - The shared state to which the lifecycle has access.
-pub trait MapLaneHandlersShared<'a, K, V, Context, Shared>:
-    OnUpdateShared<'a, K, V, Context, Shared>
-    + OnRemoveShared<'a, K, V, Context, Shared>
-    + OnClearShared<'a, K, V, Context, Shared>
-{
-}
-
-pub trait MapLaneHandlers<'a, K, V, Context>:
-    OnUpdate<'a, K, V, Context> + OnRemove<'a, K, V, Context> + OnClear<'a, K, V, Context>
-{
-}
-
-impl<'a, K, V, Context, L> MapLaneHandlers<'a, K, V, Context> for L where
-    L: OnUpdate<'a, K, V, Context> + OnRemove<'a, K, V, Context> + OnClear<'a, K, V, Context>
+pub trait MapLaneLifecycle<K, V, Context>:
+    OnUpdate<K, V, Context> + OnRemove<K, V, Context> + OnClear<K, V, Context>
 {
 }
 
 impl<K, V, Context, L> MapLaneLifecycle<K, V, Context> for L where
-    L: for<'a> MapLaneHandlers<'a, K, V, Context>
+    L: OnUpdate<K, V, Context> + OnRemove<K, V, Context> + OnClear<K, V, Context>
 {
 }
 
 pub trait MapLaneLifecycleShared<K, V, Context, Shared>:
-    for<'a> MapLaneHandlersShared<'a, K, V, Context, Shared>
+    OnUpdateShared<K, V, Context, Shared>
+    + OnRemoveShared<K, V, Context, Shared>
+    + OnClearShared<K, V, Context, Shared>
 {
 }
 
 impl<L, K, V, Context, Shared> MapLaneLifecycleShared<K, V, Context, Shared> for L where
-    L: for<'a> MapLaneHandlersShared<'a, K, V, Context, Shared>
-{
-}
-
-impl<'a, L, K, V, Context, Shared> MapLaneHandlersShared<'a, K, V, Context, Shared> for L where
-    L: OnUpdateShared<'a, K, V, Context, Shared>
-        + OnRemoveShared<'a, K, V, Context, Shared>
-        + OnClearShared<'a, K, V, Context, Shared>
+    L: OnUpdateShared<K, V, Context, Shared>
+        + OnRemoveShared<K, V, Context, Shared>
+        + OnClearShared<K, V, Context, Shared>
 {
 }
 
@@ -136,7 +113,7 @@ impl<Context, Shared, K, V, FUpd, FRem, FClr>
         f: F,
     ) -> StatefulMapLaneLifecycle<Context, Shared, K, V, FnHandler<F>, FRem, FClr>
     where
-        FnHandler<F>: for<'a> OnUpdateShared<'a, K, V, Context, Shared>,
+        FnHandler<F>: for<'a> OnUpdateShared<K, V, Context, Shared>,
     {
         StatefulMapLaneLifecycle {
             _value_type: PhantomData,
@@ -151,7 +128,7 @@ impl<Context, Shared, K, V, FUpd, FRem, FClr>
         f: F,
     ) -> StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FnHandler<F>, FClr>
     where
-        FnHandler<F>: for<'a> OnRemoveShared<'a, K, V, Context, Shared>,
+        FnHandler<F>: OnRemoveShared<K, V, Context, Shared>,
     {
         StatefulMapLaneLifecycle {
             _value_type: PhantomData,
@@ -166,7 +143,7 @@ impl<Context, Shared, K, V, FUpd, FRem, FClr>
         f: F,
     ) -> StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FRem, FnHandler<F>>
     where
-        FnHandler<F>: for<'a> OnClearShared<'a, K, V, Context, Shared>,
+        FnHandler<F>: OnClearShared<K, V, Context, Shared>,
     {
         StatefulMapLaneLifecycle {
             _value_type: PhantomData,
@@ -177,65 +154,75 @@ impl<Context, Shared, K, V, FUpd, FRem, FClr>
     }
 }
 
-impl<'a, K, V, Context, Shared, FUpd, FRem, FClr> OnUpdateShared<'a, K, V, Context, Shared>
+impl<K, V, Context, Shared, FUpd, FRem, FClr> OnUpdateShared<K, V, Context, Shared>
     for StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FRem, FClr>
 where
-    FUpd: OnUpdateShared<'a, K, V, Context, Shared>,
+    FUpd: OnUpdateShared<K, V, Context, Shared>,
     FRem: Send,
     FClr: Send,
 {
-    type OnUpdateHandler = FUpd::OnUpdateHandler;
+    type OnUpdateHandler<'a> = FUpd::OnUpdateHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         shared: &'a Shared,
-        handler_context: crate::agent_lifecycle::utility::HandlerContext<Context>,
-        map: &std::collections::HashMap<K, V>,
+        handler_context: HandlerContext<Context>,
+        map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
-    ) -> Self::OnUpdateHandler {
+        new_value: &V,
+    ) -> Self::OnUpdateHandler<'a> {
         self.on_update
-            .on_update(shared, handler_context, map, key, prev_value)
+            .on_update(shared, handler_context, map, key, prev_value, new_value)
     }
 }
 
-impl<'a, K, V, Context, Shared, FUpd, FRem, FClr> OnRemoveShared<'a, K, V, Context, Shared>
+impl<K, V, Context, Shared, FUpd, FRem, FClr> OnRemoveShared<K, V, Context, Shared>
     for StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FRem, FClr>
 where
     FUpd: Send,
-    FRem: OnRemoveShared<'a, K, V, Context, Shared>,
+    FRem: OnRemoveShared<K, V, Context, Shared>,
     FClr: Send,
 {
-    type OnRemoveHandler = FRem::OnRemoveHandler;
+    type OnRemoveHandler<'a> = FRem::OnRemoveHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_remove(
+    fn on_remove<'a>(
         &'a self,
         shared: &'a Shared,
-        handler_context: crate::agent_lifecycle::utility::HandlerContext<Context>,
-        map: &std::collections::HashMap<K, V>,
+        handler_context: HandlerContext<Context>,
+        map: &HashMap<K, V>,
         key: K,
         prev_value: V,
-    ) -> Self::OnRemoveHandler {
+    ) -> Self::OnRemoveHandler<'a> {
         self.on_remove
             .on_remove(shared, handler_context, map, key, prev_value)
     }
 }
 
-impl<'a, K, V, Context, Shared, FUpd, FRem, FClr> OnClearShared<'a, K, V, Context, Shared>
+impl<K, V, Context, Shared, FUpd, FRem, FClr> OnClearShared<K, V, Context, Shared>
     for StatefulMapLaneLifecycle<Context, Shared, K, V, FUpd, FRem, FClr>
 where
     FUpd: Send,
     FRem: Send,
-    FClr: OnClearShared<'a, K, V, Context, Shared>,
+    FClr: OnClearShared<K, V, Context, Shared>,
 {
-    type OnClearHandler = FClr::OnClearHandler;
+    type OnClearHandler<'a> = FClr::OnClearHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_clear(
+    fn on_clear<'a>(
         &'a self,
         shared: &'a Shared,
-        handler_context: crate::agent_lifecycle::utility::HandlerContext<Context>,
-        before: std::collections::HashMap<K, V>,
-    ) -> Self::OnClearHandler {
+        handler_context: HandlerContext<Context>,
+        before: HashMap<K, V>,
+    ) -> Self::OnClearHandler<'a> {
         self.on_clear.on_clear(shared, handler_context, before)
     }
 }

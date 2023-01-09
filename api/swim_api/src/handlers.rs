@@ -49,17 +49,5 @@ impl<H> WithShared<H> {
     }
 }
 
-/// Wraps some state and a closure that can act upon it as an event handler.
-pub struct ClosureHandler<State, F> {
-    pub state: State,
-    pub f: F,
-}
-
-impl<State, F> ClosureHandler<State, F> {
-    pub fn new(state: State, f: F) -> Self {
-        ClosureHandler { state, f }
-    }
-}
-
 /// Wraps a synchronous closure as a (blocking) asynchronous closure to use as an event handler.
 pub struct BlockingHandler<F>(pub F);

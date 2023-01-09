@@ -21,7 +21,7 @@ use swim_api::{
         map::{MapMessage, MapMessageEncoder, MapOperation, RawMapOperationEncoder},
         WithLengthBytesCodec,
     },
-    store::{NodePersistence, NodePersistenceBase, RangeConsumer, StoreDisabled},
+    store::{NodePersistence, RangeConsumer, StoreDisabled},
 };
 use swim_utilities::io::byte_channel::ByteWriter;
 use thiserror::Error;
@@ -183,7 +183,7 @@ impl<S> AgentPersistence for StorePersistence<S>
 where
     S: NodePersistence + Send + Sync + 'static,
 {
-    type LaneId = <S as NodePersistenceBase>::LaneId;
+    type LaneId = <S as NodePersistence>::LaneId;
 
     fn lane_id(&self, name: &str) -> Result<Self::LaneId, StoreError> {
         let StorePersistence(store) = self;

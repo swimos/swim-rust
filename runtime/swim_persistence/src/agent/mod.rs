@@ -19,23 +19,13 @@ use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use bytes::BytesMut;
-use swim_api::store::{MapPersistence, NodePersistenceBase, PlanePersistence};
+use swim_api::store::{NodePersistence, PlanePersistence};
 use swim_model::Text;
 
-use crate::plane::{PlaneStore, PrefixPlaneStore};
+use crate::plane::PlaneStore;
 use crate::server::{StoreEngine, StoreKey};
 
 use swim_store::{EngineInfo, RangeConsumer, StoreError};
-
-pub trait PrefixNodeStore<'a> {
-    type RangeCon: RangeConsumer + Send + 'a;
-
-    /// Executes a ranged snapshot read prefixed by a lane key.
-    ///
-    /// #Arguments
-    /// * `prefix` - Common prefix for the records to read.
-    fn ranged_snapshot_consumer(&'a self, prefix: StoreKey) -> Result<Self::RangeCon, StoreError>;
-}
 
 /// A trait for defining store engines which open stores for nodes.
 ///
@@ -48,10 +38,18 @@ pub trait PrefixNodeStore<'a> {
 /// the store; providing that the top-level server store is also persistent.
 ///
 /// Transient data models will live in memory for the duration that a handle to the model exists.
-pub trait NodeStore:
-    for<'a> PrefixNodeStore<'a> + StoreEngine + Send + Sync + Clone + Debug + 'static
-{
+pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static {
     type Delegate: PlaneStore;
+
+    type RangeCon<'a>: RangeConsumer + Send + 'a
+    where
+        Self: 'a;
+
+    /// Executes a ranged snapshot read prefixed by a lane key.
+    ///
+    /// #Arguments
+    /// * `prefix` - Common prefix for the records to read.
+    fn ranged_snapshot_consumer(&self, prefix: StoreKey) -> Result<Self::RangeCon<'_>, StoreError>;
 
     /// Returns information about the delegate store
     fn engine_info(&self) -> EngineInfo;
@@ -126,16 +124,16 @@ impl<D: PlaneStore> StoreEngine for SwimNodeStore<D> {
     }
 }
 
-impl<'a, D: PrefixPlaneStore<'a>> PrefixNodeStore<'a> for SwimNodeStore<D> {
-    type RangeCon = D::RangeCon;
-
-    fn ranged_snapshot_consumer(&'a self, prefix: StoreKey) -> Result<Self::RangeCon, StoreError> {
-        self.delegate.ranged_snapshot_consumer(prefix)
-    }
-}
-
 impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
     type Delegate = D;
+
+    type RangeCon<'a> = D::RangeCon<'a>
+    where
+        Self: 'a;
+
+    fn ranged_snapshot_consumer(&self, prefix: StoreKey) -> Result<Self::RangeCon<'_>, StoreError> {
+        self.delegate.ranged_snapshot_consumer(prefix)
+    }
 
     fn engine_info(&self) -> EngineInfo {
         self.delegate.engine_info()
@@ -168,19 +166,6 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
 #[derive(Debug, Clone)]
 pub struct StoreWrapper<S>(pub S);
 
-impl<'a, S> MapPersistence<'a> for StoreWrapper<S>
-where
-    S: NodeStore,
-{
-    type MapCon = <S as PrefixNodeStore<'a>>::RangeCon;
-
-    fn read_map(&'a self, lane_id: Self::LaneId) -> Result<Self::MapCon, StoreError> {
-        let StoreWrapper(store) = self;
-        let key = StoreKey::Map { lane_id, key: None };
-        store.ranged_snapshot_consumer(key)
-    }
-}
-
 impl<S> PlanePersistence for StoreWrapper<S>
 where
     S: PlaneStore,
@@ -193,7 +178,7 @@ where
     }
 }
 
-impl<S> NodePersistenceBase for StoreWrapper<S>
+impl<S> NodePersistence for StoreWrapper<S>
 where
     S: NodeStore,
 {
@@ -255,5 +240,15 @@ where
     fn delete_value(&self, lane_id: Self::LaneId) -> Result<(), StoreError> {
         let StoreWrapper(store) = self;
         store.delete(StoreKey::Value { lane_id })
+    }
+
+    type MapCon<'a> = <S as NodeStore>::RangeCon<'a>
+    where
+        Self: 'a;
+
+    fn read_map(&self, lane_id: Self::LaneId) -> Result<Self::MapCon<'_>, StoreError> {
+        let StoreWrapper(store) = self;
+        let key = StoreKey::Map { lane_id, key: None };
+        store.ranged_snapshot_consumer(key)
     }
 }

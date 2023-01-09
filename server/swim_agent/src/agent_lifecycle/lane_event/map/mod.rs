@@ -39,30 +39,30 @@ mod tests;
 pub type MapLeaf<Context, K, V, LC> = MapBranch<Context, K, V, LC, HLeaf, HLeaf>;
 
 pub type MapLifecycleHandler<'a, Context, K, V, LC> = Coprod!(
-    <LC as OnUpdate<'a, K, V, Context>>::OnUpdateHandler,
-    <LC as OnRemove<'a, K, V, Context>>::OnRemoveHandler,
-    <LC as OnClear<'a, K, V, Context>>::OnClearHandler,
+    <LC as OnUpdate<K, V, Context>>::OnUpdateHandler<'a>,
+    <LC as OnRemove<K, V, Context>>::OnRemoveHandler<'a>,
+    <LC as OnClear<K, V, Context>>::OnClearHandler<'a>,
 );
 
 pub type MapLifecycleHandlerShared<'a, Context, Shared, K, V, LC> = Coprod!(
-    <LC as OnUpdateShared<'a, K, V, Context, Shared>>::OnUpdateHandler,
-    <LC as OnRemoveShared<'a, K, V, Context, Shared>>::OnRemoveHandler,
-    <LC as OnClearShared<'a, K, V, Context, Shared>>::OnClearHandler,
+    <LC as OnUpdateShared<K, V, Context, Shared>>::OnUpdateHandler<'a>,
+    <LC as OnRemoveShared<K, V, Context, Shared>>::OnRemoveHandler<'a>,
+    <LC as OnClearShared<K, V, Context, Shared>>::OnClearHandler<'a>,
 );
 
 type MapBranchHandler<'a, Context, K, V, LC, L, R> = Either<
-    <L as LaneEvent<'a, Context>>::LaneEventHandler,
+    <L as LaneEvent<Context>>::LaneEventHandler<'a>,
     Either<
         MapLifecycleHandler<'a, Context, K, V, LC>,
-        <R as LaneEvent<'a, Context>>::LaneEventHandler,
+        <R as LaneEvent<Context>>::LaneEventHandler<'a>,
     >,
 >;
 
 type MapBranchHandlerShared<'a, Context, Shared, K, V, LC, L, R> = Either<
-    <L as LaneEventShared<'a, Context, Shared>>::LaneEventHandler,
+    <L as LaneEventShared<Context, Shared>>::LaneEventHandler<'a>,
     Either<
         MapLifecycleHandlerShared<'a, Context, Shared, K, V, LC>,
-        <R as LaneEventShared<'a, Context, Shared>>::LaneEventHandler,
+        <R as LaneEventShared<Context, Shared>>::LaneEventHandler<'a>,
     >,
 >;
 
@@ -72,10 +72,14 @@ fn map_handler<'a, Context, K, V, LC>(
     map: &HashMap<K, V>,
 ) -> MapLifecycleHandler<'a, Context, K, V, LC>
 where
+    K: Hash + Eq,
     LC: MapLaneLifecycle<K, V, Context>,
 {
     match event {
-        MapLaneEvent::Update(k, v) => Coproduct::Inl(lifecycle.on_update(map, k, v)),
+        MapLaneEvent::Update(k, old) => {
+            let new = &map[&k];
+            Coproduct::Inl(lifecycle.on_update(map, k, old, new))
+        }
         MapLaneEvent::Remove(k, v) => {
             Coproduct::Inr(Coproduct::Inl(lifecycle.on_remove(map, k, v)))
         }
@@ -93,11 +97,13 @@ fn map_handler_shared<'a, Context, Shared, K, V, LC>(
     map: &HashMap<K, V>,
 ) -> MapLifecycleHandlerShared<'a, Context, Shared, K, V, LC>
 where
+    K: Hash + Eq,
     LC: MapLaneLifecycleShared<K, V, Context, Shared>,
 {
     match event {
-        MapLaneEvent::Update(k, v) => {
-            Coproduct::Inl(lifecycle.on_update(shared, handler_context, map, k, v))
+        MapLaneEvent::Update(k, old) => {
+            let new = &map[&k];
+            Coproduct::Inl(lifecycle.on_update(shared, handler_context, map, k, old, new))
         }
         MapLaneEvent::Remove(k, v) => Coproduct::Inr(Coproduct::Inl(lifecycle.on_remove(
             shared,
@@ -194,16 +200,22 @@ where
     }
 }
 
-impl<'a, Context, K, V, LC, L, R> LaneEvent<'a, Context> for MapBranch<Context, K, V, LC, L, R>
+impl<Context, K, V, LC, L, R> LaneEvent<Context> for MapBranch<Context, K, V, LC, L, R>
 where
     K: Clone + Eq + Hash,
     LC: MapLaneLifecycle<K, V, Context>,
-    L: HTree + LaneEvent<'a, Context>,
-    R: HTree + LaneEvent<'a, Context>,
+    L: HTree + LaneEvent<Context>,
+    R: HTree + LaneEvent<Context>,
 {
-    type LaneEventHandler = MapBranchHandler<'a, Context, K, V, LC, L, R>;
+    type LaneEventHandler<'a> = MapBranchHandler<'a, Context, K, V, LC, L, R>
+    where
+        Self: 'a;
 
-    fn lane_event(&'a self, context: &Context, lane_name: &str) -> Option<Self::LaneEventHandler> {
+    fn lane_event<'a>(
+        &'a self,
+        context: &Context,
+        lane_name: &str,
+    ) -> Option<Self::LaneEventHandler<'a>> {
         let MapBranch {
             label,
             projection,
@@ -226,23 +238,26 @@ where
     }
 }
 
-impl<'a, Context, Shared, K, V, LC, L, R> LaneEventShared<'a, Context, Shared>
+impl<Context, Shared, K, V, LC, L, R> LaneEventShared<Context, Shared>
     for MapBranch<Context, K, V, LC, L, R>
 where
     K: Clone + Eq + Hash,
     LC: MapLaneLifecycleShared<K, V, Context, Shared>,
-    L: HTree + LaneEventShared<'a, Context, Shared>,
-    R: HTree + LaneEventShared<'a, Context, Shared>,
+    L: HTree + LaneEventShared<Context, Shared>,
+    R: HTree + LaneEventShared<Context, Shared>,
 {
-    type LaneEventHandler = MapBranchHandlerShared<'a, Context, Shared, K, V, LC, L, R>;
+    type LaneEventHandler<'a> = MapBranchHandlerShared<'a, Context, Shared, K, V, LC, L, R>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn lane_event(
+    fn lane_event<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         context: &Context,
         lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
+    ) -> Option<Self::LaneEventHandler<'a>> {
         let MapBranch {
             label,
             projection,
