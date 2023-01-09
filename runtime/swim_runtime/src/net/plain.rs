@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::pin::Pin;
 
@@ -27,8 +26,10 @@ use pin_project::pin_project;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
+use thiserror::Error;
+
 use super::dns::BoxDnsResolver;
-use super::{ClientConnections, ListenerResult, ServerConnections};
+use super::{ClientConnections, ListenerResult, ServerConnections, ConnResult};
 
 /// Implementation of [`ExternalConnections`] using [`TcpListener`] and [`TcpStream`] from Tokio.
 #[derive(Debug, Clone)]
@@ -42,24 +43,25 @@ impl TokioPlainTextNetworking {
     }
 }
 
-async fn bind_to(addr: SocketAddr) -> IoResult<(SocketAddr, TcpListener)> {
+async fn bind_to(addr: SocketAddr) -> ConnResult<(SocketAddr, TcpListener)> {
     let listener = TcpListener::bind(addr).await?;
     let addr = listener.local_addr()?;
     Ok((addr, listener))
 }
 
+#[derive(Debug, Error)]
+#[error("TLS connections are not supported.")]
+pub struct NoTls;
+
 impl ClientConnections for TokioPlainTextNetworking {
     type ClientSocket = TcpStream;
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, IoResult<Self::ClientSocket>> {
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, ConnResult<Self::ClientSocket>> {
         let SchemeSocketAddr { scheme, addr } = addr;
         async move {
             match scheme {
-                Scheme::Ws => TcpStream::connect(addr).await,
-                Scheme::Wss => Err(std::io::Error::new(
-                    ErrorKind::Other,
-                    "TLS connections not supported.",
-                )),
+                Scheme::Ws => Ok(TcpStream::connect(addr).await?),
+                Scheme::Wss => Err(super::ConnectionError::NegotiationFailed(Box::new(NoTls))),
             }
         }
         .boxed()
@@ -82,7 +84,7 @@ impl ServerConnections for TokioPlainTextNetworking {
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
+    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
         bind_to(addr).boxed()
     }
 }

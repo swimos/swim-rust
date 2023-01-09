@@ -41,7 +41,7 @@ use swim_runtime::agent::{
 use swim_utilities::routing::route_uri::RouteUri;
 
 use swim_runtime::net::{
-    BadUrl, ExternalConnections, Listener, ListenerError, Scheme, SchemeSocketAddr,
+    BadUrl, ExternalConnections, Listener, ListenerError, Scheme, SchemeSocketAddr, ConnectionError,
 };
 use swim_runtime::ws::{RatchetError, WsConnections};
 use swim_utilities::io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
@@ -934,7 +934,7 @@ enum NewClientError {
     BadWarpUrl(#[from] BadUrl),
     #[error("Failed to open a remote connection.")]
     OpeningSocketFailed {
-        errors: Vec<(SocketAddr, std::io::Error)>,
+        errors: Vec<(SocketAddr, ConnectionError)>,
     },
     #[error("Failed to negotiate a websocket connection.")]
     WsNegotationFailed {

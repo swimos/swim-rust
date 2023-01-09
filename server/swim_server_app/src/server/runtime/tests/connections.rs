@@ -22,7 +22,7 @@ use futures::future::ready;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use ratchet::{NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use swim_runtime::net::dns::{DnsFut, DnsResolver};
-use swim_runtime::net::{ExternalConnections, Listener, ListenerResult, Scheme, SchemeSocketAddr};
+use swim_runtime::net::{ExternalConnections, Listener, ListenerResult, Scheme, SchemeSocketAddr, ConnectionError};
 use swim_runtime::ws::{RatchetError, WsConnections, WsOpenFuture};
 use tokio::{
     io::{self, DuplexStream},
@@ -32,9 +32,9 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 #[derive(Debug)]
 enum ConnReq {
-    Remote(SocketAddr, oneshot::Sender<io::Result<DuplexStream>>),
+    Remote(SocketAddr, oneshot::Sender<Result<DuplexStream, ConnectionError>>),
     Resolve(String, u16, oneshot::Sender<io::Result<Vec<SocketAddr>>>),
-    Listener(SocketAddr, oneshot::Sender<io::Result<TestListener>>),
+    Listener(SocketAddr, oneshot::Sender<Result<TestListener, ConnectionError>>),
 }
 
 /// Fake networking that communicates over in-memory buffers.
@@ -131,7 +131,7 @@ impl ExternalConnections for TestConnections {
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, io::Result<(SocketAddr, Self::ListenerType)>> {
+    ) -> BoxFuture<'static, Result<(SocketAddr, Self::ListenerType), ConnectionError>> {
         let sender = self.requests.clone();
         async move {
             let (tx, rx) = oneshot::channel();
@@ -146,7 +146,7 @@ impl ExternalConnections for TestConnections {
         .boxed()
     }
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, io::Result<Self::Socket>> {
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, Result<Self::Socket, ConnectionError>> {
         let sender = self.requests.clone();
         async move {
             let (tx, rx) = oneshot::channel();
@@ -213,7 +213,7 @@ impl TestConnectionsTask {
                     let result = if let Some(stream) = remotes.remove(&addr) {
                         Ok(stream)
                     } else {
-                        Err(io::Error::from(ErrorKind::ConnectionAborted))
+                        Err(io::Error::from(ErrorKind::ConnectionAborted).into())
                     };
                     tx.send(result).expect("Oneshot dropped.");
                 }
@@ -234,7 +234,7 @@ impl TestConnectionsTask {
                         let listener = TestListener(stream);
                         Ok(listener)
                     } else {
-                        Err(io::Error::from(ErrorKind::AddrInUse))
+                        Err(io::Error::from(ErrorKind::AddrInUse).into())
                     };
                     tx.send(result).expect("Oneshot dropped.");
                 }

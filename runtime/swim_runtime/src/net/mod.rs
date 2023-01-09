@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use futures::future::BoxFuture;
 use futures::Stream;
+use tokio::io::{AsyncRead, AsyncWrite};
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io;
@@ -92,6 +93,7 @@ impl Display for Scheme {
 }
 
 type IoResult<T> = io::Result<T>;
+type ConnResult<T> = Result<T, ConnectionError>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SchemeSocketAddr {
@@ -109,6 +111,14 @@ impl Display for SchemeSocketAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}://{}/", self.scheme, self.addr)
     }
+}
+
+#[derive(Debug, Error)]
+pub enum ConnectionError {
+    #[error("Opening a new connection failed: {0}")]
+    ConnectionFailed(#[source] #[from] std::io::Error),
+    #[error("Negotiating a new connection failed: {0}")]
+    NegotiationFailed(#[source] Box<dyn std::error::Error + Send>),
 }
 
 #[derive(Debug, Error)]
@@ -201,21 +211,21 @@ impl<'a> TryFrom<&'a Url> for SchemeHostPort {
 }
 
 pub trait ClientConnections: Clone + Send + Sync + 'static {
-    type ClientSocket: Unpin + Send + Sync + 'static;
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, IoResult<Self::ClientSocket>>;
+    type ClientSocket: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static;
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, ConnResult<Self::ClientSocket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
     fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
 }
 
 pub trait ServerConnections: Clone + Send + Sync + 'static {
-    type ServerSocket: Unpin + Send + Sync + 'static;
+    type ServerSocket: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static;
     type ListenerType: Listener<Self::ServerSocket> + Send + Sync;
 
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>>;
+    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>>;
 }
 
 /// Trait for types that can create remote network connections asynchronously. This is primarily
@@ -227,8 +237,8 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>>;
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, IoResult<Self::Socket>>;
+    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>>;
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, ConnResult<Self::Socket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
     fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
@@ -245,11 +255,11 @@ where
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
+    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
         <Self as ServerConnections>::bind(self, addr)
     }
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, IoResult<Self::Socket>> {
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, ConnResult<Self::Socket>> {
         <Self as ClientConnections>::try_open(self, addr)
     }
 
@@ -273,11 +283,11 @@ where
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
+    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
         (**self).bind(addr)
     }
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, IoResult<Self::Socket>> {
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, ConnResult<Self::Socket>> {
         (**self).try_open(addr)
     }
 

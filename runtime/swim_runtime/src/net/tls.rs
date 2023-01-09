@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::io;
-use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -47,6 +46,8 @@ use crate::net::{IoResult, Listener};
 use crate::net::{Scheme, SchemeSocketAddr};
 use pin_project::pin_project;
 
+use super::ConnResult;
+use super::ConnectionError;
 use super::dns::BoxDnsResolver;
 use super::dns::DnsResolver;
 use super::ClientConnections;
@@ -128,7 +129,7 @@ pub struct TokioTlsServerNetworking {
 async fn accept_tls(
     acceptor: TlsAcceptor,
     addr: SocketAddr,
-) -> IoResult<(SocketAddr, TlsListener)> {
+) -> ConnResult<(SocketAddr, TlsListener)> {
     let listener = TcpListener::bind(addr).await?;
     let addr = listener.local_addr()?;
     Ok((addr, TlsListener::new(listener, acceptor)))
@@ -138,7 +139,7 @@ impl TokioTlsServerNetworking {
     fn make_listener(
         &self,
         addr: SocketAddr,
-    ) -> impl Future<Output = IoResult<(SocketAddr, TlsListener)>> + Send + 'static {
+    ) -> impl Future<Output = ConnResult<(SocketAddr, TlsListener)>> + Send + 'static {
         let TokioTlsServerNetworking { acceptor } = self;
         let acc = acceptor.clone();
         accept_tls(acc, addr)
@@ -192,7 +193,7 @@ impl TokioTlsServerNetworking {
 impl ClientConnections for TokioTlsClientNetworking {
     type ClientSocket = MaybeTlsStream;
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, IoResult<Self::ClientSocket>> {
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
         async move {
             let SchemeSocketAddr { scheme, addr } = addr;
             let host = addr.to_string();
@@ -204,7 +205,7 @@ impl ClientConnections for TokioTlsClientNetworking {
                     .connect(&host, socket)
                     .await
                     .map(MaybeTlsStream::Tls)
-                    .map_err(|e| io::Error::new(ErrorKind::ConnectionRefused, e.to_string())),
+                    .map_err(|e| ConnectionError::NegotiationFailed(Box::new(e))),
             }
         }
         .boxed()
@@ -227,7 +228,7 @@ impl ServerConnections for TokioTlsServerNetworking {
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
+    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
         self.make_listener(addr).boxed()
     }
 }
@@ -276,7 +277,7 @@ impl TokioTlsNetworking {
 impl ClientConnections for TokioTlsNetworking {
     type ClientSocket = MaybeTlsStream;
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, IoResult<Self::ClientSocket>> {
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
         self.client.try_open(addr)
     }
 
@@ -297,7 +298,7 @@ impl ServerConnections for TokioTlsNetworking {
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
+    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
         self.server
             .make_listener(addr)
             .map_ok(|(addr, listener)| (addr, listener.into()))
