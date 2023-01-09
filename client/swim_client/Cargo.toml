@@ -1,0 +1,20 @@
+[package]
+name = "client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+runtime = { path = "../runtime" }
+swim_utilities = { path = "../../swim_utilities", features = ["trigger"] }
+swim_downlink = { path = "../../swim_downlink" }
+swim_api = { path = "../../api/swim_api" }
+swim_model = { path = "../../api/swim_model" }
+swim_form = { path = "../../api/swim_form" }
+swim_runtime = { path = "../../runtime/swim_runtime" }
+ratchet = { package = "ratchet_rs", version = "0.2.0" }
+url = "2.1.1"
+tokio = { version = "1.1.1", features = ["sync"] }
+futures = "0.3.23"
+futures-util = "0.3.4"
+tracing = "0.1.16"
+

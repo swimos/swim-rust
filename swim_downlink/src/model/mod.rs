@@ -13,8 +13,9 @@
 // limitations under the License.
 
 use std::marker::PhantomData;
+use std::sync::Arc;
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use lifecycle::{
     BasicEventDownlinkLifecycle, BasicValueDownlinkLifecycle, EventDownlinkLifecycle,
@@ -25,6 +26,7 @@ pub mod lifecycle;
 
 pub struct ValueDownlinkModel<T, LC> {
     pub set_value: mpsc::Receiver<T>,
+    pub get_value: watch::Sender<Arc<T>>,
     pub lifecycle: LC,
 }
 
@@ -34,9 +36,14 @@ pub struct EventDownlinkModel<T, LC> {
 }
 
 impl<T, LC> ValueDownlinkModel<T, LC> {
-    pub fn new(set_value: mpsc::Receiver<T>, lifecycle: LC) -> Self {
+    pub fn new(
+        set_value: mpsc::Receiver<T>,
+        get_value: watch::Sender<Arc<T>>,
+        lifecycle: LC,
+    ) -> Self {
         ValueDownlinkModel {
             set_value,
+            get_value,
             lifecycle,
         }
     }
@@ -55,9 +62,13 @@ pub type DefaultValueDownlinkModel<T> = ValueDownlinkModel<T, BasicValueDownlink
 
 pub type DefaultEventDownlinkModel<T> = EventDownlinkModel<T, BasicEventDownlinkLifecycle<T>>;
 
-pub fn value_downlink<T>(set_value: mpsc::Receiver<T>) -> DefaultValueDownlinkModel<T> {
+pub fn value_downlink<T>(
+    set_value: mpsc::Receiver<T>,
+    get_value: watch::Sender<Arc<T>>,
+) -> DefaultValueDownlinkModel<T> {
     ValueDownlinkModel {
         set_value,
+        get_value,
         lifecycle: Default::default(),
     }
 }
@@ -80,11 +91,13 @@ where
     {
         let ValueDownlinkModel {
             set_value,
+            get_value,
             lifecycle,
         } = self;
 
         ValueDownlinkModel {
             set_value,
+            get_value,
             lifecycle: f(lifecycle),
         }
     }

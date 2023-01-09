@@ -1,0 +1,29 @@
+[package]
+name = "runtime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+swim_downlink = { path = "../../swim_downlink" }
+swim_api = { path = "../../api/swim_api" }
+swim_model = { path = "../../api/swim_model" }
+swim_recon = { path = "../../api/formats/swim_recon" }
+swim_form = { path = "../../api/swim_form" }
+swim_warp = { path = "../../swim_warp" }
+swim_utilities = { path = "../../swim_utilities", features = ["byte_channel", "trigger", "algebra"] }
+swim_runtime = { path = "../../runtime/swim_runtime" }
+swim_remote = { path  = "../../runtime/swim_remote" }
+ratchet = { package = "ratchet_rs", version = "0.2.0", features = ["deflate", "split"] }
+futures = "0.3.23"
+futures-util = "0.3.4"
+bytes = "1.0"
+tokio = { version = "1.1.1", features = ["io-util", "sync"] }
+tokio-util = { version = "0.6.8", features = ["codec"] }
+url = "2.1.1"
+fnv = "1.0.7"
+thiserror = "1.0"
+uuid = { version = "0.8.2" }
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros", "test-util"] }

@@ -39,7 +39,7 @@ use crate::EventDownlinkModel;
 /// * `config` - Configuration parameters to the downlink.
 /// * `input` - Input stream for messages to the downlink from the runtime.
 /// * `_output` - Output stream for messages from the downlink to the runtime.
-pub async fn event_dowinlink_task<T, LC>(
+pub async fn event_downlink_task<T, LC>(
     model: EventDownlinkModel<T, LC>,
     path: Address<Text>,
     config: DownlinkConfig,

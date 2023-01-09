@@ -28,7 +28,7 @@ use crate::error::DownlinkTaskError;
 pub enum DownlinkKind {
     /// Accepts single values and maintains an internal state.
     Value,
-    // Accepts single values but has no state.
+    /// Accepts single values but has no state.
     Event,
     /// Accepts key-value pairs and maintains a state as a map.
     Map,

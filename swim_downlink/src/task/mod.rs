@@ -62,7 +62,7 @@ where
         output: ByteWriter,
     ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
         let DownlinkTask(model) = self;
-        value::value_dowinlink_task(model, path, config, input, output)
+        value::value_downlink_task(model, path, config, input, output)
             .instrument(info_span!("Downlink task.", kind = ?DownlinkKind::Value))
             .boxed()
     }
@@ -96,7 +96,7 @@ where
         output: ByteWriter,
     ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
         let DownlinkTask(model) = self;
-        event::event_dowinlink_task(model, path, config, input, output)
+        event::event_downlink_task(model, path, config, input, output)
             .instrument(info_span!("Downlink task.", kind = ?DownlinkKind::Event))
             .boxed()
     }
