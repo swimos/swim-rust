@@ -27,7 +27,7 @@ use swim_runtime::{
     net::{
         dns::Resolver,
         plain::TokioPlainTextNetworking,
-        tls::{TokioTlsNetworking, IdentityCert, RootCert},
+        tls::{IdentityCert, RootCert, TokioTlsNetworking},
         ExternalConnections,
     },
     ws::ext::RatchetNetworking,
@@ -35,7 +35,7 @@ use swim_runtime::{
 use swim_utilities::routing::route_pattern::RoutePattern;
 
 use crate::{
-    config::{SwimServerConfig, TlsConfig, TlsIdentity, CertBody, TlsRoot},
+    config::{CertBody, SwimServerConfig, TlsConfig, TlsIdentity, TlsRoot},
     error::ServerBuilderError,
     introspection::IntrospectionConfig,
     plane::{PlaneBuilder, PlaneModel},
@@ -194,15 +194,11 @@ impl ServerBuilder {
     }
 }
 
-
 async fn init_tls(
     resolver: Arc<Resolver>,
     config: TlsConfig,
 ) -> Result<TokioTlsNetworking, TlsError> {
-    let TlsConfig {
-        identity,
-        roots,
-    } = config;
+    let TlsConfig { identity, roots } = config;
 
     let TlsIdentity { kind, body, key } = identity;
 
@@ -225,13 +221,19 @@ async fn init_tls(
         };
         root_bodies.push((kind, root_bytes));
     }
-    
-    let root_certs = root_bodies.iter().map(|(kind, body)| RootCert { kind: *kind, body: body.as_ref() }).collect::<Vec<_>>();
-    
+
+    let root_certs = root_bodies
+        .iter()
+        .map(|(kind, body)| RootCert {
+            kind: *kind,
+            body: body.as_ref(),
+        })
+        .collect::<Vec<_>>();
+
     Ok(TokioTlsNetworking::parse_identity(
         resolver,
         id_cert,
-        root_certs.as_ref()
+        root_certs.as_ref(),
     )?)
 }
 

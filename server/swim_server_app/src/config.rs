@@ -12,15 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{
-    num::NonZeroUsize,
-    path::PathBuf,
-    time::Duration,
-};
+use std::{num::NonZeroUsize, path::PathBuf, time::Duration};
 
 use ratchet::WebSocketConfig;
 use swim_api::agent::AgentConfig;
-use swim_runtime::{agent::AgentRuntimeConfig, downlink::DownlinkRuntimeConfig, net::tls::CertKind};
+use swim_runtime::{
+    agent::AgentRuntimeConfig, downlink::DownlinkRuntimeConfig, net::tls::CertKind,
+};
 use swim_utilities::non_zero_usize;
 
 /// Configuration parameters for a Swim server.
@@ -64,11 +62,9 @@ pub struct TlsIdentity {
 }
 
 impl TlsIdentity {
-
     pub fn new(kind: CertKind, body: CertBody, key: Vec<u8>) -> Self {
         TlsIdentity { kind, body, key }
     }
-
 }
 
 pub struct TlsRoot {
@@ -77,11 +73,9 @@ pub struct TlsRoot {
 }
 
 impl TlsRoot {
-
     pub fn new(kind: CertKind, body: CertBody) -> Self {
         TlsRoot { kind, body }
     }
-
 }
 
 pub struct TlsConfig {
@@ -90,11 +84,9 @@ pub struct TlsConfig {
 }
 
 impl TlsConfig {
-
     pub fn new(identity: TlsIdentity, roots: Vec<TlsRoot>) -> Self {
         TlsConfig { identity, roots }
     }
-
 }
 
 /// Configuration for remote socket management.

@@ -17,7 +17,7 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 
 use crate::net::dns::{DnsResolver, Resolver};
-use crate::net::{ExternalConnections, IoResult, Listener};
+use crate::net::{IoResult, Listener};
 use crate::net::{Scheme, SchemeSocketAddr};
 use futures::future::BoxFuture;
 use futures::task::{Context, Poll};
@@ -28,7 +28,7 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
 use super::dns::BoxDnsResolver;
-use super::ListenerResult;
+use super::{ClientConnections, ListenerResult, ServerConnections};
 
 /// Implementation of [`ExternalConnections`] using [`TcpListener`] and [`TcpStream`] from Tokio.
 #[derive(Debug, Clone)]
@@ -48,18 +48,10 @@ async fn bind_to(addr: SocketAddr) -> IoResult<(SocketAddr, TcpListener)> {
     Ok((addr, listener))
 }
 
-impl ExternalConnections for TokioPlainTextNetworking {
-    type Socket = TcpStream;
-    type ListenerType = TcpListener;
+impl ClientConnections for TokioPlainTextNetworking {
+    type ClientSocket = TcpStream;
 
-    fn bind(
-        &self,
-        addr: SocketAddr,
-    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
-        bind_to(addr).boxed()
-    }
-
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>> {
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, IoResult<Self::ClientSocket>> {
         let SchemeSocketAddr { scheme, addr } = addr;
         async move {
             match scheme {
@@ -79,6 +71,19 @@ impl ExternalConnections for TokioPlainTextNetworking {
 
     fn dns_resolver(&self) -> BoxDnsResolver {
         Box::new(self.resolver.clone())
+    }
+}
+
+impl ServerConnections for TokioPlainTextNetworking {
+    type ServerSocket = TcpStream;
+
+    type ListenerType = TcpListener;
+
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
+        bind_to(addr).boxed()
     }
 }
 

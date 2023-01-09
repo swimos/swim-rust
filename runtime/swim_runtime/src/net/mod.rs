@@ -15,8 +15,8 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use futures::Stream;
 use futures::future::BoxFuture;
+use futures::Stream;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io;
@@ -200,6 +200,24 @@ impl<'a> TryFrom<&'a Url> for SchemeHostPort {
     }
 }
 
+pub trait ClientConnections: Clone + Send + Sync + 'static {
+    type ClientSocket: Unpin + Send + Sync + 'static;
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, IoResult<Self::ClientSocket>>;
+
+    fn dns_resolver(&self) -> BoxDnsResolver;
+    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
+}
+
+pub trait ServerConnections: Clone + Send + Sync + 'static {
+    type ServerSocket: Unpin + Send + Sync + 'static;
+    type ListenerType: Listener<Self::ServerSocket> + Send + Sync;
+
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>>;
+}
+
 /// Trait for types that can create remote network connections asynchronously. This is primarily
 /// used to abstract over [`std::net::TcpListener`] and [`std::net::TcpStream`] for testing purposes.
 pub trait ExternalConnections: Clone + Send + Sync + 'static {
@@ -214,6 +232,34 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
 
     fn dns_resolver(&self) -> BoxDnsResolver;
     fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
+}
+
+impl<C> ExternalConnections for C
+where
+    C: ClientConnections + ServerConnections<ServerSocket = <C as ClientConnections>::ClientSocket>,
+{
+    type Socket = <C as ClientConnections>::ClientSocket;
+
+    type ListenerType = <C as ServerConnections>::ListenerType;
+
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
+        <Self as ServerConnections>::bind(self, addr)
+    }
+
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, IoResult<Self::Socket>> {
+        <Self as ClientConnections>::try_open(self, addr)
+    }
+
+    fn dns_resolver(&self) -> BoxDnsResolver {
+        <Self as ClientConnections>::dns_resolver(self)
+    }
+
+    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+        <Self as ClientConnections>::lookup(self, host, port)
+    }
 }
 
 impl<Conn> ExternalConnections for Arc<Conn>

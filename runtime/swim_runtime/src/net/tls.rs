@@ -28,6 +28,7 @@ use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
+use futures::TryFutureExt;
 use futures::TryStreamExt;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
@@ -42,14 +43,16 @@ use tokio_native_tls::{TlsAcceptor, TlsConnector};
 use tracing::error;
 
 use crate::net::dns::Resolver;
-use crate::net::{ExternalConnections, IoResult, Listener};
+use crate::net::{IoResult, Listener};
 use crate::net::{Scheme, SchemeSocketAddr};
 use pin_project::pin_project;
 
 use super::dns::BoxDnsResolver;
 use super::dns::DnsResolver;
+use super::ClientConnections;
 use super::ListenerError;
 use super::ListenerResult;
+use super::ServerConnections;
 
 pub type TlsStream = tokio_native_tls::TlsStream<TcpStream>;
 pub type TlsHandshakeResult = IoResult<(TlsStream, SocketAddr)>;
@@ -102,89 +105,106 @@ impl AsyncWrite for MaybeTlsStream {
     }
 }
 
-impl Listener<MaybeTlsStream> for TlsListener {
-    type AcceptStream = BoxListenerStream<MaybeTlsStream>;
+impl Listener<TlsStream> for TlsListener {
+    type AcceptStream = BoxListenerStream<TlsStream>;
 
     fn into_stream(self) -> Self::AcceptStream {
         let TlsListener { listener, acceptor } = self;
-        tls_accept_stream(listener, acceptor)
-            .map_ok(|(sock, addr)| (MaybeTlsStream::Tls(sock), addr))
-            .boxed()
+        tls_accept_stream(listener, acceptor).boxed()
     }
 }
 
 #[derive(Clone)]
-pub struct TokioTlsNetworking {
+pub struct TokioTlsClientNetworking {
     resolver: Arc<Resolver>,
-    acceptor: TlsAcceptor,
     connector: TlsConnector,
 }
 
-impl TokioTlsNetworking {
-    pub fn new(resolver: Arc<Resolver>, connector: TlsConnector, acceptor: TlsAcceptor) -> TokioTlsNetworking {
-        TokioTlsNetworking { resolver, acceptor, connector }
+#[derive(Clone)]
+pub struct TokioTlsServerNetworking {
+    acceptor: TlsAcceptor,
+}
+
+async fn accept_tls(
+    acceptor: TlsAcceptor,
+    addr: SocketAddr,
+) -> IoResult<(SocketAddr, TlsListener)> {
+    let listener = TcpListener::bind(addr).await?;
+    let addr = listener.local_addr()?;
+    Ok((addr, TlsListener::new(listener, acceptor)))
+}
+
+impl TokioTlsServerNetworking {
+    fn make_listener(
+        &self,
+        addr: SocketAddr,
+    ) -> impl Future<Output = IoResult<(SocketAddr, TlsListener)>> + Send + 'static {
+        let TokioTlsServerNetworking { acceptor } = self;
+        let acc = acceptor.clone();
+        accept_tls(acc, addr)
+    }
+}
+
+impl TokioTlsClientNetworking {
+    pub fn new(resolver: Arc<Resolver>, connector: TlsConnector) -> Self {
+        TokioTlsClientNetworking {
+            resolver,
+            connector,
+        }
     }
 
-    pub fn from_identity(resolver: Arc<Resolver>, 
-        roots: Vec<Certificate>, 
-        server_id: Identity) -> TlsResult<Self> {
-        let acceptor = accepter_from_id(server_id)?;
+    pub fn with_root_certs(resolver: Arc<Resolver>, roots: Vec<Certificate>) -> TlsResult<Self> {
         let mut tls_conn_builder = NativeTlsConnector::builder();
         for cert in roots {
             tls_conn_builder.add_root_certificate(cert);
         }
 
-        let connector = tls_conn_builder
-            .build()?;
+        let connector = tls_conn_builder.build()?;
 
-        Ok(Self::new(resolver, TlsConnector::from(connector), acceptor))
+        Ok(Self::new(resolver, TlsConnector::from(connector)))
     }
 
-    pub fn parse_identity(
-        resolver: Arc<Resolver>,
-        id: IdentityCert<'_>,
-        roots: &[RootCert<'_>]
-    ) -> TlsResult<Self> {
-        let acceptor = accepter_from_cert(id)?;
-        
+    pub fn parse_certs(resolver: Arc<Resolver>, roots: &[RootCert<'_>]) -> TlsResult<Self> {
         let connector = connector_from_certs(roots)?;
-        
-        Ok(Self::new(resolver, connector, acceptor))
+
+        Ok(Self::new(resolver, connector))
     }
 }
 
-impl ExternalConnections for TokioTlsNetworking {
-    type Socket = MaybeTlsStream;
-    type ListenerType = TlsListener;
-
-    fn bind(
-        &self,
-        addr: SocketAddr,
-    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
-        let TokioTlsNetworking { acceptor, .. } = self;
-        let acc = acceptor.clone();
-        async move {
-            let listener = TcpListener::bind(addr).await?;
-            let addr = listener.local_addr()?;
-            Ok((addr, TlsListener::new(listener, acc)))
-        }
-        .boxed()
+impl TokioTlsServerNetworking {
+    pub fn new(acceptor: TlsAcceptor) -> Self {
+        TokioTlsServerNetworking { acceptor }
     }
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, IoResult<Self::Socket>> {
+    pub fn from_identity(server_id: Identity) -> TlsResult<Self> {
+        let acceptor = accepter_from_id(server_id)?;
+
+        Ok(Self::new(acceptor))
+    }
+
+    pub fn parse_identity(id: IdentityCert<'_>) -> TlsResult<Self> {
+        let acceptor = accepter_from_cert(id)?;
+
+        Ok(Self::new(acceptor))
+    }
+}
+
+impl ClientConnections for TokioTlsClientNetworking {
+    type ClientSocket = MaybeTlsStream;
+
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, IoResult<Self::ClientSocket>> {
         async move {
             let SchemeSocketAddr { scheme, addr } = addr;
             let host = addr.to_string();
             let socket = TcpStream::connect(addr).await?;
             match scheme {
                 Scheme::Ws => Ok(MaybeTlsStream::Plain(socket)),
-                Scheme::Wss => {
-                    self.connector
-                        .connect(&host, socket)
-                        .await
-                        .map(MaybeTlsStream::Tls)
-                        .map_err(|e| io::Error::new(ErrorKind::ConnectionRefused, e.to_string()))
-                }
+                Scheme::Wss => self
+                    .connector
+                    .connect(&host, socket)
+                    .await
+                    .map(MaybeTlsStream::Tls)
+                    .map_err(|e| io::Error::new(ErrorKind::ConnectionRefused, e.to_string())),
             }
         }
         .boxed()
@@ -196,6 +216,92 @@ impl ExternalConnections for TokioTlsNetworking {
 
     fn dns_resolver(&self) -> BoxDnsResolver {
         Box::new(self.resolver.clone())
+    }
+}
+
+impl ServerConnections for TokioTlsServerNetworking {
+    type ServerSocket = TlsStream;
+
+    type ListenerType = TlsListener;
+
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
+        self.make_listener(addr).boxed()
+    }
+}
+
+#[derive(Clone)]
+pub struct TokioTlsNetworking {
+    client: TokioTlsClientNetworking,
+    server: TokioTlsServerNetworking,
+}
+
+impl TokioTlsNetworking {
+    pub fn new(
+        resolver: Arc<Resolver>,
+        connector: TlsConnector,
+        acceptor: TlsAcceptor,
+    ) -> TokioTlsNetworking {
+        TokioTlsNetworking {
+            client: TokioTlsClientNetworking::new(resolver, connector),
+            server: TokioTlsServerNetworking::new(acceptor),
+        }
+    }
+
+    pub fn from_identity(
+        resolver: Arc<Resolver>,
+        roots: Vec<Certificate>,
+        server_id: Identity,
+    ) -> TlsResult<Self> {
+        Ok(TokioTlsNetworking {
+            client: TokioTlsClientNetworking::with_root_certs(resolver, roots)?,
+            server: TokioTlsServerNetworking::from_identity(server_id)?,
+        })
+    }
+
+    pub fn parse_identity(
+        resolver: Arc<Resolver>,
+        id: IdentityCert<'_>,
+        roots: &[RootCert<'_>],
+    ) -> TlsResult<Self> {
+        Ok(TokioTlsNetworking {
+            client: TokioTlsClientNetworking::parse_certs(resolver, roots)?,
+            server: TokioTlsServerNetworking::parse_identity(id)?,
+        })
+    }
+}
+
+impl ClientConnections for TokioTlsNetworking {
+    type ClientSocket = MaybeTlsStream;
+
+    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'_, IoResult<Self::ClientSocket>> {
+        self.client.try_open(addr)
+    }
+
+    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+        self.client.lookup(host, port)
+    }
+
+    fn dns_resolver(&self) -> BoxDnsResolver {
+        self.client.dns_resolver()
+    }
+}
+
+impl ServerConnections for TokioTlsNetworking {
+    type ServerSocket = MaybeTlsStream;
+
+    type ListenerType = MaybeTlsListener;
+
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
+        self.server
+            .make_listener(addr)
+            .map_ok(|(addr, listener)| (addr, listener.into()))
+            .boxed()
     }
 }
 
@@ -214,7 +320,7 @@ impl TlsListener {
 #[derive(Clone, Copy)]
 pub enum CertKind {
     DER,
-    PEM
+    PEM,
 }
 
 pub struct IdentityCert<'a> {
@@ -239,13 +345,15 @@ fn accepter_from_cert(cert: IdentityCert<'_>) -> TlsResult<TlsAcceptor> {
         CertKind::DER => {
             let password = std::str::from_utf8(key).unwrap();
             Identity::from_pkcs12(body, password)?
-        },
+        }
         CertKind::PEM => Identity::from_pkcs8(body, key)?,
     };
     accepter_from_id(cert)
 }
 
-fn connector_from_certs<'a, I: IntoIterator<Item = &'a RootCert<'a>>>(roots: I) -> TlsResult<TlsConnector> {
+fn connector_from_certs<'a, I: IntoIterator<Item = &'a RootCert<'a>>>(
+    roots: I,
+) -> TlsResult<TlsConnector> {
     let mut tls_conn_builder = NativeTlsConnector::builder();
     for RootCert { kind, body } in roots {
         let cert = match kind {
@@ -254,8 +362,7 @@ fn connector_from_certs<'a, I: IntoIterator<Item = &'a RootCert<'a>>>(roots: I) 
         };
         tls_conn_builder.add_root_certificate(cert);
     }
-    let connector = tls_conn_builder
-        .build()?;
+    let connector = tls_conn_builder.build()?;
 
     Ok(TlsConnector::from(connector))
 }
@@ -352,5 +459,28 @@ impl Stream for TcpListenerWithPeer {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.0.poll_accept(cx).map(Some)
+    }
+}
+
+pub struct MaybeTlsListener {
+    inner: TlsListener,
+}
+
+impl From<TlsListener> for MaybeTlsListener {
+    fn from(inner: TlsListener) -> Self {
+        MaybeTlsListener { inner }
+    }
+}
+
+impl Listener<MaybeTlsStream> for MaybeTlsListener {
+    type AcceptStream = BoxListenerStream<MaybeTlsStream>;
+
+    fn into_stream(self) -> Self::AcceptStream {
+        let MaybeTlsListener {
+            inner: TlsListener { listener, acceptor },
+        } = self;
+        tls_accept_stream(listener, acceptor)
+            .map_ok(|(sock, addr)| (MaybeTlsStream::Tls(sock), addr))
+            .boxed()
     }
 }
