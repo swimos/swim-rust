@@ -59,7 +59,7 @@ enum StoreConfig {
     NoStore,
     #[cfg(feature = "persistence")]
     RockStore {
-        path: Option<PathBuf>,
+        path: Option<std::path::PathBuf>,
         options: crate::RocksOpts,
     },
 }
@@ -337,7 +337,7 @@ const _: () = {
         }
 
         pub fn set_store_path<P: AsRef<std::ffi::OsStr>>(mut self, base_path: P) -> Self {
-            let db_path = PathBuf::from(std::path::Path::new(&base_path));
+            let db_path = std::path::PathBuf::from(std::path::Path::new(&base_path));
             match &mut self.store_options {
                 StoreConfig::RockStore { path, .. } => {
                     *path = Some(db_path);

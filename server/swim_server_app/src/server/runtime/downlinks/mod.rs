@@ -194,7 +194,7 @@ where
                         result: Ok(sock_addrs),
                     } => {
                         if let Some((addr, handle)) = sock_addrs.iter().find_map(|addr| {
-                            downlink_channels.get(&addr).map(move |inner| (addr, inner))
+                            downlink_channels.get(addr).map(move |inner| (addr, inner))
                         }) {
                             let waiting_map = pending.take_socket_ready(&host);
                             for (key, requests) in waiting_map {
