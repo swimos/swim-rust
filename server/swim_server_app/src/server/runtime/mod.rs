@@ -654,7 +654,7 @@ where
         stop,
         websocket,
         attach_rx,
-        find_tx,
+        Some(find_tx),
         config.remote.registration_buffer_size,
     );
 

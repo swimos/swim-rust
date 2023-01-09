@@ -13,10 +13,17 @@
 // limitations under the License.
 
 use std::fmt::Display;
+use std::sync::Arc;
 
-use crate::model::lifecycle::ValueDownlinkLifecycle;
 use futures::future::join;
 use futures::{Sink, SinkExt, StreamExt};
+use tokio::sync::mpsc;
+use tokio::sync::watch::Sender;
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::codec::{FramedRead, FramedWrite};
+use tracing::{info_span, trace};
+use tracing_futures::Instrument;
+
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::downlink::{
@@ -30,12 +37,8 @@ use swim_recon::printer::print_recon;
 use swim_utilities::future::immediate_or_join;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::trigger;
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::codec::{FramedRead, FramedWrite};
-use tracing::{info_span, trace};
-use tracing_futures::Instrument;
 
+use crate::model::lifecycle::ValueDownlinkLifecycle;
 use crate::ValueDownlinkModel;
 
 /// Task to drive a value downlink, calling lifecyle events at appropriate points.
@@ -47,7 +50,7 @@ use crate::ValueDownlinkModel;
 /// * `config` - Configuration parameters to the downlink.
 /// * `input` - Input stream for messages to the downlink from the runtime.
 /// * `output` - Output stream for messages from the downlink to the runtime.
-pub async fn value_dowinlink_task<T, LC>(
+pub async fn value_downlink_task<T, LC>(
     model: ValueDownlinkModel<T, LC>,
     path: Address<Text>,
     config: DownlinkConfig,
@@ -60,11 +63,12 @@ where
 {
     let ValueDownlinkModel {
         set_value,
+        get_value,
         lifecycle,
     } = model;
     let (stop_tx, stop_rx) = trigger::trigger();
     let read = async move {
-        let result = read_task(config, input, lifecycle).await;
+        let result = read_task(config, input, lifecycle, get_value).await;
         let _ = stop_tx.trigger();
         result
     }
@@ -100,6 +104,7 @@ async fn read_task<T, LC>(
     config: DownlinkConfig,
     input: ByteReader,
     mut lifecycle: LC,
+    get_value: Sender<Arc<T>>,
 ) -> Result<(), DownlinkTaskError>
 where
     T: Form + Send + Sync + 'static,
@@ -110,8 +115,14 @@ where
         terminate_on_unlinked,
         ..
     } = config;
-    let mut state: State<T> = State::Unlinked;
+    let mut state: State<Arc<T>> = State::Unlinked;
     let mut framed_read = FramedRead::new(input, ValueNotificationDecoder::default());
+
+    let propagate = |value: Arc<T>| {
+        if !get_value.is_closed() {
+            let _r = get_value.send(value);
+        }
+    };
 
     while let Some(result) = framed_read.next().await {
         match result? {
@@ -133,7 +144,8 @@ where
                 match state {
                     State::Linked(Some(value)) => {
                         lifecycle.on_synced(&value).await;
-                        state = State::Synced(value);
+                        state = State::Synced(value.clone());
+                        propagate(value);
                     }
                     _ => {
                         return Err(DownlinkTaskError::SyncedWithNoValue);
@@ -152,12 +164,16 @@ where
                             lifecycle.on_event(&body).await;
                             lifecycle.on_set(value.as_ref(), &body).await;
                         }
-                        *value = Some(body);
+                        let new_value = Arc::new(body);
+                        propagate(new_value.clone());
+                        *value = Some(new_value);
                     }
                     State::Synced(value) => {
                         lifecycle.on_event(&body).await;
                         lifecycle.on_set(Some(value), &body).await;
-                        *value = body;
+                        let new_value = Arc::new(body);
+                        propagate(new_value.clone());
+                        *value = new_value;
                     }
                     _ => {}
                 }
