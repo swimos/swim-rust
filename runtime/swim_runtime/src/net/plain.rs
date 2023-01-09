@@ -29,7 +29,7 @@ use tokio::net::{TcpListener, TcpStream};
 use thiserror::Error;
 
 use super::dns::BoxDnsResolver;
-use super::{ClientConnections, ListenerResult, ServerConnections, ConnResult};
+use super::{ClientConnections, ConnResult, ListenerResult, ServerConnections};
 
 /// Implementation of [`ExternalConnections`] using [`TcpListener`] and [`TcpStream`] from Tokio.
 #[derive(Debug, Clone)]
@@ -56,7 +56,10 @@ pub struct NoTls;
 impl ClientConnections for TokioPlainTextNetworking {
     type ClientSocket = TcpStream;
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, ConnResult<Self::ClientSocket>> {
+    fn try_open(
+        &self,
+        addr: SchemeSocketAddr,
+    ) -> BoxFuture<'static, ConnResult<Self::ClientSocket>> {
         let SchemeSocketAddr { scheme, addr } = addr;
         async move {
             match scheme {

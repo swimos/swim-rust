@@ -46,11 +46,11 @@ use crate::net::{IoResult, Listener};
 use crate::net::{Scheme, SchemeSocketAddr};
 use pin_project::pin_project;
 
-use super::ConnResult;
-use super::ConnectionError;
 use super::dns::BoxDnsResolver;
 use super::dns::DnsResolver;
 use super::ClientConnections;
+use super::ConnResult;
+use super::ConnectionError;
 use super::ListenerError;
 use super::ListenerResult;
 use super::ServerConnections;

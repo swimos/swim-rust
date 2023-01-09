@@ -41,7 +41,7 @@ use swim_runtime::agent::{
 use swim_utilities::routing::route_uri::RouteUri;
 
 use swim_runtime::net::{
-    BadUrl, ExternalConnections, Listener, ListenerError, Scheme, SchemeSocketAddr, ConnectionError,
+    BadUrl, ConnectionError, ExternalConnections, Listener, ListenerError, Scheme, SchemeSocketAddr,
 };
 use swim_runtime::ws::{RatchetError, WsConnections};
 use swim_utilities::io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
@@ -430,6 +430,12 @@ where
                             warn!(error = %error, "Negotiating incoming websocket connection failed.");
                         }
                     }
+                }
+                ServerEvent::NewConnection(Err(ListenerError::ListenerFailed(error))) => {
+                    error!(error = %error, "Listening for new connections failed.");
+                    return Err(ServerError::Networking(ConnectionError::ConnectionFailed(
+                        error,
+                    )));
                 }
                 ServerEvent::NewConnection(Err(error)) => {
                     warn!(error = %error, "Accepting incoming connection failed.");

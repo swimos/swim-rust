@@ -22,7 +22,9 @@ use futures::future::ready;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use ratchet::{NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use swim_runtime::net::dns::{DnsFut, DnsResolver};
-use swim_runtime::net::{ExternalConnections, Listener, ListenerResult, Scheme, SchemeSocketAddr, ConnectionError};
+use swim_runtime::net::{
+    ConnectionError, ExternalConnections, Listener, ListenerResult, Scheme, SchemeSocketAddr,
+};
 use swim_runtime::ws::{RatchetError, WsConnections, WsOpenFuture};
 use tokio::{
     io::{self, DuplexStream},
@@ -32,9 +34,15 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 #[derive(Debug)]
 enum ConnReq {
-    Remote(SocketAddr, oneshot::Sender<Result<DuplexStream, ConnectionError>>),
+    Remote(
+        SocketAddr,
+        oneshot::Sender<Result<DuplexStream, ConnectionError>>,
+    ),
     Resolve(String, u16, oneshot::Sender<io::Result<Vec<SocketAddr>>>),
-    Listener(SocketAddr, oneshot::Sender<Result<TestListener, ConnectionError>>),
+    Listener(
+        SocketAddr,
+        oneshot::Sender<Result<TestListener, ConnectionError>>,
+    ),
 }
 
 /// Fake networking that communicates over in-memory buffers.
@@ -146,7 +154,10 @@ impl ExternalConnections for TestConnections {
         .boxed()
     }
 
-    fn try_open(&self, addr: SchemeSocketAddr) -> BoxFuture<'static, Result<Self::Socket, ConnectionError>> {
+    fn try_open(
+        &self,
+        addr: SchemeSocketAddr,
+    ) -> BoxFuture<'static, Result<Self::Socket, ConnectionError>> {
         let sender = self.requests.clone();
         async move {
             let (tx, rx) = oneshot::channel();

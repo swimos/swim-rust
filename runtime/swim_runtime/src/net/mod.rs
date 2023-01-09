@@ -17,10 +17,10 @@ use std::sync::Arc;
 
 use futures::future::BoxFuture;
 use futures::Stream;
-use tokio::io::{AsyncRead, AsyncWrite};
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use thiserror::Error;
 
@@ -116,7 +116,11 @@ impl Display for SchemeSocketAddr {
 #[derive(Debug, Error)]
 pub enum ConnectionError {
     #[error("Opening a new connection failed: {0}")]
-    ConnectionFailed(#[source] #[from] std::io::Error),
+    ConnectionFailed(
+        #[source]
+        #[from]
+        std::io::Error,
+    ),
     #[error("Negotiating a new connection failed: {0}")]
     NegotiationFailed(#[source] Box<dyn std::error::Error + Send>),
 }
