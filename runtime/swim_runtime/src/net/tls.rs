@@ -60,6 +60,9 @@ pub type TlsHandshakeResult = IoResult<(TlsStream, SocketAddr)>;
 
 type BoxListenerStream<Socket> = BoxStream<'static, ListenerResult<(Socket, Scheme, SocketAddr)>>;
 
+/// Either a simple, unencrypted [`TcpStream`] or a [`TlsStream`]. This allows an implementation
+/// of [`ClientConnections`] and [`ServerConnections`] to expose an single socket type to support
+/// both secure and unsecure connections.
 #[pin_project(project = MaybeTlsProj)]
 pub enum MaybeTlsStream {
     Plain(#[pin] TcpStream),
@@ -115,12 +118,14 @@ impl Listener<TlsStream> for TlsListener {
     }
 }
 
+/// [`ClientConnections`] implementation that supports opening both secure and insecure connections.
 #[derive(Clone)]
 pub struct TokioTlsClientNetworking {
     resolver: Arc<Resolver>,
     connector: TlsConnector,
 }
 
+/// [`ServerConnections`] implementation that only supports secure connections.
 #[derive(Clone)]
 pub struct TokioTlsServerNetworking {
     acceptor: TlsAcceptor,
@@ -236,6 +241,10 @@ impl ServerConnections for TokioTlsServerNetworking {
     }
 }
 
+/// Combined implementation of [`ClientConnections`] and [`ServerConnections`] that wraps both
+/// [`TokioTlsClientNetworking`] and [`TokioTlsServerNetworking`]. The server part is adapted to
+/// produce [`MaybeTlsStream`] connections so that there is a unified client/server socket type,
+/// inducing an implementation of [`super::ExternalConnections`].
 #[derive(Clone)]
 pub struct TokioTlsNetworking {
     client: TokioTlsClientNetworking,
@@ -313,6 +322,8 @@ impl ServerConnections for TokioTlsNetworking {
     }
 }
 
+/// A listener that will listen for incoming TCP connections and attempt to negotiate a
+/// TLS connection over them.
 #[pin_project]
 pub struct TlsListener {
     listener: TcpListener,
@@ -325,20 +336,28 @@ impl TlsListener {
     }
 }
 
+/// Supported certificate formats for TLS connections.
 #[derive(Clone, Copy)]
 pub enum CertKind {
     DER,
     PEM,
 }
 
+/// An identity certificate for a TLS server.
 pub struct IdentityCert<'a> {
+    /// The format of the certificate.
     pub kind: CertKind,
+    /// The key/password for the certificate (for DER this should be interpretable as a UTF8 string).
     pub key: &'a [u8],
+    /// The body of the certificate as raw bytes.
     pub body: &'a [u8],
 }
 
+/// An X509 certificate to add as a trusted root for TLS clients.
 pub struct RootCert<'a> {
+    /// The format of the certificate.
     pub kind: CertKind,
+    /// The body of the certificate as raw bytes.
     pub body: &'a [u8],
 }
 
@@ -462,6 +481,7 @@ fn tls_accept_stream(
     )
 }
 
+/// Exposes a [`TcpListener`] as a [`Stream`].
 struct TcpListenerWithPeer(TcpListener);
 
 impl Stream for TcpListenerWithPeer {
@@ -472,6 +492,8 @@ impl Stream for TcpListenerWithPeer {
     }
 }
 
+/// This wraps connections for a [`TlsListener`] as [`MaybeTlsStream`] to unify server and client
+/// connection types.
 pub struct MaybeTlsListener {
     inner: TlsListener,
 }
