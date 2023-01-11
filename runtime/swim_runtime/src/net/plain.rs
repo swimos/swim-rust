@@ -65,7 +65,7 @@ impl ClientConnections for TokioPlainTextNetworking {
         async move {
             match scheme {
                 Scheme::Ws => Ok(TcpStream::connect(addr).await?),
-                Scheme::Wss => Err(super::ConnectionError::NegotiationFailed(Box::new(NoTls))),
+                Scheme::Wss => Err(super::ConnectionError::BadParameter(Box::new(NoTls))),
             }
         }
         .boxed()

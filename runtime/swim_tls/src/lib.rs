@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod errors;
 mod config;
-mod net;
+mod errors;
 mod maybe;
+mod net;
 
-pub use net::{RustlsClientNetworking, RustlsServerNetworking, RustlsListener, RustlsNetworking};
-pub use maybe::MaybeTlsStream;
+pub use config::{
+    CertChain, CertFormat, CertificateFile, ClientConfig, PrivateKey, ServerConfig, TlsConfig,
+};
 pub use errors::TlsError;
-pub use config::{ClientConfig, ServerConfig, CertChain, CertFormat, Certificate, PrivateKey, TlsConfig};
+pub use maybe::MaybeTlsStream;
+pub use net::{RustlsClientNetworking, RustlsListener, RustlsNetworking, RustlsServerNetworking};

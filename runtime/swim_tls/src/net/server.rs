@@ -14,18 +14,27 @@
 
 use std::{net::SocketAddr, sync::Arc};
 
-use futures::{future::{BoxFuture, Either}, FutureExt, stream::{FuturesUnordered, unfold}, Stream, Future, StreamExt, TryStreamExt};
+use futures::{
+    future::{BoxFuture, Either},
+    stream::{unfold, FuturesUnordered},
+    Future, FutureExt, Stream, StreamExt, TryStreamExt,
+};
 use rustls::KeyLogFile;
 use rustls_pemfile::Item;
-use swim_runtime::net::{ConnResult, IoResult, Scheme, ServerConnections, Listener, tls::BoxListenerStream, ListenerResult, ListenerError};
-use tokio::net::{TcpStream, TcpListener};
-use tokio_rustls::{TlsStream, TlsAcceptor};
+use swim_runtime::net::{
+    tls::BoxListenerStream, ConnResult, IoResult, Listener, ListenerError, ListenerResult, Scheme,
+    ServerConnections,
+};
+use tokio::net::{TcpListener, TcpStream};
+use tokio_rustls::{TlsAcceptor, TlsStream};
 
 use crate::{
-    config::{ServerConfig, CertChain, CertFormat, PrivateKey},
-    errors::TlsError, maybe::MaybeTlsStream,
+    config::{CertChain, CertFormat, PrivateKey, ServerConfig},
+    errors::TlsError,
+    maybe::MaybeTlsStream,
 };
 
+/// [`ServerConnections`] implementation that only supports secure connections.
 #[derive(Clone)]
 pub struct RustlsServerNetworking {
     acceptor: TlsAcceptor,
@@ -41,7 +50,6 @@ async fn accept_tls(
 }
 
 impl RustlsServerNetworking {
-
     pub fn make_listener(
         &self,
         addr: SocketAddr,
@@ -50,39 +58,42 @@ impl RustlsServerNetworking {
         let acc = acceptor.clone();
         accept_tls(acc, addr)
     }
-
 }
 
 impl RustlsServerNetworking {
-
     pub fn new(acceptor: TlsAcceptor) -> Self {
         RustlsServerNetworking { acceptor }
     }
-
 }
 
 impl TryFrom<ServerConfig> for RustlsServerNetworking {
     type Error = TlsError;
 
     fn try_from(config: ServerConfig) -> Result<Self, Self::Error> {
-        let ServerConfig { chain: CertChain(certs), key, enable_log_file } = config;
+        let ServerConfig {
+            chain: CertChain(certs),
+            key,
+            enable_log_file,
+        } = config;
 
         let mut chain = vec![];
         for cert in certs {
             chain.extend(super::load_cert_file(cert)?);
-        };
-        
+        }
+
         let PrivateKey { format, body } = key;
         let server_key = match format {
             CertFormat::Pem => {
                 let mut body_ref = body.as_ref();
                 match rustls_pemfile::read_one(&mut body_ref).map_err(TlsError::InvalidPem)? {
-                    Some(Item::ECKey(body) | Item::PKCS8Key(body)| Item::RSAKey(body)) => rustls::PrivateKey(body),
+                    Some(Item::ECKey(body) | Item::PKCS8Key(body) | Item::RSAKey(body)) => {
+                        rustls::PrivateKey(body)
+                    }
                     _ => {
                         return Err(TlsError::InvalidPrivateKey);
                     }
                 }
-            },
+            }
             CertFormat::Der => rustls::PrivateKey(body),
         };
 
@@ -113,6 +124,8 @@ impl ServerConnections for RustlsServerNetworking {
     }
 }
 
+/// A listener that will listen for incoming TCP connections and attempt to negotiate a
+/// TLS connection over them.
 pub struct RustlsListener {
     listener: TcpListener,
     acceptor: TlsAcceptor,
@@ -153,7 +166,9 @@ where
 
     async fn next_pending(
         &mut self,
-    ) -> Option<Either<IoResult<(TcpStream, SocketAddr)>, TlsResult<(TlsStream<TcpStream>, SocketAddr)>>> {
+    ) -> Option<
+        Either<IoResult<(TcpStream, SocketAddr)>, TlsResult<(TlsStream<TcpStream>, SocketAddr)>>,
+    > {
         let AcceptState { listener, pending } = self;
         tokio::select! {
             biased;
@@ -166,50 +181,48 @@ where
 fn tls_accept_stream(
     listener: TcpListener,
     acceptor: TlsAcceptor,
-) -> impl Stream<Item = ListenerResult<(TlsStream<TcpStream>, Scheme, SocketAddr)>> + Send + 'static {
+) -> impl Stream<Item = ListenerResult<(TlsStream<TcpStream>, Scheme, SocketAddr)>> + Send + 'static
+{
     let state = AcceptState::new(listener);
-    unfold(
-        Some((state, acceptor)),
-        move |maybe_state| async move {
-            if let Some((mut state, acceptor)) = maybe_state {
-                loop {
-                    match state.next_pending().await {
-                        Some(Either::Left(Ok((tcp_stream, addr)))) => {
-                            let acc = acceptor.clone();
-                            let fut = async move {
-                                let result = acc.accept(tcp_stream).await.map_err(TlsError::HandshakeFailed);
-                                result.map(move |s| (TlsStream::Server(s), addr))
-                            };
-                            state.push(fut);
-                        }
-                        Some(Either::Left(Err(e))) => {
-                            let err = ListenerError::from(e);
-                            if matches!(err, ListenerError::ListenerFailed(_)) {
-                                break Some((Err(err), None));
-                            } else {
-                                break Some((Err(err), Some((state, acceptor))));
-                            }
-                        }
-                        Some(Either::Right(Ok((tls_stream, addr)))) => {
-                            break Some((
-                                Ok((tls_stream, Scheme::Wss, addr)),
-                                Some((state, acceptor)),
-                            ));
-                        }
-                        Some(Either::Right(Err(e))) => {
-                            break Some((
-                                Err(ListenerError::NegotiationFailed(Box::new(e))),
-                                Some((state, acceptor)),
-                            ));
-                        }
-                        None => break None,
+    unfold(Some((state, acceptor)), move |maybe_state| async move {
+        if let Some((mut state, acceptor)) = maybe_state {
+            loop {
+                match state.next_pending().await {
+                    Some(Either::Left(Ok((tcp_stream, addr)))) => {
+                        let acc = acceptor.clone();
+                        let fut = async move {
+                            let result = acc
+                                .accept(tcp_stream)
+                                .await
+                                .map_err(TlsError::HandshakeFailed);
+                            result.map(move |s| (TlsStream::Server(s), addr))
+                        };
+                        state.push(fut);
                     }
+                    Some(Either::Left(Err(e))) => {
+                        let err = ListenerError::from(e);
+                        if matches!(err, ListenerError::ListenerFailed(_)) {
+                            break Some((Err(err), None));
+                        } else {
+                            break Some((Err(err), Some((state, acceptor))));
+                        }
+                    }
+                    Some(Either::Right(Ok((tls_stream, addr)))) => {
+                        break Some((Ok((tls_stream, Scheme::Wss, addr)), Some((state, acceptor))));
+                    }
+                    Some(Either::Right(Err(e))) => {
+                        break Some((
+                            Err(ListenerError::NegotiationFailed(Box::new(e))),
+                            Some((state, acceptor)),
+                        ));
+                    }
+                    None => break None,
                 }
-            } else {
-                None
             }
-        },
-    )
+        } else {
+            None
+        }
+    })
 }
 
 /// This wraps connections for a [`RustlsListener`] as [`crate::maybe::MaybeTlsStream`] to unify server and client

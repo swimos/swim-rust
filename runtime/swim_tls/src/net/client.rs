@@ -14,19 +14,19 @@
 
 use std::{net::SocketAddr, sync::Arc};
 
-use futures::{future::{BoxFuture}, FutureExt};
+use futures::{future::BoxFuture, FutureExt};
 use rustls::{OwnedTrustAnchor, RootCertStore, ServerName};
 
-use swim_runtime::net::{dns::{BoxDnsResolver, Resolver, DnsResolver}, ClientConnections, ConnResult, IoResult, Scheme, ConnectionError};
-use tokio::net::{TcpStream};
+use swim_runtime::net::{
+    dns::{BoxDnsResolver, DnsResolver, Resolver},
+    ClientConnections, ConnResult, ConnectionError, IoResult, Scheme,
+};
+use tokio::net::TcpStream;
 use tokio_rustls::{TlsConnector, TlsStream};
 
-use crate::{
-    config::ClientConfig,
-    errors::TlsError, maybe::MaybeTlsStream,
-};
+use crate::{config::ClientConfig, errors::TlsError, maybe::MaybeTlsStream};
 
-
+/// [`ClientConnections`] implementation that supports opening both secure and insecure connections.
 #[derive(Clone)]
 pub struct RustlsClientNetworking {
     resolver: Arc<Resolver>,
@@ -35,10 +35,16 @@ pub struct RustlsClientNetworking {
 
 impl RustlsClientNetworking {
     pub fn new(resolver: Arc<Resolver>, connector: TlsConnector) -> Self {
-        RustlsClientNetworking { resolver, connector }
+        RustlsClientNetworking {
+            resolver,
+            connector,
+        }
     }
 
-    pub fn try_from_config(resolver: Arc<Resolver>, config: ClientConfig) -> Result<Self, TlsError> {
+    pub fn try_from_config(
+        resolver: Arc<Resolver>,
+        config: ClientConfig,
+    ) -> Result<Self, TlsError> {
         let ClientConfig {
             use_webpki_roots,
             custom_roots,
@@ -85,22 +91,28 @@ impl ClientConnections for RustlsClientNetworking {
             Scheme::Ws => async move {
                 let stream = TcpStream::connect(addr).await?;
                 Ok(MaybeTlsStream::Plain(stream))
-            }.boxed(),
+            }
+            .boxed(),
             Scheme::Wss => {
                 let domain = if let Some(host_name) = host {
-                    ServerName::try_from(host_name).map_err(|err| ConnectionError::NegotiationFailed(Box::new(TlsError::BadHostName(err))))
+                    ServerName::try_from(host_name).map_err(|err| {
+                        ConnectionError::BadParameter(Box::new(TlsError::BadHostName(err)))
+                    })
                 } else {
                     Ok(ServerName::IpAddress(addr.ip()))
                 };
                 async move {
                     let stream = TcpStream::connect(addr).await?;
                     let RustlsClientNetworking { connector, .. } = self;
-                    
-                    let client = connector.connect(domain?, stream).await.map_err(|err| ConnectionError::NegotiationFailed(Box::new(err)))?;
+
+                    let client = connector.connect(domain?, stream).await.map_err(|err| {
+                        let tls_err = TlsError::HandshakeFailed(err);
+                        ConnectionError::NegotiationFailed(Box::new(tls_err))
+                    })?;
                     Ok(MaybeTlsStream::Tls(TlsStream::Client(client)))
                 }
                 .boxed()
-            },
+            }
         }
     }
 

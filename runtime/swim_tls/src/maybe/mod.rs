@@ -12,15 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{task::{Poll, Context}, pin::Pin, io};
+use std::{
+    io,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
-use tokio::{net::TcpStream, io::{AsyncRead, AsyncWrite, ReadBuf}};
-use tokio_rustls::TlsStream;
 use pin_project::pin_project;
+use tokio::{
+    io::{AsyncRead, AsyncWrite, ReadBuf},
+    net::TcpStream,
+};
+use tokio_rustls::TlsStream;
 
-/// Either a simple, unencrypted [`TcpStream`] or a [`TlsStream`]. This allows an implementation
-/// of [`ClientConnections`] and [`ServerConnections`] to expose an single socket type to support
-/// both secure and unsecure connections.
+/// Either a simple, unencrypted [`tokio::TcpStream`] or a [`TlsStream`].
 #[pin_project(project = MaybeTlsProj)]
 pub enum MaybeTlsStream {
     Plain(#[pin] TcpStream),

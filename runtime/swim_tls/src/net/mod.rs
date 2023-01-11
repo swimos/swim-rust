@@ -27,15 +27,15 @@ use swim_runtime::net::{
 };
 
 use crate::{
-    config::{CertFormat, Certificate, TlsConfig},
+    config::{CertFormat, CertificateFile, TlsConfig},
     errors::TlsError,
     maybe::MaybeTlsStream,
 };
 
 use self::server::MaybeRustlsListener;
 
-fn load_cert_file(file: Certificate) -> Result<Vec<rustls::Certificate>, TlsError> {
-    let Certificate { format, body } = file;
+fn load_cert_file(file: CertificateFile) -> Result<Vec<rustls::Certificate>, TlsError> {
+    let CertificateFile { format, body } = file;
     let certs = match format {
         CertFormat::Pem => {
             let mut body_ref = body.as_ref();
@@ -46,6 +46,10 @@ fn load_cert_file(file: Certificate) -> Result<Vec<rustls::Certificate>, TlsErro
     Ok(certs.into_iter().map(rustls::Certificate).collect())
 }
 
+/// Combined implementation of [`ClientConnections`] and [`ServerConnections`] that wraps both
+/// [`RustlsClientNetworking`] and [`RustlsServerNetworking`]. The server part is adapted to
+/// produce [`MaybeTlsStream`] connections so that there is a unified client/server socket type,
+/// inducing an implementation of [`super::ExternalConnections`].
 #[derive(Clone)]
 pub struct RustlsNetworking {
     client: RustlsClientNetworking,

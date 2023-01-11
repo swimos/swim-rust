@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{num::NonZeroUsize, path::PathBuf, time::Duration, borrow::Cow};
+use std::{borrow::Cow, num::NonZeroUsize, path::PathBuf, time::Duration};
 
 use ratchet::WebSocketConfig;
 use swim_api::agent::AgentConfig;
@@ -65,14 +65,8 @@ impl CertBody {
 }
 
 pub enum TlsIdentity {
-    Der {
-        body: CertBody,
-        password: String,
-    },
-    Pem {
-        body: CertBody,
-        key: CertBody,
-    } 
+    Der { body: CertBody, password: String },
+    Pem { body: CertBody, key: CertBody },
 }
 
 pub struct TlsRoot {

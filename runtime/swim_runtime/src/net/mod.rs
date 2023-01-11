@@ -108,6 +108,9 @@ pub enum ConnectionError {
     /// A connection could not be negotiated (for example, a TLS handshake failed).
     #[error("Negotiating a new connection failed: {0}")]
     NegotiationFailed(#[source] Box<dyn std::error::Error + Send>),
+    /// A connection parameter was invalid (for example, requesting a secure connection when TLS is not enabled).
+    #[error("Negotiating a new connection failed: {0}")]
+    BadParameter(#[source] Box<dyn std::error::Error + Send>),
 }
 
 /// Errors that can be generated when listening for incoming connections. Particularly, this
@@ -282,8 +285,12 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
         &self,
         addr: SocketAddr,
     ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>>;
-    fn try_open(&self, scheme: Scheme, host: Option<&str>, addr: SocketAddr)
-        -> BoxFuture<'_, ConnResult<Self::Socket>>;
+    fn try_open(
+        &self,
+        scheme: Scheme,
+        host: Option<&str>,
+        addr: SocketAddr,
+    ) -> BoxFuture<'_, ConnResult<Self::Socket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
     fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;

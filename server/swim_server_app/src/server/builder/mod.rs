@@ -25,9 +25,7 @@ use swim_api::{agent::Agent, error::StoreError, store::StoreDisabled};
 use swim_runtime::{
     error::tls::TlsError,
     net::{
-        dns::Resolver,
-        plain::TokioPlainTextNetworking,
-        tls::{TokioTlsNetworking},
+        dns::Resolver, plain::TokioPlainTextNetworking, tls::TokioTlsNetworking,
         ExternalConnections,
     },
     ws::ext::RatchetNetworking,
@@ -35,7 +33,7 @@ use swim_runtime::{
 use swim_utilities::routing::route_pattern::RoutePattern;
 
 use crate::{
-    config::{SwimServerConfig, TlsConfig,},
+    config::{SwimServerConfig, TlsConfig},
     error::ServerBuilderError,
     introspection::IntrospectionConfig,
     plane::{PlaneBuilder, PlaneModel},
@@ -198,7 +196,7 @@ async fn init_tls(
     _resolver: Arc<Resolver>,
     _config: TlsConfig,
 ) -> Result<TokioTlsNetworking, TlsError> {
-   todo!()
+    todo!()
 }
 
 fn with_store<N>(
