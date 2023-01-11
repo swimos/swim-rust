@@ -156,6 +156,7 @@ impl ExternalConnections for TestConnections {
     fn try_open(
         &self,
         scheme: Scheme,
+        _host: Option<&str>,
         addr: SocketAddr,
     ) -> BoxFuture<'static, Result<Self::Socket, ConnectionError>> {
         let sender = self.requests.clone();

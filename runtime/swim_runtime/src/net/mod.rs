@@ -92,8 +92,8 @@ impl Display for Scheme {
     }
 }
 
-type IoResult<T> = io::Result<T>;
-type ConnResult<T> = Result<T, ConnectionError>;
+pub type IoResult<T> = io::Result<T>;
+pub type ConnResult<T> = Result<T, ConnectionError>;
 
 /// Error to indicate why attempting to open a new connection failed.
 #[derive(Debug, Error)]
@@ -213,6 +213,7 @@ pub trait ClientConnections: Clone + Send + Sync + 'static {
     fn try_open(
         &self,
         scheme: Scheme,
+        host: Option<&str>,
         addr: SocketAddr,
     ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>>;
 
@@ -229,9 +230,10 @@ where
     fn try_open(
         &self,
         scheme: Scheme,
+        host: Option<&str>,
         addr: SocketAddr,
     ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
-        (**self).try_open(scheme, addr)
+        (**self).try_open(scheme, host, addr)
     }
 
     fn dns_resolver(&self) -> BoxDnsResolver {
@@ -280,7 +282,7 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
         &self,
         addr: SocketAddr,
     ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>>;
-    fn try_open(&self, scheme: Scheme, addr: SocketAddr)
+    fn try_open(&self, scheme: Scheme, host: Option<&str>, addr: SocketAddr)
         -> BoxFuture<'_, ConnResult<Self::Socket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
@@ -305,9 +307,10 @@ where
     fn try_open(
         &self,
         scheme: Scheme,
+        host: Option<&str>,
         addr: SocketAddr,
     ) -> BoxFuture<'_, ConnResult<Self::Socket>> {
-        <Self as ClientConnections>::try_open(self, scheme, addr)
+        <Self as ClientConnections>::try_open(self, scheme, host, addr)
     }
 
     fn dns_resolver(&self) -> BoxDnsResolver {

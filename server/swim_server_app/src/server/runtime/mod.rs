@@ -990,7 +990,7 @@ where
     let mut conn_failures = vec![];
     let mut sock = None;
     for addr in addrs {
-        match networking.try_open(scheme, addr).await {
+        match networking.try_open(scheme, Some(host.as_str()), addr).await {
             Ok(socket) => {
                 sock = Some((addr, socket));
                 break;

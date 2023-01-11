@@ -27,7 +27,7 @@ use swim_runtime::{
     net::{
         dns::Resolver,
         plain::TokioPlainTextNetworking,
-        tls::{IdentityCert, RootCert, TokioTlsNetworking},
+        tls::{TokioTlsNetworking},
         ExternalConnections,
     },
     ws::ext::RatchetNetworking,
@@ -35,7 +35,7 @@ use swim_runtime::{
 use swim_utilities::routing::route_pattern::RoutePattern;
 
 use crate::{
-    config::{CertBody, SwimServerConfig, TlsConfig, TlsIdentity, TlsRoot},
+    config::{SwimServerConfig, TlsConfig,},
     error::ServerBuilderError,
     introspection::IntrospectionConfig,
     plane::{PlaneBuilder, PlaneModel},
@@ -195,46 +195,10 @@ impl ServerBuilder {
 }
 
 async fn init_tls(
-    resolver: Arc<Resolver>,
-    config: TlsConfig,
+    _resolver: Arc<Resolver>,
+    _config: TlsConfig,
 ) -> Result<TokioTlsNetworking, TlsError> {
-    let TlsConfig { identity, roots } = config;
-
-    let TlsIdentity { kind, body, key } = identity;
-
-    let id_bytes = match body {
-        CertBody::InMemory(bytes) => bytes,
-        CertBody::FromFile(path) => tokio::fs::read(path).await?,
-    };
-
-    let id_cert = IdentityCert {
-        kind,
-        key: &key,
-        body: &id_bytes,
-    };
-
-    let mut root_bodies = vec![];
-    for TlsRoot { kind, body } in roots {
-        let root_bytes = match body {
-            CertBody::InMemory(bytes) => bytes,
-            CertBody::FromFile(path) => tokio::fs::read(path).await?,
-        };
-        root_bodies.push((kind, root_bytes));
-    }
-
-    let root_certs = root_bodies
-        .iter()
-        .map(|(kind, body)| RootCert {
-            kind: *kind,
-            body: body.as_ref(),
-        })
-        .collect::<Vec<_>>();
-
-    Ok(TokioTlsNetworking::parse_identity(
-        resolver,
-        id_cert,
-        root_certs.as_ref(),
-    )?)
+   todo!()
 }
 
 fn with_store<N>(

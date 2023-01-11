@@ -43,7 +43,7 @@ use super::{
 pub type TlsStream = tokio_native_tls::TlsStream<TcpStream>;
 pub type TlsHandshakeResult = IoResult<(TlsStream, SocketAddr)>;
 
-type BoxListenerStream<Socket> = BoxStream<'static, ListenerResult<(Socket, Scheme, SocketAddr)>>;
+pub type BoxListenerStream<Socket> = BoxStream<'static, ListenerResult<(Socket, Scheme, SocketAddr)>>;
 
 /// Either a simple, unencrypted [`TcpStream`] or a [`TlsStream`]. This allows an implementation
 /// of [`ClientConnections`] and [`ServerConnections`] to expose an single socket type to support
@@ -186,6 +186,7 @@ impl ClientConnections for TokioTlsClientNetworking {
     fn try_open(
         &self,
         scheme: Scheme,
+        _host: Option<&str>,
         addr: SocketAddr,
     ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
         async move {
@@ -277,9 +278,10 @@ impl ClientConnections for TokioTlsNetworking {
     fn try_open(
         &self,
         scheme: Scheme,
+        host: Option<&str>,
         addr: SocketAddr,
     ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
-        self.client.try_open(scheme, addr)
+        self.client.try_open(scheme, host, addr)
     }
 
     fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {

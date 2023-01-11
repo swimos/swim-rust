@@ -59,6 +59,7 @@ impl ClientConnections for TokioPlainTextNetworking {
     fn try_open(
         &self,
         scheme: Scheme,
+        _host: Option<&str>,
         addr: SocketAddr,
     ) -> BoxFuture<'static, ConnResult<Self::ClientSocket>> {
         async move {

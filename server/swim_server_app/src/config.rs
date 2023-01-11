@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{num::NonZeroUsize, path::PathBuf, time::Duration};
+use std::{num::NonZeroUsize, path::PathBuf, time::Duration, borrow::Cow};
 
 use ratchet::WebSocketConfig;
 use swim_api::agent::AgentConfig;
@@ -55,16 +55,24 @@ pub enum CertBody {
     FromFile(PathBuf),
 }
 
-pub struct TlsIdentity {
-    pub kind: CertKind,
-    pub body: CertBody,
-    pub key: Vec<u8>,
+impl CertBody {
+    pub async fn load_body(&self) -> Result<Cow<'_, [u8]>, std::io::Error> {
+        match self {
+            CertBody::InMemory(bytes) => Ok(Cow::Borrowed(bytes.as_ref())),
+            CertBody::FromFile(path) => Ok(Cow::Owned(tokio::fs::read(path).await?)),
+        }
+    }
 }
 
-impl TlsIdentity {
-    pub fn new(kind: CertKind, body: CertBody, key: Vec<u8>) -> Self {
-        TlsIdentity { kind, body, key }
-    }
+pub enum TlsIdentity {
+    Der {
+        body: CertBody,
+        password: String,
+    },
+    Pem {
+        body: CertBody,
+        key: CertBody,
+    } 
 }
 
 pub struct TlsRoot {
