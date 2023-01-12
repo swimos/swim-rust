@@ -31,8 +31,6 @@ use self::dns::BoxDnsResolver;
 
 pub mod dns;
 pub mod plain;
-#[cfg(feature = "tls")]
-pub mod tls;
 
 #[derive(Debug, PartialEq, Eq, Error)]
 pub enum BadUrl {
