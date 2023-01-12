@@ -12,42 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::RocksEngine;
 use rocksdb::{DBIteratorWithThreadMode, DBRawIterator, DBWithThreadMode, SingleThreaded};
-use store_common::{
-    EngineIterOpts, EngineIterator, EnginePrefixIterator, EngineRefIterator, IteratorKey, KeyValue,
-    KvBytes,
-};
+use store_common::{EngineIterator, EnginePrefixIterator, IteratorKey, KeyValue, KvBytes};
 use store_common::{RangeConsumer, StoreError};
-
-impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for RocksEngine {
-    type EngineIterator = RocksIterator<'b>;
-    type EnginePrefixIterator = RocksPrefixIterator<'b>;
-
-    fn iterator_opt(
-        &'a self,
-        space: &'b Self::ResolvedKeyspace,
-        _opts: EngineIterOpts,
-    ) -> Result<Self::EngineIterator, StoreError> {
-        let mut iter = self.delegate.raw_iterator_cf(space);
-        iter.seek_to_first();
-
-        Ok(RocksIterator { iter })
-    }
-
-    fn prefix_iterator_opt(
-        &'a self,
-        space: &'b Self::ResolvedKeyspace,
-        _opts: EngineIterOpts,
-        prefix: &'b [u8],
-    ) -> Result<Self::EnginePrefixIterator, StoreError> {
-        let it = self.delegate.prefix_iterator_cf(space, prefix);
-        Ok(RocksPrefixIterator { delegate: it })
-    }
-}
 
 pub struct RocksPrefixIterator<'p> {
     delegate: DBIteratorWithThreadMode<'p, DBWithThreadMode<SingleThreaded>>,
+}
+
+impl<'p> From<DBIteratorWithThreadMode<'p, DBWithThreadMode<SingleThreaded>>>
+    for RocksPrefixIterator<'p>
+{
+    fn from(delegate: DBIteratorWithThreadMode<'p, DBWithThreadMode<SingleThreaded>>) -> Self {
+        RocksPrefixIterator { delegate }
+    }
 }
 
 impl<'d> EnginePrefixIterator for RocksPrefixIterator<'d> {
@@ -60,6 +38,12 @@ impl<'d> EnginePrefixIterator for RocksPrefixIterator<'d> {
 
 pub struct RocksIterator<'d> {
     iter: DBRawIterator<'d>,
+}
+
+impl<'d> From<DBRawIterator<'d>> for RocksIterator<'d> {
+    fn from(iter: DBRawIterator<'d>) -> Self {
+        RocksIterator { iter }
+    }
 }
 
 pub struct RocksRawPrefixIterator<'d> {
