@@ -14,6 +14,8 @@
 
 mod client;
 mod server;
+#[cfg(test)]
+mod tests;
 
 use std::{net::SocketAddr, sync::Arc};
 

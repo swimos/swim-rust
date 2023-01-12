@@ -24,6 +24,20 @@ pub struct CertificateFile {
     pub body: Vec<u8>,
 }
 
+impl CertificateFile {
+    pub fn new(format: CertFormat, body: Vec<u8>) -> Self {
+        CertificateFile { format, body }
+    }
+
+    pub fn der(body: Vec<u8>) -> Self {
+        Self::new(CertFormat::Der, body)
+    }
+
+    pub fn pem(body: Vec<u8>) -> Self {
+        Self::new(CertFormat::Pem, body)
+    }
+}
+
 /// A chain of TLS certificates (starting with the server certificate and ending with the CA).
 pub struct CertChain(pub Vec<CertificateFile>);
 
@@ -33,10 +47,29 @@ pub struct PrivateKey {
     pub body: Vec<u8>,
 }
 
+impl PrivateKey {
+    pub fn new(format: CertFormat, body: Vec<u8>) -> Self {
+        PrivateKey { format, body }
+    }
+
+    pub fn der(body: Vec<u8>) -> Self {
+        Self::new(CertFormat::Der, body)
+    }
+
+    pub fn pem(body: Vec<u8>) -> Self {
+        Self::new(CertFormat::Pem, body)
+    }
+}
 /// Combined TLS configuration (both server and client)/
 pub struct TlsConfig {
     pub client: ClientConfig,
     pub server: ServerConfig,
+}
+
+impl TlsConfig {
+    pub fn new(client: ClientConfig, server: ServerConfig) -> Self {
+        TlsConfig { client, server }
+    }
 }
 
 /// Configuration parameters for a TLS server.
@@ -46,8 +79,36 @@ pub struct ServerConfig {
     pub enable_log_file: bool,
 }
 
+impl ServerConfig {
+    pub fn new(chain: CertChain, key: PrivateKey) -> Self {
+        ServerConfig {
+            chain,
+            key,
+            enable_log_file: false,
+        }
+    }
+}
+
 /// Configuration parameters for a TLS client.
 pub struct ClientConfig {
     pub use_webpki_roots: bool,
     pub custom_roots: Vec<CertificateFile>,
+}
+
+impl ClientConfig {
+    pub fn new(custom_roots: Vec<CertificateFile>) -> Self {
+        ClientConfig {
+            use_webpki_roots: true,
+            custom_roots,
+        }
+    }
+}
+
+impl Default for ClientConfig {
+    fn default() -> Self {
+        Self {
+            use_webpki_roots: true,
+            custom_roots: vec![],
+        }
+    }
 }

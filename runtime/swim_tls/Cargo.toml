@@ -17,4 +17,4 @@ futures = { workspace = true }
 pin-project = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
