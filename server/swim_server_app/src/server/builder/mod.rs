@@ -23,17 +23,14 @@ use ratchet::{
 };
 use swim_api::{agent::Agent, error::StoreError, store::StoreDisabled};
 use swim_runtime::{
-    error::tls::TlsError,
-    net::{
-        dns::Resolver, plain::TokioPlainTextNetworking, tls::TokioTlsNetworking,
-        ExternalConnections,
-    },
+    net::{dns::Resolver, plain::TokioPlainTextNetworking, ExternalConnections},
     ws::ext::RatchetNetworking,
 };
+use swim_tls::{RustlsNetworking, TlsConfig};
 use swim_utilities::routing::route_pattern::RoutePattern;
 
 use crate::{
-    config::{SwimServerConfig, TlsConfig},
+    config::SwimServerConfig,
     error::ServerBuilderError,
     introspection::IntrospectionConfig,
     plane::{PlaneBuilder, PlaneModel},
@@ -166,8 +163,7 @@ impl ServerBuilder {
         }
         let resolver = Arc::new(Resolver::new().await);
         if let Some(tls_conf) = tls_config {
-            //TODO Add certs.
-            let networking = init_tls(resolver, tls_conf).await?;
+            let networking = RustlsNetworking::try_from_config(resolver, tls_conf)?;
             Ok(BoxServer(with_store(
                 bind_to,
                 routes,
@@ -190,13 +186,6 @@ impl ServerBuilder {
             )?))
         }
     }
-}
-
-async fn init_tls(
-    _resolver: Arc<Resolver>,
-    _config: TlsConfig,
-) -> Result<TokioTlsNetworking, TlsError> {
-    todo!()
 }
 
 fn with_store<N>(

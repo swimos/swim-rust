@@ -18,7 +18,8 @@ use std::{
 };
 
 use swim_api::error::StoreError;
-use swim_runtime::{error::tls::TlsError, net::ConnectionError};
+use swim_runtime::net::ConnectionError;
+use swim_tls::TlsError;
 use thiserror::Error;
 
 use swim_utilities::{format::comma_sep, routing::route_pattern::RoutePattern};

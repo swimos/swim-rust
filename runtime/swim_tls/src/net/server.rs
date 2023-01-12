@@ -22,7 +22,7 @@ use futures::{
 use rustls::KeyLogFile;
 use rustls_pemfile::Item;
 use swim_runtime::net::{
-    tls::BoxListenerStream, ConnResult, IoResult, Listener, ListenerError, ListenerResult, Scheme,
+    BoxListenerStream, ConnResult, IoResult, Listener, ListenerError, ListenerResult, Scheme,
     ServerConnections,
 };
 use tokio::net::{TcpListener, TcpStream};

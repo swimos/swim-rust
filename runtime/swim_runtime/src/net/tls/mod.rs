@@ -43,9 +43,6 @@ use super::{
 pub type TlsStream = tokio_native_tls::TlsStream<TcpStream>;
 pub type TlsHandshakeResult = IoResult<(TlsStream, SocketAddr)>;
 
-pub type BoxListenerStream<Socket> =
-    BoxStream<'static, ListenerResult<(Socket, Scheme, SocketAddr)>>;
-
 /// Either a simple, unencrypted [`TcpStream`] or a [`TlsStream`]. This allows an implementation
 /// of [`ClientConnections`] and [`ServerConnections`] to expose an single socket type to support
 /// both secure and unsecure connections.

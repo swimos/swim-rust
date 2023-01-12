@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{borrow::Cow, num::NonZeroUsize, path::PathBuf, time::Duration};
+use std::{num::NonZeroUsize, time::Duration};
 
 use ratchet::WebSocketConfig;
 use swim_api::agent::AgentConfig;
-use swim_runtime::{
-    agent::AgentRuntimeConfig, downlink::DownlinkRuntimeConfig, net::tls::CertKind,
-};
+use swim_runtime::{agent::AgentRuntimeConfig, downlink::DownlinkRuntimeConfig};
 use swim_utilities::non_zero_usize;
 
 /// Configuration parameters for a Swim server.
@@ -48,47 +46,6 @@ pub struct SwimServerConfig {
     pub downlink_runtime: DownlinkRuntimeConfig,
     /// Budget for byte stream futures (causes streams with constantly available data to periodically yield).
     pub channel_coop_budget: Option<NonZeroUsize>,
-}
-
-pub enum CertBody {
-    InMemory(Vec<u8>),
-    FromFile(PathBuf),
-}
-
-impl CertBody {
-    pub async fn load_body(&self) -> Result<Cow<'_, [u8]>, std::io::Error> {
-        match self {
-            CertBody::InMemory(bytes) => Ok(Cow::Borrowed(bytes.as_ref())),
-            CertBody::FromFile(path) => Ok(Cow::Owned(tokio::fs::read(path).await?)),
-        }
-    }
-}
-
-pub enum TlsIdentity {
-    Der { body: CertBody, password: String },
-    Pem { body: CertBody, key: CertBody },
-}
-
-pub struct TlsRoot {
-    pub kind: CertKind,
-    pub body: CertBody,
-}
-
-impl TlsRoot {
-    pub fn new(kind: CertKind, body: CertBody) -> Self {
-        TlsRoot { kind, body }
-    }
-}
-
-pub struct TlsConfig {
-    pub identity: TlsIdentity,
-    pub roots: Vec<TlsRoot>,
-}
-
-impl TlsConfig {
-    pub fn new(identity: TlsIdentity, roots: Vec<TlsRoot>) -> Self {
-        TlsConfig { identity, roots }
-    }
 }
 
 /// Configuration for remote socket management.
