@@ -19,6 +19,7 @@ futures = { workspace = true }
 futures-util = { workspace = true }
 bytes = { workspace = true }
 integer-encoding = { workspace = true}
+parking_lot = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }

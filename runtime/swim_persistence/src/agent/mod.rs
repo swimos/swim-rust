@@ -14,6 +14,7 @@
 
 pub mod lane;
 pub mod mock;
+pub mod in_memory;
 
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;

@@ -351,7 +351,7 @@ pub enum AgentExecError {
         #[source]
         error: StoreInitError,
     },
-    #[error("Persisting a change to the state of a lan failed: {0}")]
+    #[error("Persisting a change to the state of a lane failed: {0}")]
     PersistenceFailure(#[from] StoreError),
 }
 
