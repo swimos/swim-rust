@@ -444,7 +444,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
 
             let (initial_state_result, agent_task_result) =
                 join(runtime_init_task.run(), agent_init_task).await;
-            let initial_state = initial_state_result?;
+            let (initial_state, _) = initial_state_result?;
             let agent_task = agent_task_result?;
 
             let runtime_task = initial_state.make_runtime_task(
@@ -467,7 +467,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         store: Store,
     ) -> impl Future<Output = Result<(), AgentExecError>> + Send + 'static
     where
-        Store: NodePersistence + Clone + Send + Sync + 'static,
+        Store: NodePersistence + Send + Sync + 'static,
     {
         let AgentRouteTask {
             agent,
@@ -489,7 +489,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             init_rx,
             runtime_config.lane_init_timeout,
             reporting,
-            StorePersistence(store.clone()),
+            StorePersistence(store),
         );
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
@@ -505,7 +505,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             let (initial_state_result, agent_task_result) =
                 join(runtime_init_task.run(), agent_init_task).await;
 
-            let initial_state = initial_state_result?;
+            let (initial_state, store_per) = initial_state_result?;
             let agent_task = agent_task_result?;
 
             let runtime_task = initial_state.make_runtime_task_with_store(
@@ -514,7 +514,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 attachment_rx,
                 runtime_config,
                 stopping,
-                StorePersistence(store),
+                store_per,
             );
 
             let (runtime_result, agent_result) = join(runtime_task.run(), agent_task).await;

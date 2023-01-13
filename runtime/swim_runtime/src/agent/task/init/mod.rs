@@ -80,7 +80,7 @@ impl AgentInitTask {
 
 impl<Store> AgentInitTask<Store>
 where
-    Store: AgentPersistence + Clone + Send + Sync,
+    Store: AgentPersistence + Send + Sync,
 {
     /// #Arguments
     /// * `requests` - Channel for requests to open new lanes and downlinks.
@@ -107,8 +107,8 @@ where
     }
 }
 
-impl<Store: AgentPersistence + Clone + Send + Sync> AgentInitTask<Store> {
-    pub async fn run(self) -> Result<InitialEndpoints, AgentExecError> {
+impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
+    pub async fn run(self) -> Result<(InitialEndpoints, Store), AgentExecError> {
         let AgentInitTask {
             requests,
             init_complete,
@@ -237,10 +237,9 @@ impl<Store: AgentPersistence + Clone + Send + Sync> AgentInitTask<Store> {
         if endpoints.is_empty() {
             Err(AgentExecError::NoInitialLanes)
         } else {
-            Ok(InitialEndpoints::new(
-                reporting,
-                request_stream.into_inner(),
-                endpoints,
+            Ok((
+                InitialEndpoints::new(reporting, request_stream.into_inner(), endpoints),
+                store,
             ))
         }
     }

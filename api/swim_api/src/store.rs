@@ -91,7 +91,7 @@ pub trait RangeConsumer {
 /// Implementors of this trait can produce a family of independent stores, keyed by name, for
 /// any agent within a single plane.
 pub trait PlanePersistence {
-    type Node: NodePersistence + Clone + Send + Sync + 'static;
+    type Node: NodePersistence + Send + Sync + 'static;
 
     ///Attempt to open or create a store for an agent at the specified URI.
     fn node_store(&self, node_uri: &str) -> Result<Self::Node, StoreError>;
@@ -126,7 +126,12 @@ impl NodePersistence for StoreDisabled {
         Ok(())
     }
 
-    fn update_map(&mut self, _id: Self::LaneId, _key: &[u8], _value: &[u8]) -> Result<(), StoreError> {
+    fn update_map(
+        &mut self,
+        _id: Self::LaneId,
+        _key: &[u8],
+        _value: &[u8],
+    ) -> Result<(), StoreError> {
         Ok(())
     }
 
