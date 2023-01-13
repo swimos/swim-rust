@@ -59,21 +59,21 @@ pub trait NodePersistence {
     ) -> Result<Option<usize>, StoreError>;
 
     /// Write a new value into the store for the specified ID.
-    fn put_value(&self, id: Self::LaneId, value: &[u8]) -> Result<(), StoreError>;
+    fn put_value(&mut self, id: Self::LaneId, value: &[u8]) -> Result<(), StoreError>;
 
     /// Remove a value in the store for the associated ID. If no value is present, this operation
     /// should still succeed.
-    fn delete_value(&self, id: Self::LaneId) -> Result<(), StoreError>;
+    fn delete_value(&mut self, id: Self::LaneId) -> Result<(), StoreError>;
 
     /// Update the value associated with a specific key in a map in the store.
-    fn update_map(&self, id: Self::LaneId, key: &[u8], value: &[u8]) -> Result<(), StoreError>;
+    fn update_map(&mut self, id: Self::LaneId, key: &[u8], value: &[u8]) -> Result<(), StoreError>;
 
     /// Remove an entry with the specified key from a map in the store. If the map exists but
     /// has no entry with the key, this should succeed.
-    fn remove_map(&self, id: Self::LaneId, key: &[u8]) -> Result<(), StoreError>;
+    fn remove_map(&mut self, id: Self::LaneId, key: &[u8]) -> Result<(), StoreError>;
 
     /// Clear all entries for a map in the store.
-    fn clear_map(&self, id: Self::LaneId) -> Result<(), StoreError>;
+    fn clear_map(&mut self, id: Self::LaneId) -> Result<(), StoreError>;
 
     /// Produce a [`RangeConsumer`] that will enumerate the entries for a map in the store.
     fn read_map(&self, id: Self::LaneId) -> Result<Self::MapCon<'_>, StoreError>;
@@ -122,23 +122,23 @@ impl NodePersistence for StoreDisabled {
         Ok(None)
     }
 
-    fn put_value(&self, _id: Self::LaneId, _value: &[u8]) -> Result<(), StoreError> {
+    fn put_value(&mut self, _id: Self::LaneId, _value: &[u8]) -> Result<(), StoreError> {
         Ok(())
     }
 
-    fn update_map(&self, _id: Self::LaneId, _key: &[u8], _value: &[u8]) -> Result<(), StoreError> {
+    fn update_map(&mut self, _id: Self::LaneId, _key: &[u8], _value: &[u8]) -> Result<(), StoreError> {
         Ok(())
     }
 
-    fn remove_map(&self, _id: Self::LaneId, _key: &[u8]) -> Result<(), StoreError> {
+    fn remove_map(&mut self, _id: Self::LaneId, _key: &[u8]) -> Result<(), StoreError> {
         Ok(())
     }
 
-    fn clear_map(&self, _id: Self::LaneId) -> Result<(), StoreError> {
+    fn clear_map(&mut self, _id: Self::LaneId) -> Result<(), StoreError> {
         Ok(())
     }
 
-    fn delete_value(&self, _id: Self::LaneId) -> Result<(), StoreError> {
+    fn delete_value(&mut self, _id: Self::LaneId) -> Result<(), StoreError> {
         Ok(())
     }
 

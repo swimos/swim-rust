@@ -204,13 +204,13 @@ where
         }
     }
 
-    fn put_value(&self, lane_id: Self::LaneId, value: &[u8]) -> Result<(), StoreError> {
+    fn put_value(&mut self, lane_id: Self::LaneId, value: &[u8]) -> Result<(), StoreError> {
         let StoreWrapper(store) = self;
         store.put(StoreKey::Value { lane_id }, value)
     }
 
     fn update_map(
-        &self,
+        &mut self,
         lane_id: Self::LaneId,
         key: &[u8],
         value: &[u8],
@@ -223,7 +223,7 @@ where
         store.put(key, value)
     }
 
-    fn remove_map(&self, lane_id: Self::LaneId, key: &[u8]) -> Result<(), StoreError> {
+    fn remove_map(&mut self, lane_id: Self::LaneId, key: &[u8]) -> Result<(), StoreError> {
         let StoreWrapper(store) = self;
         let key = StoreKey::Map {
             lane_id,
@@ -232,12 +232,12 @@ where
         store.delete(key)
     }
 
-    fn clear_map(&self, id: Self::LaneId) -> Result<(), StoreError> {
+    fn clear_map(&mut self, id: Self::LaneId) -> Result<(), StoreError> {
         let StoreWrapper(store) = self;
         store.delete_map(id)
     }
 
-    fn delete_value(&self, lane_id: Self::LaneId) -> Result<(), StoreError> {
+    fn delete_value(&mut self, lane_id: Self::LaneId) -> Result<(), StoreError> {
         let StoreWrapper(store) = self;
         store.delete(StoreKey::Value { lane_id })
     }

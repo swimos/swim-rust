@@ -1689,7 +1689,7 @@ async fn write_task<Store>(
     stop_voter: timeout_coord::Voter,
     stopping: trigger::Receiver,
     aggregate_reporter: Option<UplinkReporter>,
-    store: Store,
+    mut store: Store,
 ) -> Result<(), StoreError>
 where
     Store: AgentPersistence + Clone + Send + Sync,
@@ -1774,7 +1774,7 @@ where
                     voted = false;
                 }
                 if let Some(store_id) = store_id {
-                    persist_response(&store, store_id, &response)?;
+                    persist_response(&mut store, store_id, &response)?;
                 }
                 for write in state.handle_event(id, response) {
                     streams.schedule_write(write.into_future());
@@ -1886,7 +1886,7 @@ where
 }
 
 fn persist_response<Store>(
-    store: &Store,
+    store: &mut Store,
     store_id: Store::LaneId,
     response: &RawLaneResponse,
 ) -> Result<(), StoreError>
