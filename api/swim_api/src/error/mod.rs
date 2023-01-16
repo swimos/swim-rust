@@ -63,6 +63,8 @@ pub enum DownlinkTaskError {
     BadFrame(#[from] FrameIoError),
     #[error("Failed to deserialize frame body: {0}")]
     DeserializationFailed(#[from] ReadError),
+    #[error("{0:?}")]
+    Custom(Box<dyn Error + Send + Sync + 'static>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
