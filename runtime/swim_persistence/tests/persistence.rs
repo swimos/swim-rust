@@ -43,17 +43,17 @@ const NODE: &str = "/node";
 const VALUE_LANE: &str = "value_lane";
 const MAP_LANE: &str = "value_lane";
 
-#[test]
-fn open_node_store() {
+#[tokio::test]
+async fn open_node_store() {
     let store = create_rocks_store(PLANE_NAME).expect(STORE_FAILURE);
-    let node_store = store.node_store(NODE);
+    let node_store = store.node_store(NODE).await;
     assert!(node_store.is_ok());
 }
 
-#[test]
-fn retrieve_undefined_value() {
+#[tokio::test]
+async fn retrieve_undefined_value() {
     let store = create_rocks_store(PLANE_NAME).expect(STORE_FAILURE);
-    let node_store = store.node_store("/node").expect(NODE_FAILURE);
+    let node_store = store.node_store("/node").await.expect(NODE_FAILURE);
     let id = node_store.id_for(VALUE_LANE).expect(ID_FAILURE);
 
     let mut buffer = BytesMut::new();
@@ -62,10 +62,10 @@ fn retrieve_undefined_value() {
     assert!(buffer.is_empty());
 }
 
-#[test]
-fn put_and_retrieve_value() {
+#[tokio::test]
+async fn put_and_retrieve_value() {
     let store = create_rocks_store(PLANE_NAME).expect(STORE_FAILURE);
-    let node_store = store.node_store("/node").expect(NODE_FAILURE);
+    let mut node_store = store.node_store("/node").await.expect(NODE_FAILURE);
     let id = node_store.id_for(VALUE_LANE).expect(ID_FAILURE);
 
     let mut buffer = BytesMut::new();
@@ -76,10 +76,10 @@ fn put_and_retrieve_value() {
     assert_eq!(buffer.as_ref(), &[1, 2, 3, 4]);
 }
 
-#[test]
-fn replace_existing_value() {
+#[tokio::test]
+async fn replace_existing_value() {
     let store = create_rocks_store(PLANE_NAME).expect(STORE_FAILURE);
-    let node_store = store.node_store("/node").expect(NODE_FAILURE);
+    let mut node_store = store.node_store("/node").await.expect(NODE_FAILURE);
     let id = node_store.id_for(VALUE_LANE).expect(ID_FAILURE);
 
     let mut buffer = BytesMut::new();
@@ -92,19 +92,19 @@ fn replace_existing_value() {
     assert_eq!(buffer.as_ref(), &[5, 6, 7]);
 }
 
-#[test]
-fn delete_undefined_value() {
+#[tokio::test]
+async fn delete_undefined_value() {
     let store = create_rocks_store(PLANE_NAME).expect(STORE_FAILURE);
-    let node_store = store.node_store("/node").expect(NODE_FAILURE);
+    let mut node_store = store.node_store("/node").await.expect(NODE_FAILURE);
     let id = node_store.id_for(VALUE_LANE).expect(ID_FAILURE);
 
     assert!(node_store.delete_value(id).is_ok());
 }
 
-#[test]
-fn delete_existing_value() {
+#[tokio::test]
+async fn delete_existing_value() {
     let store = create_rocks_store(PLANE_NAME).expect(STORE_FAILURE);
-    let node_store = store.node_store("/node").expect(NODE_FAILURE);
+    let mut node_store = store.node_store("/node").await.expect(NODE_FAILURE);
     let id = node_store.id_for(VALUE_LANE).expect(ID_FAILURE);
 
     let mut buffer = BytesMut::new();
@@ -117,20 +117,20 @@ fn delete_existing_value() {
     assert!(buffer.is_empty());
 }
 
-#[test]
-fn retrieve_undefined_map() {
+#[tokio::test]
+async fn retrieve_undefined_map() {
     let store = create_rocks_store(PLANE_NAME).expect(STORE_FAILURE);
-    let node_store = store.node_store("/node").expect(NODE_FAILURE);
+    let node_store = store.node_store("/node").await.expect(NODE_FAILURE);
     let id = node_store.id_for(MAP_LANE).expect(ID_FAILURE);
 
     let mut consumer = node_store.read_map(id).expect(GET_MAP_FAILURE);
     assert!(matches!(consumer.consume_next(), Ok(None)));
 }
 
-#[test]
-fn populate_map_and_retrieve() {
+#[tokio::test]
+async fn populate_map_and_retrieve() {
     let store = create_rocks_store(PLANE_NAME).expect(STORE_FAILURE);
-    let node_store = store.node_store("/node").expect(NODE_FAILURE);
+    let mut node_store = store.node_store("/node").await.expect(NODE_FAILURE);
     let id = node_store.id_for(MAP_LANE).expect(ID_FAILURE);
 
     assert!(node_store.update_map(id, b"a", &[1, 2, 3]).is_ok());
@@ -162,10 +162,10 @@ fn populate_map_and_retrieve() {
     assert!(matches!(consumer.consume_next(), Ok(None)));
 }
 
-#[test]
-fn remove_from_map() {
+#[tokio::test]
+async fn remove_from_map() {
     let store = create_rocks_store(PLANE_NAME).expect(STORE_FAILURE);
-    let node_store = store.node_store("/node").expect(NODE_FAILURE);
+    let mut node_store = store.node_store("/node").await.expect(NODE_FAILURE);
     let id = node_store.id_for(MAP_LANE).expect(ID_FAILURE);
 
     assert!(node_store.update_map(id, b"a", &[1, 2, 3]).is_ok());
@@ -192,10 +192,10 @@ fn remove_from_map() {
     assert!(matches!(consumer.consume_next(), Ok(None)));
 }
 
-#[test]
-fn clear_map() {
+#[tokio::test]
+async fn clear_map() {
     let store = create_rocks_store(PLANE_NAME).expect(STORE_FAILURE);
-    let node_store = store.node_store("/node").expect(NODE_FAILURE);
+    let mut node_store = store.node_store("/node").await.expect(NODE_FAILURE);
     let id = node_store.id_for(MAP_LANE).expect(ID_FAILURE);
 
     assert!(node_store.update_map(id, b"a", &[1, 2, 3]).is_ok());
@@ -211,10 +211,10 @@ fn clear_map() {
 const MAP_LANE1: &str = "map_lane1";
 const MAP_LANE2: &str = "map_lane2";
 
-#[test]
-fn populate_two_maps_and_retrieve() {
+#[tokio::test]
+async fn populate_two_maps_and_retrieve() {
     let store = create_rocks_store(PLANE_NAME).expect(STORE_FAILURE);
-    let node_store = store.node_store("/node").expect(NODE_FAILURE);
+    let mut node_store = store.node_store("/node").await.expect(NODE_FAILURE);
     let id1 = node_store.id_for(MAP_LANE1).expect(ID_FAILURE);
     let id2 = node_store.id_for(MAP_LANE2).expect(ID_FAILURE);
 
@@ -249,10 +249,10 @@ fn populate_two_maps_and_retrieve() {
     assert!(matches!(consumer2.consume_next(), Ok(None)));
 }
 
-#[test]
-fn populate_two_maps_and_clear() {
+#[tokio::test]
+async fn populate_two_maps_and_clear() {
     let store = create_rocks_store(PLANE_NAME).expect(STORE_FAILURE);
-    let node_store = store.node_store("/node").expect(NODE_FAILURE);
+    let mut node_store = store.node_store("/node").await.expect(NODE_FAILURE);
     let id1 = node_store.id_for(MAP_LANE1).expect(ID_FAILURE);
     let id2 = node_store.id_for(MAP_LANE2).expect(ID_FAILURE);
 
