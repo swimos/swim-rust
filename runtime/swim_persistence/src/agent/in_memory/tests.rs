@@ -309,8 +309,6 @@ async fn persist_across_restart() {
         .update_map(map_id, KEY3, VALUE3)
         .expect(SHOULD_NOT_FAIL);
 
-    drop(value_id);
-    drop(map_id);
     drop(store);
 
     let restored = make_store(&plane).await;
