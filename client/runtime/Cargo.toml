@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+fixture = { path = "../fixture" }
 swim_downlink = { path = "../../swim_downlink" }
 swim_api = { path = "../../api/swim_api" }
 swim_model = { path = "../../api/swim_model" }
