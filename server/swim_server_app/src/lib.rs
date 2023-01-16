@@ -30,5 +30,5 @@ pub mod introspection {
 
 pub use ratchet::deflate::DeflateConfig;
 
-#[cfg(feature = "persistence")]
+#[cfg(feature = "rocks_store")]
 pub use swim_persistence::rocks::RocksOpts;

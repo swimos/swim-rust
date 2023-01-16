@@ -18,21 +18,27 @@ use std::{
 };
 
 use bytes::{BufMut, BytesMut};
+use futures::{
+    future::{ready, BoxFuture},
+    FutureExt,
+};
 use parking_lot::Mutex;
 use swim_api::store::{NodePersistence, PlanePersistence};
 use swim_store::{KeyValue, RangeConsumer, StoreError};
+use tokio::sync::oneshot;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct InMemoryPlanePersistence(Arc<Mutex<PlaneState>>);
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct PlaneState {
     nodes: HashMap<String, NodeEntry>,
 }
 
+#[derive(Debug)]
 enum NodeEntry {
     Idle(NodeState),
-    InUse,
+    InUse(Option<oneshot::Sender<NodeState>>),
 }
 
 pub struct InMemoryNodePersistence {
@@ -50,29 +56,46 @@ impl InMemoryNodePersistence {
 impl PlanePersistence for InMemoryPlanePersistence {
     type Node = InMemoryNodePersistence;
 
-    fn node_store(&self, node_uri: &str) -> Result<Self::Node, StoreError> {
+    fn node_store(&self, node_uri: &str) -> BoxFuture<'static, Result<Self::Node, StoreError>> {
         let InMemoryPlanePersistence(inner) = self;
         let mut guard = inner.lock();
         let map = &mut guard.nodes;
 
         match map.remove_entry(node_uri) {
             Some((key, NodeEntry::Idle(node_state))) => {
-                map.insert(key, NodeEntry::InUse);
-                Ok(InMemoryNodePersistence::new(
+                map.insert(key, NodeEntry::InUse(None));
+                ready(Ok(InMemoryNodePersistence::new(
                     node_uri.to_string(),
                     inner.clone(),
                     node_state,
-                ))
+                )))
+                .boxed()
             }
-            Some((_, NodeEntry::InUse)) => todo!(),
+            Some((key, NodeEntry::InUse(_))) => {
+                let (tx, rx) = oneshot::channel();
+                map.insert(key, NodeEntry::InUse(Some(tx)));
+                let plane_ref = inner.clone();
+                let name = node_uri.to_string();
+                async move {
+                    if let Ok(node_state) = rx.await {
+                        Ok(InMemoryNodePersistence::new(name, plane_ref, node_state))
+                    } else {
+                        Err(StoreError::InitialisationFailure(
+                            "Multiple copies of agent instance starting.".to_string(),
+                        ))
+                    }
+                }
+                .boxed()
+            }
             _ => {
                 let node_state = NodeState::default();
-                map.insert(node_uri.to_string(), NodeEntry::InUse);
-                Ok(InMemoryNodePersistence::new(
+                map.insert(node_uri.to_string(), NodeEntry::InUse(None));
+                ready(Ok(InMemoryNodePersistence::new(
                     node_uri.to_string(),
                     inner.clone(),
                     node_state,
-                ))
+                )))
+                .boxed()
             }
         }
     }
@@ -91,7 +114,7 @@ impl<'a> RangeConsumer for InMemRangeConsumer<'a> {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct Ids {
     id_map: HashMap<String, u64>,
     counter: u64,
@@ -111,7 +134,7 @@ impl Ids {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct NodeState {
     ids: Mutex<Ids>,
     values: HashMap<u64, Vec<u8>>,
@@ -231,8 +254,15 @@ impl Drop for InMemoryNodePersistence {
         let InMemoryNodePersistence { uri, plane, state } = self;
         let state = std::mem::take(state);
         let mut guard = plane.lock();
-        guard
-            .nodes
-            .insert(std::mem::take(uri), NodeEntry::Idle(state));
+        let map = &mut guard.nodes;
+        if let Some(NodeEntry::InUse(Some(tx))) = map.remove(uri) {
+            if let Err(state) = tx.send(state) {
+                map.insert(std::mem::take(uri), NodeEntry::Idle(state));
+            } else {
+                map.insert(std::mem::take(uri), NodeEntry::InUse(None));
+            }
+        } else {
+            map.insert(std::mem::take(uri), NodeEntry::Idle(state));
+        }
     }
 }

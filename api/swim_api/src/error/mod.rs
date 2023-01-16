@@ -217,7 +217,7 @@ pub enum StoreError {
     /// A key returned by the store did not have the correct format.
     #[error("The store returned an invalid key")]
     InvalidKey,
-    /// The delegate byte engine failed to initialised.
+    /// The delegate byte engine failed to initialise.
     #[error("The delegate store engine failed to initialise: {0}")]
     InitialisationFailure(String),
     /// An IO error produced by the delegate byte engine.
@@ -232,7 +232,7 @@ pub enum StoreError {
     /// A raw error produced by the delegate byte engine.
     #[error("Delegate store error: {0}")]
     Delegate(Box<dyn std::error::Error + Send + Sync>),
-    /// A raw error produced by the delegate byte engine that isnt send or sync
+    /// A raw error produced by the delegate byte engine that isn't send or sync
     #[error("Delegate store error: {0}")]
     DelegateMessage(String),
     /// An operation was attempted on the byte engine when it was closing.

@@ -16,6 +16,10 @@ use crate::error::StoreError;
 use std::fmt::{Display, Formatter};
 
 use bytes::BytesMut;
+use futures::{
+    future::{ready, BoxFuture},
+    FutureExt,
+};
 
 /// Kinds of stores that can be persisted in the state of an agent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,13 +92,13 @@ pub trait RangeConsumer {
     fn consume_next(&mut self) -> Result<Option<KeyValue<'_>>, StoreError>;
 }
 
-/// Implementors of this trait can produce a family of independent stores, keyed by name, for
+/// Implementers of this trait can produce a family of independent stores, keyed by name, for
 /// any agent within a single plane.
 pub trait PlanePersistence {
     type Node: NodePersistence + Send + Sync + 'static;
 
     ///Attempt to open or create a store for an agent at the specified URI.
-    fn node_store(&self, node_uri: &str) -> Result<Self::Node, StoreError>;
+    fn node_store(&self, node_uri: &str) -> BoxFuture<'static, Result<Self::Node, StoreError>>;
 }
 
 /// A dummy store implementation for when no peristence is required.
@@ -159,7 +163,7 @@ impl NodePersistence for StoreDisabled {
 impl PlanePersistence for StoreDisabled {
     type Node = StoreDisabled;
 
-    fn node_store(&self, _node_uri: &str) -> Result<Self::Node, StoreError> {
-        Ok(StoreDisabled)
+    fn node_store(&self, _node_uri: &str) -> BoxFuture<'static, Result<Self::Node, StoreError>> {
+        ready(Ok(StoreDisabled)).boxed()
     }
 }

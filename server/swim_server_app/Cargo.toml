@@ -6,7 +6,7 @@ edition = "2021"
 
 [features]
 default = []
-persistence = ["swim_persistence", "swim_persistence/rocks", "rocksdb"]
+rocks_store = ["swim_persistence/rocks", "rocksdb"]
 
 [dependencies]
 futures = { workspace = true }
@@ -28,12 +28,12 @@ uuid = { workspace = true }
 thiserror = { workspace = true }
 rand = { workspace = true }
 url = { workspace = true }
-swim_persistence = { path = "../../runtime/swim_persistence", optional = true }
+swim_persistence = { path = "../../runtime/swim_persistence" }
+parking_lot = { workspace = true }
 rocksdb = { workspace = true, optional = true }
 
 [dev-dependencies]
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
 tokio = { workspace = true, features = ["rt", "macros", "test-util"]}
 swim_form = {path = "../../api/swim_form" }
-parking_lot = { workspace = true }
 swim_messages = { path = "../../runtime/swim_messages" }

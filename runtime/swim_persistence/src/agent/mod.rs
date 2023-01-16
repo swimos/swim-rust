@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod in_memory;
 pub mod lane;
 pub mod mock;
-pub mod in_memory;
 
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use bytes::BytesMut;
+use futures::future::{ready, BoxFuture};
+use futures::FutureExt;
 use swim_api::store::{NodePersistence, PlanePersistence};
 use swim_model::Text;
 
@@ -173,9 +175,9 @@ where
 {
     type Node = StoreWrapper<S::NodeStore>;
 
-    fn node_store(&self, node_uri: &str) -> Result<Self::Node, StoreError> {
+    fn node_store(&self, node_uri: &str) -> BoxFuture<'static, Result<Self::Node, StoreError>> {
         let StoreWrapper(inner) = self;
-        Ok(StoreWrapper(inner.node_store(node_uri)))
+        ready(Ok(StoreWrapper(inner.node_store(node_uri)))).boxed()
     }
 }
 

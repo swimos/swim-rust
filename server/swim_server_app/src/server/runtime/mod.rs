@@ -495,10 +495,10 @@ where
                     provider,
                 }) => {
                     info!(source = %source, node = %node, "Attempting to connect an agent to a remote.");
-                    let node_store = plane_store.node_store(node.as_str())?;
+                    let node_store_fut = plane_store.node_store(node.as_str());
                     let agent_tasks_ref = &agent_tasks;
                     let result = agents.resolve_agent(node, move |name, route_task| {
-                        let task = route_task.run_agent_with_store(node_store);
+                        let task = route_task.run_agent_with_store(node_store_fut);
                         agent_tasks_ref.push(attach_node(name, config.channel_coop_budget, task));
                     });
                     match result {
@@ -585,9 +585,9 @@ where
                 }) => {
                     let RelativeAddress { node, .. } = path;
                     info!(source = %downlink_id, node = %node, "Attempting to connect a downlink to an agent.");
-                    let node_store = plane_store.node_store(node.as_str())?;
+                    let node_store_fut = plane_store.node_store(node.as_str());
                     let result = agents.resolve_agent(node, |name, route_task| {
-                        let task = route_task.run_agent_with_store(node_store);
+                        let task = route_task.run_agent_with_store(node_store_fut);
                         agent_tasks.push(attach_node(name, config.channel_coop_budget, task));
                     });
                     match result {

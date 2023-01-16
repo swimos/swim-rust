@@ -462,12 +462,13 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         }
     }
 
-    pub fn run_agent_with_store<Store>(
+    pub fn run_agent_with_store<Store, Fut>(
         self,
-        store: Store,
+        store_fut: Fut,
     ) -> impl Future<Output = Result<(), AgentExecError>> + Send + 'static
     where
         Store: NodePersistence + Send + Sync + 'static,
+        Fut: Future<Output = Result<Store, StoreError>> + Send + 'static,
     {
         let AgentRouteTask {
             agent,
@@ -483,19 +484,22 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let node_uri = route.to_string().into();
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
         let (init_tx, init_rx) = trigger::trigger();
-        let runtime_init_task = AgentInitTask::with_store(
-            runtime_rx,
-            downlink_tx,
-            init_rx,
-            runtime_config.lane_init_timeout,
-            reporting,
-            StorePersistence(store),
-        );
+
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
         let agent_init = agent.run(route, agent_config, context);
 
         async move {
+            let store = store_fut.await?;
+            let runtime_init_task = AgentInitTask::with_store(
+                runtime_rx,
+                downlink_tx,
+                init_rx,
+                runtime_config.lane_init_timeout,
+                reporting,
+                StorePersistence(store),
+            );
+
             let agent_init_task = async move {
                 let agent_task_result = agent_init.await;
                 drop(init_tx);
