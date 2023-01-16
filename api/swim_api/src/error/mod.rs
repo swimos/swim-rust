@@ -217,6 +217,8 @@ pub enum StoreError {
     /// A key returned by the store did not have the correct format.
     #[error("The store returned an invalid key")]
     InvalidKey,
+    #[error("An invalid operation was attempted (e.g. Updating a map entry on a value entry)")]
+    InvalidOperation,
     /// The delegate byte engine failed to initialise.
     #[error("The delegate store engine failed to initialise: {0}")]
     InitialisationFailure(String),

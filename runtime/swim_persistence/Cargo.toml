@@ -10,7 +10,7 @@ rocks = ["rocksdb", "swim_store/rocks"]
 [dependencies]
 swim_store = { path = "../../swim_store" }
 rocksdb = { workspace = true, optional = true }
-swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger"] }
+swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger", "future"] }
 swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
 swim_api = { path = "../../api/swim_api" }
@@ -22,4 +22,4 @@ integer-encoding = { workspace = true}
 parking_lot = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util", "time"] }

@@ -27,6 +27,9 @@ use swim_api::store::{NodePersistence, PlanePersistence};
 use swim_store::{KeyValue, RangeConsumer, StoreError};
 use tokio::sync::oneshot;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone, Default, Debug)]
 pub struct InMemoryPlanePersistence(Arc<Mutex<PlaneState>>);
 
@@ -157,19 +160,24 @@ impl NodePersistence for InMemoryNodePersistence {
         buffer: &mut BytesMut,
     ) -> Result<Option<usize>, StoreError> {
         let InMemoryNodePersistence {
-            state: NodeState { values, .. },
+            state: NodeState { values, maps, .. },
             ..
         } = self;
-        Ok(values.get(&id).map(|bytes| {
+
+        if let Some(bytes) = values.get(&id) {
             let len = bytes.len();
             buffer.put(bytes.as_ref());
-            len
-        }))
+            Ok(Some(len))
+        } else if maps.contains_key(&id) {
+            Err(StoreError::InvalidOperation)
+        } else {
+            Ok(None)
+        }
     }
 
     fn put_value(&mut self, id: Self::LaneId, value: &[u8]) -> Result<(), StoreError> {
         let InMemoryNodePersistence {
-            state: NodeState { values, .. },
+            state: NodeState { values, maps, .. },
             ..
         } = self;
         match values.entry(id) {
@@ -179,7 +187,11 @@ impl NodePersistence for InMemoryNodePersistence {
                 bytes.extend_from_slice(value);
             }
             Entry::Vacant(entry) => {
-                entry.insert(value.to_vec());
+                if maps.contains_key(&id) {
+                    return Err(StoreError::InvalidOperation);
+                } else {
+                    entry.insert(value.to_vec());
+                }
             }
         }
         Ok(())
@@ -187,16 +199,19 @@ impl NodePersistence for InMemoryNodePersistence {
 
     fn delete_value(&mut self, id: Self::LaneId) -> Result<(), StoreError> {
         let InMemoryNodePersistence {
-            state: NodeState { values, .. },
+            state: NodeState { values, maps, .. },
             ..
         } = self;
-        values.remove(&id);
-        Ok(())
+        if values.remove(&id).is_none() && maps.contains_key(&id) {
+            Err(StoreError::InvalidOperation)
+        } else {
+            Ok(())
+        }
     }
 
     fn update_map(&mut self, id: Self::LaneId, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
         let InMemoryNodePersistence {
-            state: NodeState { maps, .. },
+            state: NodeState { maps, values, .. },
             ..
         } = self;
         match maps.entry(id) {
@@ -210,7 +225,11 @@ impl NodePersistence for InMemoryNodePersistence {
                 }
             }
             Entry::Vacant(entry) => {
-                entry.insert([(key.to_vec(), value.to_vec())].into_iter().collect());
+                if values.contains_key(&id) {
+                    return Err(StoreError::InvalidOperation);
+                } else {
+                    entry.insert([(key.to_vec(), value.to_vec())].into_iter().collect());
+                }
             }
         }
         Ok(())
@@ -218,31 +237,38 @@ impl NodePersistence for InMemoryNodePersistence {
 
     fn remove_map(&mut self, id: Self::LaneId, key: &[u8]) -> Result<(), StoreError> {
         let InMemoryNodePersistence {
-            state: NodeState { maps, .. },
+            state: NodeState { maps, values, .. },
             ..
         } = self;
         if let Some(map) = maps.get_mut(&id) {
             map.remove(key);
+        } else if values.contains_key(&id) {
+            return Err(StoreError::InvalidOperation);
         }
         Ok(())
     }
 
     fn clear_map(&mut self, id: Self::LaneId) -> Result<(), StoreError> {
         let InMemoryNodePersistence {
-            state: NodeState { maps, .. },
+            state: NodeState { maps, values, .. },
             ..
         } = self;
-        maps.remove(&id);
-        Ok(())
+        if maps.remove(&id).is_none() && values.contains_key(&id) {
+            Err(StoreError::InvalidOperation)
+        } else {
+            Ok(())
+        }
     }
 
     fn read_map(&self, id: Self::LaneId) -> Result<Self::MapCon<'_>, StoreError> {
         let InMemoryNodePersistence {
-            state: NodeState { maps, .. },
+            state: NodeState { maps, values, .. },
             ..
         } = self;
         if let Some(map) = maps.get(&id) {
             Ok(InMemRangeConsumer(Some(map.iter())))
+        } else if values.contains_key(&id) {
+            Err(StoreError::InvalidOperation)
         } else {
             Ok(InMemRangeConsumer(None))
         }
