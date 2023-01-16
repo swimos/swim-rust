@@ -33,6 +33,7 @@ mod tests;
 #[derive(Clone, Default, Debug)]
 pub struct InMemoryPlanePersistence(Arc<Mutex<PlaneState>>);
 
+/// Holds the state for all agents in a plane in memory (allowing it to persist across restarts of the agents).
 #[derive(Default, Debug)]
 struct PlaneState {
     nodes: HashMap<String, NodeEntry>,
@@ -40,13 +41,18 @@ struct PlaneState {
 
 #[derive(Debug)]
 enum NodeEntry {
+    /// The agent is not active.
     Idle(NodeState),
+    /// An running agent instance holds the state. It is possible to register an interest in waiting for
+    /// the state to become available (this is to support the case where a new instance of the agent starts
+    /// before a terminated instance has been destroyed and returned the state).
     InUse(Option<oneshot::Sender<NodeState>>),
 }
 
+/// State store for a running agent instance.
 pub struct InMemoryNodePersistence {
-    uri: String,
-    plane: Arc<Mutex<PlaneState>>,
+    uri: String,                   //The agent URI.
+    plane: Arc<Mutex<PlaneState>>, //Reference to the plane that owns the agent to return the state on destruction.
     state: NodeState,
 }
 
