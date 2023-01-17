@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
+use std::{borrow::Borrow, marker::PhantomData};
 
-use swim_api::handlers::{FnHandler, NoHandler};
+use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::agent_lifecycle::utility::HandlerContext;
 
@@ -27,7 +27,7 @@ use super::{
     on_linked::{OnLinked, OnLinkedShared},
     on_synced::{OnSynced, OnSyncedShared},
     on_unlinked::{OnUnlinked, OnUnlinkedShared},
-    LiftShared, WithHandlerContext,
+    LiftShared, WithHandlerContext, WithHandlerContextBorrow,
 };
 
 pub mod on_event;
@@ -286,7 +286,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     }
 
     /// Replace the 'on_synced' handler with another derived from a closure.
-    pub fn on_synced<F>(
+    pub fn on_synced<F, B>(
         self,
         f: F,
     ) -> StatefulValueDownlinkLifecycle<
@@ -294,20 +294,22 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         State,
         T,
         FLinked,
-        FnHandler<F>,
+        BorrowHandler<F, B>,
         FUnlinked,
         FEv,
         FSet,
     >
     where
-        FnHandler<F>: OnSyncedShared<T, Context, State>,
+        B: ?Sized,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnSyncedShared<T, Context, State>,
     {
         StatefulValueDownlinkLifecycle {
             _type: PhantomData,
             state: self.state,
             handler_context: self.handler_context,
             on_linked: self.on_linked,
-            on_synced: FnHandler(f),
+            on_synced: BorrowHandler::new(f),
             on_unlinked: self.on_unlinked,
             on_event: self.on_event,
             on_set: self.on_set,
@@ -335,7 +337,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     }
 
     /// Replace the 'on_event' handler with another derived from a closure.
-    pub fn on_event<F>(
+    pub fn on_event<F, B>(
         self,
         f: F,
     ) -> StatefulValueDownlinkLifecycle<
@@ -345,11 +347,13 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         FSynced,
         FUnlinked,
-        FnHandler<F>,
+        BorrowHandler<F, B>,
         FSet,
     >
     where
-        FnHandler<F>: OnDownlinkEventShared<T, Context, State>,
+        B: ?Sized,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnDownlinkEventShared<T, Context, State>,
     {
         StatefulValueDownlinkLifecycle {
             _type: PhantomData,
@@ -358,13 +362,13 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
-            on_event: FnHandler(f),
+            on_event: BorrowHandler::new(f),
             on_set: self.on_set,
         }
     }
 
     /// Replace the 'on_set' handler with another derived from a closure.
-    pub fn on_set<F>(
+    pub fn on_set<F, B>(
         self,
         f: F,
     ) -> StatefulValueDownlinkLifecycle<
@@ -375,10 +379,12 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FSynced,
         FUnlinked,
         FEv,
-        FnHandler<F>,
+        BorrowHandler<F, B>,
     >
     where
-        FnHandler<F>: OnDownlinkSetShared<T, Context, State>,
+        B: ?Sized,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnDownlinkSetShared<T, Context, State>,
     {
         StatefulValueDownlinkLifecycle {
             _type: PhantomData,
@@ -388,7 +394,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
             on_event: self.on_event,
-            on_set: FnHandler(f),
+            on_set: BorrowHandler::new(f),
         }
     }
 }
@@ -593,25 +599,27 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     }
 
     /// Replace the 'on_synced' handler with another derived from a closure.
-    pub fn on_synced<F>(
+    pub fn on_synced<F, B>(
         self,
         f: F,
     ) -> StatelessValueDownlinkLifecycle<
         Context,
         T,
         FLinked,
-        WithHandlerContext<Context, F>,
+        WithHandlerContextBorrow<Context, F, B>,
         FUnlinked,
         FEv,
         FSet,
     >
     where
-        WithHandlerContext<Context, F>: OnSynced<T, Context>,
+        B: ?Sized,
+        T: Borrow<B>,
+        WithHandlerContextBorrow<Context, F, B>: OnSynced<T, Context>,
     {
         StatelessValueDownlinkLifecycle {
             _type: PhantomData,
             on_linked: self.on_linked,
-            on_synced: WithHandlerContext::new(f),
+            on_synced: WithHandlerContextBorrow::new(f),
             on_unlinked: self.on_unlinked,
             on_event: self.on_event,
             on_set: self.on_set,
@@ -645,7 +653,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     }
 
     /// Replace the 'on_event' handler with another derived from a closure.
-    pub fn on_event<F>(
+    pub fn on_event<F, B>(
         self,
         f: F,
     ) -> StatelessValueDownlinkLifecycle<
@@ -654,24 +662,26 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         FSynced,
         FUnlinked,
-        WithHandlerContext<Context, F>,
+        WithHandlerContextBorrow<Context, F, B>,
         FSet,
     >
     where
-        WithHandlerContext<Context, F>: OnDownlinkEvent<T, Context>,
+        B: ?Sized,
+        T: Borrow<B>,
+        WithHandlerContextBorrow<Context, F, B>: OnDownlinkEvent<T, Context>,
     {
         StatelessValueDownlinkLifecycle {
             _type: PhantomData,
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
-            on_event: WithHandlerContext::new(f),
+            on_event: WithHandlerContextBorrow::new(f),
             on_set: self.on_set,
         }
     }
 
     /// Replace the 'on_set' handler with another derived from a closure.
-    pub fn on_set<F>(
+    pub fn on_set<F, B>(
         self,
         f: F,
     ) -> StatelessValueDownlinkLifecycle<
@@ -681,10 +691,12 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FSynced,
         FUnlinked,
         FEv,
-        WithHandlerContext<Context, F>,
+        WithHandlerContextBorrow<Context, F, B>,
     >
     where
-        WithHandlerContext<Context, F>: OnDownlinkSet<T, Context>,
+        B: ?Sized,
+        T: Borrow<B>,
+        WithHandlerContextBorrow<Context, F, B>: OnDownlinkSet<T, Context>,
     {
         StatelessValueDownlinkLifecycle {
             _type: PhantomData,
@@ -692,7 +704,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
             on_event: self.on_event,
-            on_set: WithHandlerContext::new(f),
+            on_set: WithHandlerContextBorrow::new(f),
         }
     }
 

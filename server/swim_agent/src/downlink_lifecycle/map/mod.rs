@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, marker::PhantomData};
+use std::{borrow::Borrow, collections::HashMap, marker::PhantomData};
 
-use swim_api::handlers::{FnHandler, NoHandler};
+use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::agent_lifecycle::utility::HandlerContext;
 
@@ -28,7 +28,7 @@ use super::{
     on_linked::{OnLinked, OnLinkedShared},
     on_synced::{OnSynced, OnSyncedShared},
     on_unlinked::{OnUnlinked, OnUnlinkedShared},
-    LiftShared, WithHandlerContext,
+    LiftShared, WithHandlerContext, WithHandlerContextBorrow,
 };
 
 pub mod on_clear;
@@ -368,6 +368,33 @@ pub type LiftedMapLifecycle<Context, State, K, V, FLinked, FSynced, FUnlinked, F
         LiftShared<FClr, State>,
     >;
 
+type StatelessWithContextAndBorrow<Context, K, V, Linked, Synced, Unlinked, Rem, Clr, F, B> =
+    StatelessMapDownlinkLifecycle<
+        Context,
+        K,
+        V,
+        Linked,
+        Synced,
+        Unlinked,
+        WithHandlerContextBorrow<Context, F, B>,
+        Rem,
+        Clr,
+    >;
+
+type StatefulWithBorrow<Context, State, K, V, Linked, Synced, Unlinked, Rem, Clr, F, B> =
+    StatefulMapDownlinkLifecycle<
+        Context,
+        State,
+        K,
+        V,
+        Linked,
+        Synced,
+        Unlinked,
+        BorrowHandler<F, B>,
+        Rem,
+        Clr,
+    >;
+
 impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
 {
@@ -459,29 +486,21 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     }
 
     /// Replace the 'on_update' handler with another derived from a closure.
-    pub fn on_update<F>(
+    pub fn on_update<F, B>(
         self,
         f: F,
-    ) -> StatelessMapDownlinkLifecycle<
-        Context,
-        K,
-        V,
-        FLinked,
-        FSynced,
-        FUnlinked,
-        WithHandlerContext<Context, F>,
-        FRem,
-        FClr,
-    >
+    ) -> StatelessWithContextAndBorrow<Context, K, V, FLinked, FSynced, FUnlinked, FRem, FClr, F, B>
     where
-        WithHandlerContext<Context, F>: OnDownlinkUpdate<K, V, Context>,
+        B: ?Sized,
+        V: Borrow<B>,
+        WithHandlerContextBorrow<Context, F, B>: OnDownlinkUpdate<K, V, Context>,
     {
         StatelessMapDownlinkLifecycle {
             _type: PhantomData,
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
-            on_update: WithHandlerContext::new(f),
+            on_update: WithHandlerContextBorrow::new(f),
             on_remove: self.on_remove,
             on_clear: self.on_clear,
         }
@@ -922,23 +941,14 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     }
 
     /// Replace the 'on_update' handler with another derived from a closure.
-    pub fn on_update<F>(
+    pub fn on_update<F, B>(
         self,
         f: F,
-    ) -> StatefulMapDownlinkLifecycle<
-        Context,
-        State,
-        K,
-        V,
-        FLinked,
-        FSynced,
-        FUnlinked,
-        FnHandler<F>,
-        FRem,
-        FClr,
-    >
+    ) -> StatefulWithBorrow<Context, State, K, V, FLinked, FSynced, FUnlinked, FRem, FClr, F, B>
     where
-        FnHandler<F>: OnDownlinkUpdateShared<K, V, Context, State>,
+        B: ?Sized,
+        V: Borrow<B>,
+        BorrowHandler<F, B>: OnDownlinkUpdateShared<K, V, Context, State>,
     {
         StatefulMapDownlinkLifecycle {
             _type: PhantomData,
@@ -947,7 +957,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
-            on_update: FnHandler(f),
+            on_update: BorrowHandler::new(f),
             on_remove: self.on_remove,
             on_clear: self.on_clear,
         }

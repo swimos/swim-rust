@@ -33,7 +33,7 @@ where
     }
 }
 
-pub trait EventFn<'a, T> {
+pub trait EventFn<'a, T: ?Sized> {
     type Fut: Future<Output = ()> + Send + 'a;
 
     fn apply(&'a mut self, value: &'a T) -> Self::Fut;
@@ -41,7 +41,7 @@ pub trait EventFn<'a, T> {
 
 impl<'a, T, F, Fut> EventFn<'a, T> for F
 where
-    T: 'static,
+    T: ?Sized + 'static,
     F: FnMut(&'a T) -> Fut,
     Fut: Future<Output = ()> + Send + 'a,
 {
@@ -52,7 +52,7 @@ where
     }
 }
 
-pub trait SharedEventFn<'a, Shared, T> {
+pub trait SharedEventFn<'a, Shared, T: ?Sized> {
     type Fut: Future<Output = ()> + Send + 'a;
 
     fn apply(&'a mut self, shared: &'a mut Shared, value: &'a T) -> Self::Fut;
@@ -60,7 +60,7 @@ pub trait SharedEventFn<'a, Shared, T> {
 
 impl<'a, Shared, T, F, Fut> SharedEventFn<'a, Shared, T> for F
 where
-    T: 'static,
+    T: ?Sized + 'static,
     Shared: 'a,
     F: FnMut(&'a mut Shared, &'a T) -> Fut,
     Fut: Future<Output = ()> + Send + 'a,
@@ -72,7 +72,7 @@ where
     }
 }
 
-pub trait SetFn<'a, T> {
+pub trait SetFn<'a, T: ?Sized> {
     type Fut: Future<Output = ()> + Send + 'a;
 
     fn apply(&'a mut self, previous: Option<&'a T>, value: &'a T) -> Self::Fut;
@@ -80,7 +80,7 @@ pub trait SetFn<'a, T> {
 
 impl<'a, T, F, Fut> SetFn<'a, T> for F
 where
-    T: 'static,
+    T: ?Sized + 'static,
     F: FnMut(Option<&'a T>, &'a T) -> Fut,
     Fut: Future<Output = ()> + Send + 'a,
 {
@@ -91,7 +91,7 @@ where
     }
 }
 
-pub trait SharedSetFn<'a, Shared, T> {
+pub trait SharedSetFn<'a, Shared, T: ?Sized> {
     type Fut: Future<Output = ()> + Send + 'a;
 
     fn apply(&'a mut self, shared: &'a Shared, previous: Option<&'a T>, value: &'a T) -> Self::Fut;
@@ -99,7 +99,7 @@ pub trait SharedSetFn<'a, Shared, T> {
 
 impl<'a, Shared, T, F, Fut> SharedSetFn<'a, Shared, T> for F
 where
-    T: 'a,
+    T: ?Sized + 'a,
     Shared: 'a,
     F: FnMut(&'a Shared, Option<&'a T>, &'a T) -> Fut,
     Fut: Future<Output = ()> + Send + 'a,

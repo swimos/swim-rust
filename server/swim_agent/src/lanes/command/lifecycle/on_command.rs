@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_api::handlers::{FnHandler, NoHandler};
+use std::borrow::Borrow;
+
+use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
@@ -108,5 +110,42 @@ where
     ) -> Self::OnCommandHandler<'a> {
         let FnHandler(f) = self;
         f.make_handler(shared, handler_context, value)
+    }
+}
+
+impl<B, T, Context, F, H> OnCommand<T, Context> for BorrowHandler<F, B>
+where
+    B: ?Sized,
+    T: Borrow<B>,
+    F: Fn(&B) -> H + Send,
+    H: EventHandler<Context> + 'static,
+{
+    type OnCommandHandler<'a> = H
+    where
+        Self: 'a;
+
+    fn on_command<'a>(&'a self, value: &T) -> Self::OnCommandHandler<'a> {
+        (self.as_ref())(value.borrow())
+    }
+}
+
+impl<B, T, Context, Shared, F> OnCommandShared<T, Context, Shared> for BorrowHandler<F, B>
+where
+    B: ?Sized,
+    T: Borrow<B>,
+    F: for<'a> EventFn<'a, Context, Shared, B> + Send,
+{
+    type OnCommandHandler<'a> = <F as EventFn<'a, Context, Shared, B>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_command<'a>(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: &T,
+    ) -> Self::OnCommandHandler<'a> {
+        (self.as_ref()).make_handler(shared, handler_context, value.borrow())
     }
 }
