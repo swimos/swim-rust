@@ -28,6 +28,9 @@ use crate::{
 
 use super::Store;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug)]
 pub struct ValueStore<T> {
     id: u64,

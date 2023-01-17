@@ -36,7 +36,7 @@ pub struct StoreInitialized;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreResponse<T> {
-    message: T,
+    pub message: T,
 }
 
 impl<T> StoreResponse<T> {
