@@ -21,27 +21,24 @@ use futures::{
     stream::{unfold, BoxStream},
     FutureExt, SinkExt, Stream, StreamExt,
 };
+use swim_api::protocol::agent::{StoreInitMessageDecoder, StoreInitMessage, StoreInitializedCodec, StoreInitialized};
 use swim_api::{
     agent::UplinkKind,
-    error::{FrameIoError, InvalidFrame},
+    error::{FrameIoError},
     protocol::{
-        agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
         map::MapMessage,
-        WithLengthBytesCodec,
     },
 };
 use swim_form::structural::read::{recognizer::RecognizerReadable, ReadError};
-use swim_model::Text;
 use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
 
 use crate::lanes::{MapLane, ValueLane};
+use crate::stores::value::ValueStore;
 
 #[cfg(test)]
 mod tests;
-
-const UNEXPECTED_SYNC: &str = "Sync messages are not permitted during initialization.";
 
 /// A stream that will consume command messages from the channel for a lane until an `InitComplete`
 /// message is received. It is invalid to receive a `Sync` message while the lane is initializing
@@ -54,18 +51,12 @@ where
     D: Decoder + 'a,
     FrameIoError: From<D::Error>,
 {
-    let framed = FramedRead::new(reader, LaneRequestDecoder::new(decoder));
+    let framed = FramedRead::new(reader, StoreInitMessageDecoder::new(decoder));
     unfold(Some(framed), |maybe_framed| async move {
         if let Some(mut framed) = maybe_framed {
             match framed.next().await {
-                Some(Ok(LaneRequest::Command(body))) => Some((Ok(body), Some(framed))),
-                Some(Ok(LaneRequest::InitComplete)) => None,
-                Some(Ok(LaneRequest::Sync(_))) => Some((
-                    Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
-                        problem: Text::new(UNEXPECTED_SYNC),
-                    })),
-                    None,
-                )),
+                Some(Ok(StoreInitMessage::Command(body))) => Some((Ok(body), Some(framed))),
+                Some(Ok(StoreInitMessage::InitComplete)) => None,
                 Some(Err(e)) => Some((Err(e), None)),
                 None => Some((Err(FrameIoError::InvalidTermination), None)),
             }
@@ -120,7 +111,7 @@ impl<'a, Agent> InitializedLane<'a, Agent> {
 /// #Arguments
 /// * `name` - The name of the lane.
 /// * `kind` - The uplink kind (determines the protocol for communication with the runtime).
-/// * `io` - Channels for commmunication with the runtime.
+/// * `io` - Channels for communication with the runtime.
 /// * `decoder` - Decoder to interpret the command messages from the runtime, during the
 /// initialization process.
 /// * `init` - Initializer to consume the incoming command and assemble the initial state of the lane.
@@ -142,10 +133,10 @@ where
         Ok(init_fn) => {
             let mut writer = FramedWrite::new(
                 &mut tx,
-                LaneResponseEncoder::new(WithLengthBytesCodec::default()),
+                StoreInitializedCodec,
             );
             writer
-                .send(LaneResponse::<BytesMut>::Initialized)
+                .send(StoreInitialized)
                 .await
                 .map_err(FrameIoError::Io)
                 .map(move |_| InitializedLane::new(name, kind, init_fn, (tx, rx)))
@@ -164,6 +155,17 @@ impl<Agent, T> ValueLaneInitializer<Agent, T> {
     }
 }
 
+/// [`LaneInitializer`] to construct the state of a value store.
+pub struct ValueStoreInitializer<Agent, T> {
+    projection: fn(&Agent) -> &ValueStore<T>,
+}
+
+impl<Agent, T> ValueStoreInitializer<Agent, T> {
+    pub fn new(projection: fn(&Agent) -> &ValueStore<T>) -> Self {
+        ValueStoreInitializer { projection }
+    }
+}
+
 /// [`LaneInitializer`] to construct the state of a map lane.
 pub struct MapLaneInitializer<Agent, K, V> {
     projection: fn(&Agent) -> &MapLane<K, V>,
@@ -175,6 +177,34 @@ impl<Agent, K, V> MapLaneInitializer<Agent, K, V> {
     }
 }
 
+async fn value_like_init<Agent, F, T>(
+    mut stream: BoxStream<'_, Result<BytesMut, FrameIoError>>,
+    init: F) -> Result<InitFn<Agent>, FrameIoError>
+where
+    Agent: 'static,
+    T: RecognizerReadable + Send + 'static,
+    F: FnOnce(&Agent, T) + Send + 'static,
+{
+    let mut body = None;
+    while let Some(result) = stream.next().await {
+        body = Some(result?);
+    }
+    if let Some(mut body) = body {
+        let mut decoder = RecognizerDecoder::new(T::make_recognizer());
+        if let Some(value) = decoder.decode_eof(&mut body)? {
+            let f = move |agent: &Agent| init(agent, value);
+            let f_init: InitFn<Agent> = Box::new(f);
+            Ok(f_init)
+        } else {
+            Err(AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord)).into())
+        }
+    } else {
+        let f = move |_: &Agent| {};
+        let f_init: InitFn<Agent> = Box::new(f);
+        Ok(f_init)
+    }
+}
+
 impl<Agent, T> LaneInitializer<Agent, BytesMut> for ValueLaneInitializer<Agent, T>
 where
     Agent: 'static,
@@ -182,33 +212,24 @@ where
 {
     fn initialize(
         self: Box<Self>,
-        mut stream: BoxStream<'_, Result<BytesMut, FrameIoError>>,
+        stream: BoxStream<'_, Result<BytesMut, FrameIoError>>,
     ) -> BoxFuture<'_, Result<InitFn<Agent>, FrameIoError>> {
         let ValueLaneInitializer { projection } = *self;
-        async move {
-            let mut body = None;
-            while let Some(result) = stream.next().await {
-                body = Some(result?);
-            }
-            if let Some(mut body) = body {
-                let mut decoder = RecognizerDecoder::new(T::make_recognizer());
-                if let Some(value) = decoder.decode_eof(&mut body)? {
-                    let f = move |agent: &Agent| projection(agent).init(value);
-                    let f_init: InitFn<Agent> = Box::new(f);
-                    Ok(f_init)
-                } else {
-                    Err(
-                        AsyncParseError::Parser(ParseError::Structure(ReadError::IncompleteRecord))
-                            .into(),
-                    )
-                }
-            } else {
-                let f = move |_: &Agent| {};
-                let f_init: InitFn<Agent> = Box::new(f);
-                Ok(f_init)
-            }
-        }
-        .boxed()
+        value_like_init(stream, move |agent, value| projection(agent).init(value)).boxed()
+    }
+}
+
+impl<Agent, T> LaneInitializer<Agent, BytesMut> for ValueStoreInitializer<Agent, T>
+where
+    Agent: 'static,
+    T: RecognizerReadable + Send + 'static,
+{
+    fn initialize(
+        self: Box<Self>,
+        stream: BoxStream<'_, Result<BytesMut, FrameIoError>>,
+    ) -> BoxFuture<'_, Result<InitFn<Agent>, FrameIoError>> {
+        let ValueStoreInitializer { projection } = *self;
+        value_like_init(stream, move |agent, value| projection(agent).init(value)).boxed()
     }
 }
 
