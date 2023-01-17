@@ -12,10 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//#[doc(hidden)]
-//#[allow(unused_imports)]
-//pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
-
 pub mod agent_lifecycle;
 pub mod agent_model;
 pub mod config;
@@ -24,6 +20,7 @@ pub mod event_handler;
 mod event_queue;
 pub mod lanes;
 pub mod meta;
+pub mod stores;
 #[cfg(test)]
 mod test_context;
 
