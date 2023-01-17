@@ -21,14 +21,10 @@ use futures::{
     stream::{unfold, BoxStream},
     FutureExt, SinkExt, Stream, StreamExt,
 };
-use swim_api::protocol::agent::{StoreInitMessageDecoder, StoreInitMessage, StoreInitializedCodec, StoreInitialized};
-use swim_api::{
-    agent::UplinkKind,
-    error::{FrameIoError},
-    protocol::{
-        map::MapMessage,
-    },
+use swim_api::protocol::agent::{
+    StoreInitMessage, StoreInitMessageDecoder, StoreInitialized, StoreInitializedCodec,
 };
+use swim_api::{agent::UplinkKind, error::FrameIoError, protocol::map::MapMessage};
 use swim_form::structural::read::{recognizer::RecognizerReadable, ReadError};
 use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
@@ -131,10 +127,7 @@ where
     match init.initialize(stream.boxed()).await {
         Err(e) => Err(e),
         Ok(init_fn) => {
-            let mut writer = FramedWrite::new(
-                &mut tx,
-                StoreInitializedCodec,
-            );
+            let mut writer = FramedWrite::new(&mut tx, StoreInitializedCodec);
             writer
                 .send(StoreInitialized)
                 .await
@@ -179,7 +172,8 @@ impl<Agent, K, V> MapLaneInitializer<Agent, K, V> {
 
 async fn value_like_init<Agent, F, T>(
     mut stream: BoxStream<'_, Result<BytesMut, FrameIoError>>,
-    init: F) -> Result<InitFn<Agent>, FrameIoError>
+    init: F,
+) -> Result<InitFn<Agent>, FrameIoError>
 where
     Agent: 'static,
     T: RecognizerReadable + Send + 'static,
