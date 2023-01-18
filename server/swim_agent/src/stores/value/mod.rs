@@ -106,7 +106,7 @@ impl<T> ValueStore<T> {
 
     pub(crate) fn consume<F>(&self, f: F) -> bool
     where
-        F: FnOnce(&T) -> (),
+        F: FnOnce(&T),
     {
         if self.dirty.replace(false) {
             self.read(f);

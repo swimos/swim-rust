@@ -123,13 +123,16 @@ impl<T: StructuralWritable> Lane for ValueLane<T> {
             } else {
                 WriteResult::Done
             }
-        } else if store.consume(|value| {
-            let response = LaneResponse::event(value);
-            encoder.encode(response, buffer).expect(INFALLIBLE_SER);
-        }) {
-            WriteResult::Done
         } else {
-            WriteResult::NoData
+            let try_write_event = |value: &T| {
+                let response = LaneResponse::event(value);
+                encoder.encode(response, buffer).expect(INFALLIBLE_SER);
+            };
+            if store.consume(try_write_event) {
+                WriteResult::Done
+            } else {
+                WriteResult::NoData
+            }
         }
     }
 }
