@@ -39,6 +39,7 @@ use crate::{
         Modification, StepResult,
     },
     meta::AgentMetadata,
+    AgentItem,
 };
 
 use self::queues::{Action, ToWrite, WriteQueues};
@@ -69,6 +70,12 @@ impl<K, V> MapLane<K, V> {
             id,
             inner: RefCell::new(Inner::new(init)),
         }
+    }
+}
+
+impl<K, V> AgentItem for MapLane<K, V> {
+    fn id(&self) -> u64 {
+        self.id
     }
 }
 

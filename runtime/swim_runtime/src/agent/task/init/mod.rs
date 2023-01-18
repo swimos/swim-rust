@@ -292,7 +292,7 @@ async fn lane_initialization(
     result
         .map_err(move |_| AgentExecError::FailedRestoration {
             lane_name: name,
-            error: StoreInitError::LaneInitiailizationTimeout,
+            error: StoreInitError::LaneInitializationTimeout,
         })
         .and_then(identity)
 }

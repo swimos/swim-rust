@@ -339,7 +339,7 @@ fn decode_event_map_lane_response() {
 }
 
 #[test]
-fn decode_syncevent_map_lane_response() {
+fn decode_sync_event_map_lane_response() {
     round_trip_map_response(MapLaneResponse::sync_event(
         Uuid::from_u128(47389),
         MapOperation::Update {

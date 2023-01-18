@@ -300,7 +300,7 @@ async fn run_initializer_timeout() {
         match result {
             Err(AgentExecError::FailedRestoration {
                 lane_name,
-                error: StoreInitError::LaneInitiailizationTimeout,
+                error: StoreInitError::LaneInitializationTimeout,
             }) => {
                 assert_eq!(lane_name, "lane");
             }

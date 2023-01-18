@@ -14,11 +14,11 @@
 
 use bytes::BytesMut;
 
-use crate::agent_model::WriteResult;
+use crate::{agent_model::WriteResult, AgentItem};
 
 pub mod value;
 
-pub trait Store {
+pub trait Store: AgentItem {
     /// If the state of the store has changed, write an event into the buffer.
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult;
 }

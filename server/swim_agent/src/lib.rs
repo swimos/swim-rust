@@ -31,6 +31,10 @@ pub mod model {
     pub use swim_model::Text;
 }
 
+pub trait AgentItem {
+    fn id(&self) -> u64;
+}
+
 pub mod reexport {
     pub mod coproduct {
         pub use frunk::coproduct::CNil;

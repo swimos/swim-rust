@@ -32,6 +32,7 @@ use crate::{
         Modification, StepResult,
     },
     meta::AgentMetadata,
+    AgentItem,
 };
 
 use super::{Lane, ProjTransform};
@@ -62,7 +63,7 @@ impl<T> CommandLane<T> {
         }
     }
 
-    /// Exectute a command agaist the lane.
+    /// Execute a command against the lane.
     pub fn command(&self, value: T) {
         let CommandLane {
             prev_command,
@@ -173,6 +174,12 @@ impl<T: StructuralWritable> Lane for CommandLane<T> {
         } else {
             WriteResult::NoData
         }
+    }
+}
+
+impl<T> AgentItem for CommandLane<T> {
+    fn id(&self) -> u64 {
+        self.id
     }
 }
 

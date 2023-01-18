@@ -34,6 +34,7 @@ use crate::{
     },
     meta::AgentMetadata,
     stores::value::ValueStore,
+    AgentItem,
 };
 
 use super::{Lane, ProjTransform};
@@ -89,8 +90,10 @@ impl<T> ValueLane<T> {
         let ValueLane { sync_queue, .. } = self;
         sync_queue.borrow_mut().push_back(id);
     }
+}
 
-    pub fn id(&self) -> u64 {
+impl<T> AgentItem for ValueLane<T> {
+    fn id(&self) -> u64 {
         self.store.id()
     }
 }

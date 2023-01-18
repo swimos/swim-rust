@@ -24,6 +24,7 @@ use crate::{
     agent_model::WriteResult,
     event_handler::{ActionContext, EventHandlerError, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
+    AgentItem,
 };
 
 use super::Store;
@@ -31,6 +32,9 @@ use super::Store;
 #[cfg(test)]
 mod tests;
 
+/// Adding a [`ValueStore`] to an agent provides additional state that is not exposed as a lane.
+/// If persistence is enabled (and the store is not marked as transient) the state of the store
+/// will be persisted in the same was as the state of a lane.
 #[derive(Debug)]
 pub struct ValueStore<T> {
     id: u64,
@@ -111,8 +115,10 @@ impl<T> ValueStore<T> {
             false
         }
     }
+}
 
-    pub fn id(&self) -> u64 {
+impl<T> AgentItem for ValueStore<T> {
+    fn id(&self) -> u64 {
         self.id
     }
 }

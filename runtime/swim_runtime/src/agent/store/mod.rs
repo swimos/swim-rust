@@ -40,7 +40,7 @@ pub enum StoreInitError {
     #[error("The lane did not acknowledge initialization.")]
     NoAckFromLane,
     #[error("Attempting to initialize a lane timed out.")]
-    LaneInitiailizationTimeout,
+    LaneInitializationTimeout,
 }
 
 pub type InitFut<'a> = BoxFuture<'a, Result<(), StoreInitError>>;
