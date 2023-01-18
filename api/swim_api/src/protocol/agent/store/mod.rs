@@ -23,6 +23,9 @@ use crate::{
 
 use super::{LaneResponse, COMMAND, EVENT, INITIALIZED, INIT_DONE, TAG_LEN};
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StoreInitMessage<T> {
     /// A command to alter the state of the lane.
