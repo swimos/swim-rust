@@ -18,6 +18,7 @@ use swim_api::protocol::map::MapOperation;
 
 use crate::lanes::map::MapLaneEvent;
 
+/// Common backing store used by both map stores and map lanes.
 #[derive(Debug)]
 pub struct MapStoreInner<K, V, Q> {
     content: HashMap<K, V>,
@@ -25,6 +26,8 @@ pub struct MapStoreInner<K, V, Q> {
     queue: Q,
 }
 
+/// Both map stores and map lanes maintain a queue of events to be sent to the runtime. This
+/// trait captures the operations that are common between both.
 pub trait MapEventQueue<K, V>: Default {
     type Output<'a>
     where
@@ -33,6 +36,7 @@ pub trait MapEventQueue<K, V>: Default {
         Self: 'a;
 
     fn push(&mut self, action: MapOperation<K, ()>);
+
     fn is_empty(&self) -> bool;
 
     fn pop<'a>(&mut self, content: &'a HashMap<K, V>) -> Option<Self::Output<'a>>;

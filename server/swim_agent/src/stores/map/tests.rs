@@ -16,10 +16,13 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use bytes::BytesMut;
-use swim_api::{protocol::{
-    agent::{MapStoreResponse, MapStoreResponseDecoder},
-    map::MapOperation,
-}, agent::AgentConfig};
+use swim_api::{
+    agent::AgentConfig,
+    protocol::{
+        agent::{MapStoreResponse, MapStoreResponseDecoder},
+        map::MapOperation,
+    },
+};
 use swim_model::Text;
 use swim_recon::parser::{parse_recognize, Span};
 use swim_utilities::routing::route_uri::RouteUri;
@@ -27,7 +30,13 @@ use tokio_util::codec::Decoder;
 
 use crate::{
     agent_model::WriteResult,
-    stores::{MapStore, Store, map::{MapStoreUpdate, MapStoreRemove, MapStoreClear, MapStoreGet, MapStoreGetMap}}, meta::AgentMetadata, event_handler::{StepResult, Modification, EventHandlerError, HandlerAction}, test_context::dummy_context,
+    event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
+    meta::AgentMetadata,
+    stores::{
+        map::{MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate},
+        MapStore, Store,
+    },
+    test_context::dummy_context,
 };
 
 const ID: u64 = 567;

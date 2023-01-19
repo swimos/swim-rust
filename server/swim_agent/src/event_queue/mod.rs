@@ -15,6 +15,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 
+use swim_api::protocol::agent::StoreResponse;
 use swim_api::protocol::map::MapOperation;
 
 use crate::map_storage::MapEventQueue;
@@ -119,7 +120,7 @@ where
         EventQueue::is_empty(self)
     }
 
-    type Output<'a> = MapOperation<K, &'a V>
+    type Output<'a> = StoreResponse<MapOperation<K, &'a V>>
     where
         Self: 'a,
         V: 'a;
@@ -128,7 +129,7 @@ where
         loop {
             let action = EventQueue::pop(self)?;
             if let Some(op) = to_operation(content, action) {
-                break Some(op);
+                break Some(StoreResponse::new(op));
             }
         }
     }

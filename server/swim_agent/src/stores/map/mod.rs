@@ -18,7 +18,7 @@ use std::{cell::RefCell, collections::HashMap};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
-use swim_api::protocol::agent::{MapStoreResponseEncoder, StoreResponse};
+use swim_api::protocol::agent::MapStoreResponseEncoder;
 use swim_form::structural::write::StructuralWritable;
 use tokio_util::codec::Encoder;
 
@@ -36,6 +36,9 @@ mod tests;
 
 type Inner<K, V> = MapStoreInner<K, V, EventQueue<K, ()>>;
 
+/// Adding a [`MapStore`] to an agent provides additional state that is not exposed as a lane.
+/// If persistence is enabled (and the store is not marked as transient) the state of the store
+/// will be persisted in the same was as the state of a lane.
 #[derive(Debug)]
 pub struct MapStore<K, V> {
     id: u64,
@@ -111,9 +114,7 @@ where
         let mut encoder = MapStoreResponseEncoder::default();
         let mut guard = self.inner.borrow_mut();
         if let Some(op) = guard.pop_operation() {
-            encoder
-                .encode(StoreResponse::new(op), buffer)
-                .expect(INFALLIBLE_SER);
+            encoder.encode(op, buffer).expect(INFALLIBLE_SER);
             if guard.queue().is_empty() {
                 WriteResult::Done
             } else {
