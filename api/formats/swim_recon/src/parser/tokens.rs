@@ -30,7 +30,7 @@ use swim_model::identifier::{is_identifier_char, is_identifier_start};
 use swim_model::Text;
 
 fn unwrap_span(span: Span<'_>) -> &str {
-    span.as_ref()
+    &**span
 }
 
 /// States for the automaton to unescape a Java escaped string.
