@@ -31,6 +31,9 @@ use crate::AgentItem;
 
 use super::Store;
 
+#[cfg(test)]
+mod tests;
+
 type Inner<K, V> = MapStoreInner<K, V, EventQueue<K, ()>>;
 
 #[derive(Debug)]
