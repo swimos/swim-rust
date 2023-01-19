@@ -18,7 +18,7 @@ use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{
     error::{FrameIoError, InvalidFrame},
-    protocol::{map::MapOperation, WithLenReconEncoder, WithLengthBytesCodec},
+    protocol::{map::{MapOperation, MapOperationEncoder, RawMapOperationDecoder}, WithLenReconEncoder, WithLengthBytesCodec},
 };
 
 use super::{LaneResponse, COMMAND, EVENT, INITIALIZED, INIT_DONE, TAG_LEN};
@@ -310,3 +310,6 @@ where
 
 pub type ValueStoreResponseEncoder = StoreResponseEncoder<WithLenReconEncoder>;
 pub type ValueStoreResponseDecoder = StoreResponseDecoder<WithLengthBytesCodec>;
+
+pub type MapStoreResponseEncoder = StoreResponseEncoder<MapOperationEncoder>;
+pub type MapStoreResponseDecoder = StoreResponseDecoder<RawMapOperationDecoder>;

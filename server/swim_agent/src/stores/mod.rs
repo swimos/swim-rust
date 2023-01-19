@@ -16,6 +16,7 @@ use bytes::BytesMut;
 
 use crate::{agent_model::WriteResult, AgentItem};
 
+pub mod map;
 pub mod value;
 
 pub trait Store: AgentItem {

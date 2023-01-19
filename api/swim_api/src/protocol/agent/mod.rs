@@ -36,7 +36,7 @@ mod tests;
 pub use store::{
     MapStoreResponse, StoreInitMessage, StoreInitMessageDecoder, StoreInitMessageEncoder,
     StoreInitialized, StoreInitializedCodec, StoreResponse, StoreResponseDecoder,
-    StoreResponseEncoder, ValueStoreResponseDecoder, ValueStoreResponseEncoder,
+    StoreResponseEncoder, ValueStoreResponseDecoder, ValueStoreResponseEncoder, MapStoreResponseDecoder, MapStoreResponseEncoder,
 };
 
 /// Message type for communication between the agent runtime and agent implementation.
