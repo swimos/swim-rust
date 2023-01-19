@@ -23,10 +23,11 @@ use swim_form::structural::write::StructuralWritable;
 use tokio_util::codec::Encoder;
 
 use crate::agent_model::WriteResult;
+use crate::event_handler::{Modification, ActionContext, StepResult, HandlerAction};
 use crate::event_queue::EventQueue;
-use crate::lanes::map::MapLaneEvent;
 use crate::AgentItem;
 use crate::map_storage::MapStoreInner;
+use crate::meta::AgentMetadata;
 
 use super::Store;
 
@@ -42,7 +43,7 @@ assert_impl_all!(MapStore<(), ()>: Send);
 
 impl<K, V> MapStore<K, V> {
     /// #Arguments
-    /// * `id` - The ID of the lane. This should be unique within an agent.
+    /// * `id` - The ID of the store. This should be unique within an agent.
     /// * `init` - The initial contents of the map.
     pub fn new(id: u64, init: HashMap<K, V>) -> Self {
         MapStore {
@@ -62,10 +63,7 @@ impl<K, V> MapStore<K, V>
 where
     K: Clone + Eq + Hash,
 {
-    pub(crate) fn init(&self, map: HashMap<K, V>) {
-        self.inner.borrow_mut().init(map)
-    }
-
+    
     /// Update the value associated with a key.
     pub fn update(&self, key: K, value: V) {
         self.inner.borrow_mut().update(key, value)
@@ -99,14 +97,6 @@ where
         self.inner.borrow().get_map(f)
     }
 
-    /// Read the state of the map, consuming the previous event (used when triggering
-    /// the event handlers for the lane).
-    pub(crate) fn read_with_prev<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R,
-    {
-        self.inner.borrow_mut().read_with_prev(f)
-    }
 }
 
 const INFALLIBLE_SER: &str = "Serializing store responses to recon should be infallible.";
@@ -131,4 +121,216 @@ where
         }
     }
 }
+
+/// An [`EventHandler`] that will update the value of an entry in the map.
+pub struct MapStoreUpdate<C, K, V> {
+    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
+    key_value: Option<(K, V)>,
+}
+
+impl<C, K, V> MapStoreUpdate<C, K, V> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>, key: K, value: V) -> Self {
+        MapStoreUpdate {
+            projection,
+            key_value: Some((key, value)),
+        }
+    }
+}
+
+impl<C, K, V> HandlerAction<C> for MapStoreUpdate<C, K, V>
+where
+    K: Clone + Eq + Hash,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapStoreUpdate {
+            projection,
+            key_value,
+        } = self;
+        if let Some((key, value)) = key_value.take() {
+            let store = projection(context);
+            store.update(key, value);
+            StepResult::Complete {
+                modified_lane: Some(Modification::of(store.id)),
+                result: (),
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+/// An [`EventHandler`] that will remove an entry from the map.
+pub struct MapStoreRemove<C, K, V> {
+    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
+    key: Option<K>,
+}
+
+impl<C, K, V> MapStoreRemove<C, K, V> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>, key: K) -> Self {
+        MapStoreRemove {
+            projection,
+            key: Some(key),
+        }
+    }
+}
+
+impl<C, K, V> HandlerAction<C> for MapStoreRemove<C, K, V>
+where
+    K: Clone + Eq + Hash,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapStoreRemove { projection, key } = self;
+        if let Some(key) = key.take() {
+            let store = projection(context);
+            store.remove(&key);
+            StepResult::Complete {
+                modified_lane: Some(Modification::of(store.id)),
+                result: (),
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+/// An [`EventHandler`] that will clear the map.
+pub struct MapStoreClear<C, K, V> {
+    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
+    done: bool,
+}
+
+impl<C, K, V> MapStoreClear<C, K, V> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>) -> Self {
+        MapStoreClear {
+            projection,
+            done: false,
+        }
+    }
+}
+
+impl<C, K, V> HandlerAction<C> for MapStoreClear<C, K, V>
+where
+    K: Clone + Eq + Hash,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapStoreClear { projection, done } = self;
+        if !*done {
+            *done = true;
+            let store = projection(context);
+            store.clear();
+            StepResult::Complete {
+                modified_lane: Some(Modification::of(store.id)),
+                result: (),
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+/// An [`EventHandler`] that will get an entry from the map.
+pub struct MapStoreGet<C, K, V> {
+    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
+    key: K,
+    done: bool,
+}
+
+impl<C, K, V> MapStoreGet<C, K, V> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>, key: K) -> Self {
+        MapStoreGet {
+            projection,
+            key,
+            done: false,
+        }
+    }
+}
+
+impl<C, K, V> HandlerAction<C> for MapStoreGet<C, K, V>
+where
+    K: Clone + Eq + Hash,
+    V: Clone,
+{
+    type Completion = Option<V>;
+
+    fn step(
+        &mut self,
+        _action_context: ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapStoreGet {
+            projection,
+            key,
+            done,
+        } = self;
+        if !*done {
+            *done = true;
+            let store = projection(context);
+            StepResult::done(store.get(key, |v| v.cloned()))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+/// An [`EventHandler`] that will read the entire state of a map store.
+pub struct MapStoreGetMap<C, K, V> {
+    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
+    done: bool,
+}
+
+impl<C, K, V> MapStoreGetMap<C, K, V> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>) -> Self {
+        MapStoreGetMap {
+            projection,
+            done: false,
+        }
+    }
+}
+
+impl<C, K, V> HandlerAction<C> for MapStoreGetMap<C, K, V>
+where
+    K: Clone + Eq + Hash,
+    V: Clone,
+{
+    type Completion = HashMap<K, V>;
+
+    fn step(
+        &mut self,
+        _action_context: ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapStoreGetMap { projection, done } = self;
+        if !*done {
+            *done = true;
+            let store = projection(context);
+            StepResult::done(store.get_map(Clone::clone))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
  

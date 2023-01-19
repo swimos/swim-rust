@@ -19,6 +19,8 @@ use crate::{agent_model::WriteResult, AgentItem};
 pub mod map;
 pub mod value;
 
+pub use self::{value::ValueStore, map::MapStore};
+
 pub trait Store: AgentItem {
     /// If the state of the store has changed, write an event into the buffer.
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult;
