@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{VecDeque, HashMap};
+use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 
 use swim_api::protocol::agent::LaneResponse;
@@ -33,12 +33,8 @@ impl<K> SyncQueue<K>
 where
     K: Clone + Eq + Hash,
 {
-    pub fn new(id: Uuid, keys: VecDeque<K>) -> Self
-    {
-        SyncQueue {
-            id,
-            queue: keys,
-        }
+    pub fn new(id: Uuid, keys: VecDeque<K>) -> Self {
+        SyncQueue { id, queue: keys }
     }
 
     pub fn remove(&mut self, key: &K) {
@@ -134,8 +130,7 @@ where
         self.event_queue.push(op);
     }
 
-    pub fn sync(&mut self, id: Uuid, keys: VecDeque<K>)
-    {
+    pub fn sync(&mut self, id: Uuid, keys: VecDeque<K>) {
         self.sync_queues.push(SyncQueue::new(id, keys));
     }
 
@@ -231,12 +226,15 @@ where
                     if let Some(op) = to_operation(content, action) {
                         break Some(LaneResponse::StandardEvent(op));
                     }
-                },
+                }
                 ToWrite::SyncEvent(id, key) => {
                     if let Some(value) = content.get(&key) {
-                        break Some(LaneResponse::SyncEvent(id, MapOperation::Update { key, value }));
+                        break Some(LaneResponse::SyncEvent(
+                            id,
+                            MapOperation::Update { key, value },
+                        ));
                     }
-                },
+                }
                 ToWrite::Synced(id) => break Some(LaneResponse::Synced(id)),
             }
         }

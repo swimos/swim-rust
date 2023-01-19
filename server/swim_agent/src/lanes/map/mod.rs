@@ -16,10 +16,7 @@ use bytes::BytesMut;
 use frunk::{Coprod, Coproduct};
 use static_assertions::assert_impl_all;
 use std::{borrow::Borrow, cell::RefCell, collections::HashMap, hash::Hash, marker::PhantomData};
-use swim_api::protocol::{
-    agent::{MapLaneResponseEncoder},
-    map::{MapMessage},
-};
+use swim_api::protocol::{agent::MapLaneResponseEncoder, map::MapMessage};
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_recon::parser::RecognizerDecoder;
 use tokio_util::codec::{Decoder, Encoder};
@@ -38,8 +35,9 @@ use crate::{
         ActionContext, AndThen, EventHandlerError, HandlerAction, HandlerActionExt, HandlerTrans,
         Modification, StepResult,
     },
+    map_storage::MapStoreInner,
     meta::AgentMetadata,
-    AgentItem, map_storage::MapStoreInner,
+    AgentItem,
 };
 
 use self::queues::WriteQueues;

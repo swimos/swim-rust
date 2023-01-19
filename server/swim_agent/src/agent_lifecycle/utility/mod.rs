@@ -29,9 +29,11 @@ use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
 use crate::event_handler::{EventHandler, Suspend, UnitHandler};
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::map::MapLaneGetMap;
-use crate::stores::MapStore;
-use crate::stores::map::{MapStoreUpdate, MapStoreRemove, MapStoreClear, MapStoreGet, MapStoreGetMap};
+use crate::stores::map::{
+    MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate,
+};
 use crate::stores::value::{ValueStore, ValueStoreGet, ValueStoreSet};
+use crate::stores::MapStore;
 use crate::{
     event_handler::{GetAgentUri, HandlerAction, SideEffect},
     lanes::{

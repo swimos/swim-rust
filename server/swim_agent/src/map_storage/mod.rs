@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, borrow::Borrow, hash::Hash};
+use std::{borrow::Borrow, collections::HashMap, hash::Hash};
 
 use swim_api::protocol::map::MapOperation;
 
@@ -26,10 +26,9 @@ pub struct MapStoreInner<K, V, Q> {
 }
 
 pub trait MapEventQueue<K, V>: Default {
-
     type Output<'a>
     where
-        K:'a,
+        K: 'a,
         V: 'a,
         Self: 'a;
 
@@ -40,11 +39,13 @@ pub trait MapEventQueue<K, V>: Default {
 }
 
 impl<K, V, Q: Default> MapStoreInner<K, V, Q> {
-
     pub fn new(content: HashMap<K, V>) -> Self {
-        MapStoreInner { content, previous: Default::default(), queue: Default::default() }
+        MapStoreInner {
+            content,
+            previous: Default::default(),
+            queue: Default::default(),
+        }
     }
-
 }
 
 impl<K, V, Q> MapStoreInner<K, V, Q>
@@ -52,7 +53,6 @@ where
     K: Eq + Hash + Clone,
     Q: MapEventQueue<K, V>,
 {
-
     pub fn init(&mut self, map: HashMap<K, V>) {
         self.content = map;
     }
@@ -127,6 +127,4 @@ where
         let MapStoreInner { content, queue, .. } = self;
         queue.pop(content)
     }
-
 }
-

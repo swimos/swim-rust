@@ -109,7 +109,7 @@ where
 
 impl<K, V> MapEventQueue<K, V> for EventQueue<K, ()>
 where
-K: Eq + Hash + Clone,
+    K: Eq + Hash + Clone,
 {
     fn push(&mut self, action: MapOperation<K, ()>) {
         EventQueue::push(self, action)
@@ -136,10 +136,7 @@ K: Eq + Hash + Clone,
 
 pub type Action<K> = MapOperation<K, ()>;
 
-fn to_operation<K, V>(
-    content: &HashMap<K, V>,
-    action: Action<K>,
-) -> Option<MapOperation<K, &V>>
+fn to_operation<K, V>(content: &HashMap<K, V>, action: Action<K>) -> Option<MapOperation<K, &V>>
 where
     K: Eq + Hash + Clone,
 {

@@ -23,11 +23,11 @@ use swim_form::structural::write::StructuralWritable;
 use tokio_util::codec::Encoder;
 
 use crate::agent_model::WriteResult;
-use crate::event_handler::{Modification, ActionContext, StepResult, HandlerAction};
+use crate::event_handler::{ActionContext, HandlerAction, Modification, StepResult};
 use crate::event_queue::EventQueue;
-use crate::AgentItem;
 use crate::map_storage::MapStoreInner;
 use crate::meta::AgentMetadata;
+use crate::AgentItem;
 
 use super::Store;
 
@@ -63,7 +63,6 @@ impl<K, V> MapStore<K, V>
 where
     K: Clone + Eq + Hash,
 {
-    
     /// Update the value associated with a key.
     pub fn update(&self, key: K, value: V) {
         self.inner.borrow_mut().update(key, value)
@@ -96,7 +95,6 @@ where
     {
         self.inner.borrow().get_map(f)
     }
-
 }
 
 const INFALLIBLE_SER: &str = "Serializing store responses to recon should be infallible.";
@@ -110,7 +108,9 @@ where
         let mut encoder = MapStoreResponseEncoder::default();
         let mut guard = self.inner.borrow_mut();
         if let Some(op) = guard.pop_operation() {
-            encoder.encode(StoreResponse::new(op), buffer).expect(INFALLIBLE_SER);
+            encoder
+                .encode(StoreResponse::new(op), buffer)
+                .expect(INFALLIBLE_SER);
             if guard.queue().is_empty() {
                 WriteResult::Done
             } else {
@@ -332,5 +332,3 @@ where
         }
     }
 }
-
- 
