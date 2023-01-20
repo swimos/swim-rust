@@ -17,7 +17,7 @@ use swim_model::Text;
 use tokio::sync::mpsc;
 
 use crate::{
-    agent_lifecycle::{lane_event::LaneEvent, on_start::OnStart, on_stop::OnStop},
+    agent_lifecycle::{lane_event::ItemEvent, on_start::OnStart, on_stop::OnStop},
     event_handler::{
         ActionContext, BoxEventHandler, HandlerAction, SideEffect, Spawner, StepResult,
     },
@@ -77,17 +77,17 @@ impl OnStop<TestAgent> for TestLifecycle {
     }
 }
 
-impl LaneEvent<TestAgent> for TestLifecycle {
-    type LaneEventHandler<'a> = LifecycleHandler
+impl ItemEvent<TestAgent> for TestLifecycle {
+    type ItemEventHandler<'a> = LifecycleHandler
     where
         Self: 'a;
 
-    fn lane_event<'a>(
+    fn item_event<'a>(
         &'a self,
         _context: &TestAgent,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>> {
-        Some(self.make_handler(LifecycleEvent::Lane(Text::new(lane_name))))
+        item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
+        Some(self.make_handler(LifecycleEvent::Lane(Text::new(item_name))))
     }
 }
 

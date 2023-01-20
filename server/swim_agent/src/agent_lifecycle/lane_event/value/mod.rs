@@ -33,7 +33,7 @@ use crate::{
     stores::ValueStore,
 };
 
-use super::{HLeaf, HTree, LaneEvent, LaneEventShared};
+use super::{HLeaf, HTree, ItemEvent, ItemEventShared};
 
 #[cfg(test)]
 mod tests;
@@ -141,37 +141,37 @@ pub type ValueLifecycleHandlerShared<'a, Context, Shared, T, LC> = FollowedBy<
 >;
 
 type ValueBranchHandler<'a, Context, T, LC, L, R> = Either<
-    <L as LaneEvent<Context>>::LaneEventHandler<'a>,
+    <L as ItemEvent<Context>>::ItemEventHandler<'a>,
     Either<
         ValueLifecycleHandler<'a, Context, T, LC>,
-        <R as LaneEvent<Context>>::LaneEventHandler<'a>,
+        <R as ItemEvent<Context>>::ItemEventHandler<'a>,
     >,
 >;
 
 type ValueBranchHandlerShared<'a, Context, Shared, T, LC, L, R> = Either<
-    <L as LaneEventShared<Context, Shared>>::LaneEventHandler<'a>,
+    <L as ItemEventShared<Context, Shared>>::ItemEventHandler<'a>,
     Either<
         ValueLifecycleHandlerShared<'a, Context, Shared, T, LC>,
-        <R as LaneEventShared<Context, Shared>>::LaneEventHandler<'a>,
+        <R as ItemEventShared<Context, Shared>>::ItemEventHandler<'a>,
     >,
 >;
 
-impl<Context, T, Item, LC, L, R> LaneEvent<Context> for ValueLikeBranch<Context, T, Item, LC, L, R>
+impl<Context, T, Item, LC, L, R> ItemEvent<Context> for ValueLikeBranch<Context, T, Item, LC, L, R>
 where
     Item: ValueItem<T>,
     LC: ValueLaneLifecycle<T, Context>,
-    L: HTree + LaneEvent<Context>,
-    R: HTree + LaneEvent<Context>,
+    L: HTree + ItemEvent<Context>,
+    R: HTree + ItemEvent<Context>,
 {
-    type LaneEventHandler<'a> = ValueBranchHandler<'a, Context, T, LC, L, R>
+    type ItemEventHandler<'a> = ValueBranchHandler<'a, Context, T, LC, L, R>
     where
         Self: 'a;
 
-    fn lane_event<'a>(
+    fn item_event<'a>(
         &'a self,
         context: &Context,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>> {
+        item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
         let ValueLikeBranch {
             label,
             projection,
@@ -180,8 +180,8 @@ where
             right,
             ..
         } = self;
-        match lane_name.cmp(*label) {
-            Ordering::Less => left.lane_event(context, lane_name).map(Either::Left),
+        match item_name.cmp(*label) {
+            Ordering::Less => left.item_event(context, item_name).map(Either::Left),
             Ordering::Equal => {
                 let lane = projection(context);
                 let handler = lane.read_with_prev(|prev, new_value| {
@@ -192,32 +192,32 @@ where
                 Some(Either::Right(Either::Left(handler)))
             }
             Ordering::Greater => right
-                .lane_event(context, lane_name)
+                .item_event(context, item_name)
                 .map(|r| Either::Right(Either::Right(r))),
         }
     }
 }
 
-impl<Context, Shared, T, Item, LC, L, R> LaneEventShared<Context, Shared>
+impl<Context, Shared, T, Item, LC, L, R> ItemEventShared<Context, Shared>
     for ValueLikeBranch<Context, T, Item, LC, L, R>
 where
     Item: ValueItem<T>,
     LC: ValueLaneLifecycleShared<T, Context, Shared>,
-    L: HTree + LaneEventShared<Context, Shared>,
-    R: HTree + LaneEventShared<Context, Shared>,
+    L: HTree + ItemEventShared<Context, Shared>,
+    R: HTree + ItemEventShared<Context, Shared>,
 {
-    type LaneEventHandler<'a> = ValueBranchHandlerShared<'a, Context, Shared, T, LC, L, R>
+    type ItemEventHandler<'a> = ValueBranchHandlerShared<'a, Context, Shared, T, LC, L, R>
     where
         Self: 'a,
         Shared: 'a;
 
-    fn lane_event<'a>(
+    fn item_event<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         context: &Context,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>> {
+        item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
         let ValueLikeBranch {
             label,
             projection,
@@ -226,9 +226,9 @@ where
             right,
             ..
         } = self;
-        match lane_name.cmp(*label) {
+        match item_name.cmp(*label) {
             Ordering::Less => left
-                .lane_event(shared, handler_context, context, lane_name)
+                .item_event(shared, handler_context, context, item_name)
                 .map(Either::Left),
             Ordering::Equal => {
                 let lane = projection(context);
@@ -240,7 +240,7 @@ where
                 Some(Either::Right(Either::Left(handler)))
             }
             Ordering::Greater => right
-                .lane_event(shared, handler_context, context, lane_name)
+                .item_event(shared, handler_context, context, item_name)
                 .map(|r| Either::Right(Either::Right(r))),
         }
     }

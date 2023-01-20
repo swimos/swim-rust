@@ -40,7 +40,7 @@ use swim_utilities::routing::route_uri::RouteUri;
 use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::agent_lifecycle::lane_event::LaneEvent;
+use crate::agent_lifecycle::lane_event::ItemEvent;
 use crate::event_handler::{ActionContext, BoxEventHandler, HandlerFuture, WriteStream};
 use crate::{
     agent_lifecycle::AgentLifecycle,
@@ -818,7 +818,7 @@ fn run_handler<Context, Lifecycle, Handler, Collector>(
     collector: &mut Collector,
 ) -> Result<(), EventHandlerError>
 where
-    Lifecycle: LaneEvent<Context>,
+    Lifecycle: ItemEvent<Context>,
     Handler: EventHandler<Context>,
     Collector: IdCollector,
 {
@@ -832,7 +832,7 @@ where
                 }) {
                     collector.add_id(modification.item_id);
                     if modification.trigger_handler {
-                        if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
+                        if let Some(consequence) = lifecycle.item_event(context, lane.as_str()) {
                             run_handler(
                                 action_context,
                                 meta,
@@ -857,7 +857,7 @@ where
                 }) {
                     collector.add_id(modification.item_id);
                     if modification.trigger_handler {
-                        if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
+                        if let Some(consequence) = lifecycle.item_event(context, lane.as_str()) {
                             run_handler(
                                 action_context,
                                 meta,

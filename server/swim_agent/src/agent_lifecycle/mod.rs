@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use self::{lane_event::LaneEvent, on_start::OnStart, on_stop::OnStop};
+use self::{lane_event::ItemEvent, on_start::OnStart, on_stop::OnStop};
 
 pub mod lane_event;
 pub mod on_start;
@@ -24,9 +24,9 @@ pub mod utility;
 /// Trait for agent lifecycles.
 /// #Type Parameters
 /// * `Context` - The context in which the lifecycle events run (provides access to the lanes of the agent).
-pub trait AgentLifecycle<Context>: OnStart<Context> + OnStop<Context> + LaneEvent<Context> {}
+pub trait AgentLifecycle<Context>: OnStart<Context> + OnStop<Context> + ItemEvent<Context> {}
 
 impl<L, Context> AgentLifecycle<Context> for L where
-    L: OnStart<Context> + OnStop<Context> + LaneEvent<Context>
+    L: OnStart<Context> + OnStop<Context> + ItemEvent<Context>
 {
 }

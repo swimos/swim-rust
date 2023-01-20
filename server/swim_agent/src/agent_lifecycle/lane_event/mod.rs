@@ -38,80 +38,80 @@ pub use value::{
     ValueStoreLeaf,
 };
 
-/// Trait to implement all event handlers for all of the lanes of an agent. Implementations of
-/// this trait will typically consist of a type level tree (implementations of [`HTree`]) of handlers
-/// for each lane.
-pub trait LaneEvent<Context> {
-    type LaneEventHandler<'a>: EventHandler<Context> + 'a
+/// Trait to implement all event handlers for all of the items(lanes and stores) of an agent.
+/// Implementations of this trait will typically consist of a type level tree (implementations of
+/// [`HTree`]) of handlers for each item.
+pub trait ItemEvent<Context> {
+    type ItemEventHandler<'a>: EventHandler<Context> + 'a
     where
         Self: 'a;
 
-    /// Create the handler for a lane, if it exists. It is the responsibility of the lanes to keep track
-    /// of which what events need to be triggered. If the lane does not exist or no event is pending, no
+    /// Create the handler for an item, if it exists. It is the responsibility of the items to keep track
+    /// of which what events need to be triggered. If the item does not exist or no event is pending, no
     /// handler will be returned.
     /// #Arguments
-    /// * `context` - The context of the agent (allowing access to the lanes).
-    /// * `lane_name` - The name of the lane.
-    fn lane_event<'a>(
+    /// * `context` - The context of the agent (allowing access to the items).
+    /// * `item_name` - The name of the item.
+    fn item_event<'a>(
         &'a self,
         context: &Context,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>>;
+        item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>>;
 }
 
-/// Trait to implement all event handlers for all of the lanes of an agent. Implementations of
+/// Trait to implement all event handlers for all of the items of an agent. Implementations of
 /// this trait will typically consist of a type level tree (implementations of [`HTree`]) of handlers
-/// for each lane. Each of the event handlers has access to a single shared state.
-pub trait LaneEventShared<Context, Shared> {
-    type LaneEventHandler<'a>: EventHandler<Context> + 'a
+/// for each item. Each of the event handlers has access to a single shared state.
+pub trait ItemEventShared<Context, Shared> {
+    type ItemEventHandler<'a>: EventHandler<Context> + 'a
     where
         Self: 'a,
         Shared: 'a;
 
-    /// Create the handler for a lane, if it exists. It is the responsibility of the lanes to keep track
-    /// of which what events need to be triggered. If the lane does not exist or no event is pending, no
+    /// Create the handler for an item, if it exists. It is the responsibility of the items to keep track
+    /// of which what events need to be triggered. If the item does not exist or no event is pending, no
     /// handler will be returned.
     /// #Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
-    /// * `context` - The context of the agent (allowing access to the lanes).
-    /// * `lane_name` - The name of the lane.
-    fn lane_event<'a>(
+    /// * `context` - The context of the agent (allowing access to the items).
+    /// * `item_name` - The name of the item.
+    fn item_event<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         context: &Context,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>>;
+        item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>>;
 }
 
-impl<Context> LaneEvent<Context> for NoHandler {
-    type LaneEventHandler<'a> = UnitHandler
+impl<Context> ItemEvent<Context> for NoHandler {
+    type ItemEventHandler<'a> = UnitHandler
     where
         Self: 'a;
 
-    fn lane_event<'a>(
+    fn item_event<'a>(
         &'a self,
         _context: &Context,
-        _lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>> {
+        _item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
         None
     }
 }
 
-impl<Context, Shared> LaneEventShared<Context, Shared> for NoHandler {
-    type LaneEventHandler<'a> = UnitHandler
+impl<Context, Shared> ItemEventShared<Context, Shared> for NoHandler {
+    type ItemEventHandler<'a> = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
 
-    fn lane_event<'a>(
+    fn item_event<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         _context: &Context,
-        _lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>> {
+        _item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
         None
     }
 }
@@ -132,33 +132,33 @@ impl HTree for HLeaf {
     }
 }
 
-impl<Context> LaneEvent<Context> for HLeaf {
-    type LaneEventHandler<'a> = UnitHandler
+impl<Context> ItemEvent<Context> for HLeaf {
+    type ItemEventHandler<'a> = UnitHandler
     where
         Self: 'a;
 
-    fn lane_event<'a>(
+    fn item_event<'a>(
         &'a self,
         _context: &Context,
-        _lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>> {
+        _item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
         None
     }
 }
 
-impl<Context, Shared> LaneEventShared<Context, Shared> for HLeaf {
-    type LaneEventHandler<'a> = UnitHandler
+impl<Context, Shared> ItemEventShared<Context, Shared> for HLeaf {
+    type ItemEventHandler<'a> = UnitHandler
     where
         Self: 'a,
         Shared: 'a;
 
-    fn lane_event<'a>(
+    fn item_event<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         _context: &Context,
-        _lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>> {
+        _item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
         None
     }
 }

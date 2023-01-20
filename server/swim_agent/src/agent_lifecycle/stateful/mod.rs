@@ -18,7 +18,7 @@ use swim_api::handlers::{FnHandler, NoHandler};
 use crate::agent_lifecycle::AgentLifecycle;
 
 use super::{
-    lane_event::{LaneEvent, LaneEventShared},
+    lane_event::{ItemEvent, ItemEventShared},
     on_start::{OnStart, OnStartShared},
     on_stop::{OnStop, OnStopShared},
     utility::HandlerContext,
@@ -39,17 +39,17 @@ pub struct StatefulAgentLifecycle<
     State,
     FStart = NoHandler,
     FStop = NoHandler,
-    LaneEv = NoHandler,
+    ItemEv = NoHandler,
 > {
     state: State,
     handler_context: HandlerContext<Context>,
     on_start: FStart,
     on_stop: FStop,
-    lane_event: LaneEv,
+    item_event: ItemEv,
 }
 
-impl<Context, State: Clone, FStart: Clone, FStop: Clone, LaneEv: Clone> Clone
-    for StatefulAgentLifecycle<Context, State, FStart, FStop, LaneEv>
+impl<Context, State: Clone, FStart: Clone, FStop: Clone, ItemEv: Clone> Clone
+    for StatefulAgentLifecycle<Context, State, FStart, FStop, ItemEv>
 {
     fn clone(&self) -> Self {
         Self {
@@ -57,7 +57,7 @@ impl<Context, State: Clone, FStart: Clone, FStop: Clone, LaneEv: Clone> Clone
             handler_context: self.handler_context,
             on_start: self.on_start.clone(),
             on_stop: self.on_stop.clone(),
-            lane_event: self.lane_event.clone(),
+            item_event: self.item_event.clone(),
         }
     }
 }
@@ -71,18 +71,18 @@ impl<Context, State> StatefulAgentLifecycle<Context, State> {
             handler_context: HandlerContext::default(),
             on_start: NoHandler::default(),
             on_stop: NoHandler::default(),
-            lane_event: NoHandler::default(),
+            item_event: NoHandler::default(),
         }
     }
 }
 
-impl<FStart, FStop, LaneEv, Context, State> OnStart<Context>
-    for StatefulAgentLifecycle<Context, State, FStart, FStop, LaneEv>
+impl<FStart, FStop, ItemEv, Context, State> OnStart<Context>
+    for StatefulAgentLifecycle<Context, State, FStart, FStop, ItemEv>
 where
     State: Send,
     FStart: OnStartShared<Context, State>,
     FStop: Send,
-    LaneEv: Send,
+    ItemEv: Send,
 {
     type OnStartHandler<'a> = FStart::OnStartHandler<'a> where Self: 'a;
 
@@ -97,13 +97,13 @@ where
     }
 }
 
-impl<FStart, FStop, LaneEv, Context, State> OnStop<Context>
-    for StatefulAgentLifecycle<Context, State, FStart, FStop, LaneEv>
+impl<FStart, FStop, ItemEv, Context, State> OnStop<Context>
+    for StatefulAgentLifecycle<Context, State, FStart, FStop, ItemEv>
 where
     State: Send,
     FStop: OnStopShared<Context, State>,
     FStart: Send,
-    LaneEv: Send,
+    ItemEv: Send,
 {
     type OnStopHandler<'a> = FStop::OnStopHandler<'a>
     where
@@ -120,41 +120,41 @@ where
     }
 }
 
-impl<FStart, FStop, LaneEv, Context, State> LaneEvent<Context>
-    for StatefulAgentLifecycle<Context, State, FStart, FStop, LaneEv>
+impl<FStart, FStop, ItemEv, Context, State> ItemEvent<Context>
+    for StatefulAgentLifecycle<Context, State, FStart, FStop, ItemEv>
 where
     State: Send,
     FStart: Send,
     FStop: Send,
-    LaneEv: LaneEventShared<Context, State>,
+    ItemEv: ItemEventShared<Context, State>,
 {
-    type LaneEventHandler<'a> = LaneEv::LaneEventHandler<'a>
+    type ItemEventHandler<'a> = ItemEv::ItemEventHandler<'a>
     where
         Self: 'a;
 
-    fn lane_event<'a>(
+    fn item_event<'a>(
         &'a self,
         context: &Context,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>> {
+        item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
         let StatefulAgentLifecycle {
             state,
             handler_context,
-            lane_event,
+            item_event,
             ..
         } = self;
-        lane_event.lane_event(state, *handler_context, context, lane_name)
+        item_event.item_event(state, *handler_context, context, item_name)
     }
 }
 
-impl<Context, State, FStart, FStop, LaneEv>
-    StatefulAgentLifecycle<Context, State, FStart, FStop, LaneEv>
+impl<Context, State, FStart, FStop, ItemEv>
+    StatefulAgentLifecycle<Context, State, FStart, FStop, ItemEv>
 {
     /// Replace the `on_start` handler with another defined using a closure.
     pub fn on_start<F>(
         self,
         f: F,
-    ) -> StatefulAgentLifecycle<Context, State, FnHandler<F>, FStop, LaneEv>
+    ) -> StatefulAgentLifecycle<Context, State, FnHandler<F>, FStop, ItemEv>
     where
         FnHandler<F>: OnStartShared<Context, State>,
     {
@@ -162,7 +162,7 @@ impl<Context, State, FStart, FStop, LaneEv>
             handler_context,
             state,
             on_stop,
-            lane_event,
+            item_event,
             ..
         } = self;
         StatefulAgentLifecycle {
@@ -170,7 +170,7 @@ impl<Context, State, FStart, FStop, LaneEv>
             state,
             on_start: FnHandler(f),
             on_stop,
-            lane_event,
+            item_event,
         }
     }
 
@@ -178,7 +178,7 @@ impl<Context, State, FStart, FStop, LaneEv>
     pub fn on_stop<F>(
         self,
         f: F,
-    ) -> StatefulAgentLifecycle<Context, State, FStart, FnHandler<F>, LaneEv>
+    ) -> StatefulAgentLifecycle<Context, State, FStart, FnHandler<F>, ItemEv>
     where
         FnHandler<F>: OnStopShared<Context, State>,
     {
@@ -186,7 +186,7 @@ impl<Context, State, FStart, FStop, LaneEv>
             handler_context,
             state,
             on_start,
-            lane_event,
+            item_event,
             ..
         } = self;
         StatefulAgentLifecycle {
@@ -194,7 +194,7 @@ impl<Context, State, FStart, FStop, LaneEv>
             state,
             on_start,
             on_stop: FnHandler(f),
-            lane_event,
+            item_event,
         }
     }
 
@@ -204,7 +204,7 @@ impl<Context, State, FStart, FStop, LaneEv>
         handler: H,
     ) -> StatefulAgentLifecycle<Context, State, FStart, FStop, H>
     where
-        H: LaneEventShared<Context, State>,
+        H: ItemEventShared<Context, State>,
     {
         let StatefulAgentLifecycle {
             handler_context,
@@ -218,7 +218,7 @@ impl<Context, State, FStart, FStop, LaneEv>
             state,
             on_start,
             on_stop,
-            lane_event: handler,
+            item_event: handler,
         }
     }
 }

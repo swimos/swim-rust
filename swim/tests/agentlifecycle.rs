@@ -18,7 +18,7 @@ use parking_lot::Mutex;
 use swim::agent::lifecycle;
 use swim::agent::{
     agent_lifecycle::{
-        lane_event::LaneEvent, on_start::OnStart, on_stop::OnStop, utility::HandlerContext,
+        lane_event::ItemEvent, on_start::OnStart, on_stop::OnStop, utility::HandlerContext,
     },
     event_handler::{EventHandler, StepResult},
     lanes::{CommandLane, MapLane, ValueLane},
@@ -308,7 +308,7 @@ fn on_command_handler() {
 
     agent.command.command(TEST_VALUE);
     let handler = lifecycle
-        .lane_event(&agent, "command")
+        .item_event(&agent, "command")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -344,7 +344,7 @@ fn on_event_handler() {
 
     agent.value.set(TEST_VALUE);
     let handler = lifecycle
-        .lane_event(&agent, "value")
+        .item_event(&agent, "value")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -381,7 +381,7 @@ fn on_set_handler() {
 
     agent.value.set(TEST_VALUE);
     let handler = lifecycle
-        .lane_event(&agent, "value")
+        .item_event(&agent, "value")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -433,7 +433,7 @@ fn on_event_and_set_handlers() {
 
     agent.value.set(TEST_VALUE);
     let handler = lifecycle
-        .lane_event(&agent, "value")
+        .item_event(&agent, "value")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -477,12 +477,12 @@ fn on_event_shared_handler() {
     agent.value2.set(TEST_VALUE + 1);
 
     let handler = lifecycle
-        .lane_event(&agent, "value")
+        .item_event(&agent, "value")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
     let handler = lifecycle
-        .lane_event(&agent, "value2")
+        .item_event(&agent, "value2")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -536,7 +536,7 @@ fn on_clear_handler() {
 
     agent.map.clear();
     let handler = lifecycle
-        .lane_event(&agent, "map")
+        .item_event(&agent, "map")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -576,7 +576,7 @@ fn on_remove_handler() {
 
     agent.map.remove(&K1);
     let handler = lifecycle
-        .lane_event(&agent, "map")
+        .item_event(&agent, "map")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -625,7 +625,7 @@ fn on_update_handler() {
 
     agent.map.update(K2, Text::new("changed"));
     let handler = lifecycle
-        .lane_event(&agent, "map")
+        .item_event(&agent, "map")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -758,7 +758,7 @@ fn all_handlers() {
     //The tests primarily verifies that the lifecycle compiles so we just test one representative event.
     agent.value.set(TEST_VALUE);
     let handler = lifecycle
-        .lane_event(&agent, "value")
+        .item_event(&agent, "value")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -831,7 +831,7 @@ fn on_command_borrow_handler() {
 
     agent.string.command("text".to_string());
     let handler = lifecycle
-        .lane_event(&agent, "string")
+        .item_event(&agent, "string")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -867,7 +867,7 @@ fn on_event_borrow_handler() {
 
     agent.array.set(vec![1, 2, 3]);
     let handler = lifecycle
-        .lane_event(&agent, "array")
+        .item_event(&agent, "array")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -904,7 +904,7 @@ fn on_set_borrow_handler() {
 
     agent.array.set(vec![1, 2, 3]);
     let handler = lifecycle
-        .lane_event(&agent, "array")
+        .item_event(&agent, "array")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -947,7 +947,7 @@ fn on_update_borrow_handler() {
 
     agent.map.update(1, "hello".to_string());
     let handler = lifecycle
-        .lane_event(&agent, "map")
+        .item_event(&agent, "map")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
