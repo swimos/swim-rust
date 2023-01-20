@@ -225,7 +225,7 @@ impl<C, T> HandlerAction<C> for ValueLaneSet<C, T> {
             let lane = projection(context);
             lane.set(value);
             StepResult::Complete {
-                modified_lane: Some(Modification::of(lane.id())),
+                modified_item: Some(Modification::of(lane.id())),
                 result: (),
             }
         } else {
@@ -248,7 +248,7 @@ impl<C, T> HandlerAction<C> for ValueLaneSync<C, T> {
             let lane = projection(context);
             lane.sync(id);
             StepResult::Complete {
-                modified_lane: Some(Modification::no_trigger(lane.id())),
+                modified_item: Some(Modification::no_trigger(lane.id())),
                 result: (),
             }
         } else {

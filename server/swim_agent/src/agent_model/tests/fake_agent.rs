@@ -248,7 +248,7 @@ impl HandlerAction<TestAgent> for TestHandler {
     ) -> StepResult<Self::Completion> {
         let TestHandler { event } = self;
         if let Some(event) = event.take() {
-            let modified_lane = match &event {
+            let modified_item = match &event {
                 TestEvent::Value { body } => {
                     context.stage_value(*body);
                     Some(Modification::of(VAL_ID))
@@ -269,7 +269,7 @@ impl HandlerAction<TestAgent> for TestHandler {
             };
             context.sender.send(event).expect("Receiver dropped.");
             StepResult::Complete {
-                modified_lane,
+                modified_item,
                 result: (),
             }
         } else {

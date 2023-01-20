@@ -197,7 +197,7 @@ where
             let lane = projection(context);
             lane.update(key, value);
             StepResult::Complete {
-                modified_lane: Some(Modification::of(lane.id)),
+                modified_item: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {
@@ -238,7 +238,7 @@ where
             let lane = projection(context);
             lane.remove(&key);
             StepResult::Complete {
-                modified_lane: Some(Modification::of(lane.id)),
+                modified_item: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {
@@ -280,7 +280,7 @@ where
             let lane = projection(context);
             lane.clear();
             StepResult::Complete {
-                modified_lane: Some(Modification::of(lane.id)),
+                modified_item: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {
@@ -405,7 +405,7 @@ where
             let lane = projection(context);
             lane.sync(id);
             StepResult::Complete {
-                modified_lane: Some(Modification::no_trigger(lane.id)),
+                modified_item: Some(Modification::no_trigger(lane.id)),
                 result: (),
             }
         } else {

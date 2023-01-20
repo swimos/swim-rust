@@ -211,7 +211,7 @@ impl<C, T> HandlerAction<C> for ValueStoreSet<C, T> {
             let store = projection(context);
             store.set(value);
             StepResult::Complete {
-                modified_lane: Some(Modification::of(store.id())),
+                modified_item: Some(Modification::of(store.id())),
                 result: (),
             }
         } else {

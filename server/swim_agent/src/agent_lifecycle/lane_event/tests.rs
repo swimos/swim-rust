@@ -32,14 +32,14 @@ where
 {
     loop {
         match event_handler.step(dummy_context(), meta, agent) {
-            StepResult::Continue { modified_lane } => {
-                assert!(modified_lane.is_none());
+            StepResult::Continue { modified_item } => {
+                assert!(modified_item.is_none());
             }
             StepResult::Fail(err) => {
                 panic!("Event handler failed: {}", err);
             }
-            StepResult::Complete { modified_lane, .. } => {
-                assert!(modified_lane.is_none());
+            StepResult::Complete { modified_item, .. } => {
+                assert!(modified_item.is_none());
                 break;
             }
         }

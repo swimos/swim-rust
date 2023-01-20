@@ -73,7 +73,7 @@ async fn suspend_future() {
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             ..
         }
     ));
@@ -92,7 +92,7 @@ async fn suspend_future() {
         assert!(matches!(
             result,
             StepResult::Complete {
-                modified_lane: None,
+                modified_item: None,
                 ..
             }
         ));

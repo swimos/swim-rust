@@ -168,14 +168,14 @@ fn run_handler<Agent, H: EventHandler<Agent>>(agent: &Agent, mut handler: H) {
     let meta = make_meta(&uri);
     loop {
         match handler.step(dummy_context(), meta, agent) {
-            StepResult::Continue { modified_lane } => {
-                assert!(modified_lane.is_none());
+            StepResult::Continue { modified_item } => {
+                assert!(modified_item.is_none());
             }
             StepResult::Fail(e) => {
                 panic!("{}", e);
             }
-            StepResult::Complete { modified_lane, .. } => {
-                assert!(modified_lane.is_none());
+            StepResult::Complete { modified_item, .. } => {
+                assert!(modified_item.is_none());
                 break;
             }
         }

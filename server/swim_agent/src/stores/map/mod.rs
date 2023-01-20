@@ -177,7 +177,7 @@ where
             let store = projection(context);
             store.update(key, value);
             StepResult::Complete {
-                modified_lane: Some(Modification::of(store.id)),
+                modified_item: Some(Modification::of(store.id)),
                 result: (),
             }
         } else {
@@ -218,7 +218,7 @@ where
             let store = projection(context);
             store.remove(&key);
             StepResult::Complete {
-                modified_lane: Some(Modification::of(store.id)),
+                modified_item: Some(Modification::of(store.id)),
                 result: (),
             }
         } else {
@@ -260,7 +260,7 @@ where
             let store = projection(context);
             store.clear();
             StepResult::Complete {
-                modified_lane: Some(Modification::of(store.id)),
+                modified_item: Some(Modification::of(store.id)),
                 result: (),
             }
         } else {

@@ -117,14 +117,14 @@ mod test_support {
         let context = ActionContext::new(&no_spawn, &no_runtime, &no_spawn);
         loop {
             match handler.step(context, meta, agent) {
-                StepResult::Continue { modified_lane } => {
-                    assert!(modified_lane.is_none());
+                StepResult::Continue { modified_item } => {
+                    assert!(modified_item.is_none());
                 }
                 StepResult::Fail(err) => {
                     panic!("Handler failed: {}", err);
                 }
-                StepResult::Complete { modified_lane, .. } => {
-                    assert!(modified_lane.is_none());
+                StepResult::Complete { modified_item, .. } => {
+                    assert!(modified_item.is_none());
                     break;
                 }
             }

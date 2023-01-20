@@ -138,12 +138,12 @@ impl HandlerAction<TestAgent> for Handler {
                 if let Some(lane) = targets.pop_front() {
                     if targets.is_empty() {
                         StepResult::Complete {
-                            modified_lane: Some(Modification::of(lane.id())),
+                            modified_item: Some(Modification::of(lane.id())),
                             result: (),
                         }
                     } else {
                         StepResult::Continue {
-                            modified_lane: Some(Modification::of(lane.id())),
+                            modified_item: Some(Modification::of(lane.id())),
                         }
                     }
                 } else {

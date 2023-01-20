@@ -824,13 +824,13 @@ where
 {
     loop {
         match handler.step(action_context, meta, context) {
-            StepResult::Continue { modified_lane } => {
-                if let Some((modification, lane)) = modified_lane.and_then(|modification| {
+            StepResult::Continue { modified_item } => {
+                if let Some((modification, lane)) = modified_item.and_then(|modification| {
                     lanes
-                        .get(&modification.lane_id)
+                        .get(&modification.item_id)
                         .map(|name| (modification, name))
                 }) {
-                    collector.add_id(modification.lane_id);
+                    collector.add_id(modification.item_id);
                     if modification.trigger_handler {
                         if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
                             run_handler(
@@ -849,13 +849,13 @@ where
             StepResult::Fail(err) => {
                 break Err(err);
             }
-            StepResult::Complete { modified_lane, .. } => {
-                if let Some((modification, lane)) = modified_lane.and_then(|modification| {
+            StepResult::Complete { modified_item, .. } => {
+                if let Some((modification, lane)) = modified_item.and_then(|modification| {
                     lanes
-                        .get(&modification.lane_id)
+                        .get(&modification.item_id)
                         .map(|name| (modification, name))
                 }) {
-                    collector.add_id(modification.lane_id);
+                    collector.add_id(modification.item_id);
                     if modification.trigger_handler {
                         if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
                             run_handler(
