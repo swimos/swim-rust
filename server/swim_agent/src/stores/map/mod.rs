@@ -25,9 +25,9 @@ use tokio_util::codec::Encoder;
 use crate::agent_model::WriteResult;
 use crate::event_handler::{ActionContext, HandlerAction, Modification, StepResult};
 use crate::event_queue::EventQueue;
+use crate::item::{AgentItem, MapItem};
 use crate::map_storage::MapStoreInner;
 use crate::meta::AgentMetadata;
-use crate::AgentItem;
 
 use super::Store;
 
@@ -62,6 +62,22 @@ impl<K, V> MapStore<K, V> {
 impl<K, V> AgentItem for MapStore<K, V> {
     fn id(&self) -> u64 {
         self.id
+    }
+}
+
+impl<K, V> MapItem<K, V> for MapStore<K, V>
+where
+    K: Eq + Hash + Clone,
+{
+    fn init(&self, map: HashMap<K, V>) {
+        self.inner.borrow_mut().init(map)
+    }
+
+    fn read_with_prev<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<crate::lanes::map::MapLaneEvent<K, V>>, &HashMap<K, V>) -> R,
+    {
+        self.inner.borrow_mut().read_with_prev(f)
     }
 }
 

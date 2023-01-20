@@ -31,8 +31,8 @@ use crate::{
         ActionContext, AndThen, Decode, HandlerAction, HandlerActionExt, HandlerTrans,
         Modification, StepResult,
     },
+    item::AgentItem,
     meta::AgentMetadata,
-    AgentItem,
 };
 
 use super::{Lane, ProjTransform};

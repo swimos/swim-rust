@@ -35,9 +35,9 @@ use crate::{
         ActionContext, AndThen, EventHandlerError, HandlerAction, HandlerActionExt, HandlerTrans,
         Modification, StepResult,
     },
+    item::{AgentItem, MapItem},
     map_storage::MapStoreInner,
     meta::AgentMetadata,
-    AgentItem,
 };
 
 use self::queues::WriteQueues;
@@ -79,14 +79,26 @@ impl<K, V> AgentItem for MapLane<K, V> {
     }
 }
 
+impl<K, V> MapItem<K, V> for MapLane<K, V>
+where
+    K: Eq + Hash + Clone,
+{
+    fn init(&self, map: HashMap<K, V>) {
+        self.inner.borrow_mut().init(map)
+    }
+
+    fn read_with_prev<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R,
+    {
+        self.inner.borrow_mut().read_with_prev(f)
+    }
+}
+
 impl<K, V> MapLane<K, V>
 where
     K: Clone + Eq + Hash,
 {
-    pub(crate) fn init(&self, map: HashMap<K, V>) {
-        self.inner.borrow_mut().init(map)
-    }
-
     /// Update the value associated with a key.
     pub fn update(&self, key: K, value: V) {
         self.inner.borrow_mut().update(key, value)
@@ -118,15 +130,6 @@ where
         F: FnOnce(&HashMap<K, V>) -> R,
     {
         self.inner.borrow().get_map(f)
-    }
-
-    /// Read the state of the map, consuming the previous event (used when triggering
-    /// the event handlers for the lane).
-    pub(crate) fn read_with_prev<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R,
-    {
-        self.inner.borrow_mut().read_with_prev(f)
     }
 
     /// Start a sync operation from the lane to the specified remote.

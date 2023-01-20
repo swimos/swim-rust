@@ -30,6 +30,7 @@ use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
 
+use crate::item::{MapItem, ValueItem};
 use crate::lanes::{MapLane, ValueLane};
 use crate::stores::value::ValueStore;
 

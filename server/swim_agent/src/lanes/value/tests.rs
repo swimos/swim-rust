@@ -28,6 +28,7 @@ use crate::{
     event_handler::{
         EventHandlerError, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
     },
+    item::ValueItem,
     lanes::{
         value::{ValueLaneGet, ValueLaneSync},
         Lane,

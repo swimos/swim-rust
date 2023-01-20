@@ -12,16 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::BytesMut;
+use std::collections::HashMap;
 
-use crate::{agent_model::WriteResult, item::AgentItem};
+use crate::lanes::map::MapLaneEvent;
 
-pub mod map;
-pub mod value;
+pub trait AgentItem {
+    fn id(&self) -> u64;
+}
 
-pub use self::{map::MapStore, value::ValueStore};
+pub trait ValueItem<T>: AgentItem {
+    fn read_with_prev<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<T>, &T) -> R;
 
-pub trait Store: AgentItem {
-    /// If the state of the store has changed, write an event into the buffer.
-    fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult;
+    fn init(&self, value: T);
+}
+
+pub trait MapItem<K, V>: AgentItem {
+    fn init(&self, map: HashMap<K, V>);
+
+    fn read_with_prev<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R;
 }

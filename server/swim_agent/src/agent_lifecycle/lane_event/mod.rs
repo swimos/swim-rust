@@ -29,8 +29,14 @@ mod value;
 pub use command::{
     CommandBranch, CommandLeaf, CommandLifecycleHandler, CommandLifecycleHandlerShared,
 };
-pub use map::{MapBranch, MapLeaf, MapLifecycleHandler, MapLifecycleHandlerShared};
-pub use value::{ValueBranch, ValueLeaf, ValueLifecycleHandler, ValueLifecycleHandlerShared};
+pub use map::{
+    MapBranch, MapLeaf, MapLifecycleHandler, MapLifecycleHandlerShared, MapStoreBranch,
+    MapStoreLeaf,
+};
+pub use value::{
+    ValueBranch, ValueLeaf, ValueLifecycleHandler, ValueLifecycleHandlerShared, ValueStoreBranch,
+    ValueStoreLeaf,
+};
 
 /// Trait to implement all event handlers for all of the lanes of an agent. Implementations of
 /// this trait will typically consist of a type level tree (implementations of [`HTree`]) of handlers

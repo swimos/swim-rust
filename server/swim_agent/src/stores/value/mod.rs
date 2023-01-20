@@ -23,8 +23,8 @@ use tokio_util::codec::Encoder;
 use crate::{
     agent_model::WriteResult,
     event_handler::{ActionContext, EventHandlerError, HandlerAction, Modification, StepResult},
+    item::{AgentItem, ValueItem},
     meta::AgentMetadata,
-    AgentItem,
 };
 
 use super::Store;
@@ -68,20 +68,6 @@ impl<T> ValueStore<T> {
         f(&*value)
     }
 
-    /// Read the state of the store, consuming the previous value (used when triggering the `on_set` event
-    /// handler for the store).
-    pub(crate) fn read_with_prev<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(Option<T>, &T) -> R,
-    {
-        let ValueStore {
-            content, previous, ..
-        } = self;
-        let prev = previous.borrow_mut().take();
-        let value = content.borrow();
-        f(prev, &*value)
-    }
-
     /// Update the state of the store.
     pub fn set(&self, value: T) {
         let ValueStore {
@@ -93,11 +79,6 @@ impl<T> ValueStore<T> {
         let prev = content.replace(value);
         previous.replace(Some(prev));
         dirty.replace(true);
-    }
-
-    pub(crate) fn init(&self, value: T) {
-        let ValueStore { content, .. } = self;
-        content.replace(value);
     }
 
     pub(crate) fn has_data_to_write(&self) -> bool {
@@ -120,6 +101,25 @@ impl<T> ValueStore<T> {
 impl<T> AgentItem for ValueStore<T> {
     fn id(&self) -> u64 {
         self.id
+    }
+}
+
+impl<T> ValueItem<T> for ValueStore<T> {
+    fn read_with_prev<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<T>, &T) -> R,
+    {
+        let ValueStore {
+            content, previous, ..
+        } = self;
+        let prev = previous.borrow_mut().take();
+        let value = content.borrow();
+        f(prev, &*value)
+    }
+
+    fn init(&self, value: T) {
+        let ValueStore { content, .. } = self;
+        content.replace(value);
     }
 }
 

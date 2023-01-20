@@ -18,6 +18,7 @@ pub mod config;
 pub mod downlink_lifecycle;
 pub mod event_handler;
 mod event_queue;
+mod item;
 pub mod lanes;
 mod map_storage;
 pub mod meta;
@@ -30,10 +31,6 @@ pub use agent_model::AgentSpec;
 pub mod model {
     pub use swim_api::protocol::map::{MapMessage, MapOperation};
     pub use swim_model::Text;
-}
-
-pub trait AgentItem {
-    fn id(&self) -> u64;
 }
 
 pub mod reexport {
