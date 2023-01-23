@@ -60,7 +60,7 @@ use bitflags::bitflags;
 
 use self::downlink::handlers::BoxDownlinkChannel;
 use self::init::{run_lane_initializer, InitializedLane};
-pub use init::{LaneInitializer, MapLaneInitializer, ValueLaneInitializer, ValueStoreInitializer};
+pub use init::{LaneInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer, ValueStoreInitializer};
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
