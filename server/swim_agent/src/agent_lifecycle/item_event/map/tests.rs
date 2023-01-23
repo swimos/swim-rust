@@ -20,7 +20,7 @@ use swim_model::Text;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::{
-    agent_lifecycle::lane_event::{tests::run_handler, HLeaf, ItemEvent, MapBranch, MapLeaf},
+    agent_lifecycle::item_event::{tests::run_handler, HLeaf, ItemEvent, MapBranch, MapLeaf},
     event_handler::{ActionContext, HandlerAction, StepResult},
     lanes::map::{
         lifecycle::{on_clear::OnClear, on_remove::OnRemove, on_update::OnUpdate},

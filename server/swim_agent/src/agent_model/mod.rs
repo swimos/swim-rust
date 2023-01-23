@@ -41,7 +41,7 @@ use swim_utilities::routing::route_uri::RouteUri;
 use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::agent_lifecycle::lane_event::ItemEvent;
+use crate::agent_lifecycle::item_event::ItemEvent;
 use crate::event_handler::{ActionContext, BoxEventHandler, HandlerFuture, WriteStream};
 use crate::{
     agent_lifecycle::AgentLifecycle,

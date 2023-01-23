@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use self::{lane_event::ItemEvent, on_start::OnStart, on_stop::OnStop};
+use self::{item_event::ItemEvent, on_start::OnStart, on_stop::OnStop};
 
-pub mod lane_event;
+pub mod item_event;
 pub mod on_start;
 pub mod on_stop;
 pub mod stateful;

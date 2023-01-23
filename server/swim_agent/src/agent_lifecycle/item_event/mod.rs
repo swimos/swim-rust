@@ -30,12 +30,12 @@ pub use command::{
     CommandBranch, CommandLeaf, CommandLifecycleHandler, CommandLifecycleHandlerShared,
 };
 pub use map::{
-    MapBranch, MapLeaf, MapLifecycleHandler, MapLifecycleHandlerShared, MapStoreBranch,
-    MapStoreLeaf,
+    MapBranch, MapLeaf, MapLifecycleHandler, MapLifecycleHandlerShared, MapLikeBranch,
+    MapStoreBranch, MapStoreLeaf,
 };
 pub use value::{
-    ValueBranch, ValueLeaf, ValueLifecycleHandler, ValueLifecycleHandlerShared, ValueStoreBranch,
-    ValueStoreLeaf,
+    ValueBranch, ValueLeaf, ValueLifecycleHandler, ValueLifecycleHandlerShared, ValueLikeBranch,
+    ValueStoreBranch, ValueStoreLeaf,
 };
 
 /// Trait to implement all event handlers for all of the items(lanes and stores) of an agent.

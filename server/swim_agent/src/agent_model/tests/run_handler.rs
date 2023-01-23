@@ -23,7 +23,7 @@ use swim_model::Text;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::{
-    agent_lifecycle::lane_event::ItemEvent,
+    agent_lifecycle::item_event::ItemEvent,
     agent_model::run_handler,
     event_handler::{
         ActionContext, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,

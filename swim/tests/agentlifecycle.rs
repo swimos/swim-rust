@@ -18,7 +18,7 @@ use parking_lot::Mutex;
 use swim::agent::lifecycle;
 use swim::agent::{
     agent_lifecycle::{
-        lane_event::ItemEvent, on_start::OnStart, on_stop::OnStop, utility::HandlerContext,
+        item_event::ItemEvent, on_start::OnStart, on_stop::OnStop, utility::HandlerContext,
     },
     event_handler::{EventHandler, StepResult},
     lanes::{CommandLane, MapLane, ValueLane},

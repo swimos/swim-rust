@@ -20,26 +20,20 @@ use swim_model::Text;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::{
-    agent_lifecycle::lane_event::{tests::run_handler, HLeaf},
-    event_handler::{ActionContext, HandlerAction, StepResult},
-    lanes::value::{
-        lifecycle::{on_event::OnEvent, on_set::OnSet},
-        ValueLane,
+    agent_lifecycle::item_event::{
+        tests::run_handler, CommandBranch, CommandLeaf, HLeaf, ItemEvent,
     },
+    event_handler::{ActionContext, HandlerAction, StepResult},
+    lanes::command::{lifecycle::on_command::OnCommand, CommandLane},
     meta::AgentMetadata,
 };
 
-use super::{ItemEvent, ValueBranch, ValueLeaf};
-
 struct TestAgent {
-    first: ValueLane<i32>,
-    second: ValueLane<Text>,
-    third: ValueLane<bool>,
+    first: CommandLane<i32>,
+    second: CommandLane<Text>,
+    third: CommandLane<bool>,
 }
 
-const INIT_FIRST: i32 = 4;
-const INIT_SECOND: &str = "";
-const INIT_THIRD: bool = false;
 const LANE_ID1: u64 = 0;
 const LANE_ID2: u64 = 1;
 const LANE_ID3: u64 = 2;
@@ -47,17 +41,17 @@ const LANE_ID3: u64 = 2;
 impl Default for TestAgent {
     fn default() -> Self {
         TestAgent {
-            first: ValueLane::new(LANE_ID1, INIT_FIRST),
-            second: ValueLane::new(LANE_ID2, Text::new(INIT_SECOND)),
-            third: ValueLane::new(LANE_ID3, INIT_THIRD),
+            first: CommandLane::new(LANE_ID1),
+            second: CommandLane::new(LANE_ID2),
+            third: CommandLane::new(LANE_ID3),
         }
     }
 }
 
 impl TestAgent {
-    const FIRST: fn(&TestAgent) -> &ValueLane<i32> = |agent| &agent.first;
-    const SECOND: fn(&TestAgent) -> &ValueLane<Text> = |agent| &agent.second;
-    const THIRD: fn(&TestAgent) -> &ValueLane<bool> = |agent| &agent.third;
+    const FIRST: fn(&TestAgent) -> &CommandLane<i32> = |agent| &agent.first;
+    const SECOND: fn(&TestAgent) -> &CommandLane<Text> = |agent| &agent.second;
+    const THIRD: fn(&TestAgent) -> &CommandLane<bool> = |agent| &agent.third;
 }
 
 const FIRST_NAME: &str = "first";
@@ -66,17 +60,16 @@ const THIRD_NAME: &str = "third";
 
 #[derive(Default, Debug, Clone, Copy)]
 struct LifecycleState<T> {
-    on_event: Option<T>,
-    on_set: Option<(Option<T>, T)>,
+    on_command: Option<T>,
 }
 
-struct OnEventHandler<T> {
+struct OnCommandHandler<T> {
     value: T,
     state: Arc<Mutex<LifecycleState<T>>>,
     done: bool,
 }
 
-impl<T: Clone> HandlerAction<TestAgent> for OnEventHandler<T> {
+impl<T: Clone> HandlerAction<TestAgent> for OnCommandHandler<T> {
     type Completion = ();
 
     fn step(
@@ -85,46 +78,13 @@ impl<T: Clone> HandlerAction<TestAgent> for OnEventHandler<T> {
         _meta: AgentMetadata,
         _context: &TestAgent,
     ) -> StepResult<Self::Completion> {
-        let OnEventHandler { value, state, done } = self;
+        let OnCommandHandler { value, state, done } = self;
         if *done {
             StepResult::after_done()
         } else {
             *done = true;
             let mut guard = state.lock();
-            guard.on_event = Some(value.clone());
-            StepResult::done(())
-        }
-    }
-}
-
-struct OnSetHandler<T> {
-    prev: Option<T>,
-    new_value: T,
-    state: Arc<Mutex<LifecycleState<T>>>,
-    done: bool,
-}
-
-impl<T: Clone> HandlerAction<TestAgent> for OnSetHandler<T> {
-    type Completion = ();
-
-    fn step(
-        &mut self,
-        _action_context: ActionContext<TestAgent>,
-        _meta: AgentMetadata,
-        _context: &TestAgent,
-    ) -> StepResult<Self::Completion> {
-        let OnSetHandler {
-            state,
-            done,
-            prev,
-            new_value,
-        } = self;
-        if *done {
-            StepResult::after_done()
-        } else {
-            *done = true;
-            let mut guard = state.lock();
-            guard.on_set = Some((prev.take(), new_value.clone()));
+            guard.on_command = Some(value.clone());
             StepResult::done(())
         }
     }
@@ -136,41 +96,22 @@ struct FakeLifecycle<T> {
 }
 
 impl<T> FakeLifecycle<T> {
-    fn on_event_handler(&self, value: T) -> OnEventHandler<T> {
-        OnEventHandler {
+    fn on_command_handler(&self, value: T) -> OnCommandHandler<T> {
+        OnCommandHandler {
             value,
             state: self.state.clone(),
             done: false,
         }
     }
-
-    fn on_set_handler(&self, prev: Option<T>, new_value: T) -> OnSetHandler<T> {
-        OnSetHandler {
-            prev,
-            new_value,
-            state: self.state.clone(),
-            done: false,
-        }
-    }
 }
 
-impl<T: Clone + Send + 'static> OnEvent<T, TestAgent> for FakeLifecycle<T> {
-    type OnEventHandler<'a> = OnEventHandler<T>
+impl<T: Clone + Send + 'static> OnCommand<T, TestAgent> for FakeLifecycle<T> {
+    type OnCommandHandler<'a> = OnCommandHandler<T>
     where
         Self: 'a;
 
-    fn on_event<'a>(&'a self, value: &T) -> Self::OnEventHandler<'a> {
-        self.on_event_handler(value.clone())
-    }
-}
-
-impl<T: Clone + Send + 'static> OnSet<T, TestAgent> for FakeLifecycle<T> {
-    type OnSetHandler<'a> = OnSetHandler<T>
-    where
-        Self: 'a;
-
-    fn on_set<'a>(&'a self, existing: Option<T>, new_value: &T) -> Self::OnSetHandler<'a> {
-        self.on_set_handler(existing, new_value.clone())
+    fn on_command<'a>(&'a self, value: &T) -> Self::OnCommandHandler<'a> {
+        self.on_command_handler(value.clone())
     }
 }
 
@@ -184,35 +125,32 @@ fn make_uri() -> RouteUri {
 fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
     AgentMetadata::new(uri, &CONFIG)
 }
-
 #[test]
-fn value_lane_leaf() {
+fn command_lane_leaf() {
     let uri = make_uri();
     let meta = make_meta(&uri);
 
     let agent = TestAgent::default();
 
-    agent.first.set(56);
+    agent.first.command(56);
 
     let lifecycle = FakeLifecycle::<i32>::default();
-    let leaf = ValueLeaf::leaf(FIRST_NAME, TestAgent::FIRST, lifecycle.clone());
+    let leaf = CommandLeaf::leaf(FIRST_NAME, TestAgent::FIRST, lifecycle.clone());
 
     assert!(leaf.item_event(&agent, "other").is_none());
 
     if let Some(handler) = leaf.item_event(&agent, FIRST_NAME) {
         run_handler(meta, &agent, handler);
         let guard = lifecycle.state.lock();
-        let LifecycleState { on_event, on_set } = *guard;
+        let LifecycleState { on_command } = *guard;
 
-        assert_eq!(on_event, Some(56));
-        assert_eq!(on_set, Some((Some(INIT_FIRST), 56)));
+        assert_eq!(on_command, Some(56));
     } else {
         panic!("Expected an event handler.");
     }
 }
-
 #[test]
-fn value_lane_left_branch() {
+fn command_lane_left_branch() {
     let uri = make_uri();
     let meta = make_meta(&uri);
 
@@ -220,9 +158,9 @@ fn value_lane_left_branch() {
 
     let first_lifecycle = FakeLifecycle::<i32>::default();
     let second_lifecycle = FakeLifecycle::<Text>::default();
-    let leaf = ValueLeaf::leaf(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
+    let leaf = CommandLeaf::leaf(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
 
-    let branch = ValueBranch::new(
+    let branch = CommandBranch::new(
         SECOND_NAME,
         TestAgent::SECOND,
         second_lifecycle.clone(),
@@ -234,18 +172,17 @@ fn value_lane_left_branch() {
     assert!(branch.item_event(&agent, "g").is_none()); //Between first and second lanes.
     assert!(branch.item_event(&agent, "u").is_none()); //After second lane.
 
-    agent.first.set(56);
+    agent.first.command(56);
     let hello = Text::new("Hello");
-    agent.second.set(hello.clone());
+    agent.second.command(hello.clone());
 
     if let Some(handler) = branch.item_event(&agent, FIRST_NAME) {
         run_handler(meta, &agent, handler);
 
         let guard = first_lifecycle.state.lock();
-        let LifecycleState { on_event, on_set } = *guard;
+        let LifecycleState { on_command } = *guard;
 
-        assert_eq!(on_event, Some(56));
-        assert_eq!(on_set, Some((Some(INIT_FIRST), 56)));
+        assert_eq!(on_command, Some(56));
     } else {
         panic!("Expected an event handler.");
     }
@@ -254,17 +191,16 @@ fn value_lane_left_branch() {
         run_handler(meta, &agent, handler);
 
         let guard = second_lifecycle.state.lock();
-        let LifecycleState { on_event, on_set } = guard.clone();
+        let LifecycleState { on_command } = guard.clone();
 
-        assert_eq!(on_event, Some(hello.clone()));
-        assert_eq!(on_set, Some((Some(Text::new(INIT_SECOND)), hello)));
+        assert_eq!(on_command, Some(hello));
     } else {
         panic!("Expected an event handler.");
     }
 }
 
 #[test]
-fn value_lane_right_branch() {
+fn command_lane_right_branch() {
     let uri = make_uri();
     let meta = make_meta(&uri);
 
@@ -272,9 +208,9 @@ fn value_lane_right_branch() {
 
     let first_lifecycle = FakeLifecycle::<i32>::default();
     let second_lifecycle = FakeLifecycle::<Text>::default();
-    let leaf = ValueLeaf::leaf(SECOND_NAME, TestAgent::SECOND, second_lifecycle.clone());
+    let leaf = CommandLeaf::leaf(SECOND_NAME, TestAgent::SECOND, second_lifecycle.clone());
 
-    let branch = ValueBranch::new(
+    let branch = CommandBranch::new(
         FIRST_NAME,
         TestAgent::FIRST,
         first_lifecycle.clone(),
@@ -286,18 +222,17 @@ fn value_lane_right_branch() {
     assert!(branch.item_event(&agent, "g").is_none()); //Between first and second lanes.
     assert!(branch.item_event(&agent, "u").is_none()); //After second lane.
 
-    agent.first.set(56);
+    agent.first.command(56);
     let hello = Text::new("Hello");
-    agent.second.set(hello.clone());
+    agent.second.command(hello.clone());
 
     if let Some(handler) = branch.item_event(&agent, FIRST_NAME) {
         run_handler(meta, &agent, handler);
 
         let guard = first_lifecycle.state.lock();
-        let LifecycleState { on_event, on_set } = *guard;
+        let LifecycleState { on_command } = *guard;
 
-        assert_eq!(on_event, Some(56));
-        assert_eq!(on_set, Some((Some(INIT_FIRST), 56)));
+        assert_eq!(on_command, Some(56));
     } else {
         panic!("Expected an event handler.");
     }
@@ -306,16 +241,16 @@ fn value_lane_right_branch() {
         run_handler(meta, &agent, handler);
 
         let guard = second_lifecycle.state.lock();
-        let LifecycleState { on_event, on_set } = guard.clone();
+        let LifecycleState { on_command } = guard.clone();
 
-        assert_eq!(on_event, Some(hello.clone()));
-        assert_eq!(on_set, Some((Some(Text::new(INIT_SECOND)), hello)));
+        assert_eq!(on_command, Some(hello));
     } else {
         panic!("Expected an event handler.");
     }
 }
+
 #[test]
-fn value_lane_two_branches() {
+fn command_lane_two_branches() {
     let uri = make_uri();
     let meta = make_meta(&uri);
 
@@ -324,16 +259,15 @@ fn value_lane_two_branches() {
     let first_lifecycle = FakeLifecycle::<i32>::default();
     let second_lifecycle = FakeLifecycle::<Text>::default();
     let third_lifecycle = FakeLifecycle::<bool>::default();
+    let leaf_left = CommandLeaf::leaf(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
+    let leaf_right = CommandLeaf::leaf(THIRD_NAME, TestAgent::THIRD, third_lifecycle.clone());
 
-    let left = ValueLeaf::leaf(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
-    let right = ValueLeaf::leaf(THIRD_NAME, TestAgent::THIRD, third_lifecycle.clone());
-
-    let branch = ValueBranch::new(
+    let branch = CommandBranch::new(
         SECOND_NAME,
         TestAgent::SECOND,
         second_lifecycle.clone(),
-        left,
-        right,
+        leaf_left,
+        leaf_right,
     );
 
     assert!(branch.item_event(&agent, "a").is_none()); //Before first lane.
@@ -341,19 +275,18 @@ fn value_lane_two_branches() {
     assert!(branch.item_event(&agent, "sf").is_none()); //Between second and third lanes.
     assert!(branch.item_event(&agent, "u").is_none()); //After third lane.
 
-    agent.first.set(56);
+    agent.first.command(56);
     let hello = Text::new("Hello");
-    agent.second.set(hello.clone());
-    agent.third.set(true);
+    agent.second.command(hello.clone());
+    agent.third.command(true);
 
     if let Some(handler) = branch.item_event(&agent, FIRST_NAME) {
         run_handler(meta, &agent, handler);
 
         let guard = first_lifecycle.state.lock();
-        let LifecycleState { on_event, on_set } = *guard;
+        let LifecycleState { on_command } = *guard;
 
-        assert_eq!(on_event, Some(56));
-        assert_eq!(on_set, Some((Some(INIT_FIRST), 56)));
+        assert_eq!(on_command, Some(56));
     } else {
         panic!("Expected an event handler.");
     }
@@ -362,10 +295,9 @@ fn value_lane_two_branches() {
         run_handler(meta, &agent, handler);
 
         let guard = second_lifecycle.state.lock();
-        let LifecycleState { on_event, on_set } = guard.clone();
+        let LifecycleState { on_command } = guard.clone();
 
-        assert_eq!(on_event, Some(hello.clone()));
-        assert_eq!(on_set, Some((Some(Text::new(INIT_SECOND)), hello)));
+        assert_eq!(on_command, Some(hello));
     } else {
         panic!("Expected an event handler.");
     }
@@ -374,46 +306,10 @@ fn value_lane_two_branches() {
         run_handler(meta, &agent, handler);
 
         let guard = third_lifecycle.state.lock();
-        let LifecycleState { on_event, on_set } = *guard;
+        let LifecycleState { on_command } = *guard;
 
-        assert_eq!(on_event, Some(true));
-        assert_eq!(on_set, Some((Some(INIT_THIRD), true)));
+        assert_eq!(on_command, Some(true));
     } else {
         panic!("Expected an event handler.");
     }
-}
-
-#[test]
-#[should_panic]
-fn fail_out_of_order_labels_right() {
-    let first_lifecycle = FakeLifecycle::<i32>::default();
-    let second_lifecycle = FakeLifecycle::<Text>::default();
-    let leaf = ValueLeaf::leaf(FIRST_NAME, TestAgent::FIRST, first_lifecycle);
-
-    ValueBranch::new(
-        SECOND_NAME,
-        TestAgent::SECOND,
-        second_lifecycle,
-        HLeaf,
-        leaf,
-    );
-}
-
-#[test]
-#[should_panic]
-fn fail_out_of_order_labels_left() {
-    let first_lifecycle = FakeLifecycle::<i32>::default();
-    let second_lifecycle = FakeLifecycle::<Text>::default();
-    let leaf = ValueLeaf::leaf(SECOND_NAME, TestAgent::SECOND, second_lifecycle);
-
-    ValueBranch::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle, leaf, HLeaf);
-}
-
-#[test]
-#[should_panic]
-fn fail_equal_labels() {
-    let first_lifecycle = FakeLifecycle::<i32>::default();
-    let leaf = ValueLeaf::leaf(FIRST_NAME, TestAgent::FIRST, first_lifecycle.clone());
-
-    ValueBranch::new(FIRST_NAME, TestAgent::FIRST, first_lifecycle, HLeaf, leaf);
 }

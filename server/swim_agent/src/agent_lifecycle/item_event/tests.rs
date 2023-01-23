@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::{
-    agent_lifecycle::lane_event::{HLeaf, ItemEvent},
+    agent_lifecycle::item_event::{HLeaf, ItemEvent},
     event_handler::{HandlerAction, StepResult},
     meta::AgentMetadata,
     test_context::dummy_context,

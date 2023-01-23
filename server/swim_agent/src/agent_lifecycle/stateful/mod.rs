@@ -18,7 +18,7 @@ use swim_api::handlers::{FnHandler, NoHandler};
 use crate::agent_lifecycle::AgentLifecycle;
 
 use super::{
-    lane_event::{ItemEvent, ItemEventShared},
+    item_event::{ItemEvent, ItemEventShared},
     on_start::{OnStart, OnStartShared},
     on_stop::{OnStop, OnStopShared},
     utility::HandlerContext,

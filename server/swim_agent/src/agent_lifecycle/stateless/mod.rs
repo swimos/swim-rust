@@ -19,7 +19,7 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::agent_lifecycle::AgentLifecycle;
 
-use super::{lane_event::ItemEvent, on_start::OnStart, on_stop::OnStop};
+use super::{item_event::ItemEvent, on_start::OnStart, on_stop::OnStop};
 
 /// An implementation of [AgentLifecycle] with no shared state.
 ///

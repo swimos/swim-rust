@@ -17,7 +17,7 @@ use swim_model::Text;
 use tokio::sync::mpsc;
 
 use crate::{
-    agent_lifecycle::{lane_event::ItemEvent, on_start::OnStart, on_stop::OnStop},
+    agent_lifecycle::{item_event::ItemEvent, on_start::OnStart, on_stop::OnStop},
     event_handler::{
         ActionContext, BoxEventHandler, HandlerAction, SideEffect, Spawner, StepResult,
     },
