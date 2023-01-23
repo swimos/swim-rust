@@ -15,9 +15,6 @@
 pub mod downlink;
 mod runtime;
 
-pub use crate::runtime::{
-    start_runtime, DownlinkErrorKind, DownlinkRuntimeError, RawHandle, RemotePath, Transport,
-};
 use ratchet::WebSocketConfig;
 use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
