@@ -44,7 +44,7 @@ use self::{
 
 use super::{
     downlink::handlers::{DownlinkChannel, DownlinkChannelExt},
-    AgentModel, HostedDownlink, LaneModelFactory,
+    AgentModel, HostedDownlink, ItemModelFactory,
 };
 
 mod fake_agent;
@@ -91,10 +91,10 @@ pub struct Fac {
     rx: Arc<Mutex<Option<TestAgent>>>,
 }
 
-impl LaneModelFactory for Fac {
-    type LaneModel = TestAgent;
+impl ItemModelFactory for Fac {
+    type ItemModel = TestAgent;
 
-    fn create(&self) -> Self::LaneModel {
+    fn create(&self) -> Self::ItemModel {
         let mut guard = self.rx.lock();
         guard.take().expect("Agent created twice.")
     }

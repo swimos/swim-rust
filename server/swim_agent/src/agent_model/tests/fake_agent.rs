@@ -28,7 +28,7 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use crate::{
-    agent_model::{AgentSpec, LaneFlags, ItemSpec, WriteResult, ItemKind},
+    agent_model::{AgentSpec, ItemKind, ItemSpec, LaneFlags, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
 };
@@ -101,14 +101,23 @@ impl AgentSpec for TestAgent {
 
     fn value_like_item_specs() -> HashMap<&'static str, crate::agent_model::ItemSpec> {
         let mut lanes = HashMap::new();
-        lanes.insert(VAL_LANE, ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT));
-        lanes.insert(CMD_LANE, ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT));
+        lanes.insert(
+            VAL_LANE,
+            ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT),
+        );
+        lanes.insert(
+            CMD_LANE,
+            ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT),
+        );
         lanes
     }
 
     fn map_like_item_specs() -> HashMap<&'static str, crate::agent_model::ItemSpec> {
         let mut lanes = HashMap::new();
-        lanes.insert(MAP_LANE, ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT));
+        lanes.insert(
+            MAP_LANE,
+            ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT),
+        );
         lanes
     }
 

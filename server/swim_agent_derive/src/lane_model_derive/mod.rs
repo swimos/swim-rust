@@ -18,7 +18,7 @@ use syn::{parse_quote, Ident};
 
 mod model;
 
-pub use model::{validate_input, ItemSpec, ItemModel, LanesModel};
+pub use model::{validate_input, ItemModel, ItemSpec, LanesModel};
 
 use self::model::{ItemKind, LaneModel, LaneSpec};
 
@@ -63,10 +63,19 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             .iter()
             .copied()
             .partition::<Vec<_>, _>(OrdinalItemModel::map_like);
-        
-        let lane_models = item_models.iter().filter_map(OrdinalItemModel::lane).collect::<Vec<_>>();
-        let value_lane_models = value_item_models.iter().filter_map(OrdinalItemModel::lane).collect::<Vec<_>>();
-        let map_lane_models = map_item_models.iter().filter_map(OrdinalItemModel::lane).collect::<Vec<_>>();
+
+        let lane_models = item_models
+            .iter()
+            .filter_map(OrdinalItemModel::lane)
+            .collect::<Vec<_>>();
+        let value_lane_models = value_item_models
+            .iter()
+            .filter_map(OrdinalItemModel::lane)
+            .collect::<Vec<_>>();
+        let map_lane_models = map_item_models
+            .iter()
+            .filter_map(OrdinalItemModel::lane)
+            .collect::<Vec<_>>();
 
         let value_handler = if !value_lane_models.is_empty() {
             value_lane_models
@@ -263,12 +272,18 @@ struct OrdinalItemModel<'a> {
 }
 
 impl<'a> OrdinalItemModel<'a> {
-
     fn lane(&self) -> Option<OrdinalLaneModel<'a>> {
-        let OrdinalItemModel { agent_name, ordinal, model } = self;
-        model.lane().map(move |model| OrdinalLaneModel { agent_name, ordinal: *ordinal, model })
+        let OrdinalItemModel {
+            agent_name,
+            ordinal,
+            model,
+        } = self;
+        model.lane().map(move |model| OrdinalLaneModel {
+            agent_name,
+            ordinal: *ordinal,
+            model,
+        })
     }
-
 }
 
 #[derive(Clone, Copy)]
@@ -472,8 +487,15 @@ impl<'a> WriteToBufferMatch<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let WriteToBufferMatch(model) = self;
         let name_lit = model.literal();
-        let ItemModel { name, .. } = model;
-        quote!(#name_lit => ::core::option::Option::Some(#root::lanes::Lane::write_to_buffer(&self.#name, buffer)))
+        let ItemModel { name, kind, .. } = model;
+        match kind.item_kind() {
+            ItemKind::Lane => {
+                quote!(#name_lit => ::core::option::Option::Some(#root::lanes::Lane::write_to_buffer(&self.#name, buffer)))
+            }
+            ItemKind::Store => {
+                quote!(#name_lit => ::core::option::Option::Some(#root::stores::Store::write_to_buffer(&self.#name, buffer)))
+            }
+        }
     }
 }
 
@@ -485,24 +507,31 @@ struct ValueItemInitMatch<'a> {
 }
 
 impl<'a> ValueItemInitMatch<'a> {
-
     pub fn new(item: &OrdinalItemModel<'a>) -> Self {
-        ValueItemInitMatch { 
-            agent_name: item.agent_name, 
-            name: item.model.name, 
+        ValueItemInitMatch {
+            agent_name: item.agent_name,
+            name: item.model.name,
             name_lit: item.model.literal(),
-            kind: item.model.item_kind()
+            kind: item.model.item_kind(),
         }
     }
-
 }
 
 impl<'a> ValueItemInitMatch<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
-        let ValueItemInitMatch { agent_name, name, name_lit, kind } = self;
+        let ValueItemInitMatch {
+            agent_name,
+            name,
+            name_lit,
+            kind,
+        } = self;
         match kind {
-            ItemKind::Lane => quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::ValueLaneInitializer::new(|agent: &#agent_name| &agent.#name)))),
-            ItemKind::Store => quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::ValueStoreInitializer::new(|agent: &#agent_name| &agent.#name)))),
+            ItemKind::Lane => {
+                quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::ValueLaneInitializer::new(|agent: &#agent_name| &agent.#name))))
+            }
+            ItemKind::Store => {
+                quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::ValueStoreInitializer::new(|agent: &#agent_name| &agent.#name))))
+            }
         }
     }
 }
@@ -515,24 +544,31 @@ struct MapItemInitMatch<'a> {
 }
 
 impl<'a> MapItemInitMatch<'a> {
-
     pub fn new(item: &OrdinalItemModel<'a>) -> Self {
-        MapItemInitMatch { 
-            agent_name: item.agent_name, 
-            name: item.model.name, 
+        MapItemInitMatch {
+            agent_name: item.agent_name,
+            name: item.model.name,
             name_lit: item.model.literal(),
-            kind: item.model.item_kind()
+            kind: item.model.item_kind(),
         }
     }
-
 }
 
 impl<'a> MapItemInitMatch<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
-        let MapItemInitMatch { agent_name, name, name_lit, kind } = self;
+        let MapItemInitMatch {
+            agent_name,
+            name,
+            name_lit,
+            kind,
+        } = self;
         match kind {
-            ItemKind::Lane => quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::MapLaneInitializer::new(|agent: &#agent_name| &agent.#name)))),
-            ItemKind::Store => quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::MapStoreInitializer::new(|agent: &#agent_name| &agent.#name))))
+            ItemKind::Lane => {
+                quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::MapLaneInitializer::new(|agent: &#agent_name| &agent.#name))))
+            }
+            ItemKind::Store => {
+                quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::MapStoreInitializer::new(|agent: &#agent_name| &agent.#name))))
+            }
         }
     }
 }

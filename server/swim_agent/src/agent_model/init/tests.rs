@@ -30,7 +30,10 @@ use swim_model::Text;
 use swim_utilities::{io::byte_channel::byte_channel, non_zero_usize};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use crate::{lanes::{MapLane, ValueLane}, agent_model::ItemKind};
+use crate::{
+    agent_model::ItemKind,
+    lanes::{MapLane, ValueLane},
+};
 
 use super::{run_item_initializer, InitializedItem, MapLaneInitializer, ValueLaneInitializer};
 

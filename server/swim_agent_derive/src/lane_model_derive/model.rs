@@ -54,7 +54,6 @@ pub enum ItemSpec<'a> {
 }
 
 impl<'a> ItemSpec<'a> {
-
     pub fn lane(&self) -> Option<LaneSpec<'a>> {
         match self {
             ItemSpec::Command(t) => Some(LaneSpec::Command(t)),
@@ -64,6 +63,13 @@ impl<'a> ItemSpec<'a> {
         }
     }
 
+    pub fn item_kind(&self) -> ItemKind {
+        match self {
+            ItemSpec::Command(_) => ItemKind::Lane,
+            ItemSpec::Value(k, _) => *k,
+            ItemSpec::Map(k, _, _) => *k,
+        }
+    }
 }
 
 /// The kinds of lane that can be inferred from the type of a field.
@@ -97,10 +103,13 @@ pub struct ItemModel<'a> {
 }
 
 impl<'a> ItemModel<'a> {
-
     pub fn lane(&self) -> Option<LaneModel<'a>> {
         let ItemModel { name, kind, flags } = self;
-        kind.lane().map(move |kind| LaneModel { name, kind, flags: *flags })
+        kind.lane().map(move |kind| LaneModel {
+            name,
+            kind,
+            flags: *flags,
+        })
     }
 
     pub fn item_kind(&self) -> ItemKind {
@@ -110,7 +119,6 @@ impl<'a> ItemModel<'a> {
             ItemSpec::Map(kind, _, _) => kind,
         }
     }
-
 }
 
 /// Description of an lane (its name the the kind of the lane, along with types).
@@ -124,15 +132,13 @@ pub struct LaneModel<'a> {
 fn ident_to_literal(name: &Ident) -> proc_macro2::Literal {
     let name_str = name.to_string();
     proc_macro2::Literal::string(name_str.as_str())
-} 
+}
 
 impl<'a> LaneModel<'a> {
-
     /// The name of the lane as a string literal.
     pub fn literal(&self) -> proc_macro2::Literal {
         ident_to_literal(&self.name)
     }
-
 }
 
 impl<'a> ItemModel<'a> {
@@ -235,11 +241,19 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
                 }
                 VALUE_LANE_NAME => {
                     let param = single_param(arguments)?;
-                    Ok(ItemModel::new(fld_name, ItemSpec::Value(ItemKind::Lane, param), lane_flags))
+                    Ok(ItemModel::new(
+                        fld_name,
+                        ItemSpec::Value(ItemKind::Lane, param),
+                        lane_flags,
+                    ))
                 }
                 VALUE_STORE_NAME => {
                     let param = single_param(arguments)?;
-                    Ok(ItemModel::new(fld_name, ItemSpec::Value(ItemKind::Store, param), lane_flags))
+                    Ok(ItemModel::new(
+                        fld_name,
+                        ItemSpec::Value(ItemKind::Store, param),
+                        lane_flags,
+                    ))
                 }
                 MAP_LANE_NAME => {
                     let (param1, param2) = two_params(arguments)?;
