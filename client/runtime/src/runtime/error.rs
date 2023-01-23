@@ -32,7 +32,7 @@ impl Display for TimeoutElapsed {
 
 impl Error for TimeoutElapsed {}
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum DownlinkErrorKind {
     Connection,
     Unresolvable,
@@ -42,6 +42,37 @@ pub enum DownlinkErrorKind {
     Terminated,
     /// Error propagated from user-code, such as a Java exception cause through the FFI
     User,
+}
+
+impl Display for DownlinkErrorKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DownlinkErrorKind::Connection => {
+                write!(f, "Connection error")
+            }
+            DownlinkErrorKind::Unresolvable => {
+                write!(f, "Host unresolvable")
+            }
+            DownlinkErrorKind::WebsocketNegotiationFailed => {
+                write!(f, "WebSocket negotiation failed")
+            }
+            DownlinkErrorKind::RemoteStopped => {
+                write!(f, "Peer stopped")
+            }
+            DownlinkErrorKind::Timeout => {
+                write!(f, "Connection timed out")
+            }
+            DownlinkErrorKind::Terminated => {
+                write!(f, "Terminated")
+            }
+            DownlinkErrorKind::User => {
+                write!(
+                    f,
+                    "Error produced during downlink lifecycle callback invocation"
+                )
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -85,7 +116,7 @@ impl DownlinkRuntimeError {
     }
 
     pub fn downcast_ref<T: Any + Error>(&self) -> Option<&T> {
-        self.source.as_deref().map(|e| e.downcast_ref()).flatten()
+        self.source.as_deref().and_then(|e| e.downcast_ref())
     }
 
     pub fn map_cause<T, F, R>(&self, f: F) -> Option<R>
@@ -99,7 +130,12 @@ impl DownlinkRuntimeError {
 
 impl Display for DownlinkRuntimeError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        let DownlinkRuntimeError { kind, source } = self;
+        let source = source
+            .as_ref()
+            .map(|e| format!("caused by: {}", e))
+            .unwrap_or_default();
+        write!(f, "{}: {}", kind, source)
     }
 }
 
@@ -140,8 +176,8 @@ impl From<oneshot::error::RecvError> for DownlinkRuntimeError {
 }
 
 impl From<DownlinkTaskError> for DownlinkRuntimeError {
-    fn from(_e: DownlinkTaskError) -> Self {
-        unimplemented!()
+    fn from(e: DownlinkTaskError) -> Self {
+        DownlinkRuntimeError::with_cause(DownlinkErrorKind::Terminated, e)
     }
 }
 
