@@ -15,19 +15,19 @@
 pub mod downlink;
 mod runtime;
 
+pub use crate::runtime::{start_runtime, RawHandle, Transport};
+pub use crate::runtime::{DownlinkErrorKind, DownlinkRuntimeError};
 use ratchet::WebSocketConfig;
-pub use runtime::{start_runtime, RawHandle, Transport};
-pub use runtime::{DownlinkErrorKind, DownlinkRuntimeError};
 use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 pub use swim_api::downlink::DownlinkKind;
 pub use swim_api::error::DownlinkTaskError;
 use swim_utilities::algebra::non_zero_usize;
 
+#[non_exhaustive]
 pub struct ClientConfig {
     pub websocket: WebSocketConfig,
     pub remote_buffer_size: NonZeroUsize,
-    _priv: (),
 }
 
 impl Debug for ClientConfig {
@@ -35,7 +35,6 @@ impl Debug for ClientConfig {
         let ClientConfig {
             websocket,
             remote_buffer_size,
-            _priv,
         } = self;
         f.debug_struct("ClientConfig")
             .field("websocket", websocket)
@@ -49,7 +48,6 @@ impl Default for ClientConfig {
         ClientConfig {
             websocket: WebSocketConfig::default(),
             remote_buffer_size: non_zero_usize!(4096),
-            _priv: (),
         }
     }
 }

@@ -59,9 +59,9 @@ use crate::runtime::transport::TransportHandle;
 
 type BoxedDownlink = Box<dyn Downlink + Send + Sync + 'static>;
 type ByteChannel = (ByteWriter, ByteReader);
-type DownlinkCallback = oneshot::Sender<
-    Result<promise::Receiver<Result<(), DownlinkRuntimeError>>, Arc<DownlinkRuntimeError>>,
->;
+type CallbackResult =
+    Result<promise::Receiver<Result<(), DownlinkRuntimeError>>, Arc<DownlinkRuntimeError>>;
+type DownlinkCallback = oneshot::Sender<CallbackResult>;
 
 impl Debug for DownlinkRegistrationRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -108,7 +108,7 @@ impl RawHandle {
         downlink_config: DownlinkConfig,
         options: DownlinkOptions,
         downlink: D,
-    ) -> Result<promise::Receiver<Result<(), DownlinkRuntimeError>>, Arc<DownlinkRuntimeError>>
+    ) -> CallbackResult
     where
         D: Downlink + Send + Sync + 'static,
     {
@@ -125,9 +125,9 @@ impl RawHandle {
             .send(request)
             .await
             .map_err(|_| Arc::new(DownlinkRuntimeError::new(DownlinkErrorKind::Terminated)))?;
-        Ok(request_rx
+        request_rx
             .await
-            .map_err(|_| Arc::new(DownlinkRuntimeError::new(DownlinkErrorKind::Terminated)))??)
+            .map_err(|_| Arc::new(DownlinkRuntimeError::new(DownlinkErrorKind::Terminated)))?
     }
 }
 
@@ -139,9 +139,7 @@ pub struct DownlinkRegistrationRequest {
     pub downlink: BoxedDownlink,
     /// A callback for providing the result of the request. The promise will be satisfied when the
     /// 'downlink' task completed.
-    pub callback: oneshot::Sender<
-        Result<promise::Receiver<Result<(), DownlinkRuntimeError>>, Arc<DownlinkRuntimeError>>,
-    >,
+    pub callback: oneshot::Sender<CallbackResult>,
     /// Downlink link and sync options.
     pub options: DownlinkOptions,
     /// Properties for configuring the corresponding runtime if it has not been started.

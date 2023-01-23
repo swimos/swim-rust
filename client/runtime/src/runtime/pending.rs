@@ -50,18 +50,10 @@ enum WaiterKey {
     Runtime(SocketAddr),
 }
 
+#[derive(Default)]
 pub struct PendingConnections<'f> {
     waiters: FnvHashMap<WaiterKey, FnvHashMap<Key, Vec<PendingDownlink>>>,
     tasks: FuturesUnordered<BoxFuture<'f, Either<PendingDns, PendingHandshake>>>,
-}
-
-impl<'f> Default for PendingConnections<'f> {
-    fn default() -> Self {
-        PendingConnections {
-            waiters: FnvHashMap::default(),
-            tasks: FuturesUnordered::default(),
-        }
-    }
 }
 
 pub enum Waiting {
