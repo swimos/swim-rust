@@ -196,6 +196,13 @@ impl<'l> Lane<'l> {
             .unwrap();
     }
 
+    pub async fn write_bytes(&mut self, msg: &[u8]) {
+        let Lane { server, .. } = self;
+        let Server { transport, .. } = server.get_mut();
+
+        transport.write(msg, PayloadType::Text).await.unwrap();
+    }
+
     pub async fn await_link(&mut self) {
         match self.read().await {
             Envelope::Link {
@@ -285,8 +292,8 @@ impl<'l> Lane<'l> {
 }
 
 pub struct Server {
-    buf: BytesMut,
-    transport: WebSocket<DuplexStream, NoExt>,
+    pub buf: BytesMut,
+    pub transport: WebSocket<DuplexStream, NoExt>,
 }
 
 impl Server {
