@@ -30,9 +30,9 @@ use swim_model::Text;
 use swim_utilities::{io::byte_channel::byte_channel, non_zero_usize};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use crate::lanes::{MapLane, ValueLane};
+use crate::{lanes::{MapLane, ValueLane}, agent_model::ItemKind};
 
-use super::{run_lane_initializer, InitializedLane, MapLaneInitializer, ValueLaneInitializer};
+use super::{run_item_initializer, InitializedItem, MapLaneInitializer, ValueLaneInitializer};
 
 struct TestAgent {
     value_lane: ValueLane<i32>,
@@ -59,7 +59,8 @@ async fn init_value_lane() {
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = WithLengthBytesCodec::default();
-    let init_task = run_lane_initializer(
+    let init_task = run_item_initializer(
+        ItemKind::Lane,
         "value_lane",
         UplinkKind::Value,
         (out_tx, in_rx),
@@ -97,13 +98,15 @@ async fn init_value_lane() {
         .await
         .expect("Test timed out.");
 
-    let InitializedLane {
+    let InitializedItem {
+        item_kind,
         name,
         kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
+    assert_eq!(item_kind, ItemKind::Lane);
     assert_eq!(name, "value_lane");
     assert_eq!(kind, UplinkKind::Value);
 
@@ -120,7 +123,8 @@ async fn init_value_lane_no_data() {
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = WithLengthBytesCodec::default();
-    let init_task = run_lane_initializer(
+    let init_task = run_item_initializer(
+        ItemKind::Lane,
         "value_lane",
         UplinkKind::Value,
         (out_tx, in_rx),
@@ -154,13 +158,15 @@ async fn init_value_lane_no_data() {
         .await
         .expect("Test timed out.");
 
-    let InitializedLane {
+    let InitializedItem {
+        item_kind,
         name,
         kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
+    assert_eq!(item_kind, ItemKind::Lane);
     assert_eq!(name, "value_lane");
     assert_eq!(kind, UplinkKind::Value);
 
@@ -177,7 +183,8 @@ async fn init_map_lane() {
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
-    let init_task = run_lane_initializer(
+    let init_task = run_item_initializer(
+        ItemKind::Lane,
         "map_lane",
         UplinkKind::Map,
         (out_tx, in_rx),
@@ -232,13 +239,15 @@ async fn init_map_lane() {
         .await
         .expect("Test timed out.");
 
-    let InitializedLane {
+    let InitializedItem {
+        item_kind,
         name,
         kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
+    assert_eq!(item_kind, ItemKind::Lane);
     assert_eq!(name, "map_lane");
     assert_eq!(kind, UplinkKind::Map);
 
@@ -260,7 +269,8 @@ async fn init_map_lane_no_data() {
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
-    let init_task = run_lane_initializer(
+    let init_task = run_item_initializer(
+        ItemKind::Lane,
         "map_lane",
         UplinkKind::Map,
         (out_tx, in_rx),
@@ -294,13 +304,15 @@ async fn init_map_lane_no_data() {
         .await
         .expect("Test timed out.");
 
-    let InitializedLane {
+    let InitializedItem {
+        item_kind,
         name,
         kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
+    assert_eq!(item_kind, ItemKind::Lane);
     assert_eq!(name, "map_lane");
     assert_eq!(kind, UplinkKind::Map);
 

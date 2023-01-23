@@ -25,10 +25,11 @@ use futures::{
     stream::{FuturesUnordered, SelectAll},
     StreamExt,
 };
-use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError};
+use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swim_api::meta::lane::LaneKind;
 use swim_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
 use swim_api::protocol::WithLengthBytesCodec;
+use swim_api::store::StoreKind;
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
     error::{AgentInitError, AgentTaskError, FrameIoError},
@@ -59,8 +60,11 @@ use io::{LaneReader, LaneWriter};
 use bitflags::bitflags;
 
 use self::downlink::handlers::BoxDownlinkChannel;
-use self::init::{run_lane_initializer, InitializedLane};
-pub use init::{LaneInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer, ValueStoreInitializer};
+use self::init::{run_item_initializer, InitializedItem};
+pub use init::{
+    ItemInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,
+    ValueStoreInitializer,
+};
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,11 +102,9 @@ pub struct ItemSpec {
 }
 
 impl ItemSpec {
-    
     pub fn new(kind: ItemKind, flags: LaneFlags) -> Self {
         ItemSpec { kind, flags }
     }
-
 }
 
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
@@ -143,7 +145,7 @@ pub trait AgentSpec: Sized + Send {
     fn init_value_like_item(
         &self,
         item: &str,
-    ) -> Option<Box<dyn LaneInitializer<Self, BytesMut> + Send + 'static>>
+    ) -> Option<Box<dyn ItemInitializer<Self, BytesMut> + Send + 'static>>
     where
         Self: 'static;
 
@@ -154,7 +156,7 @@ pub trait AgentSpec: Sized + Send {
     fn init_map_like_item(
         &self,
         item: &str,
-    ) -> Option<Box<dyn LaneInitializer<Self, MapMessage<BytesMut, BytesMut>> + Send + 'static>>
+    ) -> Option<Box<dyn ItemInitializer<Self, MapMessage<BytesMut, BytesMut>> + Send + 'static>>
     where
         Self: 'static;
 
@@ -374,6 +376,8 @@ where
 
         let mut value_like_lane_io = HashMap::new();
         let mut map_lane_io = HashMap::new();
+        let mut value_like_store_io = HashMap::new();
+        let mut map_store_io = HashMap::new();
 
         let val_lane_specs = LaneModel::value_like_item_specs();
         let map_lane_specs = LaneModel::map_like_item_specs();
@@ -393,20 +397,50 @@ where
                 if spec.flags.contains(LaneFlags::TRANSIENT) {
                     lane_conf.transient = true;
                 }
-                let io = context.add_lane(name, LaneKind::Value, lane_conf).await?;
-                if lane_conf.transient {
-                    value_like_lane_io.insert(Text::new(name), io);
-                } else if let Some(init) = lane_model.init_value_like_item(name) {
-                    let init_task = run_lane_initializer(
-                        name,
-                        UplinkKind::Value,
-                        io,
-                        WithLengthBytesCodec::default(),
-                        init,
-                    );
-                    lane_init_tasks.push(init_task.boxed());
-                } else {
-                    value_like_lane_io.insert(Text::new(name), io);
+                match spec.kind {
+                    ItemKind::Lane => {
+                        let io = context.add_lane(name, LaneKind::Value, lane_conf).await?;
+                        if lane_conf.transient {
+                            value_like_lane_io.insert(Text::new(name), io);
+                        } else if let Some(init) = lane_model.init_value_like_item(name) {
+                            let init_task = run_item_initializer(
+                                ItemKind::Lane,
+                                name,
+                                UplinkKind::Value,
+                                io,
+                                WithLengthBytesCodec::default(),
+                                init,
+                            );
+                            lane_init_tasks.push(init_task.boxed());
+                        } else {
+                            value_like_lane_io.insert(Text::new(name), io);
+                        }
+                    }
+                    ItemKind::Store => {
+                        if !lane_conf.transient {
+                            match context.add_store(name, StoreKind::Value).await {
+                                Ok(io) => {
+                                    if let Some(init) = lane_model.init_value_like_item(name) {
+                                        let init_task = run_item_initializer(
+                                            ItemKind::Store,
+                                            name,
+                                            UplinkKind::Value,
+                                            io,
+                                            WithLengthBytesCodec::default(),
+                                            init,
+                                        );
+                                        lane_init_tasks.push(init_task.boxed());
+                                    }
+                                },
+                                Err(OpenStoreError::StoresNotSupported) => {
+                                    info!(name, "Lane running as transient as stores not supported.");
+                                },
+                                Err(OpenStoreError::RuntimeError(err)) => return Err(err.into()),
+                                _ => todo!(),
+                            }
+                            
+                        }
+                    }
                 }
             }
             for (name, spec) in map_lane_specs {
@@ -421,7 +455,8 @@ where
                 if lane_conf.transient {
                     map_lane_io.insert(Text::new(name), io);
                 } else if let Some(init) = lane_model.init_map_like_item(name) {
-                    let init_task = run_lane_initializer(
+                    let init_task = run_item_initializer(
+                        ItemKind::Lane,
                         name,
                         UplinkKind::Map,
                         io,
@@ -435,18 +470,29 @@ where
             }
 
             while let Some(result) = lane_init_tasks.next().await {
-                let InitializedLane {
+                let InitializedItem {
+                    item_kind,
                     name,
                     kind,
                     init_fn,
                     io,
                 } = result.map_err(AgentInitError::LaneInitializationFailure)?;
                 init_fn(&lane_model);
-                match kind {
-                    UplinkKind::Value | UplinkKind::Supply => {
-                        value_like_lane_io.insert(Text::new(name), io)
+                match (item_kind, kind) {
+                    (ItemKind::Lane, UplinkKind::Value | UplinkKind::Supply) => {
+                        value_like_lane_io.insert(Text::new(name), io);
                     }
-                    UplinkKind::Map => map_lane_io.insert(Text::new(name), io),
+                    (ItemKind::Store, UplinkKind::Map) => {
+                        let (tx, _) = io;
+                        map_store_io.insert(Text::new(name), tx);
+                    },
+                    (ItemKind::Lane, UplinkKind::Map) => {
+                        map_lane_io.insert(Text::new(name), io);
+                    },
+                    _ => {
+                        let (tx, _) = io;
+                        value_like_store_io.insert(Text::new(name), tx);
+                    }
                 };
             }
         }
@@ -472,7 +518,9 @@ where
             config,
             lane_ids,
             value_like_lane_io,
+            value_like_store_io,
             map_lane_io,
+            map_store_io,
             suspended,
             downlink_channels: downlink_channels.into_inner(),
         };
@@ -487,7 +535,9 @@ struct AgentTask<LaneModel, Lifecycle> {
     config: AgentConfig,
     lane_ids: HashMap<u64, Text>,
     value_like_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+    value_like_store_io: HashMap<Text, ByteWriter>,
     map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+    map_store_io: HashMap<Text, ByteWriter>,
     suspended: FuturesUnordered<HandlerFuture<LaneModel>>,
     downlink_channels: Vec<(BoxDownlinkChannel<LaneModel>, WriteStream)>,
 }
@@ -513,7 +563,9 @@ where
             config,
             lane_ids,
             value_like_lane_io,
+            value_like_store_io,
             map_lane_io,
+            map_store_io,
             mut suspended,
             downlink_channels,
         } = self;

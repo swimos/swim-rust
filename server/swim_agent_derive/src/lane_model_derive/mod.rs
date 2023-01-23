@@ -227,7 +227,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
                 fn init_value_like_item(
                     &self,
                     item: &str,
-                ) -> ::core::option::Option<::std::boxed::Box<dyn #root::agent_model::LaneInitializer<Self, #root::reexport::bytes::BytesMut> + ::core::marker::Send + 'static>>
+                ) -> ::core::option::Option<::std::boxed::Box<dyn #root::agent_model::ItemInitializer<Self, #root::reexport::bytes::BytesMut> + ::core::marker::Send + 'static>>
                 where
                     Self: 'static,
                 {
@@ -240,7 +240,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
                 fn init_map_like_item(
                     &self,
                     item: &str,
-                ) -> ::core::option::Option<::std::boxed::Box<dyn #root::agent_model::LaneInitializer<Self, #root::model::MapMessage<#root::reexport::bytes::BytesMut, #root::reexport::bytes::BytesMut>> + ::core::marker::Send + 'static>>
+                ) -> ::core::option::Option<::std::boxed::Box<dyn #root::agent_model::ItemInitializer<Self, #root::model::MapMessage<#root::reexport::bytes::BytesMut, #root::reexport::bytes::BytesMut>> + ::core::marker::Send + 'static>>
                 where
                     Self: 'static,
                 {

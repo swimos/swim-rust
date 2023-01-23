@@ -213,7 +213,7 @@ impl AgentSpec for TestAgent {
     fn init_value_like_item(
         &self,
         _item: &str,
-    ) -> Option<Box<dyn crate::agent_model::LaneInitializer<Self, BytesMut> + Send + 'static>>
+    ) -> Option<Box<dyn crate::agent_model::ItemInitializer<Self, BytesMut> + Send + 'static>>
     where
         Self: 'static,
     {
@@ -225,7 +225,7 @@ impl AgentSpec for TestAgent {
         _item: &str,
     ) -> Option<
         Box<
-            dyn crate::agent_model::LaneInitializer<Self, MapMessage<BytesMut, BytesMut>>
+            dyn crate::agent_model::ItemInitializer<Self, MapMessage<BytesMut, BytesMut>>
                 + Send
                 + 'static,
         >,

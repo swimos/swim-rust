@@ -35,6 +35,8 @@ use crate::lanes::{MapLane, ValueLane};
 use crate::stores::value::ValueStore;
 use crate::stores::MapStore;
 
+use super::ItemKind;
+
 #[cfg(test)]
 mod tests;
 
@@ -67,17 +69,18 @@ where
 /// A function that will initialize the state of one of the lanes of the agent.
 pub type InitFn<Agent> = Box<dyn FnOnce(&Agent) + Send + 'static>;
 
-/// A lane initializer consumers a stream of commands from the runtime and creates a function
-/// that will initialize a lane on the instance of the agent.
-pub trait LaneInitializer<Agent, Msg> {
+/// An item initializer consumers a stream of commands from the runtime and creates a function
+/// that will initialize a item on the instance of the agent.
+pub trait ItemInitializer<Agent, Msg> {
     fn initialize(
         self: Box<Self>,
         stream: BoxStream<'_, Result<Msg, FrameIoError>>,
     ) -> BoxFuture<'_, Result<InitFn<Agent>, FrameIoError>>;
 }
 
-/// The result of running the initialization process for a new lane.
-pub struct InitializedLane<'a, Agent> {
+/// The result of running the initialization process for a new item.
+pub struct InitializedItem<'a, Agent> {
+    pub item_kind: ItemKind,
     // The name of the lane.
     pub name: &'a str,
     // The uplink kind for communication with the runtime.
@@ -88,14 +91,16 @@ pub struct InitializedLane<'a, Agent> {
     pub io: (ByteWriter, ByteReader),
 }
 
-impl<'a, Agent> InitializedLane<'a, Agent> {
+impl<'a, Agent> InitializedItem<'a, Agent> {
     pub fn new(
+        item_kind: ItemKind,
         name: &'a str,
         kind: UplinkKind,
         init_fn: InitFn<Agent>,
         io: (ByteWriter, ByteReader),
     ) -> Self {
-        InitializedLane {
+        InitializedItem {
+            item_kind,
             name,
             kind,
             init_fn,
@@ -113,13 +118,14 @@ impl<'a, Agent> InitializedLane<'a, Agent> {
 /// * `decoder` - Decoder to interpret the command messages from the runtime, during the
 /// initialization process.
 /// * `init` - Initializer to consume the incoming command and assemble the initial state of the lane.
-pub async fn run_lane_initializer<'a, Agent, D>(
+pub async fn run_item_initializer<'a, Agent, D>(
+    item_kind: ItemKind,
     name: &'a str,
     kind: UplinkKind,
     io: (ByteWriter, ByteReader),
     decoder: D,
-    init: Box<dyn LaneInitializer<Agent, D::Item> + Send + 'static>,
-) -> Result<InitializedLane<'a, Agent>, FrameIoError>
+    init: Box<dyn ItemInitializer<Agent, D::Item> + Send + 'static>,
+) -> Result<InitializedItem<'a, Agent>, FrameIoError>
 where
     D: Decoder + Send,
     FrameIoError: From<D::Error>,
@@ -134,7 +140,7 @@ where
                 .send(StoreInitialized)
                 .await
                 .map_err(FrameIoError::Io)
-                .map(move |_| InitializedLane::new(name, kind, init_fn, (tx, rx)))
+                .map(move |_| InitializedItem::new(item_kind, name, kind, init_fn, (tx, rx)))
         }
     }
 }
@@ -212,7 +218,7 @@ where
     }
 }
 
-impl<Agent, T> LaneInitializer<Agent, BytesMut> for ValueLaneInitializer<Agent, T>
+impl<Agent, T> ItemInitializer<Agent, BytesMut> for ValueLaneInitializer<Agent, T>
 where
     Agent: 'static,
     T: RecognizerReadable + Send + 'static,
@@ -226,7 +232,7 @@ where
     }
 }
 
-impl<Agent, T> LaneInitializer<Agent, BytesMut> for ValueStoreInitializer<Agent, T>
+impl<Agent, T> ItemInitializer<Agent, BytesMut> for ValueStoreInitializer<Agent, T>
 where
     Agent: 'static,
     T: RecognizerReadable + Send + 'static,
@@ -298,7 +304,7 @@ where
     Ok(f_init)
 }
 
-impl<Agent, K, V> LaneInitializer<Agent, MapMessage<BytesMut, BytesMut>>
+impl<Agent, K, V> ItemInitializer<Agent, MapMessage<BytesMut, BytesMut>>
     for MapLaneInitializer<Agent, K, V>
 where
     Agent: 'static,
@@ -316,7 +322,7 @@ where
     }
 }
 
-impl<Agent, K, V> LaneInitializer<Agent, MapMessage<BytesMut, BytesMut>>
+impl<Agent, K, V> ItemInitializer<Agent, MapMessage<BytesMut, BytesMut>>
     for MapStoreInitializer<Agent, K, V>
 where
     Agent: 'static,

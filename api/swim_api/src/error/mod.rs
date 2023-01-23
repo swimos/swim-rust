@@ -122,7 +122,7 @@ pub enum OpenStoreError {
     #[error("The runtime does not support stores.")]
     StoresNotSupported,
     #[error(
-        "A store of kind {requested} was requested but the prexisting store is of kind {actual}."
+        "A store of kind {requested} was requested but the pre-existing store is of kind {actual}."
     )]
     IncorrectStoreKind {
         requested: StoreKind,
@@ -198,7 +198,7 @@ pub enum AgentInitError {
     DuplicateLane(Text),
     #[error("Error in use code (likely an event handler): {0}")]
     UserCodeError(Box<dyn std::error::Error + Send>),
-    #[error("Initializing the state of an anget lane failed: {0}")]
+    #[error("Initializing the state of an agent lane failed: {0}")]
     LaneInitializationFailure(FrameIoError),
 }
 
