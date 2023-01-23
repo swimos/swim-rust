@@ -28,7 +28,7 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use crate::{
-    agent_model::{AgentSpec, LaneFlags, LaneSpec, WriteResult},
+    agent_model::{AgentSpec, LaneFlags, ItemSpec, WriteResult, ItemKind},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
 };
@@ -99,20 +99,20 @@ impl AgentSpec for TestAgent {
 
     type OnSyncHandler = TestHandler;
 
-    fn value_like_lane_specs() -> HashMap<&'static str, crate::agent_model::LaneSpec> {
+    fn value_like_item_specs() -> HashMap<&'static str, crate::agent_model::ItemSpec> {
         let mut lanes = HashMap::new();
-        lanes.insert(VAL_LANE, LaneSpec::new(LaneFlags::TRANSIENT));
-        lanes.insert(CMD_LANE, LaneSpec::new(LaneFlags::TRANSIENT));
+        lanes.insert(VAL_LANE, ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT));
+        lanes.insert(CMD_LANE, ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT));
         lanes
     }
 
-    fn map_like_lane_specs() -> HashMap<&'static str, crate::agent_model::LaneSpec> {
+    fn map_like_item_specs() -> HashMap<&'static str, crate::agent_model::ItemSpec> {
         let mut lanes = HashMap::new();
-        lanes.insert(MAP_LANE, LaneSpec::new(LaneFlags::TRANSIENT));
+        lanes.insert(MAP_LANE, ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT));
         lanes
     }
 
-    fn lane_ids() -> HashMap<u64, Text> {
+    fn item_ids() -> HashMap<u64, Text> {
         [(VAL_ID, VAL_LANE), (MAP_ID, MAP_LANE), (CMD_ID, CMD_LANE)]
             .into_iter()
             .map(|(k, v)| (k, Text::new(v)))
@@ -210,9 +210,9 @@ impl AgentSpec for TestAgent {
         }
     }
 
-    fn init_value_like_lane(
+    fn init_value_like_item(
         &self,
-        _lane: &str,
+        _item: &str,
     ) -> Option<Box<dyn crate::agent_model::LaneInitializer<Self, BytesMut> + Send + 'static>>
     where
         Self: 'static,
@@ -220,9 +220,9 @@ impl AgentSpec for TestAgent {
         None
     }
 
-    fn init_map_like_lane(
+    fn init_map_like_item(
         &self,
-        _lane: &str,
+        _item: &str,
     ) -> Option<
         Box<
             dyn crate::agent_model::LaneInitializer<Self, MapMessage<BytesMut, BytesMut>>

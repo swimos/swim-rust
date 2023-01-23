@@ -174,19 +174,19 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
                 type OnSyncHandler = #sync_handler;
 
-                fn value_like_lane_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::LaneSpec> {
+                fn value_like_item_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
                     let mut lanes = ::std::collections::HashMap::new();
                     #(#val_lane_specs;)*
                     lanes
                 }
 
-                fn map_like_lane_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::LaneSpec> {
+                fn map_like_item_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
                     let mut lanes = ::std::collections::HashMap::new();
                     #(#map_lane_specs;)*
                     lanes
                 }
 
-                fn lane_ids() -> ::std::collections::HashMap<u64, #root::model::Text> {
+                fn item_ids() -> ::std::collections::HashMap<u64, #root::model::Text> {
                     let mut map = ::std::collections::HashMap::new();
                     #(#lane_ids;)*
                     map
@@ -224,27 +224,27 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
                     }
                 }
 
-                fn init_value_like_lane(
+                fn init_value_like_item(
                     &self,
-                    lane: &str,
+                    item: &str,
                 ) -> ::core::option::Option<::std::boxed::Box<dyn #root::agent_model::LaneInitializer<Self, #root::reexport::bytes::BytesMut> + ::core::marker::Send + 'static>>
                 where
                     Self: 'static,
                 {
-                    match lane {
+                    match item {
                         #(#value_init_match_blocks,)*
                         _ => ::core::option::Option::None,
                     }
                 }
 
-                fn init_map_like_lane(
+                fn init_map_like_item(
                     &self,
-                    lane: &str,
+                    item: &str,
                 ) -> ::core::option::Option<::std::boxed::Box<dyn #root::agent_model::LaneInitializer<Self, #root::model::MapMessage<#root::reexport::bytes::BytesMut, #root::reexport::bytes::BytesMut>> + ::core::marker::Send + 'static>>
                 where
                     Self: 'static,
                 {
-                    match lane {
+                    match item {
                         #(#map_init_match_blocks,)*
                         _ => ::core::option::Option::None,
                     }
@@ -543,11 +543,15 @@ impl<'a> LaneSpecInsert<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let LaneSpecInsert(model) = self;
         let lane_name = model.literal();
+        let kind = match model.item_kind() {
+            ItemKind::Lane => quote!(#root::agent_model::ItemKind::Lane),
+            ItemKind::Store => quote!(#root::agent_model::ItemKind::Store),
+        };
         let flags = if model.is_stateful() {
             quote!(#root::agent_model::LaneFlags::empty())
         } else {
             quote!(#root::agent_model::LaneFlags::TRANSIENT)
         };
-        quote!(::std::collections::HashMap::insert(&mut lanes, #lane_name, #root::agent_model::LaneSpec::new(#flags)))
+        quote!(::std::collections::HashMap::insert(&mut lanes, #lane_name, #root::agent_model::ItemSpec::new(#kind, #flags)))
     }
 }

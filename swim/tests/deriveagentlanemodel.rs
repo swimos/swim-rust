@@ -15,13 +15,14 @@
 use std::collections::{HashMap, HashSet};
 
 use std::fmt::Write;
-use swim::agent::agent_model::{LaneFlags, LaneSpec};
+use swim::agent::agent_model::{LaneFlags, ItemSpec};
 use swim::agent::lanes::{CommandLane, MapLane, ValueLane};
 use swim::agent::model::MapMessage;
 use swim::agent::model::Text;
 use swim::agent::reexport::bytes::BytesMut;
 use swim::agent::reexport::uuid::Uuid;
 use swim::agent::AgentLaneModel;
+use swim_agent::agent_model::ItemKind;
 
 const SYNC_ID: Uuid = Uuid::from_u128(85883);
 
@@ -44,26 +45,26 @@ where
 
     for (name, is_transient) in val_lanes {
         let spec = if is_transient {
-            LaneSpec::new(LaneFlags::TRANSIENT)
+            ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT)
         } else {
-            LaneSpec::new(LaneFlags::empty())
+            ItemSpec::new(ItemKind::Lane, LaneFlags::empty())
         };
         val_expected.insert(name, spec);
     }
 
     for (name, is_transient) in map_lanes {
         let spec = if is_transient {
-            LaneSpec::new(LaneFlags::TRANSIENT)
+            ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT)
         } else {
-            LaneSpec::new(LaneFlags::empty())
+            ItemSpec::new(ItemKind::Lane, LaneFlags::empty())
         };
         map_expected.insert(name, spec);
     }
 
-    assert_eq!(A::value_like_lane_specs(), val_expected);
-    assert_eq!(A::map_like_lane_specs(), map_expected);
+    assert_eq!(A::value_like_item_specs(), val_expected);
+    assert_eq!(A::map_like_item_specs(), map_expected);
 
-    let id_map = A::lane_ids();
+    let id_map = A::item_ids();
     let expected_len = val_expected.len() + map_expected.len();
     assert_eq!(id_map.len(), expected_len);
 

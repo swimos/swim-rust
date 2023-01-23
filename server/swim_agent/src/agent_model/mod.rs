@@ -75,6 +75,12 @@ pub enum WriteResult {
 
 pub type InitFn<Agent> = Box<dyn FnOnce(&Agent) + Send + 'static>;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum ItemKind {
+    Lane,
+    Store,
+}
+
 bitflags! {
 
     #[derive(Default)]
@@ -85,15 +91,18 @@ bitflags! {
 
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct LaneSpec {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ItemSpec {
+    pub kind: ItemKind,
     pub flags: LaneFlags,
 }
 
-impl LaneSpec {
-    pub fn new(flags: LaneFlags) -> Self {
-        LaneSpec { flags }
+impl ItemSpec {
+    
+    pub fn new(kind: ItemKind, flags: LaneFlags) -> Self {
+        ItemSpec { kind, flags }
     }
+
 }
 
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
@@ -109,14 +118,14 @@ pub trait AgentSpec: Sized + Send {
     /// The type of handler to run when a request is received to sync with a lane.
     type OnSyncHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
-    /// The names and flags of all value like lanes (value lanes, command lanes, etc) in the agent.
-    fn value_like_lane_specs() -> HashMap<&'static str, LaneSpec>;
+    /// The names and flags of all value like items (value lanes and stores, command lanes, etc) in the agent.
+    fn value_like_item_specs() -> HashMap<&'static str, ItemSpec>;
 
-    /// The names and flags of all map like lanes in the agent.
-    fn map_like_lane_specs() -> HashMap<&'static str, LaneSpec>;
+    /// The names and flags of all map like items in the agent.
+    fn map_like_item_specs() -> HashMap<&'static str, ItemSpec>;
 
-    /// Mapping from lane identifiers to lane names for all lanes in the agent.
-    fn lane_ids() -> HashMap<u64, Text>;
+    /// Mapping from item identifiers to lane names for all items in the agent.
+    fn item_ids() -> HashMap<u64, Text>;
 
     /// Create a handler that will update the state of the agent when a command is received
     /// for a value lane. There will be no handler if the lane does not exist or does not
@@ -127,24 +136,24 @@ pub trait AgentSpec: Sized + Send {
     /// * `body` - The content of the command.
     fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler>;
 
-    /// Create an initializer that will consume the state of a value-like lane, as reported by the runtime.
+    /// Create an initializer that will consume the state of a value-like item, as reported by the runtime.
     ///
     /// #Arguments
-    /// * `lane` - The name of the lane.
-    fn init_value_like_lane(
+    /// * `lane` - The name of the item.
+    fn init_value_like_item(
         &self,
-        lane: &str,
+        item: &str,
     ) -> Option<Box<dyn LaneInitializer<Self, BytesMut> + Send + 'static>>
     where
         Self: 'static;
 
-    /// Create an initializer that will consume the state of a map-like lane, as reported by the runtime.
+    /// Create an initializer that will consume the state of a map-like item, as reported by the runtime.
     ///
     /// #Arguments
-    /// * `lane` - The name of the lane.
-    fn init_map_like_lane(
+    /// * `item` - The name of the item.
+    fn init_map_like_item(
         &self,
-        lane: &str,
+        item: &str,
     ) -> Option<Box<dyn LaneInitializer<Self, MapMessage<BytesMut, BytesMut>> + Send + 'static>>
     where
         Self: 'static;
@@ -366,9 +375,9 @@ where
         let mut value_like_lane_io = HashMap::new();
         let mut map_lane_io = HashMap::new();
 
-        let val_lane_specs = LaneModel::value_like_lane_specs();
-        let map_lane_specs = LaneModel::map_like_lane_specs();
-        let lane_ids = LaneModel::lane_ids();
+        let val_lane_specs = LaneModel::value_like_item_specs();
+        let map_lane_specs = LaneModel::map_like_item_specs();
+        let lane_ids = <LaneModel as AgentSpec>::item_ids();
 
         let suspended = FuturesUnordered::new();
         let downlink_channels = RefCell::new(vec![]);
@@ -387,7 +396,7 @@ where
                 let io = context.add_lane(name, LaneKind::Value, lane_conf).await?;
                 if lane_conf.transient {
                     value_like_lane_io.insert(Text::new(name), io);
-                } else if let Some(init) = lane_model.init_value_like_lane(name) {
+                } else if let Some(init) = lane_model.init_value_like_item(name) {
                     let init_task = run_lane_initializer(
                         name,
                         UplinkKind::Value,
@@ -411,7 +420,7 @@ where
                 let io = context.add_lane(name, LaneKind::Map, lane_conf).await?;
                 if lane_conf.transient {
                     map_lane_io.insert(Text::new(name), io);
-                } else if let Some(init) = lane_model.init_map_like_lane(name) {
+                } else if let Some(init) = lane_model.init_map_like_item(name) {
                     let init_task = run_lane_initializer(
                         name,
                         UplinkKind::Map,
