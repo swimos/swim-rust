@@ -27,6 +27,7 @@ use swim::agent::{
 use swim_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
 use swim_agent::event_handler::{HandlerFuture, Spawner, WriteStream};
 use swim_agent::meta::AgentMetadata;
+use swim_agent::stores::{MapStore, ValueStore};
 use swim_api::agent::AgentConfig;
 use swim_api::downlink::DownlinkKind;
 use swim_api::error::{DownlinkRuntimeError, OpenStoreError};
@@ -102,15 +103,27 @@ struct TestAgent {
     value2: ValueLane<i32>,
     command: CommandLane<i32>,
     map: MapLane<i32, Text>,
+    value_store: ValueStore<i32>,
+    map_store: MapStore<i32, Text>,
 }
 
-impl From<(i32, i32, HashMap<i32, Text>)> for TestAgent {
-    fn from((value_init, value2_init, map_init): (i32, i32, HashMap<i32, Text>)) -> Self {
+impl From<(i32, i32, HashMap<i32, Text>, i32, HashMap<i32, Text>)> for TestAgent {
+    fn from(
+        (value_init, value2_init, map_init, val_store_init, map_store_init): (
+            i32,
+            i32,
+            HashMap<i32, Text>,
+            i32,
+            HashMap<i32, Text>,
+        ),
+    ) -> Self {
         TestAgent {
             value: ValueLane::new(0, value_init),
             value2: ValueLane::new(1, value2_init),
             command: CommandLane::new(2),
             map: MapLane::new(3, map_init),
+            value_store: ValueStore::new(4, val_store_init),
+            map_store: MapStore::new(5, map_store_init),
         }
     }
 }
@@ -354,6 +367,42 @@ fn on_event_handler() {
 }
 
 #[test]
+fn on_event_handler_store() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(LifecycleInner);
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_event(value_store)]
+        fn my_on_event(
+            &self,
+            context: HandlerContext<TestAgent>,
+            value: &i32,
+        ) -> impl EventHandler<TestAgent> + '_ {
+            let n = *value;
+            context.effect(move || {
+                self.0.push(Event::Value(ValueEvent::Event(n)));
+            })
+        }
+    }
+
+    let agent = TestAgent::default();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    agent.value_store.set(TEST_VALUE);
+    let handler = lifecycle
+        .item_event(&agent, "value_store")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    assert_eq!(events, vec![Event::Value(ValueEvent::Event(TEST_VALUE))]);
+}
+
+#[test]
 fn on_set_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
@@ -382,6 +431,46 @@ fn on_set_handler() {
     agent.value.set(TEST_VALUE);
     let handler = lifecycle
         .item_event(&agent, "value")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    assert_eq!(
+        events,
+        vec![Event::Value(ValueEvent::Set(TEST_VALUE, Some(0)))]
+    );
+}
+
+#[test]
+fn on_set_handler_store() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(LifecycleInner);
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_set(value_store)]
+        fn my_on_set(
+            &self,
+            context: HandlerContext<TestAgent>,
+            value: &i32,
+            prev: Option<i32>,
+        ) -> impl EventHandler<TestAgent> + '_ {
+            let n = *value;
+            context.effect(move || {
+                self.0.push(Event::Value(ValueEvent::Set(n, prev)));
+            })
+        }
+    }
+
+    let agent = TestAgent::default();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    agent.value_store.set(TEST_VALUE);
+    let handler = lifecycle
+        .item_event(&agent, "value_store")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -434,6 +523,61 @@ fn on_event_and_set_handlers() {
     agent.value.set(TEST_VALUE);
     let handler = lifecycle
         .item_event(&agent, "value")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    assert_eq!(
+        events,
+        vec![
+            Event::Value(ValueEvent::Event(TEST_VALUE)),
+            Event::Value(ValueEvent::Set(TEST_VALUE, Some(0)))
+        ]
+    );
+}
+
+#[test]
+fn on_event_and_set_handlers_store() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(LifecycleInner);
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_event(value_store)]
+        fn my_on_event(
+            &self,
+            context: HandlerContext<TestAgent>,
+            value: &i32,
+        ) -> impl EventHandler<TestAgent> + '_ {
+            let n = *value;
+            context.effect(move || {
+                self.0.push(Event::Value(ValueEvent::Event(n)));
+            })
+        }
+
+        #[on_set(value_store)]
+        fn my_on_set(
+            &self,
+            context: HandlerContext<TestAgent>,
+            value: &i32,
+            prev: Option<i32>,
+        ) -> impl EventHandler<TestAgent> + '_ {
+            let n = *value;
+            context.effect(move || {
+                self.0.push(Event::Value(ValueEvent::Set(n, prev)));
+            })
+        }
+    }
+
+    let agent = TestAgent::default();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    agent.value_store.set(TEST_VALUE);
+    let handler = lifecycle
+        .item_event(&agent, "value_store")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -529,7 +673,7 @@ fn on_clear_handler() {
         }
     }
 
-    let agent = TestAgent::from((0, 0, init_map()));
+    let agent = TestAgent::from((0, 0, init_map(), 0, HashMap::new()));
     let template = TestLifecycle::default();
 
     let lifecycle = template.clone().into_lifecycle();
@@ -537,6 +681,42 @@ fn on_clear_handler() {
     agent.map.clear();
     let handler = lifecycle
         .item_event(&agent, "map")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    let expected = init_map();
+    assert_eq!(events, vec![Event::Map(MapEvent::Clear(expected))]);
+}
+
+#[test]
+fn on_clear_handler_store() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(LifecycleInner);
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_clear(map_store)]
+        fn my_on_clear(
+            &self,
+            context: HandlerContext<TestAgent>,
+            old: HashMap<i32, Text>,
+        ) -> impl EventHandler<TestAgent> + '_ {
+            context.effect(move || {
+                self.0.push(Event::Map(MapEvent::Clear(old)));
+            })
+        }
+    }
+
+    let agent = TestAgent::from((0, 0, HashMap::new(), 0, init_map()));
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    agent.map_store.clear();
+    let handler = lifecycle
+        .item_event(&agent, "map_store")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -569,7 +749,7 @@ fn on_remove_handler() {
         }
     }
 
-    let agent = TestAgent::from((0, 0, init_map()));
+    let agent = TestAgent::from((0, 0, init_map(), 0, HashMap::new()));
     let template = TestLifecycle::default();
 
     let lifecycle = template.clone().into_lifecycle();
@@ -577,6 +757,54 @@ fn on_remove_handler() {
     agent.map.remove(&K1);
     let handler = lifecycle
         .item_event(&agent, "map")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    let mut expected_map = init_map();
+    expected_map.remove(&K1);
+    assert_eq!(
+        events,
+        vec![Event::Map(MapEvent::Remove(
+            expected_map,
+            K1,
+            Text::new(V1)
+        ))]
+    );
+}
+
+#[test]
+fn on_remove_handler_store() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(LifecycleInner);
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_remove(map_store)]
+        fn my_on_remove(
+            &self,
+            context: HandlerContext<TestAgent>,
+            map: &HashMap<i32, Text>,
+            key: i32,
+            removed: Text,
+        ) -> impl EventHandler<TestAgent> + '_ {
+            let map_state = map.clone();
+            context.effect(move || {
+                self.0
+                    .push(Event::Map(MapEvent::Remove(map_state, key, removed)));
+            })
+        }
+    }
+
+    let agent = TestAgent::from((0, 0, HashMap::new(), 0, init_map()));
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    agent.map_store.remove(&K1);
+    let handler = lifecycle
+        .item_event(&agent, "map_store")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -618,7 +846,7 @@ fn on_update_handler() {
         }
     }
 
-    let agent = TestAgent::from((0, 0, init_map()));
+    let agent = TestAgent::from((0, 0, init_map(), 0, HashMap::new()));
     let template = TestLifecycle::default();
 
     let lifecycle = template.clone().into_lifecycle();
@@ -626,6 +854,55 @@ fn on_update_handler() {
     agent.map.update(K2, Text::new("changed"));
     let handler = lifecycle
         .item_event(&agent, "map")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    let mut expected_map = init_map();
+    expected_map.insert(K2, Text::new("changed"));
+    assert_eq!(
+        events,
+        vec![Event::Map(MapEvent::Update(
+            expected_map,
+            K2,
+            Some(Text::new(V2))
+        ))]
+    );
+}
+
+#[test]
+fn on_update_handler_store() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(LifecycleInner);
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_update(map_store)]
+        fn my_on_update(
+            &self,
+            context: HandlerContext<TestAgent>,
+            map: &HashMap<i32, Text>,
+            key: i32,
+            prev: Option<Text>,
+            _new_value: &Text,
+        ) -> impl EventHandler<TestAgent> + '_ {
+            let map_state = map.clone();
+            context.effect(move || {
+                self.0
+                    .push(Event::Map(MapEvent::Update(map_state, key, prev)));
+            })
+        }
+    }
+
+    let agent = TestAgent::from((0, 0, HashMap::new(), 0, init_map()));
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    agent.map_store.update(K2, Text::new("changed"));
+    let handler = lifecycle
+        .item_event(&agent, "map_store")
         .expect("Expected handler for lane.");
     run_handler(&agent, handler);
 
@@ -750,7 +1027,7 @@ fn all_handlers() {
         }
     }
 
-    let agent = TestAgent::from((0, 0, init_map()));
+    let agent = TestAgent::from((0, 0, init_map(), 0, HashMap::new()));
     let template = TestLifecycle::default();
 
     let lifecycle = template.clone().into_lifecycle();
