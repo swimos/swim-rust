@@ -64,18 +64,12 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             .copied()
             .partition::<Vec<_>, _>(OrdinalItemModel::map_like);
 
-        let lane_models = item_models
+        let lane_models = OrdinalLaneModel::from_item_models(&item_models);
+
+        let (map_lane_models, value_lane_models) = lane_models
             .iter()
-            .filter_map(OrdinalItemModel::lane)
-            .collect::<Vec<_>>();
-        let value_lane_models = value_item_models
-            .iter()
-            .filter_map(OrdinalItemModel::lane)
-            .collect::<Vec<_>>();
-        let map_lane_models = map_item_models
-            .iter()
-            .filter_map(OrdinalItemModel::lane)
-            .collect::<Vec<_>>();
+            .copied()
+            .partition::<Vec<_>, _>(OrdinalLaneModel::map_like);
 
         let value_handler = if !value_lane_models.is_empty() {
             value_lane_models
@@ -271,26 +265,35 @@ struct OrdinalItemModel<'a> {
     model: ItemModel<'a>,
 }
 
-impl<'a> OrdinalItemModel<'a> {
-    fn lane(&self) -> Option<OrdinalLaneModel<'a>> {
-        let OrdinalItemModel {
-            agent_name,
-            ordinal,
-            model,
-        } = self;
-        model.lane().map(move |model| OrdinalLaneModel {
-            agent_name,
-            ordinal: *ordinal,
-            model,
-        })
-    }
-}
-
 #[derive(Clone, Copy)]
 struct OrdinalLaneModel<'a> {
     agent_name: &'a Ident,
-    ordinal: u64,
+    lane_ordinal: usize,
     model: LaneModel<'a>,
+}
+
+impl<'a> OrdinalLaneModel<'a> {
+    pub fn from_item_models(models: &Vec<OrdinalItemModel<'a>>) -> Vec<OrdinalLaneModel<'a>> {
+        models
+            .iter()
+            .copied()
+            .filter_map(
+                |OrdinalItemModel {
+                     agent_name, model, ..
+                 }| model.lane().map(move |lane_model| (agent_name, lane_model)),
+            )
+            .enumerate()
+            .map(|(lane_ordinal, (agent_name, model))| OrdinalLaneModel {
+                agent_name,
+                lane_ordinal,
+                model,
+            })
+            .collect()
+    }
+
+    pub fn map_like(&self) -> bool {
+        matches!(&self.model.kind, LaneSpec::Map(_, _))
+    }
 }
 
 impl<'a> OrdinalItemModel<'a> {
@@ -453,14 +456,13 @@ impl<'a> SyncHandlerMatch<'a> {
             model:
                 OrdinalLaneModel {
                     agent_name,
-                    ordinal,
+                    lane_ordinal: ord,
                     model,
                     ..
                 },
         } = self;
         let name_lit = model.literal();
         let LaneModel { name, kind, .. } = model;
-        let ord = ordinal as usize;
         let handler_base: syn::Expr = parse_quote!(handler);
         let coprod_con = coproduct_constructor(root, handler_base, ord);
         let sync_handler_expr = match kind {
