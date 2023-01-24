@@ -58,8 +58,15 @@ pub struct LaneConfig {
     pub input_buffer_size: NonZeroUsize,
     /// Size of the output buffer in bytes.
     pub output_buffer_size: NonZeroUsize,
-    /// A transient lane does not have associated persitent storage.
+    /// A transient lane does not have associated persistent storage.
     pub transient: bool,
+}
+
+/// Configuration parameters for a store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoreConfig {
+    /// Size of buffer to report new values back to the runtime.
+    pub buffer_size: NonZeroUsize,
 }
 
 const DEFAULT_BUFFER: NonZeroUsize = non_zero_usize!(4096);
@@ -70,6 +77,14 @@ impl Default for LaneConfig {
             input_buffer_size: DEFAULT_BUFFER,
             output_buffer_size: DEFAULT_BUFFER,
             transient: false,
+        }
+    }
+}
+
+impl Default for StoreConfig {
+    fn default() -> Self {
+        Self {
+            buffer_size: DEFAULT_BUFFER,
         }
     }
 }

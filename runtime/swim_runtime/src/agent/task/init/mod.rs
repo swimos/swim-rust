@@ -220,6 +220,9 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                             );
                         }
                     }
+                    AgentRuntimeRequest::AddStore { .. } => {
+                        todo!()
+                    }
                     AgentRuntimeRequest::OpenDownlink(request) => {
                         if downlink_requests.send(request).await.is_err() {
                             return Err(AgentExecError::FailedDownlinkRequest);

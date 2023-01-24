@@ -145,10 +145,24 @@ impl AgentContext for AgentRuntimeContext {
 
     fn add_store(
         &self,
-        _name: &str,
-        _kind: StoreKind,
+        name: &str,
+        kind: StoreKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
-        todo!("Non-lane stores not yet implemented.")
+        let name = Text::new(name);
+        let sender = self.tx.clone();
+        async move {
+            let (tx, rx) = oneshot::channel();
+            sender
+                .send(AgentRuntimeRequest::AddStore {
+                    name,
+                    kind,
+                    config: Default::default(),
+                    promise: tx,
+                })
+                .await?;
+            rx.await?
+        }
+        .boxed()
     }
 }
 

@@ -136,6 +136,12 @@ impl<T> From<mpsc::error::SendError<T>> for AgentRuntimeError {
     }
 }
 
+impl<T> From<mpsc::error::SendError<T>> for OpenStoreError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        OpenStoreError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
 impl<T> From<watch::error::SendError<T>> for AgentRuntimeError {
     fn from(_: watch::error::SendError<T>) -> Self {
         AgentRuntimeError::Terminated
@@ -151,6 +157,12 @@ impl From<promise::PromiseError> for AgentRuntimeError {
 impl From<oneshot::error::RecvError> for AgentRuntimeError {
     fn from(_: oneshot::error::RecvError) -> Self {
         AgentRuntimeError::Terminated
+    }
+}
+
+impl From<oneshot::error::RecvError> for OpenStoreError {
+    fn from(_: oneshot::error::RecvError) -> Self {
+        OpenStoreError::RuntimeError(AgentRuntimeError::Terminated)
     }
 }
 

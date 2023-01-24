@@ -45,11 +45,11 @@ use futures::{
     Stream, StreamExt,
 };
 use futures::{pin_mut, ready};
-use swim_api::agent::LaneConfig;
-use swim_api::error::StoreError;
+use swim_api::agent::{LaneConfig, StoreConfig};
+use swim_api::error::{OpenStoreError, StoreError};
 use swim_api::meta::lane::LaneKind;
 use swim_api::protocol::agent::{LaneResponse, MapLaneResponse};
-use swim_api::store::StoreDisabled;
+use swim_api::store::{StoreDisabled, StoreKind};
 use swim_api::{
     agent::UplinkKind,
     error::AgentRuntimeError,
@@ -95,6 +95,13 @@ pub enum AgentRuntimeRequest {
         kind: LaneKind,
         config: LaneConfig,
         promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+    },
+    /// Attempt to open a new store for the agent.
+    AddStore {
+        name: Text,
+        kind: StoreKind,
+        config: StoreConfig,
+        promise: oneshot::Sender<Result<Io, OpenStoreError>>,
     },
     /// Attempt to open a downlink to a lane on another agent.
     OpenDownlink(DownlinkRequest),
