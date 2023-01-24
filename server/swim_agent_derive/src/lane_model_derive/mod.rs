@@ -273,7 +273,7 @@ struct OrdinalLaneModel<'a> {
 }
 
 impl<'a> OrdinalLaneModel<'a> {
-    pub fn from_item_models(models: &Vec<OrdinalItemModel<'a>>) -> Vec<OrdinalLaneModel<'a>> {
+    pub fn from_item_models(models: &[OrdinalItemModel<'a>]) -> Vec<OrdinalLaneModel<'a>> {
         models
             .iter()
             .copied()
