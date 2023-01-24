@@ -137,7 +137,7 @@ fn ident_to_literal(name: &Ident) -> proc_macro2::Literal {
 impl<'a> LaneModel<'a> {
     /// The name of the lane as a string literal.
     pub fn literal(&self) -> proc_macro2::Literal {
-        ident_to_literal(&self.name)
+        ident_to_literal(self.name)
     }
 }
 
@@ -152,7 +152,7 @@ impl<'a> ItemModel<'a> {
 
     /// The name of the lane as a string literal.
     pub fn literal(&self) -> proc_macro2::Literal {
-        ident_to_literal(&self.name)
+        ident_to_literal(self.name)
     }
 
     /// Determine if the lane needs to persist its state.
