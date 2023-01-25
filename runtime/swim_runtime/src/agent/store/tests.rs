@@ -199,7 +199,7 @@ async fn value_initializer() {
 
     let persistence = StorePersistence(store.clone());
     let init = persistence
-        .init_value_lane(Id::Value)
+        .init_value_store(Id::Value)
         .expect("Expected initializer.");
 
     let (mut tx, mut rx) = byte_channel(BUFFER_SIZE);
@@ -233,7 +233,7 @@ async fn map_initializer_empty() {
 
     let persistence = StorePersistence(store.clone());
     let init = persistence
-        .init_map_lane(Id::Map)
+        .init_map_store(Id::Map)
         .expect("Expected initializer.");
 
     let (mut tx, mut rx) = byte_channel(BUFFER_SIZE);
@@ -264,7 +264,7 @@ async fn map_initializer_with_entries() {
 
     let persistence = StorePersistence(store.clone());
     let init = persistence
-        .init_map_lane(Id::Map)
+        .init_map_store(Id::Map)
         .expect("Expected initializer.");
 
     let (mut tx, mut rx) = byte_channel(BUFFER_SIZE);

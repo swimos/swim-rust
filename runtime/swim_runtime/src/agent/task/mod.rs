@@ -167,7 +167,7 @@ impl LaneEndpoint<ByteReader> {
         self,
         store: &Store,
         state: &mut WriteTaskState,
-    ) -> Result<LaneStream<Store::LaneId>, StoreError>
+    ) -> Result<LaneStream<Store::StoreId>, StoreError>
     where
         Store: AgentPersistence,
     {
@@ -181,7 +181,7 @@ impl LaneEndpoint<ByteReader> {
         let store_id = if transient {
             None
         } else {
-            Some(store.lane_id(name.as_str())?)
+            Some(store.store_id(name.as_str())?)
         };
         let id = state.register(name, reporter);
         Ok(match kind {
@@ -341,7 +341,7 @@ enum ValueOrSupply {
     Supply,
 }
 
-/// Recives a stream of messages sent by a lane.
+/// Receives a stream of messages sent by a lane.
 #[derive(Debug)]
 struct ValueLikeLaneReceiver<I> {
     lane_id: u64,
@@ -1472,7 +1472,7 @@ impl WriteTaskState {
         &mut self,
         reg: WriteTaskMessage,
         store: &Store,
-    ) -> TaskMessageResult<Store::LaneId>
+    ) -> TaskMessageResult<Store::StoreId>
     where
         Store: AgentPersistence,
     {
@@ -1909,7 +1909,7 @@ where
 
 fn persist_response<Store>(
     store: &mut Store,
-    store_id: Store::LaneId,
+    store_id: Store::StoreId,
     response: &RawLaneResponse,
 ) -> Result<(), StoreError>
 where

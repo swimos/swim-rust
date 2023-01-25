@@ -42,14 +42,14 @@ use tracing::{error, info};
 #[cfg(test)]
 mod tests;
 
-/// Task for the initialization of an agent. While this task is executing, new lanes can be
+/// Task for the initialization of an agent. While this task is executing, new items can be
 /// registered but they will not be driven and no remote connections will exist attached to
 /// the agent.
 pub struct AgentInitTask<Store = StoreDisabled> {
     requests: mpsc::Receiver<AgentRuntimeRequest>,
     downlink_requests: mpsc::Sender<DownlinkRequest>,
     init_complete: trigger::Receiver,
-    lane_init_timeout: Duration,
+    item_init_timeout: Duration,
     reporting: Option<NodeReporting>,
     store: Store,
 }
@@ -85,14 +85,14 @@ where
     /// #Arguments
     /// * `requests` - Channel for requests to open new lanes and downlinks.
     /// * `init_complete` - Triggered when the initialization phase is complete.
-    /// * `lane_init_timeout` - Timeout for initializing lanes from the store.
+    /// * `item_init_timeout` - Timeout for initializing lanes from the store.
     /// * `reporting` - Reporter for node/lane introspection support.
     /// * `store` - Store for lane persistence.
     pub fn with_store(
         requests: mpsc::Receiver<AgentRuntimeRequest>,
         downlink_requests: mpsc::Sender<DownlinkRequest>,
         init_complete: trigger::Receiver,
-        lane_init_timeout: Duration,
+        item_init_timeout: Duration,
         reporting: Option<NodeReporting>,
         store: Store,
     ) -> Self {
@@ -100,7 +100,7 @@ where
             requests,
             downlink_requests,
             init_complete,
-            lane_init_timeout,
+            item_init_timeout,
             reporting,
             store,
         }
@@ -114,7 +114,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
             init_complete,
             downlink_requests,
             store,
-            lane_init_timeout,
+            item_init_timeout,
             reporting,
         } = self;
 
@@ -125,11 +125,10 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
         let mut store_endpoints: Vec<StoreEndpoint> = vec![];
 
         let mut initializers = FuturesUnordered::new();
-        //let mut store_initializers = FuturesUnordered::new();
-
+        
         loop {
             let event = tokio::select! {
-                Some(lane_init_done) = initializers.next(), if !initializers.is_empty() => Either::Left(lane_init_done),
+                Some(item_init_done) = initializers.next(), if !initializers.is_empty() => Either::Left(item_init_done),
                 maybe_request = terminated.next() => {
                     if let Some(request) = maybe_request {
                         Either::Right(request)
@@ -167,7 +166,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
 
                         if promise.send(Ok(io)).is_ok() {
                             let get_lane_id = || {
-                                store.lane_id(name.as_str()).map_err(|error| {
+                                store.store_id(name.as_str()).map_err(|error| {
                                     AgentExecError::FailedRestoration {
                                         item_name: name.clone(),
                                         error: StoreInitError::Store(error),
@@ -179,7 +178,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                                     let lane_id = get_lane_id()?;
                                     Some(
                                         store
-                                            .init_value_lane(lane_id)
+                                            .init_value_store(lane_id)
                                             .unwrap_or_else(|| no_value_init()),
                                     )
                                 }
@@ -187,7 +186,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                                     let lane_id = get_lane_id()?;
                                     Some(
                                         store
-                                            .init_map_lane(lane_id)
+                                            .init_map_store(lane_id)
                                             .unwrap_or_else(|| no_map_init()),
                                     )
                                 }
@@ -197,7 +196,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                                 let init_task = lane_initialization(
                                     name.clone(),
                                     kind,
-                                    lane_init_timeout,
+                                    item_init_timeout,
                                     reporting.as_ref(),
                                     in_tx,
                                     out_rx,
@@ -238,7 +237,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                             );
                         };
 
-                        match store.lane_id(name.as_str()) {
+                        match store.store_id(name.as_str()) {
                             Ok(store_id) => {
                                 let (in_tx, in_rx) = byte_channel::byte_channel(buffer_size);
                                 let (out_tx, out_rx) = byte_channel::byte_channel(buffer_size);
@@ -247,16 +246,16 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                                     let initializer = match kind {
                                         StoreKind::Value => {
                                             store
-                                                .init_value_lane(store_id)
+                                                .init_value_store(store_id)
                                                 .unwrap_or_else(|| no_value_init())
                                         }
                                         StoreKind::Map => {
                                             store
-                                                .init_map_lane(store_id)
+                                                .init_map_store(store_id)
                                                 .unwrap_or_else(|| no_map_init())
                                         }
                                     };
-                                    let init_task = store_initialization(name, kind, lane_init_timeout, in_tx, out_rx, initializer).map_ok(Either::Right);
+                                    let init_task = store_initialization(name, kind, item_init_timeout, in_tx, out_rx, initializer).map_ok(Either::Right);
                                     initializers.push(Either::Right(init_task));
                                 } else {
                                     log_err()
