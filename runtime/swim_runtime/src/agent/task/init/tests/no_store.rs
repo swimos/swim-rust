@@ -202,16 +202,16 @@ async fn single_lane() {
         let (initial_result, mut agent_io) = run_test(init, StoreDisabled::default()).await;
         let initial = initial_result.expect("No lanes were registered.");
 
-        let InitialEndpoints { mut endpoints, .. } = initial;
+        let InitialEndpoints { mut lane_endpoints, .. } = initial;
 
-        assert_eq!(endpoints.len(), 1);
+        assert_eq!(lane_endpoints.len(), 1);
         let LaneEndpoint {
             name,
             kind,
             mut io,
             transient,
             reporter,
-        } = endpoints.pop().unwrap();
+        } = lane_endpoints.pop().unwrap();
         assert_eq!(name, "my_lane");
         assert_eq!(kind, UplinkKind::Value);
         assert_eq!(transient, config.transient);
@@ -231,16 +231,16 @@ async fn single_lane_with_reporting() {
         .await;
         let initial = initial_result.expect("No lanes were registered.");
 
-        let InitialEndpoints { mut endpoints, .. } = initial;
+        let InitialEndpoints { mut lane_endpoints, .. } = initial;
 
-        assert_eq!(endpoints.len(), 1);
+        assert_eq!(lane_endpoints.len(), 1);
         let LaneEndpoint {
             name,
             kind,
             mut io,
             transient,
             reporter,
-        } = endpoints.pop().unwrap();
+        } = lane_endpoints.pop().unwrap();
         assert_eq!(name, "my_lane");
         assert_eq!(kind, UplinkKind::Value);
         assert_eq!(transient, config.transient);
@@ -349,9 +349,9 @@ async fn two_lanes() {
         let (initial_result, agent_lanes) = run_test(init, StoreDisabled::default()).await;
         let initial = initial_result.expect("No lanes were registered.");
 
-        let InitialEndpoints { endpoints, .. } = initial;
+        let InitialEndpoints { lane_endpoints, .. } = initial;
 
-        assert_eq!(endpoints.len(), 2);
+        assert_eq!(lane_endpoints.len(), 2);
 
         let mut seen_value = false;
         let mut seen_map = false;
@@ -364,7 +364,7 @@ async fn two_lanes() {
             mut io,
             transient,
             reporter,
-        } in endpoints
+        } in lane_endpoints
         {
             match kind {
                 UplinkKind::Value => {

@@ -37,10 +37,10 @@ pub enum StoreInitError {
     Store(#[from] StoreError),
     #[error("An error occurred sending the state to the agent implementation.")]
     Channel(#[from] std::io::Error),
-    #[error("The lane did not acknowledge initialization.")]
-    NoAckFromLane,
-    #[error("Attempting to initialize a lane timed out.")]
-    LaneInitializationTimeout,
+    #[error("The item did not acknowledge initialization.")]
+    NoAckFromItem,
+    #[error("Attempting to initialize an item timed out.")]
+    ItemInitializationTimeout,
 }
 
 pub type InitFut<'a> = BoxFuture<'a, Result<(), StoreInitError>>;

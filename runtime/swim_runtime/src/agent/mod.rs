@@ -359,9 +359,9 @@ pub enum AgentExecError {
     /// Sending a downlink request to the runtime failed.
     #[error("The runtime failed to handle a downlink request.")]
     FailedDownlinkRequest,
-    #[error("Restoring the state of the lane `{lane_name}` failed: {error}")]
+    #[error("Restoring the state of the item `{item_name}` failed: {error}")]
     FailedRestoration {
-        lane_name: Text,
+        item_name: Text,
         #[source]
         error: StoreInitError,
     },

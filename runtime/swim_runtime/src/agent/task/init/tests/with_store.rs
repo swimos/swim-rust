@@ -169,12 +169,12 @@ async fn init_single_value_lane_from_store() {
 
     let initial = initial_result.expect("No lanes were registered.");
 
-    let InitialEndpoints { mut endpoints, .. } = initial;
+    let InitialEndpoints { mut lane_endpoints, .. } = initial;
 
-    assert_eq!(endpoints.len(), 1);
+    assert_eq!(lane_endpoints.len(), 1);
     let LaneEndpoint {
         name, kind, mut io, ..
-    } = endpoints.pop().unwrap();
+    } = lane_endpoints.pop().unwrap();
     assert_eq!(name, "value");
     assert_eq!(kind, UplinkKind::Value);
     check_connected(&mut agent_io, &mut io);
@@ -195,12 +195,12 @@ async fn init_single_trasient_value_lane_with_store() {
 
     let initial = initial_result.expect("No lanes were registered.");
 
-    let InitialEndpoints { mut endpoints, .. } = initial;
+    let InitialEndpoints { mut lane_endpoints, .. } = initial;
 
-    assert_eq!(endpoints.len(), 1);
+    assert_eq!(lane_endpoints.len(), 1);
     let LaneEndpoint {
         name, kind, mut io, ..
-    } = endpoints.pop().unwrap();
+    } = lane_endpoints.pop().unwrap();
     assert_eq!(name, "value");
     assert_eq!(kind, UplinkKind::Value);
     check_connected(&mut agent_io, &mut io);
@@ -219,10 +219,10 @@ async fn failed_value_lane_init_from_store() {
 
     match initial_result {
         Err(AgentExecError::FailedRestoration {
-            lane_name,
+            item_name,
             error: StoreInitError::Store(_),
         }) => {
-            assert_eq!(lane_name, VAL_LANE);
+            assert_eq!(item_name, VAL_LANE);
         }
         ow => panic!("Unexpected result: {:?}", ow),
     }
@@ -322,12 +322,12 @@ async fn init_single_map_lane_from_store() {
 
     let initial = initial_result.expect("No lanes were registered.");
 
-    let InitialEndpoints { mut endpoints, .. } = initial;
+    let InitialEndpoints { mut lane_endpoints, .. } = initial;
 
-    assert_eq!(endpoints.len(), 1);
+    assert_eq!(lane_endpoints.len(), 1);
     let LaneEndpoint {
         name, kind, mut io, ..
-    } = endpoints.pop().unwrap();
+    } = lane_endpoints.pop().unwrap();
     assert_eq!(name, "map");
     assert_eq!(kind, UplinkKind::Map);
     check_connected(&mut agent_io, &mut io);
@@ -353,12 +353,12 @@ async fn init_single_transient_map_lane_with_store() {
 
     let initial = initial_result.expect("No lanes were registered.");
 
-    let InitialEndpoints { mut endpoints, .. } = initial;
+    let InitialEndpoints { mut lane_endpoints, .. } = initial;
 
-    assert_eq!(endpoints.len(), 1);
+    assert_eq!(lane_endpoints.len(), 1);
     let LaneEndpoint {
         name, kind, mut io, ..
-    } = endpoints.pop().unwrap();
+    } = lane_endpoints.pop().unwrap();
     assert_eq!(name, "map");
     assert_eq!(kind, UplinkKind::Map);
     check_connected(&mut agent_io, &mut io);
@@ -388,10 +388,10 @@ async fn failed_map_lane_init_from_store() {
 
     match initial_result {
         Err(AgentExecError::FailedRestoration {
-            lane_name,
+            item_name,
             error: StoreInitError::Store(_),
         }) => {
-            assert_eq!(lane_name, MAP_LANE);
+            assert_eq!(item_name, MAP_LANE);
         }
         ow => panic!("Unexpected result: {:?}", ow),
     }

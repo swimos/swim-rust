@@ -223,12 +223,16 @@ impl From<AgentRuntimeError> for AgentInitError {
 
 #[derive(Debug, Error)]
 pub enum StoreError {
+    /// This implementation does not provide stores.
+    #[error("No store available.")]
+    NoStoreAvailable,
     /// The provided key was not found in the store.
     #[error("The specified key was not found")]
     KeyNotFound,
     /// A key returned by the store did not have the correct format.
     #[error("The store returned an invalid key")]
     InvalidKey,
+    /// Invalid operation attempted.
     #[error("An invalid operation was attempted (e.g. Updating a map entry on a value entry)")]
     InvalidOperation,
     /// The delegate byte engine failed to initialise.

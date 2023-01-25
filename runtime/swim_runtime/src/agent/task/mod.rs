@@ -201,24 +201,38 @@ impl LaneEndpoint<ByteReader> {
     }
 }
 
+/// A labelled channel endpoint (or pair) for a lane.
+#[derive(Debug)]
+struct StoreEndpoint {
+    /// The name of the lane.
+    name: Text,
+    /// The subprotocol used by the lane.
+    kind: StoreKind,
+    /// The channel endpoint.
+    reader: ByteReader,
+}
+
 /// Result of the agent initialization task (detailing the lanes that were created during initialization).
 #[derive(Debug)]
 pub struct InitialEndpoints {
     reporting: Option<NodeReporting>,
     rx: mpsc::Receiver<AgentRuntimeRequest>,
-    endpoints: Vec<LaneEndpoint<Io>>,
+    lane_endpoints: Vec<LaneEndpoint<Io>>,
+    store_endpoints: Vec<StoreEndpoint>,
 }
 
 impl InitialEndpoints {
     fn new(
         reporting: Option<NodeReporting>,
         rx: mpsc::Receiver<AgentRuntimeRequest>,
-        endpoints: Vec<LaneEndpoint<Io>>,
+        lane_endpoints: Vec<LaneEndpoint<Io>>,
+        store_endpoints: Vec<StoreEndpoint>
     ) -> Self {
         InitialEndpoints {
             reporting,
             rx,
-            endpoints,
+            lane_endpoints,
+            store_endpoints,
         }
     }
 
@@ -554,7 +568,8 @@ where
                 InitialEndpoints {
                     reporting,
                     rx,
-                    endpoints,
+                    lane_endpoints,
+                    .. //TODO
                 },
             attachment_rx,
             stopping,
@@ -563,7 +578,7 @@ where
         } = self;
 
         let (write_endpoints, read_endpoints): (Vec<_>, Vec<_>) =
-            endpoints.into_iter().map(LaneEndpoint::split).unzip();
+            lane_endpoints.into_iter().map(LaneEndpoint::split).unzip();
 
         let (read_tx, read_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (write_tx, write_rx) = mpsc::channel(config.attachment_queue_size.get());

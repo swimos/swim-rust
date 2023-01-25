@@ -380,7 +380,7 @@ where
         None,
     ));
 
-    let init = InitialEndpoints::new(None, req_rx, runtime_endpoints);
+    let init = InitialEndpoints::new(None, req_rx, runtime_endpoints, vec![]);
 
     let agent_task = AgentRuntimeTask::new(
         NodeDescriptor::new(AGENT_ID, Text::new(NODE)),
