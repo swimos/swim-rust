@@ -609,7 +609,7 @@ impl IncomingTask {
                                             *id,
                                             Text::new(node),
                                             Text::new(request.path.lane.as_ref()),
-                                            &find_tx,
+                                            find_tx,
                                             &outgoing_tx,
                                         )
                                         .await

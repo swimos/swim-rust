@@ -102,7 +102,7 @@ impl AttachAction {
 }
 
 /// Configuration parameters for the downlink runtime.
-#[derive(Debug, Clone, Copy, Hash)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq)]
 pub struct DownlinkRuntimeConfig {
     /// If the runtime has no consumers for longer than this timeout, it will stop.
     pub empty_timeout: Duration,
