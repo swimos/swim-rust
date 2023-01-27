@@ -1590,10 +1590,9 @@ where
         let lane_stream = endpoint.into_lane_stream(&store, &mut state)?;
         streams.add_receiver(lane_stream);
     }
-    let mut counter = 0;
-    for endpoint in store_endpoints {
-        let item_id = counter;
-        counter += 1;
+    
+    for (counter, endpoint) in store_endpoints.into_iter().enumerate() {
+        let item_id = counter as u64;
         let store_stream = endpoint.into_store_stream(&store, item_id)?;
         streams.add_receiver(store_stream);
     }
@@ -1646,7 +1645,7 @@ where
                     voted = false;
                 }
                 persist_response(&mut store, &response)?;
-                if let Some((item_id, response)) = response.to_uplink_response() {
+                if let Some((item_id, response)) = response.into_uplink_response() {
                     for write in state.handle_event(item_id, response) {
                         streams.schedule_write(write.into_future());
                     }

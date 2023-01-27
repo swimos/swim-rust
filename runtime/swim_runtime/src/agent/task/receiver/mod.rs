@@ -166,7 +166,7 @@ impl<I> ItemResponse<I> {
 }
 
 impl<I> ItemResponse<I> {
-    pub fn to_uplink_response(self) -> Option<(u64, LaneData)> {
+    pub fn into_uplink_response(self) -> Option<(u64, LaneData)> {
         let ItemResponse { item_id, body, .. } = self;
         if let ResponseData::Lane(resp) = body {
             Some((item_id, resp))
