@@ -34,7 +34,7 @@ pub enum DownlinkKind {
     Map,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 /// General downlink configuration parameters.
 pub struct DownlinkConfig {
     pub events_when_not_synced: bool,
