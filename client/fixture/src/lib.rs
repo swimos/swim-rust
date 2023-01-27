@@ -85,7 +85,7 @@ impl ExternalConnections for MockExternalConnections {
             .unwrap()
             .sockets
             .remove(&addr)
-            .ok_or(ErrorKind::NotFound.into());
+            .ok_or_else(|| ErrorKind::NotFound.into());
         ready(result).boxed()
     }
 
@@ -106,7 +106,7 @@ impl DnsResolver for MockExternalConnections {
 
     fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
         let result = match self.inner.lock().unwrap().addrs.get(&host) {
-            Some(sock) => Ok(vec![sock.clone()]),
+            Some(sock) => Ok(vec![*sock]),
             None => Err(io::ErrorKind::NotFound.into()),
         };
         ready(result).boxed()
