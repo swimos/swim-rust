@@ -40,7 +40,8 @@ use crate::agent::{
         fake_store::FakeStore,
         tests::RemoteReceiver,
         timeout_coord::{self, VoteResult},
-        write_task, LaneEndpoint, RwCoorindationMessage, WriteTaskConfiguration, WriteTaskMessage,
+        write_task, LaneEndpoint, RwCoorindationMessage, WriteTaskConfiguration,
+        WriteTaskEndpoints, WriteTaskMessage,
     },
     DisconnectionReason,
 };
@@ -255,7 +256,7 @@ where
     let write_config = WriteTaskConfiguration::new(AGENT_ID, Text::new(NODE), config);
     let write = write_task(
         write_config,
-        endpoints_rx,
+        WriteTaskEndpoints::new(endpoints_rx, vec![]),
         messages_rx,
         vote1,
         stop_rx,

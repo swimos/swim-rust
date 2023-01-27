@@ -202,7 +202,9 @@ async fn single_lane() {
         let (initial_result, mut agent_io) = run_test(init, StoreDisabled::default()).await;
         let initial = initial_result.expect("No lanes were registered.");
 
-        let InitialEndpoints { mut lane_endpoints, .. } = initial;
+        let InitialEndpoints {
+            mut lane_endpoints, ..
+        } = initial;
 
         assert_eq!(lane_endpoints.len(), 1);
         let LaneEndpoint {
@@ -231,7 +233,9 @@ async fn single_lane_with_reporting() {
         .await;
         let initial = initial_result.expect("No lanes were registered.");
 
-        let InitialEndpoints { mut lane_endpoints, .. } = initial;
+        let InitialEndpoints {
+            mut lane_endpoints, ..
+        } = initial;
 
         assert_eq!(lane_endpoints.len(), 1);
         let LaneEndpoint {

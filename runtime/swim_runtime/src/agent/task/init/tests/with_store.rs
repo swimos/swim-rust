@@ -169,7 +169,9 @@ async fn init_single_value_lane_from_store() {
 
     let initial = initial_result.expect("No lanes were registered.");
 
-    let InitialEndpoints { mut lane_endpoints, .. } = initial;
+    let InitialEndpoints {
+        mut lane_endpoints, ..
+    } = initial;
 
     assert_eq!(lane_endpoints.len(), 1);
     let LaneEndpoint {
@@ -195,7 +197,9 @@ async fn init_single_trasient_value_lane_with_store() {
 
     let initial = initial_result.expect("No lanes were registered.");
 
-    let InitialEndpoints { mut lane_endpoints, .. } = initial;
+    let InitialEndpoints {
+        mut lane_endpoints, ..
+    } = initial;
 
     assert_eq!(lane_endpoints.len(), 1);
     let LaneEndpoint {
@@ -322,7 +326,9 @@ async fn init_single_map_lane_from_store() {
 
     let initial = initial_result.expect("No lanes were registered.");
 
-    let InitialEndpoints { mut lane_endpoints, .. } = initial;
+    let InitialEndpoints {
+        mut lane_endpoints, ..
+    } = initial;
 
     assert_eq!(lane_endpoints.len(), 1);
     let LaneEndpoint {
@@ -353,7 +359,9 @@ async fn init_single_transient_map_lane_with_store() {
 
     let initial = initial_result.expect("No lanes were registered.");
 
-    let InitialEndpoints { mut lane_endpoints, .. } = initial;
+    let InitialEndpoints {
+        mut lane_endpoints, ..
+    } = initial;
 
     assert_eq!(lane_endpoints.len(), 1);
     let LaneEndpoint {

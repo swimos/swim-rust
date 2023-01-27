@@ -16,10 +16,11 @@ use std::{convert::identity, time::Duration};
 
 use futures::{future::Either, stream::FuturesUnordered, StreamExt, TryFutureExt};
 use swim_api::{
-    agent::{LaneConfig, UplinkKind, StoreConfig},
+    agent::{LaneConfig, StoreConfig, UplinkKind},
+    error::{OpenStoreError, StoreError},
     meta::lane::LaneKind,
     protocol::agent::StoreInitializedCodec,
-    store::{StoreDisabled, StoreKind}, error::{StoreError, OpenStoreError},
+    store::{StoreDisabled, StoreKind},
 };
 use swim_model::Text;
 use swim_utilities::{
@@ -125,7 +126,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
         let mut store_endpoints: Vec<StoreEndpoint> = vec![];
 
         let mut initializers = FuturesUnordered::new();
-        
+
         loop {
             let event = tokio::select! {
                 Some(item_init_done) = initializers.next(), if !initializers.is_empty() => Either::Left(item_init_done),
@@ -138,12 +139,10 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                 }
             };
             match event {
-                Either::Left(endpoint_result) => {
-                    match endpoint_result? {
-                        Either::Left(lane) => lane_endpoints.push(lane),
-                        Either::Right(store) => store_endpoints.push(store),
-                    }
-                }
+                Either::Left(endpoint_result) => match endpoint_result? {
+                    Either::Left(lane) => lane_endpoints.push(lane),
+                    Either::Right(store) => store_endpoints.push(store),
+                },
                 Either::Right(request) => match request {
                     AgentRuntimeRequest::AddLane {
                         name,
@@ -201,7 +200,8 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                                     in_tx,
                                     out_rx,
                                     initializer,
-                                ).map_ok(Either::Left);
+                                )
+                                .map_ok(Either::Left);
                                 initializers.push(Either::Left(init_task));
                             } else {
                                 let reporter = if let Some(node_reporter) = &reporting {
@@ -224,11 +224,15 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                             );
                         }
                     }
-                    AgentRuntimeRequest::AddStore { name, kind, config, promise, .. } => {
+                    AgentRuntimeRequest::AddStore {
+                        name,
+                        kind,
+                        config,
+                        promise,
+                        ..
+                    } => {
                         info!("Registering a new {} store with name '{}'.", kind, name);
-                        let StoreConfig {
-                            buffer_size,
-                        } = config;
+                        let StoreConfig { buffer_size } = config;
 
                         let log_err = || {
                             error!(
@@ -244,28 +248,35 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                                 let io = (out_tx, in_rx);
                                 if promise.send(Ok(io)).is_ok() {
                                     let initializer = match kind {
-                                        StoreKind::Value => {
-                                            store
-                                                .init_value_store(store_id)
-                                                .unwrap_or_else(|| no_value_init())
-                                        }
-                                        StoreKind::Map => {
-                                            store
-                                                .init_map_store(store_id)
-                                                .unwrap_or_else(|| no_map_init())
-                                        }
+                                        StoreKind::Value => store
+                                            .init_value_store(store_id)
+                                            .unwrap_or_else(|| no_value_init()),
+                                        StoreKind::Map => store
+                                            .init_map_store(store_id)
+                                            .unwrap_or_else(|| no_map_init()),
                                     };
-                                    let init_task = store_initialization(name, kind, item_init_timeout, in_tx, out_rx, initializer).map_ok(Either::Right);
+                                    let init_task = store_initialization(
+                                        name,
+                                        kind,
+                                        item_init_timeout,
+                                        in_tx,
+                                        out_rx,
+                                        initializer,
+                                    )
+                                    .map_ok(Either::Right);
                                     initializers.push(Either::Right(init_task));
                                 } else {
                                     log_err()
                                 }
-                            },
+                            }
                             Err(StoreError::NoStoreAvailable) => {
-                                if promise.send(Err(OpenStoreError::StoresNotSupported)).is_err() {
+                                if promise
+                                    .send(Err(OpenStoreError::StoresNotSupported))
+                                    .is_err()
+                                {
                                     log_err();
                                 }
-                            },
+                            }
                             Err(err) => {
                                 return Err(AgentExecError::FailedRestoration {
                                     item_name: name.clone(),
@@ -295,7 +306,12 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
             Err(AgentExecError::NoInitialLanes)
         } else {
             Ok((
-                InitialEndpoints::new(reporting, request_stream.into_inner(), lane_endpoints, vec![]),
+                InitialEndpoints::new(
+                    reporting,
+                    request_stream.into_inner(),
+                    lane_endpoints,
+                    vec![],
+                ),
                 store,
             ))
         }
@@ -309,8 +325,6 @@ async fn wait_for_initialized(reader: &mut ByteReader) -> Result<(), StoreInitEr
         _ => Err(StoreInitError::NoAckFromItem),
     }
 }
-
-
 
 async fn lane_initialization(
     name: Text,
@@ -328,9 +342,15 @@ async fn lane_initialization(
         let result = init.await;
 
         if let Err(error) = result {
-            Err(AgentExecError::FailedRestoration { item_name: lane_name, error })
+            Err(AgentExecError::FailedRestoration {
+                item_name: lane_name,
+                error,
+            })
         } else if let Err(error) = wait_for_initialized(&mut out_rx).await {
-            Err(AgentExecError::FailedRestoration { item_name: lane_name, error })
+            Err(AgentExecError::FailedRestoration {
+                item_name: lane_name,
+                error,
+            })
         } else {
             let reporter = if let Some(node_reporter) = &reporting {
                 node_reporter.register(lane_name.clone(), lane_kind).await
@@ -370,9 +390,15 @@ async fn store_initialization(
         let result = init.await;
 
         if let Err(error) = result {
-            Err(AgentExecError::FailedRestoration { item_name: store_name, error })
+            Err(AgentExecError::FailedRestoration {
+                item_name: store_name,
+                error,
+            })
         } else if let Err(error) = wait_for_initialized(&mut out_rx).await {
-            Err(AgentExecError::FailedRestoration { item_name: store_name, error })
+            Err(AgentExecError::FailedRestoration {
+                item_name: store_name,
+                error,
+            })
         } else {
             let endpoint = StoreEndpoint {
                 name: store_name,
