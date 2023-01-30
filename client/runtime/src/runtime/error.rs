@@ -41,6 +41,7 @@ pub enum DownlinkErrorKind {
     Timeout,
     Terminated,
     /// Error propagated from user-code, such as a Java exception cause through the FFI
+    // todo: this can be removed?
     User,
 }
 
@@ -116,7 +117,7 @@ impl DownlinkRuntimeError {
     }
 
     pub fn downcast_ref<T: Any + Error>(&self) -> Option<&T> {
-        self.source.as_deref().and_then(|e| e.downcast_ref())
+        self.source.as_deref().and_then(|e| e.downcast_ref::<T>())
     }
 
     pub fn map_cause<T, F, R>(&self, f: F) -> Option<R>
