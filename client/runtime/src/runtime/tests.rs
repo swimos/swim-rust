@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::future::Future;
-use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -33,24 +32,21 @@ use uuid::Uuid;
 
 use crate::runtime::error::DownlinkErrorKind;
 use crate::runtime::transport::TransportHandle;
-use crate::{start_runtime, DownlinkRuntimeError, RawHandle, Transport};
+use crate::{start_runtime, DownlinkRuntimeError, RawHandle, RemotePath, Transport};
 use fixture::{MockExternalConnections, MockWs, Server, WsAction};
 use swim_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
 use swim_api::error::DownlinkTaskError;
 use swim_downlink::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
 use swim_downlink::{DownlinkTask, ValueDownlinkModel};
+use swim_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
 use swim_model::address::{Address, RelativeAddress};
-use swim_model::path::{AbsolutePath, RelativePath};
 use swim_model::Text;
 use swim_remote::AttachClient;
-use swim_runtime::compat::{RawRequestMessageEncoder, RequestMessage};
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
-use swim_runtime::error::{ConnectionError, IoError};
-use swim_runtime::remote::table::SchemeHostPort;
-use swim_runtime::remote::{Scheme, SchemeSocketAddr};
-use swim_runtime::routing::RoutingAddr;
-use swim_utilities::algebra::non_zero_usize;
+use swim_runtime::net::{Scheme, SchemeHostPort, SchemeSocketAddr};
+use swim_runtime::ws::RatchetError;
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
+use swim_utilities::non_zero_usize;
 use swim_utilities::trigger;
 use swim_utilities::trigger::{promise, Sender};
 
@@ -66,7 +62,7 @@ async fn transport_opens_connection_ok() {
         )],
         [("127.0.0.1:9001".parse().unwrap(), client)],
     );
-    let ws = fixture::MockWs::new([("127.0.0.1".to_string(), WsAction::Open)]);
+    let ws = MockWs::new([("127.0.0.1".to_string(), WsAction::Open)]);
     let transport = Transport::new(ext, ws, non_zero_usize!(128));
 
     let (transport_tx, transport_rx) = mpsc::channel(128);
@@ -103,7 +99,10 @@ async fn transport_opens_connection_ok() {
 
     RawRequestMessageEncoder
         .encode(
-            RequestMessage::link(RoutingAddr::client(0), RelativePath::new("node", "lane")),
+            RequestMessage::<Text, String>::link(
+                Uuid::nil(),
+                RelativeAddress::new("node".into(), "lane".into()),
+            ),
             &mut buf,
         )
         .unwrap();
@@ -146,8 +145,10 @@ async fn transport_opens_connection_err() {
         )],
         [("127.0.0.1:9001".parse().unwrap(), client)],
     );
-    let err = ConnectionError::Io(IoError::new(ErrorKind::NotFound, None));
-    let ws = MockWs::new([("127.0.0.1".to_string(), WsAction::Fail(err.clone()))]);
+    let ws = MockWs::new([(
+        "127.0.0.1".to_string(),
+        WsAction::fail(|| RatchetError::from(ratchet::Error::new(ratchet::ErrorKind::Http))),
+    )]);
     let transport = Transport::new(ext, ws, non_zero_usize!(128));
 
     let (transport_tx, transport_rx) = mpsc::channel(128);
@@ -163,10 +164,7 @@ async fn transport_opens_connection_err() {
         .await
         .expect_err("Expected connection to fail");
     assert!(actual_err.is(DownlinkErrorKind::Connection));
-    let cause = actual_err
-        .downcast_ref::<ConnectionError>()
-        .expect("Expected a connection error");
-    assert_eq!(cause, &err);
+    assert!(actual_err.downcast_ref::<RatchetError>().is_some());
 }
 
 struct TrackingDownlink<LC> {
@@ -416,11 +414,7 @@ where
 
     let promise = handle
         .run_downlink(
-            AbsolutePath::new(
-                "ws://127.0.0.1".parse().unwrap(),
-                "node".into(),
-                "lane".into(),
-            ),
+            RemotePath::new("ws://127.0.0.1", "node", "lane"),
             config,
             Default::default(),
             DownlinkOptions::SYNC,
@@ -624,11 +618,7 @@ where
 
     let promise = handle
         .run_downlink(
-            AbsolutePath::new(
-                "ws://127.0.0.1".parse().unwrap(),
-                "node".into(),
-                "lane".into(),
-            ),
+            RemotePath::new("ws://127.0.0.1", "node", "lane"),
             config,
             Default::default(),
             DownlinkOptions::SYNC,
@@ -753,8 +743,11 @@ async fn failed_handshake() {
         )],
         [("127.0.0.1:80".parse().unwrap(), client)],
     );
-    let err = ConnectionError::Io(IoError::new(ErrorKind::NotFound, None));
-    let ws = MockWs::new([("127.0.0.1".to_string(), WsAction::Fail(err.clone()))]);
+
+    let ws = MockWs::new([(
+        "127.0.0.1".to_string(),
+        WsAction::fail(|| RatchetError::from(ratchet::Error::new(ratchet::ErrorKind::Http))),
+    )]);
 
     let (handle, _stop) = start_runtime(Transport::new(ext, ws, non_zero_usize!(128)));
 
@@ -772,11 +765,7 @@ async fn failed_handshake() {
 
     let promise = handle
         .run_downlink(
-            AbsolutePath::new(
-                "ws://127.0.0.1".parse().unwrap(),
-                "node".into(),
-                "lane".into(),
-            ),
+            RemotePath::new("ws://127.0.0.1", "node", "lane"),
             Default::default(),
             Default::default(),
             DownlinkOptions::SYNC,
@@ -786,8 +775,5 @@ async fn failed_handshake() {
     assert!(promise.is_err());
     let actual_err = promise.unwrap_err();
     assert!(actual_err.is(DownlinkErrorKind::WebsocketNegotiationFailed));
-    let cause = actual_err
-        .downcast_ref::<ConnectionError>()
-        .expect("Incorrect error");
-    assert_eq!(cause, &err);
+    assert!(actual_err.downcast_ref::<RatchetError>().is_some());
 }

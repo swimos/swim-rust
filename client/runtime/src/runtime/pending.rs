@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::models::Key;
+use crate::runtime::models::{Key, RemotePath};
 use crate::runtime::{BoxedDownlink, DownlinkCallback};
 use crate::DownlinkRuntimeError;
 use fnv::FnvHashMap;
@@ -23,7 +23,7 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use swim_api::downlink::DownlinkConfig;
-use swim_model::address::{Address, RelativeAddress};
+use swim_model::address::RelativeAddress;
 use swim_model::Text;
 use swim_remote::AttachClient;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
@@ -38,7 +38,7 @@ type PendingHandshake = (
 pub struct PendingDownlink {
     pub callback: DownlinkCallback,
     pub downlink: BoxedDownlink,
-    pub address: Address<Text>,
+    pub address: RemotePath,
     pub runtime_config: DownlinkRuntimeConfig,
     pub downlink_config: DownlinkConfig,
     pub options: DownlinkOptions,

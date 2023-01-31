@@ -14,6 +14,7 @@
 
 use fnv::FnvHashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::hash::{Hash, Hasher};
 use swim_api::downlink::DownlinkKind;
@@ -192,4 +193,33 @@ pub fn hash<H: Hash>(h: H) -> u64 {
     let mut hasher = DefaultHasher::new();
     h.hash(&mut hasher);
     hasher.finish()
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RemotePath {
+    pub host: Text,
+    pub node: Text,
+    pub lane: Text,
+}
+
+impl RemotePath {
+    pub fn new<H, N, L>(host: H, node: N, lane: L) -> RemotePath
+    where
+        H: Into<Text>,
+        N: Into<Text>,
+        L: Into<Text>,
+    {
+        RemotePath {
+            host: host.into(),
+            node: node.into(),
+            lane: lane.into(),
+        }
+    }
+}
+
+impl Display for RemotePath {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let RemotePath { host, node, lane } = self;
+        write!(f, "{}/{}/{}", host, node, lane)
+    }
 }

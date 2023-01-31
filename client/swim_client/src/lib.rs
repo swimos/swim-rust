@@ -15,17 +15,18 @@
 use ratchet::NoExtProvider;
 use runtime::downlink::{DownlinkOperationResult, StatefulDownlinkView};
 
-use runtime::{start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, Transport};
+use runtime::{
+    start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, RemotePath, Transport,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 use swim_api::downlink::DownlinkConfig;
 use swim_downlink::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
 use swim_downlink::{DownlinkTask, ValueDownlinkModel};
 use swim_form::Form;
-use swim_model::path::AbsolutePath;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
-use swim_runtime::remote::net::dns::Resolver;
-use swim_runtime::remote::net::tls::TokioTlsNetworking;
+use swim_runtime::net::dns::Resolver;
+use swim_runtime::net::tls::TokioTlsNetworking;
 use swim_runtime::ws::ext::RatchetNetworking;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
@@ -96,7 +97,7 @@ impl ClientHandle {
     /// * `default` - The initial, local, state of the downlink.
     pub fn value_downlink<L, T>(
         &self,
-        path: AbsolutePath,
+        path: RemotePath,
         default: T,
     ) -> ValueDownlinkBuilder<'_, BasicValueDownlinkLifecycle<T>, T> {
         ValueDownlinkBuilder {
@@ -115,7 +116,7 @@ impl ClientHandle {
 pub struct ValueDownlinkBuilder<'h, L, T> {
     handle: &'h ClientHandle,
     lifecycle: L,
-    path: AbsolutePath,
+    path: RemotePath,
     options: DownlinkOptions,
     runtime_config: DownlinkRuntimeConfig,
     downlink_config: DownlinkConfig,

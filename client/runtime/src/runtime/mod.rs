@@ -35,23 +35,22 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::{JoinError, JoinHandle};
 use tracing::{debug, error, info, trace};
+use url::Url;
 use uuid::Uuid;
 
 use swim_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
 use swim_api::error::DownlinkFailureReason;
 use swim_model::address::Address;
-use swim_model::path::AbsolutePath;
 use swim_model::Text;
 use swim_remote::AttachClient;
 use swim_runtime::downlink::{AttachAction, DownlinkOptions, DownlinkRuntimeConfig};
-use swim_runtime::remote::table::SchemeHostPort;
-use swim_runtime::remote::ExternalConnections;
+use swim_runtime::net::{ExternalConnections, SchemeHostPort};
 use swim_runtime::ws::WsConnections;
-use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
-use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
+use swim_utilities::{non_zero_usize, trigger};
 
+pub use crate::runtime::models::RemotePath;
 use crate::runtime::models::{DownlinkRuntime, IdIssuer, Key, Peer};
 use crate::runtime::pending::{PendingConnections, PendingDownlink, Waiting};
 pub use crate::runtime::transport::Transport;
@@ -103,7 +102,7 @@ pub struct RawHandle {
 impl RawHandle {
     pub async fn run_downlink<D>(
         &self,
-        path: AbsolutePath,
+        path: RemotePath,
         runtime_config: DownlinkRuntimeConfig,
         downlink_config: DownlinkConfig,
         options: DownlinkOptions,
@@ -134,7 +133,7 @@ impl RawHandle {
 /// Downlink registration properties.
 pub struct DownlinkRegistrationRequest {
     /// The path of the downlink to open.
-    pub path: AbsolutePath,
+    pub path: RemotePath,
     /// The downlink to run.
     pub downlink: BoxedDownlink,
     /// A callback for providing the result of the request. The promise will be satisfied when the
@@ -177,7 +176,7 @@ enum RuntimeEvent {
     /// A downlink task has completed.
     DownlinkTaskComplete {
         kind: DownlinkKind,
-        address: Address<Text>,
+        address: RemotePath,
         result: Result<(), DownlinkRuntimeError>,
         tx: promise::Sender<Result<(), DownlinkRuntimeError>>,
     },
@@ -275,8 +274,26 @@ async fn runtime_task<Net, Ws>(
                     runtime_config,
                     downlink_config,
                 } = request;
-                let AbsolutePath { host, node, lane } = path;
-                let shp = match SchemeHostPort::try_from(&host) {
+                let RemotePath { host, node, lane } = path;
+                let url = match host.as_str().parse::<Url>() {
+                    Ok(url) => url,
+                    Err(e) => {
+                        let address = Address::new(Some(host), node, lane);
+                        let kind = downlink.kind();
+                        info!(address = %address, kind = ?kind, "Malformed host");
+
+                        let _r = callback
+                            .send(Err(DownlinkRuntimeError::with_cause(
+                                DownlinkErrorKind::Unresolvable,
+                                e,
+                            )
+                            .shared()))
+                            .is_err();
+                        continue;
+                    }
+                };
+
+                let shp = match SchemeHostPort::try_from(&url) {
                     Ok(shp) => shp,
                     Err(e) => {
                         let _r = callback.send(Err(DownlinkRuntimeError::with_cause(
@@ -290,7 +307,7 @@ async fn runtime_task<Net, Ws>(
 
                 let task_shp = shp.clone();
                 let host = Text::from(shp.host().to_string());
-                let address = Address::new(Some(host.clone()), node.clone(), lane.clone());
+                let address = RemotePath::new(host.clone(), node, lane);
 
                 pending.feed_waiter(Waiting::Connection {
                     host: host.clone(),
@@ -527,7 +544,11 @@ async fn runtime_task<Net, Ws>(
                 let kind = downlink.kind();
                 let (promise_tx, promise_rx) = promise::promise();
                 let task = tokio::spawn(downlink.run_boxed(
-                    address.clone(),
+                    Address::new(
+                        Some(address.host.clone()),
+                        address.node.clone(),
+                        address.lane.clone(),
+                    ),
                     downlink_config,
                     io_out,
                     io_in,
