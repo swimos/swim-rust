@@ -110,9 +110,9 @@ impl<T, Shared> OnSetShared<T, Shared> for NoHandler {
 
 impl<T, Shared, F> OnSetShared<T, Shared> for FnMutHandler<F>
 where
-    F: for<'a> SharedSetFn<'a, Shared, Arc<T>> + Send,
+    F: for<'a> SharedSetFn<'a, Shared, T> + Send,
 {
-    type OnSetFut<'a> = <F as SharedSetFn<'a, Shared, Arc<T>>>::Fut
+    type OnSetFut<'a> = <F as SharedSetFn<'a, Shared, T>>::Fut
     where
         Self: 'a,
         Shared: 'a,

@@ -15,14 +15,15 @@
 pub mod downlink;
 mod runtime;
 
-pub use crate::runtime::{start_runtime, RawHandle, Transport};
-pub use crate::runtime::{DownlinkErrorKind, DownlinkRuntimeError};
+pub use crate::runtime::{
+    start_runtime, DownlinkErrorKind, DownlinkRuntimeError, RawHandle, RemotePath, Transport,
+};
 use ratchet::WebSocketConfig;
 use std::fmt::{Debug, Formatter};
 use std::num::NonZeroUsize;
 pub use swim_api::downlink::DownlinkKind;
 pub use swim_api::error::DownlinkTaskError;
-use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::non_zero_usize;
 
 #[non_exhaustive]
 pub struct ClientConfig {

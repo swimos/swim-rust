@@ -10,15 +10,13 @@ use std::io;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use swim_model::Value;
+use swim_form::Form;
+use swim_model::{Text, Value};
 use swim_recon::parser::{parse_recognize, Span};
 use swim_recon::printer::print_recon;
-use swim_runtime::error::{ConnectionError, IoError};
-use swim_runtime::remote::net::dns::{BoxDnsResolver, DnsResolver};
-use swim_runtime::remote::table::SchemeHostPort;
-use swim_runtime::remote::{ExternalConnections, Listener, SchemeSocketAddr};
-use swim_runtime::ws::{WsConnections, WsOpenFuture};
-use swim_warp::envelope::Envelope;
+use swim_runtime::net::dns::{BoxDnsResolver, DnsResolver};
+use swim_runtime::net::{ExternalConnections, Listener, SchemeHostPort, SchemeSocketAddr};
+use swim_runtime::ws::{RatchetError, WsConnections, WsOpenFuture};
 use tokio::io::DuplexStream;
 
 #[derive(Debug)]
@@ -115,7 +113,16 @@ impl DnsResolver for MockExternalConnections {
 
 pub enum WsAction {
     Open,
-    Fail(ConnectionError),
+    Fail(Box<dyn Fn() -> RatchetError + Send + Sync + 'static>),
+}
+
+impl WsAction {
+    pub fn fail<F>(with: F) -> WsAction
+    where
+        F: Fn() -> RatchetError + Send + Sync + 'static,
+    {
+        WsAction::Fail(Box::new(with))
+    }
 }
 
 pub struct MockWs {
@@ -135,13 +142,12 @@ impl MockWs {
 
 impl WsConnections<DuplexStream> for MockWs {
     type Ext = NoExt;
-    type Error = ConnectionError;
 
     fn open_connection(
         &self,
         socket: DuplexStream,
         addr: String,
-    ) -> WsOpenFuture<DuplexStream, Self::Ext, Self::Error> {
+    ) -> WsOpenFuture<DuplexStream, Self::Ext, RatchetError> {
         let result = match self.states.get(&addr) {
             Some(WsAction::Open) => Ok(WebSocket::from_upgraded(
                 WebSocketConfig::default(),
@@ -150,8 +156,8 @@ impl WsConnections<DuplexStream> for MockWs {
                 BytesMut::default(),
                 Role::Client,
             )),
-            Some(WsAction::Fail(e)) => Err(e.clone()),
-            None => Err(ConnectionError::Io(IoError::new(ErrorKind::NotFound, None))),
+            Some(WsAction::Fail(e)) => Err(e()),
+            None => Err(ratchet::Error::new(ratchet::ErrorKind::Http).into()),
         };
         ready(result).boxed()
     }
@@ -159,9 +165,92 @@ impl WsConnections<DuplexStream> for MockWs {
     fn accept_connection(
         &self,
         _socket: DuplexStream,
-    ) -> WsOpenFuture<DuplexStream, Self::Ext, Self::Error> {
+    ) -> WsOpenFuture<DuplexStream, Self::Ext, RatchetError> {
         panic!("Unexpected accept connection invocation")
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Form)]
+#[form_root(::swim_form)]
+pub enum Envelope {
+    #[form(tag = "link")]
+    Link {
+        #[form(name = "node")]
+        node_uri: Text,
+        #[form(name = "lane")]
+        lane_uri: Text,
+        rate: Option<f64>,
+        prio: Option<f64>,
+        #[form(body)]
+        body: Option<Value>,
+    },
+    #[form(tag = "sync")]
+    Sync {
+        #[form(name = "node")]
+        node_uri: Text,
+        #[form(name = "lane")]
+        lane_uri: Text,
+        rate: Option<f64>,
+        prio: Option<f64>,
+        #[form(body)]
+        body: Option<Value>,
+    },
+    #[form(tag = "unlink")]
+    Unlink {
+        #[form(name = "node")]
+        node_uri: Text,
+        #[form(name = "lane")]
+        lane_uri: Text,
+        #[form(body)]
+        body: Option<Value>,
+    },
+    #[form(tag = "command")]
+    Command {
+        #[form(name = "node")]
+        node_uri: Text,
+        #[form(name = "lane")]
+        lane_uri: Text,
+        #[form(body)]
+        body: Option<Value>,
+    },
+    #[form(tag = "linked")]
+    Linked {
+        #[form(name = "node")]
+        node_uri: Text,
+        #[form(name = "lane")]
+        lane_uri: Text,
+        rate: Option<f64>,
+        prio: Option<f64>,
+        #[form(body)]
+        body: Option<Value>,
+    },
+    #[form(tag = "synced")]
+    Synced {
+        #[form(name = "node")]
+        node_uri: Text,
+        #[form(name = "lane")]
+        lane_uri: Text,
+        #[form(body)]
+        body: Option<Value>,
+    },
+    #[form(tag = "unlinked")]
+    Unlinked {
+        #[form(name = "node")]
+        node_uri: Text,
+        #[form(name = "lane")]
+        lane_uri: Text,
+        #[form(body)]
+        body: Option<Value>,
+    },
+    #[form(tag = "event")]
+    Event {
+        #[form(name = "node")]
+        node_uri: Text,
+        #[form(name = "lane")]
+        lane_uri: Text,
+        #[form(body)]
+        body: Option<Value>,
+    },
 }
 
 pub struct Lane<'l> {
