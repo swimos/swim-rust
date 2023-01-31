@@ -14,10 +14,10 @@
 
 use std::{convert::identity, time::Duration};
 
-use futures::{future::Either, stream::FuturesUnordered, StreamExt, TryFutureExt};
+use futures::{future::Either, stream::FuturesUnordered, FutureExt, StreamExt, TryFutureExt};
 use swim_api::{
     agent::{LaneConfig, StoreConfig, UplinkKind},
-    error::{OpenStoreError, StoreError},
+    error::{AgentRuntimeError, OpenStoreError, StoreError},
     meta::lane::LaneKind,
     protocol::agent::StoreInitializedCodec,
     store::{StoreDisabled, StoreKind},
@@ -27,7 +27,7 @@ use swim_utilities::{
     io::byte_channel::{self, ByteReader, ByteWriter},
     trigger,
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::FramedRead;
 
@@ -36,7 +36,7 @@ use crate::agent::{
     AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io, NodeReporting,
 };
 
-use super::{InitialEndpoints, LaneEndpoint, StoreEndpoint};
+use super::{InitFut, InitialEndpoints, LaneEndpoint, StoreEndpoint, LaneRequest, StoreRequest};
 
 use tracing::{error, info};
 
@@ -119,13 +119,14 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
             reporting,
         } = self;
 
+        let initialization = Initialization::new(reporting, item_init_timeout);
         let mut request_stream = ReceiverStream::new(requests);
         let mut terminated = (&mut request_stream).take_until(init_complete);
 
         let mut lane_endpoints: Vec<LaneEndpoint<Io>> = vec![];
         let mut store_endpoints: Vec<StoreEndpoint> = vec![];
 
-        let mut initializers = FuturesUnordered::new();
+        let mut initializers: FuturesUnordered<InitFut<'_, Store::StoreId>> = FuturesUnordered::new();
 
         loop {
             let event = tokio::select! {
@@ -139,151 +140,41 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                 }
             };
             match event {
-                Either::Left(endpoint_result) => match endpoint_result? {
-                    Either::Left(lane) => lane_endpoints.push(lane),
-                    Either::Right(store) => store_endpoints.push(store),
+                Either::Left(endpoint_result) => match endpoint_result.unwrap() { //TODO
+                    Either::Left((lane, _)) => lane_endpoints.push(lane),
+                    Either::Right((store, _)) => store_endpoints.push(store),
                 },
                 Either::Right(request) => match request {
-                    AgentRuntimeRequest::AddLane {
+                    AgentRuntimeRequest::AddLane(LaneRequest {
                         name,
                         kind,
                         config,
                         promise,
-                    } => {
+                    }) => {
                         info!("Registering a new {} lane with name '{}'.", kind, name);
-                        let uplink_kind = kind.uplink_kind();
-                        let LaneConfig {
-                            input_buffer_size,
-                            output_buffer_size,
-                            transient,
-                        } = config;
-
-                        let (in_tx, in_rx) = byte_channel::byte_channel(input_buffer_size);
-                        let (out_tx, out_rx) = byte_channel::byte_channel(output_buffer_size);
-
-                        let io = (out_tx, in_rx);
-
-                        if promise.send(Ok(io)).is_ok() {
-                            let get_lane_id = || {
-                                store.store_id(name.as_str()).map_err(|error| {
-                                    AgentExecError::FailedRestoration {
-                                        item_name: name.clone(),
-                                        error: StoreInitError::Store(error),
-                                    }
-                                })
-                            };
-                            let maybe_initializer = match uplink_kind {
-                                UplinkKind::Value if !transient => {
-                                    let lane_id = get_lane_id()?;
-                                    Some(
-                                        store
-                                            .init_value_store(lane_id)
-                                            .unwrap_or_else(|| no_value_init()),
-                                    )
-                                }
-                                UplinkKind::Map if !transient => {
-                                    let lane_id = get_lane_id()?;
-                                    Some(
-                                        store
-                                            .init_map_store(lane_id)
-                                            .unwrap_or_else(|| no_map_init()),
-                                    )
-                                }
-                                _ => None,
-                            };
-                            if let Some(initializer) = maybe_initializer {
-                                let init_task = lane_initialization(
-                                    name.clone(),
-                                    kind,
-                                    item_init_timeout,
-                                    reporting.as_ref(),
-                                    in_tx,
-                                    out_rx,
-                                    initializer,
-                                )
-                                .map_ok(Either::Left);
-                                initializers.push(Either::Left(init_task));
-                            } else {
-                                let reporter = if let Some(node_reporter) = &reporting {
-                                    node_reporter.register(name.clone(), kind).await
-                                } else {
-                                    None
-                                };
-                                lane_endpoints.push(LaneEndpoint {
-                                    name,
-                                    kind: kind.uplink_kind(),
-                                    transient,
-                                    io: (in_tx, out_rx),
-                                    reporter,
-                                });
-                            }
-                        } else {
-                            error!(
-                                "Agent failed to receive lane registration for {} lane named '{}'.",
-                                kind, name
-                            );
+                        if let Some(init) = initialization.add_lane(
+                            &store,
+                            name.clone(),
+                            kind,
+                            config,
+                            promise,
+                        ).map_err(|error| AgentExecError::FailedRestoration { item_name: name, error })? {
+                            initializers.push(init);
                         }
                     }
-                    AgentRuntimeRequest::AddStore {
+                    AgentRuntimeRequest::AddStore(StoreRequest {
                         name,
                         kind,
                         config,
                         promise,
-                        ..
-                    } => {
+                    }) => {
                         info!("Registering a new {} store with name '{}'.", kind, name);
-                        let StoreConfig { buffer_size } = config;
-
-                        let log_err = || {
-                            error!(
-                                "Agent failed to receive store registration for {} store named '{}'.",
-                                kind, name
-                            );
-                        };
-
-                        match store.store_id(name.as_str()) {
-                            Ok(store_id) => {
-                                let (in_tx, in_rx) = byte_channel::byte_channel(buffer_size);
-                                let (out_tx, out_rx) = byte_channel::byte_channel(buffer_size);
-                                let io = (out_tx, in_rx);
-                                if promise.send(Ok(io)).is_ok() {
-                                    let initializer = match kind {
-                                        StoreKind::Value => store
-                                            .init_value_store(store_id)
-                                            .unwrap_or_else(|| no_value_init()),
-                                        StoreKind::Map => store
-                                            .init_map_store(store_id)
-                                            .unwrap_or_else(|| no_map_init()),
-                                    };
-                                    let init_task = store_initialization(
-                                        name,
-                                        kind,
-                                        item_init_timeout,
-                                        in_tx,
-                                        out_rx,
-                                        initializer,
-                                    )
-                                    .map_ok(Either::Right);
-                                    initializers.push(Either::Right(init_task));
-                                } else {
-                                    log_err()
-                                }
-                            }
-                            Err(StoreError::NoStoreAvailable) => {
-                                if promise
-                                    .send(Err(OpenStoreError::StoresNotSupported))
-                                    .is_err()
-                                {
-                                    log_err();
-                                }
-                            }
-                            Err(err) => {
-                                return Err(AgentExecError::FailedRestoration {
-                                    item_name: name.clone(),
-                                    error: StoreInitError::Store(err),
-                                });
-                            }
-                        };
+                        if let Some(init) =
+                            initialization.add_store(&store, name.clone(), kind, config, promise)
+                            .map_err(|error| AgentExecError::FailedRestoration { item_name: name, error })?
+                        {
+                            initializers.push(init);
+                        }
                     }
                     AgentRuntimeRequest::OpenDownlink(request) => {
                         if downlink_requests.send(request).await.is_err() {
@@ -295,13 +186,14 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
         }
         if !initializers.is_empty() {
             while let Some(endpoint_result) = initializers.next().await {
-                match endpoint_result? {
-                    Either::Left(lane) => lane_endpoints.push(lane),
-                    Either::Right(store) => store_endpoints.push(store),
+                match endpoint_result.unwrap() { //TODO
+                    Either::Left((lane, _)) => lane_endpoints.push(lane),
+                    Either::Right((store, _)) => store_endpoints.push(store),
                 }
             }
         }
         drop(initializers);
+        let Initialization { reporting, .. } = initialization;
         if lane_endpoints.is_empty() {
             Err(AgentExecError::NoInitialLanes)
         } else {
@@ -316,6 +208,175 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
             ))
         }
     }
+}
+
+pub(super) struct Initialization {
+    reporting: Option<NodeReporting>,
+    item_init_timeout: Duration,
+}
+
+impl Initialization
+where
+    
+{
+    pub fn new(
+        reporting: Option<NodeReporting>,
+        item_init_timeout: Duration,
+    ) -> Self {
+        Initialization {
+            reporting,
+            item_init_timeout,
+        }
+    }
+
+    pub fn add_store<'a, Store>(
+        &'a self,
+        store: &'a Store,
+        name: Text,
+        kind: StoreKind,
+        config: StoreConfig,
+        promise: oneshot::Sender<Result<Io, OpenStoreError>>,
+    ) -> Result<Option<InitFut<'a, Store::StoreId>>, StoreInitError>
+    where
+        Store: AgentPersistence + Send + Sync + 'a, 
+    {
+        let Initialization { item_init_timeout, .. } = self;
+        let StoreConfig { buffer_size } = config;
+    
+        let log_err = || {
+            error!(
+                "Agent failed to receive store registration for {} store named '{}'.",
+                kind, name
+            );
+        };
+    
+        match store.store_id(name.as_str()) {
+            Ok(store_id) => {
+                let (in_tx, in_rx) = byte_channel::byte_channel(buffer_size);
+                let (out_tx, out_rx) = byte_channel::byte_channel(buffer_size);
+                let io = (out_tx, in_rx);
+                if promise.send(Ok(io)).is_ok() {
+                    let initializer = match kind {
+                        StoreKind::Value => store
+                            .init_value_store(store_id)
+                            .unwrap_or_else(|| no_value_init()),
+                        StoreKind::Map => store
+                            .init_map_store(store_id)
+                            .unwrap_or_else(|| no_map_init()),
+                    };
+                    let init_task =
+                        store_initialization(name, kind, *item_init_timeout, in_tx, out_rx, initializer)
+                            .map_ok(move |r| Either::Right((r, store_id)));
+                    Ok(Some(init_task.boxed()))
+                } else {
+                    log_err();
+                    Ok(None)
+                }
+            }
+            Err(StoreError::NoStoreAvailable) => {
+                if promise
+                    .send(Err(OpenStoreError::StoresNotSupported))
+                    .is_err()
+                {
+                    log_err();
+                }
+                Ok(None)
+            }
+            Err(err) => {
+                return Err(StoreInitError::Store(err));
+            }
+        }
+    }
+    
+    pub fn add_lane<'a, Store>(
+        &'a self,
+        store: &'a Store,
+        name: Text,
+        kind: LaneKind,
+        config: LaneConfig,
+        promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+    ) -> Result<Option<InitFut<'a, Store::StoreId>>, StoreInitError>
+    where
+        Store: AgentPersistence + Send + Sync + 'a, 
+    {
+        let Initialization { reporting, item_init_timeout } = self;
+        let uplink_kind = kind.uplink_kind();
+        let LaneConfig {
+            input_buffer_size,
+            output_buffer_size,
+            transient,
+        } = config;
+    
+        let (in_tx, in_rx) = byte_channel::byte_channel(input_buffer_size);
+        let (out_tx, out_rx) = byte_channel::byte_channel(output_buffer_size);
+    
+        let io = (out_tx, in_rx);
+    
+        if promise.send(Ok(io)).is_ok() {
+            let get_lane_id = || {
+                store
+                    .store_id(name.as_str())
+                    .map_err(|error| StoreInitError::Store(error))
+            };
+            let maybe_initializer = match uplink_kind {
+                UplinkKind::Value if !transient => {
+                    let lane_id = get_lane_id()?;
+                    Some(
+                        (store
+                            .init_value_store(lane_id)
+                            .unwrap_or_else(|| no_value_init()), lane_id)
+                    )
+                }
+                UplinkKind::Map if !transient => {
+                    let lane_id = get_lane_id()?;
+                    Some(
+                        (store
+                            .init_map_store(lane_id)
+                            .unwrap_or_else(|| no_map_init()), lane_id)
+                    )
+                }
+                _ => None,
+            };
+            if let Some((initializer, store_id)) = maybe_initializer {
+                let init_task = lane_initialization(
+                    name.clone(),
+                    kind,
+                    *item_init_timeout,
+                    reporting.as_ref(),
+                    in_tx,
+                    out_rx,
+                    initializer,
+                )
+                .map_ok(move |r| Either::Left((r, Some(store_id))))
+                .boxed();
+                Ok(Some(init_task))
+            } else {
+                let init_task = async move {
+                    let reporter = if let Some(node_reporter) = reporting {
+                        node_reporter.register(name.clone(), kind).await
+                    } else {
+                        None
+                    };
+                    Ok(Either::Left((LaneEndpoint {
+                        name,
+                        kind: kind.uplink_kind(),
+                        transient,
+                        io: (in_tx, out_rx),
+                        reporter,
+                    }, None)))
+                }
+                .boxed();
+                Ok(Some(init_task))
+            }
+        } else {
+            error!(
+                "Agent failed to receive lane registration for {} lane named '{}'.",
+                kind, name
+            );
+            Ok(None)
+        }
+    }
+    
 }
 
 async fn wait_for_initialized(reader: &mut ByteReader) -> Result<(), StoreInitError> {
@@ -334,7 +395,7 @@ async fn lane_initialization(
     mut in_tx: ByteWriter,
     mut out_rx: ByteReader,
     initializer: BoxInitializer<'_>,
-) -> Result<LaneEndpoint<Io>, AgentExecError> {
+) -> Result<LaneEndpoint<Io>, StoreInitError> {
     let lane_name = name.clone();
     let kind = lane_kind.uplink_kind();
     let result = tokio::time::timeout(timeout, async move {
@@ -342,15 +403,9 @@ async fn lane_initialization(
         let result = init.await;
 
         if let Err(error) = result {
-            Err(AgentExecError::FailedRestoration {
-                item_name: lane_name,
-                error,
-            })
+            Err(error)
         } else if let Err(error) = wait_for_initialized(&mut out_rx).await {
-            Err(AgentExecError::FailedRestoration {
-                item_name: lane_name,
-                error,
-            })
+            Err(error)
         } else {
             let reporter = if let Some(node_reporter) = &reporting {
                 node_reporter.register(lane_name.clone(), lane_kind).await
@@ -369,10 +424,7 @@ async fn lane_initialization(
     })
     .await;
     result
-        .map_err(move |_| AgentExecError::FailedRestoration {
-            item_name: name,
-            error: StoreInitError::ItemInitializationTimeout,
-        })
+        .map_err(move |_| StoreInitError::ItemInitializationTimeout)
         .and_then(identity)
 }
 
@@ -383,22 +435,16 @@ async fn store_initialization(
     mut in_tx: ByteWriter,
     mut out_rx: ByteReader,
     initializer: BoxInitializer<'_>,
-) -> Result<StoreEndpoint, AgentExecError> {
+) -> Result<StoreEndpoint, StoreInitError> {
     let store_name = name.clone();
     let result = tokio::time::timeout(timeout, async move {
         let init = initializer.initialize(&mut in_tx);
         let result = init.await;
 
         if let Err(error) = result {
-            Err(AgentExecError::FailedRestoration {
-                item_name: store_name,
-                error,
-            })
+            Err(error)
         } else if let Err(error) = wait_for_initialized(&mut out_rx).await {
-            Err(AgentExecError::FailedRestoration {
-                item_name: store_name,
-                error,
-            })
+            Err(error)
         } else {
             let endpoint = StoreEndpoint {
                 name: store_name,
@@ -410,9 +456,6 @@ async fn store_initialization(
     })
     .await;
     result
-        .map_err(move |_| AgentExecError::FailedRestoration {
-            item_name: name,
-            error: StoreInitError::ItemInitializationTimeout,
-        })
+        .map_err(move |_| StoreInitError::ItemInitializationTimeout)
         .and_then(identity)
 }

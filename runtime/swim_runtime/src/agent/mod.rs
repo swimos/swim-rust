@@ -48,7 +48,7 @@ use crate::downlink::DownlinkOptions;
 use self::{
     reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
-    task::AgentInitTask,
+    task::{AgentInitTask, LaneRequest, StoreRequest},
 };
 
 pub mod reporting;
@@ -105,12 +105,12 @@ impl AgentContext for AgentRuntimeContext {
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(AgentRuntimeRequest::AddLane {
+                .send(AgentRuntimeRequest::AddLane(LaneRequest {
                     name,
                     kind: lane_kind,
                     config,
                     promise: tx,
-                })
+                }))
                 .await?;
             rx.await?
         }
@@ -153,12 +153,12 @@ impl AgentContext for AgentRuntimeContext {
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(AgentRuntimeRequest::AddStore {
+                .send(AgentRuntimeRequest::AddStore(StoreRequest {
                     name,
                     kind,
                     config: Default::default(),
                     promise: tx,
-                })
+                }))
                 .await?;
             rx.await?
         }
@@ -440,7 +440,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let (init_tx, init_rx) = trigger::trigger();
         let runtime_init_task = AgentInitTask::new(
             runtime_rx,
-            downlink_tx,
+            downlink_tx.clone(),
             init_rx,
             runtime_config.lane_init_timeout,
             reporting,
@@ -465,6 +465,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 identity,
                 node_uri,
                 attachment_rx,
+                downlink_tx,
                 runtime_config,
                 stopping,
             );
@@ -507,7 +508,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             let store = store_fut.await?;
             let runtime_init_task = AgentInitTask::with_store(
                 runtime_rx,
-                downlink_tx,
+                downlink_tx.clone(),
                 init_rx,
                 runtime_config.lane_init_timeout,
                 reporting,
@@ -530,6 +531,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 identity,
                 node_uri,
                 attachment_rx,
+                downlink_tx,
                 runtime_config,
                 stopping,
                 store_per,

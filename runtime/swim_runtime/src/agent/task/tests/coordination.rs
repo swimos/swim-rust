@@ -22,7 +22,7 @@ use crate::agent::{
         tests::{RemoteReceiver, RemoteSender},
         AgentRuntimeTask, InitialEndpoints, LaneEndpoint, NodeDescriptor,
     },
-    AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io,
+    AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io, DownlinkRequest, LaneRequest as LaneReq
 };
 use futures::{
     future::{join, join3, Either},
@@ -241,9 +241,9 @@ impl FakeAgent {
                 maybe_create = create_stream.next() => {
                     if let Some(CreateLane { name, kind }) = maybe_create {
                         let (tx, rx) = oneshot::channel();
-                        assert!(request_tx.send(AgentRuntimeRequest::AddLane {
-                             name: name.clone(), kind, config: Default::default(), promise: tx,
-                            }).await.is_ok());
+                        assert!(request_tx.send(AgentRuntimeRequest::AddLane(LaneReq {
+                            name: name.clone(), kind, config: Default::default(), promise: tx,
+                           })).await.is_ok());
                         let (io_tx, io_rx) = rx.await
                             .expect("Failed to receive response.")
                             .expect("Failed to add new lane.");
@@ -314,6 +314,7 @@ impl Events {
 #[derive(Debug)]
 struct TestContext {
     att_tx: mpsc::Sender<AgentAttachmentRequest>,
+    downlinks_rx: mpsc::Receiver<DownlinkRequest>,
     create_tx: mpsc::UnboundedSender<CreateLane>,
     event_rx: Events,
     stop_tx: trigger::Sender,
@@ -339,6 +340,7 @@ where
     let config = make_prune_config(inactive_timeout, prune_timeout);
     let (req_tx, req_rx) = mpsc::channel(QUEUE_SIZE.get());
     let (att_tx, att_rx) = mpsc::channel(QUEUE_SIZE.get());
+    let (downlinks_tx, downlinks_rx) = mpsc::channel(QUEUE_SIZE.get());
     let (create_tx, create_rx) = mpsc::unbounded_channel();
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let (stop_tx, stop_rx) = trigger::trigger();
@@ -349,6 +351,7 @@ where
     let (tx_out_val, rx_out_val) = byte_channel(BUFFER_SIZE);
     let (tx_in_map, rx_in_map) = byte_channel(BUFFER_SIZE);
     let (tx_out_map, rx_out_map) = byte_channel(BUFFER_SIZE);
+    
 
     runtime_endpoints.push(LaneEndpoint::new(
         Text::new(VAL_LANE),
@@ -386,6 +389,7 @@ where
         NodeDescriptor::new(AGENT_ID, Text::new(NODE)),
         init,
         att_rx,
+        downlinks_tx,
         stop_rx.clone(),
         config,
     );
@@ -401,6 +405,7 @@ where
 
     let context = TestContext {
         att_tx,
+        downlinks_rx,
         create_tx,
         stop_tx,
         event_rx: Events(event_rx),
@@ -426,6 +431,7 @@ async fn immediate_shutdown() {
         |context| async move {
             let TestContext {
                 att_tx: _att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -468,6 +474,7 @@ async fn link_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -494,6 +501,7 @@ async fn set_value() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 mut event_rx,
                 stop_tx,
@@ -521,6 +529,7 @@ async fn set_values() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 mut event_rx,
                 stop_tx,
@@ -550,6 +559,7 @@ async fn insert_value() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 mut event_rx,
                 stop_tx,
@@ -579,6 +589,7 @@ async fn unlink_when_not_linked_does_nothing() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 mut event_rx,
                 stop_tx,
@@ -608,6 +619,7 @@ async fn unlink_linked_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -640,6 +652,7 @@ async fn sync_value_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -669,6 +682,7 @@ async fn sync_empty_map_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -706,6 +720,7 @@ async fn sync_nonempty_map_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -751,6 +766,7 @@ async fn sync_lane_implicit_link() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -779,6 +795,7 @@ async fn receive_messages_when_linked() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -824,6 +841,7 @@ async fn link_two_consumers() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -862,6 +880,7 @@ async fn receive_messages_when_liked_multiple_consumers() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -930,6 +949,7 @@ async fn agent_timeout() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -957,6 +977,7 @@ async fn remote_timeout() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,

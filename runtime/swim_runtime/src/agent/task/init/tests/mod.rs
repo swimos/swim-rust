@@ -205,12 +205,7 @@ async fn run_initializer_failed_init() {
 
         let result = init_task.await;
         match result {
-            Err(AgentExecError::FailedRestoration {
-                item_name,
-                error: StoreInitError::Store(StoreError::KeyspaceNotFound),
-            }) => {
-                assert_eq!(item_name, "lane");
-            }
+            Err(StoreInitError::Store(StoreError::KeyspaceNotFound)) => {}
             ow => panic!("Unexpected result: {:?}", ow),
         }
     })
@@ -255,12 +250,7 @@ async fn run_initializer_bad_response() {
 
         let (result, _) = join(init_task, test_task).await;
         match result {
-            Err(AgentExecError::FailedRestoration {
-                item_name,
-                error: StoreInitError::NoAckFromItem,
-            }) => {
-                assert_eq!(item_name, "lane");
-            }
+            Err(StoreInitError::NoAckFromItem) => {}
             ow => panic!("Unexpected result: {:?}", ow),
         }
     })
@@ -298,12 +288,7 @@ async fn run_initializer_timeout() {
 
         let (result, _tx_out) = join(init_task, test_task).await;
         match result {
-            Err(AgentExecError::FailedRestoration {
-                item_name,
-                error: StoreInitError::ItemInitializationTimeout,
-            }) => {
-                assert_eq!(item_name, "lane");
-            }
+            Err(StoreInitError::ItemInitializationTimeout) => {}
             ow => panic!("Unexpected result: {:?}", ow),
         }
     })

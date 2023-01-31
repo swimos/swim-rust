@@ -36,6 +36,7 @@ use crate::agent::{
     task::{
         init::tests::{run_test_with_reporting, AGENT_ID},
         AgentRuntimeRequest, InitialEndpoints, LaneEndpoint,
+        LaneRequest as LaneReq,
     },
     AgentExecError, DownlinkRequest, Io,
 };
@@ -154,12 +155,12 @@ impl SingleLaneInitTask {
         } = self;
         let (lane_tx, lane_rx) = oneshot::channel();
         requests
-            .send(AgentRuntimeRequest::AddLane {
+            .send(AgentRuntimeRequest::AddLane(LaneReq {
                 name: Text::new("my_lane"),
                 kind: LaneKind::Value,
                 config,
                 promise: lane_tx,
-            })
+            }))
             .await
             .expect(INIT_STOPPED);
 
@@ -295,22 +296,22 @@ impl TwoLanesInitTask {
         let (lane_tx1, lane_rx1) = oneshot::channel();
         let (lane_tx2, lane_rx2) = oneshot::channel();
         requests
-            .send(AgentRuntimeRequest::AddLane {
+            .send(AgentRuntimeRequest::AddLane(LaneReq {
                 name: Text::new("value_lane"),
                 kind: LaneKind::Value,
                 config,
                 promise: lane_tx1,
-            })
+            }))
             .await
             .expect(INIT_STOPPED);
 
         requests
-            .send(AgentRuntimeRequest::AddLane {
+            .send(AgentRuntimeRequest::AddLane(LaneReq {
                 name: Text::new("map_lane"),
                 kind: LaneKind::Map,
                 config,
                 promise: lane_tx2,
-            })
+            }))
             .await
             .expect(INIT_STOPPED);
 

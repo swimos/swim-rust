@@ -38,7 +38,7 @@ use crate::agent::{
         read_task,
         tests::{RemoteSender, BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT},
         timeout_coord::{self, VoteResult},
-        LaneEndpoint, ReadTaskMessages, RwCoorindationMessage, WriteTaskMessage,
+        LaneEndpoint, ReadTaskMessage, RwCoorindationMessage, WriteTaskMessage,
     },
 };
 
@@ -115,7 +115,7 @@ impl FakeAgent {
 
 struct TestContext {
     stop_sender: trigger::Sender,
-    reg_tx: mpsc::Sender<ReadTaskMessages>,
+    reg_tx: mpsc::Sender<ReadTaskMessage>,
     vote2: timeout_coord::Voter,
     vote_rx: timeout_coord::Receiver,
     event_rx: mpsc::UnboundedReceiver<Event>,
@@ -225,10 +225,10 @@ const RID: Uuid = Uuid::from_u128(0);
 const RID2: Uuid = Uuid::from_u128(1);
 const NODE: &str = "node";
 
-async fn attach_remote_with(rid: Uuid, reg_tx: &mpsc::Sender<ReadTaskMessages>) -> RemoteSender {
+async fn attach_remote_with(rid: Uuid, reg_tx: &mpsc::Sender<ReadTaskMessage>) -> RemoteSender {
     let (tx, rx) = byte_channel(BUFFER_SIZE);
     assert!(reg_tx
-        .send(ReadTaskMessages::Remote {
+        .send(ReadTaskMessage::Remote {
             reader: rx,
             on_attached: None
         })
@@ -236,7 +236,7 @@ async fn attach_remote_with(rid: Uuid, reg_tx: &mpsc::Sender<ReadTaskMessages>) 
         .is_ok());
     RemoteSender::new(NODE.to_string(), rid, tx)
 }
-async fn attach_remote(reg_tx: &mpsc::Sender<ReadTaskMessages>) -> RemoteSender {
+async fn attach_remote(reg_tx: &mpsc::Sender<ReadTaskMessage>) -> RemoteSender {
     attach_remote_with(RID, reg_tx).await
 }
 

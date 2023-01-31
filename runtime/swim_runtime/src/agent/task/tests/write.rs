@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+/* // Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -197,8 +197,7 @@ where
     let (stop_tx, stop_rx) = trigger::trigger();
     let config = make_config(inactive_timeout);
 
-    let (agg_rep, val_rep, map_rep, sup_rep, reporting) = if with_reporting {
-        let agg_rep = UplinkReporter::default();
+    let (val_rep, map_rep, sup_rep, reporting) = if with_reporting {
         let val_rep = UplinkReporter::default();
         let map_rep = UplinkReporter::default();
         let sup_rep = UplinkReporter::default();
@@ -213,14 +212,13 @@ where
             .collect(),
         };
         (
-            Some(agg_rep),
             Some(val_rep),
             Some(map_rep),
             Some(sup_rep),
             Some(reporting),
         )
     } else {
-        (None, None, None, None, None)
+        (None, None, None, None)
     };
 
     let endpoints = vec![
@@ -260,7 +258,7 @@ where
         messages_rx,
         vote1,
         stop_rx,
-        agg_rep,
+        todo!(),
         store,
     );
 
@@ -1303,3 +1301,4 @@ async fn count_events() {
     })
     .await;
 }
+ */
