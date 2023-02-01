@@ -69,6 +69,7 @@ impl<I> ItemResponse<I> {
     }
 }
 
+/// Content received from a lane over a byte channel.
 #[derive(Debug)]
 pub struct LaneData {
     pub target: Option<Uuid>,
@@ -81,22 +82,28 @@ impl LaneData {
     }
 }
 
+/// Content received from a store over a byte channel.
 #[derive(Debug)]
 pub enum StoreData {
     Value(Bytes),
     Map(MapOperation<BytesMut, BytesMut>),
 }
 
+/// Content received from an item (lane or store) over a byte channel.
 #[derive(Debug)]
 pub enum ResponseData {
     Lane(LaneData),
     Store(StoreData),
 }
 
+/// A response message received from an item of the agent with attached identifiers.
 #[derive(Debug)]
 pub struct ItemResponse<I> {
+    /// The internal identifier used to distinguish the items of the agent.
     pub item_id: u64,
+    /// The stable identifier used by the store to identify the item (absent for transient items).
     pub store_id: Option<I>,
+    /// The content.
     pub body: ResponseData,
 }
 
@@ -176,9 +183,11 @@ impl<I> ItemResponse<I> {
     }
 }
 
+/// Enumeration over receivers for each type of lane or store. This is to allow the agent runtime
+/// to wait on responses from all if its items with a single [`futures::stream::FuturesUnordered`].
 #[derive(Debug)]
 pub enum ResponseReceiver<I> {
-    ValueLane {
+    ValueLikeLane {
         item_id: u64,
         store_id: Option<I>,
         uplink: ValueOrSupply,
@@ -202,8 +211,8 @@ pub enum ResponseReceiver<I> {
 }
 
 impl<I> ResponseReceiver<I> {
-    pub fn value_lane(item_id: u64, store_id: Option<I>, rx: ByteReader) -> Self {
-        ResponseReceiver::ValueLane {
+    pub fn value_like_lane(item_id: u64, store_id: Option<I>, rx: ByteReader) -> Self {
+        ResponseReceiver::ValueLikeLane {
             item_id,
             store_id,
             uplink: ValueOrSupply::Value,
@@ -212,7 +221,7 @@ impl<I> ResponseReceiver<I> {
     }
 
     pub fn supply_lane(item_id: u64, store_id: Option<I>, rx: ByteReader) -> Self {
-        ResponseReceiver::ValueLane {
+        ResponseReceiver::ValueLikeLane {
             item_id,
             store_id,
             uplink: ValueOrSupply::Supply,
@@ -250,7 +259,7 @@ impl<I: Copy + Unpin> Stream for ResponseReceiver<I> {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.get_mut() {
-            ResponseReceiver::ValueLane {
+            ResponseReceiver::ValueLikeLane {
                 item_id,
                 store_id,
                 uplink,

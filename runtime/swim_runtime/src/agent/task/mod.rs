@@ -178,9 +178,9 @@ impl LaneEndpoint<ByteReader> {
             reporter,
             ..
         } = self;
-        let id = state.register(name, reporter);
+        let id = state.register_lane(name, reporter);
         match kind {
-            UplinkKind::Value => ResponseReceiver::value_lane(id, store_id, reader),
+            UplinkKind::Value => ResponseReceiver::value_like_lane(id, store_id, reader),
             UplinkKind::Supply => ResponseReceiver::supply_lane(id, store_id, reader),
             UplinkKind::Map => ResponseReceiver::map_lane(id, store_id, reader),
         }
@@ -470,7 +470,6 @@ impl WriteTaskMessage {
 /// * `runtime` - Requests from the agent.
 /// * `attachment` - External requests to attach new remotes.
 /// * `downlink_requests` - Requests to open downlink runtimes for the agent.
-/// * `reporting` - Uplink metadata reporter.
 /// * `read_tx` - Channel to communicate with the read task.
 /// * `write_tx` - Channel to communicate with the write task.
 /// * `combined_stop` - The task will stop when this future completes. This should combined the overall
@@ -995,10 +994,12 @@ where
         }
     }
 
+    /// Add a new receiver to receive messages from a lane or store in the agent.
     fn add_receiver(&mut self, receiver: ResponseReceiver<I>) {
         self.lanes_and_stores.push(StopAfterError::new(receiver));
     }
 
+    /// Remove (and destroy) all receivers from the agent.
     fn clear_lanes_and_stores(&mut self) {
         self.lanes_and_stores.clear();
     }
@@ -1233,7 +1234,8 @@ impl WriteTaskState {
         }
     }
 
-    fn register(&mut self, name: Text, reporter: Option<UplinkReporter>) -> u64 {
+    /// Register a new lane with the state, assigning it a unique ID.
+    fn register_lane(&mut self, name: Text, reporter: Option<UplinkReporter>) -> u64 {
         let WriteTaskState {
             links,
             remote_tracker,
@@ -1246,6 +1248,7 @@ impl WriteTaskState {
         lane_id
     }
 
+    /// Register a new store with the state, assigning it a unique ID.
     fn item_id_for_store(&mut self) -> u64 {
         let id = self.store_counter;
         self.store_counter += 1;
@@ -1530,10 +1533,11 @@ impl WriteTaskEndpoints {
 /// #Arguments
 /// * `configuration` - Configuration parameters for the task.
 /// * `initial_endpoints` - Initial lane and store endpoints that were created in the agent initialization phase.
-/// * `message_rx` - Channel for messages from the read and coordination tasks.
+/// * `message_stream` - Channel for messages from the read and coordination tasks. This will terminate when the agent
+/// runtime is stopping.
+/// * `read_task_tx` - Channel to communicate with the read task (after initializing new lanes).
 /// * `stop_voter` - Votes to stop if this task becomes inactive (unanimity with the write task is required).
-/// * `stopping` - Initiates the clean shutdown procedure.
-/// * `aggregate_reporter` - Aggregated uplink reporter for all lanes of the agent.
+/// * `reporting` - Introspection reporting context for the agent (if introspection is enabled).
 /// * `store` - Persistence for the state of the lanes.
 ///
 async fn write_task<Msg, Store>(
