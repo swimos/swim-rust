@@ -14,7 +14,7 @@
 
 use std::{convert::identity, time::Duration};
 
-use futures::{future::Either, stream::FuturesUnordered, FutureExt, StreamExt, TryFutureExt};
+use futures::{future::{Either, ready}, stream::FuturesUnordered, FutureExt, StreamExt, TryFutureExt};
 use swim_api::{
     agent::{LaneConfig, StoreConfig, UplinkKind},
     error::{AgentRuntimeError, OpenStoreError, StoreError},
@@ -32,7 +32,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::FramedRead;
 
 use crate::agent::{
-    store::{no_map_init, no_value_init, AgentPersistence, BoxInitializer, StoreInitError},
+    store::{no_map_init, no_value_init, AgentPersistence, BoxInitializer, StoreInitError, Moo},
     AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io, NodeReporting,
 };
 
@@ -140,7 +140,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                 }
             };
             match event {
-                Either::Left(endpoint_result) => match endpoint_result.unwrap() { //TODO
+                Either::Left(endpoint_result) => match endpoint_result? {
                     Either::Left((lane, _)) => lane_endpoints.push(lane),
                     Either::Right((store, _)) => store_endpoints.push(store),
                 },
@@ -158,7 +158,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                             kind,
                             config,
                             promise,
-                        ).map_err(|error| AgentExecError::FailedRestoration { item_name: name, error })? {
+                        ) {
                             initializers.push(init);
                         }
                     }
@@ -171,7 +171,6 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                         info!("Registering a new {} store with name '{}'.", kind, name);
                         if let Some(init) =
                             initialization.add_store(&store, name.clone(), kind, config, promise)
-                            .map_err(|error| AgentExecError::FailedRestoration { item_name: name, error })?
                         {
                             initializers.push(init);
                         }
@@ -186,7 +185,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
         }
         if !initializers.is_empty() {
             while let Some(endpoint_result) = initializers.next().await {
-                match endpoint_result.unwrap() { //TODO
+                match endpoint_result? {
                     Either::Left((lane, _)) => lane_endpoints.push(lane),
                     Either::Right((store, _)) => store_endpoints.push(store),
                 }
@@ -236,7 +235,7 @@ where
         kind: StoreKind,
         config: StoreConfig,
         promise: oneshot::Sender<Result<Io, OpenStoreError>>,
-    ) -> Result<Option<InitFut<'a, Store::StoreId>>, StoreInitError>
+    ) -> Option<InitFut<'a, Store::StoreId>>
     where
         Store: AgentPersistence + Send + Sync + 'a, 
     {
@@ -265,12 +264,13 @@ where
                             .unwrap_or_else(|| no_map_init()),
                     };
                     let init_task =
-                        store_initialization(name, kind, *item_init_timeout, in_tx, out_rx, initializer)
-                            .map_ok(move |r| Either::Right((r, store_id)));
-                    Ok(Some(init_task.boxed()))
+                        store_initialization(name.clone(), kind, *item_init_timeout, in_tx, out_rx, initializer)
+                            .map_ok(move |r| Either::Right((r, store_id)))
+                            .map_err(move |e| Moo::new(name, e));
+                    Some(init_task.boxed())
                 } else {
                     log_err();
-                    Ok(None)
+                    None
                 }
             }
             Err(StoreError::NoStoreAvailable) => {
@@ -280,10 +280,10 @@ where
                 {
                     log_err();
                 }
-                Ok(None)
+                None
             }
             Err(err) => {
-                return Err(StoreInitError::Store(err));
+                Some(ready(Err(Moo::new(name, StoreInitError::Store(err)))).boxed())
             }
         }
     }
@@ -295,7 +295,7 @@ where
         kind: LaneKind,
         config: LaneConfig,
         promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
-    ) -> Result<Option<InitFut<'a, Store::StoreId>>, StoreInitError>
+    ) -> Option<InitFut<'a, Store::StoreId>>
     where
         Store: AgentPersistence + Send + Sync + 'a, 
     {
@@ -311,47 +311,45 @@ where
         let (out_tx, out_rx) = byte_channel::byte_channel(output_buffer_size);
     
         let io = (out_tx, in_rx);
-    
+        let name_cpy = name.clone();
         if promise.send(Ok(io)).is_ok() {
-            let get_lane_id = || {
-                store
-                    .store_id(name.as_str())
-                    .map_err(|error| StoreInitError::Store(error))
-            };
-            let maybe_initializer = match uplink_kind {
-                UplinkKind::Value if !transient => {
-                    let lane_id = get_lane_id()?;
-                    Some(
-                        (store
-                            .init_value_store(lane_id)
-                            .unwrap_or_else(|| no_value_init()), lane_id)
-                    )
-                }
-                UplinkKind::Map if !transient => {
-                    let lane_id = get_lane_id()?;
-                    Some(
-                        (store
-                            .init_map_store(lane_id)
-                            .unwrap_or_else(|| no_map_init()), lane_id)
-                    )
-                }
-                _ => None,
-            };
-            if let Some((initializer, store_id)) = maybe_initializer {
-                let init_task = lane_initialization(
-                    name.clone(),
-                    kind,
-                    *item_init_timeout,
-                    reporting.as_ref(),
-                    in_tx,
-                    out_rx,
-                    initializer,
-                )
-                .map_ok(move |r| Either::Left((r, Some(store_id))))
-                .boxed();
-                Ok(Some(init_task))
-            } else {
-                let init_task = async move {
+            Some(async move {
+                let get_lane_id = || {
+                    store
+                        .store_id(name.as_str())
+                        .map_err(|error| StoreInitError::Store(error))
+                };
+                let maybe_initializer = match uplink_kind {
+                    UplinkKind::Value if !transient => {
+                        let lane_id = get_lane_id()?;
+                        Some(
+                            (store
+                                .init_value_store(lane_id)
+                                .unwrap_or_else(|| no_value_init()), lane_id)
+                        )
+                    }
+                    UplinkKind::Map if !transient => {
+                        let lane_id = get_lane_id()?;
+                        Some(
+                            (store
+                                .init_map_store(lane_id)
+                                .unwrap_or_else(|| no_map_init()), lane_id)
+                        )
+                    }
+                    _ => None,
+                };
+                if let Some((initializer, store_id)) = maybe_initializer {
+                    let endpoint = lane_initialization(
+                        name.clone(),
+                        kind,
+                        *item_init_timeout,
+                        reporting.as_ref(),
+                        in_tx,
+                        out_rx,
+                        initializer,
+                    ).await?;
+                    Ok(Either::Left((endpoint, Some(store_id))))
+                } else {
                     let reporter = if let Some(node_reporter) = reporting {
                         node_reporter.register(name.clone(), kind).await
                     } else {
@@ -365,15 +363,13 @@ where
                         reporter,
                     }, None)))
                 }
-                .boxed();
-                Ok(Some(init_task))
-            }
+            }.map_err(move |e| Moo::new(name_cpy, e)).boxed())
         } else {
             error!(
                 "Agent failed to receive lane registration for {} lane named '{}'.",
                 kind, name
             );
-            Ok(None)
+            None
         }
     }
     

@@ -33,7 +33,7 @@ use self::sender::LaneSender;
 use self::write_fut::{WriteResult, WriteTask};
 
 use super::reporting::UplinkReporter;
-use super::store::{AgentPersistence, StoreInitError};
+use super::store::{AgentPersistence, StoreInitError, Moo};
 use super::{
     AgentAttachmentRequest, AgentExecError, AgentRuntimeConfig, DisconnectionReason,
     DownlinkRequest, Io, NodeReporting,
@@ -968,7 +968,7 @@ struct InactiveTimeout<'a> {
     enabled: bool,
 }
 
-type InitResult<I> = Result<Either<(LaneEndpoint<Io>, Option<I>), (StoreEndpoint, I)>, StoreInitError>;
+type InitResult<I> = Result<Either<(LaneEndpoint<Io>, Option<I>), (StoreEndpoint, I)>, Moo>;
 type InitFut<'a, I> = BoxFuture<'a, InitResult<I>>;
 
 /// Aggregates all of the streams of events for the write task.
@@ -1173,7 +1173,7 @@ enum TaskMessageResult<I> {
     },
     /// Track a remote to be pruned after the configured timeout (as it no longer has any links).
     AddPruneTimeout(Uuid),
-    StoreInitFailure(StoreInitError),
+    StoreInitFailure(Moo),
     /// Persisting the state of a lane failed.
     StoreFailure(StoreError),
     /// No effect.
@@ -1293,29 +1293,27 @@ impl WriteTaskState {
             WriteTaskMessage::Lane(LaneRequest { name, kind, config, promise }) => {
                 info!("Registering a new {} lane with name {}.", kind, name);
                 match initialization.add_lane(store, name, kind, config, promise){
-                    Ok(Some(fut)) => {
+                    Some(fut) => {
                         match fut.await {
                             Ok(Either::Left((endpoint, store_id))) => TaskMessageResult::AddLane(endpoint, store_id),
                             Ok(Either::Right((endpoint, store_id))) => TaskMessageResult::AddStore(endpoint, store_id),
                             Err(err) => TaskMessageResult::StoreInitFailure(err),
                         }
                     },
-                    Ok(None) => TaskMessageResult::Nothing,
-                    Err(err) => TaskMessageResult::StoreInitFailure(err),
+                    _ => TaskMessageResult::Nothing,
                 }
             },
             WriteTaskMessage::Store(StoreRequest { name, kind, config, promise }) => {
                 info!("Registering a new {} store with name {}.", kind, name);
                 match initialization.add_store(store, name, kind, config, promise){
-                    Ok(Some(fut)) => {
+                    Some(fut) => {
                         match fut.await {
                             Ok(Either::Left((endpoint, store_id))) => TaskMessageResult::AddLane(endpoint, store_id),
                             Ok(Either::Right((endpoint, store_id))) => TaskMessageResult::AddStore(endpoint, store_id),
                             Err(err) => TaskMessageResult::StoreInitFailure(err),
                         }
                     },
-                    Ok(None) => TaskMessageResult::Nothing,
-                    Err(err) => TaskMessageResult::StoreInitFailure(err),
+                    _ => TaskMessageResult::Nothing,
                 }
             },
             WriteTaskMessage::Remote {
@@ -1656,10 +1654,11 @@ where
                 TaskMessageResult::AddPruneTimeout(remote_id) => {
                     streams.schedule_prune(remote_id);
                 }
-                TaskMessageResult::StoreFailure(error) | TaskMessageResult::StoreInitFailure(StoreInitError::Store(error)) => {
+                TaskMessageResult::StoreFailure(error) => {
                     return Err(error);
                 }
                 TaskMessageResult::StoreInitFailure(error) => {
+                    //TODO
                     error!(error = %error, "Initializing a store or lane failed.");
                 }
                 TaskMessageResult::Nothing => {}

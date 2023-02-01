@@ -23,12 +23,41 @@ use swim_api::{
     },
     store::{NodePersistence, RangeConsumer, StoreDisabled},
 };
+use swim_model::Text;
 use swim_utilities::io::byte_channel::ByteWriter;
 use thiserror::Error;
 use tokio_util::codec::FramedWrite;
 
+use super::AgentExecError;
+
 #[cfg(test)]
 mod tests;
+
+#[derive(Debug, Error)]
+#[error("Moo")]
+pub struct Moo {
+    name: Text,
+    #[source]
+    source: StoreInitError,
+}
+
+impl From<Moo> for AgentExecError {
+    fn from(error: Moo) -> Self {
+        let Moo { name, source } = error;
+        AgentExecError::FailedRestoration { item_name: name, error: source }
+    }
+}
+
+impl Moo {
+
+    pub fn new(name: Text,
+        source: StoreInitError) -> Self {
+            Moo {
+                name, source,
+            }
+        }
+
+}
 
 /// Possible error conditions when the runtime attempts to initialize the state of a lane in an agent.
 #[derive(Debug, Error)]
