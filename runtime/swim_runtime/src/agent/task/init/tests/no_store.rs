@@ -35,8 +35,7 @@ use super::{check_connected, run_test, TestInit, CONFIGS, INIT_STOPPED, NO_LANE,
 use crate::agent::{
     task::{
         init::tests::{run_test_with_reporting, AGENT_ID},
-        AgentRuntimeRequest, InitialEndpoints, LaneEndpoint,
-        LaneRequest as LaneReq,
+        AgentRuntimeRequest, InitialEndpoints, LaneEndpoint, LaneRequest as LaneReq,
     },
     AgentExecError, DownlinkRequest, Io,
 };

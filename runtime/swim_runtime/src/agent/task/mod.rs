@@ -18,6 +18,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
+use crate::agent::store::StoreInitError;
 use crate::agent::task::links::TriggerUnlink;
 use crate::agent::task::sender::LaneSendError;
 use crate::agent::task::timeout_coord::VoteResult;
@@ -33,10 +34,10 @@ use self::sender::LaneSender;
 use self::write_fut::{WriteResult, WriteTask};
 
 use super::reporting::UplinkReporter;
-use super::store::{AgentPersistence, StoreInitError, Moo};
+use super::store::{AgentPersistence, Moo};
 use super::{
-    AgentAttachmentRequest, AgentExecError, AgentRuntimeConfig, DisconnectionReason,
-    DownlinkRequest, Io, NodeReporting,
+    AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io,
+    NodeReporting,
 };
 use bytes::{Bytes, BytesMut};
 use futures::future::BoxFuture;
@@ -57,7 +58,7 @@ use swim_messages::protocol::{Operation, Path, RawRequestMessageDecoder, Request
 use swim_model::Text;
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError};
-use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
+use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::trigger::{self, promise};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{sleep, timeout, Instant, Sleep};
@@ -169,8 +170,7 @@ impl LaneEndpoint<ByteReader> {
         self,
         store_id: Option<I>,
         state: &mut WriteTaskState,
-    ) -> ResponseReceiver<I>
-    {
+    ) -> ResponseReceiver<I> {
         let LaneEndpoint {
             name,
             kind,
@@ -188,13 +188,17 @@ impl LaneEndpoint<ByteReader> {
 }
 
 impl LaneEndpoint<ByteWriter> {
-
     fn into_read_task_message(self) -> ReadTaskMessage {
-        let LaneEndpoint { name, kind, io: tx, reporter, .. } = self;
+        let LaneEndpoint {
+            name,
+            kind,
+            io: tx,
+            reporter,
+            ..
+        } = self;
         let sender = LaneSender::new(tx, kind, reporter);
         ReadTaskMessage::Lane { name, sender }
     }
-
 }
 
 /// A labelled channel endpoint (or pair) for a lane.
@@ -214,13 +218,8 @@ impl StoreEndpoint {
     }
 
     /// Create a [`Stream`] that will read messages from an endpoint.
-    fn into_store_stream<I>(
-        self,
-        store_id: I,
-        state: &mut WriteTaskState,
-    ) -> ResponseReceiver<I>
-    {
-        let StoreEndpoint { name, kind, reader } = self;
+    fn into_store_stream<I>(self, store_id: I, state: &mut WriteTaskState) -> ResponseReceiver<I> {
+        let StoreEndpoint { kind, reader, .. } = self;
         let item_id = state.item_id_for_store();
         match kind {
             StoreKind::Value => ResponseReceiver::value_store(item_id, store_id, reader),
@@ -510,9 +509,6 @@ impl WriteTaskMessage {
     }
 }
 
-const BAD_LANE_REG: &str = "Agent failed to receive lane registration result.";
-const RUNTIME_FAILED: &str = "Agent failed to communicate with the runtime to open a downlink.";
-
 /// The task that coordinates the attachment of new lanes and remotes to the read and write tasks.
 /// #Arguments
 /// * `runtime` - Requests from the agent.
@@ -541,7 +537,7 @@ async fn attachment_task<F>(
     .take_until(combined_stop);
 
     let mut attachments = FuturesUnordered::new();
-    
+
     loop {
         tokio::select! {
             biased;
@@ -1173,9 +1169,8 @@ enum TaskMessageResult<I> {
     },
     /// Track a remote to be pruned after the configured timeout (as it no longer has any links).
     AddPruneTimeout(Uuid),
+    /// Initializing a lane from the store failed.
     StoreInitFailure(Moo),
-    /// Persisting the state of a lane failed.
-    StoreFailure(StoreError),
     /// No effect.
     Nothing,
 }
@@ -1290,32 +1285,46 @@ impl WriteTaskState {
             ..
         } = self;
         match reg {
-            WriteTaskMessage::Lane(LaneRequest { name, kind, config, promise }) => {
+            WriteTaskMessage::Lane(LaneRequest {
+                name,
+                kind,
+                config,
+                promise,
+            }) => {
                 info!("Registering a new {} lane with name {}.", kind, name);
-                match initialization.add_lane(store, name, kind, config, promise){
-                    Some(fut) => {
-                        match fut.await {
-                            Ok(Either::Left((endpoint, store_id))) => TaskMessageResult::AddLane(endpoint, store_id),
-                            Ok(Either::Right((endpoint, store_id))) => TaskMessageResult::AddStore(endpoint, store_id),
-                            Err(err) => TaskMessageResult::StoreInitFailure(err),
+                match initialization.add_lane(store, name, kind, config, promise) {
+                    Some(fut) => match fut.await {
+                        Ok(Either::Left((endpoint, store_id))) => {
+                            TaskMessageResult::AddLane(endpoint, store_id)
                         }
+                        Ok(Either::Right((endpoint, store_id))) => {
+                            TaskMessageResult::AddStore(endpoint, store_id)
+                        }
+                        Err(err) => TaskMessageResult::StoreInitFailure(err),
                     },
                     _ => TaskMessageResult::Nothing,
                 }
-            },
-            WriteTaskMessage::Store(StoreRequest { name, kind, config, promise }) => {
+            }
+            WriteTaskMessage::Store(StoreRequest {
+                name,
+                kind,
+                config,
+                promise,
+            }) => {
                 info!("Registering a new {} store with name {}.", kind, name);
-                match initialization.add_store(store, name, kind, config, promise){
-                    Some(fut) => {
-                        match fut.await {
-                            Ok(Either::Left((endpoint, store_id))) => TaskMessageResult::AddLane(endpoint, store_id),
-                            Ok(Either::Right((endpoint, store_id))) => TaskMessageResult::AddStore(endpoint, store_id),
-                            Err(err) => TaskMessageResult::StoreInitFailure(err),
+                match initialization.add_store(store, name, kind, config, promise) {
+                    Some(fut) => match fut.await {
+                        Ok(Either::Left((endpoint, store_id))) => {
+                            TaskMessageResult::AddLane(endpoint, store_id)
                         }
+                        Ok(Either::Right((endpoint, store_id))) => {
+                            TaskMessageResult::AddStore(endpoint, store_id)
+                        }
+                        Err(err) => TaskMessageResult::StoreInitFailure(err),
                     },
                     _ => TaskMessageResult::Nothing,
                 }
-            },
+            }
             WriteTaskMessage::Remote {
                 id,
                 writer,
@@ -1568,7 +1577,7 @@ where
 {
     let message_stream = ReceiverStream::new(message_rx).take_until(stopping);
     let aggregate_reporter = reporting.as_ref().map(NodeReporting::aggregate);
-    
+
     let WriteTaskConfiguration {
         identity,
         node_uri,
@@ -1621,11 +1630,18 @@ where
     loop {
         let next = streams.select_next().await;
         match next {
-            WriteTaskEvent::Message(reg) => match state.handle_task_message(reg, &initialization, &store).await {
+            WriteTaskEvent::Message(reg) => match state
+                .handle_task_message(reg, &initialization, &store)
+                .await
+            {
                 TaskMessageResult::AddLane(lane, store_id) => {
                     let (read_endpoint, write_endpoint) = lane.split();
                     streams.add_receiver(write_endpoint.into_lane_stream(store_id, &mut state));
-                    if read_task_tx.send(read_endpoint.into_read_task_message()).await.is_err() {
+                    if read_task_tx
+                        .send(read_endpoint.into_read_task_message())
+                        .await
+                        .is_err()
+                    {
                         error!("Could not communicate with read task.");
                         break;
                     }
@@ -1654,12 +1670,12 @@ where
                 TaskMessageResult::AddPruneTimeout(remote_id) => {
                     streams.schedule_prune(remote_id);
                 }
-                TaskMessageResult::StoreFailure(error) => {
-                    return Err(error);
-                }
                 TaskMessageResult::StoreInitFailure(error) => {
-                    //TODO
-                    error!(error = %error, "Initializing a store or lane failed.");
+                    let Moo { name, source } = error;
+                    error!(error = %source, "Initializing a store for {} failed.", name);
+                    if let StoreInitError::Store(err) = source {
+                        return Err(err);
+                    }
                 }
                 TaskMessageResult::Nothing => {}
             },

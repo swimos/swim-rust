@@ -58,7 +58,7 @@ use uuid::Uuid;
 
 use crate::agent::{
     reporting::{UplinkReportReader, UplinkSnapshot},
-    AgentRuntimeConfig, DisconnectionReason,
+    AgentRuntimeConfig, DisconnectionReason, UplinkReporterRegistration,
 };
 
 use super::{LaneEndpoint, RwCoorindationMessage};
@@ -604,6 +604,7 @@ impl RemoteSender {
 }
 
 struct ReportReaders {
+    _reg_rx: mpsc::Receiver<UplinkReporterRegistration>,
     aggregate: UplinkReportReader,
     lanes: HashMap<&'static str, UplinkReportReader>,
 }
@@ -615,7 +616,9 @@ struct Snapshots {
 
 impl ReportReaders {
     fn snapshot(&self) -> Option<Snapshots> {
-        let ReportReaders { aggregate, lanes } = self;
+        let ReportReaders {
+            aggregate, lanes, ..
+        } = self;
         let mut lane_snapshots = HashMap::new();
         for (name, reader) in lanes.iter() {
             lane_snapshots.insert(*name, reader.snapshot()?);

@@ -138,7 +138,9 @@ where
         let agg_rep = UplinkReporter::default();
         let val_rep = UplinkReporter::default();
         let map_rep = UplinkReporter::default();
+        let (_, reg_rx) = mpsc::channel(QUEUE_SIZE.get());
         let reporting = ReportReaders {
+            _reg_rx: reg_rx,
             aggregate: agg_rep.reader(),
             lanes: [(VAL_LANE, val_rep.reader()), (MAP_LANE, map_rep.reader())]
                 .into_iter()

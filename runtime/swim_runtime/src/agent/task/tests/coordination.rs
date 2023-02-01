@@ -22,7 +22,8 @@ use crate::agent::{
         tests::{RemoteReceiver, RemoteSender},
         AgentRuntimeTask, InitialEndpoints, LaneEndpoint, NodeDescriptor,
     },
-    AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io, DownlinkRequest, LaneRequest as LaneReq
+    AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, DownlinkRequest, Io,
+    LaneRequest as LaneReq,
 };
 use futures::{
     future::{join, join3, Either},
@@ -351,7 +352,6 @@ where
     let (tx_out_val, rx_out_val) = byte_channel(BUFFER_SIZE);
     let (tx_in_map, rx_in_map) = byte_channel(BUFFER_SIZE);
     let (tx_out_map, rx_out_map) = byte_channel(BUFFER_SIZE);
-    
 
     runtime_endpoints.push(LaneEndpoint::new(
         Text::new(VAL_LANE),

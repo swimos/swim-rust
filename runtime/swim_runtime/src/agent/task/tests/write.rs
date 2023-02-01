@@ -1,4 +1,4 @@
-/* // Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,10 +40,10 @@ use crate::agent::{
         fake_store::FakeStore,
         tests::RemoteReceiver,
         timeout_coord::{self, VoteResult},
-        write_task, LaneEndpoint, RwCoorindationMessage, WriteTaskConfiguration,
+        write_task, LaneEndpoint, ReadTaskMessage, RwCoorindationMessage, WriteTaskConfiguration,
         WriteTaskEndpoints, WriteTaskMessage,
     },
-    DisconnectionReason,
+    DisconnectionReason, NodeReporting,
 };
 
 use super::{
@@ -154,6 +154,7 @@ struct TestContext {
     vote_rx: timeout_coord::Receiver,
     instr_tx: Instructions,
     reporters: Option<ReportReaders>,
+    read_rx: mpsc::Receiver<ReadTaskMessage>,
 }
 
 const AGENT_ID: Uuid = Uuid::from_u128(1);
@@ -197,11 +198,16 @@ where
     let (stop_tx, stop_rx) = trigger::trigger();
     let config = make_config(inactive_timeout);
 
-    let (val_rep, map_rep, sup_rep, reporting) = if with_reporting {
+    let (val_rep, map_rep, sup_rep, node_rep, reporting) = if with_reporting {
         let val_rep = UplinkReporter::default();
         let map_rep = UplinkReporter::default();
         let sup_rep = UplinkReporter::default();
+        let agg_rep = UplinkReporter::default();
+
+        let (reg_tx, reg_rx) = mpsc::channel(QUEUE_SIZE.get());
+
         let reporting = ReportReaders {
+            _reg_rx: reg_rx,
             aggregate: agg_rep.reader(),
             lanes: [
                 (VAL_LANE, val_rep.reader()),
@@ -211,14 +217,17 @@ where
             .into_iter()
             .collect(),
         };
+
+        let node_rep = NodeReporting::new(AGENT_ID, agg_rep, reg_tx);
         (
             Some(val_rep),
             Some(map_rep),
             Some(sup_rep),
+            Some(node_rep),
             Some(reporting),
         )
     } else {
-        (None, None, None, None)
+        (None, None, None, None, None)
     };
 
     let endpoints = vec![
@@ -252,13 +261,16 @@ where
 
     let fake_agent = FakeAgent::new(endpoints_tx, stop_rx.clone(), instr_rx);
     let write_config = WriteTaskConfiguration::new(AGENT_ID, Text::new(NODE), config);
+
+    let (read_tx, read_rx) = mpsc::channel(QUEUE_SIZE.get());
     let write = write_task(
         write_config,
         WriteTaskEndpoints::new(endpoints_rx, vec![]),
         messages_rx,
+        read_tx,
         vote1,
         stop_rx,
-        todo!(),
+        node_rep,
         store,
     );
 
@@ -269,6 +281,7 @@ where
         vote_rx,
         instr_tx: Instructions::new(instr_tx),
         reporters: reporting,
+        read_rx,
     };
 
     let test_task = test_case(context);
@@ -1143,6 +1156,7 @@ async fn count_links() {
             vote_rx: _vote_rx,
             instr_tx: _instr_tx,
             reporters,
+            read_rx: _read_rx,
         } = context;
 
         let mut reader = attach_remote(RID1, &messages_tx).await;
@@ -1246,6 +1260,7 @@ async fn count_events() {
             vote_rx: _vote_rx,
             instr_tx,
             reporters,
+            read_rx: _read_rx,
         } = context;
 
         let mut reader = attach_remote(RID1, &messages_tx).await;
@@ -1301,4 +1316,3 @@ async fn count_events() {
     })
     .await;
 }
- */

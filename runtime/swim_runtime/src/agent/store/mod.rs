@@ -36,27 +36,25 @@ mod tests;
 #[derive(Debug, Error)]
 #[error("Moo")]
 pub struct Moo {
-    name: Text,
+    pub name: Text,
     #[source]
-    source: StoreInitError,
+    pub source: StoreInitError,
 }
 
 impl From<Moo> for AgentExecError {
     fn from(error: Moo) -> Self {
         let Moo { name, source } = error;
-        AgentExecError::FailedRestoration { item_name: name, error: source }
+        AgentExecError::FailedRestoration {
+            item_name: name,
+            error: source,
+        }
     }
 }
 
 impl Moo {
-
-    pub fn new(name: Text,
-        source: StoreInitError) -> Self {
-            Moo {
-                name, source,
-            }
-        }
-
+    pub fn new(name: Text, source: StoreInitError) -> Self {
+        Moo { name, source }
+    }
 }
 
 /// Possible error conditions when the runtime attempts to initialize the state of a lane in an agent.
