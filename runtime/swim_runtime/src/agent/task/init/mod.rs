@@ -15,9 +15,7 @@
 use std::{convert::identity, time::Duration};
 
 use futures::{
-    future::{ready, Either},
-    stream::FuturesUnordered,
-    FutureExt, StreamExt, TryFutureExt,
+    future::Either, stream::FuturesUnordered, Future, FutureExt, StreamExt, TryFutureExt,
 };
 use swim_api::{
     agent::{LaneConfig, StoreConfig, UplinkKind},
@@ -43,7 +41,10 @@ use crate::agent::{
     AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io, NodeReporting,
 };
 
-use super::{InitFut, InitialEndpoints, LaneEndpoint, LaneRequest, StoreEndpoint, StoreRequest};
+use super::{
+    InitialEndpoints, ItemEndpoint, ItemInitTask, LaneEndpoint, LaneRequest, LaneResult,
+    StoreEndpoint, StoreRequest, StoreResult,
+};
 
 use tracing::{error, info};
 
@@ -65,6 +66,7 @@ pub struct AgentInitTask<Store = StoreDisabled> {
 impl AgentInitTask {
     /// #Arguments
     /// * `requests` - Channel for requests to open new lanes and downlinks.
+    /// * `downlink_requests` - Channel for request to the runtime to open new downlinks.
     /// * `init_complete` - Triggered when the initialization phase is complete.
     /// * `lane_init_timeout` - Timeout for initializing lanes from the store.
     /// * `reporting` - Reporter for node/lane introspection support.
@@ -92,6 +94,7 @@ where
 {
     /// #Arguments
     /// * `requests` - Channel for requests to open new lanes and downlinks.
+    /// * `downlink_requests` - Channel for request to the runtime to open new downlinks.
     /// * `init_complete` - Triggered when the initialization phase is complete.
     /// * `item_init_timeout` - Timeout for initializing lanes from the store.
     /// * `reporting` - Reporter for node/lane introspection support.
@@ -133,7 +136,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
         let mut lane_endpoints: Vec<LaneEndpoint<Io>> = vec![];
         let mut store_endpoints: Vec<StoreEndpoint> = vec![];
 
-        let mut initializers: FuturesUnordered<InitFut<'_, Store::StoreId>> =
+        let mut initializers: FuturesUnordered<ItemInitTask<'_, Store::StoreId>> =
             FuturesUnordered::new();
 
         loop {
@@ -149,8 +152,10 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
             };
             match event {
                 Either::Left(endpoint_result) => match endpoint_result? {
-                    Either::Left((lane, _)) => lane_endpoints.push(lane),
-                    Either::Right((store, _)) => store_endpoints.push(store),
+                    ItemEndpoint::Lane { endpoint: lane, .. } => lane_endpoints.push(lane),
+                    ItemEndpoint::Store {
+                        endpoint: store, ..
+                    } => store_endpoints.push(store),
                 },
                 Either::Right(request) => match request {
                     AgentRuntimeRequest::AddLane(LaneRequest {
@@ -163,7 +168,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                         if let Some(init) =
                             initialization.add_lane(&store, name.clone(), kind, config, promise)
                         {
-                            initializers.push(init);
+                            initializers.push(init.map_ok(Into::into).boxed());
                         }
                     }
                     AgentRuntimeRequest::AddStore(StoreRequest {
@@ -174,9 +179,9 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                     }) => {
                         info!("Registering a new {} store with name '{}'.", kind, name);
                         if let Some(init) =
-                            initialization.add_store(&store, name.clone(), kind, config, promise)
+                            initialization.add_store(&store, name.clone(), kind, config, promise)?
                         {
-                            initializers.push(init);
+                            initializers.push(init.map_ok(Into::into).boxed());
                         }
                     }
                     AgentRuntimeRequest::OpenDownlink(request) => {
@@ -190,8 +195,10 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
         if !initializers.is_empty() {
             while let Some(endpoint_result) = initializers.next().await {
                 match endpoint_result? {
-                    Either::Left((lane, _)) => lane_endpoints.push(lane),
-                    Either::Right((store, _)) => store_endpoints.push(store),
+                    ItemEndpoint::Lane { endpoint: lane, .. } => lane_endpoints.push(lane),
+                    ItemEndpoint::Store {
+                        endpoint: store, ..
+                    } => store_endpoints.push(store),
                 }
             }
         }
@@ -213,7 +220,8 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
     }
 }
 
-pub(super) struct Initialization {
+/// Creates futures that will initialize a lane or a store.
+pub struct Initialization {
     reporting: Option<NodeReporting>,
     item_init_timeout: Duration,
 }
@@ -233,7 +241,10 @@ impl Initialization {
         kind: StoreKind,
         config: StoreConfig,
         promise: oneshot::Sender<Result<Io, OpenStoreError>>,
-    ) -> Option<InitFut<'a, Store::StoreId>>
+    ) -> Result<
+        Option<impl Future<Output = StoreResult<Store::StoreId>> + Send + 'a>,
+        AgentItemInitError,
+    >
     where
         Store: AgentPersistence + Send + Sync + 'a,
     {
@@ -271,12 +282,12 @@ impl Initialization {
                         out_rx,
                         initializer,
                     )
-                    .map_ok(move |r| Either::Right((r, store_id)))
+                    .map_ok(move |endpoint| (endpoint, store_id))
                     .map_err(move |e| AgentItemInitError::new(name, e));
-                    Some(init_task.boxed())
+                    Ok(Some(init_task))
                 } else {
                     log_err();
-                    None
+                    Ok(None)
                 }
             }
             Err(StoreError::NoStoreAvailable) => {
@@ -286,15 +297,9 @@ impl Initialization {
                 {
                     log_err();
                 }
-                None
+                Ok(None)
             }
-            Err(err) => Some(
-                ready(Err(AgentItemInitError::new(
-                    name,
-                    StoreInitError::Store(err),
-                )))
-                .boxed(),
-            ),
+            Err(err) => Err(AgentItemInitError::new(name, StoreInitError::Store(err))),
         }
     }
 
@@ -305,7 +310,7 @@ impl Initialization {
         kind: LaneKind,
         config: LaneConfig,
         promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
-    ) -> Option<InitFut<'a, Store::StoreId>>
+    ) -> Option<impl Future<Output = LaneResult<Store::StoreId>> + Send + 'a>
     where
         Store: AgentPersistence + Send + Sync + 'a,
     {
@@ -362,23 +367,21 @@ impl Initialization {
                             initializer,
                         )
                         .await?;
-                        Ok(Either::Left((endpoint, Some(store_id))))
+                        Ok((endpoint, Some(store_id)))
                     } else {
                         let reporter = if let Some(node_reporter) = reporting {
                             node_reporter.register(name.clone(), kind).await
                         } else {
                             None
                         };
-                        Ok(Either::Left((
-                            LaneEndpoint {
-                                name,
-                                kind: kind.uplink_kind(),
-                                transient,
-                                io: (in_tx, out_rx),
-                                reporter,
-                            },
-                            None,
-                        )))
+                        let endpoint = LaneEndpoint {
+                            name,
+                            kind: kind.uplink_kind(),
+                            transient,
+                            io: (in_tx, out_rx),
+                            reporter,
+                        };
+                        Ok((endpoint, None))
                     }
                 }
                 .map_err(move |e| AgentItemInitError::new(name_cpy, e))

@@ -114,7 +114,7 @@ pub enum AgentRuntimeRequest {
 
 /// A labelled channel endpoint (or pair) for a lane.
 #[derive(Debug)]
-struct LaneEndpoint<T> {
+pub struct LaneEndpoint<T> {
     /// The name of the lane.
     name: Text,
     /// The subprotocol used by the lane.
@@ -203,7 +203,7 @@ impl LaneEndpoint<ByteWriter> {
 
 /// A labelled channel endpoint (or pair) for a lane.
 #[derive(Debug)]
-struct StoreEndpoint {
+pub struct StoreEndpoint {
     /// The name of the lane.
     name: Text,
     /// The subprotocol used by the lane.
@@ -920,9 +920,35 @@ struct InactiveTimeout<'a> {
     enabled: bool,
 }
 
-type InitResult<I> =
-    Result<Either<(LaneEndpoint<Io>, Option<I>), (StoreEndpoint, I)>, AgentItemInitError>;
-type InitFut<'a, I> = BoxFuture<'a, InitResult<I>>;
+pub enum ItemEndpoint<I> {
+    Lane {
+        endpoint: LaneEndpoint<Io>,
+        store_id: Option<I>,
+    },
+    Store {
+        endpoint: StoreEndpoint,
+        store_id: I,
+    },
+}
+
+impl<I> From<(LaneEndpoint<Io>, Option<I>)> for ItemEndpoint<I> {
+    fn from((endpoint, store_id): (LaneEndpoint<Io>, Option<I>)) -> Self {
+        ItemEndpoint::Lane { endpoint, store_id }
+    }
+}
+
+impl<I> From<(StoreEndpoint, I)> for ItemEndpoint<I> {
+    fn from((endpoint, store_id): (StoreEndpoint, I)) -> Self {
+        ItemEndpoint::Store { endpoint, store_id }
+    }
+}
+
+type InitResult<T> = Result<T, AgentItemInitError>;
+
+type LaneResult<I> = InitResult<(LaneEndpoint<Io>, Option<I>)>;
+type StoreResult<I> = InitResult<(StoreEndpoint, I)>;
+
+type ItemInitTask<'a, I> = BoxFuture<'a, InitResult<ItemEndpoint<I>>>;
 
 /// Aggregates all of the streams of events for the write task.
 #[derive(Debug)]
@@ -1251,12 +1277,7 @@ impl WriteTaskState {
                 info!("Registering a new {} lane with name {}.", kind, name);
                 match initialization.add_lane(store, name, kind, config, promise) {
                     Some(fut) => match fut.await {
-                        Ok(Either::Left((endpoint, store_id))) => {
-                            TaskMessageResult::AddLane(endpoint, store_id)
-                        }
-                        Ok(Either::Right((endpoint, store_id))) => {
-                            TaskMessageResult::AddStore(endpoint, store_id)
-                        }
+                        Ok((endpoint, store_id)) => TaskMessageResult::AddLane(endpoint, store_id),
                         Err(err) => TaskMessageResult::StoreInitFailure(err),
                     },
                     _ => TaskMessageResult::Nothing,
@@ -1270,15 +1291,11 @@ impl WriteTaskState {
             }) => {
                 info!("Registering a new {} store with name {}.", kind, name);
                 match initialization.add_store(store, name, kind, config, promise) {
-                    Some(fut) => match fut.await {
-                        Ok(Either::Left((endpoint, store_id))) => {
-                            TaskMessageResult::AddLane(endpoint, store_id)
-                        }
-                        Ok(Either::Right((endpoint, store_id))) => {
-                            TaskMessageResult::AddStore(endpoint, store_id)
-                        }
+                    Ok(Some(fut)) => match fut.await {
+                        Ok((endpoint, store_id)) => TaskMessageResult::AddStore(endpoint, store_id),
                         Err(err) => TaskMessageResult::StoreInitFailure(err),
                     },
+                    Err(err) => TaskMessageResult::StoreInitFailure(err),
                     _ => TaskMessageResult::Nothing,
                 }
             }
