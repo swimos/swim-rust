@@ -34,16 +34,16 @@ use super::AgentExecError;
 mod tests;
 
 #[derive(Debug, Error)]
-#[error("Moo")]
-pub struct Moo {
+#[error("Failed to initialize item named {name}.")]
+pub struct AgentItemInitError {
     pub name: Text,
     #[source]
     pub source: StoreInitError,
 }
 
-impl From<Moo> for AgentExecError {
-    fn from(error: Moo) -> Self {
-        let Moo { name, source } = error;
+impl From<AgentItemInitError> for AgentExecError {
+    fn from(error: AgentItemInitError) -> Self {
+        let AgentItemInitError { name, source } = error;
         AgentExecError::FailedRestoration {
             item_name: name,
             error: source,
@@ -51,9 +51,9 @@ impl From<Moo> for AgentExecError {
     }
 }
 
-impl Moo {
+impl AgentItemInitError {
     pub fn new(name: Text, source: StoreInitError) -> Self {
-        Moo { name, source }
+        AgentItemInitError { name, source }
     }
 }
 

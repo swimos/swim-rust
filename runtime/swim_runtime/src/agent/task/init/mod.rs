@@ -36,7 +36,10 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::FramedRead;
 
 use crate::agent::{
-    store::{no_map_init, no_value_init, AgentPersistence, BoxInitializer, Moo, StoreInitError},
+    store::{
+        no_map_init, no_value_init, AgentItemInitError, AgentPersistence, BoxInitializer,
+        StoreInitError,
+    },
     AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io, NodeReporting,
 };
 
@@ -269,7 +272,7 @@ impl Initialization {
                         initializer,
                     )
                     .map_ok(move |r| Either::Right((r, store_id)))
-                    .map_err(move |e| Moo::new(name, e));
+                    .map_err(move |e| AgentItemInitError::new(name, e));
                     Some(init_task.boxed())
                 } else {
                     log_err();
@@ -285,7 +288,13 @@ impl Initialization {
                 }
                 None
             }
-            Err(err) => Some(ready(Err(Moo::new(name, StoreInitError::Store(err)))).boxed()),
+            Err(err) => Some(
+                ready(Err(AgentItemInitError::new(
+                    name,
+                    StoreInitError::Store(err),
+                )))
+                .boxed(),
+            ),
         }
     }
 
@@ -372,7 +381,7 @@ impl Initialization {
                         )))
                     }
                 }
-                .map_err(move |e| Moo::new(name_cpy, e))
+                .map_err(move |e| AgentItemInitError::new(name_cpy, e))
                 .boxed(),
             )
         } else {

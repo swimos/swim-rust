@@ -34,7 +34,7 @@ use self::sender::LaneSender;
 use self::write_fut::{WriteResult, WriteTask};
 
 use super::reporting::UplinkReporter;
-use super::store::{AgentPersistence, Moo};
+use super::store::{AgentItemInitError, AgentPersistence};
 use super::{
     AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io,
     NodeReporting,
@@ -920,7 +920,8 @@ struct InactiveTimeout<'a> {
     enabled: bool,
 }
 
-type InitResult<I> = Result<Either<(LaneEndpoint<Io>, Option<I>), (StoreEndpoint, I)>, Moo>;
+type InitResult<I> =
+    Result<Either<(LaneEndpoint<Io>, Option<I>), (StoreEndpoint, I)>, AgentItemInitError>;
 type InitFut<'a, I> = BoxFuture<'a, InitResult<I>>;
 
 /// Aggregates all of the streams of events for the write task.
@@ -1126,7 +1127,7 @@ enum TaskMessageResult<I> {
     /// Track a remote to be pruned after the configured timeout (as it no longer has any links).
     AddPruneTimeout(Uuid),
     /// Initializing a lane from the store failed.
-    StoreInitFailure(Moo),
+    StoreInitFailure(AgentItemInitError),
     /// No effect.
     Nothing,
 }
@@ -1626,7 +1627,7 @@ where
                     streams.schedule_prune(remote_id);
                 }
                 TaskMessageResult::StoreInitFailure(error) => {
-                    let Moo { name, source } = error;
+                    let AgentItemInitError { name, source } = error;
                     error!(error = %source, "Initializing a store for {} failed.", name);
                     if let StoreInitError::Store(err) = source {
                         return Err(err);
