@@ -319,11 +319,8 @@ impl Initialization {
         if promise.send(Ok(io)).is_ok() {
             Some(
                 async move {
-                    let get_lane_id = || {
-                        store
-                            .store_id(name.as_str())
-                            .map_err(|error| StoreInitError::Store(error))
-                    };
+                    let get_lane_id =
+                        || store.store_id(name.as_str()).map_err(StoreInitError::Store);
                     let maybe_initializer = match uplink_kind {
                         UplinkKind::Value if !transient => {
                             let lane_id = get_lane_id()?;
@@ -409,27 +406,22 @@ async fn lane_initialization(
     let kind = lane_kind.uplink_kind();
     let result = tokio::time::timeout(timeout, async move {
         let init = initializer.initialize(&mut in_tx);
-        let result = init.await;
+        init.await?;
+        wait_for_initialized(&mut out_rx).await?;
 
-        if let Err(error) = result {
-            Err(error)
-        } else if let Err(error) = wait_for_initialized(&mut out_rx).await {
-            Err(error)
+        let reporter = if let Some(node_reporter) = &reporting {
+            node_reporter.register(lane_name.clone(), lane_kind).await
         } else {
-            let reporter = if let Some(node_reporter) = &reporting {
-                node_reporter.register(lane_name.clone(), lane_kind).await
-            } else {
-                None
-            };
-            let endpoint = LaneEndpoint {
-                name: lane_name,
-                transient: false,
-                kind,
-                io: (in_tx, out_rx),
-                reporter,
-            };
-            Ok(endpoint)
-        }
+            None
+        };
+        let endpoint = LaneEndpoint {
+            name: lane_name,
+            transient: false,
+            kind,
+            io: (in_tx, out_rx),
+            reporter,
+        };
+        Ok(endpoint)
     })
     .await;
     result
@@ -448,16 +440,11 @@ async fn store_initialization(
     let store_name = name.clone();
     let result = tokio::time::timeout(timeout, async move {
         let init = initializer.initialize(&mut in_tx);
-        let result = init.await;
+        init.await?;
+        wait_for_initialized(&mut out_rx).await?;
 
-        if let Err(error) = result {
-            Err(error)
-        } else if let Err(error) = wait_for_initialized(&mut out_rx).await {
-            Err(error)
-        } else {
-            let endpoint = StoreEndpoint::new(store_name, kind, out_rx);
-            Ok(endpoint)
-        }
+        let endpoint = StoreEndpoint::new(store_name, kind, out_rx);
+        Ok(endpoint)
     })
     .await;
     result

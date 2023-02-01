@@ -251,76 +251,16 @@ impl InitialEndpoints {
             store_endpoints,
         }
     }
-
-    /// Create the agent runtime task based on these initial lane endpoints.
-    /// #Arguments
-    /// * `identity` The routing ID of this agent instance for outgoing envelopes.
-    /// * `node_uri` - The node URI of this agent instance for outgoing envelopes.
-    /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
-    /// * `downlink_requests` - Channel for requests to open downlink runtimes for the agent.
-    /// * `config` - Configuration parameters for the agent runtime.
-    /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
-    pub fn make_runtime_task(
-        self,
-        identity: Uuid,
-        node_uri: Text,
-        attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        downlink_requests: mpsc::Sender<DownlinkRequest>,
-        config: AgentRuntimeConfig,
-        stopping: trigger::Receiver,
-    ) -> AgentRuntimeTask {
-        AgentRuntimeTask::new(
-            NodeDescriptor::new(identity, node_uri),
-            self,
-            attachment_rx,
-            downlink_requests,
-            stopping,
-            config,
-        )
-    }
-
-    /// Create the agent runtime task based on these initial lane endpoints.
-    /// #Arguments
-    /// * `identity` The routing ID of this agent instance for outgoing envelopes.
-    /// * `node_uri` - The node URI of this agent instance for outgoing envelopes.
-    /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
-    /// * `downlink_requests` - Channel for requests to open downlink runtimes for the agent.
-    /// * `config` - Configuration parameters for the agent runtime.
-    /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
-    /// * `store` - Persistence store for the agent.
-    pub fn make_runtime_task_with_store<Store>(
-        self,
-        identity: Uuid,
-        node_uri: Text,
-        attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        downlink_requests: mpsc::Sender<DownlinkRequest>,
-        config: AgentRuntimeConfig,
-        stopping: trigger::Receiver,
-        store: Store,
-    ) -> AgentRuntimeTask<Store>
-    where
-        Store: AgentPersistence + Send + Sync + 'static,
-    {
-        AgentRuntimeTask::with_store(
-            NodeDescriptor::new(identity, node_uri),
-            self,
-            attachment_rx,
-            downlink_requests,
-            stopping,
-            config,
-            store,
-        )
-    }
 }
 
 #[derive(Debug)]
-struct NodeDescriptor {
+pub struct NodeDescriptor {
     identity: Uuid,
     node_uri: Text,
 }
 
 impl NodeDescriptor {
-    fn new(identity: Uuid, node_uri: Text) -> Self {
+    pub fn new(identity: Uuid, node_uri: Text) -> Self {
         NodeDescriptor { identity, node_uri }
     }
 }
@@ -359,7 +299,15 @@ enum RwCoorindationMessage {
 }
 
 impl AgentRuntimeTask {
-    fn new(
+    /// Create the agent runtime task.
+    /// #Arguments
+    /// * `node` - The routing ID and node URI of this agent instance.
+    /// * `init` - The initial lane and store endpoints for this agent.
+    /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
+    /// * `downlink_requests` - Channel for requests to open downlink runtimes for the agent.
+    /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
+    /// * `config` - Configuration parameters for the agent runtime.
+    pub fn new(
         node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
@@ -383,7 +331,16 @@ impl<Store> AgentRuntimeTask<Store>
 where
     Store: AgentPersistence + Send + Sync + 'static,
 {
-    fn with_store(
+    /// Create the agent runtime task with a store implementation.
+    /// #Arguments
+    /// * `node` - The routing ID and node URI of this agent instance.
+    /// * `init` - The initial lane and store endpoints for this agent.
+    /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
+    /// * `downlink_requests` - Channel for requests to open downlink runtimes for the agent.
+    /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
+    /// * `config` - Configuration parameters for the agent runtime.
+    /// * `store` - Persistence store for the agent.
+    pub fn with_store(
         node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
@@ -457,10 +414,9 @@ where
         let write = write_task(
             WriteTaskConfiguration::new(identity, node_uri.clone(), config),
             WriteTaskEndpoints::new(read_endpoints, store_endpoints),
-            write_rx,
+            ReceiverStream::new(write_rx).take_until(stopping),
             read_tx,
             write_vote,
-            stopping,
             reporting,
             store,
         )
@@ -1562,20 +1518,19 @@ impl WriteTaskEndpoints {
 /// * `aggregate_reporter` - Aggregated uplink reporter for all lanes of the agent.
 /// * `store` - Persistence for the state of the lanes.
 ///
-async fn write_task<Store>(
+async fn write_task<Msg, Store>(
     configuration: WriteTaskConfiguration,
     initial_endpoints: WriteTaskEndpoints,
-    message_rx: mpsc::Receiver<WriteTaskMessage>,
+    message_stream: Msg,
     read_task_tx: mpsc::Sender<ReadTaskMessage>,
     stop_voter: timeout_coord::Voter,
-    stopping: trigger::Receiver,
     reporting: Option<NodeReporting>,
     mut store: Store,
 ) -> Result<(), StoreError>
 where
+    Msg: Stream<Item = WriteTaskMessage> + Send + Unpin,
     Store: AgentPersistence + Send + Sync,
 {
-    let message_stream = ReceiverStream::new(message_rx).take_until(stopping);
     let aggregate_reporter = reporting.as_ref().map(NodeReporting::aggregate);
 
     let WriteTaskConfiguration {

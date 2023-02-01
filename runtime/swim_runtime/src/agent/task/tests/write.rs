@@ -30,7 +30,7 @@ use swim_utilities::{
     trigger::{self, promise},
 };
 use tokio::{sync::mpsc, time::Instant};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
 use uuid::Uuid;
 
 use crate::agent::{
@@ -266,10 +266,9 @@ where
     let write = write_task(
         write_config,
         WriteTaskEndpoints::new(endpoints_rx, vec![]),
-        messages_rx,
+        ReceiverStream::new(messages_rx).take_until(stop_rx),
         read_tx,
         vote1,
-        stop_rx,
         node_rep,
         store,
     );

@@ -48,7 +48,7 @@ use crate::downlink::DownlinkOptions;
 use self::{
     reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
-    task::{AgentInitTask, LaneRequest, StoreRequest},
+    task::{AgentInitTask, AgentRuntimeTask, LaneRequest, NodeDescriptor, StoreRequest},
 };
 
 pub mod reporting;
@@ -461,13 +461,13 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             let (initial_state, _) = initial_state_result?;
             let agent_task = agent_task_result?;
 
-            let runtime_task = initial_state.make_runtime_task(
-                identity,
-                node_uri,
+            let runtime_task = AgentRuntimeTask::new(
+                NodeDescriptor::new(identity, node_uri),
+                initial_state,
                 attachment_rx,
                 downlink_tx,
-                runtime_config,
                 stopping,
+                runtime_config,
             );
 
             let (runtime_result, agent_result) = join(runtime_task.run(), agent_task).await;
@@ -527,13 +527,13 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             let (initial_state, store_per) = initial_state_result?;
             let agent_task = agent_task_result?;
 
-            let runtime_task = initial_state.make_runtime_task_with_store(
-                identity,
-                node_uri,
+            let runtime_task = AgentRuntimeTask::with_store(
+                NodeDescriptor::new(identity, node_uri),
+                initial_state,
                 attachment_rx,
                 downlink_tx,
-                runtime_config,
                 stopping,
+                runtime_config,
                 store_per,
             );
 
