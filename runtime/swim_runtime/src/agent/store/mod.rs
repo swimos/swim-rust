@@ -177,7 +177,7 @@ impl AgentPersistence for StoreDisabled {
     type StoreId = ();
 
     fn store_id(&self, _name: &str) -> Result<Self::StoreId, StoreError> {
-        Ok(())
+        Err(StoreError::NoStoreAvailable)
     }
 
     fn init_value_store(&self, _store_id: Self::StoreId) -> Option<BoxInitializer<'_>> {
@@ -189,7 +189,7 @@ impl AgentPersistence for StoreDisabled {
     }
 
     fn put_value(&mut self, _store_id: Self::StoreId, _bytes: &[u8]) -> Result<(), StoreError> {
-        Ok(())
+        Err(StoreError::NoStoreAvailable)
     }
 
     fn apply_map<B: AsRef<[u8]>>(
@@ -197,7 +197,7 @@ impl AgentPersistence for StoreDisabled {
         _store_id: Self::StoreId,
         _op: &MapOperation<B, B>,
     ) -> Result<(), StoreError> {
-        Ok(())
+        Err(StoreError::NoStoreAvailable)
     }
 }
 

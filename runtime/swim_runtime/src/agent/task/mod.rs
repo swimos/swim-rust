@@ -93,12 +93,44 @@ pub struct LaneRequest {
     pub promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
 }
 
+impl LaneRequest {
+    pub fn new(
+        name: Text,
+        kind: LaneKind,
+        config: LaneConfig,
+        promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+    ) -> Self {
+        LaneRequest {
+            name,
+            kind,
+            config,
+            promise,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct StoreRequest {
     pub name: Text,
     pub kind: StoreKind,
     pub config: StoreConfig,
     pub promise: oneshot::Sender<Result<Io, OpenStoreError>>,
+}
+
+impl StoreRequest {
+    pub fn new(
+        name: Text,
+        kind: StoreKind,
+        config: StoreConfig,
+        promise: oneshot::Sender<Result<Io, OpenStoreError>>,
+    ) -> Self {
+        StoreRequest {
+            name,
+            kind,
+            config,
+            promise,
+        }
+    }
 }
 
 /// Type for requests that can be sent to the agent runtime task by an agent implementation.

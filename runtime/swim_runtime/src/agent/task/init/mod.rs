@@ -333,30 +333,29 @@ impl Initialization {
         if promise.send(Ok(io)).is_ok() {
             Some(
                 async move {
-                    let get_lane_id =
-                        || store.store_id(name.as_str()).map_err(StoreInitError::Store);
-                    let maybe_initializer = match uplink_kind {
+                    let get_store_id = || match store.store_id(name.as_str()) {
+                        Ok(id) => Ok(Some(id)),
+                        Err(StoreError::NoStoreAvailable) => Ok(None),
+                        Err(e) => Err(StoreInitError::Store(e)),
+                    };
+                    let (maybe_store_id, maybe_initializer) = match uplink_kind {
                         UplinkKind::Value if !transient => {
-                            let lane_id = get_lane_id()?;
-                            Some((
-                                store
-                                    .init_value_store(lane_id)
-                                    .unwrap_or_else(|| no_value_init()),
-                                lane_id,
-                            ))
+                            let maybe_store_id = get_store_id()?;
+                            let init = maybe_store_id
+                                .and_then(|lane_id| store.init_value_store(lane_id))
+                                .unwrap_or_else(|| no_value_init());
+                            (maybe_store_id, Some(init))
                         }
                         UplinkKind::Map if !transient => {
-                            let lane_id = get_lane_id()?;
-                            Some((
-                                store
-                                    .init_map_store(lane_id)
-                                    .unwrap_or_else(|| no_map_init()),
-                                lane_id,
-                            ))
+                            let maybe_store_id = get_store_id()?;
+                            let init = maybe_store_id
+                                .and_then(|lane_id| store.init_map_store(lane_id))
+                                .unwrap_or_else(|| no_map_init());
+                            (maybe_store_id, Some(init))
                         }
-                        _ => None,
+                        _ => (None, None),
                     };
-                    if let Some((initializer, store_id)) = maybe_initializer {
+                    if let Some(initializer) = maybe_initializer {
                         let endpoint = lane_initialization(
                             name.clone(),
                             kind,
@@ -367,7 +366,7 @@ impl Initialization {
                             initializer,
                         )
                         .await?;
-                        Ok((endpoint, Some(store_id)))
+                        Ok((endpoint, maybe_store_id))
                     } else {
                         let reporter = if let Some(node_reporter) = reporting {
                             node_reporter.register(name.clone(), kind).await

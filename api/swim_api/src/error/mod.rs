@@ -97,7 +97,7 @@ impl Display for DownlinkFailureReason {
 }
 
 /// Error type for operations that communicate with the agent runtime.
-#[derive(Error, Debug, Clone, Copy)]
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentRuntimeError {
     #[error("The agent runtime is stopping.")]
     Stopping,
@@ -115,7 +115,7 @@ pub enum DownlinkRuntimeError {
 }
 
 /// Error type for requests so the runtime for creating/opening a state for an agent.
-#[derive(Error, Debug, Clone, Copy)]
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenStoreError {
     #[error(transparent)]
     RuntimeError(#[from] AgentRuntimeError),

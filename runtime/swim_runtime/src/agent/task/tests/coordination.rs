@@ -242,9 +242,7 @@ impl FakeAgent {
                 maybe_create = create_stream.next() => {
                     if let Some(CreateLane { name, kind }) = maybe_create {
                         let (tx, rx) = oneshot::channel();
-                        assert!(request_tx.send(AgentRuntimeRequest::AddLane(LaneReq {
-                            name: name.clone(), kind, config: Default::default(), promise: tx,
-                           })).await.is_ok());
+                        assert!(request_tx.send(AgentRuntimeRequest::AddLane(LaneReq::new(name.clone(), kind, Default::default(), tx))).await.is_ok());
                         let (io_tx, io_rx) = rx.await
                             .expect("Failed to receive response.")
                             .expect("Failed to add new lane.");

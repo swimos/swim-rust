@@ -105,12 +105,9 @@ impl AgentContext for AgentRuntimeContext {
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(AgentRuntimeRequest::AddLane(LaneRequest {
-                    name,
-                    kind: lane_kind,
-                    config,
-                    promise: tx,
-                }))
+                .send(AgentRuntimeRequest::AddLane(LaneRequest::new(
+                    name, lane_kind, config, tx,
+                )))
                 .await?;
             rx.await?
         }
@@ -153,12 +150,12 @@ impl AgentContext for AgentRuntimeContext {
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(AgentRuntimeRequest::AddStore(StoreRequest {
+                .send(AgentRuntimeRequest::AddStore(StoreRequest::new(
                     name,
                     kind,
-                    config: Default::default(),
-                    promise: tx,
-                }))
+                    Default::default(),
+                    tx,
+                )))
                 .await?;
             rx.await?
         }

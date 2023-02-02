@@ -100,7 +100,9 @@ where
         super::AgentInitTask::with_store(req_rx, dl_tx, done_rx, INIT_TIMEOUT, None, store);
     let test = init.run_test(req_tx, dl_rx, done_tx);
 
-    join(runtime.run().map_ok(|(ep, _)| ep), test).await
+    tokio::time::timeout(TEST_TIMEOUT, join(runtime.run().map_ok(|(ep, _)| ep), test))
+        .await
+        .expect("Timed out.")
 }
 
 fn check_connected(first: &mut Io, second: &mut Io) {

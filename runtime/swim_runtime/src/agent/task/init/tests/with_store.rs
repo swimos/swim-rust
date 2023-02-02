@@ -128,12 +128,12 @@ impl TestInit for SingleValueLane {
             let _downlink_requests = downlink_requests;
             let (promise_tx, promise_rx) = oneshot::channel();
             requests
-                .send(AgentRuntimeRequest::AddLane(LaneReq {
-                    name: Text::new(VAL_LANE),
-                    kind: LaneKind::Value,
+                .send(AgentRuntimeRequest::AddLane(LaneReq::new(
+                    Text::new(VAL_LANE),
+                    LaneKind::Value,
                     config,
-                    promise: promise_tx,
-                }))
+                    promise_tx,
+                )))
                 .await
                 .expect("Requesting new lane failed.");
             let mut lane_io = promise_rx
@@ -253,12 +253,12 @@ impl TestInit for SingleMapLane {
             let _downlink_requests = downlink_requests;
             let (promise_tx, promise_rx) = oneshot::channel();
             requests
-                .send(AgentRuntimeRequest::AddLane(LaneReq {
-                    name: Text::new(MAP_LANE),
-                    kind: LaneKind::Map,
+                .send(AgentRuntimeRequest::AddLane(LaneReq::new(
+                    Text::new(MAP_LANE),
+                    LaneKind::Map,
                     config,
-                    promise: promise_tx,
-                }))
+                    promise_tx,
+                )))
                 .await
                 .expect("Requesting new lane failed.");
             let mut lane_io = promise_rx
