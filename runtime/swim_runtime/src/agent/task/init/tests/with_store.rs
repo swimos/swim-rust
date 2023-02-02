@@ -16,23 +16,26 @@ use std::collections::HashMap;
 
 use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use swim_api::{
-    agent::{LaneConfig, UplinkKind},
+    agent::{LaneConfig, StoreConfig, UplinkKind},
     error::StoreError,
     meta::lane::LaneKind,
     protocol::{
-        agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
+        agent::{
+            LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder, StoreInitMessage,
+            StoreInitMessageDecoder, StoreInitialized, StoreInitializedCodec,
+        },
         map::{
             MapMessage, MapMessageDecoder, MapOperation, MapOperationDecoder,
             RawMapOperationEncoder,
         },
         WithLenRecognizerDecoder, WithLengthBytesCodec,
     },
-    store::NodePersistence,
+    store::{NodePersistence, StoreKind},
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::Text;
 use swim_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
+    io::byte_channel::{self, ByteReader, ByteWriter},
     trigger,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -41,8 +44,10 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use crate::agent::{
     store::{StoreInitError, StorePersistence},
     task::{
-        fake_store::FakeStore, init::tests::TRANSIENT, AgentRuntimeRequest, InitialEndpoints,
-        LaneEndpoint, LaneRuntimeSpec as LaneReq,
+        fake_store::FakeStore,
+        init::tests::{INIT_STOPPED, NO_LANE, NO_RESPONSE, NO_STORE, TRANSIENT},
+        AgentRuntimeRequest, InitialEndpoints, LaneEndpoint, LaneRuntimeSpec, StoreEndpoint,
+        StoreRuntimeSpec,
     },
     AgentExecError, DownlinkRequest, Io,
 };
@@ -88,6 +93,7 @@ struct SingleValueLane {
 }
 
 const VAL_LANE: &str = "value";
+const VAL_STORE: &str = "value_store";
 
 async fn with_store_init_value(input: &mut ByteReader, output: &mut ByteWriter, expected: i32) {
     let mut framed_in = FramedRead::new(
@@ -128,7 +134,7 @@ impl TestInit for SingleValueLane {
             let _downlink_requests = downlink_requests;
             let (promise_tx, promise_rx) = oneshot::channel();
             requests
-                .send(AgentRuntimeRequest::AddLane(LaneReq::new(
+                .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                     Text::new(VAL_LANE),
                     LaneKind::Value,
                     config,
@@ -253,7 +259,7 @@ impl TestInit for SingleMapLane {
             let _downlink_requests = downlink_requests;
             let (promise_tx, promise_rx) = oneshot::channel();
             requests
-                .send(AgentRuntimeRequest::AddLane(LaneReq::new(
+                .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                     Text::new(MAP_LANE),
                     LaneKind::Map,
                     config,
@@ -403,4 +409,168 @@ async fn failed_map_lane_init_from_store() {
         }
         ow => panic!("Unexpected result: {:?}", ow),
     }
+}
+
+struct ValueStoreInit {
+    lane_config: LaneConfig,
+    store_config: StoreConfig,
+    expected: i32,
+}
+
+impl TestInit for ValueStoreInit {
+    type Output = (Io, Io);
+
+    fn run_test(
+        self,
+        requests: mpsc::Sender<AgentRuntimeRequest>,
+        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        init_complete: trigger::Sender,
+    ) -> BoxFuture<'static, Self::Output> {
+        ValueStoreInitTask::new(
+            requests,
+            downlink_requests,
+            init_complete,
+            self.store_config,
+            self.lane_config,
+            self.expected,
+        )
+        .run()
+        .boxed()
+    }
+}
+
+async fn with_store_init_value_store(
+    input: &mut ByteReader,
+    output: &mut ByteWriter,
+    expected: i32,
+) {
+    let mut framed_in = FramedRead::new(
+        input,
+        StoreInitMessageDecoder::new(WithLenRecognizerDecoder::new(i32::make_recognizer())),
+    );
+    match framed_in.next().await {
+        Some(Ok(StoreInitMessage::Command(n))) => {
+            assert_eq!(n, expected);
+        }
+        ow => panic!("Unexpected event: {:?}", ow),
+    }
+    match framed_in.next().await {
+        Some(Ok(StoreInitMessage::InitComplete)) => {}
+        ow => panic!("Unexpected event: {:?}", ow),
+    }
+    let mut framed_out = FramedWrite::new(output, StoreInitializedCodec);
+    framed_out
+        .send(StoreInitialized)
+        .await
+        .expect("Failed to send initialized message.");
+}
+
+struct ValueStoreInitTask {
+    requests: mpsc::Sender<AgentRuntimeRequest>,
+    _dl_requests: mpsc::Receiver<DownlinkRequest>,
+    init_complete: trigger::Sender,
+    store_config: StoreConfig,
+    lane_config: LaneConfig,
+    expected: i32,
+}
+
+impl ValueStoreInitTask {
+    fn new(
+        requests: mpsc::Sender<AgentRuntimeRequest>,
+        _dl_requests: mpsc::Receiver<DownlinkRequest>,
+        init_complete: trigger::Sender,
+        store_config: StoreConfig,
+        lane_config: LaneConfig,
+        expected: i32,
+    ) -> Self {
+        ValueStoreInitTask {
+            requests,
+            _dl_requests,
+            init_complete,
+            store_config,
+            lane_config,
+            expected,
+        }
+    }
+
+    async fn run(self) -> (Io, Io) {
+        let ValueStoreInitTask {
+            requests,
+            _dl_requests,
+            init_complete,
+            store_config,
+            lane_config,
+            expected,
+        } = self;
+        let (lane_tx, lane_rx) = oneshot::channel();
+        let (store_tx, store_rx) = oneshot::channel();
+
+        // At least one lane is required for initialization to succeed.
+        requests
+            .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
+                Text::new("lane_name"),
+                LaneKind::Command,
+                lane_config,
+                lane_tx,
+            )))
+            .await
+            .expect(INIT_STOPPED);
+
+        requests
+            .send(AgentRuntimeRequest::AddStore(StoreRuntimeSpec::new(
+                Text::new(VAL_STORE),
+                StoreKind::Value,
+                store_config,
+                store_tx,
+            )))
+            .await
+            .expect(INIT_STOPPED);
+
+        let lane_io = lane_rx.await.expect(NO_RESPONSE).expect(NO_LANE);
+
+        let mut store_io = store_rx.await.expect(NO_RESPONSE).expect(NO_STORE);
+
+        let (tx, rx) = &mut store_io;
+
+        with_store_init_value_store(rx, tx, expected).await;
+
+        init_complete.trigger();
+        (lane_io, store_io)
+    }
+}
+
+#[tokio::test]
+async fn init_single_value_store_from_store() {
+    let mut store = FakeStore::new(vec![VAL_STORE]);
+    let id = store.id_for(VAL_STORE).expect("Invalid key.");
+    store.put_value(id, b"689").expect("Invalid ID");
+
+    let persistence = StorePersistence(store);
+    let init = ValueStoreInit {
+        lane_config: TRANSIENT,
+        store_config: Default::default(),
+        expected: 689,
+    };
+    let (initial_result, (_lane_io, (mut store_io_tx, _store_io_rx))) =
+        run_test(init, persistence).await;
+
+    let initial = initial_result.expect("No lanes were registered.");
+
+    let InitialEndpoints {
+        lane_endpoints,
+        mut store_endpoints,
+        ..
+    } = initial;
+
+    assert_eq!(lane_endpoints.len(), 1);
+    assert_eq!(store_endpoints.len(), 1);
+
+    let StoreEndpoint {
+        name,
+        kind,
+        mut reader,
+    } = store_endpoints.pop().unwrap();
+    assert_eq!(name, VAL_STORE);
+    assert_eq!(kind, StoreKind::Value);
+    assert!(byte_channel::are_connected(&mut store_io_tx, &mut reader));
 }

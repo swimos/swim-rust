@@ -212,7 +212,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                     reporting,
                     request_stream.into_inner(),
                     lane_endpoints,
-                    vec![],
+                    store_endpoints,
                 ),
                 store,
             ))

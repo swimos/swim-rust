@@ -64,6 +64,7 @@ trait TestInit {
 const INIT_STOPPED: &str = "Inialization task stopped.";
 const NO_RESPONSE: &str = "Initialization task did not provide a response.";
 const NO_LANE: &str = "Initialization task failed to create the lane";
+const NO_STORE: &str = "Initialization task failed to create the store";
 
 const DL_CHAN_SIZE: usize = 8;
 const INIT_TIMEOUT: Duration = Duration::from_secs(5);
