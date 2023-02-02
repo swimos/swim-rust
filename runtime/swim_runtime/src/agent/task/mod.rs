@@ -86,21 +86,21 @@ mod fake_store;
 mod tests;
 
 #[derive(Debug)]
-pub struct LaneRequest {
+pub struct LaneRuntimeSpec {
     pub name: Text,
     pub kind: LaneKind,
     pub config: LaneConfig,
     pub promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
 }
 
-impl LaneRequest {
+impl LaneRuntimeSpec {
     pub fn new(
         name: Text,
         kind: LaneKind,
         config: LaneConfig,
         promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
     ) -> Self {
-        LaneRequest {
+        LaneRuntimeSpec {
             name,
             kind,
             config,
@@ -110,21 +110,21 @@ impl LaneRequest {
 }
 
 #[derive(Debug)]
-pub struct StoreRequest {
+pub struct StoreRuntimeSpec {
     pub name: Text,
     pub kind: StoreKind,
     pub config: StoreConfig,
     pub promise: oneshot::Sender<Result<Io, OpenStoreError>>,
 }
 
-impl StoreRequest {
+impl StoreRuntimeSpec {
     pub fn new(
         name: Text,
         kind: StoreKind,
         config: StoreConfig,
         promise: oneshot::Sender<Result<Io, OpenStoreError>>,
     ) -> Self {
-        StoreRequest {
+        StoreRuntimeSpec {
             name,
             kind,
             config,
@@ -137,9 +137,9 @@ impl StoreRequest {
 #[derive(Debug)]
 pub enum AgentRuntimeRequest {
     /// Attempt to open a new lane for the agent.
-    AddLane(LaneRequest),
+    AddLane(LaneRuntimeSpec),
     /// Attempt to open a new store for the agent.
-    AddStore(StoreRequest),
+    AddStore(StoreRuntimeSpec),
     /// Attempt to open a downlink to a lane on another agent.
     OpenDownlink(DownlinkRequest),
 }
@@ -475,9 +475,9 @@ enum ReadTaskMessage {
 #[derive(Debug)]
 enum WriteTaskMessage {
     /// Create a new lane endpoint.
-    Lane(LaneRequest),
+    Lane(LaneRuntimeSpec),
     /// Create a new store endpoint.
-    Store(StoreRequest),
+    Store(StoreRuntimeSpec),
     /// Attach a new remote.
     Remote {
         id: Uuid,
@@ -1303,7 +1303,7 @@ impl WriteTaskState {
             ..
         } = self;
         match reg {
-            WriteTaskMessage::Lane(LaneRequest {
+            WriteTaskMessage::Lane(LaneRuntimeSpec {
                 name,
                 kind,
                 config,
@@ -1318,7 +1318,7 @@ impl WriteTaskState {
                     _ => TaskMessageResult::Nothing,
                 }
             }
-            WriteTaskMessage::Store(StoreRequest {
+            WriteTaskMessage::Store(StoreRuntimeSpec {
                 name,
                 kind,
                 config,

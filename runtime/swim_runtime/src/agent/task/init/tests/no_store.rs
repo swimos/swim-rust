@@ -36,7 +36,7 @@ use super::{check_connected, run_test, TestInit, CONFIGS, INIT_STOPPED, NO_LANE,
 use crate::agent::{
     task::{
         init::tests::{run_test_with_reporting, AGENT_ID, TRANSIENT},
-        AgentRuntimeRequest, InitialEndpoints, LaneEndpoint, LaneRequest as LaneReq, StoreRequest,
+        AgentRuntimeRequest, InitialEndpoints, LaneEndpoint, LaneRuntimeSpec, StoreRuntimeSpec,
     },
     AgentExecError, DownlinkRequest, Io,
 };
@@ -155,7 +155,7 @@ impl SingleLaneInitTask {
         } = self;
         let (lane_tx, lane_rx) = oneshot::channel();
         requests
-            .send(AgentRuntimeRequest::AddLane(LaneReq::new(
+            .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                 Text::new("my_lane"),
                 LaneKind::Value,
                 config,
@@ -304,7 +304,7 @@ impl TwoLanesInitTask {
         let (lane_tx1, lane_rx1) = oneshot::channel();
         let (lane_tx2, lane_rx2) = oneshot::channel();
         requests
-            .send(AgentRuntimeRequest::AddLane(LaneReq::new(
+            .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                 Text::new("value_lane"),
                 LaneKind::Value,
                 config,
@@ -314,7 +314,7 @@ impl TwoLanesInitTask {
             .expect(INIT_STOPPED);
 
         requests
-            .send(AgentRuntimeRequest::AddLane(LaneReq::new(
+            .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                 Text::new("map_lane"),
                 LaneKind::Map,
                 config,
@@ -470,7 +470,7 @@ impl StoresInitTask {
 
         // At least one lane is required for initialization to succeed.
         requests
-            .send(AgentRuntimeRequest::AddLane(LaneReq::new(
+            .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                 Text::new("lane_name"),
                 LaneKind::Command,
                 lane_config,
@@ -480,7 +480,7 @@ impl StoresInitTask {
             .expect(INIT_STOPPED);
 
         requests
-            .send(AgentRuntimeRequest::AddStore(StoreRequest::new(
+            .send(AgentRuntimeRequest::AddStore(StoreRuntimeSpec::new(
                 Text::new("value_store_name"),
                 StoreKind::Value,
                 store_config,
@@ -490,7 +490,7 @@ impl StoresInitTask {
             .expect(INIT_STOPPED);
 
         requests
-            .send(AgentRuntimeRequest::AddStore(StoreRequest::new(
+            .send(AgentRuntimeRequest::AddStore(StoreRuntimeSpec::new(
                 Text::new("map_store_name"),
                 StoreKind::Map,
                 store_config,

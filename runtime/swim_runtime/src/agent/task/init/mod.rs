@@ -42,8 +42,8 @@ use crate::agent::{
 };
 
 use super::{
-    InitialEndpoints, ItemEndpoint, ItemInitTask, LaneEndpoint, LaneRequest, LaneResult,
-    StoreEndpoint, StoreRequest, StoreResult,
+    InitialEndpoints, ItemEndpoint, ItemInitTask, LaneEndpoint, LaneResult, LaneRuntimeSpec,
+    StoreEndpoint, StoreResult, StoreRuntimeSpec,
 };
 
 use tracing::{error, info};
@@ -158,7 +158,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                     } => store_endpoints.push(store),
                 },
                 Either::Right(request) => match request {
-                    AgentRuntimeRequest::AddLane(LaneRequest {
+                    AgentRuntimeRequest::AddLane(LaneRuntimeSpec {
                         name,
                         kind,
                         config,
@@ -171,7 +171,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                             initializers.push(init.map_ok(Into::into).boxed());
                         }
                     }
-                    AgentRuntimeRequest::AddStore(StoreRequest {
+                    AgentRuntimeRequest::AddStore(StoreRuntimeSpec {
                         name,
                         kind,
                         config,

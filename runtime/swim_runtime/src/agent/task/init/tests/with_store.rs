@@ -42,7 +42,7 @@ use crate::agent::{
     store::{StoreInitError, StorePersistence},
     task::{
         fake_store::FakeStore, init::tests::TRANSIENT, AgentRuntimeRequest, InitialEndpoints,
-        LaneEndpoint, LaneRequest as LaneReq,
+        LaneEndpoint, LaneRuntimeSpec as LaneReq,
     },
     AgentExecError, DownlinkRequest, Io,
 };

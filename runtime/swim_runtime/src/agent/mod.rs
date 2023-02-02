@@ -48,7 +48,7 @@ use crate::downlink::DownlinkOptions;
 use self::{
     reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
-    task::{AgentInitTask, AgentRuntimeTask, LaneRequest, NodeDescriptor, StoreRequest},
+    task::{AgentInitTask, AgentRuntimeTask, LaneRuntimeSpec, NodeDescriptor, StoreRuntimeSpec},
 };
 
 pub mod reporting;
@@ -105,7 +105,7 @@ impl AgentContext for AgentRuntimeContext {
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(AgentRuntimeRequest::AddLane(LaneRequest::new(
+                .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                     name, lane_kind, config, tx,
                 )))
                 .await?;
@@ -150,7 +150,7 @@ impl AgentContext for AgentRuntimeContext {
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(AgentRuntimeRequest::AddStore(StoreRequest::new(
+                .send(AgentRuntimeRequest::AddStore(StoreRuntimeSpec::new(
                     name,
                     kind,
                     Default::default(),
