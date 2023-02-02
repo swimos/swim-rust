@@ -244,6 +244,7 @@ struct SingleMapLane {
 }
 
 const MAP_LANE: &str = "map";
+const MAP_STORE: &str = "map_store";
 
 impl TestInit for SingleMapLane {
     type Output = Io;
@@ -572,5 +573,175 @@ async fn init_single_value_store_from_store() {
     } = store_endpoints.pop().unwrap();
     assert_eq!(name, VAL_STORE);
     assert_eq!(kind, StoreKind::Value);
+    assert!(byte_channel::are_connected(&mut store_io_tx, &mut reader));
+}
+
+struct MapStoreInit {
+    lane_config: LaneConfig,
+    store_config: StoreConfig,
+    expected: HashMap<i32, i32>,
+}
+
+impl TestInit for MapStoreInit {
+    type Output = (Io, Io);
+
+    fn run_test(
+        self,
+        requests: mpsc::Sender<AgentRuntimeRequest>,
+        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        init_complete: trigger::Sender,
+    ) -> BoxFuture<'static, Self::Output> {
+        MapStoreInitTask::new(
+            requests,
+            downlink_requests,
+            init_complete,
+            self.store_config,
+            self.lane_config,
+            self.expected,
+        )
+        .run()
+        .boxed()
+    }
+}
+
+type StoreMapReqDecoder = StoreInitMessageDecoder<MapMessageDecoder<MapOperationDecoder<i32, i32>>>;
+
+async fn with_store_init_map_store(
+    input: &mut ByteReader,
+    output: &mut ByteWriter,
+    expected: HashMap<i32, i32>,
+) {
+    let mut framed_in = FramedRead::new(input, StoreMapReqDecoder::default());
+    let mut actual = HashMap::new();
+    loop {
+        match framed_in.next().await {
+            Some(Ok(StoreInitMessage::Command(MapMessage::Update { key, value }))) => {
+                actual.insert(key, value);
+            }
+            Some(Ok(StoreInitMessage::InitComplete)) => break,
+            ow => panic!("Unexpected event: {:?}", ow),
+        }
+    }
+    assert_eq!(actual, expected);
+    let mut framed_out = FramedWrite::new(output, StoreInitializedCodec);
+    framed_out
+        .send(StoreInitialized)
+        .await
+        .expect("Failed to send initialized message.");
+}
+
+struct MapStoreInitTask {
+    requests: mpsc::Sender<AgentRuntimeRequest>,
+    _dl_requests: mpsc::Receiver<DownlinkRequest>,
+    init_complete: trigger::Sender,
+    store_config: StoreConfig,
+    lane_config: LaneConfig,
+    expected: HashMap<i32, i32>,
+}
+
+impl MapStoreInitTask {
+    fn new(
+        requests: mpsc::Sender<AgentRuntimeRequest>,
+        _dl_requests: mpsc::Receiver<DownlinkRequest>,
+        init_complete: trigger::Sender,
+        store_config: StoreConfig,
+        lane_config: LaneConfig,
+        expected: impl IntoIterator<Item = (i32, i32)>,
+    ) -> Self {
+        MapStoreInitTask {
+            requests,
+            _dl_requests,
+            init_complete,
+            store_config,
+            lane_config,
+            expected: expected.into_iter().collect(),
+        }
+    }
+
+    async fn run(self) -> (Io, Io) {
+        let MapStoreInitTask {
+            requests,
+            _dl_requests,
+            init_complete,
+            store_config,
+            lane_config,
+            expected,
+        } = self;
+        let (lane_tx, lane_rx) = oneshot::channel();
+        let (store_tx, store_rx) = oneshot::channel();
+
+        // At least one lane is required for initialization to succeed.
+        requests
+            .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
+                Text::new("lane_name"),
+                LaneKind::Command,
+                lane_config,
+                lane_tx,
+            )))
+            .await
+            .expect(INIT_STOPPED);
+
+        requests
+            .send(AgentRuntimeRequest::AddStore(StoreRuntimeSpec::new(
+                Text::new(MAP_STORE),
+                StoreKind::Map,
+                store_config,
+                store_tx,
+            )))
+            .await
+            .expect(INIT_STOPPED);
+
+        let lane_io = lane_rx.await.expect(NO_RESPONSE).expect(NO_LANE);
+
+        let mut store_io = store_rx.await.expect(NO_RESPONSE).expect(NO_STORE);
+
+        let (tx, rx) = &mut store_io;
+
+        with_store_init_map_store(rx, tx, expected).await;
+
+        init_complete.trigger();
+        (lane_io, store_io)
+    }
+}
+
+#[tokio::test]
+async fn init_single_map_store_from_store() {
+    let mut store = FakeStore::new(vec![MAP_STORE]);
+    let id = store.id_for(MAP_STORE).expect("Invalid key.");
+    let mut expected = HashMap::new();
+    for i in 1..=3 {
+        store
+            .update_map(id, i.to_string().as_bytes(), (2 * i).to_string().as_bytes())
+            .expect("Invalid ID.");
+        expected.insert(i, 2 * i);
+    }
+
+    let persistence = StorePersistence(store);
+    let init = MapStoreInit {
+        lane_config: TRANSIENT,
+        store_config: Default::default(),
+        expected,
+    };
+    let (initial_result, (_lane_io, (mut store_io_tx, _store_io_rx))) =
+        run_test(init, persistence).await;
+
+    let initial = initial_result.expect("No lanes were registered.");
+
+    let InitialEndpoints {
+        lane_endpoints,
+        mut store_endpoints,
+        ..
+    } = initial;
+
+    assert_eq!(lane_endpoints.len(), 1);
+    assert_eq!(store_endpoints.len(), 1);
+
+    let StoreEndpoint {
+        name,
+        kind,
+        mut reader,
+    } = store_endpoints.pop().unwrap();
+    assert_eq!(name, MAP_STORE);
+    assert_eq!(kind, StoreKind::Map);
     assert!(byte_channel::are_connected(&mut store_io_tx, &mut reader));
 }
