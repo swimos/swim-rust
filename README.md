@@ -17,8 +17,7 @@ This project is still in its early stages of development, meaning that it is not
 
 ## Examples
 
-The [cookbook](/cookbook) can serve as a starting point for getting familiar with core Swim concepts that form the basis of all Swim apps.
-
+TODO
 ## Development
 
 ### Dependencies
