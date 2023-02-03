@@ -552,7 +552,7 @@ async fn init_single_value_store_from_store() {
         store_config: Default::default(),
         expected: 689,
     };
-    let (initial_result, (_lane_io, (mut store_io_tx, _store_io_rx))) =
+    let (initial_result, (_lane_io, (store_io_tx, _store_io_rx))) =
         run_test(init, persistence).await;
 
     let initial = initial_result.expect("No lanes were registered.");
@@ -566,14 +566,10 @@ async fn init_single_value_store_from_store() {
     assert_eq!(lane_endpoints.len(), 1);
     assert_eq!(store_endpoints.len(), 1);
 
-    let StoreEndpoint {
-        name,
-        kind,
-        mut reader,
-    } = store_endpoints.pop().unwrap();
+    let StoreEndpoint { name, kind, reader } = store_endpoints.pop().unwrap();
     assert_eq!(name, VAL_STORE);
     assert_eq!(kind, StoreKind::Value);
-    assert!(byte_channel::are_connected(&mut store_io_tx, &mut reader));
+    assert!(byte_channel::are_connected(&store_io_tx, &reader));
 }
 
 struct MapStoreInit {
@@ -722,7 +718,7 @@ async fn init_single_map_store_from_store() {
         store_config: Default::default(),
         expected,
     };
-    let (initial_result, (_lane_io, (mut store_io_tx, _store_io_rx))) =
+    let (initial_result, (_lane_io, (store_io_tx, _store_io_rx))) =
         run_test(init, persistence).await;
 
     let initial = initial_result.expect("No lanes were registered.");
@@ -736,12 +732,8 @@ async fn init_single_map_store_from_store() {
     assert_eq!(lane_endpoints.len(), 1);
     assert_eq!(store_endpoints.len(), 1);
 
-    let StoreEndpoint {
-        name,
-        kind,
-        mut reader,
-    } = store_endpoints.pop().unwrap();
+    let StoreEndpoint { name, kind, reader } = store_endpoints.pop().unwrap();
     assert_eq!(name, MAP_STORE);
     assert_eq!(kind, StoreKind::Map);
-    assert!(byte_channel::are_connected(&mut store_io_tx, &mut reader));
+    assert!(byte_channel::are_connected(&store_io_tx, &reader));
 }
