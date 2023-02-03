@@ -1620,7 +1620,11 @@ where
         let store_id = if endpoint.transient {
             None
         } else {
-            Some(store.store_id(endpoint.name.as_str())?)
+            match store.store_id(endpoint.name.as_str()) {
+                Ok(id) => Some(id),
+                Err(StoreError::NoStoreAvailable) => None,
+                Err(err) => return Err(err),
+            }
         };
         let lane_stream = endpoint.into_lane_stream(store_id, &mut state);
         streams.add_receiver(lane_stream);
@@ -1782,6 +1786,7 @@ where
         state.dispose_of_remotes(remote_reason);
     })
     .await;
+
     if cleanup_result.is_err() {
         error!(
             "Unlinking lanes on shutdown did not complete within {:?}.",
