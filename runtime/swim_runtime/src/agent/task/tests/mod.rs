@@ -373,18 +373,6 @@ impl MapStoreSender {
             .await
             .is_ok());
     }
-
-    async fn remove_event(&mut self, key: Text) {
-        let MapStoreSender { inner } = self;
-        let operation: MapOperation<Text, i32> = MapOperation::Remove { key };
-        assert!(inner.send(StoreResponse::new(operation)).await.is_ok());
-    }
-
-    async fn clear_event(&mut self) {
-        let MapStoreSender { inner } = self;
-        let operation: MapOperation<Text, i32> = MapOperation::Clear;
-        assert!(inner.send(StoreResponse::new(operation)).await.is_ok());
-    }
 }
 
 type ValueDecoder = LaneRequestDecoder<WithLenRecognizerDecoder<I32Recognizer>>;
