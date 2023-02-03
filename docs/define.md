@@ -19,11 +19,16 @@ The details of the methods of the trait are unimportant, for now, as implementat
 Writing agent types
 -------------------
 
-The derive macro for `AgentLaneModel` can be applied to any struct type where all of the fields are lane types. So far, the supported lane types are:
+The derive macro for `AgentLaneModel` can be applied to any struct type where all of the fields are lane types or store types. So far, the supported lane types are:
 
 * Value lanes: `swim::agent::lanes::ValueLane`.
 * Command lanes: `swim::agent::lanes::CommandLane`.
 * Map Lanes: `swim::agent::lanes::MapLane`.
+
+The supported store types are:
+
+* Value stores: `swim::agent::stores::ValueStore`.
+* Map stores: `swim::agent::stores::MapStores`.
 
 An example of a valid agent struct is:
 
@@ -46,6 +51,8 @@ For the macro to be able to generate the implementation, it needs to know how to
 ```rust
 K: Eq + Hash + Ord + Clone
 ```
+
+Stores are effectively private alternatives to lanes. The maintain state in exactly the same was as the corresponding lane types but are not exposed externally.
 
 The `Form` trait
 ----------------
