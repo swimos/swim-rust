@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use futures::Future;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub trait SharedHandlerFn0<'a, Shared> {
@@ -70,6 +71,195 @@ where
 
     fn apply(&'a mut self, shared: &'a mut Shared, value: &'a T) -> Self::Fut {
         self(shared, value)
+    }
+}
+
+pub trait MapUpdateFn<'a, K, V> {
+    type Fut: Future<Output = ()> + Send + 'a;
+
+    fn apply(
+        &'a mut self,
+        key: K,
+        map: &'a HashMap<K, V>,
+        previous: Option<V>,
+        new_value: &'a V,
+    ) -> Self::Fut
+    where
+        K: 'a,
+        V: 'a;
+}
+
+impl<'a, K, V, F, Fut> MapUpdateFn<'a, K, V> for F
+where
+    K: 'static,
+    V: 'static,
+    F: FnMut(K, &'a HashMap<K, V>, Option<V>, &'a V) -> Fut,
+    Fut: Future<Output = ()> + Send + 'a,
+{
+    type Fut = Fut;
+
+    fn apply(
+        &'a mut self,
+        key: K,
+        map: &'a HashMap<K, V>,
+        previous: Option<V>,
+        new_value: &'a V,
+    ) -> Self::Fut
+    where
+        K: 'a,
+        V: 'a,
+    {
+        self(key, map, previous, new_value)
+    }
+}
+
+pub trait SharedMapUpdateFn<'a, Shared, K, V> {
+    type Fut: Future<Output = ()> + Send + 'a;
+
+    fn apply(
+        &'a mut self,
+        shared: &'a mut Shared,
+        key: K,
+        map: &'a HashMap<K, V>,
+        previous: Option<V>,
+        new_value: &'a V,
+    ) -> Self::Fut
+    where
+        K: 'a,
+        V: 'a;
+}
+
+impl<'a, Shared, K, V, F, Fut> SharedMapUpdateFn<'a, Shared, K, V> for F
+where
+    K: 'static,
+    V: 'static,
+    Shared: 'a,
+    F: FnMut(&'a mut Shared, K, &'a HashMap<K, V>, Option<V>, &'a V) -> Fut,
+    Fut: Future<Output = ()> + Send + 'a,
+{
+    type Fut = Fut;
+
+    fn apply(
+        &'a mut self,
+        shared: &'a mut Shared,
+        key: K,
+        map: &'a HashMap<K, V>,
+        previous: Option<V>,
+        new_value: &'a V,
+    ) -> Self::Fut
+    where
+        K: 'a,
+        V: 'a,
+    {
+        self(shared, key, map, previous, new_value)
+    }
+}
+
+pub trait MapRemoveFn<'a, K, V> {
+    type Fut: Future<Output = ()> + Send + 'a;
+
+    fn apply(&'a mut self, key: K, map: &'a HashMap<K, V>, removed: V) -> Self::Fut
+    where
+        K: 'a,
+        V: 'a;
+}
+
+impl<'a, K, V, F, Fut> MapRemoveFn<'a, K, V> for F
+where
+    K: 'static,
+    V: 'static,
+    F: FnMut(K, &'a HashMap<K, V>, V) -> Fut,
+    Fut: Future<Output = ()> + Send + 'a,
+{
+    type Fut = Fut;
+
+    fn apply(&'a mut self, key: K, map: &'a HashMap<K, V>, removed: V) -> Self::Fut
+    where
+        K: 'a,
+        V: 'a,
+    {
+        self(key, map, removed)
+    }
+}
+
+pub trait SharedMapRemoveFn<'a, Shared, K, V> {
+    type Fut: Future<Output = ()> + Send + 'a;
+
+    fn apply(
+        &'a mut self,
+        shared: &'a mut Shared,
+        key: K,
+        map: &'a HashMap<K, V>,
+        removed: V,
+    ) -> Self::Fut
+    where
+        K: 'a,
+        V: 'a;
+}
+
+impl<'a, Shared, K, V, F, Fut> SharedMapRemoveFn<'a, Shared, K, V> for F
+where
+    K: 'static,
+    V: 'static,
+    Shared: 'a,
+    F: FnMut(&'a mut Shared, K, &'a HashMap<K, V>, V) -> Fut,
+    Fut: Future<Output = ()> + Send + 'a,
+{
+    type Fut = Fut;
+
+    fn apply(
+        &'a mut self,
+        shared: &'a mut Shared,
+        key: K,
+        map: &'a HashMap<K, V>,
+        removed: V,
+    ) -> Self::Fut
+    where
+        K: 'a,
+        V: 'a,
+    {
+        self(shared, key, map, removed)
+    }
+}
+
+pub trait MapClearFn<'a, K, V> {
+    type Fut: Future<Output = ()> + Send + 'a;
+
+    fn apply(&'a mut self, map: HashMap<K, V>) -> Self::Fut;
+}
+
+impl<'a, K, V, F, Fut> MapClearFn<'a, K, V> for F
+where
+    K: 'static,
+    V: 'static,
+    F: FnMut(HashMap<K, V>) -> Fut,
+    Fut: Future<Output = ()> + Send + 'a,
+{
+    type Fut = Fut;
+
+    fn apply(&'a mut self, map: HashMap<K, V>) -> Self::Fut {
+        self(map)
+    }
+}
+
+pub trait SharedMapClearFn<'a, Shared, K, V> {
+    type Fut: Future<Output = ()> + Send + 'a;
+
+    fn apply(&'a mut self, shared: &'a mut Shared, map: HashMap<K, V>) -> Self::Fut;
+}
+
+impl<'a, Shared, K, V, F, Fut> SharedMapClearFn<'a, Shared, K, V> for F
+where
+    K: 'static,
+    V: 'static,
+    Shared: 'a,
+    F: FnMut(&'a mut Shared, HashMap<K, V>) -> Fut,
+    Fut: Future<Output = ()> + Send + 'a,
+{
+    type Fut = Fut;
+
+    fn apply(&'a mut self, shared: &'a mut Shared, map: HashMap<K, V>) -> Self::Fut {
+        self(shared, map)
     }
 }
 

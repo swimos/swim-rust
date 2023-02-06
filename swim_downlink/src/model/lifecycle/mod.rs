@@ -12,23 +12,41 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use crate::model::lifecycle::on_remove::{OnRemove, OnRemoveShared};
 pub use handler_fn::*;
+pub use on_clear::{OnClear, OnClearShared};
 pub use on_event::{OnEvent, OnEventShared};
 pub use on_linked::{OnLinked, OnLinkedShared};
 pub use on_set::{OnSet, OnSetShared};
 pub use on_synced::{OnSynced, OnSyncedShared};
 pub use on_unlinked::{OnUnlinked, OnUnlinkedShared};
+pub use on_update::{OnUpdate, OnUpdateShared};
 use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
 mod handler_fn;
+mod on_clear;
 mod on_event;
 mod on_linked;
+mod on_remove;
 mod on_set;
 mod on_synced;
 mod on_unlinked;
+mod on_update;
+
+/// Description of a lifecycle for a map downlink.
+pub trait MapDownlinkLifecycle<K, V>:
+    OnLinked
+    + OnSynced<HashMap<K, V>>
+    + OnUpdate<K, HashMap<K, V>>
+    + OnRemove<K, HashMap<K, V>>
+    + OnClear<K, HashMap<K, V>>
+    + OnUnlinked
+{
+}
 
 /// Description of a lifecycle for a value downlink.
 pub trait ValueDownlinkLifecycle<T>:
@@ -1151,5 +1169,1162 @@ where
             ..
         } = self;
         on_unlinked.on_unlinked(shared)
+    }
+}
+
+/// A basic lifecycle for a map downlink where the event handlers do not share any state.
+pub struct BasicMapDownlinkLifecycle<
+    K,
+    V,
+    FLinked = NoHandler,
+    FSynced = NoHandler,
+    FUpdated = NoHandler,
+    FRemoved = NoHandler,
+    FClear = NoHandler,
+    FUnlink = NoHandler,
+> {
+    _type: PhantomData<fn(K, V)>,
+    on_linked: FLinked,
+    on_synced: FSynced,
+    on_update: FUpdated,
+    on_removed: FRemoved,
+    on_clear: FClear,
+    on_unlink: FUnlink,
+}
+
+impl<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnLinked
+    for BasicMapDownlinkLifecycle<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
+where
+    K: Send + Sync + 'static,
+    V: Send + Sync + 'static,
+    FLinked: OnLinked,
+    FSynced: Send,
+    FUpdated: Send,
+    FRemoved: Send,
+    FClear: Send,
+    FUnlink: Send,
+{
+    type OnLinkedFut<'a> = FLinked::OnLinkedFut<'a>
+    where
+    Self: 'a;
+
+    fn on_linked(&mut self) -> Self::OnLinkedFut<'_> {
+        self.on_linked.on_linked()
+    }
+}
+
+impl<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnSynced<HashMap<K, V>>
+    for BasicMapDownlinkLifecycle<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
+where
+    K: Send + Sync + 'static,
+    V: Send + Sync + 'static,
+    FLinked: Send,
+    FSynced: OnSynced<HashMap<K, V>>,
+    FUpdated: Send,
+    FRemoved: Send,
+    FClear: Send,
+    FUnlink: Send,
+{
+    type OnSyncedFut<'a> = FSynced::OnSyncedFut<'a> where Self:'a;
+
+    fn on_synced<'a>(&'a mut self, value: &'a HashMap<K, V>) -> Self::OnSyncedFut<'a> {
+        self.on_synced.on_synced(value)
+    }
+}
+
+impl<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnUpdate<K, V>
+    for BasicMapDownlinkLifecycle<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
+where
+    K: Send + Sync + 'static,
+    V: Send + Sync + 'static,
+    FLinked: Send,
+    FSynced: Send,
+    FUpdated: OnUpdate<K, V>,
+    FRemoved: Send,
+    FClear: Send,
+    FUnlink: Send,
+{
+    type OnUpdateFut<'a> = FUpdated::OnUpdateFut<'a> where Self: 'a;
+
+    fn on_update<'a>(
+        &'a mut self,
+        key: K,
+        map: &'a HashMap<K, V>,
+        previous: Option<V>,
+        new_value: &'a V,
+    ) -> Self::OnUpdateFut<'a> {
+        self.on_update.on_update(key, map, previous, new_value)
+    }
+}
+
+impl<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnRemove<K, V>
+    for BasicMapDownlinkLifecycle<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
+where
+    K: Send + Sync + 'static,
+    V: Send + Sync + 'static,
+    FLinked: Send,
+    FSynced: Send,
+    FUpdated: Send,
+    FRemoved: OnRemove<K, V>,
+    FClear: Send,
+    FUnlink: Send,
+{
+    type OnRemoveFut<'a> = FRemoved::OnRemoveFut<'a> where Self:'a;
+
+    fn on_remove<'a>(
+        &'a mut self,
+        key: K,
+        map: &'a HashMap<K, V>,
+        removed: V,
+    ) -> Self::OnRemoveFut<'a> {
+        self.on_removed.on_remove(key, map, removed)
+    }
+}
+
+impl<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnClear<K, V>
+    for BasicMapDownlinkLifecycle<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
+where
+    K: Send + Sync + 'static,
+    V: Send + Sync + 'static,
+    FLinked: Send,
+    FSynced: Send,
+    FUpdated: Send,
+    FRemoved: Send,
+    FClear: OnClear<K, V>,
+    FUnlink: Send,
+{
+    type OnClearFut<'a> = FClear::OnClearFut<'a> where Self:'a;
+
+    fn on_clear<'a>(&'a mut self, map: HashMap<K, V>) -> Self::OnClearFut<'a>
+    where
+        K: 'a,
+        V: 'a,
+    {
+        self.on_clear.on_clear(map)
+    }
+}
+
+impl<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnUnlinked
+    for BasicMapDownlinkLifecycle<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
+where
+    K: Send + Sync + 'static,
+    V: Send + Sync + 'static,
+    FLinked: Send,
+    FSynced: Send,
+    FUpdated: Send,
+    FRemoved: Send,
+    FClear: Send,
+    FUnlink: OnUnlinked,
+{
+    type OnUnlinkedFut<'a> = FUnlink::OnUnlinkedFut<'a> where Self:'a;
+
+    fn on_unlinked(&mut self) -> Self::OnUnlinkedFut<'_> {
+        self.on_unlink.on_unlinked()
+    }
+}
+
+impl<K, V> Default for BasicMapDownlinkLifecycle<K, V> {
+    fn default() -> Self {
+        BasicMapDownlinkLifecycle {
+            _type: Default::default(),
+            on_linked: Default::default(),
+            on_synced: Default::default(),
+            on_update: Default::default(),
+            on_removed: Default::default(),
+            on_clear: Default::default(),
+            on_unlink: Default::default(),
+        }
+    }
+}
+
+impl<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
+    BasicMapDownlinkLifecycle<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
+{
+    /// Replace the handler that is called when the downlink connects.
+    pub fn on_linked<F>(
+        self,
+        f: F,
+    ) -> BasicMapDownlinkLifecycle<
+        K,
+        V,
+        FnMutHandler<F>,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+    where
+        FnMutHandler<F>: OnLinked,
+    {
+        BasicMapDownlinkLifecycle {
+            _type: PhantomData,
+            on_linked: FnMutHandler(f),
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink connects with the specified synchronous
+    /// closure. Running this closure will block the task so it should complete quickly.
+    pub fn on_linked_blocking<F>(
+        self,
+        f: F,
+    ) -> BasicMapDownlinkLifecycle<
+        K,
+        V,
+        BlockingHandler<F>,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+    where
+        F: FnMut() + Send,
+    {
+        BasicMapDownlinkLifecycle {
+            _type: PhantomData,
+            on_linked: BlockingHandler(f),
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink synchronizes.
+    pub fn on_synced<F>(
+        self,
+        f: F,
+    ) -> BasicMapDownlinkLifecycle<
+        K,
+        V,
+        FLinked,
+        FnMutHandler<F>,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+    where
+        FnMutHandler<F>: for<'a> OnSynced<HashMap<K, V>>,
+    {
+        BasicMapDownlinkLifecycle {
+            _type: PhantomData,
+            on_linked: self.on_linked,
+            on_synced: FnMutHandler(f),
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink synchronizes with the specified
+    /// synchronous closure. Running this closure will block the task so it should complete quickly.
+    pub fn on_synced_blocking<F>(
+        self,
+        f: F,
+    ) -> BasicMapDownlinkLifecycle<
+        K,
+        V,
+        FLinked,
+        BlockingHandler<F>,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+    where
+        F: FnMut(&HashMap<K, V>) + Send,
+    {
+        BasicMapDownlinkLifecycle {
+            _type: PhantomData,
+            on_linked: self.on_linked,
+            on_synced: BlockingHandler(f),
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink updates a value.
+    pub fn on_update<F>(
+        self,
+        f: F,
+    ) -> BasicMapDownlinkLifecycle<K, V, FLinked, FSynced, FnMutHandler<F>, FRemoved, FClear, FUnlink>
+    where
+        FnMutHandler<F>: OnUpdate<K, V>,
+    {
+        BasicMapDownlinkLifecycle {
+            _type: PhantomData,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: FnMutHandler(f),
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink updates a value with the specified
+    /// synchronous closure. Running this closure will block the task so it should complete quickly.
+    pub fn on_update_blocking<F>(
+        self,
+        f: F,
+    ) -> BasicMapDownlinkLifecycle<
+        K,
+        V,
+        FLinked,
+        FSynced,
+        BlockingHandler<F>,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+    where
+        F: FnMut(K, &HashMap<K, V>, Option<V>, &V) + Send,
+    {
+        BasicMapDownlinkLifecycle {
+            _type: PhantomData,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: BlockingHandler(f),
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink removes a key.
+    pub fn on_removed<F>(
+        self,
+        f: F,
+    ) -> BasicMapDownlinkLifecycle<K, V, FLinked, FSynced, FUpdated, FnMutHandler<F>, FClear, FUnlink>
+    where
+        FnMutHandler<F>: OnRemove<K, V>,
+    {
+        BasicMapDownlinkLifecycle {
+            _type: PhantomData,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: FnMutHandler(f),
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink removes a key with the specified
+    /// synchronous closure. Running this closure will block the task so it should complete quickly.
+    pub fn on_removed_blocking<F>(
+        self,
+        f: F,
+    ) -> BasicMapDownlinkLifecycle<
+        K,
+        V,
+        FLinked,
+        FSynced,
+        FUpdated,
+        BlockingHandler<F>,
+        FClear,
+        FUnlink,
+    >
+    where
+        F: FnMut(K, &HashMap<K, V>, V) + Send,
+    {
+        BasicMapDownlinkLifecycle {
+            _type: PhantomData,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: BlockingHandler(f),
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink clears.
+    pub fn on_clear<F>(
+        self,
+        f: F,
+    ) -> BasicMapDownlinkLifecycle<
+        K,
+        V,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FnMutHandler<F>,
+        FUnlink,
+    >
+    where
+        FnMutHandler<F>: OnRemove<K, V>,
+    {
+        BasicMapDownlinkLifecycle {
+            _type: PhantomData,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: FnMutHandler(f),
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink clears with the specified synchronous
+    /// closure. Running this closure will block the task so it should complete quickly.
+    pub fn on_clear_blocking<F>(
+        self,
+        f: F,
+    ) -> BasicMapDownlinkLifecycle<
+        K,
+        V,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        BlockingHandler<F>,
+        FUnlink,
+    >
+    where
+        F: FnMut(HashMap<K, V>) + Send,
+    {
+        BasicMapDownlinkLifecycle {
+            _type: PhantomData,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: BlockingHandler(f),
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink unlinks.
+    pub fn on_unlink<F>(
+        self,
+        f: F,
+    ) -> BasicMapDownlinkLifecycle<
+        K,
+        V,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FnMutHandler<F>,
+    >
+    where
+        FnMutHandler<F>: OnUnlinked,
+    {
+        BasicMapDownlinkLifecycle {
+            _type: PhantomData,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: FnMutHandler(f),
+        }
+    }
+
+    /// Replace the handler that is called when the downlink unlinks with the specified synchronous
+    /// closure. Running this closure will block the task so it should complete quickly.
+    pub fn on_unlink_blocking<F>(
+        self,
+        f: F,
+    ) -> BasicMapDownlinkLifecycle<
+        K,
+        V,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        BlockingHandler<F>,
+    >
+    where
+        F: FnMut() + Send,
+    {
+        BasicMapDownlinkLifecycle {
+            _type: PhantomData,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: BlockingHandler(f),
+        }
+    }
+
+    /// Adds shared state this is accessible to all handlers for this downlink.
+    pub fn with<Shared>(
+        self,
+        shared_state: Shared,
+    ) -> WithSharedMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    > {
+        StatefulMapDownlinkLifecycle {
+            _type: PhantomData,
+            state: shared_state,
+            on_linked: WithShared::new(self.on_linked),
+            on_synced: WithShared::new(self.on_synced),
+            on_update: WithShared::new(self.on_update),
+            on_removed: WithShared::new(self.on_removed),
+            on_clear: WithShared::new(self.on_clear),
+            on_unlink: WithShared::new(self.on_unlink),
+        }
+    }
+}
+
+type WithSharedMapDownlinkLifecycle<
+    K,
+    V,
+    Shared,
+    FLinked,
+    FSynced,
+    FUpdated,
+    FRemoved,
+    FClear,
+    FUnlink,
+> = StatefulMapDownlinkLifecycle<
+    K,
+    V,
+    Shared,
+    WithShared<FLinked>,
+    WithShared<FSynced>,
+    WithShared<FUpdated>,
+    WithShared<FRemoved>,
+    WithShared<FClear>,
+    WithShared<FUnlink>,
+>;
+
+/// A lifecycle for a map downlink where the handlers for each event share state.
+pub struct StatefulMapDownlinkLifecycle<
+    K,
+    V,
+    Shared,
+    FLinked = NoHandler,
+    FSynced = NoHandler,
+    FUpdated = NoHandler,
+    FRemoved = NoHandler,
+    FClear = NoHandler,
+    FUnlink = NoHandler,
+> {
+    _type: PhantomData<fn(K, V)>,
+    state: Shared,
+    on_linked: FLinked,
+    on_synced: FSynced,
+    on_update: FUpdated,
+    on_removed: FRemoved,
+    on_clear: FClear,
+    on_unlink: FUnlink,
+}
+
+impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnLinked
+    for StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+where
+    K: Send + Sync + 'static,
+    V: Send + Sync + 'static,
+    Shared: Send,
+    FLinked: OnLinkedShared<Shared>,
+    FSynced: Send,
+    FUpdated: Send,
+    FRemoved: Send,
+    FClear: Send,
+    FUnlink: Send,
+{
+    type OnLinkedFut<'a> = FLinked::OnLinkedFut<'a> where Self:'a;
+
+    fn on_linked(&mut self) -> Self::OnLinkedFut<'_> {
+        let StatefulMapDownlinkLifecycle {
+            state, on_linked, ..
+        } = self;
+        on_linked.on_linked(state)
+    }
+}
+
+impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnSynced<HashMap<K, V>>
+    for StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+where
+    K: Send + Sync + 'static,
+    V: Send + Sync + 'static,
+    Shared: Send,
+    FLinked: Send,
+    FSynced: OnSyncedShared<HashMap<K, V>, Shared>,
+    FUpdated: Send,
+    FRemoved: Send,
+    FClear: Send,
+    FUnlink: Send,
+{
+    type OnSyncedFut<'a> = FSynced::OnSyncedFut<'a> where Self:'a;
+
+    fn on_synced<'a>(&'a mut self, value: &'a HashMap<K, V>) -> Self::OnSyncedFut<'a> {
+        let StatefulMapDownlinkLifecycle {
+            state, on_synced, ..
+        } = self;
+        on_synced.on_synced(state, value)
+    }
+}
+
+impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnUpdate<K, V>
+    for StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+where
+    K: Send + Sync + 'static,
+    V: Send + Sync + 'static,
+    Shared: Send,
+    FLinked: Send,
+    FSynced: Send,
+    FUpdated: OnUpdateShared<K, V, Shared>,
+    FRemoved: Send,
+    FClear: Send,
+    FUnlink: Send,
+{
+    type OnUpdateFut<'a> = FUpdated::OnUpdateFut<'a> where Self: 'a;
+
+    fn on_update<'a>(
+        &'a mut self,
+        key: K,
+        map: &'a HashMap<K, V>,
+        previous: Option<V>,
+        new_value: &'a V,
+    ) -> Self::OnUpdateFut<'a> {
+        let StatefulMapDownlinkLifecycle {
+            state, on_update, ..
+        } = self;
+        on_update.on_update(state, key, map, previous, new_value)
+    }
+}
+
+impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnRemove<K, V>
+    for StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+where
+    K: Send + Sync + 'static,
+    V: Send + Sync + 'static,
+    Shared: Send,
+    FLinked: Send,
+    FSynced: Send,
+    FUpdated: Send,
+    FRemoved: OnRemoveShared<K, V, Shared>,
+    FClear: Send,
+    FUnlink: Send,
+{
+    type OnRemoveFut<'a> = FRemoved::OnRemoveFut<'a> where Self:'a;
+
+    fn on_remove<'a>(
+        &'a mut self,
+        key: K,
+        map: &'a HashMap<K, V>,
+        removed: V,
+    ) -> Self::OnRemoveFut<'a> {
+        let StatefulMapDownlinkLifecycle {
+            state, on_removed, ..
+        } = self;
+        on_removed.on_remove(state, key, map, removed)
+    }
+}
+
+impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnClear<K, V>
+    for StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+where
+    K: Send + Sync + 'static,
+    V: Send + Sync + 'static,
+    Shared: Send,
+    FLinked: Send,
+    FSynced: Send,
+    FUpdated: Send,
+    FRemoved: Send,
+    FClear: OnClearShared<K, V, Shared>,
+    FUnlink: Send,
+{
+    type OnClearFut<'a> = FClear::OnClearFut<'a> where Self:'a;
+
+    fn on_clear<'a>(&'a mut self, map: HashMap<K, V>) -> Self::OnClearFut<'a>
+    where
+        K: 'a,
+        V: 'a,
+    {
+        let StatefulMapDownlinkLifecycle {
+            state, on_clear, ..
+        } = self;
+        on_clear.on_clear(state, map)
+    }
+}
+
+impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnUnlinked
+    for StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+where
+    K: Send + Sync + 'static,
+    V: Send + Sync + 'static,
+    Shared: Send,
+    FLinked: Send,
+    FSynced: Send,
+    FUpdated: Send,
+    FRemoved: Send,
+    FClear: Send,
+    FUnlink: OnUnlinkedShared<Shared>,
+{
+    type OnUnlinkedFut<'a> = FUnlink::OnUnlinkedFut<'a> where Self:'a;
+
+    fn on_unlinked(&mut self) -> Self::OnUnlinkedFut<'_> {
+        let StatefulMapDownlinkLifecycle {
+            state, on_unlink, ..
+        } = self;
+        on_unlink.on_unlinked(state)
+    }
+}
+
+impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
+    StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+{
+    /// Replace the handler that is called when the downlink connects.
+    pub fn on_linked<F>(
+        self,
+        f: F,
+    ) -> StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FnMutHandler<F>,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+    where
+        FnMutHandler<F>: OnLinked,
+    {
+        StatefulMapDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            on_linked: FnMutHandler(f),
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink connects with the specified synchronous
+    /// closure. Running this closure will block the task so it should complete quickly.
+    pub fn on_linked_blocking<F>(
+        self,
+        f: F,
+    ) -> StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        BlockingHandler<F>,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+    where
+        F: FnMut() + Send,
+    {
+        StatefulMapDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            on_linked: BlockingHandler(f),
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink synchronizes.
+    pub fn on_synced<F>(
+        self,
+        f: F,
+    ) -> StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FnMutHandler<F>,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+    where
+        FnMutHandler<F>: for<'a> OnSynced<HashMap<K, V>>,
+    {
+        StatefulMapDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            on_linked: self.on_linked,
+            on_synced: FnMutHandler(f),
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink synchronizes with the specified
+    /// synchronous closure. Running this closure will block the task so it should complete quickly.
+    pub fn on_synced_blocking<F>(
+        self,
+        f: F,
+    ) -> StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        BlockingHandler<F>,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+    where
+        F: FnMut(&HashMap<K, V>) + Send,
+    {
+        StatefulMapDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            on_linked: self.on_linked,
+            on_synced: BlockingHandler(f),
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink updates a value.
+    pub fn on_update<F>(
+        self,
+        f: F,
+    ) -> StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FnMutHandler<F>,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+    where
+        FnMutHandler<F>: OnUpdate<K, V>,
+    {
+        StatefulMapDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: FnMutHandler(f),
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink updates a value with the specified
+    /// synchronous closure. Running this closure will block the task so it should complete quickly.
+    pub fn on_update_blocking<F>(
+        self,
+        f: F,
+    ) -> StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        BlockingHandler<F>,
+        FRemoved,
+        FClear,
+        FUnlink,
+    >
+    where
+        F: FnMut(K, &HashMap<K, V>, Option<V>, &V) + Send,
+    {
+        StatefulMapDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: BlockingHandler(f),
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink removes a key.
+    pub fn on_removed<F>(
+        self,
+        f: F,
+    ) -> StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FnMutHandler<F>,
+        FClear,
+        FUnlink,
+    >
+    where
+        FnMutHandler<F>: OnRemove<K, V>,
+    {
+        StatefulMapDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: FnMutHandler(f),
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink removes a key with the specified
+    /// synchronous closure. Running this closure will block the task so it should complete quickly.
+    pub fn on_removed_blocking<F>(
+        self,
+        f: F,
+    ) -> StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FUpdated,
+        BlockingHandler<F>,
+        FClear,
+        FUnlink,
+    >
+    where
+        F: FnMut(K, &HashMap<K, V>, V) + Send,
+    {
+        StatefulMapDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: BlockingHandler(f),
+            on_clear: self.on_clear,
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink clears.
+    pub fn on_clear<F>(
+        self,
+        f: F,
+    ) -> StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FnMutHandler<F>,
+        FUnlink,
+    >
+    where
+        FnMutHandler<F>: OnRemove<K, V>,
+    {
+        StatefulMapDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: FnMutHandler(f),
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink clears with the specified synchronous
+    /// closure. Running this closure will block the task so it should complete quickly.
+    pub fn on_clear_blocking<F>(
+        self,
+        f: F,
+    ) -> StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        BlockingHandler<F>,
+        FUnlink,
+    >
+    where
+        F: FnMut(HashMap<K, V>) + Send,
+    {
+        StatefulMapDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: BlockingHandler(f),
+            on_unlink: self.on_unlink,
+        }
+    }
+
+    /// Replace the handler that is called when the downlink unlinks.
+    pub fn on_unlink<F>(
+        self,
+        f: F,
+    ) -> StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        FnMutHandler<F>,
+    >
+    where
+        FnMutHandler<F>: OnUnlinked,
+    {
+        StatefulMapDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: FnMutHandler(f),
+        }
+    }
+
+    /// Replace the handler that is called when the downlink unlinks with the specified synchronous
+    /// closure. Running this closure will block the task so it should complete quickly.
+    pub fn on_unlink_blocking<F>(
+        self,
+        f: F,
+    ) -> StatefulMapDownlinkLifecycle<
+        K,
+        V,
+        Shared,
+        FLinked,
+        FSynced,
+        FUpdated,
+        FRemoved,
+        FClear,
+        BlockingHandler<F>,
+    >
+    where
+        F: FnMut() + Send,
+    {
+        StatefulMapDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_update: self.on_update,
+            on_removed: self.on_removed,
+            on_clear: self.on_clear,
+            on_unlink: BlockingHandler(f),
+        }
     }
 }

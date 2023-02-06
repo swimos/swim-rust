@@ -46,7 +46,7 @@ mod downlink_builder;
 
 /// A utility class to aid in the creation of event handlers for an agent. This has no data
 /// and is used to provide easy access to the agent type parameter to avoid the need for
-/// explcit type ascriptios when creating handlers.
+/// explicit type ascriptions when creating handlers.
 pub struct HandlerContext<Agent> {
     _agent_type: PhantomData<fn(Agent)>,
 }

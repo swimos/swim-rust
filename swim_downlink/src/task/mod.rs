@@ -31,6 +31,7 @@ use tracing_futures::Instrument;
 use crate::{EventDownlinkModel, ValueDownlinkModel};
 
 mod event;
+mod map;
 #[cfg(test)]
 mod tests;
 mod value;

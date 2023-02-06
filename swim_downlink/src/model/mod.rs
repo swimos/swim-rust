@@ -58,9 +58,34 @@ impl<T, LC> EventDownlinkModel<T, LC> {
     }
 }
 
+#[derive(Debug)]
+pub enum MapAction<K, V> {
+    Update { key: K, value: V },
+    Remove { key: K },
+    Clear,
+    Take { n: u64 },
+    Drop { n: u64 },
+}
+
+pub struct MapDownlinkModel<K, V, LC> {
+    pub actions: mpsc::Receiver<MapAction<K, V>>,
+    pub lifecycle: LC,
+}
+
+impl<K, V, LC> MapDownlinkModel<K, V, LC> {
+    pub fn new(
+        actions: mpsc::Receiver<MapAction<K, V>>,
+        lifecycle: LC,
+    ) -> MapDownlinkModel<K, V, LC> {
+        MapDownlinkModel { actions, lifecycle }
+    }
+}
+
 pub type DefaultValueDownlinkModel<T> = ValueDownlinkModel<T, BasicValueDownlinkLifecycle<T>>;
 
 pub type DefaultEventDownlinkModel<T> = EventDownlinkModel<T, BasicEventDownlinkLifecycle<T>>;
+
+// pub type DefaultMapDownlinkModel<K, V> = MapDownlinkModel<K, V, BasicMapDownlinkLifecycle<K, V>>;
 
 pub fn value_downlink<T>(
     set_value: mpsc::Receiver<T>,
@@ -79,6 +104,12 @@ pub fn event_downlink<T>() -> DefaultEventDownlinkModel<T> {
         lifecycle: Default::default(),
     }
 }
+
+// pub fn map_downlink<K, V>(
+//     actions: mpsc::Receiver<MapAction<K, V>>,
+// ) -> MapDownlinkModel<K, V, DefaultMapDownlinkModel<K, V>> {
+//     MapDownlinkModel::new(actions, Default::default())
+// }
 
 impl<T, LC> ValueDownlinkModel<T, LC>
 where
