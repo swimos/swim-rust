@@ -163,7 +163,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             }
 
             #[automatically_derived]
-            impl #root::agent_model::AgentLaneModel for #agent_type {
+            impl #root::agent_model::AgentSpec for #agent_type {
                 type ValCommandHandler = #value_handler;
 
                 type MapCommandHandler = #map_handler;

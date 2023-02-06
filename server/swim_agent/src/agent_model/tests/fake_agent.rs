@@ -28,7 +28,7 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use crate::{
-    agent_model::{AgentLaneModel, LaneFlags, LaneSpec, WriteResult},
+    agent_model::{AgentSpec, LaneFlags, LaneSpec, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
 };
@@ -92,7 +92,7 @@ impl From<TestEvent> for TestHandler {
     }
 }
 
-impl AgentLaneModel for TestAgent {
+impl AgentSpec for TestAgent {
     type ValCommandHandler = TestHandler;
 
     type MapCommandHandler = TestHandler;

@@ -58,7 +58,7 @@ To attach a handler to the `on_start` method, add a function annotated with `#[o
 
 ```rust
 #[on_start]
-fn my_start_handler(&self, context: AgentContext<ExampleAgent>) -> impl EventHandler<ExampleAgent> {
+fn my_start_handler(&self, context: HandlerContext<ExampleAgent>) -> impl EventHandler<ExampleAgent> {
     context.effect(|| println!("Starting agent."))
 }
 ```
@@ -70,7 +70,7 @@ Note that a function (with an appropriate signature) may have any number of life
 ```rust
 #[on_start]
 #[on_stop]
-fn my_start_or_stop_handler(&self, context: AgentContext<ExampleAgent>) -> impl EventHandler<ExampleAgent> {
+fn my_start_or_stop_handler(&self, context: HandlerContext<ExampleAgent>) -> impl EventHandler<ExampleAgent> {
     context.effect(|| println!("Starting or stopping agent."))
 }
 ```
@@ -84,7 +84,7 @@ The command lane has only one type of event that triggers any time it receives a
 
 ```rust
 #[on_command(example_command)]
-fn my_command_handler(&self, context: AgentContext<ExampleAgent>, value: &i32) -> impl EventHandler<ExampleAgent> {
+fn my_command_handler(&self, context: HandlerContext<ExampleAgent>, value: &i32) -> impl EventHandler<ExampleAgent> {
     //...
 }
 ```
@@ -101,12 +101,12 @@ This signatures of these two events are as follows:
 
 ```rust
 #[on_event(example_value)]
-fn my_event_handler(&self, context: AgentContext<ExampleAgent>, new_value: &i32) -> impl EventHandler<ExampleAgent> {
+fn my_event_handler(&self, context: HandlerContext<ExampleAgent>, new_value: &i32) -> impl EventHandler<ExampleAgent> {
     //...
 }
 
 #[on_set(example_value)]
-fn my_set_handler(&self, context: AgentContext<ExampleAgent>, new_value: &i32, previous_value: Option<i32>) -> impl EventHandler<ExampleAgent> {
+fn my_set_handler(&self, context: HandlerContext<ExampleAgent>, new_value: &i32, previous_value: Option<i32>) -> impl EventHandler<ExampleAgent> {
     //...
 }
 ```
@@ -126,7 +126,7 @@ The signatures of these events are as follows:
 #[on_update(example_map)]
 fn my_update_handler(
     &self, 
-    context: AgentContext<ExampleAgent>,
+    context: HandlerContext<ExampleAgent>,
     map: &HashMap<String, i32>,
     key: String,
     previous_value: Option<i32>,
@@ -137,7 +137,7 @@ fn my_update_handler(
 #[on_remove(example_map)]
 fn my_remove_handler(
     &self, 
-    context: AgentContext<ExampleAgent>,
+    context: HandlerContext<ExampleAgent>,
     map: &HashMap<String, i32>,
     key: String,
     previous_value: i32) -> impl EventHandler<ExampleAgent> {
@@ -147,7 +147,7 @@ fn my_remove_handler(
 #[on_clear(example_map)]
 fn my_clear_handler(
     &self, 
-    context: AgentContext<ExampleAgent>,
+    context: HandlerContext<ExampleAgent>,
     previous_map: HashMap<String, i32>) -> impl EventHandler<ExampleAgent> {
     //...
 }

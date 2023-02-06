@@ -15,18 +15,18 @@
 use std::{collections::HashMap, sync::Arc};
 
 use parking_lot::Mutex;
-use swim_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
-use swim_agent::event_handler::{HandlerFuture, Spawner, WriteStream};
-use swim_agent::lifecycle;
-use swim_agent::{
+use swim::agent::lifecycle;
+use swim::agent::{
     agent_lifecycle::{
         lane_event::LaneEvent, on_start::OnStart, on_stop::OnStop, utility::HandlerContext,
     },
     event_handler::{EventHandler, StepResult},
     lanes::{CommandLane, MapLane, ValueLane},
-    meta::AgentMetadata,
     AgentLaneModel,
 };
+use swim_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
+use swim_agent::event_handler::{HandlerFuture, Spawner, WriteStream};
+use swim_agent::meta::AgentMetadata;
 use swim_api::agent::AgentConfig;
 use swim_api::downlink::DownlinkKind;
 use swim_api::error::{DownlinkRuntimeError, OpenStoreError};
@@ -755,7 +755,7 @@ fn all_handlers() {
 
     let lifecycle = template.clone().into_lifecycle();
 
-    //The tests primarily verfies that he lifecycle compiles so we just test one representative event.
+    //The tests primarily verifies that the lifecycle compiles so we just test one representative event.
     agent.value.set(TEST_VALUE);
     let handler = lifecycle
         .lane_event(&agent, "value")
