@@ -79,7 +79,7 @@ bitflags! {
 
     #[derive(Default)]
     pub struct LaneFlags: u8 {
-        /// The state of the lane should not be persistend.
+        /// The state of the lane should not be persisted.
         const TRANSIENT = 0b01;
     }
 
@@ -109,7 +109,7 @@ pub trait AgentLaneModel: Sized + Send {
     /// The type of handler to run when a request is received to sync with a lane.
     type OnSyncHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
-    /// The names and falgs of all value like lanes (value lanes, command lanes, etc) in the agent.
+    /// The names and flags of all value like lanes (value lanes, command lanes, etc) in the agent.
     fn value_like_lane_specs() -> HashMap<&'static str, LaneSpec>;
 
     /// The names and flags of all map like lanes in the agent.
@@ -343,7 +343,7 @@ where
     /// `on_start` event).
     ///
     /// #Arguments
-    /// * `route` - The node URI for thhe agent instance.
+    /// * `route` - The node URI for the agent instance.
     /// * `config` - Agent specific configuration parameters.
     /// * `context` - Context through which to communicate with the runtime.
     async fn initialize_agent(
@@ -771,7 +771,7 @@ trait IdCollector {
     fn add_id(&mut self, id: u64);
 }
 
-/// When the agent is intializing, no IO is taking place so we simply discard the IDs.
+/// When the agent is initializing, no IO is taking place so we simply discard the IDs.
 struct Discard;
 
 impl IdCollector for Discard {
@@ -790,7 +790,7 @@ impl IdCollector for HashSet<u64> {
 /// of handlers completes.
 ///
 /// This function does not check for invalid identifiers/lanes. If a lane is referred to that does not exist,
-/// ther will be no error and no side effects will ocurr.
+/// there will be no error and no side effects will occur.
 ///
 /// TODO: This method is recursive and has no checks to detect cycles. It would be very easy to create a set of
 /// event handles which cause this to go into an infinite loop (this is also the case in Java). We could add some
