@@ -14,7 +14,7 @@
 
 use crate::model::lifecycle::{MapUpdateFn, SharedMapUpdateFn};
 use futures::future::{ready, Ready};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::future::Future;
 use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
@@ -29,7 +29,7 @@ pub trait OnUpdate<K, V>: Send {
     fn on_update<'a>(
         &'a mut self,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         previous: Option<V>,
         new_value: &'a V,
     ) -> Self::OnUpdateFut<'a>;
@@ -49,7 +49,7 @@ pub trait OnUpdateShared<K, V, Shared>: Send {
         &'a mut self,
         shared: &'a mut Shared,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         previous: Option<V>,
         new_value: &'a V,
     ) -> Self::OnUpdateFut<'a>;
@@ -65,7 +65,7 @@ impl<K, V> OnUpdate<K, V> for NoHandler {
     fn on_update<'a>(
         &'a mut self,
         _key: K,
-        _map: &'a HashMap<K, V>,
+        _map: &'a BTreeMap<K, V>,
         _previous: Option<V>,
         _new_value: &'a V,
     ) -> Self::OnUpdateFut<'a> {
@@ -86,7 +86,7 @@ where
     fn on_update<'a>(
         &'a mut self,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         previous: Option<V>,
         new_value: &'a V,
     ) -> Self::OnUpdateFut<'a> {
@@ -107,7 +107,7 @@ impl<K, V, Shared> OnUpdateShared<K, V, Shared> for NoHandler {
         &'a mut self,
         _shared: &'a mut Shared,
         _key: K,
-        _map: &'a HashMap<K, V>,
+        _map: &'a BTreeMap<K, V>,
         _previous: Option<V>,
         _new_value: &'a V,
     ) -> Self::OnUpdateFut<'a> {
@@ -130,7 +130,7 @@ where
         &'a mut self,
         shared: &'a mut Shared,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         previous: Option<V>,
         new_value: &'a V,
     ) -> Self::OnUpdateFut<'a> {
@@ -154,7 +154,7 @@ where
         &'a mut self,
         shared: &'a mut Shared,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         previous: Option<V>,
         new_value: &'a V,
     ) -> Self::OnUpdateFut<'a> {
@@ -164,7 +164,7 @@ where
 
 impl<F, K, V> OnUpdate<K, V> for BlockingHandler<F>
 where
-    F: FnMut(K, &HashMap<K, V>, Option<V>, &V) + Send,
+    F: FnMut(K, &BTreeMap<K, V>, Option<V>, &V) + Send,
 {
     type OnUpdateFut<'a> = Ready<()>
     where
@@ -175,7 +175,7 @@ where
     fn on_update<'a>(
         &'a mut self,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         previous: Option<V>,
         new_value: &'a V,
     ) -> Self::OnUpdateFut<'a> {
@@ -187,7 +187,7 @@ where
 
 impl<F, K, V, Shared> OnUpdateShared<K, V, Shared> for BlockingHandler<F>
 where
-    F: FnMut(&mut Shared, K, &HashMap<K, V>, Option<V>, &V) + Send,
+    F: FnMut(&mut Shared, K, &BTreeMap<K, V>, Option<V>, &V) + Send,
 {
     type OnUpdateFut<'a> = Ready<()>
     where
@@ -200,7 +200,7 @@ where
         &'a mut self,
         shared: &'a mut Shared,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         previous: Option<V>,
         new_value: &'a V,
     ) -> Self::OnUpdateFut<'a> {

@@ -14,7 +14,7 @@
 
 use crate::model::lifecycle::{MapClearFn, SharedMapClearFn};
 use futures::future::{ready, Ready};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::future::Future;
 use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
@@ -26,7 +26,7 @@ pub trait OnClear<K, V>: Send {
         K: 'a,
         V: 'a;
 
-    fn on_clear<'a>(&'a mut self, map: HashMap<K, V>) -> Self::OnClearFut<'a>
+    fn on_clear<'a>(&'a mut self, map: BTreeMap<K, V>) -> Self::OnClearFut<'a>
     where
         K: 'a,
         V: 'a;
@@ -45,7 +45,7 @@ pub trait OnClearShared<K, V, Shared>: Send {
     fn on_clear<'a>(
         &'a mut self,
         shared: &'a mut Shared,
-        map: HashMap<K, V>,
+        map: BTreeMap<K, V>,
     ) -> Self::OnClearFut<'a>
     where
         K: 'a,
@@ -59,7 +59,7 @@ impl<K, V> OnClear<K, V> for NoHandler {
         K: 'a,
         V:'a;
 
-    fn on_clear<'a>(&'a mut self, _map: HashMap<K, V>) -> Self::OnClearFut<'a>
+    fn on_clear<'a>(&'a mut self, _map: BTreeMap<K, V>) -> Self::OnClearFut<'a>
     where
         K: 'a,
         V: 'a,
@@ -78,7 +78,7 @@ where
         K: 'a,
         V: 'a;
 
-    fn on_clear<'a>(&'a mut self, map: HashMap<K, V>) -> Self::OnClearFut<'a>
+    fn on_clear<'a>(&'a mut self, map: BTreeMap<K, V>) -> Self::OnClearFut<'a>
     where
         K: 'a,
         V: 'a,
@@ -99,7 +99,7 @@ impl<K, V, Shared> OnClearShared<K, V, Shared> for NoHandler {
     fn on_clear<'a>(
         &'a mut self,
         _shared: &'a mut Shared,
-        _map: HashMap<K, V>,
+        _map: BTreeMap<K, V>,
     ) -> Self::OnClearFut<'a>
     where
         K: 'a,
@@ -123,7 +123,7 @@ where
     fn on_clear<'a>(
         &'a mut self,
         shared: &'a mut Shared,
-        map: HashMap<K, V>,
+        map: BTreeMap<K, V>,
     ) -> Self::OnClearFut<'a>
     where
         K: 'a,
@@ -148,7 +148,7 @@ where
     fn on_clear<'a>(
         &'a mut self,
         shared: &'a mut Shared,
-        map: HashMap<K, V>,
+        map: BTreeMap<K, V>,
     ) -> Self::OnClearFut<'a>
     where
         K: 'a,
@@ -160,7 +160,7 @@ where
 
 impl<F, K, V> OnClear<K, V> for BlockingHandler<F>
 where
-    F: FnMut(HashMap<K, V>) + Send,
+    F: FnMut(BTreeMap<K, V>) + Send,
 {
     type OnClearFut<'a> = Ready<()>
     where
@@ -168,7 +168,7 @@ where
         K: 'a,
         V: 'a;
 
-    fn on_clear<'a>(&'a mut self, map: HashMap<K, V>) -> Self::OnClearFut<'a>
+    fn on_clear<'a>(&'a mut self, map: BTreeMap<K, V>) -> Self::OnClearFut<'a>
     where
         K: 'a,
         V: 'a,
@@ -181,7 +181,7 @@ where
 
 impl<F, K, V, Shared> OnClearShared<K, V, Shared> for BlockingHandler<F>
 where
-    F: FnMut(&mut Shared, HashMap<K, V>) + Send,
+    F: FnMut(&mut Shared, BTreeMap<K, V>) + Send,
 {
     type OnClearFut<'a> = Ready<()>
     where
@@ -193,7 +193,7 @@ where
     fn on_clear<'a>(
         &'a mut self,
         shared: &'a mut Shared,
-        map: HashMap<K, V>,
+        map: BTreeMap<K, V>,
     ) -> Self::OnClearFut<'a>
     where
         K: 'a,

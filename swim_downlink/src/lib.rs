@@ -16,13 +16,14 @@ mod model;
 mod task;
 
 pub use model::{
-    event_downlink, value_downlink, DefaultEventDownlinkModel, DefaultValueDownlinkModel,
-    EventDownlinkModel, ValueDownlinkModel,
+    event_downlink, map_downlink, value_downlink, DefaultEventDownlinkModel,
+    DefaultMapDownlinkModel, DefaultValueDownlinkModel, EventDownlinkModel, ValueDownlinkModel,
 };
 pub mod lifecycle {
     pub use crate::model::lifecycle::{
-        BasicEventDownlinkLifecycle, BasicValueDownlinkLifecycle, EventDownlinkLifecycle,
-        StatefulEventDownlinkLifecycle, StatefulValueDownlinkLifecycle, ValueDownlinkLifecycle,
+        BasicEventDownlinkLifecycle, BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle,
+        EventDownlinkLifecycle, StatefulEventDownlinkLifecycle, StatefulMapDownlinkLifecycle,
+        StatefulValueDownlinkLifecycle, ValueDownlinkLifecycle,
     };
 }
-pub use task::DownlinkTask;
+pub use task::{DownlinkTask, MapSender};

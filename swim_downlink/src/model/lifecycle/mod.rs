@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -39,12 +39,7 @@ mod on_update;
 
 /// Description of a lifecycle for a map downlink.
 pub trait MapDownlinkLifecycle<K, V>:
-    OnLinked
-    + OnSynced<HashMap<K, V>>
-    + OnUpdate<K, HashMap<K, V>>
-    + OnRemove<K, HashMap<K, V>>
-    + OnClear<K, HashMap<K, V>>
-    + OnUnlinked
+    OnLinked + OnSynced<BTreeMap<K, V>> + OnUpdate<K, V> + OnRemove<K, V> + OnClear<K, V> + OnUnlinked
 {
 }
 
@@ -1213,13 +1208,13 @@ where
     }
 }
 
-impl<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnSynced<HashMap<K, V>>
+impl<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnSynced<BTreeMap<K, V>>
     for BasicMapDownlinkLifecycle<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
 where
     K: Send + Sync + 'static,
     V: Send + Sync + 'static,
     FLinked: Send,
-    FSynced: OnSynced<HashMap<K, V>>,
+    FSynced: OnSynced<BTreeMap<K, V>>,
     FUpdated: Send,
     FRemoved: Send,
     FClear: Send,
@@ -1227,7 +1222,7 @@ where
 {
     type OnSyncedFut<'a> = FSynced::OnSyncedFut<'a> where Self:'a;
 
-    fn on_synced<'a>(&'a mut self, value: &'a HashMap<K, V>) -> Self::OnSyncedFut<'a> {
+    fn on_synced<'a>(&'a mut self, value: &'a BTreeMap<K, V>) -> Self::OnSyncedFut<'a> {
         self.on_synced.on_synced(value)
     }
 }
@@ -1249,7 +1244,7 @@ where
     fn on_update<'a>(
         &'a mut self,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         previous: Option<V>,
         new_value: &'a V,
     ) -> Self::OnUpdateFut<'a> {
@@ -1274,7 +1269,7 @@ where
     fn on_remove<'a>(
         &'a mut self,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         removed: V,
     ) -> Self::OnRemoveFut<'a> {
         self.on_removed.on_remove(key, map, removed)
@@ -1295,7 +1290,7 @@ where
 {
     type OnClearFut<'a> = FClear::OnClearFut<'a> where Self:'a;
 
-    fn on_clear<'a>(&'a mut self, map: HashMap<K, V>) -> Self::OnClearFut<'a>
+    fn on_clear<'a>(&'a mut self, map: BTreeMap<K, V>) -> Self::OnClearFut<'a>
     where
         K: 'a,
         V: 'a,
@@ -1412,7 +1407,7 @@ impl<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        FnMutHandler<F>: for<'a> OnSynced<HashMap<K, V>>,
+        FnMutHandler<F>: for<'a> OnSynced<BTreeMap<K, V>>,
     {
         BasicMapDownlinkLifecycle {
             _type: PhantomData,
@@ -1441,7 +1436,7 @@ impl<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        F: FnMut(&HashMap<K, V>) + Send,
+        F: FnMut(&BTreeMap<K, V>) + Send,
     {
         BasicMapDownlinkLifecycle {
             _type: PhantomData,
@@ -1489,7 +1484,7 @@ impl<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        F: FnMut(K, &HashMap<K, V>, Option<V>, &V) + Send,
+        F: FnMut(K, &BTreeMap<K, V>, Option<V>, &V) + Send,
     {
         BasicMapDownlinkLifecycle {
             _type: PhantomData,
@@ -1537,7 +1532,7 @@ impl<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        F: FnMut(K, &HashMap<K, V>, V) + Send,
+        F: FnMut(K, &BTreeMap<K, V>, V) + Send,
     {
         BasicMapDownlinkLifecycle {
             _type: PhantomData,
@@ -1594,7 +1589,7 @@ impl<K, V, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        F: FnMut(HashMap<K, V>) + Send,
+        F: FnMut(BTreeMap<K, V>) + Send,
     {
         BasicMapDownlinkLifecycle {
             _type: PhantomData,
@@ -1769,7 +1764,7 @@ where
     }
 }
 
-impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnSynced<HashMap<K, V>>
+impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink> OnSynced<BTreeMap<K, V>>
     for StatefulMapDownlinkLifecycle<
         K,
         V,
@@ -1786,7 +1781,7 @@ where
     V: Send + Sync + 'static,
     Shared: Send,
     FLinked: Send,
-    FSynced: OnSyncedShared<HashMap<K, V>, Shared>,
+    FSynced: OnSyncedShared<BTreeMap<K, V>, Shared>,
     FUpdated: Send,
     FRemoved: Send,
     FClear: Send,
@@ -1794,7 +1789,7 @@ where
 {
     type OnSyncedFut<'a> = FSynced::OnSyncedFut<'a> where Self:'a;
 
-    fn on_synced<'a>(&'a mut self, value: &'a HashMap<K, V>) -> Self::OnSyncedFut<'a> {
+    fn on_synced<'a>(&'a mut self, value: &'a BTreeMap<K, V>) -> Self::OnSyncedFut<'a> {
         let StatefulMapDownlinkLifecycle {
             state, on_synced, ..
         } = self;
@@ -1830,7 +1825,7 @@ where
     fn on_update<'a>(
         &'a mut self,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         previous: Option<V>,
         new_value: &'a V,
     ) -> Self::OnUpdateFut<'a> {
@@ -1869,7 +1864,7 @@ where
     fn on_remove<'a>(
         &'a mut self,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         removed: V,
     ) -> Self::OnRemoveFut<'a> {
         let StatefulMapDownlinkLifecycle {
@@ -1904,7 +1899,7 @@ where
 {
     type OnClearFut<'a> = FClear::OnClearFut<'a> where Self:'a;
 
-    fn on_clear<'a>(&'a mut self, map: HashMap<K, V>) -> Self::OnClearFut<'a>
+    fn on_clear<'a>(&'a mut self, map: BTreeMap<K, V>) -> Self::OnClearFut<'a>
     where
         K: 'a,
         V: 'a,
@@ -2039,7 +2034,7 @@ impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        FnMutHandler<F>: for<'a> OnSynced<HashMap<K, V>>,
+        FnMutHandler<F>: for<'a> OnSynced<BTreeMap<K, V>>,
     {
         StatefulMapDownlinkLifecycle {
             _type: PhantomData,
@@ -2070,7 +2065,7 @@ impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        F: FnMut(&HashMap<K, V>) + Send,
+        F: FnMut(&BTreeMap<K, V>) + Send,
     {
         StatefulMapDownlinkLifecycle {
             _type: PhantomData,
@@ -2131,7 +2126,7 @@ impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        F: FnMut(K, &HashMap<K, V>, Option<V>, &V) + Send,
+        F: FnMut(K, &BTreeMap<K, V>, Option<V>, &V) + Send,
     {
         StatefulMapDownlinkLifecycle {
             _type: PhantomData,
@@ -2192,7 +2187,7 @@ impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        F: FnMut(K, &HashMap<K, V>, V) + Send,
+        F: FnMut(K, &BTreeMap<K, V>, V) + Send,
     {
         StatefulMapDownlinkLifecycle {
             _type: PhantomData,
@@ -2253,7 +2248,7 @@ impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        F: FnMut(HashMap<K, V>) + Send,
+        F: FnMut(BTreeMap<K, V>) + Send,
     {
         StatefulMapDownlinkLifecycle {
             _type: PhantomData,

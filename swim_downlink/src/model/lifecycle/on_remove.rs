@@ -14,7 +14,7 @@
 
 use crate::model::lifecycle::{MapRemoveFn, SharedMapRemoveFn};
 use futures::future::{ready, Ready};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::future::Future;
 use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
@@ -29,7 +29,7 @@ pub trait OnRemove<K, V>: Send {
     fn on_remove<'a>(
         &'a mut self,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         removed: V,
     ) -> Self::OnRemoveFut<'a>;
 }
@@ -48,7 +48,7 @@ pub trait OnRemoveShared<K, V, Shared>: Send {
         &'a mut self,
         shared: &'a mut Shared,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         removed: V,
     ) -> Self::OnRemoveFut<'a>;
 }
@@ -63,7 +63,7 @@ impl<K, V> OnRemove<K, V> for NoHandler {
     fn on_remove<'a>(
         &'a mut self,
         _key: K,
-        _map: &'a HashMap<K, V>,
+        _map: &'a BTreeMap<K, V>,
         _removed: V,
     ) -> Self::OnRemoveFut<'a> {
         ready(())
@@ -83,7 +83,7 @@ where
     fn on_remove<'a>(
         &'a mut self,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         removed: V,
     ) -> Self::OnRemoveFut<'a> {
         let FnMutHandler(f) = self;
@@ -103,7 +103,7 @@ impl<K, V, Shared> OnRemoveShared<K, V, Shared> for NoHandler {
         &'a mut self,
         _shared: &'a mut Shared,
         _key: K,
-        _map: &'a HashMap<K, V>,
+        _map: &'a BTreeMap<K, V>,
         _removed: V,
     ) -> Self::OnRemoveFut<'a> {
         ready(())
@@ -125,7 +125,7 @@ where
         &'a mut self,
         shared: &'a mut Shared,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         removed: V,
     ) -> Self::OnRemoveFut<'a> {
         let FnMutHandler(f) = self;
@@ -148,7 +148,7 @@ where
         &'a mut self,
         shared: &'a mut Shared,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         removed: V,
     ) -> Self::OnRemoveFut<'a> {
         self.0.on_remove(shared, key, map, removed)
@@ -157,7 +157,7 @@ where
 
 impl<F, K, V> OnRemove<K, V> for BlockingHandler<F>
 where
-    F: FnMut(K, &HashMap<K, V>, V) + Send,
+    F: FnMut(K, &BTreeMap<K, V>, V) + Send,
 {
     type OnRemoveFut<'a> = Ready<()>
     where
@@ -168,7 +168,7 @@ where
     fn on_remove<'a>(
         &'a mut self,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         removed: V,
     ) -> Self::OnRemoveFut<'a> {
         let BlockingHandler(f) = self;
@@ -179,7 +179,7 @@ where
 
 impl<F, K, V, Shared> OnRemoveShared<K, V, Shared> for BlockingHandler<F>
 where
-    F: FnMut(&mut Shared, K, &HashMap<K, V>, V) + Send,
+    F: FnMut(&mut Shared, K, &BTreeMap<K, V>, V) + Send,
 {
     type OnRemoveFut<'a> = Ready<()>
     where
@@ -192,7 +192,7 @@ where
         &'a mut self,
         shared: &'a mut Shared,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         removed: V,
     ) -> Self::OnRemoveFut<'a> {
         let BlockingHandler(f) = self;

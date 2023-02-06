@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use futures::Future;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub trait SharedHandlerFn0<'a, Shared> {
@@ -80,7 +80,7 @@ pub trait MapUpdateFn<'a, K, V> {
     fn apply(
         &'a mut self,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         previous: Option<V>,
         new_value: &'a V,
     ) -> Self::Fut
@@ -93,7 +93,7 @@ impl<'a, K, V, F, Fut> MapUpdateFn<'a, K, V> for F
 where
     K: 'static,
     V: 'static,
-    F: FnMut(K, &'a HashMap<K, V>, Option<V>, &'a V) -> Fut,
+    F: FnMut(K, &'a BTreeMap<K, V>, Option<V>, &'a V) -> Fut,
     Fut: Future<Output = ()> + Send + 'a,
 {
     type Fut = Fut;
@@ -101,7 +101,7 @@ where
     fn apply(
         &'a mut self,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         previous: Option<V>,
         new_value: &'a V,
     ) -> Self::Fut
@@ -120,7 +120,7 @@ pub trait SharedMapUpdateFn<'a, Shared, K, V> {
         &'a mut self,
         shared: &'a mut Shared,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         previous: Option<V>,
         new_value: &'a V,
     ) -> Self::Fut
@@ -134,7 +134,7 @@ where
     K: 'static,
     V: 'static,
     Shared: 'a,
-    F: FnMut(&'a mut Shared, K, &'a HashMap<K, V>, Option<V>, &'a V) -> Fut,
+    F: FnMut(&'a mut Shared, K, &'a BTreeMap<K, V>, Option<V>, &'a V) -> Fut,
     Fut: Future<Output = ()> + Send + 'a,
 {
     type Fut = Fut;
@@ -143,7 +143,7 @@ where
         &'a mut self,
         shared: &'a mut Shared,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         previous: Option<V>,
         new_value: &'a V,
     ) -> Self::Fut
@@ -158,7 +158,7 @@ where
 pub trait MapRemoveFn<'a, K, V> {
     type Fut: Future<Output = ()> + Send + 'a;
 
-    fn apply(&'a mut self, key: K, map: &'a HashMap<K, V>, removed: V) -> Self::Fut
+    fn apply(&'a mut self, key: K, map: &'a BTreeMap<K, V>, removed: V) -> Self::Fut
     where
         K: 'a,
         V: 'a;
@@ -168,12 +168,12 @@ impl<'a, K, V, F, Fut> MapRemoveFn<'a, K, V> for F
 where
     K: 'static,
     V: 'static,
-    F: FnMut(K, &'a HashMap<K, V>, V) -> Fut,
+    F: FnMut(K, &'a BTreeMap<K, V>, V) -> Fut,
     Fut: Future<Output = ()> + Send + 'a,
 {
     type Fut = Fut;
 
-    fn apply(&'a mut self, key: K, map: &'a HashMap<K, V>, removed: V) -> Self::Fut
+    fn apply(&'a mut self, key: K, map: &'a BTreeMap<K, V>, removed: V) -> Self::Fut
     where
         K: 'a,
         V: 'a,
@@ -189,7 +189,7 @@ pub trait SharedMapRemoveFn<'a, Shared, K, V> {
         &'a mut self,
         shared: &'a mut Shared,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         removed: V,
     ) -> Self::Fut
     where
@@ -202,7 +202,7 @@ where
     K: 'static,
     V: 'static,
     Shared: 'a,
-    F: FnMut(&'a mut Shared, K, &'a HashMap<K, V>, V) -> Fut,
+    F: FnMut(&'a mut Shared, K, &'a BTreeMap<K, V>, V) -> Fut,
     Fut: Future<Output = ()> + Send + 'a,
 {
     type Fut = Fut;
@@ -211,7 +211,7 @@ where
         &'a mut self,
         shared: &'a mut Shared,
         key: K,
-        map: &'a HashMap<K, V>,
+        map: &'a BTreeMap<K, V>,
         removed: V,
     ) -> Self::Fut
     where
@@ -225,19 +225,19 @@ where
 pub trait MapClearFn<'a, K, V> {
     type Fut: Future<Output = ()> + Send + 'a;
 
-    fn apply(&'a mut self, map: HashMap<K, V>) -> Self::Fut;
+    fn apply(&'a mut self, map: BTreeMap<K, V>) -> Self::Fut;
 }
 
 impl<'a, K, V, F, Fut> MapClearFn<'a, K, V> for F
 where
     K: 'static,
     V: 'static,
-    F: FnMut(HashMap<K, V>) -> Fut,
+    F: FnMut(BTreeMap<K, V>) -> Fut,
     Fut: Future<Output = ()> + Send + 'a,
 {
     type Fut = Fut;
 
-    fn apply(&'a mut self, map: HashMap<K, V>) -> Self::Fut {
+    fn apply(&'a mut self, map: BTreeMap<K, V>) -> Self::Fut {
         self(map)
     }
 }
@@ -245,7 +245,7 @@ where
 pub trait SharedMapClearFn<'a, Shared, K, V> {
     type Fut: Future<Output = ()> + Send + 'a;
 
-    fn apply(&'a mut self, shared: &'a mut Shared, map: HashMap<K, V>) -> Self::Fut;
+    fn apply(&'a mut self, shared: &'a mut Shared, map: BTreeMap<K, V>) -> Self::Fut;
 }
 
 impl<'a, Shared, K, V, F, Fut> SharedMapClearFn<'a, Shared, K, V> for F
@@ -253,12 +253,12 @@ where
     K: 'static,
     V: 'static,
     Shared: 'a,
-    F: FnMut(&'a mut Shared, HashMap<K, V>) -> Fut,
+    F: FnMut(&'a mut Shared, BTreeMap<K, V>) -> Fut,
     Fut: Future<Output = ()> + Send + 'a,
 {
     type Fut = Fut;
 
-    fn apply(&'a mut self, shared: &'a mut Shared, map: HashMap<K, V>) -> Self::Fut {
+    fn apply(&'a mut self, shared: &'a mut Shared, map: BTreeMap<K, V>) -> Self::Fut {
         self(shared, map)
     }
 }
