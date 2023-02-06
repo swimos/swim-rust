@@ -1,5 +1,5 @@
-trigger: ["main"]
-pr: ["main"]
+trigger: ["main", "byte-routing"]
+pr: ["main", "byte-routing"]
 
 schedules:
   - cron: "0 0 * * *"
@@ -7,7 +7,8 @@ schedules:
     branches:
       include:
         - main
-        - server-prototype
+        - byte-routing
+
 
 variables:
     RUSTFLAGS: -Dwarnings
@@ -17,12 +18,12 @@ jobs:
     displayName: Code coverage
 
     pool:
-      vmImage: ubuntu-18.04
+      vmImage: ubuntu-22.04
 
     steps:
       - template: azure-install-rust.yml
         parameters:
-          rust_version: 1.63.0
+          rust_version: 1.65.0
       - template: azure-install-sccache.yml
 
       - script: cargo install cargo-tarpaulin

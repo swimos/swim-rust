@@ -1,5 +1,0 @@
-error: Lifecycle cannot be created from Union.
-  --> $DIR/union_map_lifecycle.rs:24:11
-   |
-24 |     union MapLifecycle {
-   |           ^^^^^^^^^^^^

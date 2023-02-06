@@ -1,9 +1,9 @@
-trigger: ["main"]
-pr: ["main"]
+trigger: ["main", "byte-routing"]
+pr: ["main", "byte-routing"]
 
 variables:
   RUSTFLAGS: -Dwarnings
-  RUST_VERSION: 1.63.0
+  RUST_VERSION: 1.65.0
 
 stages:
   - stage: Lint

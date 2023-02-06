@@ -1,5 +1,0 @@
-{
-    @downlink_connections {
-        buffer_size: 2
-    }
-}

@@ -15,28 +15,37 @@
 use std::fmt::{Debug, Formatter};
 
 use futures::future::BoxFuture;
+use swim_utilities::errors::Recoverable;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 
 use ratchet::{SplittableExtension, WebSocket};
 pub use swim_ratchet::*;
 pub use switcher::StreamSwitcher;
+use thiserror::Error;
 
 #[cfg(feature = "tls")]
 use {
-    crate::error::TlsError, crate::ws::tls::build_x509_certificate, std::path::Path,
+    crate::error::tls::TlsError, crate::ws::tls::build_x509_certificate, std::path::Path,
     tokio_native_tls::native_tls::Certificate, tokio_native_tls::TlsStream,
 };
 
-use crate::error::ConnectionError;
-
 pub mod ext;
 mod swim_ratchet;
-pub mod utils;
 
 mod switcher;
 
+#[cfg(feature = "tls")]
 pub mod tls;
+
+#[derive(Debug, Error)]
+#[error("{0}")]
+pub struct RatchetError(#[from] ratchet::Error);
+impl Recoverable for RatchetError {
+    fn is_fatal(&self) -> bool {
+        true
+    }
+}
 
 #[cfg(feature = "tls")]
 pub type WebSocketDef<E> = WebSocket<StreamSwitcher<TcpStream, TlsStream<TcpStream>>, E>;
@@ -54,18 +63,17 @@ pub trait WsConnections<Socket>
 where
     Socket: Send + Sync + Unpin,
 {
-    type Ext: SplittableExtension + Send + 'static;
-    type Error: Into<ConnectionError>;
+    type Ext: SplittableExtension + Send + Sync + 'static;
 
     /// Negotiate a new client connection.
     fn open_connection(
         &self,
         socket: Socket,
         addr: String,
-    ) -> WsOpenFuture<Socket, Self::Ext, Self::Error>;
+    ) -> WsOpenFuture<Socket, Self::Ext, RatchetError>;
 
     /// Negotiate a new server connection.
-    fn accept_connection(&self, socket: Socket) -> WsOpenFuture<Socket, Self::Ext, Self::Error>;
+    fn accept_connection(&self, socket: Socket) -> WsOpenFuture<Socket, Self::Ext, RatchetError>;
 }
 
 /// Trait for factories that asynchronously create web socket connections. This exists primarily
@@ -75,7 +83,7 @@ pub trait WebsocketFactory: Send + Sync {
     type Ext: SplittableExtension + Send + 'static;
 
     /// Open a connection to the provided remote URL.
-    fn connect(&mut self, url: url::Url) -> WsOpenFuture<Self::Sock, Self::Ext, ConnectionError>;
+    fn connect(&mut self, url: url::Url) -> WsOpenFuture<Self::Sock, Self::Ext, RatchetError>;
 }
 
 #[derive(Clone)]

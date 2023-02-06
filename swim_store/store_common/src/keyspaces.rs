@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swim_api::store::RangeConsumer;
+
 use crate::StoreError;
 
 /// A handle to a portion of logically partitioned data.
@@ -53,6 +55,23 @@ impl<O> Keyspaces<O> {
 
 /// A trait for abstracting over database engines and partitioning data by a logical keyspace.
 pub trait KeyspaceByteEngine: Send + Sync + 'static {
+    type RangeCon<'a>: RangeConsumer + Send + 'a
+    where
+        Self: 'a;
+
+    /// Read a range of records from a specific keyspace, with a shared prefix.
+    /// #Arguments
+    ///
+    /// * `keyspace` - The keyspace to query.
+    /// * `prefix` - The shared keyspace.
+    fn get_prefix_range_consumer<'a, S>(
+        &'a self,
+        keyspace: S,
+        prefix: &[u8],
+    ) -> Result<Self::RangeCon<'a>, StoreError>
+    where
+        S: Keyspace;
+
     /// Put a key-value pair into the specified keyspace.
     fn put_keyspace<K: Keyspace>(
         &self,
@@ -101,6 +120,16 @@ pub trait KeyspaceByteEngine: Send + Sync + 'static {
     ) -> Result<Option<Vec<(K, V)>>, StoreError>
     where
         F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
+        S: Keyspace;
+
+    /// Remove all entries from a keyspace with keys in the specified range [start, ubound).
+    fn delete_key_range<S>(
+        &self,
+        keyspace: S,
+        start: &[u8],
+        ubound: &[u8],
+    ) -> Result<(), StoreError>
+    where
         S: Keyspace;
 }
 

@@ -5,7 +5,8 @@ edition = "2021"
 
 [dependencies]
 store_common = { path = "../store_common" }
-rocksdb = "0.19.0"
+rocksdb = { workspace = true }
 
 [dev-dependencies]
-tempdir = "0.3.7"
+tempdir = { workspace = true }
+integer-encoding = { workspace = true }

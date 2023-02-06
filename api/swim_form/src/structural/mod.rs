@@ -39,6 +39,7 @@ pub use swim_form_derive::Tag;
 /// use swim_model::time::Timestamp;
 ///
 /// #[derive(Tag, Clone)]
+/// # #[form_root(::swim_form)]
 /// enum Level {
 ///     #[form(tag = "info")]
 ///     Info,
@@ -47,6 +48,7 @@ pub use swim_form_derive::Tag;
 /// }
 ///
 /// #[derive(Form)]
+/// # #[form_root(::swim_form)]
 /// struct LogEntry {
 ///     #[form(tag)]
 ///     level: Level,

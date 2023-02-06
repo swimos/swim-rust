@@ -13,7 +13,6 @@
 // limitations under the License.
 
 mod monoid;
-mod non_zero_usize;
 mod semigroup;
 mod zero;
 

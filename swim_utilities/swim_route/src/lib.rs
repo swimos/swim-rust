@@ -13,4 +13,4 @@
 // limitations under the License.
 
 pub mod route_pattern;
-pub mod uri;
+pub mod route_uri;

@@ -1,0 +1,272 @@
+// Copyright 2015-2021 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::collections::HashMap;
+
+use crate::agent_lifecycle::utility::HandlerContext;
+
+use super::EventHandler;
+
+pub trait HandlerFn0<'a, Context, Shared> {
+    type Handler: EventHandler<Context> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+    ) -> Self::Handler;
+}
+
+impl<'a, Context, Shared, F, H> HandlerFn0<'a, Context, Shared> for F
+where
+    H: EventHandler<Context> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>) -> H + 'a,
+    Shared: 'a,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+    ) -> Self::Handler {
+        self(shared, handler_context)
+    }
+}
+
+pub trait EventFn<'a, Context, Shared, T: ?Sized> {
+    type Handler: EventHandler<Context> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: &T,
+    ) -> Self::Handler;
+}
+
+impl<'a, Context, Shared, T, F, H> EventFn<'a, Context, Shared, T> for F
+where
+    T: ?Sized,
+    H: EventHandler<Context> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, &T) -> H + 'a,
+    Shared: 'a,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: &T,
+    ) -> Self::Handler {
+        self(shared, handler_context, value)
+    }
+}
+
+pub trait UpdateFn<'a, Context, Shared, T> {
+    type Handler: EventHandler<Context> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: &T,
+        old: Option<T>,
+    ) -> Self::Handler;
+}
+
+impl<'a, Context, Shared, T, F, H> UpdateFn<'a, Context, Shared, T> for F
+where
+    H: EventHandler<Context> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, &T, Option<T>) -> H + 'a,
+    Shared: 'a,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: &T,
+        old: Option<T>,
+    ) -> Self::Handler {
+        self(shared, handler_context, value, old)
+    }
+}
+
+pub trait UpdateBorrowFn<'a, Context, Shared, T, B: ?Sized> {
+    type Handler: EventHandler<Context> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: &B,
+        old: Option<T>,
+    ) -> Self::Handler;
+}
+
+impl<'a, Context, Shared, T, B, F, H> UpdateBorrowFn<'a, Context, Shared, T, B> for F
+where
+    B: ?Sized,
+    H: EventHandler<Context> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, &B, Option<T>) -> H + 'a,
+    Shared: 'a,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: &B,
+        old: Option<T>,
+    ) -> Self::Handler {
+        self(shared, handler_context, value, old)
+    }
+}
+
+pub trait TakeFn<'a, Context, Shared, T> {
+    type Handler: EventHandler<Context> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: T,
+    ) -> Self::Handler;
+}
+
+impl<'a, Context, Shared, T, F, H> TakeFn<'a, Context, Shared, T> for F
+where
+    H: EventHandler<Context> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, T) -> H + 'a,
+    Shared: 'a,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: T,
+    ) -> Self::Handler {
+        self(shared, handler_context, value)
+    }
+}
+
+pub trait MapRemoveFn<'a, Context, Shared, K, V> {
+    type Handler: EventHandler<Context> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: V,
+    ) -> Self::Handler;
+}
+
+impl<'a, Context, Shared, K, V, F, H> MapRemoveFn<'a, Context, Shared, K, V> for F
+where
+    H: EventHandler<Context> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, &HashMap<K, V>, K, V) -> H + 'a,
+    Shared: 'a,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: V,
+    ) -> Self::Handler {
+        self(shared, handler_context, map, key, prev_value)
+    }
+}
+
+pub trait MapUpdateFn<'a, Context, Shared, K, V> {
+    type Handler: EventHandler<Context> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: Option<V>,
+        new_value: &V,
+    ) -> Self::Handler;
+}
+
+impl<'a, Context, Shared, K, V, F, H> MapUpdateFn<'a, Context, Shared, K, V> for F
+where
+    H: EventHandler<Context> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, &HashMap<K, V>, K, Option<V>, &V) -> H + 'a,
+    Shared: 'a,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: Option<V>,
+        new_value: &V,
+    ) -> Self::Handler {
+        self(shared, handler_context, map, key, prev_value, new_value)
+    }
+}
+
+pub trait MapUpdateBorrowFn<'a, Context, Shared, K, V, B: ?Sized> {
+    type Handler: EventHandler<Context> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: Option<V>,
+        new_value: &B,
+    ) -> Self::Handler;
+}
+
+impl<'a, Context, Shared, K, V, B, F, H> MapUpdateBorrowFn<'a, Context, Shared, K, V, B> for F
+where
+    B: ?Sized,
+    H: EventHandler<Context> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, &HashMap<K, V>, K, Option<V>, &B) -> H + 'a,
+    Shared: 'a,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: Option<V>,
+        new_value: &B,
+    ) -> Self::Handler {
+        self(shared, handler_context, map, key, prev_value, new_value)
+    }
+}

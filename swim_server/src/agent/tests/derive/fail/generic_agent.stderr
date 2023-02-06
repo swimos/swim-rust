@@ -1,5 +1,0 @@
-error: Swim agent cannot have generic parameters.
-  --> src/agent/tests/derive/fail/generic_agent.rs:23:16
-   |
-23 |     pub struct TestAgent<S> {
-   |                ^^^^^^^^^

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod agent;
 pub mod backpressure;
-pub mod configuration;
+pub mod downlink;
 pub mod error;
-pub mod remote;
-pub mod routing;
+pub mod net;
 pub mod ws;

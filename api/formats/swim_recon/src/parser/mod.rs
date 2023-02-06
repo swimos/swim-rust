@@ -22,6 +22,11 @@ mod tokens;
 
 use crate::hasher::calculate_hash;
 pub use crate::parser::error::ParseError;
+use nom::branch::alt;
+use nom::character::complete::space0;
+use nom::combinator::{eof, map};
+use nom::sequence::{delimited, terminated};
+use nom::Finish;
 use nom_locate::LocatedSpan;
 pub use record::HashParser;
 pub use record::IncrementalReconParser;
@@ -32,6 +37,10 @@ use swim_form::structural::read::event::ReadEvent;
 use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
 use swim_model::Value;
+
+pub use record::matcher::{
+    try_extract_header, try_extract_header_str, HeaderPeeler, MessageExtractError,
+};
 
 /// Wraps a string in a structure that keeps track of the line and column
 /// as the input is parsed.
@@ -140,6 +149,24 @@ pub fn parse_recognize<T: RecognizerReadable>(
 ) -> Result<T, ParseError> {
     let mut recognizer = T::make_recognizer();
     parse_recognize_with(input, &mut recognizer, allow_comments)
+}
+
+/// Attempt to parse a text token from entirety of the input (either an identifier or the content of
+/// a string literal).
+pub fn parse_text(input: Span<'_>) -> Result<Cow<'_, str>, ParseError> {
+    let mut text_parser = terminated(
+        delimited(
+            space0,
+            alt((
+                map(tokens::complete::identifier, Cow::Borrowed),
+                tokens::string_literal,
+            )),
+            space0,
+        ),
+        eof,
+    );
+    let (_, text) = text_parser(input).finish()?;
+    Ok(text)
 }
 
 /// Parse exactly one ['Value'] from the input, returning an error if the string does not contain

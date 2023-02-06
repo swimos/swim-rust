@@ -16,6 +16,7 @@ use swim_form_derive::*;
 
 fn main() {
     #[derive(Tag)]
+    #[form_root(::swim_form)]
     struct S {
         a: i32,
         b: i32,

@@ -13,14 +13,9 @@
 // limitations under the License.
 
 mod combinators;
-pub mod item_sink;
-pub mod open_ended;
-pub mod request;
 pub mod retryable;
-pub mod task;
 
 pub use combinators::{
-    FlatmapStream, NeverErrorStream, NotifyOnBlocked, SwimFutureExt, SwimStreamExt,
-    SwimTryFutureExt, Transform, TransformMut, TransformOnce, TransformedFuture, TransformedSink,
-    TransformedStream, TransformedStreamFut,
+    immediate_or_join, immediate_or_start, ImmediateOrJoin, ImmediateOrStart, NotifyOnBlocked,
+    SecondaryResult, StopAfterError,
 };

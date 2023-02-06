@@ -12,10 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(feature = "coop")]
+mod coop;
 #[cfg(test)]
 mod tests;
 
 use bytes::{Buf, BytesMut};
+pub use coop::{BudgetedFutureExt, RunWithBudget};
+use futures::ready;
 use parking_lot::Mutex;
 use std::io::{Error, ErrorKind, Result as IoResult};
 use std::num::NonZeroUsize;
@@ -42,6 +46,11 @@ pub fn byte_channel(buffer_size: NonZeroUsize) -> (ByteWriter, ByteReader) {
     )
 }
 
+pub fn are_connected(tx: &ByteWriter, rx: &ByteReader) -> bool {
+    Arc::ptr_eq(&tx.inner, &rx.inner)
+}
+
+#[derive(Debug)]
 struct Conduit {
     data: BytesMut,
     capacity: usize,
@@ -101,15 +110,15 @@ impl AsyncRead for Conduit {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<IoResult<()>> {
-        let remaining = buf.remaining();
-        if self.data.has_remaining() && remaining > 0 {
-            let count = self.data.remaining().min(remaining);
-            self.read(buf, count);
+        if self.data.has_remaining() {
+            let count = self.data.remaining().min(buf.remaining());
+            if count > 0 {
+                self.read(buf, count);
+            }
             Poll::Ready(Ok(()))
         } else if self.closed {
-            Poll::Ready(Err(ErrorKind::BrokenPipe.into()))
+            Poll::Ready(Ok(()))
         } else {
-            debug_assert!(self.waker.is_none());
             self.waker = Some(cx.waker().clone());
             Poll::Pending
         }
@@ -130,7 +139,6 @@ impl AsyncWrite for Conduit {
         } else {
             let available = self.capacity - self.data.len();
             if available == 0 {
-                debug_assert!(self.waker.is_none());
                 self.waker = Some(cx.waker().clone());
                 return Poll::Pending;
             }
@@ -152,6 +160,7 @@ impl AsyncWrite for Conduit {
     }
 }
 
+#[derive(Debug)]
 pub struct ByteReader {
     inner: Arc<Mutex<Conduit>>,
 }
@@ -163,6 +172,20 @@ impl Drop for ByteReader {
     }
 }
 
+#[cfg(feature = "coop")]
+impl AsyncRead for ByteReader {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<IoResult<()>> {
+        ready!(coop::consume_budget(cx));
+        let inner = &mut *(self.inner.lock());
+        coop::track_progress(Pin::new(inner).poll_read(cx, buf))
+    }
+}
+
+#[cfg(not(feature = "coop"))]
 impl AsyncRead for ByteReader {
     fn poll_read(
         self: Pin<&mut Self>,
@@ -174,8 +197,15 @@ impl AsyncRead for ByteReader {
     }
 }
 
+#[derive(Debug)]
 pub struct ByteWriter {
     inner: Arc<Mutex<Conduit>>,
+}
+
+impl ByteWriter {
+    pub fn is_closed(&self) -> bool {
+        self.inner.lock().closed
+    }
 }
 
 impl Drop for ByteWriter {
@@ -185,6 +215,32 @@ impl Drop for ByteWriter {
     }
 }
 
+#[cfg(feature = "coop")]
+impl AsyncWrite for ByteWriter {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, Error>> {
+        ready!(coop::consume_budget(cx));
+        let inner = &mut *(self.inner.lock());
+        coop::track_progress(Pin::new(inner).poll_write(cx, buf))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        ready!(coop::consume_budget(cx));
+        let inner = &mut *(self.inner.lock());
+        Pin::new(inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        ready!(coop::consume_budget(cx));
+        let inner = &mut *(self.inner.lock());
+        Pin::new(inner).poll_shutdown(cx)
+    }
+}
+
+#[cfg(not(feature = "coop"))]
 impl AsyncWrite for ByteWriter {
     fn poll_write(
         self: Pin<&mut Self>,

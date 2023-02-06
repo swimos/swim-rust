@@ -5,10 +5,9 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-futures = "0.3.4"
-slab = "0.4.2"
-parking_lot = "0.8.0"
-pin-utils = "0.1.0"
+futures = { workspace = true }
+slab = { workspace = true }
+parking_lot = { workspace = true }
 
 [dev-dependencies]
-tokio = { version = "1.1.1", features = ["rt-multi-thread", "macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

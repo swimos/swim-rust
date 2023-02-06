@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Formatter;
+use std::{borrow::Cow, fmt::Formatter};
 
+pub mod address;
 mod attr;
 pub use num_bigint as bigint;
 mod blob;
@@ -22,7 +23,6 @@ mod item;
 #[macro_use]
 pub mod macros;
 mod num;
-pub mod path;
 #[cfg(test)]
 mod tests;
 mod text;
@@ -42,6 +42,14 @@ pub fn write_string_literal(literal: &str, f: &mut Formatter<'_>) -> Result<(), 
         write!(f, "\"{}\"", escape_text(literal))
     } else {
         write!(f, "\"{}\"", literal)
+    }
+}
+
+pub fn escape_if_needed(text: &str) -> Cow<str> {
+    if needs_escape(text) {
+        Cow::Owned(escape_text(text))
+    } else {
+        Cow::Borrowed(text)
     }
 }
 
