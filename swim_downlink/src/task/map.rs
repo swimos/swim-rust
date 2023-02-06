@@ -23,9 +23,10 @@ use std::mem::take;
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, MapNotificationDecoder,
+    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, RecNotificationDecoder,
 };
 use swim_api::protocol::map::MapMessage;
+use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
 use swim_model::address::Address;
@@ -101,6 +102,7 @@ pub async fn map_downlink_task<K, V, LC>(
 where
     K: Clone + Form + Send + Sync + Eq + Hash + Ord + 'static,
     V: Clone + Form + Send + Sync + 'static,
+    <V as RecognizerReadable>::Rec: Send,
     LC: MapDownlinkLifecycle<K, V>,
 {
     let MapDownlinkModel { actions, lifecycle } = model;
@@ -149,6 +151,7 @@ async fn read_task<K, V, LC>(
 where
     K: Ord + Clone + Form + Send + Sync + Eq + Hash + 'static,
     V: Clone + Form + Send + Sync + 'static,
+    <V as RecognizerReadable>::Rec: Send,
     LC: MapDownlinkLifecycle<K, V>,
 {
     let DownlinkConfig {
@@ -158,7 +161,7 @@ where
     } = config;
 
     let mut state: State<K, V> = State::Unlinked;
-    let mut framed_read = FramedRead::new(input, MapNotificationDecoder::default());
+    let mut framed_read = FramedRead::new(input, RecNotificationDecoder::default());
 
     while let Some(result) = framed_read.next().await {
         match result? {

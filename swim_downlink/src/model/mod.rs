@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch};
 
-use crate::model::lifecycle::BasicMapDownlinkLifecycle;
+use crate::model::lifecycle::{BasicMapDownlinkLifecycle, MapDownlinkLifecycle};
 use lifecycle::{
     BasicEventDownlinkLifecycle, BasicValueDownlinkLifecycle, EventDownlinkLifecycle,
     ValueDownlinkLifecycle,
@@ -140,6 +140,24 @@ where
 
         EventDownlinkModel {
             _type: PhantomData,
+            lifecycle: f(lifecycle),
+        }
+    }
+}
+
+impl<K, V, LC> MapDownlinkModel<K, V, LC>
+where
+    LC: MapDownlinkLifecycle<K, V>,
+{
+    pub fn with_lifecycle<F, LC2>(self, f: F) -> MapDownlinkModel<K, V, LC2>
+    where
+        F: Fn(LC) -> LC2,
+        LC2: MapDownlinkLifecycle<K, V>,
+    {
+        let MapDownlinkModel { actions, lifecycle } = self;
+
+        MapDownlinkModel {
+            actions,
             lifecycle: f(lifecycle),
         }
     }

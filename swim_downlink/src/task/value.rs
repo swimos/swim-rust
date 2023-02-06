@@ -27,7 +27,7 @@ use tracing_futures::Instrument;
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
+    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, RecNotificationDecoder,
 };
 use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
@@ -116,7 +116,7 @@ where
         ..
     } = config;
     let mut state: State<Arc<T>> = State::Unlinked;
-    let mut framed_read = FramedRead::new(input, ValueNotificationDecoder::default());
+    let mut framed_read = FramedRead::new(input, RecNotificationDecoder::default());
 
     let propagate = |value: Arc<T>| {
         if !get_value.is_closed() {

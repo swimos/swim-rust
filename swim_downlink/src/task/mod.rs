@@ -123,6 +123,8 @@ where
     V: Clone + Form + Send + Sync + Eq + Hash + 'static,
     <K as RecognizerReadable>::Rec: Send,
     <V as RecognizerReadable>::Rec: Send,
+    <K as RecognizerReadable>::BodyRec: Send,
+    <V as RecognizerReadable>::BodyRec: Send,
     LC: MapDownlinkLifecycle<K, V> + 'static,
 {
     fn kind(&self) -> DownlinkKind {

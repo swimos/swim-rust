@@ -24,7 +24,7 @@ use futures::future::{join3, join4};
 use futures::{SinkExt, StreamExt};
 use swim_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
 use swim_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
+    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, RecNotificationDecoder,
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
@@ -87,7 +87,7 @@ async fn run_fake_downlink(
         return Err(DownlinkTaskError::FailedToStart);
     }
     let mut state = State::Unlinked;
-    let mut read = FramedRead::new(rx_in, ValueNotificationDecoder::default());
+    let mut read = FramedRead::new(rx_in, RecNotificationDecoder::default());
 
     let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);
 
@@ -790,7 +790,7 @@ async fn run_simple_fake_downlink(
         return Err(DownlinkTaskError::FailedToStart);
     }
     let mut state = State::Unlinked;
-    let mut read = FramedRead::new(rx_in, ValueNotificationDecoder::default());
+    let mut read = FramedRead::new(rx_in, RecNotificationDecoder::default());
 
     let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);
 

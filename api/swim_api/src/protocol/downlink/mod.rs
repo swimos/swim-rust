@@ -90,6 +90,7 @@ impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEn
         Ok(())
     }
 }
+
 #[derive(Debug)]
 pub enum DownlinkNotificationDecoderState<T> {
     ReadingHeader,
@@ -124,11 +125,11 @@ type MapNotDecoderInner<K, V> = DownlinkNotificationDecoder<MapMessage<K, V>, Ms
 type ValueNotDecoderInner<T> =
     DownlinkNotificationDecoder<T, RecognizerDecoder<<T as RecognizerReadable>::Rec>>;
 
-pub struct ValueNotificationDecoder<T: RecognizerReadable> {
+pub struct RecNotificationDecoder<T: RecognizerReadable> {
     inner: ValueNotDecoderInner<T>,
 }
 
-impl<T> Default for ValueNotificationDecoder<T>
+impl<T> Default for RecNotificationDecoder<T>
 where
     T: RecognizerReadable,
 {
@@ -174,7 +175,7 @@ where
     }
 }
 
-impl<T> Decoder for ValueNotificationDecoder<T>
+impl<T> Decoder for RecNotificationDecoder<T>
 where
     T: RecognizerReadable,
 {

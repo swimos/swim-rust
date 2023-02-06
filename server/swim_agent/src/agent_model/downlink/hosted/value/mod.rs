@@ -20,7 +20,7 @@ use std::fmt::Write;
 use swim_api::{
     error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},
     protocol::{
-        downlink::{DownlinkNotification, ValueNotificationDecoder},
+        downlink::{DownlinkNotification, RecNotificationDecoder},
         WithLengthBytesCodec,
     },
 };
@@ -103,7 +103,7 @@ where
 /// task.
 pub struct HostedValueDownlinkChannel<T: RecognizerReadable, LC, State> {
     address: Address<Text>,
-    receiver: Option<FramedRead<ByteReader, ValueNotificationDecoder<T>>>,
+    receiver: Option<FramedRead<ByteReader, RecNotificationDecoder<T>>>,
     state: State,
     next: Option<DownlinkNotification<T>>,
     lifecycle: LC,

@@ -43,6 +43,16 @@ pub trait MapDownlinkLifecycle<K, V>:
 {
 }
 
+impl<K, V, L> MapDownlinkLifecycle<K, V> for L where
+    L: OnLinked
+        + OnSynced<BTreeMap<K, V>>
+        + OnUpdate<K, V>
+        + OnRemove<K, V>
+        + OnClear<K, V>
+        + OnUnlinked
+{
+}
+
 /// Description of a lifecycle for a value downlink.
 pub trait ValueDownlinkLifecycle<T>:
     OnLinked + OnSynced<T> + OnEvent<T> + OnSet<T> + OnUnlinked
@@ -2004,7 +2014,7 @@ impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        F: FnMut() + Send,
+        F: FnMut(&mut Shared) + Send,
     {
         StatefulMapDownlinkLifecycle {
             _type: PhantomData,
@@ -2065,7 +2075,7 @@ impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        F: FnMut(&BTreeMap<K, V>) + Send,
+        F: FnMut(&mut Shared, &BTreeMap<K, V>) + Send,
     {
         StatefulMapDownlinkLifecycle {
             _type: PhantomData,
@@ -2126,7 +2136,7 @@ impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        F: FnMut(K, &BTreeMap<K, V>, Option<V>, &V) + Send,
+        F: FnMut(&mut Shared, K, &BTreeMap<K, V>, Option<V>, &V) + Send,
     {
         StatefulMapDownlinkLifecycle {
             _type: PhantomData,
@@ -2187,7 +2197,7 @@ impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        F: FnMut(K, &BTreeMap<K, V>, V) + Send,
+        F: FnMut(&mut Shared, K, &BTreeMap<K, V>, V) + Send,
     {
         StatefulMapDownlinkLifecycle {
             _type: PhantomData,
@@ -2248,7 +2258,7 @@ impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         FUnlink,
     >
     where
-        F: FnMut(BTreeMap<K, V>) + Send,
+        F: FnMut(&mut Shared, BTreeMap<K, V>) + Send,
     {
         StatefulMapDownlinkLifecycle {
             _type: PhantomData,
@@ -2309,7 +2319,7 @@ impl<K, V, Shared, FLinked, FSynced, FUpdated, FRemoved, FClear, FUnlink>
         BlockingHandler<F>,
     >
     where
-        F: FnMut() + Send,
+        F: FnMut(&mut Shared) + Send,
     {
         StatefulMapDownlinkLifecycle {
             _type: PhantomData,
