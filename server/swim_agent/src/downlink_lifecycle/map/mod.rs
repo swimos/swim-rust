@@ -28,7 +28,7 @@ use super::{
     on_linked::{OnLinked, OnLinkedShared},
     on_synced::{OnSynced, OnSyncedShared},
     on_unlinked::{OnUnlinked, OnUnlinkedShared},
-    LiftShared, WithHandlerContext, WithHandlerContextBorrow,
+    LiftShared, WithHandlerContext, WithHandlerContextBorrow, on_failed::{OnFailed, OnFailedShared},
 };
 
 pub mod on_clear;
@@ -48,6 +48,7 @@ pub trait MapDownlinkLifecycle<K, V, Context>:
     + OnDownlinkRemove<K, V, Context>
     + OnDownlinkClear<K, V, Context>
     + OnUnlinked<Context>
+    + OnFailed<Context>
 {
 }
 
@@ -58,6 +59,7 @@ impl<LC, K, V, Context> MapDownlinkLifecycle<K, V, Context> for LC where
         + OnDownlinkRemove<K, V, Context>
         + OnDownlinkClear<K, V, Context>
         + OnUnlinked<Context>
+        + OnFailed<Context>,
 {
 }
 
@@ -70,6 +72,7 @@ impl<LC, K, V, Context> MapDownlinkLifecycle<K, V, Context> for LC where
 /// * `FLinked` - The type of the 'on_linked' handler.
 /// * `FSynced` - The type of the 'on_synced' handler.
 /// * `FUnlinked` - The type of the 'on_unlinked' handler.
+/// * `FFailed` - The type of the 'on_failed' handler.
 /// * `FUpd` - The type of the 'on_update' handler.
 /// * `FRem` - The type of the 'on_remove' handler.
 /// * `FClr` - The type of the 'on_clear' handler.
@@ -82,6 +85,7 @@ pub struct StatelessMapDownlinkLifecycle<
     FLinked = NoHandler,
     FSynced = NoHandler,
     FUnlinked = NoHandler,
+    FFailed = NoHandler,
     FUpd = NoHandler,
     FRem = NoHandler,
     FClr = NoHandler,
@@ -90,6 +94,7 @@ pub struct StatelessMapDownlinkLifecycle<
     on_linked: FLinked,
     on_synced: FSynced,
     on_unlinked: FUnlinked,
+    on_failed: FFailed,
     on_update: FUpd,
     on_remove: FRem,
     on_clear: FClr,
@@ -102,6 +107,7 @@ impl<Context, K, V> Default for StatelessMapDownlinkLifecycle<Context, K, V> {
             on_linked: Default::default(),
             on_synced: Default::default(),
             on_unlinked: Default::default(),
+            on_failed: Default::default(),
             on_update: Default::default(),
             on_remove: Default::default(),
             on_clear: Default::default(),
@@ -119,6 +125,7 @@ impl<Context, K, V> Default for StatelessMapDownlinkLifecycle<Context, K, V> {
 /// * `FLinked` - The type of the 'on_linked' handler.
 /// * `FSynced` - The type of the 'on_synced' handler.
 /// * `FUnlinked` - The type of the 'on_unlinked' handler.
+/// * `FFailed` - The type of the 'on_failed' handler.
 /// * `FUpd` - The type of the 'on_update' handler.
 /// * `FRem` - The type of the 'on_remove' handler.
 /// * `FClr` - The type of the 'on_clear' handler.
@@ -132,6 +139,7 @@ pub struct StatefulMapDownlinkLifecycle<
     FLinked = NoHandler,
     FSynced = NoHandler,
     FUnlinked = NoHandler,
+    FFailed = NoHandler,
     FUpd = NoHandler,
     FRem = NoHandler,
     FClr = NoHandler,
@@ -142,6 +150,7 @@ pub struct StatefulMapDownlinkLifecycle<
     on_linked: FLinked,
     on_synced: FSynced,
     on_unlinked: FUnlinked,
+    on_failed: FFailed,
     on_update: FUpd,
     on_remove: FRem,
     on_clear: FClr,
@@ -156,6 +165,7 @@ impl<Context, State, K, V> StatefulMapDownlinkLifecycle<Context, State, K, V> {
             on_linked: Default::default(),
             on_synced: Default::default(),
             on_unlinked: Default::default(),
+            on_failed: Default::default(),
             on_update: Default::default(),
             on_remove: Default::default(),
             on_clear: Default::default(),
@@ -163,7 +173,7 @@ impl<Context, State, K, V> StatefulMapDownlinkLifecycle<Context, State, K, V> {
     }
 }
 
-impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> Clone
+impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> Clone
     for StatefulMapDownlinkLifecycle<
         Context,
         State,
@@ -172,6 +182,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> Clone
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -181,6 +192,7 @@ where
     FLinked: Clone,
     FSynced: Clone,
     FUnlinked: Clone,
+    FFailed: Clone,
     FUpd: Clone,
     FRem: Clone,
     FClr: Clone,
@@ -193,6 +205,7 @@ where
             on_linked: self.on_linked.clone(),
             on_synced: self.on_synced.clone(),
             on_unlinked: self.on_unlinked.clone(),
+            on_failed: self.on_failed.clone(),
             on_update: self.on_update.clone(),
             on_remove: self.on_remove.clone(),
             on_clear: self.on_clear.clone(),
@@ -200,12 +213,13 @@ where
     }
 }
 
-impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> Clone
-    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> Clone
+    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
 where
     FLinked: Clone,
     FSynced: Clone,
     FUnlinked: Clone,
+    FFailed: Clone,
     FUpd: Clone,
     FRem: Clone,
     FClr: Clone,
@@ -216,6 +230,7 @@ where
             on_linked: self.on_linked.clone(),
             on_synced: self.on_synced.clone(),
             on_unlinked: self.on_unlinked.clone(),
+            on_failed: self.on_failed.clone(),
             on_update: self.on_update.clone(),
             on_remove: self.on_remove.clone(),
             on_clear: self.on_clear.clone(),
@@ -223,12 +238,13 @@ where
     }
 }
 
-impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnLinked<Context>
-    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> OnLinked<Context>
+    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
 where
     FLinked: OnLinked<Context>,
     FSynced: Send,
     FUnlinked: Send,
+    FFailed: Send,
     FUpd: Send,
     FRem: Send,
     FClr: Send,
@@ -243,12 +259,13 @@ where
     }
 }
 
-impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnSynced<HashMap<K, V>, Context>
-    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> OnSynced<HashMap<K, V>, Context>
+    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
 where
     FLinked: Send,
     FSynced: OnSynced<HashMap<K, V>, Context>,
     FUnlinked: Send,
+    FFailed: Send,
     FUpd: Send,
     FRem: Send,
     FClr: Send,
@@ -263,12 +280,13 @@ where
     }
 }
 
-impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnUnlinked<Context>
-    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> OnUnlinked<Context>
+    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
 where
     FLinked: Send,
     FSynced: Send,
     FUnlinked: OnUnlinked<Context>,
+    FFailed: Send,
     FUpd: Send,
     FRem: Send,
     FClr: Send,
@@ -283,12 +301,34 @@ where
     }
 }
 
-impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnDownlinkUpdate<K, V, Context>
-    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> OnFailed<Context>
+    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
 where
     FLinked: Send,
     FSynced: Send,
     FUnlinked: Send,
+    FFailed: OnFailed<Context>,
+    FUpd: Send,
+    FRem: Send,
+    FClr: Send,
+{
+    type OnFailedHandler<'a> = FFailed::OnFailedHandler<'a>
+    where
+        Self: 'a;
+
+    fn on_failed(&self) -> Self::OnFailedHandler<'_> {
+        let StatelessMapDownlinkLifecycle { on_failed, .. } = self;
+        on_failed.on_failed()
+    }
+}
+
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> OnDownlinkUpdate<K, V, Context>
+    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
+where
+    FLinked: Send,
+    FSynced: Send,
+    FUnlinked: Send,
+    FFailed: Send,
     FUpd: OnDownlinkUpdate<K, V, Context>,
     FRem: Send,
     FClr: Send,
@@ -309,12 +349,13 @@ where
     }
 }
 
-impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnDownlinkRemove<K, V, Context>
-    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> OnDownlinkRemove<K, V, Context>
+    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
 where
     FLinked: Send,
     FSynced: Send,
     FUnlinked: Send,
+    FFailed: Send,
     FUpd: Send,
     FRem: OnDownlinkRemove<K, V, Context>,
     FClr: Send,
@@ -334,12 +375,13 @@ where
     }
 }
 
-impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnDownlinkClear<K, V, Context>
-    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> OnDownlinkClear<K, V, Context>
+    for StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
 where
     FLinked: Send,
     FSynced: Send,
     FUnlinked: Send,
+    FFailed: Send,
     FUpd: Send,
     FRem: Send,
     FClr: OnDownlinkClear<K, V, Context>,
@@ -354,7 +396,7 @@ where
     }
 }
 
-pub type LiftedMapLifecycle<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> =
+pub type LiftedMapLifecycle<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> =
     StatefulMapDownlinkLifecycle<
         Context,
         State,
@@ -363,12 +405,13 @@ pub type LiftedMapLifecycle<Context, State, K, V, FLinked, FSynced, FUnlinked, F
         LiftShared<FLinked, State>,
         LiftShared<FSynced, State>,
         LiftShared<FUnlinked, State>,
+        LiftShared<FFailed, State>,
         LiftShared<FUpd, State>,
         LiftShared<FRem, State>,
         LiftShared<FClr, State>,
     >;
 
-type StatelessWithContextAndBorrow<Context, K, V, Linked, Synced, Unlinked, Rem, Clr, F, B> =
+type StatelessWithContextAndBorrow<Context, K, V, Linked, Synced, Unlinked, Failed, Rem, Clr, F, B> =
     StatelessMapDownlinkLifecycle<
         Context,
         K,
@@ -376,12 +419,13 @@ type StatelessWithContextAndBorrow<Context, K, V, Linked, Synced, Unlinked, Rem,
         Linked,
         Synced,
         Unlinked,
+        Failed,
         WithHandlerContextBorrow<Context, F, B>,
         Rem,
         Clr,
     >;
 
-type StatefulWithBorrow<Context, State, K, V, Linked, Synced, Unlinked, Rem, Clr, F, B> =
+type StatefulWithBorrow<Context, State, K, V, Linked, Synced, Unlinked, Failed, Rem, Clr, F, B> =
     StatefulMapDownlinkLifecycle<
         Context,
         State,
@@ -390,13 +434,14 @@ type StatefulWithBorrow<Context, State, K, V, Linked, Synced, Unlinked, Rem, Clr
         Linked,
         Synced,
         Unlinked,
+        Failed,
         BorrowHandler<F, B>,
         Rem,
         Clr,
     >;
 
-impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
-    StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
+    StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
 {
     /// Replace the 'on_linked' handler with another derived from a closure.
     pub fn on_linked<F>(
@@ -409,6 +454,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         WithHandlerContext<Context, F>,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -421,6 +467,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_linked: WithHandlerContext::new(f),
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_update: self.on_update,
             on_remove: self.on_remove,
             on_clear: self.on_clear,
@@ -438,6 +485,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         WithHandlerContext<Context, F>,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -450,6 +498,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_linked: self.on_linked,
             on_synced: WithHandlerContext::new(f),
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_update: self.on_update,
             on_remove: self.on_remove,
             on_clear: self.on_clear,
@@ -467,6 +516,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         WithHandlerContext<Context, F>,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -479,6 +529,38 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: WithHandlerContext::new(f),
+            on_failed: self.on_failed,
+            on_update: self.on_update,
+            on_remove: self.on_remove,
+            on_clear: self.on_clear,
+        }
+    }
+
+    /// Replace the 'on_unlinked' handler with another derived from a closure.
+    pub fn on_failed<F>(
+        self,
+        f: F,
+    ) -> StatelessMapDownlinkLifecycle<
+        Context,
+        K,
+        V,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        WithHandlerContext<Context, F>,
+        FUpd,
+        FRem,
+        FClr,
+    >
+    where
+        WithHandlerContext<Context, F>: OnFailed<Context>,
+    {
+        StatelessMapDownlinkLifecycle {
+            _type: PhantomData,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_unlinked: self.on_unlinked,
+            on_failed: WithHandlerContext::new(f),
             on_update: self.on_update,
             on_remove: self.on_remove,
             on_clear: self.on_clear,
@@ -489,7 +571,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     pub fn on_update<F, B>(
         self,
         f: F,
-    ) -> StatelessWithContextAndBorrow<Context, K, V, FLinked, FSynced, FUnlinked, FRem, FClr, F, B>
+    ) -> StatelessWithContextAndBorrow<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FRem, FClr, F, B>
     where
         B: ?Sized,
         V: Borrow<B>,
@@ -500,6 +582,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_update: WithHandlerContextBorrow::new(f),
             on_remove: self.on_remove,
             on_clear: self.on_clear,
@@ -517,6 +600,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         WithHandlerContext<Context, F>,
         FClr,
@@ -529,6 +613,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_update: self.on_update,
             on_remove: WithHandlerContext::new(f),
             on_clear: self.on_clear,
@@ -546,6 +631,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         WithHandlerContext<Context, F>,
@@ -558,6 +644,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_update: self.on_update,
             on_remove: self.on_remove,
             on_clear: WithHandlerContext::new(f),
@@ -568,12 +655,13 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     pub fn with_state<State>(
         self,
         state: State,
-    ) -> LiftedMapLifecycle<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+    ) -> LiftedMapLifecycle<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
     {
         let StatelessMapDownlinkLifecycle {
             on_linked,
             on_synced,
             on_unlinked,
+            on_failed,
             on_update,
             on_remove,
             on_clear,
@@ -586,6 +674,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_linked: LiftShared::new(on_linked),
             on_synced: LiftShared::new(on_synced),
             on_unlinked: LiftShared::new(on_unlinked),
+            on_failed: LiftShared::new(on_failed),
             on_update: LiftShared::new(on_update),
             on_remove: LiftShared::new(on_remove),
             on_clear: LiftShared::new(on_clear),
@@ -593,7 +682,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     }
 }
 
-impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnLinked<Context>
+impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> OnLinked<Context>
     for StatefulMapDownlinkLifecycle<
         Context,
         State,
@@ -602,6 +691,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnLink
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -611,6 +701,7 @@ where
     FLinked: OnLinkedShared<Context, State>,
     FSynced: Send,
     FUnlinked: Send,
+    FFailed: Send,
     FUpd: Send,
     FRem: Send,
     FClr: Send,
@@ -630,7 +721,7 @@ where
     }
 }
 
-impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
     OnSynced<HashMap<K, V>, Context>
     for StatefulMapDownlinkLifecycle<
         Context,
@@ -640,6 +731,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -649,6 +741,7 @@ where
     FLinked: Send,
     FSynced: OnSyncedShared<HashMap<K, V>, Context, State>,
     FUnlinked: Send,
+    FFailed: Send,
     FUpd: Send,
     FRem: Send,
     FClr: Send,
@@ -668,7 +761,7 @@ where
     }
 }
 
-impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnUnlinked<Context>
+impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> OnUnlinked<Context>
     for StatefulMapDownlinkLifecycle<
         Context,
         State,
@@ -677,6 +770,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> OnUnli
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -686,6 +780,7 @@ where
     FLinked: Send,
     FSynced: Send,
     FUnlinked: OnUnlinkedShared<Context, State>,
+    FFailed: Send,
     FUpd: Send,
     FRem: Send,
     FClr: Send,
@@ -705,8 +800,7 @@ where
     }
 }
 
-impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
-    OnDownlinkUpdate<K, V, Context>
+impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> OnFailed<Context>
     for StatefulMapDownlinkLifecycle<
         Context,
         State,
@@ -715,6 +809,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -724,6 +819,47 @@ where
     FLinked: Send,
     FSynced: Send,
     FUnlinked: Send,
+    FFailed: OnFailedShared<Context, State>,
+    FUpd: Send,
+    FRem: Send,
+    FClr: Send,
+{
+    type OnFailedHandler<'a> = FFailed::OnFailedHandler<'a>
+    where
+        Self: 'a;
+
+    fn on_failed(&self) -> Self::OnFailedHandler<'_> {
+        let StatefulMapDownlinkLifecycle {
+            on_failed,
+            state,
+            handler_context,
+            ..
+        } = self;
+        on_failed.on_failed(state, *handler_context)
+    }
+}
+
+impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
+    OnDownlinkUpdate<K, V, Context>
+    for StatefulMapDownlinkLifecycle<
+        Context,
+        State,
+        K,
+        V,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FFailed,
+        FUpd,
+        FRem,
+        FClr,
+    >
+where
+    State: Send,
+    FLinked: Send,
+    FSynced: Send,
+    FUnlinked: Send,
+    FFailed: Send,
     FUpd: OnDownlinkUpdateShared<K, V, Context, State>,
     FRem: Send,
     FClr: Send,
@@ -749,7 +885,7 @@ where
     }
 }
 
-impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
     OnDownlinkRemove<K, V, Context>
     for StatefulMapDownlinkLifecycle<
         Context,
@@ -759,6 +895,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -768,6 +905,7 @@ where
     FLinked: Send,
     FSynced: Send,
     FUnlinked: Send,
+    FFailed: Send,
     FUpd: Send,
     FRem: OnDownlinkRemoveShared<K, V, Context, State>,
     FClr: Send,
@@ -792,7 +930,7 @@ where
     }
 }
 
-impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
     OnDownlinkClear<K, V, Context>
     for StatefulMapDownlinkLifecycle<
         Context,
@@ -802,6 +940,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -811,6 +950,7 @@ where
     FLinked: Send,
     FSynced: Send,
     FUnlinked: Send,
+    FFailed: Send,
     FUpd: Send,
     FRem: Send,
     FClr: OnDownlinkClearShared<K, V, Context, State>,
@@ -830,7 +970,7 @@ where
     }
 }
 
-impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
     StatefulMapDownlinkLifecycle<
         Context,
         State,
@@ -839,6 +979,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -856,6 +997,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FnHandler<F>,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -870,6 +1012,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_linked: FnHandler(f),
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_update: self.on_update,
             on_remove: self.on_remove,
             on_clear: self.on_clear,
@@ -888,6 +1031,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FnHandler<F>,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -902,6 +1046,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_linked: self.on_linked,
             on_synced: FnHandler(f),
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_update: self.on_update,
             on_remove: self.on_remove,
             on_clear: self.on_clear,
@@ -920,6 +1065,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FnHandler<F>,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -934,6 +1080,41 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: FnHandler(f),
+            on_failed: self.on_failed,
+            on_update: self.on_update,
+            on_remove: self.on_remove,
+            on_clear: self.on_clear,
+        }
+    }
+
+    /// Replace the 'on_failed' handler with another derived from a closure.
+    pub fn on_failed<F>(
+        self,
+        f: F,
+    ) -> StatefulMapDownlinkLifecycle<
+        Context,
+        State,
+        K,
+        V,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FnHandler<F>,
+        FUpd,
+        FRem,
+        FClr,
+    >
+    where
+        FnHandler<F>: OnFailedShared<Context, State>,
+    {
+        StatefulMapDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            handler_context: self.handler_context,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_unlinked: self.on_unlinked,
+            on_failed: FnHandler(f),
             on_update: self.on_update,
             on_remove: self.on_remove,
             on_clear: self.on_clear,
@@ -944,7 +1125,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     pub fn on_update<F, B>(
         self,
         f: F,
-    ) -> StatefulWithBorrow<Context, State, K, V, FLinked, FSynced, FUnlinked, FRem, FClr, F, B>
+    ) -> StatefulWithBorrow<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed, FRem, FClr, F, B>
     where
         B: ?Sized,
         V: Borrow<B>,
@@ -957,6 +1138,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_update: BorrowHandler::new(f),
             on_remove: self.on_remove,
             on_clear: self.on_clear,
@@ -975,6 +1157,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FnHandler<F>,
         FClr,
@@ -989,6 +1172,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_update: self.on_update,
             on_remove: FnHandler(f),
             on_clear: self.on_clear,
@@ -1007,6 +1191,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FnHandler<F>,
@@ -1021,6 +1206,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_update: self.on_update,
             on_remove: self.on_remove,
             on_clear: FnHandler(f),

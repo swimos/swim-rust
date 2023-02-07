@@ -38,7 +38,7 @@ use crate::{
         },
         on_linked::OnLinked,
         on_synced::OnSynced,
-        on_unlinked::OnUnlinked,
+        on_unlinked::OnUnlinked, on_failed::OnFailed,
     },
     event_handler::{BoxEventHandler, EventHandlerExt, SideEffect},
 };
@@ -55,6 +55,7 @@ enum Event {
     Removed(i32, Text, HashMap<i32, Text>),
     Cleared(HashMap<i32, Text>),
     Unlinked,
+    Failed,
 }
 
 impl Event {
@@ -124,6 +125,19 @@ impl OnUnlinked<FakeAgent> for FakeLifecycle {
     fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         SideEffect::from(move || {
             self.events.lock().push(Event::Unlinked);
+        })
+        .boxed()
+    }
+}
+
+impl OnFailed<FakeAgent> for FakeLifecycle {
+    type OnFailedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
+
+    fn on_failed(&self) -> Self::OnFailedHandler<'_> {
+        SideEffect::from(move || {
+            self.events.lock().push(Event::Failed);
         })
         .boxed()
     }

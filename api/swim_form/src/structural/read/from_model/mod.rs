@@ -313,7 +313,7 @@ impl Recognizer for ValueMaterializer {
     }
 }
 
-/// [`Recognizer``] implementation for the [`Value`] type when it ocurrs in an attribute body.
+/// [`Recognizer``] implementation for the [`Value`] type when it occurs in an attribute body.
 #[derive(Debug)]
 pub struct AttrBodyMaterializer {
     inner: ValueMaterializer,

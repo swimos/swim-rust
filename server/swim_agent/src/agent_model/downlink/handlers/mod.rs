@@ -21,9 +21,9 @@ use crate::event_handler::BoxEventHandler;
 /// of the types used internally by the downlink. A [`DownlinkChannel`] is essentially a stream
 /// of event handlers. However, the operation to get the next handler is split across two methods
 /// (on to wait for an incoming message and the other to create an event handler, where
-/// appropraite). This split is necessary to avoid holding a reference to the downlink lifecyle across
+/// appropriate). This split is necessary to avoid holding a reference to the downlink lifecyle across
 /// an await point. Otherwise, we would need to add a bound that the lifecycles must be [`Sync`] which
-/// is undesriable as it would prevent the use of [`std::cell::RefCell`] in lifecycle fields.
+/// is undesirable as it would prevent the use of [`std::cell::RefCell`] in lifecycle fields.
 ///
 /// #Type Arguments
 ///

@@ -19,6 +19,7 @@ use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
 
+use crate::downlink_lifecycle::on_failed::{OnFailedShared, OnFailed};
 use crate::{
     agent_model::downlink::{hosted::MapDownlinkHandle, OpenMapDownlinkAction},
     config::MapDownlinkConfig,
@@ -46,6 +47,7 @@ pub struct StatelessMapDownlinkBuilder<
     FLinked = NoHandler,
     FSynced = NoHandler,
     FUnlinked = NoHandler,
+    FFailed = NoHandler,
     FUpd = NoHandler,
     FRem = NoHandler,
     FClr = NoHandler,
@@ -53,7 +55,7 @@ pub struct StatelessMapDownlinkBuilder<
     address: Address<Text>,
     config: MapDownlinkConfig,
     inner:
-        StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>,
+        StatelessMapDownlinkLifecycle<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>,
 }
 
 impl<Context, K, V> StatelessMapDownlinkBuilder<Context, K, V> {
@@ -76,6 +78,7 @@ pub struct StatefulMapDownlinkBuilder<
     FLinked = NoHandler,
     FSynced = NoHandler,
     FUnlinked = NoHandler,
+    FFailed = NoHandler,
     FUpd = NoHandler,
     FRem = NoHandler,
     FClr = NoHandler,
@@ -90,13 +93,14 @@ pub struct StatefulMapDownlinkBuilder<
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
     >,
 }
 
-pub type LiftedMapBuilder<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> =
+pub type LiftedMapBuilder<Context, K, V, State, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> =
     StatefulMapDownlinkBuilder<
         Context,
         K,
@@ -105,12 +109,13 @@ pub type LiftedMapBuilder<Context, K, V, State, FLinked, FSynced, FUnlinked, FUp
         LiftShared<FLinked, State>,
         LiftShared<FSynced, State>,
         LiftShared<FUnlinked, State>,
+        LiftShared<FFailed, State>,
         LiftShared<FUpd, State>,
         LiftShared<FRem, State>,
         LiftShared<FClr, State>,
     >;
 
-type StatelessWithContextAndBorrow<Context, K, V, Linked, Synced, Unlinked, Rem, Clr, F, B> =
+type StatelessWithContextAndBorrow<Context, K, V, Linked, Synced, Unlinked, Failed, Rem, Clr, F, B> =
     StatelessMapDownlinkBuilder<
         Context,
         K,
@@ -118,12 +123,13 @@ type StatelessWithContextAndBorrow<Context, K, V, Linked, Synced, Unlinked, Rem,
         Linked,
         Synced,
         Unlinked,
+        Failed,
         WithHandlerContextBorrow<Context, F, B>,
         Rem,
         Clr,
     >;
 
-type StatefulWithBorrow<Context, K, V, State, Linked, Synced, Unlinked, Rem, Clr, F, B> =
+type StatefulWithBorrow<Context, K, V, State, Linked, Synced, Unlinked, Failed, Rem, Clr, F, B> =
     StatefulMapDownlinkBuilder<
         Context,
         K,
@@ -132,13 +138,14 @@ type StatefulWithBorrow<Context, K, V, State, Linked, Synced, Unlinked, Rem, Clr
         Linked,
         Synced,
         Unlinked,
+        Failed,
         BorrowHandler<F, B>,
         Rem,
         Clr,
     >;
 
-impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
-    StatelessMapDownlinkBuilder<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
+    StatelessMapDownlinkBuilder<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
 {
     /// Specify a new event handler to be executed when the downlink enters the linked state.
     pub fn on_linked<F>(
@@ -151,6 +158,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         WithHandlerContext<Context, F>,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -181,6 +189,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         WithHandlerContext<Context, F>,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -211,6 +220,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         WithHandlerContext<Context, F>,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -230,11 +240,42 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Specify a new event handler to be executed when the downlink enters the unlinked state.
+    pub fn on_failed<F>(
+        self,
+        f: F,
+    ) -> StatelessMapDownlinkBuilder<
+        Context,
+        K,
+        V,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        WithHandlerContext<Context, F>,
+        FUpd,
+        FRem,
+        FClr,
+    >
+    where
+        WithHandlerContext<Context, F>: OnFailed<Context>,
+    {
+        let StatelessMapDownlinkBuilder {
+            address,
+            config,
+            inner,
+        } = self;
+        StatelessMapDownlinkBuilder {
+            address,
+            config,
+            inner: inner.on_failed(f),
+        }
+    }
+
     /// Specify a new event handler to be executed when an entry in the map is updated.
     pub fn on_update<F, B>(
         self,
         f: F,
-    ) -> StatelessWithContextAndBorrow<Context, K, V, FLinked, FSynced, FUnlinked, FRem, FClr, F, B>
+    ) -> StatelessWithContextAndBorrow<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FRem, FClr, F, B>
     where
         B: ?Sized,
         V: Borrow<B>,
@@ -263,6 +304,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         WithHandlerContext<Context, F>,
         FClr,
@@ -293,6 +335,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         WithHandlerContext<Context, F>,
@@ -319,7 +362,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     pub fn with_state<State>(
         self,
         state: State,
-    ) -> LiftedMapBuilder<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr> {
+    ) -> LiftedMapBuilder<Context, K, V, State, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr> {
         let StatelessMapDownlinkBuilder {
             address,
             config,
@@ -333,8 +376,8 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     }
 }
 
-impl<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
-    StatelessMapDownlinkBuilder<Context, K, V, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
+    StatelessMapDownlinkBuilder<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
 where
     Context: 'static,
     K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
@@ -344,6 +387,7 @@ where
     FLinked: OnLinked<Context> + 'static,
     FSynced: OnSynced<HashMap<K, V>, Context> + 'static,
     FUnlinked: OnUnlinked<Context> + 'static,
+    FFailed: OnFailed<Context> + 'static,
     FUpd: OnDownlinkUpdate<K, V, Context> + 'static,
     FRem: OnDownlinkRemove<K, V, Context> + 'static,
     FClr: OnDownlinkClear<K, V, Context> + 'static,
@@ -362,8 +406,8 @@ where
     }
 }
 
-impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
-    StatefulMapDownlinkBuilder<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
+    StatefulMapDownlinkBuilder<Context, K, V, State, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
 {
     /// Specify a new event handler to be executed when the downlink enters the linked state.
     pub fn on_linked<F>(
@@ -377,6 +421,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FnHandler<F>,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -408,6 +453,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FnHandler<F>,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -439,6 +485,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FnHandler<F>,
+        FFailed,
         FUpd,
         FRem,
         FClr,
@@ -458,11 +505,43 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         }
     }
 
+    /// Specify a new event handler to be executed when the downlink enters the unlinked state.
+    pub fn on_failed<F>(
+        self,
+        f: F,
+    ) -> StatefulMapDownlinkBuilder<
+        Context,
+        K,
+        V,
+        State,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FnHandler<F>,
+        FUpd,
+        FRem,
+        FClr,
+    >
+    where
+        FnHandler<F>: OnFailedShared<Context, State>,
+    {
+        let StatefulMapDownlinkBuilder {
+            address,
+            config,
+            inner,
+        } = self;
+        StatefulMapDownlinkBuilder {
+            address,
+            config,
+            inner: inner.on_failed(f),
+        }
+    }
+
     /// Specify a new event handler to be executed when an entry in the map is updated.
     pub fn on_update<F, B>(
         self,
         f: F,
-    ) -> StatefulWithBorrow<Context, K, V, State, FLinked, FSynced, FUnlinked, FRem, FClr, F, B>
+    ) -> StatefulWithBorrow<Context, K, V, State, FLinked, FSynced, FUnlinked, FFailed, FRem, FClr, F, B>
     where
         B: ?Sized,
         V: Borrow<B>,
@@ -492,6 +571,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FnHandler<F>,
         FClr,
@@ -523,6 +603,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FUpd,
         FRem,
         FnHandler<F>,
@@ -543,8 +624,8 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
     }
 }
 
-impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
-    StatefulMapDownlinkBuilder<Context, K, V, State, FLinked, FSynced, FUnlinked, FUpd, FRem, FClr>
+impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
+    StatefulMapDownlinkBuilder<Context, K, V, State, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
 where
     Context: 'static,
     K: Form + Hash + Eq + Ord + Clone + Send + Sync + 'static,
@@ -555,6 +636,7 @@ where
     FLinked: OnLinkedShared<Context, State> + 'static,
     FSynced: OnSyncedShared<HashMap<K, V>, Context, State> + 'static,
     FUnlinked: OnUnlinkedShared<Context, State> + 'static,
+    FFailed: OnFailedShared<Context, State> + 'static,
     FUpd: OnDownlinkUpdateShared<K, V, Context, State> + 'static,
     FRem: OnDownlinkRemoveShared<K, V, Context, State> + 'static,
     FClr: OnDownlinkClearShared<K, V, Context, State> + 'static,
