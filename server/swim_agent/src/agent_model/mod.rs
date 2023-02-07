@@ -306,7 +306,7 @@ enum HostedDownlinkEvent {
     WriterFailed(std::io::Error),
     Written,
     WriterTerminated,
-    HandlerReady,
+    HandlerReady { failed: bool },
 }
 
 impl<Context> HostedDownlink<Context> {
@@ -326,10 +326,11 @@ impl<Context> HostedDownlink<Context> {
         };
 
         match next {
-            Either::Left(Some(Ok(_))) => Some((self, HostedDownlinkEvent::HandlerReady)),
-            Either::Left(Some(Err(e))) => {
-                error!(error = %e, "A downlink input channel failed.");
-                None
+            Either::Left(Some(Ok(_))) => {
+                Some((self, HostedDownlinkEvent::HandlerReady { failed: false }))
+            }
+            Either::Left(Some(Err(_))) => {
+                Some((self, HostedDownlinkEvent::HandlerReady { failed: true }))
             }
             Either::Right(Some(Ok(_))) => Some((self, HostedDownlinkEvent::Written)),
             Either::Right(Some(Err(e))) => {
@@ -696,7 +697,7 @@ where
                                 info!("A downlink hosted by the agent stopped writing output.");
                                 downlinks.push(downlink.wait_on_downlink());
                             }
-                            HostedDownlinkEvent::HandlerReady => {
+                            HostedDownlinkEvent::HandlerReady { failed } => {
                                 if let Some(handler) = downlink.channel.next_event(&item_model) {
                                     if let Err(e) = run_handler(
                                         ActionContext::new(&suspended, &*context, &add_downlink),
@@ -710,7 +711,9 @@ where
                                         break Err(AgentTaskError::UserCodeError(Box::new(e)));
                                     }
                                 }
-                                downlinks.push(downlink.wait_on_downlink());
+                                if !failed {
+                                    downlinks.push(downlink.wait_on_downlink());
+                                }
                             }
                             _ => {}
                         }

@@ -18,9 +18,14 @@ use std::hash::Hash;
 use bytes::BytesMut;
 use swim_form::structural::write::StructuralWritable;
 
-use crate::{item::{AgentItem, MapItem}, agent_model::WriteResult, event_handler::{HandlerAction, ActionContext, StepResult}, meta::AgentMetadata};
+use crate::{
+    agent_model::WriteResult,
+    event_handler::{ActionContext, HandlerAction, StepResult},
+    item::{AgentItem, MapItem},
+    meta::AgentMetadata,
+};
 
-use super::{MapLane, Lane, map::MapLaneEvent};
+use super::{map::MapLaneEvent, Lane, MapLane};
 
 pub mod lifecycle;
 
@@ -29,11 +34,11 @@ pub struct JoinValueLane<K, V> {
 }
 
 impl<K, V> JoinValueLane<K, V> {
-
     pub fn new(id: u64) -> Self {
-        JoinValueLane { inner: MapLane::new(id, HashMap::new()) }
+        JoinValueLane {
+            inner: MapLane::new(id, HashMap::new()),
+        }
     }
-
 }
 
 impl<K, V> AgentItem for JoinValueLane<K, V> {
@@ -91,7 +96,8 @@ where
 
     fn read_with_prev<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R {
+        F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R,
+    {
         self.inner.read_with_prev(f)
     }
 }

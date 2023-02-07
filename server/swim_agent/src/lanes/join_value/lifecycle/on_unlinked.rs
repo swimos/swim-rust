@@ -12,10 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{event_handler::{HandlerAction}, agent_lifecycle::utility::HandlerContext, lanes::join_value::{RemoteLane, LinkClosedResponse}};
+use crate::{
+    agent_lifecycle::utility::HandlerContext,
+    event_handler::HandlerAction,
+    lanes::join_value::{LinkClosedResponse, RemoteLane},
+};
 
 pub trait OnJoinValueUnlinked<K, Context>: Send {
-    type OnJoinValueUnlinkedHandler<'a>: HandlerAction<Context, Completion = LinkClosedResponse> + 'a
+    type OnJoinValueUnlinkedHandler<'a>: HandlerAction<Context, Completion = LinkClosedResponse>
+        + 'a
     where
         Self: 'a;
 
@@ -28,7 +33,8 @@ pub trait OnJoinValueUnlinked<K, Context>: Send {
 }
 
 pub trait OnJoinValueUnlinkedShared<K, Context, Shared>: Send {
-    type OnJoinValueUnlinkedHandler<'a>: HandlerAction<Context, Completion = LinkClosedResponse> + 'a
+    type OnJoinValueUnlinkedHandler<'a>: HandlerAction<Context, Completion = LinkClosedResponse>
+        + 'a
     where
         Self: 'a,
         Shared: 'a;

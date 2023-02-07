@@ -36,9 +36,10 @@ use crate::{
         map::{
             on_clear::OnDownlinkClear, on_remove::OnDownlinkRemove, on_update::OnDownlinkUpdate,
         },
+        on_failed::OnFailed,
         on_linked::OnLinked,
         on_synced::OnSynced,
-        on_unlinked::OnUnlinked, on_failed::OnFailed,
+        on_unlinked::OnUnlinked,
     },
     event_handler::{BoxEventHandler, EventHandlerExt, SideEffect},
 };

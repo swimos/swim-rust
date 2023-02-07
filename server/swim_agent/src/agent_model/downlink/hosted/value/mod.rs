@@ -35,7 +35,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::handlers::DownlinkChannel,
+    agent_model::downlink::handlers::{DownlinkChannel, DownlinkFailed},
     config::ValueDownlinkConfig,
     downlink_lifecycle::value::ValueDownlinkLifecycle,
     event_handler::{BoxEventHandler, EventHandlerExt, HandlerActionExt},
@@ -105,7 +105,7 @@ pub struct HostedValueDownlinkChannel<T: RecognizerReadable, LC, State> {
     address: Address<Text>,
     receiver: Option<FramedRead<ByteReader, ValueNotificationDecoder<T>>>,
     state: State,
-    next: Option<DownlinkNotification<T>>,
+    next: Option<Result<DownlinkNotification<T>, FrameIoError>>,
     lifecycle: LC,
     config: ValueDownlinkConfig,
     dl_state: DlState,
@@ -138,7 +138,7 @@ where
     T::Rec: Send,
     LC: ValueDownlinkLifecycle<T, Context> + 'static,
 {
-    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), FrameIoError>>> {
+    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), DownlinkFailed>>> {
         let HostedValueDownlinkChannel {
             address,
             receiver,
@@ -149,13 +149,14 @@ where
             if let Some(rx) = receiver {
                 match rx.next().await {
                     Some(Ok(notification)) => {
-                        *next = Some(notification);
+                        *next = Some(Ok(notification));
                         Some(Ok(()))
                     }
                     Some(Err(e)) => {
                         error!(address = %address, "Downlink input channel failed.");
                         *receiver = None;
-                        Some(Err(e))
+                        *next = Some(Err(e));
+                        Some(Err(DownlinkFailed))
                     }
                     _ => {
                         info!(address = %address, "Downlink terminated normally.");
@@ -187,19 +188,19 @@ where
         } = self;
         if let Some(notification) = next.take() {
             match notification {
-                DownlinkNotification::Linked => {
+                Ok(DownlinkNotification::Linked) => {
                     debug!(address = %address, "Downlink linked.");
                     if *dl_state == DlState::Unlinked {
                         *dl_state = DlState::Linked;
                     }
                     Some(lifecycle.on_linked().boxed())
                 }
-                DownlinkNotification::Synced => state.with(context, |maybe_value| {
+                Ok(DownlinkNotification::Synced) => state.with(context, |maybe_value| {
                     debug!(address = %address, "Downlink synced.");
                     *dl_state = DlState::Synced;
                     maybe_value.map(|value| lifecycle.on_synced(value).boxed())
                 }),
-                DownlinkNotification::Event { body } => {
+                Ok(DownlinkNotification::Event { body }) => {
                     trace!(address = %address, "Event received for downlink.");
                     let prev = state.take_current(context);
                     let handler = if *dl_state == DlState::Synced || *events_when_not_synced {
@@ -214,13 +215,21 @@ where
                     state.replace(context, body);
                     handler
                 }
-                DownlinkNotification::Unlinked => {
+                Ok(DownlinkNotification::Unlinked) => {
                     debug!(address = %address, "Downlink unlinked.");
                     state.clear(context);
                     if *terminate_on_unlinked {
                         *receiver = None;
                     }
                     Some(lifecycle.on_unlinked().boxed())
+                }
+                Err(_) => {
+                    debug!(address = %address, "Downlink failed.");
+                    state.clear(context);
+                    if *terminate_on_unlinked {
+                        *receiver = None;
+                    }
+                    Some(lifecycle.on_failed().boxed())
                 }
             }
         } else {

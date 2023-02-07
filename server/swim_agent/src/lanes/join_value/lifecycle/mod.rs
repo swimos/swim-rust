@@ -12,7 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use self::{on_linked::{OnJoinValueLinked, OnJoinValueLinkedShared}, on_synced::{OnJoinValueSynced, OnJoinValueSyncedShared}, on_unlinked::{OnJoinValueUnlinked, OnJoinValueUnlinkedShared}, on_failed::{OnJoinValueFailed, OnJoinValueFailedShared}};
+use self::{
+    on_failed::{OnJoinValueFailed, OnJoinValueFailedShared},
+    on_linked::{OnJoinValueLinked, OnJoinValueLinkedShared},
+    on_synced::{OnJoinValueSynced, OnJoinValueSyncedShared},
+    on_unlinked::{OnJoinValueUnlinked, OnJoinValueUnlinkedShared},
+};
 
 pub mod on_failed;
 pub mod on_linked;
@@ -27,13 +32,13 @@ pub trait JoinValueLaneLifecycle<K, V, Context>:
 {
 }
 
-impl<K, V, Context, L> JoinValueLaneLifecycle<K, V, Context> for L
-where
-    L:OnJoinValueLinked<K, Context>
-    + OnJoinValueSynced<K, V, Context>
-    + OnJoinValueUnlinked<K, Context>
-    + OnJoinValueFailed<K, Context>
-{}
+impl<K, V, Context, L> JoinValueLaneLifecycle<K, V, Context> for L where
+    L: OnJoinValueLinked<K, Context>
+        + OnJoinValueSynced<K, V, Context>
+        + OnJoinValueUnlinked<K, Context>
+        + OnJoinValueFailed<K, Context>
+{
+}
 
 pub trait JoinValueLaneLifecycleShared<K, V, Context, Shared>:
     OnJoinValueLinkedShared<K, Context, Shared>
@@ -43,10 +48,10 @@ pub trait JoinValueLaneLifecycleShared<K, V, Context, Shared>:
 {
 }
 
-impl<K, V, Context, Shared, L> JoinValueLaneLifecycleShared<K, V, Context, Shared> for L
-where
+impl<K, V, Context, Shared, L> JoinValueLaneLifecycleShared<K, V, Context, Shared> for L where
     L: OnJoinValueLinkedShared<K, Context, Shared>
-    + OnJoinValueSyncedShared<K, V, Context, Shared>
-    + OnJoinValueUnlinkedShared<K, Context, Shared>
-    + OnJoinValueFailedShared<K, Context, Shared>
-{}
+        + OnJoinValueSyncedShared<K, V, Context, Shared>
+        + OnJoinValueUnlinkedShared<K, Context, Shared>
+        + OnJoinValueFailedShared<K, Context, Shared>
+{
+}

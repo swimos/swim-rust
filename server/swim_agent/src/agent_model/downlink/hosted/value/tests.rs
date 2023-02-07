@@ -36,10 +36,11 @@ use crate::{
         hosted::{value_dl_write_stream, ValueDownlinkHandle},
     },
     downlink_lifecycle::{
+        on_failed::OnFailed,
         on_linked::OnLinked,
         on_synced::OnSynced,
         on_unlinked::OnUnlinked,
-        value::{on_event::OnDownlinkEvent, on_set::OnDownlinkSet}, on_failed::OnFailed,
+        value::{on_event::OnDownlinkEvent, on_set::OnDownlinkSet},
     },
     event_handler::{BoxEventHandler, EventHandlerExt, SideEffect},
 };

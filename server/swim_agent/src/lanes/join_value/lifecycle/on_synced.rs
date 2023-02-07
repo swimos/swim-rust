@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{event_handler::EventHandler, agent_lifecycle::utility::HandlerContext, lanes::join_value::RemoteLane};
+use crate::{
+    agent_lifecycle::utility::HandlerContext, event_handler::EventHandler,
+    lanes::join_value::RemoteLane,
+};
 
 pub trait OnJoinValueSynced<K, V, Context>: Send {
     type OnJoinValueSyncedHandler<'a>: EventHandler<Context> + 'a

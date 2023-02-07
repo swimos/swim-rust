@@ -24,10 +24,11 @@ use self::{
 };
 
 use super::{
+    on_failed::{OnFailed, OnFailedShared},
     on_linked::{OnLinked, OnLinkedShared},
     on_synced::{OnSynced, OnSyncedShared},
     on_unlinked::{OnUnlinked, OnUnlinkedShared},
-    LiftShared, WithHandlerContext, WithHandlerContextBorrow, on_failed::{OnFailed, OnFailedShared},
+    LiftShared, WithHandlerContext, WithHandlerContextBorrow,
 };
 
 pub mod on_event;
@@ -111,7 +112,17 @@ impl<Context, State, T> StatefulValueDownlinkLifecycle<Context, State, T> {
 }
 
 impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> Clone
-    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    for StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FFailed,
+        FEv,
+        FSet,
+    >
 where
     State: Clone,
     FLinked: Clone,
@@ -137,7 +148,17 @@ where
 }
 
 impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnLinked<Context>
-    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    for StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FFailed,
+        FEv,
+        FSet,
+    >
 where
     State: Send,
     FLinked: OnLinkedShared<Context, State>,
@@ -163,7 +184,17 @@ where
 }
 
 impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnSynced<T, Context>
-    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    for StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FFailed,
+        FEv,
+        FSet,
+    >
 where
     State: Send,
     FLinked: Send,
@@ -189,7 +220,17 @@ where
 }
 
 impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnUnlinked<Context>
-    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    for StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FFailed,
+        FEv,
+        FSet,
+    >
 where
     State: Send,
     FLinked: Send,
@@ -215,7 +256,17 @@ where
 }
 
 impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnFailed<Context>
-    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    for StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FFailed,
+        FEv,
+        FSet,
+    >
 where
     State: Send,
     FLinked: Send,
@@ -241,7 +292,17 @@ where
 }
 
 impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnDownlinkEvent<T, Context>
-    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    for StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FFailed,
+        FEv,
+        FSet,
+    >
 where
     State: Send,
     FLinked: Send,
@@ -267,7 +328,17 @@ where
 }
 
 impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnDownlinkSet<T, Context>
-    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    for StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FFailed,
+        FEv,
+        FSet,
+    >
 where
     State: Send,
     FLinked: Send,
@@ -293,7 +364,17 @@ where
 }
 
 impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
-    StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FFailed,
+        FEv,
+        FSet,
+    >
 {
     /// Replace the 'on_linked' handler with another derived from a closure.
     pub fn on_linked<F>(
@@ -363,7 +444,17 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
     pub fn on_unlinked<F>(
         self,
         f: F,
-    ) -> StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FnHandler<F>, FFailed, FEv, FSet>
+    ) -> StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        FLinked,
+        FSynced,
+        FnHandler<F>,
+        FFailed,
+        FEv,
+        FSet,
+    >
     where
         FnHandler<F>: OnUnlinkedShared<Context, State>,
     {
@@ -384,7 +475,17 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
     pub fn on_failed<F>(
         self,
         f: F,
-    ) -> StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FnHandler<F>, FEv, FSet>
+    ) -> StatefulValueDownlinkLifecycle<
+        Context,
+        State,
+        T,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        FnHandler<F>,
+        FEv,
+        FSet,
+    >
     where
         FnHandler<F>: OnFailedShared<Context, State>,
     {
@@ -852,7 +953,8 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
     pub fn with_state<State>(
         self,
         state: State,
-    ) -> LiftedValueLifecycle<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> {
+    ) -> LiftedValueLifecycle<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    {
         let StatelessValueDownlinkLifecycle {
             on_linked,
             on_synced,
