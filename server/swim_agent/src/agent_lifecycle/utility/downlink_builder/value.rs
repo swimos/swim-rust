@@ -30,7 +30,7 @@ use crate::{
             on_set::{OnDownlinkSet, OnDownlinkSetShared},
             StatefulValueDownlinkLifecycle, StatelessValueDownlinkLifecycle,
         },
-        LiftShared, WithHandlerContext, WithHandlerContextBorrow,
+        LiftShared, WithHandlerContext, WithHandlerContextBorrow, on_failed::{OnFailed, OnFailedShared},
     },
     event_handler::HandlerAction,
 };
@@ -43,12 +43,13 @@ pub struct StatelessValueDownlinkBuilder<
     FLinked = NoHandler,
     FSynced = NoHandler,
     FUnlinked = NoHandler,
+    FFailed = NoHandler,
     FEv = NoHandler,
     FSet = NoHandler,
 > {
     address: Address<Text>,
     config: ValueDownlinkConfig,
-    inner: StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>,
+    inner: StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>,
 }
 
 /// A builder for constructing a value downlink. The lifecycle event handlers share state and, by default,
@@ -60,13 +61,14 @@ pub struct StatefulValueDownlinkBuilder<
     FLinked = NoHandler,
     FSynced = NoHandler,
     FUnlinked = NoHandler,
+    FFailed = NoHandler,
     FEv = NoHandler,
     FSet = NoHandler,
 > {
     address: Address<Text>,
     config: ValueDownlinkConfig,
     inner:
-        StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>,
+        StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>,
 }
 
 impl<Context, T> StatelessValueDownlinkBuilder<Context, T> {
@@ -89,7 +91,7 @@ impl<Context, T, State> StatefulValueDownlinkBuilder<Context, T, State> {
     }
 }
 
-pub type LiftedValueBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet> =
+pub type LiftedValueBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> =
     StatefulValueDownlinkBuilder<
         Context,
         T,
@@ -97,12 +99,13 @@ pub type LiftedValueBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FEv,
         LiftShared<FLinked, State>,
         LiftShared<FSynced, State>,
         LiftShared<FUnlinked, State>,
+        LiftShared<FFailed, State>,
         LiftShared<FEv, State>,
         LiftShared<FSet, State>,
     >;
 
-impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
-    StatelessValueDownlinkBuilder<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    StatelessValueDownlinkBuilder<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 {
     /// Specify a new event handler to be executed when the downlink enters the linked state.
     pub fn on_linked<F>(
@@ -114,6 +117,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         WithHandlerContext<Context, F>,
         FSynced,
         FUnlinked,
+        FFailed,
         FEv,
         FSet,
     >
@@ -142,6 +146,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         WithHandlerContextBorrow<Context, F, B>,
         FUnlinked,
+        FFailed,
         FEv,
         FSet,
     >
@@ -172,6 +177,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         FSynced,
         WithHandlerContext<Context, F>,
+        FFailed,
         FEv,
         FSet,
     >
@@ -190,6 +196,35 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Specify a new event handler to be executed when the downlink fails.
+    pub fn on_failed<F>(
+        self,
+        f: F,
+    ) -> StatelessValueDownlinkBuilder<
+        Context,
+        T,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        WithHandlerContext<Context, F>,
+        FEv,
+        FSet,
+    >
+    where
+        WithHandlerContext<Context, F>: OnFailed<Context>,
+    {
+        let StatelessValueDownlinkBuilder {
+            address,
+            config,
+            inner,
+        } = self;
+        StatelessValueDownlinkBuilder {
+            address,
+            config,
+            inner: inner.on_failed(f),
+        }
+    }
+
     /// Specify a new event handler to be executed when an event is received for the downlink.
     pub fn on_event<F, B>(
         self,
@@ -200,6 +235,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         WithHandlerContextBorrow<Context, F, B>,
         FSet,
     >
@@ -230,6 +266,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FEv,
         WithHandlerContextBorrow<Context, F, B>,
     >
@@ -257,7 +294,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     pub fn with_state<State>(
         self,
         state: State,
-    ) -> LiftedValueBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet> {
+    ) -> LiftedValueBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> {
         let StatelessValueDownlinkBuilder {
             address,
             config,
@@ -271,8 +308,8 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     }
 }
 
-impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
-    StatelessValueDownlinkBuilder<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    StatelessValueDownlinkBuilder<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     Context: 'static,
     T: Form + Send + Sync + 'static,
@@ -280,6 +317,7 @@ where
     FLinked: OnLinked<Context> + 'static,
     FSynced: OnSynced<T, Context> + 'static,
     FUnlinked: OnUnlinked<Context> + 'static,
+    FFailed: OnFailed<Context> + 'static,
     FEv: OnDownlinkEvent<T, Context> + 'static,
     FSet: OnDownlinkSet<T, Context> + 'static,
 {
@@ -297,14 +335,14 @@ where
     }
 }
 
-impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
-    StatefulValueDownlinkBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    StatefulValueDownlinkBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 {
     /// Specify a new event handler to be executed when the downlink enters the linked state.
     pub fn on_linked<F>(
         self,
         f: F,
-    ) -> StatefulValueDownlinkBuilder<Context, T, State, FnHandler<F>, FSynced, FUnlinked, FEv, FSet>
+    ) -> StatefulValueDownlinkBuilder<Context, T, State, FnHandler<F>, FSynced, FUnlinked, FFailed, FEv, FSet>
     where
         FnHandler<F>: OnLinkedShared<Context, State>,
     {
@@ -331,6 +369,7 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         BorrowHandler<F, B>,
         FUnlinked,
+        FFailed,
         FEv,
         FSet,
     >
@@ -355,7 +394,7 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
     pub fn on_unlinked<F>(
         self,
         f: F,
-    ) -> StatefulValueDownlinkBuilder<Context, T, State, FLinked, FSynced, FnHandler<F>, FEv, FSet>
+    ) -> StatefulValueDownlinkBuilder<Context, T, State, FLinked, FSynced, FnHandler<F>, FFailed, FEv, FSet>
     where
         FnHandler<F>: OnUnlinkedShared<Context, State>,
     {
@@ -371,6 +410,26 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
         }
     }
 
+    /// Specify a new event handler to be executed when the downlink fails.
+    pub fn on_failed<F>(
+        self,
+        f: F,
+    ) -> StatefulValueDownlinkBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FnHandler<F>, FEv, FSet>
+    where
+        FnHandler<F>: OnFailedShared<Context, State>,
+    {
+        let StatefulValueDownlinkBuilder {
+            address,
+            config,
+            inner,
+        } = self;
+        StatefulValueDownlinkBuilder {
+            address,
+            config,
+            inner: inner.on_failed(f),
+        }
+    }
+
     /// Specify a new event handler to be executed when an event is received for the downlink.
     pub fn on_event<F, B>(
         self,
@@ -382,6 +441,7 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         BorrowHandler<F, B>,
         FSet,
     >
@@ -413,6 +473,7 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FEv,
         BorrowHandler<F, B>,
     >
@@ -434,8 +495,8 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
     }
 }
 
-impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
-    StatefulValueDownlinkBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    StatefulValueDownlinkBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     Context: 'static,
     State: Send + 'static,
@@ -444,6 +505,7 @@ where
     FLinked: OnLinkedShared<Context, State> + 'static,
     FSynced: OnSyncedShared<T, Context, State> + 'static,
     FUnlinked: OnUnlinkedShared<Context, State> + 'static,
+    FFailed: OnFailedShared<Context, State> + 'static,
     FEv: OnDownlinkEventShared<T, Context, State> + 'static,
     FSet: OnDownlinkSetShared<T, Context, State> + 'static,
 {

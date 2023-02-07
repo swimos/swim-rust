@@ -27,7 +27,7 @@ use super::{
     on_linked::{OnLinked, OnLinkedShared},
     on_synced::{OnSynced, OnSyncedShared},
     on_unlinked::{OnUnlinked, OnUnlinkedShared},
-    LiftShared, WithHandlerContext, WithHandlerContextBorrow,
+    LiftShared, WithHandlerContext, WithHandlerContextBorrow, on_failed::{OnFailed, OnFailedShared},
 };
 
 pub mod on_event;
@@ -44,6 +44,7 @@ pub trait ValueDownlinkLifecycle<T, Context>:
     + OnDownlinkEvent<T, Context>
     + OnDownlinkSet<T, Context>
     + OnUnlinked<Context>
+    + OnFailed<Context>
 {
 }
 
@@ -53,6 +54,7 @@ impl<LC, T, Context> ValueDownlinkLifecycle<T, Context> for LC where
         + OnDownlinkEvent<T, Context>
         + OnDownlinkSet<T, Context>
         + OnUnlinked<Context>
+        + OnFailed<Context>
 {
 }
 
@@ -65,6 +67,7 @@ impl<LC, T, Context> ValueDownlinkLifecycle<T, Context> for LC where
 /// * `FLinked` - The type of the 'on_linked' handler.
 /// * `FSynced` - The type of the 'on_synced' handler.
 /// * `FUnlinked` - The type of the 'on_unlinked' handler.
+/// * `FFailed` - The type of the 'on_failed' handler.
 /// * `FEv` - The type of the 'on_event' handler.
 /// * `FSet` - The type of the 'on_set' handler.
 ///
@@ -76,6 +79,7 @@ pub struct StatefulValueDownlinkLifecycle<
     FLinked = NoHandler,
     FSynced = NoHandler,
     FUnlinked = NoHandler,
+    FFailed = NoHandler,
     FEv = NoHandler,
     FSet = NoHandler,
 > {
@@ -85,6 +89,7 @@ pub struct StatefulValueDownlinkLifecycle<
     on_linked: FLinked,
     on_synced: FSynced,
     on_unlinked: FUnlinked,
+    on_failed: FFailed,
     on_event: FEv,
     on_set: FSet,
 }
@@ -98,19 +103,21 @@ impl<Context, State, T> StatefulValueDownlinkLifecycle<Context, State, T> {
             on_linked: Default::default(),
             on_synced: Default::default(),
             on_unlinked: Default::default(),
+            on_failed: Default::default(),
             on_event: Default::default(),
             on_set: Default::default(),
         }
     }
 }
 
-impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet> Clone
-    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> Clone
+    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     State: Clone,
     FLinked: Clone,
     FSynced: Clone,
     FUnlinked: Clone,
+    FFailed: Clone,
     FEv: Clone,
     FSet: Clone,
 {
@@ -122,19 +129,21 @@ where
             on_linked: self.on_linked.clone(),
             on_synced: self.on_synced.clone(),
             on_unlinked: self.on_unlinked.clone(),
+            on_failed: self.on_failed.clone(),
             on_event: self.on_event.clone(),
             on_set: self.on_set.clone(),
         }
     }
 }
 
-impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnLinked<Context>
-    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnLinked<Context>
+    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     State: Send,
     FLinked: OnLinkedShared<Context, State>,
     FSynced: Send,
     FUnlinked: Send,
+    FFailed: Send,
     FEv: Send,
     FSet: Send,
 {
@@ -153,13 +162,14 @@ where
     }
 }
 
-impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnSynced<T, Context>
-    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnSynced<T, Context>
+    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     State: Send,
     FLinked: Send,
     FSynced: OnSyncedShared<T, Context, State>,
     FUnlinked: Send,
+    FFailed: Send,
     FEv: Send,
     FSet: Send,
 {
@@ -178,13 +188,14 @@ where
     }
 }
 
-impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnUnlinked<Context>
-    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnUnlinked<Context>
+    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     State: Send,
     FLinked: Send,
     FSynced: Send,
     FUnlinked: OnUnlinkedShared<Context, State>,
+    FFailed: Send,
     FEv: Send,
     FSet: Send,
 {
@@ -203,13 +214,40 @@ where
     }
 }
 
-impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnDownlinkEvent<T, Context>
-    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnFailed<Context>
+    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     State: Send,
     FLinked: Send,
     FSynced: Send,
     FUnlinked: Send,
+    FFailed: OnFailedShared<Context, State>,
+    FEv: Send,
+    FSet: Send,
+{
+    type OnFailedHandler<'a> = FFailed::OnFailedHandler<'a>
+    where
+        Self: 'a;
+
+    fn on_failed(&self) -> Self::OnFailedHandler<'_> {
+        let StatefulValueDownlinkLifecycle {
+            on_failed,
+            state,
+            handler_context,
+            ..
+        } = self;
+        on_failed.on_failed(state, *handler_context)
+    }
+}
+
+impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnDownlinkEvent<T, Context>
+    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+where
+    State: Send,
+    FLinked: Send,
+    FSynced: Send,
+    FUnlinked: Send,
+    FFailed: Send,
     FEv: OnDownlinkEventShared<T, Context, State>,
     FSet: Send,
 {
@@ -228,13 +266,14 @@ where
     }
 }
 
-impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnDownlinkSet<T, Context>
-    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnDownlinkSet<T, Context>
+    for StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     State: Send,
     FLinked: Send,
     FSynced: Send,
     FUnlinked: Send,
+    FFailed: Send,
     FEv: Send,
     FSet: OnDownlinkSetShared<T, Context, State>,
 {
@@ -253,8 +292,8 @@ where
     }
 }
 
-impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
-    StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 {
     /// Replace the 'on_linked' handler with another derived from a closure.
     pub fn on_linked<F>(
@@ -267,6 +306,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FnHandler<F>,
         FSynced,
         FUnlinked,
+        FFailed,
         FEv,
         FSet,
     >
@@ -280,6 +320,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_linked: FnHandler(f),
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_event: self.on_event,
             on_set: self.on_set,
         }
@@ -296,6 +337,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         BorrowHandler<F, B>,
         FUnlinked,
+        FFailed,
         FEv,
         FSet,
     >
@@ -311,6 +353,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_linked: self.on_linked,
             on_synced: BorrowHandler::new(f),
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_event: self.on_event,
             on_set: self.on_set,
         }
@@ -320,7 +363,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     pub fn on_unlinked<F>(
         self,
         f: F,
-    ) -> StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FnHandler<F>, FEv, FSet>
+    ) -> StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FnHandler<F>, FFailed, FEv, FSet>
     where
         FnHandler<F>: OnUnlinkedShared<Context, State>,
     {
@@ -331,6 +374,28 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: FnHandler(f),
+            on_failed: self.on_failed,
+            on_event: self.on_event,
+            on_set: self.on_set,
+        }
+    }
+
+    /// Replace the 'on_failed' handler with another derived from a closure.
+    pub fn on_failed<F>(
+        self,
+        f: F,
+    ) -> StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FnHandler<F>, FEv, FSet>
+    where
+        FnHandler<F>: OnFailedShared<Context, State>,
+    {
+        StatefulValueDownlinkLifecycle {
+            _type: PhantomData,
+            state: self.state,
+            handler_context: self.handler_context,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_unlinked: self.on_unlinked,
+            on_failed: FnHandler(f),
             on_event: self.on_event,
             on_set: self.on_set,
         }
@@ -347,6 +412,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         BorrowHandler<F, B>,
         FSet,
     >
@@ -362,6 +428,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_event: BorrowHandler::new(f),
             on_set: self.on_set,
         }
@@ -378,6 +445,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FEv,
         BorrowHandler<F, B>,
     >
@@ -393,6 +461,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_event: self.on_event,
             on_set: BorrowHandler::new(f),
         }
@@ -408,6 +477,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>
 /// * `FLinked` - The type of the 'on_linked' handler.
 /// * `FSynced` - The type of the 'on_synced' handler.
 /// * `FUnlinked` - The type of the 'on_unlinked' handler.
+/// * `FFailed` - The type of the 'on_failed' handler.
 /// * `FEv` - The type of the 'on_event' handler.
 /// * `FSet` - The type of the 'on_set' handler.
 #[derive(Debug)]
@@ -417,6 +487,7 @@ pub struct StatelessValueDownlinkLifecycle<
     FLinked = NoHandler,
     FSynced = NoHandler,
     FUnlinked = NoHandler,
+    FFailed = NoHandler,
     FEv = NoHandler,
     FSet = NoHandler,
 > {
@@ -424,6 +495,7 @@ pub struct StatelessValueDownlinkLifecycle<
     on_linked: FLinked,
     on_synced: FSynced,
     on_unlinked: FUnlinked,
+    on_failed: FFailed,
     on_event: FEv,
     on_set: FSet,
 }
@@ -435,18 +507,20 @@ impl<Context, T> Default for StatelessValueDownlinkLifecycle<Context, T> {
             on_linked: Default::default(),
             on_synced: Default::default(),
             on_unlinked: Default::default(),
+            on_failed: Default::default(),
             on_event: Default::default(),
             on_set: Default::default(),
         }
     }
 }
 
-impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet> Clone
-    for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> Clone
+    for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     FLinked: Clone,
     FSynced: Clone,
     FUnlinked: Clone,
+    FFailed: Clone,
     FEv: Clone,
     FSet: Clone,
 {
@@ -456,18 +530,20 @@ where
             on_linked: self.on_linked.clone(),
             on_synced: self.on_synced.clone(),
             on_unlinked: self.on_unlinked.clone(),
+            on_failed: self.on_failed.clone(),
             on_event: self.on_event.clone(),
             on_set: self.on_set.clone(),
         }
     }
 }
 
-impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnLinked<Context>
-    for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnLinked<Context>
+    for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     FLinked: OnLinked<Context>,
     FSynced: Send,
     FUnlinked: Send,
+    FFailed: Send,
     FEv: Send,
     FSet: Send,
 {
@@ -481,12 +557,13 @@ where
     }
 }
 
-impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnSynced<T, Context>
-    for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnSynced<T, Context>
+    for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     FLinked: Send,
     FSynced: OnSynced<T, Context>,
     FUnlinked: Send,
+    FFailed: Send,
     FEv: Send,
     FSet: Send,
 {
@@ -500,12 +577,13 @@ where
     }
 }
 
-impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnUnlinked<Context>
-    for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnUnlinked<Context>
+    for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     FLinked: Send,
     FSynced: Send,
     FUnlinked: OnUnlinked<Context>,
+    FFailed: Send,
     FEv: Send,
     FSet: Send,
 {
@@ -519,12 +597,34 @@ where
     }
 }
 
-impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnDownlinkEvent<T, Context>
-    for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnFailed<Context>
+    for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     FLinked: Send,
     FSynced: Send,
     FUnlinked: Send,
+    FFailed: OnFailed<Context>,
+    FFailed: Send,
+    FEv: Send,
+    FSet: Send,
+{
+    type OnFailedHandler<'a> = FFailed::OnFailedHandler<'a>
+    where
+        Self: 'a;
+
+    fn on_failed(&self) -> Self::OnFailedHandler<'_> {
+        let StatelessValueDownlinkLifecycle { on_failed, .. } = self;
+        on_failed.on_failed()
+    }
+}
+
+impl<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnDownlinkEvent<T, Context>
+    for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+where
+    FLinked: Send,
+    FSynced: Send,
+    FUnlinked: Send,
+    FFailed: Send,
     FEv: OnDownlinkEvent<T, Context>,
     FSet: Send,
 {
@@ -538,12 +638,13 @@ where
     }
 }
 
-impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet> OnDownlinkSet<T, Context>
-    for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnDownlinkSet<T, Context>
+    for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     FLinked: Send,
     FSynced: Send,
     FUnlinked: Send,
+    FFailed: Send,
     FEv: Send,
     FSet: OnDownlinkSet<T, Context>,
 {
@@ -557,7 +658,7 @@ where
     }
 }
 
-pub type LiftedValueLifecycle<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet> =
+pub type LiftedValueLifecycle<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> =
     StatefulValueDownlinkLifecycle<
         Context,
         State,
@@ -565,12 +666,13 @@ pub type LiftedValueLifecycle<Context, T, State, FLinked, FSynced, FUnlinked, FE
         LiftShared<FLinked, State>,
         LiftShared<FSynced, State>,
         LiftShared<FUnlinked, State>,
+        LiftShared<FFailed, State>,
         LiftShared<FEv, State>,
         LiftShared<FSet, State>,
     >;
 
-impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
-    StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
+    StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 {
     /// Replace the 'on_linked' handler with another derived from a closure.
     pub fn on_linked<F>(
@@ -582,6 +684,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         WithHandlerContext<Context, F>,
         FSynced,
         FUnlinked,
+        FFailed,
         FEv,
         FSet,
     >
@@ -593,6 +696,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_linked: WithHandlerContext::new(f),
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_event: self.on_event,
             on_set: self.on_set,
         }
@@ -608,6 +712,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         WithHandlerContextBorrow<Context, F, B>,
         FUnlinked,
+        FFailed,
         FEv,
         FSet,
     >
@@ -621,6 +726,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_linked: self.on_linked,
             on_synced: WithHandlerContextBorrow::new(f),
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_event: self.on_event,
             on_set: self.on_set,
         }
@@ -636,6 +742,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         FSynced,
         WithHandlerContext<Context, F>,
+        FFailed,
         FEv,
         FSet,
     >
@@ -647,6 +754,35 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: WithHandlerContext::new(f),
+            on_failed: self.on_failed,
+            on_event: self.on_event,
+            on_set: self.on_set,
+        }
+    }
+
+    /// Replace the 'on_failed' handler with another derived from a closure.
+    pub fn on_failed<F>(
+        self,
+        f: F,
+    ) -> StatelessValueDownlinkLifecycle<
+        Context,
+        T,
+        FLinked,
+        FSynced,
+        FUnlinked,
+        WithHandlerContext<Context, F>,
+        FEv,
+        FSet,
+    >
+    where
+        WithHandlerContext<Context, F>: OnFailed<Context>,
+    {
+        StatelessValueDownlinkLifecycle {
+            _type: PhantomData,
+            on_linked: self.on_linked,
+            on_synced: self.on_synced,
+            on_unlinked: self.on_unlinked,
+            on_failed: WithHandlerContext::new(f),
             on_event: self.on_event,
             on_set: self.on_set,
         }
@@ -662,6 +798,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         WithHandlerContextBorrow<Context, F, B>,
         FSet,
     >
@@ -675,6 +812,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_event: WithHandlerContextBorrow::new(f),
             on_set: self.on_set,
         }
@@ -690,6 +828,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
         FLinked,
         FSynced,
         FUnlinked,
+        FFailed,
         FEv,
         WithHandlerContextBorrow<Context, F, B>,
     >
@@ -703,6 +842,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_linked: self.on_linked,
             on_synced: self.on_synced,
             on_unlinked: self.on_unlinked,
+            on_failed: self.on_failed,
             on_event: self.on_event,
             on_set: WithHandlerContextBorrow::new(f),
         }
@@ -712,11 +852,12 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
     pub fn with_state<State>(
         self,
         state: State,
-    ) -> LiftedValueLifecycle<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet> {
+    ) -> LiftedValueLifecycle<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> {
         let StatelessValueDownlinkLifecycle {
             on_linked,
             on_synced,
             on_unlinked,
+            on_failed,
             on_event,
             on_set,
             ..
@@ -728,6 +869,7 @@ impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
             on_linked: LiftShared::new(on_linked),
             on_synced: LiftShared::new(on_synced),
             on_unlinked: LiftShared::new(on_unlinked),
+            on_failed: LiftShared::new(on_failed),
             on_event: LiftShared::new(on_event),
             on_set: LiftShared::new(on_set),
         }

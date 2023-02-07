@@ -17,6 +17,7 @@ use std::marker::PhantomData;
 use crate::agent_lifecycle::utility::HandlerContext;
 
 pub mod map;
+pub mod on_failed;
 pub mod on_linked;
 pub mod on_synced;
 pub mod on_unlinked;

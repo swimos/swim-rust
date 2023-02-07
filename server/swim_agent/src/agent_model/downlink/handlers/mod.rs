@@ -30,10 +30,10 @@ use crate::event_handler::BoxEventHandler;
 /// * `Context` - The context within which the event handlers must be run (typically an agent type).
 pub trait DownlinkChannel<Context> {
     /// Await the next downlink event. If this returns [`None`], the downlink has terminated. If an
-    /// error is returned, the downlink has failed and should not longer be watied on.
+    /// error is returned, the downlink has failed and should not longer be waited on.
     fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), FrameIoError>>>;
 
-    /// After a successful call to `await_ready` this may reutnr an event handler to be executed by
+    /// After a successful call to `await_ready` this may return an event handler to be executed by
     /// the agent task. At any other time, it will return [`None`].
     fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>>;
 }

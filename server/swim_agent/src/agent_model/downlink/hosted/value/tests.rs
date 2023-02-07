@@ -39,7 +39,7 @@ use crate::{
         on_linked::OnLinked,
         on_synced::OnSynced,
         on_unlinked::OnUnlinked,
-        value::{on_event::OnDownlinkEvent, on_set::OnDownlinkSet},
+        value::{on_event::OnDownlinkEvent, on_set::OnDownlinkSet}, on_failed::OnFailed,
     },
     event_handler::{BoxEventHandler, EventHandlerExt, SideEffect},
 };
@@ -53,6 +53,7 @@ enum Event {
     Event(i32),
     Set(Option<i32>, i32),
     Unlinked,
+    Failed,
 }
 
 #[derive(Debug)]
@@ -83,6 +84,20 @@ impl OnUnlinked<FakeAgent> for FakeLifecycle {
         let state = self.inner.clone();
         SideEffect::from(move || {
             state.lock().push(Event::Unlinked);
+        })
+        .boxed()
+    }
+}
+
+impl OnFailed<FakeAgent> for FakeLifecycle {
+    type OnFailedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
+
+    fn on_failed(&self) -> Self::OnFailedHandler<'_> {
+        let state = self.inner.clone();
+        SideEffect::from(move || {
+            state.lock().push(Event::Failed);
         })
         .boxed()
     }
