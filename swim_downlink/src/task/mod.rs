@@ -33,7 +33,8 @@ use tracing_futures::Instrument;
 
 use crate::model::MapDownlinkModel;
 use crate::{EventDownlinkModel, ValueDownlinkModel};
-pub use map::MapSender;
+pub use map::MapRequest;
+
 mod event;
 mod map;
 #[cfg(test)]
@@ -117,14 +118,26 @@ where
     }
 }
 
+pub trait MapKey:
+    Clone + Form + Send + Sync + Eq + Hash + Ord + RecognizerReadable + 'static
+{
+}
+impl<T> MapKey for T where
+    T: Clone + Form + Send + Sync + Eq + Hash + Ord + RecognizerReadable + 'static
+{
+}
+
+pub trait MapValue: Clone + Form + Send + Sync + Eq + 'static {}
+impl<T> MapValue for T where T: Clone + Form + Send + Sync + Eq + 'static {}
+
 impl<K, V, LC> Downlink for DownlinkTask<MapDownlinkModel<K, V, LC>>
 where
-    K: Clone + Form + Send + Sync + Eq + Hash + Ord + 'static,
-    V: Clone + Form + Send + Sync + Eq + Hash + 'static,
-    <K as RecognizerReadable>::Rec: Send,
-    <V as RecognizerReadable>::Rec: Send,
-    <K as RecognizerReadable>::BodyRec: Send,
-    <V as RecognizerReadable>::BodyRec: Send,
+    K: MapKey,
+    K::Rec: Send,
+    K::BodyRec: Send,
+    V: MapValue,
+    V::Rec: Send,
+    V::BodyRec: Send,
     LC: MapDownlinkLifecycle<K, V> + 'static,
 {
     fn kind(&self) -> DownlinkKind {
