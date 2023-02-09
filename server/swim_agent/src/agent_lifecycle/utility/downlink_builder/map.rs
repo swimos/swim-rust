@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{borrow::Borrow, collections::HashMap};
+use std::borrow::Borrow;
 
 use std::hash::Hash;
 use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
 
+use crate::downlink_lifecycle::map::on_synced::{OnMapSynced, OnMapSyncedShared};
 use crate::downlink_lifecycle::on_failed::{OnFailed, OnFailedShared};
 use crate::{
     agent_model::downlink::{hosted::MapDownlinkHandle, OpenMapDownlinkAction},
@@ -31,7 +32,6 @@ use crate::{
             StatefulMapDownlinkLifecycle, StatelessMapDownlinkLifecycle,
         },
         on_linked::{OnLinked, OnLinkedShared},
-        on_synced::{OnSynced, OnSyncedShared},
         on_unlinked::{OnUnlinked, OnUnlinkedShared},
         LiftShared, WithHandlerContext, WithHandlerContextBorrow,
     },
@@ -238,7 +238,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
         FClr,
     >
     where
-        WithHandlerContext<Context, F>: OnSynced<HashMap<K, V>, Context>,
+        WithHandlerContext<Context, F>: OnMapSynced<K, V, Context>,
     {
         let StatelessMapDownlinkBuilder {
             address,
@@ -463,7 +463,7 @@ where
     V: Form + Send + Sync + 'static,
     V::Rec: Send,
     FLinked: OnLinked<Context> + 'static,
-    FSynced: OnSynced<HashMap<K, V>, Context> + 'static,
+    FSynced: OnMapSynced<K, V, Context> + 'static,
     FUnlinked: OnUnlinked<Context> + 'static,
     FFailed: OnFailed<Context> + 'static,
     FUpd: OnDownlinkUpdate<K, V, Context> + 'static,
@@ -549,7 +549,7 @@ impl<Context, K, V, State, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FCl
         FClr,
     >
     where
-        FnHandler<F>: OnSyncedShared<HashMap<K, V>, Context, State>,
+        FnHandler<F>: OnMapSyncedShared<K, V, Context, State>,
     {
         let StatefulMapDownlinkBuilder {
             address,
@@ -749,7 +749,7 @@ where
     V::Rec: Send,
     State: Send + 'static,
     FLinked: OnLinkedShared<Context, State> + 'static,
-    FSynced: OnSyncedShared<HashMap<K, V>, Context, State> + 'static,
+    FSynced: OnMapSyncedShared<K, V, Context, State> + 'static,
     FUnlinked: OnUnlinkedShared<Context, State> + 'static,
     FFailed: OnFailedShared<Context, State> + 'static,
     FUpd: OnDownlinkUpdateShared<K, V, Context, State> + 'static,

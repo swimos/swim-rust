@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::RefCell;
-
 use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
 use std::fmt::Write;
@@ -38,7 +36,7 @@ use crate::{
     agent_model::downlink::handlers::{DownlinkChannel, DownlinkFailed},
     config::ValueDownlinkConfig,
     downlink_lifecycle::value::ValueDownlinkLifecycle,
-    event_handler::{BoxEventHandler, EventHandlerExt, HandlerActionExt},
+    event_handler::{BoxEventHandler, EventHandlerExt},
 };
 
 use super::DlState;
@@ -46,83 +44,27 @@ use super::DlState;
 #[cfg(test)]
 mod tests;
 
-/// Operations that need to be supported by the state store of a value downlink. The intention
-/// of this trait is to abstract over a self contained store a store contained within the field
-/// of an agent. In both cases, the store itself will a [`RefCell`] containing an optional value.
-trait ValueDlState<T, Context> {
-    fn take_current(&self, context: &Context) -> Option<T>;
-
-    fn replace(&self, context: &Context, value: T);
-
-    // Perform an operation in a context with access to the state.
-    fn with<R, Op: FnOnce(Option<&T>) -> R>(&self, context: &Context, op: Op) -> R;
-
-    fn clear(&self, context: &Context);
-}
-
-impl<T, Context> ValueDlState<T, Context> for RefCell<Option<T>> {
-    fn take_current(&self, _context: &Context) -> Option<T> {
-        self.replace(None)
-    }
-
-    fn replace(&self, _context: &Context, value: T) {
-        self.replace(Some(value));
-    }
-
-    fn with<R, Op: FnOnce(Option<&T>) -> R>(&self, _context: &Context, op: Op) -> R {
-        op(self.borrow().as_ref())
-    }
-
-    fn clear(&self, _context: &Context) {
-        self.replace(None);
-    }
-}
-
-impl<T, Context, F> ValueDlState<T, Context> for F
-where
-    F: for<'a> Fn(&'a Context) -> &'a RefCell<Option<T>>,
-{
-    fn take_current(&self, context: &Context) -> Option<T> {
-        self(context).replace(None)
-    }
-
-    fn replace(&self, context: &Context, value: T) {
-        self(context).replace(Some(value));
-    }
-
-    fn with<R, Op: FnOnce(Option<&T>) -> R>(&self, context: &Context, op: Op) -> R {
-        op(self(context).borrow().as_ref())
-    }
-
-    fn clear(&self, context: &Context) {
-        self(context).replace(None);
-    }
-}
-
 /// An implementation of [`DownlinkChannel`] to allow a value downlink to be driven by an agent
 /// task.
-pub struct HostedValueDownlinkChannel<T: RecognizerReadable, LC, State> {
+pub struct HostedValueDownlinkChannel<T: RecognizerReadable, LC> {
     address: Address<Text>,
     receiver: Option<FramedRead<ByteReader, ValueNotificationDecoder<T>>>,
-    state: State,
     next: Option<Result<DownlinkNotification<T>, FrameIoError>>,
     lifecycle: LC,
     config: ValueDownlinkConfig,
     dl_state: DlState,
 }
 
-impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> {
+impl<T: RecognizerReadable, LC> HostedValueDownlinkChannel<T, LC> {
     pub fn new(
         address: Address<Text>,
         receiver: ByteReader,
         lifecycle: LC,
-        state: State,
         config: ValueDownlinkConfig,
     ) -> Self {
         HostedValueDownlinkChannel {
             address,
             receiver: Some(FramedRead::new(receiver, Default::default())),
-            state,
             next: None,
             lifecycle,
             config,
@@ -131,9 +73,8 @@ impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> 
     }
 }
 
-impl<T, LC, State, Context> DownlinkChannel<Context> for HostedValueDownlinkChannel<T, LC, State>
+impl<T, LC, Context> DownlinkChannel<Context> for HostedValueDownlinkChannel<T, LC>
 where
-    State: ValueDlState<T, Context>,
     T: RecognizerReadable + Send + 'static,
     T::Rec: Send,
     LC: ValueDownlinkLifecycle<T, Context> + 'static,
@@ -171,10 +112,9 @@ where
         .boxed()
     }
 
-    fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+    fn next_event(&mut self, _context: &Context) -> Option<BoxEventHandler<'_, Context>> {
         let HostedValueDownlinkChannel {
             address,
-            state,
             receiver,
             next,
             lifecycle,
@@ -195,29 +135,23 @@ where
                     }
                     Some(lifecycle.on_linked().boxed())
                 }
-                Ok(DownlinkNotification::Synced) => state.with(context, |maybe_value| {
+                Ok(DownlinkNotification::Synced) => {
                     debug!(address = %address, "Downlink synced.");
                     *dl_state = DlState::Synced;
-                    maybe_value.map(|value| lifecycle.on_synced(value).boxed())
-                }),
+                    Some(lifecycle.on_synced(&()).boxed())
+                }
                 Ok(DownlinkNotification::Event { body }) => {
                     trace!(address = %address, "Event received for downlink.");
-                    let prev = state.take_current(context);
                     let handler = if *dl_state == DlState::Synced || *events_when_not_synced {
-                        let handler = lifecycle
-                            .on_event(&body)
-                            .followed_by(lifecycle.on_set(prev, &body))
-                            .boxed();
+                        let handler = lifecycle.on_event(body).boxed();
                         Some(handler)
                     } else {
                         None
                     };
-                    state.replace(context, body);
                     handler
                 }
                 Ok(DownlinkNotification::Unlinked) => {
                     debug!(address = %address, "Downlink unlinked.");
-                    state.clear(context);
                     if *terminate_on_unlinked {
                         *receiver = None;
                     }
@@ -225,7 +159,6 @@ where
                 }
                 Err(_) => {
                     debug!(address = %address, "Downlink failed.");
-                    state.clear(context);
                     if *terminate_on_unlinked {
                         *receiver = None;
                     }

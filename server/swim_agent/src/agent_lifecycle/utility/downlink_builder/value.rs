@@ -335,7 +335,7 @@ where
     T: Form + Send + Sync + 'static,
     T::Rec: Send,
     FLinked: OnLinked<Context> + 'static,
-    FSynced: OnSynced<T, Context> + 'static,
+    FSynced: OnSynced<(), Context> + 'static,
     FUnlinked: OnUnlinked<Context> + 'static,
     FFailed: OnFailed<Context> + 'static,
     FEv: OnDownlinkEvent<T, Context> + 'static,
@@ -389,7 +389,7 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
     }
 
     /// Specify a new event handler to be executed when the downlink enters the synced state.
-    pub fn on_synced<F, B>(
+    pub fn on_synced<F>(
         self,
         f: F,
     ) -> StatefulValueDownlinkBuilder<
@@ -397,16 +397,15 @@ impl<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
         T,
         State,
         FLinked,
-        BorrowHandler<F, B>,
+        FnHandler<F>,
         FUnlinked,
         FFailed,
         FEv,
         FSet,
     >
     where
-        B: ?Sized,
-        T: Borrow<B>,
-        BorrowHandler<F, B>: OnSyncedShared<T, Context, State>,
+        F: Send,
+        FnHandler<F>: OnSyncedShared<(), Context, State>,
     {
         let StatefulValueDownlinkBuilder {
             address,
@@ -553,7 +552,7 @@ where
     T: Form + Send + Sync + 'static,
     T::Rec: Send,
     FLinked: OnLinkedShared<Context, State> + 'static,
-    FSynced: OnSyncedShared<T, Context, State> + 'static,
+    FSynced: OnSyncedShared<(), Context, State> + 'static,
     FUnlinked: OnUnlinkedShared<Context, State> + 'static,
     FFailed: OnFailedShared<Context, State> + 'static,
     FEv: OnDownlinkEventShared<T, Context, State> + 'static,

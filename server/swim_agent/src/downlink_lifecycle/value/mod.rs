@@ -41,9 +41,8 @@ pub mod on_set;
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait ValueDownlinkLifecycle<T, Context>:
     OnLinked<Context>
-    + OnSynced<T, Context>
+    + OnSynced<(), Context>
     + OnDownlinkEvent<T, Context>
-    + OnDownlinkSet<T, Context>
     + OnUnlinked<Context>
     + OnFailed<Context>
 {
@@ -51,9 +50,8 @@ pub trait ValueDownlinkLifecycle<T, Context>:
 
 impl<LC, T, Context> ValueDownlinkLifecycle<T, Context> for LC where
     LC: OnLinked<Context>
-        + OnSynced<T, Context>
+        + OnSynced<(), Context>
         + OnDownlinkEvent<T, Context>
-        + OnDownlinkSet<T, Context>
         + OnUnlinked<Context>
         + OnFailed<Context>
 {
@@ -183,7 +181,7 @@ where
     }
 }
 
-impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnSynced<T, Context>
+impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnSynced<(), Context>
     for StatefulValueDownlinkLifecycle<
         Context,
         State,
@@ -198,7 +196,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnSynce
 where
     State: Send,
     FLinked: Send,
-    FSynced: OnSyncedShared<T, Context, State>,
+    FSynced: OnSyncedShared<(), Context, State>,
     FUnlinked: Send,
     FFailed: Send,
     FEv: Send,
@@ -208,7 +206,7 @@ where
     where
         Self: 'a;
 
-    fn on_synced<'a>(&'a self, value: &T) -> Self::OnSyncedHandler<'a> {
+    fn on_synced<'a>(&'a self, value: &()) -> Self::OnSyncedHandler<'a> {
         let StatefulValueDownlinkLifecycle {
             on_synced,
             state,
@@ -316,7 +314,7 @@ where
     where
         Self: 'a;
 
-    fn on_event<'a>(&'a self, value: &T) -> Self::OnEventHandler<'a> {
+    fn on_event<'a>(&'a self, value: T) -> Self::OnEventHandler<'a> {
         let StatefulValueDownlinkLifecycle {
             on_event,
             state,
@@ -408,7 +406,7 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
     }
 
     /// Replace the 'on_synced' handler with another derived from a closure.
-    pub fn on_synced<F, B>(
+    pub fn on_synced<F>(
         self,
         f: F,
     ) -> StatefulValueDownlinkLifecycle<
@@ -416,23 +414,21 @@ impl<Context, State, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
         State,
         T,
         FLinked,
-        BorrowHandler<F, B>,
+        FnHandler<F>,
         FUnlinked,
         FFailed,
         FEv,
         FSet,
     >
     where
-        B: ?Sized,
-        T: Borrow<B>,
-        BorrowHandler<F, B>: OnSyncedShared<T, Context, State>,
+        FnHandler<F>: OnSyncedShared<(), Context, State>,
     {
         StatefulValueDownlinkLifecycle {
             _type: PhantomData,
             state: self.state,
             handler_context: self.handler_context,
             on_linked: self.on_linked,
-            on_synced: BorrowHandler::new(f),
+            on_synced: FnHandler(f),
             on_unlinked: self.on_unlinked,
             on_failed: self.on_failed,
             on_event: self.on_event,
@@ -658,11 +654,11 @@ where
     }
 }
 
-impl<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnSynced<T, Context>
+impl<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> OnSynced<(), Context>
     for StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 where
     FLinked: Send,
-    FSynced: OnSynced<T, Context>,
+    FSynced: OnSynced<(), Context>,
     FUnlinked: Send,
     FFailed: Send,
     FEv: Send,
@@ -672,7 +668,7 @@ where
     where
         Self: 'a;
 
-    fn on_synced<'a>(&'a self, value: &T) -> Self::OnSyncedHandler<'a> {
+    fn on_synced<'a>(&'a self, value: &()) -> Self::OnSyncedHandler<'a> {
         let StatelessValueDownlinkLifecycle { on_synced, .. } = self;
         on_synced.on_synced(value)
     }
@@ -733,7 +729,7 @@ where
     where
         Self: 'a;
 
-    fn on_event<'a>(&'a self, value: &T) -> Self::OnEventHandler<'a> {
+    fn on_event<'a>(&'a self, value: T) -> Self::OnEventHandler<'a> {
         let StatelessValueDownlinkLifecycle { on_event, .. } = self;
         on_event.on_event(value)
     }

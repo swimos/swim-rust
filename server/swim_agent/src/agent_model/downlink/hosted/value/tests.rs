@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, num::NonZeroUsize, sync::Arc};
+use std::{num::NonZeroUsize, sync::Arc};
 
 use futures::{future::join3, pin_mut, SinkExt, StreamExt};
 use parking_lot::Mutex;
@@ -50,7 +50,7 @@ struct FakeAgent;
 #[derive(Debug, PartialEq, Eq)]
 enum Event {
     Linked,
-    Synced(i32),
+    Synced,
     Event(i32),
     Set(Option<i32>, i32),
     Unlinked,
@@ -104,16 +104,15 @@ impl OnFailed<FakeAgent> for FakeLifecycle {
     }
 }
 
-impl OnSynced<i32, FakeAgent> for FakeLifecycle {
+impl OnSynced<(), FakeAgent> for FakeLifecycle {
     type OnSyncedHandler<'a> = BoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
-    fn on_synced<'a>(&'a self, value: &i32) -> Self::OnSyncedHandler<'a> {
+    fn on_synced<'a>(&'a self, _value: &()) -> Self::OnSyncedHandler<'a> {
         let state = self.inner.clone();
-        let n = *value;
         SideEffect::from(move || {
-            state.lock().push(Event::Synced(n));
+            state.lock().push(Event::Synced);
         })
         .boxed()
     }
@@ -124,11 +123,10 @@ impl OnDownlinkEvent<i32, FakeAgent> for FakeLifecycle {
     where
         Self: 'a;
 
-    fn on_event<'a>(&'a self, value: &i32) -> Self::OnEventHandler<'a> {
+    fn on_event<'a>(&'a self, value: i32) -> Self::OnEventHandler<'a> {
         let state = self.inner.clone();
-        let n = *value;
         SideEffect::from(move || {
-            state.lock().push(Event::Event(n));
+            state.lock().push(Event::Event(value));
         })
         .boxed()
     }
@@ -150,12 +148,11 @@ impl OnDownlinkSet<i32, FakeAgent> for FakeLifecycle {
 }
 
 type Events = Arc<Mutex<Vec<Event>>>;
-type State = RefCell<Option<i32>>;
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 struct TestContext {
-    channel: HostedValueDownlinkChannel<i32, FakeLifecycle, State>,
+    channel: HostedValueDownlinkChannel<i32, FakeLifecycle>,
     events: Events,
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
 }
@@ -170,7 +167,7 @@ fn make_hosted_input(config: ValueDownlinkConfig) -> TestContext {
 
     let address = Address::new(None, Text::new("/node"), Text::new("lane"));
 
-    let chan = HostedValueDownlinkChannel::new(address, rx, lc, State::default(), config);
+    let chan = HostedValueDownlinkChannel::new(address, rx, lc, config);
     TestContext {
         channel: chan,
         events: inner,
@@ -287,7 +284,7 @@ async fn emit_synced_handler() {
         vec![
             (DownlinkNotification::Linked, Some(vec![Event::Linked])),
             (DownlinkNotification::Event { body: 13 }, None),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced(13)])),
+            (DownlinkNotification::Synced, Some(vec![Event::Synced])),
         ],
     )
     .await;
@@ -305,7 +302,7 @@ async fn emit_event_handlers() {
         vec![
             (DownlinkNotification::Linked, Some(vec![Event::Linked])),
             (DownlinkNotification::Event { body: 13 }, None),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced(13)])),
+            (DownlinkNotification::Synced, Some(vec![Event::Synced])),
             (
                 DownlinkNotification::Event { body: 15 },
                 Some(vec![Event::Event(15), Event::Set(Some(13), 15)]),
@@ -334,7 +331,7 @@ async fn emit_events_before_synced() {
                 DownlinkNotification::Event { body: 13 },
                 Some(vec![Event::Event(13), Event::Set(None, 13)]),
             ),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced(13)])),
+            (DownlinkNotification::Synced, Some(vec![Event::Synced])),
         ],
     )
     .await;
@@ -383,14 +380,14 @@ async fn revive_unlinked_downlink() {
                 DownlinkNotification::Event { body: 13 },
                 Some(vec![Event::Event(13), Event::Set(None, 13)]),
             ),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced(13)])),
+            (DownlinkNotification::Synced, Some(vec![Event::Synced])),
             (DownlinkNotification::Unlinked, Some(vec![Event::Unlinked])),
             (DownlinkNotification::Linked, Some(vec![Event::Linked])),
             (
                 DownlinkNotification::Event { body: 27 },
                 Some(vec![Event::Event(27), Event::Set(None, 27)]),
             ),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced(27)])),
+            (DownlinkNotification::Synced, Some(vec![Event::Synced])),
         ],
     )
     .await;

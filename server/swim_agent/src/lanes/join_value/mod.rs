@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
 use std::hash::Hash;
+use std::{cell::RefCell, collections::HashMap};
 
 use bytes::BytesMut;
 use swim_form::structural::write::StructuralWritable;
@@ -27,16 +27,24 @@ use crate::{
 
 use super::{map::MapLaneEvent, Lane, MapLane};
 
+mod downlink;
 pub mod lifecycle;
+
+enum DownlinkStatus {
+    Pending,
+    Linked,
+}
 
 pub struct JoinValueLane<K, V> {
     inner: MapLane<K, V>,
+    keys: RefCell<HashMap<K, DownlinkStatus>>,
 }
 
 impl<K, V> JoinValueLane<K, V> {
     pub fn new(id: u64) -> Self {
         JoinValueLane {
             inner: MapLane::new(id, HashMap::new()),
+            keys: RefCell::new(HashMap::new()),
         }
     }
 }

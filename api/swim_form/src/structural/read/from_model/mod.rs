@@ -378,7 +378,7 @@ impl Recognizer for AttrBodyMaterializer {
     }
 }
 
-/// [`Recognizer``] implementation for the [`Value`] type when it ocurrs as a delegated field.
+/// [`Recognizer``] implementation for the [`Value`] type when it occurs as a delegated field.
 #[derive(Debug, Default)]
 pub struct DelegateBodyMaterializer {
     inner: ValueMaterializer,

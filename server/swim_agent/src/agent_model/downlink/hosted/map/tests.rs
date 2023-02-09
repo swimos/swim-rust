@@ -34,11 +34,11 @@ use crate::{
     config::MapDownlinkConfig,
     downlink_lifecycle::{
         map::{
-            on_clear::OnDownlinkClear, on_remove::OnDownlinkRemove, on_update::OnDownlinkUpdate,
+            on_clear::OnDownlinkClear, on_remove::OnDownlinkRemove, on_synced::OnMapSynced,
+            on_update::OnDownlinkUpdate,
         },
         on_failed::OnFailed,
         on_linked::OnLinked,
-        on_synced::OnSynced,
         on_unlinked::OnUnlinked,
     },
     event_handler::{BoxEventHandler, EventHandlerExt, SideEffect},
@@ -144,7 +144,7 @@ impl OnFailed<FakeAgent> for FakeLifecycle {
     }
 }
 
-impl OnSynced<HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
+impl OnMapSynced<i32, Text, FakeAgent> for FakeLifecycle {
     type OnSyncedHandler<'a> = BoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
