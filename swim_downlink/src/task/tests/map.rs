@@ -31,7 +31,7 @@ use crate::lifecycle::BasicMapDownlinkLifecycle;
 use crate::model::lifecycle::MapDownlinkLifecycle;
 use crate::model::MapDownlinkModel;
 use crate::task::MapRequest;
-use crate::{DownlinkTask, MapSender};
+use crate::{DownlinkTask, MapDownlinkHandle};
 
 #[derive(Debug, PartialEq, Eq)]
 enum TestMessage<K, V> {
@@ -91,9 +91,9 @@ const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
 async fn link_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (set_tx, set_rx) = mpsc::channel(16);
-    let handle = MapSender::new(set_tx);
+    let handle = MapDownlinkHandle::new(set_tx);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -124,7 +124,7 @@ async fn invalid_sync_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -154,9 +154,9 @@ async fn invalid_sync_downlink() {
 async fn sync_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (set_tx, set_rx) = mpsc::channel(16);
-    let handle = MapSender::new(set_tx);
+    let handle = MapDownlinkHandle::new(set_tx);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -199,7 +199,7 @@ async fn report_events_before_sync() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: true,
@@ -248,9 +248,9 @@ async fn report_events_before_sync() {
 async fn report_events_after_sync() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (set_tx, set_rx) = mpsc::channel(16);
-    let handle = MapSender::new(set_tx);
+    let handle = MapDownlinkHandle::new(set_tx);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -306,7 +306,7 @@ async fn terminate_after_unlinked() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -354,7 +354,7 @@ async fn terminate_after_corrupt_frame() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -388,7 +388,7 @@ async fn unlink_discards_value() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -436,7 +436,7 @@ async fn relink_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -492,7 +492,7 @@ async fn send_on_downlink() {
     let (event_tx, _event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -524,7 +524,7 @@ async fn clear_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -569,7 +569,7 @@ async fn empty_sync_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -603,7 +603,7 @@ async fn rx_take_elem_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -673,9 +673,9 @@ async fn rx_take_elem_downlink() {
 async fn handle_take_elem_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (set_tx, set_rx) = mpsc::channel(16);
-    let handle = MapSender::new(set_tx);
+    let handle = MapDownlinkHandle::new(set_tx);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -734,7 +734,7 @@ async fn rx_drop_elem_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -799,9 +799,9 @@ async fn rx_drop_elem_downlink() {
 async fn handle_drop_elem_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (set_tx, set_rx) = mpsc::channel(16);
-    let handle = MapSender::new(set_tx);
+    let handle = MapDownlinkHandle::new(set_tx);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -861,7 +861,7 @@ async fn remove_elem_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
+    let model = MapDownlinkModel::new(set_rx, lifecycle, false);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,

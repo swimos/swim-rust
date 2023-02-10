@@ -17,8 +17,8 @@ mod task;
 
 pub use model::{
     event_downlink, map_downlink, value_downlink, ChannelError, DefaultEventDownlinkModel,
-    DefaultMapDownlinkModel, DefaultValueDownlinkModel, EventDownlinkModel, MapDownlinkModel,
-    MapSender, ValueDownlinkModel,
+    DefaultMapDownlinkModel, DefaultValueDownlinkModel, EventDownlinkModel, MapDownlinkHandle,
+    MapDownlinkModel, ValueDownlinkModel,
 };
 pub mod lifecycle {
     pub use crate::model::lifecycle::{

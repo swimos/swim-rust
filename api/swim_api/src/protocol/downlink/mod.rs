@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, Bytes};
+use std::fmt::Debug;
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_model::Text;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};

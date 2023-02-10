@@ -27,7 +27,8 @@ use swim_downlink::lifecycle::{
     ValueDownlinkLifecycle,
 };
 use swim_downlink::{
-    ChannelError, DownlinkTask, MapDownlinkModel, MapKey, MapSender, MapValue, ValueDownlinkModel,
+    ChannelError, DownlinkTask, MapDownlinkHandle, MapDownlinkModel, MapKey, MapValue,
+    ValueDownlinkModel,
 };
 use swim_form::Form;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
@@ -328,14 +329,14 @@ impl<'h, L> MapDownlinkBuilder<'h, L> {
         } = self;
 
         let (tx, rx) = mpsc::channel(downlink_config.buffer_size.get());
-        let task = DownlinkTask::new(MapDownlinkModel::new(rx, lifecycle));
+        let task = DownlinkTask::new(MapDownlinkModel::new(rx, lifecycle, true));
         let stop_rx = handle
             .inner
             .run_downlink(path, runtime_config, downlink_config, options, task)
             .await?;
 
         Ok(MapDownlinkView {
-            inner: MapSender::new(tx),
+            inner: MapDownlinkHandle::new(tx),
             stop_rx,
         })
     }
@@ -344,7 +345,7 @@ impl<'h, L> MapDownlinkBuilder<'h, L> {
 /// A view over a map downlink.
 #[derive(Debug, Clone)]
 pub struct MapDownlinkView<K, V> {
-    inner: MapSender<K, V>,
+    inner: MapDownlinkHandle<K, V>,
     stop_rx: promise::Receiver<Result<(), DownlinkRuntimeError>>,
 }
 

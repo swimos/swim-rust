@@ -21,7 +21,10 @@ use swim_api::downlink::DownlinkKind;
 use swim_model::address::RelativeAddress;
 use swim_model::Text;
 use swim_remote::AttachClient;
-use swim_runtime::downlink::{AttachAction, DownlinkRuntimeConfig, ValueDownlinkRuntime};
+use swim_runtime::downlink::failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy};
+use swim_runtime::downlink::{
+    AttachAction, DownlinkRuntimeConfig, MapDownlinkRuntime, ValueDownlinkRuntime,
+};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
@@ -172,7 +175,7 @@ impl DownlinkRuntime {
         } = self;
         async move {
             match kind {
-                DownlinkKind::Value => {
+                DownlinkKind::Event | DownlinkKind::Value => {
                     let runtime = ValueDownlinkRuntime::new(
                         attachment_rx,
                         io,
@@ -183,7 +186,23 @@ impl DownlinkRuntime {
                     );
                     runtime.run().await;
                 }
-                k => unimplemented!("{:?}", k),
+                DownlinkKind::Map => {
+                    let strategy = if config.abort_on_bad_frames {
+                        ReportStrategy::new(AlwaysAbortStrategy).boxed()
+                    } else {
+                        ReportStrategy::new(AlwaysIgnoreStrategy).boxed()
+                    };
+                    let runtime = MapDownlinkRuntime::new(
+                        attachment_rx,
+                        io,
+                        stopping,
+                        identity,
+                        path,
+                        config,
+                        strategy,
+                    );
+                    runtime.run().await;
+                }
             }
         }
     }

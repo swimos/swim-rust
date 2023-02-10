@@ -67,14 +67,20 @@ impl<T, LC> EventDownlinkModel<T, LC> {
 pub struct MapDownlinkModel<K, V, LC> {
     pub actions: mpsc::Receiver<MapRequest<K, V>>,
     pub lifecycle: LC,
+    pub remote: bool,
 }
 
 impl<K, V, LC> MapDownlinkModel<K, V, LC> {
     pub fn new(
         actions: mpsc::Receiver<MapRequest<K, V>>,
         lifecycle: LC,
+        remote: bool,
     ) -> MapDownlinkModel<K, V, LC> {
-        MapDownlinkModel { actions, lifecycle }
+        MapDownlinkModel {
+            actions,
+            lifecycle,
+            remote,
+        }
     }
 }
 
@@ -104,8 +110,9 @@ pub fn event_downlink<T>() -> DefaultEventDownlinkModel<T> {
 
 pub fn map_downlink<K, V>(
     actions: mpsc::Receiver<MapRequest<K, V>>,
+    remote: bool,
 ) -> DefaultMapDownlinkModel<K, V> {
-    MapDownlinkModel::new(actions, Default::default())
+    MapDownlinkModel::new(actions, Default::default(), remote)
 }
 
 #[derive(Debug)]
@@ -133,13 +140,13 @@ impl From<oneshot::error::RecvError> for ChannelError {
 
 /// A map downlink handle.
 #[derive(Debug, Clone)]
-pub struct MapSender<K, V> {
+pub struct MapDownlinkHandle<K, V> {
     inner: mpsc::Sender<MapRequest<K, V>>,
 }
 
-impl<K, V> MapSender<K, V> {
-    pub fn new(inner: mpsc::Sender<MapRequest<K, V>>) -> MapSender<K, V> {
-        MapSender { inner }
+impl<K, V> MapDownlinkHandle<K, V> {
+    pub fn new(inner: mpsc::Sender<MapRequest<K, V>>) -> MapDownlinkHandle<K, V> {
+        MapDownlinkHandle { inner }
     }
 
     /// Returns an owned value corresponding to the key.
@@ -241,11 +248,16 @@ where
         F: Fn(LC) -> LC2,
         LC2: MapDownlinkLifecycle<K, V>,
     {
-        let MapDownlinkModel { actions, lifecycle } = self;
+        let MapDownlinkModel {
+            actions,
+            lifecycle,
+            remote,
+        } = self;
 
         MapDownlinkModel {
             actions,
             lifecycle: f(lifecycle),
+            remote,
         }
     }
 }

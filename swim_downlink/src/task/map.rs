@@ -17,12 +17,13 @@ use crate::model::MapDownlinkModel;
 use crate::task::{MapKey, MapValue};
 use futures::{FutureExt, Sink, SinkExt, StreamExt};
 use std::collections::BTreeMap;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::mem;
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, RecNotificationDecoder,
+    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, MapNotificationDecoder,
+    RecNotificationDecoder,
 };
 use swim_api::protocol::map::MapMessage;
 use swim_form::structural::write::StructuralWritable;
@@ -34,7 +35,7 @@ use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio::select;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::codec::{FramedRead, FramedWrite};
+use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
 use tracing::{info_span, trace, Instrument};
 
 /// Task to drive a map downlink, calling lifecycle events at appropriate points.
@@ -59,16 +60,35 @@ where
     V::Rec: Send,
     LC: MapDownlinkLifecycle<K, V>,
 {
-    let MapDownlinkModel { actions, lifecycle } = model;
-    run_task(
-        config,
-        input,
-        lifecycle,
-        FramedWrite::new(output, DownlinkOperationEncoder),
+    let MapDownlinkModel {
         actions,
-    )
-    .instrument(info_span!("Downlink IO task.",%path))
-    .await
+        lifecycle,
+        remote,
+    } = model;
+
+    if remote {
+        run_io(
+            config,
+            input,
+            lifecycle,
+            FramedWrite::new(output, DownlinkOperationEncoder),
+            actions,
+            MapNotificationDecoder::default(),
+        )
+        .instrument(info_span!("Downlink IO task.", %path))
+        .await
+    } else {
+        run_io(
+            config,
+            input,
+            lifecycle,
+            FramedWrite::new(output, DownlinkOperationEncoder),
+            actions,
+            RecNotificationDecoder::default(),
+        )
+        .instrument(info_span!("Downlink IO task.", %path))
+        .await
+    }
 }
 
 /// The current state of the downlink.
@@ -124,12 +144,13 @@ impl<K, V> From<MapMessage<K, V>> for MapRequest<K, V> {
     }
 }
 
-async fn run_task<K, V, LC, Snk>(
+async fn run_io<K, V, LC, Snk, D, E>(
     config: DownlinkConfig,
     input: ByteReader,
     mut lifecycle: LC,
     mut framed: Snk,
     actions: mpsc::Receiver<MapRequest<K, V>>,
+    decoder: D,
 ) -> Result<(), DownlinkTaskError>
 where
     K: MapKey,
@@ -137,10 +158,13 @@ where
     V::Rec: Send,
     LC: MapDownlinkLifecycle<K, V>,
     Snk: Sink<DownlinkOperation<MapMessage<K, V>>> + Unpin,
+    D: Decoder<Item = DownlinkNotification<MapMessage<K, V>>, Error = E>,
+    DownlinkTaskError: From<E>,
+    E: Debug,
 {
     let mut state: State<K, V> = State::Unlinked;
     let mut mode = Mode::ReadWrite;
-    let mut framed_read = FramedRead::new(input, RecNotificationDecoder::default());
+    let mut framed_read = FramedRead::new(input, decoder);
     let mut set_stream = ReceiverStream::new(actions);
 
     loop {
@@ -152,7 +176,10 @@ where
                     write = (&mut write_fut) => IoEvent::Write(write),
                     read_event = framed_read.next() => match read_event {
                         Some(Ok(notification)) => IoEvent::Read(notification),
-                        Some(Err(e)) => break Err(e.into()),
+                        Some(Err(e)) => {
+                            println!("Map err: {:?}", e);
+                            break Err(e.into())
+                        } ,
                         None => break Ok(()),
                     }
                 };
