@@ -246,6 +246,48 @@ fn and_then_handler() {
 }
 
 #[test]
+fn and_then_contextual_handler() {
+    let uri = make_uri();
+    let meta = make_meta(&uri);
+
+    let mut output = None;
+    let output_ref = &mut output;
+    let mut handler = HandlerActionExt::<DummyAgent>::and_then_contextual(
+        GetAgentUri::default(),
+        move |_: &DummyAgent, uri: RouteUri| {
+            SideEffect::from(move || {
+                *output_ref = Some(uri.to_string());
+            })
+        },
+    );
+
+    let result = handler.step(dummy_context(), meta, &DUMMY);
+    assert!(matches!(
+        result,
+        StepResult::Continue {
+            modified_item: None
+        }
+    ));
+
+    let result = handler.step(dummy_context(), meta, &DUMMY);
+    assert!(matches!(
+        result,
+        StepResult::Complete {
+            modified_item: None,
+            ..
+        }
+    ));
+
+    let result = handler.step(dummy_context(), meta, &DUMMY);
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    assert_eq!(output, Some(NODE_URI.to_string()));
+}
+
+#[test]
 fn followed_by_handler() {
     let uri = make_uri();
     let meta = make_meta(&uri);

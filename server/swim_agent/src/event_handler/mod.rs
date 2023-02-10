@@ -430,6 +430,13 @@ pub enum AndThen<H1, H2, F> {
     Done,
 }
 
+/// Type that is returned by the `and_then_contextual` method on the [`HandlerActionExt`] trait.
+pub enum AndThenContextual<H1, H2, F> {
+    First { first: H1, next: F },
+    Second(H2),
+    Done,
+}
+
 /// Type that is returned by the `and_then_try` method on the [`HandlerActionExt`] trait.
 pub enum AndThenTry<H1, H2, F> {
     First { first: H1, next: F },
@@ -456,6 +463,12 @@ impl<H1, H2, F> Default for AndThen<H1, H2, F> {
     }
 }
 
+impl<H1, H2, F> Default for AndThenContextual<H1, H2, F> {
+    fn default() -> Self {
+        AndThenContextual::Done
+    }
+}
+
 impl<H1, H2, F> Default for AndThenTry<H1, H2, F> {
     fn default() -> Self {
         AndThenTry::Done
@@ -477,6 +490,12 @@ impl<H, F> Map<H, F> {
 impl<H1, H2, F> AndThen<H1, H2, F> {
     fn new(first: H1, f: F) -> Self {
         AndThen::First { first, next: f }
+    }
+}
+
+impl<H1, H2, F> AndThenContextual<H1, H2, F> {
+    fn new(first: H1, f: F) -> Self {
+        AndThenContextual::First { first, next: f }
     }
 }
 
@@ -512,6 +531,23 @@ where
     }
 }
 
+/// Transformation within a context.
+pub trait ContextualTrans<Context, In> {
+    type Out;
+    fn transform(self, context: &Context, input: In) -> Self::Out;
+}
+
+impl<Context, In, Out, F> ContextualTrans<Context, In> for F
+where
+    F: FnOnce(&Context, In) -> Out,
+{
+    type Out = Out;
+
+    fn transform(self, context: &Context, input: In) -> Self::Out {
+        self(context, input)
+    }
+}
+
 impl<Context, H, F, T> HandlerAction<Context> for Map<H, F>
 where
     H: HandlerAction<Context>,
@@ -542,6 +578,56 @@ where
             }
         } else {
             StepResult::after_done()
+        }
+    }
+}
+
+impl<Context, H1, H2, F> HandlerAction<Context> for AndThenContextual<H1, H2, F>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+    F: ContextualTrans<Context, H1::Completion, Out = H2>,
+{
+    type Completion = H2::Completion;
+
+    fn step(
+        &mut self,
+        action_context: ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        match std::mem::take(self) {
+            AndThenContextual::First { mut first, next } => {
+                match first.step(action_context, meta, context) {
+                    StepResult::Fail(e) => StepResult::Fail(e),
+                    StepResult::Complete {
+                        modified_item: dirty_lane,
+                        result,
+                    } => {
+                        let second = next.transform(context, result);
+                        *self = AndThenContextual::Second(second);
+                        StepResult::Continue {
+                            modified_item: dirty_lane,
+                        }
+                    }
+                    StepResult::Continue {
+                        modified_item: dirty_lane,
+                    } => {
+                        *self = AndThenContextual::First { first, next };
+                        StepResult::Continue {
+                            modified_item: dirty_lane,
+                        }
+                    }
+                }
+            }
+            AndThenContextual::Second(mut second) => {
+                let step_result = second.step(action_context, meta, context);
+                if step_result.is_cont() {
+                    *self = AndThenContextual::Second(second);
+                }
+                step_result
+            }
+            _ => StepResult::after_done(),
         }
     }
 }
@@ -870,6 +956,18 @@ pub trait HandlerActionExt<Context>: HandlerAction<Context> {
         H2: HandlerAction<Context>,
     {
         AndThen::new(self, f)
+    }
+
+    /// Create a new handler which applies a function to the result of this handler and then executes
+    /// an additional handler returned by the function. The functional also receives access to the
+    /// context.
+    fn and_then_contextual<F, H2>(self, f: F) -> AndThenContextual<Self, H2, F>
+    where
+        Self: Sized,
+        F: ContextualTrans<Context, Self::Completion, Out = H2>,
+        H2: HandlerAction<Context>,
+    {
+        AndThenContextual::new(self, f)
     }
 
     /// Create a new handler which applies a function to the result of this handler and then executes
