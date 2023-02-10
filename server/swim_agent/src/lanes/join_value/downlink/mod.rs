@@ -14,6 +14,8 @@
 
 use std::hash::Hash;
 
+use swim_model::{address::Address, Text};
+
 use crate::{
     agent_lifecycle::utility::HandlerContext,
     downlink_lifecycle::{
@@ -21,8 +23,8 @@ use crate::{
         value::on_event::OnDownlinkEvent,
     },
     event_handler::{
-        ActionContext, AndThen, FollowedBy, HandlerAction, HandlerActionExt, HandlerTrans,
-        Modification, StepResult,
+        ActionContext, AndThen, AndThenContextual, ConstHandler, ContextualTrans, FollowedBy,
+        HandlerAction, HandlerActionExt, HandlerTrans, Modification, StepResult,
     },
     item::AgentItem,
     meta::AgentMetadata,
@@ -33,16 +35,30 @@ use super::{
         on_failed::OnJoinValueFailed, on_linked::OnJoinValueLinked, on_synced::OnJoinValueSynced,
         on_unlinked::OnJoinValueUnlinked,
     },
-    DownlinkStatus, JoinValueLane, LinkClosedResponse, RemoteLane,
+    DownlinkStatus, JoinValueLane, LinkClosedResponse,
 };
 
 pub struct JoinValueDownlink<K, V, LC, Context> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,
     key: K,
-    host: Option<String>,
-    node: String,
-    lane: String,
+    lane: Address<Text>,
     lifecycle: LC,
+}
+
+impl<K, V, LC, Context> JoinValueDownlink<K, V, LC, Context> {
+    pub fn new(
+        projection: fn(&Context) -> &JoinValueLane<K, V>,
+        key: K,
+        lane: Address<Text>,
+        lifecycle: LC,
+    ) -> Self {
+        JoinValueDownlink {
+            projection,
+            key,
+            lane,
+            lifecycle,
+        }
+    }
 }
 
 impl<K, V, LC, Context> OnLinked<Context> for JoinValueDownlink<K, V, LC, Context>
@@ -58,46 +74,40 @@ where
         let JoinValueDownlink {
             projection,
             key,
-            host,
-            node,
             lane,
             lifecycle,
         } = self;
-        let remote = RemoteLane {
-            host: host.as_ref().map(String::as_str),
-            node: &node,
-            lane: &lane,
-        };
+        let remote = lane.borrow_parts();
         let alter_state =
             AlterKeyState::new(*projection, key.clone(), Some(DownlinkStatus::Linked));
         alter_state.followed_by(lifecycle.on_linked(HandlerContext::default(), key.clone(), remote))
     }
 }
 
-impl<K, V, LC, Context> OnSynced<V, Context> for JoinValueDownlink<K, V, LC, Context>
+impl<K, V, LC, Context> OnSynced<(), Context> for JoinValueDownlink<K, V, LC, Context>
 where
     K: Clone + Hash + Eq + Send,
     LC: OnJoinValueSynced<K, V, Context>,
 {
-    type OnSyncedHandler<'a> = LC::OnJoinValueSyncedHandler<'a>
+    type OnSyncedHandler<'a> = AndThenContextual<
+        ConstHandler<K>,
+        LC::OnJoinValueSyncedHandler<'a>,
+        RetrieveSynced<'a, Context, K, V, LC>
+    >
     where
         Self: 'a;
 
-    fn on_synced<'a>(&'a self, value: &V) -> Self::OnSyncedHandler<'a> {
+    fn on_synced<'a>(&'a self, _: &()) -> Self::OnSyncedHandler<'a> {
         let JoinValueDownlink {
+            projection,
             key,
-            host,
-            node,
             lane,
             lifecycle,
             ..
         } = self;
-        let remote = RemoteLane {
-            host: host.as_ref().map(String::as_str),
-            node: &node,
-            lane: &lane,
-        };
-        lifecycle.on_synced(HandlerContext::default(), key.clone(), remote, Some(value))
+        let remote = lane.borrow_parts();
+        let transform = RetrieveSynced::new(*projection, remote, lifecycle);
+        ConstHandler::from(key.clone()).and_then_contextual(transform)
     }
 }
 
@@ -114,16 +124,10 @@ where
         let JoinValueDownlink {
             projection,
             key,
-            host,
-            node,
             lane,
             lifecycle,
         } = self;
-        let remote = RemoteLane {
-            host: host.as_ref().map(String::as_str),
-            node: &node,
-            lane: &lane,
-        };
+        let remote = lane.borrow_parts();
         lifecycle
             .on_unlinked(HandlerContext::default(), key.clone(), remote)
             .and_then(AfterClosedTrans::new(*projection, key.clone()))
@@ -143,16 +147,10 @@ where
         let JoinValueDownlink {
             projection,
             key,
-            host,
-            node,
             lane,
             lifecycle,
         } = self;
-        let remote = RemoteLane {
-            host: host.as_ref().map(String::as_str),
-            node: &node,
-            lane: &lane,
-        };
+        let remote = lane.borrow_parts();
         lifecycle
             .on_failed(HandlerContext::default(), key.clone(), remote)
             .and_then(AfterClosedTrans::new(*projection, key.clone()))
@@ -339,5 +337,46 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+}
+
+pub struct RetrieveSynced<'a, Context, K, V, LC> {
+    projection: fn(&Context) -> &JoinValueLane<K, V>,
+    lane: Address<&'a str>,
+    lifecycle: &'a LC,
+}
+
+impl<'a, Context, K, V, LC> RetrieveSynced<'a, Context, K, V, LC> {
+    fn new(
+        projection: fn(&Context) -> &JoinValueLane<K, V>,
+        lane: Address<&'a str>,
+        lifecycle: &'a LC,
+    ) -> Self {
+        RetrieveSynced {
+            projection,
+            lane,
+            lifecycle,
+        }
+    }
+}
+
+impl<'a, Context, K, V, LC> ContextualTrans<Context, K> for RetrieveSynced<'a, Context, K, V, LC>
+where
+    K: Eq + Hash + Clone,
+    LC: OnJoinValueSynced<K, V, Context>,
+{
+    type Out = LC::OnJoinValueSyncedHandler<'a>;
+
+    fn transform(self, context: &Context, input: K) -> Self::Out {
+        let RetrieveSynced {
+            projection,
+            lane,
+            lifecycle,
+        } = self;
+        let join_lane = projection(context);
+        let key = input.clone();
+        join_lane.inner.get(&input, |maybe_value| {
+            lifecycle.on_synced(HandlerContext::default(), key, lane, maybe_value)
+        })
     }
 }

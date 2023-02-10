@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swim_model::address::Address;
+
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
-    event_handler::HandlerAction,
-    lanes::join_value::{LinkClosedResponse, RemoteLane},
+    agent_lifecycle::utility::HandlerContext, event_handler::HandlerAction,
+    lanes::join_value::LinkClosedResponse,
 };
 
 pub trait OnJoinValueUnlinked<K, Context>: Send {
@@ -28,7 +29,7 @@ pub trait OnJoinValueUnlinked<K, Context>: Send {
         &'a self,
         handler_context: HandlerContext<Context>,
         key: K,
-        remote: RemoteLane<'_>,
+        remote: Address<&str>,
     ) -> Self::OnJoinValueUnlinkedHandler<'a>;
 }
 
@@ -44,6 +45,6 @@ pub trait OnJoinValueUnlinkedShared<K, Context, Shared>: Send {
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         key: K,
-        remote: RemoteLane<'_>,
+        remote: Address<&str>,
     ) -> Self::OnJoinValueUnlinkedHandler<'a>;
 }

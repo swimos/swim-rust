@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{
-    agent_lifecycle::utility::HandlerContext, event_handler::EventHandler,
-    lanes::join_value::RemoteLane,
-};
+use swim_model::address::Address;
+
+use crate::{agent_lifecycle::utility::HandlerContext, event_handler::EventHandler};
 
 pub trait OnJoinValueSynced<K, V, Context>: Send {
     type OnJoinValueSyncedHandler<'a>: EventHandler<Context> + 'a
@@ -26,7 +25,7 @@ pub trait OnJoinValueSynced<K, V, Context>: Send {
         &'a self,
         handler_context: HandlerContext<Context>,
         key: K,
-        remote: RemoteLane<'_>,
+        remote: Address<&str>,
         value: Option<&V>,
     ) -> Self::OnJoinValueSyncedHandler<'a>;
 }
@@ -42,7 +41,7 @@ pub trait OnJoinValueSyncedShared<K, V, Context, Shared>: Send {
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         key: K,
-        remote: RemoteLane<'_>,
+        remote: Address<&str>,
         value: Option<&V>,
     ) -> Self::OnJoinValueSyncedHandler<'a>;
 }

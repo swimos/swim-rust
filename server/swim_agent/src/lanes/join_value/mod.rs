@@ -17,7 +17,11 @@ use std::{cell::RefCell, collections::HashMap};
 
 use bytes::BytesMut;
 use swim_form::structural::write::StructuralWritable;
+use swim_form::Form;
+use swim_model::address::Address;
+use swim_model::Text;
 
+use crate::agent_model::downlink::OpenValueDownlinkAction;
 use crate::{
     agent_model::WriteResult,
     event_handler::{ActionContext, HandlerAction, StepResult},
@@ -25,8 +29,12 @@ use crate::{
     meta::AgentMetadata,
 };
 
+use self::downlink::JoinValueDownlink;
+use self::lifecycle::JoinValueLaneLifecycle;
+
 use super::{map::MapLaneEvent, Lane, MapLane};
 
+mod default_lifecycle;
 mod downlink;
 pub mod lifecycle;
 
@@ -66,15 +74,39 @@ where
 }
 
 /// [`HandlerAction`] that attempts to add a new downlink to a [`JoinValueLane`].
-pub struct AddDownlinkAction<Context, K, V> {
+pub struct AddDownlinkAction<Context, K, V, LC> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,
-    key: K,
+    key: Option<K>,
+    inner: Option<OpenValueDownlinkAction<V, JoinValueDownlink<K, V, LC, Context>>>,
 }
 
-impl<Context, K, V> HandlerAction<Context> for AddDownlinkAction<Context, K, V>
+impl<Context, K, V, LC> AddDownlinkAction<Context, K, V, LC>
 where
-    K: Clone + Eq + Hash + StructuralWritable,
-    V: StructuralWritable,
+    K: Clone,
+{
+    pub fn new(
+        projection: fn(&Context) -> &JoinValueLane<K, V>,
+        key: K,
+        lane: Address<Text>,
+        lifecycle: LC,
+    ) -> Self {
+        let dl_lifecycle = JoinValueDownlink::new(projection, key.clone(), lane.clone(), lifecycle);
+        let inner = OpenValueDownlinkAction::new(lane, dl_lifecycle, Default::default());
+        AddDownlinkAction {
+            projection,
+            key: Some(key),
+            inner: Some(inner),
+        }
+    }
+}
+
+impl<Context, K, V, LC> HandlerAction<Context> for AddDownlinkAction<Context, K, V, LC>
+where
+    Context: 'static,
+    K: Clone + Eq + Hash + Send + 'static,
+    V: Form + Send + Sync + 'static,
+    V::Rec: Send,
+    LC: JoinValueLaneLifecycle<K, V, Context> + Send + 'static,
 {
     type Completion = ();
 
@@ -84,14 +116,29 @@ where
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
-        todo!()
+        let AddDownlinkAction {
+            projection,
+            key,
+            inner,
+        } = self;
+        if let Some(inner) = inner {
+            if let Some(key) = key.take() {
+                let lane = projection(context);
+                let mut guard = lane.keys.borrow_mut();
+                if guard.contains_key(&key) {
+                    self.inner = None;
+                    StepResult::done(())
+                } else {
+                    guard.insert(key, DownlinkStatus::Pending);
+                    inner.step(action_context, meta, context).map(|_| ())
+                }
+            } else {
+                inner.step(action_context, meta, context).map(|_| ())
+            }
+        } else {
+            StepResult::after_done()
+        }
     }
-}
-
-pub struct RemoteLane<'a> {
-    pub host: Option<&'a str>,
-    pub node: &'a str,
-    pub lane: &'a str,
 }
 
 impl<K, V> MapItem<K, V> for JoinValueLane<K, V>
