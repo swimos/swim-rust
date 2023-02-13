@@ -251,7 +251,7 @@ impl HandlerAction<TestAgent> for TestHandler {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<TestAgent>,
+        _action_context: &mut ActionContext<TestAgent>,
         _meta: AgentMetadata,
         context: &TestAgent,
     ) -> StepResult<Self::Completion> {

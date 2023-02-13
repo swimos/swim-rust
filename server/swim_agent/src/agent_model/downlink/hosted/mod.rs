@@ -27,6 +27,8 @@ enum DlState {
 
 #[cfg(test)]
 mod test_support {
+    use std::collections::HashMap;
+
     use futures::future::BoxFuture;
     use swim_api::{
         agent::{AgentConfig, AgentContext, LaneConfig},
@@ -114,9 +116,11 @@ mod test_support {
         let meta = make_meta(&uri);
         let no_spawn = NoSpawn;
         let no_runtime = NoAgentRuntime;
-        let context = ActionContext::new(&no_spawn, &no_runtime, &no_spawn);
+        let mut join_value_init = HashMap::new();
+        let mut context =
+            ActionContext::new(&no_spawn, &no_runtime, &no_spawn, &mut join_value_init);
         loop {
-            match handler.step(context, meta, agent) {
+            match handler.step(&mut context, meta, agent) {
                 StepResult::Continue { modified_item } => {
                     assert!(modified_item.is_none());
                 }

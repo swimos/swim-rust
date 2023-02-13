@@ -74,7 +74,7 @@ impl<T: Clone> HandlerAction<TestAgent> for OnCommandHandler<T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<TestAgent>,
+        _action_context: &mut ActionContext<TestAgent>,
         _meta: AgentMetadata,
         _context: &TestAgent,
     ) -> StepResult<Self::Completion> {

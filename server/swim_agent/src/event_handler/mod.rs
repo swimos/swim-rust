@@ -12,7 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, marker::PhantomData, any::{TypeId, Any}};
+use std::{
+    any::{Any, TypeId},
+    cell::RefCell,
+    collections::HashMap,
+    marker::PhantomData,
+};
 
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
@@ -92,10 +97,14 @@ where
     }
 }
 
+pub type JoinValueLifecycleFactory<Context> =
+    Box<dyn Fn() -> BoxJoinValueInit<'static, Context> + Send>;
+
 pub struct ActionContext<'a, Context> {
     spawner: &'a dyn Spawner<Context>,
     agent_context: &'a dyn AgentContext,
     downlink: &'a dyn DownlinkSpawner<Context>,
+    join_value_init: &'a mut HashMap<u64, JoinValueLifecycleFactory<Context>>,
 }
 
 impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
@@ -119,12 +128,29 @@ impl<'a, Context> ActionContext<'a, Context> {
         spawner: &'a dyn Spawner<Context>,
         agent_context: &'a dyn AgentContext,
         downlink: &'a dyn DownlinkSpawner<Context>,
+        join_value_init: &'a mut HashMap<u64, JoinValueLifecycleFactory<Context>>,
     ) -> Self {
         ActionContext {
             spawner,
             agent_context,
             downlink,
+            join_value_init,
         }
+    }
+
+    pub fn join_value_initializer(
+        &self,
+        lane_id: u64,
+    ) -> Option<BoxJoinValueInit<'static, Context>> {
+        self.join_value_init.get(&lane_id).map(|f| f())
+    }
+
+    pub fn register_join_value_initializer(
+        &mut self,
+        lane_id: u64,
+        factory: JoinValueLifecycleFactory<Context>,
+    ) {
+        self.join_value_init.insert(lane_id, factory);
     }
 
     pub(crate) fn start_downlink<S, F, G, OnDone, H>(
@@ -249,6 +275,8 @@ pub enum EventHandlerError {
     IncompleteCommand,
     #[error("An error occurred in the agent runtime.")]
     RuntimeError(#[from] AgentRuntimeError),
+    #[error("Invalid key type for a join lane lifecycle.")]
+    BadJoinLifecycle(#[from] KeyDowncastError),
 }
 
 /// When a handler completes or suspends it can indicate that is has modified the
@@ -315,7 +343,7 @@ impl<C> StepResult<C> {
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     }
 
-    fn is_cont(&self) -> bool {
+    pub fn is_cont(&self) -> bool {
         matches!(self, StepResult::Continue { .. })
     }
 
@@ -1184,13 +1212,14 @@ pub struct KeyDowncastError {
     pub expected: TypeId,
 }
 
-pub trait JoinValueInitializer<Context> {
-
+pub trait JoinValueInitializer<Context>: Send {
     fn try_create_action(
         &self,
-        key: Box<dyn Any + Send>, 
-        address: Address<Text>) -> Result<BoxEventHandler<'static, Context>, KeyDowncastError>;
-
+        key: Box<dyn Any + Send>,
+        address: Address<Text>,
+    ) -> Result<Box<dyn EventHandler<Context> + Send + 'static>, KeyDowncastError>;
 }
 
 static_assertions::assert_obj_safe!(JoinValueInitializer<()>);
+
+pub type BoxJoinValueInit<'a, Context> = Box<dyn JoinValueInitializer<Context> + Send + 'a>;

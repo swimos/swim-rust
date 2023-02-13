@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::any::Any;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::{collections::HashMap, marker::PhantomData};
@@ -28,6 +29,7 @@ use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
 use crate::event_handler::{EventHandler, Suspend, UnitHandler};
 use crate::lanes::command::{CommandLane, DoCommand};
+use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
 use crate::lanes::map::MapLaneGetMap;
 use crate::stores::map::{
     MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate,
@@ -448,5 +450,31 @@ impl<Agent: 'static> HandlerContext<Agent> {
         V::Rec: Send,
     {
         StatelessMapDownlinkBuilder::new(Address::text(host, node, lane), config)
+    }
+
+    /// Add a downlink to a Join Value lane. All values received on the downlink will be set into the map
+    /// state of the lane, using the provided key.
+    ///
+    /// #Arguments
+    /// * `lane` - Projection to the lane.
+    /// * `key - The key for the downlink.
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane_uri` - The lane to downlink from.
+    pub fn add_downlink<K, V>(
+        &self,
+        lane: fn(&Agent) -> &JoinValueLane<K, V>,
+        key: K,
+        host: Option<&str>,
+        node: &str,
+        lane_uri: &str,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        K: Any + Clone + Eq + Hash + Send + 'static,
+        V: Form + Send + 'static,
+        V::Rec: Send,
+    {
+        let address = Address::text(host, node, lane_uri);
+        JoinValueAddDownlink::new(lane, key, address)
     }
 }

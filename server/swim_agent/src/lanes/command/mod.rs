@@ -111,7 +111,7 @@ impl<Context, T> HandlerAction<Context> for DoCommand<Context, T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {

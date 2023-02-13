@@ -206,7 +206,7 @@ pub fn value_dl_write_stream<T>(
     watch_rx: circular_buffer::Receiver<T>,
 ) -> impl Stream<Item = Result<(), std::io::Error>> + Send + 'static
 where
-    T: StructuralWritable + Send + Sync + 'static,
+    T: StructuralWritable + Send + 'static,
 {
     let buffer = BytesMut::new();
 

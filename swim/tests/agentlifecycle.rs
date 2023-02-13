@@ -25,7 +25,7 @@ use swim::agent::{
     AgentLaneModel,
 };
 use swim_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
-use swim_agent::event_handler::{HandlerFuture, Spawner, WriteStream};
+use swim_agent::event_handler::{HandlerFuture, JoinValueLifecycleFactory, Spawner, WriteStream};
 use swim_agent::meta::AgentMetadata;
 use swim_agent::stores::{MapStore, ValueStore};
 use swim_api::agent::AgentConfig;
@@ -57,8 +57,10 @@ pub fn no_downlink<Context>(
     panic!("Launching downlinks no supported.");
 }
 
-pub fn dummy_context<'a, Context>() -> ActionContext<'a, Context> {
-    ActionContext::new(&NO_SPAWN, &NO_AGENT, &no_downlink)
+pub fn dummy_context<'a, Context>(
+    join_value_init: &'a mut HashMap<u64, JoinValueLifecycleFactory<Context>>,
+) -> ActionContext<'a, Context> {
+    ActionContext::new(&NO_SPAWN, &NO_AGENT, &no_downlink, join_value_init)
 }
 
 impl<Context> Spawner<Context> for NoSpawn {
@@ -179,8 +181,9 @@ fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
 fn run_handler<Agent, H: EventHandler<Agent>>(agent: &Agent, mut handler: H) {
     let uri = make_uri();
     let meta = make_meta(&uri);
+    let mut join_value_init = HashMap::new();
     loop {
-        match handler.step(dummy_context(), meta, agent) {
+        match handler.step(&mut dummy_context(&mut join_value_init), meta, agent) {
             StepResult::Continue { modified_item } => {
                 assert!(modified_item.is_none());
             }
@@ -193,6 +196,7 @@ fn run_handler<Agent, H: EventHandler<Agent>>(agent: &Agent, mut handler: H) {
             }
         }
     }
+    assert!(join_value_init.is_empty());
 }
 
 #[test]

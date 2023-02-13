@@ -96,7 +96,7 @@ impl HandlerAction<TestAgent> for LifecycleHandler {
 
     fn step(
         &mut self,
-        action_context: ActionContext<TestAgent>,
+        action_context: &mut ActionContext<TestAgent>,
         _meta: AgentMetadata,
         context: &TestAgent,
     ) -> StepResult<Self::Completion> {

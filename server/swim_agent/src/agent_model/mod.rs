@@ -42,7 +42,9 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::agent_lifecycle::item_event::ItemEvent;
-use crate::event_handler::{ActionContext, BoxEventHandler, HandlerFuture, WriteStream};
+use crate::event_handler::{
+    ActionContext, BoxEventHandler, HandlerFuture, JoinValueLifecycleFactory, WriteStream,
+};
 use crate::{
     agent_lifecycle::AgentLifecycle,
     event_handler::{EventHandler, EventHandlerError, HandlerAction, StepResult},
@@ -386,6 +388,7 @@ where
 
         let suspended = FuturesUnordered::new();
         let downlink_channels = RefCell::new(vec![]);
+        let mut join_value_init = HashMap::new();
 
         let item_model = item_model_fac.create();
 
@@ -504,7 +507,12 @@ where
         let on_start_handler = lifecycle.on_start();
 
         if let Err(e) = run_handler(
-            ActionContext::new(&suspended, &*context, &downlink_channels),
+            &mut ActionContext::new(
+                &suspended,
+                &*context,
+                &downlink_channels,
+                &mut join_value_init,
+            ),
             meta,
             &item_model,
             &lifecycle,
@@ -526,6 +534,7 @@ where
             map_store_io,
             suspended,
             downlink_channels: downlink_channels.into_inner(),
+            join_value_init,
         };
         Ok(agent_task.run_agent(context).boxed())
     }
@@ -542,6 +551,7 @@ struct AgentTask<ItemModel, Lifecycle> {
     map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
     map_store_io: HashMap<Text, ByteWriter>,
     suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
+    join_value_init: HashMap<u64, JoinValueLifecycleFactory<ItemModel>>,
     downlink_channels: Vec<(BoxDownlinkChannel<ItemModel>, WriteStream)>,
 }
 
@@ -570,6 +580,7 @@ where
             map_lane_io,
             map_store_io,
             mut suspended,
+            mut join_value_init,
             downlink_channels,
         } = self;
         let meta = AgentMetadata::new(&route, &config);
@@ -675,7 +686,12 @@ where
                 }
                 TaskEvent::SuspendedComplete { handler } => {
                     if let Err(e) = run_handler(
-                        ActionContext::new(&suspended, &*context, &add_downlink),
+                        &mut ActionContext::new(
+                            &suspended,
+                            &*context,
+                            &add_downlink,
+                            &mut join_value_init,
+                        ),
                         meta,
                         &item_model,
                         &lifecycle,
@@ -700,7 +716,12 @@ where
                             HostedDownlinkEvent::HandlerReady { failed } => {
                                 if let Some(handler) = downlink.channel.next_event(&item_model) {
                                     if let Err(e) = run_handler(
-                                        ActionContext::new(&suspended, &*context, &add_downlink),
+                                        &mut ActionContext::new(
+                                            &suspended,
+                                            &*context,
+                                            &add_downlink,
+                                            &mut join_value_init,
+                                        ),
                                         meta,
                                         &item_model,
                                         &lifecycle,
@@ -726,7 +747,12 @@ where
                             if let Some(handler) = item_model.on_value_command(name.as_str(), body)
                             {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context, &add_downlink),
+                                    &mut ActionContext::new(
+                                        &suspended,
+                                        &*context,
+                                        &add_downlink,
+                                        &mut join_value_init,
+                                    ),
                                     meta,
                                     &item_model,
                                     &lifecycle,
@@ -741,7 +767,12 @@ where
                         LaneRequest::Sync(remote_id) => {
                             if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context, &add_downlink),
+                                    &mut ActionContext::new(
+                                        &suspended,
+                                        &*context,
+                                        &add_downlink,
+                                        &mut join_value_init,
+                                    ),
                                     meta,
                                     &item_model,
                                     &lifecycle,
@@ -762,7 +793,12 @@ where
                         LaneRequest::Command(body) => {
                             if let Some(handler) = item_model.on_map_command(name.as_str(), body) {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context, &add_downlink),
+                                    &mut ActionContext::new(
+                                        &suspended,
+                                        &*context,
+                                        &add_downlink,
+                                        &mut join_value_init,
+                                    ),
                                     meta,
                                     &item_model,
                                     &lifecycle,
@@ -777,7 +813,12 @@ where
                         LaneRequest::Sync(remote_id) => {
                             if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context, &add_downlink),
+                                    &mut ActionContext::new(
+                                        &suspended,
+                                        &*context,
+                                        &add_downlink,
+                                        &mut join_value_init,
+                                    ),
                                     meta,
                                     &item_model,
                                     &lifecycle,
@@ -825,7 +866,7 @@ where
             ))
         };
         if let Err(e) = run_handler(
-            ActionContext::new(&suspended, &*context, &discard),
+            &mut ActionContext::new(&suspended, &*context, &discard, &mut join_value_init),
             meta,
             &item_model,
             &lifecycle,
@@ -885,7 +926,7 @@ impl IdCollector for HashSet<u64> {
 /// an item) an the item names (which are used by the lifecycle to identify the items).
 /// * `collector` - Collects the IDs of lanes with state changes.
 fn run_handler<Context, Lifecycle, Handler, Collector>(
-    action_context: ActionContext<Context>,
+    action_context: &mut ActionContext<Context>,
     meta: AgentMetadata,
     context: &Context,
     lifecycle: &Lifecycle,

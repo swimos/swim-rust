@@ -81,7 +81,7 @@ impl<T: Clone> HandlerAction<TestAgent> for OnEventHandler<T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<TestAgent>,
+        _action_context: &mut ActionContext<TestAgent>,
         _meta: AgentMetadata,
         _context: &TestAgent,
     ) -> StepResult<Self::Completion> {
@@ -109,7 +109,7 @@ impl<T: Clone> HandlerAction<TestAgent> for OnSetHandler<T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<TestAgent>,
+        _action_context: &mut ActionContext<TestAgent>,
         _meta: AgentMetadata,
         _context: &TestAgent,
     ) -> StepResult<Self::Completion> {

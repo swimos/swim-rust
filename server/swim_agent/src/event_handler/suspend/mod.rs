@@ -73,7 +73,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {

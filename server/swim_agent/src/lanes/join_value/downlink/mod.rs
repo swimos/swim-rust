@@ -202,7 +202,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -254,7 +254,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -319,7 +319,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
+
 use futures::future::BoxFuture;
 use swim_api::{
     agent::{AgentContext, LaneConfig},
@@ -24,7 +26,9 @@ use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 
 use crate::{
     agent_model::downlink::handlers::BoxDownlinkChannel,
-    event_handler::{ActionContext, HandlerFuture, Spawner, WriteStream},
+    event_handler::{
+        ActionContext, HandlerFuture, JoinValueLifecycleFactory, Spawner, WriteStream,
+    },
 };
 
 struct NoSpawn;
@@ -40,8 +44,10 @@ pub fn no_downlink<Context>(
 const NO_SPAWN: NoSpawn = NoSpawn;
 const NO_AGENT: DummyAgentContext = DummyAgentContext;
 
-pub fn dummy_context<'a, Context>() -> ActionContext<'a, Context> {
-    ActionContext::new(&NO_SPAWN, &NO_AGENT, &no_downlink)
+pub fn dummy_context<'a, Context>(
+    join_value_init: &'a mut HashMap<u64, JoinValueLifecycleFactory<Context>>,
+) -> ActionContext<'a, Context> {
+    ActionContext::new(&NO_SPAWN, &NO_AGENT, &no_downlink, join_value_init)
 }
 
 impl<Context> Spawner<Context> for NoSpawn {

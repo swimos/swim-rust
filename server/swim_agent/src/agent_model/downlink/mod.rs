@@ -87,7 +87,7 @@ impl<K, V, LC> OpenMapDownlinkAction<K, V, LC> {
 impl<T, LC, Context> HandlerAction<Context> for OpenValueDownlinkAction<T, LC>
 where
     Context: 'static,
-    T: Form + Send + Sync + 'static,
+    T: Form + Send + 'static,
     LC: ValueDownlinkLifecycle<T, Context> + Send + 'static,
     T::Rec: Send,
 {
@@ -95,7 +95,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -144,7 +144,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
