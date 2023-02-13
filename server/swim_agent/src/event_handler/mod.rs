@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, marker::PhantomData};
+use std::{cell::RefCell, marker::PhantomData, any::{TypeId, Any}};
 
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
@@ -24,7 +24,7 @@ use swim_api::{
     error::{AgentRuntimeError, DownlinkRuntimeError},
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
-use swim_model::address::Address;
+use swim_model::{address::Address, Text};
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
@@ -97,18 +97,6 @@ pub struct ActionContext<'a, Context> {
     agent_context: &'a dyn AgentContext,
     downlink: &'a dyn DownlinkSpawner<Context>,
 }
-
-impl<'a, Context> Clone for ActionContext<'a, Context> {
-    fn clone(&self) -> Self {
-        Self {
-            spawner: self.spawner,
-            agent_context: self.agent_context,
-            downlink: self.downlink,
-        }
-    }
-}
-
-impl<'a, Context> Copy for ActionContext<'a, Context> {}
 
 impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
     fn spawn_suspend(&self, fut: HandlerFuture<Context>) {
@@ -204,7 +192,7 @@ pub trait HandlerAction<Context> {
     /// * `context` - The execution context of the handler (providing access to the lanes of the agent).
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion>;
@@ -226,7 +214,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -242,7 +230,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -383,7 +371,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -403,7 +391,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -557,7 +545,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -592,7 +580,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -642,7 +630,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -690,7 +678,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -741,7 +729,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -802,7 +790,7 @@ impl<T, Context> HandlerAction<Context> for ConstHandler<T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -819,7 +807,7 @@ impl<Context> HandlerAction<Context> for CNil {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -836,7 +824,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -858,7 +846,7 @@ impl<Context> HandlerAction<Context> for GetAgentUri {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -895,7 +883,7 @@ impl<Context, T: RecognizerReadable> HandlerAction<Context> for Decode<T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -925,7 +913,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -1037,7 +1025,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -1077,7 +1065,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -1138,7 +1126,7 @@ impl<Context, H: HandlerAction<Context>> HandlerAction<Context> for Discard<H> {
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -1177,7 +1165,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -1188,3 +1176,21 @@ where
         }
     }
 }
+
+#[derive(Debug, Error)]
+#[error("Expected a key of type {expected:?} but received type{:?}", key.type_id())]
+pub struct KeyDowncastError {
+    pub key: Box<dyn Any + Send>,
+    pub expected: TypeId,
+}
+
+pub trait JoinValueInitializer<Context> {
+
+    fn try_create_action(
+        &self,
+        key: Box<dyn Any + Send>, 
+        address: Address<Text>) -> Result<BoxEventHandler<'static, Context>, KeyDowncastError>;
+
+}
+
+static_assertions::assert_obj_safe!(JoinValueInitializer<()>);
