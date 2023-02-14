@@ -45,9 +45,7 @@ use crate::{
 };
 
 pub use self::downlink_builder::map::{StatefulMapDownlinkBuilder, StatelessMapDownlinkBuilder};
-pub use self::downlink_builder::value::{
-    StatefulValueDownlinkBuilder, StatelessValueDownlinkBuilder,
-};
+use self::downlink_builder::value::StatelessValueDownlinkBuilder;
 
 mod downlink_builder;
 

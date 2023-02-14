@@ -107,7 +107,7 @@ where
     }
 }
 
-impl<Context, F, H> OnFailed<Context> for WithHandlerContext<Context, F>
+impl<Context, F, H> OnFailed<Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>) -> H + Send,
     H: EventHandler<Context> + 'static,
@@ -117,11 +117,8 @@ where
         Self: 'a;
 
     fn on_failed(&self) -> Self::OnFailedHandler<'_> {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context)
+        let WithHandlerContext { inner } = self;
+        inner(Default::default())
     }
 }
 

@@ -536,7 +536,7 @@ type StatelessWithContextAndBorrow<
     Synced,
     Unlinked,
     Failed,
-    WithHandlerContextBorrow<Context, F, B>,
+    WithHandlerContextBorrow<F, B>,
     Rem,
     Clr,
 >;
@@ -578,7 +578,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
         Context,
         K,
         V,
-        WithHandlerContext<Context, F>,
+        WithHandlerContext<F>,
         FSynced,
         FUnlinked,
         FFailed,
@@ -587,7 +587,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
         FClr,
     >
     where
-        WithHandlerContext<Context, F>: OnLinked<Context>,
+        WithHandlerContext<F>: OnLinked<Context>,
     {
         StatelessMapDownlinkLifecycle {
             _type: PhantomData,
@@ -610,7 +610,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
         K,
         V,
         FLinked,
-        WithHandlerContext<Context, F>,
+        WithHandlerContext<F>,
         FUnlinked,
         FFailed,
         FUpd,
@@ -618,7 +618,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
         FClr,
     >
     where
-        WithHandlerContext<Context, F>: OnMapSynced<K, V, Context>,
+        WithHandlerContext<F>: OnMapSynced<K, V, Context>,
     {
         StatelessMapDownlinkLifecycle {
             _type: PhantomData,
@@ -642,14 +642,14 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
         V,
         FLinked,
         FSynced,
-        WithHandlerContext<Context, F>,
+        WithHandlerContext<F>,
         FFailed,
         FUpd,
         FRem,
         FClr,
     >
     where
-        WithHandlerContext<Context, F>: OnUnlinked<Context>,
+        WithHandlerContext<F>: OnUnlinked<Context>,
     {
         StatelessMapDownlinkLifecycle {
             _type: PhantomData,
@@ -674,13 +674,13 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
         FLinked,
         FSynced,
         FUnlinked,
-        WithHandlerContext<Context, F>,
+        WithHandlerContext<F>,
         FUpd,
         FRem,
         FClr,
     >
     where
-        WithHandlerContext<Context, F>: OnFailed<Context>,
+        WithHandlerContext<F>: OnFailed<Context>,
     {
         StatelessMapDownlinkLifecycle {
             _type: PhantomData,
@@ -714,7 +714,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
     where
         B: ?Sized,
         V: Borrow<B>,
-        WithHandlerContextBorrow<Context, F, B>: OnDownlinkUpdate<K, V, Context>,
+        WithHandlerContextBorrow<F, B>: OnDownlinkUpdate<K, V, Context>,
     {
         StatelessMapDownlinkLifecycle {
             _type: PhantomData,
@@ -741,11 +741,11 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
         FUnlinked,
         FFailed,
         FUpd,
-        WithHandlerContext<Context, F>,
+        WithHandlerContext<F>,
         FClr,
     >
     where
-        WithHandlerContext<Context, F>: OnDownlinkRemove<K, V, Context>,
+        WithHandlerContext<F>: OnDownlinkRemove<K, V, Context>,
     {
         StatelessMapDownlinkLifecycle {
             _type: PhantomData,
@@ -773,10 +773,10 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
         FFailed,
         FUpd,
         FRem,
-        WithHandlerContext<Context, F>,
+        WithHandlerContext<F>,
     >
     where
-        WithHandlerContext<Context, F>: OnDownlinkClear<K, V, Context>,
+        WithHandlerContext<F>: OnDownlinkClear<K, V, Context>,
     {
         StatelessMapDownlinkLifecycle {
             _type: PhantomData,

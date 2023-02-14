@@ -166,7 +166,7 @@ where
     where
         Self: 'a;
 
-    fn on_event<'a>(&'a self, value: V) -> Self::OnEventHandler<'a> {
+    fn on_event(&self, value: V) -> Self::OnEventHandler<'_> {
         let JoinValueDownlink {
             projection, key, ..
         } = self;
@@ -268,7 +268,7 @@ where
             Some(LinkClosedResponse::Delete) => {
                 let lane = projection(context);
                 let mut guard = lane.keys.borrow_mut();
-                guard.remove(&key);
+                guard.remove(key);
                 StepResult::done(())
             }
             Some(LinkClosedResponse::Retry) => todo!(),

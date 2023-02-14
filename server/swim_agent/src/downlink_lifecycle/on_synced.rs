@@ -152,7 +152,7 @@ where
     }
 }
 
-impl<Context, T, F, H> OnSynced<T, Context> for WithHandlerContext<Context, F>
+impl<Context, T, F, H> OnSynced<T, Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>, &T) -> H + Send,
     H: EventHandler<Context> + 'static,
@@ -162,15 +162,12 @@ where
         Self: 'a;
 
     fn on_synced<'a>(&'a self, value: &T) -> Self::OnSyncedHandler<'a> {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context, value)
+        let WithHandlerContext { inner } = self;
+        inner(Default::default(), value)
     }
 }
 
-impl<Context, T, B, F, H> OnSynced<T, Context> for WithHandlerContextBorrow<Context, F, B>
+impl<Context, T, B, F, H> OnSynced<T, Context> for WithHandlerContextBorrow<F, B>
 where
     B: ?Sized,
     T: Borrow<B>,
@@ -182,12 +179,8 @@ where
         Self: 'a;
 
     fn on_synced<'a>(&'a self, value: &T) -> Self::OnSyncedHandler<'a> {
-        let WithHandlerContextBorrow {
-            inner,
-            handler_context,
-            ..
-        } = self;
-        inner(*handler_context, value.borrow())
+        let WithHandlerContextBorrow { inner, .. } = self;
+        inner(Default::default(), value.borrow())
     }
 }
 

@@ -146,7 +146,7 @@ where
     }
 }
 
-impl<Context, K, V, F, H> OnDownlinkUpdate<K, V, Context> for WithHandlerContext<Context, F>
+impl<Context, K, V, F, H> OnDownlinkUpdate<K, V, Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>, K, &HashMap<K, V>, Option<V>, &V) -> H + Send,
     H: EventHandler<Context> + 'static,
@@ -162,16 +162,12 @@ where
         previous: Option<V>,
         new_value: &V,
     ) -> Self::OnUpdateHandler<'a> {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context, key, map, previous, new_value)
+        let WithHandlerContext { inner } = self;
+        inner(Default::default(), key, map, previous, new_value)
     }
 }
 
-impl<Context, K, V, B, F, H> OnDownlinkUpdate<K, V, Context>
-    for WithHandlerContextBorrow<Context, F, B>
+impl<Context, K, V, B, F, H> OnDownlinkUpdate<K, V, Context> for WithHandlerContextBorrow<F, B>
 where
     B: ?Sized,
     V: Borrow<B>,
@@ -189,12 +185,8 @@ where
         previous: Option<V>,
         new_value: &V,
     ) -> Self::OnUpdateHandler<'a> {
-        let WithHandlerContextBorrow {
-            inner,
-            handler_context,
-            ..
-        } = self;
-        inner(*handler_context, key, map, previous, new_value.borrow())
+        let WithHandlerContextBorrow { inner, .. } = self;
+        inner(Default::default(), key, map, previous, new_value.borrow())
     }
 }
 

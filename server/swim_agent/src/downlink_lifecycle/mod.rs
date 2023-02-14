@@ -14,8 +14,6 @@
 
 use std::marker::PhantomData;
 
-use crate::agent_lifecycle::utility::HandlerContext;
-
 pub mod map;
 pub mod on_failed;
 pub mod on_linked;
@@ -25,33 +23,27 @@ pub mod value;
 
 /// Wraps a closure that takes a [`HandlerContext`] as its first argument and binds that
 /// argument.
-pub struct WithHandlerContext<Context, F> {
+pub struct WithHandlerContext<F> {
     inner: F,
-    handler_context: HandlerContext<Context>,
 }
 
-impl<Context, F> WithHandlerContext<Context, F> {
+impl<F> WithHandlerContext<F> {
     pub fn new(inner: F) -> Self {
-        WithHandlerContext {
-            inner,
-            handler_context: Default::default(),
-        }
+        WithHandlerContext { inner }
     }
 }
 
 /// Wraps a closure that takes a [`HandlerContext`] as its first argument and binds that
 /// argument.
-pub struct WithHandlerContextBorrow<Context, F, B: ?Sized> {
+pub struct WithHandlerContextBorrow<F, B: ?Sized> {
     inner: F,
-    handler_context: HandlerContext<Context>,
     _ref_type: PhantomData<fn(B)>,
 }
 
-impl<Context, F, B: ?Sized> WithHandlerContextBorrow<Context, F, B> {
+impl<F, B: ?Sized> WithHandlerContextBorrow<F, B> {
     pub fn new(inner: F) -> Self {
         WithHandlerContextBorrow {
             inner,
-            handler_context: Default::default(),
             _ref_type: Default::default(),
         }
     }

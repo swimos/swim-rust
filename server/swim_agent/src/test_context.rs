@@ -44,9 +44,9 @@ pub fn no_downlink<Context>(
 const NO_SPAWN: NoSpawn = NoSpawn;
 const NO_AGENT: DummyAgentContext = DummyAgentContext;
 
-pub fn dummy_context<'a, Context>(
-    join_value_init: &'a mut HashMap<u64, JoinValueLifecycleFactory<Context>>,
-) -> ActionContext<'a, Context> {
+pub fn dummy_context<Context>(
+    join_value_init: &mut HashMap<u64, JoinValueLifecycleFactory<Context>>,
+) -> ActionContext<'_, Context> {
     ActionContext::new(&NO_SPAWN, &NO_AGENT, &no_downlink, join_value_init)
 }
 

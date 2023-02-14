@@ -36,11 +36,8 @@ use crate::{
         hosted::{value_dl_write_stream, ValueDownlinkHandle},
     },
     downlink_lifecycle::{
-        on_failed::OnFailed,
-        on_linked::OnLinked,
-        on_synced::OnSynced,
-        on_unlinked::OnUnlinked,
-        value::{on_event::OnDownlinkEvent, on_set::OnDownlinkSet},
+        on_failed::OnFailed, on_linked::OnLinked, on_synced::OnSynced, on_unlinked::OnUnlinked,
+        value::on_event::OnDownlinkEvent,
     },
     event_handler::{BoxEventHandler, EventHandlerExt, SideEffect},
 };
@@ -123,25 +120,10 @@ impl OnDownlinkEvent<i32, FakeAgent> for FakeLifecycle {
     where
         Self: 'a;
 
-    fn on_event<'a>(&'a self, value: i32) -> Self::OnEventHandler<'a> {
+    fn on_event(&self, value: i32) -> Self::OnEventHandler<'_> {
         let state = self.inner.clone();
         SideEffect::from(move || {
             state.lock().push(Event::Event(value));
-        })
-        .boxed()
-    }
-}
-
-impl OnDownlinkSet<i32, FakeAgent> for FakeLifecycle {
-    type OnSetHandler<'a> = BoxEventHandler<'a, FakeAgent>
-    where
-        Self: 'a;
-
-    fn on_set<'a>(&'a self, previous: Option<i32>, new_value: &i32) -> Self::OnSetHandler<'a> {
-        let state = self.inner.clone();
-        let n = *new_value;
-        SideEffect::from(move || {
-            state.lock().push(Event::Set(previous, n));
         })
         .boxed()
     }

@@ -114,7 +114,7 @@ where
     }
 }
 
-impl<Context, K, V, F, H> OnMapSynced<K, V, Context> for WithHandlerContext<Context, F>
+impl<Context, K, V, F, H> OnMapSynced<K, V, Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>, &HashMap<K, V>) -> H + Send,
     H: EventHandler<Context> + 'static,
@@ -124,11 +124,8 @@ where
         Self: 'a;
 
     fn on_synced<'a>(&'a self, map: &HashMap<K, V>) -> Self::OnSyncedHandler<'a> {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context, map)
+        let WithHandlerContext { inner } = self;
+        inner(Default::default(), map)
     }
 }
 

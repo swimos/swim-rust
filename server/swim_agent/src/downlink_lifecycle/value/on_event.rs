@@ -28,7 +28,7 @@ pub trait OnDownlinkEvent<T, Context>: Send {
 
     /// #Arguments
     /// * `value` - The event value.
-    fn on_event<'a>(&'a self, value: T) -> Self::OnEventHandler<'a>;
+    fn on_event(&self, value: T) -> Self::OnEventHandler<'_>;
 }
 
 /// Lifecycle event for the `on_event` event of a downlink, from an agent,where the event
@@ -56,7 +56,7 @@ impl<T, Context> OnDownlinkEvent<T, Context> for NoHandler {
     where
         Self: 'a;
 
-    fn on_event<'a>(&'a self, _value: T) -> Self::OnEventHandler<'a> {
+    fn on_event(&self, _value: T) -> Self::OnEventHandler<'_> {
         UnitHandler::default()
     }
 }
@@ -85,7 +85,7 @@ where
     type OnEventHandler<'a> = H where
         Self: 'a;
 
-    fn on_event<'a>(&'a self, value: T) -> Self::OnEventHandler<'a> {
+    fn on_event(&self, value: T) -> Self::OnEventHandler<'_> {
         let FnHandler(f) = self;
         f(value)
     }
@@ -111,7 +111,7 @@ where
     }
 }
 
-impl<Context, T, F, H> OnDownlinkEvent<T, Context> for WithHandlerContext<Context, F>
+impl<Context, T, F, H> OnDownlinkEvent<T, Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>, T) -> H + Send,
     H: EventHandler<Context> + 'static,
@@ -120,12 +120,9 @@ where
     where
         Self: 'a;
 
-    fn on_event<'a>(&'a self, value: T) -> Self::OnEventHandler<'a> {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context, value)
+    fn on_event(&self, value: T) -> Self::OnEventHandler<'_> {
+        let WithHandlerContext { inner } = self;
+        inner(Default::default(), value)
     }
 }
 
