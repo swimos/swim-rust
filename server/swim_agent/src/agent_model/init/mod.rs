@@ -31,7 +31,7 @@ use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
 
 use crate::item::{MapItem, ValueItem};
-use crate::lanes::{MapLane, ValueLane};
+use crate::lanes::{JoinValueLane, MapLane, ValueLane};
 use crate::stores::value::ValueStore;
 use crate::stores::MapStore;
 
@@ -189,6 +189,16 @@ impl<Agent, K, V> MapStoreInitializer<Agent, K, V> {
     }
 }
 
+pub struct JoinValueInitializer<Agent, K, V> {
+    projection: fn(&Agent) -> &JoinValueLane<K, V>,
+}
+
+impl<Agent, K, V> JoinValueInitializer<Agent, K, V> {
+    pub fn new(projection: fn(&Agent) -> &JoinValueLane<K, V>) -> Self {
+        JoinValueInitializer { projection }
+    }
+}
+
 async fn value_like_init<Agent, F, T>(
     mut stream: BoxStream<'_, Result<BytesMut, FrameIoError>>,
     init: F,
@@ -246,15 +256,16 @@ where
     }
 }
 
-async fn map_like_init<Agent, Item, K, V>(
+async fn map_like_init<Agent, Item, K, V, F>(
     mut stream: BoxStream<'_, Result<MapMessage<BytesMut, BytesMut>, FrameIoError>>,
-    projection: fn(&Agent) -> &Item,
+    projection: F,
 ) -> Result<InitFn<Agent>, FrameIoError>
 where
     Agent: 'static,
     K: Eq + Hash + Ord + Clone + RecognizerReadable + Send + 'static,
     V: RecognizerReadable + Send + 'static,
     Item: MapItem<K, V> + 'static,
+    F: Fn(&Agent) -> &Item + Send + 'static,
 {
     let mut key_decoder = RecognizerDecoder::new(K::make_recognizer());
     let mut value_decoder = RecognizerDecoder::new(V::make_recognizer());
@@ -319,6 +330,31 @@ where
     ) -> BoxFuture<'_, Result<InitFn<Agent>, FrameIoError>> {
         let MapLaneInitializer { projection } = *self;
         map_like_init(stream, projection).boxed()
+    }
+}
+
+fn project_join_value<Agent, K, V, F>(projection: F) -> impl Fn(&Agent) -> &MapLane<K, V>
+where
+    F: Fn(&Agent) -> &JoinValueLane<K, V>,
+{
+    move |agent: &Agent| projection(agent).map_lane()
+}
+
+impl<Agent, K, V> ItemInitializer<Agent, MapMessage<BytesMut, BytesMut>>
+    for JoinValueInitializer<Agent, K, V>
+where
+    Agent: 'static,
+    K: RecognizerReadable + Hash + Eq + Ord + Clone + Send + 'static,
+    K::Rec: Send,
+    V: RecognizerReadable + Send + 'static,
+    V::Rec: Send,
+{
+    fn initialize(
+        self: Box<Self>,
+        stream: BoxStream<'_, Result<MapMessage<BytesMut, BytesMut>, FrameIoError>>,
+    ) -> BoxFuture<'_, Result<InitFn<Agent>, FrameIoError>> {
+        let JoinValueInitializer { projection } = *self;
+        map_like_init(stream, project_join_value(projection)).boxed()
     }
 }
 

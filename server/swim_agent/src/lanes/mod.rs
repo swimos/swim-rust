@@ -21,7 +21,7 @@ use bytes::BytesMut;
 
 use crate::{agent_model::WriteResult, item::AgentItem};
 
-pub use self::{command::CommandLane, map::MapLane, value::ValueLane};
+pub use self::{command::CommandLane, join_value::JoinValueLane, map::MapLane, value::ValueLane};
 
 /// Wrapper to allow projection function pointers to be exposed as event handler transforms
 /// for different types of lanes.

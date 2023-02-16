@@ -104,7 +104,7 @@ pub mod item {
 }
 
 pub mod lanes {
-    pub use swim_agent::lanes::{CommandLane, Lane, MapLane, ValueLane};
+    pub use swim_agent::lanes::{CommandLane, JoinValueLane, Lane, MapLane, ValueLane};
 
     pub mod command {
         pub use swim_agent::lanes::command::{decode_and_command, DecodeAndCommand};
@@ -125,6 +125,10 @@ pub mod lanes {
         pub mod lifecycle {
             pub use swim_agent::lanes::map::lifecycle::StatefulMapLaneLifecycle;
         }
+    }
+
+    pub mod join_value {
+        pub use swim_agent::lanes::join_value::JoinValueLaneSync;
     }
 }
 
