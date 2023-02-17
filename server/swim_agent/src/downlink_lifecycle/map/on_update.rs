@@ -18,8 +18,8 @@ use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    downlink_lifecycle::{LiftShared, WithHandlerContext, WithHandlerContextBorrow},
     event_handler::{EventHandler, MapUpdateBorrowFn, MapUpdateFn, UnitHandler},
+    lifecycle_fn::{LiftShared, WithHandlerContext, WithHandlerContextBorrow},
 };
 
 /// Lifecycle event for the `on_update` event of a downlink, from an agent.

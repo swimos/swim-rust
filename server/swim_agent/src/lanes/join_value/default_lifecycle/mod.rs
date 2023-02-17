@@ -14,10 +14,7 @@
 
 use swim_model::address::Address;
 
-use crate::{
-    agent_lifecycle::utility::HandlerContext,
-    event_handler::{ConstHandler, UnitHandler},
-};
+use crate::event_handler::{ConstHandler, UnitHandler};
 
 use super::{
     lifecycle::{
@@ -36,7 +33,6 @@ impl<Context, K> OnJoinValueLinked<K, Context> for DefaultJoinValueLifecycle {
 
     fn on_linked<'a>(
         &'a self,
-        _handler_context: HandlerContext<Context>,
         _key: K,
         _remote: Address<&str>,
     ) -> Self::OnJoinValueLinkedHandler<'a> {
@@ -51,7 +47,6 @@ impl<Context, K, V> OnJoinValueSynced<K, V, Context> for DefaultJoinValueLifecyc
 
     fn on_synced<'a>(
         &'a self,
-        _handler_context: HandlerContext<Context>,
         _key: K,
         _remote: Address<&str>,
         _value: Option<&V>,
@@ -67,7 +62,6 @@ impl<Context, K> OnJoinValueUnlinked<K, Context> for DefaultJoinValueLifecycle {
 
     fn on_unlinked<'a>(
         &'a self,
-        _handler_context: HandlerContext<Context>,
         _key: K,
         _remote: Address<&str>,
     ) -> Self::OnJoinValueUnlinkedHandler<'a> {
@@ -82,7 +76,6 @@ impl<Context, K> OnJoinValueFailed<K, Context> for DefaultJoinValueLifecycle {
 
     fn on_failed<'a>(
         &'a self,
-        _handler_context: HandlerContext<Context>,
         _key: K,
         _remote: Address<&str>,
     ) -> Self::OnJoinValueFailedHandler<'a> {

@@ -12,54 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
-
 pub mod map;
 pub mod on_failed;
 pub mod on_linked;
 pub mod on_synced;
 pub mod on_unlinked;
 pub mod value;
-
-/// Wraps a closure that takes a [`HandlerContext`] as its first argument and binds that
-/// argument.
-pub struct WithHandlerContext<F> {
-    inner: F,
-}
-
-impl<F> WithHandlerContext<F> {
-    pub fn new(inner: F) -> Self {
-        WithHandlerContext { inner }
-    }
-}
-
-/// Wraps a closure that takes a [`HandlerContext`] as its first argument and binds that
-/// argument.
-pub struct WithHandlerContextBorrow<F, B: ?Sized> {
-    inner: F,
-    _ref_type: PhantomData<fn(B)>,
-}
-
-impl<F, B: ?Sized> WithHandlerContextBorrow<F, B> {
-    pub fn new(inner: F) -> Self {
-        WithHandlerContextBorrow {
-            inner,
-            _ref_type: Default::default(),
-        }
-    }
-}
-
-/// Lifts a stateless event handler to one that may share a state with other handlers.
-pub struct LiftShared<F, Shared> {
-    _shared: PhantomData<fn(&Shared)>,
-    inner: F,
-}
-
-impl<F, Shared> LiftShared<F, Shared> {
-    pub fn new(inner: F) -> Self {
-        LiftShared {
-            _shared: PhantomData,
-            inner,
-        }
-    }
-}

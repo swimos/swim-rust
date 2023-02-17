@@ -19,7 +19,7 @@ use crate::{
     event_handler::{EventHandler, HandlerFn0, UnitHandler},
 };
 
-use super::{LiftShared, WithHandlerContext};
+use crate::lifecycle_fn::{LiftShared, WithHandlerContext};
 
 /// Lifecycle event for the `on_linked` event of a downlink, from an agent.
 pub trait OnLinked<Context>: Send {

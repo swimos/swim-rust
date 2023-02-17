@@ -31,9 +31,9 @@ use crate::{
             StatefulValueDownlinkLifecycle, StatefulValueLifecycle,
             StatelessValueDownlinkLifecycle, StatelessValueLifecycle,
         },
-        WithHandlerContext,
     },
     event_handler::HandlerAction,
+    lifecycle_fn::WithHandlerContext,
 };
 
 /// A builder for constructing a value downlink. Each lifecycle event handler is independent and, by

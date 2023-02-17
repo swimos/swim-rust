@@ -23,6 +23,7 @@ use swim_model::{address::Address, Text};
 use crate::downlink_lifecycle::map::on_synced::{OnMapSynced, OnMapSyncedShared};
 use crate::downlink_lifecycle::map::{StatefulMapLifecycle, StatelessMapLifecycle};
 use crate::downlink_lifecycle::on_failed::{OnFailed, OnFailedShared};
+use crate::lifecycle_fn::{WithHandlerContext, WithHandlerContextBorrow};
 use crate::{
     agent_model::downlink::{hosted::MapDownlinkHandle, OpenMapDownlinkAction},
     config::MapDownlinkConfig,
@@ -35,7 +36,6 @@ use crate::{
         },
         on_linked::{OnLinked, OnLinkedShared},
         on_unlinked::{OnUnlinked, OnUnlinkedShared},
-        WithHandlerContext, WithHandlerContextBorrow,
     },
     event_handler::HandlerAction,
 };

@@ -16,8 +16,8 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    downlink_lifecycle::{LiftShared, WithHandlerContext},
     event_handler::{EventConsumeFn, EventHandler, UnitHandler},
+    lifecycle_fn::{LiftShared, WithHandlerContext},
 };
 
 /// Lifecycle event for the `on_event` event of a downlink, from an agent.

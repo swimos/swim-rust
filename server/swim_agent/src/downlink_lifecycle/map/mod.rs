@@ -16,7 +16,10 @@ use std::{borrow::Borrow, collections::HashMap, marker::PhantomData};
 
 use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
-use crate::agent_lifecycle::utility::HandlerContext;
+use crate::{
+    agent_lifecycle::utility::HandlerContext,
+    lifecycle_fn::{LiftShared, WithHandlerContext, WithHandlerContextBorrow},
+};
 
 use self::{
     on_clear::{OnDownlinkClear, OnDownlinkClearShared},
@@ -29,7 +32,6 @@ use super::{
     on_failed::{OnFailed, OnFailedShared},
     on_linked::{OnLinked, OnLinkedShared},
     on_unlinked::{OnUnlinked, OnUnlinkedShared},
-    LiftShared, WithHandlerContext, WithHandlerContextBorrow,
 };
 
 pub mod on_clear;

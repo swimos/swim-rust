@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::{event_handler::ActionContext, meta::AgentMetadata};
+
 use self::{item_event::ItemEvent, on_start::OnStart, on_stop::OnStop};
 
 pub mod item_event;
@@ -24,7 +26,17 @@ pub mod utility;
 /// Trait for agent lifecycles.
 /// #Type Parameters
 /// * `Context` - The context in which the lifecycle events run (provides access to the lanes of the agent).
-pub trait AgentLifecycle<Context>: OnStart<Context> + OnStop<Context> + ItemEvent<Context> {}
+pub trait AgentLifecycle<Context>: OnStart<Context> + OnStop<Context> + ItemEvent<Context> {
+    /// Provides an opportunity for the lifecycle to perform any initial setup. This will be
+    /// called immediately before the `on_start` event handler is executed.
+    fn initialize(
+        &self,
+        _action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) {
+    }
+}
 
 impl<L, Context> AgentLifecycle<Context> for L where
     L: OnStart<Context> + OnStop<Context> + ItemEvent<Context>

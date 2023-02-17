@@ -25,8 +25,8 @@ use super::{
     on_linked::{OnLinked, OnLinkedShared},
     on_synced::{OnSynced, OnSyncedShared},
     on_unlinked::{OnUnlinked, OnUnlinkedShared},
-    LiftShared, WithHandlerContext,
 };
+use crate::lifecycle_fn::{LiftShared, WithHandlerContext};
 
 pub mod on_event;
 

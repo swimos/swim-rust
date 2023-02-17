@@ -503,6 +503,17 @@ where
             }
         }
 
+        lifecycle.initialize(
+            &mut ActionContext::new(
+                &suspended,
+                &*context,
+                &downlink_channels,
+                &mut join_value_init,
+            ),
+            meta,
+            &item_model,
+        );
+
         // Run the agent's `on_start` event handler.
         let on_start_handler = lifecycle.on_start();
 

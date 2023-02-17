@@ -17,7 +17,6 @@ use std::hash::Hash;
 use swim_model::{address::Address, Text};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
     downlink_lifecycle::{
         on_failed::OnFailed, on_linked::OnLinked, on_synced::OnSynced, on_unlinked::OnUnlinked,
         value::on_event::OnDownlinkEvent,
@@ -80,7 +79,7 @@ where
         let remote = lane.borrow_parts();
         let alter_state =
             AlterKeyState::new(*projection, key.clone(), Some(DownlinkStatus::Linked));
-        alter_state.followed_by(lifecycle.on_linked(HandlerContext::default(), key.clone(), remote))
+        alter_state.followed_by(lifecycle.on_linked(key.clone(), remote))
     }
 }
 
@@ -129,7 +128,7 @@ where
         } = self;
         let remote = lane.borrow_parts();
         lifecycle
-            .on_unlinked(HandlerContext::default(), key.clone(), remote)
+            .on_unlinked(key.clone(), remote)
             .and_then(AfterClosedTrans::new(*projection, key.clone()))
     }
 }
@@ -152,7 +151,7 @@ where
         } = self;
         let remote = lane.borrow_parts();
         lifecycle
-            .on_failed(HandlerContext::default(), key.clone(), remote)
+            .on_failed(key.clone(), remote)
             .and_then(AfterClosedTrans::new(*projection, key.clone()))
     }
 }
@@ -376,7 +375,7 @@ where
         let join_lane = projection(context);
         let key = input.clone();
         join_lane.inner.get(&input, |maybe_value| {
-            lifecycle.on_synced(HandlerContext::default(), key, lane, maybe_value)
+            lifecycle.on_synced(key, lane, maybe_value)
         })
     }
 }

@@ -21,7 +21,7 @@ use crate::{
     event_handler::{EventFn, EventHandler, UnitHandler},
 };
 
-use super::{LiftShared, WithHandlerContext, WithHandlerContextBorrow};
+use crate::lifecycle_fn::{LiftShared, WithHandlerContext, WithHandlerContextBorrow};
 
 /// Lifecycle event for the `on_synced` event of a downlink, from an agent.
 pub trait OnSynced<T, Context>: Send {

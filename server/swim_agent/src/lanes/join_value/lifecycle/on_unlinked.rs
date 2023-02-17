@@ -12,12 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swim_api::handlers::{FnHandler, NoHandler};
 use swim_model::address::Address;
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext, event_handler::HandlerAction,
+    agent_lifecycle::utility::HandlerContext,
+    event_handler::{ConstHandler, HandlerAction},
     lanes::join_value::LinkClosedResponse,
+    lifecycle_fn::{LiftShared, WithHandlerContext},
 };
+
+use super::JoinValueHandlerFn0;
 
 pub trait OnJoinValueUnlinked<K, Context>: Send {
     type OnJoinValueUnlinkedHandler<'a>: HandlerAction<Context, Completion = LinkClosedResponse>
@@ -27,7 +32,6 @@ pub trait OnJoinValueUnlinked<K, Context>: Send {
 
     fn on_unlinked<'a>(
         &'a self,
-        handler_context: HandlerContext<Context>,
         key: K,
         remote: Address<&str>,
     ) -> Self::OnJoinValueUnlinkedHandler<'a>;
@@ -47,4 +51,115 @@ pub trait OnJoinValueUnlinkedShared<K, Context, Shared>: Send {
         key: K,
         remote: Address<&str>,
     ) -> Self::OnJoinValueUnlinkedHandler<'a>;
+}
+
+impl<K, Context> OnJoinValueUnlinked<K, Context> for NoHandler {
+    type OnJoinValueUnlinkedHandler<'a> = ConstHandler<LinkClosedResponse>
+    where
+        Self: 'a;
+
+    fn on_unlinked<'a>(
+        &'a self,
+        _key: K,
+        _remote: Address<&str>,
+    ) -> Self::OnJoinValueUnlinkedHandler<'a> {
+        ConstHandler::default()
+    }
+}
+
+impl<K, Context, F, H> OnJoinValueUnlinked<K, Context> for FnHandler<F>
+where
+    F: Fn(K, Address<&str>) -> H + Send,
+    H: HandlerAction<Context, Completion = LinkClosedResponse> + 'static,
+{
+    type OnJoinValueUnlinkedHandler<'a> = H
+    where
+        Self: 'a;
+
+    fn on_unlinked<'a>(
+        &'a self,
+        key: K,
+        remote: Address<&str>,
+    ) -> Self::OnJoinValueUnlinkedHandler<'a> {
+        let FnHandler(f) = self;
+        f(key, remote)
+    }
+}
+
+impl<K, Context, Shared> OnJoinValueUnlinkedShared<K, Context, Shared> for NoHandler {
+    type OnJoinValueUnlinkedHandler<'a> = ConstHandler<LinkClosedResponse>
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_unlinked<'a>(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+        _key: K,
+        _remote: Address<&str>,
+    ) -> Self::OnJoinValueUnlinkedHandler<'a> {
+        ConstHandler::default()
+    }
+}
+
+impl<K, Context, Shared, F> OnJoinValueUnlinkedShared<K, Context, Shared> for FnHandler<F>
+where
+    F: for<'a> JoinValueHandlerFn0<'a, Context, Shared, K, LinkClosedResponse> + Send,
+{
+    type OnJoinValueUnlinkedHandler<'a> = <F as JoinValueHandlerFn0<'a, Context, Shared, K, LinkClosedResponse>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_unlinked<'a>(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        key: K,
+        remote: Address<&str>,
+    ) -> Self::OnJoinValueUnlinkedHandler<'a> {
+        let FnHandler(f) = self;
+        f.make_handler(shared, handler_context, key, remote)
+    }
+}
+
+impl<Context, K, F, H> OnJoinValueUnlinked<K, Context> for WithHandlerContext<F>
+where
+    F: Fn(HandlerContext<Context>, K, Address<&str>) -> H + Send,
+    H: HandlerAction<Context, Completion = LinkClosedResponse> + 'static,
+{
+    type OnJoinValueUnlinkedHandler<'a> = H
+    where
+        Self: 'a;
+
+    fn on_unlinked<'a>(
+        &'a self,
+        key: K,
+        remote: Address<&str>,
+    ) -> Self::OnJoinValueUnlinkedHandler<'a> {
+        let WithHandlerContext { inner } = self;
+        inner(HandlerContext::default(), key, remote)
+    }
+}
+
+impl<K, Context, Shared, F> OnJoinValueUnlinkedShared<K, Context, Shared> for LiftShared<F, Shared>
+where
+    F: OnJoinValueUnlinked<K, Context> + Send,
+{
+    type OnJoinValueUnlinkedHandler<'a> = F::OnJoinValueUnlinkedHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_unlinked<'a>(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+        key: K,
+        remote: Address<&str>,
+    ) -> Self::OnJoinValueUnlinkedHandler<'a> {
+        let LiftShared { inner, .. } = self;
+        inner.on_unlinked(key, remote)
+    }
 }

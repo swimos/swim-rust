@@ -12,9 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::borrow::Borrow;
+
+use swim_api::handlers::{BorrowHandler, NoHandler};
 use swim_model::address::Address;
 
-use crate::{agent_lifecycle::utility::HandlerContext, event_handler::EventHandler};
+use crate::{
+    agent_lifecycle::utility::HandlerContext,
+    event_handler::{EventHandler, UnitHandler},
+    lifecycle_fn::{LiftShared, WithHandlerContextBorrow},
+};
 
 pub trait OnJoinValueSynced<K, V, Context>: Send {
     type OnJoinValueSyncedHandler<'a>: EventHandler<Context> + 'a
@@ -23,7 +30,6 @@ pub trait OnJoinValueSynced<K, V, Context>: Send {
 
     fn on_synced<'a>(
         &'a self,
-        handler_context: HandlerContext<Context>,
         key: K,
         remote: Address<&str>,
         value: Option<&V>,
@@ -44,4 +50,90 @@ pub trait OnJoinValueSyncedShared<K, V, Context, Shared>: Send {
         remote: Address<&str>,
         value: Option<&V>,
     ) -> Self::OnJoinValueSyncedHandler<'a>;
+}
+
+impl<K, V, Context> OnJoinValueSynced<K, V, Context> for NoHandler {
+    type OnJoinValueSyncedHandler<'a> = UnitHandler
+    where
+        Self: 'a;
+
+    fn on_synced<'a>(
+        &'a self,
+        _key: K,
+        _remote: Address<&str>,
+        _value: Option<&V>,
+    ) -> Self::OnJoinValueSyncedHandler<'a> {
+        UnitHandler::default()
+    }
+}
+
+impl<K, V, B, Context, F, H> OnJoinValueSynced<K, V, Context> for BorrowHandler<F, B>
+where
+    B: ?Sized,
+    V: Borrow<B>,
+    F: Fn(K, Address<&str>, Option<&B>) -> H + Send,
+    H: EventHandler<Context> + 'static,
+{
+    type OnJoinValueSyncedHandler<'a> = H
+    where
+        Self: 'a;
+
+    fn on_synced<'a>(
+        &'a self,
+        key: K,
+        remote: Address<&str>,
+        value: Option<&V>,
+    ) -> Self::OnJoinValueSyncedHandler<'a> {
+        (self.as_ref())(key, remote, value.map(Borrow::borrow))
+    }
+}
+
+impl<Context, K, V, B, F, H> OnJoinValueSynced<K, V, Context> for WithHandlerContextBorrow<F, B>
+where
+    B: ?Sized,
+    V: Borrow<B>,
+    F: Fn(HandlerContext<Context>, K, Address<&str>, Option<&B>) -> H + Send,
+    H: EventHandler<Context> + 'static,
+{
+    type OnJoinValueSyncedHandler<'a> = H
+    where
+        Self: 'a;
+
+    fn on_synced<'a>(
+        &'a self,
+        key: K,
+        remote: Address<&str>,
+        value: Option<&V>,
+    ) -> Self::OnJoinValueSyncedHandler<'a> {
+        let WithHandlerContextBorrow { inner, .. } = self;
+        inner(
+            HandlerContext::default(),
+            key,
+            remote,
+            value.map(Borrow::borrow),
+        )
+    }
+}
+
+impl<K, V, Context, Shared, F> OnJoinValueSyncedShared<K, V, Context, Shared>
+    for LiftShared<F, Shared>
+where
+    F: OnJoinValueSynced<K, V, Context> + Send,
+{
+    type OnJoinValueSyncedHandler<'a> = F::OnJoinValueSyncedHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_synced<'a>(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+        key: K,
+        remote: Address<&str>,
+        value: Option<&V>,
+    ) -> Self::OnJoinValueSyncedHandler<'a> {
+        let LiftShared { inner, .. } = self;
+        inner.on_synced(key, remote, value)
+    }
 }
