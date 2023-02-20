@@ -14,7 +14,6 @@
 
 use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-    path::PathBuf,
     sync::Arc,
 };
 
@@ -24,12 +23,10 @@ use ratchet::{
 };
 use swim_api::{agent::Agent, error::StoreError, store::StoreDisabled};
 use swim_runtime::{
-    net::{
-        dns::Resolver, plain::TokioPlainTextNetworking, tls::TokioTlsNetworking,
-        ExternalConnections,
-    },
+    net::{dns::Resolver, plain::TokioPlainTextNetworking, ExternalConnections},
     ws::ext::RatchetNetworking,
 };
+use swim_tls::{RustlsNetworking, TlsConfig};
 use swim_utilities::routing::route_pattern::RoutePattern;
 
 use crate::{
@@ -45,7 +42,7 @@ use super::{runtime::SwimServer, store::ServerPersistence, BoxServer, Server};
 pub struct ServerBuilder {
     bind_to: SocketAddr,
     plane: PlaneBuilder,
-    enable_tls: bool,
+    tls_config: Option<TlsConfig>,
     deflate: Option<DeflateConfig>,
     config: SwimServerConfig,
     store_options: StoreConfig,
@@ -57,7 +54,7 @@ enum StoreConfig {
     NoStore,
     #[cfg(feature = "persistence")]
     RockStore {
-        path: Option<PathBuf>,
+        path: Option<std::path::PathBuf>,
         options: crate::RocksOpts,
     },
 }
@@ -75,7 +72,7 @@ impl ServerBuilder {
         Self {
             bind_to: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), DEFAULT_PORT)),
             plane: PlaneBuilder::with_name(name),
-            enable_tls: false,
+            tls_config: None,
             deflate: Default::default(),
             config: Default::default(),
             store_options: Default::default(),
@@ -103,8 +100,8 @@ impl ServerBuilder {
     }
 
     /// Enable TLS on the server.
-    pub fn add_tls_support(mut self) -> Self {
-        self.enable_tls = true;
+    pub fn add_tls_support(mut self, config: TlsConfig) -> Self {
+        self.tls_config = Some(config);
         self
     }
 
@@ -154,7 +151,7 @@ impl ServerBuilder {
         let ServerBuilder {
             bind_to,
             plane,
-            enable_tls,
+            tls_config,
             deflate,
             config,
             store_options,
@@ -165,10 +162,8 @@ impl ServerBuilder {
             routes.check_meta_collisions()?;
         }
         let resolver = Arc::new(Resolver::new().await);
-        if enable_tls {
-            //TODO Make this support actual identities.
-            let networking =
-                TokioTlsNetworking::new::<_, Box<PathBuf>>(std::iter::empty(), resolver);
+        if let Some(tls_conf) = tls_config {
+            let networking = RustlsNetworking::try_from_config(resolver, tls_conf)?;
             Ok(BoxServer(with_store(
                 bind_to,
                 routes,
@@ -293,7 +288,7 @@ const _: () = {
         }
 
         pub fn set_store_path<P: AsRef<std::ffi::OsStr>>(mut self, base_path: P) -> Self {
-            let db_path = PathBuf::from(std::path::Path::new(&base_path));
+            let db_path = std::path::PathBuf::from(std::path::Path::new(&base_path));
             match &mut self.store_options {
                 StoreConfig::RockStore { path, .. } => {
                     *path = Some(db_path);

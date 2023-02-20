@@ -15,10 +15,11 @@
 use std::{
     error::Error,
     fmt::{Display, Formatter},
-    io,
 };
 
 use swim_api::error::StoreError;
+use swim_runtime::net::ConnectionError;
+use swim_tls::TlsError;
 use thiserror::Error;
 
 use swim_utilities::{format::comma_sep, routing::route_pattern::RoutePattern};
@@ -78,7 +79,7 @@ impl Error for AmbiguousRoutes {}
 #[derive(Debug, Error)]
 pub enum ServerError {
     #[error("The server network connection failed.")]
-    Networking(#[from] io::Error),
+    Networking(#[from] ConnectionError),
     #[error("Opening the store for a plane failed.")]
     Persistence(#[from] StoreError),
 }
@@ -89,6 +90,8 @@ pub enum ServerBuilderError {
     BadRoutes(#[from] AmbiguousRoutes),
     #[error("Opening the store failed: {0}")]
     Persistence(#[from] StoreError),
+    #[error("Invalid TLS configuration/certificate: {0}")]
+    Tls(#[from] TlsError),
 }
 
 #[cfg(test)]

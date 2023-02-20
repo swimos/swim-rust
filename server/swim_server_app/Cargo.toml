@@ -12,7 +12,8 @@ persistence = ["swim_persistence", "swim_persistence/rocks", "rocksdb"]
 futures = { workspace = true }
 ratchet = { package = "ratchet_rs", workspace = true, features = ["deflate", "split"] }
 swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger", "text"] }
-swim_runtime = { path = "../../runtime/swim_runtime", features = ["tls"] }
+swim_runtime = { path = "../../runtime/swim_runtime" }
+swim_tls = { path = "../../runtime/swim_tls" }
 swim_introspection = { path = "../swim_introspection" }
 swim_remote = { path = "../../runtime/swim_remote" }
 bytes = { workspace = true }

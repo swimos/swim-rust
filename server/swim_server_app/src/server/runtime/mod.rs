@@ -40,7 +40,9 @@ use swim_runtime::agent::{
 };
 use swim_utilities::routing::route_uri::RouteUri;
 
-use swim_runtime::net::{BadUrl, ExternalConnections, Listener, SchemeSocketAddr};
+use swim_runtime::net::{
+    BadUrl, ConnectionError, ExternalConnections, Listener, ListenerError, Scheme,
+};
 use swim_runtime::ws::{RatchetError, WsConnections};
 use swim_utilities::io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
 use swim_utilities::routing::route_pattern::RoutePattern;
@@ -84,7 +86,7 @@ type ClientPromiseTx = oneshot::Sender<Result<EstablishedClient, NewClientError>
 type ClientPromiseRx = oneshot::Receiver<Result<EstablishedClient, NewClientError>>;
 
 enum ServerEvent<Sock, Ext> {
-    NewConnection(Result<(Sock, SchemeSocketAddr), std::io::Error>),
+    NewConnection(Result<(Sock, Scheme, SocketAddr), ListenerError>),
     FindRoute(FindNode),
     FailRoute(FindNode),
     RemoteStopped(SocketAddr, Result<(), JoinError>),
@@ -117,6 +119,8 @@ impl EstablishedClient {
 pub struct ClientRegistration {
     /// Original host URL that was resolved.
     host: Text,
+    /// Scheme to use for connection.
+    scheme: Scheme,
     /// Addresses to try to connect to the remote.
     sock_addrs: Vec<SocketAddr>,
     /// Reply channel for the server task.
@@ -124,10 +128,11 @@ pub struct ClientRegistration {
 }
 
 impl ClientRegistration {
-    fn new(host: Text, sock_addrs: Vec<SocketAddr>) -> (Self, ClientPromiseRx) {
+    fn new(scheme: Scheme, host: Text, sock_addrs: Vec<SocketAddr>) -> (Self, ClientPromiseRx) {
         let (tx, rx) = oneshot::channel();
         (
             ClientRegistration {
+                scheme,
                 host,
                 sock_addrs,
                 responder: tx,
@@ -404,11 +409,11 @@ where
             };
 
             match event {
-                ServerEvent::NewConnection(Ok((sock, addr))) => {
+                ServerEvent::NewConnection(Ok((sock, _, addr))) => {
                     info!(peer = %addr, "Accepting new client connection.");
                     match websockets.accept_connection(sock).await {
                         Ok(websocket) => {
-                            let sock_addr = addr.addr;
+                            let sock_addr = addr;
                             let id = remote_issuer.next_id();
                             let (attach_tx, task) = register_remote(
                                 id,
@@ -425,6 +430,12 @@ where
                             warn!(error = %error, "Negotiating incoming websocket connection failed.");
                         }
                     }
+                }
+                ServerEvent::NewConnection(Err(ListenerError::ListenerFailed(error))) => {
+                    error!(error = %error, "Listening for new connections failed.");
+                    return Err(ServerError::Networking(ConnectionError::ConnectionFailed(
+                        error,
+                    )));
                 }
                 ServerEvent::NewConnection(Err(error)) => {
                     warn!(error = %error, "Accepting incoming connection failed.");
@@ -516,6 +527,7 @@ where
                 }
                 ServerEvent::RemoteClientRequest(ClientRegistration {
                     host,
+                    scheme,
                     sock_addrs,
                     responder,
                 }) => {
@@ -533,7 +545,7 @@ where
                         let net = networking.clone();
                         let ws = websockets.clone();
                         client_tasks.push(async move {
-                            let result = open_client(host, sock_addrs, net, ws).await;
+                            let result = open_client(scheme, host, sock_addrs, net, ws).await;
                             ServerEvent::NewClient(result, responder)
                         });
                     }
@@ -928,7 +940,7 @@ enum NewClientError {
     BadWarpUrl(#[from] BadUrl),
     #[error("Failed to open a remote connection.")]
     OpeningSocketFailed {
-        errors: Vec<(SocketAddr, std::io::Error)>,
+        errors: Vec<(SocketAddr, ConnectionError)>,
     },
     #[error("Failed to negotiate a websocket connection.")]
     WsNegotationFailed {
@@ -964,6 +976,7 @@ impl From<NewClientError> for DownlinkRuntimeError {
 }
 
 async fn open_client<Net, Ws>(
+    scheme: Scheme,
     host: Text,
     addrs: Vec<SocketAddr>,
     networking: Arc<Net>,
@@ -977,7 +990,7 @@ where
     let mut conn_failures = vec![];
     let mut sock = None;
     for addr in addrs {
-        match networking.try_open(addr).await {
+        match networking.try_open(scheme, Some(host.as_str()), addr).await {
             Ok(socket) => {
                 sock = Some((addr, socket));
                 break;
