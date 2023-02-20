@@ -45,9 +45,13 @@ use crate::{
 };
 
 pub use self::downlink_builder::map::{StatefulMapDownlinkBuilder, StatelessMapDownlinkBuilder};
-use self::downlink_builder::value::StatelessValueDownlinkBuilder;
+pub use self::downlink_builder::value::{
+    StatefulValueDownlinkBuilder, StatelessValueDownlinkBuilder,
+};
+pub use self::join_value_builder::{StatefulJoinValueLaneBuilder, StatelessJoinValueLaneBuilder};
 
 mod downlink_builder;
+mod join_value_builder;
 
 /// A utility class to aid in the creation of event handlers for an agent. This has no data
 /// and is used to provide easy access to the agent type parameter to avoid the need for
@@ -474,5 +478,10 @@ impl<Agent: 'static> HandlerContext<Agent> {
     {
         let address = Address::text(host, node, lane_uri);
         JoinValueAddDownlink::new(lane, key, address)
+    }
+
+    /// Creates a builder to construct a lifecycle for the downlinks of a [`JoinValueLane`].
+    pub fn join_value_lifecycle_builder<K, V>(&self) -> StatelessJoinValueLaneBuilder<Agent, K, V> {
+        StatelessJoinValueLaneBuilder::default()
     }
 }

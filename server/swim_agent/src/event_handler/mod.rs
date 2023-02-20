@@ -275,8 +275,8 @@ pub enum EventHandlerError {
     IncompleteCommand,
     #[error("An error occurred in the agent runtime.")]
     RuntimeError(#[from] AgentRuntimeError),
-    #[error("Invalid key type for a join lane lifecycle.")]
-    BadJoinLifecycle(#[from] KeyDowncastError),
+    #[error("Invalid key or value type for a join lane lifecycle.")]
+    BadJoinLifecycle(#[from] DowncastError),
 }
 
 /// When a handler completes or suspends it can indicate that is has modified the
@@ -1206,18 +1206,26 @@ where
 }
 
 #[derive(Debug, Error)]
-#[error("Expected a key of type {expected:?} but received type{:?}", key.type_id())]
-pub struct KeyDowncastError {
-    pub key: Box<dyn Any + Send>,
-    pub expected: TypeId,
+pub enum DowncastError {
+    #[error("Expected a key of type {expected_type:?} but received type {:?}", key.type_id())]
+    Key {
+        key: Box<dyn Any + Send>,
+        expected_type: TypeId,
+    },
+    #[error("Expected value type {expected_type:?} but received type {actual_type:?}")]
+    Value {
+        actual_type: TypeId,
+        expected_type: TypeId,
+    },
 }
 
 pub trait JoinValueInitializer<Context>: Send {
     fn try_create_action(
         &self,
         key: Box<dyn Any + Send>,
+        value_type: TypeId,
         address: Address<Text>,
-    ) -> Result<Box<dyn EventHandler<Context> + Send + 'static>, KeyDowncastError>;
+    ) -> Result<Box<dyn EventHandler<Context> + Send + 'static>, DowncastError>;
 }
 
 static_assertions::assert_obj_safe!(JoinValueInitializer<()>);

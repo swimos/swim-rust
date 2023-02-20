@@ -86,7 +86,7 @@ pub trait StatelessJoinValueLifecycle<Context, K, V>:
     where
         H: OnJoinValueFailed<K, Context>;
 
-    type WithShared<Shared>: StatefulJoinValueLifecycle<K, V, Context, Shared>
+    type WithShared<Shared>: StatefulJoinValueLifecycle<Context, Shared, K, V>
     where
         Shared: Send;
 
@@ -111,20 +111,22 @@ pub trait StatelessJoinValueLifecycle<Context, K, V>:
     fn with_shared_state<Shared: Send>(self, shared: Shared) -> Self::WithShared<Shared>;
 }
 
-pub trait StatefulJoinValueLifecycle<K, V, Context, Shared> {
-    type WithOnLinked<H>: StatefulJoinValueLifecycle<K, V, Context, Shared>
+pub trait StatefulJoinValueLifecycle<Context, Shared, K, V>:
+    JoinValueLaneLifecycle<K, V, Context>
+{
+    type WithOnLinked<H>: StatefulJoinValueLifecycle<Context, Shared, K, V>
     where
         H: OnJoinValueLinkedShared<K, Context, Shared>;
 
-    type WithOnSynced<H>: StatefulJoinValueLifecycle<K, V, Context, Shared>
+    type WithOnSynced<H>: StatefulJoinValueLifecycle<Context, Shared, K, V>
     where
         H: OnJoinValueSyncedShared<K, V, Context, Shared>;
 
-    type WithOnUnlinked<H>: StatefulJoinValueLifecycle<K, V, Context, Shared>
+    type WithOnUnlinked<H>: StatefulJoinValueLifecycle<Context, Shared, K, V>
     where
         H: OnJoinValueUnlinkedShared<K, Context, Shared>;
 
-    type WithOnFailed<H>: StatefulJoinValueLifecycle<K, V, Context, Shared>
+    type WithOnFailed<H>: StatefulJoinValueLifecycle<Context, Shared, K, V>
     where
         H: OnJoinValueFailedShared<K, Context, Shared>;
 
@@ -147,6 +149,7 @@ pub trait StatefulJoinValueLifecycle<K, V, Context, Shared> {
         FnHandler<F>: OnJoinValueFailedShared<K, Context, Shared>;
 }
 
+#[derive(Debug)]
 pub struct StatelessJoinValueLaneLifecycle<
     Context,
     K,
@@ -163,6 +166,7 @@ pub struct StatelessJoinValueLaneLifecycle<
     on_failed: FFailed,
 }
 
+#[derive(Debug)]
 pub struct StatefulJoinValueLaneLifecycle<
     Context,
     State,
@@ -426,7 +430,7 @@ where
 }
 
 impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed>
-    StatefulJoinValueLifecycle<K, V, Context, State>
+    StatefulJoinValueLifecycle<Context, State, K, V>
     for StatefulJoinValueLaneLifecycle<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed>
 where
     State: Send,

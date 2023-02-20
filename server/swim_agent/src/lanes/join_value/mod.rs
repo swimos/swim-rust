@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::any::Any;
+use std::any::{Any, TypeId};
 use std::hash::Hash;
 use std::{cell::RefCell, collections::HashMap};
 
@@ -24,7 +24,7 @@ use swim_model::Text;
 use uuid::Uuid;
 
 use crate::agent_model::downlink::OpenValueDownlinkAction;
-use crate::event_handler::{EventHandler, JoinValueInitializer, KeyDowncastError, Modification};
+use crate::event_handler::{DowncastError, EventHandler, JoinValueInitializer, Modification};
 use crate::{
     agent_model::WriteResult,
     event_handler::{ActionContext, HandlerAction, StepResult},
@@ -325,7 +325,7 @@ impl<Context, K, V, F, LC> JoinValueInitializer<Context> for LifecycleInitialize
 where
     Context: 'static,
     K: Any + Clone + Eq + Hash + Send + 'static,
-    V: Form + Send + Sync + 'static,
+    V: Any + Form + Send + Sync + 'static,
     V::Rec: Send,
     F: Fn() -> LC + Send,
     LC: JoinValueLaneLifecycle<K, V, Context> + Send + 'static,
@@ -333,8 +333,9 @@ where
     fn try_create_action(
         &self,
         key: Box<dyn Any + Send>,
+        value_type: TypeId,
         address: Address<Text>,
-    ) -> Result<Box<dyn EventHandler<Context> + Send + 'static>, KeyDowncastError> {
+    ) -> Result<Box<dyn EventHandler<Context> + Send + 'static>, DowncastError> {
         let LifecycleInitializer {
             projection,
             lifecycle_factory,
@@ -342,13 +343,21 @@ where
 
         match key.downcast::<K>() {
             Ok(key) => {
-                let lifecycle = lifecycle_factory();
-                let action = AddDownlinkAction::new(*projection, *key, address, lifecycle);
-                Ok(Box::new(action))
+                let expected_value = TypeId::of::<V>();
+                if value_type == expected_value {
+                    let lifecycle = lifecycle_factory();
+                    let action = AddDownlinkAction::new(*projection, *key, address, lifecycle);
+                    Ok(Box::new(action))
+                } else {
+                    Err(DowncastError::Value {
+                        actual_type: value_type,
+                        expected_type: expected_value,
+                    })
+                }
             }
-            Err(bad_key) => Err(KeyDowncastError {
+            Err(bad_key) => Err(DowncastError::Key {
                 key: bad_key,
-                expected: std::any::TypeId::of::<K>(),
+                expected_type: std::any::TypeId::of::<K>(),
             }),
         }
     }
@@ -362,7 +371,7 @@ impl<C, K, V> HandlerAction<C> for JoinValueAddDownlink<C, K, V>
 where
     C: 'static,
     K: Any + Clone + Eq + Hash + Send + 'static,
-    V: Form + Send + 'static,
+    V: Any + Form + Send + 'static,
     V::Rec: Send,
 {
     type Completion = ();
@@ -384,7 +393,7 @@ where
                     let lane_id = projection(context).id();
                     let handler = if let Some(init) = action_context.join_value_initializer(lane_id)
                     {
-                        match init.try_create_action(Box::new(key), address) {
+                        match init.try_create_action(Box::new(key), TypeId::of::<V>(), address) {
                             Ok(boxed) => boxed,
                             Err(err) => break StepResult::Fail(err.into()),
                         }
