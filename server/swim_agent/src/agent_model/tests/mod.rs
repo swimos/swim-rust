@@ -164,7 +164,10 @@ async fn run_agent_init_task() {
 
     let events = lc_event_rx.collect::<Vec<_>>().await;
 
-    assert!(matches!(events.as_slice(), [LifecycleEvent::Start]));
+    assert!(matches!(
+        events.as_slice(),
+        [LifecycleEvent::Init, LifecycleEvent::Start]
+    ));
 
     let lane_events = test_event_rx.collect::<Vec<_>>().await;
     assert!(lane_events.is_empty());
@@ -185,6 +188,10 @@ async fn stops_if_all_lanes_stop() {
     ) = init_agent(context).await;
 
     let test_case = async move {
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected init event."),
+            LifecycleEvent::Init
+        );
         assert_eq!(
             lc_event_rx.next().await.expect("Expected start event."),
             LifecycleEvent::Start
@@ -229,6 +236,10 @@ async fn command_to_value_lane() {
     ) = init_agent(context).await;
 
     let test_case = async move {
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected init event."),
+            LifecycleEvent::Init
+        );
         assert_eq!(
             lc_event_rx.next().await.expect("Expected start event."),
             LifecycleEvent::Start
@@ -288,6 +299,10 @@ async fn sync_with_lane() {
 
     let test_case = async move {
         assert_eq!(
+            lc_event_rx.next().await.expect("Expected init event."),
+            LifecycleEvent::Init
+        );
+        assert_eq!(
             lc_event_rx.next().await.expect("Expected start event."),
             LifecycleEvent::Start
         );
@@ -337,6 +352,10 @@ async fn command_to_map_lane() {
     ) = init_agent(context).await;
 
     let test_case = async move {
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected init event."),
+            LifecycleEvent::Init
+        );
         assert_eq!(
             lc_event_rx.next().await.expect("Expected start event."),
             LifecycleEvent::Start
@@ -403,6 +422,10 @@ async fn suspend_future() {
     ) = init_agent(context).await;
 
     let test_case = async move {
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected init event."),
+            LifecycleEvent::Init
+        );
         assert_eq!(
             lc_event_rx.next().await.expect("Expected start event."),
             LifecycleEvent::Start
