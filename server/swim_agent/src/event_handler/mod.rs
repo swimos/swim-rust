@@ -97,14 +97,11 @@ where
     }
 }
 
-pub type JoinValueLifecycleFactory<Context> =
-    Box<dyn Fn() -> BoxJoinValueInit<'static, Context> + Send>;
-
 pub struct ActionContext<'a, Context> {
     spawner: &'a dyn Spawner<Context>,
     agent_context: &'a dyn AgentContext,
     downlink: &'a dyn DownlinkSpawner<Context>,
-    join_value_init: &'a mut HashMap<u64, JoinValueLifecycleFactory<Context>>,
+    join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
 }
 
 impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
@@ -128,7 +125,7 @@ impl<'a, Context> ActionContext<'a, Context> {
         spawner: &'a dyn Spawner<Context>,
         agent_context: &'a dyn AgentContext,
         downlink: &'a dyn DownlinkSpawner<Context>,
-        join_value_init: &'a mut HashMap<u64, JoinValueLifecycleFactory<Context>>,
+        join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
     ) -> Self {
         ActionContext {
             spawner,
@@ -141,14 +138,14 @@ impl<'a, Context> ActionContext<'a, Context> {
     pub fn join_value_initializer(
         &self,
         lane_id: u64,
-    ) -> Option<BoxJoinValueInit<'static, Context>> {
-        self.join_value_init.get(&lane_id).map(|f| f())
+    ) -> Option<&BoxJoinValueInit<'static, Context>> {
+        self.join_value_init.get(&lane_id)
     }
 
     pub fn register_join_value_initializer(
         &mut self,
         lane_id: u64,
-        factory: JoinValueLifecycleFactory<Context>,
+        factory: BoxJoinValueInit<'static, Context>,
     ) {
         self.join_value_init.insert(lane_id, factory);
     }

@@ -40,8 +40,8 @@ use crate::{
         map::StatefulMapDownlinkLifecycle, value::StatefulValueDownlinkLifecycle,
     },
     event_handler::{
-        ActionContext, DownlinkSpawner, HandlerAction, HandlerFuture, JoinValueLifecycleFactory,
-        Spawner, StepResult, WriteStream,
+        ActionContext, BoxJoinValueInit, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner,
+        StepResult, WriteStream,
     },
     meta::AgentMetadata,
 };
@@ -153,7 +153,7 @@ async fn run_all_and_check(
     mut spawner: TestSpawner,
     context: TestContext,
     meta: AgentMetadata<'_>,
-    join_value_init: &mut HashMap<u64, JoinValueLifecycleFactory<TestAgent>>,
+    join_value_init: &mut HashMap<u64, BoxJoinValueInit<'static, TestAgent>>,
     agent: &TestAgent,
 ) {
     while let Some(handler) = spawner.futures.next().await {

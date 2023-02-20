@@ -321,6 +321,19 @@ pub struct LifecycleInitializer<Context, K, V, F> {
     lifecycle_factory: F,
 }
 
+impl<Context, K, V, F, LC> LifecycleInitializer<Context, K, V, F>
+where
+    F: Fn() -> LC + Send,
+    LC: JoinValueLaneLifecycle<K, V, Context> + Send + 'static,
+{
+    pub fn new(projection: fn(&Context) -> &JoinValueLane<K, V>, lifecycle_factory: F) -> Self {
+        LifecycleInitializer {
+            projection,
+            lifecycle_factory,
+        }
+    }
+}
+
 impl<Context, K, V, F, LC> JoinValueInitializer<Context> for LifecycleInitializer<Context, K, V, F>
 where
     Context: 'static,

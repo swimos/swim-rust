@@ -25,7 +25,7 @@ use swim::agent::{
     AgentLaneModel,
 };
 use swim_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
-use swim_agent::event_handler::{HandlerFuture, JoinValueLifecycleFactory, Spawner, WriteStream};
+use swim_agent::event_handler::{BoxJoinValueInit, HandlerFuture, Spawner, WriteStream};
 use swim_agent::meta::AgentMetadata;
 use swim_agent::stores::{MapStore, ValueStore};
 use swim_api::agent::AgentConfig;
@@ -57,9 +57,9 @@ pub fn no_downlink<Context>(
     panic!("Launching downlinks no supported.");
 }
 
-pub fn dummy_context<Context>(
-    join_value_init: &mut HashMap<u64, JoinValueLifecycleFactory<Context>>,
-) -> ActionContext<'_, Context> {
+pub fn dummy_context<'a, Context>(
+    join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
+) -> ActionContext<'a, Context> {
     ActionContext::new(&NO_SPAWN, &NO_AGENT, &no_downlink, join_value_init)
 }
 

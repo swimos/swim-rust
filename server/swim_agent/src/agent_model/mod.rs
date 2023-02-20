@@ -43,7 +43,7 @@ use uuid::Uuid;
 
 use crate::agent_lifecycle::item_event::ItemEvent;
 use crate::event_handler::{
-    ActionContext, BoxEventHandler, HandlerFuture, JoinValueLifecycleFactory, WriteStream,
+    ActionContext, BoxEventHandler, BoxJoinValueInit, HandlerFuture, WriteStream,
 };
 use crate::{
     agent_lifecycle::AgentLifecycle,
@@ -562,7 +562,7 @@ struct AgentTask<ItemModel, Lifecycle> {
     map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
     map_store_io: HashMap<Text, ByteWriter>,
     suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
-    join_value_init: HashMap<u64, JoinValueLifecycleFactory<ItemModel>>,
+    join_value_init: HashMap<u64, BoxJoinValueInit<'static, ItemModel>>,
     downlink_channels: Vec<(BoxDownlinkChannel<ItemModel>, WriteStream)>,
 }
 
