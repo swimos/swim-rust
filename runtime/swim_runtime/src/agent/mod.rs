@@ -272,7 +272,7 @@ impl NodeReporting {
         let registration = UplinkReporterRegistration::new(*agent_id, name.clone(), kind, reader);
         if lane_registrations.send(registration).await.is_err() {
             error!(
-                "Failed to reistery lane {} for agent {} for reporting.",
+                "Failed to register lane {} for agent {} for reporting.",
                 name, agent_id
             );
             None
