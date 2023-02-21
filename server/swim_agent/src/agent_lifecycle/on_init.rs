@@ -19,6 +19,7 @@ use swim_form::Form;
 
 use crate::{
     event_handler::{ActionContext, BoxJoinValueInit},
+    item::AgentItem,
     lanes::{
         join_value::{lifecycle::JoinValueLaneLifecycle, LifecycleInitializer},
         JoinValueLane,
@@ -26,7 +27,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::utility::HandlerContext;
+use super::utility::JoinValueContext;
 
 pub trait OnInit<Context>: Send {
     /// Provides an opportunity for the lifecycle to perform any initial setup. This will be
@@ -106,6 +107,12 @@ pub struct InitCons<L, R> {
     tail: R,
 }
 
+impl<L, R> InitCons<L, R> {
+    pub fn cons(head: L, tail: R) -> Self {
+        InitCons { head, tail }
+    }
+}
+
 impl<Context, L, R> OnInit<Context> for InitCons<L, R>
 where
     L: OnInit<Context>,
@@ -124,9 +131,17 @@ where
 }
 
 pub struct JoinValueInit<Context, K, V, F> {
-    lane_id: u64,
     projection: fn(&Context) -> &JoinValueLane<K, V>,
     lifecycle_fac: F,
+}
+
+impl<Context, K, V, F> JoinValueInit<Context, K, V, F> {
+    pub fn new(projection: fn(&Context) -> &JoinValueLane<K, V>, lifecycle_fac: F) -> Self {
+        JoinValueInit {
+            projection,
+            lifecycle_fac,
+        }
+    }
 }
 
 impl<Context, K, V, F, LC> OnInit<Context> for JoinValueInit<Context, K, V, F>
@@ -135,24 +150,24 @@ where
     K: Clone + Eq + Hash + Send + 'static,
     V: Form + Send + Sync + 'static,
     V::Rec: Send,
-    F: Fn(HandlerContext<Context>) -> LC + Send + Clone + 'static,
+    F: Fn(JoinValueContext<Context, K, V>) -> LC + Send + Clone + 'static,
     LC: JoinValueLaneLifecycle<K, V, Context> + 'static,
 {
     fn initialize(
         &self,
         action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
-        _context: &Context,
+        context: &Context,
     ) {
         let JoinValueInit {
-            lane_id,
             projection,
             lifecycle_fac,
         } = self;
         let fac_cpy = lifecycle_fac.clone();
-        let fac = move || fac_cpy(HandlerContext::default());
+        let fac = move || fac_cpy(JoinValueContext::default());
         let init: BoxJoinValueInit<'static, Context> =
             Box::new(LifecycleInitializer::new(*projection, fac));
-        action_context.register_join_value_initializer(*lane_id, init);
+        let lane_id = projection(context).id();
+        action_context.register_join_value_initializer(lane_id, init);
     }
 }

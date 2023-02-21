@@ -179,12 +179,12 @@ impl<Context, State, FInit, FStart, FStop, ItemEv>
     StatefulAgentLifecycle<Context, State, FInit, FStart, FStop, ItemEv>
 {
     /// Replace the `on_start` handler with another defined using a closure.
-    pub fn on_init<F>(
+    pub fn on_init<H>(
         self,
-        f: F,
-    ) -> StatefulAgentLifecycle<Context, State, FnHandler<F>, FStart, FStop, ItemEv>
+        handler: H,
+    ) -> StatefulAgentLifecycle<Context, State, H, FStart, FStop, ItemEv>
     where
-        FnHandler<F>: OnInitShared<Context, State>,
+        H: OnInitShared<Context, State>,
     {
         let StatefulAgentLifecycle {
             handler_context,
@@ -197,7 +197,7 @@ impl<Context, State, FInit, FStart, FStop, ItemEv>
         StatefulAgentLifecycle {
             handler_context,
             state,
-            on_init: FnHandler(f),
+            on_init: handler,
             on_start,
             on_stop,
             item_event,

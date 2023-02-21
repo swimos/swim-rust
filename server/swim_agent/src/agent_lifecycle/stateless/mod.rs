@@ -132,12 +132,9 @@ where
 impl<Context, FInit, FStart, FStop, ItemEv>
     BasicAgentLifecycle<Context, FInit, FStart, FStop, ItemEv>
 {
-    pub fn on_init<F>(
-        self,
-        f: F,
-    ) -> BasicAgentLifecycle<Context, FnHandler<F>, FStart, FStop, ItemEv>
+    pub fn on_init<H>(self, handler: H) -> BasicAgentLifecycle<Context, H, FStart, FStop, ItemEv>
     where
-        FnHandler<F>: OnInit<Context>,
+        H: OnInit<Context>,
     {
         let BasicAgentLifecycle {
             on_start,
@@ -147,7 +144,7 @@ impl<Context, FInit, FStart, FStop, ItemEv>
         } = self;
         BasicAgentLifecycle {
             _context: Default::default(),
-            on_init: FnHandler(f),
+            on_init: handler,
             on_start,
             on_stop,
             item_event,
