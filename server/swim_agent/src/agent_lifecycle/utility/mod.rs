@@ -479,9 +479,29 @@ impl<Agent: 'static> HandlerContext<Agent> {
         let address = Address::text(host, node, lane_uri);
         JoinValueAddDownlink::new(lane, key, address)
     }
+}
 
+pub struct JoinValueContext<Agent, K, V> {
+    _type: PhantomData<fn(&Agent, K, V)>,
+}
+
+impl<Agent, K, V> Default for JoinValueContext<Agent, K, V> {
+    fn default() -> Self {
+        Self {
+            _type: Default::default(),
+        }
+    }
+}
+
+impl<Agent, K, V> JoinValueContext<Agent, K, V>
+where
+    Agent: 'static,
+    K: Any + Clone + Eq + Hash + Send + 'static,
+    V: Form + Send + 'static,
+    V::Rec: Send,
+{
     /// Creates a builder to construct a lifecycle for the downlinks of a [`JoinValueLane`].
-    pub fn join_value_lifecycle_builder<K, V>(&self) -> StatelessJoinValueLaneBuilder<Agent, K, V> {
+    pub fn join_value_lifecycle_builder(&self) -> StatelessJoinValueLaneBuilder<Agent, K, V> {
         StatelessJoinValueLaneBuilder::default()
     }
 }
