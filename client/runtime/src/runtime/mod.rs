@@ -255,7 +255,7 @@ async fn runtime_task<Net, Ws>(
                 }
                 Some(connection) = pending.next() => {
                     match connection {
-                        Either::Left(dns) => RuntimeEvent::Resolved { host:dns.0,result: dns.1 },
+                        Either::Left(dns) => RuntimeEvent::Resolved { host: dns.0, result: dns.1 },
                         Either::Right((host, result)) => RuntimeEvent::ConnectionResult { host, result }
                     }
                 },
@@ -306,7 +306,6 @@ async fn runtime_task<Net, Ws>(
                 };
 
                 let task_shp = shp.clone();
-                let host = Text::from(shp.host().to_string());
                 let address = RemotePath::new(host.clone(), node, lane);
 
                 pending.feed_waiter(Waiting::Connection {

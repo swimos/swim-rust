@@ -2,15 +2,15 @@ use bytes::BytesMut;
 use futures_util::future::{ready, BoxFuture};
 use futures_util::stream::Empty;
 use futures_util::FutureExt;
+use parking_lot::Mutex;
 use ratchet::{Message, NegotiatedExtension, NoExt, PayloadType, Role, WebSocket, WebSocketConfig};
 use std::borrow::BorrowMut;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
-use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::ops::DerefMut;
+use std::sync::Arc;
 use swim_form::Form;
 use swim_model::{Text, Value};
 use swim_recon::parser::{parse_recognize, Span};
@@ -81,7 +81,6 @@ impl ExternalConnections for MockExternalConnections {
         let result = self
             .inner
             .lock()
-            .unwrap()
             .sockets
             .remove(&addr)
             .ok_or_else(|| ErrorKind::NotFound.into());
@@ -104,7 +103,7 @@ impl DnsResolver for MockExternalConnections {
     type ResolveFuture = BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>>;
 
     fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
-        let result = match self.inner.lock().unwrap().addrs.get(&host) {
+        let result = match self.inner.lock().addrs.get(&host) {
             Some(sock) => Ok(vec![*sock]),
             None => Err(io::ErrorKind::NotFound.into()),
         };
@@ -257,13 +256,14 @@ pub enum Envelope {
 pub struct Lane {
     node: String,
     lane: String,
-    server: Rc<RefCell<Server>>,
+    server: Arc<Mutex<Server>>,
 }
 
 impl Lane {
     pub async fn read(&mut self) -> Envelope {
         let Lane { server, .. } = self;
-        let Server { buf, transport } = &mut *RefCell::borrow_mut(server);
+        let mut guard = server.lock();
+        let Server { buf, transport } = &mut guard.deref_mut();
 
         match transport.read(buf).await.unwrap() {
             Message::Text => {}
@@ -277,7 +277,8 @@ impl Lane {
 
     pub async fn write(&mut self, env: Envelope) {
         let Lane { server, .. } = self;
-        let Server { transport, .. } = &mut *RefCell::borrow_mut(server);
+        let mut guard = server.lock();
+        let Server { transport, .. } = &mut guard.deref_mut();
 
         let response = print_recon(&env);
         transport
@@ -288,7 +289,8 @@ impl Lane {
 
     pub async fn write_bytes(&mut self, msg: &[u8]) {
         let Lane { server, .. } = self;
-        let Server { transport, .. } = &mut *RefCell::borrow_mut(server);
+        let mut guard = server.lock();
+        let Server { transport, .. } = &mut guard.deref_mut();
 
         transport.write(msg, PayloadType::Text).await.unwrap();
     }
@@ -376,7 +378,8 @@ impl Lane {
 
     pub async fn await_closed(&mut self) {
         let Lane { server, .. } = self;
-        let Server { buf, transport } = &mut *RefCell::borrow_mut(server);
+        let mut guard = server.lock();
+        let Server { buf, transport } = &mut guard.deref_mut();
 
         match transport.borrow_mut().read(buf).await.unwrap() {
             Message::Close(_) => {}
@@ -391,7 +394,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn lane_for<N, L>(server: Rc<RefCell<Self>>, node: N, lane: L) -> Lane
+    pub fn lane_for<N, L>(server: Arc<Mutex<Self>>, node: N, lane: L) -> Lane
     where
         N: ToString,
         L: ToString,

@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::hash::Hash;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -26,6 +24,7 @@ use std::time::Duration;
 use bytes::BytesMut;
 use futures_util::future::{BoxFuture, Either};
 use futures_util::FutureExt;
+use parking_lot::Mutex;
 use ratchet::{Message, NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use tokio::io::{duplex, AsyncWriteExt};
 use tokio::sync::mpsc::unbounded_channel;
@@ -71,7 +70,7 @@ async fn transport_opens_connection_ok() {
         )],
         [("127.0.0.1:9001".parse().unwrap(), client)],
     );
-    let ws = MockWs::new([("127.0.0.1".to_string(), WsAction::Open)]);
+    let ws = MockWs::new([("ws://127.0.0.1/".to_string(), WsAction::Open)]);
     let transport = Transport::new(ext, ws, non_zero_usize!(128));
 
     let (transport_tx, transport_rx) = mpsc::channel(128);
@@ -83,7 +82,7 @@ async fn transport_opens_connection_ok() {
     assert_eq!(addrs, vec![sock]);
 
     let (opened_sock, attach) = handle
-        .connection_for("127.0.0.1".to_string(), vec![sock])
+        .connection_for("ws://127.0.0.1/".to_string(), vec![sock])
         .await
         .expect("Failed to open connection");
     assert_eq!(opened_sock, sock);
@@ -135,7 +134,7 @@ async fn transport_opens_connection_ok() {
     assert_eq!(link_message, "@link(node:node,lane:value_lane)");
 
     let (opened_sock, attach_2) = handle
-        .connection_for("127.0.0.1".to_string(), vec![sock])
+        .connection_for("ws://127.0.0.1/".to_string(), vec![sock])
         .await
         .expect("Failed to open connection");
     assert_eq!(opened_sock, sock);
@@ -155,7 +154,7 @@ async fn transport_opens_connection_err() {
         [("127.0.0.1:9001".parse().unwrap(), client)],
     );
     let ws = MockWs::new([(
-        "127.0.0.1".to_string(),
+        "ws://127.0.0.1/".to_string(),
         WsAction::fail(|| RatchetError::from(ratchet::Error::new(ratchet::ErrorKind::Http))),
     )]);
     let transport = Transport::new(ext, ws, non_zero_usize!(128));
@@ -169,7 +168,7 @@ async fn transport_opens_connection_err() {
     assert_eq!(addrs, vec![sock]);
 
     let actual_err = handle
-        .connection_for("127.0.0.1".to_string(), vec![sock])
+        .connection_for("ws://127.0.0.1/".to_string(), vec![sock])
         .await
         .expect_err("Expected connection to fail");
     assert!(actual_err.is(DownlinkErrorKind::Connection));
@@ -396,7 +395,7 @@ fn start() -> (RawHandle, Sender, Server) {
         )],
         [("127.0.0.1:80".parse().unwrap(), client)],
     );
-    let ws = MockWs::new([("127.0.0.1".to_string(), WsAction::Open)]);
+    let ws = MockWs::new([("ws://127.0.0.1/".to_string(), WsAction::Open)]);
 
     let (handle, stop) = start_runtime(Transport::new(ext, ws, non_zero_usize!(128)));
     (handle, stop, Server::new(server))
@@ -477,7 +476,7 @@ async fn test_value_lifecycle() {
         } = ctx;
         spawned.notified().await;
 
-        let mut lane = Server::lane_for(Rc::new(RefCell::new(server)), "node", "value_lane");
+        let mut lane = Server::lane_for(Arc::new(Mutex::new(server)), "node", "value_lane");
 
         lane.await_link().await;
         assert_eq!(msg_rx.recv().await.unwrap(), ValueTestMessage::Linked);
@@ -527,7 +526,7 @@ where
 
     let promise = handle
         .run_downlink(
-            RemotePath::new("ws://127.0.0.1", "node", "value_lane"),
+            RemotePath::new("ws://127.0.0.1/", "node", "value_lane"),
             config,
             Default::default(),
             DownlinkOptions::SYNC,
@@ -561,7 +560,7 @@ where
     let downlink = TrackingMapDownlink::new(
         spawned.clone(),
         stopped.clone(),
-        MapDownlinkModel::new(set_rx, lifecycle, true),
+        MapDownlinkModel::new(set_rx, lifecycle, false),
     );
 
     let promise = handle
@@ -829,7 +828,7 @@ async fn different_configurations() {
 
     let mut receivers = (succeeding_rx, failing_rx);
 
-    let mut lane = Server::lane_for(Rc::new(RefCell::new(server)), "node", "value_lane");
+    let mut lane = Server::lane_for(Arc::new(Mutex::new(server)), "node", "value_lane");
     lane.await_link().await;
 
     type Channel = mpsc::UnboundedReceiver<ValueTestMessage<i32>>;
@@ -906,7 +905,7 @@ async fn failed_handshake() {
     );
 
     let ws = MockWs::new([(
-        "127.0.0.1".to_string(),
+        "ws://127.0.0.1/".to_string(),
         WsAction::fail(|| RatchetError::from(ratchet::Error::new(ratchet::ErrorKind::Http))),
     )]);
 
@@ -926,7 +925,7 @@ async fn failed_handshake() {
 
     let promise = handle
         .run_downlink(
-            RemotePath::new("ws://127.0.0.1", "node", "value_lane"),
+            RemotePath::new("ws://127.0.0.1/", "node", "value_lane"),
             Default::default(),
             Default::default(),
             DownlinkOptions::SYNC,
@@ -979,7 +978,7 @@ async fn disjoint_lanes() {
     )
     .await;
 
-    let server = Rc::new(RefCell::new(server));
+    let server = Arc::new(Mutex::new(server));
     let mut value_lane = Server::lane_for(server.clone(), "node", "value_lane");
     let mut map_lane = Server::lane_for(server, "node", "map_lane");
 

@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="RUST_MODULE" version="4">
+  <component name="CheckStyle-IDEA-Module" serialisationVersion="2">
+    <option name="activeLocationsIds" />
+  </component>
+  <component name="NewModuleRootManager" inherit-compiler-output="true">
+    <exclude-output />
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/api/formats/swim_msgpack/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/api/formats/swim_recon/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/api/formats/swim_recon/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/api/swim_api/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/api/swim_form/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/api/swim_form/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/api/swim_form_derive/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/api/swim_model/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/api/swim_schema/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/api/swim_schema_derive/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/macro_utilities/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/runtime/swim_messages/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/runtime/swim_persistence/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/runtime/swim_persistence/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/runtime/swim_remote/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/runtime/swim_runtime/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/server/swim_agent/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/server/swim_agent/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/server/swim_agent/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/server/swim_agent_derive/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/server/swim_introspection/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/server/swim_server_app/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_downlink/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_store/rocks_store/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_store/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_store/store_common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/byte_channel/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/byte_channel/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_algebra/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_errors/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_format/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_future/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_io/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_multi_reader/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_multi_reader/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_num/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_route/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_rtree/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_sync/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_time/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_tracing/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_trigger/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/client/fixture/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/client/runtime/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/client/swim_client/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/macro_utilities/stringify_attr/attr_derive/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/macro_utilities/stringify_attr/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/runtime/swim_async_runtime/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/stm/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/stm/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_client/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_client/test_server/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_client/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_server/agent_derive/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_server/server_store/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_server/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_server/swim_metrics/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_iteratee/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_lrucache/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_utilities/swim_test_util/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/swim_warp/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/target" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>

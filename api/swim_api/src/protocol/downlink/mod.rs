@@ -115,9 +115,18 @@ impl<T> Default for DownlinkNotificationDecoderState<T> {
 }
 
 #[derive(Debug)]
-struct DownlinkNotificationDecoder<T, D> {
+pub struct DownlinkNotificationDecoder<T, D> {
     state: DownlinkNotificationDecoderState<T>,
     body_decoder: D,
+}
+
+impl<T, D> DownlinkNotificationDecoder<T, D> {
+    pub fn new(body_decoder: D) -> DownlinkNotificationDecoder<T, D> {
+        DownlinkNotificationDecoder {
+            state: Default::default(),
+            body_decoder,
+        }
+    }
 }
 
 type MsgDecoder<K, V> = MapMessageDecoder<MapOperationDecoder<K, V>>;
