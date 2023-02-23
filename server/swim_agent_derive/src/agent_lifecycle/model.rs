@@ -668,13 +668,37 @@ fn assess_attr(attr: &Attribute) -> bool {
     }
 }
 
+pub struct JoinValueInit<'a> {
+    pub name: String,
+    pub key_type: &'a Type,
+    pub value_type: &'a Type,
+    pub lifecycle: &'a Ident,
+}
+
+impl<'a> JoinValueInit<'a> {
+    pub fn new(
+        name: String,
+        key_type: &'a Type,
+        value_type: &'a Type,
+        lifecycle: &'a Ident,
+    ) -> Self {
+        JoinValueInit {
+            name,
+            key_type,
+            value_type,
+            lifecycle,
+        }
+    }
+}
+
 /// Descriptor of an agent lifecycle, extracted from an impl block.
 pub struct AgentLifecycleDescriptor<'a> {
-    pub root: Path,                                          //The root module path.
-    pub agent_type: Path,                                    //The agent this is a lifecycle of.
+    pub root: Path,               //The root module path.
+    pub agent_type: Path,         //The agent this is a lifecycle of.
     pub lifecycle_type: &'a Type, //The type of the lifecycle (taken from the impl block).
+    pub init_blocks: Vec<JoinValueInit<'a>>,
     pub on_start: Option<&'a Ident>, //A handler attached to the on_start event.
-    pub on_stop: Option<&'a Ident>, //A handler attached to the on_stop event.
+    pub on_stop: Option<&'a Ident>,  //A handler attached to the on_stop event.
     pub lane_lifecycles: BinTree<String, ItemLifecycle<'a>>, //Labelled tree of lane handlers.
 }
 
@@ -709,10 +733,30 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             on_stop,
             lane_lifecycles,
         } = self;
+
+        let init_blocks = lane_lifecycles
+            .values()
+            .filter_map(|item| match item {
+                ItemLifecycle::Map(MapLifecycleDescriptor {
+                    name,
+                    primary_lane_type: (key_type, value_type),
+                    join_lifecycle: Some(join_lc),
+                    ..
+                }) => Some(JoinValueInit::new(
+                    name.clone(),
+                    *key_type,
+                    *value_type,
+                    *join_lc,
+                )),
+                _ => None,
+            })
+            .collect();
+
         AgentLifecycleDescriptor {
             root,
             agent_type,
             lifecycle_type,
+            init_blocks,
             on_start,
             on_stop,
             lane_lifecycles: BinTree::from(lane_lifecycles),

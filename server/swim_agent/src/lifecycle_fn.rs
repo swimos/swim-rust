@@ -12,10 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
+use std::{
+    fmt::{Debug, Formatter},
+    marker::PhantomData,
+};
 
 /// Wraps a closure that takes a [`HandlerContext`] as its first argument and binds that
 /// argument.
+#[derive(Clone, Copy, Debug)]
 pub struct WithHandlerContext<F> {
     pub inner: F,
 }
@@ -33,6 +37,25 @@ pub struct WithHandlerContextBorrow<F, B: ?Sized> {
     _ref_type: PhantomData<fn(B)>,
 }
 
+impl<F: Clone, B: ?Sized> Clone for WithHandlerContextBorrow<F, B> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            _ref_type: self._ref_type.clone(),
+        }
+    }
+}
+
+impl<F: Copy, B: ?Sized> Copy for WithHandlerContextBorrow<F, B> {}
+
+impl<F: Debug, B: ?Sized> Debug for WithHandlerContextBorrow<F, B> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WithHandlerContextBorrow")
+            .field("inner", &self.inner)
+            .finish()
+    }
+}
+
 impl<F, B: ?Sized> WithHandlerContextBorrow<F, B> {
     pub fn new(inner: F) -> Self {
         WithHandlerContextBorrow {
@@ -46,6 +69,25 @@ impl<F, B: ?Sized> WithHandlerContextBorrow<F, B> {
 pub struct LiftShared<F, Shared> {
     _shared: PhantomData<fn(&Shared)>,
     pub inner: F,
+}
+
+impl<F: Clone, Shared> Clone for LiftShared<F, Shared> {
+    fn clone(&self) -> Self {
+        Self {
+            _shared: self._shared.clone(),
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<F: Copy, Shared> Copy for LiftShared<F, Shared> {}
+
+impl<F: Debug, Shared> Debug for LiftShared<F, Shared> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LiftShared")
+            .field("inner", &self.inner)
+            .finish()
+    }
 }
 
 impl<F, Shared> LiftShared<F, Shared> {

@@ -24,6 +24,7 @@ use super::{
     LinkClosedResponse,
 };
 
+#[derive(Clone, Copy, Debug)]
 pub struct DefaultJoinValueLifecycle;
 
 impl<Context, K> OnJoinValueLinked<K, Context> for DefaultJoinValueLifecycle {

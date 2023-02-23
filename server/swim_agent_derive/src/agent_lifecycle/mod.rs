@@ -18,7 +18,7 @@ use syn::{parse_quote, Path, Type};
 
 use self::{
     model::{
-        AgentLifecycleDescriptor, CommandLifecycleDescriptor, ItemLifecycle,
+        AgentLifecycleDescriptor, CommandLifecycleDescriptor, ItemLifecycle, JoinValueInit,
         MapLifecycleDescriptor, ValueLifecycleDescriptor,
     },
     tree::BinTree,
@@ -191,10 +191,12 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
                     on_start,
                     on_stop,
                     ref lane_lifecycles,
+                    ..
                 },
         } = *self;
 
-        let lane_lifecycles = LifecycleTree::new(root, agent_type, lifecycle_type, lane_lifecycles);
+        let lane_lifecycle_tree =
+            LifecycleTree::new(root, agent_type, lifecycle_type, lane_lifecycles);
 
         let mut lifecycle_builder: syn::Expr = parse_quote! {
             #root::agent_lifecycle::stateful::StatefulAgentLifecycle::<#agent_type, _>::new(self)
@@ -216,7 +218,7 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
 
             impl #lifecycle_type {
                 pub fn into_lifecycle(self) -> impl #root::agent_lifecycle::AgentLifecycle<#agent_type> + ::core::clone::Clone + ::core::marker::Send + 'static {
-                    let lane_lifecycle = #lane_lifecycles;
+                    let lane_lifecycle = #lane_lifecycle_tree;
                     #root::agent_lifecycle::stateful::StatefulAgentLifecycle::on_lane_event(
                         #lifecycle_builder,
                         lane_lifecycle
@@ -225,5 +227,17 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
             }
 
         });
+    }
+}
+
+impl<'a> ToTokens for JoinValueInit<'a> {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let JoinValueInit {
+            name,
+            key_type,
+            value_type,
+            lifecycle,
+        } = self;
+        todo!()
     }
 }

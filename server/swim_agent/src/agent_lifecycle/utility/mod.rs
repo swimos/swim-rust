@@ -501,7 +501,7 @@ where
     V::Rec: Send,
 {
     /// Creates a builder to construct a lifecycle for the downlinks of a [`JoinValueLane`].
-    pub fn join_value_lifecycle_builder(&self) -> StatelessJoinValueLaneBuilder<Agent, K, V> {
+    pub fn builder(&self) -> StatelessJoinValueLaneBuilder<Agent, K, V> {
         StatelessJoinValueLaneBuilder::default()
     }
 }

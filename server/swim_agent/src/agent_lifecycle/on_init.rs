@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::hash::Hash;
+use std::{hash::Hash, marker::PhantomData};
 
 use swim_api::handlers::{FnHandler, NoHandler};
 use swim_form::Form;
@@ -130,31 +130,53 @@ where
     }
 }
 
-pub struct JoinValueInit<Context, K, V, F> {
+impl<Context, Shared, L, R> OnInitShared<Context, Shared> for InitCons<L, R>
+where
+    L: OnInitShared<Context, Shared>,
+    R: OnInitShared<Context, Shared>,
+{
+    fn initialize(
+        &self,
+        shared: &Shared,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) {
+        let InitCons { head, tail } = self;
+        head.initialize(shared, action_context, meta, context);
+        tail.initialize(shared, action_context, meta, context);
+    }
+}
+
+pub struct JoinValueInit<Context, Shared, K, V, F> {
+    _type: PhantomData<fn(&Shared)>,
     projection: fn(&Context) -> &JoinValueLane<K, V>,
     lifecycle_fac: F,
 }
 
-impl<Context, K, V, F> JoinValueInit<Context, K, V, F> {
+impl<Context, Shared, K, V, F> JoinValueInit<Context, Shared, K, V, F> {
     pub fn new(projection: fn(&Context) -> &JoinValueLane<K, V>, lifecycle_fac: F) -> Self {
         JoinValueInit {
+            _type: PhantomData,
             projection,
             lifecycle_fac,
         }
     }
 }
 
-impl<Context, K, V, F, LC> OnInit<Context> for JoinValueInit<Context, K, V, F>
+impl<Context, Shared, K, V, F, LC> OnInitShared<Context, Shared>
+    for JoinValueInit<Context, Shared, K, V, F>
 where
     Context: 'static,
     K: Clone + Eq + Hash + Send + 'static,
     V: Form + Send + Sync + 'static,
     V::Rec: Send,
-    F: Fn(JoinValueContext<Context, K, V>) -> LC + Send + Clone + 'static,
+    F: Fn(&Shared, JoinValueContext<Context, K, V>) -> LC + Send + Clone + 'static,
     LC: JoinValueLaneLifecycle<K, V, Context> + 'static,
 {
     fn initialize(
         &self,
+        shared: &Shared,
         action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         context: &Context,
@@ -162,9 +184,10 @@ where
         let JoinValueInit {
             projection,
             lifecycle_fac,
+            ..
         } = self;
-        let fac_cpy = lifecycle_fac.clone();
-        let fac = move || fac_cpy(JoinValueContext::default());
+        let lc = lifecycle_fac(shared, Default::default());
+        let fac = move || lc.clone();
         let init: BoxJoinValueInit<'static, Context> =
             Box::new(LifecycleInitializer::new(*projection, fac));
         let lane_id = projection(context).id();

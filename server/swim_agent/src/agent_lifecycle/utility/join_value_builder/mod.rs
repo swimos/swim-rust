@@ -22,8 +22,8 @@ use crate::{
         on_linked::{OnJoinValueLinked, OnJoinValueLinkedShared},
         on_synced::{OnJoinValueSynced, OnJoinValueSyncedShared},
         on_unlinked::{OnJoinValueUnlinked, OnJoinValueUnlinkedShared},
-        JoinValueLaneLifecycle, StatefulJoinValueLaneLifecycle, StatefulJoinValueLifecycle,
-        StatelessJoinValueLaneLifecycle, StatelessJoinValueLifecycle,
+        JoinValueLaneLifecycle, JoinValueLaneLifecycleShared, StatefulJoinValueLaneLifecycle,
+        StatefulJoinValueLifecycle, StatelessJoinValueLaneLifecycle, StatelessJoinValueLifecycle,
     },
     lifecycle_fn::{WithHandlerContext, WithHandlerContextBorrow},
 };
@@ -69,6 +69,7 @@ where
         handler: F,
     ) -> StatelessJoinValueLaneBuilder<Context, K, V, LC::WithOnLinked<WithHandlerContext<F>>>
     where
+        F: Clone,
         WithHandlerContext<F>: OnJoinValueLinked<K, Context>,
     {
         let StatelessJoinValueLaneBuilder { inner, .. } = self;
@@ -90,6 +91,7 @@ where
     where
         B: ?Sized,
         V: Borrow<B>,
+        F: Clone,
         WithHandlerContextBorrow<F, B>: OnJoinValueSynced<K, V, Context>,
     {
         let StatelessJoinValueLaneBuilder { inner, .. } = self;
@@ -104,6 +106,7 @@ where
         handler: F,
     ) -> StatelessJoinValueLaneBuilder<Context, K, V, LC::WithOnUnlinked<WithHandlerContext<F>>>
     where
+        F: Clone,
         WithHandlerContext<F>: OnJoinValueUnlinked<K, Context>,
     {
         let StatelessJoinValueLaneBuilder { inner, .. } = self;
@@ -118,6 +121,7 @@ where
         handler: F,
     ) -> StatelessJoinValueLaneBuilder<Context, K, V, LC::WithOnFailed<WithHandlerContext<F>>>
     where
+        F: Clone,
         WithHandlerContext<F>: OnJoinValueFailed<K, Context>,
     {
         let StatelessJoinValueLaneBuilder { inner, .. } = self;
@@ -127,7 +131,7 @@ where
         }
     }
 
-    pub fn with_shared_state<State: Send>(
+    pub fn with_shared_state<State: Send + Clone>(
         self,
         state: State,
     ) -> StatefulJoinValueLaneBuilder<Context, State, K, V, LC::WithShared<State>> {
@@ -142,10 +146,7 @@ where
     }
 }
 
-impl<Context, State, K, V> StatefulJoinValueLaneBuilder<Context, State, K, V>
-where
-    State: Send + 'static,
-{
+impl<Context, State, K, V> StatefulJoinValueLaneBuilder<Context, State, K, V> {
     pub fn new(state: State) -> Self {
         StatefulJoinValueLaneBuilder {
             _type: PhantomData,
@@ -164,6 +165,7 @@ where
         handler: F,
     ) -> StatefulJoinValueLaneBuilder<Context, State, K, V, LC::WithOnLinked<FnHandler<F>>>
     where
+        F: Clone,
         FnHandler<F>: OnJoinValueLinkedShared<K, Context, State>,
     {
         let StatefulJoinValueLaneBuilder { inner, .. } = self;
@@ -180,6 +182,7 @@ where
     where
         B: ?Sized,
         V: Borrow<B>,
+        F: Clone,
         BorrowHandler<F, B>: OnJoinValueSyncedShared<K, V, Context, State>,
     {
         let StatefulJoinValueLaneBuilder { inner, .. } = self;
@@ -194,6 +197,7 @@ where
         handler: F,
     ) -> StatefulJoinValueLaneBuilder<Context, State, K, V, LC::WithOnUnlinked<FnHandler<F>>>
     where
+        F: Clone,
         FnHandler<F>: OnJoinValueUnlinkedShared<K, Context, State>,
     {
         let StatefulJoinValueLaneBuilder { inner, .. } = self;
@@ -208,6 +212,7 @@ where
         handler: F,
     ) -> StatefulJoinValueLaneBuilder<Context, State, K, V, LC::WithOnFailed<FnHandler<F>>>
     where
+        F: Clone,
         FnHandler<F>: OnJoinValueFailedShared<K, Context, State>,
     {
         let StatefulJoinValueLaneBuilder { inner, .. } = self;
