@@ -191,7 +191,7 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
                     on_start,
                     on_stop,
                     ref lane_lifecycles,
-                    ..
+                    ref init_blocks,
                 },
         } = *self;
 
@@ -201,6 +201,13 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
         let mut lifecycle_builder: syn::Expr = parse_quote! {
             #root::agent_lifecycle::stateful::StatefulAgentLifecycle::<#agent_type, _>::new(self)
         };
+
+        if !init_blocks.is_empty() {
+            let init_handler = construct_join_init(init_blocks, root, agent_type, lifecycle_type);
+            lifecycle_builder = parse_quote! {
+                crate::agent::agent_lifecycle::stateful::StatefulAgentLifecycle::on_init(#lifecycle_builder, #init_handler)
+            };
+        }
 
         if let Some(on_start) = on_start {
             lifecycle_builder = parse_quote! {
@@ -230,14 +237,17 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
     }
 }
 
-impl<'a> ToTokens for JoinValueInit<'a> {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let JoinValueInit {
-            name,
-            key_type,
-            value_type,
-            lifecycle,
-        } = self;
-        todo!()
-    }
+fn construct_join_init(
+    join_inits: &[JoinValueInit<'_>],
+    root: &Path,
+    agent_type: &Path,
+    lifecycle_type: &Type,
+) -> impl ToTokens {
+    let base = quote!(#root::agent_lifecycle::on_init::InitNil);
+    join_inits.iter().rev().fold(base, |acc, JoinValueInit { name, lifecycle }| {
+        let constructor = quote! {
+            #root::agent_lifecycle::on_init::JoinValueInit::new(|agent: &#agent_type| &agent.#name, #lifecycle_type::#lifecycle)
+        };
+        quote!(#root::agent_lifecycle::on_init::InitCons::cons(#constructor, #acc))
+    })
 }

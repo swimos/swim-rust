@@ -102,6 +102,8 @@ where
     }
 }
 
+pub type InitNil = NoHandler;
+
 pub struct InitCons<L, R> {
     head: L,
     tail: R,

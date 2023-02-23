@@ -22,8 +22,8 @@ use crate::{
         on_linked::{OnJoinValueLinked, OnJoinValueLinkedShared},
         on_synced::{OnJoinValueSynced, OnJoinValueSyncedShared},
         on_unlinked::{OnJoinValueUnlinked, OnJoinValueUnlinkedShared},
-        JoinValueLaneLifecycle, JoinValueLaneLifecycleShared, StatefulJoinValueLaneLifecycle,
-        StatefulJoinValueLifecycle, StatelessJoinValueLaneLifecycle, StatelessJoinValueLifecycle,
+        JoinValueLaneLifecycle, StatefulJoinValueLaneLifecycle, StatefulJoinValueLifecycle,
+        StatelessJoinValueLaneLifecycle, StatelessJoinValueLifecycle,
     },
     lifecycle_fn::{WithHandlerContext, WithHandlerContextBorrow},
 };

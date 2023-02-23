@@ -41,7 +41,7 @@ impl<F: Clone, B: ?Sized> Clone for WithHandlerContextBorrow<F, B> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
-            _ref_type: self._ref_type.clone(),
+            _ref_type: self._ref_type,
         }
     }
 }
@@ -74,7 +74,7 @@ pub struct LiftShared<F, Shared> {
 impl<F: Clone, Shared> Clone for LiftShared<F, Shared> {
     fn clone(&self) -> Self {
         Self {
-            _shared: self._shared.clone(),
+            _shared: self._shared,
             inner: self.inner.clone(),
         }
     }

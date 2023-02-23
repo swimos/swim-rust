@@ -670,24 +670,12 @@ fn assess_attr(attr: &Attribute) -> bool {
 
 pub struct JoinValueInit<'a> {
     pub name: String,
-    pub key_type: &'a Type,
-    pub value_type: &'a Type,
     pub lifecycle: &'a Ident,
 }
 
 impl<'a> JoinValueInit<'a> {
-    pub fn new(
-        name: String,
-        key_type: &'a Type,
-        value_type: &'a Type,
-        lifecycle: &'a Ident,
-    ) -> Self {
-        JoinValueInit {
-            name,
-            key_type,
-            value_type,
-            lifecycle,
-        }
+    pub fn new(name: String, lifecycle: &'a Ident) -> Self {
+        JoinValueInit { name, lifecycle }
     }
 }
 
@@ -739,15 +727,9 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             .filter_map(|item| match item {
                 ItemLifecycle::Map(MapLifecycleDescriptor {
                     name,
-                    primary_lane_type: (key_type, value_type),
                     join_lifecycle: Some(join_lc),
                     ..
-                }) => Some(JoinValueInit::new(
-                    name.clone(),
-                    *key_type,
-                    *value_type,
-                    *join_lc,
-                )),
+                }) => Some(JoinValueInit::new(name.clone(), join_lc)),
                 _ => None,
             })
             .collect();
