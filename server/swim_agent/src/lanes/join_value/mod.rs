@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::any::{Any, TypeId};
+use std::borrow::Borrow;
 use std::hash::Hash;
 use std::{cell::RefCell, collections::HashMap};
 
@@ -41,6 +42,8 @@ use super::{map::MapLaneEvent, Lane, MapLane};
 mod default_lifecycle;
 mod downlink;
 pub mod lifecycle;
+#[cfg(test)]
+mod tests;
 
 enum DownlinkStatus {
     Pending,
@@ -62,6 +65,29 @@ impl<K, V> JoinValueLane<K, V> {
 
     pub(crate) fn map_lane(&self) -> &MapLane<K, V> {
         &self.inner
+    }
+}
+
+impl<K, V> JoinValueLane<K, V>
+where
+    K: Clone + Eq + Hash,
+{
+    /// Read a value from the map, if it exists.
+    pub fn get<Q, F, R>(&self, key: &Q, f: F) -> R
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq,
+        F: FnOnce(Option<&V>) -> R,
+    {
+        self.inner.get(key, f)
+    }
+
+    /// Read the complete state of the map.
+    pub fn get_map<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&HashMap<K, V>) -> R,
+    {
+        self.inner.get_map(f)
     }
 }
 
