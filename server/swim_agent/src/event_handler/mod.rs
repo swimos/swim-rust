@@ -225,7 +225,8 @@ pub trait EventHandler<Context>: HandlerAction<Context, Completion = ()> {}
 
 assert_obj_safe!(EventHandler<()>);
 
-pub type BoxEventHandler<'a, Context> = Box<dyn EventHandler<Context> + 'a>;
+pub type BoxHandlerAction<'a, Context, T> = Box<dyn HandlerAction<Context, Completion = T> + 'a>;
+pub type BoxEventHandler<'a, Context> = BoxHandlerAction<'a, Context, ()>;
 
 impl<Context, H> EventHandler<Context> for H where H: HandlerAction<Context, Completion = ()> {}
 
@@ -1019,12 +1020,8 @@ pub trait HandlerActionExt<Context>: HandlerAction<Context> {
     {
         Discard::new(self)
     }
-}
 
-impl<Context, H: HandlerAction<Context>> HandlerActionExt<Context> for H {}
-
-pub trait EventHandlerExt<Context>: EventHandler<Context> {
-    fn boxed<'a>(self) -> BoxEventHandler<'a, Context>
+    fn boxed<'a>(self) -> BoxHandlerAction<'a, Context, Self::Completion>
     where
         Self: Sized + 'a,
     {
@@ -1032,7 +1029,7 @@ pub trait EventHandlerExt<Context>: EventHandler<Context> {
     }
 }
 
-impl<Context, H: EventHandler<Context>> EventHandlerExt<Context> for H {}
+impl<Context, H: HandlerAction<Context>> HandlerActionExt<Context> for H {}
 
 pub struct Fail<T, E>(Option<Result<T, E>>);
 

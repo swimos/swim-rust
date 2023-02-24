@@ -42,7 +42,7 @@ use crate::{
     agent_model::downlink::handlers::{DownlinkChannel, DownlinkFailed},
     config::MapDownlinkConfig,
     downlink_lifecycle::map::MapDownlinkLifecycle,
-    event_handler::{BoxEventHandler, EventHandlerExt, Sequentially},
+    event_handler::{BoxEventHandler, HandlerActionExt, Sequentially},
     event_queue::EventQueue,
 };
 

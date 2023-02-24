@@ -22,8 +22,7 @@ use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::{
     event_handler::{
-        ConstHandler, EventHandlerError, EventHandlerExt, GetAgentUri, HandlerActionExt,
-        Sequentially, SideEffects,
+        ConstHandler, EventHandlerError, GetAgentUri, HandlerActionExt, Sequentially, SideEffects,
     },
     lanes::{value::ValueLaneSet, ValueLane},
     meta::AgentMetadata,

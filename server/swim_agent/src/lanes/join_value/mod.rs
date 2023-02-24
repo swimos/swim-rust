@@ -45,6 +45,7 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DownlinkStatus {
     Pending,
     Linked,

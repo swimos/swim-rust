@@ -36,7 +36,7 @@ use crate::{
     agent_model::downlink::handlers::{DownlinkChannel, DownlinkFailed},
     config::ValueDownlinkConfig,
     downlink_lifecycle::value::ValueDownlinkLifecycle,
-    event_handler::{BoxEventHandler, EventHandlerExt},
+    event_handler::{BoxEventHandler, HandlerActionExt},
 };
 
 use super::DlState;

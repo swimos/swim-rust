@@ -31,7 +31,7 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::HostedDownlinkEvent,
-    event_handler::{BoxEventHandler, EventHandlerExt, UnitHandler, WriteStream},
+    event_handler::{BoxEventHandler, HandlerActionExt, UnitHandler, WriteStream},
 };
 
 use self::{

@@ -39,7 +39,7 @@ use crate::{
         on_failed::OnFailed, on_linked::OnLinked, on_synced::OnSynced, on_unlinked::OnUnlinked,
         value::on_event::OnDownlinkEvent,
     },
-    event_handler::{BoxEventHandler, EventHandlerExt, SideEffect},
+    event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
 };
 
 struct FakeAgent;

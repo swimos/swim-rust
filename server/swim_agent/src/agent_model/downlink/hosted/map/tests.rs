@@ -41,7 +41,7 @@ use crate::{
         on_linked::OnLinked,
         on_unlinked::OnUnlinked,
     },
-    event_handler::{BoxEventHandler, EventHandlerExt, SideEffect},
+    event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
 };
 
 use super::{DownlinkChannel, HostedMapDownlinkChannel, MapDlState};

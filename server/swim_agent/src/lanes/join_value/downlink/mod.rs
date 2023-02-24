@@ -37,6 +37,9 @@ use super::{
     DownlinkStatus, JoinValueLane, LinkClosedResponse,
 };
 
+#[cfg(test)]
+mod tests;
+
 pub struct JoinValueDownlink<K, V, LC, Context> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,
     key: K,
@@ -247,7 +250,7 @@ impl<K, V, Context> AfterClosed<K, V, Context> {
 
 impl<K, V, Context> HandlerAction<Context> for AfterClosed<K, V, Context>
 where
-    K: Hash + Eq,
+    K: Hash + Eq + Clone,
 {
     type Completion = ();
 
@@ -262,12 +265,14 @@ where
             key,
             response,
         } = self;
+        let lane = projection(context);
+        let mut guard = lane.keys.borrow_mut();
+        guard.remove(key);
+        drop(guard);
         match response.take() {
             Some(LinkClosedResponse::Abandon) => StepResult::done(()),
             Some(LinkClosedResponse::Delete) => {
-                let lane = projection(context);
-                let mut guard = lane.keys.borrow_mut();
-                guard.remove(key);
+                lane.inner.remove(key);
                 StepResult::done(())
             }
             Some(LinkClosedResponse::Retry) => todo!(),
