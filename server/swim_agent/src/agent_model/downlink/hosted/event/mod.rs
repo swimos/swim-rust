@@ -32,8 +32,8 @@ use crate::{
 
 use super::DlState;
 
-//#[cfg(test)]
-//mod tests;
+#[cfg(test)]
+mod tests;
 
 /// An implementation of [`DownlinkChannel`] to allow an event downlink to be driven by an agent
 /// task.
