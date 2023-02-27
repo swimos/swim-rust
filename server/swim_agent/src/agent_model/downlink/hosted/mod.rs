@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod event;
 mod map;
 mod value;
 
+pub use event::HostedEventDownlinkChannel;
 pub use map::{map_dl_write_stream, HostedMapDownlinkChannel, MapDlState, MapDownlinkHandle};
 pub use value::{value_dl_write_stream, HostedValueDownlinkChannel, ValueDownlinkHandle};
 

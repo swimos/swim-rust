@@ -23,8 +23,11 @@ use swim_model::address::Address;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::agent_model::downlink::hosted::{MapDownlinkHandle, ValueDownlinkHandle};
-use crate::agent_model::downlink::{OpenMapDownlinkAction, OpenValueDownlinkAction};
-use crate::config::{MapDownlinkConfig, ValueDownlinkConfig};
+use crate::agent_model::downlink::{
+    OpenEventDownlinkAction, OpenMapDownlinkAction, OpenValueDownlinkAction,
+};
+use crate::config::{MapDownlinkConfig, SimpleDownlinkConfig};
+use crate::downlink_lifecycle::event::EventDownlinkLifecycle;
 use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
 use crate::event_handler::{EventHandler, Suspend, UnitHandler};
@@ -376,7 +379,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         node: &str,
         lane: &str,
         lifecycle: LC,
-        config: ValueDownlinkConfig,
+        config: SimpleDownlinkConfig,
     ) -> impl HandlerAction<Agent, Completion = ValueDownlinkHandle<T>> + Send + 'static
     where
         T: Form + Send + Sync + 'static,
@@ -384,6 +387,30 @@ impl<Agent: 'static> HandlerContext<Agent> {
         T::Rec: Send,
     {
         OpenValueDownlinkAction::new(Address::text(host, node, lane), lifecycle, config)
+    }
+
+    /// Open an event downlink to a lane on another agent.
+    ///
+    /// #Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `lifecycle` - Lifecycle events for the downlink.
+    /// * `config` - Configuration parameters for the downlink.
+    pub fn open_event_downlink<T, LC>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        lifecycle: LC,
+        config: SimpleDownlinkConfig,
+    ) -> impl EventHandler<Agent> + Send + 'static
+    where
+        T: Form + Send + Sync + 'static,
+        LC: EventDownlinkLifecycle<T, Agent> + Send + 'static,
+        T::Rec: Send,
+    {
+        OpenEventDownlinkAction::new(Address::text(host, node, lane), lifecycle, config)
     }
 
     /// Open a map downlink to a lane on another agent.
@@ -423,7 +450,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         host: Option<&str>,
         node: &str,
         lane: &str,
-        config: ValueDownlinkConfig,
+        config: SimpleDownlinkConfig,
     ) -> StatelessValueDownlinkBuilder<Agent, T>
     where
         T: Form + Send + Sync + 'static,

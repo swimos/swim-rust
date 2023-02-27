@@ -35,7 +35,7 @@ use swim_utilities::{
 };
 
 use crate::{
-    config::{MapDownlinkConfig, ValueDownlinkConfig},
+    config::{MapDownlinkConfig, SimpleDownlinkConfig},
     downlink_lifecycle::{
         map::StatefulMapDownlinkLifecycle, value::StatefulValueDownlinkLifecycle,
     },
@@ -205,7 +205,7 @@ async fn open_value_downlink() {
     let handler = OpenValueDownlinkAction::<i32, _>::new(
         Address::text(Some(HOST), NODE, LANE),
         lifecycle,
-        ValueDownlinkConfig::default(),
+        SimpleDownlinkConfig::default(),
     );
 
     let spawner = TestSpawner::default();

@@ -34,7 +34,7 @@ use tracing::{debug, error, info, trace};
 
 use crate::{
     agent_model::downlink::handlers::{DownlinkChannel, DownlinkFailed},
-    config::ValueDownlinkConfig,
+    config::SimpleDownlinkConfig,
     downlink_lifecycle::value::ValueDownlinkLifecycle,
     event_handler::{BoxEventHandler, HandlerActionExt},
 };
@@ -84,7 +84,7 @@ pub struct HostedValueDownlinkChannel<T: RecognizerReadable, LC, State> {
     state: State,
     next: Option<Result<DownlinkNotification<T>, FrameIoError>>,
     lifecycle: LC,
-    config: ValueDownlinkConfig,
+    config: SimpleDownlinkConfig,
     dl_state: DlState,
 }
 
@@ -94,7 +94,7 @@ impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> 
         receiver: ByteReader,
         lifecycle: LC,
         state: State,
-        config: ValueDownlinkConfig,
+        config: SimpleDownlinkConfig,
     ) -> Self {
         HostedValueDownlinkChannel {
             address,
@@ -157,7 +157,7 @@ where
             lifecycle,
             dl_state,
             config:
-                ValueDownlinkConfig {
+                SimpleDownlinkConfig {
                     events_when_not_synced,
                     terminate_on_unlinked,
                 },

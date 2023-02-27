@@ -18,15 +18,12 @@ use swim_model::{address::Address, Text};
 
 use crate::{
     downlink_lifecycle::{
-        on_failed::OnFailed,
-        on_linked::OnLinked,
-        on_synced::OnSynced,
-        on_unlinked::OnUnlinked,
-        value::{on_event::OnDownlinkEvent, on_set::OnDownlinkSet},
+        event::on_event::OnConsumeEvent, on_failed::OnFailed, on_linked::OnLinked,
+        on_synced::OnSynced, on_unlinked::OnUnlinked,
     },
     event_handler::{
         ActionContext, AndThen, AndThenContextual, ConstHandler, ContextualTrans, FollowedBy,
-        HandlerAction, HandlerActionExt, HandlerTrans, Modification, StepResult, UnitHandler,
+        HandlerAction, HandlerActionExt, HandlerTrans, Modification, StepResult,
     },
     item::AgentItem,
     meta::AgentMetadata,
@@ -89,7 +86,7 @@ where
     }
 }
 
-impl<K, V, LC, Context> OnSynced<V, Context> for JoinValueDownlink<K, V, LC, Context>
+impl<K, V, LC, Context> OnSynced<(), Context> for JoinValueDownlink<K, V, LC, Context>
 where
     K: Clone + Hash + Eq + Send,
     LC: OnJoinValueSynced<K, V, Context>,
@@ -102,7 +99,7 @@ where
     where
         Self: 'a;
 
-    fn on_synced<'a>(&'a self, _: &V) -> Self::OnSyncedHandler<'a> {
+    fn on_synced<'a>(&'a self, _: &()) -> Self::OnSyncedHandler<'a> {
         let JoinValueDownlink {
             projection,
             key,
@@ -162,7 +159,7 @@ where
     }
 }
 
-impl<K, V, LC, Context> OnDownlinkEvent<V, Context> for JoinValueDownlink<K, V, LC, Context>
+impl<K, V, LC, Context> OnConsumeEvent<V, Context> for JoinValueDownlink<K, V, LC, Context>
 where
     LC: Send,
     K: Clone + Hash + Eq + Send,
@@ -171,26 +168,11 @@ where
     where
         Self: 'a;
 
-    fn on_event(&self, value: &V) -> Self::OnEventHandler<'_> {
+    fn on_event(&self, value: V) -> Self::OnEventHandler<'_> {
         let JoinValueDownlink {
             projection, key, ..
         } = self;
-        todo!()
-        //JoinValueLaneUpdate::new(*projection, key.clone(), value)
-    }
-}
-
-impl<K, V, LC, Context> OnDownlinkSet<V, Context> for JoinValueDownlink<K, V, LC, Context>
-where
-    LC: Send,
-    K: Clone + Hash + Eq + Send,
-{
-    type OnSetHandler<'a> = UnitHandler
-    where
-        Self: 'a;
-
-    fn on_set<'a>(&'a self, _previous: Option<V>, _new_value: &V) -> Self::OnSetHandler<'a> {
-        UnitHandler::default()
+        JoinValueLaneUpdate::new(*projection, key.clone(), value)
     }
 }
 

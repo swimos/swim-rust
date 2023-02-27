@@ -25,7 +25,7 @@ use swim_model::address::Address;
 use swim_model::Text;
 use uuid::Uuid;
 
-use crate::agent_model::downlink::OpenValueDownlinkAction;
+use crate::agent_model::downlink::OpenEventDownlinkAction;
 use crate::event_handler::{DowncastError, EventHandler, JoinValueInitializer, Modification};
 use crate::{
     agent_model::WriteResult,
@@ -113,7 +113,7 @@ where
 struct AddDownlinkAction<Context, K, V, LC> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,
     key: Option<K>,
-    inner: Option<OpenValueDownlinkAction<V, JoinValueDownlink<K, V, LC, Context>>>,
+    inner: Option<OpenEventDownlinkAction<V, JoinValueDownlink<K, V, LC, Context>>>,
 }
 
 impl<Context, K, V, LC> AddDownlinkAction<Context, K, V, LC>
@@ -127,7 +127,7 @@ where
         lifecycle: LC,
     ) -> Self {
         let dl_lifecycle = JoinValueDownlink::new(projection, key.clone(), lane.clone(), lifecycle);
-        let inner = OpenValueDownlinkAction::new(lane, dl_lifecycle, Default::default());
+        let inner = OpenEventDownlinkAction::new(lane, dl_lifecycle, Default::default());
         AddDownlinkAction {
             projection,
             key: Some(key),

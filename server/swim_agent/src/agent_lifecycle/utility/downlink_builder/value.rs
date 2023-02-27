@@ -20,7 +20,7 @@ use swim_model::{address::Address, Text};
 
 use crate::{
     agent_model::downlink::{hosted::ValueDownlinkHandle, OpenValueDownlinkAction},
-    config::ValueDownlinkConfig,
+    config::SimpleDownlinkConfig,
     downlink_lifecycle::{
         on_failed::{OnFailed, OnFailedShared},
         on_linked::{OnLinked, OnLinkedShared},
@@ -46,7 +46,7 @@ pub struct StatelessValueDownlinkBuilder<
 > {
     _type: PhantomData<fn(Context, T) -> T>,
     address: Address<Text>,
-    config: ValueDownlinkConfig,
+    config: SimpleDownlinkConfig,
     inner: LC,
 }
 
@@ -60,12 +60,12 @@ pub struct StatefulValueDownlinkBuilder<
 > {
     _type: PhantomData<fn(Context, State, T) -> T>,
     address: Address<Text>,
-    config: ValueDownlinkConfig,
+    config: SimpleDownlinkConfig,
     inner: LC,
 }
 
 impl<Context, T> StatelessValueDownlinkBuilder<Context, T> {
-    pub fn new(address: Address<Text>, config: ValueDownlinkConfig) -> Self {
+    pub fn new(address: Address<Text>, config: SimpleDownlinkConfig) -> Self {
         StatelessValueDownlinkBuilder {
             _type: PhantomData,
             address,
@@ -76,7 +76,7 @@ impl<Context, T> StatelessValueDownlinkBuilder<Context, T> {
 }
 
 impl<Context, T, State> StatefulValueDownlinkBuilder<Context, T, State> {
-    pub fn new(address: Address<Text>, config: ValueDownlinkConfig, state: State) -> Self {
+    pub fn new(address: Address<Text>, config: SimpleDownlinkConfig, state: State) -> Self {
         StatefulValueDownlinkBuilder {
             _type: PhantomData,
             address,
