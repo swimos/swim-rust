@@ -306,6 +306,7 @@ async fn terminate_on_error() {
     let TestContext {
         mut channel,
         mut sender,
+        events,
         ..
     } = make_hosted_input(MapDownlinkConfig::default());
 
@@ -314,8 +315,11 @@ async fn terminate_on_error() {
     assert!(sender.sender.get_mut().write_u8(100).await.is_ok()); //Invalid message kind tag.
 
     assert!(matches!(channel.await_ready().await, Some(Err(_))));
-    assert!(channel.next_event(&agent).is_none());
-    assert!(channel.await_ready().await.is_none());
+    let handler = channel
+        .next_event(&agent)
+        .expect("Expected failure response.");
+    run_handler(handler, &agent);
+    assert_eq!(take_events(&events), vec![Event::Failed]);
 }
 
 fn take_events(events: &Events) -> Vec<Event> {
