@@ -292,7 +292,7 @@ fn run_on_event() {
     let lifecycle = TestLifecycle::new(Default::default());
     let downlink_lifecycle = JoinValueDownlink::new(TestAgent::LANE, 4, make_address(), lifecycle);
 
-    let on_event = downlink_lifecycle.on_event("a".to_string());
+    let on_event = downlink_lifecycle.on_event(&"a".to_string());
     let modifications = run_handler(on_event, meta, &agent);
 
     if let [Modification {
@@ -447,7 +447,7 @@ fn run_on_synced() {
     let lifecycle = TestLifecycle::new(Default::default());
     let downlink_lifecycle = JoinValueDownlink::new(TestAgent::LANE, 4, make_address(), lifecycle);
 
-    let on_synced = downlink_lifecycle.on_synced(&());
+    let on_synced = downlink_lifecycle.on_synced(&"".to_string());
     assert!(run_handler(on_synced, meta, &agent).is_empty());
     let events = downlink_lifecycle.lifecycle.take();
     if let [Event::Synced { key, remote, value }] = events.as_slice() {

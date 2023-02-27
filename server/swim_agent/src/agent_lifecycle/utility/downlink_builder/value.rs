@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
+use std::{borrow::Borrow, marker::PhantomData};
 
-use swim_api::handlers::FnHandler;
+use swim_api::handlers::{BorrowHandler, FnHandler};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
 
@@ -28,12 +28,13 @@ use crate::{
         on_unlinked::{OnUnlinked, OnUnlinkedShared},
         value::{
             on_event::{OnDownlinkEvent, OnDownlinkEventShared},
+            on_set::{OnDownlinkSet, OnDownlinkSetShared},
             StatefulValueDownlinkLifecycle, StatefulValueLifecycle,
             StatelessValueDownlinkLifecycle, StatelessValueLifecycle,
         },
     },
     event_handler::HandlerAction,
-    lifecycle_fn::WithHandlerContext,
+    lifecycle_fn::{WithHandlerContext, WithHandlerContextBorrow},
 };
 
 /// A builder for constructing a value downlink. Each lifecycle event handler is independent and, by
@@ -110,12 +111,14 @@ where
         }
     }
 
-    pub fn on_synced<F>(
+    pub fn on_synced<F, B>(
         self,
         handler: F,
-    ) -> StatelessValueDownlinkBuilder<Context, T, LC::WithOnSynced<WithHandlerContext<F>>>
+    ) -> StatelessValueDownlinkBuilder<Context, T, LC::WithOnSynced<WithHandlerContextBorrow<F, B>>>
     where
-        WithHandlerContext<F>: OnSynced<(), Context>,
+        B: ?Sized,
+        T: Borrow<B>,
+        WithHandlerContextBorrow<F, B>: OnSynced<T, Context>,
     {
         let StatelessValueDownlinkBuilder {
             address,
@@ -173,12 +176,14 @@ where
         }
     }
 
-    pub fn on_event<F>(
+    pub fn on_event<F, B>(
         self,
         handler: F,
-    ) -> StatelessValueDownlinkBuilder<Context, T, LC::WithOnEvent<WithHandlerContext<F>>>
+    ) -> StatelessValueDownlinkBuilder<Context, T, LC::WithOnEvent<WithHandlerContextBorrow<F, B>>>
     where
-        WithHandlerContext<F>: OnDownlinkEvent<T, Context>,
+        B: ?Sized,
+        T: Borrow<B>,
+        WithHandlerContextBorrow<F, B>: OnDownlinkEvent<T, Context>,
     {
         let StatelessValueDownlinkBuilder {
             address,
@@ -191,6 +196,29 @@ where
             address,
             config,
             inner: inner.on_event(handler),
+        }
+    }
+
+    pub fn on_set<F, B>(
+        self,
+        handler: F,
+    ) -> StatelessValueDownlinkBuilder<Context, T, LC::WithOnSet<WithHandlerContextBorrow<F, B>>>
+    where
+        B: ?Sized,
+        T: Borrow<B>,
+        WithHandlerContextBorrow<F, B>: OnDownlinkSet<T, Context>,
+    {
+        let StatelessValueDownlinkBuilder {
+            address,
+            config,
+            inner,
+            ..
+        } = self;
+        StatelessValueDownlinkBuilder {
+            _type: PhantomData,
+            address,
+            config,
+            inner: inner.on_set(handler),
         }
     }
 
@@ -260,12 +288,14 @@ where
         }
     }
 
-    pub fn on_synced<F>(
+    pub fn on_synced<F, B>(
         self,
         handler: F,
-    ) -> StatefulValueDownlinkBuilder<Context, T, State, LC::WithOnSynced<FnHandler<F>>>
+    ) -> StatefulValueDownlinkBuilder<Context, T, State, LC::WithOnSynced<BorrowHandler<F, B>>>
     where
-        FnHandler<F>: OnSyncedShared<(), Context, State>,
+        B: ?Sized,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnSyncedShared<T, Context, State>,
     {
         let StatefulValueDownlinkBuilder {
             address,
@@ -323,12 +353,14 @@ where
         }
     }
 
-    pub fn on_event<F>(
+    pub fn on_event<F, B>(
         self,
         handler: F,
-    ) -> StatefulValueDownlinkBuilder<Context, T, State, LC::WithOnEvent<FnHandler<F>>>
+    ) -> StatefulValueDownlinkBuilder<Context, T, State, LC::WithOnEvent<BorrowHandler<F, B>>>
     where
-        FnHandler<F>: OnDownlinkEventShared<T, Context, State>,
+        B: ?Sized,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnDownlinkEventShared<T, Context, State>,
     {
         let StatefulValueDownlinkBuilder {
             address,
@@ -341,6 +373,29 @@ where
             address,
             config,
             inner: inner.on_event(handler),
+        }
+    }
+
+    pub fn on_set<F, B>(
+        self,
+        handler: F,
+    ) -> StatefulValueDownlinkBuilder<Context, T, State, LC::WithOnSet<BorrowHandler<F, B>>>
+    where
+        B: ?Sized,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnDownlinkSetShared<T, Context, State>,
+    {
+        let StatefulValueDownlinkBuilder {
+            address,
+            config,
+            inner,
+            ..
+        } = self;
+        StatefulValueDownlinkBuilder {
+            _type: PhantomData,
+            address,
+            config,
+            inner: inner.on_set(handler),
         }
     }
 }

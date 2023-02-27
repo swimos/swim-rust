@@ -12,17 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, fmt::Debug, num::NonZeroUsize, sync::Arc};
 
-use swim_api::agent::AgentConfig;
-use swim_utilities::routing::route_uri::RouteUri;
+use futures::{future::BoxFuture, FutureExt};
+use parking_lot::Mutex;
+use swim_api::{
+    agent::{AgentConfig, AgentContext, LaneConfig},
+    downlink::DownlinkKind,
+    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    meta::lane::LaneKind,
+    store::StoreKind,
+};
+use swim_model::{address::Address, Text};
+use swim_utilities::{
+    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    non_zero_usize,
+    routing::route_uri::RouteUri,
+};
 
 use crate::{
-    event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
+    agent_model::downlink::handlers::BoxDownlinkChannel,
+    event_handler::{
+        DownlinkSpawner, EventHandlerError, HandlerAction, Modification, StepResult, WriteStream,
+    },
     item::MapItem,
-    lanes::join_value::{JoinValueLaneGet, JoinValueLaneGetMap},
+    lanes::join_value::{
+        default_lifecycle::DefaultJoinValueLifecycle, AddDownlinkAction, JoinValueLaneGet,
+        JoinValueLaneGetMap,
+    },
     meta::AgentMetadata,
-    test_context::dummy_context,
+    test_context::{dummy_context, dummy_context_with_downlinks},
 };
 
 use super::JoinValueLane;
@@ -38,6 +57,7 @@ const ABSENT: i32 = 93;
 const V1: &str = "first";
 const V2: &str = "second";
 const V3: &str = "third";
+const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 fn init() -> HashMap<i32, String> {
     [(K1, V1), (K2, V2), (K3, V3)]
@@ -155,7 +175,7 @@ fn join_value_lane_get_event_handler() {
 }
 
 #[test]
-fn map_lane_get_map_event_handler() {
+fn join_value_lane_get_map_event_handler() {
     let uri = make_uri();
     let meta = make_meta(&uri);
     let agent = TestAgent::with_init();
@@ -172,4 +192,105 @@ fn map_lane_get_map_event_handler() {
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     ));
+}
+
+#[derive(Default)]
+struct Inner {
+    downlink_channels: HashMap<Address<Text>, (ByteWriter, ByteReader)>,
+    downlinks: Vec<(BoxDownlinkChannel<TestAgent>, WriteStream)>,
+}
+
+#[derive(Default)]
+struct TestDownlinkContext {
+    inner: Arc<Mutex<Inner>>,
+}
+
+impl TestDownlinkContext {
+    fn push_dl(&self, dl_channel: BoxDownlinkChannel<TestAgent>, dl_writer: WriteStream) {
+        self.inner.lock().downlinks.push((dl_channel, dl_writer));
+    }
+
+    fn push_channels(&self, key: Address<Text>, io: (ByteWriter, ByteReader)) {
+        self.inner.lock().downlink_channels.insert(key, io);
+    }
+}
+
+impl DownlinkSpawner<TestAgent> for TestDownlinkContext {
+    fn spawn_downlink(
+        &self,
+        dl_channel: BoxDownlinkChannel<TestAgent>,
+        dl_writer: WriteStream,
+    ) -> Result<(), DownlinkRuntimeError> {
+        self.push_dl(dl_channel, dl_writer);
+        Ok(())
+    }
+}
+
+impl AgentContext for TestDownlinkContext {
+    fn add_lane(
+        &self,
+        _name: &str,
+        _lane_kind: LaneKind,
+        _config: LaneConfig,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+        panic!("Unexpected new lane.");
+    }
+
+    fn add_store(
+        &self,
+        _name: &str,
+        _kind: StoreKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
+        panic!("Unexpected new store.");
+    }
+
+    fn open_downlink(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        kind: DownlinkKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
+        assert_eq!(kind, DownlinkKind::Value);
+        let key = Address::text(host, node, lane);
+        let (in_tx, in_rx) = byte_channel(BUFFER_SIZE);
+        let (out_tx, out_rx) = byte_channel(BUFFER_SIZE);
+        self.push_channels(key, (in_tx, out_rx));
+        async move { Ok((out_tx, in_rx)) }.boxed()
+    }
+}
+
+const REMOTE_NODE: &str = "/remote_node";
+const REMOTE_LANE: &str = "remote_lane";
+
+#[test]
+fn join_value_lane_add_downlinks_event_handler() {
+    let uri = make_uri();
+    let meta = make_meta(&uri);
+    let agent = TestAgent::with_init();
+
+    let address = Address::text(None, REMOTE_NODE, REMOTE_LANE);
+
+    let mut handler =
+        AddDownlinkAction::new(TestAgent::LANE, 34, address, DefaultJoinValueLifecycle);
+
+    let context = TestDownlinkContext::default();
+    let result = handler.step(
+        &mut dummy_context_with_downlinks(&context, &context, &mut HashMap::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, None);
+
+    let result = handler.step(
+        &mut dummy_context_with_downlinks(&context, &context, &mut HashMap::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+    todo!(); // ADD assertions.
+    let _ = ();
 }

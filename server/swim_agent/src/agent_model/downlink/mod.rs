@@ -105,6 +105,7 @@ where
             lifecycle,
         }) = inner.take()
         {
+            let state: RefCell<Option<T>> = Default::default();
             let (tx, rx) = circular_buffer::watch_channel();
 
             let config = *config;
@@ -113,7 +114,8 @@ where
                 path.clone(),
                 DownlinkKind::Value,
                 move |reader| {
-                    HostedValueDownlinkChannel::new(path_cpy, reader, lifecycle, config).boxed()
+                    HostedValueDownlinkChannel::new(path_cpy, reader, lifecycle, state, config)
+                        .boxed()
                 },
                 move |writer| value_dl_write_stream(writer, rx).boxed(),
                 |result| {

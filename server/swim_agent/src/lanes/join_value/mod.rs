@@ -14,6 +14,7 @@
 
 use std::any::{Any, TypeId};
 use std::borrow::Borrow;
+use std::collections::hash_map::Entry;
 use std::hash::Hash;
 use std::{cell::RefCell, collections::HashMap};
 
@@ -160,7 +161,7 @@ where
             if let Some(key) = key.take() {
                 let lane = projection(context);
                 let mut guard = lane.keys.borrow_mut();
-                if let std::collections::hash_map::Entry::Vacant(e) = guard.entry(key) {
+                if let Entry::Vacant(e) = guard.entry(key) {
                     e.insert(DownlinkStatus::Pending);
                     inner.step(action_context, meta, context).map(|_| ())
                 } else {

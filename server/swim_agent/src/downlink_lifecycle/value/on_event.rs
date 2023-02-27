@@ -16,7 +16,7 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventConsumeFn, EventHandler, UnitHandler},
+    event_handler::{EventFn, EventHandler, UnitHandler},
     lifecycle_fn::{LiftShared, WithHandlerContext},
 };
 
@@ -28,7 +28,7 @@ pub trait OnDownlinkEvent<T, Context>: Send {
 
     /// #Arguments
     /// * `value` - The event value.
-    fn on_event(&self, value: T) -> Self::OnEventHandler<'_>;
+    fn on_event(&self, value: &T) -> Self::OnEventHandler<'_>;
 }
 
 /// Lifecycle event for the `on_event` event of a downlink, from an agent,where the event
@@ -47,7 +47,7 @@ pub trait OnDownlinkEventShared<T, Context, Shared>: Send {
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        value: T,
+        value: &T,
     ) -> Self::OnEventHandler<'a>;
 }
 
@@ -56,7 +56,7 @@ impl<T, Context> OnDownlinkEvent<T, Context> for NoHandler {
     where
         Self: 'a;
 
-    fn on_event(&self, _value: T) -> Self::OnEventHandler<'_> {
+    fn on_event(&self, _value: &T) -> Self::OnEventHandler<'_> {
         UnitHandler::default()
     }
 }
@@ -71,7 +71,7 @@ impl<T, Context, Shared> OnDownlinkEventShared<T, Context, Shared> for NoHandler
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
-        _value: T,
+        _value: &T,
     ) -> Self::OnEventHandler<'a> {
         UnitHandler::default()
     }
@@ -79,13 +79,13 @@ impl<T, Context, Shared> OnDownlinkEventShared<T, Context, Shared> for NoHandler
 
 impl<T, Context, F, H> OnDownlinkEvent<T, Context> for FnHandler<F>
 where
-    F: Fn(T) -> H + Send,
+    F: Fn(&T) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
     type OnEventHandler<'a> = H where
         Self: 'a;
 
-    fn on_event(&self, value: T) -> Self::OnEventHandler<'_> {
+    fn on_event(&self, value: &T) -> Self::OnEventHandler<'_> {
         let FnHandler(f) = self;
         f(value)
     }
@@ -93,9 +93,9 @@ where
 
 impl<T, Context, Shared, F> OnDownlinkEventShared<T, Context, Shared> for FnHandler<F>
 where
-    F: for<'a> EventConsumeFn<'a, Context, Shared, T> + Send,
+    F: for<'a> EventFn<'a, Context, Shared, T> + Send,
 {
-    type OnEventHandler<'a> = <F as EventConsumeFn<'a, Context, Shared, T>>::Handler
+    type OnEventHandler<'a> = <F as EventFn<'a, Context, Shared, T>>::Handler
     where
         Self: 'a,
         Shared: 'a;
@@ -104,7 +104,7 @@ where
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        value: T,
+        value: &T,
     ) -> Self::OnEventHandler<'a> {
         let FnHandler(f) = self;
         f.make_handler(shared, handler_context, value)
@@ -113,14 +113,14 @@ where
 
 impl<Context, T, F, H> OnDownlinkEvent<T, Context> for WithHandlerContext<F>
 where
-    F: Fn(HandlerContext<Context>, T) -> H + Send,
+    F: Fn(HandlerContext<Context>, &T) -> H + Send,
     H: EventHandler<Context> + 'static,
 {
     type OnEventHandler<'a> = H
     where
         Self: 'a;
 
-    fn on_event(&self, value: T) -> Self::OnEventHandler<'_> {
+    fn on_event(&self, value: &T) -> Self::OnEventHandler<'_> {
         let WithHandlerContext { inner } = self;
         inner(Default::default(), value)
     }
@@ -139,7 +139,7 @@ where
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
-        value: T,
+        value: &T,
     ) -> Self::OnEventHandler<'a> {
         let LiftShared { inner, .. } = self;
         inner.on_event(value)
