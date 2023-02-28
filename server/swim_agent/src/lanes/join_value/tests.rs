@@ -12,7 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, fmt::Debug, num::NonZeroUsize, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    num::NonZeroUsize,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
 
 use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
 use parking_lot::Mutex;
@@ -31,12 +39,13 @@ use swim_utilities::{
 };
 
 use crate::{
+    agent_lifecycle::on_init::JoinValueInit,
     agent_model::downlink::handlers::BoxDownlinkChannel,
     event_handler::{
-        ActionContext, DownlinkSpawner, EventHandlerError, HandlerAction, HandlerFuture,
-        Modification, Spawner, StepResult, WriteStream,
+        ActionContext, BoxJoinValueInit, DownlinkSpawner, EventHandlerError, HandlerAction,
+        HandlerFuture, Modification, Spawner, StepResult, WriteStream,
     },
-    item::MapItem,
+    item::{AgentItem, MapItem},
     lanes::join_value::{
         default_lifecycle::DefaultJoinValueLifecycle, AddDownlinkAction, JoinValueLaneGet,
         JoinValueLaneGetMap,
@@ -45,7 +54,7 @@ use crate::{
     test_context::dummy_context,
 };
 
-use super::JoinValueLane;
+use super::{JoinValueAddDownlink, JoinValueLane, LifecycleInitializer};
 
 const ID: u64 = 857383;
 
@@ -349,4 +358,84 @@ async fn join_value_lane_add_downlinks_event_handler() {
         }
         _ => panic!("Expected a single downlink."),
     }
+}
+
+fn register_lifecycle(
+    action_context: &mut ActionContext<'_, TestAgent>,
+    agent: &TestAgent,
+    count: Arc<AtomicUsize>,
+) {
+    let lc = DefaultJoinValueLifecycle;
+    let fac = move || {
+        count.fetch_add(1, Ordering::Relaxed);
+        lc.clone()
+    };
+    let init: BoxJoinValueInit<'static, TestAgent> =
+        Box::new(LifecycleInitializer::new(TestAgent::LANE, fac));
+    let lane_id = agent.lane.id();
+    action_context.register_join_value_initializer(lane_id, init);
+}
+
+async fn run_handler<H>(
+    spawner: &mut TestSpawner,
+    context: &TestDownlinkContext,
+    agent: &TestAgent,
+    meta: AgentMetadata<'_>,
+    inits: &mut HashMap<u64, BoxJoinValueInit<'static, TestAgent>>,
+    mut handler: H,
+) -> H::Completion
+where
+    H: HandlerAction<TestAgent>,
+{
+    let mut pending = FuturesUnordered::new();
+    std::mem::swap(&mut spawner.futures, &mut pending);
+
+    let result = loop {
+        let mut action_context = ActionContext::new(spawner, context, context, inits);
+        match handler.step(&mut action_context, meta, agent) {
+            StepResult::Continue { .. } => {}
+            StepResult::Fail(err) => panic!("Handler failed: {:?}", err),
+            StepResult::Complete { result, .. } => {
+                break result;
+            }
+        };
+    };
+
+    if !pending.is_empty() {
+        while let Some(mut h) = pending.next().await {
+            loop {
+                let mut action_context = ActionContext::new(&pending, context, context, inits);
+                match h.step(&mut action_context, meta, agent) {
+                    StepResult::Continue { .. } => {}
+                    StepResult::Fail(err) => panic!("Handler failed: {:?}", err),
+                    StepResult::Complete { .. } => break,
+                };
+            }
+        }
+    }
+    result
+}
+
+#[tokio::test]
+async fn open_downlink_from_registered() {
+    let uri = make_uri();
+    let meta = make_meta(&uri);
+    let agent = TestAgent::with_init();
+
+    let address = Address::text(None, REMOTE_NODE, REMOTE_LANE);
+
+    let handler = JoinValueAddDownlink::new(TestAgent::LANE, 12, address.clone());
+
+    let context = TestDownlinkContext::default();
+    let mut spawner = TestSpawner::default();
+    let mut inits = HashMap::new();
+
+    let count = Arc::new(AtomicUsize::new(0));
+
+    let mut action_context = ActionContext::new(&spawner, &context, &context, &mut inits);
+    register_lifecycle(&mut action_context, &agent, count.clone());
+
+    run_handler(&mut spawner, &context, &agent, meta, &mut inits, handler).await;
+    
+    assert_eq!(count.load(Ordering::Relaxed), 1);
 }
