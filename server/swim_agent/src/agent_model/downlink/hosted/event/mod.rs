@@ -14,6 +14,7 @@
 
 use futures::{future::BoxFuture, FutureExt, StreamExt};
 use swim_api::{
+    downlink::DownlinkKind,
     error::FrameIoError,
     protocol::downlink::{DownlinkNotification, ValueNotificationDecoder},
 };
@@ -159,5 +160,9 @@ where
         } else {
             None
         }
+    }
+
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Event
     }
 }

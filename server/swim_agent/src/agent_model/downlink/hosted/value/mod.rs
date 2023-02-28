@@ -16,6 +16,7 @@ use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
 use std::{cell::RefCell, fmt::Write};
 use swim_api::{
+    downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},
     protocol::{
         downlink::{DownlinkNotification, ValueNotificationDecoder},
@@ -212,6 +213,10 @@ where
         } else {
             None
         }
+    }
+
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Value
     }
 }
 

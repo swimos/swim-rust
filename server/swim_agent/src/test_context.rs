@@ -26,9 +26,7 @@ use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 
 use crate::{
     agent_model::downlink::handlers::BoxDownlinkChannel,
-    event_handler::{
-        ActionContext, BoxJoinValueInit, DownlinkSpawner, HandlerFuture, Spawner, WriteStream,
-    },
+    event_handler::{ActionContext, BoxJoinValueInit, HandlerFuture, Spawner, WriteStream},
 };
 
 struct NoSpawn;
@@ -48,14 +46,6 @@ pub fn dummy_context<'a, Context>(
     join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
 ) -> ActionContext<'a, Context> {
     ActionContext::new(&NO_SPAWN, &NO_AGENT, &no_downlink, join_value_init)
-}
-
-pub fn dummy_context_with_downlinks<'a, Context>(
-    agent_context: &'a dyn AgentContext,
-    downlinks: &'a dyn DownlinkSpawner<Context>,
-    join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
-) -> ActionContext<'a, Context> {
-    ActionContext::new(&NO_SPAWN, agent_context, downlinks, join_value_init)
 }
 
 impl<Context> Spawner<Context> for NoSpawn {

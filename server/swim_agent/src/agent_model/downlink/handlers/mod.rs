@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use futures::future::BoxFuture;
+use swim_api::downlink::DownlinkKind;
 
 use crate::event_handler::BoxEventHandler;
 
@@ -28,6 +29,9 @@ use crate::event_handler::BoxEventHandler;
 ///
 /// * `Context` - The context within which the event handlers must be run (typically an agent type).
 pub trait DownlinkChannel<Context> {
+    /// Get the kind of the downlink.
+    fn kind(&self) -> DownlinkKind;
+
     /// Await the next downlink event. If this returns [`None`], the downlink has terminated. If an
     /// error is returned, the downlink has failed and should not longer be waited on.
     fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), DownlinkFailed>>>;

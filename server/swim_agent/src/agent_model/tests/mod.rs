@@ -21,6 +21,7 @@ use futures::{
 use parking_lot::Mutex;
 use swim_api::{
     agent::{AgentConfig, AgentTask},
+    downlink::DownlinkKind,
     protocol::map::{MapMessage, MapOperation},
 };
 use swim_model::Text;
@@ -509,6 +510,10 @@ impl DownlinkChannel<TestDlAgent> for TestDownlinkChannel {
         } else {
             None
         }
+    }
+
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Event
     }
 }
 

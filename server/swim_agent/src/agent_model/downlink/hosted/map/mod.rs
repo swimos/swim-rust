@@ -25,6 +25,7 @@ use futures::{
 };
 use std::hash::Hash;
 use swim_api::{
+    downlink::DownlinkKind,
     error::{AgentRuntimeError, FrameIoError},
     protocol::{
         downlink::{DownlinkNotification, MapNotificationDecoder},
@@ -416,6 +417,10 @@ where
         } else {
             None
         }
+    }
+
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Map
     }
 }
 
