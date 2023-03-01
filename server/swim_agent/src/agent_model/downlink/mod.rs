@@ -177,7 +177,7 @@ where
             let config = *config;
             let path_cpy = path.clone();
             action_context.start_downlink(
-                path.clone(),
+                path,
                 DownlinkKind::Value,
                 move |reader| {
                     HostedEventDownlinkChannel::new(path_cpy, reader, lifecycle, config).boxed()

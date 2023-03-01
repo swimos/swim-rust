@@ -109,9 +109,9 @@ impl Address<Text> {
     }
 }
 
-impl<'a> Address<&str> {
+impl Address<&str> {
     pub fn to_text(&self) -> Address<Text> {
         let Address { host, node, lane } = self;
-        Address::text(*host, *node, *lane)
+        Address::text(*host, node, lane)
     }
 }

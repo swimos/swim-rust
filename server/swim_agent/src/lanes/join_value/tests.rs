@@ -326,7 +326,6 @@ async fn join_value_lane_add_downlinks_event_handler() {
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     ));
 
-    drop(action_context);
     run_event_handlers(&context, &context, &agent, meta, &mut inits, spawner).await;
 
     let guard = context.inner.lock();
@@ -352,7 +351,7 @@ fn register_lifecycle(
     let lc = DefaultJoinValueLifecycle;
     let fac = move || {
         count.fetch_add(1, Ordering::Relaxed);
-        lc.clone()
+        lc
     };
     let init: BoxJoinValueInit<'static, TestAgent> =
         Box::new(LifecycleInitializer::new(TestAgent::LANE, fac));

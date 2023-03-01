@@ -113,7 +113,7 @@ impl OnConsumeEvent<i32, FakeAgent> for FakeLifecycle {
     where
         Self: 'a;
 
-    fn on_event<'a>(&'a self, value: i32) -> Self::OnEventHandler<'a> {
+    fn on_event(&self, value: i32) -> Self::OnEventHandler<'_> {
         let state = self.inner.clone();
         SideEffect::from(move || {
             state.lock().push(Event::Event(value));
