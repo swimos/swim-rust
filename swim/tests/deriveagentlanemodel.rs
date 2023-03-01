@@ -299,7 +299,11 @@ fn multiple_lanes() {
 
     check_agent::<MultipleLanes>(
         vec![persistent("first"), persistent("third"), transient("fifth")],
-        vec![persistent("second"), persistent("fourth"), persistent("sixth")],
+        vec![
+            persistent("second"),
+            persistent("fourth"),
+            persistent("sixth"),
+        ],
     );
 }
 
@@ -447,7 +451,7 @@ mod isolated {
                 persistent_lane("second"),
                 persistent_lane("fourth"),
                 persistent_store("seventh"),
-                persistent_lane("eighth")
+                persistent_lane("eighth"),
             ],
         );
     }
@@ -468,4 +472,3 @@ fn two_types_single_scope() {
     check_agent::<First>(vec![persistent("lane")], vec![]);
     check_agent::<Second>(vec![persistent("lane")], vec![]);
 }
-

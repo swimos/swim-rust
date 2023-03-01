@@ -235,7 +235,7 @@ pub struct AfterClosed<K, V, Context> {
 }
 
 impl<K, V, Context> AfterClosed<K, V, Context> {
-    fn new(
+    pub fn new(
         projection: fn(&Context) -> &JoinValueLane<K, V>,
         key: K,
         response: LinkClosedResponse,
@@ -273,7 +273,10 @@ where
             Some(LinkClosedResponse::Abandon) => StepResult::done(()),
             Some(LinkClosedResponse::Delete) => {
                 lane.inner.remove(key);
-                StepResult::Complete { modified_item: Some(Modification::of(lane.id())), result: () }
+                StepResult::Complete {
+                    modified_item: Some(Modification::of(lane.id())),
+                    result: (),
+                }
             }
             Some(LinkClosedResponse::Retry) => todo!(),
             _ => StepResult::after_done(),

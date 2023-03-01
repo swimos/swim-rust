@@ -47,6 +47,7 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
+pub use downlink::{AfterClosed, JoinValueLaneUpdate};
 pub use init::LifecycleInitializer;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
