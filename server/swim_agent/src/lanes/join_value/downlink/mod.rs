@@ -273,7 +273,7 @@ where
             Some(LinkClosedResponse::Abandon) => StepResult::done(()),
             Some(LinkClosedResponse::Delete) => {
                 lane.inner.remove(key);
-                StepResult::done(())
+                StepResult::Complete { modified_item: Some(Modification::of(lane.id())), result: () }
             }
             Some(LinkClosedResponse::Retry) => todo!(),
             _ => StepResult::after_done(),

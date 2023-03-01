@@ -358,7 +358,19 @@ fn run_on_unlinked_delete() {
     let downlink_lifecycle = JoinValueDownlink::new(TestAgent::LANE, 4, make_address(), lifecycle);
 
     let on_unlinked = downlink_lifecycle.on_unlinked();
-    assert!(run_handler(on_unlinked, meta, &agent).is_empty());
+    let modifications = run_handler(on_unlinked, meta, &agent);
+
+    if let [Modification {
+        item_id,
+        trigger_handler,
+    }] = modifications.as_slice()
+    {
+        assert_eq!(*item_id, ID);
+        assert!(*trigger_handler);
+    } else {
+        panic!("Modifications incorrect: {:?}", modifications);
+    }
+
     let events = downlink_lifecycle.lifecycle.take();
     if let [Event::Unlinked { key, remote }] = events.as_slice() {
         assert_eq!(*key, 4);
