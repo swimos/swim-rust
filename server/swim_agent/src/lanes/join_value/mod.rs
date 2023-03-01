@@ -26,7 +26,7 @@ use swim_model::Text;
 use uuid::Uuid;
 
 use crate::agent_model::downlink::OpenEventDownlinkAction;
-use crate::event_handler::{DowncastError, EventHandler, JoinValueInitializer, Modification};
+use crate::event_handler::{EventHandler, Modification};
 use crate::{
     agent_model::WriteResult,
     event_handler::{ActionContext, HandlerAction, StepResult},
@@ -42,9 +42,12 @@ use super::{map::MapLaneEvent, Lane, MapLane};
 
 mod default_lifecycle;
 mod downlink;
+mod init;
 pub mod lifecycle;
 #[cfg(test)]
 mod tests;
+
+pub use init::LifecycleInitializer;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DownlinkStatus {
@@ -341,66 +344,6 @@ enum OpenDownlinkState<C, K, V> {
 impl<C, K, V> Default for OpenDownlinkState<C, K, V> {
     fn default() -> Self {
         OpenDownlinkState::Done
-    }
-}
-
-pub struct LifecycleInitializer<Context, K, V, F> {
-    projection: fn(&Context) -> &JoinValueLane<K, V>,
-    lifecycle_factory: F,
-}
-
-impl<Context, K, V, F, LC> LifecycleInitializer<Context, K, V, F>
-where
-    F: Fn() -> LC + Send,
-    LC: JoinValueLaneLifecycle<K, V, Context> + Send + 'static,
-{
-    pub fn new(projection: fn(&Context) -> &JoinValueLane<K, V>, lifecycle_factory: F) -> Self {
-        LifecycleInitializer {
-            projection,
-            lifecycle_factory,
-        }
-    }
-}
-
-impl<Context, K, V, F, LC> JoinValueInitializer<Context> for LifecycleInitializer<Context, K, V, F>
-where
-    Context: 'static,
-    K: Any + Clone + Eq + Hash + Send + 'static,
-    V: Any + Form + Send + Sync + 'static,
-    V::Rec: Send,
-    F: Fn() -> LC + Send,
-    LC: JoinValueLaneLifecycle<K, V, Context> + Send + 'static,
-{
-    fn try_create_action(
-        &self,
-        key: Box<dyn Any + Send>,
-        value_type: TypeId,
-        address: Address<Text>,
-    ) -> Result<Box<dyn EventHandler<Context> + Send + 'static>, DowncastError> {
-        let LifecycleInitializer {
-            projection,
-            lifecycle_factory,
-        } = self;
-
-        match key.downcast::<K>() {
-            Ok(key) => {
-                let expected_value = TypeId::of::<V>();
-                if value_type == expected_value {
-                    let lifecycle = lifecycle_factory();
-                    let action = AddDownlinkAction::new(*projection, *key, address, lifecycle);
-                    Ok(Box::new(action))
-                } else {
-                    Err(DowncastError::Value {
-                        actual_type: value_type,
-                        expected_type: expected_value,
-                    })
-                }
-            }
-            Err(bad_key) => Err(DowncastError::Key {
-                key: bad_key,
-                expected_type: std::any::TypeId::of::<K>(),
-            }),
-        }
     }
 }
 

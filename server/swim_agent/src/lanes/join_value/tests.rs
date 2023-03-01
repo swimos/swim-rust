@@ -22,7 +22,7 @@ use std::{
     },
 };
 
-use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
+use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt};
 use parking_lot::Mutex;
 use swim_api::{
     agent::{AgentConfig, AgentContext, LaneConfig},
@@ -39,11 +39,10 @@ use swim_utilities::{
 };
 
 use crate::{
-    agent_lifecycle::on_init::JoinValueInit,
     agent_model::downlink::handlers::BoxDownlinkChannel,
     event_handler::{
         ActionContext, BoxJoinValueInit, DownlinkSpawner, EventHandlerError, HandlerAction,
-        HandlerFuture, Modification, Spawner, StepResult, WriteStream,
+        Modification, StepResult, WriteStream,
     },
     item::{AgentItem, MapItem},
     lanes::join_value::{
@@ -51,7 +50,7 @@ use crate::{
         JoinValueLaneGetMap,
     },
     meta::AgentMetadata,
-    test_context::dummy_context,
+    test_context::{dummy_context, run_event_handlers, run_with_futures},
 };
 
 use super::{JoinValueAddDownlink, JoinValueLane, LifecycleInitializer};
@@ -204,65 +203,56 @@ fn join_value_lane_get_map_event_handler() {
     ));
 }
 
-#[derive(Default)]
-struct Inner {
+struct Inner<Agent> {
     downlink_channels: HashMap<Address<Text>, (ByteWriter, ByteReader)>,
-    downlinks: Vec<(BoxDownlinkChannel<TestAgent>, WriteStream)>,
+    downlinks: Vec<(BoxDownlinkChannel<Agent>, WriteStream)>,
 }
 
-#[derive(Default)]
-struct TestDownlinkContext {
-    inner: Arc<Mutex<Inner>>,
-}
-
-#[derive(Default)]
-struct TestSpawner {
-    futures: FuturesUnordered<HandlerFuture<TestAgent>>,
-}
-
-impl TestSpawner {
-    async fn drain(
-        &mut self,
-        context: &TestDownlinkContext,
-        meta: AgentMetadata<'_>,
-        agent: &TestAgent,
-    ) {
-        let TestSpawner { futures } = self;
-        let additional: FuturesUnordered<HandlerFuture<TestAgent>> = Default::default();
-        let mut inits = HashMap::new();
-
-        if !futures.is_empty() {
-            while let Some(mut handler) = futures.next().await {
-                let mut action_context =
-                    ActionContext::new(&additional, context, context, &mut inits);
-                loop {
-                    match handler.step(&mut action_context, meta, agent) {
-                        StepResult::Continue { .. } => {}
-                        StepResult::Fail(err) => panic!("Handler failed: {:?}", err),
-                        StepResult::Complete { .. } => break,
-                    }
-                }
-            }
+impl<Agent> Default for Inner<Agent> {
+    fn default() -> Self {
+        Self {
+            downlink_channels: Default::default(),
+            downlinks: Default::default(),
         }
-        assert!(additional.is_empty());
-        assert!(inits.is_empty());
     }
 }
 
-impl TestDownlinkContext {
-    fn push_dl(&self, dl_channel: BoxDownlinkChannel<TestAgent>, dl_writer: WriteStream) {
+pub struct TestDownlinkContext<Agent> {
+    inner: Arc<Mutex<Inner<Agent>>>,
+}
+
+impl<Agent> Default for TestDownlinkContext<Agent> {
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+        }
+    }
+}
+
+impl<Agent> TestDownlinkContext<Agent> {
+    pub fn push_dl(&self, dl_channel: BoxDownlinkChannel<Agent>, dl_writer: WriteStream) {
         self.inner.lock().downlinks.push((dl_channel, dl_writer));
     }
 
-    fn push_channels(&self, key: Address<Text>, io: (ByteWriter, ByteReader)) {
+    pub fn push_channels(&self, key: Address<Text>, io: (ByteWriter, ByteReader)) {
         self.inner.lock().downlink_channels.insert(key, io);
+    }
+
+    pub fn take_channels(&self) -> HashMap<Address<Text>, (ByteWriter, ByteReader)> {
+        let mut guard = self.inner.lock();
+        std::mem::take(&mut guard.downlink_channels)
+    }
+
+    pub fn take_downlinks(&self) -> Vec<(BoxDownlinkChannel<Agent>, WriteStream)> {
+        let mut guard = self.inner.lock();
+        std::mem::take(&mut guard.downlinks)
     }
 }
 
-impl DownlinkSpawner<TestAgent> for TestDownlinkContext {
+impl<Agent> DownlinkSpawner<Agent> for TestDownlinkContext<Agent> {
     fn spawn_downlink(
         &self,
-        dl_channel: BoxDownlinkChannel<TestAgent>,
+        dl_channel: BoxDownlinkChannel<Agent>,
         dl_writer: WriteStream,
     ) -> Result<(), DownlinkRuntimeError> {
         self.push_dl(dl_channel, dl_writer);
@@ -270,13 +260,7 @@ impl DownlinkSpawner<TestAgent> for TestDownlinkContext {
     }
 }
 
-impl Spawner<TestAgent> for TestSpawner {
-    fn spawn_suspend(&self, fut: HandlerFuture<TestAgent>) {
-        self.futures.push(fut);
-    }
-}
-
-impl AgentContext for TestDownlinkContext {
+impl<Agent> AgentContext for TestDownlinkContext<Agent> {
     fn add_lane(
         &self,
         _name: &str,
@@ -329,7 +313,7 @@ async fn join_value_lane_add_downlinks_event_handler() {
     );
 
     let context = TestDownlinkContext::default();
-    let mut spawner = TestSpawner::default();
+    let spawner = FuturesUnordered::new();
     let mut inits = HashMap::new();
 
     let mut action_context = ActionContext::new(&spawner, &context, &context, &mut inits);
@@ -343,7 +327,7 @@ async fn join_value_lane_add_downlinks_event_handler() {
     ));
 
     drop(action_context);
-    spawner.drain(&context, meta, &agent).await;
+    run_event_handlers(&context, &context, &agent, meta, &mut inits, spawner).await;
 
     let guard = context.inner.lock();
     let Inner {
@@ -376,46 +360,6 @@ fn register_lifecycle(
     action_context.register_join_value_initializer(lane_id, init);
 }
 
-async fn run_handler<H>(
-    spawner: &mut TestSpawner,
-    context: &TestDownlinkContext,
-    agent: &TestAgent,
-    meta: AgentMetadata<'_>,
-    inits: &mut HashMap<u64, BoxJoinValueInit<'static, TestAgent>>,
-    mut handler: H,
-) -> H::Completion
-where
-    H: HandlerAction<TestAgent>,
-{
-    let mut pending = FuturesUnordered::new();
-    std::mem::swap(&mut spawner.futures, &mut pending);
-
-    let result = loop {
-        let mut action_context = ActionContext::new(spawner, context, context, inits);
-        match handler.step(&mut action_context, meta, agent) {
-            StepResult::Continue { .. } => {}
-            StepResult::Fail(err) => panic!("Handler failed: {:?}", err),
-            StepResult::Complete { result, .. } => {
-                break result;
-            }
-        };
-    };
-
-    if !pending.is_empty() {
-        while let Some(mut h) = pending.next().await {
-            loop {
-                let mut action_context = ActionContext::new(&pending, context, context, inits);
-                match h.step(&mut action_context, meta, agent) {
-                    StepResult::Continue { .. } => {}
-                    StepResult::Fail(err) => panic!("Handler failed: {:?}", err),
-                    StepResult::Complete { .. } => break,
-                };
-            }
-        }
-    }
-    result
-}
-
 #[tokio::test]
 async fn open_downlink_from_registered() {
     let uri = make_uri();
@@ -427,15 +371,16 @@ async fn open_downlink_from_registered() {
     let handler = JoinValueAddDownlink::new(TestAgent::LANE, 12, address.clone());
 
     let context = TestDownlinkContext::default();
-    let mut spawner = TestSpawner::default();
     let mut inits = HashMap::new();
 
     let count = Arc::new(AtomicUsize::new(0));
 
+    let spawner = FuturesUnordered::new();
     let mut action_context = ActionContext::new(&spawner, &context, &context, &mut inits);
     register_lifecycle(&mut action_context, &agent, count.clone());
+    assert!(spawner.is_empty());
 
-    run_handler(&mut spawner, &context, &agent, meta, &mut inits, handler).await;
-    
+    run_with_futures(&context, &context, &agent, meta, &mut inits, handler).await;
+
     assert_eq!(count.load(Ordering::Relaxed), 1);
 }
