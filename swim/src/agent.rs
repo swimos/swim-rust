@@ -32,11 +32,13 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 /// 1. [`crate::agent::lanes::ValueLane`]
 /// 2. [`crate::agent::lanes::CommandLane`]
 /// 3. [`crate::agent::lanes::MapLane`]
+/// 4. [`crate::agent::lanes::JoinValueLane`]
 ///
 /// For [`crate::agent::lanes::ValueLane`] and [`crate::agent::lanes::CommandLane`], the type parameter
 /// must implement that [`crate::form::Form`] trait (used for serialization and deserialization). For
-/// [`crate::agent::lanes::MapLane`], both parameters must implement [`crate::form::Form`] and additionally,
-/// the key type `K` must satisfy `K: Hash + Eq + Ord + Clone + Form`.
+/// [`crate::agent::lanes::MapLane`] and [`crate::agent::lanes::JoinValueLane`], both parameters must
+/// implement [`crate::form::Form`] and additionally, the key type `K` must satisfy
+/// `K: Hash + Eq + Ord + Clone + Form`.
 ///
 /// The supported store types are:
 ///
@@ -49,7 +51,7 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 ///
 /// ```no_run
 /// use swim::agent::AgentLaneModel;
-/// use swim::agent::lanes::{ValueLane, CommandLane, MapLane};
+/// use swim::agent::lanes::{ValueLane, CommandLane, MapLane, JoinValueLane};
 /// use swim::agent::stores::{ValueStore, MapStore};
 ///
 /// #[derive(AgentLaneModel)]
@@ -59,15 +61,17 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 ///     map_lane: MapLane<String, i64>,
 ///     value_store: ValueStore<i32>,
 ///     map_store: MapStore<String, i64>,
+///     join_value: JoinValueLane<String, i64>,
 /// }
 /// ```
 ///
 /// The macro will use the name of the field as the name of the item (the value lane from this example will
 /// have the name `"value_lane"`).
 ///
-/// By default [`crate::agent::lanes::ValueLane`]s and [`crate::agent::lanes::MapLane`]s (and the corresponding
-/// stores types) will persist their state (where the server has a persistence store). To disable this, the
-/// lane field may be marked as transient with an attribute:
+/// By default [`crate::agent::lanes::ValueLane`]s, [`crate::agent::lanes::MapLane`]s and
+/// [`crate::agent::lanes::JoinValueLane`]s (and the corresponding stores types) will persist their state
+/// (where the server has a persistence store). To disable this, the lane field may be marked as transient
+/// with an attribute:
 ///
 /// / ```no_run
 /// use swim::agent::AgentLaneModel;
