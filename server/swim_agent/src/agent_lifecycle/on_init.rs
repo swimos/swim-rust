@@ -104,6 +104,7 @@ where
 
 pub type InitNil = NoHandler;
 
+#[derive(Clone, Copy)]
 pub struct InitCons<L, R> {
     head: L,
     tail: R,
@@ -154,6 +155,19 @@ pub struct JoinValueInit<Context, Shared, K, V, F> {
     _type: PhantomData<fn(&Shared)>,
     projection: fn(&Context) -> &JoinValueLane<K, V>,
     lifecycle_fac: F,
+}
+
+impl<Context, Shared, K, V, F> Clone for JoinValueInit<Context, Shared, K, V, F>
+where
+    F: Clone,
+{
+    fn clone(&self) -> Self {
+        Self { 
+            _type: PhantomData, 
+            projection: self.projection, 
+            lifecycle_fac: self.lifecycle_fac.clone() 
+        }
+    }
 }
 
 impl<Context, Shared, K, V, F> JoinValueInit<Context, Shared, K, V, F> {

@@ -205,7 +205,7 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
         if !init_blocks.is_empty() {
             let init_handler = construct_join_init(init_blocks, root, agent_type, lifecycle_type);
             lifecycle_builder = parse_quote! {
-                crate::agent::agent_lifecycle::stateful::StatefulAgentLifecycle::on_init(#lifecycle_builder, #init_handler)
+                #root::agent_lifecycle::stateful::StatefulAgentLifecycle::on_init(#lifecycle_builder, #init_handler)
             };
         }
 
@@ -243,10 +243,12 @@ fn construct_join_init(
     agent_type: &Path,
     lifecycle_type: &Type,
 ) -> impl ToTokens {
-    let base = quote!(#root::agent_lifecycle::on_init::InitNil);
-    join_inits.iter().rev().fold(base, |acc, JoinValueInit { name, lifecycle }| {
+    let base = quote!(<#root::agent_lifecycle::on_init::InitNil as ::core::default::Default>::default());
+    join_inits.iter().rev().fold(base, |acc, init| {
+        let item_name = init.item_ident();
+        let lifecycle = init.lifecycle;
         let constructor = quote! {
-            #root::agent_lifecycle::on_init::JoinValueInit::new(|agent: &#agent_type| &agent.#name, #lifecycle_type::#lifecycle)
+            #root::agent_lifecycle::on_init::JoinValueInit::new(|agent: &#agent_type| &agent.#item_name, #lifecycle_type::#lifecycle)
         };
         quote!(#root::agent_lifecycle::on_init::InitCons::cons(#constructor, #acc))
     })

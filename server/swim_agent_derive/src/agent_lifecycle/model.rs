@@ -177,7 +177,7 @@ impl HandlerDescriptor {
         }
     }
 }
-/// Valiate a single method and, if it is an event handler, attempt to add it to the
+/// Validate a single method and, if it is an event handler, attempt to add it to the
 /// lifecycle descriptor.
 fn validate_method<'a>(
     acc: AgentLifecycleDescriptorBuilder<'a>,
@@ -661,6 +661,7 @@ fn assess_attr(attr: &Attribute) -> bool {
                         | ON_UPDATE
                         | ON_REMOVE
                         | ON_CLEAR
+                        | JOIN_VALUE
                 )
             }
             _ => false,
@@ -676,6 +677,10 @@ pub struct JoinValueInit<'a> {
 impl<'a> JoinValueInit<'a> {
     pub fn new(name: String, lifecycle: &'a Ident) -> Self {
         JoinValueInit { name, lifecycle }
+    }
+
+    pub fn item_ident(&self) -> Ident {
+        Ident::new(&self.name, Span::call_site())
     }
 }
 

@@ -25,11 +25,14 @@ use swim::agent::{
     lanes::{CommandLane, MapLane, ValueLane},
     AgentLaneModel,
 };
+use swim_agent::agent_lifecycle::on_init::OnInit;
+use swim_agent::agent_lifecycle::utility::JoinValueContext;
 use swim_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
 use swim_agent::event_handler::{
     BoxJoinValueInit, HandlerFuture, Modification, Spawner, WriteStream,
 };
 use swim_agent::item::{AgentItem, MapItem};
+use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
 use swim_agent::lanes::join_value::{AfterClosed, JoinValueLaneUpdate, LinkClosedResponse};
 use swim_agent::lanes::JoinValueLane;
 use swim_agent::meta::AgentMetadata;
@@ -1381,4 +1384,89 @@ fn remove_join_value<K, V>(
     let handler = AfterClosed::new(projection, key, LinkClosedResponse::Delete);
     let id = projection(agent).id();
     run_handler_mod(agent, handler, Some(id));
+}
+
+#[test]
+fn register_join_value_lifecycle() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle;
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[join_value_lifecycle(join_value)]
+        fn register_lifecycle(
+            &self,
+            context: JoinValueContext<TestAgent, i32, Text>,
+        ) -> impl JoinValueLaneLifecycle<i32, Text, TestAgent> + 'static {
+            context.builder().done()
+        }
+    }
+
+    let agent = TestAgent::default();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    let mut join_value_init = HashMap::new();
+    let mut action_context = dummy_context(&mut join_value_init);
+    let uri = make_uri();
+    let meta = make_meta(&uri);
+
+    lifecycle.initialize(&mut action_context, meta, &agent);
+
+    let lane_id = agent.join_value.id();
+
+    assert_eq!(join_value_init.len(), 1);
+    assert!(join_value_init.contains_key(&lane_id));
+}
+
+#[derive(AgentLaneModel)]
+#[agent_root(::swim_agent)]
+struct TwoJoinValueAgent {
+    join_value1: JoinValueLane<i32, Text>,
+    join_value2: JoinValueLane<i32, i64>,
+}
+
+#[test]
+fn register_two_join_value_lifecycles() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle;
+
+    #[lifecycle(TwoJoinValueAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[join_value_lifecycle(join_value1)]
+        fn register_lifecycle1(
+            &self,
+            context: JoinValueContext<TwoJoinValueAgent, i32, Text>,
+        ) -> impl JoinValueLaneLifecycle<i32, Text, TwoJoinValueAgent> + 'static {
+            context.builder().done()
+        }
+
+        #[join_value_lifecycle(join_value2)]
+        fn register_lifecycle2(
+            &self,
+            context: JoinValueContext<TwoJoinValueAgent, i32, i64>,
+        ) -> impl JoinValueLaneLifecycle<i32, i64, TwoJoinValueAgent> + 'static {
+            context.builder().done()
+        }
+    }
+
+    let agent = TwoJoinValueAgent::default();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    let mut join_value_init = HashMap::new();
+    let mut action_context = dummy_context(&mut join_value_init);
+    let uri = make_uri();
+    let meta = make_meta(&uri);
+
+    lifecycle.initialize(&mut action_context, meta, &agent);
+
+    let lane_id1 = agent.join_value1.id();
+    let lane_id2 = agent.join_value1.id();
+
+    assert_eq!(join_value_init.len(), 2);
+    assert!(join_value_init.contains_key(&lane_id1));
+    assert!(join_value_init.contains_key(&lane_id2));
 }
