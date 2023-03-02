@@ -200,13 +200,13 @@ fn run_handler_mod<Agent, H: EventHandler<Agent>>(
     loop {
         match handler.step(&mut dummy_context(&mut join_value_init), meta, agent) {
             StepResult::Continue { modified_item } => {
-                assert_eq!(modified_item, modified.map(|id| Modification::of(id)));
+                assert_eq!(modified_item, modified.map(Modification::of));
             }
             StepResult::Fail(e) => {
                 panic!("{}", e);
             }
             StepResult::Complete { modified_item, .. } => {
-                assert_eq!(modified_item, modified.map(|id| Modification::of(id)));
+                assert_eq!(modified_item, modified.map(Modification::of));
                 break;
             }
         }
@@ -1405,7 +1405,7 @@ fn register_join_value_lifecycle() {
     let agent = TestAgent::default();
     let template = TestLifecycle::default();
 
-    let lifecycle = template.clone().into_lifecycle();
+    let lifecycle = template.into_lifecycle();
 
     let mut join_value_init = HashMap::new();
     let mut action_context = dummy_context(&mut join_value_init);
@@ -1454,7 +1454,7 @@ fn register_two_join_value_lifecycles() {
     let agent = TwoJoinValueAgent::default();
     let template = TestLifecycle::default();
 
-    let lifecycle = template.clone().into_lifecycle();
+    let lifecycle = template.into_lifecycle();
 
     let mut join_value_init = HashMap::new();
     let mut action_context = dummy_context(&mut join_value_init);
