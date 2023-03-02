@@ -19,6 +19,7 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use futures::{Future, FutureExt};
 use swim_form::Form;
+use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::address::Address;
 use swim_utilities::routing::route_uri::RouteUri;
 
@@ -51,6 +52,7 @@ pub use self::downlink_builder::map::{StatefulMapDownlinkBuilder, StatelessMapDo
 pub use self::downlink_builder::value::{
     StatefulValueDownlinkBuilder, StatelessValueDownlinkBuilder,
 };
+pub use self::downlink_builder::event::{StatefulEventDownlinkBuilder, StatelessEventDownlinkBuilder};
 pub use self::join_value_builder::{StatefulJoinValueLaneBuilder, StatelessJoinValueLaneBuilder};
 
 mod downlink_builder;
@@ -437,6 +439,26 @@ impl<Agent: 'static> HandlerContext<Agent> {
         V::Rec: Send,
     {
         OpenMapDownlinkAction::new(Address::text(host, node, lane), lifecycle, config)
+    }
+
+    /// Create a builder to construct a request to open an event downlink.
+    /// #Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `config` - Configuration parameters for the downlink.
+    pub fn event_downlink_builder<T>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        config: SimpleDownlinkConfig,
+    ) -> StatelessEventDownlinkBuilder<Agent, T>
+    where
+        T: RecognizerReadable + Send + Sync + 'static,
+        T::Rec: Send,
+    {
+        StatelessEventDownlinkBuilder::new(Address::text(host, node, lane), config)
     }
 
     /// Create a builder to construct a request to open a value downlink.

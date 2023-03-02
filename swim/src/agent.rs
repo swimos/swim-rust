@@ -129,7 +129,7 @@ pub mod lanes {
     }
 
     pub mod join_value {
-        pub use swim_agent::lanes::join_value::JoinValueLaneSync;
+        pub use swim_agent::lanes::join_value::{JoinValueLaneSync, LinkClosedResponse};
         pub mod lifecycle {
             pub use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
         }
