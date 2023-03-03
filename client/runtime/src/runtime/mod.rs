@@ -193,7 +193,10 @@ enum RuntimeEvent {
 /// Spawns a runtime task that uses the provided transport task and returns a handle that can be
 /// used to dispatch downlink registration requests and a trigger which can signal the runtime to
 /// shutdown.
-pub fn start_runtime<Net, Ws>(transport: Transport<Net, Ws>) -> (RawHandle, trigger::Sender)
+pub fn start_runtime<Net, Ws>(
+    transport: Transport<Net, Ws>,
+    interpret_frame_data: bool,
+) -> (RawHandle, trigger::Sender)
 where
     Net: ExternalConnections,
     Net::Socket: WebSocketStream,
@@ -201,7 +204,12 @@ where
 {
     let (requests_tx, requests_rx) = mpsc::channel(128);
     let (remote_stop_tx, remote_stop_rx) = trigger::trigger();
-    let _task = tokio::spawn(runtime_task(transport, remote_stop_rx, requests_rx));
+    let _task = tokio::spawn(runtime_task(
+        transport,
+        remote_stop_rx,
+        requests_rx,
+        interpret_frame_data,
+    ));
 
     (
         RawHandle {
@@ -218,6 +226,7 @@ async fn runtime_task<Net, Ws>(
     transport: Transport<Net, Ws>,
     mut remote_stop_rx: trigger::Receiver,
     mut requests_rx: mpsc::Receiver<DownlinkRegistrationRequest>,
+    interpret_frame_data: bool,
 ) where
     Net: ExternalConnections,
     Net::Socket: WebSocketStream,
@@ -471,7 +480,7 @@ async fn runtime_task<Net, Ws>(
                     let (runtime_stop_tx, runtime_stop_rx) = trigger::trigger();
                     let peer_key = key.clone();
                     downlinks.push(
-                        tokio::spawn(runtime.run(runtime_stop_rx))
+                        tokio::spawn(runtime.run(runtime_stop_rx, interpret_frame_data))
                             .map(move |result| RuntimeEvent::DownlinkRuntimeComplete {
                                 addr: sock,
                                 key,

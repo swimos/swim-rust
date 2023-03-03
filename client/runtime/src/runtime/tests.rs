@@ -397,7 +397,7 @@ fn start() -> (RawHandle, Sender, Server) {
     );
     let ws = MockWs::new([("ws://127.0.0.1/".to_string(), WsAction::Open)]);
 
-    let (handle, stop) = start_runtime(Transport::new(ext, ws, non_zero_usize!(128)));
+    let (handle, stop) = start_runtime(Transport::new(ext, ws, non_zero_usize!(128)), true);
     (handle, stop, Server::new(server))
 }
 
@@ -909,7 +909,7 @@ async fn failed_handshake() {
         WsAction::fail(|| RatchetError::from(ratchet::Error::new(ratchet::ErrorKind::Http))),
     )]);
 
-    let (handle, _stop) = start_runtime(Transport::new(ext, ws, non_zero_usize!(128)));
+    let (handle, _stop) = start_runtime(Transport::new(ext, ws, non_zero_usize!(128)), true);
 
     let spawned = Arc::new(Notify::new());
     let stopped = Arc::new(Notify::new());

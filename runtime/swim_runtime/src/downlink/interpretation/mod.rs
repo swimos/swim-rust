@@ -92,3 +92,17 @@ impl DownlinkInterpretation for MapInterpretation {
         Ok(())
     }
 }
+
+pub struct NoInterpretation;
+impl DownlinkInterpretation for NoInterpretation {
+    type Error = Infallible;
+
+    fn interpret_frame_data(
+        &mut self,
+        frame: Bytes,
+        buffer: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
+        buffer.extend(frame);
+        Ok(())
+    }
+}

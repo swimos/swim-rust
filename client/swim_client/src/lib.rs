@@ -59,6 +59,7 @@ impl SwimClient {
         let ClientConfig {
             websocket,
             remote_buffer_size,
+            interpret_frame_data,
             ..
         } = config;
 
@@ -71,8 +72,10 @@ impl SwimClient {
             std::iter::empty(),
             Arc::new(Resolver::new().await),
         );
-        let (handle, stop_tx) =
-            start_runtime(Transport::new(networking, websockets, remote_buffer_size));
+        let (handle, stop_tx) = start_runtime(
+            Transport::new(networking, websockets, remote_buffer_size),
+            interpret_frame_data,
+        );
         SwimClient {
             stop_tx,
             handle: ClientHandle {

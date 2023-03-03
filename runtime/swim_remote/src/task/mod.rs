@@ -587,60 +587,62 @@ impl IncomingTask {
                     let body = frame.as_ref();
                     match peel_envelope_header_str(body) {
                         Ok(envelope) => match interpret_envelope(*id, envelope) {
-                            Some(Either::Left(request)) => match &find_tx {
-                                Some(find_tx) => {
-                                    let node = request.path.node.as_ref();
+                            Some(Either::Left(request)) => {
+                                match &find_tx {
+                                    Some(find_tx) => {
+                                        let node = request.path.node.as_ref();
 
-                                    let dispatched = if let Some(writer) =
-                                        agent_routes.get_mut(node)
-                                    {
-                                        if let Err(error) = writer.send(&request).await {
-                                            debug!(error = %error, "Forwarding envelope to agent route failed.");
-                                            agent_routes.remove(node);
-                                            false
-                                        } else {
-                                            true
-                                        }
-                                    } else {
-                                        false
-                                    };
-                                    if !dispatched {
-                                        match connect_agent_route(
-                                            *id,
-                                            Text::new(node),
-                                            Text::new(request.path.lane.as_ref()),
-                                            find_tx,
-                                            &outgoing_tx,
-                                        )
-                                        .await
+                                        let dispatched = if let Some(writer) =
+                                            agent_routes.get_mut(node)
                                         {
-                                            Ok(Some(writer)) => {
-                                                let writer = agent_routes
-                                                    .entry(Text::new(node))
-                                                    .or_insert_with_key(move |_| writer);
-                                                if let Err(error) = writer.send(&request).await {
-                                                    error!(error = %error, "Envelope not dispatched as agent stopped immediately.");
-                                                    agent_routes.remove(node);
-                                                }
+                                            if let Err(error) = writer.send(&request).await {
+                                                debug!(error = %error, "Forwarding envelope to agent route failed.");
+                                                agent_routes.remove(node);
+                                                false
+                                            } else {
+                                                true
                                             }
-                                            Err(_) => break Ok(()),
-                                            _ => {}
+                                        } else {
+                                            false
+                                        };
+                                        if !dispatched {
+                                            match connect_agent_route(
+                                                *id,
+                                                Text::new(node),
+                                                Text::new(request.path.lane.as_ref()),
+                                                find_tx,
+                                                &outgoing_tx,
+                                            )
+                                                .await
+                                            {
+                                                Ok(Some(writer)) => {
+                                                    let writer = agent_routes
+                                                        .entry(Text::new(node))
+                                                        .or_insert_with_key(move |_| writer);
+                                                    if let Err(error) = writer.send(&request).await {
+                                                        error!(error = %error, "Envelope not dispatched as agent stopped immediately.");
+                                                        agent_routes.remove(node);
+                                                    }
+                                                }
+                                                Err(_) => break Ok(()),
+                                                _ => {}
+                                            }
                                         }
                                     }
-                                }
-                                None => {
-                                    let RequestMessage { path, .. } = request;
-                                    if outgoing_tx
-                                        .send(OutgoingTaskMessage::NotFound {
-                                            error: AgentResolutionError::NotFound(NoSuchAgent {
-                                                node: path.node.into(),
-                                                lane: path.lane.into(),
-                                            }),
-                                        })
-                                        .await
-                                        .is_err()
-                                    {
-                                        break Ok(());
+                                    None => {
+                                        let RequestMessage { path, .. } = request;
+                                        if outgoing_tx
+                                            .send(OutgoingTaskMessage::NotFound {
+                                                error: AgentResolutionError::NotFound(NoSuchAgent {
+                                                    node: path.node.into(),
+                                                    lane: path.lane.into(),
+                                                }),
+                                            })
+                                            .await
+                                            .is_err()
+                                        {
+                                            break Ok(());
+                                        }
                                     }
                                 }
                             },

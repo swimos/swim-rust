@@ -23,7 +23,7 @@ use swim_model::Text;
 use swim_remote::AttachClient;
 use swim_runtime::downlink::failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy};
 use swim_runtime::downlink::{
-    AttachAction, DownlinkRuntimeConfig, MapDownlinkRuntime, ValueDownlinkRuntime,
+    AttachAction, DownlinkRuntimeConfig, MapDownlinkRuntime, NoInterpretation, ValueDownlinkRuntime,
 };
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::trigger;
@@ -164,7 +164,11 @@ impl DownlinkRuntime {
         }
     }
 
-    pub fn run(self, stopping: trigger::Receiver) -> impl Future<Output = ()> + Send + 'static {
+    pub fn run(
+        self,
+        stopping: trigger::Receiver,
+        interpret_frame_data: bool,
+    ) -> impl Future<Output = ()> + Send + 'static {
         let DownlinkRuntime {
             identity,
             path,
@@ -192,16 +196,31 @@ impl DownlinkRuntime {
                     } else {
                         ReportStrategy::new(AlwaysIgnoreStrategy).boxed()
                     };
-                    let runtime = MapDownlinkRuntime::new(
-                        attachment_rx,
-                        io,
-                        stopping,
-                        identity,
-                        path,
-                        config,
-                        strategy,
-                    );
-                    runtime.run().await;
+
+                    if interpret_frame_data {
+                        let runtime = MapDownlinkRuntime::new(
+                            attachment_rx,
+                            io,
+                            stopping,
+                            identity,
+                            path,
+                            config,
+                            strategy,
+                        );
+                        runtime.run().await;
+                    } else {
+                        let runtime = MapDownlinkRuntime::with_interpretation(
+                            attachment_rx,
+                            io,
+                            stopping,
+                            identity,
+                            path,
+                            config,
+                            ReportStrategy::new(AlwaysIgnoreStrategy).boxed(),
+                            NoInterpretation,
+                        );
+                        runtime.run().await;
+                    }
                 }
             }
         }

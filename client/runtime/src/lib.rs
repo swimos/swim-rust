@@ -28,6 +28,7 @@ use swim_utilities::non_zero_usize;
 pub struct ClientConfig {
     pub websocket: WebSocketConfig,
     pub remote_buffer_size: NonZeroUsize,
+    pub interpret_frame_data: bool,
 }
 
 impl Debug for ClientConfig {
@@ -35,10 +36,12 @@ impl Debug for ClientConfig {
         let ClientConfig {
             websocket,
             remote_buffer_size,
+            interpret_frame_data,
         } = self;
         f.debug_struct("ClientConfig")
             .field("websocket", websocket)
             .field("remote_buffer_size", remote_buffer_size)
+            .field("interpret_frame_data", interpret_frame_data)
             .finish()
     }
 }
@@ -48,6 +51,7 @@ impl Default for ClientConfig {
         ClientConfig {
             websocket: WebSocketConfig::default(),
             remote_buffer_size: non_zero_usize!(4096),
+            interpret_frame_data: true,
         }
     }
 }
