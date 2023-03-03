@@ -44,7 +44,7 @@ use swim_model::address::Address;
 use swim_model::Text;
 use swim_remote::AttachClient;
 use swim_runtime::downlink::{AttachAction, DownlinkOptions, DownlinkRuntimeConfig};
-use swim_runtime::net::{ExternalConnections, SchemeHostPort};
+use swim_runtime::net::{ExternalConnections, Scheme, SchemeHostPort};
 use swim_runtime::ws::WsConnections;
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swim_utilities::trigger::promise;
@@ -153,6 +153,7 @@ enum RuntimeEvent {
     StartDownlink(DownlinkRegistrationRequest),
     /// A DNS resolution task completed.
     Resolved {
+        scheme: Scheme,
         host: Text,
         result: Result<Vec<SocketAddr>, DownlinkRuntimeError>,
     },
@@ -255,7 +256,7 @@ async fn runtime_task<Net, Ws>(
                 }
                 Some(connection) = pending.next() => {
                     match connection {
-                        Either::Left(dns) => RuntimeEvent::Resolved { host:dns.0,result: dns.1 },
+                        Either::Left(dns) => RuntimeEvent::Resolved { scheme: dns.0, host: dns.1, result: dns.2 },
                         Either::Right((host, result)) => RuntimeEvent::ConnectionResult { host, result }
                     }
                 },
@@ -323,10 +324,14 @@ async fn runtime_task<Net, Ws>(
 
                 let handle_ref = &transport_handle;
                 pending.feed_task(
-                    async move { Either::Left((host, handle_ref.resolve(task_shp).await)) }.boxed(),
+                    async move {
+                        Either::Left((*task_shp.scheme(), host, handle_ref.resolve(task_shp).await))
+                    }
+                    .boxed(),
                 );
             }
             RuntimeEvent::Resolved {
+                scheme,
                 host,
                 result: Ok(addrs),
             } => {
@@ -375,7 +380,10 @@ async fn runtime_task<Net, Ws>(
                     None => {
                         let handle_ref = &transport_handle;
                         let task = async move {
-                            match handle_ref.connection_for(host.to_string(), addrs).await {
+                            match handle_ref
+                                .connection_for(scheme, host.to_string(), addrs)
+                                .await
+                            {
                                 Ok((addr, tx)) => Either::Right((host, Ok((addr, tx)))),
                                 Err(e) => Either::Right((host, Err(e))),
                             }
@@ -387,6 +395,7 @@ async fn runtime_task<Net, Ws>(
             RuntimeEvent::Resolved {
                 host,
                 result: Err(e),
+                ..
             } => {
                 error!(error = %e, host = %host, "Failed to resolve host");
 

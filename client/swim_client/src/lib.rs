@@ -15,10 +15,8 @@
 use ratchet::NoExtProvider;
 use runtime::downlink::{DownlinkOperationResult, StatefulDownlinkView};
 
-use runtime::{
-    start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, RemotePath, Transport,
-};
-use std::path::PathBuf;
+use runtime::runtime::{start_runtime, DownlinkRuntimeError, RawHandle, RemotePath, Transport};
+use runtime::ClientConfig;
 use std::sync::Arc;
 use swim_api::downlink::DownlinkConfig;
 use swim_downlink::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
@@ -26,7 +24,7 @@ use swim_downlink::{DownlinkTask, ValueDownlinkModel};
 use swim_form::Form;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use swim_runtime::net::dns::Resolver;
-use swim_runtime::net::tls::TokioTlsNetworking;
+use swim_runtime::net::plain::TokioPlainTextNetworking;
 use swim_runtime::ws::ext::RatchetNetworking;
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
@@ -58,10 +56,7 @@ impl SwimClient {
             provider: NoExtProvider,
             subprotocols: Default::default(),
         };
-        let networking = TokioTlsNetworking::new::<_, Box<PathBuf>>(
-            std::iter::empty(),
-            Arc::new(Resolver::new().await),
-        );
+        let networking = TokioPlainTextNetworking::new(Arc::new(Resolver::new().await));
         let (handle, stop_tx) =
             start_runtime(Transport::new(networking, websockets, remote_buffer_size));
         SwimClient {

@@ -24,7 +24,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use swim_remote::{AttachClient, RemoteTask};
-use swim_runtime::net::{ExternalConnections, SchemeHostPort};
+use swim_runtime::net::{ExternalConnections, Scheme, SchemeHostPort};
 use swim_runtime::ws::WsConnections;
 use swim_utilities::trigger;
 use tokio::select;
@@ -39,6 +39,7 @@ pub enum TransportRequest {
     Resolve(SchemeHostPort, oneshot::Sender<io::Result<Vec<SocketAddr>>>),
     ConnectionFor {
         host: String,
+        scheme: Scheme,
         addrs: Vec<SocketAddr>,
         callback: AttachCallback,
     },
@@ -95,8 +96,8 @@ impl TransportHandle {
         &self,
         shp: SchemeHostPort,
     ) -> Result<Vec<SocketAddr>, DownlinkRuntimeError> {
-        impl From<std::io::Error> for DownlinkRuntimeError {
-            fn from(e: std::io::Error) -> Self {
+        impl From<io::Error> for DownlinkRuntimeError {
+            fn from(e: io::Error) -> Self {
                 DownlinkRuntimeError::with_cause(DownlinkErrorKind::Unresolvable, e)
             }
         }
@@ -106,11 +107,13 @@ impl TransportHandle {
 
     pub async fn connection_for(
         &self,
+        scheme: Scheme,
         host: String,
         addrs: Vec<SocketAddr>,
     ) -> Result<(SocketAddr, mpsc::Sender<AttachClient>), DownlinkRuntimeError> {
         self.exec(|callback| TransportRequest::ConnectionFor {
             host,
+            scheme,
             addrs,
             callback,
         })
@@ -173,9 +176,8 @@ where
                     let shared_networking = &networking;
                     let resolve_fut = async move {
                         let result = shared_networking
-                            .lookup(shp)
-                            .await
-                            .map(|v| v.into_iter().map(|elem| elem.addr).collect());
+                            .lookup(shp.host().clone(), shp.port())
+                            .await;
                         let _r = callback.send(result);
                         None
                     };
@@ -183,6 +185,7 @@ where
                 }
                 TransportEvent::Request(TransportRequest::ConnectionFor {
                     host,
+                    scheme,
                     addrs,
                     callback,
                 }) => {
@@ -198,7 +201,10 @@ where
                             events.push(
                                 async move {
                                     for addr in addrs {
-                                        if let Ok(socket) = shared_networking.try_open(addr).await {
+                                        if let Ok(socket) = shared_networking
+                                            .try_open(scheme, Some(host.as_str()), addr)
+                                            .await
+                                        {
                                             return Some(TransportEvent::Open {
                                                 host,
                                                 callback,

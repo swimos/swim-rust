@@ -13,8 +13,7 @@
 // limitations under the License.
 
 use crate::runtime::models::{Key, RemotePath};
-use crate::runtime::{BoxedDownlink, DownlinkCallback};
-use crate::DownlinkRuntimeError;
+use crate::runtime::{BoxedDownlink, DownlinkCallback, DownlinkRuntimeError};
 use fnv::FnvHashMap;
 use futures::Stream;
 use futures_util::future::{BoxFuture, Either};
@@ -27,9 +26,10 @@ use swim_model::address::RelativeAddress;
 use swim_model::Text;
 use swim_remote::AttachClient;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
+use swim_runtime::net::Scheme;
 use tokio::sync::mpsc;
 
-type PendingDns = (Text, Result<Vec<SocketAddr>, DownlinkRuntimeError>);
+type PendingDns = (Scheme, Text, Result<Vec<SocketAddr>, DownlinkRuntimeError>);
 type PendingHandshake = (
     Text,
     Result<(SocketAddr, mpsc::Sender<AttachClient>), DownlinkRuntimeError>,

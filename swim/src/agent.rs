@@ -103,7 +103,7 @@
 //! respectively.
 //!
 //! As an example, consider the following `on_start` handler for the above `ExampleAgent`:
-//! ```
+//! ```ignore
 //! #[on_start]
 //! fn my_start_handler(&self, context: HandlerContext<ExampleAgent>) -> impl EventHandler<ExampleAgent> {
 //!     context.set_value(VALUE_LANE, 8)

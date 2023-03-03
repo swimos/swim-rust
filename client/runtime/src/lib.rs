@@ -13,7 +13,7 @@
 // limitations under the License.
 
 pub mod downlink;
-mod runtime;
+pub mod runtime;
 
 use ratchet::WebSocketConfig;
 use std::fmt::{Debug, Formatter};

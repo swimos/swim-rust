@@ -17,9 +17,9 @@ use std::sync::Arc;
 
 use tokio::sync::{mpsc, watch};
 
+use crate::runtime::DownlinkRuntimeError;
 use swim_utilities::trigger::promise;
 
-use crate::DownlinkRuntimeError;
 pub type DownlinkOperationResult<T> = Result<T, DownlinkRuntimeError>;
 
 /// A view over a stateful downlink.

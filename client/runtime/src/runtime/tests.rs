@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 use crate::runtime::error::DownlinkErrorKind;
 use crate::runtime::transport::TransportHandle;
-use crate::{start_runtime, DownlinkRuntimeError, RawHandle, RemotePath, Transport};
+use crate::runtime::{start_runtime, DownlinkRuntimeError, RawHandle, RemotePath, Transport};
 use fixture::{MockExternalConnections, MockWs, Server, WsAction};
 use swim_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
 use swim_api::error::DownlinkTaskError;
@@ -43,7 +43,7 @@ use swim_model::address::{Address, RelativeAddress};
 use swim_model::Text;
 use swim_remote::AttachClient;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
-use swim_runtime::net::{Scheme, SchemeHostPort, SchemeSocketAddr};
+use swim_runtime::net::{Scheme, SchemeHostPort};
 use swim_runtime::ws::RatchetError;
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swim_utilities::non_zero_usize;
@@ -56,11 +56,8 @@ async fn transport_opens_connection_ok() {
     let sock: SocketAddr = "127.0.0.1:9001".parse().unwrap();
     let (client, server) = duplex(128);
     let ext = MockExternalConnections::new(
-        [(
-            peer.clone(),
-            SchemeSocketAddr::new(Scheme::Ws, sock.clone()),
-        )],
-        [("127.0.0.1:9001".parse().unwrap(), client)],
+        [(("127.0.0.1".to_string(), 9001), sock.clone())],
+        [(sock, client)],
     );
     let ws = MockWs::new([("127.0.0.1".to_string(), WsAction::Open)]);
     let transport = Transport::new(ext, ws, non_zero_usize!(128));
@@ -74,7 +71,7 @@ async fn transport_opens_connection_ok() {
     assert_eq!(addrs, vec![sock]);
 
     let (opened_sock, attach) = handle
-        .connection_for("127.0.0.1".to_string(), vec![sock])
+        .connection_for(Scheme::Ws, "127.0.0.1".to_string(), vec![sock])
         .await
         .expect("Failed to open connection");
     assert_eq!(opened_sock, sock);
@@ -126,7 +123,7 @@ async fn transport_opens_connection_ok() {
     assert_eq!(link_message, "@link(node:node,lane:lane)");
 
     let (opened_sock, attach_2) = handle
-        .connection_for("127.0.0.1".to_string(), vec![sock])
+        .connection_for(Scheme::Ws, "127.0.0.1".to_string(), vec![sock])
         .await
         .expect("Failed to open connection");
     assert_eq!(opened_sock, sock);
@@ -139,11 +136,8 @@ async fn transport_opens_connection_err() {
     let sock: SocketAddr = "127.0.0.1:9001".parse().unwrap();
     let (client, _server) = duplex(128);
     let ext = MockExternalConnections::new(
-        [(
-            peer.clone(),
-            SchemeSocketAddr::new(Scheme::Ws, sock.clone()),
-        )],
-        [("127.0.0.1:9001".parse().unwrap(), client)],
+        [(("127.0.0.1".to_string(), 9001), sock.clone())],
+        [(sock.clone(), client)],
     );
     let ws = MockWs::new([(
         "127.0.0.1".to_string(),
@@ -160,7 +154,7 @@ async fn transport_opens_connection_err() {
     assert_eq!(addrs, vec![sock]);
 
     let actual_err = handle
-        .connection_for("127.0.0.1".to_string(), vec![sock])
+        .connection_for(Scheme::Ws, "127.0.0.1".to_string(), vec![sock])
         .await
         .expect_err("Expected connection to fail");
     assert!(actual_err.is(DownlinkErrorKind::Connection));
@@ -269,19 +263,15 @@ struct DownlinkContext {
     get_rx: watch::Receiver<Arc<i32>>,
     server: Server,
     promise: promise::Receiver<Result<(), DownlinkRuntimeError>>,
-    stop_tx: trigger::Sender,
+    stop_tx: Sender,
 }
 
 fn start() -> (RawHandle, Sender, Server) {
-    let peer = SchemeHostPort::new(Scheme::Ws, "127.0.0.1".to_string(), 80);
     let sock: SocketAddr = "127.0.0.1:80".parse().unwrap();
     let (client, server) = duplex(128);
     let ext = MockExternalConnections::new(
-        [(
-            peer.clone(),
-            SchemeSocketAddr::new(Scheme::Ws, sock.clone()),
-        )],
-        [("127.0.0.1:80".parse().unwrap(), client)],
+        [(("127.0.0.1".to_string(), 80), sock.clone())],
+        [(sock.clone(), client)],
     );
     let ws = MockWs::new([("127.0.0.1".to_string(), WsAction::Open)]);
 
@@ -733,15 +723,11 @@ async fn different_configurations() {
 
 #[tokio::test]
 async fn failed_handshake() {
-    let peer = SchemeHostPort::new(Scheme::Ws, "127.0.0.1".to_string(), 80);
     let sock: SocketAddr = "127.0.0.1:80".parse().unwrap();
     let (client, _server) = duplex(128);
     let ext = MockExternalConnections::new(
-        [(
-            peer.clone(),
-            SchemeSocketAddr::new(Scheme::Ws, sock.clone()),
-        )],
-        [("127.0.0.1:80".parse().unwrap(), client)],
+        [(("127.0.0.1".to_string(), 80), sock.clone())],
+        [(sock.clone(), client)],
     );
 
     let ws = MockWs::new([(
