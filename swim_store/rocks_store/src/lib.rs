@@ -44,14 +44,8 @@ impl RocksEngine {
         }
     }
 
+    /// Returns an iterator over the entire store.
     pub fn iterator<'a: 'b, 'b>(
-        &'a self,
-        space: &'b <Self as KeyspaceResolver>::ResolvedKeyspace,
-    ) -> Result<RocksIterator<'b>, StoreError> {
-        self.iterator_opt(space)
-    }
-
-    pub fn iterator_opt<'a: 'b, 'b>(
         &'a self,
         space: &'b <Self as KeyspaceResolver>::ResolvedKeyspace,
     ) -> Result<RocksIterator<'b>, StoreError> {
@@ -68,17 +62,10 @@ impl RocksEngine {
         space: &'b <Self as KeyspaceResolver>::ResolvedKeyspace,
         prefix: &'b [u8],
     ) -> Result<RocksPrefixIterator<'b>, StoreError> {
-        self.prefix_iterator_opt(space, prefix)
-    }
-
-    pub fn prefix_iterator_opt<'a: 'b, 'b>(
-        &'a self,
-        space: &'b <Self as KeyspaceResolver>::ResolvedKeyspace,
-        prefix: &'b [u8],
-    ) -> Result<RocksPrefixIterator<'b>, StoreError> {
         let it = self.delegate.prefix_iterator_cf(space, prefix);
         Ok(it.into())
     }
+
 }
 
 impl Store for RocksEngine {
