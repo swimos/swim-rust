@@ -18,14 +18,14 @@ use crate::downlink_lifecycle::on_synced::{OnSynced, OnSyncedShared};
 
 pub trait OnMapSynced<K, V, Context>: OnSynced<HashMap<K, V>, Context> {}
 
-impl<K, V, Context, L> OnMapSynced<K, V, Context> for L
-where
-    L: OnSynced<HashMap<K, V>, Context>,
-{}
+impl<K, V, Context, L> OnMapSynced<K, V, Context> for L where L: OnSynced<HashMap<K, V>, Context> {}
 
-pub trait OnMapSyncedShared<K, V, Context, Shared>: OnSyncedShared<HashMap<K, V>, Context, Shared> {}
+pub trait OnMapSyncedShared<K, V, Context, Shared>:
+    OnSyncedShared<HashMap<K, V>, Context, Shared>
+{
+}
 
-impl<K, V, Context, Shared, L> OnMapSyncedShared<K, V, Context, Shared> for L 
-where
-    L: OnSyncedShared<HashMap<K, V>, Context, Shared>,
-{}
+impl<K, V, Context, Shared, L> OnMapSyncedShared<K, V, Context, Shared> for L where
+    L: OnSyncedShared<HashMap<K, V>, Context, Shared>
+{
+}

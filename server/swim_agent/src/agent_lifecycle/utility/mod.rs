@@ -18,8 +18,8 @@ use std::hash::Hash;
 use std::{collections::HashMap, marker::PhantomData};
 
 use futures::{Future, FutureExt};
-use swim_form::Form;
 use swim_form::structural::read::recognizer::RecognizerReadable;
+use swim_form::Form;
 use swim_model::address::Address;
 use swim_utilities::routing::route_uri::RouteUri;
 
@@ -48,11 +48,13 @@ use crate::{
     },
 };
 
+pub use self::downlink_builder::event::{
+    StatefulEventDownlinkBuilder, StatelessEventDownlinkBuilder,
+};
 pub use self::downlink_builder::map::{StatefulMapDownlinkBuilder, StatelessMapDownlinkBuilder};
 pub use self::downlink_builder::value::{
     StatefulValueDownlinkBuilder, StatelessValueDownlinkBuilder,
 };
-pub use self::downlink_builder::event::{StatefulEventDownlinkBuilder, StatelessEventDownlinkBuilder};
 pub use self::join_value_builder::{StatefulJoinValueLaneBuilder, StatelessJoinValueLaneBuilder};
 
 mod downlink_builder;

@@ -35,9 +35,9 @@ pub mod on_linked;
 pub mod on_synced;
 pub mod on_unlinked;
 
-/// Trait for the lifecycle of an join value lane lifecycle (in fac, a specialized event downlink 
+/// Trait for the lifecycle of an join value lane lifecycle (in fac, a specialized event downlink
 /// lifecycle).
-/// 
+///
 /// #Node
 /// All implementations of this interface must be [`Clone`] as it needs to be duplicated for each
 /// entry in the join value lane map.

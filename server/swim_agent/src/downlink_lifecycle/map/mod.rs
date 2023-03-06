@@ -31,13 +31,14 @@ use self::{
 use super::{
     on_failed::{OnFailed, OnFailedShared},
     on_linked::{OnLinked, OnLinkedShared},
-    on_unlinked::{OnUnlinked, OnUnlinkedShared}, on_synced::OnSynced,
+    on_synced::OnSynced,
+    on_unlinked::{OnUnlinked, OnUnlinkedShared},
 };
 
 pub mod on_clear;
 pub mod on_remove;
-pub mod on_update;
 pub mod on_synced;
+pub mod on_update;
 
 /// Trait for the lifecycle of a map downlink.
 ///

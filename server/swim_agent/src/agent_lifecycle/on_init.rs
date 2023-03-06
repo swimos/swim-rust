@@ -168,16 +168,15 @@ where
     F: Clone,
 {
     fn clone(&self) -> Self {
-        Self { 
-            _type: PhantomData, 
-            projection: self.projection, 
-            lifecycle_fac: self.lifecycle_fac.clone() 
+        Self {
+            _type: PhantomData,
+            projection: self.projection,
+            lifecycle_fac: self.lifecycle_fac.clone(),
         }
     }
 }
 
 impl<Context, Shared, K, V, F> RegisterJoinValue<Context, Shared, K, V, F> {
-    
     /// #Arguments
     /// * `projection` - Projection from the agent type to the lane.
     /// * `lifecycle_fac` - A factory that will create lifecycle instances for each key of the

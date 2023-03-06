@@ -50,7 +50,6 @@ pub struct JoinValueDownlink<K, V, LC, Context> {
 }
 
 impl<K, V, LC, Context> JoinValueDownlink<K, V, LC, Context> {
-    
     /// #Arguments
     /// * `projection` - Projection from the agent to the join value lane.
     /// * `key` - The key in the join value lane associated with the downlink.

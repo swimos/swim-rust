@@ -22,14 +22,18 @@ use crate::{
     agent_model::downlink::OpenEventDownlinkAction,
     config::SimpleDownlinkConfig,
     downlink_lifecycle::{
+        event::{
+            on_event::{OnConsumeEvent, OnConsumeEventShared},
+            StatefulEventDownlinkLifecycle, StatefulEventLifecycle,
+            StatelessEventDownlinkLifecycle, StatelessEventLifecycle,
+        },
         on_failed::{OnFailed, OnFailedShared},
         on_linked::{OnLinked, OnLinkedShared},
         on_synced::{OnSynced, OnSyncedShared},
         on_unlinked::{OnUnlinked, OnUnlinkedShared},
-        event::{StatelessEventDownlinkLifecycle, StatefulEventDownlinkLifecycle, on_event::{OnConsumeEvent, OnConsumeEventShared}, StatelessEventLifecycle, StatefulEventLifecycle},
     },
     event_handler::EventHandler,
-    lifecycle_fn::{WithHandlerContext},
+    lifecycle_fn::WithHandlerContext,
 };
 
 /// A builder for constructing an event downlink. Each lifecycle event handler is independent and, by
@@ -218,9 +222,7 @@ where
 {
     /// Complete the downlink and create a [`HandlerAction`] that will open the downlink when it is
     /// executed.
-    pub fn done(
-        self,
-    ) -> impl EventHandler<Context> + Send + 'static {
+    pub fn done(self) -> impl EventHandler<Context> + Send + 'static {
         let StatelessEventDownlinkBuilder {
             address,
             config,
@@ -339,7 +341,6 @@ where
             inner: inner.on_event(handler),
         }
     }
-
 }
 
 impl<Context, State, T, LC> StatefulEventDownlinkBuilder<Context, T, State, LC>
@@ -351,9 +352,7 @@ where
 {
     /// Complete the downlink and create a [`HandlerAction`] that will open the downlink when it is
     /// executed.
-    pub fn done(
-        self,
-    ) -> impl EventHandler<Context> + Send + 'static {
+    pub fn done(self) -> impl EventHandler<Context> + Send + 'static {
         let StatefulEventDownlinkBuilder {
             address,
             config,

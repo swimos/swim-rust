@@ -243,7 +243,8 @@ fn construct_join_init(
     agent_type: &Path,
     lifecycle_type: &Type,
 ) -> impl ToTokens {
-    let base = quote!(<#root::agent_lifecycle::on_init::InitNil as ::core::default::Default>::default());
+    let base =
+        quote!(<#root::agent_lifecycle::on_init::InitNil as ::core::default::Default>::default());
     join_inits.iter().rev().fold(base, |acc, init| {
         let item_name = init.item_ident();
         let lifecycle = init.lifecycle;
