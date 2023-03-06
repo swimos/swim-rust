@@ -31,13 +31,13 @@ use self::{
 use super::{
     on_failed::{OnFailed, OnFailedShared},
     on_linked::{OnLinked, OnLinkedShared},
-    on_unlinked::{OnUnlinked, OnUnlinkedShared},
+    on_unlinked::{OnUnlinked, OnUnlinkedShared}, on_synced::OnSynced,
 };
 
 pub mod on_clear;
 pub mod on_remove;
-pub mod on_synced;
 pub mod on_update;
+pub mod on_synced;
 
 /// Trait for the lifecycle of a map downlink.
 ///
@@ -67,6 +67,12 @@ impl<LC, K, V, Context> MapDownlinkLifecycle<K, V, Context> for LC where
 {
 }
 
+/// A lifecycle for a map downlink where the individual event handlers do not share state.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `K` - The type of the keys for the map.
+/// * `V` - The type of the values for the map.
 pub trait StatelessMapLifecycle<Context, K, V>: MapDownlinkLifecycle<K, V, Context> {
     type WithOnLinked<H>: StatelessMapLifecycle<Context, K, V>
     where
@@ -133,6 +139,13 @@ pub trait StatelessMapLifecycle<Context, K, V>: MapDownlinkLifecycle<K, V, Conte
     fn with_shared_state<Shared: Send>(self, shared: Shared) -> Self::WithShared<Shared>;
 }
 
+/// A lifecycle for a map downlink where the individual event handlers have shared state.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `Shared` - The type of the shared state.
+/// * `K` - The type of the keys for the map.
+/// * `V` - The type of the values for the map.
 pub trait StatefulMapLifecycle<Context, Shared, K, V>: MapDownlinkLifecycle<K, V, Context> {
     type WithOnLinked<H>: StatefulMapLifecycle<Context, Shared, K, V>
     where
@@ -193,7 +206,7 @@ pub trait StatefulMapLifecycle<Context, Shared, K, V>: MapDownlinkLifecycle<K, V
         FnHandler<F>: OnDownlinkClearShared<K, V, Context, Shared>;
 }
 
-/// A lifecycle for a map downlink .
+/// A lifecycle for a map downlink where the event handlers do not share state..
 ///
 /// #Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
@@ -206,7 +219,6 @@ pub trait StatefulMapLifecycle<Context, Shared, K, V>: MapDownlinkLifecycle<K, V
 /// * `FUpd` - The type of the 'on_update' handler.
 /// * `FRem` - The type of the 'on_remove' handler.
 /// * `FClr` - The type of the 'on_clear' handler.
-///
 #[derive(Debug)]
 pub struct StatelessMapDownlinkLifecycle<
     Context,
@@ -245,7 +257,7 @@ impl<Context, K, V> Default for StatelessMapDownlinkLifecycle<Context, K, V> {
     }
 }
 
-/// A lifecycle for a map downlink where the individual event handlers can shared state.
+/// A lifecycle for a map downlink where the individual event handlers can share state.
 ///
 /// #Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
@@ -259,7 +271,6 @@ impl<Context, K, V> Default for StatelessMapDownlinkLifecycle<Context, K, V> {
 /// * `FUpd` - The type of the 'on_update' handler.
 /// * `FRem` - The type of the 'on_remove' handler.
 /// * `FClr` - The type of the 'on_clear' handler.
-///
 #[derive(Debug)]
 pub struct StatefulMapDownlinkLifecycle<
     Context,
@@ -412,7 +423,7 @@ where
 }
 
 impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
-    OnMapSynced<K, V, Context>
+    OnSynced<HashMap<K, V>, Context>
     for StatelessMapDownlinkLifecycle<
         Context,
         K,
@@ -1013,7 +1024,7 @@ where
 }
 
 impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
-    OnMapSynced<K, V, Context>
+    OnSynced<HashMap<K, V>, Context>
     for StatefulMapDownlinkLifecycle<
         Context,
         State,

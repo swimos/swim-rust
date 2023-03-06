@@ -55,7 +55,7 @@ impl<LC, T, Context> EventDownlinkLifecycle<T, Context> for LC where
 {
 }
 
-/// A lifecycle for an event downlink where the individual event handlers can shared state.
+/// A lifecycle for an event downlink where the individual event handlers can share state.
 ///
 /// #Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
@@ -66,7 +66,6 @@ impl<LC, T, Context> EventDownlinkLifecycle<T, Context> for LC where
 /// * `FUnlinked` - The type of the 'on_unlinked' handler.
 /// * `FFailed` - The type of the 'on_failed' handler.
 /// * `FEv` - The type of the 'on_event' handler.
-///
 #[derive(Debug)]
 pub struct StatefulEventDownlinkLifecycle<
     Context,
@@ -409,6 +408,11 @@ where
     }
 }
 
+/// A lifecycle for an event downlink where the individual event handlers do not share state.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `T` - The type of the downlink.
 pub trait StatelessEventLifecycle<Context, T>: EventDownlinkLifecycle<T, Context> {
     type WithOnLinked<H>: StatelessEventLifecycle<Context, T>
     where
@@ -457,6 +461,12 @@ pub trait StatelessEventLifecycle<Context, T>: EventDownlinkLifecycle<T, Context
     fn with_shared_state<Shared: Send>(self, shared: Shared) -> Self::WithShared<Shared>;
 }
 
+/// A lifecycle for an event downlink where the individual event handlers have shared state.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `Shared` - The type of the shared state.
+/// * `T` - The type of the downlink.
 pub trait StatefulEventLifecycle<Context, Shared, T>: EventDownlinkLifecycle<T, Context> {
     type WithOnLinked<H>: StatefulEventLifecycle<Context, Shared, T>
     where
@@ -499,11 +509,10 @@ pub trait StatefulEventLifecycle<Context, Shared, T>: EventDownlinkLifecycle<T, 
         FnHandler<F>: OnConsumeEventShared<T, Context, Shared>;
 }
 
-/// A lifecycle for an event downlink where the individual event handlers can shared state.
+/// A lifecycle for an event downlink where the individual event handlers dno not share state.
 ///
 /// #Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
-/// * `State` - The type of the shared state.
 /// * `T` - The type of the downlink.
 /// * `FLinked` - The type of the 'on_linked' handler.
 /// * `FSynced` - The type of the 'on_synced' handler.

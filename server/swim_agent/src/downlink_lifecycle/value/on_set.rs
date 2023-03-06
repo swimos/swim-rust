@@ -46,7 +46,7 @@ pub trait OnDownlinkSetShared<T, Context, Shared>: Send {
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `previous` - The previous value.
-    /// * `value` - The new value.
+    /// * `new_value` - The new value.
     fn on_set<'a>(
         &'a self,
         shared: &'a Shared,

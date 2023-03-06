@@ -14,137 +14,18 @@
 
 use std::collections::HashMap;
 
-use swim_api::handlers::{FnHandler, NoHandler};
+use crate::downlink_lifecycle::on_synced::{OnSynced, OnSyncedShared};
 
-use crate::{
-    agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventFn, EventHandler, UnitHandler},
-    lifecycle_fn::{LiftShared, WithHandlerContext},
-};
+pub trait OnMapSynced<K, V, Context>: OnSynced<HashMap<K, V>, Context> {}
 
-/// Lifecycle event for the `on_synced` event of a downlink, from an agent.
-pub trait OnMapSynced<K, V, Context>: Send {
-    type OnSyncedHandler<'a>: EventHandler<Context> + 'a
-    where
-        Self: 'a;
-
-    /// #Arguments
-    /// * `map` - The synced state of the map.
-    fn on_synced<'a>(&'a self, map: &HashMap<K, V>) -> Self::OnSyncedHandler<'a>;
-}
-
-/// Lifecycle event for the `on_synced` event of a downlink, from an agent,where the event
-/// handler has shared state with other handlers for the same downlink.
-pub trait OnMapSyncedShared<K, V, Context, Shared>: Send {
-    type OnSyncedHandler<'a>: EventHandler<Context> + 'a
-    where
-        Self: 'a,
-        Shared: 'a;
-
-    /// #Arguments
-    /// * `shared` - The shared state.
-    /// * `handler_context` - Utility for constructing event handlers.
-    /// * `map` - The synced state of the map.
-    fn on_synced<'a>(
-        &'a self,
-        shared: &'a Shared,
-        handler_context: HandlerContext<Context>,
-        map: &HashMap<K, V>,
-    ) -> Self::OnSyncedHandler<'a>;
-}
-
-impl<K, V, Context> OnMapSynced<K, V, Context> for NoHandler {
-    type OnSyncedHandler<'a> = UnitHandler
-    where
-        Self: 'a;
-
-    fn on_synced<'a>(&'a self, _map: &HashMap<K, V>) -> Self::OnSyncedHandler<'a> {
-        UnitHandler::default()
-    }
-}
-
-impl<K, V, Context, Shared> OnMapSyncedShared<K, V, Context, Shared> for NoHandler {
-    type OnSyncedHandler<'a> = UnitHandler
-    where
-        Self: 'a,
-        Shared: 'a;
-
-    fn on_synced<'a>(
-        &'a self,
-        _shared: &'a Shared,
-        _handler_context: HandlerContext<Context>,
-        _map: &HashMap<K, V>,
-    ) -> Self::OnSyncedHandler<'a> {
-        UnitHandler::default()
-    }
-}
-
-impl<K, V, Context, F, H> OnMapSynced<K, V, Context> for FnHandler<F>
+impl<K, V, Context, L> OnMapSynced<K, V, Context> for L
 where
-    F: Fn(&HashMap<K, V>) -> H + Send,
-    H: EventHandler<Context> + 'static,
-{
-    type OnSyncedHandler<'a> = H
-    where
-        Self: 'a;
+    L: OnSynced<HashMap<K, V>, Context>,
+{}
 
-    fn on_synced<'a>(&'a self, map: &HashMap<K, V>) -> Self::OnSyncedHandler<'a> {
-        let FnHandler(f) = self;
-        f(map)
-    }
-}
+pub trait OnMapSyncedShared<K, V, Context, Shared>: OnSyncedShared<HashMap<K, V>, Context, Shared> {}
 
-impl<K, V, Context, Shared, F> OnMapSyncedShared<K, V, Context, Shared> for FnHandler<F>
+impl<K, V, Context, Shared, L> OnMapSyncedShared<K, V, Context, Shared> for L 
 where
-    F: for<'a> EventFn<'a, Context, Shared, HashMap<K, V>> + Send,
-{
-    type OnSyncedHandler<'a> = <F as EventFn<'a, Context, Shared, HashMap<K, V>>>::Handler
-    where
-        Self: 'a,
-        Shared: 'a;
-
-    fn on_synced<'a>(
-        &'a self,
-        shared: &'a Shared,
-        handler_context: HandlerContext<Context>,
-        map: &HashMap<K, V>,
-    ) -> Self::OnSyncedHandler<'a> {
-        let FnHandler(f) = self;
-        f.make_handler(shared, handler_context, map)
-    }
-}
-
-impl<Context, K, V, F, H> OnMapSynced<K, V, Context> for WithHandlerContext<F>
-where
-    F: Fn(HandlerContext<Context>, &HashMap<K, V>) -> H + Send,
-    H: EventHandler<Context> + 'static,
-{
-    type OnSyncedHandler<'a> = H
-    where
-        Self: 'a;
-
-    fn on_synced<'a>(&'a self, map: &HashMap<K, V>) -> Self::OnSyncedHandler<'a> {
-        let WithHandlerContext { inner } = self;
-        inner(Default::default(), map)
-    }
-}
-
-impl<K, V, Context, Shared, F> OnMapSyncedShared<K, V, Context, Shared> for LiftShared<F, Shared>
-where
-    F: OnMapSynced<K, V, Context> + Send,
-{
-    type OnSyncedHandler<'a> = F::OnSyncedHandler<'a>
-    where
-        Self: 'a,
-        Shared: 'a;
-
-    fn on_synced<'a>(
-        &'a self,
-        _shared: &'a Shared,
-        _handler_context: HandlerContext<Context>,
-        map: &HashMap<K, V>,
-    ) -> Self::OnSyncedHandler<'a> {
-        let LiftShared { inner, .. } = self;
-        inner.on_synced(map)
-    }
-}
+    L: OnSyncedShared<HashMap<K, V>, Context, Shared>,
+{}

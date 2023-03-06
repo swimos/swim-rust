@@ -59,7 +59,7 @@ impl<LC, T, Context> ValueDownlinkLifecycle<T, Context> for LC where
 {
 }
 
-/// A lifecycle for a value downlink where the individual event handlers can shared state.
+/// A lifecycle for a value downlink where the individual event handlers can share state.
 ///
 /// #Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
@@ -70,7 +70,7 @@ impl<LC, T, Context> ValueDownlinkLifecycle<T, Context> for LC where
 /// * `FUnlinked` - The type of the 'on_unlinked' handler.
 /// * `FFailed` - The type of the 'on_failed' handler.
 /// * `FEv` - The type of the 'on_event' handler.
-///
+/// * `FSet` - The type of the 'on_set' handler.
 #[derive(Debug)]
 pub struct StatefulValueDownlinkLifecycle<
     Context,
@@ -578,6 +578,11 @@ where
     }
 }
 
+/// A lifecycle for a value downlink where the individual event handlers do not share state.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `T` - The type of the downlink.
 pub trait StatelessValueLifecycle<Context, T>: ValueDownlinkLifecycle<T, Context> {
     type WithOnLinked<H>: StatelessValueLifecycle<Context, T>
     where
@@ -640,6 +645,12 @@ pub trait StatelessValueLifecycle<Context, T>: ValueDownlinkLifecycle<T, Context
     fn with_shared_state<Shared: Send>(self, shared: Shared) -> Self::WithShared<Shared>;
 }
 
+/// A lifecycle for a value downlink where the individual event handlers have shared state.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `Shared` - The type of the shared state.
+/// * `T` - The type of the downlink.
 pub trait StatefulValueLifecycle<Context, Shared, T>: ValueDownlinkLifecycle<T, Context> {
     type WithOnLinked<H>: StatefulValueLifecycle<Context, Shared, T>
     where
@@ -696,17 +707,17 @@ pub trait StatefulValueLifecycle<Context, Shared, T>: ValueDownlinkLifecycle<T, 
         BorrowHandler<F, B>: OnDownlinkSetShared<T, Context, Shared>;
 }
 
-/// A lifecycle for a value downlink where the individual event handlers can shared state.
+/// A lifecycle for a value downlink where the individual event handlers do not share state.
 ///
 /// #Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
-/// * `State` - The type of the shared state.
 /// * `T` - The type of the downlink.
 /// * `FLinked` - The type of the 'on_linked' handler.
 /// * `FSynced` - The type of the 'on_synced' handler.
 /// * `FUnlinked` - The type of the 'on_unlinked' handler.
 /// * `FFailed` - The type of the 'on_failed' handler.
 /// * `FEv` - The type of the 'on_event' handler.
+/// * `FSet` - The type of the 'on_set' handler.
 #[derive(Debug)]
 pub struct StatelessValueDownlinkLifecycle<
     Context,
@@ -1061,7 +1072,7 @@ where
 impl<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
     StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet>
 {
-    /// Add a state that is shared between the handlers of the lifeycle.
+    /// Add a state that is shared between the handlers of the lifecycle.
     pub fn with_state<State>(
         self,
         state: State,

@@ -40,6 +40,8 @@ use super::{
 #[cfg(test)]
 mod tests;
 
+/// Wraps a [`crate::lanes::join_value::JoinValueLaneLifecycle`] as an [`crate::downlink_lifecycle::event::EventDownlinkLifecycle`] to
+/// allow it to be executed on a downlink.
 pub struct JoinValueDownlink<K, V, LC, Context> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,
     key: K,
@@ -48,6 +50,12 @@ pub struct JoinValueDownlink<K, V, LC, Context> {
 }
 
 impl<K, V, LC, Context> JoinValueDownlink<K, V, LC, Context> {
+    
+    /// #Arguments
+    /// * `projection` - Projection from the agent to the join value lane.
+    /// * `key` - The key in the join value lane associated with the downlink.
+    /// * `lane` - Address of the remote lane to which the downlink will be attached.
+    /// * `lifecycle` - The join value lifecycle.
     pub fn new(
         projection: fn(&Context) -> &JoinValueLane<K, V>,
         key: K,
@@ -176,6 +184,8 @@ where
     }
 }
 
+/// An action that will alter the state of a key in the join value lane (to indicate whether
+/// it has an active downlink associated with it or not).
 pub struct AlterKeyState<K, V, Context> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,
     key: Option<K>,
@@ -228,6 +238,7 @@ where
     }
 }
 
+/// An event handler that cleans up after a downlink unlinks or fails.
 pub struct AfterClosed<K, V, Context> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,
     key: K,
@@ -304,6 +315,8 @@ impl<K, V, Context> HandlerTrans<LinkClosedResponse> for AfterClosedTrans<K, V, 
     }
 }
 
+/// An event handler that performs an update on the underlying map of a join value lane
+/// when a value is received on one of its downlinks.
 pub struct JoinValueLaneUpdate<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a JoinValueLane<K, V>,
     key_value: Option<(K, V)>,
@@ -347,6 +360,8 @@ where
     }
 }
 
+/// An event handler that gets the value associated with a key in the map and feeds it to
+/// the `on_synced` handler.
 pub struct RetrieveSynced<'a, Context, K, V, LC> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,
     lane: Address<&'a str>,

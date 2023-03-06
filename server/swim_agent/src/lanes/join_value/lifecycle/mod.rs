@@ -35,6 +35,17 @@ pub mod on_linked;
 pub mod on_synced;
 pub mod on_unlinked;
 
+/// Trait for the lifecycle of an join value lane lifecycle (in fac, a specialized event downlink 
+/// lifecycle).
+/// 
+/// #Node
+/// All implementations of this interface must be [`Clone`] as it needs to be duplicated for each
+/// entry in the join value lane map.
+///
+/// #Type Parameters
+/// * `K` - The key type of the join value lane.
+/// * `V` - THe value type of the join value lane.
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait JoinValueLaneLifecycle<K, V, Context>:
     OnJoinValueLinked<K, Context>
     + OnJoinValueSynced<K, V, Context>
@@ -53,22 +64,12 @@ impl<K, V, Context, L> JoinValueLaneLifecycle<K, V, Context> for L where
 {
 }
 
-pub trait JoinValueLaneLifecycleShared<K, V, Context, Shared>:
-    OnJoinValueLinkedShared<K, Context, Shared>
-    + OnJoinValueSyncedShared<K, V, Context, Shared>
-    + OnJoinValueUnlinkedShared<K, Context, Shared>
-    + OnJoinValueFailedShared<K, Context, Shared>
-{
-}
-
-impl<K, V, Context, Shared, L> JoinValueLaneLifecycleShared<K, V, Context, Shared> for L where
-    L: OnJoinValueLinkedShared<K, Context, Shared>
-        + OnJoinValueSyncedShared<K, V, Context, Shared>
-        + OnJoinValueUnlinkedShared<K, Context, Shared>
-        + OnJoinValueFailedShared<K, Context, Shared>
-{
-}
-
+/// A lifecycle for an join value downlink where the individual event handlers do not share state.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `K` - The key type of the join value lane.
+/// * `V` - THe value type of the join value lane.
 pub trait StatelessJoinValueLifecycle<Context, K, V>:
     JoinValueLaneLifecycle<K, V, Context>
 {
@@ -117,6 +118,13 @@ pub trait StatelessJoinValueLifecycle<Context, K, V>:
     fn with_shared_state<Shared: Send + Clone>(self, shared: Shared) -> Self::WithShared<Shared>;
 }
 
+/// A lifecycle for an join value downlink where the individual event handlers have shared state.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `Shared` - The type of the shared state.
+/// * `K` - The key type of the join value lane.
+/// * `V` - THe value type of the join value lane.
 pub trait StatefulJoinValueLifecycle<Context, Shared, K, V>:
     JoinValueLaneLifecycle<K, V, Context>
 {

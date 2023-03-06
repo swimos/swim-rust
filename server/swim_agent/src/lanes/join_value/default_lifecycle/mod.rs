@@ -24,6 +24,8 @@ use super::{
     LinkClosedResponse,
 };
 
+/// The default lifecycle for downlinks associated with join value lanes. This is used if no
+/// lifecycle is explicitly specified. The event handlers all do nothing.
 #[derive(Clone, Copy, Debug)]
 pub struct DefaultJoinValueLifecycle;
 
@@ -66,7 +68,7 @@ impl<Context, K> OnJoinValueUnlinked<K, Context> for DefaultJoinValueLifecycle {
         _key: K,
         _remote: Address<&str>,
     ) -> Self::OnJoinValueUnlinkedHandler<'a> {
-        ConstHandler::from(LinkClosedResponse::Abandon)
+        ConstHandler::from(LinkClosedResponse::default())
     }
 }
 
@@ -80,6 +82,6 @@ impl<Context, K> OnJoinValueFailed<K, Context> for DefaultJoinValueLifecycle {
         _key: K,
         _remote: Address<&str>,
     ) -> Self::OnJoinValueFailedHandler<'a> {
-        ConstHandler::from(LinkClosedResponse::Abandon)
+        ConstHandler::from(LinkClosedResponse::default())
     }
 }
