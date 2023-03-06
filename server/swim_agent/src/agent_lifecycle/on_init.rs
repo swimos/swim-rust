@@ -29,6 +29,8 @@ use crate::{
 
 use super::utility::JoinValueContext;
 
+/// Pre-initialization function for a agent. Allows for the initialization of the agent context
+/// before any event handlers run.
 pub trait OnInit<Context>: Send {
     /// Provides an opportunity for the lifecycle to perform any initial setup. This will be
     /// called immediately before the `on_start` event handler is executed.
@@ -104,6 +106,9 @@ where
 
 pub type InitNil = NoHandler;
 
+/// A heterogeneous list of initializers. This should be terminated with [`InitNil`]. Each
+/// initializer will be called in the order in which they occur in the list. This is intended
+/// for use by the lifecycle derivation macro.
 #[derive(Clone, Copy)]
 pub struct InitCons<L, R> {
     head: L,
@@ -151,13 +156,14 @@ where
     }
 }
 
-pub struct JoinValueInit<Context, Shared, K, V, F> {
+/// An initializer that will register the downlink lifecycle for a join value lane in the context.
+pub struct RegisterJoinValue<Context, Shared, K, V, F> {
     _type: PhantomData<fn(&Shared)>,
     projection: fn(&Context) -> &JoinValueLane<K, V>,
     lifecycle_fac: F,
 }
 
-impl<Context, Shared, K, V, F> Clone for JoinValueInit<Context, Shared, K, V, F>
+impl<Context, Shared, K, V, F> Clone for RegisterJoinValue<Context, Shared, K, V, F>
 where
     F: Clone,
 {
@@ -170,9 +176,14 @@ where
     }
 }
 
-impl<Context, Shared, K, V, F> JoinValueInit<Context, Shared, K, V, F> {
+impl<Context, Shared, K, V, F> RegisterJoinValue<Context, Shared, K, V, F> {
+    
+    /// #Arguments
+    /// * `projection` - Projection from the agent type to the lane.
+    /// * `lifecycle_fac` - A factory that will create lifecycle instances for each key of the
+    /// join value lane.
     pub fn new(projection: fn(&Context) -> &JoinValueLane<K, V>, lifecycle_fac: F) -> Self {
-        JoinValueInit {
+        RegisterJoinValue {
             _type: PhantomData,
             projection,
             lifecycle_fac,
@@ -181,7 +192,7 @@ impl<Context, Shared, K, V, F> JoinValueInit<Context, Shared, K, V, F> {
 }
 
 impl<Context, Shared, K, V, F, LC> OnInitShared<Context, Shared>
-    for JoinValueInit<Context, Shared, K, V, F>
+    for RegisterJoinValue<Context, Shared, K, V, F>
 where
     Context: 'static,
     K: Clone + Eq + Hash + Send + 'static,
@@ -197,7 +208,7 @@ where
         _meta: AgentMetadata,
         context: &Context,
     ) {
-        let JoinValueInit {
+        let RegisterJoinValue {
             projection,
             lifecycle_fac,
             ..

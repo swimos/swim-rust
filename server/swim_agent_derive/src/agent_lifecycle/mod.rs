@@ -248,7 +248,7 @@ fn construct_join_init(
         let item_name = init.item_ident();
         let lifecycle = init.lifecycle;
         let constructor = quote! {
-            #root::agent_lifecycle::on_init::JoinValueInit::new(|agent: &#agent_type| &agent.#item_name, #lifecycle_type::#lifecycle)
+            #root::agent_lifecycle::on_init::RegisterJoinValue::new(|agent: &#agent_type| &agent.#item_name, #lifecycle_type::#lifecycle)
         };
         quote!(#root::agent_lifecycle::on_init::InitCons::cons(#constructor, #acc))
     })
