@@ -23,6 +23,7 @@ use crate::{
     lifecycle_fn::{LiftShared, WithHandlerContextBorrow},
 };
 
+/// Lifecycle event for the `on_synced` event of a join value lane downlink.
 pub trait OnJoinValueSynced<K, V, Context>: Send {
     type OnJoinValueSyncedHandler<'a>: EventHandler<Context> + 'a
     where
@@ -36,6 +37,8 @@ pub trait OnJoinValueSynced<K, V, Context>: Send {
     ) -> Self::OnJoinValueSyncedHandler<'a>;
 }
 
+/// Lifecycle event for the `on_synced` event of a join value lane downlink, where the event
+/// handler has shared state with other handlers for the same downlink.
 pub trait OnJoinValueSyncedShared<K, V, Context, Shared>: Send {
     type OnJoinValueSyncedHandler<'a>: EventHandler<Context> + 'a
     where

@@ -24,6 +24,7 @@ use crate::{
 
 use super::JoinValueHandlerFn0;
 
+/// Lifecycle event for the `on_failed` event of a join value lane downlink.
 pub trait OnJoinValueFailed<K, Context>: Send {
     type OnJoinValueFailedHandler<'a>: HandlerAction<Context, Completion = LinkClosedResponse> + 'a
     where
@@ -33,6 +34,8 @@ pub trait OnJoinValueFailed<K, Context>: Send {
         -> Self::OnJoinValueFailedHandler<'a>;
 }
 
+/// Lifecycle event for the `on_failed` event of a join value lane downlink, where the event
+/// handler has shared state with other handlers for the same downlink.
 pub trait OnJoinValueFailedShared<K, Context, Shared>: Send {
     type OnJoinValueFailedHandler<'a>: HandlerAction<Context, Completion = LinkClosedResponse> + 'a
     where

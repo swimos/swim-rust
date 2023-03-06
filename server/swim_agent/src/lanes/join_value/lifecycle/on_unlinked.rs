@@ -24,6 +24,7 @@ use crate::{
 
 use super::JoinValueHandlerFn0;
 
+/// Lifecycle event for the `on_unlinked` event of a join value lane downlink.
 pub trait OnJoinValueUnlinked<K, Context>: Send {
     type OnJoinValueUnlinkedHandler<'a>: HandlerAction<Context, Completion = LinkClosedResponse>
         + 'a
@@ -37,6 +38,8 @@ pub trait OnJoinValueUnlinked<K, Context>: Send {
     ) -> Self::OnJoinValueUnlinkedHandler<'a>;
 }
 
+/// Lifecycle event for the `on_unlinked` event of a join value lane downlink, where the event
+/// handler has shared state with other handlers for the same downlink.
 pub trait OnJoinValueUnlinkedShared<K, Context, Shared>: Send {
     type OnJoinValueUnlinkedHandler<'a>: HandlerAction<Context, Completion = LinkClosedResponse>
         + 'a

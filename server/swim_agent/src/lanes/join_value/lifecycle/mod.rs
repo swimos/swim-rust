@@ -167,6 +167,15 @@ pub trait StatefulJoinValueLifecycle<Context, Shared, K, V>:
         FnHandler<F>: OnJoinValueFailedShared<K, Context, Shared>;
 }
 
+/// A lifecycle for a join value where the event handlers do not share state.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `K` - The type of the keys of the join value lane.
+/// * `V` - The type of the values of the join value lane.
+/// * `FLinked` - The type of the 'on_linked' handler.
+/// * `FSynced` - The type of the 'on_synced' handler.
+/// * `FUnlinked` - The type of the 'on_unlinked' handler.
 #[derive(Debug)]
 pub struct StatelessJoinValueLaneLifecycle<
     Context,
@@ -184,6 +193,16 @@ pub struct StatelessJoinValueLaneLifecycle<
     on_failed: FFailed,
 }
 
+/// A lifecycle for a join value where the event handlers can share state.
+///
+/// #Type Parameters
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `State` - The type of the shared state.
+/// * `K` - The type of the keys of the join value lane.
+/// * `V` - The type of the values of the join value lane.
+/// * `FLinked` - The type of the 'on_linked' handler.
+/// * `FSynced` - The type of the 'on_synced' handler.
+/// * `FUnlinked` - The type of the 'on_unlinked' handler.
 #[derive(Debug)]
 pub struct StatefulJoinValueLaneLifecycle<
     Context,

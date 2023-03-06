@@ -48,7 +48,7 @@ use super::{Lane, ProjTransform};
 
 type Inner<K, V> = MapStoreInner<K, V, WriteQueues<K>>;
 
-/// Model of a value lane. This maintain a sate consisting of a hash-map from keys to values. It generates an
+/// Model of a value lane. This maintains a sate consisting of a hash-map from keys to values. It generates an
 /// event whenever the map is updated (updating the value for a key, removing a key or clearing the map).
 ///
 /// TODO: This could be parameterized over the type of the hash (and potentially over the kind of the map,

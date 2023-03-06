@@ -50,12 +50,11 @@ mod tests;
 pub use downlink::{AfterClosed, JoinValueLaneUpdate};
 pub use init::LifecycleInitializer;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum DownlinkStatus {
-    Pending,
-    Linked,
-}
-
+/// Model of a join value lane. This is conceptually similar to a [`super::MapLane`] only, rather than the
+/// state being modified directly, it is populated through a series of downlinks associated with each
+/// key. Hence it maintains a view of the state of a number of remote values as a single map. In all
+/// other respects, it behaves as a map lane having the same event handlers and having the ability
+/// to persist its state.
 pub struct JoinValueLane<K, V> {
     inner: MapLane<K, V>,
     keys: RefCell<HashMap<K, DownlinkStatus>>,
@@ -95,6 +94,12 @@ where
     {
         self.inner.get_map(f)
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DownlinkStatus {
+    Pending,
+    Linked,
 }
 
 impl<K, V> AgentItem for JoinValueLane<K, V> {

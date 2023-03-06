@@ -23,6 +23,7 @@ use crate::{
 
 use super::JoinValueHandlerFn0;
 
+/// Lifecycle event for the `on_linked` event of a join value lane downlink.
 pub trait OnJoinValueLinked<K, Context>: Send {
     type OnJoinValueLinkedHandler<'a>: EventHandler<Context> + 'a
     where
@@ -32,6 +33,8 @@ pub trait OnJoinValueLinked<K, Context>: Send {
         -> Self::OnJoinValueLinkedHandler<'a>;
 }
 
+/// Lifecycle event for the `on_linked` event of a join value lane downlink, where the event
+/// handler has shared state with other handlers for the same downlink.
 pub trait OnJoinValueLinkedShared<K, Context, Shared>: Send {
     type OnJoinValueLinkedHandler<'a>: EventHandler<Context> + 'a
     where
