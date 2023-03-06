@@ -65,7 +65,6 @@ impl RocksEngine {
         let it = self.delegate.prefix_iterator_cf(space, prefix);
         Ok(it.into())
     }
-
 }
 
 impl Store for RocksEngine {
