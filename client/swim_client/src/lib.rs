@@ -13,22 +13,25 @@
 // limitations under the License.
 
 use ratchet::NoExtProvider;
-use runtime::downlink::{DownlinkOperationResult, StatefulDownlinkView};
+use std::future::Future;
 
-use runtime::runtime::{start_runtime, DownlinkRuntimeError, RawHandle, RemotePath, Transport};
-use runtime::ClientConfig;
+use runtime::{
+    start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, RemotePath, Transport,
+};
 use std::sync::Arc;
 use swim_api::downlink::DownlinkConfig;
 use swim_downlink::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
-use swim_downlink::{DownlinkTask, ValueDownlinkModel};
+use swim_downlink::{DownlinkTask, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation};
 use swim_form::Form;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use swim_runtime::net::dns::Resolver;
 use swim_runtime::net::plain::TokioPlainTextNetworking;
 use swim_runtime::ws::ext::RatchetNetworking;
-use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
-use tokio::sync::{mpsc, watch};
+use swim_utilities::{non_zero_usize, trigger};
+use tokio::sync::mpsc::error::SendError;
+use tokio::sync::oneshot::error::RecvError;
+use tokio::sync::{mpsc, oneshot};
 pub use url::Url;
 
 #[derive(Debug)]
@@ -39,15 +42,18 @@ pub struct SwimClient {
 
 impl SwimClient {
     /// Returns a new client that has been built with the default configuration.
-    pub async fn new() -> SwimClient {
+    pub async fn new() -> (SwimClient, impl Future<Output = ()> + Send) {
         SwimClient::with_config(ClientConfig::default()).await
     }
 
     /// Returns a new client that has been built with the provided configuration.
-    pub async fn with_config(config: ClientConfig) -> SwimClient {
+    pub async fn with_config(
+        config: ClientConfig,
+    ) -> (SwimClient, impl Future<Output = ()> + Send) {
         let ClientConfig {
             websocket,
             remote_buffer_size,
+            transport_buffer_size,
             ..
         } = config;
 
@@ -57,24 +63,31 @@ impl SwimClient {
             subprotocols: Default::default(),
         };
         let networking = TokioPlainTextNetworking::new(Arc::new(Resolver::new().await));
-        let (handle, stop_tx) =
-            start_runtime(Transport::new(networking, websockets, remote_buffer_size));
-        SwimClient {
+        let (stop_tx, stop_rx) = trigger::trigger();
+        let (handle, task) = start_runtime(
+            non_zero_usize!(128),
+            stop_rx,
+            Transport::new(networking, websockets, remote_buffer_size),
+            transport_buffer_size,
+        );
+        let client = SwimClient {
             stop_tx,
             handle: ClientHandle {
                 inner: Arc::new(handle),
             },
-        }
+        };
+        (client, task)
     }
 
     /// Returns a reference to a cloneable handle which may be used to open downlinks.
-    pub fn handle(&self) -> &ClientHandle {
-        &self.handle
+    pub fn handle(&self) -> ClientHandle {
+        self.handle.clone()
     }
 
-    /// Triggers the runtime to shutdown.
-    pub fn shutdown(self) {
+    /// Triggers the runtime to shutdown and awaits its competition.
+    pub async fn shutdown(self) {
         self.stop_tx.trigger();
+        self.handle.completed().await;
     }
 }
 
@@ -85,16 +98,19 @@ pub struct ClientHandle {
 }
 
 impl ClientHandle {
+    /// Returns a future that completes when the runtime has shutdown.
+    pub async fn completed(&self) {
+        self.inner.completed().await;
+    }
+
     /// Returns a value downlink builder initialised with the default options.
     ///
     /// # Arguments
     /// * `path` - The path of the downlink top open.
-    /// * `default` - The initial, local, state of the downlink.
     pub fn value_downlink<L, T>(
         &self,
         path: RemotePath,
-        default: T,
-    ) -> ValueDownlinkBuilder<'_, BasicValueDownlinkLifecycle<T>, T> {
+    ) -> ValueDownlinkBuilder<'_, BasicValueDownlinkLifecycle<T>> {
         ValueDownlinkBuilder {
             handle: self,
             lifecycle: BasicValueDownlinkLifecycle::default(),
@@ -102,32 +118,29 @@ impl ClientHandle {
             options: DownlinkOptions::SYNC,
             runtime_config: Default::default(),
             downlink_config: Default::default(),
-            default,
         }
     }
 }
 
 /// A builder for value downlinks.
-pub struct ValueDownlinkBuilder<'h, L, T> {
+pub struct ValueDownlinkBuilder<'h, L> {
     handle: &'h ClientHandle,
     lifecycle: L,
     path: RemotePath,
     options: DownlinkOptions,
     runtime_config: DownlinkRuntimeConfig,
     downlink_config: DownlinkConfig,
-    default: T,
 }
 
-impl<'h, L, T> ValueDownlinkBuilder<'h, L, T> {
+impl<'h, L> ValueDownlinkBuilder<'h, L> {
     /// Sets a new lifecycle that to be used.
-    pub fn lifecycle<NL>(self, lifecycle: NL) -> ValueDownlinkBuilder<'h, NL, T> {
+    pub fn lifecycle<NL>(self, lifecycle: NL) -> ValueDownlinkBuilder<'h, NL> {
         let ValueDownlinkBuilder {
             handle,
             path,
             options,
             runtime_config,
             downlink_config,
-            default,
             ..
         } = self;
         ValueDownlinkBuilder {
@@ -137,7 +150,6 @@ impl<'h, L, T> ValueDownlinkBuilder<'h, L, T> {
             options,
             runtime_config,
             downlink_config,
-            default,
         }
     }
 
@@ -160,61 +172,80 @@ impl<'h, L, T> ValueDownlinkBuilder<'h, L, T> {
     }
 
     /// Attempts to open the downlink.
-    pub async fn open(self) -> Result<ValueDownlinkView<T>, Arc<DownlinkRuntimeError>>
+    pub async fn open<T>(self) -> Result<ValueDownlinkView<T>, Arc<DownlinkRuntimeError>>
     where
         L: ValueDownlinkLifecycle<T> + Sync + 'static,
-        T: Send + Sync + Form + 'static,
+        T: Send + Sync + Form + Clone + 'static,
         T::Rec: Send,
     {
         let ValueDownlinkBuilder {
             handle,
             lifecycle,
             path,
-            default,
             options,
             runtime_config,
             downlink_config,
         } = self;
-        let current = Arc::new(default);
-        let (set_tx, set_rx) = mpsc::channel::<T>(downlink_config.buffer_size.get());
-        let (get_tx, get_rx) = watch::channel::<Arc<T>>(current.clone());
-
-        let task = DownlinkTask::new(ValueDownlinkModel::new(set_rx, get_tx, lifecycle));
+        let (handle_tx, handle_rx) = mpsc::channel(downlink_config.buffer_size.get());
+        let task = DownlinkTask::new(ValueDownlinkModel::new(handle_rx, lifecycle));
         let stop_rx = handle
             .inner
             .run_downlink(path, runtime_config, downlink_config, options, task)
             .await?;
 
         Ok(ValueDownlinkView {
-            inner: StatefulDownlinkView {
-                current,
-                tx: set_tx,
-                rx: get_rx,
-                stop_rx,
-            },
+            tx: handle_tx,
+            stop_rx,
         })
+    }
+}
+
+pub enum ValueDownlinkOperationError {
+    NotYetSynced,
+    DownlinkStopped,
+}
+
+impl<T> From<SendError<T>> for ValueDownlinkOperationError {
+    fn from(_: SendError<T>) -> Self {
+        ValueDownlinkOperationError::DownlinkStopped
+    }
+}
+
+impl From<RecvError> for ValueDownlinkOperationError {
+    fn from(_: RecvError) -> Self {
+        ValueDownlinkOperationError::DownlinkStopped
+    }
+}
+
+impl From<NotYetSyncedError> for ValueDownlinkOperationError {
+    fn from(_: NotYetSyncedError) -> Self {
+        ValueDownlinkOperationError::NotYetSynced
     }
 }
 
 /// A view over a value downlink.
 #[derive(Debug, Clone)]
 pub struct ValueDownlinkView<T> {
-    inner: StatefulDownlinkView<T>,
+    tx: mpsc::Sender<ValueDownlinkOperation<T>>,
+    stop_rx: promise::Receiver<Result<(), DownlinkRuntimeError>>,
 }
 
 impl<T> ValueDownlinkView<T> {
-    /// Sets the state of the value downlink to 'to'.
-    pub async fn set(&self, to: T) -> DownlinkOperationResult<()> {
-        self.inner.set(to).await
+    /// Gets the most recent value of the downlink.
+    pub async fn get(&mut self) -> Result<T, ValueDownlinkOperationError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx.send(ValueDownlinkOperation::Get(tx)).await?;
+        rx.await?.map_err(Into::into)
     }
 
-    /// Returns a shared view of the most-recent state of this downlink.
-    pub fn get(&mut self) -> DownlinkOperationResult<Arc<T>> {
-        self.inner.get()
+    /// Sets the value of the downlink to 'to'
+    pub async fn set(&self, to: T) -> Result<(), ValueDownlinkOperationError> {
+        self.tx.send(ValueDownlinkOperation::Set(to)).await?;
+        Ok(())
     }
 
     /// Returns a receiver that completes with the result of downlink's internal task.
     pub fn stop_notification(&self) -> promise::Receiver<Result<(), DownlinkRuntimeError>> {
-        self.inner.stop_notification()
+        self.stop_rx.clone()
     }
 }

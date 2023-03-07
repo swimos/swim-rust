@@ -12,14 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod error;
-mod models;
-mod pending;
-#[cfg(test)]
-mod tests;
-mod transport;
-
-pub use error::*;
 use fnv::FnvHashMap;
 use futures::StreamExt;
 use futures_util::future::{Either, Fuse};
@@ -29,15 +21,20 @@ use ratchet::WebSocketStream;
 use std::borrow::Borrow;
 use std::collections::hash_map::Entry;
 use std::fmt::{Debug, Formatter};
+use std::future::Future;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Notify};
 use tokio::task::{JoinError, JoinHandle};
 use tracing::{debug, error, info, trace};
 use url::Url;
 use uuid::Uuid;
 
+use crate::error::{DownlinkErrorKind, DownlinkRuntimeError};
+use crate::models::{DownlinkRuntime, IdIssuer, Key, Peer, RemotePath};
+use crate::pending::{PendingConnections, PendingDownlink, Waiting};
+use crate::transport::{Transport, TransportHandle};
 use swim_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
 use swim_api::error::DownlinkFailureReason;
 use swim_model::address::Address;
@@ -47,20 +44,14 @@ use swim_runtime::downlink::{AttachAction, DownlinkOptions, DownlinkRuntimeConfi
 use swim_runtime::net::{ExternalConnections, Scheme, SchemeHostPort};
 use swim_runtime::ws::WsConnections;
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
+use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
-use swim_utilities::{non_zero_usize, trigger};
 
-pub use crate::runtime::models::RemotePath;
-use crate::runtime::models::{DownlinkRuntime, IdIssuer, Key, Peer};
-use crate::runtime::pending::{PendingConnections, PendingDownlink, Waiting};
-pub use crate::runtime::transport::Transport;
-use crate::runtime::transport::TransportHandle;
-
-type BoxedDownlink = Box<dyn Downlink + Send + Sync + 'static>;
+pub type BoxedDownlink = Box<dyn Downlink + Send + Sync + 'static>;
 type ByteChannel = (ByteWriter, ByteReader);
 type CallbackResult =
     Result<promise::Receiver<Result<(), DownlinkRuntimeError>>, Arc<DownlinkRuntimeError>>;
-type DownlinkCallback = oneshot::Sender<CallbackResult>;
+pub type DownlinkCallback = oneshot::Sender<CallbackResult>;
 
 impl Debug for DownlinkRegistrationRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -96,10 +87,14 @@ impl Debug for DownlinkRegistrationRequest {
 #[derive(Debug)]
 pub struct RawHandle {
     dispatch: mpsc::Sender<DownlinkRegistrationRequest>,
-    _task: JoinHandle<()>,
+    completed: Arc<Notify>,
 }
 
 impl RawHandle {
+    pub async fn completed(&self) {
+        self.completed.notified().await;
+    }
+
     pub async fn run_downlink<D>(
         &self,
         path: RemotePath,
@@ -192,31 +187,38 @@ enum RuntimeEvent {
 }
 
 /// Spawns a runtime task that uses the provided transport task and returns a handle that can be
-/// used to dispatch downlink registration requests and a trigger which can signal the runtime to
-/// shutdown.
-pub fn start_runtime<Net, Ws>(transport: Transport<Net, Ws>) -> (RawHandle, trigger::Sender)
+/// used to dispatch downlink registration requests.
+pub fn start_runtime<Net, Ws>(
+    registration_buffer_size: NonZeroUsize,
+    stop_rx: trigger::Receiver,
+    transport: Transport<Net, Ws>,
+    transport_buffer_size: NonZeroUsize,
+) -> (RawHandle, impl Future<Output = ()> + Send)
 where
     Net: ExternalConnections,
     Net::Socket: WebSocketStream,
     Ws: WsConnections<Net::Socket> + Send + Sync + 'static,
 {
-    let (requests_tx, requests_rx) = mpsc::channel(128);
-    let (remote_stop_tx, remote_stop_rx) = trigger::trigger();
-    let _task = tokio::spawn(runtime_task(transport, remote_stop_rx, requests_rx));
+    let (requests_tx, requests_rx) = mpsc::channel(registration_buffer_size.get());
+    let notified = Arc::new(Notify::new());
+    let completed = notified.clone();
+    let task = async move {
+        runtime_task(transport, transport_buffer_size, stop_rx, requests_rx).await;
+        completed.notify_waiters();
+    };
 
     (
         RawHandle {
             dispatch: requests_tx,
-            _task,
+            completed: notified,
         },
-        remote_stop_tx,
+        task,
     )
 }
 
-const TRANSPORT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
-
 async fn runtime_task<Net, Ws>(
     transport: Transport<Net, Ws>,
+    transport_buffer_size: NonZeroUsize,
     mut remote_stop_rx: trigger::Receiver,
     mut requests_rx: mpsc::Receiver<DownlinkRegistrationRequest>,
 ) where
@@ -224,7 +226,7 @@ async fn runtime_task<Net, Ws>(
     Net::Socket: WebSocketStream,
     Ws: WsConnections<Net::Socket> + Send + Sync + 'static,
 {
-    let (transport_tx, transport_rx) = mpsc::channel(TRANSPORT_BUFFER_SIZE.get());
+    let (transport_tx, transport_rx) = mpsc::channel(transport_buffer_size.get());
     let transport_handle = TransportHandle::new(transport_tx);
     let mut peers: FnvHashMap<SocketAddr, Peer> = FnvHashMap::default();
     let mut pending = PendingConnections::default();
@@ -607,7 +609,7 @@ async fn runtime_task<Net, Ws>(
                     }
                 }
                 if let Err(err) = result {
-                    let kind = key.kind;
+                    let kind = key.1;
                     error!(error = %err, address = %addr, kind = ?kind, "A downlink runtime task was either cancelled or panicked");
                 }
             }
@@ -658,7 +660,7 @@ async fn start_downlink_runtime(
     config: DownlinkRuntimeConfig,
     host: Text,
 ) -> RuntimeEvent {
-    let (rel_addr, kind, _) = key.parts();
+    let (rel_addr, kind) = key;
     let (in_tx, in_rx) = byte_channel(config.remote_buffer_size);
     let (out_tx, out_rx) = byte_channel(config.remote_buffer_size);
     let (done_tx, done_rx) = oneshot::channel();
@@ -673,7 +675,7 @@ async fn start_downlink_runtime(
     if attach.send(request).await.is_err() {
         return RuntimeEvent::DownlinkRuntimeStarted {
             sock: remote_addr,
-            key,
+            key: (rel_addr, kind),
             result: Err((DownlinkFailureReason::RemoteStopped, host)),
         };
     }
@@ -685,7 +687,7 @@ async fn start_downlink_runtime(
     if let Some(err) = err {
         return RuntimeEvent::DownlinkRuntimeStarted {
             sock: remote_addr,
-            key,
+            key: (rel_addr, kind),
             result: Err((err, host)),
         };
     }
@@ -694,7 +696,7 @@ async fn start_downlink_runtime(
     let runtime = DownlinkRuntime::new(identity, rel_addr.clone(), attachment_rx, kind, io, config);
     RuntimeEvent::DownlinkRuntimeStarted {
         sock: remote_addr,
-        key,
+        key: (rel_addr, kind),
         result: Ok((attachment_tx, runtime)),
     }
 }

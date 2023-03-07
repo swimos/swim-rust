@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::error::{DownlinkErrorKind, DownlinkRuntimeError};
-use crate::runtime::IdIssuer;
+use crate::error::{DownlinkErrorKind, DownlinkRuntimeError};
+use crate::models::IdIssuer;
 use fnv::FnvHashMap;
 use futures::StreamExt;
 use futures_util::future::BoxFuture;

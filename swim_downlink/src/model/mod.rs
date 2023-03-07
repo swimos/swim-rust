@@ -13,9 +13,8 @@
 // limitations under the License.
 
 use std::marker::PhantomData;
-use std::sync::Arc;
 
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, oneshot};
 
 use lifecycle::{
     BasicEventDownlinkLifecycle, BasicValueDownlinkLifecycle, EventDownlinkLifecycle,
@@ -24,9 +23,18 @@ use lifecycle::{
 
 pub mod lifecycle;
 
+#[derive(Debug, thiserror::Error, Copy, Clone, Eq, PartialEq)]
+#[error("Downlink not yet synced")]
+pub struct NotYetSyncedError;
+
+#[derive(Debug)]
+pub enum ValueDownlinkOperation<T> {
+    Set(T),
+    Get(oneshot::Sender<Result<T, NotYetSyncedError>>),
+}
+
 pub struct ValueDownlinkModel<T, LC> {
-    pub set_value: mpsc::Receiver<T>,
-    pub get_value: watch::Sender<Arc<T>>,
+    pub handle: mpsc::Receiver<ValueDownlinkOperation<T>>,
     pub lifecycle: LC,
 }
 
@@ -36,16 +44,8 @@ pub struct EventDownlinkModel<T, LC> {
 }
 
 impl<T, LC> ValueDownlinkModel<T, LC> {
-    pub fn new(
-        set_value: mpsc::Receiver<T>,
-        get_value: watch::Sender<Arc<T>>,
-        lifecycle: LC,
-    ) -> Self {
-        ValueDownlinkModel {
-            set_value,
-            get_value,
-            lifecycle,
-        }
+    pub fn new(handle: mpsc::Receiver<ValueDownlinkOperation<T>>, lifecycle: LC) -> Self {
+        ValueDownlinkModel { handle, lifecycle }
     }
 }
 
@@ -63,12 +63,10 @@ pub type DefaultValueDownlinkModel<T> = ValueDownlinkModel<T, BasicValueDownlink
 pub type DefaultEventDownlinkModel<T> = EventDownlinkModel<T, BasicEventDownlinkLifecycle<T>>;
 
 pub fn value_downlink<T>(
-    set_value: mpsc::Receiver<T>,
-    get_value: watch::Sender<Arc<T>>,
+    handle: mpsc::Receiver<ValueDownlinkOperation<T>>,
 ) -> DefaultValueDownlinkModel<T> {
     ValueDownlinkModel {
-        set_value,
-        get_value,
+        handle,
         lifecycle: Default::default(),
     }
 }
@@ -89,15 +87,9 @@ where
         F: Fn(LC) -> LC2,
         LC2: ValueDownlinkLifecycle<T>,
     {
-        let ValueDownlinkModel {
-            set_value,
-            get_value,
-            lifecycle,
-        } = self;
-
+        let ValueDownlinkModel { handle, lifecycle } = self;
         ValueDownlinkModel {
-            set_value,
-            get_value,
+            handle,
             lifecycle: f(lifecycle),
         }
     }

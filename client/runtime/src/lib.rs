@@ -12,33 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod downlink;
-pub mod runtime;
+#[cfg(test)]
+mod tests;
 
+mod error;
+mod models;
+mod pending;
+mod runtime;
+mod transport;
+
+pub use error::{DownlinkErrorKind, DownlinkRuntimeError, TimeoutElapsed};
+pub use models::RemotePath;
 use ratchet::WebSocketConfig;
-use std::fmt::{Debug, Formatter};
+pub use runtime::{start_runtime, RawHandle};
+use std::fmt::Debug;
 use std::num::NonZeroUsize;
 pub use swim_api::downlink::DownlinkKind;
 pub use swim_api::error::DownlinkTaskError;
 use swim_utilities::non_zero_usize;
+pub use transport::{Transport, TransportRequest};
+
+const TRANSPORT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
 
 #[non_exhaustive]
+#[derive(Debug)]
 pub struct ClientConfig {
     pub websocket: WebSocketConfig,
     pub remote_buffer_size: NonZeroUsize,
-}
-
-impl Debug for ClientConfig {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let ClientConfig {
-            websocket,
-            remote_buffer_size,
-        } = self;
-        f.debug_struct("ClientConfig")
-            .field("websocket", websocket)
-            .field("remote_buffer_size", remote_buffer_size)
-            .finish()
-    }
+    pub transport_buffer_size: NonZeroUsize,
 }
 
 impl Default for ClientConfig {
@@ -46,6 +47,7 @@ impl Default for ClientConfig {
         ClientConfig {
             websocket: WebSocketConfig::default(),
             remote_buffer_size: non_zero_usize!(4096),
+            transport_buffer_size: TRANSPORT_BUFFER_SIZE,
         }
     }
 }

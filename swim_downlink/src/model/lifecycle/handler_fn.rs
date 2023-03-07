@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use futures::Future;
-use std::sync::Arc;
 
 pub trait SharedHandlerFn0<'a, Shared> {
     type Fut: Future<Output = ()> + Send + 'a;
@@ -76,18 +75,18 @@ where
 pub trait SetFn<'a, T: ?Sized> {
     type Fut: Future<Output = ()> + Send + 'a;
 
-    fn apply(&'a mut self, previous: Option<&'a Arc<T>>, value: &'a T) -> Self::Fut;
+    fn apply(&'a mut self, previous: Option<&'a T>, value: &'a T) -> Self::Fut;
 }
 
 impl<'a, T, F, Fut> SetFn<'a, T> for F
 where
     T: ?Sized + 'static,
-    F: FnMut(Option<&'a Arc<T>>, &'a T) -> Fut,
+    F: FnMut(Option<&'a T>, &'a T) -> Fut,
     Fut: Future<Output = ()> + Send + 'a,
 {
     type Fut = Fut;
 
-    fn apply(&'a mut self, previous: Option<&'a Arc<T>>, value: &'a T) -> Self::Fut {
+    fn apply(&'a mut self, previous: Option<&'a T>, value: &'a T) -> Self::Fut {
         self(previous, value)
     }
 }
@@ -95,29 +94,19 @@ where
 pub trait SharedSetFn<'a, Shared, T: ?Sized> {
     type Fut: Future<Output = ()> + Send + 'a;
 
-    fn apply(
-        &'a mut self,
-        shared: &'a Shared,
-        previous: Option<&'a Arc<T>>,
-        value: &'a T,
-    ) -> Self::Fut;
+    fn apply(&'a mut self, shared: &'a Shared, previous: Option<&'a T>, value: &'a T) -> Self::Fut;
 }
 
 impl<'a, Shared, T, F, Fut> SharedSetFn<'a, Shared, T> for F
 where
     T: ?Sized + 'a,
     Shared: 'a,
-    F: FnMut(&'a Shared, Option<&'a Arc<T>>, &'a T) -> Fut,
+    F: FnMut(&'a Shared, Option<&'a T>, &'a T) -> Fut,
     Fut: Future<Output = ()> + Send + 'a,
 {
     type Fut = Fut;
 
-    fn apply(
-        &'a mut self,
-        shared: &'a Shared,
-        previous: Option<&'a Arc<T>>,
-        value: &'a T,
-    ) -> Self::Fut {
+    fn apply(&'a mut self, shared: &'a Shared, previous: Option<&'a T>, value: &'a T) -> Self::Fut {
         self(shared, previous, value)
     }
 }

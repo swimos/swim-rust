@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::runtime::models::{Key, RemotePath};
-use crate::runtime::{BoxedDownlink, DownlinkCallback, DownlinkRuntimeError};
+use crate::error::DownlinkRuntimeError;
+use crate::models::{Key, RemotePath};
+use crate::runtime::{BoxedDownlink, DownlinkCallback};
 use fnv::FnvHashMap;
 use futures::Stream;
 use futures_util::future::{BoxFuture, Either};
@@ -70,15 +71,11 @@ pub enum Waiting {
 impl<'f> PendingConnections<'f> {
     fn key(of: &PendingDownlink) -> Key {
         let PendingDownlink {
-            downlink,
-            address,
-            runtime_config: config,
-            ..
+            downlink, address, ..
         } = of;
-        Key::of(
+        (
             RelativeAddress::new(address.node.clone(), address.lane.clone()),
             downlink.kind(),
-            config,
         )
     }
 

@@ -13,10 +13,8 @@
 // limitations under the License.
 
 use fnv::FnvHashMap;
-use std::collections::hash_map::DefaultHasher;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
-use std::hash::{Hash, Hasher};
 use swim_api::downlink::DownlinkKind;
 use swim_model::address::RelativeAddress;
 use swim_model::Text;
@@ -27,35 +25,7 @@ use swim_utilities::trigger;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-#[derive(Debug, Hash, Clone, Eq, PartialEq)]
-pub struct Key {
-    pub address: RelativeAddress<Text>,
-    pub kind: DownlinkKind,
-    pub config_hash: u64,
-}
-
-impl Key {
-    pub fn of(
-        address: RelativeAddress<Text>,
-        kind: DownlinkKind,
-        config: &DownlinkRuntimeConfig,
-    ) -> Key {
-        Key {
-            address,
-            kind,
-            config_hash: hash(config),
-        }
-    }
-
-    pub fn parts(&self) -> (&RelativeAddress<Text>, DownlinkKind, u64) {
-        let Key {
-            address,
-            kind,
-            config_hash,
-        } = self;
-        (address, *kind, *config_hash)
-    }
-}
+pub type Key = (RelativeAddress<Text>, DownlinkKind);
 
 pub struct RuntimeView {
     stop: trigger::Sender,
@@ -187,12 +157,6 @@ impl DownlinkRuntime {
             }
         }
     }
-}
-
-pub fn hash<H: Hash>(h: H) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    h.hash(&mut hasher);
-    hasher.finish()
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
