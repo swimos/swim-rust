@@ -67,7 +67,7 @@ async fn transport_opens_connection_ok() {
     let sock: SocketAddr = "127.0.0.1:9001".parse().unwrap();
     let (client, server) = duplex(128);
     let ext = MockExternalConnections::new(
-        [(("127.0.0.1".to_string(), 9001), sock.clone())],
+        [(("127.0.0.1".to_string(), 9001), sock)],
         [(sock, client)],
     );
     let ws = MockWs::new([("127.0.0.1".to_string(), WsAction::Open)]);
@@ -147,8 +147,8 @@ async fn transport_opens_connection_err() {
     let sock: SocketAddr = "127.0.0.1:9001".parse().unwrap();
     let (client, _server) = duplex(128);
     let ext = MockExternalConnections::new(
-        [(("127.0.0.1".to_string(), 9001), sock.clone())],
-        [(sock.clone(), client)],
+        [(("127.0.0.1".to_string(), 9001), sock)],
+        [(sock, client)],
     );
     let ws = MockWs::new([(
         "127.0.0.1".to_string(),
@@ -287,8 +287,8 @@ fn start() -> Fixture {
     let sock: SocketAddr = "127.0.0.1:80".parse().unwrap();
     let (client, server) = duplex(128);
     let ext = MockExternalConnections::new(
-        [(("127.0.0.1".to_string(), 80), sock.clone())],
-        [(sock.clone(), client)],
+        [(("127.0.0.1".to_string(), 80), sock)],
+        [(sock, client)],
     );
     let ws = MockWs::new([("127.0.0.1".to_string(), WsAction::Open)]);
 
@@ -466,8 +466,8 @@ async fn failed_handshake() {
     let sock: SocketAddr = "127.0.0.1:80".parse().unwrap();
     let (client, _server) = duplex(128);
     let ext = MockExternalConnections::new(
-        [(("127.0.0.1".to_string(), 80), sock.clone())],
-        [(sock.clone(), client)],
+        [(("127.0.0.1".to_string(), 80), sock)],
+        [(sock, client)],
     );
 
     let ws = MockWs::new([(

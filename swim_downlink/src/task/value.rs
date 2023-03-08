@@ -156,7 +156,7 @@ where
                         {
                             Ok(Some(new_state)) => state = new_state,
                             Ok(None) => return Ok(()),
-                            Err(e) => return Err(e.into()),
+                            Err(e) => return Err(e),
                         }
                     }
                     Either::Right(Some(Err(e))) => return Err(e.into()),
@@ -176,7 +176,7 @@ where
                     {
                         Ok(Some(new_state)) => state = new_state,
                         Ok(None) => return Ok(()),
-                        Err(e) => return Err(e.into()),
+                        Err(e) => return Err(e),
                     }
                 }
                 return Ok(());
