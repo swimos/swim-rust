@@ -113,7 +113,7 @@ where
 
     plane_builder.add_route(
         pattern,
-        TestAgent::new(report_tx, event_tx, |uri, _conf| {
+        TestAgent::new(report_tx, event_tx, |uri, _route_params, _conf| {
             assert_eq!(uri, "/node");
         }),
     );

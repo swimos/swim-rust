@@ -107,8 +107,11 @@ fn make_uri() -> RouteUri {
     RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
-    AgentMetadata::new(uri, &CONFIG)
+fn make_meta<'a>(
+    uri: &'a RouteUri,
+    route_params: &'a HashMap<String, String>,
+) -> AgentMetadata<'a> {
+    AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
 struct TestAgent {
@@ -163,7 +166,8 @@ fn check_result<T: Eq + Debug>(
 #[test]
 fn join_value_lane_get_event_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
     let mut handler = JoinValueLaneGet::new(TestAgent::LANE, K1);
@@ -186,7 +190,8 @@ fn join_value_lane_get_event_handler() {
 #[test]
 fn join_value_lane_get_map_event_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
     let mut handler = JoinValueLaneGetMap::new(TestAgent::LANE);
@@ -300,7 +305,8 @@ const REMOTE_LANE: &str = "remote_lane";
 #[tokio::test]
 async fn join_value_lane_add_downlinks_event_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
     let address = Address::text(None, REMOTE_NODE, REMOTE_LANE);
@@ -362,7 +368,8 @@ fn register_lifecycle(
 #[tokio::test]
 async fn open_downlink_from_registered() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
     let address = Address::text(None, REMOTE_NODE, REMOTE_LANE);

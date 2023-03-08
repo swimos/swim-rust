@@ -185,8 +185,11 @@ fn make_uri() -> RouteUri {
     RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
-    AgentMetadata::new(uri, &CONFIG)
+fn make_meta<'a>(
+    uri: &'a RouteUri,
+    route_params: &'a HashMap<String, String>,
+) -> AgentMetadata<'a> {
+    AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
 fn run_handler_mod<Agent, H: EventHandler<Agent>>(
@@ -195,7 +198,8 @@ fn run_handler_mod<Agent, H: EventHandler<Agent>>(
     modified: Option<u64>,
 ) {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let mut join_value_init = HashMap::new();
     loop {
         match handler.step(&mut dummy_context(&mut join_value_init), meta, agent) {
@@ -1410,7 +1414,8 @@ fn register_join_value_lifecycle() {
     let mut join_value_init = HashMap::new();
     let mut action_context = dummy_context(&mut join_value_init);
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     lifecycle.initialize(&mut action_context, meta, &agent);
 
@@ -1459,7 +1464,8 @@ fn register_two_join_value_lifecycles() {
     let mut join_value_init = HashMap::new();
     let mut action_context = dummy_context(&mut join_value_init);
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     lifecycle.initialize(&mut action_context, meta, &agent);
 

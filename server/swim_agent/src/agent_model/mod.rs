@@ -253,11 +253,12 @@ where
     fn run(
         &self,
         route: RouteUri,
+        route_params: HashMap<String, String>,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
         self.clone()
-            .initialize_agent(route, config, context)
+            .initialize_agent(route, route_params, config, context)
             .boxed()
     }
 }
@@ -358,11 +359,13 @@ where
     ///
     /// #Arguments
     /// * `route` - The node URI for the agent instance.
+    /// * `route_params` - Parameters extracted from the route URI.
     /// * `config` - Agent specific configuration parameters.
     /// * `context` - Context through which to communicate with the runtime.
     async fn initialize_agent(
         self,
         route: RouteUri,
+        route_params: HashMap<String, String>,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> AgentInitResult
@@ -375,7 +378,7 @@ where
             lifecycle,
         } = self;
 
-        let meta = AgentMetadata::new(&route, &config);
+        let meta = AgentMetadata::new(&route, &route_params, &config);
 
         let mut value_like_lane_io = HashMap::new();
         let mut map_lane_io = HashMap::new();
@@ -537,6 +540,7 @@ where
             item_model,
             lifecycle,
             route,
+            route_params,
             config,
             item_ids,
             value_like_lane_io,
@@ -555,6 +559,7 @@ struct AgentTask<ItemModel, Lifecycle> {
     item_model: ItemModel,
     lifecycle: Lifecycle,
     route: RouteUri,
+    route_params: HashMap<String, String>,
     config: AgentConfig,
     item_ids: HashMap<u64, Text>,
     value_like_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
@@ -584,6 +589,7 @@ where
             item_model,
             lifecycle,
             route,
+            route_params,
             config,
             item_ids,
             value_like_lane_io,
@@ -594,7 +600,7 @@ where
             mut join_value_init,
             downlink_channels,
         } = self;
-        let meta = AgentMetadata::new(&route, &config);
+        let meta = AgentMetadata::new(&route, &route_params, &config);
 
         let mut item_ids_rev = HashMap::new();
         for (id, name) in &item_ids {

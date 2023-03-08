@@ -27,8 +27,10 @@ use swim_form::structural::write::StructuralWritable;
 use swim_runtime::agent::reporting::UplinkReportReader;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
+    routing::route_uri::RouteUri,
     trigger,
 };
+use thiserror::Error;
 use tokio::time::{Instant, Sleep};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
@@ -151,6 +153,22 @@ where
                 }
             }
             _ => {}
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("Invalid introspection URI: {route}. Missing parameter: {missing}")]
+struct MetaRouteError {
+    route: RouteUri,
+    missing: String,
+}
+
+impl MetaRouteError {
+    pub fn new(route: RouteUri, missing: &str) -> Self {
+        MetaRouteError {
+            route,
+            missing: missing.to_string(),
         }
     }
 }

@@ -215,8 +215,11 @@ fn make_uri() -> RouteUri {
     RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
-    AgentMetadata::new(uri, &CONFIG)
+fn make_meta<'a>(
+    uri: &'a RouteUri,
+    route_params: &'a HashMap<String, String>,
+) -> AgentMetadata<'a> {
+    AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
 fn run_handler<H>(mut handler: H, meta: AgentMetadata<'_>, agent: &TestAgent) -> Vec<Modification>
@@ -266,7 +269,8 @@ fn set_state_for(
 #[test]
 fn run_on_linked() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::default();
     let lifecycle = TestLifecycle::new(Default::default());
     let downlink_lifecycle = JoinValueDownlink::new(TestAgent::LANE, 4, make_address(), lifecycle);
@@ -287,7 +291,8 @@ fn run_on_linked() {
 #[test]
 fn run_on_event() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::default();
     let lifecycle = TestLifecycle::new(Default::default());
     let downlink_lifecycle = JoinValueDownlink::new(TestAgent::LANE, 4, make_address(), lifecycle);
@@ -316,7 +321,8 @@ fn run_on_event() {
 #[test]
 fn run_on_unlinked_abandon() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::default();
     set_state_for(
         &agent.lane,
@@ -346,7 +352,8 @@ fn run_on_unlinked_abandon() {
 #[test]
 fn run_on_unlinked_delete() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::default();
     set_state_for(
         &agent.lane,
@@ -388,7 +395,8 @@ fn run_on_unlinked_delete() {
 #[test]
 fn run_on_failed_abandon() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::default();
     set_state_for(
         &agent.lane,
@@ -418,7 +426,8 @@ fn run_on_failed_abandon() {
 #[test]
 fn run_on_failed_delete() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::default();
     set_state_for(
         &agent.lane,
@@ -448,7 +457,8 @@ fn run_on_failed_delete() {
 #[test]
 fn run_on_synced() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::default();
     set_state_for(
         &agent.lane,

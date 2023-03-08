@@ -197,13 +197,17 @@ fn make_uri() -> RouteUri {
     RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
-    AgentMetadata::new(uri, &CONFIG)
+fn make_meta<'a>(
+    uri: &'a RouteUri,
+    route_params: &'a HashMap<String, String>,
+) -> AgentMetadata<'a> {
+    AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
 fn run_test_handler(agent: &TestAgent, lifecycle: TestLifecycle, start_with: Lane) -> HashSet<u64> {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let mut lanes = HashMap::new();
     lanes.insert(Lane::A.id(), Text::new(Lane::A.name()));
     lanes.insert(Lane::B.id(), Text::new(Lane::B.name()));

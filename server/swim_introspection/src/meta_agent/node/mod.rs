@@ -12,13 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
-use crate::{
-    config::IntrospectionConfig,
-    meta_agent::run_pulse_lane,
-    route::{node_pattern, NODE_PARAM},
-};
+use crate::{config::IntrospectionConfig, meta_agent::run_pulse_lane, route::NODE_PARAM};
 use futures::{
     future::{BoxFuture, Either},
     pin_mut, FutureExt, SinkExt, StreamExt,
@@ -47,7 +43,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use crate::{model::AgentIntrospectionHandle, task::IntrospectionResolver};
 use futures::future::select;
 
-use super::PULSE_LANE;
+use super::{MetaRouteError, PULSE_LANE};
 
 #[cfg(test)]
 mod tests;
@@ -74,6 +70,7 @@ impl Agent for NodeMetaAgent {
     fn run(
         &self,
         route: RouteUri,
+        route_params: HashMap<String, String>,
         agent_config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
@@ -82,6 +79,7 @@ impl Agent for NodeMetaAgent {
             config.node_pulse_interval,
             resolver.clone(),
             route,
+            route_params,
             agent_config,
             context,
         )
@@ -93,16 +91,19 @@ async fn run_init(
     pulse_interval: Duration,
     resolver: IntrospectionResolver,
     route: RouteUri,
+    route_params: HashMap<String, String>,
     config: AgentConfig,
     context: Box<dyn AgentContext + Send>,
 ) -> AgentInitResult {
-    let pattern = node_pattern();
-    let params = match pattern.unapply_route_uri(&route) {
-        Ok(params) => params,
-        Err(e) => return Err(AgentInitError::UserCodeError(Box::new(e))),
+    let node_uri = if let Some(node_uri) = route_params.get(NODE_PARAM) {
+        Text::new(node_uri)
+    } else {
+        return Err(AgentInitError::UserCodeError(Box::new(
+            MetaRouteError::new(route, NODE_PARAM),
+        )));
     };
-    let node_uri = &params[NODE_PARAM];
-    let handle = match resolver.resolve_agent(Text::from(node_uri)).await {
+
+    let handle = match resolver.resolve_agent(node_uri).await {
         Ok(handle) => handle,
         Err(e) => return Err(AgentInitError::UserCodeError(Box::new(e))),
     };

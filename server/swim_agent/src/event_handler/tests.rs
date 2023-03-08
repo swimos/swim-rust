@@ -41,8 +41,11 @@ fn make_uri() -> RouteUri {
     RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
-    AgentMetadata::new(uri, &CONFIG)
+fn make_meta<'a>(
+    uri: &'a RouteUri,
+    route_params: &'a HashMap<String, String>,
+) -> AgentMetadata<'a> {
+    AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
 struct NoSpawn;
@@ -60,7 +63,8 @@ const DUMMY: DummyAgent = DummyAgent;
 #[test]
 fn side_effect_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut n = 0;
     let mut handler = SideEffect::from(|| n += 1);
@@ -85,7 +89,8 @@ fn side_effect_handler() {
 #[test]
 fn side_effects_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let values = vec![0, 1, 2, 3];
 
@@ -134,7 +139,8 @@ fn side_effects_handler() {
 #[test]
 fn constant_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut handler = ConstHandler::from(5);
     let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
@@ -156,7 +162,8 @@ fn constant_handler() {
 #[test]
 fn get_agent_uri() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut handler = GetAgentUri::default();
     let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
@@ -180,7 +187,8 @@ fn get_agent_uri() {
 #[test]
 fn map_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let mut handler =
         HandlerActionExt::<DummyAgent>::map(GetAgentUri::default(), move |uri: RouteUri| {
             uri.to_string()
@@ -207,7 +215,8 @@ fn map_handler() {
 #[test]
 fn and_then_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut output = None;
     let output_ref = &mut output;
@@ -247,7 +256,8 @@ fn and_then_handler() {
 #[test]
 fn and_then_contextual_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut output = None;
     let output_ref = &mut output;
@@ -289,7 +299,8 @@ fn and_then_contextual_handler() {
 #[test]
 fn followed_by_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let output = RefCell::new(None);
 
@@ -342,7 +353,8 @@ fn followed_by_handler() {
 #[test]
 fn decoding_handler_success() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut buffer = BytesMut::new();
     write!(buffer, "56").expect("Write failed.");
@@ -368,7 +380,8 @@ fn decoding_handler_success() {
 #[test]
 fn decoding_handler_failure() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut buffer = BytesMut::new();
     write!(buffer, "boom").expect("Write failed.");
@@ -420,7 +433,8 @@ impl HandlerAction<DummyAgent> for FakeLaneWriter {
 #[test]
 fn and_then_handler_with_lane_write() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut handler = FakeLaneWriter::new(7).and_then(|_| ConstHandler::from(34));
     let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
@@ -453,7 +467,8 @@ fn and_then_handler_with_lane_write() {
 #[test]
 fn followed_by_handler_with_lane_write() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut handler = FakeLaneWriter::new(7).followed_by(FakeLaneWriter::new(8));
     let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
@@ -506,7 +521,8 @@ fn event_handler_error_display() {
 #[test]
 fn sequentially_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let values = RefCell::new(vec![]);
 
