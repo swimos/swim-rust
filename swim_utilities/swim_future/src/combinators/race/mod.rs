@@ -25,6 +25,11 @@ where
 /// future. If both futures are ready then the left future's output is returned.
 ///
 /// This function differs to Future's Select functionality where it discards the remaining future.
+///
+/// # Cancel safety
+/// This function is not cancellation safe. If a future makes progress and another completes first,
+/// then the data may be lost in the pending future. If cancellation safety is required, then
+/// future's select may be more appropriate.
 pub fn race<L, R>(left: L, right: R) -> Race2<L, R>
 where
     L: Future + Unpin,
@@ -75,6 +80,11 @@ where
 /// future. If all futures are ready then the left future's output is returned.
 ///
 /// This function differs to Future's Select functionality where it discards the remaining futures.
+///
+/// # Cancel safety
+/// This function is not cancellation safe. If a future makes progress and another completes first,
+/// then the data may be lost in the pending future. If cancellation safety is required, then
+/// future's select may be more appropriate.
 pub fn race3<L, M, R>(left: L, middle: M, right: R) -> Race3<L, M, R>
 where
     L: Future + Unpin,
