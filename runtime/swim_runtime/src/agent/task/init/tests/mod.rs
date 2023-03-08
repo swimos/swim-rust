@@ -16,7 +16,7 @@ use std::{collections::HashMap, num::NonZeroUsize, time::Duration};
 
 use futures::{
     future::{join, join3, BoxFuture},
-    FutureExt, SinkExt, StreamExt,
+    FutureExt, SinkExt, StreamExt, TryFutureExt,
 };
 use swim_api::{
     agent::{LaneConfig, UplinkKind},
@@ -100,7 +100,7 @@ where
         super::AgentInitTask::with_store(req_rx, dl_tx, done_rx, INIT_TIMEOUT, None, store);
     let test = init.run_test(req_tx, dl_rx, done_tx);
 
-    join(runtime.run(), test).await
+    join(runtime.run().map_ok(|(ep, _)| ep), test).await
 }
 
 fn check_connected(first: &mut Io, second: &mut Io) {
@@ -364,6 +364,6 @@ async fn run_test_with_reporting<T: TestInit>(
     let test = init.run_test(req_tx, dl_rx, done_tx);
     let reporting_task = provide_reporting(reg_rx, expected);
 
-    let (res, output, _) = join3(runtime.run(), test, reporting_task).await;
+    let (res, output, _) = join3(runtime.run().map_ok(|(ep, _)| ep), test, reporting_task).await;
     (res, output)
 }

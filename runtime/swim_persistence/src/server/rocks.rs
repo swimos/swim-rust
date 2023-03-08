@@ -18,10 +18,10 @@ use crate::server::{LANE_KS, MAP_LANE_KS, VALUE_LANE_KS};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Options, SliceTransform, DB};
 use std::mem::size_of;
 use std::path::Path;
-use swim_store::rocks::{RocksEngine, RocksIterator, RocksPrefixIterator, RocksRawPrefixIterator};
+use swim_store::rocks::{RocksEngine, RocksRawPrefixIterator};
 use swim_store::{
-    EngineInfo, EngineIterOpts, EngineRefIterator, Keyspace, KeyspaceByteEngine, KeyspaceDef,
-    KeyspaceResolver, Keyspaces, Store, StoreBuilder, StoreError,
+    EngineInfo, Keyspace, KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces, Store,
+    StoreBuilder, StoreError,
 };
 
 const PREFIX_BLOOM_RATIO: f64 = 0.2;
@@ -110,28 +110,6 @@ impl KeyspaceByteEngine for RocksDatabase {
         S: Keyspace,
     {
         self.db.delete_key_range(keyspace, start, ubound)
-    }
-}
-
-impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for RocksDatabase {
-    type EngineIterator = RocksIterator<'b>;
-    type EnginePrefixIterator = RocksPrefixIterator<'b>;
-
-    fn iterator_opt(
-        &'a self,
-        space: &'b Self::ResolvedKeyspace,
-        opts: EngineIterOpts,
-    ) -> Result<Self::EngineIterator, StoreError> {
-        self.db.iterator_opt(space, opts)
-    }
-
-    fn prefix_iterator_opt(
-        &'a self,
-        space: &'b Self::ResolvedKeyspace,
-        opts: EngineIterOpts,
-        prefix: &'b [u8],
-    ) -> Result<Self::EnginePrefixIterator, StoreError> {
-        self.db.prefix_iterator_opt(space, opts, prefix)
     }
 }
 

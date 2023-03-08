@@ -257,7 +257,7 @@ impl InitialEndpoints {
         store: Store,
     ) -> AgentRuntimeTask<Store>
     where
-        Store: AgentPersistence + Clone + Send + Sync + 'static,
+        Store: AgentPersistence + Send + Sync + 'static,
     {
         AgentRuntimeTask::with_store(
             NodeDescriptor::new(identity, node_uri),
@@ -515,7 +515,7 @@ impl AgentRuntimeTask {
 
 impl<Store> AgentRuntimeTask<Store>
 where
-    Store: AgentPersistence + Clone + Send + Sync + 'static,
+    Store: AgentPersistence + Send + Sync + 'static,
 {
     fn with_store(
         node: NodeDescriptor,
@@ -538,7 +538,7 @@ where
 
 impl<Store> AgentRuntimeTask<Store>
 where
-    Store: AgentPersistence + Clone + Send + Sync,
+    Store: AgentPersistence + Send + Sync,
 {
     pub async fn run(self) -> Result<(), StoreError> {
         let AgentRuntimeTask {
@@ -1689,10 +1689,10 @@ async fn write_task<Store>(
     stop_voter: timeout_coord::Voter,
     stopping: trigger::Receiver,
     aggregate_reporter: Option<UplinkReporter>,
-    store: Store,
+    mut store: Store,
 ) -> Result<(), StoreError>
 where
-    Store: AgentPersistence + Clone + Send + Sync,
+    Store: AgentPersistence + Send + Sync,
 {
     let message_stream = ReceiverStream::new(message_rx).take_until(stopping);
 
@@ -1774,7 +1774,7 @@ where
                     voted = false;
                 }
                 if let Some(store_id) = store_id {
-                    persist_response(&store, store_id, &response)?;
+                    persist_response(&mut store, store_id, &response)?;
                 }
                 for write in state.handle_event(id, response) {
                     streams.schedule_write(write.into_future());
@@ -1886,7 +1886,7 @@ where
 }
 
 fn persist_response<Store>(
-    store: &Store,
+    store: &mut Store,
     store_id: Store::LaneId,
     response: &RawLaneResponse,
 ) -> Result<(), StoreError>

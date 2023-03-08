@@ -133,11 +133,11 @@ pub trait AgentPersistence {
     fn init_map_lane(&self, _lane_id: Self::LaneId) -> Option<BoxInitializer<'_>>;
 
     /// Put a value from a value lane into the store.
-    fn put_value(&self, lane_id: Self::LaneId, bytes: &[u8]) -> Result<(), StoreError>;
+    fn put_value(&mut self, lane_id: Self::LaneId, bytes: &[u8]) -> Result<(), StoreError>;
 
     /// Apply an operation from a map lane into the store.
     fn apply_map<B: AsRef<[u8]>>(
-        &self,
+        &mut self,
         lane_id: Self::LaneId,
         op: &MapOperation<B, B>,
     ) -> Result<(), StoreError>;
@@ -158,12 +158,12 @@ impl AgentPersistence for StoreDisabled {
         None
     }
 
-    fn put_value(&self, _lane_id: Self::LaneId, _bytes: &[u8]) -> Result<(), StoreError> {
+    fn put_value(&mut self, _lane_id: Self::LaneId, _bytes: &[u8]) -> Result<(), StoreError> {
         Ok(())
     }
 
     fn apply_map<B: AsRef<[u8]>>(
-        &self,
+        &mut self,
         _lane_id: Self::LaneId,
         _op: &MapOperation<B, B>,
     ) -> Result<(), StoreError> {
@@ -190,13 +190,13 @@ where
         store.id_for(name)
     }
 
-    fn put_value(&self, lane_id: Self::LaneId, bytes: &[u8]) -> Result<(), StoreError> {
+    fn put_value(&mut self, lane_id: Self::LaneId, bytes: &[u8]) -> Result<(), StoreError> {
         let StorePersistence(store) = self;
         store.put_value(lane_id, bytes)
     }
 
     fn apply_map<B: AsRef<[u8]>>(
-        &self,
+        &mut self,
         lane_id: Self::LaneId,
         op: &MapOperation<B, B>,
     ) -> Result<(), StoreError> {

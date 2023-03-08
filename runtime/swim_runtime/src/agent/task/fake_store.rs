@@ -172,7 +172,7 @@ impl NodePersistence for FakeStore {
         }
     }
 
-    fn put_value(&self, id: Self::LaneId, value: &[u8]) -> Result<(), StoreError> {
+    fn put_value(&mut self, id: Self::LaneId, value: &[u8]) -> Result<(), StoreError> {
         let mut guard = self.inner.lock();
         let FakeStoreInner {
             values, ids_back, ..
@@ -185,7 +185,7 @@ impl NodePersistence for FakeStore {
         }
     }
 
-    fn update_map(&self, id: Self::LaneId, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
+    fn update_map(&mut self, id: Self::LaneId, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
         let mut guard = self.inner.lock();
         let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
         if !ids_back.contains_key(&id) {
@@ -197,7 +197,7 @@ impl NodePersistence for FakeStore {
         }
     }
 
-    fn remove_map(&self, id: Self::LaneId, key: &[u8]) -> Result<(), StoreError> {
+    fn remove_map(&mut self, id: Self::LaneId, key: &[u8]) -> Result<(), StoreError> {
         let mut guard = self.inner.lock();
         let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
         if !ids_back.contains_key(&id) {
@@ -209,7 +209,7 @@ impl NodePersistence for FakeStore {
         }
     }
 
-    fn clear_map(&self, id: Self::LaneId) -> Result<(), StoreError> {
+    fn clear_map(&mut self, id: Self::LaneId) -> Result<(), StoreError> {
         let mut guard = self.inner.lock();
         let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
         if !ids_back.contains_key(&id) {
@@ -221,7 +221,7 @@ impl NodePersistence for FakeStore {
         }
     }
 
-    fn delete_value(&self, id: Self::LaneId) -> Result<(), StoreError> {
+    fn delete_value(&mut self, id: Self::LaneId) -> Result<(), StoreError> {
         let mut guard = self.inner.lock();
         let FakeStoreInner {
             values, ids_back, ..

@@ -114,7 +114,7 @@ impl NodePersistence for FakeStore {
         }
     }
 
-    fn put_value(&self, id: Self::LaneId, value: &[u8]) -> Result<(), StoreError> {
+    fn put_value(&mut self, id: Self::LaneId, value: &[u8]) -> Result<(), StoreError> {
         if id == Id::Value {
             let mut guard = self.inner.lock();
             let maybe_v = &mut guard.value;
@@ -127,7 +127,7 @@ impl NodePersistence for FakeStore {
         }
     }
 
-    fn update_map(&self, id: Self::LaneId, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
+    fn update_map(&mut self, id: Self::LaneId, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
         if id == Id::Map {
             self.inner
                 .lock()
@@ -139,7 +139,7 @@ impl NodePersistence for FakeStore {
         }
     }
 
-    fn remove_map(&self, id: Self::LaneId, key: &[u8]) -> Result<(), StoreError> {
+    fn remove_map(&mut self, id: Self::LaneId, key: &[u8]) -> Result<(), StoreError> {
         if id == Id::Map {
             self.inner.lock().map.remove(key);
             Ok(())
@@ -148,7 +148,7 @@ impl NodePersistence for FakeStore {
         }
     }
 
-    fn clear_map(&self, id: Self::LaneId) -> Result<(), StoreError> {
+    fn clear_map(&mut self, id: Self::LaneId) -> Result<(), StoreError> {
         if id == Id::Map {
             self.inner.lock().map.clear();
             Ok(())
@@ -157,7 +157,7 @@ impl NodePersistence for FakeStore {
         }
     }
 
-    fn delete_value(&self, id: Self::LaneId) -> Result<(), StoreError> {
+    fn delete_value(&mut self, id: Self::LaneId) -> Result<(), StoreError> {
         if id == Id::Value {
             let mut guard = self.inner.lock();
             let v = &mut guard.value;
@@ -298,7 +298,7 @@ fn put_value() {
     let data = vec![1, 2, 3, 4, 5];
     let store = FakeStore::new(Some(data), Default::default());
 
-    let persistence = StorePersistence(store.clone());
+    let mut persistence = StorePersistence(store.clone());
 
     let replace = &[8, 9, 10];
     assert!(persistence.put_value(Id::Value, replace).is_ok());
@@ -310,7 +310,7 @@ fn put_value() {
 fn insert_map() {
     let store = FakeStore::new(None, Default::default());
 
-    let persistence = StorePersistence(store.clone());
+    let mut persistence = StorePersistence(store.clone());
 
     let key = &[6];
     let value = &[1, 4, 6];
@@ -331,7 +331,7 @@ fn remove_map() {
     map.insert(vec![2], vec![4, 5, 6]);
     let store = FakeStore::new(None, map.clone());
 
-    let persistence = StorePersistence(store.clone());
+    let mut persistence = StorePersistence(store.clone());
 
     let key = &[1];
     assert!(persistence
@@ -351,7 +351,7 @@ fn clear_map() {
     map.insert(vec![2], vec![4, 5, 6]);
     let store = FakeStore::new(None, map.clone());
 
-    let persistence = StorePersistence(store.clone());
+    let mut persistence = StorePersistence(store.clone());
 
     assert!(persistence
         .apply_map::<&[u8]>(Id::Map, &MapOperation::Clear)

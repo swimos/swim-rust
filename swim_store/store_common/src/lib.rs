@@ -30,15 +30,7 @@ pub use swim_api::error::StoreError;
 ///
 /// This trait only serves to compose the multiple traits that are required for a store.
 pub trait Store:
-    KeyspaceByteEngine
-    + KeyspaceByteEngine
-    + KeyspaceResolver
-    + Send
-    + Sync
-    + Clone
-    + Debug
-    + OwnedEngineRefIterator
-    + 'static
+    KeyspaceByteEngine + KeyspaceByteEngine + KeyspaceResolver + Send + Sync + Clone + Debug + 'static
 {
     /// Returns a reference to the path that the delegate byte engine is operating from.
     fn path(&self) -> &Path;

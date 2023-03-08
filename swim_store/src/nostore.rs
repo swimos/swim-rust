@@ -16,9 +16,9 @@ use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
 
 use store_common::{
-    ByteEngine, EngineInfo, EngineIterOpts, EngineIterator, EnginePrefixIterator,
-    EngineRefIterator, IteratorKey, KeyValue, Keyspace, KeyspaceByteEngine, KeyspaceResolver,
-    Keyspaces, KvBytes, RangeConsumer, Store, StoreBuilder, StoreError,
+    ByteEngine, EngineInfo, EngineIterator, EnginePrefixIterator, IteratorKey, KeyValue, Keyspace,
+    KeyspaceByteEngine, KeyspaceResolver, Keyspaces, KvBytes, RangeConsumer, Store, StoreBuilder,
+    StoreError,
 };
 
 /// A delegate store database that does nothing.
@@ -185,27 +185,5 @@ pub struct NoStoreEnginePrefixIterator;
 impl EnginePrefixIterator for NoStoreEnginePrefixIterator {
     fn next(&mut self) -> Option<Result<KvBytes, StoreError>> {
         None
-    }
-}
-
-impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for NoStore {
-    type EngineIterator = NoStoreEngineIterator;
-    type EnginePrefixIterator = NoStoreEnginePrefixIterator;
-
-    fn iterator_opt(
-        &'a self,
-        _space: &'b Self::ResolvedKeyspace,
-        _pts: EngineIterOpts,
-    ) -> Result<Self::EngineIterator, StoreError> {
-        Ok(NoStoreEngineIterator)
-    }
-
-    fn prefix_iterator_opt(
-        &'a self,
-        _space: &'b Self::ResolvedKeyspace,
-        _opts: EngineIterOpts,
-        _prefix: &'b [u8],
-    ) -> Result<Self::EnginePrefixIterator, StoreError> {
-        Ok(NoStoreEnginePrefixIterator)
     }
 }

@@ -31,7 +31,36 @@ impl ServerPersistence for StoreDisabled {
     }
 }
 
-#[cfg(feature = "persistence")]
+pub mod in_memory {
+    use std::collections::{hash_map::Entry, HashMap};
+
+    use parking_lot::Mutex;
+    use swim_persistence::agent::in_memory::InMemoryPlanePersistence;
+
+    use super::ServerPersistence;
+
+    #[derive(Debug, Default)]
+    /// A store implementation that mains agent state transiently in memory. State will persist across
+    /// an agent restarting but will be lost if the process stops.
+    pub struct InMemoryPersistence {
+        planes: Mutex<HashMap<String, InMemoryPlanePersistence>>,
+    }
+
+    impl ServerPersistence for InMemoryPersistence {
+        type PlaneStore = InMemoryPlanePersistence;
+
+        fn open_plane(&self, name: &str) -> Result<Self::PlaneStore, swim_api::error::StoreError> {
+            let mut guard = self.planes.lock();
+            Ok(match guard.entry(name.to_string()) {
+                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Vacant(entry) => entry.insert(InMemoryPlanePersistence::default()),
+            }
+            .clone())
+        }
+    }
+}
+
+#[cfg(feature = "rocks_store")]
 pub mod rocks {
     use std::path::PathBuf;
 
