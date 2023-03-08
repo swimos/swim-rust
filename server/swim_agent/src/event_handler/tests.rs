@@ -20,6 +20,7 @@ use swim_api::agent::AgentConfig;
 use swim_recon::parser::AsyncParseError;
 use swim_utilities::routing::route_uri::RouteUri;
 
+use crate::event_handler::GetParameter;
 use crate::{
     event_handler::{
         ConstHandler, EventHandlerError, GetAgentUri, HandlerActionExt, Sequentially, SideEffects,
@@ -178,6 +179,51 @@ fn get_agent_uri() {
     }
 
     let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn get_parameter() {
+    let uri = make_uri();
+    let mut route_params = HashMap::new();
+    route_params.insert("key".to_string(), "value".to_string());
+    let meta = make_meta(&uri, &route_params);
+
+    let mut absent = GetParameter::new("other");
+    let result = absent.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    if let StepResult::Complete {
+        modified_item: None,
+        result,
+    } = result
+    {
+        assert!(result.is_none());
+    } else {
+        panic!("Expected completion.");
+    }
+
+    let result = absent.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    let mut present = GetParameter::new("key");
+
+    let result = present.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    if let StepResult::Complete {
+        modified_item: None,
+        result,
+    } = result
+    {
+        assert_eq!(result, Some("value".to_string()));
+    } else {
+        panic!("Expected completion.");
+    }
+
+    let result = present.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

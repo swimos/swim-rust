@@ -31,7 +31,7 @@ use crate::config::{MapDownlinkConfig, SimpleDownlinkConfig};
 use crate::downlink_lifecycle::event::EventDownlinkLifecycle;
 use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
-use crate::event_handler::{EventHandler, Suspend, UnitHandler};
+use crate::event_handler::{EventHandler, GetParameter, Suspend, UnitHandler};
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
 use crate::lanes::map::MapLaneGetMap;
@@ -105,6 +105,16 @@ impl<Agent: 'static> HandlerContext<Agent> {
         &self,
     ) -> impl HandlerAction<Agent, Completion = RouteUri> + Send + 'static {
         GetAgentUri::default()
+    }
+
+    /// Get the value of a parameter extracted from the route URI of the agent instance.
+    /// #Arguments
+    /// * `name` - The name of the parameter.
+    pub fn get_parameter<'a>(
+        &self,
+        name: &'a str,
+    ) -> impl HandlerAction<Agent, Completion = Option<String>> + Send + 'a {
+        GetParameter::new(name)
     }
 
     /// Create an event handler that will get the value of a value lane of the agent.
