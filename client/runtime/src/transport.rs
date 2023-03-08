@@ -24,7 +24,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use swim_remote::{AttachClient, RemoteTask};
-use swim_runtime::net::{ExternalConnections, Scheme, SchemeHostPort};
+use swim_runtime::net::{ClientConnections, Scheme, SchemeHostPort};
 use swim_runtime::ws::WsConnections;
 use swim_utilities::trigger;
 use tokio::select;
@@ -129,9 +129,9 @@ pub struct Transport<Net, Ws> {
 
 impl<Net, Ws> Transport<Net, Ws>
 where
-    Net: ExternalConnections,
-    Net::Socket: WebSocketStream,
-    Ws: WsConnections<Net::Socket> + Sync,
+    Net: ClientConnections,
+    Net::ClientSocket: WebSocketStream,
+    Ws: WsConnections<Net::ClientSocket> + Sync,
 {
     pub fn new(networking: Net, websockets: Ws, buffer_size: NonZeroUsize) -> Transport<Net, Ws> {
         Transport {
@@ -156,7 +156,7 @@ where
         debug!("Transport task started");
 
         loop {
-            let event: TransportEvent<Net::Socket, Ws::Ext> = select! {
+            let event: TransportEvent<Net::ClientSocket, Ws::Ext> = select! {
                 biased;
                 // Bias towards encapsulated events in case there is a closing connection.
                 Some(Some(event)) = events.next(), if !events.is_empty() => event,

@@ -34,7 +34,7 @@ use crate::error::{DownlinkErrorKind, DownlinkRuntimeError};
 use crate::models::RemotePath;
 use crate::runtime::{start_runtime, RawHandle};
 use crate::transport::{Transport, TransportHandle};
-use fixture::{MockExternalConnections, MockWs, Server, WsAction};
+use fixture::{MockClientConnections, MockWs, Server, WsAction};
 use swim_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
 use swim_api::error::DownlinkTaskError;
 use swim_downlink::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
@@ -66,10 +66,8 @@ async fn transport_opens_connection_ok() {
     let peer = SchemeHostPort::new(Scheme::Ws, "127.0.0.1".to_string(), 9001);
     let sock: SocketAddr = "127.0.0.1:9001".parse().unwrap();
     let (client, server) = duplex(128);
-    let ext = MockExternalConnections::new(
-        [(("127.0.0.1".to_string(), 9001), sock)],
-        [(sock, client)],
-    );
+    let ext =
+        MockClientConnections::new([(("127.0.0.1".to_string(), 9001), sock)], [(sock, client)]);
     let ws = MockWs::new([("127.0.0.1".to_string(), WsAction::Open)]);
     let transport = Transport::new(ext, ws, non_zero_usize!(128));
 
@@ -146,10 +144,8 @@ async fn transport_opens_connection_err() {
     let peer = SchemeHostPort::new(Scheme::Ws, "127.0.0.1".to_string(), 9001);
     let sock: SocketAddr = "127.0.0.1:9001".parse().unwrap();
     let (client, _server) = duplex(128);
-    let ext = MockExternalConnections::new(
-        [(("127.0.0.1".to_string(), 9001), sock)],
-        [(sock, client)],
-    );
+    let ext =
+        MockClientConnections::new([(("127.0.0.1".to_string(), 9001), sock)], [(sock, client)]);
     let ws = MockWs::new([(
         "127.0.0.1".to_string(),
         WsAction::fail(|| RatchetError::from(ratchet::Error::new(ratchet::ErrorKind::Http))),
@@ -286,10 +282,7 @@ struct Fixture {
 fn start() -> Fixture {
     let sock: SocketAddr = "127.0.0.1:80".parse().unwrap();
     let (client, server) = duplex(128);
-    let ext = MockExternalConnections::new(
-        [(("127.0.0.1".to_string(), 80), sock)],
-        [(sock, client)],
-    );
+    let ext = MockClientConnections::new([(("127.0.0.1".to_string(), 80), sock)], [(sock, client)]);
     let ws = MockWs::new([("127.0.0.1".to_string(), WsAction::Open)]);
 
     let (stop_tx, stop_rx) = trigger();
@@ -465,10 +458,7 @@ struct TrackingContext {
 async fn failed_handshake() {
     let sock: SocketAddr = "127.0.0.1:80".parse().unwrap();
     let (client, _server) = duplex(128);
-    let ext = MockExternalConnections::new(
-        [(("127.0.0.1".to_string(), 80), sock)],
-        [(sock, client)],
-    );
+    let ext = MockClientConnections::new([(("127.0.0.1".to_string(), 80), sock)], [(sock, client)]);
 
     let ws = MockWs::new([(
         "127.0.0.1".to_string(),

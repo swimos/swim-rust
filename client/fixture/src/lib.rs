@@ -1,6 +1,5 @@
 use bytes::BytesMut;
 use futures_util::future::{ready, BoxFuture};
-use futures_util::stream::Empty;
 use futures_util::FutureExt;
 use ratchet::{Message, NegotiatedExtension, NoExt, PayloadType, Role, WebSocket, WebSocketConfig};
 use std::borrow::BorrowMut;
@@ -15,9 +14,7 @@ use swim_model::{Text, Value};
 use swim_recon::parser::{parse_recognize, Span};
 use swim_recon::printer::print_recon;
 use swim_runtime::net::dns::{BoxDnsResolver, DnsResolver};
-use swim_runtime::net::{
-    ConnResult, ConnectionError, ExternalConnections, IoResult, Listener, ListenerResult, Scheme,
-};
+use swim_runtime::net::{ClientConnections, ConnResult, ConnectionError, IoResult, Scheme};
 use swim_runtime::ws::{RatchetError, WsConnections, WsOpenFuture};
 use tokio::io::DuplexStream;
 
@@ -41,48 +38,31 @@ impl Inner {
 }
 
 #[derive(Debug, Clone)]
-pub struct MockExternalConnections {
+pub struct MockClientConnections {
     inner: Arc<Mutex<Inner>>,
 }
 
-impl MockExternalConnections {
-    pub fn new<R, S>(resolver: R, sockets: S) -> MockExternalConnections
+impl MockClientConnections {
+    pub fn new<R, S>(resolver: R, sockets: S) -> MockClientConnections
     where
         R: IntoIterator<Item = ((String, u16), SocketAddr)>,
         S: IntoIterator<Item = (SocketAddr, DuplexStream)>,
     {
-        MockExternalConnections {
+        MockClientConnections {
             inner: Arc::new(Mutex::new(Inner::new(resolver, sockets))),
         }
     }
 }
 
-pub struct MockListener;
-impl Listener<DuplexStream> for MockListener {
-    type AcceptStream = Empty<ListenerResult<(DuplexStream, Scheme, SocketAddr)>>;
-
-    fn into_stream(self) -> Self::AcceptStream {
-        panic!("Unexpected listener invocation")
-    }
-}
-
-impl ExternalConnections for MockExternalConnections {
-    type Socket = DuplexStream;
-    type ListenerType = MockListener;
-
-    fn bind(
-        &self,
-        _addr: SocketAddr,
-    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
-        panic!("Unexpected bind invocation")
-    }
+impl ClientConnections for MockClientConnections {
+    type ClientSocket = DuplexStream;
 
     fn try_open(
         &self,
         _scheme: Scheme,
         _host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'_, ConnResult<Self::Socket>> {
+    ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
         let result = self
             .inner
             .lock()
@@ -102,7 +82,7 @@ impl ExternalConnections for MockExternalConnections {
     }
 }
 
-impl DnsResolver for MockExternalConnections {
+impl DnsResolver for MockClientConnections {
     type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
     fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {

@@ -12,14 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ratchet::{NoExtProvider, WebSocketConfig};
-use std::future::Future;
+#[cfg(not(feature = "deflate"))]
+use ratchet::NoExtProvider;
+use ratchet::WebSocketStream;
 use std::num::NonZeroUsize;
 
+use futures_util::future::BoxFuture;
 #[cfg(feature = "deflate")]
-use ratchet::deflate::DeflateConfig;
+use ratchet::deflate::{DeflateConfig, DeflateExtProvider};
 use runtime::{
     start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, RemotePath, Transport,
+    WebSocketConfig,
 };
 use std::sync::Arc;
 use swim_api::downlink::DownlinkConfig;
@@ -29,19 +32,16 @@ use swim_form::Form;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use swim_runtime::net::dns::Resolver;
 use swim_runtime::net::plain::TokioPlainTextNetworking;
-use swim_runtime::net::ExternalConnections;
+use swim_runtime::net::ClientConnections;
 use swim_runtime::ws::ext::RatchetNetworking;
-use swim_tls::RustlsNetworking;
 #[cfg(feature = "tls")]
-use swim_tls::{TlsConfig, TlsError};
+use swim_tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
+use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
-use swim_utilities::{non_zero_usize, trigger};
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 pub use url::Url;
-
-type ClientTask = impl Future<Output = ()> + Send;
 
 #[derive(Debug, Default)]
 pub struct SwimClientBuilder {
@@ -53,48 +53,63 @@ impl SwimClientBuilder {
         SwimClientBuilder { config }
     }
 
+    /// Sets the websocket configuration.
     pub fn set_websocket_config(mut self, to: WebSocketConfig) -> SwimClientBuilder {
         self.config.websocket = to;
         self
     }
 
+    /// Size of the buffers to communicate with the socket.
     pub fn set_remote_buffer_size(mut self, to: NonZeroUsize) -> SwimClientBuilder {
         self.config.remote_buffer_size = to;
         self
     }
 
+    /// Sets the buffer size between the runtime and transport tasks.
     pub fn set_transport_buffer_size(mut self, to: NonZeroUsize) -> SwimClientBuilder {
         self.config.transport_buffer_size = to;
         self
     }
 
+    /// Sets the deflate extension configuration for WebSocket connections.
     #[cfg(feature = "deflate")]
     pub fn set_deflate_config(mut self, to: DeflateConfig) -> SwimClientBuilder {
         self.config.deflate = Some(to);
         self
     }
 
-    pub async fn build(self) -> (SwimClient, ClientTask) {
+    /// Builds the client.
+    pub async fn build(self) -> (SwimClient, BoxFuture<'static, ()>) {
         let SwimClientBuilder { config } = self;
         open_client(
             config,
             TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
         )
+        .await
     }
 
+    /// Builds the client using the provided TLS configuration.
     #[cfg(feature = "tls")]
-    pub async fn build_tls(self, config: TlsConfig) -> Result<SwimClient, TlsError> {
+    pub async fn build_tls(
+        self,
+        tls_config: TlsConfig,
+    ) -> Result<(SwimClient, BoxFuture<'static, ()>), TlsError> {
         let SwimClientBuilder { config } = self;
-        open_client(
+        Ok(open_client(
             config,
-            RustlsNetworking::try_from_config(resolver, tls_conf)?,
+            RustlsClientNetworking::try_from_config(Arc::new(Resolver::new().await), tls_config)?,
         )
+        .await)
     }
 }
 
-async fn open_client<Net>(config: ClientConfig, networking: Net) -> (SwimClient, ClientTask)
+async fn open_client<Net>(
+    config: ClientConfig,
+    networking: Net,
+) -> (SwimClient, BoxFuture<'static, ()>)
 where
-    Net: ExternalConnections,
+    Net: ClientConnections,
+    Net::ClientSocket: WebSocketStream,
 {
     let ClientConfig {
         websocket,
@@ -104,18 +119,47 @@ where
         ..
     } = config;
 
-    let websockets = RatchetNetworking {
-        config: websocket,
-        provider: NoExtProvider,
-        subprotocols: Default::default(),
-    };
     let (stop_tx, stop_rx) = trigger::trigger();
-    let (handle, task) = start_runtime(
-        registration_buffer_size,
-        stop_rx,
-        Transport::new(networking, websockets, remote_buffer_size),
-        transport_buffer_size,
-    );
+
+    let (handle, task) = {
+        #[cfg(feature = "deflate")]
+        {
+            let websockets = RatchetNetworking {
+                config: ratchet::WebSocketConfig {
+                    max_message_size: websocket.max_message_size,
+                },
+                provider: DeflateExtProvider::with_config(
+                    websocket.deflate_config.unwrap_or_default(),
+                ),
+                subprotocols: Default::default(),
+            };
+
+            start_runtime(
+                registration_buffer_size,
+                stop_rx,
+                Transport::new(networking, websockets, remote_buffer_size),
+                transport_buffer_size,
+            )
+        }
+        #[cfg(not(feature = "deflate"))]
+        {
+            let websockets = RatchetNetworking {
+                config: ratchet::WebSocketConfig {
+                    max_message_size: websocket.max_message_size,
+                },
+                provider: NoExtProvider,
+                subprotocols: Default::default(),
+            };
+
+            start_runtime(
+                registration_buffer_size,
+                stop_rx,
+                Transport::new(networking, websockets, remote_buffer_size),
+                transport_buffer_size,
+            )
+        }
+    };
+
     let client = SwimClient {
         stop_tx,
         handle: ClientHandle {
@@ -132,43 +176,6 @@ pub struct SwimClient {
 }
 
 impl SwimClient {
-    /// Returns a new client that has been built with the default configuration.
-    pub async fn new() -> (SwimClient, ClientTask) {
-        SwimClient::with_config(ClientConfig::default()).await
-    }
-
-    /// Returns a new client that has been built with the provided configuration.
-    pub async fn with_config(config: ClientConfig) -> (SwimClient, ClientTask) {
-        let ClientConfig {
-            websocket,
-            remote_buffer_size,
-            transport_buffer_size,
-            registration_buffer_size,
-            ..
-        } = config;
-
-        let websockets = RatchetNetworking {
-            config: websocket,
-            provider: NoExtProvider,
-            subprotocols: Default::default(),
-        };
-        let networking = TokioPlainTextNetworking::new(Arc::new(Resolver::new().await));
-        let (stop_tx, stop_rx) = trigger::trigger();
-        let (handle, task) = start_runtime(
-            registration_buffer_size,
-            stop_rx,
-            Transport::new(networking, websockets, remote_buffer_size),
-            transport_buffer_size,
-        );
-        let client = SwimClient {
-            stop_tx,
-            handle: ClientHandle {
-                inner: Arc::new(handle),
-            },
-        };
-        (client, task)
-    }
-
     /// Returns a reference to a cloneable handle which may be used to open downlinks.
     pub fn handle(&self) -> ClientHandle {
         self.handle.clone()

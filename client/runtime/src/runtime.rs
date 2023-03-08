@@ -14,14 +14,13 @@
 
 use fnv::FnvHashMap;
 use futures::StreamExt;
-use futures_util::future::{Either, Fuse};
+use futures_util::future::{BoxFuture, Either, Fuse};
 use futures_util::stream::FuturesUnordered;
 use futures_util::FutureExt;
 use ratchet::WebSocketStream;
 use std::borrow::Borrow;
 use std::collections::hash_map::Entry;
 use std::fmt::{Debug, Formatter};
-use std::future::Future;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -41,7 +40,7 @@ use swim_model::address::Address;
 use swim_model::Text;
 use swim_remote::AttachClient;
 use swim_runtime::downlink::{AttachAction, DownlinkOptions, DownlinkRuntimeConfig};
-use swim_runtime::net::{ExternalConnections, Scheme, SchemeHostPort};
+use swim_runtime::net::{ClientConnections, Scheme, SchemeHostPort};
 use swim_runtime::ws::WsConnections;
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swim_utilities::trigger;
@@ -193,11 +192,11 @@ pub fn start_runtime<Net, Ws>(
     stop_rx: trigger::Receiver,
     transport: Transport<Net, Ws>,
     transport_buffer_size: NonZeroUsize,
-) -> (RawHandle, impl Future<Output = ()> + Send)
+) -> (RawHandle, BoxFuture<'static, ()>)
 where
-    Net: ExternalConnections,
-    Net::Socket: WebSocketStream,
-    Ws: WsConnections<Net::Socket> + Send + Sync + 'static,
+    Net: ClientConnections,
+    Net::ClientSocket: WebSocketStream,
+    Ws: WsConnections<Net::ClientSocket> + Send + Sync + 'static,
 {
     let (requests_tx, requests_rx) = mpsc::channel(registration_buffer_size.get());
     let notified = Arc::new(Notify::new());
@@ -212,7 +211,7 @@ where
             dispatch: requests_tx,
             completed: notified,
         },
-        task,
+        task.boxed(),
     )
 }
 
@@ -222,9 +221,9 @@ async fn runtime_task<Net, Ws>(
     mut remote_stop_rx: trigger::Receiver,
     mut requests_rx: mpsc::Receiver<DownlinkRegistrationRequest>,
 ) where
-    Net: ExternalConnections,
-    Net::Socket: WebSocketStream,
-    Ws: WsConnections<Net::Socket> + Send + Sync + 'static,
+    Net: ClientConnections,
+    Net::ClientSocket: WebSocketStream,
+    Ws: WsConnections<Net::ClientSocket> + Send + Sync + 'static,
 {
     let (transport_tx, transport_rx) = mpsc::channel(transport_buffer_size.get());
     let transport_handle = TransportHandle::new(transport_tx);

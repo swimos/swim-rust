@@ -23,8 +23,8 @@ mod transport;
 
 pub use error::{DownlinkErrorKind, DownlinkRuntimeError, TimeoutElapsed};
 pub use models::RemotePath;
+#[cfg(feature = "deflate")]
 use ratchet::deflate::DeflateConfig;
-use ratchet::WebSocketConfig;
 pub use runtime::{start_runtime, RawHandle};
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
@@ -34,6 +34,23 @@ use swim_utilities::non_zero_usize;
 pub use transport::{Transport, TransportRequest};
 
 const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
+
+#[derive(Debug)]
+pub struct WebSocketConfig {
+    pub max_message_size: usize,
+    #[cfg(feature = "deflate")]
+    pub deflate_config: Option<DeflateConfig>,
+}
+
+impl Default for WebSocketConfig {
+    fn default() -> Self {
+        WebSocketConfig {
+            max_message_size: 64 << 20,
+            #[cfg(feature = "deflate")]
+            deflate_config: None,
+        }
+    }
+}
 
 #[non_exhaustive]
 #[derive(Debug)]
