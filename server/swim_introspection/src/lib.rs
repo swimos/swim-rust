@@ -13,7 +13,6 @@
 // limitations under the License.
 
 mod config;
-pub mod error;
 mod meta_agent;
 mod model;
 pub mod route;
