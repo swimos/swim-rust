@@ -108,12 +108,11 @@ impl DnsResolver for Resolver {
 
 #[cfg(feature = "trust-dns")]
 mod trust_dns_impl {
-    use crate::remote::net::dns::DnsResolver;
-    use crate::remote::table::SchemeHostPort;
     use futures::future::BoxFuture;
     use std::io;
     use std::net::{SocketAddr, ToSocketAddrs};
     use trust_dns_resolver::{system_conf, TokioAsyncResolver};
+    use crate::net::dns::DnsResolver;
 
     /// A DNS resolver built using the Trust-DNS Proto library.
     #[derive(Clone, Debug)]
