@@ -351,7 +351,7 @@ pub enum AgentExecError {
         #[source]
         error: StoreInitError,
     },
-    #[error("Persisting a change to the state of a lan failed: {0}")]
+    #[error("Persisting a change to the state of a lane failed: {0}")]
     PersistenceFailure(#[from] StoreError),
 }
 
@@ -444,7 +444,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
 
             let (initial_state_result, agent_task_result) =
                 join(runtime_init_task.run(), agent_init_task).await;
-            let initial_state = initial_state_result?;
+            let (initial_state, _) = initial_state_result?;
             let agent_task = agent_task_result?;
 
             let runtime_task = initial_state.make_runtime_task(
@@ -462,12 +462,13 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         }
     }
 
-    pub fn run_agent_with_store<Store>(
+    pub fn run_agent_with_store<Store, Fut>(
         self,
-        store: Store,
+        store_fut: Fut,
     ) -> impl Future<Output = Result<(), AgentExecError>> + Send + 'static
     where
-        Store: NodePersistence + Clone + Send + Sync + 'static,
+        Store: NodePersistence + Send + Sync + 'static,
+        Fut: Future<Output = Result<Store, StoreError>> + Send + 'static,
     {
         let AgentRouteTask {
             agent,
@@ -483,19 +484,22 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let node_uri = route.to_string().into();
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
         let (init_tx, init_rx) = trigger::trigger();
-        let runtime_init_task = AgentInitTask::with_store(
-            runtime_rx,
-            downlink_tx,
-            init_rx,
-            runtime_config.lane_init_timeout,
-            reporting,
-            StorePersistence(store.clone()),
-        );
+
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
         let agent_init = agent.run(route, agent_config, context);
 
         async move {
+            let store = store_fut.await?;
+            let runtime_init_task = AgentInitTask::with_store(
+                runtime_rx,
+                downlink_tx,
+                init_rx,
+                runtime_config.lane_init_timeout,
+                reporting,
+                StorePersistence(store),
+            );
+
             let agent_init_task = async move {
                 let agent_task_result = agent_init.await;
                 drop(init_tx);
@@ -505,7 +509,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             let (initial_state_result, agent_task_result) =
                 join(runtime_init_task.run(), agent_init_task).await;
 
-            let initial_state = initial_state_result?;
+            let (initial_state, store_per) = initial_state_result?;
             let agent_task = agent_task_result?;
 
             let runtime_task = initial_state.make_runtime_task_with_store(
@@ -514,7 +518,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 attachment_rx,
                 runtime_config,
                 stopping,
-                StorePersistence(store),
+                store_per,
             );
 
             let (runtime_result, agent_result) = join(runtime_task.run(), agent_task).await;

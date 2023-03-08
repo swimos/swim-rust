@@ -156,7 +156,7 @@ impl TestInit for SingleValueLane {
 
 #[tokio::test]
 async fn init_single_value_lane_from_store() {
-    let store = FakeStore::new(vec![VAL_LANE]);
+    let mut store = FakeStore::new(vec![VAL_LANE]);
     let id = store.id_for(VAL_LANE).expect("Invalid key.");
     store.put_value(id, b"56").expect("Invalid ID");
 
@@ -182,7 +182,7 @@ async fn init_single_value_lane_from_store() {
 
 #[tokio::test]
 async fn init_single_trasient_value_lane_with_store() {
-    let store = FakeStore::new(vec![VAL_LANE]);
+    let mut store = FakeStore::new(vec![VAL_LANE]);
     let id = store.id_for(VAL_LANE).expect("Invalid key.");
     store.put_value(id, b"56").expect("Invalid ID");
 

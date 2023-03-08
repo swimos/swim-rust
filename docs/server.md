@@ -142,10 +142,19 @@ Enabling agent persistence
 
 By default, all agent instance are entirely transient. Stopping and restarting the application will reset the state of all agents. Similarly, an agent instance stopping and then restarting within a running process will also reset the state.
 
-Agent persistence is an optional feature than can be added with the `persistence` feature flag on the `swim` dependency:
+To persist agent state across restarts, enable the in-memory store:
+
+```rust
+ServerBuilder::with_plane_name("My Server")
+    .with_in_memory_store()
+    ...
+```
+
+With the in-memory store, state will be lost when the process stops. To persist agent state to disk there
+is another state implementation backed by rocksdb. This must be enabled with the optional feature `rocks_store` on the `swim` dependency:
 
 ```toml
-swim = { { git = "https://github.com/swimos/swim-rust" }, features = ["server", "agent", "persistence"] }
+swim = { { git = "https://github.com/swimos/swim-rust" }, features = ["server", "agent", "rocks_store"] }
 ```
 
 Persistence, implemented using a RocksDB database can then be enabled when constructing the server with:
@@ -162,7 +171,7 @@ To support persistence between different executions of the server, instead pass 
 
 ```rust
 ServerBuilder::with_plane_name("My Server")
-    .set_store_path("/path/to/store")
+    .set_rocks_store_path("/path/to/store")
     ...
 ```
 

@@ -12,11 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::keyspaces::KeyspaceResolver;
 use crate::{KvBytes, StoreError};
-
-pub trait OwnedEngineRefIterator: for<'t> EngineRefIterator<'t, 't> {}
-impl<D> OwnedEngineRefIterator for D where D: for<'t> EngineRefIterator<'t, 't> {}
 
 /// An key representing a position that an iterator should seek to.
 pub enum IteratorKey<'p> {
@@ -68,45 +64,3 @@ pub trait EnginePrefixIterator {
 // todo: add iterator direction
 #[derive(Default)]
 pub struct EngineIterOpts;
-
-/// A trait for creating iterators over a keyspace.
-pub trait EngineRefIterator<'a: 'b, 'b>: KeyspaceResolver {
-    type EngineIterator: EngineIterator;
-    type EnginePrefixIterator: EnginePrefixIterator;
-
-    /// Returns an iterator for all of the elements in the keyspace `space` with the default
-    /// iterator options.
-    fn iterator(
-        &'a self,
-        space: &'b Self::ResolvedKeyspace,
-    ) -> Result<Self::EngineIterator, StoreError> {
-        self.iterator_opt(space, EngineIterOpts::default())
-    }
-
-    /// Returns an iterator for all of the elements in the keyspace `space` with the provided
-    /// options.
-    fn iterator_opt(
-        &'a self,
-        space: &'b Self::ResolvedKeyspace,
-        opts: EngineIterOpts,
-    ) -> Result<Self::EngineIterator, StoreError>;
-
-    /// Returns an iterator for all of the elements in the keyspace `space` that have keys that are
-    /// prefixed by `prefix` and with the default iterator options.
-    fn prefix_iterator(
-        &'a self,
-        space: &'b Self::ResolvedKeyspace,
-        prefix: &'b [u8],
-    ) -> Result<Self::EnginePrefixIterator, StoreError> {
-        self.prefix_iterator_opt(space, EngineIterOpts::default(), prefix)
-    }
-
-    /// Returns an iterator for all of the elements in the keyspace `space` that have keys that are
-    /// prefixed by `prefix` and with the provided iterator options.
-    fn prefix_iterator_opt(
-        &'a self,
-        space: &'b Self::ResolvedKeyspace,
-        opts: EngineIterOpts,
-        prefix: &'b [u8],
-    ) -> Result<Self::EnginePrefixIterator, StoreError>;
-}
