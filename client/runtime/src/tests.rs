@@ -113,7 +113,7 @@ async fn transport_opens_connection_ok() {
         )
         .unwrap();
 
-    byte_tx2.write_all(&mut buf).await.unwrap();
+    byte_tx2.write_all(&buf).await.unwrap();
 
     buf.clear();
 
