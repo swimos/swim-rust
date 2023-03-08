@@ -3,7 +3,14 @@ name = "client"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+tls = ["swim_tls"]
+deflate = ["runtime/deflate"]
+trust_dns = ["swim_runtime/trust_dns"]
+
 [dependencies]
+swim_tls = { path = "../../runtime/swim_tls", optional = true }
 runtime = { path = "../runtime" }
 swim_utilities = { path = "../../swim_utilities", features = ["trigger"] }
 swim_downlink = { path = "../../swim_downlink" }

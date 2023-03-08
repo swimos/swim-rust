@@ -3,6 +3,10 @@ name = "runtime"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+deflate = ["ratchet/deflate"]
+
 [dependencies]
 fixture = { path = "../fixture" }
 swim_downlink = { path = "../../swim_downlink" }
@@ -14,7 +18,7 @@ swim_utilities = { path = "../../swim_utilities", features = ["byte_channel", "t
 swim_runtime = { path = "../../runtime/swim_runtime" }
 swim_remote = { path = "../../runtime/swim_remote" }
 swim_messages = { path = "../../runtime/swim_messages" }
-ratchet = { package = "ratchet_rs", version = "0.2.0", features = ["deflate", "split"] }
+ratchet = { package = "ratchet_rs", version = "0.2.0" }
 futures = { workspace = true }
 futures-util = { workspace = true }
 bytes = { workspace = true }

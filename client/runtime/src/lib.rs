@@ -23,6 +23,7 @@ mod transport;
 
 pub use error::{DownlinkErrorKind, DownlinkRuntimeError, TimeoutElapsed};
 pub use models::RemotePath;
+use ratchet::deflate::DeflateConfig;
 use ratchet::WebSocketConfig;
 pub use runtime::{start_runtime, RawHandle};
 use std::fmt::Debug;
@@ -32,22 +33,28 @@ pub use swim_api::error::DownlinkTaskError;
 use swim_utilities::non_zero_usize;
 pub use transport::{Transport, TransportRequest};
 
-const TRANSPORT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
+const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
 
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct ClientConfig {
     pub websocket: WebSocketConfig,
+    #[cfg(feature = "deflate")]
+    pub deflate: Option<DeflateConfig>,
     pub remote_buffer_size: NonZeroUsize,
     pub transport_buffer_size: NonZeroUsize,
+    pub registration_buffer_size: NonZeroUsize,
 }
 
 impl Default for ClientConfig {
     fn default() -> Self {
         ClientConfig {
             websocket: WebSocketConfig::default(),
+            #[cfg(feature = "deflate")]
+            deflate: None,
             remote_buffer_size: non_zero_usize!(4096),
-            transport_buffer_size: TRANSPORT_BUFFER_SIZE,
+            transport_buffer_size: DEFAULT_BUFFER_SIZE,
+            registration_buffer_size: DEFAULT_BUFFER_SIZE,
         }
     }
 }

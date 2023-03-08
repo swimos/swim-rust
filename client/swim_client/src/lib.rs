@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ratchet::NoExtProvider;
+use ratchet::{NoExtProvider, WebSocketConfig};
 use std::future::Future;
+use std::num::NonZeroUsize;
 
+#[cfg(feature = "deflate")]
+use ratchet::deflate::DeflateConfig;
 use runtime::{
     start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, RemotePath, Transport,
 };
@@ -26,13 +29,101 @@ use swim_form::Form;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use swim_runtime::net::dns::Resolver;
 use swim_runtime::net::plain::TokioPlainTextNetworking;
+use swim_runtime::net::ExternalConnections;
 use swim_runtime::ws::ext::RatchetNetworking;
+use swim_tls::RustlsNetworking;
+#[cfg(feature = "tls")]
+use swim_tls::{TlsConfig, TlsError};
 use swim_utilities::trigger::promise;
 use swim_utilities::{non_zero_usize, trigger};
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 pub use url::Url;
+
+type ClientTask = impl Future<Output = ()> + Send;
+
+#[derive(Debug, Default)]
+pub struct SwimClientBuilder {
+    config: ClientConfig,
+}
+
+impl SwimClientBuilder {
+    pub fn new(config: ClientConfig) -> SwimClientBuilder {
+        SwimClientBuilder { config }
+    }
+
+    pub fn set_websocket_config(mut self, to: WebSocketConfig) -> SwimClientBuilder {
+        self.config.websocket = to;
+        self
+    }
+
+    pub fn set_remote_buffer_size(mut self, to: NonZeroUsize) -> SwimClientBuilder {
+        self.config.remote_buffer_size = to;
+        self
+    }
+
+    pub fn set_transport_buffer_size(mut self, to: NonZeroUsize) -> SwimClientBuilder {
+        self.config.transport_buffer_size = to;
+        self
+    }
+
+    #[cfg(feature = "deflate")]
+    pub fn set_deflate_config(mut self, to: DeflateConfig) -> SwimClientBuilder {
+        self.config.deflate = Some(to);
+        self
+    }
+
+    pub async fn build(self) -> (SwimClient, ClientTask) {
+        let SwimClientBuilder { config } = self;
+        open_client(
+            config,
+            TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
+        )
+    }
+
+    #[cfg(feature = "tls")]
+    pub async fn build_tls(self, config: TlsConfig) -> Result<SwimClient, TlsError> {
+        let SwimClientBuilder { config } = self;
+        open_client(
+            config,
+            RustlsNetworking::try_from_config(resolver, tls_conf)?,
+        )
+    }
+}
+
+async fn open_client<Net>(config: ClientConfig, networking: Net) -> (SwimClient, ClientTask)
+where
+    Net: ExternalConnections,
+{
+    let ClientConfig {
+        websocket,
+        remote_buffer_size,
+        transport_buffer_size,
+        registration_buffer_size,
+        ..
+    } = config;
+
+    let websockets = RatchetNetworking {
+        config: websocket,
+        provider: NoExtProvider,
+        subprotocols: Default::default(),
+    };
+    let (stop_tx, stop_rx) = trigger::trigger();
+    let (handle, task) = start_runtime(
+        registration_buffer_size,
+        stop_rx,
+        Transport::new(networking, websockets, remote_buffer_size),
+        transport_buffer_size,
+    );
+    let client = SwimClient {
+        stop_tx,
+        handle: ClientHandle {
+            inner: Arc::new(handle),
+        },
+    };
+    (client, task)
+}
 
 #[derive(Debug)]
 pub struct SwimClient {
@@ -42,18 +133,17 @@ pub struct SwimClient {
 
 impl SwimClient {
     /// Returns a new client that has been built with the default configuration.
-    pub async fn new() -> (SwimClient, impl Future<Output = ()> + Send) {
+    pub async fn new() -> (SwimClient, ClientTask) {
         SwimClient::with_config(ClientConfig::default()).await
     }
 
     /// Returns a new client that has been built with the provided configuration.
-    pub async fn with_config(
-        config: ClientConfig,
-    ) -> (SwimClient, impl Future<Output = ()> + Send) {
+    pub async fn with_config(config: ClientConfig) -> (SwimClient, ClientTask) {
         let ClientConfig {
             websocket,
             remote_buffer_size,
             transport_buffer_size,
+            registration_buffer_size,
             ..
         } = config;
 
@@ -65,7 +155,7 @@ impl SwimClient {
         let networking = TokioPlainTextNetworking::new(Arc::new(Resolver::new().await));
         let (stop_tx, stop_rx) = trigger::trigger();
         let (handle, task) = start_runtime(
-            non_zero_usize!(128),
+            registration_buffer_size,
             stop_rx,
             Transport::new(networking, websockets, remote_buffer_size),
             transport_buffer_size,
