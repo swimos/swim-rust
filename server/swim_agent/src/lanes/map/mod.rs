@@ -39,13 +39,14 @@ use crate::{
         Modification, StepResult,
     },
     meta::AgentMetadata,
+    AgentItem,
 };
 
 use self::queues::{Action, ToWrite, WriteQueues};
 
 pub use event::MapLaneEvent;
 
-use super::{Lane, ProjTransform};
+use super::{LaneItem, ProjTransform};
 
 /// Model of a value lane. This maintain a sate consisting of a hash-map from keys to values. It generates an
 /// event whenever the map is updated (updating the value for a key, removing a key or clearing the map).
@@ -69,6 +70,12 @@ impl<K, V> MapLane<K, V> {
             id,
             inner: RefCell::new(Inner::new(init)),
         }
+    }
+}
+
+impl<K, V> AgentItem for MapLane<K, V> {
+    fn id(&self) -> u64 {
+        self.id
     }
 }
 
@@ -128,7 +135,7 @@ where
     }
 }
 
-impl<K, V> Lane for MapLane<K, V>
+impl<K, V> LaneItem for MapLane<K, V>
 where
     K: Clone + Eq + Hash + StructuralWritable,
     V: StructuralWritable,

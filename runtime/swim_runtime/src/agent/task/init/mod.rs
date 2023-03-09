@@ -18,6 +18,7 @@ use futures::{future::Either, stream::FuturesUnordered, StreamExt};
 use swim_api::{
     agent::{LaneConfig, UplinkKind},
     meta::lane::LaneKind,
+    protocol::agent::StoreInitializedCodec,
     store::StoreDisabled,
 };
 use swim_model::Text;
@@ -33,7 +34,6 @@ use crate::agent::{
     store::{no_map_init, no_value_init, AgentPersistence, BoxInitializer, StoreInitError},
     AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io, NodeReporting,
 };
-use swim_api::protocol::agent::{LaneResponse, ValueLaneResponseDecoder};
 
 use super::{InitialEndpoints, LaneEndpoint};
 
@@ -246,9 +246,9 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
 }
 
 async fn wait_for_initialized(reader: &mut ByteReader) -> Result<(), StoreInitError> {
-    let mut reader = FramedRead::new(reader, ValueLaneResponseDecoder::default());
+    let mut reader = FramedRead::new(reader, StoreInitializedCodec::default());
     match reader.next().await {
-        Some(Ok(LaneResponse::Initialized)) => Ok(()),
+        Some(Ok(_)) => Ok(()),
         _ => Err(StoreInitError::NoAckFromLane),
     }
 }
@@ -292,7 +292,7 @@ async fn lane_initialization(
     result
         .map_err(move |_| AgentExecError::FailedRestoration {
             lane_name: name,
-            error: StoreInitError::LaneInitiailizationTimeout,
+            error: StoreInitError::LaneInitializationTimeout,
         })
         .and_then(identity)
 }

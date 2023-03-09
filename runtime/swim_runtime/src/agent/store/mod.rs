@@ -17,7 +17,7 @@ use futures::{future::BoxFuture, FutureExt, SinkExt};
 use swim_api::{
     error::StoreError,
     protocol::{
-        agent::{LaneRequest, LaneRequestEncoder},
+        agent::{StoreInitMessage, StoreInitMessageEncoder},
         map::{MapMessage, MapMessageEncoder, MapOperation, RawMapOperationEncoder},
         WithLengthBytesCodec,
     },
@@ -40,7 +40,7 @@ pub enum StoreInitError {
     #[error("The lane did not acknowledge initialization.")]
     NoAckFromLane,
     #[error("Attempting to initialize a lane timed out.")]
-    LaneInitiailizationTimeout,
+    LaneInitializationTimeout,
 }
 
 pub type InitFut<'a> = BoxFuture<'a, Result<(), StoreInitError>>;
@@ -48,7 +48,7 @@ pub type InitFut<'a> = BoxFuture<'a, Result<(), StoreInitError>>;
 /// An initializer will attempt to transmit the state of the lane to the lane implementation
 /// over a channel. Typically, the value will be read from a store implementation.
 pub trait Initializer<'a> {
-    /// Attempt to initalize the state of the lane.
+    /// Attempt to initialize the state of the lane.
     fn initialize<'b>(self: Box<Self>, writer: &'b mut ByteWriter) -> InitFut<'b>
     where
         'a: 'b;
@@ -60,6 +60,9 @@ struct ValueInit<'a, S, Id> {
     lane_id: Id,
 }
 
+type ValueInitEncoder = StoreInitMessageEncoder<WithLengthBytesCodec>;
+type MapInitEncoder = StoreInitMessageEncoder<MapMessageEncoder<RawMapOperationEncoder>>;
+
 impl<'a, S> Initializer<'a> for ValueInit<'a, S, S::LaneId>
 where
     S: NodePersistence + Send + Sync + 'static,
@@ -70,12 +73,12 @@ where
     {
         async move {
             let ValueInit { store, lane_id } = *self;
-            let mut writer = FramedWrite::new(channel, ValueLaneEncoder::default());
+            let mut writer = FramedWrite::new(channel, ValueInitEncoder::default());
             let mut buffer = BytesMut::new();
             if store.get_value(lane_id, &mut buffer)?.is_some() {
-                writer.send(LaneRequest::Command(buffer)).await?;
+                writer.send(StoreInitMessage::Command(buffer)).await?;
             }
-            writer.send(LaneRequest::<&[u8]>::InitComplete).await?;
+            writer.send(StoreInitMessage::<&[u8]>::InitComplete).await?;
             Ok(())
         }
         .boxed()
@@ -98,15 +101,15 @@ where
     {
         async move {
             let MapInit { store, lane_id } = *self;
-            let mut writer = FramedWrite::new(channel, MapLaneEncoder::default());
+            let mut writer = FramedWrite::new(channel, MapInitEncoder::default());
             let mut it = store.read_map(lane_id)?;
             while let Some((key, value)) = it.consume_next()? {
                 writer
-                    .send(LaneRequest::Command(MapMessage::Update { key, value }))
+                    .send(StoreInitMessage::Command(MapMessage::Update { key, value }))
                     .await?;
             }
             writer
-                .send(LaneRequest::<MapMessage<&[u8], &[u8]>>::InitComplete)
+                .send(StoreInitMessage::<MapMessage<&[u8], &[u8]>>::InitComplete)
                 .await?;
             Ok(())
         }
@@ -176,9 +179,6 @@ impl AgentPersistence for StoreDisabled {
 #[derive(Debug, Clone)]
 pub struct StorePersistence<S>(pub S);
 
-type ValueLaneEncoder = LaneRequestEncoder<WithLengthBytesCodec>;
-type MapLaneEncoder = LaneRequestEncoder<MapMessageEncoder<RawMapOperationEncoder>>;
-
 impl<S> AgentPersistence for StorePersistence<S>
 where
     S: NodePersistence + Send + Sync + 'static,
@@ -242,8 +242,8 @@ impl<'a> Initializer<'a> for NoValueInit {
         'a: 'b,
     {
         async move {
-            let mut writer = FramedWrite::new(channel, ValueLaneEncoder::default());
-            writer.send(LaneRequest::<&[u8]>::InitComplete).await?;
+            let mut writer = FramedWrite::new(channel, ValueInitEncoder::default());
+            writer.send(StoreInitMessage::<&[u8]>::InitComplete).await?;
             Ok(())
         }
         .boxed()
@@ -256,9 +256,9 @@ impl<'a> Initializer<'a> for NoMapInit {
         'a: 'b,
     {
         async move {
-            let mut writer = FramedWrite::new(channel, MapLaneEncoder::default());
+            let mut writer = FramedWrite::new(channel, MapInitEncoder::default());
             writer
-                .send(LaneRequest::<MapMessage<&[u8], &[u8]>>::InitComplete)
+                .send(StoreInitMessage::<MapMessage<&[u8], &[u8]>>::InitComplete)
                 .await?;
             Ok(())
         }

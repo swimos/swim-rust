@@ -30,7 +30,7 @@ use crate::{
     },
     lanes::{
         value::{ValueLaneGet, ValueLaneSync},
-        Lane,
+        LaneItem,
     },
     meta::AgentMetadata,
     test_context::dummy_context,
@@ -52,7 +52,7 @@ impl<Context> Spawner<Context> for NoSpawn {
 fn not_dirty_initially() {
     let lane = ValueLane::new(ID, 123);
 
-    assert!(!lane.dirty.get());
+    assert!(!lane.store.has_data_to_write());
 }
 
 #[test]
@@ -79,7 +79,7 @@ fn write_to_value_lane() {
     let lane = ValueLane::new(ID, 123);
 
     lane.set(89);
-    assert!(lane.dirty.get());
+    assert!(lane.store.has_data_to_write());
     assert_eq!(lane.read(|n| *n), 89);
     assert_eq!(lane.read_with_prev(|prev, n| (prev, *n)), (Some(123), 89));
 }
@@ -102,7 +102,7 @@ fn write_to_buffer_dirty() {
 
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
-    assert!(!lane.dirty.get());
+    assert!(!lane.store.has_data_to_write());
 
     let mut decoder = ValueLaneResponseDecoder::default();
     let content = decoder
@@ -124,7 +124,7 @@ const SYNC_ID2: Uuid = Uuid::from_u128(183737);
 fn write_to_buffer_with_sync_while_clean() {
     let lane = ValueLane::new(ID, 123);
     lane.sync(SYNC_ID1);
-    assert!(!lane.dirty.get());
+    assert!(!lane.store.has_data_to_write());
 
     let mut buffer = BytesMut::new();
 
@@ -156,7 +156,7 @@ fn write_to_buffer_with_multiple_syncs_while_clean() {
     let lane = ValueLane::new(ID, 123);
     lane.sync(SYNC_ID1);
     lane.sync(SYNC_ID2);
-    assert!(!lane.dirty.get());
+    assert!(!lane.store.has_data_to_write());
 
     let mut buffer = BytesMut::new();
 
@@ -214,7 +214,7 @@ fn write_to_buffer_with_sync_while_dirty() {
     let lane: ValueLane<i32> = ValueLane::new(ID, 123);
     lane.set(6373);
     lane.sync(SYNC_ID1);
-    assert!(lane.dirty.get());
+    assert!(lane.store.has_data_to_write());
 
     let mut buffer = BytesMut::new();
 
@@ -231,7 +231,7 @@ fn write_to_buffer_with_sync_while_dirty() {
     .take(2)
     .collect::<Vec<_>>();
 
-    assert!(lane.dirty.get());
+    assert!(lane.store.has_data_to_write());
 
     match frames.as_slice() {
         [LaneResponse::SyncEvent(id1, value), LaneResponse::Synced(id2)] => {
@@ -252,7 +252,7 @@ fn write_to_buffer_with_sync_while_dirty() {
         .expect("Invalid frame.")
         .expect("Incomplete frame.");
 
-    assert!(!lane.dirty.get());
+    assert!(!lane.store.has_data_to_write());
     if let LaneResponse::StandardEvent(value) = frame {
         assert_eq!(value.as_ref(), b"6373");
     } else {
@@ -335,7 +335,7 @@ fn value_lane_set_event_handler() {
     let result = handler.step(dummy_context(), meta, &agent);
     check_result(result, true, true, Some(()));
 
-    assert!(agent.lane.dirty.get());
+    assert!(agent.lane.store.has_data_to_write());
     assert_eq!(agent.lane.read(|n| *n), 84);
 
     let result = handler.step(dummy_context(), meta, &agent);

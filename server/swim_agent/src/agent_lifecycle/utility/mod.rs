@@ -29,6 +29,7 @@ use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
 use crate::event_handler::{EventHandler, Suspend, UnitHandler};
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::map::MapLaneGetMap;
+use crate::stores::value::{ValueStore, ValueStoreGet, ValueStoreSet};
 use crate::{
     event_handler::{GetAgentUri, HandlerAction, SideEffect},
     lanes::{
@@ -105,6 +106,20 @@ impl<Agent: 'static> HandlerContext<Agent> {
         ValueLaneGet::new(lane)
     }
 
+    /// Create an event handler that will get the value of a value store of the agent.
+    ///
+    /// #Arguments
+    /// * `lane` - Projection to the value store.
+    pub fn get_store_value<T>(
+        &self,
+        lane: fn(&Agent) -> &ValueStore<T>,
+    ) -> impl HandlerAction<Agent, Completion = T> + Send + 'static
+    where
+        T: Clone + Send + 'static,
+    {
+        ValueStoreGet::new(lane)
+    }
+
     /// Create an event handler that will set a new value into value lane of the agent.
     ///
     /// #Arguments
@@ -119,6 +134,22 @@ impl<Agent: 'static> HandlerContext<Agent> {
         T: Send + 'static,
     {
         ValueLaneSet::new(lane, value)
+    }
+
+    /// Create an event handler that will set a new value into value store of the agent.
+    ///
+    /// #Arguments
+    /// * `lane` - Projection to the value store.
+    /// * `value` - The value to set.
+    pub fn set_store_value<T>(
+        &self,
+        lane: fn(&Agent) -> &ValueStore<T>,
+        value: T,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        T: Send + 'static,
+    {
+        ValueStoreSet::new(lane, value)
     }
 
     /// Create an event handler that will update an entry in a map lane of the agent.

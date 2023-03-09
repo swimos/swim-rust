@@ -125,7 +125,7 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 ///
 /// Implementing this trait should generally be provided by the associated derive macro. The macro can be
 /// applied to any struct with labelled fields where the field types are any type implementing the
-/// [`crate::agent::lanes::Lane`] trait, defined in this crate. Note that, although this trait does not require [`std::default::Default`], the derive macro will
+/// [`crate::agent::lanes::LaneItem`] trait, defined in this crate. Note that, although this trait does not require [`std::default::Default`], the derive macro will
 /// generate an implementation of it so you should not try to add your own implementation.
 ///
 /// The supported lane types are:
@@ -191,7 +191,7 @@ pub mod agent_model {
 }
 
 pub mod lanes {
-    pub use swim_agent::lanes::{CommandLane, Lane, MapLane, ValueLane};
+    pub use swim_agent::lanes::{CommandLane, LaneItem, MapLane, ValueLane};
 
     pub mod command {
         pub use swim_agent::lanes::command::{decode_and_command, DecodeAndCommand};

@@ -12,30 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod command;
-pub mod map;
-pub mod value;
-
 use bytes::BytesMut;
 
 use crate::{agent_model::WriteResult, AgentItem};
 
-pub use self::{command::CommandLane, map::MapLane, value::ValueLane};
+pub mod value;
 
-/// Wrapper to allow projection function pointers to be exposed as event handler transforms
-/// for different types of lanes.
-pub struct ProjTransform<C, L> {
-    projection: fn(&C) -> &L,
-}
-
-impl<C, L> ProjTransform<C, L> {
-    pub fn new(projection: fn(&C) -> &L) -> Self {
-        ProjTransform { projection }
-    }
-}
-
-/// Base trait for all agent items that model lanes.
-pub trait LaneItem: AgentItem {
-    /// If the state of the lane has changed, write an event into the buffer.
+/// Base trait for all agent items that model stores (are not directly exposed outside the agent).
+pub trait StoreItem: AgentItem {
+    /// If the state of the store has changed, write an event into the buffer.
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult;
 }
