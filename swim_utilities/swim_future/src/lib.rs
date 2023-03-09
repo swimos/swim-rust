@@ -16,6 +16,6 @@ mod combinators;
 pub mod retryable;
 
 pub use combinators::{
-    immediate_or_join, immediate_or_start, race, race3, try_last, Either3, ImmediateOrJoin, ImmediateOrStart,
-    NotifyOnBlocked, Race2, Race3, SecondaryResult, StopAfterError,
+    immediate_or_join, immediate_or_start, race, race3, try_last, Either3, ImmediateOrJoin,
+    ImmediateOrStart, NotifyOnBlocked, Race2, Race3, SecondaryResult, StopAfterError,
 };
