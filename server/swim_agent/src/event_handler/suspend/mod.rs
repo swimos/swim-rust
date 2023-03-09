@@ -114,15 +114,17 @@ where
     Suspend::new(fut)
 }
 
-pub fn run_schedule<Context, I, H>(mut schedule: I) -> impl EventHandler<Context> + Send + 'static
+pub fn run_schedule<Context, I, H>(schedule: I) -> impl EventHandler<Context> + Send + 'static
 where
     Context: 'static,
-    I: Iterator<Item = (Duration, H)> + Send + 'static,
+    I: IntoIterator<Item = (Duration, H)>,
+    I::IntoIter: Send + 'static,
     H: EventHandler<Context> + Send + 'static,
 {
-    if let Some((delay, handler)) = schedule.next() {
+    let mut it = schedule.into_iter();
+    if let Some((delay, handler)) = it.next() {
         let sched_handler = handler.and_then(move |_| {
-            let h: Box<dyn EventHandler<Context> + Send> = Box::new(run_schedule(schedule));
+            let h: Box<dyn EventHandler<Context> + Send> = Box::new(run_schedule(it));
             h
         });
         Either::Left(run_after(delay, sched_handler))
