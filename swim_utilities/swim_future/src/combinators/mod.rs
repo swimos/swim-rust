@@ -13,6 +13,7 @@
 // limitations under the License.
 
 mod immediate_or;
+mod race;
 #[cfg(test)]
 mod tests;
 
@@ -26,6 +27,8 @@ use tokio::sync::Notify;
 pub use immediate_or::{
     immediate_or_join, immediate_or_start, ImmediateOrJoin, ImmediateOrStart, SecondaryResult,
 };
+
+pub use race::{race, race3, Either3, Race2, Race3};
 
 /// A stream that runs another stream of [`Result`]s until it produces an error and then
 /// terminates.

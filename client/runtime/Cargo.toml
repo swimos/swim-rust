@@ -1,0 +1,34 @@
+[package]
+name = "runtime"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+deflate = ["ratchet/deflate"]
+
+[dependencies]
+fixture = { path = "../fixture" }
+swim_downlink = { path = "../../swim_downlink" }
+swim_api = { path = "../../api/swim_api" }
+swim_model = { path = "../../api/swim_model" }
+swim_recon = { path = "../../api/formats/swim_recon" }
+swim_form = { path = "../../api/swim_form" }
+swim_utilities = { path = "../../swim_utilities", features = ["byte_channel", "trigger", "algebra"] }
+swim_runtime = { path = "../../runtime/swim_runtime" }
+swim_remote = { path = "../../runtime/swim_remote" }
+swim_messages = { path = "../../runtime/swim_messages" }
+ratchet = { package = "ratchet_rs", version = "0.2.0" }
+futures = { workspace = true }
+futures-util = { workspace = true }
+bytes = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "sync"] }
+tokio-util = { workspace = true, features = ["codec"] }
+url = { workspace = true }
+fnv = "1.0.7"
+thiserror = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }

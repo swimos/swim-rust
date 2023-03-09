@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::error::Error;
 use std::{fmt::Display, io};
 
 use swim_form::structural::read::ReadError;
@@ -66,6 +67,8 @@ pub enum DownlinkTaskError {
     BadFrame(#[from] FrameIoError),
     #[error("Failed to deserialize frame body: {0}")]
     DeserializationFailed(#[from] ReadError),
+    #[error("{0:?}")]
+    Custom(Box<dyn Error + Send + Sync + 'static>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,6 +79,8 @@ pub enum DownlinkFailureReason {
     RemoteStopped,
     DownlinkStopped,
 }
+
+impl Error for DownlinkFailureReason {}
 
 impl Display for DownlinkFailureReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
