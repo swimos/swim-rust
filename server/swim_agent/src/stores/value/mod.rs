@@ -27,7 +27,7 @@ use crate::{
     AgentItem,
 };
 
-use super::Store;
+use super::StoreItem;
 
 #[cfg(test)]
 mod tests;
@@ -125,7 +125,7 @@ impl<T> AgentItem for ValueStore<T> {
 
 const INFALLIBLE_SER: &str = "Serializing to recon should be infallible.";
 
-impl<T: StructuralWritable> Store for ValueStore<T> {
+impl<T: StructuralWritable> StoreItem for ValueStore<T> {
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         let ValueStore { content, dirty, .. } = self;
         let mut encoder = ValueStoreResponseEncoder::default();

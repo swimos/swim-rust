@@ -35,7 +35,7 @@ use crate::{
     AgentItem,
 };
 
-use super::{Lane, ProjTransform};
+use super::{LaneItem, ProjTransform};
 
 pub mod lifecycle;
 #[cfg(test)]
@@ -153,7 +153,7 @@ pub fn decode_and_command<C, T: RecognizerReadable>(
     decode.and_then(ProjTransform::new(projection))
 }
 
-impl<T: StructuralWritable> Lane for CommandLane<T> {
+impl<T: StructuralWritable> LaneItem for CommandLane<T> {
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         let CommandLane {
             prev_command,

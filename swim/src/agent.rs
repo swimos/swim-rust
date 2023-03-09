@@ -191,7 +191,7 @@ pub mod agent_model {
 }
 
 pub mod lanes {
-    pub use swim_agent::lanes::{CommandLane, Lane, MapLane, ValueLane};
+    pub use swim_agent::lanes::{CommandLane, LaneItem, MapLane, ValueLane};
 
     pub mod command {
         pub use swim_agent::lanes::command::{decode_and_command, DecodeAndCommand};

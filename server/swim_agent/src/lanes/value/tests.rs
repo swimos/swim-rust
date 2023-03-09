@@ -30,7 +30,7 @@ use crate::{
     },
     lanes::{
         value::{ValueLaneGet, ValueLaneSync},
-        Lane,
+        LaneItem,
     },
     meta::AgentMetadata,
     test_context::dummy_context,

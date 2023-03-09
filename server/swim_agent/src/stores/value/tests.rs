@@ -27,7 +27,7 @@ use crate::{
     meta::AgentMetadata,
     stores::{
         value::{ValueStore, ValueStoreGet, ValueStoreSet},
-        Store,
+        StoreItem,
     },
     test_context::dummy_context,
 };
