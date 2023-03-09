@@ -12,12 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::{future::BoxFuture, stream::FuturesUnordered, Future, FutureExt};
+use std::time::Duration;
+
+use futures::{
+    future::{BoxFuture, Either},
+    stream::FuturesUnordered,
+    Future, FutureExt,
+};
 use static_assertions::assert_obj_safe;
 
 use crate::meta::AgentMetadata;
 
-use super::{ActionContext, BoxEventHandler, EventHandler, HandlerAction, StepResult};
+use super::{
+    ActionContext, BoxEventHandler, EventHandler, HandlerAction, HandlerActionExt, StepResult,
+    UnitHandler,
+};
 
 #[cfg(test)]
 mod tests;
@@ -91,5 +100,33 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+}
+
+pub fn run_after<Context, H>(
+    delay: Duration,
+    handler: H,
+) -> impl EventHandler<Context> + Send + 'static
+where
+    H: EventHandler<Context> + Send + 'static,
+{
+    let fut = tokio::time::sleep(delay).map(move |_| handler);
+    Suspend::new(fut)
+}
+
+pub fn run_schedule<Context, I, H>(mut schedule: I) -> impl EventHandler<Context> + Send + 'static
+where
+    Context: 'static,
+    I: Iterator<Item = (Duration, H)> + Send + 'static,
+    H: EventHandler<Context> + Send + 'static,
+{
+    if let Some((delay, handler)) = schedule.next() {
+        let sched_handler = handler.and_then(move |_| {
+            let h: Box<dyn EventHandler<Context> + Send> = Box::new(run_schedule(schedule));
+            h
+        });
+        Either::Left(run_after(delay, sched_handler))
+    } else {
+        Either::Right(UnitHandler::default())
     }
 }
