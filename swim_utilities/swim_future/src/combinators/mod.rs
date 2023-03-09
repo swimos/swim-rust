@@ -17,7 +17,7 @@ mod immediate_or;
 mod tests;
 
 use futures::task::{Context, Poll};
-use futures::{ready, Future, Stream, TryStream};
+use futures::{pin_mut, ready, Future, Stream, StreamExt, TryStream};
 use pin_project::pin_project;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -100,4 +100,18 @@ impl<S: Stream> Stream for NotifyOnBlocked<S> {
         }
         result
     }
+}
+
+/// Get the last value from a stream of results, terminating early if any member of the stream
+/// is an error.
+pub async fn try_last<S, T, E>(stream: S) -> Result<Option<T>, E>
+where
+    S: Stream<Item = Result<T, E>>,
+{
+    pin_mut!(stream);
+    let mut last = None;
+    while let Some(result) = stream.next().await {
+        last = Some(result?);
+    }
+    Ok(last)
 }
