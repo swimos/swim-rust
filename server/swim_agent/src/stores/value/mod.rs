@@ -32,14 +32,19 @@ use super::StoreItem;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug)]
+struct Inner<T> {
+    content: T,
+    previous: Option<T>,
+}
+
 /// Adding a [`ValueStore`] to an agent provides additional state that is not exposed as a lane.
 /// If persistence is enabled (and the store is not marked as transient) the state of the store
 /// will be persisted in the same was as the state of a lane.
 #[derive(Debug)]
 pub struct ValueStore<T> {
     id: u64,
-    content: RefCell<T>,
-    previous: RefCell<Option<T>>,
+    inner: RefCell<Inner<T>>,
     dirty: Cell<bool>,
 }
 
@@ -52,8 +57,10 @@ impl<T> ValueStore<T> {
     pub fn new(id: u64, init: T) -> Self {
         ValueStore {
             id,
-            content: RefCell::new(init),
-            previous: Default::default(),
+            inner: RefCell::new(Inner {
+                content: init,
+                previous: None,
+            }),
             dirty: Cell::new(false),
         }
     }
@@ -63,9 +70,9 @@ impl<T> ValueStore<T> {
     where
         F: FnOnce(&T) -> R,
     {
-        let ValueStore { content, .. } = self;
-        let value = content.borrow();
-        f(&*value)
+        let ValueStore { inner, .. } = self;
+        let guard = inner.borrow();
+        f(&guard.content)
     }
 
     /// Read the state of the store, consuming the previous value (used when triggering the `on_set` event
@@ -74,30 +81,28 @@ impl<T> ValueStore<T> {
     where
         F: FnOnce(Option<T>, &T) -> R,
     {
-        let ValueStore {
-            content, previous, ..
-        } = self;
-        let prev = previous.borrow_mut().take();
-        let value = content.borrow();
-        f(prev, &*value)
+        let ValueStore { inner, .. } = self;
+        let mut guard = inner.borrow_mut();
+        let Inner { content, previous } = &mut *guard;
+        let prev = previous.take();
+        f(prev, content)
     }
 
     /// Update the state of the store.
     pub fn set(&self, value: T) {
-        let ValueStore {
-            content,
-            previous,
-            dirty,
-            ..
-        } = self;
-        let prev = content.replace(value);
-        previous.replace(Some(prev));
+        let ValueStore { inner, dirty, .. } = self;
+        let mut guard = inner.borrow_mut();
+        let Inner { content, previous } = &mut *guard;
+        let prev = std::mem::replace(content, value);
+        *previous = Some(prev);
         dirty.replace(true);
     }
 
     pub(crate) fn init(&self, value: T) {
-        let ValueStore { content, .. } = self;
-        content.replace(value);
+        let ValueStore { inner, .. } = self;
+        let mut guard = inner.borrow_mut();
+        let Inner { content, .. } = &mut *guard;
+        *content = value;
     }
 
     pub(crate) fn has_data_to_write(&self) -> bool {
@@ -127,11 +132,13 @@ const INFALLIBLE_SER: &str = "Serializing to recon should be infallible.";
 
 impl<T: StructuralWritable> StoreItem for ValueStore<T> {
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
-        let ValueStore { content, dirty, .. } = self;
+        let ValueStore { inner, dirty, .. } = self;
+
         let mut encoder = ValueStoreResponseEncoder::default();
         if dirty.get() {
-            let value_guard = content.borrow();
-            let response = StoreResponse::new(&*value_guard);
+            let guard = inner.borrow();
+            let Inner { content, .. } = &*guard;
+            let response = StoreResponse::new(content);
             encoder.encode(response, buffer).expect(INFALLIBLE_SER);
             dirty.set(false);
             WriteResult::Done
