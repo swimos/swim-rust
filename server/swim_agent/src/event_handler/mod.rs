@@ -274,7 +274,7 @@ pub enum EventHandlerError {
     #[error("An error occurred in the agent runtime.")]
     RuntimeError(#[from] AgentRuntimeError),
     #[error("Invalid key or value type for a join lane lifecycle.")]
-    BadJoinLifecycle(#[from] DowncastError),
+    BadJoinLifecycle(DowncastError),
 }
 
 /// When a handler completes or suspends it can indicate that is has modified the
@@ -438,60 +438,56 @@ where
 pub struct Map<H, F>(Option<(H, F)>);
 
 /// Type that is returned by the `and_then` method on the [`HandlerActionExt`] trait.
+#[derive(Default)]
 pub enum AndThen<H1, H2, F> {
-    First { first: H1, next: F },
+    First {
+        first: H1,
+        next: F,
+    },
     Second(H2),
+    #[default]
     Done,
 }
 
 /// Type that is returned by the `and_then_contextual` method on the [`HandlerActionExt`] trait.
+#[derive(Default)]
 pub enum AndThenContextual<H1, H2, F> {
-    First { first: H1, next: F },
+    First {
+        first: H1,
+        next: F,
+    },
     Second(H2),
+    #[default]
     Done,
 }
 
 /// Type that is returned by the `and_then_try` method on the [`HandlerActionExt`] trait.
+#[derive(Default)]
 pub enum AndThenTry<H1, H2, F> {
-    First { first: H1, next: F },
+    First {
+        first: H1,
+        next: F,
+    },
     Second(H2),
+    #[default]
     Done,
 }
 
 /// Type that is returned by the `followed_by` method on the [`HandlerActionExt`] trait.
+#[derive(Default)]
 pub enum FollowedBy<H1, H2> {
-    First { first: H1, next: H2 },
+    First {
+        first: H1,
+        next: H2,
+    },
     Second(H2),
+    #[default]
     Done,
 }
 
 impl<H, F> Default for Map<H, F> {
     fn default() -> Self {
         Map(None)
-    }
-}
-
-impl<H1, H2, F> Default for AndThen<H1, H2, F> {
-    fn default() -> Self {
-        AndThen::Done
-    }
-}
-
-impl<H1, H2, F> Default for AndThenContextual<H1, H2, F> {
-    fn default() -> Self {
-        AndThenContextual::Done
-    }
-}
-
-impl<H1, H2, F> Default for AndThenTry<H1, H2, F> {
-    fn default() -> Self {
-        AndThenTry::Done
-    }
-}
-
-impl<H1, H2> Default for FollowedBy<H1, H2> {
-    fn default() -> Self {
-        FollowedBy::Done
     }
 }
 
@@ -1089,25 +1085,21 @@ where
 }
 
 /// [`HandlerAction`] that runs a sequence of [`EventHandler`]s.
-pub enum Sequentially<I: Iterator> {
+#[derive(Default)]
+pub enum Sequentially<I, Item> {
     Init(I),
-    Running(I, I::Item),
+    Running(I, Item),
+    #[default]
     Done,
 }
 
-impl<I: Iterator> Sequentially<I> {
+impl<I: Iterator> Sequentially<I, I::Item> {
     pub fn new<II: IntoIterator<IntoIter = I>>(it: II) -> Self {
         Sequentially::Init(it.into_iter())
     }
 }
 
-impl<I: Iterator> Default for Sequentially<I> {
-    fn default() -> Self {
-        Sequentially::Done
-    }
-}
-
-impl<I, H, Context> HandlerAction<Context> for Sequentially<I>
+impl<I, H, Context> HandlerAction<Context> for Sequentially<I, H>
 where
     I: Iterator<Item = H>,
     H: EventHandler<Context>,

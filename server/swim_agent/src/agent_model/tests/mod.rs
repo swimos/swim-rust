@@ -151,7 +151,7 @@ async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) 
 
 #[tokio::test]
 async fn run_agent_init_task() {
-    let context = Box::new(TestAgentContext::default());
+    let context = Box::<TestAgentContext>::default();
     let (
         _,
         TestContext {
@@ -176,7 +176,7 @@ async fn run_agent_init_task() {
 
 #[tokio::test]
 async fn stops_if_all_lanes_stop() {
-    let context = Box::new(TestAgentContext::default());
+    let context = Box::<TestAgentContext>::default();
     let (
         task,
         TestContext {
@@ -224,7 +224,7 @@ async fn stops_if_all_lanes_stop() {
 
 #[tokio::test]
 async fn command_to_value_lane() {
-    let context = Box::new(TestAgentContext::default());
+    let context = Box::<TestAgentContext>::default();
     let (
         task,
         TestContext {
@@ -286,7 +286,7 @@ const SYNC_ID: Uuid = Uuid::from_u128(393883);
 
 #[tokio::test]
 async fn sync_with_lane() {
-    let context = Box::new(TestAgentContext::default());
+    let context = Box::<TestAgentContext>::default();
     let (
         task,
         TestContext {
@@ -340,7 +340,7 @@ async fn sync_with_lane() {
 
 #[tokio::test]
 async fn command_to_map_lane() {
-    let context = Box::new(TestAgentContext::default());
+    let context = Box::<TestAgentContext>::default();
     let (
         task,
         TestContext {
@@ -410,7 +410,7 @@ async fn command_to_map_lane() {
 
 #[tokio::test]
 async fn suspend_future() {
-    let context = Box::new(TestAgentContext::default());
+    let context = Box::<TestAgentContext>::default();
     let (
         task,
         TestContext {

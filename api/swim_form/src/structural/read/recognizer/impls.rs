@@ -36,19 +36,15 @@ use swim_utilities::future::retryable::strategy::{
 };
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
 
+#[derive(Default)]
 enum RetryStrategyStage {
+    #[default]
     Init,
     Tag,
     AfterTag,
     InBody,
     Slot(RetryStrategyField),
     Field(RetryStrategyField),
-}
-
-impl Default for RetryStrategyStage {
-    fn default() -> Self {
-        RetryStrategyStage::Init
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -428,19 +424,15 @@ pub struct DurationRecognizer {
     nanos: Option<u32>,
 }
 
+#[derive(Default)]
 enum DurationStage {
+    #[default]
     Init,
     Tag,
     AfterTag,
     InBody,
     Slot(DurationField),
     Field(DurationField),
-}
-
-impl Default for DurationStage {
-    fn default() -> Self {
-        DurationStage::Init
-    }
 }
 
 #[derive(Clone, Copy)]

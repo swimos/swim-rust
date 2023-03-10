@@ -27,8 +27,8 @@ use syn::token::Token;
 
 /// Adds the provided bound to all generic parameters used in the fields. Fields for which
 /// `filter_fn` returns false are ignored.
-pub fn add_bound<'t, D, F>(
-    type_contents: &TypeContents<'t, D, F>,
+pub fn add_bound<D, F>(
+    type_contents: &TypeContents<'_, D, F>,
     tyc_generics: &Generics,
     filter_fn: fn(&F) -> bool,
     bound: &Path,

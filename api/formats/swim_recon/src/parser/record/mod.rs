@@ -197,12 +197,6 @@ impl<'a> ParseEvents<'a> {
     }
 }
 
-impl<'a> Default for ParseEvents<'a> {
-    fn default() -> Self {
-        ParseEvents::NoEvent
-    }
-}
-
 #[derive(Debug)]
 enum EventOrEnd<'a> {
     Event(ReadEvent<'a>, bool),

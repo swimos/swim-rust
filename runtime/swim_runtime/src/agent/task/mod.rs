@@ -1210,16 +1210,12 @@ fn discard_error<W>(error: InvalidKey) -> Option<W> {
 }
 
 /// Sequence of writes with 0, 1 or 2 entries.
+#[derive(Default)]
 enum Writes<W> {
+    #[default]
     Zero,
     Single(W),
     Two(W, W),
-}
-
-impl<W> Default for Writes<W> {
-    fn default() -> Self {
-        Writes::Zero
-    }
 }
 
 impl<W> From<Option<W>> for Writes<W> {
