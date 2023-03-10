@@ -29,7 +29,7 @@ use crate::map_storage::MapStoreInner;
 use crate::meta::AgentMetadata;
 use crate::AgentItem;
 
-use super::Store;
+use super::StoreItem;
 
 #[cfg(test)]
 mod tests;
@@ -105,7 +105,7 @@ where
 
 const INFALLIBLE_SER: &str = "Serializing store responses to recon should be infallible.";
 
-impl<K, V> Store for MapStore<K, V>
+impl<K, V> StoreItem for MapStore<K, V>
 where
     K: Clone + Eq + Hash + StructuralWritable + 'static,
     V: StructuralWritable + 'static,

@@ -12,6 +12,108 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! This module contains the API for implementing the [`crate::api::Agent`] trait in Rust. The key
+//! traits are:
+//!
+//! 1. [`crate::agent::AgentLaneModel`] - This defines the structure of the agent as a fixed collection
+//! of typed lanes. This trait has a derive macro which can be applied to any struct with named fields
+//! where each field is a lane type. See the documentation for the trait for instructions on how to use
+//! the derive macro.
+//! 2. [`crate::agent::agent_lifecycle::AgentLifecycle`] - The trait defines custom behaviour that can be
+//! attached to an agent. An agent, and its lanes have associated lifecycle events (for example, the
+//! `on_start` event that triggers when an instance of the agent starts.)
+//!
+//! # The [`crate::agent::lifecycle`] Macro
+//!
+//! [`crate::agent::agent_lifecycle::AgentLifecycle`]s can be created for an agent using the attribute
+//! macro [`crate::agent::lifecycle`]. To create a trivial lifecycle (that does nothing), create a new
+//! type and attach the attribute to an impl block:
+//!
+//! ```no_run
+//! use swim::agent::{AgentLaneModel, lifecycle};
+//! use swim::agent::lanes::ValueLane;
+//!
+//! #[derive(AgentLaneModel)]
+//! struct ExampleAgent {
+//!     lane: ValueLane<i32>
+//! }
+//!
+//! #[derive(Clone, Copy)]
+//! struct ExampleLifecycle;
+//!
+//! #[lifecycle(ExampleAgent)]
+//! impl ExampleLifecycle {}
+//! ```
+//!
+//! This macro will add a function `into_lifecycle` that will convert an instance of `ExampleLifecycle` into
+//! an [`crate::agent::agent_lifecycle::AgentLifecycle`].
+//!
+//! Lifecycle events can then be handled by adding handler functions to the impl block. For example,
+//! to attach an event to the `on_start` event, a function with the following signature could be
+//! added:
+//!
+//!  ```no_run
+//! use swim::agent::{AgentLaneModel, lifecycle};
+//! use swim::agent::agent_lifecycle::utility::HandlerContext;
+//! use swim::agent::event_handler::EventHandler;
+//! use swim::agent::lanes::ValueLane;
+//!
+//! #[derive(AgentLaneModel)]
+//! struct ExampleAgent {
+//!     lane: ValueLane<i32>
+//! }
+//!
+//! #[derive(Clone, Copy)]
+//! struct ExampleLifecycle;
+//!
+//! #[lifecycle(ExampleAgent)]
+//! impl ExampleLifecycle {
+//!     
+//!     #[on_start]
+//!     fn my_start_handler(&self, context: HandlerContext<ExampleAgent>) -> impl EventHandler<ExampleAgent> {
+//!         context.effect(|| println!("Starting agent."))
+//!     }
+//! }
+//! ```
+//!
+//! For full instructions on implementing agents and lifecycles, please see the crate level documentation.
+//!
+//! # The [`crate::agent::projections`] Macro
+//!
+//! Many [`crate::agent::event_handler::EventHandler`]s that operate on agents' lanes require projections
+//! onto the fields of an agent type (a function taking a reference to the agent type and returning a
+//! reference to the lane of interest). These can be tedious to write and make code harder to read.
+//! Therefore, the [`crate::agent::projections`] is provided to generate projections for all fields
+//! of a struct as constant members of the type. The names of the projections will be the names of
+//! the corresponding fields in upper case. For example:
+//!
+//! ```no_run
+//! use swim::agent::projections;
+//! use swim::agent::lanes::{ValueLane, MapLane};
+//!
+//! #[projections]
+//! struct ExampleAgent {
+//!     value_lane: ValueLane<i32>,
+//!     map_lane: MapLane<String, i32>,
+//! }
+//! ```
+//!
+//! This will generate constants called `VALUE_LANE` and `MAP_LANE` with types
+//! `fn(&ExampleAgent) -> &ValueLane<i32>` and `fn(&ExampleAgent) -> &MapLane<String, i32>`,
+//! respectively.
+//!
+//! As an example, consider the following `on_start` handler for the above `ExampleAgent`:
+//! ```ignore
+//! #[on_start]
+//! fn my_start_handler(&self, context: HandlerContext<ExampleAgent>) -> impl EventHandler<ExampleAgent> {
+//!     context.set_value(VALUE_LANE, 8)
+//! }
+//! ```
+//!
+//! This will set the value of `value_lane` to 8 when the agent starts using the `VALUE_LANE` projection
+//! to select the lane.
+//!
+
 pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 
 /// This trait allows for the definition of an [`crate::api::Agent`] with fixed lanes that are all
@@ -21,9 +123,9 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 /// from a type implementing this trait, it must be combined with an implementation of
 /// [`crate::agent::agent_lifecycle::AgentLifecycle`] using [`crate::agent::agent_model::AgentModel`].
 ///
-/// Implementing this trait should generally be provided by he associated derive macro. The macro can be
+/// Implementing this trait should generally be provided by the associated derive macro. The macro can be
 /// applied to any struct with labelled fields where the field types are any type implementing the
-/// [`crate::agent::lanes::Lane`] trait, defined in this crate. Note that, although this trait does not require [`std::default::Default`], the derive macro will
+/// [`crate::agent::lanes::LaneItem`] trait, defined in this crate. Note that, although this trait does not require [`std::default::Default`], the derive macro will
 /// generate an implementation of it so you should not try to add your own implementation.
 ///
 /// The supported lane types are:
@@ -35,7 +137,7 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 /// For [`crate::agent::lanes::ValueLane`] and [`crate::agent::lanes::CommandLane`], the type parameter
 /// must implement that [`crate::form::Form`] trait (used for serialization and deserialization). For
 /// [`crate::agent::lanes::MapLane`], both parameters must implement [`crate::form::Form`] and additionally,
-/// the key type `K` must satisfy `K: Hash + Eq + Ord + Clone + Form`.
+/// the key type `K` must additionally satisfy `K: Hash + Eq + Ord + Clone`.
 ///
 /// As an example, the following is a valid agent type defining lanes of each supported kind:
 ///
@@ -89,7 +191,7 @@ pub mod agent_model {
 }
 
 pub mod lanes {
-    pub use swim_agent::lanes::{CommandLane, Lane, MapLane, ValueLane};
+    pub use swim_agent::lanes::{CommandLane, LaneItem, MapLane, ValueLane};
 
     pub mod command {
         pub use swim_agent::lanes::command::{decode_and_command, DecodeAndCommand};

@@ -21,7 +21,8 @@ pub mod value;
 
 pub use self::{map::MapStore, value::ValueStore};
 
-pub trait Store: AgentItem {
+/// Base trait for all agent items that model stores (are not directly exposed outside the agent).
+pub trait StoreItem: AgentItem {
     /// If the state of the store has changed, write an event into the buffer.
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult;
 }

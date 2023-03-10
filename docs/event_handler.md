@@ -75,7 +75,7 @@ The aid in the construction of event handlers, a factor type is provided in the 
 swim::agent::agent_lifecycle::utility::HandlerContext<AgentType>
 ```
 
-This allows for the east construction of event handlers that will run in the context of the `AgentType`. Typically, in locations where an event handler is required, an instance of this type will be provided. (It is always possible to create event handlers directly, the utility simply aids with type inference and reduces the need for type ascriptions in the code).
+This allows for the easier construction of event handlers that will run in the context of the `AgentType`. Typically, in locations where an event handler is required, an instance of this type will be provided. (It is always possible to create event handlers directly, the utility simply aids with type inference and reduces the need for type ascriptions in the code).
 
 The simplest possible event handler runs a side effect. For example:
 

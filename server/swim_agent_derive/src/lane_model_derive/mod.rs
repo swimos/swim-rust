@@ -449,7 +449,7 @@ impl<'a> WriteToBufferMatch<'a> {
         let WriteToBufferMatch(model) = self;
         let name_lit = model.literal();
         let LaneModel { name, .. } = model;
-        quote!(#name_lit => ::core::option::Option::Some(#root::lanes::Lane::write_to_buffer(&self.#name, buffer)))
+        quote!(#name_lit => ::core::option::Option::Some(#root::lanes::LaneItem::write_to_buffer(&self.#name, buffer)))
     }
 }
 

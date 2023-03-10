@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, BytesMut};
-use std::fmt::Write;
+use std::{fmt::Write, mem::size_of};
 use swim_form::{structural::read::recognizer::RecognizerReadable, Form};
 use swim_recon::printer::print_recon_compact;
 use tokio_util::codec::{Decoder, Encoder};
@@ -28,6 +28,8 @@ use crate::protocol::{
 
 use super::StoreResponseDecoder;
 
+const LEN_SIZE: usize = size_of::<u64>();
+
 #[test]
 fn encode_command_store_request() {
     let mut encoder = StoreInitMessageEncoder::value();
@@ -36,7 +38,7 @@ fn encode_command_store_request() {
     let message = StoreInitMessage::Command(content);
     assert!(encoder.encode(message, &mut buffer).is_ok());
 
-    assert_eq!(buffer.remaining(), 9 + content.len());
+    assert_eq!(buffer.remaining(), TAG_LEN + LEN_SIZE + content.len());
     assert_eq!(buffer.get_u8(), super::COMMAND);
     assert_eq!(buffer.get_u64(), content.len() as u64);
     assert_eq!(buffer.as_ref(), content);
@@ -133,7 +135,7 @@ fn encode_store_response() {
 
     assert!(encoder.encode(response, &mut buffer).is_ok());
 
-    assert_eq!(buffer.remaining(), 9 + content.len());
+    assert_eq!(buffer.remaining(), TAG_LEN + LEN_SIZE + content.len());
     assert_eq!(buffer.get_u8(), super::EVENT);
     assert_eq!(buffer.get_u64(), content.len() as u64);
     assert_eq!(buffer.as_ref(), content);
@@ -145,7 +147,7 @@ fn decode_store_response() {
     let mut buffer = BytesMut::new();
     let content = b"body";
 
-    buffer.reserve(9 + content.len());
+    buffer.reserve(TAG_LEN + LEN_SIZE + content.len());
     buffer.put_u8(super::EVENT);
     buffer.put_u64(content.len() as u64);
     buffer.put(content.as_slice());
