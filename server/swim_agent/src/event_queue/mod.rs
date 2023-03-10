@@ -145,10 +145,7 @@ where
         MapOperation::Update { key, .. } => content
             .get(&key)
             .map(|v| MapOperation::Update { key, value: v }),
-        MapOperation::Remove { key } if content.contains_key(&key) => {
-            Some(MapOperation::Remove { key })
-        }
-        MapOperation::Clear if !content.is_empty() => Some(MapOperation::Clear),
-        _ => None,
+        MapOperation::Remove { key } => Some(MapOperation::Remove { key }),
+        MapOperation::Clear => Some(MapOperation::Clear),
     }
 }
