@@ -14,7 +14,7 @@
 
 use swim::agent::{
     agent_lifecycle::utility::HandlerContext,
-    config::ValueDownlinkConfig,
+    config::SimpleDownlinkConfig,
     event_handler::{EventHandler, HandlerActionExt, OpenValueDownlink},
 };
 
@@ -28,7 +28,7 @@ pub fn make_downlink(
         Some("swim://example.remote:8080"),
         "/node",
         lane,
-        ValueDownlinkConfig::default(),
+        SimpleDownlinkConfig::default(),
     );
 
     builder
