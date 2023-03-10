@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 mod tests;
 
 use http::uri::{InvalidUri, Uri};
-use serde::{Deserialize, Serialize};
 use std::borrow::{Borrow, BorrowMut, Cow};
 use std::cmp::Ordering;
 use std::convert::{Infallible, TryFrom};
@@ -25,11 +24,10 @@ use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::str;
 use std::str::FromStr;
-use swim_utilities::routing::uri::{BadRelativeUri, RelativeUri};
+use swim_utilities::routing::route_uri::{InvalidRouteUri, RouteUri};
 
 const SMALL_SIZE: usize = 3 * std::mem::size_of::<usize>();
 
-#[derive(Serialize, Deserialize)]
 enum TextInner {
     Small(usize, [u8; SMALL_SIZE]),
     Large(String),
@@ -39,7 +37,6 @@ enum TextInner {
 /// `SMALL_SIZE` bytes (allowing such strings to be held entirely within the object rather than
 /// requiring a separate allocation. This can be used in exactly the same way as [`String`] in
 /// most circumstances.
-#[derive(Serialize, Deserialize)]
 pub struct Text(TextInner);
 
 impl Text {
@@ -127,7 +124,7 @@ impl Text {
             TextInner::Small(len, arr) => {
                 let str_len = string.len();
                 if *len + str_len <= SMALL_SIZE {
-                    (&mut arr[*len..*len + str_len]).clone_from_slice(string.as_bytes());
+                    arr[*len..*len + str_len].clone_from_slice(string.as_bytes());
                     *len += str_len;
                 } else {
                     let mut replacement = small_str(*len, arr).to_string();
@@ -224,7 +221,7 @@ impl From<&Text> for Text {
 
 impl From<&mut Text> for Text {
     fn from(text: &mut Text) -> Self {
-        (&*text).clone()
+        (*text).clone()
     }
 }
 
@@ -532,7 +529,7 @@ where
 fn small_from_str(string: &str) -> Text {
     let len = string.len();
     let mut arr = [0; SMALL_SIZE];
-    (&mut arr[..len]).copy_from_slice(string.as_bytes());
+    arr[..len].copy_from_slice(string.as_bytes());
     Text(TextInner::Small(len, arr))
 }
 
@@ -563,13 +560,13 @@ impl TryFrom<Text> for Uri {
     }
 }
 
-impl TryFrom<Text> for RelativeUri {
-    type Error = BadRelativeUri;
+impl TryFrom<Text> for RouteUri {
+    type Error = InvalidRouteUri;
 
     fn try_from(value: Text) -> Result<Self, Self::Error> {
         match value {
-            Text(TextInner::Large(string)) => RelativeUri::try_from(string),
-            Text(TextInner::Small(len, bytes)) => RelativeUri::try_from(small_str(len, &bytes)),
+            Text(TextInner::Large(string)) => RouteUri::try_from(string),
+            Text(TextInner::Small(len, bytes)) => RouteUri::try_from(small_str(len, &bytes)),
         }
     }
 }

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,15 +17,16 @@ mod tests;
 
 mod iterator;
 
-pub use crate::iterator::{RocksIterator, RocksPrefixIterator};
+pub use crate::iterator::{RocksIterator, RocksPrefixIterator, RocksRawPrefixIterator};
 
-use rocksdb::{ColumnFamily, ColumnFamilyDescriptor};
+use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, ReadOptions};
 use rocksdb::{Options, DB};
 use std::path::Path;
 use std::sync::Arc;
+use store_common::EnginePrefixIterator;
 use store_common::{
-    serialize, EngineInfo, EnginePrefixIterator, EngineRefIterator, Keyspace, KeyspaceByteEngine,
-    KeyspaceResolver, Keyspaces, Store, StoreBuilder, StoreError,
+    serialize_u64, EngineInfo, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces, Store,
+    StoreBuilder, StoreError, MAX_ID_SIZE,
 };
 
 /// A Rocks database engine.
@@ -41,6 +42,42 @@ impl RocksEngine {
         RocksEngine {
             delegate: Arc::new(delegate),
         }
+    }
+
+    pub fn iterator<'a: 'b, 'b>(
+        &'a self,
+        space: &'b <Self as KeyspaceResolver>::ResolvedKeyspace,
+    ) -> Result<RocksIterator<'b>, StoreError> {
+        self.iterator_opt(space)
+    }
+
+    pub fn iterator_opt<'a: 'b, 'b>(
+        &'a self,
+        space: &'b <Self as KeyspaceResolver>::ResolvedKeyspace,
+    ) -> Result<RocksIterator<'b>, StoreError> {
+        let mut iter = self.delegate.raw_iterator_cf(space);
+        iter.seek_to_first();
+
+        Ok(iter.into())
+    }
+
+    /// Returns an iterator for all of the elements in the keyspace `space` that have keys that are
+    /// prefixed by `prefix` and with the default iterator options.
+    pub fn prefix_iterator<'a: 'b, 'b>(
+        &'a self,
+        space: &'b <Self as KeyspaceResolver>::ResolvedKeyspace,
+        prefix: &'b [u8],
+    ) -> Result<RocksPrefixIterator<'b>, StoreError> {
+        self.prefix_iterator_opt(space, prefix)
+    }
+
+    pub fn prefix_iterator_opt<'a: 'b, 'b>(
+        &'a self,
+        space: &'b <Self as KeyspaceResolver>::ResolvedKeyspace,
+        prefix: &'b [u8],
+    ) -> Result<RocksPrefixIterator<'b>, StoreError> {
+        let it = self.delegate.prefix_iterator_cf(space, prefix);
+        Ok(it.into())
     }
 }
 
@@ -115,6 +152,29 @@ where
 }
 
 impl KeyspaceByteEngine for RocksEngine {
+    type RangeCon<'a> = RocksRawPrefixIterator<'a>
+    where
+        Self: 'a;
+
+    fn get_prefix_range_consumer<'a, S>(
+        &'a self,
+        keyspace: S,
+        prefix: &[u8],
+    ) -> Result<Self::RangeCon<'a>, StoreError>
+    where
+        S: Keyspace,
+    {
+        let resolved = self
+            .resolve_keyspace(&keyspace)
+            .ok_or(StoreError::KeyspaceNotFound)?;
+
+        let mut read_opts = ReadOptions::default();
+        read_opts.set_prefix_same_as_start(true);
+        let mut iter = self.delegate.raw_iterator_cf_opt(resolved, read_opts);
+        iter.seek(prefix);
+        Ok(RocksRawPrefixIterator::new(iter))
+    }
+
     fn put_keyspace<K: Keyspace>(
         &self,
         keyspace: K,
@@ -148,9 +208,10 @@ impl KeyspaceByteEngine for RocksEngine {
         key: &[u8],
         value: u64,
     ) -> Result<(), StoreError> {
-        let value = serialize(&value)?;
+        let mut buf = [0u8; MAX_ID_SIZE];
+        let value = serialize_u64(value, &mut buf);
         exec_keyspace(&self.delegate, keyspace, move |delegate, keyspace| {
-            delegate.merge_cf(keyspace, key, value.as_slice())
+            delegate.merge_cf(keyspace, key, value)
         })
     }
 
@@ -186,5 +247,19 @@ impl KeyspaceByteEngine for RocksEngine {
         } else {
             Ok(Some(data))
         }
+    }
+
+    fn delete_key_range<S>(
+        &self,
+        keyspace: S,
+        start: &[u8],
+        ubound: &[u8],
+    ) -> Result<(), StoreError>
+    where
+        S: Keyspace,
+    {
+        exec_keyspace(&self.delegate, keyspace, move |delegate, keyspace| {
+            delegate.delete_range_cf(keyspace, start, ubound)
+        })
     }
 }

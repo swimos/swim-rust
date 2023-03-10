@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,19 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, marker::PhantomData};
+use std::{
+    any::{Any, TypeId},
+    cell::RefCell,
+    collections::HashMap,
+    marker::PhantomData,
+};
 
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
 use futures::{future::Either, stream::BoxStream, FutureExt};
 use static_assertions::assert_obj_safe;
-use swim_api::{agent::AgentContext, downlink::DownlinkKind, error::AgentRuntimeError};
+use swim_api::{
+    agent::AgentContext,
+    downlink::DownlinkKind,
+    error::{AgentRuntimeError, DownlinkRuntimeError},
+};
 use swim_form::structural::read::recognizer::RecognizerReadable;
-use swim_model::address::Address;
+use swim_model::{address::Address, Text};
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
+    routing::route_uri::RouteUri,
 };
 use thiserror::Error;
 use tokio_util::codec::Decoder;
@@ -37,12 +46,18 @@ use crate::{
     meta::AgentMetadata,
 };
 
+mod handler_fn;
 mod register_downlink;
 mod suspend;
 #[cfg(test)]
 mod tests;
 
-pub use suspend::{HandlerFuture, Spawner, Suspend};
+pub use suspend::{run_after, run_schedule, HandlerFuture, Spawner, Suspend};
+
+pub use handler_fn::{
+    EventConsumeFn, EventFn, HandlerFn0, MapRemoveFn, MapUpdateBorrowFn, MapUpdateFn, TakeFn,
+    UpdateBorrowFn, UpdateFn,
+};
 
 use self::register_downlink::RegisterHostedDownlink;
 
@@ -53,7 +68,7 @@ pub trait DownlinkSpawner<Context> {
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
         dl_writer: WriteStream,
-    ) -> Result<(), AgentRuntimeError>;
+    ) -> Result<(), DownlinkRuntimeError>;
 }
 
 impl<Context> DownlinkSpawner<Context>
@@ -63,7 +78,7 @@ impl<Context> DownlinkSpawner<Context>
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
         dl_writer: WriteStream,
-    ) -> Result<(), AgentRuntimeError> {
+    ) -> Result<(), DownlinkRuntimeError> {
         self.borrow_mut().push((dl_channel, dl_writer));
         Ok(())
     }
@@ -71,13 +86,13 @@ impl<Context> DownlinkSpawner<Context>
 
 impl<F, Context> DownlinkSpawner<Context> for F
 where
-    F: Fn(BoxDownlinkChannel<Context>, WriteStream) -> Result<(), AgentRuntimeError>,
+    F: Fn(BoxDownlinkChannel<Context>, WriteStream) -> Result<(), DownlinkRuntimeError>,
 {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
         dl_writer: WriteStream,
-    ) -> Result<(), AgentRuntimeError> {
+    ) -> Result<(), DownlinkRuntimeError> {
         (*self)(dl_channel, dl_writer)
     }
 }
@@ -86,19 +101,8 @@ pub struct ActionContext<'a, Context> {
     spawner: &'a dyn Spawner<Context>,
     agent_context: &'a dyn AgentContext,
     downlink: &'a dyn DownlinkSpawner<Context>,
+    join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
 }
-
-impl<'a, Context> Clone for ActionContext<'a, Context> {
-    fn clone(&self) -> Self {
-        Self {
-            spawner: self.spawner,
-            agent_context: self.agent_context,
-            downlink: self.downlink,
-        }
-    }
-}
-
-impl<'a, Context> Copy for ActionContext<'a, Context> {}
 
 impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
     fn spawn_suspend(&self, fut: HandlerFuture<Context>) {
@@ -111,7 +115,7 @@ impl<'a, Context> DownlinkSpawner<Context> for ActionContext<'a, Context> {
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
         dl_writer: BoxStream<'static, Result<(), std::io::Error>>,
-    ) -> Result<(), AgentRuntimeError> {
+    ) -> Result<(), DownlinkRuntimeError> {
         self.downlink.spawn_downlink(dl_channel, dl_writer)
     }
 }
@@ -121,12 +125,29 @@ impl<'a, Context> ActionContext<'a, Context> {
         spawner: &'a dyn Spawner<Context>,
         agent_context: &'a dyn AgentContext,
         downlink: &'a dyn DownlinkSpawner<Context>,
+        join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
     ) -> Self {
         ActionContext {
             spawner,
             agent_context,
             downlink,
+            join_value_init,
         }
+    }
+
+    pub fn join_value_initializer(
+        &self,
+        lane_id: u64,
+    ) -> Option<&BoxJoinValueInit<'static, Context>> {
+        self.join_value_init.get(&lane_id)
+    }
+
+    pub fn register_join_value_initializer(
+        &mut self,
+        lane_id: u64,
+        factory: BoxJoinValueInit<'static, Context>,
+    ) {
+        self.join_value_init.insert(lane_id, factory);
     }
 
     pub(crate) fn start_downlink<S, F, G, OnDone, H>(
@@ -141,7 +162,7 @@ impl<'a, Context> ActionContext<'a, Context> {
         S: AsRef<str>,
         F: FnOnce(ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
         G: FnOnce(ByteWriter) -> WriteStream + Send + 'static,
-        OnDone: FnOnce(Result<(), AgentRuntimeError>) -> H + Send + 'static,
+        OnDone: FnOnce(Result<(), DownlinkRuntimeError>) -> H + Send + 'static,
         H: EventHandler<Context> + Send + 'static,
     {
         let Address { host, node, lane } = path;
@@ -169,8 +190,8 @@ impl<'a, Context> ActionContext<'a, Context> {
     }
 }
 
-/// Trait to desribe an action to be taken, within the context of an agent, when an event ocurrs. The
-/// execution of an event handler can be suspended (so that it can trigger the exection of other handlers).
+/// Trait to describe an action to be taken, within the context of an agent, when an event occurs. The
+/// execution of an event handler can be suspended (so that it can trigger the execution of other handlers).
 /// This could be expressed using generators from the standard library after this feature is stabilized.
 /// A handler instance can be used exactly once. After it has returned a result or an error all subsequent
 /// step executions must result in an error.
@@ -194,7 +215,7 @@ pub trait HandlerAction<Context> {
     /// * `context` - The execution context of the handler (providing access to the lanes of the agent).
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion>;
@@ -204,7 +225,8 @@ pub trait EventHandler<Context>: HandlerAction<Context, Completion = ()> {}
 
 assert_obj_safe!(EventHandler<()>);
 
-pub type BoxEventHandler<'a, Context> = Box<dyn EventHandler<Context> + 'a>;
+pub type BoxHandlerAction<'a, Context, T> = Box<dyn HandlerAction<Context, Completion = T> + 'a>;
+pub type BoxEventHandler<'a, Context> = BoxHandlerAction<'a, Context, ()>;
 
 impl<Context, H> EventHandler<Context> for H where H: HandlerAction<Context, Completion = ()> {}
 
@@ -216,7 +238,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -232,7 +254,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -249,31 +271,33 @@ pub enum EventHandlerError {
     BadCommand(AsyncParseError),
     #[error("An incoming message was incomplete.")]
     IncompleteCommand,
-    #[error("An error ocurred in the agent runtime.")]
+    #[error("An error occurred in the agent runtime.")]
     RuntimeError(#[from] AgentRuntimeError),
+    #[error("Invalid key or value type for a join lane lifecycle.")]
+    BadJoinLifecycle(#[from] DowncastError),
 }
 
-/// When a handler completes or suspends it can inidcate that is has modified the
-/// state of a lane.
+/// When a handler completes or suspends it can indicate that is has modified the
+/// state of an item.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Modification {
-    /// The ID of the lane.
-    pub lane_id: u64,
+    /// The ID of the item.
+    pub item_id: u64,
     /// If this is true, lifecycle event handlers on the lane should be executed.
     pub trigger_handler: bool,
 }
 
 impl Modification {
-    pub fn of(lane_id: u64) -> Self {
+    pub fn of(item_id: u64) -> Self {
         Modification {
-            lane_id,
+            item_id,
             trigger_handler: true,
         }
     }
 
-    pub fn no_trigger(lane_id: u64) -> Self {
+    pub fn no_trigger(item_id: u64) -> Self {
         Modification {
-            lane_id,
+            item_id,
             trigger_handler: false,
         }
     }
@@ -284,16 +308,16 @@ impl Modification {
 pub enum StepResult<C> {
     /// The event handler has suspended.
     Continue {
-        /// Indicates if a lane has been modified,
-        modified_lane: Option<Modification>,
+        /// Indicates if an item has been modified,
+        modified_item: Option<Modification>,
     },
     /// The handler has failed and will never now produce a result.
     Fail(EventHandlerError),
     /// The handler has completed successfully. All further attempts to step
     /// will result in an error.
     Complete {
-        /// Indicates if a lane has been modified.
-        modified_lane: Option<Modification>,
+        /// Indicates if an item has been modified.
+        modified_item: Option<Modification>,
         /// The result of the handler.
         result: C,
     },
@@ -302,13 +326,13 @@ pub enum StepResult<C> {
 impl<C> StepResult<C> {
     pub fn cont() -> Self {
         StepResult::Continue {
-            modified_lane: None,
+            modified_item: None,
         }
     }
 
     pub fn done(result: C) -> Self {
         Self::Complete {
-            modified_lane: None,
+            modified_item: None,
             result,
         }
     }
@@ -317,7 +341,7 @@ impl<C> StepResult<C> {
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     }
 
-    fn is_cont(&self) -> bool {
+    pub fn is_cont(&self) -> bool {
         matches!(self, StepResult::Continue { .. })
     }
 
@@ -326,13 +350,13 @@ impl<C> StepResult<C> {
         F: FnOnce(C) -> D,
     {
         match self {
-            StepResult::Continue { modified_lane } => StepResult::Continue { modified_lane },
+            StepResult::Continue { modified_item } => StepResult::Continue { modified_item },
             StepResult::Fail(err) => StepResult::Fail(err),
             StepResult::Complete {
-                modified_lane,
+                modified_item,
                 result,
             } => StepResult::Complete {
-                modified_lane,
+                modified_item,
                 result: f(result),
             },
         }
@@ -373,7 +397,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -393,7 +417,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -415,6 +439,13 @@ pub struct Map<H, F>(Option<(H, F)>);
 
 /// Type that is returned by the `and_then` method on the [`HandlerActionExt`] trait.
 pub enum AndThen<H1, H2, F> {
+    First { first: H1, next: F },
+    Second(H2),
+    Done,
+}
+
+/// Type that is returned by the `and_then_contextual` method on the [`HandlerActionExt`] trait.
+pub enum AndThenContextual<H1, H2, F> {
     First { first: H1, next: F },
     Second(H2),
     Done,
@@ -446,6 +477,12 @@ impl<H1, H2, F> Default for AndThen<H1, H2, F> {
     }
 }
 
+impl<H1, H2, F> Default for AndThenContextual<H1, H2, F> {
+    fn default() -> Self {
+        AndThenContextual::Done
+    }
+}
+
 impl<H1, H2, F> Default for AndThenTry<H1, H2, F> {
     fn default() -> Self {
         AndThenTry::Done
@@ -467,6 +504,12 @@ impl<H, F> Map<H, F> {
 impl<H1, H2, F> AndThen<H1, H2, F> {
     fn new(first: H1, f: F) -> Self {
         AndThen::First { first, next: f }
+    }
+}
+
+impl<H1, H2, F> AndThenContextual<H1, H2, F> {
+    fn new(first: H1, f: F) -> Self {
+        AndThenContextual::First { first, next: f }
     }
 }
 
@@ -502,6 +545,23 @@ where
     }
 }
 
+/// Transformation within a context.
+pub trait ContextualTrans<Context, In> {
+    type Out;
+    fn transform(self, context: &Context, input: In) -> Self::Out;
+}
+
+impl<Context, In, Out, F> ContextualTrans<Context, In> for F
+where
+    F: FnOnce(&Context, In) -> Out,
+{
+    type Out = Out;
+
+    fn transform(self, context: &Context, input: In) -> Self::Out {
+        self(context, input)
+    }
+}
+
 impl<Context, H, F, T> HandlerAction<Context> for Map<H, F>
 where
     H: HandlerAction<Context>,
@@ -511,27 +571,77 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
         if let Some((mut action, f)) = self.0.take() {
             match action.step(action_context, meta, context) {
-                StepResult::Continue { modified_lane } => {
+                StepResult::Continue { modified_item } => {
                     self.0 = Some((action, f));
-                    StepResult::Continue { modified_lane }
+                    StepResult::Continue { modified_item }
                 }
                 StepResult::Fail(e) => StepResult::Fail(e),
                 StepResult::Complete {
-                    modified_lane,
+                    modified_item,
                     result,
                 } => StepResult::Complete {
-                    modified_lane,
+                    modified_item,
                     result: f.transform(result),
                 },
             }
         } else {
             StepResult::after_done()
+        }
+    }
+}
+
+impl<Context, H1, H2, F> HandlerAction<Context> for AndThenContextual<H1, H2, F>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+    F: ContextualTrans<Context, H1::Completion, Out = H2>,
+{
+    type Completion = H2::Completion;
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        match std::mem::take(self) {
+            AndThenContextual::First { mut first, next } => {
+                match first.step(action_context, meta, context) {
+                    StepResult::Fail(e) => StepResult::Fail(e),
+                    StepResult::Complete {
+                        modified_item: dirty_lane,
+                        result,
+                    } => {
+                        let second = next.transform(context, result);
+                        *self = AndThenContextual::Second(second);
+                        StepResult::Continue {
+                            modified_item: dirty_lane,
+                        }
+                    }
+                    StepResult::Continue {
+                        modified_item: dirty_lane,
+                    } => {
+                        *self = AndThenContextual::First { first, next };
+                        StepResult::Continue {
+                            modified_item: dirty_lane,
+                        }
+                    }
+                }
+            }
+            AndThenContextual::Second(mut second) => {
+                let step_result = second.step(action_context, meta, context);
+                if step_result.is_cont() {
+                    *self = AndThenContextual::Second(second);
+                }
+                step_result
+            }
+            _ => StepResult::after_done(),
         }
     }
 }
@@ -546,7 +656,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -554,21 +664,21 @@ where
             AndThen::First { mut first, next } => match first.step(action_context, meta, context) {
                 StepResult::Fail(e) => StepResult::Fail(e),
                 StepResult::Complete {
-                    modified_lane: dirty_lane,
+                    modified_item: dirty_lane,
                     result,
                 } => {
                     let second = next.transform(result);
                     *self = AndThen::Second(second);
                     StepResult::Continue {
-                        modified_lane: dirty_lane,
+                        modified_item: dirty_lane,
                     }
                 }
                 StepResult::Continue {
-                    modified_lane: dirty_lane,
+                    modified_item: dirty_lane,
                 } => {
                     *self = AndThen::First { first, next };
                     StepResult::Continue {
-                        modified_lane: dirty_lane,
+                        modified_item: dirty_lane,
                     }
                 }
             },
@@ -594,7 +704,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -603,23 +713,23 @@ where
                 match first.step(action_context, meta, context) {
                     StepResult::Fail(e) => StepResult::Fail(e),
                     StepResult::Complete {
-                        modified_lane: dirty_lane,
+                        modified_item: dirty_lane,
                         result,
                     } => match next.transform(result) {
                         Ok(second) => {
                             *self = AndThenTry::Second(second);
                             StepResult::Continue {
-                                modified_lane: dirty_lane,
+                                modified_item: dirty_lane,
                             }
                         }
                         Err(e) => StepResult::Fail(e),
                     },
                     StepResult::Continue {
-                        modified_lane: dirty_lane,
+                        modified_item: dirty_lane,
                     } => {
                         *self = AndThenTry::First { first, next };
                         StepResult::Continue {
-                            modified_lane: dirty_lane,
+                            modified_item: dirty_lane,
                         }
                     }
                 }
@@ -645,7 +755,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -654,20 +764,20 @@ where
                 match first.step(action_context, meta, context) {
                     StepResult::Fail(e) => StepResult::Fail(e),
                     StepResult::Complete {
-                        modified_lane: dirty_lane,
+                        modified_item: dirty_lane,
                         ..
                     } => {
                         *self = FollowedBy::Second(next);
                         StepResult::Continue {
-                            modified_lane: dirty_lane,
+                            modified_item: dirty_lane,
                         }
                     }
                     StepResult::Continue {
-                        modified_lane: dirty_lane,
+                        modified_item: dirty_lane,
                     } => {
                         *self = FollowedBy::First { first, next };
                         StepResult::Continue {
-                            modified_lane: dirty_lane,
+                            modified_item: dirty_lane,
                         }
                     }
                 }
@@ -706,7 +816,7 @@ impl<T, Context> HandlerAction<Context> for ConstHandler<T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -723,7 +833,7 @@ impl<Context> HandlerAction<Context> for CNil {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -740,7 +850,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -758,11 +868,11 @@ pub struct GetAgentUri {
 }
 
 impl<Context> HandlerAction<Context> for GetAgentUri {
-    type Completion = RelativeUri;
+    type Completion = RouteUri;
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -772,6 +882,35 @@ impl<Context> HandlerAction<Context> for GetAgentUri {
         } else {
             *done = true;
             StepResult::done(meta.agent_uri().clone())
+        }
+    }
+}
+
+/// Get a parameter from the route URI of the running agent.
+pub struct GetParameter<S> {
+    key: Option<S>,
+}
+
+impl<S> GetParameter<S> {
+    pub fn new(key: S) -> Self {
+        GetParameter { key: Some(key) }
+    }
+}
+
+impl<Context, S: AsRef<str>> HandlerAction<Context> for GetParameter<S> {
+    type Completion = Option<String>;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let GetParameter { key } = self;
+        if let Some(key) = key.take() {
+            StepResult::done(meta.get_param(key.as_ref()).map(ToString::to_string))
+        } else {
+            StepResult::after_done()
         }
     }
 }
@@ -799,7 +938,7 @@ impl<Context, T: RecognizerReadable> HandlerAction<Context> for Decode<T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -829,7 +968,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -860,6 +999,18 @@ pub trait HandlerActionExt<Context>: HandlerAction<Context> {
         H2: HandlerAction<Context>,
     {
         AndThen::new(self, f)
+    }
+
+    /// Create a new handler which applies a function to the result of this handler and then executes
+    /// an additional handler returned by the function. The functional also receives access to the
+    /// context.
+    fn and_then_contextual<F, H2>(self, f: F) -> AndThenContextual<Self, H2, F>
+    where
+        Self: Sized,
+        F: ContextualTrans<Context, Self::Completion, Out = H2>,
+        H2: HandlerAction<Context>,
+    {
+        AndThenContextual::new(self, f)
     }
 
     /// Create a new handler which applies a function to the result of this handler and then executes
@@ -898,12 +1049,8 @@ pub trait HandlerActionExt<Context>: HandlerAction<Context> {
     {
         Discard::new(self)
     }
-}
 
-impl<Context, H: HandlerAction<Context>> HandlerActionExt<Context> for H {}
-
-pub trait EventHandlerExt<Context>: EventHandler<Context> {
-    fn boxed<'a>(self) -> BoxEventHandler<'a, Context>
+    fn boxed<'a>(self) -> BoxHandlerAction<'a, Context, Self::Completion>
     where
         Self: Sized + 'a,
     {
@@ -911,7 +1058,7 @@ pub trait EventHandlerExt<Context>: EventHandler<Context> {
     }
 }
 
-impl<Context, H: EventHandler<Context>> EventHandlerExt<Context> for H {}
+impl<Context, H: HandlerAction<Context>> HandlerActionExt<Context> for H {}
 
 pub struct Fail<T, E>(Option<Result<T, E>>);
 
@@ -929,7 +1076,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -969,7 +1116,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -986,22 +1133,22 @@ where
                 Sequentially::Running(mut it, mut h) => {
                     let result = h.step(action_context, meta, context);
                     break match result {
-                        StepResult::Continue { modified_lane } => {
+                        StepResult::Continue { modified_item } => {
                             *self = Sequentially::Running(it, h);
-                            StepResult::Continue { modified_lane }
+                            StepResult::Continue { modified_item }
                         }
                         StepResult::Fail(e) => {
                             *self = Sequentially::Done;
                             StepResult::Fail(e)
                         }
-                        StepResult::Complete { modified_lane, .. } => {
+                        StepResult::Complete { modified_item, .. } => {
                             if let Some(h2) = it.next() {
                                 *self = Sequentially::Running(it, h2);
-                                StepResult::Continue { modified_lane }
+                                StepResult::Continue { modified_item }
                             } else {
                                 *self = Sequentially::Done;
                                 StepResult::Complete {
-                                    modified_lane,
+                                    modified_item,
                                     result: (),
                                 }
                             }
@@ -1030,7 +1177,7 @@ impl<Context, H: HandlerAction<Context>> HandlerAction<Context> for Discard<H> {
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -1060,3 +1207,50 @@ impl<Context, K, V, H> OpenMapDownlink<Context, K, V> for H where
     H: HandlerAction<Context, Completion = MapDownlinkHandle<K, V>>
 {
 }
+
+impl<Context, H> HandlerAction<Context> for Option<H>
+where
+    H: HandlerAction<Context>,
+{
+    type Completion = Option<H::Completion>;
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        if let Some(inner) = self {
+            inner.step(action_context, meta, context).map(Option::Some)
+        } else {
+            StepResult::done(None)
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum DowncastError {
+    #[error("Expected a key of type {expected_type:?} but received type {:?}", key.type_id())]
+    Key {
+        key: Box<dyn Any + Send>,
+        expected_type: TypeId,
+    },
+    #[error("Expected value type {expected_type:?} but received type {actual_type:?}")]
+    Value {
+        actual_type: TypeId,
+        expected_type: TypeId,
+    },
+}
+
+pub trait JoinValueInitializer<Context>: Send {
+    fn try_create_action(
+        &self,
+        key: Box<dyn Any + Send>,
+        value_type: TypeId,
+        address: Address<Text>,
+    ) -> Result<Box<dyn EventHandler<Context> + Send + 'static>, DowncastError>;
+}
+
+static_assertions::assert_obj_safe!(JoinValueInitializer<()>);
+
+pub type BoxJoinValueInit<'a, Context> = Box<dyn JoinValueInitializer<Context> + Send + 'a>;

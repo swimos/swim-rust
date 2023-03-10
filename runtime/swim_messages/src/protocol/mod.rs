@@ -21,10 +21,9 @@ use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
 use swim_form::structural::write::StructuralWritable;
 use swim_model::address::RelativeAddress;
-use swim_model::{Text, Value};
+use swim_model::Text;
 use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swim_recon::printer::print_recon_compact;
-use swim_warp::envelope::{Envelope, RequestKind};
 use thiserror::Error;
 use tokio::io::AsyncRead;
 use tokio_util::codec::{Decoder, Encoder, FramedRead};
@@ -108,15 +107,6 @@ impl<P, T> RequestMessage<P, T> {
             origin: source,
             path,
             envelope: Operation::Command(body),
-        }
-    }
-
-    pub fn kind(&self) -> RequestKind {
-        match &self.envelope {
-            Operation::Link => RequestKind::Link,
-            Operation::Sync => RequestKind::Sync,
-            Operation::Unlink => RequestKind::Unlink,
-            Operation::Command(_) => RequestKind::Command,
         }
     }
 
@@ -1008,89 +998,4 @@ where
 {
     let decoder = AgentMessageDecoder::<T, _>::new(T::make_recognizer());
     FramedRead::new(reader, decoder)
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct EnvelopeEncoder(pub Uuid);
-
-/// Temporary shim to allow the existing agent and downlink implementations to write in to a byte
-/// channel using the same format as the request and response message encoders. This encoding is
-/// lossy (the rate and priority fields of the envelopes are ignored and bodies are discarded for
-/// most types of envelope). Attempting to encode auth/death envelopes will result in a a panic.
-impl EnvelopeEncoder {
-    pub fn new(addr: Uuid) -> Self {
-        EnvelopeEncoder(addr)
-    }
-}
-
-impl Encoder<Envelope> for EnvelopeEncoder {
-    type Error = std::io::Error;
-
-    fn encode(&mut self, item: Envelope, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let EnvelopeEncoder(source) = self;
-        let (node, lane, code, body) = match item {
-            Envelope::Auth { .. } | Envelope::DeAuth { .. } => {
-                panic!("Unexpected auth/death envelope.");
-            }
-            Envelope::Link {
-                node_uri, lane_uri, ..
-            } => (node_uri, lane_uri, LINK, None),
-            Envelope::Sync {
-                node_uri, lane_uri, ..
-            } => (node_uri, lane_uri, SYNC, None),
-            Envelope::Unlink {
-                node_uri, lane_uri, ..
-            } => (node_uri, lane_uri, UNLINK, None),
-            Envelope::Command {
-                node_uri,
-                lane_uri,
-                body,
-            } => (
-                node_uri,
-                lane_uri,
-                COMMAND,
-                Some(body.unwrap_or(Value::Extant)),
-            ),
-            Envelope::Linked {
-                node_uri, lane_uri, ..
-            } => (node_uri, lane_uri, LINKED, None),
-            Envelope::Synced {
-                node_uri, lane_uri, ..
-            } => (node_uri, lane_uri, SYNCED, None),
-            Envelope::Unlinked {
-                node_uri,
-                lane_uri,
-                body,
-            } => (
-                node_uri,
-                lane_uri,
-                UNLINKED,
-                Some(body.unwrap_or(Value::Extant)),
-            ),
-            Envelope::Event {
-                node_uri,
-                lane_uri,
-                body,
-            } => (
-                node_uri,
-                lane_uri,
-                EVENT,
-                Some(body.unwrap_or(Value::Extant)),
-            ),
-        };
-        dst.reserve(HEADER_INIT_LEN + lane.len() + node.len());
-        dst.put_u128(source.as_u128());
-        let node_len = u32::try_from(node.len()).expect("Node name to long.");
-        let lane_len = u32::try_from(lane.len()).expect("Lane name to long.");
-        dst.put_u32(node_len);
-        dst.put_u32(lane_len);
-        if let Some(body) = body {
-            put_with_body(node.as_str(), lane.as_str(), code, &body, dst);
-        } else {
-            dst.put_u64(code << OP_SHIFT);
-            dst.put_slice(node.as_bytes());
-            dst.put_slice(lane.as_bytes());
-        }
-        Ok(())
-    }
 }

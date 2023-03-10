@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -65,18 +65,18 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
         }) = self;
 
         let var_as_str = variants.iter().map(|(var_name, rename)| {
-            let lit = lit_name(*var_name, rename);
+            let lit = lit_name(var_name, rename);
             quote!(#name::#var_name => #lit)
         });
 
         let str_as_var = variants.iter().map(|(var_name, rename)| {
-            let lit = lit_name(*var_name, rename);
+            let lit = lit_name(var_name, rename);
             quote!(#lit => ::core::result::Result::Ok(#name::#var_name))
         });
 
         let literals = variants
             .iter()
-            .map(|(var_name, rename)| lit_name(*var_name, rename));
+            .map(|(var_name, rename)| lit_name(var_name, rename));
 
         let err_lit = format!("Possible values are: {}.", Variants(variants.as_slice()));
         let num_vars = variants.len();

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,154 +18,186 @@ use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    downlink_lifecycle::{LiftShared, WithHandlerContext},
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{EventFn, EventHandler, UnitHandler},
+    lifecycle_fn::{LiftShared, WithHandlerContext, WithHandlerContextBorrow},
 };
 
 /// Lifecycle event for the `on_event` event of a downlink, from an agent.
-pub trait OnDownlinkEvent<'a, T, Context>: Send {
-    type OnEventHandler: EventHandler<Context> + 'a;
+pub trait OnDownlinkEvent<T, Context>: Send {
+    type OnEventHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a;
 
     /// #Arguments
     /// * `value` - The event value.
-    fn on_event(&'a self, value: &T) -> Self::OnEventHandler;
+    fn on_event(&self, value: &T) -> Self::OnEventHandler<'_>;
 }
 
 /// Lifecycle event for the `on_event` event of a downlink, from an agent,where the event
 /// handler has shared state with other handlers for the same downlink.
-pub trait OnDownlinkEventShared<'a, T, Context, Shared>: Send {
-    type OnEventHandler: EventHandler<Context> + 'a;
+pub trait OnDownlinkEventShared<T, Context, Shared>: Send {
+    type OnEventHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `value` - The event value.
-    fn on_event(
+    fn on_event<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         value: &T,
-    ) -> Self::OnEventHandler;
+    ) -> Self::OnEventHandler<'a>;
 }
 
-impl<'a, T, Context> OnDownlinkEvent<'a, T, Context> for NoHandler {
-    type OnEventHandler = UnitHandler;
+impl<T, Context> OnDownlinkEvent<T, Context> for NoHandler {
+    type OnEventHandler<'a> = UnitHandler
+    where
+        Self: 'a;
 
-    fn on_event(&'a self, _value: &T) -> Self::OnEventHandler {
+    fn on_event(&self, _value: &T) -> Self::OnEventHandler<'_> {
         UnitHandler::default()
     }
 }
 
-impl<'a, T, Context, Shared> OnDownlinkEventShared<'a, T, Context, Shared> for NoHandler {
-    type OnEventHandler = UnitHandler;
+impl<T, Context, Shared> OnDownlinkEventShared<T, Context, Shared> for NoHandler {
+    type OnEventHandler<'a> = UnitHandler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_event(
+    fn on_event<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         _value: &T,
-    ) -> Self::OnEventHandler {
+    ) -> Self::OnEventHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<'a, T, Context, F, H> OnDownlinkEvent<'a, T, Context> for FnHandler<F>
+impl<T, Context, F, H> OnDownlinkEvent<T, Context> for FnHandler<F>
 where
-    F: Fn(&T) -> H + Send + 'a,
-    H: EventHandler<Context> + 'a,
+    F: Fn(&T) -> H + Send,
+    H: EventHandler<Context> + 'static,
 {
-    type OnEventHandler = H;
+    type OnEventHandler<'a> = H where
+        Self: 'a;
 
-    fn on_event(&'a self, value: &T) -> Self::OnEventHandler {
+    fn on_event(&self, value: &T) -> Self::OnEventHandler<'_> {
         let FnHandler(f) = self;
         f(value)
     }
 }
 
-impl<'a, B, T, Context, F, H> OnDownlinkEvent<'a, T, Context> for BorrowHandler<F, B>
+impl<T, Context, Shared, F> OnDownlinkEventShared<T, Context, Shared> for FnHandler<F>
 where
-    B: ?Sized,
-    T: Borrow<B>,
-    F: Fn(&B) -> H + Send + 'a,
-    H: EventHandler<Context> + 'a,
+    F: for<'a> EventFn<'a, Context, Shared, T> + Send,
 {
-    type OnEventHandler = H;
+    type OnEventHandler<'a> = <F as EventFn<'a, Context, Shared, T>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_event(&'a self, value: &T) -> Self::OnEventHandler {
-        (self.as_ref())(value.borrow())
-    }
-}
-
-impl<'a, T, Context, Shared, F, H> OnDownlinkEventShared<'a, T, Context, Shared> for FnHandler<F>
-where
-    F: Fn(&'a Shared, HandlerContext<Context>, &T) -> H + Send + 'a,
-    Shared: 'a,
-    H: EventHandler<Context> + 'a,
-{
-    type OnEventHandler = H;
-
-    fn on_event(
+    fn on_event<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         value: &T,
-    ) -> Self::OnEventHandler {
+    ) -> Self::OnEventHandler<'a> {
         let FnHandler(f) = self;
-        f(shared, handler_context, value)
+        f.make_handler(shared, handler_context, value)
     }
 }
 
-impl<'a, B, T, Context, Shared, F, H> OnDownlinkEventShared<'a, T, Context, Shared>
-    for BorrowHandler<F, B>
-where
-    B: ?Sized,
-    T: Borrow<B>,
-    F: Fn(&'a Shared, HandlerContext<Context>, &B) -> H + Send + 'a,
-    Shared: 'a,
-    H: EventHandler<Context> + 'a,
-{
-    type OnEventHandler = H;
-
-    fn on_event(
-        &'a self,
-        shared: &'a Shared,
-        handler_context: HandlerContext<Context>,
-        value: &T,
-    ) -> Self::OnEventHandler {
-        (self.as_ref())(shared, handler_context, value.borrow())
-    }
-}
-
-impl<'a, Context, T, F, H> OnDownlinkEvent<'a, T, Context> for WithHandlerContext<Context, F>
+impl<Context, T, F, H> OnDownlinkEvent<T, Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>, &T) -> H + Send,
-    H: EventHandler<Context> + 'a,
+    H: EventHandler<Context> + 'static,
 {
-    type OnEventHandler = H;
+    type OnEventHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_event(&'a self, value: &T) -> Self::OnEventHandler {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context, value)
+    fn on_event(&self, value: &T) -> Self::OnEventHandler<'_> {
+        let WithHandlerContext { inner } = self;
+        inner(Default::default(), value)
     }
 }
 
-impl<'a, T, Context, Shared, F> OnDownlinkEventShared<'a, T, Context, Shared>
-    for LiftShared<F, Shared>
+impl<T, Context, Shared, F> OnDownlinkEventShared<T, Context, Shared> for LiftShared<F, Shared>
 where
-    F: OnDownlinkEvent<'a, T, Context> + Send,
+    F: OnDownlinkEvent<T, Context> + Send,
 {
-    type OnEventHandler = F::OnEventHandler;
+    type OnEventHandler<'a> = F::OnEventHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_event(
+    fn on_event<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         value: &T,
-    ) -> Self::OnEventHandler {
+    ) -> Self::OnEventHandler<'a> {
         let LiftShared { inner, .. } = self;
         inner.on_event(value)
+    }
+}
+
+impl<B, T, Context, F, H> OnDownlinkEvent<T, Context> for BorrowHandler<F, B>
+where
+    B: ?Sized,
+    T: Borrow<B>,
+    F: Fn(&B) -> H + Send,
+    H: EventHandler<Context> + 'static,
+{
+    type OnEventHandler<'a> = H
+    where
+        Self: 'a;
+
+    fn on_event<'a>(&'a self, value: &T) -> Self::OnEventHandler<'a> {
+        (self.as_ref())(value.borrow())
+    }
+}
+
+impl<Context, T, B, F, H> OnDownlinkEvent<T, Context> for WithHandlerContextBorrow<F, B>
+where
+    B: ?Sized,
+    T: Borrow<B>,
+    F: Fn(HandlerContext<Context>, &B) -> H + Send,
+    H: EventHandler<Context> + 'static,
+{
+    type OnEventHandler<'a> = H
+    where
+        Self: 'a;
+
+    fn on_event<'a>(&'a self, value: &T) -> Self::OnEventHandler<'a> {
+        let WithHandlerContextBorrow { inner, .. } = self;
+        inner(Default::default(), value.borrow())
+    }
+}
+
+impl<B, T, Context, Shared, F> OnDownlinkEventShared<T, Context, Shared> for BorrowHandler<F, B>
+where
+    B: ?Sized,
+    T: Borrow<B>,
+    F: for<'a> EventFn<'a, Context, Shared, B> + Send,
+{
+    type OnEventHandler<'a> = <F as EventFn<'a, Context, Shared, B>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_event<'a>(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: &T,
+    ) -> Self::OnEventHandler<'a> {
+        (self.as_ref()).make_handler(shared, handler_context, value.borrow())
     }
 }

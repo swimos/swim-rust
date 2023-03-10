@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -69,11 +69,6 @@ impl RemoteTracker {
     /// Determine if a specified remote is attached.
     pub fn has_remote(&self, remote_id: Uuid) -> bool {
         self.remotes.contains_key(&remote_id)
-    }
-
-    /// Remove a lane from the registry.
-    pub fn remove_lane(&mut self, id: u64) -> Option<Text> {
-        self.lane_registry().remove(id)
     }
 
     /// Get a reference to the lane registry.

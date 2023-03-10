@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,8 +22,18 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use swim_algebra::non_zero_usize;
+use swim_num::non_zero_usize;
 use tokio::sync::Barrier;
+
+static LARGE_BOUNDARY_INC: NonZeroUsize = large();
+
+const fn large() -> NonZeroUsize {
+    if let Some(n) = NonZeroUsize::new(LARGE_BOUNDARY + 1) {
+        n
+    } else {
+        panic!("Not non-zero!");
+    }
+}
 
 #[test]
 fn one_item_queue() {
@@ -66,7 +76,7 @@ async fn small_send_and_receive() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn large_send_and_receive() {
-    send_and_receive(non_zero_usize!(LARGE_BOUNDARY + 1)).await;
+    send_and_receive(LARGE_BOUNDARY_INC).await;
 }
 
 async fn receive_after_sender_dropped(n: NonZeroUsize) {
@@ -105,7 +115,7 @@ async fn small_receive_after_sender_dropped() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn large_receive_after_sender_dropped() {
-    receive_after_sender_dropped(non_zero_usize!(LARGE_BOUNDARY + 1)).await;
+    receive_after_sender_dropped(LARGE_BOUNDARY_INC).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -133,7 +143,7 @@ async fn miss_update() {
 }
 
 async fn receive_several(n: usize) {
-    let (mut tx, mut rx) = super::channel(non_zero_usize!(n));
+    let (mut tx, mut rx) = super::channel(NonZeroUsize::new(n).unwrap());
 
     let send_task = async move {
         for i in 0..n {
@@ -165,7 +175,7 @@ async fn large_receive_several() {
 }
 
 async fn receive_several_stream(n: usize) {
-    let (mut tx, mut rx) = super::channel(non_zero_usize!(n));
+    let (mut tx, mut rx) = super::channel(NonZeroUsize::new(n).unwrap());
 
     let send_task = async move {
         for i in 0..n {
@@ -197,7 +207,7 @@ async fn large_receive_several_stream() {
 }
 
 async fn receive_all_stream(n: usize) {
-    let (mut tx, rx) = super::channel(non_zero_usize!(n));
+    let (mut tx, rx) = super::channel(NonZeroUsize::new(n).unwrap());
 
     let send_task = async move {
         for i in 0..n {
@@ -262,11 +272,11 @@ async fn small_send_after_receiver_dropped() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn large_send_after_receiver_dropped() {
-    send_after_receiver_dropped(non_zero_usize!(LARGE_BOUNDARY + 1)).await;
+    send_after_receiver_dropped(LARGE_BOUNDARY_INC).await;
 }
 
 async fn send_and_receive_many(n: usize, r: usize) {
-    let (mut tx, rx) = super::channel(non_zero_usize!(n));
+    let (mut tx, rx) = super::channel(NonZeroUsize::new(n).unwrap());
 
     let send_task = async move {
         for i in 0..r {

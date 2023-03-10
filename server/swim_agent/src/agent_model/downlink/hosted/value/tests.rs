@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,26 +22,27 @@ use swim_api::protocol::downlink::{
 use swim_model::{address::Address, Text};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{self, ByteWriter},
+    non_zero_usize,
     sync::circular_buffer,
 };
 use tokio::{io::AsyncWriteExt, task::yield_now};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use super::{HostedValueDownlinkChannel, ValueDownlinkConfig};
+use super::{HostedValueDownlinkChannel, SimpleDownlinkConfig};
 use crate::{
     agent_model::downlink::{
         handlers::DownlinkChannel,
         hosted::{value_dl_write_stream, ValueDownlinkHandle},
     },
     downlink_lifecycle::{
+        on_failed::OnFailed,
         on_linked::OnLinked,
         on_synced::OnSynced,
         on_unlinked::OnUnlinked,
         value::{on_event::OnDownlinkEvent, on_set::OnDownlinkSet},
     },
-    event_handler::{BoxEventHandler, EventHandlerExt, SideEffect},
+    event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
 };
 
 struct FakeAgent;
@@ -53,6 +54,7 @@ enum Event {
     Event(i32),
     Set(Option<i32>, i32),
     Unlinked,
+    Failed,
 }
 
 #[derive(Debug)]
@@ -60,10 +62,12 @@ struct FakeLifecycle {
     inner: Arc<Mutex<Vec<Event>>>,
 }
 
-impl<'a> OnLinked<'a, FakeAgent> for FakeLifecycle {
-    type OnLinkedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnLinked<FakeAgent> for FakeLifecycle {
+    type OnLinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_linked(&'a self) -> Self::OnLinkedHandler {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         let state = self.inner.clone();
         SideEffect::from(move || {
             state.lock().push(Event::Linked);
@@ -72,10 +76,12 @@ impl<'a> OnLinked<'a, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnUnlinked<'a, FakeAgent> for FakeLifecycle {
-    type OnUnlinkedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnUnlinked<FakeAgent> for FakeLifecycle {
+    type OnUnlinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_unlinked(&'a self) -> Self::OnUnlinkedHandler {
+    fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         let state = self.inner.clone();
         SideEffect::from(move || {
             state.lock().push(Event::Unlinked);
@@ -84,10 +90,26 @@ impl<'a> OnUnlinked<'a, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnSynced<'a, i32, FakeAgent> for FakeLifecycle {
-    type OnSyncedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnFailed<FakeAgent> for FakeLifecycle {
+    type OnFailedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_synced(&'a self, value: &i32) -> Self::OnSyncedHandler {
+    fn on_failed(&self) -> Self::OnFailedHandler<'_> {
+        let state = self.inner.clone();
+        SideEffect::from(move || {
+            state.lock().push(Event::Failed);
+        })
+        .boxed()
+    }
+}
+
+impl OnSynced<i32, FakeAgent> for FakeLifecycle {
+    type OnSyncedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
+
+    fn on_synced<'a>(&'a self, value: &i32) -> Self::OnSyncedHandler<'a> {
         let state = self.inner.clone();
         let n = *value;
         SideEffect::from(move || {
@@ -97,10 +119,12 @@ impl<'a> OnSynced<'a, i32, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnDownlinkEvent<'a, i32, FakeAgent> for FakeLifecycle {
-    type OnEventHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnDownlinkEvent<i32, FakeAgent> for FakeLifecycle {
+    type OnEventHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_event(&'a self, value: &i32) -> Self::OnEventHandler {
+    fn on_event<'a>(&'a self, value: &i32) -> Self::OnEventHandler<'a> {
         let state = self.inner.clone();
         let n = *value;
         SideEffect::from(move || {
@@ -110,10 +134,12 @@ impl<'a> OnDownlinkEvent<'a, i32, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnDownlinkSet<'a, i32, FakeAgent> for FakeLifecycle {
-    type OnSetHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnDownlinkSet<i32, FakeAgent> for FakeLifecycle {
+    type OnSetHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_set(&'a self, previous: Option<i32>, new_value: &i32) -> Self::OnSetHandler {
+    fn on_set<'a>(&'a self, previous: Option<i32>, new_value: &i32) -> Self::OnSetHandler<'a> {
         let state = self.inner.clone();
         let n = *new_value;
         SideEffect::from(move || {
@@ -134,7 +160,7 @@ struct TestContext {
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
 }
 
-fn make_hosted_input(config: ValueDownlinkConfig) -> TestContext {
+fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
     let inner: Events = Default::default();
     let lc = FakeLifecycle {
         inner: inner.clone(),
@@ -158,7 +184,7 @@ async fn shutdown_when_input_stops() {
         mut channel,
         sender,
         ..
-    } = make_hosted_input(ValueDownlinkConfig::default());
+    } = make_hosted_input(SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -176,16 +202,20 @@ async fn terminate_on_error() {
     let TestContext {
         mut channel,
         mut sender,
+        events,
         ..
-    } = make_hosted_input(ValueDownlinkConfig::default());
+    } = make_hosted_input(SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
     assert!(sender.get_mut().write_u8(100).await.is_ok()); //Invalid message kind tag.
 
     assert!(matches!(channel.await_ready().await, Some(Err(_))));
-    assert!(channel.next_event(&agent).is_none());
-    assert!(channel.await_ready().await.is_none());
+    let handler = channel
+        .next_event(&agent)
+        .expect("Expected failure response.");
+    run_handler(handler, &agent);
+    assert_eq!(take_events(&events), vec![Event::Failed]);
 }
 
 fn take_events(events: &Events) -> Vec<Event> {
@@ -237,7 +267,7 @@ async fn run_with_expectations(
 
 #[tokio::test]
 async fn emit_linked_handler() {
-    let mut context = make_hosted_input(ValueDownlinkConfig::default());
+    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -251,7 +281,7 @@ async fn emit_linked_handler() {
 
 #[tokio::test]
 async fn emit_synced_handler() {
-    let mut context = make_hosted_input(ValueDownlinkConfig::default());
+    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -269,7 +299,7 @@ async fn emit_synced_handler() {
 
 #[tokio::test]
 async fn emit_event_handlers() {
-    let mut context = make_hosted_input(ValueDownlinkConfig::default());
+    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -291,7 +321,7 @@ async fn emit_event_handlers() {
 
 #[tokio::test]
 async fn emit_events_before_synced() {
-    let config = ValueDownlinkConfig {
+    let config = SimpleDownlinkConfig {
         events_when_not_synced: true,
         terminate_on_unlinked: true,
     };
@@ -316,7 +346,7 @@ async fn emit_events_before_synced() {
 
 #[tokio::test]
 async fn emit_unlinked_handler() {
-    let mut context = make_hosted_input(ValueDownlinkConfig::default());
+    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
 
@@ -339,7 +369,7 @@ async fn emit_unlinked_handler() {
 
 #[tokio::test]
 async fn revive_unlinked_downlink() {
-    let config = ValueDownlinkConfig {
+    let config = SimpleDownlinkConfig {
         events_when_not_synced: true,
         terminate_on_unlinked: false,
     };

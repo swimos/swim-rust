@@ -1,5 +1,0 @@
-error: Expected a list
-  --> $DIR/invalid_path.rs:20:21
-   |
-20 |         #[stringify(path = "a")]
-   |                     ^^^^^^^^^^

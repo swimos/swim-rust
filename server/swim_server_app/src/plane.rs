@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,30 +15,72 @@
 use std::collections::HashSet;
 
 use swim_api::agent::{Agent, BoxAgent};
+use swim_introspection::route::{lane_pattern, node_pattern};
+use swim_model::Text;
 use swim_utilities::routing::route_pattern::RoutePattern;
 
 use crate::{error::AmbiguousRoutes, util::AgentExt};
 
 /// A plane is a collection of agents which are all served by a single TCP listener. This mode
 /// describes all of the kinds of agents that are defined in the lane and maps them to URI routes.
-#[derive(Default)]
 pub struct PlaneModel {
+    pub(crate) name: Text,
     pub(crate) routes: Vec<(RoutePattern, BoxAgent)>,
+}
+
+impl PlaneModel {
+    pub fn check_meta_collisions(&self) -> Result<(), AmbiguousRoutes> {
+        let node = node_pattern();
+        let lane = lane_pattern();
+        let mut meta = vec![];
+        let mut routes = vec![];
+        let mut node_collision = false;
+        let mut lane_collision = false;
+        for (pattern, _) in &self.routes {
+            let with_node = RoutePattern::are_ambiguous(&node, pattern);
+            let with_lane = RoutePattern::are_ambiguous(&lane, pattern);
+            node_collision = node_collision || with_node;
+            lane_collision = lane_collision || with_lane;
+            if with_node || with_lane {
+                routes.push(pattern.clone());
+            }
+        }
+        if node_collision {
+            meta.push(node);
+        }
+        if lane_collision {
+            meta.push(lane);
+        }
+
+        if routes.is_empty() {
+            Ok(())
+        } else {
+            Err(AmbiguousRoutes::collision(meta, routes))
+        }
+    }
 }
 
 /// A builder that will construct a [`PlaneModel`]. The consistency of the routes that are supplied
 /// is only checked when the `build` method is called.
-#[derive(Default)]
 pub struct PlaneBuilder {
     model: PlaneModel,
 }
 
 impl PlaneBuilder {
+    pub fn with_name(name: &str) -> Self {
+        PlaneBuilder {
+            model: PlaneModel {
+                name: Text::new(name),
+                routes: Default::default(),
+            },
+        }
+    }
+
     /// Attempt to construct the model. If any of the routes that were provided are ambiguous,
     /// this will fail.
     pub fn build(self) -> Result<PlaneModel, AmbiguousRoutes> {
         let PlaneBuilder {
-            model: PlaneModel { routes },
+            model: PlaneModel { name, routes },
         } = self;
         let template = routes.iter().map(|(r, _)| r).enumerate();
 
@@ -70,7 +112,7 @@ impl PlaneBuilder {
                 .collect();
             Err(AmbiguousRoutes::new(bad))
         } else {
-            Ok(PlaneModel { routes })
+            Ok(PlaneModel { name, routes })
         }
     }
 
@@ -87,9 +129,11 @@ impl PlaneBuilder {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use futures::future::BoxFuture;
     use swim_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
-    use swim_utilities::routing::{route_pattern::RoutePattern, uri::RelativeUri};
+    use swim_utilities::routing::{route_pattern::RoutePattern, route_uri::RouteUri};
 
     use crate::error::AmbiguousRoutes;
 
@@ -100,7 +144,8 @@ mod tests {
     impl Agent for DummyAgent {
         fn run(
             &self,
-            _route: RelativeUri,
+            _route: RouteUri,
+            _route_params: HashMap<String, String>,
             _config: AgentConfig,
             _context: Box<dyn AgentContext + Send>,
         ) -> BoxFuture<'static, AgentInitResult> {
@@ -110,12 +155,13 @@ mod tests {
 
     #[test]
     fn single_route() {
-        let mut builder = super::PlaneBuilder::default();
+        let mut builder = super::PlaneBuilder::with_name("plane");
         let route = RoutePattern::parse_str("/node").expect("Bad route.");
         builder.add_route(route.clone(), DummyAgent);
 
-        let PlaneModel { routes } = builder.build().expect("Building plane failed.");
+        let PlaneModel { name, routes } = builder.build().expect("Building plane failed.");
 
+        assert_eq!(name, "plane");
         match routes.as_slice() {
             [(pattern, _)] => {
                 assert_eq!(pattern, &route);
@@ -126,14 +172,15 @@ mod tests {
 
     #[test]
     fn two_disjoint_routes() {
-        let mut builder = super::PlaneBuilder::default();
+        let mut builder = super::PlaneBuilder::with_name("plane");
         let route1 = RoutePattern::parse_str("/node").expect("Bad route.");
         let route2 = RoutePattern::parse_str("/other/:id").expect("Bad route.");
         builder.add_route(route1.clone(), DummyAgent);
         builder.add_route(route2.clone(), DummyAgent);
 
-        let PlaneModel { routes } = builder.build().expect("Building plane failed.");
+        let PlaneModel { name, routes } = builder.build().expect("Building plane failed.");
 
+        assert_eq!(name, "plane");
         match routes.as_slice() {
             [(pattern1, _), (pattern2, _)] => {
                 assert!(
@@ -147,13 +194,16 @@ mod tests {
 
     #[test]
     fn two_ambiguous_routes() {
-        let mut builder = super::PlaneBuilder::default();
+        let mut builder = super::PlaneBuilder::with_name("plane");
         let route1 = RoutePattern::parse_str("/node").expect("Bad route.");
         let route2 = RoutePattern::parse_str("/:id").expect("Bad route.");
         builder.add_route(route1.clone(), DummyAgent);
         builder.add_route(route2.clone(), DummyAgent);
 
-        let AmbiguousRoutes { routes } = builder.build().err().expect("Building plane succeeded.");
+        let routes = match builder.build() {
+            Err(AmbiguousRoutes::Overlapping { routes }) => routes,
+            _ => panic!("Building plane succeeded."),
+        };
 
         match routes.as_slice() {
             [pattern1, pattern2] => {
@@ -168,7 +218,7 @@ mod tests {
 
     #[test]
     fn two_ambiguous_with_good_routes() {
-        let mut builder = super::PlaneBuilder::default();
+        let mut builder = super::PlaneBuilder::with_name("plane");
         let route1 = RoutePattern::parse_str("/first/node").expect("Bad route.");
         let route2 = RoutePattern::parse_str("/first/:id").expect("Bad route.");
         let route3 = RoutePattern::parse_str("/second").expect("Bad route.");
@@ -176,8 +226,10 @@ mod tests {
         builder.add_route(route2.clone(), DummyAgent);
         builder.add_route(route3, DummyAgent);
 
-        let AmbiguousRoutes { routes } = builder.build().err().expect("Building plane succeeded.");
-
+        let routes = match builder.build() {
+            Err(AmbiguousRoutes::Overlapping { routes }) => routes,
+            _ => panic!("Building plane succeeded."),
+        };
         match routes.as_slice() {
             [pattern1, pattern2] => {
                 assert!(

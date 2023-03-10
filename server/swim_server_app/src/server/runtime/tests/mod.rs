@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    num::NonZeroUsize,
     time::Duration,
 };
 
@@ -24,17 +25,17 @@ use futures::{
     Future,
 };
 use ratchet::{Message, NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
-use swim_api::error::DownlinkFailureReason;
+use swim_api::{error::DownlinkFailureReason, store::StoreDisabled};
 use swim_form::structural::write::StructuralWritable;
 use swim_model::address::RelativeAddress;
 use swim_recon::printer::print_recon_compact;
 use swim_remote::AttachClient;
-use swim_runtime::remote::{table::SchemeHostPort, Scheme};
+use swim_runtime::net::{Scheme, SchemeHostPort};
 use swim_utilities::{
-    algebra::non_zero_usize, io::byte_channel::byte_channel, routing::route_pattern::RoutePattern,
+    io::byte_channel::byte_channel, non_zero_usize, routing::route_pattern::RoutePattern,
 };
 
-use swim_warp::envelope::{peel_envelope_header, RawEnvelope};
+use swim_messages::warp::{peel_envelope_header, RawEnvelope};
 use tokio::{
     io::{duplex, DuplexStream},
     sync::{
@@ -46,7 +47,10 @@ use uuid::Uuid;
 
 use crate::{
     plane::PlaneBuilder,
-    server::runtime::{ClientRegistration, NewClientError},
+    server::{
+        runtime::{ClientRegistration, NewClientError},
+        ServerError,
+    },
     ServerHandle, SwimServerConfig,
 };
 
@@ -79,12 +83,12 @@ struct DlTestContext {
 
 const NODE: &str = "/node";
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
-const BUFFER_SIZE: usize = 4096;
+const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 fn remote_addr(p: u8) -> SocketAddr {
     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 0, p)), 50000)
 }
 
-async fn run_server<F, Fut>(test_case: F) -> (Result<(), std::io::Error>, Fut::Output)
+async fn run_server<F, Fut>(test_case: F) -> (Result<(), ServerError>, Fut::Output)
 where
     F: FnOnce(TestContext) -> Fut,
     Fut: Future,
@@ -96,12 +100,12 @@ async fn run_server_with_config_and_dl<F, Fut>(
     config: SwimServerConfig,
     remotes: HashMap<SocketAddr, DuplexStream>,
     test_case: F,
-) -> (Result<(), std::io::Error>, Fut::Output)
+) -> (Result<(), ServerError>, Fut::Output)
 where
     F: FnOnce(DlTestContext) -> Fut,
     Fut: Future,
 {
-    let mut plane_builder = PlaneBuilder::default();
+    let mut plane_builder = PlaneBuilder::with_name("plane");
     let pattern = RoutePattern::parse_str(NODE).expect("Invalid route.");
 
     let (event_tx, event_rx) = mpsc::unbounded_channel();
@@ -109,7 +113,7 @@ where
 
     plane_builder.add_route(
         pattern,
-        TestAgent::new(report_tx, event_tx, |uri, _conf| {
+        TestAgent::new(report_tx, event_tx, |uri, _route_params, _conf| {
             assert_eq!(uri, "/node");
         }),
     );
@@ -122,7 +126,15 @@ where
     let (networking, networking_task) = TestConnections::new(HashMap::new(), remotes, incoming_rx);
     let websockets = TestWs::default();
 
-    let server = SwimServer::new(plane, addr, networking, websockets, config);
+    let server = SwimServer::new(
+        plane,
+        addr,
+        networking,
+        websockets,
+        config,
+        StoreDisabled,
+        None,
+    );
 
     let (server_conn, dl_conn) = downlink_task_connector(
         config.client_request_channel_size,
@@ -155,7 +167,7 @@ where
 async fn run_server_with_config<F, Fut>(
     config: SwimServerConfig,
     test_case: F,
-) -> (Result<(), std::io::Error>, Fut::Output)
+) -> (Result<(), ServerError>, Fut::Output)
 where
     F: FnOnce(TestContext) -> Fut,
     Fut: Future,
@@ -303,7 +315,7 @@ impl TestClient {
             } => {
                 assert_eq!(node_uri, node);
                 assert_eq!(lane_uri, lane);
-                f(*body)
+                f(body.as_ref())
             }
             ow => panic!("Unexpected envelope: {:?}", ow),
         }
@@ -315,7 +327,7 @@ async fn message_for_nonexistent_agent() {
     let (result, _) = run_server(|mut context| async move {
         let TestContext { incoming_tx, .. } = &context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -346,7 +358,7 @@ async fn command_to_agent() {
             ..
         } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -377,7 +389,7 @@ async fn commands_to_agent() {
             ..
         } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -405,7 +417,7 @@ async fn link_to_agent_lane() {
     let (result, _) = run_server(|mut context| async move {
         let TestContext { incoming_tx, .. } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -433,7 +445,7 @@ async fn sync_with_agent_lane() {
     let (result, _) = run_server(|mut context| async move {
         let TestContext { incoming_tx, .. } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -462,7 +474,7 @@ async fn trigger_event() {
     let (result, _) = run_server(|mut context| async move {
         let TestContext { incoming_tx, .. } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -498,8 +510,8 @@ async fn broadcast_events() {
             ..
         } = &mut context;
 
-        let (client_sock1, server_sock1) = duplex(BUFFER_SIZE);
-        let (client_sock2, server_sock2) = duplex(BUFFER_SIZE);
+        let (client_sock1, server_sock1) = duplex(BUFFER_SIZE.get());
+        let (client_sock2, server_sock2) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock1))
@@ -567,7 +579,7 @@ async fn explicit_unlink_from_agent_lane() {
     let (result, _) = run_server(|mut context| async move {
         let TestContext { incoming_tx, .. } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -594,7 +606,7 @@ async fn explicit_unlink_from_agent_lane() {
     assert!(result.is_ok());
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn agent_timeout() {
     let mut config = SwimServerConfig::default();
     config.agent_runtime.inactive_timeout = Duration::from_millis(250);
@@ -606,7 +618,7 @@ async fn agent_timeout() {
             ..
         } = &mut context;
 
-        let (client_sock, server_sock) = duplex(BUFFER_SIZE);
+        let (client_sock, server_sock) = duplex(BUFFER_SIZE.get());
 
         incoming_tx
             .send((remote_addr(1), server_sock))
@@ -618,6 +630,7 @@ async fn agent_timeout() {
         client
             .command(NODE, LANE, TestMessage::SetAndReport(56))
             .await;
+
         assert_eq!(
             event_rx.recv().await.expect("Agent failed."),
             AgentEvent::Started
@@ -640,6 +653,7 @@ async fn agent_timeout() {
             event_rx.recv().await.expect("Agent failed."),
             AgentEvent::Started
         );
+
         assert_eq!(report_rx.recv().await.expect("Agent stopped."), -45);
 
         context.handle.stop();
@@ -677,7 +691,7 @@ async fn open_new_client() {
     let host_str = host.to_string();
     let sock_addr: SocketAddr = "192.168.0.1:40000".parse().unwrap();
     let mut remotes = HashMap::new();
-    let (_remote, client) = duplex(BUFFER_SIZE);
+    let (_remote, client) = duplex(BUFFER_SIZE.get());
     remotes.insert(sock_addr, client);
 
     let (result, _) =
@@ -687,7 +701,8 @@ async fn open_new_client() {
                 downlink_connector,
             } = context;
 
-            let (request, rx) = ClientRegistration::new(host_str.into(), vec![sock_addr]);
+            let (request, rx) =
+                ClientRegistration::new(Scheme::Ws, host_str.into(), vec![sock_addr]);
 
             assert!(downlink_connector.register(request).await.is_ok());
             let client = rx
@@ -720,7 +735,8 @@ async fn fail_to_open_client() {
                 downlink_connector,
             } = context;
 
-            let (request, rx) = ClientRegistration::new(host_str.into(), vec![sock_addr]);
+            let (request, rx) =
+                ClientRegistration::new(Scheme::Ws, host_str.into(), vec![sock_addr]);
 
             assert!(downlink_connector.register(request).await.is_ok());
             let error = rx
@@ -749,8 +765,8 @@ async fn downlink_to_local() {
                 downlink_connector,
             } = context;
 
-            let (tx_in, _rx_in) = byte_channel(non_zero_usize!(BUFFER_SIZE));
-            let (_tx_out, rx_out) = byte_channel(non_zero_usize!(BUFFER_SIZE));
+            let (tx_in, _rx_in) = byte_channel(BUFFER_SIZE);
+            let (_tx_out, rx_out) = byte_channel(BUFFER_SIZE);
             let (done_tx, done_rx) = oneshot::channel();
             assert!(downlink_connector
                 .local_handle()
@@ -794,8 +810,8 @@ async fn downlink_to_local_nonexistent() {
                 downlink_connector,
             } = context;
 
-            let (tx_in, _rx_in) = byte_channel(non_zero_usize!(BUFFER_SIZE));
-            let (_tx_out, rx_out) = byte_channel(non_zero_usize!(BUFFER_SIZE));
+            let (tx_in, _rx_in) = byte_channel(BUFFER_SIZE);
+            let (_tx_out, rx_out) = byte_channel(BUFFER_SIZE);
             let (done_tx, done_rx) = oneshot::channel();
             assert!(downlink_connector
                 .local_handle()
@@ -812,8 +828,7 @@ async fn downlink_to_local_nonexistent() {
             let error = done_rx
                 .await
                 .expect("Request not satisfied.")
-                .err()
-                .expect("Local downlink succeeded.");
+                .expect_err("Local downlink succeeded.");
 
             assert!(matches!(error, DownlinkFailureReason::Unresolvable));
             test_context.handle.stop();

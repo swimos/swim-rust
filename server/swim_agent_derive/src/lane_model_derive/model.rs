@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,19 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bitflags::bitflags;
+use std::hash::Hash;
 use swim_utilities::errors::{
     validation::{Validation, ValidationItExt},
     Errors,
 };
 use syn::{
-    AngleBracketedGenericArguments, Data, DataStruct, DeriveInput, Field, GenericArgument, Ident,
-    PathArguments, PathSegment, Type, TypePath,
+    AngleBracketedGenericArguments, Attribute, Data, DataStruct, DeriveInput, Field,
+    GenericArgument, Ident, PathArguments, PathSegment, Type, TypePath,
 };
 
 /// Model of a struct type for the AgentLaneModel derivation macro.
 pub struct LanesModel<'a> {
     pub agent_type: &'a Ident,
-    pub lanes: Vec<LaneModel<'a>>,
+    pub lanes: Vec<ItemModel<'a>>,
 }
 
 impl<'a> LanesModel<'a> {
@@ -32,38 +34,129 @@ impl<'a> LanesModel<'a> {
     /// * `agent_type` - The name of the target of the derive macro.
     /// * `lanes` - Description of each lane in the agent (the name of the corresponding field
     /// and the lane kind with types).
-    fn new(agent_type: &'a Ident, lanes: Vec<LaneModel<'a>>) -> Self {
+    fn new(agent_type: &'a Ident, lanes: Vec<ItemModel<'a>>) -> Self {
         LanesModel { agent_type, lanes }
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ItemKind {
+    Lane,
+    Store,
+}
+
+/// The kinds of item that can be inferred from the type of a field.
+#[derive(Clone, Copy, Debug)]
+pub enum ItemSpec<'a> {
+    Command(&'a Type),
+    Value(ItemKind, &'a Type),
+    Map(ItemKind, &'a Type, &'a Type),
+    JoinValue(&'a Type, &'a Type),
+}
+
+impl<'a> ItemSpec<'a> {
+    pub fn lane(&self) -> Option<LaneSpec<'a>> {
+        match self {
+            ItemSpec::Command(t) => Some(LaneSpec::Command(t)),
+            ItemSpec::Value(ItemKind::Lane, t) => Some(LaneSpec::Value(t)),
+            ItemSpec::Map(ItemKind::Lane, k, v) => Some(LaneSpec::Map(k, v)),
+            ItemSpec::JoinValue(k, v) => Some(LaneSpec::JoinValue(k, v)),
+            _ => None,
+        }
+    }
+
+    pub fn item_kind(&self) -> ItemKind {
+        match self {
+            ItemSpec::Value(k, _) => *k,
+            ItemSpec::Map(k, _, _) => *k,
+            _ => ItemKind::Lane,
+        }
+    }
+}
+
 /// The kinds of lane that can be inferred from the type of a field.
-#[derive(Clone, Copy)]
-pub enum LaneKind<'a> {
+#[derive(Clone, Copy, Debug)]
+pub enum LaneSpec<'a> {
     Command(&'a Type),
     Value(&'a Type),
     Map(&'a Type, &'a Type),
+    JoinValue(&'a Type, &'a Type),
 }
 
-/// Description of a lane (its name the the kind of the lane, along with types).
+impl<'a> ItemSpec<'a> {
+    pub fn is_stateful(&self) -> bool {
+        !matches!(self, ItemSpec::Command(_))
+    }
+}
+
+bitflags! {
+
+    pub struct ItemFlags: u8 {
+        /// The state of the lane should not be persisted.
+        const TRANSIENT = 0b01;
+    }
+}
+
+/// Description of an item (its name the the kind of the item, along with types).
+#[derive(Clone, Copy)]
+pub struct ItemModel<'a> {
+    pub name: &'a Ident,
+    pub kind: ItemSpec<'a>,
+    pub flags: ItemFlags,
+}
+
+impl<'a> ItemModel<'a> {
+    pub fn lane(&self) -> Option<LaneModel<'a>> {
+        let ItemModel { name, kind, flags } = self;
+        kind.lane().map(move |kind| LaneModel {
+            name,
+            kind,
+            flags: *flags,
+        })
+    }
+
+    pub fn item_kind(&self) -> ItemKind {
+        self.kind.item_kind()
+    }
+}
+
+/// Description of an lane (its name the the kind of the lane, along with types).
 #[derive(Clone, Copy)]
 pub struct LaneModel<'a> {
     pub name: &'a Ident,
-    pub kind: LaneKind<'a>,
+    pub kind: LaneSpec<'a>,
+    pub flags: ItemFlags,
+}
+
+fn ident_to_literal(name: &Ident) -> proc_macro2::Literal {
+    let name_str = name.to_string();
+    proc_macro2::Literal::string(name_str.as_str())
 }
 
 impl<'a> LaneModel<'a> {
+    /// The name of the lane as a string literal.
+    pub fn literal(&self) -> proc_macro2::Literal {
+        ident_to_literal(self.name)
+    }
+}
+
+impl<'a> ItemModel<'a> {
     /// #Arguments
     /// * `name` - The name of the field in the struct (mapped to the name of the lane in the agent).
     /// * `kind` - The kind of the lane, along with any types.
-    fn new(name: &'a Ident, kind: LaneKind<'a>) -> LaneModel<'a> {
-        LaneModel { name, kind }
+    /// * `flags` - Modifiers applied to the lane.
+    fn new(name: &'a Ident, kind: ItemSpec<'a>, flags: ItemFlags) -> ItemModel<'a> {
+        ItemModel { name, kind, flags }
     }
 
     /// The name of the lane as a string literal.
     pub fn literal(&self) -> proc_macro2::Literal {
-        let name_str = self.name.to_string();
-        proc_macro2::Literal::string(name_str.as_str())
+        ident_to_literal(self.name)
+    }
+
+    /// Determine if the lane needs to persist its state.
+    pub fn is_stateful(&self) -> bool {
+        self.kind.is_stateful() && !self.flags.contains(ItemFlags::TRANSIENT)
     }
 }
 
@@ -73,6 +166,8 @@ const NO_GENERICS: &str = "Generic agents are not yet supported.";
 const NOT_LANE_TYPE: &str = "Field is not of a lane type.";
 const NO_TUPLES: &str = "Tuple structs are not supported.";
 const BAD_PARAMS: &str = "Lane generic parameters are invalid.";
+const INVALID_FIELD_ATTR: &str = "Invalid field attribute. Valid attributes are: '[#transient]'.";
+const TRANSIENT_ATTR_NAME: &str = "transient";
 
 /// Extract the model of the type from the type definition, collecting any
 /// errors.
@@ -120,25 +215,69 @@ fn try_from_struct<'a>(
 
 const COMMAND_LANE_NAME: &str = "CommandLane";
 const VALUE_LANE_NAME: &str = "ValueLane";
+const VALUE_STORE_NAME: &str = "ValueStore";
 const MAP_LANE_NAME: &str = "MapLane";
+const MAP_STORE_NAME: &str = "MapStore";
+const JOIN_VALUE_LANE_NAME: &str = "JoinValueLane";
 
-fn extract_lane_model(field: &Field) -> Result<LaneModel<'_>, syn::Error> {
+fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
     if let (Some(fld_name), Type::Path(TypePath { qself: None, path })) = (&field.ident, &field.ty)
     {
         if let Some(PathSegment { ident, arguments }) = path.segments.last() {
             let type_name = ident.to_string();
+            let lane_flags = if has_transient_attr(&field.attrs)? {
+                ItemFlags::TRANSIENT
+            } else {
+                ItemFlags::empty()
+            };
             match type_name.as_str() {
                 COMMAND_LANE_NAME => {
                     let param = single_param(arguments)?;
-                    Ok(LaneModel::new(fld_name, LaneKind::Command(param)))
+                    Ok(ItemModel::new(
+                        fld_name,
+                        ItemSpec::Command(param),
+                        ItemFlags::TRANSIENT, //Command lanes are always transient.
+                    ))
                 }
                 VALUE_LANE_NAME => {
                     let param = single_param(arguments)?;
-                    Ok(LaneModel::new(fld_name, LaneKind::Value(param)))
+                    Ok(ItemModel::new(
+                        fld_name,
+                        ItemSpec::Value(ItemKind::Lane, param),
+                        lane_flags,
+                    ))
+                }
+                VALUE_STORE_NAME => {
+                    let param = single_param(arguments)?;
+                    Ok(ItemModel::new(
+                        fld_name,
+                        ItemSpec::Value(ItemKind::Store, param),
+                        lane_flags,
+                    ))
                 }
                 MAP_LANE_NAME => {
                     let (param1, param2) = two_params(arguments)?;
-                    Ok(LaneModel::new(fld_name, LaneKind::Map(param1, param2)))
+                    Ok(ItemModel::new(
+                        fld_name,
+                        ItemSpec::Map(ItemKind::Lane, param1, param2),
+                        lane_flags,
+                    ))
+                }
+                MAP_STORE_NAME => {
+                    let (param1, param2) = two_params(arguments)?;
+                    Ok(ItemModel::new(
+                        fld_name,
+                        ItemSpec::Map(ItemKind::Store, param1, param2),
+                        lane_flags,
+                    ))
+                }
+                JOIN_VALUE_LANE_NAME => {
+                    let (param1, param2) = two_params(arguments)?;
+                    Ok(ItemModel::new(
+                        fld_name,
+                        ItemSpec::JoinValue(param1, param2),
+                        lane_flags,
+                    ))
                 }
                 _ => Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE)),
             }
@@ -150,6 +289,27 @@ fn extract_lane_model(field: &Field) -> Result<LaneModel<'_>, syn::Error> {
     } else {
         Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE))
     }
+}
+
+fn has_transient_attr(attrs: &[Attribute]) -> Result<bool, syn::Error> {
+    let mut has_transient = false;
+    for attr in attrs {
+        let meta = attr.parse_meta()?;
+        match meta {
+            syn::Meta::Path(path) => match path.segments.first() {
+                Some(seg)
+                    if path.segments.len() == 1
+                        && seg.arguments.is_empty()
+                        && seg.ident == TRANSIENT_ATTR_NAME =>
+                {
+                    has_transient = true;
+                }
+                _ => return Err(syn::Error::new_spanned(attr, INVALID_FIELD_ATTR)),
+            },
+            _ => return Err(syn::Error::new_spanned(attr, INVALID_FIELD_ATTR)),
+        }
+    }
+    Ok(has_transient)
 }
 
 fn single_param(args: &PathArguments) -> Result<&Type, syn::Error> {

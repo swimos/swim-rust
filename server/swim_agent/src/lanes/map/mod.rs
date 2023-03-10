@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,10 +16,7 @@ use bytes::BytesMut;
 use frunk::{Coprod, Coproduct};
 use static_assertions::assert_impl_all;
 use std::{borrow::Borrow, cell::RefCell, collections::HashMap, hash::Hash, marker::PhantomData};
-use swim_api::protocol::{
-    agent::{LaneResponseKind, MapLaneResponse, MapLaneResponseEncoder},
-    map::{MapMessage, MapOperation},
-};
+use swim_api::protocol::{agent::MapLaneResponseEncoder, map::MapMessage};
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_recon::parser::RecognizerDecoder;
 use tokio_util::codec::{Decoder, Encoder};
@@ -38,16 +35,20 @@ use crate::{
         ActionContext, AndThen, EventHandlerError, HandlerAction, HandlerActionExt, HandlerTrans,
         Modification, StepResult,
     },
+    item::{AgentItem, MapItem},
+    map_storage::MapStoreInner,
     meta::AgentMetadata,
 };
 
-use self::queues::{Action, ToWrite, WriteQueues};
+use self::queues::WriteQueues;
 
 pub use event::MapLaneEvent;
 
 use super::{Lane, ProjTransform};
 
-/// Model of a value lane. This maintain a sate consisting of a hash-map from keys to values. It generates an
+type Inner<K, V> = MapStoreInner<K, V, WriteQueues<K>>;
+
+/// Model of a value lane. This maintains a sate consisting of a hash-map from keys to values. It generates an
 /// event whenever the map is updated (updating the value for a key, removing a key or clearing the map).
 ///
 /// TODO: This could be parameterized over the type of the hash (and potentially over the kind of the map,
@@ -69,6 +70,28 @@ impl<K, V> MapLane<K, V> {
             id,
             inner: RefCell::new(Inner::new(init)),
         }
+    }
+}
+
+impl<K, V> AgentItem for MapLane<K, V> {
+    fn id(&self) -> u64 {
+        self.id
+    }
+}
+
+impl<K, V> MapItem<K, V> for MapLane<K, V>
+where
+    K: Eq + Hash + Clone,
+{
+    fn init(&self, map: HashMap<K, V>) {
+        self.inner.borrow_mut().init(map)
+    }
+
+    fn read_with_prev<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R,
+    {
+        self.inner.borrow_mut().read_with_prev(f)
     }
 }
 
@@ -109,20 +132,14 @@ where
         self.inner.borrow().get_map(f)
     }
 
-    /// Read the state of the map, consuming the previous event (used when triggering
-    /// the event handlers for the lane).
-    pub(crate) fn read_with_prev<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R,
-    {
-        self.inner.borrow_mut().read_with_prev(f)
-    }
-
     /// Start a sync operation from the lane to the specified remote.
     pub fn sync(&self, id: Uuid) {
-        self.inner.borrow_mut().sync(id);
+        let keys = self.get_map(|content| content.keys().cloned().collect());
+        self.inner.borrow_mut().queue().sync(id, keys);
     }
 }
+
+const INFALLIBLE_SER: &str = "Serializing lane responses to recon should be infallible.";
 
 impl<K, V> Lane for MapLane<K, V>
 where
@@ -130,160 +147,18 @@ where
     V: StructuralWritable,
 {
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
-        self.inner.borrow_mut().write_to_buffer(buffer)
-    }
-}
-
-#[derive(Debug)]
-struct Inner<K, V> {
-    content: HashMap<K, V>,
-    previous: Option<MapLaneEvent<K, V>>,
-    write_queues: WriteQueues<K>,
-}
-
-impl<K, V> Inner<K, V> {
-    fn new(init: HashMap<K, V>) -> Self {
-        Inner {
-            content: init,
-            previous: None,
-            write_queues: Default::default(),
-        }
-    }
-}
-
-impl<K, V> Inner<K, V>
-where
-    K: Clone + Eq + Hash,
-{
-    pub fn update(&mut self, key: K, value: V) {
-        let Inner {
-            content,
-            previous,
-            write_queues,
-        } = self;
-        let prev = content.insert(key.clone(), value);
-        *previous = Some(MapLaneEvent::Update(key.clone(), prev));
-        write_queues.push_update(key);
-    }
-
-    pub fn remove(&mut self, key: &K) {
-        let Inner {
-            content,
-            previous,
-            write_queues,
-        } = self;
-        let prev = content.remove(key);
-        if let Some(prev) = prev {
-            *previous = Some(MapLaneEvent::Remove(key.clone(), prev));
-            write_queues.push_remove(key.clone());
-        }
-    }
-
-    pub fn clear(&mut self) {
-        let Inner {
-            content,
-            previous,
-            write_queues,
-        } = self;
-        *previous = Some(MapLaneEvent::Clear(std::mem::take(content)));
-        write_queues.push_clear();
-    }
-
-    pub fn get<Q, F, R>(&self, key: &Q, f: F) -> R
-    where
-        K: Borrow<Q>,
-        Q: Hash + Eq,
-        F: FnOnce(Option<&V>) -> R,
-    {
-        let Inner { content, .. } = self;
-        f(content.get(key))
-    }
-
-    pub fn get_map<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&HashMap<K, V>) -> R,
-    {
-        let Inner { content, .. } = self;
-        f(content)
-    }
-
-    pub(crate) fn read_with_prev<F, R>(&mut self, f: F) -> R
-    where
-        F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R,
-    {
-        let Inner {
-            content, previous, ..
-        } = self;
-        f(previous.take(), content)
-    }
-
-    pub fn sync(&mut self, id: Uuid) {
-        let Inner {
-            content,
-            write_queues,
-            ..
-        } = self;
-        write_queues.sync(id, content.keys().cloned());
-    }
-}
-
-const INFALLIBLE_SER: &str = "Serializing map operations to recon should be infallible.";
-
-impl<K, V> Inner<K, V>
-where
-    K: Clone + Eq + Hash + StructuralWritable,
-    V: StructuralWritable,
-{
-    pub fn write_to_buffer(&mut self, buffer: &mut BytesMut) -> WriteResult {
-        let Inner {
-            content,
-            write_queues,
-            ..
-        } = self;
-        loop {
-            let maybe_response = match write_queues.pop() {
-                Some(ToWrite::Event(event)) => {
-                    to_operation(content, event).map(|operation| MapLaneResponse::Event {
-                        kind: LaneResponseKind::StandardEvent,
-                        operation,
-                    })
-                }
-                Some(ToWrite::SyncEvent(id, key)) => {
-                    to_operation(content, MapOperation::Update { key, value: () }).map(
-                        |operation| MapLaneResponse::Event {
-                            kind: LaneResponseKind::SyncEvent(id),
-                            operation,
-                        },
-                    )
-                }
-                Some(ToWrite::Synced(id)) => Some(MapLaneResponse::SyncComplete(id)),
-                _ => break WriteResult::NoData,
-            };
-            if let Some(response) = maybe_response {
-                let mut encoder = MapLaneResponseEncoder::default();
-                encoder.encode(response, buffer).expect(INFALLIBLE_SER);
-                break if write_queues.is_empty() {
-                    WriteResult::Done
-                } else {
-                    WriteResult::DataStillAvailable
-                };
+        let mut encoder = MapLaneResponseEncoder::default();
+        let mut guard = self.inner.borrow_mut();
+        if let Some(op) = guard.pop_operation() {
+            encoder.encode(op, buffer).expect(INFALLIBLE_SER);
+            if guard.queue().is_empty() {
+                WriteResult::Done
             } else {
-                continue;
+                WriteResult::DataStillAvailable
             }
+        } else {
+            WriteResult::NoData
         }
-    }
-}
-
-fn to_operation<K: Eq + Hash, V>(
-    content: &HashMap<K, V>,
-    action: Action<K>,
-) -> Option<MapOperation<K, &V>> {
-    match action {
-        MapOperation::Update { key: k, .. } => content
-            .get(&k)
-            .map(|v| MapOperation::Update { key: k, value: v }),
-        MapOperation::Remove { key: k } => Some(MapOperation::Remove { key: k }),
-        MapOperation::Clear => Some(MapOperation::Clear),
     }
 }
 
@@ -310,7 +185,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -322,7 +197,7 @@ where
             let lane = projection(context);
             lane.update(key, value);
             StepResult::Complete {
-                modified_lane: Some(Modification::of(lane.id)),
+                modified_item: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {
@@ -354,7 +229,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -363,7 +238,7 @@ where
             let lane = projection(context);
             lane.remove(&key);
             StepResult::Complete {
-                modified_lane: Some(Modification::of(lane.id)),
+                modified_item: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {
@@ -395,7 +270,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -405,7 +280,7 @@ where
             let lane = projection(context);
             lane.clear();
             StepResult::Complete {
-                modified_lane: Some(Modification::of(lane.id)),
+                modified_item: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {
@@ -440,7 +315,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -483,7 +358,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -521,7 +396,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -530,7 +405,7 @@ where
             let lane = projection(context);
             lane.sync(id);
             StepResult::Complete {
-                modified_lane: Some(Modification::no_trigger(lane.id)),
+                modified_item: Some(Modification::no_trigger(lane.id)),
                 result: (),
             }
         } else {
@@ -600,7 +475,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {

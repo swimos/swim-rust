@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,10 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(feature = "coop")]
+mod coop;
 #[cfg(test)]
 mod tests;
 
 use bytes::{Buf, BytesMut};
+pub use coop::{BudgetedFutureExt, RunWithBudget};
+use futures::ready;
 use parking_lot::Mutex;
 use std::io::{Error, ErrorKind, Result as IoResult};
 use std::num::NonZeroUsize;
@@ -168,6 +172,20 @@ impl Drop for ByteReader {
     }
 }
 
+#[cfg(feature = "coop")]
+impl AsyncRead for ByteReader {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<IoResult<()>> {
+        ready!(coop::consume_budget(cx));
+        let inner = &mut *(self.inner.lock());
+        coop::track_progress(Pin::new(inner).poll_read(cx, buf))
+    }
+}
+
+#[cfg(not(feature = "coop"))]
 impl AsyncRead for ByteReader {
     fn poll_read(
         self: Pin<&mut Self>,
@@ -197,6 +215,32 @@ impl Drop for ByteWriter {
     }
 }
 
+#[cfg(feature = "coop")]
+impl AsyncWrite for ByteWriter {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, Error>> {
+        ready!(coop::consume_budget(cx));
+        let inner = &mut *(self.inner.lock());
+        coop::track_progress(Pin::new(inner).poll_write(cx, buf))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        ready!(coop::consume_budget(cx));
+        let inner = &mut *(self.inner.lock());
+        Pin::new(inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        ready!(coop::consume_budget(cx));
+        let inner = &mut *(self.inner.lock());
+        Pin::new(inner).poll_shutdown(cx)
+    }
+}
+
+#[cfg(not(feature = "coop"))]
 impl AsyncWrite for ByteWriter {
     fn poll_write(
         self: Pin<&mut Self>,

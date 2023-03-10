@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ use std::io::{BufReader, Read};
 use std::path::Path;
 use tokio_native_tls::{native_tls::Certificate, TlsConnector as TokioTlsConnector, TlsStream};
 
-use crate::error::{TlsError, TlsErrorKind};
+use crate::error::tls::{TlsError, TlsErrorKind};
 use tokio::net::TcpStream;
 use tokio_native_tls::native_tls::TlsConnector;
 

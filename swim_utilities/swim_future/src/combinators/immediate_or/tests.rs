@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -77,9 +77,7 @@ mod or_join {
     use super::{immediate_or_join, FakeWaker, PanicFuse};
     use futures::future::ready;
     use futures::task::waker;
-    use futures::Future;
-
-    use pin_utils::pin_mut;
+    use futures::{pin_mut, Future};
 
     #[tokio::test]
     async fn future_completes_immediately() {
@@ -285,9 +283,7 @@ mod or_start {
     use super::{immediate_or_start, FakeWaker, PanicFuse, SecondaryResult};
     use futures::future::ready;
     use futures::task::waker;
-    use futures::Future;
-
-    use pin_utils::pin_mut;
+    use futures::{pin_mut, Future};
 
     #[tokio::test]
     async fn second_never_starts() {

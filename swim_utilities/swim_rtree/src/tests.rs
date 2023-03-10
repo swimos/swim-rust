@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swim_num::non_zero_usize;
+
 use crate::rectangles::{Point2D, Point3D};
 use crate::{
     BoxBounded, ChildrenSizeError, DuplicateLabelError, Label, RTree, RTreeError, Rect,
@@ -20,7 +22,6 @@ use crate::{
 use std::fs;
 use std::ops::Sub;
 use std::sync::{Arc, Mutex};
-use swim_algebra::non_zero_usize;
 
 fn test_tree<B: BoxBounded, L: Label>(mut tree: RTree<L, B>, entries: Vec<(L, B)>, path: String) {
     assert_eq!(

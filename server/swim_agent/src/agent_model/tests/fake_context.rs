@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,11 +22,13 @@ use parking_lot::Mutex;
 use swim_api::{
     agent::{AgentContext, LaneConfig, UplinkKind},
     downlink::DownlinkKind,
-    error::AgentRuntimeError,
+    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    meta::lane::LaneKind,
+    store::StoreKind,
 };
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    non_zero_usize,
 };
 
 use super::{CMD_LANE, MAP_LANE, VAL_LANE};
@@ -63,10 +65,10 @@ impl AgentContext for TestAgentContext {
     fn add_lane(
         &self,
         name: &str,
-        uplink_kind: UplinkKind,
-        _config: Option<LaneConfig>,
+        lane_kind: LaneKind,
+        _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
-        match (name, uplink_kind) {
+        match (name, lane_kind.uplink_kind()) {
             (VAL_LANE, UplinkKind::Value) => {
                 let (tx_in, rx_in) = byte_channel(BUFFER_SIZE);
                 let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
@@ -98,7 +100,15 @@ impl AgentContext for TestAgentContext {
         _node: &str,
         _lane: &str,
         _kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
         panic!("Opening downlinks from agents not yet supported.")
+    }
+
+    fn add_store(
+        &self,
+        _name: &str,
+        _kind: StoreKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), swim_api::error::OpenStoreError>> {
+        ready(Err(OpenStoreError::StoresNotSupported)).boxed()
     }
 }

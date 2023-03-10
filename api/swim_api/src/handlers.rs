@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 /// An event hanlder that does nothing.
 #[derive(Clone, Copy, Default, Debug)]
@@ -27,6 +27,26 @@ pub struct FnMutHandler<F>(pub F);
 pub struct FnHandler<F>(pub F);
 
 pub struct BorrowHandler<F, B: ?Sized>(F, PhantomData<fn(B)>);
+
+impl<F: Clone, B: ?Sized> Clone for BorrowHandler<F, B> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), self.1)
+    }
+}
+
+impl<F: Copy, B: ?Sized> Copy for BorrowHandler<F, B> {}
+
+impl<F: Default, B: ?Sized> Default for BorrowHandler<F, B> {
+    fn default() -> Self {
+        Self(Default::default(), Default::default())
+    }
+}
+
+impl<F: Debug, B: ?Sized> Debug for BorrowHandler<F, B> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("BorrowHandler").field(&self.0).finish()
+    }
+}
 
 impl<F, B: ?Sized> BorrowHandler<F, B> {
     pub fn new(f: F) -> Self {
@@ -46,18 +66,6 @@ pub struct WithShared<H>(pub H);
 impl<H> WithShared<H> {
     pub fn new(handler: H) -> WithShared<H> {
         WithShared(handler)
-    }
-}
-
-/// Wraps some state and a closure that can act upon it as an event handler.
-pub struct ClosureHandler<State, F> {
-    pub state: State,
-    pub f: F,
-}
-
-impl<State, F> ClosureHandler<State, F> {
-    pub fn new(state: State, f: F) -> Self {
-        ClosureHandler { state, f }
     }
 }
 

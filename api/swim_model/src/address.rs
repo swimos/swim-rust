@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,11 +29,25 @@ pub struct Address<T> {
     pub lane: T,
 }
 
+impl<T> Address<T> {
+    pub fn borrow_parts<R: ?Sized>(&self) -> Address<&R>
+    where
+        T: AsRef<R>,
+    {
+        let Address { host, node, lane } = self;
+        Address {
+            host: host.as_ref().map(AsRef::as_ref),
+            node: node.as_ref(),
+            lane: lane.as_ref(),
+        }
+    }
+}
+
 impl<T: Display + Debug> Display for Address<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Address(host = {:?}, ode = {}, lane = {})",
+            "Address(host = {:?}, node = {}, lane = {})",
             self.host, self.node, self.lane
         )
     }
@@ -92,5 +106,12 @@ impl Address<Text> {
             node: Text::new(node),
             lane: Text::new(lane),
         }
+    }
+}
+
+impl Address<&str> {
+    pub fn to_text(&self) -> Address<Text> {
+        let Address { host, node, lane } = self;
+        Address::text(*host, node, lane)
     }
 }

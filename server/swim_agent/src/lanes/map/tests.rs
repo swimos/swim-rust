@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,13 +19,13 @@ use bytes::BytesMut;
 use swim_api::{
     agent::AgentConfig,
     protocol::{
-        agent::{LaneResponseKind, MapLaneResponse, MapLaneResponseDecoder},
+        agent::{MapLaneResponse, MapLaneResponseDecoder},
         map::MapOperation,
     },
 };
 use swim_model::Text;
 use swim_recon::parser::{parse_recognize, Span};
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
@@ -167,18 +167,15 @@ fn write_to_buffer_one_update() {
         .expect("Incomplete frame.");
 
     match content {
-        MapLaneResponse::Event { kind, operation } => {
-            assert!(matches!(kind, LaneResponseKind::StandardEvent));
-            match operation {
-                MapOperation::Update { key, value } => {
-                    assert_eq!(key.as_ref(), b"78");
-                    assert_eq!(value.as_ref(), b"altered");
-                }
-                ow => {
-                    panic!("Unexpected operation: {:?}", ow);
-                }
+        MapLaneResponse::StandardEvent(operation) => match operation {
+            MapOperation::Update { key, value } => {
+                assert_eq!(key.as_ref(), b"78");
+                assert_eq!(value.as_ref(), b"altered");
             }
-        }
+            ow => {
+                panic!("Unexpected operation: {:?}", ow);
+            }
+        },
         _ => panic!("Unexpected synced."),
     }
 }
@@ -201,17 +198,14 @@ fn write_to_buffer_one_remove() {
         .expect("Incomplete frame.");
 
     match content {
-        MapLaneResponse::Event { kind, operation } => {
-            assert!(matches!(kind, LaneResponseKind::StandardEvent));
-            match operation {
-                MapOperation::Remove { key } => {
-                    assert_eq!(key.as_ref(), b"78");
-                }
-                ow => {
-                    panic!("Unexpected operation: {:?}", ow);
-                }
+        MapLaneResponse::StandardEvent(operation) => match operation {
+            MapOperation::Remove { key } => {
+                assert_eq!(key.as_ref(), b"78");
             }
-        }
+            ow => {
+                panic!("Unexpected operation: {:?}", ow);
+            }
+        },
         _ => panic!("Unexpected synced."),
     }
 }
@@ -234,8 +228,7 @@ fn write_to_buffer_clear() {
         .expect("Incomplete frame.");
 
     match content {
-        MapLaneResponse::Event { kind, operation } => {
-            assert!(matches!(kind, LaneResponseKind::StandardEvent));
+        MapLaneResponse::StandardEvent(operation) => {
             assert!(matches!(operation, MapOperation::Clear));
         }
         _ => panic!("Unexpected synced."),
@@ -269,26 +262,21 @@ fn consume_events(lane: &MapLane<i32, Text>) -> Operations {
             .expect("Incomplete frame.");
 
         match content {
-            MapLaneResponse::Event {
-                kind: LaneResponseKind::StandardEvent,
-                operation,
-            } => {
+            MapLaneResponse::StandardEvent(operation) => {
                 events.push(interpret(operation));
             }
-            MapLaneResponse::Event {
-                kind: LaneResponseKind::SyncEvent(id),
-                operation,
-            } => {
+            MapLaneResponse::SyncEvent(id, operation) => {
                 sync_pending
                     .entry(id)
                     .or_insert_with(Vec::new)
                     .push(interpret(operation));
             }
-            MapLaneResponse::SyncComplete(id) => {
+            MapLaneResponse::Synced(id) => {
                 assert!(!sync.contains_key(&id));
                 let ops = sync_pending.remove(&id).unwrap_or_default();
                 sync.insert(id, ops);
             }
+            MapLaneResponse::Initialized => {}
         }
 
         if matches!(result, WriteResult::Done) {
@@ -471,15 +459,18 @@ fn sync_lane_state_and_event() {
     assert_eq!(sync_map, expected_sync);
 }
 
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
-fn make_uri() -> RelativeUri {
-    RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+fn make_uri() -> RouteUri {
+    RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
-    AgentMetadata::new(uri, &CONFIG)
+fn make_meta<'a>(
+    uri: &'a RouteUri,
+    route_params: &'a HashMap<String, String>,
+) -> AgentMetadata<'a> {
+    AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
 struct TestAgent {
@@ -531,16 +522,16 @@ fn check_result<T: Eq + Debug>(
     match (result, complete) {
         (
             StepResult::Complete {
-                modified_lane,
+                modified_item,
                 result,
             },
             Some(expected),
         ) => {
-            assert_eq!(modified_lane, expected_mod);
+            assert_eq!(modified_item, expected_mod);
             assert_eq!(result, expected);
         }
-        (StepResult::Continue { modified_lane }, None) => {
-            assert_eq!(modified_lane, expected_mod);
+        (StepResult::Continue { modified_item }, None) => {
+            assert_eq!(modified_item, expected_mod);
         }
         ow => {
             panic!("Unexpected result: {:?}", ow);
@@ -551,12 +542,13 @@ fn check_result<T: Eq + Debug>(
 #[test]
 fn map_lane_update_event_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::default();
 
     let mut handler = MapLaneUpdate::new(TestAgent::LANE, K1, Text::new(V1));
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, true, true, Some(()));
 
     agent.lane.get_map(|map| {
@@ -564,7 +556,7 @@ fn map_lane_update_event_handler() {
         assert_eq!(map.get(&K1), Some(&Text::new(V1)));
     });
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -574,12 +566,13 @@ fn map_lane_update_event_handler() {
 #[test]
 fn map_lane_remove_event_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
     let mut handler = MapLaneRemove::new(TestAgent::LANE, K1);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, true, true, Some(()));
 
     agent.lane.get_map(|map| {
@@ -588,7 +581,7 @@ fn map_lane_remove_event_handler() {
         assert_eq!(map.get(&K3), Some(&Text::new(V3)));
     });
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -598,19 +591,20 @@ fn map_lane_remove_event_handler() {
 #[test]
 fn map_lane_clear_event_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
     let mut handler = MapLaneClear::new(TestAgent::LANE);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, true, true, Some(()));
 
     agent.lane.get_map(|map| {
         assert!(map.is_empty());
     });
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -620,20 +614,21 @@ fn map_lane_clear_event_handler() {
 #[test]
 fn map_lane_get_event_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
     let mut handler = MapLaneGet::new(TestAgent::LANE, K1);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, false, false, Some(Some(Text::new(V1))));
 
     let mut handler = MapLaneGet::new(TestAgent::LANE, ABSENT);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, false, false, Some(None));
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -643,17 +638,18 @@ fn map_lane_get_event_handler() {
 #[test]
 fn map_lane_get_map_event_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
     let mut handler = MapLaneGetMap::new(TestAgent::LANE);
 
     let expected = init();
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, false, false, Some(expected));
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -663,15 +659,16 @@ fn map_lane_get_map_event_handler() {
 #[test]
 fn map_lane_sync_event_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
     let mut handler = MapLaneSync::new(TestAgent::LANE, SYNC_ID1);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, true, false, Some(()));
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

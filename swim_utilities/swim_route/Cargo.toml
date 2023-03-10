@@ -5,8 +5,9 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-http = "0.2.3"
+http = { workspace = true }
 percent-encoding = "2.1.0"
-url = "2.1.1"
+nom = { workspace = true }
+nom_locate = { workspace = true }
 
 [dev-dependencies]

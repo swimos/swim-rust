@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,19 +22,16 @@ use swim_messages::{
 };
 use swim_model::Text;
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader},
+    non_zero_usize,
     trigger::promise,
 };
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;
 
-use crate::{
-    agent::{
-        task::write_fut::{SpecialAction, WriteTask},
-        DisconnectionReason,
-    },
-    routing::RoutingAddr,
+use crate::agent::{
+    task::write_fut::{SpecialAction, WriteTask},
+    DisconnectionReason,
 };
 
 use super::{RemoteSender, RemoteTracker, UplinkResponse};
@@ -43,7 +40,7 @@ const RID1: Uuid = Uuid::from_u128(757373);
 const RID2: Uuid = Uuid::from_u128(4639830);
 const LANE: &str = "lane";
 
-const ADDR: Uuid = *RoutingAddr::plane(1).uuid();
+const ADDR: Uuid = Uuid::from_u128(1);
 const NODE: &str = "/node";
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 

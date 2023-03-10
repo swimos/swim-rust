@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ use futures::{stream::FuturesUnordered, Future, FutureExt, StreamExt};
 pub use pending::{DlKey, PendingDownlinks};
 use swim_api::{
     downlink::DownlinkKind,
-    error::{AgentRuntimeError, DownlinkFailureReason},
+    error::{DownlinkFailureReason, DownlinkRuntimeError},
 };
 use swim_model::{
     address::{Address, RelativeAddress},
@@ -43,10 +43,10 @@ use swim_runtime::{
         failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy},
         AttachAction, DownlinkRuntimeConfig, Io, MapDownlinkRuntime, ValueDownlinkRuntime,
     },
-    remote::{net::dns::DnsResolver, table::SchemeHostPort, BadUrl, SchemeSocketAddr},
+    net::{dns::DnsResolver, BadUrl, Scheme, SchemeHostPort},
 };
 use swim_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter},
     trigger,
 };
 use thiserror::Error;
@@ -71,18 +71,26 @@ use super::{
 /// * Spawn new downlink runtime tasks and keep track of their results.
 pub struct DownlinkConnectionTask<Dns> {
     connector: DownlinksConnector,
+    coop_budget: Option<NonZeroUsize>,
     config: DownlinkRuntimeConfig,
     dns: Dns,
 }
 
 impl<Dns> DownlinkConnectionTask<Dns> {
     /// #Arguments
+    /// * `coop_budget` - Co-op budget for byte channel futures.
     /// * `connector` - Communication channels between this task and the main server task.
     /// * `config` - Configuration for downlink runtime tasks.
     /// * `dns` - DNS resolver implementation.
-    pub fn new(connector: DownlinksConnector, config: DownlinkRuntimeConfig, dns: Dns) -> Self {
+    pub fn new(
+        connector: DownlinksConnector,
+        coop_budget: Option<NonZeroUsize>,
+        config: DownlinkRuntimeConfig,
+        dns: Dns,
+    ) -> Self {
         DownlinkConnectionTask {
             connector,
+            coop_budget,
             config,
             dns,
         }
@@ -98,6 +106,7 @@ where
         let connector = {
             let DownlinkConnectionTask {
                 mut connector,
+                coop_budget,
                 config,
                 dns,
             } = self;
@@ -125,17 +134,23 @@ where
                 match event {
                     Event::Request(request) => {
                         if let Some(host) = request.key.0.host.clone() {
-                            if let Ok(target) = process_host(host.as_str()) {
+                            if let Ok(SchemeHostPort(scheme, host_name, port)) =
+                                process_host(host.as_str())
+                            {
                                 pending.push_remote(host.clone(), request);
                                 tasks.push(
-                                    dns.resolve(target)
-                                        .map(move |result| Event::Resolved { host, result })
+                                    dns.resolve(host_name, port)
+                                        .map(move |result| Event::Resolved {
+                                            scheme,
+                                            host,
+                                            result,
+                                        })
                                         .boxed(),
                                 );
                             } else {
                                 let DownlinkRequest { promise, .. } = request;
                                 if promise
-                                    .send(Err(AgentRuntimeError::DownlinkConnectionFailed(
+                                    .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
                                         DownlinkFailureReason::Unresolvable,
                                     )))
                                     .is_err()
@@ -174,14 +189,13 @@ where
                         }
                     }
                     Event::Resolved {
+                        scheme,
                         host,
                         result: Ok(sock_addrs),
                     } => {
-                        if let Some((addr, handle)) =
-                            sock_addrs.iter().map(|s| s.addr).find_map(|addr| {
-                                downlink_channels.get(&addr).map(move |inner| (addr, inner))
-                            })
-                        {
+                        if let Some((addr, handle)) = sock_addrs.iter().find_map(|addr| {
+                            downlink_channels.get(addr).map(move |inner| (addr, inner))
+                        }) {
                             let waiting_map = pending.take_socket_ready(&host);
                             for (key, requests) in waiting_map {
                                 if let Some(attach_tx) = handle.get(&key) {
@@ -196,12 +210,12 @@ where
                                         );
                                     }
                                 } else {
-                                    pending.push_for_socket(addr, key.clone(), requests);
+                                    pending.push_for_socket(*addr, key.clone(), requests);
                                     let identity = id_issuer.next_id();
                                     tasks.push(
                                         start_downlink_runtime(
                                             identity,
-                                            Some(addr),
+                                            Some(*addr),
                                             key,
                                             handle.client_tx.clone(),
                                             config,
@@ -211,9 +225,9 @@ where
                                 }
                             }
                         } else {
-                            let addr_vec = sock_addrs.into_iter().map(|s| s.addr).collect();
+                            let addr_vec = sock_addrs.into_iter().collect();
                             let (registration, rx) =
-                                ClientRegistration::new(host.clone(), addr_vec);
+                                ClientRegistration::new(scheme, host.clone(), addr_vec);
                             if connector.register(registration).await.is_err() {
                                 break;
                             }
@@ -233,11 +247,12 @@ where
                     Event::Resolved {
                         host,
                         result: Err(_),
+                        ..
                     } => {
                         for request in pending.open_client_failed(&host) {
                             let DownlinkRequest { promise, .. } = request;
                             if promise
-                                .send(Err(AgentRuntimeError::DownlinkConnectionFailed(
+                                .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
                                     DownlinkFailureReason::Unresolvable,
                                 )))
                                 .is_err()
@@ -277,7 +292,7 @@ where
                         host,
                         result: Err(e),
                     } => {
-                        let err: AgentRuntimeError = e.into();
+                        let err: DownlinkRuntimeError = e.into();
                         for request in pending.open_client_failed(&host) {
                             let DownlinkRequest {
                                 promise,
@@ -303,13 +318,17 @@ where
                             handle.insert(key.clone(), attach_tx.clone());
                             let key_cpy = key.clone();
                             tasks.push(
-                                tokio::spawn(runtime.run(connector.stop_handle(), config))
-                                    .map(move |result| Event::RuntimeTerminated {
-                                        socket_addr: remote_address,
-                                        key: key_cpy,
-                                        result,
-                                    })
-                                    .boxed(),
+                                tokio::spawn(
+                                    runtime
+                                        .run(connector.stop_handle(), config)
+                                        .with_budget_or_default(coop_budget),
+                                )
+                                .map(move |result| Event::RuntimeTerminated {
+                                    socket_addr: remote_address,
+                                    key: key_cpy,
+                                    result,
+                                })
+                                .boxed(),
                             );
 
                             for request in pending.dl_ready(remote_address, &key) {
@@ -330,7 +349,7 @@ where
                             } in pending.dl_ready(remote_address, &key)
                             {
                                 if promise
-                                    .send(Err(AgentRuntimeError::DownlinkConnectionFailed(
+                                    .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
                                         DownlinkFailureReason::RemoteStopped,
                                     )))
                                     .is_err()
@@ -352,7 +371,7 @@ where
                         } in pending.dl_ready(remote_address, &key)
                         {
                             if promise
-                                .send(Err(AgentRuntimeError::DownlinkConnectionFailed(
+                                .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
                                     DownlinkFailureReason::RemoteStopped,
                                 )))
                                 .is_err()
@@ -418,8 +437,9 @@ enum Event {
     Request(DownlinkRequest),
     // A DNS resolution has completed.
     Resolved {
+        scheme: Scheme,
         host: Text,
-        result: Result<Vec<SchemeSocketAddr>, std::io::Error>,
+        result: Result<Vec<SocketAddr>, std::io::Error>,
     },
     // A request to the main server task to open a new socket has completed.
     NewClientResult {
@@ -442,8 +462,8 @@ enum Event {
     Attached {
         address: Address<Text>,
         kind: DownlinkKind,
-        promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
-        result: Result<Io, AgentRuntimeError>,
+        promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
+        result: Result<Io, DownlinkRuntimeError>,
     },
 }
 
@@ -483,7 +503,7 @@ enum BadHost {
         url::ParseError,
     ),
     #[error("Host URL is not a valid Warp URL.")]
-    InvaludUrl(
+    InvalidUrl(
         #[from]
         #[source]
         BadUrl,
@@ -513,7 +533,7 @@ async fn attach_to_runtime(
         .await
         .map(move |_| (out_tx, in_rx))
         .map_err(|_| {
-            AgentRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::ConnectionFailed)
+            DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::ConnectionFailed)
         });
     Event::Attached {
         address,

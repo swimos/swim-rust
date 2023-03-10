@@ -5,13 +5,12 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-url = "2.1.1"
-tokio = "1.1.1"
-futures = "0.3.4"
-futures-util = "0.3.4"
-rand = "0.7.3"
-tracing = "0.1.16"
-tracing-futures = "0.2.4"
+tokio = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+rand = { workspace = true }
+tracing = { workspace = true }
+tracing-futures = { workspace = true }
 swim_client = { path = "../../swim_client" }
 swim_model = { path = "../../api/swim_model" }
 swim_server = { path = "../../swim_server" }

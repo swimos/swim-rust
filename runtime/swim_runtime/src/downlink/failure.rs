@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -208,7 +208,7 @@ impl<E: std::error::Error> BadFrameStrategy<E> for CountStrategy<E> {
 mod tests {
 
     use super::*;
-    use swim_utilities::algebra::non_zero_usize;
+    use swim_utilities::non_zero_usize;
     use thiserror::Error;
 
     #[derive(Debug, Error, PartialEq, Eq)]

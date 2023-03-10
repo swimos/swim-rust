@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     num::NonZeroUsize,
     pin::Pin,
     task::{Context, Poll},
@@ -23,12 +23,13 @@ use std::{
 use bytes::Bytes;
 use futures::{future::Either, ready, SinkExt, Stream, StreamExt};
 use swim_api::{
-    agent::{LaneConfig, UplinkKind},
+    agent::UplinkKind,
     error::FrameIoError,
     protocol::{
         agent::{
-            LaneRequest, LaneRequestDecoder, LaneResponseKind, MapLaneResponse,
-            MapLaneResponseEncoder, ValueLaneResponse, ValueLaneResponseEncoder,
+            LaneRequest, LaneRequestDecoder, LaneResponse, MapLaneResponse, MapLaneResponseEncoder,
+            MapStoreResponseEncoder, StoreResponse, ValueLaneResponseEncoder,
+            ValueStoreResponseEncoder,
         },
         map::{MapMessage, MapMessageDecoder, MapOperation, MapOperationDecoder},
         WithLenRecognizerDecoder,
@@ -48,15 +49,18 @@ use swim_recon::{
     printer::print_recon_compact,
 };
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{ByteReader, ByteWriter},
+    non_zero_usize,
     trigger::promise,
 };
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
-use crate::agent::{AgentRuntimeConfig, DisconnectionReason};
+use crate::agent::{
+    reporting::{UplinkReportReader, UplinkSnapshot},
+    AgentRuntimeConfig, DisconnectionReason, UplinkReporterRegistration,
+};
 
 use super::{LaneEndpoint, RwCoorindationMessage};
 
@@ -67,6 +71,7 @@ mod write;
 const QUEUE_SIZE: NonZeroUsize = non_zero_usize!(8);
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
+const INIT_TIMEOUT: Duration = Duration::from_secs(1);
 
 fn make_config(inactive_timeout: Duration) -> AgentRuntimeConfig {
     make_prune_config(inactive_timeout, inactive_timeout)
@@ -77,19 +82,19 @@ fn make_prune_config(
     prune_remote_delay: Duration,
 ) -> AgentRuntimeConfig {
     AgentRuntimeConfig {
-        default_lane_config: LaneConfig {
-            input_buffer_size: BUFFER_SIZE,
-            output_buffer_size: BUFFER_SIZE,
-        },
         attachment_queue_size: non_zero_usize!(8),
         inactive_timeout,
         prune_remote_delay,
         shutdown_timeout: SHUTDOWN_TIMEOUT,
+        lane_init_timeout: INIT_TIMEOUT,
     }
 }
 
 const VAL_LANE: &str = "value_lane";
+const SUPPLY_LANE: &str = "supply_lane";
 const MAP_LANE: &str = "map_lane";
+const VAL_STORE: &str = "value_store";
+const MAP_STORE: &str = "map_store";
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -117,6 +122,10 @@ enum Instruction {
         lane: Text,
         value: i32,
     },
+    SupplyEvent {
+        lane: Text,
+        value: i32,
+    },
     MapEvent {
         lane: Text,
         key: Text,
@@ -128,9 +137,22 @@ enum Instruction {
         value: i32,
         id: Uuid,
     },
+    SupplySynced {
+        lane: Text,
+        id: Uuid,
+    },
     MapSynced {
         lane: Text,
         id: Uuid,
+    },
+    ValueStoreEvent {
+        store_name: Text,
+        value: i32,
+    },
+    MapStoreEvent {
+        store_name: Text,
+        key: Text,
+        value: i32,
     },
 }
 
@@ -145,6 +167,16 @@ impl Instructions {
         let Instructions(inner) = self;
         assert!(inner
             .send(Instruction::ValueEvent {
+                lane: Text::new(lane),
+                value
+            })
+            .is_ok());
+    }
+
+    fn supply_event(&self, lane: &str, value: i32) {
+        let Instructions(inner) = self;
+        assert!(inner
+            .send(Instruction::SupplyEvent {
                 lane: Text::new(lane),
                 value
             })
@@ -195,27 +227,64 @@ impl Instructions {
             })
             .is_ok());
     }
+
+    fn supply_synced_event(&self, remote_id: Uuid, lane: &str) {
+        let Instructions(inner) = self;
+        assert!(inner
+            .send(Instruction::SupplySynced {
+                id: remote_id,
+                lane: Text::new(lane),
+            })
+            .is_ok());
+    }
+
+    fn value_store_event(&self, store_name: &str, value: i32) {
+        let Instructions(inner) = self;
+        assert!(inner
+            .send(Instruction::ValueStoreEvent {
+                store_name: Text::new(store_name),
+                value
+            })
+            .is_ok());
+    }
+
+    fn map_store_event(&self, store_name: &str, key: &str, value: i32) {
+        let Instructions(inner) = self;
+        assert!(inner
+            .send(Instruction::MapStoreEvent {
+                store_name: Text::new(store_name),
+                key: Text::new(key),
+                value,
+            })
+            .is_ok());
+    }
 }
 
-struct ValueLaneSender {
+struct ValueLikeLaneSender {
     inner: FramedWrite<ByteWriter, ValueLaneResponseEncoder>,
 }
 
-impl ValueLaneSender {
+impl ValueLikeLaneSender {
     fn new(writer: ByteWriter) -> Self {
-        ValueLaneSender {
+        ValueLikeLaneSender {
             inner: FramedWrite::new(writer, Default::default()),
         }
     }
 
     async fn event(&mut self, n: i32) {
-        let ValueLaneSender { inner } = self;
-        assert!(inner.send(ValueLaneResponse::event(n)).await.is_ok());
+        let ValueLikeLaneSender { inner } = self;
+        assert!(inner.send(LaneResponse::event(n)).await.is_ok());
     }
 
     async fn synced(&mut self, id: Uuid, n: i32) {
-        let ValueLaneSender { inner } = self;
-        assert!(inner.send(ValueLaneResponse::synced(id, n)).await.is_ok());
+        let ValueLikeLaneSender { inner } = self;
+        assert!(inner.send(LaneResponse::sync_event(id, n)).await.is_ok());
+        assert!(inner.send(LaneResponse::<i32>::Synced(id)).await.is_ok());
+    }
+
+    async fn synced_only(&mut self, id: Uuid) {
+        let ValueLikeLaneSender { inner } = self;
+        assert!(inner.send(LaneResponse::<i32>::Synced(id)).await.is_ok());
     }
 }
 
@@ -233,10 +302,7 @@ impl MapLaneSender {
     async fn update_event(&mut self, key: Text, value: i32) {
         let MapLaneSender { inner } = self;
         assert!(inner
-            .send(MapLaneResponse::Event {
-                kind: LaneResponseKind::StandardEvent,
-                operation: MapOperation::Update { key, value }
-            })
+            .send(MapLaneResponse::event(MapOperation::Update { key, value }))
             .await
             .is_ok());
     }
@@ -244,34 +310,22 @@ impl MapLaneSender {
     async fn remove_event(&mut self, key: Text) {
         let MapLaneSender { inner } = self;
         let operation: MapOperation<Text, i32> = MapOperation::Remove { key };
-        assert!(inner
-            .send(MapLaneResponse::Event {
-                kind: LaneResponseKind::StandardEvent,
-                operation,
-            })
-            .await
-            .is_ok());
+        assert!(inner.send(MapLaneResponse::event(operation)).await.is_ok());
     }
 
     async fn clear_event(&mut self) {
         let MapLaneSender { inner } = self;
         let operation: MapOperation<Text, i32> = MapOperation::Clear;
-        assert!(inner
-            .send(MapLaneResponse::Event {
-                kind: LaneResponseKind::StandardEvent,
-                operation
-            })
-            .await
-            .is_ok());
+        assert!(inner.send(MapLaneResponse::event(operation)).await.is_ok());
     }
 
     async fn sync_event(&mut self, id: Uuid, key: Text, value: i32) {
         let MapLaneSender { inner } = self;
         assert!(inner
-            .send(MapLaneResponse::Event {
-                kind: LaneResponseKind::SyncEvent(id),
-                operation: MapOperation::Update { key, value }
-            })
+            .send(MapLaneResponse::sync_event(
+                id,
+                MapOperation::Update { key, value }
+            ))
             .await
             .is_ok());
     }
@@ -279,7 +333,43 @@ impl MapLaneSender {
     async fn synced(&mut self, id: Uuid) {
         let MapLaneSender { inner } = self;
         assert!(inner
-            .send(MapLaneResponse::<Text, i32>::SyncComplete(id))
+            .send(MapLaneResponse::<Text, i32>::synced(id))
+            .await
+            .is_ok());
+    }
+}
+
+struct ValueStoreSender {
+    inner: FramedWrite<ByteWriter, ValueStoreResponseEncoder>,
+}
+
+impl ValueStoreSender {
+    fn new(writer: ByteWriter) -> Self {
+        ValueStoreSender {
+            inner: FramedWrite::new(writer, Default::default()),
+        }
+    }
+
+    async fn event(&mut self, value: i32) {
+        assert!(self.inner.send(StoreResponse::new(value)).await.is_ok());
+    }
+}
+
+struct MapStoreSender {
+    inner: FramedWrite<ByteWriter, MapStoreResponseEncoder>,
+}
+
+impl MapStoreSender {
+    fn new(writer: ByteWriter) -> Self {
+        MapStoreSender {
+            inner: FramedWrite::new(writer, Default::default()),
+        }
+    }
+
+    async fn update_event(&mut self, key: Text, value: i32) {
+        let MapStoreSender { inner } = self;
+        assert!(inner
+            .send(StoreResponse::new(MapOperation::Update { key, value }))
             .await
             .is_ok());
     }
@@ -301,9 +391,9 @@ enum LaneReader {
 
 impl LaneReader {
     fn new(endpoint: LaneEndpoint<ByteReader>) -> Self {
-        let LaneEndpoint { name, kind, io } = endpoint;
+        let LaneEndpoint { name, kind, io, .. } = endpoint;
         match kind {
-            UplinkKind::Value => LaneReader::Value {
+            UplinkKind::Value | UplinkKind::Supply => LaneReader::Value {
                 name,
                 read: FramedRead::new(
                     io,
@@ -391,12 +481,15 @@ impl RemoteReceiver {
 
     async fn expect_linked(&mut self, lane: &str) {
         self.expect_envelope(lane, |envelope| {
-            assert!(matches!(envelope, Notification::Linked));
+            if !matches!(envelope, Notification::Linked) {
+                panic!("{:?}", envelope);
+            }
+            //assert!(matches!(envelope, Notification::Linked));
         })
         .await
     }
 
-    async fn expect_value_event(&mut self, lane: &str, value: i32) {
+    async fn expect_value_like_event(&mut self, lane: &str, value: i32) {
         self.expect_envelope(lane, |envelope| {
             if let Notification::Event(body) = envelope {
                 let expected_body = format!("{}", value);
@@ -454,6 +547,13 @@ impl RemoteReceiver {
             }
         })
         .await;
+        self.expect_envelope(lane, |envelope| {
+            assert!(matches!(envelope, Notification::Synced));
+        })
+        .await;
+    }
+
+    async fn expect_supply_synced(&mut self, lane: &str) {
         self.expect_envelope(lane, |envelope| {
             assert!(matches!(envelope, Notification::Synced));
         })
@@ -569,5 +669,32 @@ impl RemoteSender {
         let body = format!("@update(key:\"{}\") {}", key, value);
         let msg: RequestMessage<&str, &[u8]> = RequestMessage::command(*rid, path, body.as_bytes());
         assert!(inner.send(msg).await.is_ok());
+    }
+}
+
+struct ReportReaders {
+    _reg_rx: mpsc::Receiver<UplinkReporterRegistration>,
+    aggregate: UplinkReportReader,
+    lanes: HashMap<&'static str, UplinkReportReader>,
+}
+
+struct Snapshots {
+    aggregate: UplinkSnapshot,
+    lanes: HashMap<&'static str, UplinkSnapshot>,
+}
+
+impl ReportReaders {
+    fn snapshot(&self) -> Option<Snapshots> {
+        let ReportReaders {
+            aggregate, lanes, ..
+        } = self;
+        let mut lane_snapshots = HashMap::new();
+        for (name, reader) in lanes.iter() {
+            lane_snapshots.insert(*name, reader.snapshot()?);
+        }
+        Some(Snapshots {
+            aggregate: aggregate.snapshot()?,
+            lanes: lane_snapshots,
+        })
     }
 }

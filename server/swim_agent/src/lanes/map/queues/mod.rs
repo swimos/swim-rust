@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 
+use swim_api::protocol::agent::LaneResponse;
 use swim_api::protocol::map::MapOperation;
 use uuid::Uuid;
 
 use crate::event_queue::EventQueue;
+use crate::map_storage::MapEventQueue;
 
 /// For a sync operation on a map lane, keeps track of which keys are synced for a given remote.
 #[derive(Debug)]
@@ -31,14 +33,8 @@ impl<K> SyncQueue<K>
 where
     K: Clone + Eq + Hash,
 {
-    pub fn new<I>(id: Uuid, it: I) -> Self
-    where
-        I: Iterator<Item = K>,
-    {
-        SyncQueue {
-            id,
-            queue: it.collect(),
-        }
+    pub fn new(id: Uuid, keys: VecDeque<K>) -> Self {
+        SyncQueue { id, queue: keys }
     }
 
     pub fn remove(&mut self, key: &K) {
@@ -130,25 +126,11 @@ impl<K> WriteQueues<K>
 where
     K: Clone + Eq + Hash,
 {
-    pub fn push_update(&mut self, key: K) {
-        let WriteQueues { event_queue, .. } = self;
-        event_queue.push(MapOperation::Update { key, value: () });
+    pub fn push_operation(&mut self, op: Action<K>) {
+        self.event_queue.push(op);
     }
 
-    pub fn push_remove(&mut self, key: K) {
-        let WriteQueues { event_queue, .. } = self;
-        event_queue.push(MapOperation::Remove { key });
-    }
-
-    pub fn push_clear(&mut self) {
-        let WriteQueues { event_queue, .. } = self;
-        event_queue.push(MapOperation::Clear);
-    }
-
-    pub fn sync<I>(&mut self, id: Uuid, keys: I)
-    where
-        I: Iterator<Item = K>,
-    {
+    pub fn sync(&mut self, id: Uuid, keys: VecDeque<K>) {
         self.sync_queues.push(SyncQueue::new(id, keys));
     }
 
@@ -201,6 +183,59 @@ where
         _ => {
             for queue in queues {
                 queue.clear();
+            }
+        }
+    }
+}
+
+fn to_operation<K: Eq + Hash, V>(
+    content: &HashMap<K, V>,
+    action: Action<K>,
+) -> Option<MapOperation<K, &V>> {
+    match action {
+        MapOperation::Update { key: k, .. } => content
+            .get(&k)
+            .map(|v| MapOperation::Update { key: k, value: v }),
+        MapOperation::Remove { key: k } => Some(MapOperation::Remove { key: k }),
+        MapOperation::Clear => Some(MapOperation::Clear),
+    }
+}
+
+impl<K, V> MapEventQueue<K, V> for WriteQueues<K>
+where
+    K: Eq + Hash + Clone,
+{
+    type Output<'a> = LaneResponse<MapOperation<K, &'a V>>
+    where
+        K:'a,
+        V: 'a,
+        Self: 'a;
+
+    fn push(&mut self, action: MapOperation<K, ()>) {
+        self.push_operation(action)
+    }
+
+    fn is_empty(&self) -> bool {
+        WriteQueues::is_empty(self)
+    }
+
+    fn pop<'a>(&mut self, content: &'a HashMap<K, V>) -> Option<Self::Output<'a>> {
+        loop {
+            match WriteQueues::pop(self)? {
+                ToWrite::Event(action) => {
+                    if let Some(op) = to_operation(content, action) {
+                        break Some(LaneResponse::StandardEvent(op));
+                    }
+                }
+                ToWrite::SyncEvent(id, key) => {
+                    if let Some(value) = content.get(&key) {
+                        break Some(LaneResponse::SyncEvent(
+                            id,
+                            MapOperation::Update { key, value },
+                        ));
+                    }
+                }
+                ToWrite::Synced(id) => break Some(LaneResponse::Synced(id)),
             }
         }
     }

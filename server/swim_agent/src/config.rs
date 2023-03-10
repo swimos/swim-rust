@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,19 +14,19 @@
 
 use std::num::NonZeroUsize;
 
-use swim_utilities::algebra::non_zero_usize;
+use swim_utilities::non_zero_usize;
 
-/// Configuration parameters for hosted value downlinks.
+/// Configuration parameters for hosted value and event downlinks.
 #[derive(Debug, Clone, Copy)]
-pub struct ValueDownlinkConfig {
-    /// If this is set, lifecycle events will becalled for events before the downlink is synchronized with the remote lane.
+pub struct SimpleDownlinkConfig {
+    /// If this is set, lifecycle events will be called for events before the downlink is synchronized with the remote lane.
     /// (default: false).
     pub events_when_not_synced: bool,
     /// If this is set, the downlink will stop if it enters the unlinked state (default: true).
     pub terminate_on_unlinked: bool,
 }
 
-impl Default for ValueDownlinkConfig {
+impl Default for SimpleDownlinkConfig {
     fn default() -> Self {
         Self {
             events_when_not_synced: false,
@@ -38,12 +38,12 @@ impl Default for ValueDownlinkConfig {
 /// Configuration parameters for hosted value downlinks.
 #[derive(Debug, Clone, Copy)]
 pub struct MapDownlinkConfig {
-    /// If this is set, lifecycle events will becalled for events before the downlink is synchronized with the remote lane.
+    /// If this is set, lifecycle events will be called for events before the downlink is synchronized with the remote lane.
     /// (default: false).
     pub events_when_not_synced: bool,
     /// If this is set, the downlink will stop if it enters the unlinked state (default: true).
     pub terminate_on_unlinked: bool,
-    /// Size of the channel used for sending operations to the remote lane.
+    /// Size of the channel used for sending operations to the remote lane (default: 8).
     pub channel_size: NonZeroUsize,
 }
 

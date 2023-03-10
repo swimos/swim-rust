@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,9 +36,7 @@ use std::sync::Arc;
 use swim_model::bigint::{BigInt, BigUint};
 use swim_model::time::Timestamp;
 use swim_model::{Blob, Text, Value, ValueKind};
-use swim_utilities::iteratee::Iteratee;
-use swim_utilities::routing::uri::RelativeUri;
-use url::Url;
+use swim_utilities::routing::route_uri::RouteUri;
 
 /// [`Recognizer`] implementations for config types.
 pub mod impls;
@@ -125,37 +123,8 @@ pub trait Recognizer {
 
     /// Reset the state machine so that it can be used again.
     fn reset(&mut self);
-
-    /// Wrap this state machine as an [`Iteratee`].
-    fn as_iteratee(&mut self) -> RecognizerIteratee<'_, Self>
-    where
-        Self: Sized,
-    {
-        RecognizerIteratee(self)
-    }
 }
 
-pub struct RecognizerIteratee<'b, R>(&'b mut R);
-
-impl<'a, 'b, R> Iteratee<ReadEvent<'a>> for RecognizerIteratee<'b, R>
-where
-    R: Recognizer,
-{
-    type Item = Result<R::Target, ReadError>;
-
-    fn feed(&mut self, input: ReadEvent<'a>) -> Option<Self::Item> {
-        let RecognizerIteratee(inner) = self;
-        inner.feed_event(input)
-    }
-
-    fn flush(self) -> Option<Self::Item>
-    where
-        Self: Sized,
-    {
-        let RecognizerIteratee(inner) = self;
-        inner.try_flush()
-    }
-}
 macro_rules! simple_readable {
     ($target:ty, $recog:ident) => {
         impl RecognizerReadable for $target {
@@ -243,21 +212,21 @@ impl RecognizerReadable for Box<[u8]> {
     }
 }
 
-impl RecognizerReadable for RelativeUri {
-    type Rec = RelativeUriRecognizer;
-    type AttrRec = SimpleAttrBody<RelativeUriRecognizer>;
-    type BodyRec = SimpleRecBody<RelativeUriRecognizer>;
+impl RecognizerReadable for RouteUri {
+    type Rec = RouteUriRecognizer;
+    type AttrRec = SimpleAttrBody<RouteUriRecognizer>;
+    type BodyRec = SimpleRecBody<RouteUriRecognizer>;
 
     fn make_recognizer() -> Self::Rec {
-        RelativeUriRecognizer
+        RouteUriRecognizer
     }
 
     fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(RelativeUriRecognizer)
+        SimpleAttrBody::new(RouteUriRecognizer)
     }
 
     fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(RelativeUriRecognizer)
+        SimpleRecBody::new(RouteUriRecognizer)
     }
 
     fn is_simple() -> bool {
@@ -265,66 +234,20 @@ impl RecognizerReadable for RelativeUri {
     }
 }
 
-pub struct RelativeUriRecognizer;
+pub struct RouteUriRecognizer;
 
-impl Recognizer for RelativeUriRecognizer {
-    type Target = RelativeUri;
+impl Recognizer for RouteUriRecognizer {
+    type Target = RouteUri;
 
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         match input {
             ReadEvent::TextValue(txt) => {
-                let result = RelativeUri::from_str(txt.borrow());
+                let result = RouteUri::from_str(txt.borrow());
                 let uri = result.map_err(move |_| ReadError::Malformatted {
                     text: Text::from(txt),
                     message: Text::new("Not a valid relative URI."),
                 });
                 Some(uri)
-            }
-            ow => Some(Err(
-                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text))
-            )),
-        }
-    }
-
-    fn reset(&mut self) {}
-}
-
-impl RecognizerReadable for Url {
-    type Rec = UrlRecognizer;
-    type AttrRec = SimpleAttrBody<UrlRecognizer>;
-    type BodyRec = SimpleRecBody<UrlRecognizer>;
-
-    fn make_recognizer() -> Self::Rec {
-        UrlRecognizer
-    }
-
-    fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(UrlRecognizer)
-    }
-
-    fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(UrlRecognizer)
-    }
-
-    fn is_simple() -> bool {
-        true
-    }
-}
-
-pub struct UrlRecognizer;
-
-impl Recognizer for UrlRecognizer {
-    type Target = Url;
-
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        match input {
-            ReadEvent::TextValue(txt) => {
-                let result = Url::from_str(txt.borrow());
-                let url = result.map_err(move |_| ReadError::Malformatted {
-                    text: Text::from(txt),
-                    message: Text::new("Not a valid URL."),
-                });
-                Some(url)
             }
             ow => Some(Err(
                 ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text))
@@ -2392,7 +2315,7 @@ impl<T> Recognizer for UnitStructRecognizer<T> {
                     }
                 } else {
                     Some(Err(
-                        input.kind_error(ExpectedEvent::Attribute(Some(Text::new(*tag))))
+                        input.kind_error(ExpectedEvent::Attribute(Some(Text::new(tag))))
                     ))
                 }
             }

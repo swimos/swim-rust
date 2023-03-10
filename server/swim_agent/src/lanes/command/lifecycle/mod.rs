@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::marker::PhantomData;
+use std::{borrow::Borrow, marker::PhantomData};
 
-use swim_api::handlers::{FnHandler, NoHandler};
+use swim_api::handlers::{BorrowHandler, NoHandler};
 
 use self::on_command::{OnCommand, OnCommandShared};
 
@@ -25,7 +25,7 @@ pub mod on_command;
 /// #Type Parameters
 /// * `T` - The type of the commands.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
-pub trait CommandLaneLifecycle<T, Context>: for<'a> OnCommand<'a, T, Context> {}
+pub trait CommandLaneLifecycle<T, Context>: OnCommand<T, Context> {}
 
 /// Trait for the lifecycle of a command lane where the lifecycle has access to some shared state (shared
 /// with all other lifecycles in the agent).
@@ -35,31 +35,14 @@ pub trait CommandLaneLifecycle<T, Context>: for<'a> OnCommand<'a, T, Context> {}
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
 pub trait CommandLaneLifecycleShared<T, Context, Shared>:
-    for<'a> OnCommandShared<'a, T, Context, Shared>
+    OnCommandShared<T, Context, Shared>
 {
 }
 
-pub trait CommandLaneHandlers<'a, T, Context>: OnCommand<'a, T, Context> {}
-
-impl<'a, T, Context, L> CommandLaneHandlers<'a, T, Context> for L where L: OnCommand<'a, T, Context> {}
-
-impl<T, Context, L> CommandLaneLifecycle<T, Context> for L where
-    L: for<'a> CommandLaneHandlers<'a, T, Context>
-{
-}
-
-pub trait CommandLaneHandlersShared<'a, T, Context, Shared>:
-    OnCommandShared<'a, T, Context, Shared>
-{
-}
-
-impl<'a, T, Context, Shared, L> CommandLaneHandlersShared<'a, T, Context, Shared> for L where
-    L: OnCommandShared<'a, T, Context, Shared>
-{
-}
+impl<T, Context, L> CommandLaneLifecycle<T, Context> for L where L: OnCommand<T, Context> {}
 
 impl<T, Context, Shared, L> CommandLaneLifecycleShared<T, Context, Shared> for L where
-    L: for<'a> CommandLaneHandlersShared<'a, T, Context, Shared>
+    L: OnCommandShared<T, Context, Shared>
 {
 }
 
@@ -94,35 +77,40 @@ impl<Context, Shared, T> Default for StatefulCommandLaneLifecycle<Context, Share
     }
 }
 
-impl<'a, T, Context, Shared, OnCmd> OnCommandShared<'a, T, Context, Shared>
+impl<T, Context, Shared, OnCmd> OnCommandShared<T, Context, Shared>
     for StatefulCommandLaneLifecycle<Context, Shared, T, OnCmd>
 where
-    OnCmd: OnCommandShared<'a, T, Context, Shared>,
+    OnCmd: OnCommandShared<T, Context, Shared>,
 {
-    type OnCommandHandler = OnCmd::OnCommandHandler;
+    type OnCommandHandler<'a> = OnCmd::OnCommandHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_command(
+    fn on_command<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: crate::agent_lifecycle::utility::HandlerContext<Context>,
         value: &T,
-    ) -> Self::OnCommandHandler {
+    ) -> Self::OnCommandHandler<'a> {
         self.on_command.on_command(shared, handler_context, value)
     }
 }
 
 impl<Context, Shared, T, OnCmd> StatefulCommandLaneLifecycle<Context, Shared, T, OnCmd> {
     /// Replace the `on_command` handler with another derived from a closure.
-    pub fn on_command<F>(
+    pub fn on_command<F, B>(
         self,
         f: F,
-    ) -> StatefulCommandLaneLifecycle<Context, Shared, T, FnHandler<F>>
+    ) -> StatefulCommandLaneLifecycle<Context, Shared, T, BorrowHandler<F, B>>
     where
-        FnHandler<F>: for<'a> OnCommandShared<'a, T, Context, Shared>,
+        B: ?Sized,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnCommandShared<T, Context, Shared>,
     {
         StatefulCommandLaneLifecycle {
             _value_type: Default::default(),
-            on_command: FnHandler(f),
+            on_command: BorrowHandler::new(f),
         }
     }
 }

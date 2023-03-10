@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,11 +15,21 @@
 use rand::Rng;
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swim_num::non_zero_usize;
+
+macro_rules! non_zero_usize {
+    (0) => {
+        compile_error!("Must be non-zero")
+    };
+    ($n:literal) => {
+        unsafe { std::num::NonZeroUsize::new_unchecked($n) }
+    };
+}
 
 pub const DEFAULT_EXPONENTIAL_MAX_INTERVAL: Duration = Duration::from_secs(16);
 pub const DEFAULT_EXPONENTIAL_MAX_BACKOFF: Duration = Duration::from_secs(300);
-pub const DEFAULT_IMMEDIATE_RETRIES: usize = 16;
-pub const DEFAULT_INTERVAL_RETRIES: usize = 8;
+pub const DEFAULT_IMMEDIATE_RETRIES: NonZeroUsize = non_zero_usize!(16);
+pub const DEFAULT_INTERVAL_RETRIES: NonZeroUsize = non_zero_usize!(8);
 pub const DEFAULT_INTERVAL_DELAY: u64 = 10;
 
 /// The retry strategy that a ['RetryableRequest`] uses to determine when to perform the next
@@ -119,7 +129,7 @@ impl RetryStrategy {
 
     pub fn default_immediate() -> RetryStrategy {
         RetryStrategy::Immediate(IntervalStrategy {
-            retry: Quantity::Finite(DEFAULT_IMMEDIATE_RETRIES),
+            retry: Quantity::Finite(DEFAULT_IMMEDIATE_RETRIES.get()),
             delay: None,
         })
     }
@@ -143,7 +153,7 @@ impl RetryStrategy {
 
     pub fn default_interval() -> RetryStrategy {
         RetryStrategy::Immediate(IntervalStrategy {
-            retry: Quantity::Finite(DEFAULT_INTERVAL_RETRIES),
+            retry: Quantity::Finite(DEFAULT_INTERVAL_RETRIES.get()),
             delay: Some(Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
         })
     }
@@ -187,7 +197,7 @@ impl Iterator for RetryStrategy {
                 strategy.retry_no += 1;
 
                 // Thread local RNG is used as it will live for the duration of the retry strategy
-                let wait = rand::thread_rng().gen_range(0, 1000);
+                let wait = rand::thread_rng().gen_range(0..1000);
                 let duration = Duration::from_millis((2 ^ strategy.retry_no) + wait);
                 let sleep_time = std::cmp::min(duration, strategy.max_interval);
 
@@ -212,8 +222,7 @@ impl Iterator for RetryStrategy {
 #[cfg(test)]
 mod tests {
     use crate::retryable::strategy::{Quantity, RetryStrategy};
-    use std::time::Duration;
-    use swim_algebra::non_zero_usize;
+    use std::{num::NonZeroUsize, time::Duration};
 
     #[tokio::test]
     async fn test_exponential() {
@@ -239,7 +248,7 @@ mod tests {
     #[tokio::test]
     async fn test_immediate() {
         let retries = 5;
-        let strategy = RetryStrategy::immediate(non_zero_usize!(retries));
+        let strategy = RetryStrategy::immediate(NonZeroUsize::new(retries).unwrap());
         let mut it = strategy;
         let count = it.count();
 
@@ -258,7 +267,7 @@ mod tests {
         let expected_duration = Duration::from_secs(1);
         let strategy = RetryStrategy::interval(
             expected_duration,
-            Quantity::Finite(non_zero_usize!(retries)),
+            Quantity::Finite(NonZeroUsize::new(retries).unwrap()),
         );
         let mut it = strategy;
         let count = it.count();

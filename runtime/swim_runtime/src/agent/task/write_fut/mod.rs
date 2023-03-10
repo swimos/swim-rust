@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ use bytes::BytesMut;
 use swim_messages::protocol::Notification;
 use swim_model::Text;
 
-use crate::pressure::{BackpressureStrategy, MapBackpressure};
+use crate::backpressure::{BackpressureStrategy, MapBackpressure};
 
 use super::remotes::{LaneRegistry, RemoteSender};
 
@@ -62,8 +62,8 @@ impl SpecialAction {
 pub enum WriteAction {
     // A lane event (the body is stored in the associated buffer).
     Event,
-    // A value lane event, to be followed by a synced message, (the body is stored in the associated buffer).
-    EventAndSynced,
+    // A value lane synced message.
+    ValueSynced(bool),
     // A queue of map lan events, to be followed by a synced message (the contents of the buffer are irrelevant).
     MapSynced(Option<Box<MapBackpressure>>),
     // A special action (the body will be stored in the associated buffer, where appropriate).
@@ -110,10 +110,12 @@ async fn perform_write(
                 .send_notification(Notification::Event(&*buffer))
                 .await?;
         }
-        WriteAction::EventAndSynced => {
-            writer
-                .send_notification(Notification::Event(&*buffer))
-                .await?;
+        WriteAction::ValueSynced(send_value) => {
+            if send_value {
+                writer
+                    .send_notification(Notification::Event(&*buffer))
+                    .await?;
+            }
             writer.send_notification(Notification::Synced).await?;
         }
         WriteAction::MapSynced(maybe_queue) => {

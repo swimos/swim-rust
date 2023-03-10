@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,160 +18,193 @@ use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    downlink_lifecycle::{LiftShared, WithHandlerContext},
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{EventHandler, UnitHandler, UpdateBorrowFn, UpdateFn},
+    lifecycle_fn::{LiftShared, WithHandlerContext, WithHandlerContextBorrow},
 };
 
 /// Lifecycle event for the `on_set` event of a downlink, from an agent.
-pub trait OnDownlinkSet<'a, T, Context>: Send {
-    type OnSetHandler: EventHandler<Context> + 'a;
+pub trait OnDownlinkSet<T, Context>: Send {
+    type OnSetHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a;
 
     /// #Arguments
     /// * `previous` - The previous value.
     /// * `value` - The new value.
-    fn on_set(&'a self, previous: Option<T>, new_value: &T) -> Self::OnSetHandler;
+    fn on_set<'a>(&'a self, previous: Option<T>, new_value: &T) -> Self::OnSetHandler<'a>;
 }
 
 /// Lifecycle event for the `on_set` event of a downlink, from an agent,where the event
 /// handler has shared state with other handlers for the same downlink.
-pub trait OnDownlinkSetShared<'a, T, Context, Shared>: Send {
-    type OnSetHandler: EventHandler<Context> + 'a;
+pub trait OnDownlinkSetShared<T, Context, Shared>: Send {
+    type OnSetHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `previous` - The previous value.
-    /// * `value` - The new value.
-    fn on_set(
+    /// * `new_value` - The new value.
+    fn on_set<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         previous: Option<T>,
         new_value: &T,
-    ) -> Self::OnSetHandler;
+    ) -> Self::OnSetHandler<'a>;
 }
 
-impl<'a, T, Context> OnDownlinkSet<'a, T, Context> for NoHandler {
-    type OnSetHandler = UnitHandler;
+impl<T, Context> OnDownlinkSet<T, Context> for NoHandler {
+    type OnSetHandler<'a> = UnitHandler
+    where
+        Self: 'a;
 
-    fn on_set(&'a self, _previous: Option<T>, _new_value: &T) -> Self::OnSetHandler {
+    fn on_set<'a>(&'a self, _previous: Option<T>, _new_value: &T) -> Self::OnSetHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<'a, T, Context, Shared> OnDownlinkSetShared<'a, T, Context, Shared> for NoHandler {
-    type OnSetHandler = UnitHandler;
+impl<T, Context, Shared> OnDownlinkSetShared<T, Context, Shared> for NoHandler {
+    type OnSetHandler<'a> = UnitHandler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_set(
+    fn on_set<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         _previous: Option<T>,
         _new_value: &T,
-    ) -> Self::OnSetHandler {
+    ) -> Self::OnSetHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<'a, T, Context, F, H> OnDownlinkSet<'a, T, Context> for FnHandler<F>
+impl<T, Context, F, H> OnDownlinkSet<T, Context> for FnHandler<F>
 where
-    F: Fn(Option<T>, &T) -> H + Send + 'a,
-    H: EventHandler<Context> + 'a,
+    F: Fn(Option<T>, &T) -> H + Send,
+    H: EventHandler<Context> + 'static,
 {
-    type OnSetHandler = H;
+    type OnSetHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_set(&'a self, previous: Option<T>, new_value: &T) -> Self::OnSetHandler {
+    fn on_set<'a>(&'a self, previous: Option<T>, new_value: &T) -> Self::OnSetHandler<'a> {
         let FnHandler(f) = self;
         f(previous, new_value)
     }
 }
 
-impl<'a, B, T, Context, F, H> OnDownlinkSet<'a, T, Context> for BorrowHandler<F, B>
+impl<B, T, Context, F, H> OnDownlinkSet<T, Context> for BorrowHandler<F, B>
 where
     B: ?Sized,
     T: Borrow<B>,
-    F: Fn(Option<T>, &B) -> H + Send + 'a,
-    H: EventHandler<Context> + 'a,
+    F: Fn(Option<T>, &B) -> H + Send,
+    H: EventHandler<Context> + 'static,
 {
-    type OnSetHandler = H;
+    type OnSetHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_set(&'a self, previous: Option<T>, new_value: &T) -> Self::OnSetHandler {
+    fn on_set<'a>(&'a self, previous: Option<T>, new_value: &T) -> Self::OnSetHandler<'a> {
         (self.as_ref())(previous, new_value.borrow())
     }
 }
 
-impl<'a, T, Context, Shared, F, H> OnDownlinkSetShared<'a, T, Context, Shared> for FnHandler<F>
+impl<T, Context, Shared, F> OnDownlinkSetShared<T, Context, Shared> for FnHandler<F>
 where
-    F: Fn(&'a Shared, HandlerContext<Context>, Option<T>, &T) -> H + Send + 'a,
-    Shared: 'a,
-    H: EventHandler<Context> + 'a,
+    F: for<'a> UpdateFn<'a, Context, Shared, T> + Send,
 {
-    type OnSetHandler = H;
+    type OnSetHandler<'a> = <F as UpdateFn<'a, Context, Shared, T>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_set(
+    fn on_set<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         previous: Option<T>,
         new_value: &T,
-    ) -> Self::OnSetHandler {
+    ) -> Self::OnSetHandler<'a> {
         let FnHandler(f) = self;
-        f(shared, handler_context, previous, new_value)
+        f.make_handler(shared, handler_context, new_value, previous)
     }
 }
 
-impl<'a, B, T, Context, Shared, F, H> OnDownlinkSetShared<'a, T, Context, Shared>
-    for BorrowHandler<F, B>
+impl<B, T, Context, Shared, F> OnDownlinkSetShared<T, Context, Shared> for BorrowHandler<F, B>
 where
     B: ?Sized,
     T: Borrow<B>,
-    F: Fn(&'a Shared, HandlerContext<Context>, Option<T>, &B) -> H + Send + 'a,
-    Shared: 'a,
-    H: EventHandler<Context> + 'a,
+    F: for<'a> UpdateBorrowFn<'a, Context, Shared, T, B> + Send,
 {
-    type OnSetHandler = H;
+    type OnSetHandler<'a> = <F as UpdateBorrowFn<'a, Context, Shared, T, B>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_set(
+    fn on_set<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         previous: Option<T>,
         new_value: &T,
-    ) -> Self::OnSetHandler {
-        (self.as_ref())(shared, handler_context, previous, new_value.borrow())
+    ) -> Self::OnSetHandler<'a> {
+        (self.as_ref()).make_handler(shared, handler_context, new_value.borrow(), previous)
     }
 }
 
-impl<'a, Context, T, F, H> OnDownlinkSet<'a, T, Context> for WithHandlerContext<Context, F>
+impl<Context, T, F, H> OnDownlinkSet<T, Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>, Option<T>, &T) -> H + Send,
-    H: EventHandler<Context> + 'a,
+    H: EventHandler<Context> + 'static,
 {
-    type OnSetHandler = H;
+    type OnSetHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_set(&'a self, previous: Option<T>, new_value: &T) -> Self::OnSetHandler {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context, previous, new_value)
+    fn on_set<'a>(&'a self, previous: Option<T>, new_value: &T) -> Self::OnSetHandler<'a> {
+        let WithHandlerContext { inner } = self;
+        inner(HandlerContext::default(), previous, new_value)
     }
 }
 
-impl<'a, T, Context, Shared, F> OnDownlinkSetShared<'a, T, Context, Shared>
-    for LiftShared<F, Shared>
+impl<Context, T, B, F, H> OnDownlinkSet<T, Context> for WithHandlerContextBorrow<F, B>
 where
-    F: OnDownlinkSet<'a, T, Context> + Send,
+    B: ?Sized,
+    T: Borrow<B>,
+    F: Fn(HandlerContext<Context>, Option<T>, &B) -> H + Send,
+    H: EventHandler<Context> + 'static,
 {
-    type OnSetHandler = F::OnSetHandler;
+    type OnSetHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_set(
+    fn on_set<'a>(&'a self, previous: Option<T>, new_value: &T) -> Self::OnSetHandler<'a> {
+        let WithHandlerContextBorrow { inner, .. } = self;
+        inner(HandlerContext::default(), previous, new_value.borrow())
+    }
+}
+
+impl<T, Context, Shared, F> OnDownlinkSetShared<T, Context, Shared> for LiftShared<F, Shared>
+where
+    F: OnDownlinkSet<T, Context> + Send,
+{
+    type OnSetHandler<'a> = F::OnSetHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_set<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         previous: Option<T>,
         new_value: &T,
-    ) -> Self::OnSetHandler {
+    ) -> Self::OnSetHandler<'a> {
         let LiftShared { inner, .. } = self;
         inner.on_set(previous, new_value)
     }

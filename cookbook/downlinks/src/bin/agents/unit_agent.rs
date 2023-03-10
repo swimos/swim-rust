@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ use swim_server::agent::lane::model::map::{MapLane, MapLaneEvent};
 use swim_server::agent::map_lifecycle;
 use swim_server::agent::AgentContext;
 use swim_server::agent::SwimAgent;
-use swim_server::uri::RelativeUri;
+use swim_server::route_uri::RouteUri;
 use swim_server::RetryStrategy;
 
 #[derive(Debug, SwimAgent)]
@@ -128,6 +128,6 @@ impl AddItemLifecycle {
     }
 }
 
-fn log_message<T: Display>(node_uri: &RelativeUri, message: &T) {
+fn log_message<T: Display>(node_uri: &RouteUri, message: &T) {
     println!("{}: {}", node_uri, message);
 }

@@ -1,7 +1,7 @@
 use swim_api::protocol::{downlink::DownlinkOperationDecoder, map::RawMapOperationDecoder};
 use tokio_util::codec::Decoder;
 
-use crate::pressure::{BackpressureStrategy, MapBackpressure, ValueBackpressure};
+use crate::backpressure::{BackpressureStrategy, MapBackpressure, ValueBackpressure};
 
 pub trait DownlinkBackpressure: BackpressureStrategy {
     /// Decoder for operations received from the downlink implementation.

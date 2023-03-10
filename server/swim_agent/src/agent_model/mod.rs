@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 use std::sync::Arc;
 
 use bytes::BytesMut;
@@ -24,22 +25,26 @@ use futures::{
     stream::{FuturesUnordered, SelectAll},
     StreamExt,
 };
-use swim_api::error::AgentRuntimeError;
+use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
+use swim_api::meta::lane::LaneKind;
+use swim_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
+use swim_api::protocol::WithLengthBytesCodec;
+use swim_api::store::StoreKind;
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
     error::{AgentInitError, AgentTaskError, FrameIoError},
     protocol::{agent::LaneRequest, map::MapMessage},
 };
 use swim_model::Text;
-use swim_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
-};
+use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swim_utilities::routing::route_uri::RouteUri;
 use tracing::{error, info};
 use uuid::Uuid;
 
-use crate::agent_lifecycle::lane_event::LaneEvent;
-use crate::event_handler::{ActionContext, BoxEventHandler, HandlerFuture, WriteStream};
+use crate::agent_lifecycle::item_event::ItemEvent;
+use crate::event_handler::{
+    ActionContext, BoxEventHandler, BoxJoinValueInit, HandlerFuture, WriteStream,
+};
 use crate::{
     agent_lifecycle::AgentLifecycle,
     event_handler::{EventHandler, EventHandlerError, HandlerAction, StepResult},
@@ -47,13 +52,21 @@ use crate::{
 };
 
 pub mod downlink;
+mod init;
 mod io;
 #[cfg(test)]
 mod tests;
 
-use io::{LaneReader, LaneWriter};
+use io::{ItemWriter, LaneReader};
+
+use bitflags::bitflags;
 
 use self::downlink::handlers::BoxDownlinkChannel;
+use self::init::{run_item_initializer, InitializedItem};
+pub use init::{
+    ItemInitializer, JoinValueInitializer, MapLaneInitializer, MapStoreInitializer,
+    ValueLaneInitializer, ValueStoreInitializer,
+};
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,10 +79,40 @@ pub enum WriteResult {
     DataStillAvailable,
 }
 
+pub type InitFn<Agent> = Box<dyn FnOnce(&Agent) + Send + 'static>;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum ItemKind {
+    Lane,
+    Store,
+}
+
+bitflags! {
+
+    #[derive(Default)]
+    pub struct LaneFlags: u8 {
+        /// The state of the lane should not be persisted.
+        const TRANSIENT = 0b01;
+    }
+
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ItemSpec {
+    pub kind: ItemKind,
+    pub flags: LaneFlags,
+}
+
+impl ItemSpec {
+    pub fn new(kind: ItemKind, flags: LaneFlags) -> Self {
+        ItemSpec { kind, flags }
+    }
+}
+
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
 /// although it will not provided any lifecycle events for the agent or its lanes.
-pub trait AgentLaneModel: Sized + Send {
+pub trait AgentSpec: Sized + Send {
     /// The type of handler to run when a command is received for a value lane.
     type ValCommandHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
@@ -79,23 +122,45 @@ pub trait AgentLaneModel: Sized + Send {
     /// The type of handler to run when a request is received to sync with a lane.
     type OnSyncHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
-    /// The names of all value like lanes (value lanes, command lanes, etc) in the agent.
-    fn value_like_lanes() -> HashSet<&'static str>;
+    /// The names and flags of all value like items (value lanes and stores, command lanes, etc) in the agent.
+    fn value_like_item_specs() -> HashMap<&'static str, ItemSpec>;
 
-    /// The names of all map like lanes in the agent.
-    fn map_like_lanes() -> HashSet<&'static str>;
+    /// The names and flags of all map like items in the agent.
+    fn map_like_item_specs() -> HashMap<&'static str, ItemSpec>;
 
-    /// Mapping from lane identifiers to lane names for all lanes in the agent.
-    fn lane_ids() -> HashMap<u64, Text>;
+    /// Mapping from item identifiers to lane names for all items in the agent.
+    fn item_ids() -> HashMap<u64, Text>;
 
     /// Create a handler that will update the state of the agent when a command is received
     /// for a value lane. There will be no handler if the lane does not exist or does not
     /// accept commands.
     ///
     /// #Arguments
-    ///  * `lane` - The name of the lane.
+    /// * `lane` - The name of the lane.
     /// * `body` - The content of the command.
     fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler>;
+
+    /// Create an initializer that will consume the state of a value-like item, as reported by the runtime.
+    ///
+    /// #Arguments
+    /// * `lane` - The name of the item.
+    fn init_value_like_item(
+        &self,
+        item: &str,
+    ) -> Option<Box<dyn ItemInitializer<Self, BytesMut> + Send + 'static>>
+    where
+        Self: 'static;
+
+    /// Create an initializer that will consume the state of a map-like item, as reported by the runtime.
+    ///
+    /// #Arguments
+    /// * `item` - The name of the item.
+    fn init_map_like_item(
+        &self,
+        item: &str,
+    ) -> Option<Box<dyn ItemInitializer<Self, MapMessage<BytesMut, BytesMut>> + Send + 'static>>
+    where
+        Self: 'static;
 
     /// Create a handler that will update the state of the agent when a command is received
     /// for a map lane. There will be no handler if the lane does not exist or does not
@@ -124,19 +189,19 @@ pub trait AgentLaneModel: Sized + Send {
 }
 
 /// A factory to create agent lane model instances.
-pub trait LaneModelFactory: Send + Sync {
-    type LaneModel: AgentLaneModel;
+pub trait ItemModelFactory: Send + Sync {
+    type ItemModel: AgentSpec;
 
-    fn create(&self) -> Self::LaneModel;
+    fn create(&self) -> Self::ItemModel;
 }
 
-impl<F, LaneModel: AgentLaneModel> LaneModelFactory for F
+impl<F, ItemModel: AgentSpec> ItemModelFactory for F
 where
-    F: Fn() -> LaneModel + Send + Sync,
+    F: Fn() -> ItemModel + Send + Sync,
 {
-    type LaneModel = LaneModel;
+    type ItemModel = ItemModel;
 
-    fn create(&self) -> Self::LaneModel {
+    fn create(&self) -> Self::ItemModel {
         self()
     }
 }
@@ -144,68 +209,69 @@ where
 /// The complete model for an agent consisting of an implementation of [`AgentLaneModel`] to describe the lanes
 /// of the agent and an implementation of [`AgentLifecycle`] to describe the lifecycle events that will trigger,
 /// for  example, when the agent starts or stops or when the state of a lane changes.
-pub struct AgentModel<LaneModel, Lifecycle> {
-    lane_model_fac: Arc<dyn LaneModelFactory<LaneModel = LaneModel>>,
+pub struct AgentModel<ItemModel, Lifecycle> {
+    item_model_fac: Arc<dyn ItemModelFactory<ItemModel = ItemModel>>,
     lifecycle: Lifecycle,
 }
 
-impl<LaneModel, Lifecycle: Clone> Clone for AgentModel<LaneModel, Lifecycle> {
+impl<ItemModel, Lifecycle: Clone> Clone for AgentModel<ItemModel, Lifecycle> {
     fn clone(&self) -> Self {
         Self {
-            lane_model_fac: self.lane_model_fac.clone(),
+            item_model_fac: self.item_model_fac.clone(),
             lifecycle: self.lifecycle.clone(),
         }
     }
 }
 
-impl<LaneModel, Lifecycle> AgentModel<LaneModel, Lifecycle> {
-    pub fn new<F>(lane_model_fac: F, lifecycle: Lifecycle) -> Self
+impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle> {
+    pub fn new<F>(item_model_fac: F, lifecycle: Lifecycle) -> Self
     where
-        F: LaneModelFactory<LaneModel = LaneModel> + Sized + 'static,
+        F: ItemModelFactory<ItemModel = ItemModel> + Sized + 'static,
     {
         AgentModel {
-            lane_model_fac: Arc::new(lane_model_fac),
+            item_model_fac: Arc::new(item_model_fac),
             lifecycle,
         }
     }
 
     pub fn from_arc(
-        lane_model_fac: Arc<dyn LaneModelFactory<LaneModel = LaneModel>>,
+        item_model_fac: Arc<dyn ItemModelFactory<ItemModel = ItemModel>>,
         lifecycle: Lifecycle,
     ) -> Self {
         AgentModel {
-            lane_model_fac,
+            item_model_fac,
             lifecycle,
         }
     }
 }
 
-impl<LaneModel, Lifecycle> Agent for AgentModel<LaneModel, Lifecycle>
+impl<ItemModel, Lifecycle> Agent for AgentModel<ItemModel, Lifecycle>
 where
-    LaneModel: AgentLaneModel + Send + 'static,
-    Lifecycle: AgentLifecycle<LaneModel> + Clone + Send + 'static,
+    ItemModel: AgentSpec + Send + 'static,
+    Lifecycle: AgentLifecycle<ItemModel> + Clone + Send + 'static,
 {
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
+        route_params: HashMap<String, String>,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
         self.clone()
-            .initialize_agent(route, config, context)
+            .initialize_agent(route, route_params, config, context)
             .boxed()
     }
 }
-enum TaskEvent<LaneModel> {
+enum TaskEvent<ItemModel> {
     WriteComplete {
-        writer: LaneWriter,
+        writer: ItemWriter,
         result: Result<(), std::io::Error>,
     },
     SuspendedComplete {
-        handler: BoxEventHandler<'static, LaneModel>,
+        handler: BoxEventHandler<'static, ItemModel>,
     },
     DownlinkReady {
-        downlink_event: Option<(HostedDownlink<LaneModel>, HostedDownlinkEvent)>,
+        downlink_event: Option<(HostedDownlink<ItemModel>, HostedDownlinkEvent)>,
     },
     ValueRequest {
         id: u64,
@@ -243,7 +309,7 @@ enum HostedDownlinkEvent {
     WriterFailed(std::io::Error),
     Written,
     WriterTerminated,
-    HandlerReady,
+    HandlerReady { failed: bool },
 }
 
 impl<Context> HostedDownlink<Context> {
@@ -263,10 +329,11 @@ impl<Context> HostedDownlink<Context> {
         };
 
         match next {
-            Either::Left(Some(Ok(_))) => Some((self, HostedDownlinkEvent::HandlerReady)),
-            Either::Left(Some(Err(e))) => {
-                error!(error = %e, "A downlink input channel failed.");
-                None
+            Either::Left(Some(Ok(_))) => {
+                Some((self, HostedDownlinkEvent::HandlerReady { failed: false }))
+            }
+            Either::Left(Some(Err(_))) => {
+                Some((self, HostedDownlinkEvent::HandlerReady { failed: true }))
             }
             Either::Right(Some(Ok(_))) => Some((self, HostedDownlinkEvent::Written)),
             Either::Right(Some(Err(e))) => {
@@ -282,104 +349,232 @@ impl<Context> HostedDownlink<Context> {
     }
 }
 
-impl<LaneModel, Lifecycle> AgentModel<LaneModel, Lifecycle>
+impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle>
 where
-    LaneModel: AgentLaneModel + Send + 'static,
-    Lifecycle: AgentLifecycle<LaneModel> + 'static,
+    ItemModel: AgentSpec + Send + 'static,
+    Lifecycle: AgentLifecycle<ItemModel> + 'static,
 {
     /// Initialize the agent, performing the initial setup for all of the lanes (including triggering the
     /// `on_start` event).
     ///
     /// #Arguments
-    /// * `route` - The node URI for thhe agent instance.
+    /// * `route` - The node URI for the agent instance.
+    /// * `route_params` - Parameters extracted from the route URI.
     /// * `config` - Agent specific configuration parameters.
     /// * `context` - Context through which to communicate with the runtime.
     async fn initialize_agent(
         self,
-        route: RelativeUri,
+        route: RouteUri,
+        route_params: HashMap<String, String>,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> AgentInitResult
     where
-        LaneModel: AgentLaneModel,
-        Lifecycle: AgentLifecycle<LaneModel>,
+        ItemModel: AgentSpec,
+        Lifecycle: AgentLifecycle<ItemModel>,
     {
         let AgentModel {
-            lane_model_fac,
+            item_model_fac,
             lifecycle,
         } = self;
 
-        let meta = AgentMetadata::new(&route, &config);
+        let meta = AgentMetadata::new(&route, &route_params, &config);
 
-        let mut value_lane_io = HashMap::new();
+        let mut value_like_lane_io = HashMap::new();
         let mut map_lane_io = HashMap::new();
+        let mut value_like_store_io = HashMap::new();
+        let mut map_store_io = HashMap::new();
 
-        let val_lane_names = LaneModel::value_like_lanes();
-        let map_lane_names = LaneModel::map_like_lanes();
-        let lane_ids = LaneModel::lane_ids();
+        let val_lane_specs = ItemModel::value_like_item_specs();
+        let map_lane_specs = ItemModel::map_like_item_specs();
+        let item_ids = <ItemModel as AgentSpec>::item_ids();
 
         let suspended = FuturesUnordered::new();
         let downlink_channels = RefCell::new(vec![]);
+        let mut join_value_init = HashMap::new();
 
-        // Set up the lanes of the agent.
-        for name in val_lane_names {
-            let io = context.add_lane(name, UplinkKind::Value, None).await?;
-            value_lane_io.insert(Text::new(name), io);
-        }
-        for name in map_lane_names {
-            if value_lane_io.contains_key(name) {
-                return Err(AgentInitError::DuplicateLane(Text::new(name)));
+        let item_model = item_model_fac.create();
+
+        {
+            let mut lane_init_tasks = FuturesUnordered::new();
+            let default_lane_config = config.default_lane_config.unwrap_or_default();
+            // Set up the lanes of the agent.
+            for (name, spec) in val_lane_specs {
+                let mut lane_conf = default_lane_config;
+                if spec.flags.contains(LaneFlags::TRANSIENT) {
+                    lane_conf.transient = true;
+                }
+                match spec.kind {
+                    ItemKind::Lane => {
+                        let io = context.add_lane(name, LaneKind::Value, lane_conf).await?;
+                        if lane_conf.transient {
+                            value_like_lane_io.insert(Text::new(name), io);
+                        } else if let Some(init) = item_model.init_value_like_item(name) {
+                            let init_task = run_item_initializer(
+                                ItemKind::Lane,
+                                name,
+                                UplinkKind::Value,
+                                io,
+                                WithLengthBytesCodec::default(),
+                                init,
+                            );
+                            lane_init_tasks.push(init_task.boxed());
+                        } else {
+                            value_like_lane_io.insert(Text::new(name), io);
+                        }
+                    }
+                    ItemKind::Store => {
+                        if !lane_conf.transient {
+                            match context.add_store(name, StoreKind::Value).await {
+                                Ok(io) => {
+                                    if let Some(init) = item_model.init_value_like_item(name) {
+                                        let init_task = run_item_initializer(
+                                            ItemKind::Store,
+                                            name,
+                                            UplinkKind::Value,
+                                            io,
+                                            WithLengthBytesCodec::default(),
+                                            init,
+                                        );
+                                        lane_init_tasks.push(init_task.boxed());
+                                    }
+                                }
+                                Err(OpenStoreError::StoresNotSupported) => {
+                                    info!(
+                                        name,
+                                        "Lane running as transient as stores not supported."
+                                    );
+                                }
+                                Err(OpenStoreError::RuntimeError(err)) => return Err(err.into()),
+                                _ => todo!(),
+                            }
+                        }
+                    }
+                }
             }
-            let io = context.add_lane(name, UplinkKind::Map, None).await?;
-            map_lane_io.insert(Text::new(name), io);
+            for (name, spec) in map_lane_specs {
+                if value_like_lane_io.contains_key(name) {
+                    return Err(AgentInitError::DuplicateLane(Text::new(name)));
+                }
+                let mut lane_conf = default_lane_config;
+                if spec.flags.contains(LaneFlags::TRANSIENT) {
+                    lane_conf.transient = true;
+                }
+                let io = context.add_lane(name, LaneKind::Map, lane_conf).await?;
+                if lane_conf.transient {
+                    map_lane_io.insert(Text::new(name), io);
+                } else if let Some(init) = item_model.init_map_like_item(name) {
+                    let init_task = run_item_initializer(
+                        ItemKind::Lane,
+                        name,
+                        UplinkKind::Map,
+                        io,
+                        MapMessageDecoder::new(RawMapOperationDecoder::default()),
+                        init,
+                    );
+                    lane_init_tasks.push(init_task.boxed());
+                } else {
+                    map_lane_io.insert(Text::new(name), io);
+                }
+            }
+
+            while let Some(result) = lane_init_tasks.next().await {
+                let InitializedItem {
+                    item_kind,
+                    name,
+                    kind,
+                    init_fn,
+                    io,
+                } = result.map_err(AgentInitError::LaneInitializationFailure)?;
+                init_fn(&item_model);
+                match (item_kind, kind) {
+                    (ItemKind::Lane, UplinkKind::Value | UplinkKind::Supply) => {
+                        value_like_lane_io.insert(Text::new(name), io);
+                    }
+                    (ItemKind::Store, UplinkKind::Map) => {
+                        let (tx, _) = io;
+                        map_store_io.insert(Text::new(name), tx);
+                    }
+                    (ItemKind::Lane, UplinkKind::Map) => {
+                        map_lane_io.insert(Text::new(name), io);
+                    }
+                    _ => {
+                        let (tx, _) = io;
+                        value_like_store_io.insert(Text::new(name), tx);
+                    }
+                };
+            }
         }
 
-        let lane_model = lane_model_fac.create();
+        lifecycle.initialize(
+            &mut ActionContext::new(
+                &suspended,
+                &*context,
+                &downlink_channels,
+                &mut join_value_init,
+            ),
+            meta,
+            &item_model,
+        );
+
         // Run the agent's `on_start` event handler.
         let on_start_handler = lifecycle.on_start();
 
         if let Err(e) = run_handler(
-            ActionContext::new(&suspended, &*context, &downlink_channels),
+            &mut ActionContext::new(
+                &suspended,
+                &*context,
+                &downlink_channels,
+                &mut join_value_init,
+            ),
             meta,
-            &lane_model,
+            &item_model,
             &lifecycle,
             on_start_handler,
-            &lane_ids,
+            &item_ids,
             &mut Discard,
         ) {
             return Err(AgentInitError::UserCodeError(Box::new(e)));
         }
         let agent_task = AgentTask {
-            lane_model,
+            item_model,
             lifecycle,
             route,
+            route_params,
             config,
-            lane_ids,
-            value_lane_io,
+            item_ids,
+            value_like_lane_io,
+            value_like_store_io,
             map_lane_io,
+            map_store_io,
             suspended,
             downlink_channels: downlink_channels.into_inner(),
+            join_value_init,
         };
         Ok(agent_task.run_agent(context).boxed())
     }
 }
 
-struct AgentTask<LaneModel, Lifecycle> {
-    lane_model: LaneModel,
+struct AgentTask<ItemModel, Lifecycle> {
+    item_model: ItemModel,
     lifecycle: Lifecycle,
-    route: RelativeUri,
+    route: RouteUri,
+    route_params: HashMap<String, String>,
     config: AgentConfig,
-    lane_ids: HashMap<u64, Text>,
-    value_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+    item_ids: HashMap<u64, Text>,
+    value_like_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
+    value_like_store_io: HashMap<Text, ByteWriter>,
     map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
-    suspended: FuturesUnordered<HandlerFuture<LaneModel>>,
-    downlink_channels: Vec<(BoxDownlinkChannel<LaneModel>, WriteStream)>,
+    map_store_io: HashMap<Text, ByteWriter>,
+    suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
+    join_value_init: HashMap<u64, BoxJoinValueInit<'static, ItemModel>>,
+    downlink_channels: Vec<(BoxDownlinkChannel<ItemModel>, WriteStream)>,
 }
 
-impl<LaneModel, Lifecycle> AgentTask<LaneModel, Lifecycle>
+impl<ItemModel, Lifecycle> AgentTask<ItemModel, Lifecycle>
 where
-    LaneModel: AgentLaneModel + Send + 'static,
-    Lifecycle: AgentLifecycle<LaneModel> + 'static,
+    ItemModel: AgentSpec + Send + 'static,
+    Lifecycle: AgentLifecycle<ItemModel> + 'static,
 {
     /// Core event loop for the agent that routes incoming data from the runtime to the lanes and
     /// state changes from the lanes to the runtime.
@@ -391,25 +586,29 @@ where
         context: Box<dyn AgentContext + Send>, //Will be needed when downlinks are supported.
     ) -> Result<(), AgentTaskError> {
         let AgentTask {
-            lane_model,
+            item_model,
             lifecycle,
             route,
+            route_params,
             config,
-            lane_ids,
-            value_lane_io,
+            item_ids,
+            value_like_lane_io,
+            value_like_store_io,
             map_lane_io,
+            map_store_io,
             mut suspended,
+            mut join_value_init,
             downlink_channels,
         } = self;
-        let meta = AgentMetadata::new(&route, &config);
+        let meta = AgentMetadata::new(&route, &route_params, &config);
 
-        let mut lane_ids_rev = HashMap::new();
-        for (id, name) in &lane_ids {
-            lane_ids_rev.insert(name.clone(), *id);
+        let mut item_ids_rev = HashMap::new();
+        for (id, name) in &item_ids {
+            item_ids_rev.insert(name.clone(), *id);
         }
 
         let mut lane_readers = SelectAll::new();
-        let mut lane_writers = HashMap::new();
+        let mut item_writers = HashMap::new();
         let mut pending_writes = FuturesUnordered::new();
         let mut downlinks = FuturesUnordered::new();
 
@@ -420,20 +619,30 @@ where
         }
 
         // Set up readers and writes for each lane.
-        for (name, (tx, rx)) in value_lane_io {
-            let id = lane_ids_rev[&name];
+        for (name, (tx, rx)) in value_like_lane_io {
+            let id = item_ids_rev[&name];
             lane_readers.push(LaneReader::value(id, rx));
-            lane_writers.insert(id, LaneWriter::new(id, tx));
+            item_writers.insert(id, ItemWriter::new(id, tx));
+        }
+
+        for (name, tx) in value_like_store_io {
+            let id = item_ids_rev[&name];
+            item_writers.insert(id, ItemWriter::new(id, tx));
         }
 
         for (name, (tx, rx)) in map_lane_io {
-            let id = lane_ids_rev[&name];
+            let id = item_ids_rev[&name];
             lane_readers.push(LaneReader::map(id, rx));
-            lane_writers.insert(id, LaneWriter::new(id, tx));
+            item_writers.insert(id, ItemWriter::new(id, tx));
         }
 
-        // This set keeps track of which lanes have data to be written (according to executed event handlers).
-        let mut dirty_lanes: HashSet<u64> = HashSet::new();
+        for (name, tx) in map_store_io {
+            let id = item_ids_rev[&name];
+            item_writers.insert(id, ItemWriter::new(id, tx));
+        }
+
+        // This set keeps track of which items have data to be written (according to executed event handlers).
+        let mut dirty_items: HashSet<u64> = HashSet::new();
 
         loop {
             let select_event = async {
@@ -461,7 +670,7 @@ where
                     }
                 }
             };
-            let task_event: TaskEvent<LaneModel> = tokio::select! {
+            let task_event: TaskEvent<ItemModel> = tokio::select! {
                 biased;
                 write_done = pending_writes.next(), if !pending_writes.is_empty() => {
                     if let Some((writer, result)) = write_done {
@@ -490,17 +699,22 @@ where
                     if result.is_err() {
                         break Ok(()); //Failing to write indicates that the runtime has stopped so we can exit without an error.
                     }
-                    lane_writers.insert(writer.lane_id(), writer);
+                    item_writers.insert(writer.lane_id(), writer);
                 }
                 TaskEvent::SuspendedComplete { handler } => {
                     if let Err(e) = run_handler(
-                        ActionContext::new(&suspended, &*context, &add_downlink),
+                        &mut ActionContext::new(
+                            &suspended,
+                            &*context,
+                            &add_downlink,
+                            &mut join_value_init,
+                        ),
                         meta,
-                        &lane_model,
+                        &item_model,
                         &lifecycle,
                         handler,
-                        &lane_ids,
-                        &mut dirty_lanes,
+                        &item_ids,
+                        &mut dirty_items,
                     ) {
                         break Err(AgentTaskError::UserCodeError(Box::new(e)));
                     }
@@ -516,107 +730,136 @@ where
                                 info!("A downlink hosted by the agent stopped writing output.");
                                 downlinks.push(downlink.wait_on_downlink());
                             }
-                            HostedDownlinkEvent::HandlerReady => {
-                                if let Some(handler) = downlink.channel.next_event(&lane_model) {
+                            HostedDownlinkEvent::HandlerReady { failed } => {
+                                if let Some(handler) = downlink.channel.next_event(&item_model) {
                                     if let Err(e) = run_handler(
-                                        ActionContext::new(&suspended, &*context, &add_downlink),
+                                        &mut ActionContext::new(
+                                            &suspended,
+                                            &*context,
+                                            &add_downlink,
+                                            &mut join_value_init,
+                                        ),
                                         meta,
-                                        &lane_model,
+                                        &item_model,
                                         &lifecycle,
                                         handler,
-                                        &lane_ids,
-                                        &mut dirty_lanes,
+                                        &item_ids,
+                                        &mut dirty_items,
                                     ) {
                                         break Err(AgentTaskError::UserCodeError(Box::new(e)));
                                     }
                                 }
-                                downlinks.push(downlink.wait_on_downlink());
+                                if !failed {
+                                    downlinks.push(downlink.wait_on_downlink());
+                                }
                             }
                             _ => {}
                         }
                     }
                 }
                 TaskEvent::ValueRequest { id, request } => {
-                    let name = &lane_ids[&id];
+                    let name = &item_ids[&id];
                     match request {
                         LaneRequest::Command(body) => {
-                            if let Some(handler) = lane_model.on_value_command(name.as_str(), body)
+                            if let Some(handler) = item_model.on_value_command(name.as_str(), body)
                             {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context, &add_downlink),
+                                    &mut ActionContext::new(
+                                        &suspended,
+                                        &*context,
+                                        &add_downlink,
+                                        &mut join_value_init,
+                                    ),
                                     meta,
-                                    &lane_model,
+                                    &item_model,
                                     &lifecycle,
                                     handler,
-                                    &lane_ids,
-                                    &mut dirty_lanes,
+                                    &item_ids,
+                                    &mut dirty_items,
                                 ) {
                                     break Err(AgentTaskError::UserCodeError(Box::new(e)));
                                 }
                             }
                         }
                         LaneRequest::Sync(remote_id) => {
-                            if let Some(handler) = lane_model.on_sync(name.as_str(), remote_id) {
+                            if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context, &add_downlink),
+                                    &mut ActionContext::new(
+                                        &suspended,
+                                        &*context,
+                                        &add_downlink,
+                                        &mut join_value_init,
+                                    ),
                                     meta,
-                                    &lane_model,
+                                    &item_model,
                                     &lifecycle,
                                     handler,
-                                    &lane_ids,
-                                    &mut dirty_lanes,
+                                    &item_ids,
+                                    &mut dirty_items,
                                 ) {
                                     break Err(AgentTaskError::UserCodeError(Box::new(e)));
                                 }
                             }
                         }
+                        LaneRequest::InitComplete => {}
                     }
                 }
                 TaskEvent::MapRequest { id, request } => {
-                    let name = &lane_ids[&id];
+                    let name = &item_ids[&id];
                     match request {
                         LaneRequest::Command(body) => {
-                            if let Some(handler) = lane_model.on_map_command(name.as_str(), body) {
+                            if let Some(handler) = item_model.on_map_command(name.as_str(), body) {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context, &add_downlink),
+                                    &mut ActionContext::new(
+                                        &suspended,
+                                        &*context,
+                                        &add_downlink,
+                                        &mut join_value_init,
+                                    ),
                                     meta,
-                                    &lane_model,
+                                    &item_model,
                                     &lifecycle,
                                     handler,
-                                    &lane_ids,
-                                    &mut dirty_lanes,
+                                    &item_ids,
+                                    &mut dirty_items,
                                 ) {
                                     break Err(AgentTaskError::UserCodeError(Box::new(e)));
                                 }
                             }
                         }
                         LaneRequest::Sync(remote_id) => {
-                            if let Some(handler) = lane_model.on_sync(name.as_str(), remote_id) {
+                            if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context, &add_downlink),
+                                    &mut ActionContext::new(
+                                        &suspended,
+                                        &*context,
+                                        &add_downlink,
+                                        &mut join_value_init,
+                                    ),
                                     meta,
-                                    &lane_model,
+                                    &item_model,
                                     &lifecycle,
                                     handler,
-                                    &lane_ids,
-                                    &mut dirty_lanes,
+                                    &item_ids,
+                                    &mut dirty_items,
                                 ) {
                                     break Err(AgentTaskError::UserCodeError(Box::new(e)));
                                 }
                             }
                         }
+                        LaneRequest::InitComplete => {}
                     }
                 }
                 TaskEvent::RequestError { id, error } => {
-                    let lane = lane_ids[&id].clone();
+                    let lane = item_ids[&id].clone();
                     break Err(AgentTaskError::BadFrame { lane, error });
                 }
             }
-            // Attempt to write to the outgoing buffers for any lanes with data.
-            dirty_lanes.retain(|id| {
-                if let Some(mut tx) = lane_writers.remove(id) {
-                    let name = &lane_ids[id];
-                    match lane_model.write_event(name.as_str(), &mut tx.buffer) {
+            // Attempt to write to the outgoing buffers for any items with data.
+            dirty_items.retain(|id| {
+                if let Some(mut tx) = item_writers.remove(id) {
+                    let name = &item_ids[id];
+                    match item_model.write_event(name.as_str(), &mut tx.buffer) {
                         Some(WriteResult::Done) => {
                             pending_writes.push(tx.write());
                             false
@@ -634,14 +877,18 @@ where
         }?;
         // Try to run the `on_stop` handler before we stop.
         let on_stop_handler = lifecycle.on_stop();
-        let discard = |_, _| Err(AgentRuntimeError::Stopping);
+        let discard = |_, _| {
+            Err(DownlinkRuntimeError::RuntimeError(
+                AgentRuntimeError::Stopping,
+            ))
+        };
         if let Err(e) = run_handler(
-            ActionContext::new(&suspended, &*context, &discard),
+            &mut ActionContext::new(&suspended, &*context, &discard, &mut join_value_init),
             meta,
-            &lane_model,
+            &item_model,
             &lifecycle,
             on_stop_handler,
-            &lane_ids,
+            &item_ids,
             &mut Discard,
         ) {
             Err(AgentTaskError::UserCodeError(Box::new(e)))
@@ -658,7 +905,7 @@ trait IdCollector {
     fn add_id(&mut self, id: u64);
 }
 
-/// When the agent is intializing, no IO is taking place so we simply discard the IDs.
+/// When the agent is initializing, no IO is taking place so we simply discard the IDs.
 struct Discard;
 
 impl IdCollector for Discard {
@@ -677,7 +924,7 @@ impl IdCollector for HashSet<u64> {
 /// of handlers completes.
 ///
 /// This function does not check for invalid identifiers/lanes. If a lane is referred to that does not exist,
-/// ther will be no error and no side effects will ocurr.
+/// there will be no error and no side effects will occur.
 ///
 /// TODO: This method is recursive and has no checks to detect cycles. It would be very easy to create a set of
 /// event handles which cause this to go into an infinite loop (this is also the case in Java). We could add some
@@ -692,41 +939,41 @@ impl IdCollector for HashSet<u64> {
 /// * `lifecycle` - The agent lifecycle which provides event handlers for state changes for each lane.
 /// * `handler` - The initial event handler that starts the chain. This could be a lifecycle event or triggered
 /// by an incoming message from the runtime.
-/// * `lanes` - Mapping between lane IDs (returned by the handler to indicate that it has changed the state of
-/// a lane) an the lane names (which are used by the lifecycle to identify the lanes).
+/// * `items` - Mapping between item IDs (returned by the handler to indicate that it has changed the state of
+/// an item) an the item names (which are used by the lifecycle to identify the items).
 /// * `collector` - Collects the IDs of lanes with state changes.
 fn run_handler<Context, Lifecycle, Handler, Collector>(
-    action_context: ActionContext<Context>,
+    action_context: &mut ActionContext<Context>,
     meta: AgentMetadata,
     context: &Context,
     lifecycle: &Lifecycle,
     mut handler: Handler,
-    lanes: &HashMap<u64, Text>,
+    items: &HashMap<u64, Text>,
     collector: &mut Collector,
 ) -> Result<(), EventHandlerError>
 where
-    Lifecycle: for<'a> LaneEvent<'a, Context>,
+    Lifecycle: ItemEvent<Context>,
     Handler: EventHandler<Context>,
     Collector: IdCollector,
 {
     loop {
         match handler.step(action_context, meta, context) {
-            StepResult::Continue { modified_lane } => {
-                if let Some((modification, lane)) = modified_lane.and_then(|modification| {
-                    lanes
-                        .get(&modification.lane_id)
+            StepResult::Continue { modified_item } => {
+                if let Some((modification, lane)) = modified_item.and_then(|modification| {
+                    items
+                        .get(&modification.item_id)
                         .map(|name| (modification, name))
                 }) {
-                    collector.add_id(modification.lane_id);
+                    collector.add_id(modification.item_id);
                     if modification.trigger_handler {
-                        if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
+                        if let Some(consequence) = lifecycle.item_event(context, lane.as_str()) {
                             run_handler(
                                 action_context,
                                 meta,
                                 context,
                                 lifecycle,
                                 consequence,
-                                lanes,
+                                items,
                                 collector,
                             )?;
                         }
@@ -736,22 +983,22 @@ where
             StepResult::Fail(err) => {
                 break Err(err);
             }
-            StepResult::Complete { modified_lane, .. } => {
-                if let Some((modification, lane)) = modified_lane.and_then(|modification| {
-                    lanes
-                        .get(&modification.lane_id)
+            StepResult::Complete { modified_item, .. } => {
+                if let Some((modification, lane)) = modified_item.and_then(|modification| {
+                    items
+                        .get(&modification.item_id)
                         .map(|name| (modification, name))
                 }) {
-                    collector.add_id(modification.lane_id);
+                    collector.add_id(modification.item_id);
                     if modification.trigger_handler {
-                        if let Some(consequence) = lifecycle.lane_event(context, lane.as_str()) {
+                        if let Some(consequence) = lifecycle.item_event(context, lane.as_str()) {
                             run_handler(
                                 action_context,
                                 meta,
                                 context,
                                 lifecycle,
                                 consequence,
-                                lanes,
+                                items,
                                 collector,
                             )?;
                         }

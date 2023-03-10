@@ -5,13 +5,12 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-swim_utilities = { path = "../../swim_utilities", features = ["text", "iteratee", "future", "algebra"] }
+swim_utilities = { path = "../../swim_utilities", features = ["text", "future"] }
 swim_form_derive = { path = "../swim_form_derive" }
 swim_model = { path = "../swim_model" }
-chrono = "0.4"
-either = "1.5.3"
-num-traits = "0.2.12"
-url = "2.1.1"
+chrono = { workspace = true }
+either = { workspace = true }
+num-traits = { workspace = true }
 
 [dev-dependencies]
-trybuild = "1.0.48"
+trybuild = { workspace = true }

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Display;
+use std::{fmt::Display, io};
 
 use swim_form::structural::read::ReadError;
 use swim_model::Text;
@@ -21,6 +21,8 @@ use swim_utilities::trigger::promise;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 
+use crate::store::StoreKind;
+
 /// Indicates that an agent or downlink failed to read a frame from a byte stream.
 #[derive(Error, Debug)]
 pub enum FrameIoError {
@@ -28,6 +30,8 @@ pub enum FrameIoError {
     Io(#[from] std::io::Error),
     #[error("{0}")]
     BadFrame(#[from] InvalidFrame),
+    #[error("The stream terminated when a frame was expected.")]
+    InvalidTermination,
 }
 
 impl From<AsyncParseError> for FrameIoError {
@@ -93,19 +97,48 @@ impl Display for DownlinkFailureReason {
 }
 
 /// Error type for operations that communicate with the agent runtime.
-#[derive(Error, Debug, Clone, Copy)]
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentRuntimeError {
-    #[error("Opening a new downlink failed: {0}")]
-    DownlinkConnectionFailed(DownlinkFailureReason),
     #[error("The agent runtime is stopping.")]
     Stopping,
     #[error("The agent runtime has terminated.")]
     Terminated,
 }
 
+/// Error type for the operation of spawning a new downlink on the runtime.
+#[derive(Error, Debug, Clone, Copy)]
+pub enum DownlinkRuntimeError {
+    #[error(transparent)]
+    RuntimeError(#[from] AgentRuntimeError),
+    #[error("Opening a new downlink failed: {0}")]
+    DownlinkConnectionFailed(DownlinkFailureReason),
+}
+
+/// Error type for requests so the runtime for creating/opening a state for an agent.
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenStoreError {
+    #[error(transparent)]
+    RuntimeError(#[from] AgentRuntimeError),
+    #[error("The runtime does not support stores.")]
+    StoresNotSupported,
+    #[error(
+        "A store of kind {requested} was requested but the pre-existing store is of kind {actual}."
+    )]
+    IncorrectStoreKind {
+        requested: StoreKind,
+        actual: StoreKind,
+    },
+}
+
 impl<T> From<mpsc::error::SendError<T>> for AgentRuntimeError {
     fn from(_: mpsc::error::SendError<T>) -> Self {
         AgentRuntimeError::Terminated
+    }
+}
+
+impl<T> From<mpsc::error::SendError<T>> for OpenStoreError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        OpenStoreError::RuntimeError(AgentRuntimeError::Terminated)
     }
 }
 
@@ -124,6 +157,36 @@ impl From<promise::PromiseError> for AgentRuntimeError {
 impl From<oneshot::error::RecvError> for AgentRuntimeError {
     fn from(_: oneshot::error::RecvError) -> Self {
         AgentRuntimeError::Terminated
+    }
+}
+
+impl From<oneshot::error::RecvError> for OpenStoreError {
+    fn from(_: oneshot::error::RecvError) -> Self {
+        OpenStoreError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
+impl<T> From<mpsc::error::SendError<T>> for DownlinkRuntimeError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        DownlinkRuntimeError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
+impl<T> From<watch::error::SendError<T>> for DownlinkRuntimeError {
+    fn from(_: watch::error::SendError<T>) -> Self {
+        DownlinkRuntimeError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
+impl From<promise::PromiseError> for DownlinkRuntimeError {
+    fn from(_: promise::PromiseError) -> Self {
+        DownlinkRuntimeError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
+impl From<oneshot::error::RecvError> for DownlinkRuntimeError {
+    fn from(_: oneshot::error::RecvError) -> Self {
+        DownlinkRuntimeError::RuntimeError(AgentRuntimeError::Terminated)
     }
 }
 
@@ -147,11 +210,84 @@ pub enum AgentInitError {
     DuplicateLane(Text),
     #[error("Error in use code (likely an event handler): {0}")]
     UserCodeError(Box<dyn std::error::Error + Send>),
+    #[error("Initializing the state of an agent lane failed: {0}")]
+    LaneInitializationFailure(FrameIoError),
 }
 
 //TODO Make this more sophisticated.
 impl From<AgentRuntimeError> for AgentInitError {
     fn from(_: AgentRuntimeError) -> Self {
         AgentInitError::FailedToStart
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum StoreError {
+    /// This implementation does not provide stores.
+    #[error("No store available.")]
+    NoStoreAvailable,
+    /// The provided key was not found in the store.
+    #[error("The specified key was not found")]
+    KeyNotFound,
+    /// A key returned by the store did not have the correct format.
+    #[error("The store returned an invalid key")]
+    InvalidKey,
+    /// Invalid operation attempted.
+    #[error("An invalid operation was attempted (e.g. Updating a map entry on a value entry)")]
+    InvalidOperation,
+    /// The delegate byte engine failed to initialise.
+    #[error("The delegate store engine failed to initialise: {0}")]
+    InitialisationFailure(String),
+    /// An IO error produced by the delegate byte engine.
+    #[error("IO error: {0}")]
+    Io(#[from] io::Error),
+    /// An error produced when attempting to encode a value.
+    #[error("Encoding error: {0}")]
+    Encoding(String),
+    /// An error produced when attempting to decode a value.
+    #[error("Decoding error: {0}")]
+    Decoding(String),
+    /// A raw error produced by the delegate byte engine.
+    #[error("Delegate store error: {0}")]
+    Delegate(Box<dyn std::error::Error + Send + Sync>),
+    /// A raw error produced by the delegate byte engine that isn't send or sync
+    #[error("Delegate store error: {0}")]
+    DelegateMessage(String),
+    /// An operation was attempted on the byte engine when it was closing.
+    #[error("An operation was attempted on the delegate store engine when it was closing")]
+    Closing,
+    /// The requested keyspace was not found.
+    #[error("The requested keyspace was not found")]
+    KeyspaceNotFound,
+}
+
+impl StoreError {
+    pub fn downcast_ref<E: std::error::Error + 'static>(&self) -> Option<&E> {
+        match self {
+            StoreError::Delegate(d) => {
+                if let Some(downcasted) = d.downcast_ref() {
+                    return Some(downcasted);
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+}
+
+impl PartialEq for StoreError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (StoreError::KeyNotFound, StoreError::KeyNotFound) => true,
+            (StoreError::InitialisationFailure(l), StoreError::InitialisationFailure(r)) => l.eq(r),
+            (StoreError::Io(l), StoreError::Io(r)) => l.kind().eq(&r.kind()),
+            (StoreError::Encoding(l), StoreError::Encoding(r)) => l.eq(r),
+            (StoreError::Decoding(l), StoreError::Decoding(r)) => l.eq(r),
+            (StoreError::Delegate(l), StoreError::Delegate(r)) => l.to_string().eq(&r.to_string()),
+            (StoreError::DelegateMessage(l), StoreError::DelegateMessage(r)) => l.eq(r),
+            (StoreError::Closing, StoreError::Closing) => true,
+            (StoreError::KeyspaceNotFound, StoreError::KeyspaceNotFound) => true,
+            _ => false,
+        }
     }
 }

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ use swim_model::Text;
 use tokio::sync::mpsc;
 
 use crate::{
-    agent_lifecycle::{lane_event::LaneEvent, on_start::OnStart, on_stop::OnStop},
+    agent_lifecycle::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop},
     event_handler::{
         ActionContext, BoxEventHandler, HandlerAction, SideEffect, Spawner, StepResult,
     },
@@ -28,6 +28,7 @@ use super::{fake_agent::TestAgent, CMD_LANE};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum LifecycleEvent {
+    Init,
     Start,
     Lane(Text),
     RanSuspended(i32),
@@ -59,31 +60,46 @@ impl TestLifecycle {
     }
 }
 
-impl<'a> OnStart<'a, TestAgent> for TestLifecycle {
-    type OnStartHandler = LifecycleHandler;
+impl OnInit<TestAgent> for TestLifecycle {
+    fn initialize(
+        &self,
+        _action_context: &mut ActionContext<TestAgent>,
+        _meta: AgentMetadata,
+        _context: &TestAgent,
+    ) {
+        assert!(self.sender.send(LifecycleEvent::Init).is_ok());
+    }
+}
 
-    fn on_start(&'a self) -> Self::OnStartHandler {
+impl OnStart<TestAgent> for TestLifecycle {
+    type OnStartHandler<'a> = LifecycleHandler where Self: 'a;
+
+    fn on_start(&self) -> Self::OnStartHandler<'_> {
         self.make_handler(LifecycleEvent::Start)
     }
 }
 
-impl<'a> OnStop<'a, TestAgent> for TestLifecycle {
-    type OnStopHandler = LifecycleHandler;
+impl OnStop<TestAgent> for TestLifecycle {
+    type OnStopHandler<'a> = LifecycleHandler
+    where
+        Self: 'a;
 
-    fn on_stop(&'a self) -> Self::OnStopHandler {
+    fn on_stop(&self) -> Self::OnStopHandler<'_> {
         self.make_handler(LifecycleEvent::Stop)
     }
 }
 
-impl<'a> LaneEvent<'a, TestAgent> for TestLifecycle {
-    type LaneEventHandler = LifecycleHandler;
+impl ItemEvent<TestAgent> for TestLifecycle {
+    type ItemEventHandler<'a> = LifecycleHandler
+    where
+        Self: 'a;
 
-    fn lane_event(
+    fn item_event<'a>(
         &'a self,
         _context: &TestAgent,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
-        Some(self.make_handler(LifecycleEvent::Lane(Text::new(lane_name))))
+        item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
+        Some(self.make_handler(LifecycleEvent::Lane(Text::new(item_name))))
     }
 }
 
@@ -92,7 +108,7 @@ impl HandlerAction<TestAgent> for LifecycleHandler {
 
     fn step(
         &mut self,
-        action_context: ActionContext<TestAgent>,
+        action_context: &mut ActionContext<TestAgent>,
         _meta: AgentMetadata,
         context: &TestAgent,
     ) -> StepResult<Self::Completion> {

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -359,7 +359,7 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        *RoutingAddr::client(1).uuid(),
+        Uuid::from_u128(1),
         path,
         config,
         failure_strategy,
@@ -1043,7 +1043,7 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        *RoutingAddr::client(1).uuid(),
+        Uuid::from_u128(1),
         path,
         config,
         AlwaysAbortStrategy,

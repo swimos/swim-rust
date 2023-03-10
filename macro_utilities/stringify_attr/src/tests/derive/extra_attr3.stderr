@@ -1,5 +1,0 @@
-error: Unexpected literal
-  --> $DIR/extra_attr3.rs:20:37
-   |
-20 |         #[stringify(serde(rename(B, "C")))]
-   |                                     ^^^

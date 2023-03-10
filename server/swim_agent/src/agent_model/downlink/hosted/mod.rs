@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod event;
 mod map;
 mod value;
 
+pub use event::HostedEventDownlinkChannel;
 pub use map::{map_dl_write_stream, HostedMapDownlinkChannel, MapDlState, MapDownlinkHandle};
 pub use value::{value_dl_write_stream, HostedValueDownlinkChannel, ValueDownlinkHandle};
 
@@ -27,15 +29,19 @@ enum DlState {
 
 #[cfg(test)]
 mod test_support {
+    use std::collections::HashMap;
+
     use futures::future::BoxFuture;
     use swim_api::{
-        agent::{AgentConfig, AgentContext, LaneConfig, UplinkKind},
+        agent::{AgentConfig, AgentContext, LaneConfig},
         downlink::DownlinkKind,
-        error::AgentRuntimeError,
+        error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+        meta::lane::LaneKind,
+        store::StoreKind,
     };
     use swim_utilities::{
         io::byte_channel::{ByteReader, ByteWriter},
-        routing::uri::RelativeUri,
+        routing::route_uri::RouteUri,
     };
 
     use crate::{
@@ -60,7 +66,7 @@ mod test_support {
             &self,
             _dl_channel: BoxDownlinkChannel<FakeAgent>,
             _dl_writer: WriteStream,
-        ) -> Result<(), AgentRuntimeError> {
+        ) -> Result<(), DownlinkRuntimeError> {
             panic!("Unexpected downlink.");
         }
     }
@@ -71,8 +77,8 @@ mod test_support {
         fn add_lane(
             &self,
             _name: &str,
-            _uplink_kind: UplinkKind,
-            _config: Option<LaneConfig>,
+            _lane_kind: LaneKind,
+            _config: LaneConfig,
         ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
             panic!("Unexpected runtime interaction.");
         }
@@ -83,41 +89,52 @@ mod test_support {
             _node: &str,
             _lane: &str,
             _kind: DownlinkKind,
-        ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+        ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
+            panic!("Unexpected runtime interaction.");
+        }
+
+        fn add_store(
+            &self,
+            _name: &str,
+            _kind: StoreKind,
+        ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
             panic!("Unexpected runtime interaction.");
         }
     }
 
     const NODE_URI: &str = "/node";
-    const CONFIG: AgentConfig = AgentConfig {};
+    const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 
-    fn make_uri() -> RelativeUri {
-        RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+    fn make_uri() -> RouteUri {
+        RouteUri::try_from(NODE_URI).expect("Bad URI.")
     }
 
-    fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
-        AgentMetadata::new(uri, &CONFIG)
+    fn make_meta<'a>(
+        uri: &'a RouteUri,
+        route_params: &'a HashMap<String, String>,
+    ) -> AgentMetadata<'a> {
+        AgentMetadata::new(uri, route_params, &CONFIG)
     }
 
-    pub fn run_handler<'a, FakeAgent>(
-        mut handler: BoxEventHandler<'a, FakeAgent>,
-        agent: &FakeAgent,
-    ) {
+    pub fn run_handler<FakeAgent>(mut handler: BoxEventHandler<'_, FakeAgent>, agent: &FakeAgent) {
         let uri = make_uri();
-        let meta = make_meta(&uri);
+        let route_params = HashMap::new();
+        let meta = make_meta(&uri, &route_params);
         let no_spawn = NoSpawn;
         let no_runtime = NoAgentRuntime;
-        let context = ActionContext::new(&no_spawn, &no_runtime, &no_spawn);
+        let mut join_value_init = HashMap::new();
+        let mut context =
+            ActionContext::new(&no_spawn, &no_runtime, &no_spawn, &mut join_value_init);
         loop {
-            match handler.step(context, meta, agent) {
-                StepResult::Continue { modified_lane } => {
-                    assert!(modified_lane.is_none());
+            match handler.step(&mut context, meta, agent) {
+                StepResult::Continue { modified_item } => {
+                    assert!(modified_item.is_none());
                 }
                 StepResult::Fail(err) => {
                     panic!("Handler failed: {}", err);
                 }
-                StepResult::Complete { modified_lane, .. } => {
-                    assert!(modified_lane.is_none());
+                StepResult::Complete { modified_item, .. } => {
+                    assert!(modified_item.is_none());
                     break;
                 }
             }

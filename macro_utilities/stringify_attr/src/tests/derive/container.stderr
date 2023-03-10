@@ -1,5 +1,0 @@
-error: Expected a list
-  --> $DIR/container.rs:19:22
-   |
-19 |     #[stringify_attr(serde)]
-   |                      ^^^^^

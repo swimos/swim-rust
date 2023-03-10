@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -82,7 +82,7 @@ impl<T: Send + Sync> Sender<T> {
             *data.get() = Some(Arc::new(value));
             if trigger.trigger() {
                 Ok(())
-            } else if let Ok(value) = Arc::try_unwrap((&mut *data.get()).take().unwrap()) {
+            } else if let Ok(value) = Arc::try_unwrap((*data.get()).take().unwrap()) {
                 Err(value)
             } else {
                 unreachable!()

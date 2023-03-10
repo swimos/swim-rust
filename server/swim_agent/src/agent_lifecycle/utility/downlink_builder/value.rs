@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,25 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_api::handlers::{FnHandler, NoHandler};
+use std::{borrow::Borrow, marker::PhantomData};
+
+use swim_api::handlers::{BorrowHandler, FnHandler};
 use swim_form::Form;
 use swim_model::{address::Address, Text};
 
 use crate::{
     agent_model::downlink::{hosted::ValueDownlinkHandle, OpenValueDownlinkAction},
-    config::ValueDownlinkConfig,
+    config::SimpleDownlinkConfig,
     downlink_lifecycle::{
+        on_failed::{OnFailed, OnFailedShared},
         on_linked::{OnLinked, OnLinkedShared},
         on_synced::{OnSynced, OnSyncedShared},
         on_unlinked::{OnUnlinked, OnUnlinkedShared},
         value::{
             on_event::{OnDownlinkEvent, OnDownlinkEventShared},
             on_set::{OnDownlinkSet, OnDownlinkSetShared},
-            StatefulValueDownlinkLifecycle, StatelessValueDownlinkLifecycle,
+            StatefulValueDownlinkLifecycle, StatefulValueLifecycle,
+            StatelessValueDownlinkLifecycle, StatelessValueLifecycle,
         },
-        LiftShared, WithHandlerContext,
     },
     event_handler::HandlerAction,
+    lifecycle_fn::{WithHandlerContext, WithHandlerContextBorrow},
 };
 
 /// A builder for constructing a value downlink. Each lifecycle event handler is independent and, by
@@ -38,15 +42,12 @@ use crate::{
 pub struct StatelessValueDownlinkBuilder<
     Context,
     T,
-    FLinked = NoHandler,
-    FSynced = NoHandler,
-    FUnlinked = NoHandler,
-    FEv = NoHandler,
-    FSet = NoHandler,
+    LC = StatelessValueDownlinkLifecycle<Context, T>,
 > {
+    _type: PhantomData<fn(Context, T) -> T>,
     address: Address<Text>,
-    config: ValueDownlinkConfig,
-    inner: StatelessValueDownlinkLifecycle<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>,
+    config: SimpleDownlinkConfig,
+    inner: LC,
 }
 
 /// A builder for constructing a value downlink. The lifecycle event handlers share state and, by default,
@@ -55,21 +56,18 @@ pub struct StatefulValueDownlinkBuilder<
     Context,
     T,
     State,
-    FLinked = NoHandler,
-    FSynced = NoHandler,
-    FUnlinked = NoHandler,
-    FEv = NoHandler,
-    FSet = NoHandler,
+    LC = StatefulValueDownlinkLifecycle<Context, State, T>,
 > {
+    _type: PhantomData<fn(Context, State, T) -> T>,
     address: Address<Text>,
-    config: ValueDownlinkConfig,
-    inner:
-        StatefulValueDownlinkLifecycle<Context, State, T, FLinked, FSynced, FUnlinked, FEv, FSet>,
+    config: SimpleDownlinkConfig,
+    inner: LC,
 }
 
 impl<Context, T> StatelessValueDownlinkBuilder<Context, T> {
-    pub fn new(address: Address<Text>, config: ValueDownlinkConfig) -> Self {
+    pub fn new(address: Address<Text>, config: SimpleDownlinkConfig) -> Self {
         StatelessValueDownlinkBuilder {
+            _type: PhantomData,
             address,
             config,
             inner: StatelessValueDownlinkLifecycle::default(),
@@ -78,8 +76,9 @@ impl<Context, T> StatelessValueDownlinkBuilder<Context, T> {
 }
 
 impl<Context, T, State> StatefulValueDownlinkBuilder<Context, T, State> {
-    pub fn new(address: Address<Text>, config: ValueDownlinkConfig, state: State) -> Self {
+    pub fn new(address: Address<Text>, config: SimpleDownlinkConfig, state: State) -> Self {
         StatefulValueDownlinkBuilder {
+            _type: PhantomData,
             address,
             config,
             inner: StatefulValueDownlinkLifecycle::new(state),
@@ -87,193 +86,167 @@ impl<Context, T, State> StatefulValueDownlinkBuilder<Context, T, State> {
     }
 }
 
-pub type LiftedValueBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet> =
-    StatefulValueDownlinkBuilder<
-        Context,
-        T,
-        State,
-        LiftShared<FLinked, State>,
-        LiftShared<FSynced, State>,
-        LiftShared<FUnlinked, State>,
-        LiftShared<FEv, State>,
-        LiftShared<FSet, State>,
-    >;
-
-impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
-    StatelessValueDownlinkBuilder<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, T, LC> StatelessValueDownlinkBuilder<Context, T, LC>
+where
+    LC: StatelessValueLifecycle<Context, T>,
 {
-    /// Specify a new event handler to be executed when the downlink enters the linked state.
     pub fn on_linked<F>(
         self,
-        f: F,
-    ) -> StatelessValueDownlinkBuilder<
-        Context,
-        T,
-        WithHandlerContext<Context, F>,
-        FSynced,
-        FUnlinked,
-        FEv,
-        FSet,
-    >
+        handler: F,
+    ) -> StatelessValueDownlinkBuilder<Context, T, LC::WithOnLinked<WithHandlerContext<F>>>
     where
-        WithHandlerContext<Context, F>: for<'a> OnLinked<'a, Context>,
+        WithHandlerContext<F>: OnLinked<Context>,
     {
         let StatelessValueDownlinkBuilder {
             address,
             config,
             inner,
+            ..
         } = self;
         StatelessValueDownlinkBuilder {
+            _type: PhantomData,
             address,
             config,
-            inner: inner.on_linked(f),
+            inner: inner.on_linked(handler),
         }
     }
 
-    /// Specify a new event handler to be executed when the downlink enters the synced state.
-    pub fn on_synced<F>(
+    pub fn on_synced<F, B>(
         self,
-        f: F,
-    ) -> StatelessValueDownlinkBuilder<
-        Context,
-        T,
-        FLinked,
-        WithHandlerContext<Context, F>,
-        FUnlinked,
-        FEv,
-        FSet,
-    >
+        handler: F,
+    ) -> StatelessValueDownlinkBuilder<Context, T, LC::WithOnSynced<WithHandlerContextBorrow<F, B>>>
     where
-        WithHandlerContext<Context, F>: for<'a> OnSynced<'a, T, Context>,
+        B: ?Sized,
+        T: Borrow<B>,
+        WithHandlerContextBorrow<F, B>: OnSynced<T, Context>,
     {
         let StatelessValueDownlinkBuilder {
             address,
             config,
             inner,
+            ..
         } = self;
         StatelessValueDownlinkBuilder {
+            _type: PhantomData,
             address,
             config,
-            inner: inner.on_synced(f),
+            inner: inner.on_synced(handler),
         }
     }
 
-    /// Specify a new event handler to be executed when the downlink enters the unlinked state.
     pub fn on_unlinked<F>(
         self,
-        f: F,
-    ) -> StatelessValueDownlinkBuilder<
-        Context,
-        T,
-        FLinked,
-        FSynced,
-        WithHandlerContext<Context, F>,
-        FEv,
-        FSet,
-    >
+        handler: F,
+    ) -> StatelessValueDownlinkBuilder<Context, T, LC::WithOnUnlinked<WithHandlerContext<F>>>
     where
-        WithHandlerContext<Context, F>: for<'a> OnUnlinked<'a, Context>,
+        WithHandlerContext<F>: OnUnlinked<Context>,
     {
         let StatelessValueDownlinkBuilder {
             address,
             config,
             inner,
+            ..
         } = self;
         StatelessValueDownlinkBuilder {
+            _type: PhantomData,
             address,
             config,
-            inner: inner.on_unlinked(f),
+            inner: inner.on_unlinked(handler),
         }
     }
 
-    /// Specify a new event handler to be executed when an event is received for the downlink.
-    pub fn on_event<F>(
+    pub fn on_failed<F>(
         self,
-        f: F,
-    ) -> StatelessValueDownlinkBuilder<
-        Context,
-        T,
-        FLinked,
-        FSynced,
-        FUnlinked,
-        WithHandlerContext<Context, F>,
-        FSet,
-    >
+        handler: F,
+    ) -> StatelessValueDownlinkBuilder<Context, T, LC::WithOnFailed<WithHandlerContext<F>>>
     where
-        WithHandlerContext<Context, F>: for<'a> OnDownlinkEvent<'a, T, Context>,
+        WithHandlerContext<F>: OnFailed<Context>,
     {
         let StatelessValueDownlinkBuilder {
             address,
             config,
             inner,
+            ..
         } = self;
         StatelessValueDownlinkBuilder {
+            _type: PhantomData,
             address,
             config,
-            inner: inner.on_event(f),
+            inner: inner.on_failed(handler),
         }
     }
 
-    /// Specify a new event handler to be executed when the value of the downlink changes.
-    pub fn on_set<F>(
+    pub fn on_event<F, B>(
         self,
-        f: F,
-    ) -> StatelessValueDownlinkBuilder<
-        Context,
-        T,
-        FLinked,
-        FSynced,
-        FUnlinked,
-        FEv,
-        WithHandlerContext<Context, F>,
-    >
+        handler: F,
+    ) -> StatelessValueDownlinkBuilder<Context, T, LC::WithOnEvent<WithHandlerContextBorrow<F, B>>>
     where
-        WithHandlerContext<Context, F>: for<'a> OnDownlinkSet<'a, T, Context>,
+        B: ?Sized,
+        T: Borrow<B>,
+        WithHandlerContextBorrow<F, B>: OnDownlinkEvent<T, Context>,
     {
         let StatelessValueDownlinkBuilder {
             address,
             config,
             inner,
+            ..
         } = self;
         StatelessValueDownlinkBuilder {
+            _type: PhantomData,
             address,
             config,
-            inner: inner.on_set(f),
+            inner: inner.on_event(handler),
         }
     }
 
-    /// Add a state that can be shared between the event handlers for the downlink.
-    ///
-    /// #Arguments
-    /// * `state` - The value of the state.
-    pub fn with_state<State>(
+    pub fn on_set<F, B>(
         self,
-        state: State,
-    ) -> LiftedValueBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet> {
+        handler: F,
+    ) -> StatelessValueDownlinkBuilder<Context, T, LC::WithOnSet<WithHandlerContextBorrow<F, B>>>
+    where
+        B: ?Sized,
+        T: Borrow<B>,
+        WithHandlerContextBorrow<F, B>: OnDownlinkSet<T, Context>,
+    {
         let StatelessValueDownlinkBuilder {
             address,
             config,
             inner,
+            ..
+        } = self;
+        StatelessValueDownlinkBuilder {
+            _type: PhantomData,
+            address,
+            config,
+            inner: inner.on_set(handler),
+        }
+    }
+
+    pub fn with_shared_state<Shared: Send>(
+        self,
+        shared: Shared,
+    ) -> StatefulValueDownlinkBuilder<Context, T, Shared, LC::WithShared<Shared>> {
+        let StatelessValueDownlinkBuilder {
+            address,
+            config,
+            inner,
+            ..
         } = self;
         StatefulValueDownlinkBuilder {
+            _type: PhantomData,
             address,
             config,
-            inner: inner.with_state(state),
+            inner: inner.with_shared_state(shared),
         }
     }
 }
 
-impl<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
-    StatelessValueDownlinkBuilder<Context, T, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, T, LC> StatelessValueDownlinkBuilder<Context, T, LC>
 where
     Context: 'static,
-    T: Form + Send + Sync + 'static,
+    LC: StatelessValueLifecycle<Context, T> + 'static,
+    T: Form + Send + 'static,
     T::Rec: Send,
-    FLinked: for<'a> OnLinked<'a, Context> + 'static,
-    FSynced: for<'a> OnSynced<'a, T, Context> + 'static,
-    FUnlinked: for<'a> OnUnlinked<'a, Context> + 'static,
-    FEv: for<'a> OnDownlinkEvent<'a, T, Context> + 'static,
-    FSet: for<'a> OnDownlinkSet<'a, T, Context> + 'static,
 {
     /// Complete the downlink and create a [`HandlerAction`] that will open the downlink when it is
     /// executed.
@@ -284,145 +257,155 @@ where
             address,
             config,
             inner,
+            ..
         } = self;
         OpenValueDownlinkAction::new(address, inner, config)
     }
 }
 
-impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
-    StatefulValueDownlinkBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, T, State, LC> StatefulValueDownlinkBuilder<Context, T, State, LC>
+where
+    LC: StatefulValueLifecycle<Context, State, T>,
 {
-    /// Specify a new event handler to be executed when the downlink enters the linked state.
     pub fn on_linked<F>(
         self,
-        f: F,
-    ) -> StatefulValueDownlinkBuilder<Context, T, State, FnHandler<F>, FSynced, FUnlinked, FEv, FSet>
+        handler: F,
+    ) -> StatefulValueDownlinkBuilder<Context, T, State, LC::WithOnLinked<FnHandler<F>>>
     where
-        FnHandler<F>: for<'a> OnLinkedShared<'a, Context, State>,
+        FnHandler<F>: OnLinkedShared<Context, State>,
     {
         let StatefulValueDownlinkBuilder {
             address,
             config,
             inner,
+            ..
         } = self;
         StatefulValueDownlinkBuilder {
+            _type: PhantomData,
             address,
             config,
-            inner: inner.on_linked(f),
+            inner: inner.on_linked(handler),
         }
     }
 
-    /// Specify a new event handler to be executed when the downlink enters the synced state.
-    pub fn on_synced<F>(
+    pub fn on_synced<F, B>(
         self,
-        f: F,
-    ) -> StatefulValueDownlinkBuilder<Context, T, State, FLinked, FnHandler<F>, FUnlinked, FEv, FSet>
+        handler: F,
+    ) -> StatefulValueDownlinkBuilder<Context, T, State, LC::WithOnSynced<BorrowHandler<F, B>>>
     where
-        FnHandler<F>: for<'a> OnSyncedShared<'a, T, Context, State>,
+        B: ?Sized,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnSyncedShared<T, Context, State>,
     {
         let StatefulValueDownlinkBuilder {
             address,
             config,
             inner,
+            ..
         } = self;
         StatefulValueDownlinkBuilder {
+            _type: PhantomData,
             address,
             config,
-            inner: inner.on_synced(f),
+            inner: inner.on_synced(handler),
         }
     }
 
-    /// Specify a new event handler to be executed when the downlink enters the unlinked state.
     pub fn on_unlinked<F>(
         self,
-        f: F,
-    ) -> StatefulValueDownlinkBuilder<Context, T, State, FLinked, FSynced, FnHandler<F>, FEv, FSet>
+        handler: F,
+    ) -> StatefulValueDownlinkBuilder<Context, T, State, LC::WithOnUnlinked<FnHandler<F>>>
     where
-        FnHandler<F>: for<'a> OnUnlinkedShared<'a, Context, State>,
+        FnHandler<F>: OnUnlinkedShared<Context, State>,
     {
         let StatefulValueDownlinkBuilder {
             address,
             config,
             inner,
+            ..
         } = self;
         StatefulValueDownlinkBuilder {
+            _type: PhantomData,
             address,
             config,
-            inner: inner.on_unlinked(f),
+            inner: inner.on_unlinked(handler),
         }
     }
 
-    /// Specify a new event handler to be executed when an event is received for the downlink.
-    pub fn on_event<F>(
+    pub fn on_failed<F>(
         self,
-        f: F,
-    ) -> StatefulValueDownlinkBuilder<
-        Context,
-        T,
-        State,
-        FLinked,
-        FSynced,
-        FUnlinked,
-        FnHandler<F>,
-        FSet,
-    >
+        handler: F,
+    ) -> StatefulValueDownlinkBuilder<Context, T, State, LC::WithOnFailed<FnHandler<F>>>
     where
-        FnHandler<F>: for<'a> OnDownlinkEventShared<'a, T, Context, State>,
+        FnHandler<F>: OnFailedShared<Context, State>,
     {
         let StatefulValueDownlinkBuilder {
             address,
             config,
             inner,
+            ..
         } = self;
         StatefulValueDownlinkBuilder {
+            _type: PhantomData,
             address,
             config,
-            inner: inner.on_event(f),
+            inner: inner.on_failed(handler),
         }
     }
 
-    /// Specify a new event handler to be executed when the value of the downlink changes.
-    pub fn on_set<F>(
+    pub fn on_event<F, B>(
         self,
-        f: F,
-    ) -> StatefulValueDownlinkBuilder<
-        Context,
-        T,
-        State,
-        FLinked,
-        FSynced,
-        FUnlinked,
-        FEv,
-        FnHandler<F>,
-    >
+        handler: F,
+    ) -> StatefulValueDownlinkBuilder<Context, T, State, LC::WithOnEvent<BorrowHandler<F, B>>>
     where
-        FnHandler<F>: for<'a> OnDownlinkSetShared<'a, T, Context, State>,
+        B: ?Sized,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnDownlinkEventShared<T, Context, State>,
     {
         let StatefulValueDownlinkBuilder {
             address,
             config,
             inner,
+            ..
         } = self;
         StatefulValueDownlinkBuilder {
+            _type: PhantomData,
             address,
             config,
-            inner: inner.on_set(f),
+            inner: inner.on_event(handler),
+        }
+    }
+
+    pub fn on_set<F, B>(
+        self,
+        handler: F,
+    ) -> StatefulValueDownlinkBuilder<Context, T, State, LC::WithOnSet<BorrowHandler<F, B>>>
+    where
+        B: ?Sized,
+        T: Borrow<B>,
+        BorrowHandler<F, B>: OnDownlinkSetShared<T, Context, State>,
+    {
+        let StatefulValueDownlinkBuilder {
+            address,
+            config,
+            inner,
+            ..
+        } = self;
+        StatefulValueDownlinkBuilder {
+            _type: PhantomData,
+            address,
+            config,
+            inner: inner.on_set(handler),
         }
     }
 }
 
-impl<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
-    StatefulValueDownlinkBuilder<Context, T, State, FLinked, FSynced, FUnlinked, FEv, FSet>
+impl<Context, State, T, LC> StatefulValueDownlinkBuilder<Context, T, State, LC>
 where
     Context: 'static,
-    State: Send + 'static,
-    T: Form + Send + Sync + 'static,
+    LC: StatefulValueLifecycle<Context, State, T> + 'static,
+    T: Form + Send + 'static,
     T::Rec: Send,
-    FLinked: for<'a> OnLinkedShared<'a, Context, State> + 'static,
-    FSynced: for<'a> OnSyncedShared<'a, T, Context, State> + 'static,
-    FUnlinked: for<'a> OnUnlinkedShared<'a, Context, State> + 'static,
-    FEv: for<'a> OnDownlinkEventShared<'a, T, Context, State> + 'static,
-    FSet: for<'a> OnDownlinkSetShared<'a, T, Context, State> + 'static,
 {
     /// Complete the downlink and create a [`HandlerAction`] that will open the downlink when it is
     /// executed.
@@ -433,6 +416,7 @@ where
             address,
             config,
             inner,
+            ..
         } = self;
         OpenValueDownlinkAction::new(address, inner, config)
     }

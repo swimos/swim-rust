@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,13 +13,14 @@
 // limitations under the License.
 
 use crate::{RocksEngine, RocksOpts};
+use integer_encoding::VarInt;
 use rocksdb::{MergeOperands, Options, SliceTransform};
 use std::collections::HashMap;
 use std::mem::size_of;
 use std::ops::{Deref, Range};
 use store_common::{
-    deserialize, deserialize_key, serialize, EngineIterator, EngineRefIterator, Keyspace,
-    KeyspaceByteEngine, KeyspaceDef, KeyspaceResolver, Keyspaces, StoreBuilder, StoreError,
+    deserialize_u64, serialize_u64_vec, EngineIterator, Keyspace, KeyspaceByteEngine, KeyspaceDef,
+    KeyspaceResolver, Keyspaces, StoreBuilder, StoreError,
 };
 use tempdir::TempDir;
 
@@ -64,15 +65,15 @@ pub(crate) fn incrementing_merge_operator(
     operands: &MergeOperands,
 ) -> Option<Vec<u8>> {
     let mut value = match existing_value {
-        Some(bytes) => deserialize_key(bytes).unwrap(),
+        Some(bytes) => deserialize_u64(bytes).unwrap(),
         None => 0,
     };
 
     for op in operands.iter() {
-        let deserialized = deserialize_key(op).unwrap();
+        let deserialized = deserialize_u64(op).unwrap();
         value += deserialized;
     }
-    Some(serialize(&value).unwrap())
+    Some(serialize_u64_vec(value))
 }
 
 fn default_db() -> TransientDatabase {
@@ -137,8 +138,9 @@ fn populate_keyspace(
     for i in range {
         let key = format_key(i);
         clone_to.insert(key.clone(), i);
+        let value = i.encode_var_vec();
         assert!(db
-            .put_keyspace(space, key.as_bytes(), serialize(&i).unwrap().as_slice())
+            .put_keyspace(space, key.as_bytes(), value.as_slice())
             .is_ok());
     }
 }
@@ -162,7 +164,7 @@ fn engine_iterator() {
             match (iter.key(), iter.value()) {
                 (Some(key), Some(value)) => {
                     let key = String::from_utf8(key.to_vec()).unwrap();
-                    let value = deserialize::<i32>(value).unwrap();
+                    let (value, _) = i32::decode_var(value).unwrap();
 
                     match expected.remove(&key) {
                         Some(expected_value) => {

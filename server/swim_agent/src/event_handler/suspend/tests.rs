@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,29 +12,35 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::Duration;
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use crate::{
-    event_handler::{ActionContext, EventHandlerError, HandlerAction, SideEffect, StepResult},
+    event_handler::{
+        ActionContext, EventHandler, EventHandlerError, HandlerAction, SideEffect, StepResult,
+    },
     meta::AgentMetadata,
     test_context::{no_downlink, DummyAgentContext},
 };
 use futures::{stream::FuturesUnordered, StreamExt};
+use parking_lot::Mutex;
 use swim_api::agent::AgentConfig;
-use swim_utilities::{routing::uri::RelativeUri, trigger};
-use tokio::sync::mpsc;
+use swim_utilities::{routing::route_uri::RouteUri, trigger};
+use tokio::{sync::mpsc, time::Instant};
 
 use super::{HandlerFuture, Spawner, Suspend};
 
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
-fn make_uri() -> RelativeUri {
-    RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+fn make_uri() -> RouteUri {
+    RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
-    AgentMetadata::new(uri, &CONFIG)
+fn make_meta<'a>(
+    uri: &'a RouteUri,
+    route_params: &'a HashMap<String, String>,
+) -> AgentMetadata<'a> {
+    AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
 struct NoSpawn;
@@ -50,7 +56,9 @@ struct DummyAgent;
 #[tokio::test]
 async fn suspend_future() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let mut join_value_init = HashMap::new();
 
     let (tx, mut rx) = mpsc::channel(4);
     let (done_tx, done_rx) = trigger::trigger();
@@ -65,7 +73,12 @@ async fn suspend_future() {
     let mut spawner = FuturesUnordered::new();
 
     let result = suspend.step(
-        ActionContext::new(&spawner, &DummyAgentContext, &no_downlink),
+        &mut ActionContext::new(
+            &spawner,
+            &DummyAgentContext,
+            &no_downlink,
+            &mut join_value_init,
+        ),
         meta,
         &DummyAgent,
     );
@@ -73,7 +86,7 @@ async fn suspend_future() {
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             ..
         }
     ));
@@ -85,14 +98,19 @@ async fn suspend_future() {
         assert_eq!(rx.recv().await, Some(45));
 
         let result = handler.step(
-            ActionContext::new(&spawner, &DummyAgentContext, &no_downlink),
+            &mut ActionContext::new(
+                &spawner,
+                &DummyAgentContext,
+                &no_downlink,
+                &mut join_value_init,
+            ),
             meta,
             &DummyAgent,
         );
         assert!(matches!(
             result,
             StepResult::Complete {
-                modified_lane: None,
+                modified_item: None,
                 ..
             }
         ));
@@ -100,7 +118,12 @@ async fn suspend_future() {
         assert!(done_rx.await.is_ok());
 
         let result = suspend.step(
-            ActionContext::new(&spawner, &DummyAgentContext, &no_downlink),
+            &mut ActionContext::new(
+                &spawner,
+                &DummyAgentContext,
+                &no_downlink,
+                &mut join_value_init,
+            ),
             meta,
             &DummyAgent,
         );
@@ -113,4 +136,104 @@ async fn suspend_future() {
     })
     .await
     .expect("Timed out.");
+}
+
+fn run_handler<H>(mut handler: H, spawner: &FuturesUnordered<HandlerFuture<DummyAgent>>)
+where
+    H: EventHandler<DummyAgent>,
+{
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let mut join_value_init = HashMap::new();
+    let mut action_context = ActionContext::new(
+        spawner,
+        &DummyAgentContext,
+        &no_downlink,
+        &mut join_value_init,
+    );
+    loop {
+        match handler.step(&mut action_context, meta, &DummyAgent) {
+            StepResult::Continue { modified_item } => assert!(modified_item.is_none()),
+            StepResult::Fail(err) => panic!("Handler failed: {:?}", err),
+            StepResult::Complete { modified_item, .. } => {
+                assert!(modified_item.is_none());
+                let after = handler.step(&mut action_context, meta, &DummyAgent);
+                assert!(matches!(
+                    after,
+                    StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+                ));
+                break;
+            }
+        }
+    }
+}
+
+async fn run_handler_with_futures<H>(handler: H)
+where
+    H: EventHandler<DummyAgent>,
+{
+    let mut spawner = FuturesUnordered::new();
+    run_handler(handler, &spawner);
+
+    if !spawner.is_empty() {
+        while let Some(h) = spawner.next().await {
+            run_handler(h, &spawner);
+        }
+    }
+}
+
+const DELAY: Duration = Duration::from_secs(1);
+
+#[tokio::test(start_paused = true)]
+async fn delayed_handler() {
+    let value: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
+    let value_cpy = value.clone();
+
+    let handler = SideEffect::from(move || {
+        let mut guard = value_cpy.lock();
+        *guard = true;
+    });
+
+    let delayed = super::run_after::<DummyAgent, _>(DELAY, handler);
+
+    let before = Instant::now();
+    run_handler_with_futures(delayed).await;
+    let after = Instant::now();
+    let delta = after.duration_since(before);
+    assert_eq!(delta, DELAY);
+
+    assert!(*value.lock());
+}
+
+fn set_n(
+    events: Arc<Mutex<Vec<usize>>>,
+    n: usize,
+) -> impl EventHandler<DummyAgent> + Send + 'static {
+    SideEffect::from(move || {
+        let mut guard = events.lock();
+        guard.push(n);
+    })
+}
+
+#[tokio::test(start_paused = true)]
+async fn scheduled_handler() {
+    let events: Arc<Mutex<Vec<usize>>> = Default::default();
+    let handlers = vec![
+        (DELAY, set_n(events.clone(), 0)),
+        (DELAY, set_n(events.clone(), 1)),
+        (DELAY, set_n(events.clone(), 2)),
+    ];
+
+    let sched = super::run_schedule(handlers);
+
+    let before = Instant::now();
+    run_handler_with_futures(sched).await;
+    let after = Instant::now();
+    let delta = after.duration_since(before);
+
+    assert_eq!(delta, DELAY * 3);
+
+    let guard = events.lock();
+    assert_eq!(*guard, vec![0, 1, 2]);
 }

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ use futures::{
 use parking_lot::Mutex;
 use swim_api::{
     downlink::DownlinkKind,
-    error::{AgentRuntimeError, DownlinkFailureReason},
+    error::{DownlinkFailureReason, DownlinkRuntimeError},
     protocol::downlink::{
         DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
     },
@@ -45,16 +45,11 @@ use swim_remote::AttachClient;
 use swim_runtime::{
     agent::DownlinkRequest,
     downlink::{DownlinkOptions, DownlinkRuntimeConfig, Io},
-    remote::{
-        net::dns::{DnsFut, DnsResolver},
-        table::SchemeHostPort,
-        Scheme, SchemeSocketAddr,
-    },
+    net::dns::{DnsFut, DnsResolver},
 };
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{ByteReader, ByteWriter},
-    trigger,
+    non_zero_usize, trigger,
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::codec::{FramedRead, FramedWrite};
@@ -74,13 +69,6 @@ fn addr(port: u16) -> SocketAddr {
     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 0, 5)), port)
 }
 
-fn scheme_addr(scheme: Scheme, port: u16) -> SchemeSocketAddr {
-    SchemeSocketAddr {
-        scheme,
-        addr: addr(port),
-    }
-}
-
 const HOST: &str = "example.swim";
 const URL: &str = "warp://example.swim:40000";
 const BAD_URL: &str = "warp://other.swim:40000";
@@ -89,9 +77,9 @@ const PORT: u16 = 40000;
 impl DnsResolver for FakeDns {
     type ResolveFuture = DnsFut;
 
-    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
-        let result = match host.host().as_str() {
-            HOST => Ok(vec![scheme_addr(*host.scheme(), host.port())]),
+    fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {
+        let result = match host.as_str() {
+            HOST => Ok(vec![addr(port)]),
             _ => Err(std::io::Error::from(ErrorKind::NotFound)),
         };
         ready(result).boxed()
@@ -109,7 +97,7 @@ where
     tokio::time::timeout(TIMEOUT, async move {
         let (server_end, downlinks_end) = downlink_task_connector(CHAN_SIZE, CHAN_SIZE);
 
-        let task = DownlinkConnectionTask::new(downlinks_end, config, FakeDns);
+        let task = DownlinkConnectionTask::new(downlinks_end, None, config, FakeDns);
 
         let test_task = test_case(TestContext {
             connector: server_end,
@@ -226,9 +214,10 @@ impl FakeServerTask {
                     host,
                     sock_addrs,
                     responder,
+                    ..
                 }))) => {
                     assert_eq!(host, URL);
-                    let result = if sock_addrs.iter().find(|a| *a == &addr).is_some() {
+                    let result = if sock_addrs.iter().any(|a| a == &addr) {
                         Ok(EstablishedClient {
                             tx: attach_tx.clone(),
                             sock_addr: addr,
@@ -315,7 +304,7 @@ const LANE: &str = "lane";
 
 fn request_remote(
     kind: DownlinkKind,
-    promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+    promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 ) -> DownlinkRequest {
     let address = Address::text(Some(URL), REM_NODE, LANE);
     //Empty options so that downlinks don't try to sync (to reduce noise in the tests).
@@ -324,7 +313,7 @@ fn request_remote(
 
 fn request_bad_remote(
     kind: DownlinkKind,
-    promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+    promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 ) -> DownlinkRequest {
     let address = Address::text(Some(BAD_URL), REM_NODE, LANE);
     DownlinkRequest::new(address, kind, DownlinkOptions::empty(), promise)
@@ -332,7 +321,7 @@ fn request_bad_remote(
 
 fn request_local(
     kind: DownlinkKind,
-    promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+    promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 ) -> DownlinkRequest {
     let address = Address::text(None, LOCAL_NODE, LANE);
     //Empty options so that downlinks don't try to sync (to reduce noise in the tests).
@@ -341,7 +330,7 @@ fn request_local(
 
 fn request_bad_local(
     kind: DownlinkKind,
-    promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+    promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 ) -> DownlinkRequest {
     let address = Address::text(None, BAD_NODE, LANE);
     //Empty options so that downlinks don't try to sync (to reduce noise in the tests).
@@ -524,12 +513,11 @@ async fn open_unresolvable_remote_downlink() {
             let error = connected_rx
                 .await
                 .expect("Stopped prematurely.")
-                .err()
-                .expect("Resolution should fail.");
+                .expect_err("Resolution should fail.");
 
             assert!(matches!(
                 error,
-                AgentRuntimeError::DownlinkConnectionFailed(_)
+                DownlinkRuntimeError::DownlinkConnectionFailed(_)
             ));
 
             assert!(stop_server.trigger());
@@ -557,12 +545,11 @@ async fn open_unresolvable_local_downlink() {
             let error = connected_rx
                 .await
                 .expect("Stopped prematurely.")
-                .err()
-                .expect("Resolution should fail.");
+                .expect_err("Resolution should fail.");
 
             assert!(matches!(
                 error,
-                AgentRuntimeError::DownlinkConnectionFailed(_)
+                DownlinkRuntimeError::DownlinkConnectionFailed(_)
             ));
 
             assert!(stop_server.trigger());

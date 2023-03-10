@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,14 +13,15 @@
 // limitations under the License.
 
 pub mod command;
+pub mod join_value;
 pub mod map;
 pub mod value;
 
 use bytes::BytesMut;
 
-use crate::agent_model::WriteResult;
+use crate::{agent_model::WriteResult, item::AgentItem};
 
-pub use self::{command::CommandLane, map::MapLane, value::ValueLane};
+pub use self::{command::CommandLane, join_value::JoinValueLane, map::MapLane, value::ValueLane};
 
 /// Wrapper to allow projection function pointers to be exposed as event handler transforms
 /// for different types of lanes.
@@ -35,7 +36,7 @@ impl<C, L> ProjTransform<C, L> {
 }
 
 /// Common functionality shared by all lane types.
-pub trait Lane {
+pub trait Lane: AgentItem {
     /// If the state of the lane has changed, write an event into the buffer.
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult;
 }

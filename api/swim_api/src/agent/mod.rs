@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,20 +13,25 @@
 // limitations under the License.
 
 use std::{
+    collections::HashMap,
     fmt::{Display, Formatter},
     num::NonZeroUsize,
 };
 
 use futures::future::BoxFuture;
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
+    non_zero_usize,
+    routing::route_uri::RouteUri,
 };
 
 use crate::{
     downlink::DownlinkKind,
-    error::{AgentInitError, AgentRuntimeError, AgentTaskError},
+    error::{
+        AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
+    },
+    meta::lane::LaneKind,
+    store::StoreKind,
 };
 
 /// Indicates the sub-protocol that a lane uses to communicate its state.
@@ -34,6 +39,7 @@ use crate::{
 pub enum UplinkKind {
     Value,
     Map,
+    Supply,
 }
 
 impl Display for UplinkKind {
@@ -41,17 +47,27 @@ impl Display for UplinkKind {
         match self {
             UplinkKind::Value => f.write_str("Value"),
             UplinkKind::Map => f.write_str("Map"),
+            UplinkKind::Supply => f.write_str("Supply"),
         }
     }
 }
 
 /// Configuration parameters for a lane.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LaneConfig {
     /// Size of the input buffer in bytes.
     pub input_buffer_size: NonZeroUsize,
     /// Size of the output buffer in bytes.
     pub output_buffer_size: NonZeroUsize,
+    /// A transient lane does not have associated persistent storage.
+    pub transient: bool,
+}
+
+/// Configuration parameters for a store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoreConfig {
+    /// Size of buffer to report new values back to the runtime.
+    pub buffer_size: NonZeroUsize,
 }
 
 const DEFAULT_BUFFER: NonZeroUsize = non_zero_usize!(4096);
@@ -61,6 +77,15 @@ impl Default for LaneConfig {
         Self {
             input_buffer_size: DEFAULT_BUFFER,
             output_buffer_size: DEFAULT_BUFFER,
+            transient: false,
+        }
+    }
+}
+
+impl Default for StoreConfig {
+    fn default() -> Self {
+        Self {
+            buffer_size: DEFAULT_BUFFER,
         }
     }
 }
@@ -70,13 +95,14 @@ pub trait AgentContext: Sync {
     /// Add a new lane endpoint to the runtime for this agent.
     /// #Arguments
     /// * `name` - The name of the lane.
-    /// * `uplink_kind` - Protocol that the runtime uses to communicate with the lane.
+    /// * `land_kind` - Kind of the lane, determining the protocol that the runtime uses
+    /// to communicate with the lane.
     /// * `config` - Configuration parameters for the lane.
     fn add_lane(
         &self,
         name: &str,
-        uplink_kind: UplinkKind,
-        config: Option<LaneConfig>,
+        lane_kind: LaneKind,
+        config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
 
     /// Open a downlink to a lane on another agent.
@@ -91,12 +117,39 @@ pub trait AgentContext: Sync {
         node: &str,
         lane: &str,
         kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>>;
+
+    /// Add a new named store that will persist a (possibly compound) value in the agent state.
+    /// #Arguments
+    /// * `name` - The name of the store.
+    /// * `kind` - The kind of the store.
+    fn add_store(
+        &self,
+        name: &str,
+        kind: StoreKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>>;
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct AgentConfig {
-    //TODO Add parameters.
+    pub default_lane_config: Option<LaneConfig>,
+}
+
+impl AgentConfig {
+    //TODO: Remove this once const impls are stable.
+    pub const DEFAULT: AgentConfig = AgentConfig {
+        default_lane_config: Some(LaneConfig {
+            input_buffer_size: DEFAULT_BUFFER,
+            output_buffer_size: DEFAULT_BUFFER,
+            transient: true,
+        }),
+    };
+}
+
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
 }
 
 /// Type of the task for a running agent.
@@ -113,11 +166,13 @@ pub trait Agent {
     /// then yield another future that will actually run the agent.
     /// #Arguments
     /// * `route` - The node URI of this agent instance.
+    /// * `route_params` - Parameters extracted from the route URI.
     /// * `config` - Configuration parameters for the agent.
     /// * `context` - Context through which the agent can interact with the runtime.
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
+        route_params: HashMap<String, String>,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult>;
@@ -130,11 +185,12 @@ pub type BoxAgent = Box<dyn Agent + Send + 'static>;
 impl Agent for BoxAgent {
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
+        route_params: HashMap<String, String>,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
-        (**self).run(route, config, context)
+        (**self).run(route, route_params, config, context)
     }
 }
 
@@ -144,10 +200,11 @@ where
 {
     fn run(
         &self,
-        route: RelativeUri,
+        route: RouteUri,
+        route_params: HashMap<String, String>,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
-        (*self).run(route, config, context)
+        (*self).run(route, route_params, config, context)
     }
 }

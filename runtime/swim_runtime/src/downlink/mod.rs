@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,8 +20,7 @@ use bitflags::bitflags;
 use bytes::BytesMut;
 use futures::future::{join, select, Either};
 use futures::stream::SelectAll;
-use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
-use pin_utils::pin_mut;
+use futures::{pin_mut, Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
 use swim_api::protocol::downlink::{DownlinkNotification, DownlinkNotificationEncoder};
 use swim_messages::protocol::{
     Notification, Operation, Path, RawRequestMessage, RawRequestMessageEncoder,
@@ -1088,7 +1087,7 @@ use std::task::{Context, Poll};
 
 use self::failure::{BadFrameStrategy, InfallibleStrategy};
 use self::interpretation::{value_interpretation, DownlinkInterpretation, MapInterpretation};
-use crate::pressure::{MapBackpressure, ValueBackpressure};
+use crate::backpressure::{MapBackpressure, ValueBackpressure};
 
 /// A future that flushes a sender and then returns it. This is necessary as we need
 /// an [`Unpin`] future so an equivlanent async block would not work.

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -90,8 +90,7 @@ mod tests {
     use std::time::Duration;
 
     use super::PruneRemotes;
-    use futures::StreamExt;
-    use pin_utils::pin_mut;
+    use futures::{pin_mut, StreamExt};
     use tokio::time::Instant;
     use uuid::Uuid;
 

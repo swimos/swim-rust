@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,30 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{num::NonZeroUsize, sync::Arc};
+use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 
-use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
+use futures::{
+    future::{ready, BoxFuture},
+    stream::FuturesUnordered,
+    FutureExt, StreamExt,
+};
 use parking_lot::Mutex;
 use swim_api::{
-    agent::{AgentConfig, AgentContext, LaneConfig, UplinkKind},
+    agent::{AgentConfig, AgentContext, LaneConfig},
     downlink::DownlinkKind,
-    error::AgentRuntimeError,
+    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    meta::lane::LaneKind,
+    store::StoreKind,
 };
 use swim_model::{address::Address, Text};
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
-    routing::uri::RelativeUri,
+    non_zero_usize,
+    routing::route_uri::RouteUri,
 };
 
 use crate::{
-    config::{MapDownlinkConfig, ValueDownlinkConfig},
+    config::{MapDownlinkConfig, SimpleDownlinkConfig},
     downlink_lifecycle::{
         map::StatefulMapDownlinkLifecycle, value::StatefulValueDownlinkLifecycle,
     },
     event_handler::{
-        ActionContext, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner, StepResult,
-        WriteStream,
+        ActionContext, BoxJoinValueInit, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner,
+        StepResult, WriteStream,
     },
     meta::AgentMetadata,
 };
@@ -84,7 +90,7 @@ impl DownlinkSpawner<TestAgent> for TestSpawner {
         &self,
         dl_channel: BoxDownlinkChannel<TestAgent>,
         dl_writer: WriteStream,
-    ) -> Result<(), AgentRuntimeError> {
+    ) -> Result<(), DownlinkRuntimeError> {
         let mut guard = self.inner.lock();
         assert!(guard.downlink.is_none());
         guard.downlink = Some((dl_channel, dl_writer));
@@ -100,8 +106,8 @@ impl AgentContext for TestContext {
     fn add_lane(
         &self,
         _name: &str,
-        _uplink_kind: UplinkKind,
-        _config: Option<LaneConfig>,
+        _lane_kind: LaneKind,
+        _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Unexpected request to open a lane.")
     }
@@ -112,39 +118,52 @@ impl AgentContext for TestContext {
         node: &str,
         lane: &str,
         kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
         assert_eq!(host, Some(HOST));
         assert_eq!(node, NODE);
         assert_eq!(lane, LANE);
         assert_eq!(kind, self.expected_kind);
         let io = self.inner.lock().io.take().expect("IO taken twice.");
-        async move { Ok(io) }.boxed()
+        ready(Ok(io)).boxed()
+    }
+
+    fn add_store(
+        &self,
+        _name: &str,
+        _kind: StoreKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
+        ready(Err(OpenStoreError::StoresNotSupported)).boxed()
     }
 }
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
-fn make_uri() -> RelativeUri {
-    RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+fn make_uri() -> RouteUri {
+    RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
-    AgentMetadata::new(uri, &CONFIG)
+fn make_meta<'a>(
+    uri: &'a RouteUri,
+    route_params: &'a HashMap<String, String>,
+) -> AgentMetadata<'a> {
+    AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
 async fn run_all_and_check(
     mut spawner: TestSpawner,
     context: TestContext,
     meta: AgentMetadata<'_>,
+    join_value_init: &mut HashMap<u64, BoxJoinValueInit<'static, TestAgent>>,
     agent: &TestAgent,
 ) {
     while let Some(handler) = spawner.futures.next().await {
-        let action_context = ActionContext::new(&spawner, &context, &spawner);
-        run_handler(handler, action_context, agent, meta);
+        let mut action_context = ActionContext::new(&spawner, &context, &spawner, join_value_init);
+        run_handler(handler, &mut action_context, agent, meta);
     }
+    assert!(join_value_init.is_empty());
     spawner
         .inner
         .lock()
@@ -155,7 +174,7 @@ async fn run_all_and_check(
 
 fn run_handler<H>(
     mut handler: H,
-    action_context: ActionContext<'_, TestAgent>,
+    action_context: &mut ActionContext<'_, TestAgent>,
     agent: &TestAgent,
     meta: AgentMetadata<'_>,
 ) -> H::Completion
@@ -164,15 +183,15 @@ where
 {
     loop {
         match handler.step(action_context, meta, agent) {
-            StepResult::Continue { modified_lane } => {
-                assert!(modified_lane.is_none());
+            StepResult::Continue { modified_item } => {
+                assert!(modified_item.is_none());
             }
             StepResult::Fail(err) => panic!("{}", err),
             StepResult::Complete {
-                modified_lane,
+                modified_item,
                 result,
             } => {
-                assert!(modified_lane.is_none());
+                assert!(modified_item.is_none());
                 break result;
             }
         }
@@ -182,13 +201,15 @@ where
 #[tokio::test]
 async fn open_value_downlink() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let mut join_value_init = HashMap::new();
     let lifecycle = StatefulValueDownlinkLifecycle::<TestAgent, _, i32>::new(());
 
     let handler = OpenValueDownlinkAction::<i32, _>::new(
         Address::text(Some(HOST), NODE, LANE),
         lifecycle,
-        ValueDownlinkConfig::default(),
+        SimpleDownlinkConfig::default(),
     );
 
     let spawner = TestSpawner::default();
@@ -197,16 +218,18 @@ async fn open_value_downlink() {
     let context = TestContext::new(DownlinkKind::Value, (in_tx, out_rx));
 
     let agent = TestAgent;
-    let action_context = ActionContext::new(&spawner, &context, &spawner);
-    let _handle = run_handler(handler, action_context, &agent, meta);
+    let mut action_context = ActionContext::new(&spawner, &context, &spawner, &mut join_value_init);
+    let _handle = run_handler(handler, &mut action_context, &agent, meta);
 
-    run_all_and_check(spawner, context, meta, &agent).await;
+    run_all_and_check(spawner, context, meta, &mut join_value_init, &agent).await;
 }
 
 #[tokio::test]
 async fn open_map_downlink() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let mut join_value_init = HashMap::new();
     let lifecycle = StatefulMapDownlinkLifecycle::<TestAgent, _, i32, Text>::new(());
 
     let handler = OpenMapDownlinkAction::<i32, Text, _>::new(
@@ -221,8 +244,8 @@ async fn open_map_downlink() {
     let context = TestContext::new(DownlinkKind::Map, (in_tx, out_rx));
 
     let agent = TestAgent;
-    let action_context = ActionContext::new(&spawner, &context, &spawner);
-    let _handle = run_handler(handler, action_context, &agent, meta);
+    let mut action_context = ActionContext::new(&spawner, &context, &spawner, &mut join_value_init);
+    let _handle = run_handler(handler, &mut action_context, &agent, meta);
 
-    run_all_and_check(spawner, context, meta, &agent).await;
+    run_all_and_check(spawner, context, meta, &mut join_value_init, &agent).await;
 }

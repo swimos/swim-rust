@@ -9,6 +9,12 @@ This project is still in its early stages of development, meaning that it is not
 
 **USE AT YOUR OWN RISK!**
 
+## Usage Guides
+
+[Implementing Swim Agents in Rust](docs/agent.md)
+
+[Building a Swim Server Application](docs/server.md)
+
 ## Examples
 
 The [cookbook](/cookbook) can serve as a starting point for getting familiar with core Swim concepts that form the basis of all Swim apps.

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@ use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
 
 use store_common::{
-    ByteEngine, EngineInfo, EngineIterOpts, EngineIterator, EnginePrefixIterator,
-    EngineRefIterator, IteratorKey, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces,
-    KvBytes, Store, StoreBuilder, StoreError,
+    ByteEngine, EngineInfo, EngineIterator, EnginePrefixIterator, IteratorKey, KeyValue, Keyspace,
+    KeyspaceByteEngine, KeyspaceResolver, Keyspaces, KvBytes, RangeConsumer, Store, StoreBuilder,
+    StoreError,
 };
 
 /// A delegate store database that does nothing.
@@ -48,7 +48,30 @@ impl KeyspaceResolver for NoStore {
     }
 }
 
+pub struct NoRange;
+
+impl RangeConsumer for NoRange {
+    fn consume_next(&mut self) -> Result<Option<KeyValue<'_>>, StoreError> {
+        Ok(None)
+    }
+}
+
 impl KeyspaceByteEngine for NoStore {
+    type RangeCon<'a> = NoRange
+    where
+        Self: 'a;
+
+    fn get_prefix_range_consumer<'a, S>(
+        &'a self,
+        _keyspace: S,
+        _prefix: &[u8],
+    ) -> Result<Self::RangeCon<'a>, StoreError>
+    where
+        S: Keyspace,
+    {
+        Ok(NoRange)
+    }
+
     fn put_keyspace<K: Keyspace>(
         &self,
         _keyspace: K,
@@ -90,6 +113,18 @@ impl KeyspaceByteEngine for NoStore {
         S: Keyspace,
     {
         Ok(None)
+    }
+
+    fn delete_key_range<S>(
+        &self,
+        _keyspace: S,
+        _start: &[u8],
+        _ubound: &[u8],
+    ) -> Result<(), StoreError>
+    where
+        S: Keyspace,
+    {
+        Ok(())
     }
 }
 
@@ -150,27 +185,5 @@ pub struct NoStoreEnginePrefixIterator;
 impl EnginePrefixIterator for NoStoreEnginePrefixIterator {
     fn next(&mut self) -> Option<Result<KvBytes, StoreError>> {
         None
-    }
-}
-
-impl<'a: 'b, 'b> EngineRefIterator<'a, 'b> for NoStore {
-    type EngineIterator = NoStoreEngineIterator;
-    type EnginePrefixIterator = NoStoreEnginePrefixIterator;
-
-    fn iterator_opt(
-        &'a self,
-        _space: &'b Self::ResolvedKeyspace,
-        _pts: EngineIterOpts,
-    ) -> Result<Self::EngineIterator, StoreError> {
-        Ok(NoStoreEngineIterator)
-    }
-
-    fn prefix_iterator_opt(
-        &'a self,
-        _space: &'b Self::ResolvedKeyspace,
-        _opts: EngineIterOpts,
-        _prefix: &'b [u8],
-    ) -> Result<Self::EnginePrefixIterator, StoreError> {
-        Ok(NoStoreEnginePrefixIterator)
     }
 }

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,100 +16,126 @@ use futures::future::{ready, Ready};
 use std::future::Future;
 use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
-/// Trait for event handlers to be called when a downlink receives a new event.
-pub trait OnEvent<'a, T>: Send {
-    type OnEventFut: Future<Output = ()> + Send + 'a;
+use super::{EventFn, SharedEventFn};
 
-    fn on_event(&'a mut self, value: &'a T) -> Self::OnEventFut;
+/// Trait for event handlers to be called when a downlink receives a new event.
+pub trait OnEvent<T>: Send {
+    type OnEventFut<'a>: Future<Output = ()> + Send + 'a
+    where
+        Self: 'a,
+        T: 'a;
+
+    fn on_event<'a>(&'a mut self, value: &'a T) -> Self::OnEventFut<'a>;
 }
 
 /// Trait for event handlers, that share state with other handlers, called when a downlink
 /// receives a new event.
-pub trait OnEventShared<'a, T, Shared>: Send {
-    type OnEventFut: Future<Output = ()> + Send + 'a;
+pub trait OnEventShared<T, Shared>: Send {
+    type OnEventFut<'a>: Future<Output = ()> + Send + 'a
+    where
+        Self: 'a,
+        T: 'a,
+        Shared: 'a;
 
-    fn on_event(&'a mut self, shared: &'a mut Shared, value: &'a T) -> Self::OnEventFut;
+    fn on_event<'a>(&'a mut self, shared: &'a mut Shared, value: &'a T) -> Self::OnEventFut<'a>;
 }
 
-impl<'a, T> OnEvent<'a, T> for NoHandler {
-    type OnEventFut = Ready<()>;
+impl<T> OnEvent<T> for NoHandler {
+    type OnEventFut<'a> = Ready<()>
+    where
+        T: 'a,
+        Self: 'a;
 
-    fn on_event(&'a mut self, _value: &'a T) -> Self::OnEventFut {
+    fn on_event<'a>(&'a mut self, _value: &'a T) -> Self::OnEventFut<'a> {
         ready(())
     }
 }
 
-impl<'a, T, F, Fut> OnEvent<'a, T> for FnMutHandler<F>
+impl<T, F> OnEvent<T> for FnMutHandler<F>
 where
     T: 'static,
-    F: FnMut(&'a T) -> Fut + Send,
-    Fut: Future<Output = ()> + Send + 'a,
+    F: for<'a> EventFn<'a, T> + Send,
 {
-    type OnEventFut = Fut;
+    type OnEventFut<'a> = <F as EventFn<'a, T>>::Fut
+    where
+        Self: 'a;
 
-    fn on_event(&'a mut self, value: &'a T) -> Self::OnEventFut {
+    fn on_event<'a>(&'a mut self, value: &'a T) -> Self::OnEventFut<'a> {
         let FnMutHandler(f) = self;
-        f(value)
+        f.apply(value)
     }
 }
 
-impl<'a, T, Shared> OnEventShared<'a, T, Shared> for NoHandler {
-    type OnEventFut = Ready<()>;
+impl<T, Shared> OnEventShared<T, Shared> for NoHandler {
+    type OnEventFut<'a> = Ready<()>
+    where
+        Self: 'a,
+        Shared: 'a,
+        T: 'a;
 
-    fn on_event(&'a mut self, _shared: &'a mut Shared, _value: &'a T) -> Self::OnEventFut {
+    fn on_event<'a>(&'a mut self, _shared: &'a mut Shared, _value: &'a T) -> Self::OnEventFut<'a> {
         ready(())
     }
 }
 
-impl<'a, T, Shared, F, Fut> OnEventShared<'a, T, Shared> for FnMutHandler<F>
+impl<T, Shared, F> OnEventShared<T, Shared> for FnMutHandler<F>
 where
     T: 'static,
-    Shared: 'static,
-    F: FnMut(&'a mut Shared, &'a T) -> Fut + Send,
-    Fut: Future<Output = ()> + Send + 'a,
+    F: for<'a> SharedEventFn<'a, Shared, T> + Send,
 {
-    type OnEventFut = Fut;
+    type OnEventFut<'a> = <F as SharedEventFn<'a, Shared, T>>::Fut
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_event(&'a mut self, shared: &'a mut Shared, value: &'a T) -> Self::OnEventFut {
+    fn on_event<'a>(&'a mut self, shared: &'a mut Shared, value: &'a T) -> Self::OnEventFut<'a> {
         let FnMutHandler(f) = self;
-        f(shared, value)
+        f.apply(shared, value)
     }
 }
 
-impl<'a, T, H, Shared> OnEventShared<'a, T, Shared> for WithShared<H>
+impl<T, H, Shared> OnEventShared<T, Shared> for WithShared<H>
 where
-    H: OnEvent<'a, T>,
+    H: OnEvent<T>,
 {
-    type OnEventFut = H::OnEventFut;
+    type OnEventFut<'a> = H::OnEventFut<'a>
+    where
+        Self: 'a,
+        Shared: 'a,
+        T: 'a;
 
-    fn on_event(&'a mut self, _shared: &'a mut Shared, value: &'a T) -> Self::OnEventFut {
+    fn on_event<'a>(&'a mut self, _shared: &'a mut Shared, value: &'a T) -> Self::OnEventFut<'a> {
         self.0.on_event(value)
     }
 }
 
-impl<'a, F, T> OnEvent<'a, T> for BlockingHandler<F>
+impl<F, T> OnEvent<T> for BlockingHandler<F>
 where
     T: 'static,
-    F: FnMut(&'a T) + Send,
+    F: for<'a> FnMut(&'a T) + Send,
 {
-    type OnEventFut = Ready<()>;
+    type OnEventFut<'a> = Ready<()>
+    where
+        Self: 'a;
 
-    fn on_event(&'a mut self, value: &'a T) -> Self::OnEventFut {
+    fn on_event<'a>(&'a mut self, value: &'a T) -> Self::OnEventFut<'a> {
         let BlockingHandler(f) = self;
         f(value);
         ready(())
     }
 }
 
-impl<'a, F, T, Shared> OnEventShared<'a, T, Shared> for BlockingHandler<F>
+impl<F, T, Shared> OnEventShared<T, Shared> for BlockingHandler<F>
 where
     T: 'static,
-    Shared: 'static,
-    F: FnMut(&'a mut Shared, &'a T) + Send,
+    F: for<'a> FnMut(&'a mut Shared, &'a T) + Send,
 {
-    type OnEventFut = Ready<()>;
+    type OnEventFut<'a> = Ready<()>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_event(&'a mut self, shared: &'a mut Shared, value: &'a T) -> Self::OnEventFut {
+    fn on_event<'a>(&'a mut self, shared: &'a mut Shared, value: &'a T) -> Self::OnEventFut<'a> {
         let BlockingHandler(f) = self;
         f(shared, value);
         ready(())

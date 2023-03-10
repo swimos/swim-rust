@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,22 +22,19 @@ use crate::structural::read::recognizer::{
 };
 use crate::structural::read::ReadError;
 use crate::structural::tags::{
-    ABSOLUTE_PATH_TAG, DELAY_TAG, DURATION_TAG, HOST_TAG, INFINITE_TAG, LANE_TAG, MAX_BACKOFF_TAG,
-    MAX_INTERVAL_TAG, NANOS_TAG, NODE_TAG, RETRIES_TAG, RETRY_EXPONENTIAL_TAG, RETRY_IMMEDIATE_TAG,
-    RETRY_INTERVAL_TAG, RETRY_NONE_TAG, SECS_TAG,
+    DELAY_TAG, DURATION_TAG, INFINITE_TAG, MAX_BACKOFF_TAG, MAX_INTERVAL_TAG, NANOS_TAG,
+    RETRIES_TAG, RETRY_EXPONENTIAL_TAG, RETRY_IMMEDIATE_TAG, RETRY_INTERVAL_TAG, RETRY_NONE_TAG,
+    SECS_TAG,
 };
 use std::borrow::Borrow;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swim_model::path::AbsolutePath;
 use swim_model::{Text, ValueKind};
-use swim_utilities::algebra::non_zero_usize;
 use swim_utilities::future::retryable::strategy::{
     DEFAULT_EXPONENTIAL_MAX_BACKOFF, DEFAULT_EXPONENTIAL_MAX_INTERVAL, DEFAULT_IMMEDIATE_RETRIES,
     DEFAULT_INTERVAL_DELAY, DEFAULT_INTERVAL_RETRIES,
 };
 use swim_utilities::future::retryable::{Quantity, RetryStrategy};
-use url::Url;
 
 enum RetryStrategyStage {
     Init,
@@ -212,11 +209,9 @@ impl Recognizer for RetryStrategyRecognizer {
                         }
                         ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                     },
-                    ReadEvent::EndRecord => {
-                        Some(Ok(RetryStrategy::immediate(retries.unwrap_or_else(|| {
-                            non_zero_usize!(DEFAULT_IMMEDIATE_RETRIES)
-                        }))))
-                    }
+                    ReadEvent::EndRecord => Some(Ok(RetryStrategy::immediate(
+                        retries.unwrap_or(DEFAULT_IMMEDIATE_RETRIES),
+                    ))),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
                         ExpectedEvent::EndOfRecord,
@@ -245,9 +240,7 @@ impl Recognizer for RetryStrategyRecognizer {
                     },
                     ReadEvent::EndRecord => Some(Ok(RetryStrategy::interval(
                         delay.unwrap_or_else(|| Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
-                        retries.unwrap_or_else(|| {
-                            Quantity::Finite(non_zero_usize!(DEFAULT_INTERVAL_RETRIES))
-                        }),
+                        retries.unwrap_or(Quantity::Finite(DEFAULT_INTERVAL_RETRIES)),
                     ))),
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
@@ -576,199 +569,5 @@ impl Recognizer for DurationRecognizer {
         *stage = DurationStage::Init;
         *secs = None;
         *nanos = None;
-    }
-}
-
-#[derive(Debug)]
-pub struct AbsolutePathRecognizer {
-    stage: AbsolutePathStage,
-    host: Option<Url>,
-    node: Option<Text>,
-    lane: Option<Text>,
-}
-
-#[derive(Debug)]
-enum AbsolutePathStage {
-    Init,
-    Tag,
-    AfterTag,
-    InBody,
-    Slot(AbsolutePathField),
-    Field(AbsolutePathField),
-}
-
-#[derive(Clone, Copy, Debug)]
-enum AbsolutePathField {
-    Host,
-    Node,
-    Lane,
-}
-
-impl RecognizerReadable for AbsolutePath {
-    type Rec = AbsolutePathRecognizer;
-    type AttrRec = SimpleAttrBody<AbsolutePathRecognizer>;
-    type BodyRec = SimpleRecBody<AbsolutePathRecognizer>;
-
-    fn make_recognizer() -> Self::Rec {
-        AbsolutePathRecognizer {
-            stage: AbsolutePathStage::Init,
-            host: None,
-            node: None,
-            lane: None,
-        }
-    }
-
-    fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(AbsolutePathRecognizer {
-            stage: AbsolutePathStage::Init,
-            host: None,
-            node: None,
-            lane: None,
-        })
-    }
-
-    fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(AbsolutePathRecognizer {
-            stage: AbsolutePathStage::Init,
-            host: None,
-            node: None,
-            lane: None,
-        })
-    }
-}
-
-impl AbsolutePathRecognizer {
-    fn try_done(&mut self) -> Result<AbsolutePath, ReadError> {
-        let AbsolutePathRecognizer {
-            host, node, lane, ..
-        } = self;
-
-        let mut missing = vec![];
-        if host.is_none() {
-            missing.push(Text::new(HOST_TAG));
-        }
-        if node.is_none() {
-            missing.push(Text::new(NODE_TAG));
-        }
-        if lane.is_none() {
-            missing.push(Text::new(LANE_TAG));
-        }
-        if let (Some(host), Some(node), Some(lane)) = (host.take(), node.take(), lane.take()) {
-            Ok(AbsolutePath { host, node, lane })
-        } else {
-            Err(ReadError::MissingFields(missing))
-        }
-    }
-}
-
-impl Recognizer for AbsolutePathRecognizer {
-    type Target = AbsolutePath;
-
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        match &self.stage {
-            AbsolutePathStage::Init => {
-                if let ReadEvent::StartAttribute(name) = input {
-                    if name == ABSOLUTE_PATH_TAG {
-                        self.stage = AbsolutePathStage::Tag;
-                        None
-                    } else {
-                        Some(Err(ReadError::UnexpectedAttribute(name.into())))
-                    }
-                } else {
-                    Some(Err(input.kind_error(ExpectedEvent::Attribute(Some(
-                        Text::new(ABSOLUTE_PATH_TAG),
-                    )))))
-                }
-            }
-            AbsolutePathStage::Tag => match input {
-                ReadEvent::Extant => None,
-                ReadEvent::EndAttribute => {
-                    self.stage = AbsolutePathStage::AfterTag;
-                    None
-                }
-                ow => Some(Err(ow.kind_error(ExpectedEvent::EndOfAttribute))),
-            },
-            AbsolutePathStage::AfterTag => {
-                if matches!(&input, ReadEvent::StartBody) {
-                    self.stage = AbsolutePathStage::InBody;
-                    None
-                } else {
-                    Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
-                }
-            }
-            AbsolutePathStage::InBody => match input {
-                ReadEvent::TextValue(slot_name) => match slot_name.borrow() {
-                    HOST_TAG => {
-                        self.stage = AbsolutePathStage::Slot(AbsolutePathField::Host);
-                        None
-                    }
-                    NODE_TAG => {
-                        self.stage = AbsolutePathStage::Slot(AbsolutePathField::Node);
-                        None
-                    }
-                    LANE_TAG => {
-                        self.stage = AbsolutePathStage::Slot(AbsolutePathField::Lane);
-                        None
-                    }
-                    ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
-                },
-                ReadEvent::EndRecord => Some(self.try_done()),
-                ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
-                    ExpectedEvent::ValueEvent(ValueKind::Text),
-                    ExpectedEvent::EndOfRecord,
-                ])))),
-            },
-            AbsolutePathStage::Slot(fld) => {
-                if matches!(&input, ReadEvent::Slot) {
-                    self.stage = AbsolutePathStage::Field(*fld);
-                    None
-                } else {
-                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
-                }
-            }
-            AbsolutePathStage::Field(AbsolutePathField::Host) => {
-                match Url::make_recognizer().feed_event(input)? {
-                    Ok(value) => {
-                        self.host = Some(value);
-                        self.stage = AbsolutePathStage::InBody;
-                        None
-                    }
-                    Err(err) => Some(Err(err)),
-                }
-            }
-            AbsolutePathStage::Field(AbsolutePathField::Lane) => {
-                match Text::make_recognizer().feed_event(input)? {
-                    Ok(value) => {
-                        self.lane = Some(value);
-                        self.stage = AbsolutePathStage::InBody;
-                        None
-                    }
-                    Err(err) => Some(Err(err)),
-                }
-            }
-            AbsolutePathStage::Field(AbsolutePathField::Node) => {
-                match Text::make_recognizer().feed_event(input)? {
-                    Ok(value) => {
-                        self.node = Some(value);
-                        self.stage = AbsolutePathStage::InBody;
-                        None
-                    }
-                    Err(err) => Some(Err(err)),
-                }
-            }
-        }
-    }
-
-    fn reset(&mut self) {
-        let AbsolutePathRecognizer {
-            stage,
-            host,
-            node,
-            lane,
-        } = self;
-        *stage = AbsolutePathStage::Init;
-        *host = None;
-        *node = None;
-        *lane = None;
     }
 }

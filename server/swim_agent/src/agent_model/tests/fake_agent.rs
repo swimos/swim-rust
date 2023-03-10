@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,15 +14,12 @@
 
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
 };
 
 use bytes::BytesMut;
 use swim_api::protocol::{
-    agent::{
-        LaneResponseKind, MapLaneResponse, MapLaneResponseEncoder, ValueLaneResponse,
-        ValueLaneResponseEncoder,
-    },
+    agent::{LaneResponse, MapLaneResponse, MapLaneResponseEncoder, ValueLaneResponseEncoder},
     map::{MapMessage, MapOperation},
 };
 use swim_model::Text;
@@ -31,7 +28,7 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use crate::{
-    agent_model::{AgentLaneModel, WriteResult},
+    agent_model::{AgentSpec, ItemKind, ItemSpec, LaneFlags, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
 };
@@ -95,22 +92,36 @@ impl From<TestEvent> for TestHandler {
     }
 }
 
-impl AgentLaneModel for TestAgent {
+impl AgentSpec for TestAgent {
     type ValCommandHandler = TestHandler;
 
     type MapCommandHandler = TestHandler;
 
     type OnSyncHandler = TestHandler;
 
-    fn value_like_lanes() -> HashSet<&'static str> {
-        [VAL_LANE, CMD_LANE].into_iter().collect()
+    fn value_like_item_specs() -> HashMap<&'static str, crate::agent_model::ItemSpec> {
+        let mut lanes = HashMap::new();
+        lanes.insert(
+            VAL_LANE,
+            ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT),
+        );
+        lanes.insert(
+            CMD_LANE,
+            ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT),
+        );
+        lanes
     }
 
-    fn map_like_lanes() -> HashSet<&'static str> {
-        [MAP_LANE].into_iter().collect()
+    fn map_like_item_specs() -> HashMap<&'static str, crate::agent_model::ItemSpec> {
+        let mut lanes = HashMap::new();
+        lanes.insert(
+            MAP_LANE,
+            ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT),
+        );
+        lanes
     }
 
-    fn lane_ids() -> HashMap<u64, Text> {
+    fn item_ids() -> HashMap<u64, Text> {
         [(VAL_ID, VAL_LANE), (MAP_ID, MAP_LANE), (CMD_ID, CMD_LANE)]
             .into_iter()
             .map(|(k, v)| (k, Text::new(v)))
@@ -163,14 +174,15 @@ impl AgentLaneModel for TestAgent {
     fn write_event(&self, lane: &str, buffer: &mut bytes::BytesMut) -> Option<WriteResult> {
         match lane {
             VAL_LANE => {
-                let mut encoder = ValueLaneResponseEncoder;
+                let mut encoder = ValueLaneResponseEncoder::default();
                 if let Some(id) = self.sync_ids.borrow_mut().pop_front() {
-                    let response = ValueLaneResponse {
-                        kind: LaneResponseKind::SyncEvent(id),
-                        value: SYNC_VALUE,
-                    };
+                    let sync_message = LaneResponse::sync_event(id, SYNC_VALUE);
+                    let synced_message = LaneResponse::<i32>::Synced(id);
                     encoder
-                        .encode(response, buffer)
+                        .encode(sync_message, buffer)
+                        .expect("Serialization failed.");
+                    encoder
+                        .encode(synced_message, buffer)
                         .expect("Serialization failed.");
                     if self.staged_value.borrow().is_some() {
                         Some(WriteResult::DataStillAvailable)
@@ -180,10 +192,7 @@ impl AgentLaneModel for TestAgent {
                 } else {
                     let mut guard = self.staged_value.borrow_mut();
                     if let Some(body) = guard.take() {
-                        let response = ValueLaneResponse {
-                            kind: LaneResponseKind::StandardEvent,
-                            value: body,
-                        };
+                        let response = LaneResponse::event(body);
                         encoder
                             .encode(response, buffer)
                             .expect("Serialization failed.");
@@ -197,10 +206,7 @@ impl AgentLaneModel for TestAgent {
                 let mut guard = self.staged_map.borrow_mut();
                 if let Some(body) = guard.take() {
                     let mut encoder = MapLaneResponseEncoder::default();
-                    let response = MapLaneResponse::Event {
-                        kind: LaneResponseKind::StandardEvent,
-                        operation: body,
-                    };
+                    let response = MapLaneResponse::event(body);
                     encoder
                         .encode(response, buffer)
                         .expect("Serialization failed.");
@@ -212,6 +218,32 @@ impl AgentLaneModel for TestAgent {
             _ => None,
         }
     }
+
+    fn init_value_like_item(
+        &self,
+        _item: &str,
+    ) -> Option<Box<dyn crate::agent_model::ItemInitializer<Self, BytesMut> + Send + 'static>>
+    where
+        Self: 'static,
+    {
+        None
+    }
+
+    fn init_map_like_item(
+        &self,
+        _item: &str,
+    ) -> Option<
+        Box<
+            dyn crate::agent_model::ItemInitializer<Self, MapMessage<BytesMut, BytesMut>>
+                + Send
+                + 'static,
+        >,
+    >
+    where
+        Self: 'static,
+    {
+        None
+    }
 }
 
 impl HandlerAction<TestAgent> for TestHandler {
@@ -219,13 +251,13 @@ impl HandlerAction<TestAgent> for TestHandler {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<TestAgent>,
+        _action_context: &mut ActionContext<TestAgent>,
         _meta: AgentMetadata,
         context: &TestAgent,
     ) -> StepResult<Self::Completion> {
         let TestHandler { event } = self;
         if let Some(event) = event.take() {
-            let modified_lane = match &event {
+            let modified_item = match &event {
                 TestEvent::Value { body } => {
                     context.stage_value(*body);
                     Some(Modification::of(VAL_ID))
@@ -246,7 +278,7 @@ impl HandlerAction<TestAgent> for TestHandler {
             };
             context.sender.send(event).expect("Receiver dropped.");
             StepResult::Complete {
-                modified_lane,
+                modified_item,
                 result: (),
             }
         } else {

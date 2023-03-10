@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,119 +18,133 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    downlink_lifecycle::{LiftShared, WithHandlerContext},
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{EventHandler, TakeFn, UnitHandler},
+    lifecycle_fn::{LiftShared, WithHandlerContext},
 };
 
 /// Lifecycle event for the `on_clear` event of a downlink, from an agent.
-pub trait OnDownlinkClear<'a, K, V, Context>: Send {
-    type OnClearHandler: EventHandler<Context> + 'a;
+pub trait OnDownlinkClear<K, V, Context>: Send {
+    type OnClearHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a;
 
     /// #Arguments
     /// * `map` - The old state of the map.
-    fn on_clear(&'a self, map: HashMap<K, V>) -> Self::OnClearHandler;
+    fn on_clear(&self, map: HashMap<K, V>) -> Self::OnClearHandler<'_>;
 }
 
 /// Lifecycle event for the `on_clear` event of a downlink, from an agent, where the event
 /// handler has shared state with other handlers for the same downlink.
-pub trait OnDownlinkClearShared<'a, K, V, Context, Shared>: Send {
-    type OnClearHandler: EventHandler<Context> + 'a;
+pub trait OnDownlinkClearShared<K, V, Context, Shared>: Send {
+    type OnClearHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `map` - The old state of the map.
-    fn on_clear(
+    fn on_clear<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         map: HashMap<K, V>,
-    ) -> Self::OnClearHandler;
+    ) -> Self::OnClearHandler<'a>;
 }
 
-impl<'a, K, V, Context> OnDownlinkClear<'a, K, V, Context> for NoHandler {
-    type OnClearHandler = UnitHandler;
+impl<K, V, Context> OnDownlinkClear<K, V, Context> for NoHandler {
+    type OnClearHandler<'a> = UnitHandler
+    where
+        Self: 'a;
 
-    fn on_clear(&'a self, _map: HashMap<K, V>) -> Self::OnClearHandler {
+    fn on_clear(&self, _map: HashMap<K, V>) -> Self::OnClearHandler<'_> {
         UnitHandler::default()
     }
 }
 
-impl<'a, K, V, Context, Shared> OnDownlinkClearShared<'a, K, V, Context, Shared> for NoHandler {
-    type OnClearHandler = UnitHandler;
+impl<K, V, Context, Shared> OnDownlinkClearShared<K, V, Context, Shared> for NoHandler {
+    type OnClearHandler<'a> = UnitHandler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_clear(
+    fn on_clear<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         _map: HashMap<K, V>,
-    ) -> Self::OnClearHandler {
+    ) -> Self::OnClearHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<'a, K, V, Context, F, H> OnDownlinkClear<'a, K, V, Context> for FnHandler<F>
+impl<K, V, Context, F, H> OnDownlinkClear<K, V, Context> for FnHandler<F>
 where
-    F: Fn(HashMap<K, V>) -> H + Send + 'a,
-    H: EventHandler<Context> + 'a,
+    F: Fn(HashMap<K, V>) -> H + Send,
+    H: EventHandler<Context> + 'static,
 {
-    type OnClearHandler = H;
+    type OnClearHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_clear(&'a self, map: HashMap<K, V>) -> Self::OnClearHandler {
+    fn on_clear(&self, map: HashMap<K, V>) -> Self::OnClearHandler<'_> {
         let FnHandler(f) = self;
         f(map)
     }
 }
 
-impl<'a, K, V, Context, Shared, F, H> OnDownlinkClearShared<'a, K, V, Context, Shared>
-    for FnHandler<F>
+impl<K, V, Context, Shared, F> OnDownlinkClearShared<K, V, Context, Shared> for FnHandler<F>
 where
-    F: Fn(&'a Shared, HandlerContext<Context>, HashMap<K, V>) -> H + Send + 'a,
-    Shared: 'a,
-    H: EventHandler<Context> + 'a,
+    F: for<'a> TakeFn<'a, Context, Shared, HashMap<K, V>> + Send,
 {
-    type OnClearHandler = H;
+    type OnClearHandler<'a> = <F as TakeFn<'a, Context, Shared, HashMap<K, V>>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_clear(
+    fn on_clear<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         map: HashMap<K, V>,
-    ) -> Self::OnClearHandler {
+    ) -> Self::OnClearHandler<'a> {
         let FnHandler(f) = self;
-        f(shared, handler_context, map)
+        f.make_handler(shared, handler_context, map)
     }
 }
 
-impl<'a, Context, K, V, F, H> OnDownlinkClear<'a, K, V, Context> for WithHandlerContext<Context, F>
+impl<Context, K, V, F, H> OnDownlinkClear<K, V, Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>, HashMap<K, V>) -> H + Send,
-    H: EventHandler<Context> + 'a,
+    H: EventHandler<Context> + 'static,
 {
-    type OnClearHandler = H;
+    type OnClearHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_clear(&'a self, map: HashMap<K, V>) -> Self::OnClearHandler {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context, map)
+    fn on_clear(&self, map: HashMap<K, V>) -> Self::OnClearHandler<'_> {
+        let WithHandlerContext { inner } = self;
+        inner(Default::default(), map)
     }
 }
 
-impl<'a, K, V, Context, Shared, F> OnDownlinkClearShared<'a, K, V, Context, Shared>
+impl<K, V, Context, Shared, F> OnDownlinkClearShared<K, V, Context, Shared>
     for LiftShared<F, Shared>
 where
-    F: OnDownlinkClear<'a, K, V, Context> + Send,
+    F: OnDownlinkClear<K, V, Context> + Send,
 {
-    type OnClearHandler = F::OnClearHandler;
+    type OnClearHandler<'a> = F::OnClearHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_clear(
+    fn on_clear<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         map: HashMap<K, V>,
-    ) -> Self::OnClearHandler {
+    ) -> Self::OnClearHandler<'a> {
         let LiftShared { inner, .. } = self;
         inner.on_clear(map)
     }

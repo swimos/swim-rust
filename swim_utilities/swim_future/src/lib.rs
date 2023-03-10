@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,15 +13,9 @@
 // limitations under the License.
 
 mod combinators;
-pub mod item_sink;
-pub mod open_ended;
-pub mod request;
 pub mod retryable;
-pub mod task;
 
 pub use combinators::{
-    immediate_or_join, immediate_or_start, FlatmapStream, ImmediateOrJoin, ImmediateOrStart,
-    NeverErrorStream, NotifyOnBlocked, SecondaryResult, StopAfterError, SwimFutureExt,
-    SwimStreamExt, SwimTryFutureExt, Transform, TransformMut, TransformOnce, TransformedFuture,
-    TransformedSink, TransformedStream, TransformedStreamFut,
+    immediate_or_join, immediate_or_start, ImmediateOrJoin, ImmediateOrStart, NotifyOnBlocked,
+    SecondaryResult, StopAfterError,
 };

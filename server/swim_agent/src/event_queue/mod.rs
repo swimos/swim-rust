@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,10 @@
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 
+use swim_api::protocol::agent::StoreResponse;
 use swim_api::protocol::map::MapOperation;
+
+use crate::map_storage::MapEventQueue;
 
 /// Keeps track of what changes to the state of the map need to be reported as events.
 #[derive(Debug)]
@@ -102,5 +105,47 @@ where
     }
     pub fn is_empty(&self) -> bool {
         self.events.is_empty()
+    }
+}
+
+impl<K, V> MapEventQueue<K, V> for EventQueue<K, ()>
+where
+    K: Eq + Hash + Clone,
+{
+    fn push(&mut self, action: MapOperation<K, ()>) {
+        EventQueue::push(self, action)
+    }
+
+    fn is_empty(&self) -> bool {
+        EventQueue::is_empty(self)
+    }
+
+    type Output<'a> = StoreResponse<MapOperation<K, &'a V>>
+    where
+        Self: 'a,
+        V: 'a;
+
+    fn pop<'a>(&mut self, content: &'a HashMap<K, V>) -> Option<Self::Output<'a>> {
+        loop {
+            let action = EventQueue::pop(self)?;
+            if let Some(op) = to_operation(content, action) {
+                break Some(StoreResponse::new(op));
+            }
+        }
+    }
+}
+
+pub type Action<K> = MapOperation<K, ()>;
+
+fn to_operation<K, V>(content: &HashMap<K, V>, action: Action<K>) -> Option<MapOperation<K, &V>>
+where
+    K: Eq + Hash + Clone,
+{
+    match action {
+        MapOperation::Update { key: k, .. } => content
+            .get(&k)
+            .map(|v| MapOperation::Update { key: k, value: v }),
+        MapOperation::Remove { key: k } => Some(MapOperation::Remove { key: k }),
+        MapOperation::Clear => Some(MapOperation::Clear),
     }
 }

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
+
 use bytes::BytesMut;
 use swim_api::{
     agent::AgentConfig,
-    protocol::agent::{LaneResponseKind, ValueLaneResponse, ValueLaneResponseDecoder},
+    protocol::agent::{LaneResponse, ValueLaneResponseDecoder},
 };
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use tokio_util::codec::Decoder;
 
 use crate::{
@@ -68,20 +70,25 @@ fn write_command_to_buffer() {
         .expect("Invalid frame.")
         .expect("Incomplete frame.");
 
-    let ValueLaneResponse { kind, value } = content;
-    assert_eq!(kind, LaneResponseKind::StandardEvent);
-    assert_eq!(value.as_ref(), b"45");
+    if let LaneResponse::StandardEvent(value) = content {
+        assert_eq!(value.as_ref(), b"45");
+    } else {
+        panic!("Unexpected response.");
+    }
 }
 
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
-fn make_uri() -> RelativeUri {
-    RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+fn make_uri() -> RouteUri {
+    RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
-    AgentMetadata::new(uri, &CONFIG)
+fn make_meta<'a>(
+    uri: &'a RouteUri,
+    route_params: &'a HashMap<String, String>,
+) -> AgentMetadata<'a> {
+    AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
 struct TestAgent {
@@ -103,18 +110,19 @@ impl TestAgent {
 #[test]
 fn command_event_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::default();
 
     let mut handler = DoCommand::new(TestAgent::LANE, 546);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
 
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: Some(Modification {
-                lane_id: LANE_ID,
+            modified_item: Some(Modification {
+                item_id: LANE_ID,
                 trigger_handler: true
             }),
             result: ()
@@ -123,7 +131,7 @@ fn command_event_handler() {
 
     assert_eq!(agent.lane.with_prev(Clone::clone), Some(546));
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

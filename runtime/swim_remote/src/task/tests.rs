@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,9 +33,8 @@ use swim_messages::{
 };
 use swim_model::{address::RelativeAddress, Text};
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{self, byte_channel, ByteReader, ByteWriter},
-    trigger,
+    non_zero_usize, trigger,
 };
 use tokio::{
     io::{duplex, DuplexStream},
@@ -50,7 +49,7 @@ use crate::{error::AgentResolutionError, task::OutgoingKind, AttachClient, FindN
 use super::{InputError, OutgoingTaskMessage, RegisterIncoming};
 
 const ID: Uuid = Uuid::from_u128(1484);
-const CHAN_SIZE: usize = 8;
+const CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 const NODE: &str = "/node";
@@ -78,9 +77,9 @@ where
     ) -> Fut,
     Fut: Future,
 {
-    let (att_tx, att_rx) = mpsc::channel(CHAN_SIZE);
-    let (in_tx, in_rx) = mpsc::channel(CHAN_SIZE);
-    let (out_tx, out_rx) = mpsc::channel(CHAN_SIZE);
+    let (att_tx, att_rx) = mpsc::channel(CHAN_SIZE.get());
+    let (in_tx, in_rx) = mpsc::channel(CHAN_SIZE.get());
+    let (out_tx, out_rx) = mpsc::channel(CHAN_SIZE.get());
     let (stop_tx, stop_rx) = trigger::trigger();
 
     let reg_task = super::registration_task(att_rx, in_tx, out_tx, stop_rx);
@@ -185,13 +184,13 @@ where
     Fut: Future,
 {
     let (stop_tx, stop_rx) = trigger::trigger();
-    let (in_tx, in_rx) = mpsc::channel(CHAN_SIZE);
-    let (attach_tx, attach_rx) = mpsc::channel(CHAN_SIZE);
-    let (find_tx, mut find_rx) = mpsc::channel(CHAN_SIZE);
-    let (outgoing_tx, outgoing_rx) = mpsc::channel(CHAN_SIZE);
+    let (in_tx, in_rx) = mpsc::channel(CHAN_SIZE.get());
+    let (attach_tx, attach_rx) = mpsc::channel(CHAN_SIZE.get());
+    let (find_tx, mut find_rx) = mpsc::channel(CHAN_SIZE.get());
+    let (outgoing_tx, outgoing_rx) = mpsc::channel(CHAN_SIZE.get());
     let (agent_in_tx, agent_in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
     let (_agent_out_tx, agent_out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
-    let (agent_replace_tx, mut agent_replace_rx) = mpsc::channel(CHAN_SIZE);
+    let (agent_replace_tx, mut agent_replace_rx) = mpsc::channel(CHAN_SIZE.get());
 
     let context = IncomingTestContext {
         stop_tx: Some(stop_tx),
@@ -744,7 +743,7 @@ where
 {
     let (stop_tx, stop_rx) = trigger::trigger();
 
-    let (outgoing_tx, outgoing_rx) = mpsc::channel(CHAN_SIZE);
+    let (outgoing_tx, outgoing_rx) = mpsc::channel(CHAN_SIZE.get());
 
     let mut outgoing = super::OutgoingTask::default();
     let (server, client) = duplex(BUFFER_SIZE.get());
@@ -981,8 +980,8 @@ where
 {
     let (stop_tx, stop_rx) = trigger::trigger();
 
-    let (attach_tx, attach_rx) = mpsc::channel(CHAN_SIZE);
-    let (find_tx, mut find_rx) = mpsc::channel(CHAN_SIZE);
+    let (attach_tx, attach_rx) = mpsc::channel(CHAN_SIZE.get());
+    let (find_tx, mut find_rx) = mpsc::channel(CHAN_SIZE.get());
     let (agent_in_tx, agent_in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
     let (agent_out_tx, agent_out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
 
@@ -1010,14 +1009,7 @@ where
         client,
     };
 
-    let remote = super::RemoteTask::new(
-        ID,
-        stop_rx,
-        server,
-        attach_rx,
-        find_tx,
-        non_zero_usize!(CHAN_SIZE),
-    );
+    let remote = super::RemoteTask::new(ID, stop_rx, server, attach_rx, find_tx, CHAN_SIZE);
 
     let remote_task = remote.run();
 

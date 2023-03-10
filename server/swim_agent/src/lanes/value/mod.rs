@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,14 +17,11 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
-use std::{
-    cell::{Cell, RefCell},
-    collections::VecDeque,
-};
+use std::{cell::RefCell, collections::VecDeque};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
-use swim_api::protocol::agent::{ValueLaneResponse, ValueLaneResponseEncoder};
+use swim_api::protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
@@ -35,7 +32,9 @@ use crate::{
         ActionContext, AndThen, Decode, EventHandlerError, HandlerAction, HandlerActionExt,
         HandlerTrans, Modification, StepResult,
     },
+    item::{AgentItem, ValueItem},
     meta::AgentMetadata,
+    stores::value::ValueStore,
 };
 
 use super::{Lane, ProjTransform};
@@ -44,10 +43,7 @@ use super::{Lane, ProjTransform};
 /// Updates may come from external commands or from an action performed by an event handler on the agent.
 #[derive(Debug)]
 pub struct ValueLane<T> {
-    id: u64,
-    content: RefCell<T>,
-    previous: RefCell<Option<T>>,
-    dirty: Cell<bool>,
+    store: ValueStore<T>,
     sync_queue: RefCell<VecDeque<Uuid>>,
 }
 
@@ -59,10 +55,7 @@ impl<T> ValueLane<T> {
     /// * `init` - The initial value of the lane.
     pub fn new(id: u64, init: T) -> Self {
         ValueLane {
-            id,
-            content: RefCell::new(init),
-            previous: Default::default(),
-            dirty: Cell::new(false),
+            store: ValueStore::new(id, init),
             sync_queue: Default::default(),
         }
     }
@@ -72,36 +65,12 @@ impl<T> ValueLane<T> {
     where
         F: FnOnce(&T) -> R,
     {
-        let ValueLane { content, .. } = self;
-        let value = content.borrow();
-        f(&*value)
-    }
-
-    /// Read the state of the lane, consuming the previous value (used when triggering the `on_set` event
-    /// handler for the lane).
-    pub(crate) fn read_with_prev<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(Option<T>, &T) -> R,
-    {
-        let ValueLane {
-            content, previous, ..
-        } = self;
-        let prev = previous.borrow_mut().take();
-        let value = content.borrow();
-        f(prev, &*value)
+        self.store.read(f)
     }
 
     /// Update the state of the lane.
     pub fn set(&self, value: T) {
-        let ValueLane {
-            content,
-            previous,
-            dirty,
-            ..
-        } = self;
-        let prev = content.replace(value);
-        previous.replace(Some(prev));
-        dirty.replace(true);
+        self.store.set(value)
     }
 
     pub fn sync(&self, id: Uuid) {
@@ -110,36 +79,61 @@ impl<T> ValueLane<T> {
     }
 }
 
+impl<T> AgentItem for ValueLane<T> {
+    fn id(&self) -> u64 {
+        self.store.id()
+    }
+}
+
 const INFALLIBLE_SER: &str = "Serializing to recon should be infallible.";
 
 impl<T: StructuralWritable> Lane for ValueLane<T> {
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         let ValueLane {
-            content,
-            dirty,
-            sync_queue,
-            ..
+            store, sync_queue, ..
         } = self;
-        let mut encoder = ValueLaneResponseEncoder;
+        let mut encoder = ValueLaneResponseEncoder::default();
         let mut sync = sync_queue.borrow_mut();
         if let Some(id) = sync.pop_front() {
-            let value_guard = content.borrow();
-            let response = ValueLaneResponse::synced(id, &*value_guard);
-            encoder.encode(response, buffer).expect(INFALLIBLE_SER);
-            if dirty.get() || !sync.is_empty() {
+            store.read(|value| {
+                let value_response = LaneResponse::sync_event(id, value);
+                encoder
+                    .encode(value_response, buffer)
+                    .expect(INFALLIBLE_SER);
+            });
+            let synced_response = LaneResponse::<&T>::synced(id);
+            encoder
+                .encode(synced_response, buffer)
+                .expect(INFALLIBLE_SER);
+            if store.has_data_to_write() || !sync.is_empty() {
                 WriteResult::DataStillAvailable
             } else {
                 WriteResult::Done
             }
-        } else if dirty.get() {
-            let value_guard = content.borrow();
-            let response = ValueLaneResponse::event(&*value_guard);
-            encoder.encode(response, buffer).expect(INFALLIBLE_SER);
-            dirty.set(false);
-            WriteResult::Done
         } else {
-            WriteResult::NoData
+            let try_write_event = |value: &T| {
+                let response = LaneResponse::event(value);
+                encoder.encode(response, buffer).expect(INFALLIBLE_SER);
+            };
+            if store.consume(try_write_event) {
+                WriteResult::Done
+            } else {
+                WriteResult::NoData
+            }
         }
+    }
+}
+
+impl<T> ValueItem<T> for ValueLane<T> {
+    fn read_with_prev<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<T>, &T) -> R,
+    {
+        self.store.read_with_prev(f)
+    }
+
+    fn init(&self, value: T) {
+        self.store.init(value)
     }
 }
 
@@ -201,7 +195,7 @@ impl<C, T: Clone> HandlerAction<C> for ValueLaneGet<C, T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -222,7 +216,7 @@ impl<C, T> HandlerAction<C> for ValueLaneSet<C, T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -231,7 +225,7 @@ impl<C, T> HandlerAction<C> for ValueLaneSet<C, T> {
             let lane = projection(context);
             lane.set(value);
             StepResult::Complete {
-                modified_lane: Some(Modification::of(lane.id)),
+                modified_item: Some(Modification::of(lane.id())),
                 result: (),
             }
         } else {
@@ -245,7 +239,7 @@ impl<C, T> HandlerAction<C> for ValueLaneSync<C, T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -254,7 +248,7 @@ impl<C, T> HandlerAction<C> for ValueLaneSync<C, T> {
             let lane = projection(context);
             lane.sync(id);
             StepResult::Complete {
-                modified_lane: Some(Modification::no_trigger(lane.id)),
+                modified_item: Some(Modification::no_trigger(lane.id())),
                 result: (),
             }
         } else {

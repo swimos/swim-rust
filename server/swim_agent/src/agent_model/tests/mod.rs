@@ -1,6 +1,6 @@
-use std::{io::ErrorKind, sync::Arc};
+use std::{collections::HashMap, io::ErrorKind, sync::Arc};
 
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,18 +21,18 @@ use futures::{
 use parking_lot::Mutex;
 use swim_api::{
     agent::{AgentConfig, AgentTask},
-    error::FrameIoError,
+    downlink::DownlinkKind,
     protocol::map::{MapMessage, MapOperation},
 };
 use swim_model::Text;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 
 use crate::{
     agent_model::HostedDownlinkEvent,
-    event_handler::{BoxEventHandler, EventHandlerExt, UnitHandler, WriteStream},
+    event_handler::{BoxEventHandler, HandlerActionExt, UnitHandler, WriteStream},
 };
 
 use self::{
@@ -43,8 +43,8 @@ use self::{
 };
 
 use super::{
-    downlink::handlers::{DownlinkChannel, DownlinkChannelExt},
-    AgentModel, HostedDownlink, LaneModelFactory,
+    downlink::handlers::{DownlinkChannel, DownlinkChannelExt, DownlinkFailed},
+    AgentModel, HostedDownlink, ItemModelFactory,
 };
 
 mod fake_agent;
@@ -69,13 +69,13 @@ const VAL_LANE: &str = "first";
 const MAP_LANE: &str = "second";
 const CMD_LANE: &str = "third";
 
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
 const SYNC_VALUE: i32 = -1;
 
-fn make_uri() -> RelativeUri {
-    RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+fn make_uri() -> RouteUri {
+    RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
 struct TestContext {
@@ -91,10 +91,10 @@ pub struct Fac {
     rx: Arc<Mutex<Option<TestAgent>>>,
 }
 
-impl LaneModelFactory for Fac {
-    type LaneModel = TestAgent;
+impl ItemModelFactory for Fac {
+    type ItemModel = TestAgent;
 
-    fn create(&self) -> Self::LaneModel {
+    fn create(&self) -> Self::ItemModel {
         let mut guard = self.rx.lock();
         guard.take().expect("Agent created twice.")
     }
@@ -119,7 +119,7 @@ async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) 
     let model = AgentModel::<TestAgent, TestLifecycle>::new(lane_model_fac, lifecycle);
 
     let task = model
-        .initialize_agent(make_uri(), CONFIG, context.clone())
+        .initialize_agent(make_uri(), HashMap::new(), CONFIG, context.clone())
         .await
         .expect("Initialization failed.");
 
@@ -165,7 +165,10 @@ async fn run_agent_init_task() {
 
     let events = lc_event_rx.collect::<Vec<_>>().await;
 
-    assert!(matches!(events.as_slice(), [LifecycleEvent::Start]));
+    assert!(matches!(
+        events.as_slice(),
+        [LifecycleEvent::Init, LifecycleEvent::Start]
+    ));
 
     let lane_events = test_event_rx.collect::<Vec<_>>().await;
     assert!(lane_events.is_empty());
@@ -186,6 +189,10 @@ async fn stops_if_all_lanes_stop() {
     ) = init_agent(context).await;
 
     let test_case = async move {
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected init event."),
+            LifecycleEvent::Init
+        );
         assert_eq!(
             lc_event_rx.next().await.expect("Expected start event."),
             LifecycleEvent::Start
@@ -230,6 +237,10 @@ async fn command_to_value_lane() {
     ) = init_agent(context).await;
 
     let test_case = async move {
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected init event."),
+            LifecycleEvent::Init
+        );
         assert_eq!(
             lc_event_rx.next().await.expect("Expected start event."),
             LifecycleEvent::Start
@@ -289,6 +300,10 @@ async fn sync_with_lane() {
 
     let test_case = async move {
         assert_eq!(
+            lc_event_rx.next().await.expect("Expected init event."),
+            LifecycleEvent::Init
+        );
+        assert_eq!(
             lc_event_rx.next().await.expect("Expected start event."),
             LifecycleEvent::Start
         );
@@ -316,7 +331,6 @@ async fn sync_with_lane() {
 
     let events = lc_event_rx.collect::<Vec<_>>().await;
 
-    println!("{:?}", events);
     //Check that the `on_stop` event fired.
     assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
 
@@ -340,6 +354,10 @@ async fn command_to_map_lane() {
 
     let test_case = async move {
         assert_eq!(
+            lc_event_rx.next().await.expect("Expected init event."),
+            LifecycleEvent::Init
+        );
+        assert_eq!(
             lc_event_rx.next().await.expect("Expected start event."),
             LifecycleEvent::Start
         );
@@ -358,7 +376,7 @@ async fn command_to_map_lane() {
             }
         ));
 
-        //... ,triger the `on_command` event...
+        //... ,trigger the `on_command` event...
         assert_eq!(
             lc_event_rx.next().await.expect("Expected command event."),
             LifecycleEvent::Lane(Text::new(MAP_LANE))
@@ -405,6 +423,10 @@ async fn suspend_future() {
     ) = init_agent(context).await;
 
     let test_case = async move {
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected init event."),
+            LifecycleEvent::Init
+        );
         assert_eq!(
             lc_event_rx.next().await.expect("Expected start event."),
             LifecycleEvent::Start
@@ -465,14 +487,14 @@ async fn suspend_future() {
 }
 
 struct TestDownlinkChannel {
-    rx: mpsc::UnboundedReceiver<Result<(), FrameIoError>>,
+    rx: mpsc::UnboundedReceiver<Result<(), DownlinkFailed>>,
     ready: bool,
 }
 
 struct TestDlAgent;
 
 impl DownlinkChannel<TestDlAgent> for TestDownlinkChannel {
-    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), FrameIoError>>> {
+    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), DownlinkFailed>>> {
         async move {
             let result = self.rx.recv().await;
             self.ready = true;
@@ -489,6 +511,10 @@ impl DownlinkChannel<TestDlAgent> for TestDownlinkChannel {
             None
         }
     }
+
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Event
+    }
 }
 
 fn make_dl_out(rx: mpsc::UnboundedReceiver<Result<(), std::io::Error>>) -> WriteStream {
@@ -496,7 +522,7 @@ fn make_dl_out(rx: mpsc::UnboundedReceiver<Result<(), std::io::Error>>) -> Write
 }
 
 fn make_test_hosted_downlink(
-    in_rx: mpsc::UnboundedReceiver<Result<(), FrameIoError>>,
+    in_rx: mpsc::UnboundedReceiver<Result<(), DownlinkFailed>>,
     out_rx: mpsc::UnboundedReceiver<Result<(), std::io::Error>>,
 ) -> HostedDownlink<TestDlAgent> {
     let channel = TestDownlinkChannel {
@@ -520,8 +546,33 @@ async fn hosted_downlink_incoming() {
         .wait_on_downlink()
         .await
         .expect("Closed prematurely.");
-    assert!(matches!(event, HostedDownlinkEvent::HandlerReady));
+    assert!(matches!(
+        event,
+        HostedDownlinkEvent::HandlerReady { failed: false }
+    ));
     assert!(hosted.channel.next_event(&agent).is_some());
+}
+
+#[tokio::test]
+async fn hosted_downlink_incoming_error() {
+    let agent = TestDlAgent;
+
+    let (in_tx, in_rx) = mpsc::unbounded_channel();
+    let (_out_tx, out_rx) = mpsc::unbounded_channel();
+    let hosted = make_test_hosted_downlink(in_rx, out_rx);
+
+    assert!(in_tx.send(Err(DownlinkFailed)).is_ok());
+    let (mut hosted, event) = hosted
+        .wait_on_downlink()
+        .await
+        .expect("Closed prematurely.");
+    assert!(matches!(
+        event,
+        HostedDownlinkEvent::HandlerReady { failed: true }
+    ));
+    assert!(hosted.channel.next_event(&agent).is_some());
+
+    assert!(hosted.wait_on_downlink().await.is_none());
 }
 
 #[tokio::test]
@@ -562,7 +613,10 @@ async fn hosted_downlink_write_terminated() {
         .wait_on_downlink()
         .await
         .expect("Closed prematurely.");
-    assert!(matches!(event, HostedDownlinkEvent::HandlerReady));
+    assert!(matches!(
+        event,
+        HostedDownlinkEvent::HandlerReady { failed: false }
+    ));
     assert!(hosted.channel.next_event(&agent).is_some());
 }
 
@@ -596,7 +650,10 @@ async fn hosted_downlink_write_failed() {
         .wait_on_downlink()
         .await
         .expect("Closed prematurely.");
-    assert!(matches!(event, HostedDownlinkEvent::HandlerReady));
+    assert!(matches!(
+        event,
+        HostedDownlinkEvent::HandlerReady { failed: false }
+    ));
     assert!(hosted.channel.next_event(&agent).is_some());
 }
 

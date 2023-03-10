@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 
 use byte_channel::byte_channel;
 use byte_channel::{ByteReader, ByteWriter};
+use bytes::Bytes;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use futures::stream::SelectAll;
 use futures_util::future::join;
@@ -26,13 +27,15 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_form::structural::read::from_model::ValueMaterializer;
 use swim_form::structural::read::recognizer::RecognizerReadable;
-use swim_model::path::RelativePath;
-use swim_model::Value;
-use swim_multi_reader::MultiReader;
-use swim_runtime::compat::{
-    AgentMessageDecoder, MessageDecodeError, Operation, RawRequestMessageEncoder, RequestMessage,
+use swim_messages::protocol::{
+    AgentMessageDecoder, MessageDecodeError, Operation, Path, RawRequestMessageEncoder,
+    RequestMessage,
 };
-use swim_runtime::routing::RoutingAddr;
+use uuid::Uuid;
+
+use swim_model::{Text, Value};
+use swim_multi_reader::MultiReader;
+
 use tokio::runtime::Builder;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
@@ -118,13 +121,13 @@ fn multi_reader_benchmark(c: &mut Criterion) {
         ));
 
         group.bench_with_input(
-            BenchmarkId::new("Select all", &params),
+            BenchmarkId::new("Select all", params),
             &params,
             |bencher, params| bencher.to_async(&runtime).iter(|| select_all_test(*params)),
         );
 
         group.bench_with_input(
-            BenchmarkId::new("Multi reader", &params),
+            BenchmarkId::new("Multi reader", params),
             &params,
             |bencher, params| {
                 bencher
@@ -161,7 +164,7 @@ fn create_framed_channel() -> (Writer, Reader) {
     (framed_writer, framed_reader)
 }
 
-async fn read<T: Stream<Item = Result<RequestMessage<Value>, MessageDecodeError>> + Unpin>(
+async fn read<T: Stream<Item = Result<RequestMessage<Text, Value>, MessageDecodeError>> + Unpin>(
     mut reader: T,
     params: TestParams,
 ) {
@@ -183,17 +186,12 @@ async fn write(mut writers: Vec<Writer>, message_count: usize, writers_order: Wr
             for mut writer in writers {
                 tokio::spawn(async move {
                     for i in 0..message_count {
-                        writer
-                            .send(RequestMessage {
-                                origin: RoutingAddr::remote(i as u32),
-                                path: RelativePath::new(
-                                    format!("node_{}", i),
-                                    format!("lane_{}", i),
-                                ),
-                                envelope: Operation::Link,
-                            })
-                            .await
-                            .unwrap();
+                        let msg: RequestMessage<String, Bytes> = RequestMessage {
+                            origin: Uuid::from_u128(i as u128),
+                            path: Path::new(format!("node_{}", i), format!("lane_{}", i)),
+                            envelope: Operation::Link,
+                        };
+                        writer.send(msg).await.unwrap();
                     }
                 });
             }
@@ -204,14 +202,12 @@ async fn write(mut writers: Vec<Writer>, message_count: usize, writers_order: Wr
 
     for i in 0..message_count {
         for writer in &mut writers {
-            writer
-                .send(RequestMessage {
-                    origin: RoutingAddr::remote(i as u32),
-                    path: RelativePath::new(format!("node_{}", i), format!("lane_{}", i)),
-                    envelope: Operation::Link,
-                })
-                .await
-                .unwrap();
+            let msg: RequestMessage<String, Bytes> = RequestMessage {
+                origin: Uuid::from_u128(i as u128),
+                path: Path::new(format!("node_{}", i), format!("lane_{}", i)),
+                envelope: Operation::Link,
+            };
+            writer.send(msg).await.unwrap();
         }
     }
 }

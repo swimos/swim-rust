@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,11 +12,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(feature = "circular_buffer")]
 pub mod circular_buffer;
-#[cfg(feature = "rwlock")]
-pub mod rwlock;
-#[cfg(feature = "topic")]
-pub mod topic;
-#[cfg(any(feature = "rwlock", feature = "topic"))]
-mod waiters;

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,18 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::RefCell;
 use std::fmt::Write;
+use std::{cell::RefCell, collections::HashMap};
 
 use bytes::BytesMut;
 use swim_api::agent::AgentConfig;
 use swim_recon::parser::AsyncParseError;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
+use crate::event_handler::GetParameter;
 use crate::{
     event_handler::{
-        ConstHandler, EventHandlerError, EventHandlerExt, GetAgentUri, HandlerActionExt,
-        Sequentially, SideEffects,
+        ConstHandler, EventHandlerError, GetAgentUri, HandlerActionExt, Sequentially, SideEffects,
     },
     lanes::{value::ValueLaneSet, ValueLane},
     meta::AgentMetadata,
@@ -35,15 +35,18 @@ use super::{
     StepResult,
 };
 
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
-fn make_uri() -> RelativeUri {
-    RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+fn make_uri() -> RouteUri {
+    RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
-    AgentMetadata::new(uri, &CONFIG)
+fn make_meta<'a>(
+    uri: &'a RouteUri,
+    route_params: &'a HashMap<String, String>,
+) -> AgentMetadata<'a> {
+    AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
 struct NoSpawn;
@@ -61,20 +64,21 @@ const DUMMY: DummyAgent = DummyAgent;
 #[test]
 fn side_effect_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut n = 0;
     let mut handler = SideEffect::from(|| n += 1);
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             ..
         }
     ));
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -86,7 +90,8 @@ fn side_effect_handler() {
 #[test]
 fn side_effects_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let values = vec![0, 1, 2, 3];
 
@@ -101,11 +106,11 @@ fn side_effects_handler() {
     let mut handler = SideEffects::from(it);
 
     for i in values {
-        let result = handler.step(dummy_context(), meta, &DUMMY);
+        let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
         assert!(matches!(
             result,
             StepResult::Continue {
-                modified_lane: None
+                modified_item: None
             }
         ));
 
@@ -114,9 +119,9 @@ fn side_effects_handler() {
         assert_eq!(*guard, expected);
     }
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     if let StepResult::Complete {
-        modified_lane: None,
+        modified_item: None,
         result,
     } = result
     {
@@ -125,7 +130,7 @@ fn side_effects_handler() {
         panic!("Expected completion.");
     }
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -135,19 +140,20 @@ fn side_effects_handler() {
 #[test]
 fn constant_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut handler = ConstHandler::from(5);
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             result: 5
         }
     ));
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -157,12 +163,13 @@ fn constant_handler() {
 #[test]
 fn get_agent_uri() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut handler = GetAgentUri::default();
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     if let StepResult::Complete {
-        modified_lane: None,
+        modified_item: None,
         result,
     } = result
     {
@@ -171,7 +178,52 @@ fn get_agent_uri() {
         panic!("Expected completion.");
     }
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn get_parameter() {
+    let uri = make_uri();
+    let mut route_params = HashMap::new();
+    route_params.insert("key".to_string(), "value".to_string());
+    let meta = make_meta(&uri, &route_params);
+
+    let mut absent = GetParameter::new("other");
+    let result = absent.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    if let StepResult::Complete {
+        modified_item: None,
+        result,
+    } = result
+    {
+        assert!(result.is_none());
+    } else {
+        panic!("Expected completion.");
+    }
+
+    let result = absent.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    let mut present = GetParameter::new("key");
+
+    let result = present.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    if let StepResult::Complete {
+        modified_item: None,
+        result,
+    } = result
+    {
+        assert_eq!(result, Some("value".to_string()));
+    } else {
+        panic!("Expected completion.");
+    }
+
+    let result = present.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -181,16 +233,17 @@ fn get_agent_uri() {
 #[test]
 fn map_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let mut handler =
-        HandlerActionExt::<DummyAgent>::map(GetAgentUri::default(), move |uri: RelativeUri| {
+        HandlerActionExt::<DummyAgent>::map(GetAgentUri::default(), move |uri: RouteUri| {
             uri.to_string()
         });
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     match result {
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             result,
         } => {
             assert_eq!(result, "/node");
@@ -198,7 +251,7 @@ fn map_handler() {
         _ => panic!("Unexpected result"),
     }
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -208,37 +261,79 @@ fn map_handler() {
 #[test]
 fn and_then_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut output = None;
     let output_ref = &mut output;
-    let mut handler = HandlerActionExt::<DummyAgent>::and_then(
+    let mut handler =
+        HandlerActionExt::<DummyAgent>::and_then(GetAgentUri::default(), move |uri: RouteUri| {
+            SideEffect::from(move || {
+                *output_ref = Some(uri.to_string());
+            })
+        });
+
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    assert!(matches!(
+        result,
+        StepResult::Continue {
+            modified_item: None
+        }
+    ));
+
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    assert!(matches!(
+        result,
+        StepResult::Complete {
+            modified_item: None,
+            ..
+        }
+    ));
+
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    assert_eq!(output, Some(NODE_URI.to_string()));
+}
+
+#[test]
+fn and_then_contextual_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+
+    let mut output = None;
+    let output_ref = &mut output;
+    let mut handler = HandlerActionExt::<DummyAgent>::and_then_contextual(
         GetAgentUri::default(),
-        move |uri: RelativeUri| {
+        move |_: &DummyAgent, uri: RouteUri| {
             SideEffect::from(move || {
                 *output_ref = Some(uri.to_string());
             })
         },
     );
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Continue {
-            modified_lane: None
+            modified_item: None
         }
     ));
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             ..
         }
     ));
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -250,7 +345,8 @@ fn and_then_handler() {
 #[test]
 fn followed_by_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let output = RefCell::new(None);
 
@@ -266,11 +362,11 @@ fn followed_by_handler() {
 
     let mut handler = HandlerActionExt::<DummyAgent>::followed_by(first, second);
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Continue {
-            modified_lane: None
+            modified_item: None
         }
     ));
 
@@ -279,11 +375,11 @@ fn followed_by_handler() {
         assert_eq!(*guard, Some(1));
     }
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             ..
         }
     ));
@@ -293,7 +389,7 @@ fn followed_by_handler() {
         assert_eq!(*guard, Some(2));
     }
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -303,23 +399,24 @@ fn followed_by_handler() {
 #[test]
 fn decoding_handler_success() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut buffer = BytesMut::new();
     write!(buffer, "56").expect("Write failed.");
 
     let mut handler = Decode::<i32>::new(buffer);
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             result: 56
         }
     ));
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -329,20 +426,21 @@ fn decoding_handler_success() {
 #[test]
 fn decoding_handler_failure() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut buffer = BytesMut::new();
     write!(buffer, "boom").expect("Write failed.");
 
     let mut handler = Decode::<i32>::new(buffer);
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::BadCommand(_))
     ));
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -362,14 +460,14 @@ impl HandlerAction<DummyAgent> for FakeLaneWriter {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<DummyAgent>,
+        _action_context: &mut ActionContext<DummyAgent>,
         _meta: AgentMetadata,
         _context: &DummyAgent,
     ) -> StepResult<Self::Completion> {
         let FakeLaneWriter(id) = self;
         if let Some(n) = id.take() {
             StepResult::Complete {
-                modified_lane: Some(Modification::of(n)),
+                modified_item: Some(Modification::of(n)),
                 result: (),
             }
         } else {
@@ -381,30 +479,31 @@ impl HandlerAction<DummyAgent> for FakeLaneWriter {
 #[test]
 fn and_then_handler_with_lane_write() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut handler = FakeLaneWriter::new(7).and_then(|_| ConstHandler::from(34));
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Continue {
-            modified_lane: Some(Modification {
-                lane_id: 7,
+            modified_item: Some(Modification {
+                item_id: 7,
                 trigger_handler: true
             })
         }
     ));
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             result: 34
         }
     ));
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -414,33 +513,34 @@ fn and_then_handler_with_lane_write() {
 #[test]
 fn followed_by_handler_with_lane_write() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let mut handler = FakeLaneWriter::new(7).followed_by(FakeLaneWriter::new(8));
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Continue {
-            modified_lane: Some(Modification {
-                lane_id: 7,
+            modified_item: Some(Modification {
+                item_id: 7,
                 trigger_handler: true
             })
         }
     ));
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: Some(Modification {
-                lane_id: 8,
+            modified_item: Some(Modification {
+                item_id: 8,
                 trigger_handler: true
             }),
             ..
         }
     ));
 
-    let result = handler.step(dummy_context(), meta, &DUMMY);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -467,7 +567,8 @@ fn event_handler_error_display() {
 #[test]
 fn sequentially_handler() {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
 
     let values = RefCell::new(vec![]);
 
@@ -487,38 +588,38 @@ fn sequentially_handler() {
         lane: ValueLane::new(0, 0),
     };
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Continue {
-            modified_lane: None
+            modified_item: None
         }
     ));
     assert_eq!(values.borrow().as_slice(), &[1]);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Continue {
-            modified_lane: Some(Modification {
-                lane_id: 0,
+            modified_item: Some(Modification {
+                item_id: 0,
                 trigger_handler: true
             })
         }
     ));
     assert_eq!(values.borrow().as_slice(), &[1]);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             ..
         }
     ));
     assert_eq!(values.borrow().as_slice(), &[1, 2]);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

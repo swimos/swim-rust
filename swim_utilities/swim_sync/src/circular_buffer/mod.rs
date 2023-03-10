@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use crossbeam_queue::{ArrayQueue, SegQueue};
-use futures::future::{ready, Ready};
 use futures::task::{AtomicWaker, Context, Poll};
 use futures::Stream;
 use std::future::Future;
@@ -21,8 +20,6 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use swim_algebra::non_zero_usize;
-use swim_future::item_sink::ItemSink;
 
 #[cfg(test)]
 mod tests;
@@ -45,7 +42,7 @@ const LARGE_BOUNDARY: usize = 32;
 /// the buffer is a single value, guarded by a lock. For 'small' buffers (up to `LARGE_BOUNDARY`
 /// entries) the representation is a fixed size, pre-allocated array. For larger buffers the
 /// representation will grow, as required, as entries are pushed into it.
-pub fn channel<T: Send + Sync>(capacity: NonZeroUsize) -> (Sender<T>, Receiver<T>) {
+pub fn channel<T: Send>(capacity: NonZeroUsize) -> (Sender<T>, Receiver<T>) {
     let queue = match capacity.get() {
         1 => InnerQueue::One(QueueChannel::new(OneItemQueue::new(), 1)),
         n if n < LARGE_BOUNDARY => InnerQueue::Small(QueueChannel::new(ArrayQueue::new(n), n)),
@@ -58,8 +55,8 @@ pub fn channel<T: Send + Sync>(capacity: NonZeroUsize) -> (Sender<T>, Receiver<T
     (Sender(inner.clone()), Receiver(inner))
 }
 
-pub fn watch_channel<T: Send + Sync>() -> (Sender<T>, Receiver<T>) {
-    channel(non_zero_usize!(1))
+pub fn watch_channel<T: Send>() -> (Sender<T>, Receiver<T>) {
+    channel(unsafe { NonZeroUsize::new_unchecked(1) })
 }
 
 pub mod error {
@@ -118,7 +115,7 @@ struct Inner<T> {
     sender_active: AtomicBool,
 }
 
-fn poll_consume<T: Send + Sync>(arc_inner: &Arc<Inner<T>>, cx: &mut Context) -> Poll<Option<T>> {
+fn poll_consume<T: Send>(arc_inner: &Arc<Inner<T>>, cx: &mut Context) -> Poll<Option<T>> {
     let Inner {
         queue,
         sender_active,
@@ -138,7 +135,7 @@ impl<T> Drop for Sender<T> {
     }
 }
 
-impl<T: Send + Sync> Sender<T> {
+impl<T: Send> Sender<T> {
     /// Attempt to send a value into the channel (this will fail if the receiver has been dropped).
     pub fn try_send(&mut self, value: T) -> Result<(), error::SendError<T>> {
         let Sender(inner) = self;
@@ -157,7 +154,7 @@ impl<T: Send + Sync> Sender<T> {
 
 fn send<T, Q>(chan_queue: &QueueChannel<Q>, value: T)
 where
-    T: Send + Sync,
+    T: Send,
     Q: InternalQueue<T>,
 {
     let QueueChannel {
@@ -204,7 +201,7 @@ fn poll_consume_queue<T, Q>(
     cx: &mut Context<'_>,
 ) -> Poll<Option<T>>
 where
-    T: Send + Sync,
+    T: Send,
     Q: InternalQueue<T>,
 {
     let QueueChannel {
@@ -235,7 +232,7 @@ where
     }
 }
 
-impl<'a, T: Send + Sync> Future for Recv<'a, T> {
+impl<'a, T: Send> Future for Recv<'a, T> {
     type Output = Result<T, error::RecvError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -244,7 +241,7 @@ impl<'a, T: Send + Sync> Future for Recv<'a, T> {
     }
 }
 
-impl<T: Send + Sync> Stream for Receiver<T> {
+impl<T: Send> Stream for Receiver<T> {
     type Item = T;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -252,7 +249,7 @@ impl<T: Send + Sync> Stream for Receiver<T> {
     }
 }
 
-impl<T: Send + Sync> Receiver<T> {
+impl<T: Send> Receiver<T> {
     /// Wait for a value to be available in the channel and receive it. This will will complete with
     /// an error if the sender is dropped and the buffer has been exhausted.
     pub fn recv(&mut self) -> Recv<T> {
@@ -266,7 +263,7 @@ trait InternalQueue<T> {
     fn pop_value(&self) -> Option<T>;
 }
 
-impl<T: Send + Sync> InternalQueue<T> for SegQueue<T> {
+impl<T: Send> InternalQueue<T> for SegQueue<T> {
     fn push_value(&self, value: T) -> Result<(), T> {
         self.push(value);
         Ok(())
@@ -277,7 +274,7 @@ impl<T: Send + Sync> InternalQueue<T> for SegQueue<T> {
     }
 }
 
-impl<T: Send + Sync> InternalQueue<T> for ArrayQueue<T> {
+impl<T: Send> InternalQueue<T> for ArrayQueue<T> {
     fn push_value(&self, value: T) -> Result<(), T> {
         self.push(value)
     }
@@ -296,7 +293,7 @@ impl<T> OneItemQueue<T> {
     }
 }
 
-impl<T: Send + Sync> InternalQueue<T> for OneItemQueue<T> {
+impl<T: Send> InternalQueue<T> for OneItemQueue<T> {
     fn push_value(&self, value: T) -> Result<(), T> {
         let mut lock = self.0.lock();
         if lock.is_some() {
@@ -310,17 +307,5 @@ impl<T: Send + Sync> InternalQueue<T> for OneItemQueue<T> {
     fn pop_value(&self) -> Option<T> {
         let mut lock = self.0.lock();
         lock.take()
-    }
-}
-
-impl<'a, T: 'a> ItemSink<'a, T> for Sender<T>
-where
-    T: Send + Sync,
-{
-    type Error = error::SendError<T>;
-    type SendFuture = Ready<Result<(), Self::Error>>;
-
-    fn send_item(&'a mut self, value: T) -> Self::SendFuture {
-        ready(self.try_send(value))
     }
 }

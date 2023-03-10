@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use crate::text::Text;
-use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
@@ -23,7 +22,7 @@ use crate::{Item, Value};
 
 /// An attribute that can be applied to a record ['Value']. A key value pair where the key is
 /// a ['String'] and the value can be any ['Value'].
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Attr {
     pub name: Text,
     pub value: Value,

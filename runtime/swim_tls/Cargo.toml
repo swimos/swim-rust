@@ -1,0 +1,20 @@
+[package]
+name = "swim_tls"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[dependencies]
+rustls = { workspace = true }
+webpki = { workspace = true }
+webpki-roots = { workspace = true }
+tokio-rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+swim_runtime = { path = "../swim_runtime" }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+futures = { workspace = true }
+pin-project = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "time"] }

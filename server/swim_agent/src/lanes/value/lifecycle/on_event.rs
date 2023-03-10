@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,90 +12,143 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_api::handlers::{FnHandler, NoHandler};
+use std::borrow::Borrow;
+
+use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{EventFn, EventHandler, UnitHandler},
 };
 
 /// Event handler to be called each time the value of a value lane changes, consuming only the new value.
-pub trait OnEvent<'a, T, Context>: Send {
-    type OnEventHandler: EventHandler<Context> + 'a;
+pub trait OnEvent<T, Context>: Send {
+    type OnEventHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a;
 
     /// #Arguments
     /// * `value` - The new value.
-    fn on_event(&'a self, value: &T) -> Self::OnEventHandler;
+    fn on_event<'a>(&'a self, value: &T) -> Self::OnEventHandler<'a>;
 }
 
 /// Event handler to be called each time the value of a value lane changes, consuming only the new value.
 /// The event handler has access to some shared state (shared with other event handlers in the same agent).
-pub trait OnEventShared<'a, T, Context, Shared>: Send {
-    type OnEventHandler: EventHandler<Context> + 'a;
+pub trait OnEventShared<T, Context, Shared>: Send {
+    type OnEventHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `existing` - The existing value, if it is defined.
     /// * `value` - The new value.
-    fn on_event(
+    fn on_event<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         value: &T,
-    ) -> Self::OnEventHandler;
+    ) -> Self::OnEventHandler<'a>;
 }
 
-impl<'a, T, Context> OnEvent<'a, T, Context> for NoHandler {
-    type OnEventHandler = UnitHandler;
+impl<T, Context> OnEvent<T, Context> for NoHandler {
+    type OnEventHandler<'a> = UnitHandler
+    where
+        Self: 'a;
 
-    fn on_event(&'a self, _value: &T) -> Self::OnEventHandler {
+    fn on_event<'a>(&'a self, _value: &T) -> Self::OnEventHandler<'a> {
         Default::default()
     }
 }
 
-impl<'a, T, Context, Shared> OnEventShared<'a, T, Context, Shared> for NoHandler {
-    type OnEventHandler = UnitHandler;
+impl<T, Context, Shared> OnEventShared<T, Context, Shared> for NoHandler {
+    type OnEventHandler<'a> = UnitHandler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_event(
+    fn on_event<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         _value: &T,
-    ) -> Self::OnEventHandler {
+    ) -> Self::OnEventHandler<'a> {
         Default::default()
     }
 }
 
-impl<'a, T, Context, F, H> OnEvent<'a, T, Context> for FnHandler<F>
+impl<T, Context, F, H> OnEvent<T, Context> for FnHandler<F>
 where
     T: 'static,
     F: Fn(&T) -> H + Send,
-    H: EventHandler<Context> + 'a,
+    H: EventHandler<Context> + 'static,
 {
-    type OnEventHandler = H;
+    type OnEventHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_event(&'a self, value: &T) -> Self::OnEventHandler {
+    fn on_event<'a>(&'a self, value: &T) -> Self::OnEventHandler<'a> {
         let FnHandler(f) = self;
         f(value)
     }
 }
 
-impl<'a, T, Context, Shared, F, H> OnEventShared<'a, T, Context, Shared> for FnHandler<F>
+impl<T, Context, Shared, F> OnEventShared<T, Context, Shared> for FnHandler<F>
 where
     T: 'static,
-    F: Fn(&'a Shared, HandlerContext<Context>, &T) -> H + Send,
-    H: EventHandler<Context> + 'a,
+    F: for<'a> EventFn<'a, Context, Shared, T> + Send,
 {
-    type OnEventHandler = H;
+    type OnEventHandler<'a> = <F as EventFn<'a, Context, Shared, T>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_event(
+    fn on_event<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         value: &T,
-    ) -> Self::OnEventHandler {
+    ) -> Self::OnEventHandler<'a> {
         let FnHandler(f) = self;
-        f(shared, handler_context, value)
+        f.make_handler(shared, handler_context, value)
+    }
+}
+
+impl<B, T, Context, F, H> OnEvent<T, Context> for BorrowHandler<F, B>
+where
+    B: ?Sized,
+    T: Borrow<B>,
+    F: Fn(&B) -> H + Send,
+    H: EventHandler<Context> + 'static,
+{
+    type OnEventHandler<'a> = H
+    where
+        Self: 'a;
+
+    fn on_event<'a>(&'a self, value: &T) -> Self::OnEventHandler<'a> {
+        (self.as_ref())(value.borrow())
+    }
+}
+
+impl<B, T, Context, Shared, F> OnEventShared<T, Context, Shared> for BorrowHandler<F, B>
+where
+    B: ?Sized,
+    T: Borrow<B>,
+    F: for<'a> EventFn<'a, Context, Shared, B> + Send,
+{
+    type OnEventHandler<'a> = <F as EventFn<'a, Context, Shared, B>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_event<'a>(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: &T,
+    ) -> Self::OnEventHandler<'a> {
+        (self.as_ref()).make_handler(shared, handler_context, value.borrow())
     }
 }

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,10 +20,10 @@ use std::{
 use parking_lot::Mutex;
 use swim_api::agent::AgentConfig;
 use swim_model::Text;
-use swim_utilities::routing::uri::RelativeUri;
+use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::{
-    agent_lifecycle::lane_event::LaneEvent,
+    agent_lifecycle::item_event::ItemEvent,
     agent_model::run_handler,
     event_handler::{
         ActionContext, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
@@ -116,7 +116,7 @@ impl HandlerAction<TestAgent> for Handler {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<TestAgent>,
+        _action_context: &mut ActionContext<TestAgent>,
         _meta: AgentMetadata,
         context: &TestAgent,
     ) -> StepResult<Self::Completion> {
@@ -138,12 +138,12 @@ impl HandlerAction<TestAgent> for Handler {
                 if let Some(lane) = targets.pop_front() {
                     if targets.is_empty() {
                         StepResult::Complete {
-                            modified_lane: Some(Modification::of(lane.id())),
+                            modified_item: Some(Modification::of(lane.id())),
                             result: (),
                         }
                     } else {
                         StepResult::Continue {
-                            modified_lane: Some(Modification::of(lane.id())),
+                            modified_item: Some(Modification::of(lane.id())),
                         }
                     }
                 } else {
@@ -173,14 +173,16 @@ fn chose_lane(lane_name: &str) -> Option<Lane> {
     }
 }
 
-impl<'a> LaneEvent<'a, TestAgent> for TestLifecycle {
-    type LaneEventHandler = Handler;
+impl ItemEvent<TestAgent> for TestLifecycle {
+    type ItemEventHandler<'a> = Handler
+    where
+        Self: 'a;
 
-    fn lane_event(
+    fn item_event<'a>(
         &'a self,
         _context: &TestAgent,
         lane_name: &str,
-    ) -> Option<Self::LaneEventHandler> {
+    ) -> Option<Self::ItemEventHandler<'a>> {
         let TestLifecycle { template } = self;
         chose_lane(lane_name)
             .and_then(|lane| template.get(&lane))
@@ -189,19 +191,23 @@ impl<'a> LaneEvent<'a, TestAgent> for TestLifecycle {
 }
 
 const NODE_URI: &str = "/node";
-const CONFIG: AgentConfig = AgentConfig {};
+const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 
-fn make_uri() -> RelativeUri {
-    RelativeUri::try_from(NODE_URI).expect("Bad URI.")
+fn make_uri() -> RouteUri {
+    RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RelativeUri) -> AgentMetadata<'_> {
-    AgentMetadata::new(uri, &CONFIG)
+fn make_meta<'a>(
+    uri: &'a RouteUri,
+    route_params: &'a HashMap<String, String>,
+) -> AgentMetadata<'a> {
+    AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
 fn run_test_handler(agent: &TestAgent, lifecycle: TestLifecycle, start_with: Lane) -> HashSet<u64> {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let mut lanes = HashMap::new();
     lanes.insert(Lane::A.id(), Text::new(Lane::A.name()));
     lanes.insert(Lane::B.id(), Text::new(Lane::B.name()));
@@ -209,9 +215,9 @@ fn run_test_handler(agent: &TestAgent, lifecycle: TestLifecycle, start_with: Lan
 
     let mut collector = HashSet::new();
 
-    if let Some(handler) = lifecycle.lane_event(agent, start_with.name()) {
+    if let Some(handler) = lifecycle.item_event(agent, start_with.name()) {
         let result = run_handler(
-            dummy_context(),
+            &mut dummy_context(&mut HashMap::new()),
             meta,
             agent,
             &lifecycle,

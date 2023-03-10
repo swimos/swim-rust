@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,35 +12,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{borrow::Borrow, collections::HashMap};
 
-use swim_api::handlers::{FnHandler, NoHandler};
+use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, UnitHandler},
+    event_handler::{EventHandler, MapUpdateBorrowFn, MapUpdateFn, UnitHandler},
 };
 
 /// Lifecycle event for the `on_update` event of a map lane.
-pub trait OnUpdate<'a, K, V, Context>: Send {
-    type OnUpdateHandler: EventHandler<Context> + 'a;
+pub trait OnUpdate<K, V, Context>: Send {
+    type OnUpdateHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a;
 
     /// #Arguments
     /// * `map` - The current contents of the map.
     /// * `key` - The key that was removed.
     /// * `prev_value` - The value that was replaced (if any).
-    fn on_update(
+    /// * `new_value` - The updated value.
+    fn on_update<'a>(
         &'a self,
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
-    ) -> Self::OnUpdateHandler;
+        new_value: &V,
+    ) -> Self::OnUpdateHandler<'a>;
 }
 
 /// Lifecycle event for the `on_update` event of a map lane where the event handler
 /// has shared state with other handlers for the same agent.
-pub trait OnUpdateShared<'a, K, V, Context, Shared>: Send {
-    type OnUpdateHandler: EventHandler<Context> + 'a;
+pub trait OnUpdateShared<K, V, Context, Shared>: Send {
+    type OnUpdateHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
 
     /// #Arguments
     /// * `shared` - The shared state.
@@ -48,79 +55,148 @@ pub trait OnUpdateShared<'a, K, V, Context, Shared>: Send {
     /// * `map` - The current contents of the map.
     /// * `key` - The key that was removed.
     /// * `prev_value` - The value that was replaced (if any).
-    fn on_update(
+    /// * `new_value` - The updated value.
+    fn on_update<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
-    ) -> Self::OnUpdateHandler;
+        new_value: &V,
+    ) -> Self::OnUpdateHandler<'a>;
 }
 
-impl<'a, K, V, Context> OnUpdate<'a, K, V, Context> for NoHandler {
-    type OnUpdateHandler = UnitHandler;
+impl<K, V, Context> OnUpdate<K, V, Context> for NoHandler {
+    type OnUpdateHandler<'a> = UnitHandler
+    where
+        Self: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         _map: &HashMap<K, V>,
         _key: K,
         _prev_value: Option<V>,
-    ) -> Self::OnUpdateHandler {
+        _new_value: &V,
+    ) -> Self::OnUpdateHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<'a, K, V, Context, Shared> OnUpdateShared<'a, K, V, Context, Shared> for NoHandler {
-    type OnUpdateHandler = UnitHandler;
+impl<K, V, Context, Shared> OnUpdateShared<K, V, Context, Shared> for NoHandler {
+    type OnUpdateHandler<'a> = UnitHandler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         _map: &HashMap<K, V>,
         _key: K,
         _prev_value: Option<V>,
-    ) -> Self::OnUpdateHandler {
+        _new_value: &V,
+    ) -> Self::OnUpdateHandler<'a> {
         UnitHandler::default()
     }
 }
 
-impl<'a, K, V, Context, F, H> OnUpdate<'a, K, V, Context> for FnHandler<F>
+impl<K, V, Context, F, H> OnUpdate<K, V, Context> for FnHandler<F>
 where
-    F: Fn(&HashMap<K, V>, K, Option<V>) -> H + Send,
-    H: EventHandler<Context> + 'a,
+    F: Fn(&HashMap<K, V>, K, Option<V>, &V) -> H + Send,
+    H: EventHandler<Context> + 'static,
 {
-    type OnUpdateHandler = H;
+    type OnUpdateHandler<'a> = H
+    where
+        Self: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
-    ) -> Self::OnUpdateHandler {
+        new_value: &V,
+    ) -> Self::OnUpdateHandler<'a> {
         let FnHandler(f) = self;
-        f(map, key, prev_value)
+        f(map, key, prev_value, new_value)
     }
 }
 
-impl<'a, K, V, Context, Shared, F, H> OnUpdateShared<'a, K, V, Context, Shared> for FnHandler<F>
+impl<K, V, Context, Shared, F> OnUpdateShared<K, V, Context, Shared> for FnHandler<F>
 where
-    Shared: 'static,
-    F: Fn(&'a Shared, HandlerContext<Context>, &HashMap<K, V>, K, Option<V>) -> H + Send,
-    H: EventHandler<Context> + 'a,
+    F: for<'a> MapUpdateFn<'a, Context, Shared, K, V> + Send,
 {
-    type OnUpdateHandler = H;
+    type OnUpdateHandler<'a> = <F as MapUpdateFn<'a, Context, Shared, K, V>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         map: &HashMap<K, V>,
         key: K,
         prev_value: Option<V>,
-    ) -> Self::OnUpdateHandler {
+        new_value: &V,
+    ) -> Self::OnUpdateHandler<'a> {
         let FnHandler(f) = self;
-        f(shared, handler_context, map, key, prev_value)
+        f.make_handler(shared, handler_context, map, key, prev_value, new_value)
+    }
+}
+
+impl<K, V, B, Context, F, H> OnUpdate<K, V, Context> for BorrowHandler<F, B>
+where
+    B: ?Sized,
+    V: Borrow<B>,
+    F: Fn(&HashMap<K, V>, K, Option<V>, &B) -> H + Send,
+    H: EventHandler<Context> + 'static,
+{
+    type OnUpdateHandler<'a> = H
+    where
+        Self: 'a;
+
+    fn on_update<'a>(
+        &'a self,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: Option<V>,
+        new_value: &V,
+    ) -> Self::OnUpdateHandler<'a> {
+        let f_ref = self.as_ref();
+        f_ref(map, key, prev_value, new_value.borrow())
+    }
+}
+
+impl<K, V, B, Context, Shared, F> OnUpdateShared<K, V, Context, Shared> for BorrowHandler<F, B>
+where
+    B: ?Sized,
+    V: Borrow<B>,
+    F: for<'a> MapUpdateBorrowFn<'a, Context, Shared, K, V, B> + Send,
+{
+    type OnUpdateHandler<'a> = <F as MapUpdateBorrowFn<'a, Context, Shared, K, V, B>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_update<'a>(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        map: &HashMap<K, V>,
+        key: K,
+        prev_value: Option<V>,
+        new_value: &V,
+    ) -> Self::OnUpdateHandler<'a> {
+        let f_ref = self.as_ref();
+        f_ref.make_handler(
+            shared,
+            handler_context,
+            map,
+            key,
+            prev_value,
+            new_value.borrow(),
+        )
     }
 }

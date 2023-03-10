@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,15 +21,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_model::bigint::{BigInt, BigUint};
-use swim_model::path::AbsolutePath;
 use swim_model::{Attr, Blob, Item, Text, Value};
 use swim_utilities::future::retryable::strategy::Quantity;
 
 #[doc(hidden)]
 pub use swim_form_derive::StructuralWritable;
 use swim_model::time::Timestamp;
-use swim_utilities::routing::uri::RelativeUri;
-use url::Url;
+use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::structural::write::to_model::ValueInterpreter;
 pub mod impls;
@@ -613,27 +611,7 @@ impl StructuralWritable for Text {
     }
 }
 
-impl StructuralWritable for RelativeUri {
-    fn num_attributes(&self) -> usize {
-        0
-    }
-
-    fn write_with<W: StructuralWriter>(
-        &self,
-        writer: W,
-    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        writer.write_text(self.to_string())
-    }
-
-    fn write_into<W: StructuralWriter>(
-        self,
-        writer: W,
-    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        writer.write_text(self.to_string())
-    }
-}
-
-impl StructuralWritable for Url {
+impl StructuralWritable for RouteUri {
     fn num_attributes(&self) -> usize {
         0
     }
@@ -987,40 +965,6 @@ impl StructuralWritable for Duration {
             .complete_header(RecordBodyKind::MapLike, 2)?;
         body_writer = body_writer.write_u64_slot("secs", self.as_secs())?;
         body_writer = body_writer.write_u32_slot("nanos", self.subsec_nanos())?;
-
-        body_writer.done()
-    }
-}
-
-impl StructuralWritable for AbsolutePath {
-    fn num_attributes(&self) -> usize {
-        1
-    }
-
-    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
-        let header_writer = writer.record(1)?;
-
-        let mut body_writer = header_writer
-            .write_extant_attr("path")?
-            .complete_header(RecordBodyKind::MapLike, 3)?;
-
-        body_writer = body_writer.write_slot(&"host", &self.host)?;
-        body_writer = body_writer.write_slot(&"node", &self.node)?;
-        body_writer = body_writer.write_slot(&"lane", &self.lane)?;
-
-        body_writer.done()
-    }
-
-    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        let header_writer = writer.record(1)?;
-
-        let mut body_writer = header_writer
-            .write_extant_attr("path")?
-            .complete_header(RecordBodyKind::MapLike, 3)?;
-
-        body_writer = body_writer.write_slot_into("host", self.host)?;
-        body_writer = body_writer.write_slot_into("node", self.node)?;
-        body_writer = body_writer.write_slot_into("lane", self.lane)?;
 
         body_writer.done()
     }

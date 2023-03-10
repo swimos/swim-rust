@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,9 +15,14 @@
 use std::cell::{Cell, RefCell};
 
 use bytes::BytesMut;
+use futures::{Stream, StreamExt};
 use static_assertions::assert_impl_all;
-use swim_api::protocol::agent::{ValueLaneResponse, ValueLaneResponseEncoder};
+use swim_api::{
+    error::FrameIoError,
+    protocol::agent::{LaneResponse, ValueLaneResponseEncoder},
+};
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
+use swim_recon::parser::AsyncParseError;
 use tokio_util::codec::Encoder;
 
 use crate::{
@@ -26,6 +31,7 @@ use crate::{
         ActionContext, AndThen, Decode, HandlerAction, HandlerActionExt, HandlerTrans,
         Modification, StepResult,
     },
+    item::AgentItem,
     meta::AgentMetadata,
 };
 
@@ -57,7 +63,7 @@ impl<T> CommandLane<T> {
         }
     }
 
-    /// Exectute a command agaist the lane.
+    /// Execute a command against the lane.
     pub fn command(&self, value: T) {
         let CommandLane {
             prev_command,
@@ -105,7 +111,7 @@ impl<Context, T> HandlerAction<Context> for DoCommand<Context, T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -117,7 +123,7 @@ impl<Context, T> HandlerAction<Context> for DoCommand<Context, T> {
             let lane = projection(context);
             lane.command(cmd);
             StepResult::Complete {
-                modified_lane: Some(Modification::of(lane.id)),
+                modified_item: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {
@@ -154,11 +160,11 @@ impl<T: StructuralWritable> Lane for CommandLane<T> {
             dirty,
             ..
         } = self;
-        let mut encoder = ValueLaneResponseEncoder;
+        let mut encoder = ValueLaneResponseEncoder::default();
         if dirty.get() {
             let value_guard = prev_command.borrow();
             if let Some(value) = &*value_guard {
-                let response = ValueLaneResponse::event(value);
+                let response = LaneResponse::event(value);
                 encoder.encode(response, buffer).expect(INFALLIBLE_SER);
                 dirty.set(false);
                 WriteResult::Done
@@ -168,5 +174,28 @@ impl<T: StructuralWritable> Lane for CommandLane<T> {
         } else {
             WriteResult::NoData
         }
+    }
+}
+
+impl<T> AgentItem for CommandLane<T> {
+    fn id(&self) -> u64 {
+        self.id
+    }
+}
+
+pub async fn init_command_lane<T, In>(
+    mut input: In,
+) -> Result<impl FnOnce(&CommandLane<T>), FrameIoError>
+where
+    In: Stream<Item = Result<BytesMut, FrameIoError>> + Unpin,
+{
+    let mut body = BytesMut::new();
+    while let Some(bytes) = input.next().await {
+        body = bytes?;
+    }
+    if !body.is_empty() {
+        Err(AsyncParseError::UnconsumedInput.into())
+    } else {
+        Ok(|_: &CommandLane<T>| {})
     }
 }

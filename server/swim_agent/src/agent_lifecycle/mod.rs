@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use self::{lane_event::LaneEvent, on_start::OnStart, on_stop::OnStop};
+use self::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop};
 
-pub mod lane_event;
+pub mod item_event;
+pub mod on_init;
 pub mod on_start;
 pub mod on_stop;
 pub mod stateful;
@@ -23,17 +24,13 @@ pub mod utility;
 
 /// Trait for agent lifecycles.
 /// #Type Parameters
-/// * `Context` - The context in which the lifecycle events run (provdies access to the lanes of the agent).
-pub trait AgentLifecycle<Context>: for<'a> AgentHandlers<'a, Context> {}
-
-pub trait AgentHandlers<'a, Context>:
-    OnStart<'a, Context> + OnStop<'a, Context> + LaneEvent<'a, Context>
+/// * `Context` - The context in which the lifecycle events run (provides access to the lanes of the agent).
+pub trait AgentLifecycle<Context>:
+    OnInit<Context> + OnStart<Context> + OnStop<Context> + ItemEvent<Context>
 {
 }
 
-impl<L, Context> AgentLifecycle<Context> for L where L: for<'a> AgentHandlers<'a, Context> {}
-
-impl<'a, L, Context> AgentHandlers<'a, Context> for L where
-    L: OnStart<'a, Context> + OnStop<'a, Context> + LaneEvent<'a, Context>
+impl<L, Context> AgentLifecycle<Context> for L where
+    L: OnInit<Context> + OnStart<Context> + OnStop<Context> + ItemEvent<Context>
 {
 }

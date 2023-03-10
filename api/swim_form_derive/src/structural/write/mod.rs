@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
 
         let mut new_generics = (*generics).clone();
         super::add_bounds(
-            *generics,
+            generics,
             &mut new_generics,
             parse_quote!(#root::structural::write::StructuralWritable),
         );
@@ -161,7 +161,7 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
         let mut new_generics = (*generics).clone();
         let root = inner.inner.root;
         super::add_bounds(
-            *generics,
+            generics,
             &mut new_generics,
             parse_quote!(#root::structural::write::StructuralWritable),
         );
@@ -339,7 +339,7 @@ impl<'a> ToTokens for WriteWithFn<'a> {
             }
         };
 
-        let attr_statements = attributes.iter().map(|f| write_attr_ref(*f));
+        let attr_statements = attributes.iter().map(|f| write_attr_ref(f));
 
         let body_block = match body {
             BodyFields::ReplacedBody(field) => {
@@ -355,12 +355,12 @@ impl<'a> ToTokens for WriteWithFn<'a> {
                     if fields_model.body_kind == CompoundTypeKind::Labelled {
                         (
                             quote!(#root::structural::write::RecordBodyKind::MapLike),
-                            Either::Left(fields.iter().map(|f| write_slot_ref(root, *f))),
+                            Either::Left(fields.iter().map(|f| write_slot_ref(root, f))),
                         )
                     } else {
                         (
                             quote!(#root::structural::write::RecordBodyKind::ArrayLike),
-                            Either::Right(fields.iter().map(|f| write_value_ref(*f))),
+                            Either::Right(fields.iter().map(|f| write_value_ref(f))),
                         )
                     };
 
@@ -461,7 +461,7 @@ impl<'a> ToTokens for WriteIntoFn<'a> {
             }
         };
 
-        let attr_statements = attributes.iter().map(|f| write_attr_into(*f));
+        let attr_statements = attributes.iter().map(|f| write_attr_into(f));
 
         let body_block = match body {
             BodyFields::ReplacedBody(field) => {
@@ -477,12 +477,12 @@ impl<'a> ToTokens for WriteIntoFn<'a> {
                     if fields_model.body_kind == CompoundTypeKind::Labelled {
                         (
                             quote!(#root::structural::write::RecordBodyKind::MapLike),
-                            Either::Left(fields.iter().map(|f| write_slot_into(root, *f))),
+                            Either::Left(fields.iter().map(|f| write_slot_into(root, f))),
                         )
                     } else {
                         (
                             quote!(#root::structural::write::RecordBodyKind::ArrayLike),
-                            Either::Right(fields.iter().map(|f| write_value_into(*f))),
+                            Either::Right(fields.iter().map(|f| write_value_into(f))),
                         )
                     };
 

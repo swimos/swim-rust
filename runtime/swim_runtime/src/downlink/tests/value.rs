@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@ use std::future::Future;
 use std::time::Duration;
 
 use crate::downlink::DownlinkRuntimeConfig;
-use crate::routing::RoutingAddr;
 
 use super::super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
 use super::*;
@@ -202,7 +201,7 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        *RoutingAddr::client(1).uuid(),
+        Uuid::from_u128(1),
         path,
         config,
     )
@@ -876,7 +875,7 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        *RoutingAddr::client(1).uuid(),
+        Uuid::from_u128(1),
         path,
         config,
     )

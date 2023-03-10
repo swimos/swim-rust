@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,10 +15,11 @@
 #![allow(clippy::match_wild_err_arm)]
 
 pub mod never;
-pub mod ptr;
 
 #[cfg(feature = "algebra")]
-pub use swim_algebra as algebra;
+pub mod algebra {
+    pub use swim_algebra::*;
+}
 
 #[cfg(feature = "errors")]
 pub use swim_errors as errors;
@@ -26,14 +27,8 @@ pub use swim_errors as errors;
 #[cfg(feature = "future")]
 pub use swim_future as future;
 
-#[cfg(feature = "iteratee")]
-pub use swim_iteratee as iteratee;
-
-#[cfg(any(feature = "lrucache", feature = "rtree"))]
+#[cfg(feature = "rtree")]
 pub mod collections {
-    #[cfg(feature = "lrucache")]
-    pub use swim_lrucache as lrucache;
-    #[cfg(feature = "rtree")]
     pub use swim_rtree as rtree;
 }
 
@@ -62,15 +57,12 @@ pub use swim_format as format;
 #[cfg(feature = "trigger")]
 pub use swim_trigger as trigger;
 
-#[cfg(any(feature = "circular_buffer", feature = "rwlock", feature = "topic",))]
+#[cfg(feature = "sync")]
 pub mod sync {
-    #[cfg(feature = "circular_buffer")]
     pub use swim_sync::circular_buffer;
-    #[cfg(feature = "rwlock")]
-    pub use swim_sync::rwlock;
-    #[cfg(feature = "topic")]
-    pub use swim_sync::topic;
 }
 
 #[cfg(feature = "test-util")]
 pub use swim_test_util as test_util;
+
+pub use swim_num::non_zero_usize;

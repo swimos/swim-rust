@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,15 +17,13 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    agent::{
-        task::{
-            tests::{RemoteReceiver, RemoteSender},
-            AgentRuntimeTask, InitialEndpoints, LaneEndpoint,
-        },
-        AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io,
+use crate::agent::{
+    task::{
+        tests::{RemoteReceiver, RemoteSender},
+        AgentRuntimeTask, InitialEndpoints, LaneEndpoint, NodeDescriptor,
     },
-    routing::RoutingAddr,
+    AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, DownlinkRequest, Io,
+    LaneRuntimeSpec,
 };
 use futures::{
     future::{join, join3, Either},
@@ -35,6 +33,7 @@ use futures::{
 use std::fmt::Debug;
 use swim_api::{
     agent::UplinkKind,
+    meta::lane::LaneKind,
     protocol::{agent::LaneRequest, map::MapMessage},
 };
 use swim_model::Text;
@@ -47,8 +46,8 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 
 use super::{
-    make_prune_config, LaneReader, MapLaneSender, ValueLaneSender, BUFFER_SIZE, DEFAULT_TIMEOUT,
-    INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE,
+    make_prune_config, LaneReader, MapLaneSender, ValueLikeLaneSender, BUFFER_SIZE,
+    DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE,
 };
 
 #[derive(Debug, Clone)]
@@ -65,7 +64,7 @@ enum Event {
 
 struct CreateLane {
     name: Text,
-    kind: UplinkKind,
+    kind: LaneKind,
 }
 
 #[derive(Default)]
@@ -76,7 +75,7 @@ struct AgentState {
 
 impl AgentState {
     fn new(
-        val: HashMap<Text, (i32, ValueLaneSender)>,
+        val: HashMap<Text, (i32, ValueLikeLaneSender)>,
         map: HashMap<Text, (BTreeMap<Text, i32>, MapLaneSender)>,
     ) -> Self {
         let value_lanes = val.into_iter().map(|(k, (n, _))| (k, n)).collect();
@@ -135,21 +134,27 @@ impl FakeAgent {
                 name,
                 kind,
                 io: (io_tx, io_rx),
+                ..
             } = endpoint;
             match kind {
                 UplinkKind::Value => {
                     let init = initial_state.value_lanes.remove(&name).unwrap_or_default();
-                    value_lanes.insert(name.clone(), (init, ValueLaneSender::new(io_tx)));
+                    value_lanes.insert(name.clone(), (init, ValueLikeLaneSender::new(io_tx)));
                 }
                 UplinkKind::Map => {
                     let init = initial_state.map_lanes.remove(&name).unwrap_or_default();
                     map_lanes.insert(name.clone(), (init, MapLaneSender::new(io_tx)));
                 }
+                UplinkKind::Supply => {
+                    panic!("Unexpected supply uplink.");
+                }
             }
             lanes.push(LaneReader::new(LaneEndpoint {
                 name,
                 kind,
+                transient: false,
                 io: io_rx,
+                reporter: None,
             }));
         }
         let mut create_stream = UnboundedReceiverStream::new(create_rx).take_until(stopping);
@@ -161,6 +166,9 @@ impl FakeAgent {
                             Ok(Either::Left(message)) => {
                                 if let Some((value, sender)) = value_lanes.get_mut(name.as_str()) {
                                     match message {
+                                        LaneRequest::InitComplete => {
+                                            panic!("Unexpected InitComplete");
+                                        }
                                         LaneRequest::Command(v) => {
                                             assert!(event_tx.send(Event::ValueCommand { name: name.clone(), n: v }).is_ok());
                                             *value = v;
@@ -175,6 +183,9 @@ impl FakeAgent {
                             Ok(Either::Right(message)) => {
                                 if let Some((map, sender)) = map_lanes.get_mut(name.as_str()) {
                                     match message {
+                                        LaneRequest::InitComplete => {
+                                            panic!("Unexpected InitComplete.");
+                                        }
                                         LaneRequest::Command(msg) => {
                                             assert!(event_tx.send(Event::MapCommand { name: name.clone(), cmd: msg.clone() }).is_ok());
                                             match msg {
@@ -231,22 +242,24 @@ impl FakeAgent {
                 maybe_create = create_stream.next() => {
                     if let Some(CreateLane { name, kind }) = maybe_create {
                         let (tx, rx) = oneshot::channel();
-                        assert!(request_tx.send(AgentRuntimeRequest::AddLane {
-                             name: name.clone(), kind, config: None, promise: tx,
-                            }).await.is_ok());
+                        assert!(request_tx.send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(name.clone(), kind, Default::default(), tx))).await.is_ok());
                         let (io_tx, io_rx) = rx.await
                             .expect("Failed to receive response.")
                             .expect("Failed to add new lane.");
-                        match kind {
+                        let uplink_kind = kind.uplink_kind();
+                        match uplink_kind {
                             UplinkKind::Value => {
-                                value_lanes.insert(name.clone(), (0, ValueLaneSender::new(io_tx)));
+                                value_lanes.insert(name.clone(), (0, ValueLikeLaneSender::new(io_tx)));
                             }
                             UplinkKind::Map => {
                                 let m: BTreeMap<Text, i32> = BTreeMap::new();
                                 map_lanes.insert(name.clone(), (m, MapLaneSender::new(io_tx)));
                             }
+                            UplinkKind::Supply => {
+                                panic!("Unexpected supply uplink.");
+                            }
                         }
-                        lanes.push(LaneReader::new(LaneEndpoint { name, kind, io: io_rx }));
+                        lanes.push(LaneReader::new(LaneEndpoint { name, kind: uplink_kind, transient: false, io: io_rx, reporter: None }));
                     } else {
                         break;
                     }
@@ -300,16 +313,17 @@ impl Events {
 #[derive(Debug)]
 struct TestContext {
     att_tx: mpsc::Sender<AgentAttachmentRequest>,
+    downlinks_rx: mpsc::Receiver<DownlinkRequest>,
     create_tx: mpsc::UnboundedSender<CreateLane>,
     event_rx: Events,
     stop_tx: trigger::Sender,
 }
 
-const AGENT_ID: Uuid = *RoutingAddr::plane(1).uuid();
+const AGENT_ID: Uuid = Uuid::from_u128(1);
 const NODE: &str = "/node";
-const RID1: Uuid = *RoutingAddr::remote(5).uuid();
-const RID2: Uuid = *RoutingAddr::remote(89).uuid();
-const RID3: Uuid = *RoutingAddr::remote(222).uuid();
+const RID1: Uuid = Uuid::from_u128(5);
+const RID2: Uuid = Uuid::from_u128(89);
+const RID3: Uuid = Uuid::from_u128(222);
 
 async fn run_test_case<F, Fut>(
     inactive_timeout: Duration,
@@ -325,6 +339,7 @@ where
     let config = make_prune_config(inactive_timeout, prune_timeout);
     let (req_tx, req_rx) = mpsc::channel(QUEUE_SIZE.get());
     let (att_tx, att_rx) = mpsc::channel(QUEUE_SIZE.get());
+    let (downlinks_tx, downlinks_rx) = mpsc::channel(QUEUE_SIZE.get());
     let (create_tx, create_rx) = mpsc::unbounded_channel();
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let (stop_tx, stop_rx) = trigger::trigger();
@@ -339,32 +354,40 @@ where
     runtime_endpoints.push(LaneEndpoint::new(
         Text::new(VAL_LANE),
         UplinkKind::Value,
+        false,
         (tx_in_val, rx_out_val),
+        None,
     ));
     runtime_endpoints.push(LaneEndpoint::new(
         Text::new(MAP_LANE),
         UplinkKind::Map,
+        false,
         (tx_in_map, rx_out_map),
+        None,
     ));
 
     agent_endpoints.push(LaneEndpoint::new(
         Text::new(VAL_LANE),
         UplinkKind::Value,
+        false,
         (tx_out_val, rx_in_val),
+        None,
     ));
     agent_endpoints.push(LaneEndpoint::new(
         Text::new(MAP_LANE),
         UplinkKind::Map,
+        false,
         (tx_out_map, rx_in_map),
+        None,
     ));
 
-    let init = InitialEndpoints::new(req_rx, runtime_endpoints);
+    let init = InitialEndpoints::new(None, req_rx, runtime_endpoints, vec![]);
 
     let agent_task = AgentRuntimeTask::new(
-        AGENT_ID,
-        Text::new(NODE),
+        NodeDescriptor::new(AGENT_ID, Text::new(NODE)),
         init,
         att_rx,
+        downlinks_tx,
         stop_rx.clone(),
         config,
     );
@@ -380,6 +403,7 @@ where
 
     let context = TestContext {
         att_tx,
+        downlinks_rx,
         create_tx,
         stop_tx,
         event_rx: Events(event_rx),
@@ -405,6 +429,7 @@ async fn immediate_shutdown() {
         |context| async move {
             let TestContext {
                 att_tx: _att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -447,6 +472,7 @@ async fn link_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -473,6 +499,7 @@ async fn set_value() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 mut event_rx,
                 stop_tx,
@@ -500,6 +527,7 @@ async fn set_values() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 mut event_rx,
                 stop_tx,
@@ -529,6 +557,7 @@ async fn insert_value() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 mut event_rx,
                 stop_tx,
@@ -558,6 +587,7 @@ async fn unlink_when_not_linked_does_nothing() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 mut event_rx,
                 stop_tx,
@@ -587,6 +617,7 @@ async fn unlink_linked_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -619,6 +650,7 @@ async fn sync_value_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -648,6 +680,7 @@ async fn sync_empty_map_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -685,6 +718,7 @@ async fn sync_nonempty_map_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -730,6 +764,7 @@ async fn sync_lane_implicit_link() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -758,6 +793,7 @@ async fn receive_messages_when_linked() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -779,7 +815,7 @@ async fn receive_messages_when_linked() {
                 sender.link(VAL_LANE).await;
                 receiver.expect_linked(VAL_LANE).await;
                 linked_tx.trigger();
-                receiver.expect_value_event(VAL_LANE, v).await;
+                receiver.expect_value_like_event(VAL_LANE, v).await;
                 receiver
             };
 
@@ -803,6 +839,7 @@ async fn link_two_consumers() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -841,6 +878,7 @@ async fn receive_messages_when_liked_multiple_consumers() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -864,7 +902,7 @@ async fn receive_messages_when_liked_multiple_consumers() {
                 sender.link(VAL_LANE).await;
                 receiver.expect_linked(VAL_LANE).await;
                 linked_tx1.trigger();
-                receiver.expect_value_event(VAL_LANE, v).await;
+                receiver.expect_value_like_event(VAL_LANE, v).await;
                 receiver
             };
 
@@ -873,7 +911,7 @@ async fn receive_messages_when_liked_multiple_consumers() {
                 sender.link(VAL_LANE).await;
                 receiver.expect_linked(VAL_LANE).await;
                 linked_tx2.trigger();
-                receiver.expect_value_event(VAL_LANE, v).await;
+                receiver.expect_value_like_event(VAL_LANE, v).await;
                 receiver
             };
 
@@ -909,6 +947,7 @@ async fn agent_timeout() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,
@@ -936,6 +975,7 @@ async fn remote_timeout() {
         |context| async move {
             let TestContext {
                 att_tx,
+                downlinks_rx: _downlinks_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
                 stop_tx,

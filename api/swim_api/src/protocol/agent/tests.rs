@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,16 +14,19 @@
 
 use bytes::{Buf, Bytes, BytesMut};
 use std::fmt::Write;
-use swim_form::{structural::read::recognizer::RecognizerReadable, Form};
+use swim_form::{
+    structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
+    Form,
+};
 use swim_recon::printer::print_recon_compact;
 use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
 use crate::protocol::{
     agent::{
-        LaneRequestDecoder, LaneRequestEncoder, LaneResponseKind, MapLaneResponse,
-        MapLaneResponseDecoder, MapLaneResponseEncoder, ValueLaneResponse,
-        ValueLaneResponseDecoder, ValueLaneResponseEncoder,
+        LaneRequestDecoder, LaneRequestEncoder, LaneResponse, MapLaneResponse,
+        MapLaneResponseDecoder, MapLaneResponseEncoder, ValueLaneResponseDecoder,
+        ValueLaneResponseEncoder,
     },
     map::{MapOperation, MapOperationEncoder},
     WithLenRecognizerDecoder,
@@ -72,6 +75,7 @@ fn round_trip_request(request: LaneRequest<Example>) {
             assert!(write!(buffer, "{}", print_recon_compact(value)).is_ok());
             LaneRequest::Command(buffer.freeze())
         }
+        LaneRequest::InitComplete => LaneRequest::InitComplete,
     };
 
     let mut encoder = LaneRequestEncoder::value();
@@ -91,6 +95,7 @@ fn round_trip_request(request: LaneRequest<Example>) {
             panic!("Decoding failed: {}", e);
         }
     }
+    assert!(buffer.is_empty());
 }
 
 #[test]
@@ -105,13 +110,13 @@ fn decode_command_lane_request() {
 
 #[test]
 fn encode_sync_value_lane_response() {
-    let mut encoder = ValueLaneResponseEncoder;
+    let mut encoder = ValueLaneResponseEncoder::default();
     let mut buffer = BytesMut::new();
-    let request = ValueLaneResponse::synced(Uuid::from_u128(563883), Example { a: 6, b: 234 });
+    let request = LaneResponse::sync_event(Uuid::from_u128(563883), Example { a: 6, b: 234 });
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
     assert!(buffer.remaining() > 25);
-    assert_eq!(buffer.get_u8(), super::SYNC_COMPLETE);
+    assert_eq!(buffer.get_u8(), super::SYNC);
     assert_eq!(buffer.get_u128(), 563883);
     let len = buffer.get_u64() as usize;
     assert_eq!(buffer.remaining(), len);
@@ -119,10 +124,33 @@ fn encode_sync_value_lane_response() {
 }
 
 #[test]
-fn encode_event_value_lane_response() {
-    let mut encoder = ValueLaneResponseEncoder;
+fn encode_synced_lane_response() {
+    let mut encoder = ValueLaneResponseEncoder::default();
     let mut buffer = BytesMut::new();
-    let request = ValueLaneResponse::event(Example { a: 6, b: 234 });
+    let request = LaneResponse::<Example>::synced(Uuid::from_u128(563883));
+    assert!(encoder.encode(request, &mut buffer).is_ok());
+
+    assert_eq!(buffer.get_u8(), super::SYNC_COMPLETE);
+    assert_eq!(buffer.get_u128(), 563883);
+    assert_eq!(buffer.remaining(), 0);
+}
+
+#[test]
+fn encode_initialized_lane_response() {
+    let mut encoder = ValueLaneResponseEncoder::default();
+    let mut buffer = BytesMut::new();
+    let request = LaneResponse::<Example>::Initialized;
+    assert!(encoder.encode(request, &mut buffer).is_ok());
+
+    assert_eq!(buffer.get_u8(), super::INITIALIZED);
+    assert_eq!(buffer.remaining(), 0);
+}
+
+#[test]
+fn encode_event_value_lane_response() {
+    let mut encoder = ValueLaneResponseEncoder::default();
+    let mut buffer = BytesMut::new();
+    let request = LaneResponse::event(Example { a: 6, b: 234 });
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
     assert!(buffer.remaining() > 9);
@@ -132,19 +160,30 @@ fn encode_event_value_lane_response() {
     assert_eq!(buffer.as_ref(), b"@Example{a:6,b:234}");
 }
 
-fn round_trip_value_response(response: ValueLaneResponse<Example>) {
-    let ValueLaneResponse { kind, value } = &response;
-    let mut buffer = BytesMut::new();
-    assert!(write!(buffer, "{}", print_recon_compact(value)).is_ok());
-    let with_bytes = ValueLaneResponse {
-        kind: *kind,
-        value: buffer.freeze(),
-    };
-    let mut encoder = ValueLaneResponseEncoder;
+fn to_bytes<T: StructuralWritable>(response: &LaneResponse<T>) -> LaneResponse<BytesMut> {
+    match response {
+        LaneResponse::StandardEvent(body) => {
+            let mut buffer = BytesMut::new();
+            assert!(write!(buffer, "{}", print_recon_compact(body)).is_ok());
+            LaneResponse::StandardEvent(buffer)
+        }
+        LaneResponse::Initialized => LaneResponse::Initialized,
+        LaneResponse::SyncEvent(id, body) => {
+            let mut buffer = BytesMut::new();
+            assert!(write!(buffer, "{}", print_recon_compact(body)).is_ok());
+            LaneResponse::SyncEvent(*id, buffer)
+        }
+        LaneResponse::Synced(id) => LaneResponse::Synced(*id),
+    }
+}
+
+fn round_trip_value_response(response: LaneResponse<Example>) {
+    let with_bytes = to_bytes(&response);
+    let mut encoder = ValueLaneResponseEncoder::default();
     let mut buffer = BytesMut::new();
     assert!(encoder.encode(response, &mut buffer).is_ok());
 
-    let mut decoder = ValueLaneResponseDecoder;
+    let mut decoder = ValueLaneResponseDecoder::default();
     match decoder.decode(&mut buffer) {
         Ok(Some(restored)) => {
             assert_eq!(restored, with_bytes);
@@ -156,33 +195,30 @@ fn round_trip_value_response(response: ValueLaneResponse<Example>) {
             panic!("Decoding failed: {}", e);
         }
     }
+    assert!(buffer.is_empty());
 }
 
 #[test]
 fn decode_sync_value_lane_response() {
-    round_trip_value_response(ValueLaneResponse {
-        kind: super::LaneResponseKind::SyncEvent(Uuid::from_u128(12)),
-        value: Example { a: -8, b: 0 },
-    });
+    round_trip_value_response(LaneResponse::sync_event(
+        Uuid::from_u128(12),
+        Example { a: -8, b: 0 },
+    ));
 }
 
 #[test]
 fn decode_event_value_lane_response() {
-    round_trip_value_response(ValueLaneResponse {
-        kind: super::LaneResponseKind::StandardEvent,
-        value: Example {
-            a: 74737,
-            b: 928938,
-        },
-    });
+    round_trip_value_response(LaneResponse::event(Example {
+        a: 74737,
+        b: 928938,
+    }));
 }
 
 #[test]
 fn encode_sync_complete_map_lane_response() {
     let mut encoder = MapLaneResponseEncoder::default();
     let mut buffer = BytesMut::new();
-    let request: MapLaneResponse<i32, Example> =
-        MapLaneResponse::SyncComplete(Uuid::from_u128(7574));
+    let request: MapLaneResponse<i32, Example> = MapLaneResponse::Synced(Uuid::from_u128(7574));
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
     assert_eq!(buffer.remaining(), 17);
@@ -206,10 +242,8 @@ fn encode_sync_event_map_lane_response() {
         key: 5,
         value: Example { a: 7, b: -7 },
     };
-    let request: MapLaneResponse<i32, Example> = MapLaneResponse::Event {
-        kind: LaneResponseKind::SyncEvent(Uuid::from_u128(85874)),
-        operation,
-    };
+    let request: MapLaneResponse<i32, Example> =
+        MapLaneResponse::sync_event(Uuid::from_u128(85874), operation);
 
     let exp_op = expected_operation(operation);
 
@@ -231,10 +265,7 @@ fn encode_event_map_lane_response() {
         key: 5,
         value: Example { a: 7, b: -7 },
     };
-    let request: MapLaneResponse<i32, Example> = MapLaneResponse::Event {
-        kind: LaneResponseKind::StandardEvent,
-        operation,
-    };
+    let request: MapLaneResponse<i32, Example> = MapLaneResponse::event(operation);
 
     let exp_op = expected_operation(operation);
 
@@ -246,7 +277,7 @@ fn encode_event_map_lane_response() {
     assert_eq!(buffer.freeze(), exp_op);
 }
 
-fn to_bytes(op: &MapOperation<i32, Example>) -> MapOperation<BytesMut, BytesMut> {
+fn map_op_to_bytes(op: &MapOperation<i32, Example>) -> MapOperation<BytesMut, BytesMut> {
     match op {
         MapOperation::Update { key, value } => {
             let key_str = format!("{}", print_recon_compact(key));
@@ -269,11 +300,10 @@ fn to_bytes(op: &MapOperation<i32, Example>) -> MapOperation<BytesMut, BytesMut>
 
 fn round_trip_map_response(response: MapLaneResponse<i32, Example>) {
     let expected = match response {
-        MapLaneResponse::Event { kind, operation } => MapLaneResponse::Event {
-            kind,
-            operation: to_bytes(&operation),
-        },
-        MapLaneResponse::SyncComplete(id) => MapLaneResponse::SyncComplete(id),
+        LaneResponse::StandardEvent(body) => LaneResponse::StandardEvent(map_op_to_bytes(&body)),
+        LaneResponse::Initialized => LaneResponse::Initialized,
+        LaneResponse::SyncEvent(id, body) => LaneResponse::SyncEvent(id, map_op_to_bytes(&body)),
+        LaneResponse::Synced(id) => LaneResponse::Synced(id),
     };
 
     let mut encoder = MapLaneResponseEncoder::default();
@@ -292,31 +322,66 @@ fn round_trip_map_response(response: MapLaneResponse<i32, Example>) {
             panic!("Decoding failed: {}", e);
         }
     }
+    assert!(buffer.is_empty());
 }
 
 #[test]
 fn decode_sync_complete_map_lane_response() {
-    round_trip_map_response(MapLaneResponse::SyncComplete(Uuid::from_u128(7482)));
+    round_trip_map_response(MapLaneResponse::Synced(Uuid::from_u128(7482)));
 }
 
 #[test]
 fn decode_event_map_lane_response() {
-    round_trip_map_response(MapLaneResponse::Event {
-        kind: LaneResponseKind::StandardEvent,
-        operation: MapOperation::Update {
-            key: 5,
-            value: Example { a: 7, b: 77 },
-        },
-    });
+    round_trip_map_response(MapLaneResponse::event(MapOperation::Update {
+        key: 5,
+        value: Example { a: 7, b: 77 },
+    }));
 }
 
 #[test]
-fn decode_syncevent_map_lane_response() {
-    round_trip_map_response(MapLaneResponse::Event {
-        kind: LaneResponseKind::SyncEvent(Uuid::from_u128(47389)),
-        operation: MapOperation::Update {
+fn decode_sync_event_map_lane_response() {
+    round_trip_map_response(MapLaneResponse::sync_event(
+        Uuid::from_u128(47389),
+        MapOperation::Update {
             key: 5,
             value: Example { a: 7, b: 77 },
         },
-    });
+    ));
+}
+
+#[test]
+fn decoder_sequential_value_responses() {
+    let response1 = LaneResponse::event(5);
+    let response2 = LaneResponse::event(56);
+    let with_bytes1 = to_bytes(&response1);
+    let with_bytes2 = to_bytes(&response2);
+    let mut encoder = ValueLaneResponseEncoder::default();
+    let mut buffer = BytesMut::new();
+    assert!(encoder.encode(response1, &mut buffer).is_ok());
+    assert!(encoder.encode(response2, &mut buffer).is_ok());
+
+    let mut decoder = ValueLaneResponseDecoder::default();
+    match decoder.decode(&mut buffer) {
+        Ok(Some(restored)) => {
+            assert_eq!(restored, with_bytes1);
+        }
+        Ok(_) => {
+            panic!("Decoding incomplete.");
+        }
+        Err(e) => {
+            panic!("Decoding failed: {}", e);
+        }
+    }
+    match decoder.decode(&mut buffer) {
+        Ok(Some(restored)) => {
+            assert_eq!(restored, with_bytes2);
+        }
+        Ok(_) => {
+            panic!("Decoding incomplete.");
+        }
+        Err(e) => {
+            panic!("Decoding failed: {}", e);
+        }
+    }
+    assert!(buffer.is_empty());
 }

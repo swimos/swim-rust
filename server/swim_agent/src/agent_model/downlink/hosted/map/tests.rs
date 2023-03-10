@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,8 +23,8 @@ use swim_api::protocol::{
 };
 use swim_model::{address::Address, Text};
 use swim_utilities::{
-    algebra::non_zero_usize,
     io::byte_channel::{self, ByteWriter},
+    non_zero_usize,
 };
 use tokio::{io::AsyncWriteExt, sync::mpsc};
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
@@ -36,11 +36,12 @@ use crate::{
         map::{
             on_clear::OnDownlinkClear, on_remove::OnDownlinkRemove, on_update::OnDownlinkUpdate,
         },
+        on_failed::OnFailed,
         on_linked::OnLinked,
         on_synced::OnSynced,
         on_unlinked::OnUnlinked,
     },
-    event_handler::{BoxEventHandler, EventHandlerExt, SideEffect},
+    event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
 };
 
 use super::{DownlinkChannel, HostedMapDownlinkChannel, MapDlState};
@@ -55,6 +56,7 @@ enum Event {
     Removed(i32, Text, HashMap<i32, Text>),
     Cleared(HashMap<i32, Text>),
     Unlinked,
+    Failed,
 }
 
 impl Event {
@@ -103,10 +105,12 @@ struct FakeLifecycle {
     events: Events,
 }
 
-impl<'a> OnLinked<'a, FakeAgent> for FakeLifecycle {
-    type OnLinkedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnLinked<FakeAgent> for FakeLifecycle {
+    type OnLinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_linked(&'a self) -> Self::OnLinkedHandler {
+    fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         SideEffect::from(move || {
             self.events.lock().push(Event::Linked);
         })
@@ -114,10 +118,12 @@ impl<'a> OnLinked<'a, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnUnlinked<'a, FakeAgent> for FakeLifecycle {
-    type OnUnlinkedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnUnlinked<FakeAgent> for FakeLifecycle {
+    type OnUnlinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_unlinked(&'a self) -> Self::OnUnlinkedHandler {
+    fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         SideEffect::from(move || {
             self.events.lock().push(Event::Unlinked);
         })
@@ -125,10 +131,25 @@ impl<'a> OnUnlinked<'a, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnSynced<'a, HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
-    type OnSyncedHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnFailed<FakeAgent> for FakeLifecycle {
+    type OnFailedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_synced(&'a self, value: &HashMap<i32, Text>) -> Self::OnSyncedHandler {
+    fn on_failed(&self) -> Self::OnFailedHandler<'_> {
+        SideEffect::from(move || {
+            self.events.lock().push(Event::Failed);
+        })
+        .boxed()
+    }
+}
+
+impl OnSynced<HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
+    type OnSyncedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
+
+    fn on_synced<'a>(&'a self, value: &HashMap<i32, Text>) -> Self::OnSyncedHandler<'a> {
         let map = value.clone();
         SideEffect::from(move || {
             self.events.lock().push(Event::Synced(map));
@@ -137,16 +158,18 @@ impl<'a> OnSynced<'a, HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnDownlinkUpdate<'a, i32, Text, FakeAgent> for FakeLifecycle {
-    type OnUpdateHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnDownlinkUpdate<i32, Text, FakeAgent> for FakeLifecycle {
+    type OnUpdateHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_update(
+    fn on_update<'a>(
         &'a self,
         key: i32,
         map: &HashMap<i32, Text>,
         previous: Option<Text>,
         new_value: &Text,
-    ) -> Self::OnUpdateHandler {
+    ) -> Self::OnUpdateHandler<'a> {
         let map = map.clone();
         let new_value = new_value.clone();
         SideEffect::from(move || {
@@ -158,15 +181,17 @@ impl<'a> OnDownlinkUpdate<'a, i32, Text, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnDownlinkRemove<'a, i32, Text, FakeAgent> for FakeLifecycle {
-    type OnRemoveHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnDownlinkRemove<i32, Text, FakeAgent> for FakeLifecycle {
+    type OnRemoveHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_remove(
+    fn on_remove<'a>(
         &'a self,
         key: i32,
         map: &HashMap<i32, Text>,
         removed: Text,
-    ) -> Self::OnRemoveHandler {
+    ) -> Self::OnRemoveHandler<'a> {
         let map = map.clone();
         SideEffect::from(move || {
             self.events.lock().push(Event::Removed(key, removed, map));
@@ -175,10 +200,12 @@ impl<'a> OnDownlinkRemove<'a, i32, Text, FakeAgent> for FakeLifecycle {
     }
 }
 
-impl<'a> OnDownlinkClear<'a, i32, Text, FakeAgent> for FakeLifecycle {
-    type OnClearHandler = BoxEventHandler<'a, FakeAgent>;
+impl OnDownlinkClear<i32, Text, FakeAgent> for FakeLifecycle {
+    type OnClearHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
 
-    fn on_clear(&'a self, map: HashMap<i32, Text>) -> Self::OnClearHandler {
+    fn on_clear(&self, map: HashMap<i32, Text>) -> Self::OnClearHandler<'_> {
         SideEffect::from(move || {
             self.events.lock().push(Event::Cleared(map));
         })
@@ -279,6 +306,7 @@ async fn terminate_on_error() {
     let TestContext {
         mut channel,
         mut sender,
+        events,
         ..
     } = make_hosted_input(MapDownlinkConfig::default());
 
@@ -287,8 +315,11 @@ async fn terminate_on_error() {
     assert!(sender.sender.get_mut().write_u8(100).await.is_ok()); //Invalid message kind tag.
 
     assert!(matches!(channel.await_ready().await, Some(Err(_))));
-    assert!(channel.next_event(&agent).is_none());
-    assert!(channel.await_ready().await.is_none());
+    let handler = channel
+        .next_event(&agent)
+        .expect("Expected failure response.");
+    run_handler(handler, &agent);
+    assert_eq!(take_events(&events), vec![Event::Failed]);
 }
 
 fn take_events(events: &Events) -> Vec<Event> {
@@ -297,13 +328,15 @@ fn take_events(events: &Events) -> Vec<Event> {
 
 use super::super::test_support::run_handler;
 
+type NotificationsAndEvents = Vec<(
+    DownlinkNotification<MapMessage<i32, Text>>,
+    Option<Vec<Event>>,
+)>;
+
 async fn run_with_expectations(
     context: &mut TestContext,
     agent: &FakeAgent,
-    notifications: Vec<(
-        DownlinkNotification<MapMessage<i32, Text>>,
-        Option<Vec<Event>>,
-    )>,
+    notifications: NotificationsAndEvents,
 ) {
     let TestContext {
         channel,
@@ -434,8 +467,10 @@ async fn emit_event_handlers() {
 
 #[tokio::test]
 async fn emit_events_before_synced() {
-    let mut config = MapDownlinkConfig::default();
-    config.events_when_not_synced = true;
+    let config = MapDownlinkConfig {
+        events_when_not_synced: true,
+        ..Default::default()
+    };
     let mut context = make_hosted_input(config);
 
     let agent = FakeAgent;
@@ -605,8 +640,10 @@ async fn emit_drop_all_handlers() {
 
 #[tokio::test]
 async fn revive_unlinked_downlink() {
-    let mut config = MapDownlinkConfig::default();
-    config.terminate_on_unlinked = false;
+    let config = MapDownlinkConfig {
+        terminate_on_unlinked: false,
+        ..Default::default()
+    };
 
     let mut context = make_hosted_input(config);
 

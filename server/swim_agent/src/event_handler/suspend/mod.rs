@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,12 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::{future::BoxFuture, stream::FuturesUnordered, Future, FutureExt};
+use std::time::Duration;
+
+use futures::{
+    future::{BoxFuture, Either},
+    stream::FuturesUnordered,
+    Future, FutureExt,
+};
 use static_assertions::assert_obj_safe;
 
 use crate::meta::AgentMetadata;
 
-use super::{ActionContext, BoxEventHandler, EventHandler, HandlerAction, StepResult};
+use super::{
+    ActionContext, BoxEventHandler, EventHandler, HandlerAction, HandlerActionExt, StepResult,
+    UnitHandler,
+};
 
 #[cfg(test)]
 mod tests;
@@ -26,7 +35,7 @@ pub type HandlerFuture<Context> = BoxFuture<'static, BoxEventHandler<'static, Co
 
 /// Trait for suspend handler futures into the task for an agent.
 pub trait Spawner<Context> {
-    /// Suspend a future and hand it over to the task runing the agent. The future will
+    /// Suspend a future and hand it over to the task running the agent. The future will
     /// result in an event handler that will be executed by the agent task after the
     /// future completes.
     fn spawn_suspend(&self, fut: HandlerFuture<Context>);
@@ -73,7 +82,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -91,5 +100,35 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+}
+
+pub fn run_after<Context, H>(
+    delay: Duration,
+    handler: H,
+) -> impl EventHandler<Context> + Send + 'static
+where
+    H: EventHandler<Context> + Send + 'static,
+{
+    let fut = tokio::time::sleep(delay).map(move |_| handler);
+    Suspend::new(fut)
+}
+
+pub fn run_schedule<Context, I, H>(schedule: I) -> impl EventHandler<Context> + Send + 'static
+where
+    Context: 'static,
+    I: IntoIterator<Item = (Duration, H)>,
+    I::IntoIter: Send + 'static,
+    H: EventHandler<Context> + Send + 'static,
+{
+    let mut it = schedule.into_iter();
+    if let Some((delay, handler)) = it.next() {
+        let sched_handler = handler.and_then(move |_| {
+            let h: Box<dyn EventHandler<Context> + Send> = Box::new(run_schedule(it));
+            h
+        });
+        Either::Left(run_after(delay, sched_handler))
+    } else {
+        Either::Right(UnitHandler::default())
     }
 }
