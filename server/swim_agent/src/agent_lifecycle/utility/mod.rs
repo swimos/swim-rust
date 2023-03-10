@@ -178,7 +178,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// Create an event handler that will update an entry in a map store of the agent.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map store.
+    /// * `store` - Projection to the map store.
     /// * `key - The key to update.
     /// * `value` - The new value.
     pub fn update_store<K, V>(

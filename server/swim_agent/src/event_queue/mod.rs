@@ -137,15 +137,18 @@ where
 
 pub type Action<K> = MapOperation<K, ()>;
 
-fn to_operation<K, V>(content: &HashMap<K, V>, action: Action<K>) -> Option<MapOperation<K, &V>>
+pub fn to_operation<K, V>(content: &HashMap<K, V>, action: Action<K>) -> Option<MapOperation<K, &V>>
 where
     K: Eq + Hash + Clone,
 {
     match action {
-        MapOperation::Update { key: k, .. } => content
-            .get(&k)
-            .map(|v| MapOperation::Update { key: k, value: v }),
-        MapOperation::Remove { key: k } => Some(MapOperation::Remove { key: k }),
-        MapOperation::Clear => Some(MapOperation::Clear),
+        MapOperation::Update { key, .. } => content
+            .get(&key)
+            .map(|v| MapOperation::Update { key, value: v }),
+        MapOperation::Remove { key } if content.contains_key(&key) => {
+            Some(MapOperation::Remove { key })
+        }
+        MapOperation::Clear if !content.is_empty() => Some(MapOperation::Clear),
+        _ => None,
     }
 }

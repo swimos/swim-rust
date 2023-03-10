@@ -38,7 +38,7 @@ type Inner<K, V> = MapStoreInner<K, V, EventQueue<K, ()>>;
 
 /// Adding a [`MapStore`] to an agent provides additional state that is not exposed as a lane.
 /// If persistence is enabled (and the store is not marked as transient) the state of the store
-/// will be persisted in the same was as the state of a lane.
+/// will be persisted in the same way as the state of a lane.
 #[derive(Debug)]
 pub struct MapStore<K, V> {
     id: u64,
@@ -74,7 +74,7 @@ where
         self.inner.borrow_mut().update(key, value)
     }
 
-    /// Remove and entry from the map.
+    /// Remove an entry from the map.
     pub fn remove(&self, key: &K) {
         self.inner.borrow_mut().remove(key)
     }
