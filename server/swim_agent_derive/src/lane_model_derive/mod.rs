@@ -492,10 +492,10 @@ impl<'a> WriteToBufferMatch<'a> {
         let ItemModel { name, kind, .. } = model;
         match kind.item_kind() {
             ItemKind::Lane => {
-                quote!(#name_lit => ::core::option::Option::Some(#root::lanes::Lane::write_to_buffer(&self.#name, buffer)))
+                quote!(#name_lit => ::core::option::Option::Some(#root::lanes::LaneItem::write_to_buffer(&self.#name, buffer)))
             }
             ItemKind::Store => {
-                quote!(#name_lit => ::core::option::Option::Some(#root::stores::Store::write_to_buffer(&self.#name, buffer)))
+                quote!(#name_lit => ::core::option::Option::Some(#root::stores::StoreItem::write_to_buffer(&self.#name, buffer)))
             }
         }
     }

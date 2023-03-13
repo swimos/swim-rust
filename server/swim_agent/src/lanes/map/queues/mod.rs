@@ -19,7 +19,7 @@ use swim_api::protocol::agent::LaneResponse;
 use swim_api::protocol::map::MapOperation;
 use uuid::Uuid;
 
-use crate::event_queue::EventQueue;
+use crate::event_queue::{to_operation, EventQueue};
 use crate::map_storage::MapEventQueue;
 
 /// For a sync operation on a map lane, keeps track of which keys are synced for a given remote.
@@ -185,19 +185,6 @@ where
                 queue.clear();
             }
         }
-    }
-}
-
-fn to_operation<K: Eq + Hash, V>(
-    content: &HashMap<K, V>,
-    action: Action<K>,
-) -> Option<MapOperation<K, &V>> {
-    match action {
-        MapOperation::Update { key: k, .. } => content
-            .get(&k)
-            .map(|v| MapOperation::Update { key: k, value: v }),
-        MapOperation::Remove { key: k } => Some(MapOperation::Remove { key: k }),
-        MapOperation::Clear => Some(MapOperation::Clear),
     }
 }
 
