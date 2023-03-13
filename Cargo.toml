@@ -12,7 +12,8 @@ members = [
     "swim_downlink",
     "server/swim_*",
     "example_apps/basic",
-    "example_apps/multi/server"
+    "example_apps/multi/server",
+    "example_apps/multi/client"
 ]
 
 exclude = [

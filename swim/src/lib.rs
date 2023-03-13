@@ -50,6 +50,7 @@ pub mod route {
     pub use swim_utilities::routing::route_pattern::{
         ApplyError, ParseError, RoutePattern, UnapplyError,
     };
+    pub use swim_utilities::routing::route_uri::RouteUri;
 }
 
 pub mod io {
