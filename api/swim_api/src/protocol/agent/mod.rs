@@ -145,17 +145,13 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 enum LaneRequestDecoderState {
+    #[default]
     ReadingHeader,
     ReadingBody,
 }
 
-impl Default for LaneRequestDecoderState {
-    fn default() -> Self {
-        LaneRequestDecoderState::ReadingHeader
-    }
-}
 #[derive(Debug, Default)]
 pub struct LaneRequestDecoder<D> {
     state: LaneRequestDecoderState,
@@ -278,17 +274,12 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 enum LaneResponseDecoderState {
+    #[default]
     Header,
     Std,
     Sync(Uuid),
-}
-
-impl Default for LaneResponseDecoderState {
-    fn default() -> Self {
-        LaneResponseDecoderState::Header
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]

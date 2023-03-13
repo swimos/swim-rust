@@ -584,7 +584,7 @@ where
             let len = if reader.remaining() < std::mem::size_of::<u32>() {
                 return Err(MsgPackReadError::Incomplete);
             } else {
-                reader.get_u32() as u32
+                reader.get_u32()
             };
             let blob = read_blob(reader, len)?;
             feed(recognizer.feed_event(blob.into()))

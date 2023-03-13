@@ -19,17 +19,12 @@ use std::convert::TryFrom;
 use std::option::Option::None;
 use swim_model::{Attr, Blob, Item, Text, Value};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 enum RecordKey {
+    #[default]
     NoKey,
     Attr(Text),
     Slot(Value),
-}
-
-impl Default for RecordKey {
-    fn default() -> Self {
-        RecordKey::NoKey
-    }
 }
 
 #[derive(Debug, Default)]

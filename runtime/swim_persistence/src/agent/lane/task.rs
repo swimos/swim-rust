@@ -23,8 +23,9 @@ use swim_store::EngineInfo;
 use swim_utilities::trigger;
 
 /// Aggregated node store errors.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub enum NodeStoreErrors {
+    #[default]
     None,
     Failed {
         /// Details about the store that generated this error report.
@@ -73,12 +74,6 @@ impl NodeStoreErrors {
             }
             NodeStoreErrors::Failed { errors, .. } => errors.push((lane_uri, report)),
         }
-    }
-}
-
-impl Default for NodeStoreErrors {
-    fn default() -> Self {
-        NodeStoreErrors::None
     }
 }
 

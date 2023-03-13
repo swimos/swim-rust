@@ -164,7 +164,7 @@ where
         } = self;
         let plane_name = plane_name.to_string();
 
-        open_plane(dir.path(), &plane_name, builder.clone(), keyspaces.clone())
+        open_plane(dir.path(), plane_name, builder.clone(), keyspaces.clone())
     }
 }
 

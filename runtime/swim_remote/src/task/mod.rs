@@ -16,6 +16,7 @@ use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
     num::NonZeroUsize,
+    pin::pin,
     str::Utf8Error,
 };
 
@@ -23,7 +24,6 @@ use bytes::BytesMut;
 use either::Either;
 use futures::{
     future::{join, join_all, ready, select},
-    pin_mut,
     stream::{unfold, FuturesUnordered},
     Future, SinkExt, Stream, StreamExt,
 };
@@ -536,7 +536,7 @@ impl IncomingTask {
             client_subscriptions,
             agent_routes,
         } = self;
-        pin_mut!(input);
+        let mut input = pin!(input);
 
         loop {
             let event: IncomingEvent<BytesStr> = tokio::select! {
@@ -828,8 +828,8 @@ where
     F2: Future<Output = ()>,
 {
     use futures::future::Either as FEither;
-    pin_mut!(in_task);
-    pin_mut!(out_task);
+    let in_task = pin!(in_task);
+    let out_task = pin!(out_task);
     let first_finished = select(in_task, out_task).await;
     kill_switch_tx.trigger();
     match first_finished {

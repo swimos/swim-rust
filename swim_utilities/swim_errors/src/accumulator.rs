@@ -15,8 +15,9 @@
 use std::iter::FromIterator;
 use swim_algebra::{Semigroup, Zero};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 enum ErrorsInner<E> {
+    #[default]
     None,
     Single(E),
     Multiple(Vec<E>),
@@ -57,12 +58,6 @@ impl<E> Errors<E> {
             ErrorsInner::Single(e) => vec![e],
             ErrorsInner::Multiple(v) => v,
         }
-    }
-}
-
-impl<E> Default for ErrorsInner<E> {
-    fn default() -> Self {
-        ErrorsInner::None
     }
 }
 

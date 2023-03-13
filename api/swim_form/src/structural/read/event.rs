@@ -99,7 +99,7 @@ impl Hash for NumericValue {
             NumericValue::BigInt(bi) => {
                 if let Some(n) = bi.to_i128() {
                     state.write_u8(INT_HASH);
-                    state.write_i128(n as i128);
+                    state.write_i128(n);
                 } else {
                     state.write_u8(BIGINT_HASH);
                     bi.hash(state);
@@ -108,7 +108,7 @@ impl Hash for NumericValue {
             NumericValue::BigUint(bi) => {
                 if let Some(n) = bi.to_i128() {
                     state.write_u8(INT_HASH);
-                    state.write_i128(n as i128);
+                    state.write_i128(n);
                 } else if let Some(n) = bi.to_bigint() {
                     state.write_u8(BIGINT_HASH);
                     n.hash(state);

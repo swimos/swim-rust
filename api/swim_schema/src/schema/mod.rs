@@ -1287,11 +1287,11 @@ impl StandardSchema {
     }
 }
 
-fn matches_head_attr<'a>(
+fn matches_head_attr(
     schema: &AttrSchema,
     required: bool,
     remainder: &StandardSchema,
-    record: &RefRecord<'a>,
+    record: &RefRecord<'_>,
 ) -> bool {
     match record.attrs.split_first() {
         Some((head, tail)) => match schema.matches_field(head) {

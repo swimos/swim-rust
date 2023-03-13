@@ -54,7 +54,9 @@ pub struct ServerBuilder {
 }
 
 #[non_exhaustive]
+#[derive(Default)]
 enum StoreConfig {
+    #[default]
     NoStore,
     InMemory,
     #[cfg(feature = "rocks_store")]
@@ -62,12 +64,6 @@ enum StoreConfig {
         path: Option<std::path::PathBuf>,
         options: crate::RocksOpts,
     },
-}
-
-impl Default for StoreConfig {
-    fn default() -> Self {
-        StoreConfig::NoStore
-    }
 }
 
 const DEFAULT_PORT: u16 = 0;

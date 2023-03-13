@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, pin::pin, time::Duration};
 
 use crate::{config::IntrospectionConfig, meta_agent::run_pulse_lane, route::NODE_PARAM};
 use futures::{
     future::{BoxFuture, Either},
-    pin_mut, FutureExt, SinkExt, StreamExt,
+    FutureExt, SinkExt, StreamExt,
 };
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
@@ -128,17 +128,14 @@ async fn run_task(
 ) -> Result<(), AgentTaskError> {
     let report_reader = handle.aggregate_reader();
     let (shutdown_tx, shutdown_rx) = trigger::trigger();
-    let pulse_lane = run_pulse_lane(
+    let pulse_lane = pin!(run_pulse_lane(
         shutdown_rx.clone(),
         pulse_interval,
         report_reader,
         pulse_io,
         |uplinks| NodePulse { uplinks },
-    );
-    let lanes_lane = run_lanes_descriptor_lane(shutdown_rx, handle, lanes_io);
-
-    pin_mut!(pulse_lane);
-    pin_mut!(lanes_lane);
+    ));
+    let lanes_lane = pin!(run_lanes_descriptor_lane(shutdown_rx, handle, lanes_io));
 
     match select(pulse_lane, lanes_lane).await {
         Either::Left((result, fut)) => {
