@@ -13,14 +13,15 @@
 // limitations under the License.
 
 use futures::future::join;
-use futures::stream::FuturesUnordered;
-use futures::{FutureExt, StreamExt};
+use futures::stream::{FuturesUnordered, unfold};
+use futures::{FutureExt, StreamExt, Stream};
 use ratchet::{SplittableExtension, WebSocket, WebSocketStream};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
+use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -62,6 +63,7 @@ use crate::server::ServerHandle;
 use self::downlinks::{DownlinkConnectionTask, ServerConnector};
 use self::ids::{IdIssuer, IdKind};
 
+use super::error::UnresolvableRoute;
 use super::store::ServerPersistence;
 use super::{Server, ServerError};
 
@@ -82,6 +84,29 @@ pub struct SwimServer<Net, Ws, Store> {
     introspection: Option<IntrospectionConfig>,
 }
 
+pub struct Transport<Net, Ws> {
+    networking: Net,
+    websockets: Ws,
+}
+
+impl<Net, Ws> Transport<Net, Ws> {
+    pub fn new(networking: Net,
+        websockets: Ws) -> Self {
+            Transport { networking, websockets }
+        }
+}
+
+pub struct StartAgentRequest {
+    route: RouteUri,
+    response: oneshot::Sender<Result<(), UnresolvableRoute>>,
+}
+
+impl StartAgentRequest {
+    pub fn new(route: RouteUri, response: oneshot::Sender<Result<(), UnresolvableRoute>>) -> Self {
+        StartAgentRequest { route, response }
+    }
+}
+
 type ClientPromiseTx = oneshot::Sender<Result<EstablishedClient, NewClientError>>;
 type ClientPromiseRx = oneshot::Receiver<Result<EstablishedClient, NewClientError>>;
 
@@ -98,6 +123,7 @@ enum ServerEvent<Sock, Ext> {
         ClientPromiseTx,
     ),
     LocalClient(AttachClient),
+    StartAgent(StartAgentRequest),
 }
 
 /// Response type, sent by the server, after receiving a [`ClientRegistration`].
@@ -209,12 +235,12 @@ where
     pub fn new(
         plane: PlaneModel,
         addr: SocketAddr,
-        networking: Net,
-        websockets: Ws,
+        transport: Transport<Net, Ws>,
         config: SwimServerConfig,
         store: Store,
         introspection: Option<IntrospectionConfig>,
     ) -> Self {
+        let Transport { networking, websockets } = transport;
         SwimServer {
             plane,
             addr,
@@ -225,6 +251,16 @@ where
             introspection,
         }
     }
+}
+
+fn start_req_stream(maybe_rx: Option<mpsc::Receiver<StartAgentRequest>>) -> impl Stream<Item = StartAgentRequest> + Send {
+    unfold(maybe_rx, |state| async move {
+        if let Some(mut rx) = state {
+            rx.recv().await.map(move |req| (req, Some(rx)))
+        } else {
+            None
+        }
+    })
 }
 
 impl<Net, Ws, Store> SwimServer<Net, Ws, Store>
@@ -243,14 +279,16 @@ where
     ) {
         let (tx, rx) = trigger::trigger();
         let (addr_tx, addr_rx) = oneshot::channel();
-        let fut = self.run_inner(rx, addr_tx, server_conn);
-        (fut, ServerHandle::new(tx, addr_rx))
+        let (req_tx, req_rx) = mpsc::channel(8);
+        let fut = self.run_inner(rx, addr_tx, Some(req_rx), server_conn);
+        (fut, ServerHandle::new(tx, addr_rx, req_tx))
     }
 
     async fn run_inner(
         self,
         stop_signal: trigger::Receiver,
         addr_tx: oneshot::Sender<SocketAddr>,
+        start_requests_rx: Option<mpsc::Receiver<StartAgentRequest>>,
         mut server_conn: ServerConnector,
     ) -> Result<(), ServerError> {
         let SwimServer {
@@ -290,6 +328,8 @@ where
 
         let mut routes = plane.routes.into_iter().collect();
 
+        let mut start_reqs = pin!(start_req_stream(start_requests_rx));
+
         let introspection_resolver = introspection.map(|intro_config| {
             start_introspection(
                 intro_config,
@@ -322,6 +362,7 @@ where
                         Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
                         Some(reason) = dl_connection_tasks.next(), if !dl_connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
                         Some(event) = client_tasks.next(), if !client_tasks.is_empty() => event,
+                        Some(req) = start_reqs.next() => ServerEvent::StartAgent(req),
                         maybe_result = accept_stream.next() => {
                             if let Some(result) = maybe_result {
                                 ServerEvent::NewConnection(result)
@@ -613,6 +654,24 @@ where
                 ServerEvent::LocalClient(_) => {
                     todo!("Intra-plane commands not yet supported.")
                 }
+                ServerEvent::StartAgent(StartAgentRequest { route, response }) => {
+                    info!(route = %route, "Attempting to start an agent instance.");
+                    let node = Text::new(route.as_str());
+                    let node_store_fut = plane_store.node_store(node.as_str());
+                    let agent_tasks_ref = &agent_tasks;
+                    let result = agents.resolve_agent(node, move |name, route_task| {
+                        let task = route_task.run_agent_with_store(node_store_fut);
+                        agent_tasks_ref.push(attach_node(name, config.channel_coop_budget, task));
+                    });
+                    let resp_result = if result.is_ok() {
+                        Ok(())
+                    } else {
+                        Err(UnresolvableRoute::new(route))
+                    };
+                    if response.send(resp_result).is_err() {
+                        info!("Agent start request dropped before it was satisfied.");
+                    }
+                },
             }
         }
 

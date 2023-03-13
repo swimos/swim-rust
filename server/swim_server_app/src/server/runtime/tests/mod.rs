@@ -61,7 +61,7 @@ use self::{
 
 use super::{
     downlinks::{downlink_task_connector, DownlinksConnector},
-    SwimServer,
+    SwimServer, Transport,
 };
 use agent::{TestMessage, LANE};
 
@@ -129,8 +129,7 @@ where
     let server = SwimServer::new(
         plane,
         addr,
-        networking,
-        websockets,
+        Transport::new(networking, websockets),
         config,
         StoreDisabled,
         None,
