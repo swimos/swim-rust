@@ -87,10 +87,10 @@ impl<'a> Stream for PruneRemotes<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{pin::pin, time::Duration};
 
     use super::PruneRemotes;
-    use futures::{pin_mut, StreamExt};
+    use futures::StreamExt;
     use tokio::time::Instant;
     use uuid::Uuid;
 
@@ -98,8 +98,7 @@ mod tests {
 
     #[tokio::test]
     async fn single_id() {
-        let delay = tokio::time::sleep(Duration::ZERO);
-        pin_mut!(delay);
+        let delay = pin!(tokio::time::sleep(Duration::ZERO));
         let mut prune_remotes = PruneRemotes::new(delay);
         assert!(prune_remotes.is_empty());
         assert!(prune_remotes.next().await.is_none());
@@ -115,8 +114,7 @@ mod tests {
 
     #[tokio::test]
     async fn multiple_ids() {
-        let delay = tokio::time::sleep(Duration::ZERO);
-        pin_mut!(delay);
+        let delay = pin!(tokio::time::sleep(Duration::ZERO));
         let mut prune_remotes = PruneRemotes::new(delay);
 
         let ids = vec![

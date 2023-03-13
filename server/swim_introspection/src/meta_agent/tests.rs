@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{num::NonZeroUsize, time::Duration};
+use std::{num::NonZeroUsize, pin::pin, time::Duration};
 
-use futures::{future::join, pin_mut, Future, SinkExt, StreamExt};
+use futures::{future::join, Future, SinkExt, StreamExt};
 use swim_api::{
     meta::uplink::WarpUplinkPulse,
     protocol::{
@@ -263,10 +263,8 @@ const PERIOD: Duration = Duration::from_secs(1);
 
 #[tokio::test(start_paused = true)]
 async fn drive_sleep_stream() {
-    let sleep = tokio::time::sleep(PERIOD);
-    pin_mut!(sleep);
-    let stream = sleep_stream(PERIOD, sleep);
-    pin_mut!(stream);
+    let sleep = pin!(tokio::time::sleep(PERIOD));
+    let mut stream = pin!(sleep_stream(PERIOD, sleep));
 
     let t0 = Instant::now();
 

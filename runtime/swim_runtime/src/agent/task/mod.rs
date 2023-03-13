@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
-use std::pin::Pin;
+use std::pin::{pin, Pin};
 use std::time::Duration;
 
 use crate::agent::store::StoreInitError;
@@ -41,7 +41,6 @@ use super::{
 };
 use bytes::{Bytes, BytesMut};
 use futures::future::BoxFuture;
-use futures::pin_mut;
 use futures::stream::FuturesUnordered;
 use futures::{
     future::{join, select as fselect, Either},
@@ -1591,11 +1590,9 @@ where
 
     let initialization = Initialization::new(reporting, runtime_config.lane_init_timeout);
 
-    let timeout_delay = sleep(runtime_config.inactive_timeout);
-    let remote_prune_delay = sleep(Duration::default());
+    let mut timeout_delay = pin!(sleep(runtime_config.inactive_timeout));
+    let remote_prune_delay = pin!(sleep(Duration::default()));
 
-    pin_mut!(timeout_delay);
-    pin_mut!(remote_prune_delay);
     let mut streams = WriteTaskEvents::new(
         runtime_config.inactive_timeout,
         runtime_config.prune_remote_delay,
@@ -1801,8 +1798,8 @@ where
     F1: Future<Output = ()>,
     F2: Future<Output = Result<(), StoreError>>,
 {
-    pin_mut!(read);
-    pin_mut!(write);
+    let read = pin!(read);
+    let write = pin!(write);
     let first_finished = fselect(read, write).await;
     kill_switch_tx.trigger();
     match first_finished {
