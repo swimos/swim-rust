@@ -16,7 +16,10 @@ use bytes::BytesMut;
 
 use crate::{agent_model::WriteResult, AgentItem};
 
+pub mod map;
 pub mod value;
+
+pub use self::{map::MapStore, value::ValueStore};
 
 /// Base trait for all agent items that model stores (are not directly exposed outside the agent).
 pub trait StoreItem: AgentItem {

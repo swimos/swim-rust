@@ -19,6 +19,7 @@ pub mod downlink_lifecycle;
 pub mod event_handler;
 mod event_queue;
 pub mod lanes;
+mod map_storage;
 pub mod meta;
 pub mod stores;
 #[cfg(test)]
