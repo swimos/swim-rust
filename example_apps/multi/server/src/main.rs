@@ -21,19 +21,18 @@ use swim::{
 };
 use tokio::select;
 
-use crate::agent::{ExampleAgent, ExampleLifecycle};
+use crate::agent::{EventGenerator, ExampleAgent};
 
 mod agent;
-mod downlink;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let route = RoutePattern::parse_str("/example")?;
+    let route = RoutePattern::parse_str("/:name")?;
 
-    let lifecycle = ExampleLifecycle;
+    let lifecycle = EventGenerator::new(Duration::from_secs(5));
     let agent = AgentModel::new(ExampleAgent::default, lifecycle.into_lifecycle());
 
-    let server = ServerBuilder::with_plane_name("Example Plane")
+    let server = ServerBuilder::with_plane_name("Server Plane")
         .add_route(route, agent)
         .update_config(|config| {
             config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
