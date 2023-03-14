@@ -37,8 +37,8 @@ pub struct LinkLifecycle {
 }
 
 impl LinkLifecycle {
-    pub fn new(remote: String, node: RouteUri) -> Self {
-        LinkLifecycle { remote, node }
+    pub fn new(remote: &str, node: RouteUri) -> Self {
+        LinkLifecycle { remote: remote.to_string(), node }
     }
 }
 

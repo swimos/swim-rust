@@ -8,4 +8,4 @@ edition = "2021"
 [dependencies]
 swim = { path = "../../../swim", features = ["server", "agent"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"]}
-clap = { workspace = true }
+clap = { workspace = true, features = ["derive"] }

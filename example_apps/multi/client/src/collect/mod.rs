@@ -39,8 +39,8 @@ pub struct CollectLifecycle {
 }
 
 impl CollectLifecycle {
-    pub fn new(remote: String, nodes: Vec<RouteUri>) -> Self {
-        CollectLifecycle { remote, nodes }
+    pub fn new(remote: &str, nodes: Vec<RouteUri>) -> Self {
+        CollectLifecycle { remote: remote.to_string(), nodes }
     }
 }
 
