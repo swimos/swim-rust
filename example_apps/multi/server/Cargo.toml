@@ -7,5 +7,5 @@ edition = "2021"
 
 [dependencies]
 swim = { path = "../../../swim", features = ["server", "agent"] }
-tokio = { version = "1.22", features = ["rt-multi-thread", "macros", "signal"]}
-rand = "0.8"
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"]}
+rand = { workspace = true }
