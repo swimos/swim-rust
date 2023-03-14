@@ -14,7 +14,10 @@
 
 use std::error::Error;
 
+mod collect;
 mod link;
+
+const LANE_NAME: &str = "state";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

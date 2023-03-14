@@ -22,7 +22,7 @@ use swim::{
     route::RouteUri,
 };
 
-const LANE_NAME: &str = "state";
+use crate::LANE_NAME;
 
 #[derive(AgentLaneModel)]
 #[projections]
