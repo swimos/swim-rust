@@ -89,8 +89,8 @@ pub enum ItemKind {
 bitflags! {
 
     #[derive(Default)]
-    pub struct LaneFlags: u8 {
-        /// The state of the lane should not be persisted.
+    pub struct ItemFlags: u8 {
+        /// The state of the item should not be persisted.
         const TRANSIENT = 0b01;
     }
 
@@ -99,11 +99,11 @@ bitflags! {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ItemSpec {
     pub kind: ItemKind,
-    pub flags: LaneFlags,
+    pub flags: ItemFlags,
 }
 
 impl ItemSpec {
-    pub fn new(kind: ItemKind, flags: LaneFlags) -> Self {
+    pub fn new(kind: ItemKind, flags: ItemFlags) -> Self {
         ItemSpec { kind, flags }
     }
 }
@@ -409,7 +409,7 @@ where
                 match spec.kind {
                     ItemKind::Lane => {
                         let mut lane_conf = default_lane_config;
-                        if spec.flags.contains(LaneFlags::TRANSIENT) {
+                        if spec.flags.contains(ItemFlags::TRANSIENT) {
                             lane_conf.transient = true;
                         }
                         let io = context.add_lane(name, LaneKind::Value, lane_conf).await?;
@@ -436,7 +436,7 @@ where
                             return Err(AgentInitError::DuplicateLane(Text::new(name)));
                         }
                         let mut lane_conf = default_lane_config;
-                        if spec.flags.contains(LaneFlags::TRANSIENT) {
+                        if spec.flags.contains(ItemFlags::TRANSIENT) {
                             lane_conf.transient = true;
                         }
                         let io = context.add_lane(name, LaneKind::Map, lane_conf).await?;

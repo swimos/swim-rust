@@ -586,9 +586,9 @@ impl<'a> LaneSpecInsert<'a> {
             ItemKind::Store => quote!(#root::agent_model::ItemKind::Store),
         };
         let flags = if model.is_stateful() {
-            quote!(#root::agent_model::LaneFlags::empty())
+            quote!(#root::agent_model::ItemFlags::empty())
         } else {
-            quote!(#root::agent_model::LaneFlags::TRANSIENT)
+            quote!(#root::agent_model::ItemFlags::TRANSIENT)
         };
         quote!(::std::collections::HashMap::insert(&mut lanes, #lane_name, #root::agent_model::ItemSpec::new(#kind, #flags)))
     }
