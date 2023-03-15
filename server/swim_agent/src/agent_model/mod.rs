@@ -469,16 +469,17 @@ where
                     (ItemKind::Lane, UplinkKind::Value | UplinkKind::Supply) => {
                         value_like_lane_io.insert(Text::new(name), io);
                     }
-                    (ItemKind::Store, UplinkKind::Map) => {
-                        let (tx, _) = io;
-                        map_store_io.insert(Text::new(name), tx);
-                    }
                     (ItemKind::Lane, UplinkKind::Map) => {
                         map_lane_io.insert(Text::new(name), io);
                     }
-                    _ => {
+                    //The receivers for stores are no longer needed as the runtime never sends messages after initialization.
+                    (ItemKind::Store, UplinkKind::Value | UplinkKind::Supply) => {
                         let (tx, _) = io;
                         value_like_store_io.insert(Text::new(name), tx);
+                    }
+                    (ItemKind::Store, UplinkKind::Map) => {
+                        let (tx, _) = io;
+                        map_store_io.insert(Text::new(name), tx);
                     }
                 };
             }
