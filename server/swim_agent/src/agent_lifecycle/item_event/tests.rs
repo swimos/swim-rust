@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::{
-    agent_lifecycle::lane_event::{HLeaf, LaneEvent},
+    agent_lifecycle::item_event::{HLeaf, ItemEvent},
     event_handler::{HandlerAction, StepResult},
     meta::AgentMetadata,
     test_context::dummy_context,
@@ -23,7 +23,7 @@ use crate::{
 fn hleaf_lane_event() {
     let leaf = HLeaf;
 
-    assert!(leaf.lane_event(&(), "lane").is_none());
+    assert!(leaf.item_event(&(), "lane").is_none());
 }
 
 pub fn run_handler<H, Agent>(meta: AgentMetadata<'_>, agent: &Agent, mut event_handler: H)
@@ -32,14 +32,14 @@ where
 {
     loop {
         match event_handler.step(dummy_context(), meta, agent) {
-            StepResult::Continue { modified_lane } => {
-                assert!(modified_lane.is_none());
+            StepResult::Continue { modified_item } => {
+                assert!(modified_item.is_none());
             }
             StepResult::Fail(err) => {
                 panic!("Event handler failed: {}", err);
             }
-            StepResult::Complete { modified_lane, .. } => {
-                assert!(modified_lane.is_none());
+            StepResult::Complete { modified_item, .. } => {
+                assert!(modified_item.is_none());
                 break;
             }
         }

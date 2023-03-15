@@ -31,8 +31,8 @@ use crate::{
         ActionContext, AndThen, Decode, HandlerAction, HandlerActionExt, HandlerTrans,
         Modification, StepResult,
     },
+    item::AgentItem,
     meta::AgentMetadata,
-    AgentItem,
 };
 
 use super::{LaneItem, ProjTransform};
@@ -123,7 +123,7 @@ impl<Context, T> HandlerAction<Context> for DoCommand<Context, T> {
             let lane = projection(context);
             lane.command(cmd);
             StepResult::Complete {
-                modified_lane: Some(Modification::of(lane.id)),
+                modified_item: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {

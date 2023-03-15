@@ -587,7 +587,7 @@ pub struct AgentLifecycleDescriptor<'a> {
     pub lifecycle_type: &'a Type, //The type of the lifecycle (taken from the impl block).
     pub on_start: Option<&'a Ident>, //A handler attached to the on_start event.
     pub on_stop: Option<&'a Ident>, //A handler attached to the on_stop event.
-    pub lane_lifecycles: BinTree<String, LaneLifecycle<'a>>, //Labelled tree of lane handlers.
+    pub lane_lifecycles: BinTree<String, ItemLifecycle<'a>>, //Labelled tree of lane handlers.
 }
 
 /// Builder type for constructing an [`AgentLifecycleDescriptor`].
@@ -597,7 +597,7 @@ pub struct AgentLifecycleDescriptorBuilder<'a> {
     pub lifecycle_type: &'a Type,
     pub on_start: Option<&'a Ident>,
     pub on_stop: Option<&'a Ident>,
-    pub lane_lifecycles: BTreeMap<String, LaneLifecycle<'a>>,
+    pub lane_lifecycles: BTreeMap<String, ItemLifecycle<'a>>,
 }
 
 impl<'a> AgentLifecycleDescriptorBuilder<'a> {
@@ -661,18 +661,18 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             lane_lifecycles, ..
         } = self;
         match lane_lifecycles.get(&name) {
-            Some(LaneLifecycle::Command(_)) => Err(syn::Error::new_spanned(
+            Some(ItemLifecycle::Command(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!("Duplicate on_command handler for '{}'.", name),
             )),
-            Some(LaneLifecycle::Value(_)) => Err(syn::Error::new_spanned(
+            Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
                     "Lane '{}' has both command and value lane event handlers.",
                     name
                 ),
             )),
-            Some(LaneLifecycle::Map(_)) => Err(syn::Error::new_spanned(
+            Some(ItemLifecycle::Map(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
                     "Lane '{}' has both command and map lane event handlers.",
@@ -682,7 +682,7 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             _ => {
                 lane_lifecycles.insert(
                     name.clone(),
-                    LaneLifecycle::Command(CommandLifecycleDescriptor::new(
+                    ItemLifecycle::Command(CommandLifecycleDescriptor::new(
                         name,
                         handler_type,
                         method,
@@ -703,15 +703,15 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             lane_lifecycles, ..
         } = self;
         match lane_lifecycles.get_mut(&name) {
-            Some(LaneLifecycle::Command(_)) => Err(syn::Error::new_spanned(
+            Some(ItemLifecycle::Command(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
                     "Lane '{}' has both command and value lane event handlers.",
                     name
                 ),
             )),
-            Some(LaneLifecycle::Value(desc)) => desc.add_on_event(handler_type, method),
-            Some(LaneLifecycle::Map(_)) => Err(syn::Error::new_spanned(
+            Some(ItemLifecycle::Value(desc)) => desc.add_on_event(handler_type, method),
+            Some(ItemLifecycle::Map(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
                     "Lane '{}' has both value and map lane event handlers.",
@@ -721,7 +721,7 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             _ => {
                 lane_lifecycles.insert(
                     name.clone(),
-                    LaneLifecycle::Value(ValueLifecycleDescriptor::new_on_event(
+                    ItemLifecycle::Value(ValueLifecycleDescriptor::new_on_event(
                         name,
                         handler_type,
                         method,
@@ -742,15 +742,15 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             lane_lifecycles, ..
         } = self;
         match lane_lifecycles.get_mut(&name) {
-            Some(LaneLifecycle::Command(_)) => Err(syn::Error::new_spanned(
+            Some(ItemLifecycle::Command(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
                     "Lane '{}' has both command and value lane event handlers.",
                     name
                 ),
             )),
-            Some(LaneLifecycle::Value(desc)) => desc.add_on_set(handler_type, method),
-            Some(LaneLifecycle::Map(_)) => Err(syn::Error::new_spanned(
+            Some(ItemLifecycle::Value(desc)) => desc.add_on_set(handler_type, method),
+            Some(ItemLifecycle::Map(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
                     "Lane '{}' has both value and map lane event handlers.",
@@ -760,7 +760,7 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             _ => {
                 lane_lifecycles.insert(
                     name.clone(),
-                    LaneLifecycle::Value(ValueLifecycleDescriptor::new_on_set(
+                    ItemLifecycle::Value(ValueLifecycleDescriptor::new_on_set(
                         name,
                         handler_type,
                         method,
@@ -781,25 +781,25 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             lane_lifecycles, ..
         } = self;
         match lane_lifecycles.get_mut(&name) {
-            Some(LaneLifecycle::Command(_)) => Err(syn::Error::new_spanned(
+            Some(ItemLifecycle::Command(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
                     "Lane '{}' has both command and map lane event handlers.",
                     name
                 ),
             )),
-            Some(LaneLifecycle::Value(_)) => Err(syn::Error::new_spanned(
+            Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
                     "Lane '{}' has both value and map lane event handlers.",
                     name
                 ),
             )),
-            Some(LaneLifecycle::Map(desc)) => desc.add_on_update(map_type, method),
+            Some(ItemLifecycle::Map(desc)) => desc.add_on_update(map_type, method),
             _ => {
                 lane_lifecycles.insert(
                     name.clone(),
-                    LaneLifecycle::Map(MapLifecycleDescriptor::new_on_update(
+                    ItemLifecycle::Map(MapLifecycleDescriptor::new_on_update(
                         name, map_type, method,
                     )),
                 );
@@ -818,25 +818,25 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             lane_lifecycles, ..
         } = self;
         match lane_lifecycles.get_mut(&name) {
-            Some(LaneLifecycle::Command(_)) => Err(syn::Error::new_spanned(
+            Some(ItemLifecycle::Command(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
                     "Lane '{}' has both command and map lane event handlers.",
                     name
                 ),
             )),
-            Some(LaneLifecycle::Value(_)) => Err(syn::Error::new_spanned(
+            Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
                     "Lane '{}' has both value and map lane event handlers.",
                     name
                 ),
             )),
-            Some(LaneLifecycle::Map(desc)) => desc.add_on_remove(map_type, method),
+            Some(ItemLifecycle::Map(desc)) => desc.add_on_remove(map_type, method),
             _ => {
                 lane_lifecycles.insert(
                     name.clone(),
-                    LaneLifecycle::Map(MapLifecycleDescriptor::new_on_remove(
+                    ItemLifecycle::Map(MapLifecycleDescriptor::new_on_remove(
                         name, map_type, method,
                     )),
                 );
@@ -855,25 +855,25 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             lane_lifecycles, ..
         } = self;
         match lane_lifecycles.get_mut(&name) {
-            Some(LaneLifecycle::Command(_)) => Err(syn::Error::new_spanned(
+            Some(ItemLifecycle::Command(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
                     "Lane '{}' has both command and map lane event handlers.",
                     name
                 ),
             )),
-            Some(LaneLifecycle::Value(_)) => Err(syn::Error::new_spanned(
+            Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
                     "Lane '{}' has both value and map lane event handlers.",
                     name
                 ),
             )),
-            Some(LaneLifecycle::Map(desc)) => desc.add_on_clear(map_type, method),
+            Some(ItemLifecycle::Map(desc)) => desc.add_on_clear(map_type, method),
             _ => {
                 lane_lifecycles.insert(
                     name.clone(),
-                    LaneLifecycle::Map(MapLifecycleDescriptor::new_on_clear(
+                    ItemLifecycle::Map(MapLifecycleDescriptor::new_on_clear(
                         name, map_type, method,
                     )),
                 );
@@ -883,45 +883,45 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
     }
 }
 
-/// Lifecycle attached to a single lane.
-pub enum LaneLifecycle<'a> {
+/// Lifecycle attached to a single item.
+pub enum ItemLifecycle<'a> {
     Value(ValueLifecycleDescriptor<'a>),
     Command(CommandLifecycleDescriptor<'a>),
     Map(MapLifecycleDescriptor<'a>),
 }
 
-impl<'a> LaneLifecycle<'a> {
-    fn lane_name(&self) -> &str {
+impl<'a> ItemLifecycle<'a> {
+    fn item_name(&self) -> &str {
         let name = match self {
-            LaneLifecycle::Value(ValueLifecycleDescriptor { name, .. }) => name,
-            LaneLifecycle::Command(CommandLifecycleDescriptor { name, .. }) => name,
-            LaneLifecycle::Map(MapLifecycleDescriptor { name, .. }) => name,
+            ItemLifecycle::Value(ValueLifecycleDescriptor { name, .. }) => name,
+            ItemLifecycle::Command(CommandLifecycleDescriptor { name, .. }) => name,
+            ItemLifecycle::Map(MapLifecycleDescriptor { name, .. }) => name,
         };
         name.as_str()
     }
 
-    pub fn lane_ident(&self) -> Ident {
-        let name = self.lane_name();
+    pub fn item_ident(&self) -> Ident {
+        let name = self.item_name();
         Ident::new(name, Span::call_site())
     }
 
-    /// The type of node to create for the heterogeneous tree of lane lifecycles in
+    /// The type of node to create for the heterogeneous tree of item lifecycles in
     /// the agent lifecycle.
     pub fn branch_type(&self, root: &syn::Path) -> Path {
         match self {
-            LaneLifecycle::Value(ValueLifecycleDescriptor { .. }) => {
+            ItemLifecycle::Value(ValueLifecycleDescriptor { .. }) => {
                 parse_quote! {
-                    #root::agent_lifecycle::lane_event::ValueBranch
+                    #root::agent_lifecycle::item_event::ValueLikeBranch
                 }
             }
-            LaneLifecycle::Command(CommandLifecycleDescriptor { .. }) => {
+            ItemLifecycle::Command(CommandLifecycleDescriptor { .. }) => {
                 parse_quote! {
-                    #root::agent_lifecycle::lane_event::CommandBranch
+                    #root::agent_lifecycle::item_event::CommandBranch
                 }
             }
-            LaneLifecycle::Map(MapLifecycleDescriptor { .. }) => {
+            ItemLifecycle::Map(MapLifecycleDescriptor { .. }) => {
                 parse_quote! {
-                    #root::agent_lifecycle::lane_event::MapBranch
+                    #root::agent_lifecycle::item_event::MapLikeBranch
                 }
             }
         }

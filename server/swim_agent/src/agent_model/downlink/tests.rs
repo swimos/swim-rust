@@ -178,15 +178,15 @@ where
 {
     loop {
         match handler.step(action_context, meta, agent) {
-            StepResult::Continue { modified_lane } => {
-                assert!(modified_lane.is_none());
+            StepResult::Continue { modified_item } => {
+                assert!(modified_item.is_none());
             }
             StepResult::Fail(err) => panic!("{}", err),
             StepResult::Complete {
-                modified_lane,
+                modified_item,
                 result,
             } => {
-                assert!(modified_lane.is_none());
+                assert!(modified_item.is_none());
                 break result;
             }
         }

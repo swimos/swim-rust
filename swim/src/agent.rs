@@ -185,8 +185,8 @@ pub mod model {
 
 pub mod agent_model {
     pub use swim_agent::agent_model::{
-        AgentModel, AgentSpec, LaneFlags, LaneInitializer, LaneSpec, MapLaneInitializer,
-        ValueLaneInitializer, WriteResult,
+        AgentModel, AgentSpec, ItemFlags, ItemInitializer, ItemKind, ItemSpec, MapLaneInitializer,
+        MapStoreInitializer, ValueLaneInitializer, ValueStoreInitializer, WriteResult,
     };
 }
 
@@ -213,4 +213,8 @@ pub mod lanes {
             pub use swim_agent::lanes::map::lifecycle::StatefulMapLaneLifecycle;
         }
     }
+}
+
+pub mod stores {
+    pub use swim_agent::stores::{MapStore, StoreItem, ValueStore};
 }

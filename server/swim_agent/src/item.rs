@@ -12,21 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use self::{item_event::ItemEvent, on_start::OnStart, on_stop::OnStop};
+use std::collections::HashMap;
 
-pub mod item_event;
-pub mod on_start;
-pub mod on_stop;
-pub mod stateful;
-pub mod stateless;
-pub mod utility;
+use crate::lanes::map::MapLaneEvent;
 
-/// Trait for agent lifecycles.
-/// #Type Parameters
-/// * `Context` - The context in which the lifecycle events run (provides access to the lanes of the agent).
-pub trait AgentLifecycle<Context>: OnStart<Context> + OnStop<Context> + ItemEvent<Context> {}
+pub trait AgentItem {
+    fn id(&self) -> u64;
+}
 
-impl<L, Context> AgentLifecycle<Context> for L where
-    L: OnStart<Context> + OnStop<Context> + ItemEvent<Context>
-{
+pub trait ValueItem<T>: AgentItem {
+    fn read_with_prev<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<T>, &T) -> R;
+
+    fn init(&self, value: T);
+}
+
+pub trait MapItem<K, V>: AgentItem {
+    fn init(&self, map: HashMap<K, V>);
+
+    fn read_with_prev<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R;
 }

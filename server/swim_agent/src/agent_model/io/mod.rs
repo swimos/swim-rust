@@ -34,8 +34,8 @@ type ValueLaneReader = FramedRead<ByteReader, LaneRequestDecoder<WithLengthBytes
 type MapLaneReader =
     FramedRead<ByteReader, LaneRequestDecoder<MapMessageDecoder<RawMapOperationDecoder>>>;
 
-/// Used internally by the agent model for writing to lanes.
-pub struct LaneWriter {
+/// Used internally by the agent model for writing to items.
+pub struct ItemWriter {
     id: u64,
     writer: FramedWrite<ByteWriter, BytesCodec>,
     pub buffer: BytesMut,
@@ -63,9 +63,9 @@ impl LaneReader {
     }
 }
 
-impl LaneWriter {
+impl ItemWriter {
     pub fn new(id: u64, tx: ByteWriter) -> Self {
-        LaneWriter {
+        ItemWriter {
             id,
             writer: FramedWrite::new(tx, BytesCodec::default()),
             buffer: Default::default(),
@@ -73,7 +73,7 @@ impl LaneWriter {
     }
 
     pub async fn write(mut self) -> (Self, Result<(), std::io::Error>) {
-        let LaneWriter { writer, buffer, .. } = &mut self;
+        let ItemWriter { writer, buffer, .. } = &mut self;
         let data = buffer.split().freeze();
         let result = writer.send(data).await;
         (self, result)

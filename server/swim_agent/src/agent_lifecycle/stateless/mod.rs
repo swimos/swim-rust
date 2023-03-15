@@ -19,7 +19,7 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::agent_lifecycle::AgentLifecycle;
 
-use super::{lane_event::LaneEvent, on_start::OnStart, on_stop::OnStop};
+use super::{item_event::ItemEvent, on_start::OnStart, on_stop::OnStop};
 
 /// An implementation of [AgentLifecycle] with no shared state.
 ///
@@ -29,11 +29,11 @@ use super::{lane_event::LaneEvent, on_start::OnStart, on_stop::OnStop};
 /// * `FStop` - The `on_stop` event handler.
 /// * `LaneEv` - The event handlers for all lanes in the agent.
 #[derive(Debug)]
-pub struct BasicAgentLifecycle<Context, FStart = NoHandler, FStop = NoHandler, LaneEv = NoHandler> {
+pub struct BasicAgentLifecycle<Context, FStart = NoHandler, FStop = NoHandler, ItemEv = NoHandler> {
     _context: PhantomData<fn(Context)>,
     on_start: FStart,
     on_stop: FStop,
-    lane_event: LaneEv,
+    item_event: ItemEv,
 }
 
 impl<Context> Default for BasicAgentLifecycle<Context> {
@@ -42,19 +42,19 @@ impl<Context> Default for BasicAgentLifecycle<Context> {
             _context: Default::default(),
             on_start: Default::default(),
             on_stop: Default::default(),
-            lane_event: Default::default(),
+            item_event: Default::default(),
         }
     }
 }
 
 assert_impl_all!(BasicAgentLifecycle<()>: AgentLifecycle<()>, Send);
 
-impl<FStart, FStop, LaneEv, Context> OnStart<Context>
-    for BasicAgentLifecycle<Context, FStart, FStop, LaneEv>
+impl<FStart, FStop, ItemEv, Context> OnStart<Context>
+    for BasicAgentLifecycle<Context, FStart, FStop, ItemEv>
 where
     FStart: OnStart<Context>,
     FStop: Send,
-    LaneEv: Send,
+    ItemEv: Send,
 {
     type OnStartHandler<'a> = FStart::OnStartHandler<'a> where Self: 'a;
 
@@ -63,12 +63,12 @@ where
     }
 }
 
-impl<FStart, FStop, LaneEv, Context> OnStop<Context>
-    for BasicAgentLifecycle<Context, FStart, FStop, LaneEv>
+impl<FStart, FStop, ItemEv, Context> OnStop<Context>
+    for BasicAgentLifecycle<Context, FStart, FStop, ItemEv>
 where
     FStop: OnStop<Context>,
     FStart: Send,
-    LaneEv: Send,
+    ItemEv: Send,
 {
     type OnStopHandler<'a> = FStop::OnStopHandler<'a>
     where
@@ -79,64 +79,64 @@ where
     }
 }
 
-impl<FStart, FStop, LaneEv, Context> LaneEvent<Context>
-    for BasicAgentLifecycle<Context, FStart, FStop, LaneEv>
+impl<FStart, FStop, ItemEv, Context> ItemEvent<Context>
+    for BasicAgentLifecycle<Context, FStart, FStop, ItemEv>
 where
     FStop: Send,
     FStart: Send,
-    LaneEv: LaneEvent<Context>,
+    ItemEv: ItemEvent<Context>,
 {
-    type LaneEventHandler<'a> = LaneEv::LaneEventHandler<'a>
+    type ItemEventHandler<'a> = ItemEv::ItemEventHandler<'a>
     where
         Self: 'a;
 
-    fn lane_event<'a>(
+    fn item_event<'a>(
         &'a self,
         context: &Context,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>> {
-        self.lane_event.lane_event(context, lane_name)
+        item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
+        self.item_event.item_event(context, item_name)
     }
 }
 
-impl<Context, FStart, FStop, LaneEv> BasicAgentLifecycle<Context, FStart, FStop, LaneEv> {
-    pub fn on_start<F>(self, f: F) -> BasicAgentLifecycle<Context, FnHandler<F>, FStop, LaneEv>
+impl<Context, FStart, FStop, ItemEv> BasicAgentLifecycle<Context, FStart, FStop, ItemEv> {
+    pub fn on_start<F>(self, f: F) -> BasicAgentLifecycle<Context, FnHandler<F>, FStop, ItemEv>
     where
         FnHandler<F>: OnStart<Context>,
     {
         let BasicAgentLifecycle {
             on_stop,
-            lane_event,
+            item_event,
             ..
         } = self;
         BasicAgentLifecycle {
             _context: Default::default(),
             on_start: FnHandler(f),
             on_stop,
-            lane_event,
+            item_event,
         }
     }
 
-    pub fn on_stop<F>(self, f: F) -> BasicAgentLifecycle<Context, FStart, FnHandler<F>, LaneEv>
+    pub fn on_stop<F>(self, f: F) -> BasicAgentLifecycle<Context, FStart, FnHandler<F>, ItemEv>
     where
         FnHandler<F>: OnStop<Context>,
     {
         let BasicAgentLifecycle {
             on_start,
-            lane_event,
+            item_event,
             ..
         } = self;
         BasicAgentLifecycle {
             _context: Default::default(),
             on_start,
             on_stop: FnHandler(f),
-            lane_event,
+            item_event,
         }
     }
 
     pub fn on_lane_event<H>(self, handler: H) -> BasicAgentLifecycle<Context, FStart, FStop, H>
     where
-        H: LaneEvent<Context>,
+        H: ItemEvent<Context>,
     {
         let BasicAgentLifecycle {
             on_start, on_stop, ..
@@ -145,7 +145,7 @@ impl<Context, FStart, FStop, LaneEv> BasicAgentLifecycle<Context, FStart, FStop,
             _context: Default::default(),
             on_start,
             on_stop,
-            lane_event: handler,
+            item_event: handler,
         }
     }
 }

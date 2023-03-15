@@ -23,7 +23,7 @@ use swim_model::Text;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::{
-    agent_lifecycle::lane_event::LaneEvent,
+    agent_lifecycle::item_event::ItemEvent,
     agent_model::run_handler,
     event_handler::{
         ActionContext, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
@@ -138,12 +138,12 @@ impl HandlerAction<TestAgent> for Handler {
                 if let Some(lane) = targets.pop_front() {
                     if targets.is_empty() {
                         StepResult::Complete {
-                            modified_lane: Some(Modification::of(lane.id())),
+                            modified_item: Some(Modification::of(lane.id())),
                             result: (),
                         }
                     } else {
                         StepResult::Continue {
-                            modified_lane: Some(Modification::of(lane.id())),
+                            modified_item: Some(Modification::of(lane.id())),
                         }
                     }
                 } else {
@@ -173,16 +173,16 @@ fn chose_lane(lane_name: &str) -> Option<Lane> {
     }
 }
 
-impl LaneEvent<TestAgent> for TestLifecycle {
-    type LaneEventHandler<'a> = Handler
+impl ItemEvent<TestAgent> for TestLifecycle {
+    type ItemEventHandler<'a> = Handler
     where
         Self: 'a;
 
-    fn lane_event<'a>(
+    fn item_event<'a>(
         &'a self,
         _context: &TestAgent,
         lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>> {
+    ) -> Option<Self::ItemEventHandler<'a>> {
         let TestLifecycle { template } = self;
         chose_lane(lane_name)
             .and_then(|lane| template.get(&lane))
@@ -211,7 +211,7 @@ fn run_test_handler(agent: &TestAgent, lifecycle: TestLifecycle, start_with: Lan
 
     let mut collector = HashSet::new();
 
-    if let Some(handler) = lifecycle.lane_event(agent, start_with.name()) {
+    if let Some(handler) = lifecycle.item_event(agent, start_with.name()) {
         let result = run_handler(
             dummy_context(),
             meta,

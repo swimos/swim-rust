@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Debug;
+use std::{fmt::Debug, marker::PhantomData};
 
 use std::cmp::Ordering;
 
@@ -21,6 +21,7 @@ use futures::future::Either;
 use crate::{
     agent_lifecycle::utility::HandlerContext,
     event_handler::{FollowedBy, HandlerActionExt},
+    item::ValueItem,
     lanes::value::{
         lifecycle::{
             on_event::{OnEvent, OnEventShared},
@@ -29,27 +30,37 @@ use crate::{
         },
         ValueLane,
     },
+    stores::ValueStore,
 };
 
-use super::{HLeaf, HTree, LaneEvent, LaneEventShared};
+use super::{HLeaf, HTree, ItemEvent, ItemEventShared};
 
 #[cfg(test)]
 mod tests;
 
 pub type ValueLeaf<Context, T, LC> = ValueBranch<Context, T, LC, HLeaf, HLeaf>;
+pub type ValueStoreLeaf<Context, T, LC> = ValueStoreBranch<Context, T, LC, HLeaf, HLeaf>;
 
-/// Command lane lifecycle as a branch node of an [`HTree`].
-pub struct ValueBranch<Context, T, LC, L, R> {
+/// Value item lifecycle as a branch node of an [`HTree`].
+pub struct ValueLikeBranch<Context, T, Item, LC, L, R> {
+    _type: PhantomData<fn(T) -> T>,
     label: &'static str,
-    projection: fn(&Context) -> &ValueLane<T>,
+    projection: fn(&Context) -> &Item,
     lifecycle: LC,
     left: L,
     right: R,
 }
 
-impl<Context, T, LC: Clone, L: Clone, R: Clone> Clone for ValueBranch<Context, T, LC, L, R> {
+pub type ValueBranch<Context, T, LC, L, R> = ValueLikeBranch<Context, T, ValueLane<T>, LC, L, R>;
+pub type ValueStoreBranch<Context, T, LC, L, R> =
+    ValueLikeBranch<Context, T, ValueStore<T>, LC, L, R>;
+
+impl<Context, T, Item, LC: Clone, L: Clone, R: Clone> Clone
+    for ValueLikeBranch<Context, T, Item, LC, L, R>
+{
     fn clone(&self) -> Self {
         Self {
+            _type: Default::default(),
             label: self.label,
             projection: self.projection,
             lifecycle: self.lifecycle.clone(),
@@ -59,14 +70,14 @@ impl<Context, T, LC: Clone, L: Clone, R: Clone> Clone for ValueBranch<Context, T
     }
 }
 
-impl<Context, T, LC, L, R> Debug for ValueBranch<Context, T, LC, L, R>
+impl<Context, T, Item, LC, L, R> Debug for ValueLikeBranch<Context, T, Item, LC, L, R>
 where
     LC: Debug,
     L: Debug,
     R: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ValueBranch")
+        f.debug_struct("ValueLikeBranch")
             .field("label", &self.label)
             .field("projection", &"...")
             .field("lifecycle", &self.lifecycle)
@@ -76,24 +87,20 @@ where
     }
 }
 
-impl<Context, T, LC> ValueLeaf<Context, T, LC> {
-    pub fn leaf(
-        label: &'static str,
-        projection: fn(&Context) -> &ValueLane<T>,
-        lifecycle: LC,
-    ) -> Self {
+impl<Context, T, Item, LC> ValueLikeBranch<Context, T, Item, LC, HLeaf, HLeaf> {
+    pub fn leaf(label: &'static str, projection: fn(&Context) -> &Item, lifecycle: LC) -> Self {
         Self::new(label, projection, lifecycle, HLeaf, HLeaf)
     }
 }
 
-impl<Context, T, LC, L, R> ValueBranch<Context, T, LC, L, R>
+impl<Context, T, Item, LC, L, R> ValueLikeBranch<Context, T, Item, LC, L, R>
 where
     L: HTree,
     R: HTree,
 {
     pub fn new(
         label: &'static str,
-        projection: fn(&Context) -> &ValueLane<T>,
+        projection: fn(&Context) -> &Item,
         lifecycle: LC,
         left: L,
         right: R,
@@ -104,7 +111,8 @@ where
         if let Some(right_label) = right.label() {
             assert!(label < right_label);
         }
-        ValueBranch {
+        ValueLikeBranch {
+            _type: PhantomData,
             label,
             projection,
             lifecycle,
@@ -114,7 +122,9 @@ where
     }
 }
 
-impl<Context, T, LC, L: HTree, R: HTree> HTree for ValueBranch<Context, T, LC, L, R> {
+impl<Context, T, Item, LC, L: HTree, R: HTree> HTree
+    for ValueLikeBranch<Context, T, Item, LC, L, R>
+{
     fn label(&self) -> Option<&'static str> {
         Some(self.label)
     }
@@ -131,45 +141,47 @@ pub type ValueLifecycleHandlerShared<'a, Context, Shared, T, LC> = FollowedBy<
 >;
 
 type ValueBranchHandler<'a, Context, T, LC, L, R> = Either<
-    <L as LaneEvent<Context>>::LaneEventHandler<'a>,
+    <L as ItemEvent<Context>>::ItemEventHandler<'a>,
     Either<
         ValueLifecycleHandler<'a, Context, T, LC>,
-        <R as LaneEvent<Context>>::LaneEventHandler<'a>,
+        <R as ItemEvent<Context>>::ItemEventHandler<'a>,
     >,
 >;
 
 type ValueBranchHandlerShared<'a, Context, Shared, T, LC, L, R> = Either<
-    <L as LaneEventShared<Context, Shared>>::LaneEventHandler<'a>,
+    <L as ItemEventShared<Context, Shared>>::ItemEventHandler<'a>,
     Either<
         ValueLifecycleHandlerShared<'a, Context, Shared, T, LC>,
-        <R as LaneEventShared<Context, Shared>>::LaneEventHandler<'a>,
+        <R as ItemEventShared<Context, Shared>>::ItemEventHandler<'a>,
     >,
 >;
 
-impl<Context, T, LC, L, R> LaneEvent<Context> for ValueBranch<Context, T, LC, L, R>
+impl<Context, T, Item, LC, L, R> ItemEvent<Context> for ValueLikeBranch<Context, T, Item, LC, L, R>
 where
+    Item: ValueItem<T>,
     LC: ValueLaneLifecycle<T, Context>,
-    L: HTree + LaneEvent<Context>,
-    R: HTree + LaneEvent<Context>,
+    L: HTree + ItemEvent<Context>,
+    R: HTree + ItemEvent<Context>,
 {
-    type LaneEventHandler<'a> = ValueBranchHandler<'a, Context, T, LC, L, R>
+    type ItemEventHandler<'a> = ValueBranchHandler<'a, Context, T, LC, L, R>
     where
         Self: 'a;
 
-    fn lane_event<'a>(
+    fn item_event<'a>(
         &'a self,
         context: &Context,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>> {
-        let ValueBranch {
+        item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
+        let ValueLikeBranch {
             label,
             projection,
             lifecycle,
             left,
             right,
+            ..
         } = self;
-        match lane_name.cmp(*label) {
-            Ordering::Less => left.lane_event(context, lane_name).map(Either::Left),
+        match item_name.cmp(*label) {
+            Ordering::Less => left.item_event(context, item_name).map(Either::Left),
             Ordering::Equal => {
                 let lane = projection(context);
                 let handler = lane.read_with_prev(|prev, new_value| {
@@ -180,41 +192,43 @@ where
                 Some(Either::Right(Either::Left(handler)))
             }
             Ordering::Greater => right
-                .lane_event(context, lane_name)
+                .item_event(context, item_name)
                 .map(|r| Either::Right(Either::Right(r))),
         }
     }
 }
 
-impl<Context, Shared, T, LC, L, R> LaneEventShared<Context, Shared>
-    for ValueBranch<Context, T, LC, L, R>
+impl<Context, Shared, T, Item, LC, L, R> ItemEventShared<Context, Shared>
+    for ValueLikeBranch<Context, T, Item, LC, L, R>
 where
+    Item: ValueItem<T>,
     LC: ValueLaneLifecycleShared<T, Context, Shared>,
-    L: HTree + LaneEventShared<Context, Shared>,
-    R: HTree + LaneEventShared<Context, Shared>,
+    L: HTree + ItemEventShared<Context, Shared>,
+    R: HTree + ItemEventShared<Context, Shared>,
 {
-    type LaneEventHandler<'a> = ValueBranchHandlerShared<'a, Context, Shared, T, LC, L, R>
+    type ItemEventHandler<'a> = ValueBranchHandlerShared<'a, Context, Shared, T, LC, L, R>
     where
         Self: 'a,
         Shared: 'a;
 
-    fn lane_event<'a>(
+    fn item_event<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         context: &Context,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>> {
-        let ValueBranch {
+        item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
+        let ValueLikeBranch {
             label,
             projection,
             lifecycle,
             left,
             right,
+            ..
         } = self;
-        match lane_name.cmp(*label) {
+        match item_name.cmp(*label) {
             Ordering::Less => left
-                .lane_event(shared, handler_context, context, lane_name)
+                .item_event(shared, handler_context, context, item_name)
                 .map(Either::Left),
             Ordering::Equal => {
                 let lane = projection(context);
@@ -226,7 +240,7 @@ where
                 Some(Either::Right(Either::Left(handler)))
             }
             Ordering::Greater => right
-                .lane_event(shared, handler_context, context, lane_name)
+                .item_event(shared, handler_context, context, item_name)
                 .map(|r| Either::Right(Either::Right(r))),
         }
     }

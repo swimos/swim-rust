@@ -131,7 +131,7 @@ pub enum OpenStoreError {
     #[error("The runtime does not support stores.")]
     StoresNotSupported,
     #[error(
-        "A store of kind {requested} was requested but the prexisting store is of kind {actual}."
+        "A store of kind {requested} was requested but the pre-existing store is of kind {actual}."
     )]
     IncorrectStoreKind {
         requested: StoreKind,
@@ -209,6 +209,14 @@ pub enum AgentInitError {
     UserCodeError(Box<dyn std::error::Error + Send>),
     #[error("Initializing the state of an agent lane failed: {0}")]
     LaneInitializationFailure(FrameIoError),
+    #[error(
+        "Requested a store of kind {requested} for item {name} but store was of kind {actual}."
+    )]
+    IncorrectStoreKind {
+        name: Text,
+        requested: StoreKind,
+        actual: StoreKind,
+    },
     #[error("The parameters passed to the agent were invalid: {0}")]
     InvalidParameters(#[from] UnapplyError),
     #[error("Failed to initialize introspection for an agent: {0}")]

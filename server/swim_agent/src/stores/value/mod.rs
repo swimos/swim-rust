@@ -23,8 +23,8 @@ use tokio_util::codec::Encoder;
 use crate::{
     agent_model::WriteResult,
     event_handler::{ActionContext, EventHandlerError, HandlerAction, Modification, StepResult},
+    item::{AgentItem, ValueItem},
     meta::AgentMetadata,
-    AgentItem,
 };
 
 use super::StoreItem;
@@ -128,6 +128,26 @@ impl<T> AgentItem for ValueStore<T> {
     }
 }
 
+impl<T> ValueItem<T> for ValueStore<T> {
+    fn read_with_prev<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<T>, &T) -> R,
+    {
+        let ValueStore { inner, .. } = self;
+        let mut guard = inner.borrow_mut();
+        let Inner { content, previous } = &mut *guard;
+        let prev = previous.take();
+        f(prev, content)
+    }
+
+    fn init(&self, value: T) {
+        let ValueStore { inner, .. } = self;
+        let mut guard = inner.borrow_mut();
+        let Inner { content, .. } = &mut *guard;
+        *content = value;
+    }
+}
+
 const INFALLIBLE_SER: &str = "Serializing to recon should be infallible.";
 
 impl<T: StructuralWritable> StoreItem for ValueStore<T> {
@@ -218,7 +238,7 @@ impl<C, T> HandlerAction<C> for ValueStoreSet<C, T> {
             let store = projection(context);
             store.set(value);
             StepResult::Complete {
-                modified_lane: Some(Modification::of(store.id())),
+                modified_item: Some(Modification::of(store.id())),
                 result: (),
             }
         } else {

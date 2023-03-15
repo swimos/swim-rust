@@ -32,9 +32,9 @@ use crate::{
         ActionContext, AndThen, Decode, EventHandlerError, HandlerAction, HandlerActionExt,
         HandlerTrans, Modification, StepResult,
     },
+    item::{AgentItem, ValueItem},
     meta::AgentMetadata,
     stores::value::ValueStore,
-    AgentItem,
 };
 
 use super::{LaneItem, ProjTransform};
@@ -68,22 +68,9 @@ impl<T> ValueLane<T> {
         self.store.read(f)
     }
 
-    /// Read the state of the lane, consuming the previous value (used when triggering the `on_set` event
-    /// handler for the lane).
-    pub(crate) fn read_with_prev<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(Option<T>, &T) -> R,
-    {
-        self.store.read_with_prev(f)
-    }
-
     /// Update the state of the lane.
     pub fn set(&self, value: T) {
         self.store.set(value)
-    }
-
-    pub(crate) fn init(&self, value: T) {
-        self.store.init(value)
     }
 
     pub fn sync(&self, id: Uuid) {
@@ -134,6 +121,19 @@ impl<T: StructuralWritable> LaneItem for ValueLane<T> {
                 WriteResult::NoData
             }
         }
+    }
+}
+
+impl<T> ValueItem<T> for ValueLane<T> {
+    fn read_with_prev<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<T>, &T) -> R,
+    {
+        self.store.read_with_prev(f)
+    }
+
+    fn init(&self, value: T) {
+        self.store.init(value)
     }
 }
 
@@ -225,7 +225,7 @@ impl<C, T> HandlerAction<C> for ValueLaneSet<C, T> {
             let lane = projection(context);
             lane.set(value);
             StepResult::Complete {
-                modified_lane: Some(Modification::of(lane.id())),
+                modified_item: Some(Modification::of(lane.id())),
                 result: (),
             }
         } else {
@@ -248,7 +248,7 @@ impl<C, T> HandlerAction<C> for ValueLaneSync<C, T> {
             let lane = projection(context);
             lane.sync(id);
             StepResult::Complete {
-                modified_lane: Some(Modification::no_trigger(lane.id())),
+                modified_item: Some(Modification::no_trigger(lane.id())),
                 result: (),
             }
         } else {

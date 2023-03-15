@@ -14,12 +14,14 @@
 
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::marker::PhantomData;
 use std::{cmp::Ordering, collections::HashMap};
 
 use frunk::{Coprod, Coproduct};
 use futures::future::Either;
 
 use crate::agent_lifecycle::utility::HandlerContext;
+use crate::item::MapItem;
 use crate::lanes::map::lifecycle::MapLaneLifecycleShared;
 use crate::lanes::map::{
     lifecycle::{
@@ -30,13 +32,19 @@ use crate::lanes::map::{
     },
     MapLane, MapLaneEvent,
 };
+use crate::stores::MapStore;
 
-use super::{HLeaf, HTree, LaneEvent, LaneEventShared};
+use super::{HLeaf, HTree, ItemEvent, ItemEventShared};
 
 #[cfg(test)]
 mod tests;
 
 pub type MapLeaf<Context, K, V, LC> = MapBranch<Context, K, V, LC, HLeaf, HLeaf>;
+pub type MapBranch<Context, K, V, LC, L, R> = MapLikeBranch<Context, K, V, MapLane<K, V>, LC, L, R>;
+
+pub type MapStoreLeaf<Context, K, V, LC> = MapStoreBranch<Context, K, V, LC, HLeaf, HLeaf>;
+pub type MapStoreBranch<Context, K, V, LC, L, R> =
+    MapLikeBranch<Context, K, V, MapStore<K, V>, LC, L, R>;
 
 pub type MapLifecycleHandler<'a, Context, K, V, LC> = Coprod!(
     <LC as OnUpdate<K, V, Context>>::OnUpdateHandler<'a>,
@@ -51,18 +59,18 @@ pub type MapLifecycleHandlerShared<'a, Context, Shared, K, V, LC> = Coprod!(
 );
 
 type MapBranchHandler<'a, Context, K, V, LC, L, R> = Either<
-    <L as LaneEvent<Context>>::LaneEventHandler<'a>,
+    <L as ItemEvent<Context>>::ItemEventHandler<'a>,
     Either<
         MapLifecycleHandler<'a, Context, K, V, LC>,
-        <R as LaneEvent<Context>>::LaneEventHandler<'a>,
+        <R as ItemEvent<Context>>::ItemEventHandler<'a>,
     >,
 >;
 
 type MapBranchHandlerShared<'a, Context, Shared, K, V, LC, L, R> = Either<
-    <L as LaneEventShared<Context, Shared>>::LaneEventHandler<'a>,
+    <L as ItemEventShared<Context, Shared>>::ItemEventHandler<'a>,
     Either<
         MapLifecycleHandlerShared<'a, Context, Shared, K, V, LC>,
-        <R as LaneEventShared<Context, Shared>>::LaneEventHandler<'a>,
+        <R as ItemEventShared<Context, Shared>>::ItemEventHandler<'a>,
     >,
 >;
 
@@ -118,18 +126,23 @@ where
     }
 }
 
+type KeyValue<K, V> = fn((K, V)) -> (K, V);
 /// Map lane lifecycle as a branch node of an [`HTree`].
-pub struct MapBranch<Context, K, V, LC, L, R> {
+pub struct MapLikeBranch<Context, K, V, Item, LC, L, R> {
+    _type: PhantomData<KeyValue<K, V>>,
     label: &'static str,
-    projection: fn(&Context) -> &MapLane<K, V>,
+    projection: fn(&Context) -> &Item,
     lifecycle: LC,
     left: L,
     right: R,
 }
 
-impl<Context, K, V, LC: Clone, L: Clone, R: Clone> Clone for MapBranch<Context, K, V, LC, L, R> {
+impl<Context, K, V, Item, LC: Clone, L: Clone, R: Clone> Clone
+    for MapLikeBranch<Context, K, V, Item, LC, L, R>
+{
     fn clone(&self) -> Self {
         Self {
+            _type: PhantomData,
             label: self.label,
             projection: self.projection,
             lifecycle: self.lifecycle.clone(),
@@ -139,13 +152,15 @@ impl<Context, K, V, LC: Clone, L: Clone, R: Clone> Clone for MapBranch<Context, 
     }
 }
 
-impl<Context, K, V, LC, L: HTree, R: HTree> HTree for MapBranch<Context, K, V, LC, L, R> {
+impl<Context, K, V, Item, LC, L: HTree, R: HTree> HTree
+    for MapLikeBranch<Context, K, V, Item, LC, L, R>
+{
     fn label(&self) -> Option<&'static str> {
         Some(self.label)
     }
 }
 
-impl<Context, K, V, LC, L, R> Debug for MapBranch<Context, K, V, LC, L, R>
+impl<Context, K, V, Item, LC, L, R> Debug for MapLikeBranch<Context, K, V, Item, LC, L, R>
 where
     LC: Debug,
     L: Debug,
@@ -162,24 +177,20 @@ where
     }
 }
 
-impl<Context, K, V, LC> MapLeaf<Context, K, V, LC> {
-    pub fn leaf(
-        label: &'static str,
-        projection: fn(&Context) -> &MapLane<K, V>,
-        lifecycle: LC,
-    ) -> Self {
-        MapBranch::new(label, projection, lifecycle, HLeaf, HLeaf)
+impl<Context, K, V, Item, LC> MapLikeBranch<Context, K, V, Item, LC, HLeaf, HLeaf> {
+    pub fn leaf(label: &'static str, projection: fn(&Context) -> &Item, lifecycle: LC) -> Self {
+        MapLikeBranch::new(label, projection, lifecycle, HLeaf, HLeaf)
     }
 }
 
-impl<Context, K, V, LC, L, R> MapBranch<Context, K, V, LC, L, R>
+impl<Context, K, V, Item, LC, L, R> MapLikeBranch<Context, K, V, Item, LC, L, R>
 where
     L: HTree,
     R: HTree,
 {
     pub fn new(
         label: &'static str,
-        projection: fn(&Context) -> &MapLane<K, V>,
+        projection: fn(&Context) -> &Item,
         lifecycle: LC,
         left: L,
         right: R,
@@ -190,7 +201,8 @@ where
         if let Some(right_label) = right.label() {
             assert!(label < right_label);
         }
-        MapBranch {
+        MapLikeBranch {
+            _type: PhantomData,
             label,
             projection,
             lifecycle,
@@ -200,31 +212,34 @@ where
     }
 }
 
-impl<Context, K, V, LC, L, R> LaneEvent<Context> for MapBranch<Context, K, V, LC, L, R>
+impl<Context, K, V, Item, LC, L, R> ItemEvent<Context>
+    for MapLikeBranch<Context, K, V, Item, LC, L, R>
 where
     K: Clone + Eq + Hash,
+    Item: MapItem<K, V>,
     LC: MapLaneLifecycle<K, V, Context>,
-    L: HTree + LaneEvent<Context>,
-    R: HTree + LaneEvent<Context>,
+    L: HTree + ItemEvent<Context>,
+    R: HTree + ItemEvent<Context>,
 {
-    type LaneEventHandler<'a> = MapBranchHandler<'a, Context, K, V, LC, L, R>
+    type ItemEventHandler<'a> = MapBranchHandler<'a, Context, K, V, LC, L, R>
     where
         Self: 'a;
 
-    fn lane_event<'a>(
+    fn item_event<'a>(
         &'a self,
         context: &Context,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>> {
-        let MapBranch {
+        item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
+        let MapLikeBranch {
             label,
             projection,
             lifecycle,
             left,
             right,
+            ..
         } = self;
-        match lane_name.cmp(*label) {
-            Ordering::Less => left.lane_event(context, lane_name).map(Either::Left),
+        match item_name.cmp(*label) {
+            Ordering::Less => left.item_event(context, item_name).map(Either::Left),
             Ordering::Equal => {
                 let lane = projection(context);
                 let handler =
@@ -232,42 +247,44 @@ where
                 handler.map(|h| Either::Right(Either::Left(h)))
             }
             Ordering::Greater => right
-                .lane_event(context, lane_name)
+                .item_event(context, item_name)
                 .map(|r| Either::Right(Either::Right(r))),
         }
     }
 }
 
-impl<Context, Shared, K, V, LC, L, R> LaneEventShared<Context, Shared>
-    for MapBranch<Context, K, V, LC, L, R>
+impl<Context, Shared, K, V, Item, LC, L, R> ItemEventShared<Context, Shared>
+    for MapLikeBranch<Context, K, V, Item, LC, L, R>
 where
     K: Clone + Eq + Hash,
+    Item: MapItem<K, V>,
     LC: MapLaneLifecycleShared<K, V, Context, Shared>,
-    L: HTree + LaneEventShared<Context, Shared>,
-    R: HTree + LaneEventShared<Context, Shared>,
+    L: HTree + ItemEventShared<Context, Shared>,
+    R: HTree + ItemEventShared<Context, Shared>,
 {
-    type LaneEventHandler<'a> = MapBranchHandlerShared<'a, Context, Shared, K, V, LC, L, R>
+    type ItemEventHandler<'a> = MapBranchHandlerShared<'a, Context, Shared, K, V, LC, L, R>
     where
         Self: 'a,
         Shared: 'a;
 
-    fn lane_event<'a>(
+    fn item_event<'a>(
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         context: &Context,
-        lane_name: &str,
-    ) -> Option<Self::LaneEventHandler<'a>> {
-        let MapBranch {
+        item_name: &str,
+    ) -> Option<Self::ItemEventHandler<'a>> {
+        let MapLikeBranch {
             label,
             projection,
             lifecycle,
             left,
             right,
+            ..
         } = self;
-        match lane_name.cmp(*label) {
+        match item_name.cmp(*label) {
             Ordering::Less => left
-                .lane_event(shared, handler_context, context, lane_name)
+                .item_event(shared, handler_context, context, item_name)
                 .map(Either::Left),
             Ordering::Equal => {
                 let lane = projection(context);
@@ -277,7 +294,7 @@ where
                 handler.map(|h| Either::Right(Either::Left(h)))
             }
             Ordering::Greater => right
-                .lane_event(shared, handler_context, context, lane_name)
+                .item_event(shared, handler_context, context, item_name)
                 .map(|r| Either::Right(Either::Right(r))),
         }
     }

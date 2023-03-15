@@ -18,7 +18,10 @@ use futures::{future::join, SinkExt, StreamExt};
 use swim_api::{
     agent::UplinkKind,
     protocol::{
-        agent::{LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder},
+        agent::{
+            LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder, StoreInitMessage,
+            StoreInitMessageEncoder, StoreInitialized, StoreInitializedCodec,
+        },
         map::{
             MapMessage, MapMessageDecoder, MapMessageEncoder, MapOperationEncoder,
             RawMapOperationDecoder,
@@ -30,13 +33,19 @@ use swim_model::Text;
 use swim_utilities::{io::byte_channel::byte_channel, non_zero_usize};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use crate::lanes::{MapLane, ValueLane};
+use crate::{
+    agent_model::{ItemKind, MapStoreInitializer, ValueStoreInitializer},
+    lanes::{MapLane, ValueLane},
+    stores::{MapStore, ValueStore},
+};
 
-use super::{run_lane_initializer, InitializedLane, MapLaneInitializer, ValueLaneInitializer};
+use super::{run_item_initializer, InitializedItem, MapLaneInitializer, ValueLaneInitializer};
 
 struct TestAgent {
     value_lane: ValueLane<i32>,
     map_lane: MapLane<Text, i32>,
+    value_store: ValueStore<i32>,
+    map_store: MapStore<Text, i32>,
 }
 
 impl Default for TestAgent {
@@ -44,12 +53,16 @@ impl Default for TestAgent {
         Self {
             value_lane: ValueLane::new(0, 0),
             map_lane: MapLane::new(1, Default::default()),
+            value_store: ValueStore::new(2, 0),
+            map_store: MapStore::new(3, Default::default()),
         }
     }
 }
 
 const VALUE_LANE: fn(&TestAgent) -> &ValueLane<i32> = |agent| &agent.value_lane;
 const MAP_LANE: fn(&TestAgent) -> &MapLane<Text, i32> = |agent| &agent.map_lane;
+const VALUE_STORE: fn(&TestAgent) -> &ValueStore<i32> = |agent| &agent.value_store;
+const MAP_STORE: fn(&TestAgent) -> &MapStore<Text, i32> = |agent| &agent.map_store;
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -59,7 +72,8 @@ async fn init_value_lane() {
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = WithLengthBytesCodec::default();
-    let init_task = run_lane_initializer(
+    let init_task = run_item_initializer(
+        ItemKind::Lane,
         "value_lane",
         UplinkKind::Value,
         (out_tx, in_rx),
@@ -97,13 +111,15 @@ async fn init_value_lane() {
         .await
         .expect("Test timed out.");
 
-    let InitializedLane {
+    let InitializedItem {
+        item_kind,
         name,
         kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
+    assert_eq!(item_kind, ItemKind::Lane);
     assert_eq!(name, "value_lane");
     assert_eq!(kind, UplinkKind::Value);
 
@@ -115,12 +131,74 @@ async fn init_value_lane() {
 }
 
 #[tokio::test]
+async fn init_value_store() {
+    let init = ValueStoreInitializer::new(VALUE_STORE);
+    let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
+    let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
+    let decoder = WithLengthBytesCodec::default();
+    let init_task = run_item_initializer(
+        ItemKind::Store,
+        "value_store",
+        UplinkKind::Value,
+        (out_tx, in_rx),
+        decoder,
+        Box::new(init),
+    );
+
+    let runtime_task = async move {
+        let mut writer = FramedWrite::new(
+            &mut in_tx,
+            StoreInitMessageEncoder::new(WithLenReconEncoder::default()),
+        );
+        let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec::default());
+
+        writer
+            .send(StoreInitMessage::Command(46))
+            .await
+            .expect("Sending value failed.");
+        writer
+            .send(StoreInitMessage::<i32>::InitComplete)
+            .await
+            .expect("Completing init failed.");
+
+        match reader.next().await {
+            Some(Ok(StoreInitialized)) => {}
+            ow => panic!("Unexpected response: {:?}", ow),
+        }
+        (in_tx, out_rx)
+    };
+
+    let (result, _io) = tokio::time::timeout(TEST_TIMEOUT, join(init_task, runtime_task))
+        .await
+        .expect("Test timed out.");
+
+    let InitializedItem {
+        item_kind,
+        name,
+        kind,
+        init_fn,
+        io: _io,
+    } = result.expect("Initialization failed.");
+
+    assert_eq!(item_kind, ItemKind::Store);
+    assert_eq!(name, "value_store");
+    assert_eq!(kind, UplinkKind::Value);
+
+    let agent = TestAgent::default();
+
+    init_fn(&agent);
+
+    assert_eq!(agent.value_store.read(|n| *n), 46);
+}
+
+#[tokio::test]
 async fn init_value_lane_no_data() {
     let init = ValueLaneInitializer::new(VALUE_LANE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = WithLengthBytesCodec::default();
-    let init_task = run_lane_initializer(
+    let init_task = run_item_initializer(
+        ItemKind::Lane,
         "value_lane",
         UplinkKind::Value,
         (out_tx, in_rx),
@@ -154,13 +232,15 @@ async fn init_value_lane_no_data() {
         .await
         .expect("Test timed out.");
 
-    let InitializedLane {
+    let InitializedItem {
+        item_kind,
         name,
         kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
+    assert_eq!(item_kind, ItemKind::Lane);
     assert_eq!(name, "value_lane");
     assert_eq!(kind, UplinkKind::Value);
 
@@ -172,12 +252,70 @@ async fn init_value_lane_no_data() {
 }
 
 #[tokio::test]
+async fn init_value_store_no_data() {
+    let init = ValueStoreInitializer::new(VALUE_STORE);
+    let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
+    let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
+    let decoder = WithLengthBytesCodec::default();
+    let init_task = run_item_initializer(
+        ItemKind::Store,
+        "value_store",
+        UplinkKind::Value,
+        (out_tx, in_rx),
+        decoder,
+        Box::new(init),
+    );
+
+    let runtime_task = async move {
+        let mut writer = FramedWrite::new(
+            &mut in_tx,
+            StoreInitMessageEncoder::new(WithLenReconEncoder::default()),
+        );
+        let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec::default());
+
+        writer
+            .send(StoreInitMessage::<i32>::InitComplete)
+            .await
+            .expect("Completing init failed.");
+
+        match reader.next().await {
+            Some(Ok(StoreInitialized)) => {}
+            ow => panic!("Unexpected response: {:?}", ow),
+        }
+        (in_tx, out_rx)
+    };
+
+    let (result, _io) = tokio::time::timeout(TEST_TIMEOUT, join(init_task, runtime_task))
+        .await
+        .expect("Test timed out.");
+
+    let InitializedItem {
+        item_kind,
+        name,
+        kind,
+        init_fn,
+        io: _io,
+    } = result.expect("Initialization failed.");
+
+    assert_eq!(item_kind, ItemKind::Store);
+    assert_eq!(name, "value_store");
+    assert_eq!(kind, UplinkKind::Value);
+
+    let agent = TestAgent::default();
+
+    init_fn(&agent);
+
+    assert_eq!(agent.value_store.read(|n| *n), 0);
+}
+
+#[tokio::test]
 async fn init_map_lane() {
     let init = MapLaneInitializer::new(MAP_LANE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
-    let init_task = run_lane_initializer(
+    let init_task = run_item_initializer(
+        ItemKind::Lane,
         "map_lane",
         UplinkKind::Map,
         (out_tx, in_rx),
@@ -232,13 +370,15 @@ async fn init_map_lane() {
         .await
         .expect("Test timed out.");
 
-    let InitializedLane {
+    let InitializedItem {
+        item_kind,
         name,
         kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
+    assert_eq!(item_kind, ItemKind::Lane);
     assert_eq!(name, "map_lane");
     assert_eq!(kind, UplinkKind::Map);
 
@@ -255,12 +395,96 @@ async fn init_map_lane() {
 }
 
 #[tokio::test]
+async fn init_map_store() {
+    let init = MapStoreInitializer::new(MAP_STORE);
+    let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
+    let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
+    let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
+    let init_task = run_item_initializer(
+        ItemKind::Store,
+        "map_store",
+        UplinkKind::Map,
+        (out_tx, in_rx),
+        decoder,
+        Box::new(init),
+    );
+
+    let runtime_task = async move {
+        let mut writer = FramedWrite::new(
+            &mut in_tx,
+            StoreInitMessageEncoder::new(MapMessageEncoder::new(MapOperationEncoder::default())),
+        );
+        let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec::default());
+
+        writer
+            .send(StoreInitMessage::Command(MapMessage::Update {
+                key: Text::new("a"),
+                value: 1,
+            }))
+            .await
+            .expect("Sending value failed.");
+        writer
+            .send(StoreInitMessage::Command(MapMessage::Update {
+                key: Text::new("b"),
+                value: 2,
+            }))
+            .await
+            .expect("Sending value failed.");
+        writer
+            .send(StoreInitMessage::Command(MapMessage::Update {
+                key: Text::new("c"),
+                value: 3,
+            }))
+            .await
+            .expect("Sending value failed.");
+        writer
+            .send(StoreInitMessage::<MapMessage<Text, i32>>::InitComplete)
+            .await
+            .expect("Completing init failed.");
+
+        match reader.next().await {
+            Some(Ok(StoreInitialized)) => {}
+            ow => panic!("Unexpected response: {:?}", ow),
+        }
+        (in_tx, out_rx)
+    };
+
+    let (result, _io) = tokio::time::timeout(TEST_TIMEOUT, join(init_task, runtime_task))
+        .await
+        .expect("Test timed out.");
+
+    let InitializedItem {
+        item_kind,
+        name,
+        kind,
+        init_fn,
+        io: _io,
+    } = result.expect("Initialization failed.");
+
+    assert_eq!(item_kind, ItemKind::Store);
+    assert_eq!(name, "map_store");
+    assert_eq!(kind, UplinkKind::Map);
+
+    let agent = TestAgent::default();
+
+    init_fn(&agent);
+
+    let lane_map = agent.map_store.get_map(Clone::clone);
+    let mut expected = HashMap::new();
+    expected.insert(Text::new("a"), 1);
+    expected.insert(Text::new("b"), 2);
+    expected.insert(Text::new("c"), 3);
+    assert_eq!(lane_map, expected);
+}
+
+#[tokio::test]
 async fn init_map_lane_no_data() {
     let init = MapLaneInitializer::new(MAP_LANE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
-    let init_task = run_lane_initializer(
+    let init_task = run_item_initializer(
+        ItemKind::Lane,
         "map_lane",
         UplinkKind::Map,
         (out_tx, in_rx),
@@ -294,14 +518,74 @@ async fn init_map_lane_no_data() {
         .await
         .expect("Test timed out.");
 
-    let InitializedLane {
+    let InitializedItem {
+        item_kind,
         name,
         kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
+    assert_eq!(item_kind, ItemKind::Lane);
     assert_eq!(name, "map_lane");
+    assert_eq!(kind, UplinkKind::Map);
+
+    let agent = TestAgent::default();
+
+    init_fn(&agent);
+
+    let lane_map = agent.map_lane.get_map(Clone::clone);
+    assert!(lane_map.is_empty());
+}
+
+#[tokio::test]
+async fn init_map_store_no_data() {
+    let init = MapStoreInitializer::new(MAP_STORE);
+    let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
+    let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
+    let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
+    let init_task = run_item_initializer(
+        ItemKind::Store,
+        "map_store",
+        UplinkKind::Map,
+        (out_tx, in_rx),
+        decoder,
+        Box::new(init),
+    );
+
+    let runtime_task = async move {
+        let mut writer = FramedWrite::new(
+            &mut in_tx,
+            StoreInitMessageEncoder::new(MapMessageEncoder::new(MapOperationEncoder::default())),
+        );
+        let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec::default());
+
+        writer
+            .send(StoreInitMessage::<MapMessage<Text, i32>>::InitComplete)
+            .await
+            .expect("Completing init failed.");
+
+        match reader.next().await {
+            Some(Ok(StoreInitialized)) => {}
+            ow => panic!("Unexpected response: {:?}", ow),
+        }
+        (in_tx, out_rx)
+    };
+
+    let (result, _io) = tokio::time::timeout(TEST_TIMEOUT, join(init_task, runtime_task))
+        .await
+        .expect("Test timed out.");
+
+    let InitializedItem {
+        item_kind,
+        name,
+        kind,
+        init_fn,
+        io: _io,
+    } = result.expect("Initialization failed.");
+
+    assert_eq!(item_kind, ItemKind::Store);
+    assert_eq!(name, "map_store");
     assert_eq!(kind, UplinkKind::Map);
 
     let agent = TestAgent::default();

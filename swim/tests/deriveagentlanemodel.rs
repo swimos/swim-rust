@@ -15,13 +15,15 @@
 use std::collections::{HashMap, HashSet};
 
 use std::fmt::Write;
-use swim::agent::agent_model::{LaneFlags, LaneSpec};
+use swim::agent::agent_model::{ItemFlags, ItemSpec};
 use swim::agent::lanes::{CommandLane, MapLane, ValueLane};
 use swim::agent::model::MapMessage;
 use swim::agent::model::Text;
 use swim::agent::reexport::bytes::BytesMut;
 use swim::agent::reexport::uuid::Uuid;
 use swim::agent::AgentLaneModel;
+use swim_agent::agent_model::ItemKind;
+use swim_agent::stores::{MapStore, ValueStore};
 
 const SYNC_ID: Uuid = Uuid::from_u128(85883);
 
@@ -33,8 +35,26 @@ fn persistent(name: &'static str) -> (&'static str, bool) {
     (name, false)
 }
 
-fn check_agent<A>(val_lanes: Vec<(&'static str, bool)>, map_lanes: Vec<(&'static str, bool)>)
-where
+fn persistent_lane(name: &'static str) -> (ItemKind, &'static str, bool) {
+    (ItemKind::Lane, name, false)
+}
+
+fn transient_lane(name: &'static str) -> (ItemKind, &'static str, bool) {
+    (ItemKind::Lane, name, true)
+}
+
+fn persistent_store(name: &'static str) -> (ItemKind, &'static str, bool) {
+    (ItemKind::Store, name, false)
+}
+
+fn transient_store(name: &'static str) -> (ItemKind, &'static str, bool) {
+    (ItemKind::Store, name, true)
+}
+
+fn check_agent_with_stores<A>(
+    val_items: Vec<(ItemKind, &'static str, bool)>,
+    map_items: Vec<(ItemKind, &'static str, bool)>,
+) where
     A: AgentLaneModel + Default,
 {
     let agent = A::default();
@@ -42,28 +62,28 @@ where
     let mut val_expected = HashMap::new();
     let mut map_expected = HashMap::new();
 
-    for (name, is_transient) in val_lanes {
-        let spec = if is_transient {
-            LaneSpec::new(LaneFlags::TRANSIENT)
+    for (kind, name, is_transient) in &val_items {
+        let spec = if *is_transient {
+            ItemSpec::new(*kind, ItemFlags::TRANSIENT)
         } else {
-            LaneSpec::new(LaneFlags::empty())
+            ItemSpec::new(*kind, ItemFlags::empty())
         };
-        val_expected.insert(name, spec);
+        val_expected.insert(*name, spec);
     }
 
-    for (name, is_transient) in map_lanes {
-        let spec = if is_transient {
-            LaneSpec::new(LaneFlags::TRANSIENT)
+    for (kind, name, is_transient) in &map_items {
+        let spec = if *is_transient {
+            ItemSpec::new(*kind, ItemFlags::TRANSIENT)
         } else {
-            LaneSpec::new(LaneFlags::empty())
+            ItemSpec::new(*kind, ItemFlags::empty())
         };
-        map_expected.insert(name, spec);
+        map_expected.insert(*name, spec);
     }
 
-    assert_eq!(A::value_like_lane_specs(), val_expected);
-    assert_eq!(A::map_like_lane_specs(), map_expected);
+    assert_eq!(A::value_like_item_specs(), val_expected);
+    assert_eq!(A::map_like_item_specs(), map_expected);
 
-    let id_map = A::lane_ids();
+    let id_map = A::item_ids();
     let expected_len = val_expected.len() + map_expected.len();
     assert_eq!(id_map.len(), expected_len);
 
@@ -83,15 +103,43 @@ where
     assert_eq!(keys, expected_keys);
     assert_eq!(names, expected_names);
 
-    for name in val_expected.keys() {
-        assert!(agent.on_value_command(name, get_i32_buffer(4)).is_some());
-        assert!(agent.on_sync(name, SYNC_ID).is_some());
+    for (kind, name, _) in val_items {
+        assert_eq!(
+            agent.on_value_command(name, get_i32_buffer(4)).is_some(),
+            kind == ItemKind::Lane
+        );
+        assert_eq!(
+            agent.on_sync(name, SYNC_ID).is_some(),
+            kind == ItemKind::Lane
+        );
     }
 
-    for name in map_expected.keys() {
-        assert!(agent.on_map_command(name, MapMessage::Clear).is_some());
-        assert!(agent.on_sync(name, SYNC_ID).is_some());
+    for (kind, name, _) in map_items {
+        assert_eq!(
+            agent.on_map_command(name, MapMessage::Clear).is_some(),
+            kind == ItemKind::Lane
+        );
+        assert_eq!(
+            agent.on_sync(name, SYNC_ID).is_some(),
+            kind == ItemKind::Lane
+        );
     }
+}
+
+fn check_agent<A>(val_lanes: Vec<(&'static str, bool)>, map_lanes: Vec<(&'static str, bool)>)
+where
+    A: AgentLaneModel + Default,
+{
+    let val_items = val_lanes
+        .into_iter()
+        .map(|(name, transient)| (ItemKind::Lane, name, transient))
+        .collect();
+    let map_items = map_lanes
+        .into_iter()
+        .map(|(name, transient)| (ItemKind::Lane, name, transient))
+        .collect();
+
+    check_agent_with_stores::<A>(val_items, map_items)
 }
 
 fn get_i32_buffer(n: i32) -> BytesMut {
@@ -111,6 +159,16 @@ fn single_value_lane() {
 }
 
 #[test]
+fn single_value_store() {
+    #[derive(AgentLaneModel)]
+    struct SingleValueStore {
+        store: ValueStore<i32>,
+    }
+
+    check_agent_with_stores::<SingleValueStore>(vec![persistent_store("store")], vec![]);
+}
+
+#[test]
 fn single_map_lane() {
     #[derive(AgentLaneModel)]
     struct SingleMapLane {
@@ -118,6 +176,16 @@ fn single_map_lane() {
     }
 
     check_agent::<SingleMapLane>(vec![], vec![persistent("lane")]);
+}
+
+#[test]
+fn single_map_store() {
+    #[derive(AgentLaneModel)]
+    struct SingleMapStore {
+        store: MapStore<i32, i32>,
+    }
+
+    check_agent_with_stores::<SingleMapStore>(vec![], vec![persistent_store("store")]);
 }
 
 #[test]
@@ -142,6 +210,20 @@ fn two_value_lanes() {
 }
 
 #[test]
+fn two_value_stores() {
+    #[derive(AgentLaneModel)]
+    struct TwoValueStores {
+        first: ValueStore<i32>,
+        second: ValueStore<i32>,
+    }
+
+    check_agent_with_stores::<TwoValueStores>(
+        vec![persistent_store("first"), persistent_store("second")],
+        vec![],
+    );
+}
+
+#[test]
 fn two_map_lanes() {
     #[derive(AgentLaneModel)]
     struct TwoMapLanes {
@@ -150,6 +232,20 @@ fn two_map_lanes() {
     }
 
     check_agent::<TwoMapLanes>(vec![], vec![persistent("first"), persistent("second")]);
+}
+
+#[test]
+fn two_map_stores() {
+    #[derive(AgentLaneModel)]
+    struct TwoMapStores {
+        first: MapStore<i32, i32>,
+        second: MapStore<i32, i32>,
+    }
+
+    check_agent_with_stores::<TwoMapStores>(
+        vec![],
+        vec![persistent_store("first"), persistent_store("second")],
+    );
 }
 
 #[test]
@@ -175,6 +271,20 @@ fn mixed_lanes() {
 }
 
 #[test]
+fn mixed_stores() {
+    #[derive(AgentLaneModel)]
+    struct MixedStores {
+        first: ValueStore<i32>,
+        second: MapStore<i32, i32>,
+    }
+
+    check_agent_with_stores::<MixedStores>(
+        vec![persistent_store("first")],
+        vec![persistent_store("second")],
+    );
+}
+
+#[test]
 fn multiple_lanes() {
     #[derive(AgentLaneModel)]
     struct MultipleLanes {
@@ -192,6 +302,22 @@ fn multiple_lanes() {
 }
 
 #[test]
+fn stores_and_lanes() {
+    #[derive(AgentLaneModel)]
+    struct StoresAndLanes {
+        first: ValueStore<i32>,
+        second: ValueLane<i32>,
+        third: MapStore<i32, i32>,
+        fourth: MapLane<i32, i32>,
+    }
+
+    check_agent_with_stores::<StoresAndLanes>(
+        vec![persistent_store("first"), persistent_lane("second")],
+        vec![persistent_store("third"), persistent_lane("fourth")],
+    );
+}
+
+#[test]
 fn value_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoValueLanes {
@@ -204,6 +330,21 @@ fn value_lane_tagged_transient() {
 }
 
 #[test]
+fn value_store_tagged_transient() {
+    #[derive(AgentLaneModel)]
+    struct TwoValueStores {
+        #[transient]
+        first: ValueStore<i32>,
+        second: ValueStore<i32>,
+    }
+
+    check_agent_with_stores::<TwoValueStores>(
+        vec![transient_store("first"), persistent_store("second")],
+        vec![],
+    );
+}
+
+#[test]
 fn map_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoMapLanes {
@@ -213,6 +354,21 @@ fn map_lane_tagged_transient() {
     }
 
     check_agent::<TwoMapLanes>(vec![], vec![persistent("first"), transient("second")]);
+}
+
+#[test]
+fn map_store_tagged_transient() {
+    #[derive(AgentLaneModel)]
+    struct TwoMapStores {
+        first: MapStore<i32, i32>,
+        #[transient]
+        second: MapStore<i32, i32>,
+    }
+
+    check_agent_with_stores::<TwoMapStores>(
+        vec![],
+        vec![persistent_store("first"), transient_store("second")],
+    );
 }
 
 #[test]
@@ -229,10 +385,10 @@ fn command_lane_tagged_transient() {
 
 mod isolated {
 
-    use super::{check_agent, persistent, transient};
+    use super::{check_agent_with_stores, persistent_lane, persistent_store, transient_lane};
 
     #[test]
-    fn multiple_lanes_qualified() {
+    fn multiple_items_qualified() {
         #[derive(swim::agent::AgentLaneModel)]
         struct MultipleLanes {
             first: swim::agent::lanes::ValueLane<i32>,
@@ -240,11 +396,22 @@ mod isolated {
             third: swim::agent::lanes::ValueLane<i32>,
             fourth: swim::agent::lanes::MapLane<i32, i32>,
             fifth: swim::agent::lanes::CommandLane<i32>,
+            sixth: swim::agent::stores::ValueStore<i32>,
+            seventh: swim::agent::stores::MapStore<i32, i32>,
         }
 
-        check_agent::<MultipleLanes>(
-            vec![persistent("first"), persistent("third"), transient("fifth")],
-            vec![persistent("second"), persistent("fourth")],
+        check_agent_with_stores::<MultipleLanes>(
+            vec![
+                persistent_lane("first"),
+                persistent_lane("third"),
+                transient_lane("fifth"),
+                persistent_store("sixth"),
+            ],
+            vec![
+                persistent_lane("second"),
+                persistent_lane("fourth"),
+                persistent_store("seventh"),
+            ],
         );
     }
 }

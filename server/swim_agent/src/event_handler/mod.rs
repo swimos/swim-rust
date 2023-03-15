@@ -264,26 +264,26 @@ pub enum EventHandlerError {
 }
 
 /// When a handler completes or suspends it can indicate that is has modified the
-/// state of a lane.
+/// state of an item.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Modification {
-    /// The ID of the lane.
-    pub lane_id: u64,
+    /// The ID of the item.
+    pub item_id: u64,
     /// If this is true, lifecycle event handlers on the lane should be executed.
     pub trigger_handler: bool,
 }
 
 impl Modification {
-    pub fn of(lane_id: u64) -> Self {
+    pub fn of(item_id: u64) -> Self {
         Modification {
-            lane_id,
+            item_id,
             trigger_handler: true,
         }
     }
 
-    pub fn no_trigger(lane_id: u64) -> Self {
+    pub fn no_trigger(item_id: u64) -> Self {
         Modification {
-            lane_id,
+            item_id,
             trigger_handler: false,
         }
     }
@@ -294,16 +294,16 @@ impl Modification {
 pub enum StepResult<C> {
     /// The event handler has suspended.
     Continue {
-        /// Indicates if a lane has been modified,
-        modified_lane: Option<Modification>,
+        /// Indicates if an item has been modified,
+        modified_item: Option<Modification>,
     },
     /// The handler has failed and will never now produce a result.
     Fail(EventHandlerError),
     /// The handler has completed successfully. All further attempts to step
     /// will result in an error.
     Complete {
-        /// Indicates if a lane has been modified.
-        modified_lane: Option<Modification>,
+        /// Indicates if an item has been modified.
+        modified_item: Option<Modification>,
         /// The result of the handler.
         result: C,
     },
@@ -312,13 +312,13 @@ pub enum StepResult<C> {
 impl<C> StepResult<C> {
     pub fn cont() -> Self {
         StepResult::Continue {
-            modified_lane: None,
+            modified_item: None,
         }
     }
 
     pub fn done(result: C) -> Self {
         Self::Complete {
-            modified_lane: None,
+            modified_item: None,
             result,
         }
     }
@@ -336,13 +336,13 @@ impl<C> StepResult<C> {
         F: FnOnce(C) -> D,
     {
         match self {
-            StepResult::Continue { modified_lane } => StepResult::Continue { modified_lane },
+            StepResult::Continue { modified_item } => StepResult::Continue { modified_item },
             StepResult::Fail(err) => StepResult::Fail(err),
             StepResult::Complete {
-                modified_lane,
+                modified_item,
                 result,
             } => StepResult::Complete {
-                modified_lane,
+                modified_item,
                 result: f(result),
             },
         }
@@ -527,16 +527,16 @@ where
     ) -> StepResult<Self::Completion> {
         if let Some((mut action, f)) = self.0.take() {
             match action.step(action_context, meta, context) {
-                StepResult::Continue { modified_lane } => {
+                StepResult::Continue { modified_item } => {
                     self.0 = Some((action, f));
-                    StepResult::Continue { modified_lane }
+                    StepResult::Continue { modified_item }
                 }
                 StepResult::Fail(e) => StepResult::Fail(e),
                 StepResult::Complete {
-                    modified_lane,
+                    modified_item,
                     result,
                 } => StepResult::Complete {
-                    modified_lane,
+                    modified_item,
                     result: f.transform(result),
                 },
             }
@@ -564,21 +564,21 @@ where
             AndThen::First { mut first, next } => match first.step(action_context, meta, context) {
                 StepResult::Fail(e) => StepResult::Fail(e),
                 StepResult::Complete {
-                    modified_lane: dirty_lane,
+                    modified_item: dirty_lane,
                     result,
                 } => {
                     let second = next.transform(result);
                     *self = AndThen::Second(second);
                     StepResult::Continue {
-                        modified_lane: dirty_lane,
+                        modified_item: dirty_lane,
                     }
                 }
                 StepResult::Continue {
-                    modified_lane: dirty_lane,
+                    modified_item: dirty_lane,
                 } => {
                     *self = AndThen::First { first, next };
                     StepResult::Continue {
-                        modified_lane: dirty_lane,
+                        modified_item: dirty_lane,
                     }
                 }
             },
@@ -613,23 +613,23 @@ where
                 match first.step(action_context, meta, context) {
                     StepResult::Fail(e) => StepResult::Fail(e),
                     StepResult::Complete {
-                        modified_lane: dirty_lane,
+                        modified_item: dirty_lane,
                         result,
                     } => match next.transform(result) {
                         Ok(second) => {
                             *self = AndThenTry::Second(second);
                             StepResult::Continue {
-                                modified_lane: dirty_lane,
+                                modified_item: dirty_lane,
                             }
                         }
                         Err(e) => StepResult::Fail(e),
                     },
                     StepResult::Continue {
-                        modified_lane: dirty_lane,
+                        modified_item: dirty_lane,
                     } => {
                         *self = AndThenTry::First { first, next };
                         StepResult::Continue {
-                            modified_lane: dirty_lane,
+                            modified_item: dirty_lane,
                         }
                     }
                 }
@@ -664,20 +664,20 @@ where
                 match first.step(action_context, meta, context) {
                     StepResult::Fail(e) => StepResult::Fail(e),
                     StepResult::Complete {
-                        modified_lane: dirty_lane,
+                        modified_item: dirty_lane,
                         ..
                     } => {
                         *self = FollowedBy::Second(next);
                         StepResult::Continue {
-                            modified_lane: dirty_lane,
+                            modified_item: dirty_lane,
                         }
                     }
                     StepResult::Continue {
-                        modified_lane: dirty_lane,
+                        modified_item: dirty_lane,
                     } => {
                         *self = FollowedBy::First { first, next };
                         StepResult::Continue {
-                            modified_lane: dirty_lane,
+                            modified_item: dirty_lane,
                         }
                     }
                 }
@@ -996,22 +996,22 @@ where
                 Sequentially::Running(mut it, mut h) => {
                     let result = h.step(action_context, meta, context);
                     break match result {
-                        StepResult::Continue { modified_lane } => {
+                        StepResult::Continue { modified_item } => {
                             *self = Sequentially::Running(it, h);
-                            StepResult::Continue { modified_lane }
+                            StepResult::Continue { modified_item }
                         }
                         StepResult::Fail(e) => {
                             *self = Sequentially::Done;
                             StepResult::Fail(e)
                         }
-                        StepResult::Complete { modified_lane, .. } => {
+                        StepResult::Complete { modified_item, .. } => {
                             if let Some(h2) = it.next() {
                                 *self = Sequentially::Running(it, h2);
-                                StepResult::Continue { modified_lane }
+                                StepResult::Continue { modified_item }
                             } else {
                                 *self = Sequentially::Done;
                                 StepResult::Complete {
-                                    modified_lane,
+                                    modified_item,
                                     result: (),
                                 }
                             }

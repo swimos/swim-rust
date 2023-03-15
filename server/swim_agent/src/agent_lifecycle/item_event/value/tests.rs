@@ -20,7 +20,7 @@ use swim_model::Text;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::{
-    agent_lifecycle::lane_event::{tests::run_handler, HLeaf},
+    agent_lifecycle::item_event::{tests::run_handler, HLeaf},
     event_handler::{ActionContext, HandlerAction, StepResult},
     lanes::value::{
         lifecycle::{on_event::OnEvent, on_set::OnSet},
@@ -29,7 +29,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::{LaneEvent, ValueBranch, ValueLeaf};
+use super::{ItemEvent, ValueBranch, ValueLeaf};
 
 struct TestAgent {
     first: ValueLane<i32>,
@@ -197,9 +197,9 @@ fn value_lane_leaf() {
     let lifecycle = FakeLifecycle::<i32>::default();
     let leaf = ValueLeaf::leaf(FIRST_NAME, TestAgent::FIRST, lifecycle.clone());
 
-    assert!(leaf.lane_event(&agent, "other").is_none());
+    assert!(leaf.item_event(&agent, "other").is_none());
 
-    if let Some(handler) = leaf.lane_event(&agent, FIRST_NAME) {
+    if let Some(handler) = leaf.item_event(&agent, FIRST_NAME) {
         run_handler(meta, &agent, handler);
         let guard = lifecycle.state.lock();
         let LifecycleState { on_event, on_set } = *guard;
@@ -230,15 +230,15 @@ fn value_lane_left_branch() {
         HLeaf,
     );
 
-    assert!(branch.lane_event(&agent, "a").is_none()); //Before first lane.
-    assert!(branch.lane_event(&agent, "g").is_none()); //Between first and second lanes.
-    assert!(branch.lane_event(&agent, "u").is_none()); //After second lane.
+    assert!(branch.item_event(&agent, "a").is_none()); //Before first lane.
+    assert!(branch.item_event(&agent, "g").is_none()); //Between first and second lanes.
+    assert!(branch.item_event(&agent, "u").is_none()); //After second lane.
 
     agent.first.set(56);
     let hello = Text::new("Hello");
     agent.second.set(hello.clone());
 
-    if let Some(handler) = branch.lane_event(&agent, FIRST_NAME) {
+    if let Some(handler) = branch.item_event(&agent, FIRST_NAME) {
         run_handler(meta, &agent, handler);
 
         let guard = first_lifecycle.state.lock();
@@ -250,7 +250,7 @@ fn value_lane_left_branch() {
         panic!("Expected an event handler.");
     }
 
-    if let Some(handler) = branch.lane_event(&agent, SECOND_NAME) {
+    if let Some(handler) = branch.item_event(&agent, SECOND_NAME) {
         run_handler(meta, &agent, handler);
 
         let guard = second_lifecycle.state.lock();
@@ -282,15 +282,15 @@ fn value_lane_right_branch() {
         leaf,
     );
 
-    assert!(branch.lane_event(&agent, "a").is_none()); //Before first lane.
-    assert!(branch.lane_event(&agent, "g").is_none()); //Between first and second lanes.
-    assert!(branch.lane_event(&agent, "u").is_none()); //After second lane.
+    assert!(branch.item_event(&agent, "a").is_none()); //Before first lane.
+    assert!(branch.item_event(&agent, "g").is_none()); //Between first and second lanes.
+    assert!(branch.item_event(&agent, "u").is_none()); //After second lane.
 
     agent.first.set(56);
     let hello = Text::new("Hello");
     agent.second.set(hello.clone());
 
-    if let Some(handler) = branch.lane_event(&agent, FIRST_NAME) {
+    if let Some(handler) = branch.item_event(&agent, FIRST_NAME) {
         run_handler(meta, &agent, handler);
 
         let guard = first_lifecycle.state.lock();
@@ -302,7 +302,7 @@ fn value_lane_right_branch() {
         panic!("Expected an event handler.");
     }
 
-    if let Some(handler) = branch.lane_event(&agent, SECOND_NAME) {
+    if let Some(handler) = branch.item_event(&agent, SECOND_NAME) {
         run_handler(meta, &agent, handler);
 
         let guard = second_lifecycle.state.lock();
@@ -336,17 +336,17 @@ fn value_lane_two_branches() {
         right,
     );
 
-    assert!(branch.lane_event(&agent, "a").is_none()); //Before first lane.
-    assert!(branch.lane_event(&agent, "g").is_none()); //Between first and second lanes.
-    assert!(branch.lane_event(&agent, "sf").is_none()); //Between second and third lanes.
-    assert!(branch.lane_event(&agent, "u").is_none()); //After third lane.
+    assert!(branch.item_event(&agent, "a").is_none()); //Before first lane.
+    assert!(branch.item_event(&agent, "g").is_none()); //Between first and second lanes.
+    assert!(branch.item_event(&agent, "sf").is_none()); //Between second and third lanes.
+    assert!(branch.item_event(&agent, "u").is_none()); //After third lane.
 
     agent.first.set(56);
     let hello = Text::new("Hello");
     agent.second.set(hello.clone());
     agent.third.set(true);
 
-    if let Some(handler) = branch.lane_event(&agent, FIRST_NAME) {
+    if let Some(handler) = branch.item_event(&agent, FIRST_NAME) {
         run_handler(meta, &agent, handler);
 
         let guard = first_lifecycle.state.lock();
@@ -358,7 +358,7 @@ fn value_lane_two_branches() {
         panic!("Expected an event handler.");
     }
 
-    if let Some(handler) = branch.lane_event(&agent, SECOND_NAME) {
+    if let Some(handler) = branch.item_event(&agent, SECOND_NAME) {
         run_handler(meta, &agent, handler);
 
         let guard = second_lifecycle.state.lock();
@@ -370,7 +370,7 @@ fn value_lane_two_branches() {
         panic!("Expected an event handler.");
     }
 
-    if let Some(handler) = branch.lane_event(&agent, THIRD_NAME) {
+    if let Some(handler) = branch.item_event(&agent, THIRD_NAME) {
         run_handler(meta, &agent, handler);
 
         let guard = third_lifecycle.state.lock();
