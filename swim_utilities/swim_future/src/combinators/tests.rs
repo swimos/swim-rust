@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{NotifyOnBlocked, StopAfterError};
+use crate::{try_last, NotifyOnBlocked, StopAfterError};
 
 use futures::executor::block_on;
 use futures::future::{join, select, Either};
@@ -50,4 +50,24 @@ async fn stream_notify_on_blocked() {
 
     let result = timeout(Duration::from_secs(5), join(blocker, unblocker)).await;
     assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn try_last_empty() {
+    let stream = futures::stream::empty::<Result<(), ()>>();
+    assert!(matches!(try_last(stream).await, Ok(None)));
+}
+
+#[tokio::test]
+async fn try_last_all_good() {
+    let values: Vec<Result<i32, ()>> = vec![Ok(1), Ok(2), Ok(3)];
+    let stream = futures::stream::iter(values);
+    assert_eq!(try_last(stream).await, Ok(Some(3)));
+}
+
+#[tokio::test]
+async fn stop_on_error() {
+    let values: Vec<Result<i32, ()>> = vec![Ok(1), Err(()), Ok(3)];
+    let stream = futures::stream::iter(values);
+    assert!(try_last(stream).await.is_err());
 }

@@ -25,6 +25,7 @@ use futures::{
     stream::{FuturesUnordered, SelectAll},
     StreamExt,
 };
+use swim_api::agent::LaneConfig;
 use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swim_api::meta::lane::LaneKind;
 use swim_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
@@ -88,8 +89,8 @@ pub enum ItemKind {
 bitflags! {
 
     #[derive(Default)]
-    pub struct LaneFlags: u8 {
-        /// The state of the lane should not be persisted.
+    pub struct ItemFlags: u8 {
+        /// The state of the item should not be persisted.
         const TRANSIENT = 0b01;
     }
 
@@ -98,11 +99,11 @@ bitflags! {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ItemSpec {
     pub kind: ItemKind,
-    pub flags: LaneFlags,
+    pub flags: ItemFlags,
 }
 
 impl ItemSpec {
-    pub fn new(kind: ItemKind, flags: LaneFlags) -> Self {
+    pub fn new(kind: ItemKind, flags: ItemFlags) -> Self {
         ItemSpec { kind, flags }
     }
 }
@@ -391,83 +392,67 @@ where
         {
             let mut lane_init_tasks = FuturesUnordered::new();
             let default_lane_config = config.default_lane_config.unwrap_or_default();
+            macro_rules! with_init {
+                ($init:ident => $body:block) => {{
+                    let mut $init = InitContext::new(
+                        &mut value_like_lane_io,
+                        &mut map_lane_io,
+                        &item_model,
+                        &lane_init_tasks,
+                    );
+
+                    $body
+                }};
+            }
             // Set up the lanes of the agent.
             for (name, spec) in val_lane_specs {
-                let mut lane_conf = default_lane_config;
-                if spec.flags.contains(LaneFlags::TRANSIENT) {
-                    lane_conf.transient = true;
-                }
                 match spec.kind {
                     ItemKind::Lane => {
-                        let io = context.add_lane(name, LaneKind::Value, lane_conf).await?;
-                        if lane_conf.transient {
-                            value_like_lane_io.insert(Text::new(name), io);
-                        } else if let Some(init) = item_model.init_value_like_item(name) {
-                            let init_task = run_item_initializer(
-                                ItemKind::Lane,
-                                name,
-                                UplinkKind::Value,
-                                io,
-                                WithLengthBytesCodec::default(),
-                                init,
-                            );
-                            lane_init_tasks.push(init_task.boxed());
-                        } else {
-                            value_like_lane_io.insert(Text::new(name), io);
+                        let mut lane_conf = default_lane_config;
+                        if spec.flags.contains(ItemFlags::TRANSIENT) {
+                            lane_conf.transient = true;
                         }
+                        let io = context.add_lane(name, LaneKind::Value, lane_conf).await?;
+                        with_init!(init => {
+                            init.init_value_lane(name, lane_conf, io);
+                        })
                     }
                     ItemKind::Store => {
-                        if !lane_conf.transient {
-                            match context.add_store(name, StoreKind::Value).await {
-                                Ok(io) => {
-                                    if let Some(init) = item_model.init_value_like_item(name) {
-                                        let init_task = run_item_initializer(
-                                            ItemKind::Store,
-                                            name,
-                                            UplinkKind::Value,
-                                            io,
-                                            WithLengthBytesCodec::default(),
-                                            init,
-                                        );
-                                        lane_init_tasks.push(init_task.boxed());
-                                    }
-                                }
-                                Err(OpenStoreError::StoresNotSupported) => {
-                                    info!(
-                                        name,
-                                        "Lane running as transient as stores not supported."
-                                    );
-                                }
-                                Err(OpenStoreError::RuntimeError(err)) => return Err(err.into()),
-                                _ => todo!(),
-                            }
+                        if let Some(io) = handle_store_error(
+                            context.add_store(name, StoreKind::Value).await,
+                            name,
+                        )? {
+                            with_init!(init => {
+                                init.init_value_store(name, io);
+                            })
                         }
                     }
                 }
             }
             for (name, spec) in map_lane_specs {
-                if value_like_lane_io.contains_key(name) {
-                    return Err(AgentInitError::DuplicateLane(Text::new(name)));
-                }
-                let mut lane_conf = default_lane_config;
-                if spec.flags.contains(LaneFlags::TRANSIENT) {
-                    lane_conf.transient = true;
-                }
-                let io = context.add_lane(name, LaneKind::Map, lane_conf).await?;
-                if lane_conf.transient {
-                    map_lane_io.insert(Text::new(name), io);
-                } else if let Some(init) = item_model.init_map_like_item(name) {
-                    let init_task = run_item_initializer(
-                        ItemKind::Lane,
-                        name,
-                        UplinkKind::Map,
-                        io,
-                        MapMessageDecoder::new(RawMapOperationDecoder::default()),
-                        init,
-                    );
-                    lane_init_tasks.push(init_task.boxed());
-                } else {
-                    map_lane_io.insert(Text::new(name), io);
+                match spec.kind {
+                    ItemKind::Lane => {
+                        if value_like_lane_io.contains_key(name) {
+                            return Err(AgentInitError::DuplicateLane(Text::new(name)));
+                        }
+                        let mut lane_conf = default_lane_config;
+                        if spec.flags.contains(ItemFlags::TRANSIENT) {
+                            lane_conf.transient = true;
+                        }
+                        let io = context.add_lane(name, LaneKind::Map, lane_conf).await?;
+                        with_init!(init => {
+                            init.init_map_lane(name, lane_conf, io);
+                        })
+                    }
+                    ItemKind::Store => {
+                        if let Some(io) =
+                            handle_store_error(context.add_store(name, StoreKind::Map).await, name)?
+                        {
+                            with_init!(init => {
+                                init.init_map_store(name, io);
+                            })
+                        }
+                    }
                 }
             }
 
@@ -484,16 +469,17 @@ where
                     (ItemKind::Lane, UplinkKind::Value | UplinkKind::Supply) => {
                         value_like_lane_io.insert(Text::new(name), io);
                     }
-                    (ItemKind::Store, UplinkKind::Map) => {
-                        let (tx, _) = io;
-                        map_store_io.insert(Text::new(name), tx);
-                    }
                     (ItemKind::Lane, UplinkKind::Map) => {
                         map_lane_io.insert(Text::new(name), io);
                     }
-                    _ => {
+                    //The receivers for stores are no longer needed as the runtime never sends messages after initialization.
+                    (ItemKind::Store, UplinkKind::Value | UplinkKind::Supply) => {
                         let (tx, _) = io;
                         value_like_store_io.insert(Text::new(name), tx);
+                    }
+                    (ItemKind::Store, UplinkKind::Map) => {
+                        let (tx, _) = io;
+                        map_store_io.insert(Text::new(name), tx);
                     }
                 };
             }
@@ -527,6 +513,154 @@ where
             downlink_channels: downlink_channels.into_inner(),
         };
         Ok(agent_task.run_agent(context).boxed())
+    }
+}
+
+type InitFut<'a, ItemModel> = BoxFuture<'a, Result<InitializedItem<'a, ItemModel>, FrameIoError>>;
+
+struct InitContext<'a, 'b, ItemModel> {
+    value_like_lane_io: &'a mut HashMap<Text, (ByteWriter, ByteReader)>,
+    map_like_lane_io: &'a mut HashMap<Text, (ByteWriter, ByteReader)>,
+    item_model: &'a ItemModel,
+    item_init_tasks: &'a FuturesUnordered<InitFut<'b, ItemModel>>,
+}
+
+fn handle_store_error<T>(
+    result: Result<T, OpenStoreError>,
+    name: &str,
+) -> Result<Option<T>, AgentInitError> {
+    match result {
+        Ok(t) => Ok(Some(t)),
+        Err(OpenStoreError::StoresNotSupported) => {
+            info!(
+                name,
+                "Store running as transient as persistence not supported."
+            );
+            Ok(None)
+        }
+        Err(OpenStoreError::RuntimeError(err)) => Err(err.into()),
+        Err(OpenStoreError::IncorrectStoreKind { requested, actual }) => {
+            Err(AgentInitError::IncorrectStoreKind {
+                name: Text::new(name),
+                requested,
+                actual,
+            })
+        }
+    }
+}
+
+impl<'a, 'b, ItemModel> InitContext<'a, 'b, ItemModel>
+where
+    ItemModel: AgentSpec + 'static,
+{
+    fn new(
+        value_like_lane_io: &'a mut HashMap<Text, (ByteWriter, ByteReader)>,
+        map_like_lane_io: &'a mut HashMap<Text, (ByteWriter, ByteReader)>,
+        item_model: &'a ItemModel,
+        item_init_tasks: &'a FuturesUnordered<InitFut<'b, ItemModel>>,
+    ) -> Self {
+        InitContext {
+            value_like_lane_io,
+            map_like_lane_io,
+            item_model,
+            item_init_tasks,
+        }
+    }
+
+    fn init_value_lane(
+        &mut self,
+        name: &'b str,
+        lane_conf: LaneConfig,
+        io: (ByteWriter, ByteReader),
+    ) {
+        let InitContext {
+            value_like_lane_io,
+            item_model,
+            item_init_tasks,
+            ..
+        } = self;
+        if lane_conf.transient {
+            value_like_lane_io.insert(Text::new(name), io);
+        } else if let Some(init) = item_model.init_value_like_item(name) {
+            let init_task = run_item_initializer(
+                ItemKind::Lane,
+                name,
+                UplinkKind::Value,
+                io,
+                WithLengthBytesCodec::default(),
+                init,
+            );
+            item_init_tasks.push(init_task.boxed());
+        } else {
+            value_like_lane_io.insert(Text::new(name), io);
+        }
+    }
+
+    fn init_value_store(&mut self, name: &'b str, io: (ByteWriter, ByteReader)) {
+        let InitContext {
+            item_model,
+            item_init_tasks,
+            ..
+        } = self;
+        if let Some(init) = item_model.init_value_like_item(name) {
+            let init_task = run_item_initializer(
+                ItemKind::Store,
+                name,
+                UplinkKind::Value,
+                io,
+                WithLengthBytesCodec::default(),
+                init,
+            );
+            item_init_tasks.push(init_task.boxed());
+        }
+    }
+
+    fn init_map_lane(
+        &mut self,
+        name: &'b str,
+        lane_conf: LaneConfig,
+        io: (ByteWriter, ByteReader),
+    ) {
+        let InitContext {
+            map_like_lane_io,
+            item_model,
+            item_init_tasks,
+            ..
+        } = self;
+        if lane_conf.transient {
+            map_like_lane_io.insert(Text::new(name), io);
+        } else if let Some(init) = item_model.init_map_like_item(name) {
+            let init_task = run_item_initializer(
+                ItemKind::Lane,
+                name,
+                UplinkKind::Map,
+                io,
+                MapMessageDecoder::new(RawMapOperationDecoder::default()),
+                init,
+            );
+            item_init_tasks.push(init_task.boxed());
+        } else {
+            map_like_lane_io.insert(Text::new(name), io);
+        }
+    }
+
+    fn init_map_store(&mut self, name: &'b str, io: (ByteWriter, ByteReader)) {
+        let InitContext {
+            item_model,
+            item_init_tasks,
+            ..
+        } = self;
+        if let Some(init) = item_model.init_map_like_item(name) {
+            let init_task = run_item_initializer(
+                ItemKind::Store,
+                name,
+                UplinkKind::Map,
+                io,
+                MapMessageDecoder::new(RawMapOperationDecoder::default()),
+                init,
+            );
+            item_init_tasks.push(init_task.boxed());
+        }
     }
 }
 
