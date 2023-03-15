@@ -288,7 +288,9 @@ where
             }
             MapMessage::Drop(n) => {
                 let to_remove = usize::try_from(n).expect("Number to drop too large.");
-                if to_remove > 0 {
+                if to_remove >= map.len() {
+                    map.clear()
+                } else if to_remove > 0 {
                     for k in map.keys().take(to_remove).cloned().collect::<Vec<_>>() {
                         map.remove(&k);
                     }
