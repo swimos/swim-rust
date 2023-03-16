@@ -12,6 +12,7 @@ members = [
     "swim_downlink",
     "server/swim_*",
     "example_apps/basic",
+    "example_apps/console",
     "example_apps/multi/server",
     "example_apps/multi/client"
 ]
@@ -75,3 +76,5 @@ webpki-roots = "0.22"
 tokio-rustls = "0.23"
 rustls-pemfile = "1.0.0"
 clap = "4.1"
+crossbeam-queue = { version = "0.3" }
+crossbeam-channel = { version = "0.5" }
