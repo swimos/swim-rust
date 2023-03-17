@@ -19,7 +19,7 @@ use swim::route::RouteUri;
 use tokio::sync::mpsc;
 
 use crate::{
-    model::{AppCommand, Endpoint, EndpointOrId, Host, LinkRef, NetCommand, Target, TargetRef},
+    model::{AppCommand, Endpoint, EndpointOrId, Host, LinkRef, RuntimeCommand, Target, TargetRef},
     oneshot::{self, ReceiveError},
     shared_state::SharedState,
 };
@@ -28,7 +28,7 @@ const BAD_CHAN: &str = "Command channel dropped.";
 
 pub struct Controller {
     shared_state: Arc<RwLock<SharedState>>,
-    command_tx: mpsc::UnboundedSender<NetCommand>,
+    command_tx: mpsc::UnboundedSender<RuntimeCommand>,
     with_host: Option<Host>,
     with_node: Option<RouteUri>,
     with_lane: Option<String>,
@@ -39,7 +39,7 @@ pub struct Controller {
 impl Controller {
     pub fn new(
         shared_state: Arc<RwLock<SharedState>>,
-        command_tx: mpsc::UnboundedSender<NetCommand>,
+        command_tx: mpsc::UnboundedSender<RuntimeCommand>,
         timeout: Duration,
     ) -> Self {
         Controller {
@@ -178,13 +178,13 @@ impl Controller {
             AppCommand::Command { target, body } => match self.resolve(target) {
                 Ok(EndpointOrId::Id(id)) => {
                     self.command_tx
-                        .send(NetCommand::Command(id, body))
+                        .send(RuntimeCommand::Command(id, body))
                         .expect(BAD_CHAN);
                     vec![]
                 }
                 Ok(EndpointOrId::Endpoint(endpoint)) => {
                     self.command_tx
-                        .send(NetCommand::AdHocCommand(endpoint, body))
+                        .send(RuntimeCommand::AdHocCommand(endpoint, body))
                         .expect(BAD_CHAN);
                     vec![]
                 }
@@ -200,7 +200,7 @@ impl Controller {
                 Ok(EndpointOrId::Endpoint(endpoint)) => {
                     let (tx, rx) = oneshot::channel();
                     self.command_tx
-                        .send(NetCommand::Link {
+                        .send(RuntimeCommand::Link {
                             endpoint,
                             response: tx,
                         })
@@ -223,12 +223,12 @@ impl Controller {
                 }
                 Err(msg) => vec![msg],
             },
-            AppCommand::Sync(link) => self.for_link(link, NetCommand::Sync),
-            AppCommand::Unlink(link) =>  self.for_link(link, NetCommand::Unlink),
+            AppCommand::Sync(link) => self.for_link(link, RuntimeCommand::Sync),
+            AppCommand::Unlink(link) => self.for_link(link, RuntimeCommand::Unlink),
         }
     }
 
-    fn for_link(&self, link: LinkRef, f: impl FnOnce(usize) -> NetCommand) -> Vec<String> {
+    fn for_link(&self, link: LinkRef, f: impl FnOnce(usize) -> RuntimeCommand) -> Vec<String> {
         match link {
             LinkRef::ById(id) => {
                 if self.shared_state.read().has_id(id) {
@@ -237,7 +237,7 @@ impl Controller {
                 } else {
                     vec![format!("{} is not a valid link ID.", id)]
                 }
-            },
+            }
             LinkRef::ByName(name) => {
                 if let Some(id) = self.names.get(&name) {
                     if self.shared_state.read().has_id(*id) {
@@ -249,7 +249,7 @@ impl Controller {
                 } else {
                     vec![format!("{} is not a valid link name.", name)]
                 }
-            },
+            }
         }
     }
 }

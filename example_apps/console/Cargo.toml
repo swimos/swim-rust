@@ -7,5 +7,12 @@ edition = "2021"
 
 [dependencies]
 swim = { path = "../../swim", features = ["server", "agent"] }
+swim_utilities = { path = "../../swim_utilities", features = ["trigger"] }
+swim_recon = { path = "../../api/formats/swim_recon" }
+swim_messages = { path = "../../runtime/swim_messages" }
+futures = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"]}
 parking_lot = { workspace = true }
+crossbeam-channel = { workspace = true }
+ratchet = { package = "ratchet_rs", workspace = true, features = ["deflate", "split"] }
+bytes = { workspace = true }

@@ -14,7 +14,7 @@
 
 use std::fmt::Display;
 
-use swim::{route::RouteUri, model::Value};
+use swim::{model::Value, route::RouteUri};
 
 use crate::oneshot;
 
@@ -84,13 +84,25 @@ pub enum AppCommand {
 }
 
 #[derive(Debug)]
-pub enum NetCommand {
+pub enum RuntimeCommand {
     Link {
         endpoint: Endpoint,
-        response: oneshot::Sender<Result<usize, std::io::Error>>,
+        response: oneshot::Sender<Result<usize, ratchet::Error>>,
     },
     Sync(usize),
     Command(usize, Value),
     AdHocCommand(Endpoint, Value),
     Unlink(usize),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct DisplayResponse {
+    pub id: usize,
+    pub body: String,
+}
+
+impl DisplayResponse {
+    pub fn new(id: usize, body: String) -> Self {
+        DisplayResponse { id, body }
+    }
 }

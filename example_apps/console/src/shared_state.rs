@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 
 use crate::model::Endpoint;
 
@@ -22,18 +22,39 @@ pub struct SharedState {
     rev: BTreeMap<usize, Endpoint>,
 }
 
-impl SharedState {
+impl Default for SharedState {
+    fn default() -> Self {
+        Self {
+            count: 1,
+            links: Default::default(),
+            rev: Default::default(),
+        }
+    }
+}
 
-    pub fn insert(&mut self, endpoint: Endpoint) {
+impl SharedState {
+    pub fn insert(&mut self, endpoint: Endpoint) -> usize {
         let SharedState { count, links, rev } = self;
         let n = *count;
         *count += 1;
         links.insert(endpoint.clone(), n);
         rev.insert(n, endpoint);
+        n
+    }
+
+    pub fn remove(&mut self, id: usize) {
+        let SharedState { links, rev, .. } = self;
+        if let Some(endpoint) = rev.remove(&id) {
+            links.remove(&endpoint);
+        }
     }
 
     pub fn list(&self) -> Vec<(usize, Endpoint)> {
         self.rev.iter().map(|(k, v)| (*k, v.clone())).collect()
+    }
+
+    pub fn has_endpoint(&self, endpoint: &Endpoint) -> bool {
+        self.links.contains_key(endpoint)
     }
 
     pub fn has_id(&self, id: usize) -> bool {
@@ -44,4 +65,7 @@ impl SharedState {
         self.links.get(endpoint).copied()
     }
 
+    pub fn get_endpoint(&self, id: usize) -> Option<&Endpoint> {
+        self.rev.get(&id)
+    }
 }
