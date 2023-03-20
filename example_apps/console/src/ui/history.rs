@@ -12,9 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::VecDeque, rc::Rc, cell::RefCell};
+use std::{collections::VecDeque, rc::Rc};
 
-use cursive::{views::EditView, View, Vec2, Printer, event::{EventResult, AnyCb, Event, Key, Callback}, view::{Selector, ViewNotFound}, direction::Direction, Rect, Cursive};
+use cursive::{
+    direction::Direction,
+    event::{AnyCb, Callback, Event, EventResult, Key},
+    view::{Selector, ViewNotFound},
+    views::EditView,
+    Cursive, Printer, Rect, Vec2, View,
+};
 
 pub struct HistoryEditView {
     inner: EditView,
@@ -22,11 +28,10 @@ pub struct HistoryEditView {
 }
 
 impl HistoryEditView {
-
     pub fn new(max_history: usize) -> Self {
         let history = History::new(max_history);
 
-        HistoryEditView { 
+        HistoryEditView {
             inner: EditView::new(),
             history,
         }
@@ -114,7 +119,6 @@ impl HistoryEditView {
     pub fn get_history(&self) -> &VecDeque<String> {
         &self.history.entries
     }
-
 }
 
 struct History {
@@ -124,13 +128,20 @@ struct History {
 }
 
 impl History {
-
     fn new(max: usize) -> Self {
-        History { max, entries: VecDeque::new(), index: None }
+        History {
+            max,
+            entries: VecDeque::new(),
+            index: None,
+        }
     }
 
     fn push(&mut self, entry: String) {
-        let History { max, entries, index } = self;
+        let History {
+            max,
+            entries,
+            index,
+        } = self;
         entries.push_back(entry);
         if entries.len() > *max {
             entries.pop_front();
@@ -138,13 +149,12 @@ impl History {
         *index = None;
     }
 
-    fn len(&self) -> usize {
-        self.entries.len()
-    }
-
     fn get(&self) -> Option<&str> {
         let History { entries, index, .. } = self;
-        (*index).and_then(|i| entries.get(i).map(String::as_str))
+        (*index).and_then(|i| {
+            let offset = entries.len() - (i + 1);
+            entries.get(offset).map(String::as_str)
+        })
     }
 
     fn incr(&mut self) -> bool {
@@ -157,7 +167,7 @@ impl History {
                     *index = Some(i + 1);
                     true
                 }
-            },
+            }
             None => {
                 if entries.is_empty() {
                     false
@@ -165,7 +175,7 @@ impl History {
                     *index = Some(0);
                     true
                 }
-            },
+            }
         }
     }
 
@@ -180,11 +190,10 @@ impl History {
                     *index = Some(i - 1);
                     true
                 }
-            },
+            }
             None => false,
         }
     }
-
 }
 
 impl View for HistoryEditView {
@@ -214,14 +223,14 @@ impl View for HistoryEditView {
                     }
                 }
                 EventResult::Consumed(None)
-            },
+            }
             Event::Key(Key::Down) => {
                 let HistoryEditView { inner, history } = self;
                 if history.decr() {
                     inner.set_content(history.get().unwrap_or(""));
                 }
                 EventResult::Consumed(None)
-            },
+            }
             Event::Key(Key::Enter) => {
                 let HistoryEditView { inner, history } = self;
                 history.push((*inner.get_content()).clone());
@@ -237,24 +246,15 @@ impl View for HistoryEditView {
         self.inner.call_on_any(s, cb)
     }
 
-    fn focus_view(
-        &mut self,
-        s: &Selector,
-    ) -> Result<EventResult, ViewNotFound> {
+    fn focus_view(&mut self, s: &Selector) -> Result<EventResult, ViewNotFound> {
         self.inner.focus_view(s)
     }
 
-    fn take_focus(
-        &mut self,
-        source: Direction,
-    ) -> Result<EventResult, cursive::view::CannotFocus> {
+    fn take_focus(&mut self, source: Direction) -> Result<EventResult, cursive::view::CannotFocus> {
         self.inner.take_focus(source)
     }
 
     fn important_area(&self, view_size: Vec2) -> Rect {
         self.inner.important_area(view_size)
     }
-
 }
-
-

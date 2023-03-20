@@ -15,6 +15,7 @@
 use cursive::{views::{TextView, LinearLayout, Panel, EditView}, Cursive, view::{ScrollStrategy, Resizable, Nameable, Scrollable}, theme::{Theme, BorderStyle, Palette, BaseColor}, With, CursiveExt};
 use cursive::theme::Color::TerminalDefault;
 use cursive::theme::PaletteColor::*;
+use ui::history::HistoryEditView;
 mod controller;
 mod model;
 mod oneshot;
@@ -45,7 +46,7 @@ fn main() {
                 LinearLayout::vertical()
                     .child(
                         Panel::new(
-                            EditView::new()
+                            HistoryEditView::new(4)
                                 .on_submit(on_command)
                                 .with_name("command")
                                 
