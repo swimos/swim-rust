@@ -12,9 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use cursive::{views::{TextView, LinearLayout, Panel, EditView}, Cursive, view::{ScrollStrategy, Resizable, Nameable, Scrollable}, theme::{Theme, BorderStyle, Palette, BaseColor}, With, CursiveExt};
+use std::borrow::Cow;
+
 use cursive::theme::Color::TerminalDefault;
 use cursive::theme::PaletteColor::*;
+use cursive::{
+    theme::{BaseColor, BorderStyle, Palette, Theme},
+    view::{Nameable, Resizable, ScrollStrategy, Scrollable},
+    views::{EditView, LinearLayout, Panel, TextView},
+    Cursive, CursiveExt, With,
+};
+use swim::agent::lanes::command;
 use ui::history::HistoryEditView;
 mod controller;
 mod model;
@@ -26,7 +34,7 @@ mod ui;
 fn main() {
     let mut siv = Cursive::default();
 
-	siv.add_global_callback('q', |s| s.quit());
+    siv.add_global_callback('q', |s| s.quit());
 
     siv.set_theme(Theme {
         shadow: false,
@@ -40,36 +48,37 @@ fn main() {
             palette[Highlight] = BaseColor::Blue.dark();
         }),
     });
-	siv.add_layer(
+    siv.add_layer(
         LinearLayout::horizontal()
             .child(
                 LinearLayout::vertical()
-                    .child(
-                        Panel::new(
-                            HistoryEditView::new(4)
-                                .on_submit(on_command)
-                                .with_name("command")
-                                
-                        )
-                    )
+                    .child(Panel::new(
+                        HistoryEditView::new(5)
+                            .on_submit(on_command)
+                            .with_name("command"),
+                    ))
                     .child(
                         Panel::new(
                             TextView::new("")
                                 .with_name("history")
                                 .scrollable()
-                                .scroll_strategy(ScrollStrategy::StickToBottom)
+                                .scroll_strategy(ScrollStrategy::StickToBottom),
                         )
-                        .full_screen()
-                    )
+                        .full_screen(),
+                    ),
             )
-            .child(
-                Panel::new(TextView::new("World"))
-                    .full_screen()
-            )
+            .child(Panel::new(TextView::new("World")).full_screen()),
     );
 
-	siv.run();
+    siv.run();
 }
+
+const HELP: &[&str] = &[
+    "Valid commands are:\n",
+    "help\t\tDisplay this list.\n",
+    "quit\t\tClose the application.\n",
+    "clear\t\tClear this display.\n"
+];
 
 fn on_command(cursive: &mut Cursive, text: &str) {
     if text == "quit" {
@@ -77,11 +86,30 @@ fn on_command(cursive: &mut Cursive, text: &str) {
     }
     cursive.call_on_name("history", |view: &mut TextView| {
         view.append(format!("> {}\n", text))
-    });
     
-    if let Some(cb) = cursive.call_on_name("command", |view: &mut EditView| {
-        view.set_content("")
-    }) {
-        cb(cursive);
-    }
+    });
+    let command_parts = text.split_whitespace().collect::<Vec<_>>();
+    
+    let responses = match command_parts.as_slice() {
+        ["help"] => {
+            Some(HELP.iter().map(|s| Cow::Borrowed(*s)).collect())
+        },
+        ["quit"] => {
+            cursive.quit();
+            Some(vec![])
+        }
+        ["clear"] => None,
+        _ => {
+            Some(vec![Cow::Borrowed("Incorrect command. Type 'help' to list valid commands.")])
+        }
+    };
+    cursive.call_on_name("history", move |view: &mut TextView| {
+        if let Some(resp) = responses {
+            for response in resp {
+                view.append(response);
+            }
+        } else {
+            view.set_content("");
+        }
+    });
 }

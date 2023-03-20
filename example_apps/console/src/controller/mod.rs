@@ -190,7 +190,7 @@ impl Controller {
                 }
                 Err(msg) => vec![msg],
             },
-            AppCommand::Link { name, target, sync } => match self.resolve_target(target) {
+            AppCommand::Link { name, target } => match self.resolve_target(target) {
                 Ok(EndpointOrId::Id(id)) => {
                     if let Some(name) = name {
                         self.names.insert(name, id);
