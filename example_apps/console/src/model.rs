@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{fmt::Display, str::FromStr, borrow::Cow};
+use std::{fmt::{Display, Formatter}, str::FromStr, borrow::Cow};
 
 use swim::{model::Value, route::RouteUri};
 use swim_recon::parser::parse_value;
@@ -26,7 +26,7 @@ pub struct Host {
 }
 
 impl Display for Host {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", &self.host_name, self.port)
     }
 }
@@ -98,12 +98,44 @@ pub enum RuntimeCommand {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DisplayResponse {
     pub id: usize,
-    pub body: String,
+    pub body: DisplayResponseBody,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum DisplayResponseBody {
+    Linked,
+    Synced,
+    Event(String),
+    Unlinked,
 }
 
 impl DisplayResponse {
-    pub fn new(id: usize, body: String) -> Self {
-        DisplayResponse { id, body }
+    pub fn linked(id: usize) -> Self {
+        DisplayResponse { id, body: DisplayResponseBody::Linked }
+    }
+
+    pub fn synced(id: usize) -> Self {
+        DisplayResponse { id, body: DisplayResponseBody::Synced }
+    }
+
+    pub fn unlinked(id: usize) -> Self {
+        DisplayResponse { id, body: DisplayResponseBody::Unlinked }
+    }
+
+    pub fn event(id: usize, body: String) -> Self {
+        DisplayResponse { id, body: DisplayResponseBody::Event(body) }
+    }
+}
+
+impl Display for DisplayResponse {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let DisplayResponse { id, body } = self;
+        match body {
+            DisplayResponseBody::Linked => write!(f, "{}: LINKED", id),
+            DisplayResponseBody::Synced => write!(f, "{}: SYNCED", id),
+            DisplayResponseBody::Event(b) => write!(f, "{}: EVENT => {}", id, b),
+            DisplayResponseBody::Unlinked => write!(f, "{}: UNLINKED", id),
+        }
     }
 }
 

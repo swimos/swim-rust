@@ -28,11 +28,12 @@ use parking_lot::RwLock;
 use ratchet::{
     NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry, WebSocket, WebSocketConfig,
 };
-use swim::{form::structural::write::BodyWriter, route::RouteUri};
+use swim::route::RouteUri;
+use swim::form::structural::write::BodyWriter;
 use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swim_recon::{parser::MessageExtractError, printer::print_recon_compact};
 use swim_utilities::{routing::route_uri::InvalidRouteUri, trigger};
-use tokio::{io::AsyncWrite, net::TcpStream, sync::mpsc as tmpsc, task::block_in_place};
+use tokio::{net::TcpStream, sync::mpsc as tmpsc, task::block_in_place};
 
 use crate::{
     model::{DisplayResponse, Endpoint, Host, RuntimeCommand},
@@ -301,10 +302,7 @@ fn handle_body(state: &mut State, host: Host, body: &str) -> Result<DisplayRespo
                 lane: lane_uri.to_string(),
             };
             let id = state.get_id(&endpoint).unwrap_or(0);
-            Ok(DisplayResponse {
-                id,
-                body: "LINKED".to_string(),
-            })
+            Ok(DisplayResponse::linked(id))
         }
         RawEnvelope::Synced {
             node_uri, lane_uri, ..
@@ -316,10 +314,7 @@ fn handle_body(state: &mut State, host: Host, body: &str) -> Result<DisplayRespo
                 lane: lane_uri.to_string(),
             };
             let id = state.get_id(&endpoint).unwrap_or(0);
-            Ok(DisplayResponse {
-                id,
-                body: "SYNCED".to_string(),
-            })
+            Ok(DisplayResponse::synced(id))
         }
         RawEnvelope::Unlinked {
             node_uri, lane_uri, ..
@@ -336,10 +331,7 @@ fn handle_body(state: &mut State, host: Host, body: &str) -> Result<DisplayRespo
             } else {
                 0
             };
-            Ok(DisplayResponse {
-                id,
-                body: "UNLINKED".to_string(),
-            })
+            Ok(DisplayResponse::unlinked(id))
         }
         RawEnvelope::Event {
             node_uri,
@@ -354,10 +346,7 @@ fn handle_body(state: &mut State, host: Host, body: &str) -> Result<DisplayRespo
                 lane: lane_uri.to_string(),
             };
             let id = state.get_id(&endpoint).unwrap_or(0);
-            Ok(DisplayResponse {
-                id,
-                body: format!("EVENT: {}", body),
-            })
+            Ok(DisplayResponse::event(id, body.to_string()))
         }
         _ => Err(BadEnvelope(format!(
             "Invalid envelope from {}: {}",

@@ -30,7 +30,9 @@ use parking_lot::RwLock;
 use shared_state::SharedState;
 use tokio::sync::mpsc;
 use ui::history::HistoryEditView;
+
 mod controller;
+mod dummy_runtime;
 mod model;
 mod oneshot;
 mod runtime;
