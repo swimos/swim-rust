@@ -13,21 +13,22 @@
 // limitations under the License.
 
 use std::borrow::Cow;
+use std::sync::Arc;
+use std::time::Duration;
 
-use cursive::backend::Backend;
-use cursive::backends::termion;
+use controller::Controller;
 use cursive::theme::Color::TerminalDefault;
 use cursive::theme::PaletteColor::*;
-use cursive::view::ViewWrapper;
 use cursive::{
     theme::{BaseColor, BorderStyle, Palette, Theme},
     view::{Nameable, Resizable, ScrollStrategy, Scrollable},
-    views::{EditView, LinearLayout, Panel, TextView},
+    views::{LinearLayout, Panel, TextView},
     Cursive, CursiveExt, With,
 };
-use cursive_buffered_backend::BufferedBackend;
-use model::parse_app_command;
-use swim::agent::lanes::command;
+use model::{parse_app_command, RuntimeCommand};
+use parking_lot::RwLock;
+use shared_state::SharedState;
+use tokio::sync::mpsc;
 use ui::history::HistoryEditView;
 mod controller;
 mod model;
@@ -38,6 +39,9 @@ mod ui;
 
 fn main() {
     let mut siv = Cursive::default();
+    let shared_state: Arc<RwLock<SharedState>> = Default::default();
+    let (command_tx, command_rx) = mpsc::unbounded_channel::<RuntimeCommand>();
+    let mut controller = Controller::new(shared_state.clone(), command_tx, Duration::from_secs(10));
 
     siv.add_global_callback('q', |s| s.quit());
 
@@ -59,7 +63,7 @@ fn main() {
                 LinearLayout::vertical()
                     .child(Panel::new(
                         HistoryEditView::new(5)
-                            .on_submit(on_command)
+                            .on_submit_mut(move |s, text| on_command(s, &mut controller, text))
                             .with_name("command"),
                     ))
                     .child(
@@ -92,7 +96,7 @@ const HELP: &[&str] = &[
     "clear    Clear this display.\n",
 ];
 
-fn on_command(cursive: &mut Cursive, text: &str) {
+fn on_command(cursive: &mut Cursive, controller: &mut Controller, text: &str) {
     if text == "quit" {
         cursive.quit();
     }
@@ -111,7 +115,11 @@ fn on_command(cursive: &mut Cursive, text: &str) {
         _ => {
             let msgs = match parse_app_command(command_parts.as_slice()) {
                 Ok(command) => {
-                    vec![Cow::Owned(format!("{:?}\n", command))]
+                    controller.perform_action(command)
+                        .into_iter()
+                        .map(|msg| format!("{}\n", msg))
+                        .map(Cow::Owned)
+                        .collect()
                 }
                 Err(msg) => {
                     vec![

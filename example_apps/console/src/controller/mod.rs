@@ -60,11 +60,9 @@ impl Controller {
     fn resolve_target(&mut self, target: Target) -> Result<EndpointOrId, String> {
         let Controller {
             shared_state,
-            command_tx,
             with_host,
             with_node,
             with_lane,
-            names,
             ..
         } = self;
         let Target { remote, node, lane } = target;
@@ -86,10 +84,6 @@ impl Controller {
     fn resolve(&mut self, target: TargetRef) -> Result<EndpointOrId, String> {
         let Controller {
             shared_state,
-            command_tx,
-            with_host,
-            with_node,
-            with_lane,
             names,
             ..
         } = self;
