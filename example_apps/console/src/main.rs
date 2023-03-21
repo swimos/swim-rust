@@ -14,14 +14,19 @@
 
 use std::borrow::Cow;
 
+use cursive::backend::Backend;
+use cursive::backends::termion;
 use cursive::theme::Color::TerminalDefault;
 use cursive::theme::PaletteColor::*;
+use cursive::view::ViewWrapper;
 use cursive::{
     theme::{BaseColor, BorderStyle, Palette, Theme},
     view::{Nameable, Resizable, ScrollStrategy, Scrollable},
     views::{EditView, LinearLayout, Panel, TextView},
     Cursive, CursiveExt, With,
 };
+use cursive_buffered_backend::BufferedBackend;
+use model::parse_app_command;
 use swim::agent::lanes::command;
 use ui::history::HistoryEditView;
 mod controller;
@@ -62,22 +67,29 @@ fn main() {
                             TextView::new("")
                                 .with_name("history")
                                 .scrollable()
+                                .scroll_x(true)
                                 .scroll_strategy(ScrollStrategy::StickToBottom),
                         )
                         .full_screen(),
                     ),
             )
-            .child(Panel::new(TextView::new("World")).full_screen()),
+            .child(
+                Panel::new(TextView::new("World"))
+                    .full_screen()
+                    .scrollable()
+                    .scroll_x(true)
+                    .scroll_strategy(ScrollStrategy::StickToBottom),
+            ),
     );
 
-    siv.run();
+    siv.run()
 }
 
 const HELP: &[&str] = &[
     "Valid commands are:\n",
-    "help\t\tDisplay this list.\n",
-    "quit\t\tClose the application.\n",
-    "clear\t\tClear this display.\n"
+    "help     Display this list.\n",
+    "quit     Close the application.\n",
+    "clear    Clear this display.\n",
 ];
 
 fn on_command(cursive: &mut Cursive, text: &str) {
@@ -86,21 +98,29 @@ fn on_command(cursive: &mut Cursive, text: &str) {
     }
     cursive.call_on_name("history", |view: &mut TextView| {
         view.append(format!("> {}\n", text))
-    
     });
     let command_parts = text.split_whitespace().collect::<Vec<_>>();
-    
+
     let responses = match command_parts.as_slice() {
-        ["help"] => {
-            Some(HELP.iter().map(|s| Cow::Borrowed(*s)).collect())
-        },
+        ["help"] => Some(HELP.iter().map(|s| Cow::Borrowed(*s)).collect()),
         ["quit"] => {
             cursive.quit();
             Some(vec![])
         }
         ["clear"] => None,
         _ => {
-            Some(vec![Cow::Borrowed("Incorrect command. Type 'help' to list valid commands.")])
+            let msgs = match parse_app_command(command_parts.as_slice()) {
+                Ok(command) => {
+                    vec![Cow::Owned(format!("{:?}\n", command))]
+                }
+                Err(msg) => {
+                    vec![
+                        Cow::Owned(format!("{}\n", msg)),
+                        Cow::Borrowed("Type 'help' to list valid commands.\n"),
+                    ]
+                }
+            };
+            Some(msgs)
         }
     };
     cursive.call_on_name("history", move |view: &mut TextView| {

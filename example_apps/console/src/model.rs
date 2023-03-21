@@ -230,17 +230,21 @@ enum TargetPart {
 pub fn parse_target(parts: &[&str]) -> Result<(usize, Target), Cow<'static, str>> {
     let mut expected = None;
     let mut target = Target::default();
-    while let Some((i, part)) = parts.into_iter().enumerate().next() {
+    let mut it = parts.into_iter().enumerate();
+    while let Some((i, part)) = it.next() {
         match expected {
             Some(TargetPart::Host) => {
                 target.remote = Some(part.parse()?);
+                expected = None;
             },
             Some(TargetPart::Node) => {
                 let n = part.parse().map_err(|_| Cow::Borrowed("Invalid route URI."))?;
                 target.node = Some(n);
+                expected = None;
             },
             Some(TargetPart::Lane) => {
                 target.lane = Some(part.to_string());
+                expected = None;
             }
             _ => {
                 match *part {
