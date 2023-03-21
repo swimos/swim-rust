@@ -37,6 +37,7 @@ use crate::{
     shared_state::SharedState, ui::ViewUpdater, RuntimeFactory,
 };
 
+pub mod debug_runtime;
 pub mod dummy_runtime;
 
 const UI_DROPPED: &str = "The UI task stopped or timed out.";

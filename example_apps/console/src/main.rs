@@ -23,6 +23,7 @@ use futures::future::BoxFuture;
 use model::RuntimeCommand;
 use parking_lot::RwLock;
 use runtime::ConsoleFactory;
+use runtime::debug_runtime::DebugFactory;
 use runtime::dummy_runtime::DummyRuntimeFactory;
 use shared_state::SharedState;
 use swim_utilities::trigger;
@@ -51,11 +52,21 @@ fn main() {
 
     let args = std::env::args().collect::<Vec<_>>();
     let runtime = match args.first() {
-        Some(arg) if arg == "--dummy" && args.len() == 1 => {
-            DummyRuntimeFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
+        Some(arg) if args.len() == 1 => {
+            match arg.as_str() {
+                "--dummy" => {
+                    DummyRuntimeFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
+                },
+                "--real" => {
+                    ConsoleFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
+                }
+                _ => {
+                    panic!("Invalid arguments.");
+                }
+            }
         },
         None => {
-            ConsoleFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
+            DebugFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
         },
         _ => panic!("Invalid arguments.")
     };
