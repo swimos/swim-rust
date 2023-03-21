@@ -96,6 +96,12 @@ pub enum RuntimeCommand {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum UIUpdate {
+    LinkDisplay(DisplayResponse),
+    LogMessage(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct DisplayResponse {
     pub id: usize,
     pub body: DisplayResponseBody,

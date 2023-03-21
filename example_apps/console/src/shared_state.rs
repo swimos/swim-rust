@@ -53,10 +53,6 @@ impl SharedState {
         self.rev.iter().map(|(k, v)| (*k, v.clone())).collect()
     }
 
-    pub fn has_endpoint(&self, endpoint: &Endpoint) -> bool {
-        self.links.contains_key(endpoint)
-    }
-
     pub fn has_id(&self, id: usize) -> bool {
         self.rev.contains_key(&id)
     }
@@ -65,7 +61,4 @@ impl SharedState {
         self.links.get(endpoint).copied()
     }
 
-    pub fn get_endpoint(&self, id: usize) -> Option<&Endpoint> {
-        self.rev.get(&id)
-    }
 }

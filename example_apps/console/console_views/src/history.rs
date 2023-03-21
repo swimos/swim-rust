@@ -54,7 +54,7 @@ impl HistoryEditView {
         inner.set_on_submit(callback);
     }
 
-    pub fn set_on_submit_mut<F>(&mut self, mut callback: F)
+    pub fn set_on_submit_mut<F>(&mut self, callback: F)
     where
         F: FnMut(&mut Cursive, &str) + 'static,
     {
@@ -88,7 +88,7 @@ impl HistoryEditView {
         inner.set_on_edit(callback);
     }
 
-    pub fn set_on_edit_mut<F>(&mut self, mut callback: F)
+    pub fn set_on_edit_mut<F>(&mut self, callback: F)
     where
         F: FnMut(&mut Cursive, &str, usize) + 'static,
     {

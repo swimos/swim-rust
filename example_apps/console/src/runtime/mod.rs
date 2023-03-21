@@ -15,69 +15,75 @@
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
-    time::Duration,
 };
 
 use bytes::BytesMut;
-use crossbeam_channel as cmpsc;
 use futures::{
     stream::{unfold, SelectAll},
-    Stream, StreamExt,
+    Stream, StreamExt, FutureExt,
 };
 use parking_lot::RwLock;
 use ratchet::{
     NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry, WebSocket, WebSocketConfig,
 };
 use swim::route::RouteUri;
-use swim::form::structural::write::BodyWriter;
 use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swim_recon::{parser::MessageExtractError, printer::print_recon_compact};
 use swim_utilities::{routing::route_uri::InvalidRouteUri, trigger};
 use tokio::{net::TcpStream, sync::mpsc as tmpsc, task::block_in_place};
 
 use crate::{
-    model::{DisplayResponse, Endpoint, Host, RuntimeCommand},
-    shared_state::SharedState,
+    model::{DisplayResponse, Endpoint, Host, RuntimeCommand, UIUpdate},
+    shared_state::SharedState, ui::ViewUpdater, RuntimeFactory,
 };
+
+pub mod dummy_runtime;
 
 const UI_DROPPED: &str = "The UI task stopped or timed out.";
 
-pub struct Runtime {
+#[derive(Debug, Default)]
+pub struct ConsoleFactory;
+
+
+impl RuntimeFactory for ConsoleFactory {
+    fn run(&self,
+        shared_state: Arc<RwLock<SharedState>>,
+        commands: tmpsc::UnboundedReceiver<RuntimeCommand>,
+        updater: Box<dyn ViewUpdater + Send + 'static>,
+        stop: trigger::Receiver) -> futures::future::BoxFuture<'static, ()> {
+        let runtime = Runtime::new(shared_state, commands, updater, stop);
+        runtime.run().boxed()
+    }
+}
+
+struct Runtime {
     shared_state: Arc<RwLock<SharedState>>,
     commands: tmpsc::UnboundedReceiver<RuntimeCommand>,
-    output: cmpsc::Sender<DisplayResponse>,
-    errors: cmpsc::Sender<String>,
+    output: Box<dyn ViewUpdater + Send + 'static>,
     stop: trigger::Receiver,
-    timeout: Duration,
 }
 
 impl Runtime {
-    pub fn new(
+    fn new(
         shared_state: Arc<RwLock<SharedState>>,
         commands: tmpsc::UnboundedReceiver<RuntimeCommand>,
-        output: cmpsc::Sender<DisplayResponse>,
-        errors: cmpsc::Sender<String>,
+        output: Box<dyn ViewUpdater + Send + 'static>,
         stop: trigger::Receiver,
-        timeout: Duration,
     ) -> Self {
         Runtime {
             shared_state,
             commands,
             output,
-            errors,
             stop,
-            timeout,
         }
     }
 
-    pub async fn run(self) {
+    async fn run(self) {
         let Runtime {
             shared_state,
             mut commands,
-            output,
-            errors,
+            mut output,
             mut stop,
-            timeout,
         } = self;
 
         let mut senders = HashMap::new();
@@ -195,13 +201,13 @@ impl Runtime {
                 },
                 RuntimeEvent::Message(host, body) => match handle_body(&mut state, host, &body) {
                     Ok(msg) => {
-                        let out_ref = &output;
-                        block_in_place(move || out_ref.send_timeout(msg, timeout))
+                        let out_ref = &mut output;
+                        block_in_place(move || out_ref.update(UIUpdate::LinkDisplay(msg)))
                             .expect(UI_DROPPED);
                     }
                     Err(BadEnvelope(error)) => {
-                        let err_ref = &errors;
-                        block_in_place(move || err_ref.send_timeout(error, timeout))
+                        let out_ref = &mut output;
+                        block_in_place(move || out_ref.update(UIUpdate::LogMessage(error)))
                             .expect(UI_DROPPED);
                     }
                 },

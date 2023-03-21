@@ -14,21 +14,33 @@
 
 use std::{sync::Arc, time::Duration, collections::HashMap};
 
-use crossbeam_channel as cmpsc;
-use futures::{Stream, StreamExt, stream::{unfold, SelectAll}};
+use futures::{Stream, StreamExt, stream::{unfold, SelectAll}, FutureExt};
 use parking_lot::RwLock;
 use ratchet::ErrorKind;
 use swim_recon::printer::print_recon;
 use swim_utilities::trigger;
 use tokio::{sync::mpsc as tmpsc, task::block_in_place};
 
-use crate::{shared_state::SharedState, model::{RuntimeCommand, DisplayResponse, Host, Endpoint}};
+use crate::{shared_state::SharedState, model::{RuntimeCommand, DisplayResponse, Host, Endpoint, UIUpdate}, ui::ViewUpdater, RuntimeFactory};
+
+#[derive(Debug, Default)]
+pub struct DummyRuntimeFactory;
+
+impl RuntimeFactory for DummyRuntimeFactory {
+    fn run(&self,
+        shared_state: Arc<RwLock<SharedState>>,
+        commands: tmpsc::UnboundedReceiver<RuntimeCommand>,
+        updater: Box<dyn ViewUpdater + Send + 'static>,
+        stop: trigger::Receiver) -> futures::future::BoxFuture<'static, ()> {
+        let runtime = DummyRuntime::new(shared_state, commands, updater, stop);
+        runtime.run().boxed()
+    }
+}
 
 pub struct DummyRuntime {
     shared_state: Arc<RwLock<SharedState>>,
     commands: tmpsc::UnboundedReceiver<RuntimeCommand>,
-    output: cmpsc::Sender<DisplayResponse>,
-    errors: cmpsc::Sender<String>,
+    output: Box<dyn ViewUpdater + Send + 'static>,
     stop: trigger::Receiver,
 }
 
@@ -36,24 +48,22 @@ const REMOTE: &str = "localhost";
 const PORT: u16 = 8080;
 
 impl DummyRuntime {
-    pub fn new(
+    fn new(
         shared_state: Arc<RwLock<SharedState>>,
         commands: tmpsc::UnboundedReceiver<RuntimeCommand>,
-        output: cmpsc::Sender<DisplayResponse>,
-        errors: cmpsc::Sender<String>,
+        output: Box<dyn ViewUpdater + Send + 'static>,
         stop: trigger::Receiver,
     ) -> Self {
         DummyRuntime {
             shared_state,
             commands,
             output,
-            errors,
             stop,
         }
     }
 
-    pub async fn run(self) {
-        let DummyRuntime { shared_state, mut commands, output, errors, mut stop } = self;
+    async fn run(self) {
+        let DummyRuntime { shared_state, mut commands, mut output, mut stop } = self;
         let mut links = SelectAll::new();
         let mut unlinkers = HashMap::new();
 
@@ -69,8 +79,8 @@ impl DummyRuntime {
                 },
                 event = links.next(), if !links.is_empty() => {
                     if let Some(ev) = event {
-                        let out_ref = &output;
-                        block_in_place(move || out_ref.send(ev)).unwrap();
+                        let out_ref = &mut output;
+                        block_in_place(move || out_ref.update(UIUpdate::LinkDisplay(ev))).unwrap();
                     }
                     continue;
                 }
@@ -90,18 +100,18 @@ impl DummyRuntime {
                     }
                 },
                 RuntimeCommand::Sync(id) => {
-                    let err_ref = &errors;
-                    block_in_place(move || err_ref.send(format!("Sync for {}.", id))).unwrap();
+                    let out_ref = &mut output;
+                    block_in_place(move || out_ref.update(UIUpdate::LogMessage(format!("Sync for {}.", id)))).unwrap();
                 },
                 RuntimeCommand::Command(id, body) => {
-                    let err_ref = &errors;
+                    let out_ref = &mut output;
                     let msg = format!("Command '{}' sent to {}.", print_recon(&body), id);
-                    block_in_place(move || err_ref.send(msg)).unwrap();
+                    block_in_place(move || out_ref.update(UIUpdate::LogMessage(msg))).unwrap();
                 },
                 RuntimeCommand::AdHocCommand(target, body) => {
-                    let err_ref = &errors;
+                    let out_ref = &mut output;
                     let msg = format!("Ad-hoc command '{}' sent to {:?}.", print_recon(&body), target);
-                    block_in_place(move || err_ref.send(msg)).unwrap();
+                    block_in_place(move || out_ref.update(UIUpdate::LogMessage(msg))).unwrap();
                 },
                 RuntimeCommand::Unlink(id) => {
                     if let Some(tx) = unlinkers.remove(&id) {

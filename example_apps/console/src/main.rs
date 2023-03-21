@@ -12,27 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::borrow::Cow;
-use std::sync::Arc;
+use std::{sync::Arc};
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use controller::Controller;
-use cursive::theme::Color::TerminalDefault;
-use cursive::theme::PaletteColor::*;
-use cursive::{
-    theme::{BaseColor, BorderStyle, Palette, Theme},
-    view::{Nameable, Resizable, ScrollStrategy, Scrollable},
-    views::{LinearLayout, Panel, TextView},
-    Cursive, CursiveExt, With,
-};
-use model::{parse_app_command, RuntimeCommand};
+use cursive::{Cursive, CursiveExt};
+use futures::Future;
+use futures::future::BoxFuture;
+use model::RuntimeCommand;
 use parking_lot::RwLock;
+use runtime::ConsoleFactory;
+use runtime::dummy_runtime::DummyRuntimeFactory;
 use shared_state::SharedState;
+use swim_utilities::trigger;
+use tokio::runtime::Builder;
 use tokio::sync::mpsc;
-use ui::history::HistoryEditView;
+use ui::{WithTimeout, ViewUpdater};
 
 mod controller;
-mod dummy_runtime;
 mod model;
 mod oneshot;
 mod runtime;
@@ -40,106 +38,54 @@ mod shared_state;
 mod ui;
 
 fn main() {
+    
     let mut siv = Cursive::default();
+    
     let shared_state: Arc<RwLock<SharedState>> = Default::default();
     let (command_tx, command_rx) = mpsc::unbounded_channel::<RuntimeCommand>();
-    let mut controller = Controller::new(shared_state.clone(), command_tx, Duration::from_secs(10));
+    let controller = Controller::new(shared_state.clone(), command_tx, TIMEOUT);
+    
+    ui::create_ui(&mut siv, controller);
+    let (stop_tx, stop_rx) = trigger::trigger();
+    let updater = WithTimeout::new(siv.cb_sink().clone(), TIMEOUT);
 
-    siv.add_global_callback('q', |s| s.quit());
-
-    siv.set_theme(Theme {
-        shadow: false,
-        borders: BorderStyle::Outset,
-        palette: Palette::default().with(|palette| {
-            palette[Background] = TerminalDefault;
-            palette[View] = TerminalDefault;
-            palette[Primary] = BaseColor::White.dark();
-            palette[TitlePrimary] = BaseColor::Blue.light();
-            palette[Secondary] = BaseColor::White.dark();
-            palette[Highlight] = BaseColor::Blue.dark();
-        }),
-    });
-    siv.add_layer(
-        LinearLayout::horizontal()
-            .child(
-                LinearLayout::vertical()
-                    .child(Panel::new(
-                        HistoryEditView::new(5)
-                            .on_submit_mut(move |s, text| on_command(s, &mut controller, text))
-                            .with_name("command"),
-                    ))
-                    .child(
-                        Panel::new(
-                            TextView::new("")
-                                .with_name("history")
-                                .scrollable()
-                                .scroll_x(true)
-                                .scroll_strategy(ScrollStrategy::StickToBottom),
-                        )
-                        .full_screen(),
-                    ),
-            )
-            .child(
-                Panel::new(TextView::new("World"))
-                    .full_screen()
-                    .scrollable()
-                    .scroll_x(true)
-                    .scroll_strategy(ScrollStrategy::StickToBottom),
-            ),
-    );
-
-    siv.run()
-}
-
-const HELP: &[&str] = &[
-    "Valid commands are:\n",
-    "help     Display this list.\n",
-    "quit     Close the application.\n",
-    "clear    Clear this display.\n",
-];
-
-fn on_command(cursive: &mut Cursive, controller: &mut Controller, text: &str) {
-    if text == "quit" {
-        cursive.quit();
-    }
-    cursive.call_on_name("history", |view: &mut TextView| {
-        view.append(format!("> {}\n", text))
-    });
-    let command_parts = text.split_whitespace().collect::<Vec<_>>();
-
-    let responses = match command_parts.as_slice() {
-        ["help"] => Some(HELP.iter().map(|s| Cow::Borrowed(*s)).collect()),
-        ["quit"] => {
-            cursive.quit();
-            Some(vec![])
-        }
-        ["clear"] => None,
-        _ => {
-            let msgs = match parse_app_command(command_parts.as_slice()) {
-                Ok(command) => {
-                    controller.perform_action(command)
-                        .into_iter()
-                        .map(|msg| format!("{}\n", msg))
-                        .map(Cow::Owned)
-                        .collect()
-                }
-                Err(msg) => {
-                    vec![
-                        Cow::Owned(format!("{}\n", msg)),
-                        Cow::Borrowed("Type 'help' to list valid commands.\n"),
-                    ]
-                }
-            };
-            Some(msgs)
-        }
+    let args = std::env::args().collect::<Vec<_>>();
+    let runtime = match args.first() {
+        Some(arg) if arg == "--dummy" && args.len() == 1 => {
+            DummyRuntimeFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
+        },
+        None => {
+            ConsoleFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
+        },
+        _ => panic!("Invalid arguments.")
     };
-    cursive.call_on_name("history", move |view: &mut TextView| {
-        if let Some(resp) = responses {
-            for response in resp {
-                view.append(response);
-            }
-        } else {
-            view.set_content("");
-        }
-    });
+    
+    let handle = start_runtime(runtime);
+
+    siv.run();
+    stop_tx.trigger();
+    handle.join().expect("Runtime failed.");
 }
+
+const TIMEOUT: Duration = Duration::from_secs(5);
+
+fn start_runtime<F: Future<Output = ()> + Send + 'static>(app_runtime: F) -> JoinHandle<()> {
+    std::thread::spawn(move || {
+        let runtime = Builder::new_current_thread()
+            .build()
+            .expect("Failed to construct runtime.");
+        
+        runtime.block_on(app_runtime);
+    })
+}
+
+trait RuntimeFactory {
+
+    fn run(&self,
+        shared_state: Arc<RwLock<SharedState>>,
+        commands: mpsc::UnboundedReceiver<RuntimeCommand>,
+        updater: Box<dyn ViewUpdater + Send + 'static>,
+        stop: trigger::Receiver) -> BoxFuture<'static, ()>;
+}
+
+

@@ -17,3 +17,4 @@ crossbeam-channel = { workspace = true }
 ratchet = { package = "ratchet_rs", workspace = true, features = ["deflate", "split"] }
 bytes = { workspace = true }
 cursive = {version = "0.20", default-features = false, features = ["termion-backend"]}
+console-views = { path = "console_views" }

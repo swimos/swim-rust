@@ -13,6 +13,7 @@ members = [
     "server/swim_*",
     "example_apps/basic",
     "example_apps/console",
+    "example_apps/console/console_views",
     "example_apps/multi/server",
     "example_apps/multi/client"
 ]
