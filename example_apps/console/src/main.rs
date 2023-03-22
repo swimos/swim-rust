@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{sync::Arc};
+use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use controller::Controller;
 use cursive::{Cursive, CursiveExt};
-use futures::Future;
 use futures::future::BoxFuture;
+use futures::Future;
 use model::RuntimeCommand;
 use parking_lot::RwLock;
-use runtime::ConsoleFactory;
 use runtime::debug_runtime::DebugFactory;
 use runtime::dummy_runtime::DummyRuntimeFactory;
+use runtime::ConsoleFactory;
 use shared_state::SharedState;
 use swim_utilities::trigger;
 use tokio::runtime::Builder;
@@ -39,41 +39,41 @@ mod shared_state;
 mod ui;
 
 fn main() {
-    
     let mut siv = Cursive::default();
-    
+
     let shared_state: Arc<RwLock<SharedState>> = Default::default();
     let (command_tx, command_rx) = mpsc::unbounded_channel::<RuntimeCommand>();
     let controller = Controller::new(shared_state.clone(), command_tx, TIMEOUT);
-    
+
     ui::create_ui(&mut siv, controller, MAX_LINES);
     let (stop_tx, stop_rx) = trigger::trigger();
     let updater = CursiveUIUpdater::new(siv.cb_sink().clone(), TIMEOUT, MAX_LINES);
 
     let args = std::env::args().collect::<Vec<_>>();
     let runtime = match args.get(1) {
-        Some(arg) if args.len() == 2 => {
-            match arg.as_str() {
-                "--debug" => {
-                    DebugFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
-                },
-                "--dummy" => {
-                    DummyRuntimeFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
-                },
-                "--real" => {
-                    ConsoleFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
-                }
-                _ => {
-                    panic!("Invalid arguments.");
-                }
+        Some(arg) if args.len() == 2 => match arg.as_str() {
+            "--debug" => {
+                DebugFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
+            }
+            "--dummy" => DummyRuntimeFactory::default().run(
+                shared_state,
+                command_rx,
+                Box::new(updater),
+                stop_rx,
+            ),
+            "--real" => {
+                ConsoleFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
+            }
+            _ => {
+                panic!("Invalid arguments.");
             }
         },
         None => {
             DummyRuntimeFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
-        },
-        _ => panic!("Invalid arguments.")
+        }
+        _ => panic!("Invalid arguments."),
     };
-    
+
     let handle = start_runtime(runtime);
 
     siv.run();
@@ -92,18 +92,17 @@ fn start_runtime<F: Future<Output = ()> + Send + 'static>(app_runtime: F) -> Joi
             .enable_time()
             .build()
             .expect("Failed to construct runtime.");
-        
+
         runtime.block_on(app_runtime);
     })
 }
 
 trait RuntimeFactory {
-
-    fn run(&self,
+    fn run(
+        &self,
         shared_state: Arc<RwLock<SharedState>>,
         commands: mpsc::UnboundedReceiver<RuntimeCommand>,
         updater: Box<dyn ViewUpdater + Send + 'static>,
-        stop: trigger::Receiver) -> BoxFuture<'static, ()>;
+        stop: trigger::Receiver,
+    ) -> BoxFuture<'static, ()>;
 }
-
-

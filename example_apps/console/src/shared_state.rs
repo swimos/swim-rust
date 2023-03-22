@@ -60,5 +60,4 @@ impl SharedState {
     pub fn get_id(&self, endpoint: &Endpoint) -> Option<usize> {
         self.links.get(endpoint).copied()
     }
-
 }

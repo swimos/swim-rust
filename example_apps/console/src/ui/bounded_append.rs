@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use cursive::{Cursive, utils::markup::StyledString, views::TextView};
+use cursive::{utils::markup::StyledString, views::TextView, Cursive};
 
 pub struct BoundedAppend<S, L> {
     label: S,
@@ -22,24 +22,35 @@ pub struct BoundedAppend<S, L> {
 
 impl<S: Clone, L> Clone for BoundedAppend<S, L> {
     fn clone(&self) -> Self {
-        Self { label: self.label.clone(), max_lines: self.max_lines.clone(), format: self.format.clone() }
+        Self {
+            label: self.label.clone(),
+            max_lines: self.max_lines.clone(),
+            format: self.format.clone(),
+        }
     }
 }
 
 impl<S: Copy, L> Copy for BoundedAppend<S, L> {}
 
 impl<S: AsRef<str>, L> BoundedAppend<S, L> {
-
     pub fn new(label: S, max_lines: usize, format: fn(L) -> StyledString) -> Self {
-            BoundedAppend { label, max_lines, format }
+        BoundedAppend {
+            label,
+            max_lines,
+            format,
         }
+    }
 
     pub fn append(&self, s: &mut Cursive, line: L) {
         self.append_many(s, std::iter::once(line))
     }
 
     pub fn append_many(&self, s: &mut Cursive, it: impl IntoIterator<Item = L>) {
-        let BoundedAppend { label, max_lines, format } = self;
+        let BoundedAppend {
+            label,
+            max_lines,
+            format,
+        } = self;
         let styled = it.into_iter().map(format);
         let max = *max_lines;
         s.call_on_name(label.as_ref(), move |view: &mut TextView| {
@@ -61,5 +72,4 @@ impl<S: AsRef<str>, L> BoundedAppend<S, L> {
         let BoundedAppend { label, .. } = self;
         s.call_on_name(label.as_ref(), |view: &mut TextView| view.set_content(""));
     }
-
 }

@@ -19,18 +19,24 @@ use parking_lot::RwLock;
 use swim_utilities::trigger;
 use tokio::sync::mpsc::UnboundedReceiver;
 
-use crate::{RuntimeFactory, shared_state::SharedState, model::{RuntimeCommand, UIUpdate}, ui::ViewUpdater};
+use crate::{
+    model::{RuntimeCommand, UIUpdate},
+    shared_state::SharedState,
+    ui::ViewUpdater,
+    RuntimeFactory,
+};
 
 #[derive(Debug, Default)]
 pub struct DebugFactory;
 
 impl RuntimeFactory for DebugFactory {
-    fn run(&self,
+    fn run(
+        &self,
         shared_state: Arc<RwLock<SharedState>>,
         mut commands: UnboundedReceiver<RuntimeCommand>,
         mut updater: Box<dyn ViewUpdater + Send + 'static>,
-        mut stop: trigger::Receiver) -> BoxFuture<'static, ()> {
-        
+        mut stop: trigger::Receiver,
+    ) -> BoxFuture<'static, ()> {
         async move {
             loop {
                 let command = tokio::select! {
@@ -50,8 +56,11 @@ impl RuntimeFactory for DebugFactory {
                     let id = shared_state.write().insert(endpoint);
                     response.send(Ok(id));
                 }
-                updater.update(UIUpdate::LogMessage(string)).expect("UI failed.");
+                updater
+                    .update(UIUpdate::LogMessage(string))
+                    .expect("UI failed.");
             }
-        }.boxed()
+        }
+        .boxed()
     }
 }

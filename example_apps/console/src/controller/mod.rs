@@ -178,7 +178,7 @@ impl Controller {
                 let mut response = vec!["Active links:".to_string()];
                 response.extend(self.links().into_iter().map(format_list_entry));
                 response
-            },
+            }
             AppCommand::Command { target, body } => match self.resolve(target) {
                 Ok(EndpointOrId::Id(id)) => {
                     self.command_tx

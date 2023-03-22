@@ -20,7 +20,7 @@ use std::{
 use bytes::BytesMut;
 use futures::{
     stream::{unfold, SelectAll},
-    Stream, StreamExt, FutureExt,
+    FutureExt, Stream, StreamExt,
 };
 use parking_lot::RwLock;
 use ratchet::{
@@ -34,7 +34,9 @@ use tokio::{net::TcpStream, sync::mpsc as tmpsc, task::block_in_place};
 
 use crate::{
     model::{DisplayResponse, Endpoint, Host, RuntimeCommand, UIUpdate},
-    shared_state::SharedState, ui::ViewUpdater, RuntimeFactory,
+    shared_state::SharedState,
+    ui::ViewUpdater,
+    RuntimeFactory,
 };
 
 pub mod debug_runtime;
@@ -45,13 +47,14 @@ const UI_DROPPED: &str = "The UI task stopped or timed out.";
 #[derive(Debug, Default)]
 pub struct ConsoleFactory;
 
-
 impl RuntimeFactory for ConsoleFactory {
-    fn run(&self,
+    fn run(
+        &self,
         shared_state: Arc<RwLock<SharedState>>,
         commands: tmpsc::UnboundedReceiver<RuntimeCommand>,
         updater: Box<dyn ViewUpdater + Send + 'static>,
-        stop: trigger::Receiver) -> futures::future::BoxFuture<'static, ()> {
+        stop: trigger::Receiver,
+    ) -> futures::future::BoxFuture<'static, ()> {
         let runtime = Runtime::new(shared_state, commands, updater, stop);
         runtime.run().boxed()
     }

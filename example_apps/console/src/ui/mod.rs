@@ -66,11 +66,9 @@ pub struct CursiveUIUpdater {
 }
 
 impl CursiveUIUpdater {
-    pub fn new(sink: cursive::CbSink, 
-        timeout: Duration,
-        max_lines: usize) -> Self {
-        CursiveUIUpdater { 
-            sink, 
+    pub fn new(sink: cursive::CbSink, timeout: Duration, max_lines: usize) -> Self {
+        CursiveUIUpdater {
+            sink,
             timeout,
             link_appender: BoundedAppend::new(LINKS_VIEW, max_lines, format_display),
             log_appender: BoundedAppend::new(LOG_VIEW, max_lines, format_log_msg),
@@ -87,7 +85,12 @@ const COLOURS: &[Color] = &[
 
 impl ViewUpdater for CursiveUIUpdater {
     fn update(&mut self, update: UIUpdate) -> Result<(), UIFailed> {
-        let CursiveUIUpdater { sink, timeout, link_appender, log_appender } = self;
+        let CursiveUIUpdater {
+            sink,
+            timeout,
+            link_appender,
+            log_appender,
+        } = self;
         match update {
             UIUpdate::LinkDisplay(display) => {
                 let link_appender = *link_appender;
@@ -118,9 +121,7 @@ const LOG_VIEW: &str = "log";
 
 const COMMAND_EDIT: &str = "command";
 
-pub fn create_ui(siv: &mut Cursive, 
-    mut controller: Controller,
-    max_lines: usize) {
+pub fn create_ui(siv: &mut Cursive, mut controller: Controller, max_lines: usize) {
     siv.add_global_callback('q', |s| s.quit());
 
     siv.set_theme(Theme {
@@ -142,7 +143,9 @@ pub fn create_ui(siv: &mut Cursive,
                 LinearLayout::vertical()
                     .child(Panel::new(
                         HistoryEditView::new(5)
-                            .on_submit_mut(move |s, text| on_command(s, &mut controller, &history_appender, text))
+                            .on_submit_mut(move |s, text| {
+                                on_command(s, &mut controller, &history_appender, text)
+                            })
                             .with_name(COMMAND_EDIT),
                     ))
                     .child(
@@ -186,10 +189,12 @@ const HELP: &[&str] = &[
     "clear    Clear this display.\n",
 ];
 
-fn on_command(cursive: &mut Cursive, 
-    controller: &mut Controller, 
+fn on_command(
+    cursive: &mut Cursive,
+    controller: &mut Controller,
     appender: &BoundedAppend<&'static str, Cow<'static, str>>,
-    text: &str) {
+    text: &str,
+) {
     if text == "quit" {
         cursive.quit();
     }

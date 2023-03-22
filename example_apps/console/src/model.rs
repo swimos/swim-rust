@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{fmt::{Display, Formatter}, str::FromStr, borrow::Cow};
+use std::{
+    borrow::Cow,
+    fmt::{Display, Formatter},
+    str::FromStr,
+};
 
 use swim::{model::Value, route::RouteUri};
 use swim_recon::parser::parse_value;
@@ -117,19 +121,31 @@ pub enum DisplayResponseBody {
 
 impl DisplayResponse {
     pub fn linked(id: usize) -> Self {
-        DisplayResponse { id, body: DisplayResponseBody::Linked }
+        DisplayResponse {
+            id,
+            body: DisplayResponseBody::Linked,
+        }
     }
 
     pub fn synced(id: usize) -> Self {
-        DisplayResponse { id, body: DisplayResponseBody::Synced }
+        DisplayResponse {
+            id,
+            body: DisplayResponseBody::Synced,
+        }
     }
 
     pub fn unlinked(id: usize) -> Self {
-        DisplayResponse { id, body: DisplayResponseBody::Unlinked }
+        DisplayResponse {
+            id,
+            body: DisplayResponseBody::Unlinked,
+        }
     }
 
     pub fn event(id: usize, body: String) -> Self {
-        DisplayResponse { id, body: DisplayResponseBody::Event(body) }
+        DisplayResponse {
+            id,
+            body: DisplayResponseBody::Event(body),
+        }
     }
 }
 
@@ -170,7 +186,7 @@ impl FromStr for Host {
         } else {
             DEFAULT_PORT
         };
-        
+
         if parts.next().is_none() {
             Ok(Host { host_name, port })
         } else {
@@ -198,11 +214,13 @@ pub fn parse_app_command(parts: &[&str]) -> Result<AppCommand, Cow<'static, str>
         ["with-host", host] => {
             let h = host.parse()?;
             Ok(AppCommand::WithHost(h))
-        },
+        }
         ["with-node", node] => {
-            let n = node.parse().map_err(|_| Cow::Borrowed("Invalid route URI."))?;
+            let n = node
+                .parse()
+                .map_err(|_| Cow::Borrowed("Invalid route URI."))?;
             Ok(AppCommand::WithNode(n))
-        },
+        }
         ["with-lane", lane] => Ok(AppCommand::WithLane(lane.to_string())),
         ["show-with"] => Ok(AppCommand::ShowWith),
         ["clear-with"] => Ok(AppCommand::ClearWith),
@@ -211,32 +229,41 @@ pub fn parse_app_command(parts: &[&str]) -> Result<AppCommand, Cow<'static, str>
             match &tail[consumed..] {
                 [body] => {
                     if let Ok(value) = parse_value(*body, false) {
-                        Ok(AppCommand::Command { target, body: value })
+                        Ok(AppCommand::Command {
+                            target,
+                            body: value,
+                        })
                     } else {
                         Err(Cow::Owned(format!("'{}' is not value recon.", body)))
                     }
-                },
-                [] => Ok(AppCommand::Command { target, body: Value::Extant }),
+                }
+                [] => Ok(AppCommand::Command {
+                    target,
+                    body: Value::Extant,
+                }),
                 _ => Err(Cow::Borrowed("Too many parameters for command.")),
             }
-        },
+        }
         ["list"] => Ok(AppCommand::ListLinks),
         ["link", tail @ ..] => {
             let (consumed, target) = parse_target(tail)?;
             match &tail[consumed..] {
-                [name] => Ok(AppCommand::Link { name: Some(name.to_string()), target }),
+                [name] => Ok(AppCommand::Link {
+                    name: Some(name.to_string()),
+                    target,
+                }),
                 [] => Ok(AppCommand::Link { name: None, target }),
                 _ => Err(Cow::Borrowed("Too many parameters for link.")),
             }
-        },
+        }
         ["sync", target] => {
             let r = target.parse()?;
             Ok(AppCommand::Sync(r))
-        },
+        }
         ["unlink", target] => {
             let r = target.parse()?;
             Ok(AppCommand::Unlink(r))
-        },
+        }
         _ => Err(Cow::Borrowed("Unknown command.")),
     }
 }
@@ -247,7 +274,7 @@ pub fn parse_target_ref(parts: &[&str]) -> Result<(usize, TargetRef), Cow<'stati
         [first, ..] if first.starts_with("-") => {
             let (consumed, target) = parse_target(parts)?;
             Ok((consumed, TargetRef::Direct(target)))
-        },
+        }
         [arg, ..] => {
             let r = if let Ok(id) = arg.parse() {
                 TargetRef::Link(LinkRef::ById(id))
@@ -255,7 +282,7 @@ pub fn parse_target_ref(parts: &[&str]) -> Result<(usize, TargetRef), Cow<'stati
                 TargetRef::Link(LinkRef::ByName(arg.to_string()))
             };
             Ok((1, r))
-        },
+        }
     }
 }
 
@@ -274,32 +301,32 @@ pub fn parse_target(parts: &[&str]) -> Result<(usize, Target), Cow<'static, str>
             Some(TargetPart::Host) => {
                 target.remote = Some(part.parse()?);
                 expected = None;
-            },
+            }
             Some(TargetPart::Node) => {
-                let n = part.parse().map_err(|_| Cow::Borrowed("Invalid route URI."))?;
+                let n = part
+                    .parse()
+                    .map_err(|_| Cow::Borrowed("Invalid route URI."))?;
                 target.node = Some(n);
                 expected = None;
-            },
+            }
             Some(TargetPart::Lane) => {
                 target.lane = Some(part.to_string());
                 expected = None;
             }
-            _ => {
-                match *part {
-                    "--host" | "-h" => {
-                        expected = Some(TargetPart::Host);
-                    }
-                    "--node" | "-n" => {
-                        expected = Some(TargetPart::Node);
-                    }
-                    "--lane" | "-l" => {
-                        expected = Some(TargetPart::Lane);
-                    }
-                    _ => {
-                        return Ok((i, target));
-                    }
+            _ => match *part {
+                "--host" | "-h" => {
+                    expected = Some(TargetPart::Host);
                 }
-            }
+                "--node" | "-n" => {
+                    expected = Some(TargetPart::Node);
+                }
+                "--lane" | "-l" => {
+                    expected = Some(TargetPart::Lane);
+                }
+                _ => {
+                    return Ok((i, target));
+                }
+            },
         }
     }
     Ok((parts.len(), target))
