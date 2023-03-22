@@ -228,7 +228,7 @@ pub fn parse_app_command(parts: &[&str]) -> Result<AppCommand, Cow<'static, str>
             let (consumed, target) = parse_target_ref(tail)?;
             match &tail[consumed..] {
                 [body] => {
-                    if let Ok(value) = parse_value(*body, false) {
+                    if let Ok(value) = parse_value(body, false) {
                         Ok(AppCommand::Command {
                             target,
                             body: value,
@@ -271,7 +271,7 @@ pub fn parse_app_command(parts: &[&str]) -> Result<AppCommand, Cow<'static, str>
 pub fn parse_target_ref(parts: &[&str]) -> Result<(usize, TargetRef), Cow<'static, str>> {
     match parts {
         [] => Ok((0, TargetRef::Direct(Target::default()))),
-        [first, ..] if first.starts_with("-") => {
+        [first, ..] if first.starts_with('-') => {
             let (consumed, target) = parse_target(parts)?;
             Ok((consumed, TargetRef::Direct(target)))
         }
@@ -295,8 +295,8 @@ enum TargetPart {
 pub fn parse_target(parts: &[&str]) -> Result<(usize, Target), Cow<'static, str>> {
     let mut expected = None;
     let mut target = Target::default();
-    let mut it = parts.into_iter().enumerate();
-    while let Some((i, part)) = it.next() {
+    let it = parts.iter().enumerate();
+    for (i, part) in it {
         match expected {
             Some(TargetPart::Host) => {
                 target.remote = Some(part.parse()?);

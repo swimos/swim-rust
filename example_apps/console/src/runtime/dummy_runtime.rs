@@ -178,18 +178,16 @@ fn fake_link(id: usize, done: trigger::Receiver) -> impl Stream<Item = DisplayRe
         async move {
             if first {
                 Some((DisplayResponse::linked(id), (false, stop)))
-            } else {
-                if let Some(mut stop) = stop {
-                    match tokio::time::timeout(INTERVAL, &mut stop).await {
-                        Ok(_) => Some((DisplayResponse::unlinked(id), (false, None))),
-                        Err(_) => Some((
-                            DisplayResponse::event(id, format!("{}", i)),
-                            (false, Some(stop)),
-                        )),
-                    }
-                } else {
-                    None
+            } else if let Some(mut stop) = stop {
+                match tokio::time::timeout(INTERVAL, &mut stop).await {
+                    Ok(_) => Some((DisplayResponse::unlinked(id), (false, None))),
+                    Err(_) => Some((
+                        DisplayResponse::event(id, format!("{}", i)),
+                        (false, Some(stop)),
+                    )),
                 }
+            } else {
+                None
             }
         }
     })

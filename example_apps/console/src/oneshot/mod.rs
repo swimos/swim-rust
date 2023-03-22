@@ -79,12 +79,10 @@ impl<T> Receiver<T> {
             Ok(value)
         } else if guard.sender_dropped {
             Err(ReceiveError::SenderDropped)
+        } else if self.inner.cvar.wait_for(&mut guard, timeout).timed_out() {
+            Err(ReceiveError::TimedOut)
         } else {
-            if self.inner.cvar.wait_for(&mut guard, timeout).timed_out() {
-                Err(ReceiveError::TimedOut)
-            } else {
-                guard.data.take().ok_or(ReceiveError::SenderDropped)
-            }
+            guard.data.take().ok_or(ReceiveError::SenderDropped)
         }
     }
 }

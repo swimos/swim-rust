@@ -177,17 +177,15 @@ impl Runtime {
                         let Endpoint { remote, node, lane } = endpoint;
                         let recon = format!("{}", print_recon_compact(&body));
                         if let Some(tx) = senders.get_mut(&remote) {
-                            if !send_cmd(tx, &node, &lane, &recon).await.is_ok() {
+                            if send_cmd(tx, &node, &lane, &recon).await.is_err() {
                                 senders.remove(&remote);
                             }
-                        } else {
-                            if let Ok((mut tx, rx)) =
-                                open_connection(&remote).await.and_then(|ws| ws.split())
-                            {
-                                if send_cmd(&mut tx, &node, &lane, &recon).await.is_ok() {
-                                    senders.insert(remote.clone(), tx);
-                                    receivers.push(Box::pin(into_stream(remote, rx)));
-                                }
+                        } else if let Ok((mut tx, rx)) =
+                            open_connection(&remote).await.and_then(|ws| ws.split())
+                        {
+                            if send_cmd(&mut tx, &node, &lane, &recon).await.is_ok() {
+                                senders.insert(remote.clone(), tx);
+                                receivers.push(Box::pin(into_stream(remote, rx)));
                             }
                         }
                     }
@@ -268,13 +266,11 @@ fn into_stream(remote: Host, rx: Rx) -> impl Stream<Item = Result<(Host, String)
                 buffer.clear();
                 if rx.read(&mut buffer).await.is_err() {
                     Some((Err(Failed(remote.clone())), (remote, None, buffer)))
+                } else if let Ok(body) = std::str::from_utf8(buffer.as_ref()) {
+                    let response = (remote.clone(), body.to_string());
+                    Some((Ok(response), (remote, Some(rx), buffer)))
                 } else {
-                    if let Ok(body) = std::str::from_utf8(buffer.as_ref()) {
-                        let response = (remote.clone(), body.to_string());
-                        Some((Ok(response), (remote, Some(rx), buffer)))
-                    } else {
-                        Some((Err(Failed(remote.clone())), (remote, None, buffer)))
-                    }
+                    Some((Err(Failed(remote.clone())), (remote, None, buffer)))
                 }
             } else {
                 None

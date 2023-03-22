@@ -24,8 +24,8 @@ impl<S: Clone, L> Clone for BoundedAppend<S, L> {
     fn clone(&self) -> Self {
         Self {
             label: self.label.clone(),
-            max_lines: self.max_lines.clone(),
-            format: self.format.clone(),
+            max_lines: self.max_lines,
+            format: self.format,
         }
     }
 }

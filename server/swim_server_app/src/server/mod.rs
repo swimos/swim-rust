@@ -76,12 +76,10 @@ impl ServerHandle {
         let (response_tx, response_rx) = oneshot::channel();
         if self.start_agent_tx.send(StartAgentRequest::new(route, response_tx)).await.is_err() {
             Err(UnresolvableRoute::Stopped)
+        } else if let Ok(result) = response_rx.await {
+            result
         } else {
-            if let Ok(result) = response_rx.await {
-                result
-            } else {
-                Err(UnresolvableRoute::Stopped)
-            }
+            Err(UnresolvableRoute::Stopped)
         }
     }
 
