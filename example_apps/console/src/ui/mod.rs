@@ -26,8 +26,12 @@ use cursive::{
 };
 use std::time::Duration;
 
-use crate::model::parse_app_command;
+use crate::model::{parse_app_command, DisplayResponse};
 use crate::{controller::Controller, model::UIUpdate};
+
+use self::bounded_append::BoundedAppend;
+
+mod bounded_append;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UIFailed {
@@ -54,14 +58,23 @@ pub trait ViewUpdater {
     fn update(&mut self, upd: UIUpdate) -> Result<(), UIFailed>;
 }
 
-pub struct WithTimeout {
+pub struct CursiveUIUpdater {
     sink: cursive::CbSink,
     timeout: Duration,
+    link_appender: BoundedAppend<&'static str, DisplayResponse>,
+    log_appender: BoundedAppend<&'static str, String>,
 }
 
-impl WithTimeout {
-    pub fn new(sink: cursive::CbSink, timeout: Duration) -> Self {
-        WithTimeout { sink, timeout }
+impl CursiveUIUpdater {
+    pub fn new(sink: cursive::CbSink, 
+        timeout: Duration,
+        max_lines: usize) -> Self {
+        CursiveUIUpdater { 
+            sink, 
+            timeout,
+            link_appender: BoundedAppend::new(LINKS_VIEW, max_lines, format_display),
+            log_appender: BoundedAppend::new(LOG_VIEW, max_lines, format_log_msg),
+        }
     }
 }
 
@@ -72,56 +85,27 @@ const COLOURS: &[Color] = &[
     Color::Dark(BaseColor::Yellow),
 ];
 
-impl ViewUpdater for WithTimeout {
+impl ViewUpdater for CursiveUIUpdater {
     fn update(&mut self, update: UIUpdate) -> Result<(), UIFailed> {
-        let WithTimeout { sink, timeout } = self;
+        let CursiveUIUpdater { sink, timeout, link_appender, log_appender } = self;
         match update {
             UIUpdate::LinkDisplay(display) => {
-                let line = format!("{}\n", display);
-                let id = display.id;
-                let colour = COLOURS[id % COLOURS.len()];
+                let link_appender = *link_appender;
                 sink.send_timeout(
                     Box::new(move |s| {
-                        s.call_on_name(LINKS_VIEW, move |view: &mut TextView| {
-                            view.append(StyledString::styled(line, colour));
-                        });
+                        link_appender.append(s, display);
                     }),
                     *timeout,
                 )?;
             }
             UIUpdate::LogMessage(msg) => {
-                let line = format!("{}\n", msg);
+                let log_appender = *log_appender;
                 sink.send_timeout(
                     Box::new(move |s| {
-                        s.call_on_name(LOG_VIEW, move |view: &mut TextView| {
-                            view.append(StyledString::styled(line, BaseColor::Red.light()));
-                        });
+                        log_appender.append(s, msg);
                     }),
                     *timeout,
                 )?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl ViewUpdater for cursive::CbSink {
-    fn update(&mut self, update: UIUpdate) -> Result<(), UIFailed> {
-        match update {
-            UIUpdate::LinkDisplay(display) => {
-                let line = format!("{}\n", display);
-                self.send(Box::new(move |s| {
-                    s.call_on_name(LINKS_VIEW, move |view: &mut TextView| {
-                        view.append(line);
-                    });
-                }))?;
-            }
-            UIUpdate::LogMessage(msg) => {
-                self.send(Box::new(move |s| {
-                    s.call_on_name(LOG_VIEW, move |view: &mut TextView| {
-                        view.append(msg);
-                    });
-                }))?;
             }
         }
         Ok(())
@@ -134,7 +118,9 @@ const LOG_VIEW: &str = "log";
 
 const COMMAND_EDIT: &str = "command";
 
-pub fn create_ui(siv: &mut Cursive, mut controller: Controller) {
+pub fn create_ui(siv: &mut Cursive, 
+    mut controller: Controller,
+    max_lines: usize) {
     siv.add_global_callback('q', |s| s.quit());
 
     siv.set_theme(Theme {
@@ -149,13 +135,14 @@ pub fn create_ui(siv: &mut Cursive, mut controller: Controller) {
             palette[Highlight] = BaseColor::Blue.dark();
         }),
     });
+    let history_appender = BoundedAppend::new(HISTORY_VIEW, max_lines, Into::into);
     siv.add_layer(
         LinearLayout::horizontal()
             .child(
                 LinearLayout::vertical()
                     .child(Panel::new(
                         HistoryEditView::new(5)
-                            .on_submit_mut(move |s, text| on_command(s, &mut controller, text))
+                            .on_submit_mut(move |s, text| on_command(s, &mut controller, &history_appender, text))
                             .with_name(COMMAND_EDIT),
                     ))
                     .child(
@@ -199,13 +186,14 @@ const HELP: &[&str] = &[
     "clear    Clear this display.\n",
 ];
 
-fn on_command(cursive: &mut Cursive, controller: &mut Controller, text: &str) {
+fn on_command(cursive: &mut Cursive, 
+    controller: &mut Controller, 
+    appender: &BoundedAppend<&'static str, Cow<'static, str>>,
+    text: &str) {
     if text == "quit" {
         cursive.quit();
     }
-    cursive.call_on_name(HISTORY_VIEW, |view: &mut TextView| {
-        view.append(format!("> {}\n", text))
-    });
+    appender.append(cursive, Cow::Owned(format!("> {}\n", text)));
     let command_parts = text.split_whitespace().collect::<Vec<_>>();
 
     let responses = match command_parts.as_slice() {
@@ -233,13 +221,21 @@ fn on_command(cursive: &mut Cursive, controller: &mut Controller, text: &str) {
             Some(msgs)
         }
     };
-    cursive.call_on_name(HISTORY_VIEW, move |view: &mut TextView| {
-        if let Some(resp) = responses {
-            for response in resp {
-                view.append(response);
-            }
-        } else {
-            view.set_content("");
-        }
-    });
+    if let Some(resp) = responses {
+        appender.append_many(cursive, resp);
+    } else {
+        appender.clear(cursive);
+    }
+}
+
+fn format_display(display: DisplayResponse) -> StyledString {
+    let line = format!("{}\n", display);
+    let id = display.id;
+    let colour = COLOURS[id % COLOURS.len()];
+    StyledString::styled(line, colour)
+}
+
+fn format_log_msg(msg: String) -> StyledString {
+    let line = format!("{}\n", msg);
+    StyledString::styled(line, BaseColor::Red.light())
 }

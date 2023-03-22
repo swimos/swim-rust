@@ -29,7 +29,7 @@ use shared_state::SharedState;
 use swim_utilities::trigger;
 use tokio::runtime::Builder;
 use tokio::sync::mpsc;
-use ui::{WithTimeout, ViewUpdater};
+use ui::{CursiveUIUpdater, ViewUpdater};
 
 mod controller;
 mod model;
@@ -46,9 +46,9 @@ fn main() {
     let (command_tx, command_rx) = mpsc::unbounded_channel::<RuntimeCommand>();
     let controller = Controller::new(shared_state.clone(), command_tx, TIMEOUT);
     
-    ui::create_ui(&mut siv, controller);
+    ui::create_ui(&mut siv, controller, MAX_LINES);
     let (stop_tx, stop_rx) = trigger::trigger();
-    let updater = WithTimeout::new(siv.cb_sink().clone(), TIMEOUT);
+    let updater = CursiveUIUpdater::new(siv.cb_sink().clone(), TIMEOUT, MAX_LINES);
 
     let args = std::env::args().collect::<Vec<_>>();
     let runtime = match args.get(1) {
@@ -82,6 +82,7 @@ fn main() {
 }
 
 const TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_LINES: usize = 2048;
 
 fn start_runtime<F: Future<Output = ()> + Send + 'static>(app_runtime: F) -> JoinHandle<()> {
     std::thread::spawn(move || {
