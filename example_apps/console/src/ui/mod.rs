@@ -183,11 +183,117 @@ pub fn create_ui(siv: &mut Cursive, mut controller: Controller, max_lines: usize
 }
 
 const HELP: &[&str] = &[
+    "For help on a specific command type 'help [command_name]'\n",
+    "\n",
     "Valid commands are:\n",
-    "help     Display this list.\n",
-    "quit     Close the application.\n",
-    "clear    Clear this display.\n",
+    "\n",
+    "clear        Clear this display.\n",
+    "help         Display this list.\n",
+    "quit         Close the application.\n",
+    "\n",
+    "clear-with   Clear the values current set with 'with-host', 'with-node' and 'with-lane'.\n",
+    "command      Send a command to an existing link or directly to a specified remote lane.\n",
+    "link         Open a link to a remote lane.\n",
+    "list         List all active links.\n",
+    "show-with    Show the values current set with 'with-host', 'with-node' and 'with-lane'.\n",
+    "sync         Send a sync frame to an existing link.\n",
+    "unlink       Send an unlink frame to an existing link.\n",
+    "with-host    Execute subsequent commands against an implicit host.\n",
+    "with-node    Execute subsequent commands against an implicit agent node URI.\n",
+    "with-lane    Execute subsequent commands against an implicit lane.\n",
+    "\n",
 ];
+
+const CLEAR: &[&str] = &["Clear this display.\n", "\n", "clear\n", "\n"];
+
+const HELP_HELP: &[&str] = &[
+    "Provide help for a command.\n",
+    "\n",
+    "help command-name:(string)\n",
+    "\n",
+    "If not command name is specified, the list of valid command will be printed.\n",
+    "\n",
+];
+
+const QUIT: &[&str] = &["Quit the application.\n", "\n", "quit\n", "\n"];
+
+const CLEAR_WITH: &[&str] = &[
+    "Clear this values set with the 'with-host', 'with-node' and 'with-lane' commands.\n",
+    "\n",
+    "clear-with\n",
+    "\n",
+];
+
+const SHOW_WITH: &[&str] = &[
+    "Print this values set with the 'with-host', 'with-node' and 'with-lane' commands.\n",
+    "\n",
+    "clear-with\n",
+    "\n",
+];
+
+const COMMAND: &[&str] = &[
+    "Send a command frame to a remote lane.\n",
+    "In all cases, the body must be valid Recon.\n",
+    "\n",
+    "command [id:(integer)] body:(recon)\n",
+    "\n",
+    "Send a command to the link with the given ID.\n",
+    "\n",
+    "command [name:(string)] body:(recon)\n",
+    "\n",
+    "Send a command to the link with the given name.\n",
+    "\n",
+    "command [--host|-h host_name] [--node|-n node_uri] [--lane|-l lane] body:(recon)\n",
+    "\n",
+    "Send a command to the specified lane. If a link is already open to that lane, it will be used.\n",
+    "\n",
+];
+
+const LINK: &[&str] = &[
+    "Open a link to a remote lane.\n",
+    "\n",
+    "link [--host|-h host_name:(string)] [--node|-n node_uri:(string)] [--lane|-l lane:(string)] [name:(string)]\n",
+    "\n",
+];
+
+const LIST: &[&str] = &["Show all open links.\n", "\n", "list\n", "\n"];
+
+const SYNC: &[&str] = &[
+    "Send a sync frame to an open link.\n",
+    "\n",
+    "sync id:(integer)\n",
+    "\n",
+];
+
+const UNLINK: &[&str] = &[
+    "Send an unlink frame to an open link.\n",
+    "\n",
+    "unlink id:(integer)\n",
+    "\n",
+];
+
+const WITH_HOST: &[&str] = &[
+    "Run subsequent command with an implicit remote host.\n",
+    "\n",
+    "with-host host_name:(string)\n",
+    "\n",
+];
+
+const WITH_NODE: &[&str] = &[
+    "Run subsequent command with an implicit node URI.\n",
+    "\n",
+    "with-node node_uri:(string)\n",
+    "\n",
+];
+
+const WITH_LANE: &[&str] = &[
+    "Run subsequent command with an implicit lane.\n",
+    "\n",
+    "with-lane lane:(string)\n",
+    "\n",
+];
+
+const UNKNOWN: &[&str] = &["Unknown command."];
 
 fn on_command(
     cursive: &mut Cursive,
@@ -195,14 +301,30 @@ fn on_command(
     appender: &BoundedAppend<&'static str, Cow<'static, str>>,
     text: &str,
 ) {
-    if text == "quit" {
-        cursive.quit();
-    }
     appender.append(cursive, Cow::Owned(format!("> {}\n", text)));
     let command_parts = text.split_whitespace().collect::<Vec<_>>();
 
     let responses = match command_parts.as_slice() {
         ["help"] => Some(HELP.iter().map(|s| Cow::Borrowed(*s)).collect()),
+        ["help", cmd_name] => {
+            let help_text = match *cmd_name {
+                "clear" => CLEAR,
+                "help" => HELP_HELP,
+                "quit" => QUIT,
+                "with-host" => WITH_HOST,
+                "with-node" => WITH_NODE,
+                "with-lane" => WITH_LANE,
+                "show-with" => SHOW_WITH,
+                "clear-with" => CLEAR_WITH,
+                "link" => LINK,
+                "sync" => SYNC,
+                "unlink" => UNLINK,
+                "list" => LIST,
+                "command" => COMMAND,
+                _ => UNKNOWN,
+            };
+            Some(help_text.iter().map(|s| Cow::Borrowed(*s)).collect())
+        }
         ["quit"] => {
             cursive.quit();
             Some(vec![])
