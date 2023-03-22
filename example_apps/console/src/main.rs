@@ -51,9 +51,12 @@ fn main() {
     let updater = WithTimeout::new(siv.cb_sink().clone(), TIMEOUT);
 
     let args = std::env::args().collect::<Vec<_>>();
-    let runtime = match args.first() {
-        Some(arg) if args.len() == 1 => {
+    let runtime = match args.get(1) {
+        Some(arg) if args.len() == 2 => {
             match arg.as_str() {
+                "--debug" => {
+                    DebugFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
+                },
                 "--dummy" => {
                     DummyRuntimeFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
                 },
@@ -66,7 +69,7 @@ fn main() {
             }
         },
         None => {
-            DebugFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
+            DummyRuntimeFactory::default().run(shared_state, command_rx, Box::new(updater), stop_rx)
         },
         _ => panic!("Invalid arguments.")
     };
@@ -82,7 +85,10 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 
 fn start_runtime<F: Future<Output = ()> + Send + 'static>(app_runtime: F) -> JoinHandle<()> {
     std::thread::spawn(move || {
-        let runtime = Builder::new_current_thread()
+        let runtime = Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_io()
+            .enable_time()
             .build()
             .expect("Failed to construct runtime.");
         

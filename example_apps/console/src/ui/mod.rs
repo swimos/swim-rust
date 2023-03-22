@@ -16,8 +16,9 @@ use std::borrow::Cow;
 
 use std::time::Duration;
 use console_views::history::HistoryEditView;
-use cursive::theme::Color::TerminalDefault;
+use cursive::theme::Color::{TerminalDefault, self};
 use cursive::theme::PaletteColor::*;
+use cursive::utils::markup::StyledString;
 use cursive::{
     theme::{BaseColor, BorderStyle, Palette, Theme},
     view::{Nameable, Resizable, ScrollStrategy, Scrollable},
@@ -64,22 +65,32 @@ impl WithTimeout {
     }
 }
 
+const COLOURS: &[Color] = &[
+    Color::Dark(BaseColor::Blue),
+    Color::Light(BaseColor::Blue),
+    Color::Light(BaseColor::Green),
+    Color::Dark(BaseColor::Yellow),
+];
+
 impl ViewUpdater for WithTimeout {
     fn update(&mut self, update: UIUpdate) -> Result<(), UIFailed> {
         let WithTimeout { sink, timeout } = self;
         match update {
             UIUpdate::LinkDisplay(display) => {
                 let line = format!("{}\n", display);
+                let id = display.id;
+                let colour = COLOURS[id % COLOURS.len()];
                 sink.send_timeout(Box::new(move |s| {
                     s.call_on_name(LINKS_VIEW, move |view: &mut TextView| {
-                        view.append(line);
+                        view.append(StyledString::styled(line, colour));
                     });
                 }), *timeout)?;
             }
             UIUpdate::LogMessage(msg) => {
+                let line = format!("{}\n", msg);
                 sink.send_timeout(Box::new(move |s| {
                     s.call_on_name(LOG_VIEW, move |view: &mut TextView| {
-                        view.append(msg);
+                        view.append(StyledString::styled(line, BaseColor::Red.light()));
                     });
                 }), *timeout)?;
             }

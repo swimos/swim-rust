@@ -92,8 +92,13 @@ impl DummyRuntime {
                     if host_name == REMOTE && port == PORT {
                         let id = shared_state.write().insert(endpoint);
                         let (done_tx, done_rx) = trigger::trigger();
+                        if unlinkers.is_empty() {
+                            let out_ref = &mut output;
+                            block_in_place(move || out_ref.update(UIUpdate::LogMessage("Opening connection to localhost:8080.".to_string()))).unwrap();
+                        }
                         links.push(fake_link(id, done_rx).boxed());
                         unlinkers.insert(id, done_tx);
+                        
                         response.send(Ok(id));
                     } else {
                         response.send(Err(ratchet::Error::new(ErrorKind::IO)))
@@ -116,6 +121,10 @@ impl DummyRuntime {
                 RuntimeCommand::Unlink(id) => {
                     if let Some(tx) = unlinkers.remove(&id) {
                         tx.trigger();
+                        if unlinkers.is_empty() {
+                            let out_ref = &mut output;
+                            block_in_place(move || out_ref.update(UIUpdate::LogMessage("Closing connection to localhost:8080.".to_string()))).unwrap();
+                        }
                     }
                     shared_state.write().remove(id);
                 },

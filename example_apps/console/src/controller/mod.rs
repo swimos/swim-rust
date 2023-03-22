@@ -147,12 +147,18 @@ impl Controller {
                 let mut response = vec![];
                 if let Some(h) = with_host {
                     response.push(format!("Using host: {}", h));
+                } else {
+                    response.push("Using host: <not set>".to_string());
                 }
                 if let Some(n) = with_node {
                     response.push(format!("Using node: {}", n));
+                } else {
+                    response.push("Using node: <not set>".to_string());
                 }
                 if let Some(l) = with_lane {
                     response.push(format!("Using lane: {}", l));
+                } else {
+                    response.push("Using lane: <not set>".to_string());
                 }
                 response
             }
@@ -166,9 +172,13 @@ impl Controller {
                 *with_host = None;
                 *with_node = None;
                 *with_lane = None;
-                vec![]
+                vec!["Clearing with bindings.".to_string()]
             }
-            AppCommand::ListLinks => self.links().into_iter().map(format_list_entry).collect(),
+            AppCommand::ListLinks => {
+                let mut response = vec!["Active links:".to_string()];
+                response.extend(self.links().into_iter().map(format_list_entry));
+                response
+            },
             AppCommand::Command { target, body } => match self.resolve(target) {
                 Ok(EndpointOrId::Id(id)) => {
                     self.command_tx
