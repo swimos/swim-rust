@@ -14,9 +14,8 @@
 
 use std::borrow::Cow;
 
-use std::time::Duration;
 use console_views::history::HistoryEditView;
-use cursive::theme::Color::{TerminalDefault, self};
+use cursive::theme::Color::{self, TerminalDefault};
 use cursive::theme::PaletteColor::*;
 use cursive::utils::markup::StyledString;
 use cursive::{
@@ -25,6 +24,7 @@ use cursive::{
     views::{LinearLayout, Panel, TextView},
     Cursive, With,
 };
+use std::time::Duration;
 
 use crate::model::parse_app_command;
 use crate::{controller::Controller, model::UIUpdate};
@@ -80,19 +80,25 @@ impl ViewUpdater for WithTimeout {
                 let line = format!("{}\n", display);
                 let id = display.id;
                 let colour = COLOURS[id % COLOURS.len()];
-                sink.send_timeout(Box::new(move |s| {
-                    s.call_on_name(LINKS_VIEW, move |view: &mut TextView| {
-                        view.append(StyledString::styled(line, colour));
-                    });
-                }), *timeout)?;
+                sink.send_timeout(
+                    Box::new(move |s| {
+                        s.call_on_name(LINKS_VIEW, move |view: &mut TextView| {
+                            view.append(StyledString::styled(line, colour));
+                        });
+                    }),
+                    *timeout,
+                )?;
             }
             UIUpdate::LogMessage(msg) => {
                 let line = format!("{}\n", msg);
-                sink.send_timeout(Box::new(move |s| {
-                    s.call_on_name(LOG_VIEW, move |view: &mut TextView| {
-                        view.append(StyledString::styled(line, BaseColor::Red.light()));
-                    });
-                }), *timeout)?;
+                sink.send_timeout(
+                    Box::new(move |s| {
+                        s.call_on_name(LOG_VIEW, move |view: &mut TextView| {
+                            view.append(StyledString::styled(line, BaseColor::Red.light()));
+                        });
+                    }),
+                    *timeout,
+                )?;
             }
         }
         Ok(())
@@ -174,11 +180,14 @@ pub fn create_ui(siv: &mut Cursive, mut controller: Controller) {
                     ),
             )
             .child(
-                Panel::new(TextView::new("").with_name(LINKS_VIEW))
-                    .full_screen()
-                    .scrollable()
-                    .scroll_x(true)
-                    .scroll_strategy(ScrollStrategy::StickToBottom),
+                Panel::new(
+                    TextView::new("")
+                        .with_name(LINKS_VIEW)
+                        .scrollable()
+                        .scroll_x(true)
+                        .scroll_strategy(ScrollStrategy::StickToBottom),
+                )
+                .full_screen(),
             ),
     );
 }
