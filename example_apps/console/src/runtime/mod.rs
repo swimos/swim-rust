@@ -41,6 +41,7 @@ use crate::{
 
 pub mod debug_runtime;
 pub mod dummy_runtime;
+pub mod dummy_server;
 
 const UI_DROPPED: &str = "The UI task stopped or timed out.";
 
