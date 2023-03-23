@@ -55,7 +55,7 @@ impl<T> From<crossbeam_channel::SendTimeoutError<T>> for UIFailed {
 }
 
 pub trait ViewUpdater {
-    fn update(&mut self, upd: UIUpdate) -> Result<(), UIFailed>;
+    fn update(&self, upd: UIUpdate) -> Result<(), UIFailed>;
 }
 
 pub struct CursiveUIUpdater {
@@ -84,7 +84,7 @@ const COLOURS: &[Color] = &[
 ];
 
 impl ViewUpdater for CursiveUIUpdater {
-    fn update(&mut self, update: UIUpdate) -> Result<(), UIFailed> {
+    fn update(&self, update: UIUpdate) -> Result<(), UIFailed> {
         let CursiveUIUpdater {
             sink,
             timeout,

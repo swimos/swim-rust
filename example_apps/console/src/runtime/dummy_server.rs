@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, net::SocketAddr, pin::pin, time::Duration};
+use std::{collections::HashMap, net::SocketAddr, pin::pin, sync::Arc, time::Duration};
 
 use bytes::BytesMut;
 use futures::{
-    future::Either,
+    future::{join, BoxFuture, Either},
     stream::{unfold, BoxStream, FuturesUnordered, SelectAll},
     FutureExt, Stream, StreamExt,
 };
+use parking_lot::RwLock;
 use ratchet::{NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry, WebSocketConfig};
 use swim::form::Form;
 use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
@@ -28,6 +29,13 @@ use swim_utilities::trigger;
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::{mpsc, oneshot},
+};
+
+use crate::{
+    model::{RuntimeCommand, UIUpdate},
+    shared_state::SharedState,
+    ui::ViewUpdater,
+    RuntimeFactory,
 };
 
 pub struct DummyServer {
@@ -54,6 +62,26 @@ impl DummyServer {
 }
 
 pub struct LaneSpec(Box<dyn FakeLane>);
+
+impl LaneSpec {
+    pub fn simple<T: Form + Clone + Send + 'static>(init: T) -> Self {
+        LaneSpec(Box::new(Lane {
+            init,
+            changes: None,
+        }))
+    }
+
+    pub fn with_changes<T: Form + Clone + Send + 'static>(
+        init: T,
+        changes: Vec<T>,
+        delay: Duration,
+    ) -> Self {
+        LaneSpec(Box::new(Lane {
+            init,
+            changes: Some((changes, delay)),
+        }))
+    }
+}
 
 impl FakeLane for LaneSpec {
     fn into_stream(
@@ -121,7 +149,7 @@ impl DummyServer {
                 }
             };
             match event {
-                Event::NewConnection(stream, bound_to) => {
+                Event::NewConnection(stream, _) => {
                     let subprotocols = ProtocolRegistry::new(vec!["warp0"]).unwrap();
                     let upgrader = ratchet::accept_with(
                         stream,
@@ -150,6 +178,7 @@ impl DummyServer {
     }
 }
 
+#[derive(Debug)]
 pub enum TaskError {
     Ws(ratchet::Error),
     BadMessageType,
@@ -285,7 +314,7 @@ async fn send_task(
                         lane_senders.insert(key, lane_tx);
                     }
                 }
-            },
+            }
             Either::Left(ConnectionMessage::Sync(node, lane)) => {
                 let key = (node, lane);
                 if let Some(tx) = lane_senders.get(&key) {
@@ -293,7 +322,7 @@ async fn send_task(
                         lane_senders.remove(&key);
                     }
                 }
-            },
+            }
             Either::Left(ConnectionMessage::Unlink(node, lane)) => {
                 let key = (node, lane);
                 if let Some(tx) = lane_senders.get(&key) {
@@ -302,7 +331,7 @@ async fn send_task(
                         lane_senders.remove(&key);
                     }
                 }
-            },
+            }
             Either::Left(ConnectionMessage::Command(node, lane, body)) => {
                 let key = (node, lane);
                 if let Some(tx) = lane_senders.get(&key) {
@@ -311,7 +340,7 @@ async fn send_task(
                         lane_senders.remove(&key);
                     }
                 }
-            },
+            }
             Either::Right(frames) => {
                 for frame in frames {
                     tx.write_text(frame).await?;
@@ -322,7 +351,7 @@ async fn send_task(
 }
 
 #[derive(Clone)]
-pub struct Lane<T> {
+struct Lane<T> {
     init: T,
     changes: Option<(Vec<T>, Duration)>,
 }
@@ -430,7 +459,8 @@ where
                         match event {
                             Either::Left(Some(msg)) => match msg {
                                 LaneMessage::Link => {
-                                    let linked = format!("@linked(node:\"{}\",lane:{}))", node, lane);
+                                    let linked =
+                                        format!("@linked(node:\"{}\",lane:{}))", node, lane);
                                     break Some((
                                         vec![linked],
                                         (state, change_stream, node, lane, Some(rx)),
@@ -496,6 +526,76 @@ where
                 }
             },
         )
+        .boxed()
+    }
+}
+
+pub struct DummyServerRuntimeFac<F, R> {
+    dummy_server_fac: F,
+    runtime_fac: R,
+}
+
+impl<F, R> DummyServerRuntimeFac<F, R>
+where
+    R: RuntimeFactory,
+    F: Fn(
+        trigger::Receiver,
+        oneshot::Sender<u16>,
+        Arc<dyn ViewUpdater + Send + Sync + 'static>,
+    ) -> DummyServer,
+{
+    pub fn new(dummy_server_fac: F, runtime_fac: R) -> Self {
+        DummyServerRuntimeFac {
+            dummy_server_fac,
+            runtime_fac,
+        }
+    }
+}
+
+impl<R, F> RuntimeFactory for DummyServerRuntimeFac<F, R>
+where
+    R: RuntimeFactory,
+    F: Fn(
+        trigger::Receiver,
+        oneshot::Sender<u16>,
+        Arc<dyn ViewUpdater + Send + Sync + 'static>,
+    ) -> DummyServer,
+{
+    fn run(
+        &self,
+        shared_state: Arc<RwLock<SharedState>>,
+        commands: mpsc::UnboundedReceiver<RuntimeCommand>,
+        updater: Arc<dyn ViewUpdater + Send + Sync + 'static>,
+        stop: trigger::Receiver,
+    ) -> BoxFuture<'static, ()> {
+        let DummyServerRuntimeFac {
+            dummy_server_fac,
+            runtime_fac,
+        } = self;
+        let runtime = runtime_fac.run(shared_state, commands, updater.clone(), stop.clone());
+        let (port_tx, port_rx) = oneshot::channel();
+        let dummy_server = dummy_server_fac(stop, port_tx, updater.clone());
+        async move {
+            let upd_cpy = updater.clone();
+            let server_task = async move {
+                if let Err(e) = dummy_server.run_server().await {
+                    let _ = upd_cpy.update(UIUpdate::LogMessage(format!(
+                        "Server task failed with: {}",
+                        e
+                    )));
+                }
+            };
+            let runtime_task = async move {
+                let r = match port_rx.await {
+                    Ok(p) => updater.update(UIUpdate::LogMessage(format!("Bound to port: {}", p))),
+                    Err(_) => updater.update(UIUpdate::LogMessage("Failed to bind.".to_string())),
+                };
+                if !r.is_err() {
+                    runtime.await;
+                }
+            };
+            join(server_task, runtime_task).await;
+        }
         .boxed()
     }
 }

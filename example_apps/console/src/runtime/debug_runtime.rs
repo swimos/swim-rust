@@ -34,7 +34,7 @@ impl RuntimeFactory for DebugFactory {
         &self,
         shared_state: Arc<RwLock<SharedState>>,
         mut commands: UnboundedReceiver<RuntimeCommand>,
-        mut updater: Box<dyn ViewUpdater + Send + 'static>,
+        updater: Arc<dyn ViewUpdater + Send + Sync + 'static>,
         mut stop: trigger::Receiver,
     ) -> BoxFuture<'static, ()> {
         async move {

@@ -53,7 +53,7 @@ impl RuntimeFactory for ConsoleFactory {
         &self,
         shared_state: Arc<RwLock<SharedState>>,
         commands: tmpsc::UnboundedReceiver<RuntimeCommand>,
-        updater: Box<dyn ViewUpdater + Send + 'static>,
+        updater: Arc<dyn ViewUpdater + Send + Sync + 'static>,
         stop: trigger::Receiver,
     ) -> futures::future::BoxFuture<'static, ()> {
         let runtime = Runtime::new(shared_state, commands, updater, stop);
@@ -64,7 +64,7 @@ impl RuntimeFactory for ConsoleFactory {
 struct Runtime {
     shared_state: Arc<RwLock<SharedState>>,
     commands: tmpsc::UnboundedReceiver<RuntimeCommand>,
-    output: Box<dyn ViewUpdater + Send + 'static>,
+    output: Arc<dyn ViewUpdater + Send + Sync + 'static>,
     stop: trigger::Receiver,
 }
 
@@ -72,7 +72,7 @@ impl Runtime {
     fn new(
         shared_state: Arc<RwLock<SharedState>>,
         commands: tmpsc::UnboundedReceiver<RuntimeCommand>,
-        output: Box<dyn ViewUpdater + Send + 'static>,
+        output: Arc<dyn ViewUpdater + Send + Sync + 'static>,
         stop: trigger::Receiver,
     ) -> Self {
         Runtime {
