@@ -24,7 +24,8 @@ use futures::{
 };
 use parking_lot::RwLock;
 use ratchet::{
-    NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry, WebSocket, WebSocketConfig,
+    ErrorKind, NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry, WebSocket,
+    WebSocketConfig,
 };
 use swim::route::RouteUri;
 use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
@@ -195,8 +196,6 @@ impl Runtime {
                             if let Some(tx) = senders.get_mut(remote) {
                                 if unlink(tx, node, lane).await.is_err() {
                                     state.remove_all(&remote.clone());
-                                } else {
-                                    state.remove(id);
                                 }
                             }
                         }
@@ -281,18 +280,23 @@ fn into_stream(remote: Host, rx: Rx) -> impl Stream<Item = Result<(Host, String)
 }
 
 async fn open_connection(host: &Host) -> Result<WebSocket<TcpStream, NoExt>, ratchet::Error> {
-    let host_str = host.to_string();
-    let socket = TcpStream::connect(&host_str).await?;
+    let socket = TcpStream::connect(&host.host_only()).await?;
     let subprotocols = ProtocolRegistry::new(vec!["warp0"]).unwrap();
-    let upgraded = ratchet::subscribe_with(
+    let r = ratchet::subscribe_with(
         WebSocketConfig::default(),
         socket,
-        host_str,
+        host.to_string(),
         NoExtProvider,
         subprotocols,
     )
-    .await?;
-    Ok(upgraded.into_websocket())
+    .await;
+    match r {
+        Ok(upgraded) => Ok(upgraded.into_websocket()),
+        Err(e) => Err(ratchet::Error::with_cause(
+            ErrorKind::Protocol,
+            format!("{} - {:?}", host, e),
+        )),
+    }
 }
 
 struct BadEnvelope(String);
@@ -353,7 +357,7 @@ fn handle_body(state: &mut State, host: Host, body: &str) -> Result<DisplayRespo
                 lane: lane_uri.to_string(),
             };
             let id = state.get_id(&endpoint).unwrap_or(0);
-            Ok(DisplayResponse::event(id, body.to_string()))
+            Ok(DisplayResponse::event(id, body.trim().to_string()))
         }
         _ => Err(BadEnvelope(format!(
             "Invalid envelope from {}: {}",
@@ -429,5 +433,27 @@ impl State {
             }
             guard.remove(id);
         }
+    }
+}
+
+#[cfg(test)]
+mod moo {
+    use ratchet::{NoExtProvider, ProtocolRegistry, WebSocketConfig};
+    use tokio::net::TcpStream;
+
+    #[tokio::test]
+    async fn mooo() {
+        let sock = TcpStream::connect("localhost:49466").await.unwrap();
+        let subprotocols = ProtocolRegistry::new(vec!["warp0"]).unwrap();
+        let host_str = "ws://localhost:49466".to_string();
+        ratchet::subscribe_with(
+            WebSocketConfig::default(),
+            sock,
+            host_str,
+            NoExtProvider,
+            subprotocols,
+        )
+        .await
+        .unwrap();
     }
 }

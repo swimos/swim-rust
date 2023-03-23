@@ -18,3 +18,4 @@ ratchet = { package = "ratchet_rs", workspace = true, features = ["deflate", "sp
 bytes = { workspace = true }
 cursive = {version = "0.20", default-features = false, features = ["termion-backend"]}
 console-views = { path = "console_views" }
+http = { workspace = true }

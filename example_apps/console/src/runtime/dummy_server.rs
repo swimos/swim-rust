@@ -144,8 +144,29 @@ impl DummyServer {
                 },
                 _ = &mut stop_rx => break,
                 result = listener.accept() => {
-                    let (stream, bound_to) = result?;
-                    Event::NewConnection(stream, bound_to)
+                    match result {
+                        Ok((stream, bound_to)) => Event::NewConnection(stream, bound_to),
+                        Err(err) => {
+                            use std::io;
+                            match err.kind() {
+                                k @ (io::ErrorKind::ConnectionReset
+                                | io::ErrorKind::ConnectionAborted
+                                | io::ErrorKind::BrokenPipe
+                                | io::ErrorKind::InvalidInput
+                                | io::ErrorKind::InvalidData
+                                | io::ErrorKind::TimedOut
+                                | io::ErrorKind::UnexpectedEof) => {
+                                    if let Some(tx) = errors.as_ref() {
+                                        if !tx(TaskError::AcceptErr(k)) {
+                                            errors = None;
+                                        }
+                                    }
+                                    continue;
+                                },
+                                _ => return Err(err.into()),
+                            }
+                        }
+                    }
                 }
             };
             match event {
@@ -181,6 +202,7 @@ impl DummyServer {
 #[derive(Debug)]
 pub enum TaskError {
     Ws(ratchet::Error),
+    AcceptErr(std::io::ErrorKind),
     BadMessageType,
     BadUtf8,
     BadEnvelope(String),
@@ -335,7 +357,6 @@ async fn send_task(
             Either::Left(ConnectionMessage::Command(node, lane, body)) => {
                 let key = (node, lane);
                 if let Some(tx) = lane_senders.get(&key) {
-                    let _ = tx.send(LaneMessage::Unlink);
                     if tx.send(LaneMessage::Command(body)).is_err() {
                         lane_senders.remove(&key);
                     }
@@ -460,7 +481,7 @@ where
                             Either::Left(Some(msg)) => match msg {
                                 LaneMessage::Link => {
                                     let linked =
-                                        format!("@linked(node:\"{}\",lane:{}))", node, lane);
+                                        format!("@linked(node:\"{}\",lane:{})", node, lane);
                                     break Some((
                                         vec![linked],
                                         (state, change_stream, node, lane, Some(rx)),
@@ -468,21 +489,20 @@ where
                                 }
                                 LaneMessage::Sync => {
                                     let data = format!(
-                                        "@event(node:\"{}\",lane:{})) {}",
+                                        "@event(node:\"{}\",lane:{}) {}",
                                         node,
                                         lane,
                                         print_recon_compact(&state)
                                     );
                                     let synced =
-                                        format!("@synced(node:\"{}\",lane:{}))", node, lane);
+                                        format!("@synced(node:\"{}\",lane:{})", node, lane);
                                     break Some((
                                         vec![data, synced],
                                         (state, change_stream, node, lane, Some(rx)),
                                     ));
                                 }
                                 LaneMessage::Unlink => {
-                                    let msg =
-                                        format!("@unlinked(node:\"{}\",lane:{}))", node, lane);
+                                    let msg = format!("@unlinked(node:\"{}\",lane:{})", node, lane);
                                     break Some((
                                         vec![msg],
                                         (state, change_stream, node, lane, None),
@@ -492,7 +512,7 @@ where
                                     if let Ok(v) = parse_value(&body, false) {
                                         if let Ok(update) = T::try_from_value(&v) {
                                             let event = format!(
-                                                "@event(node:\"{}\",lane:{})) {}",
+                                                "@event(node:\"{}\",lane:{}) {}",
                                                 node, lane, body
                                             );
                                             break Some((
@@ -506,7 +526,7 @@ where
                             Either::Left(_) => break None,
                             Either::Right(Some(update)) => {
                                 let event = format!(
-                                    "@event(node:\"{}\",lane:{})) {}",
+                                    "@event(node:\"{}\",lane:{}) {}",
                                     node,
                                     lane,
                                     print_recon_compact(&update)

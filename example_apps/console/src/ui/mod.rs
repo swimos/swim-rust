@@ -150,7 +150,7 @@ pub fn create_ui(siv: &mut Cursive, mut controller: Controller, max_lines: usize
                     ))
                     .child(
                         Panel::new(
-                            TextView::new("")
+                            TextView::new("Type 'help' to learn about commands.\n")
                                 .with_name(HISTORY_VIEW)
                                 .scrollable()
                                 .scroll_x(true)

@@ -104,7 +104,10 @@ impl DummyRuntime {
             match command {
                 RuntimeCommand::Link { endpoint, response } => {
                     let Endpoint {
-                        remote: Host { host_name, port },
+                        remote:
+                            Host {
+                                host_name, port, ..
+                            },
                         ..
                     } = endpoint.clone();
                     if host_name == REMOTE && port == PORT {

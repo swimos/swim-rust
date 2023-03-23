@@ -18,6 +18,7 @@ use std::{
     str::FromStr,
 };
 
+use http::Uri;
 use swim::{model::Value, route::RouteUri};
 use swim_recon::parser::parse_value;
 
@@ -25,13 +26,39 @@ use crate::oneshot;
 
 #[derive(PartialEq, Eq, Debug, Hash, Clone)]
 pub struct Host {
+    pub scheme: String,
     pub host_name: String,
     pub port: u16,
 }
 
+impl Host {
+    pub fn new(host_name: String, port: u16) -> Self {
+        Host {
+            scheme: "ws".to_string(),
+            host_name,
+            port,
+        }
+    }
+
+    pub fn with_scheme(scheme: String, host_name: String, port: u16) -> Self {
+        Host {
+            scheme,
+            host_name,
+            port,
+        }
+    }
+
+    pub fn host_only(&self) -> String {
+        let Host {
+            host_name, port, ..
+        } = self;
+        format!("{}:{}", host_name, port)
+    }
+}
+
 impl Display for Host {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", &self.host_name, self.port)
+        write!(f, "{}://{}:{}", &self.scheme, &self.host_name, self.port)
     }
 }
 
@@ -167,30 +194,21 @@ impl FromStr for Host {
     type Err = Cow<'static, str>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut parts = s.split_terminator(':');
-        let host_name = if let Some(name) = parts.next() {
-            if name.is_empty() {
-                return Err(Cow::Borrowed("Empty host name."));
-            } else {
-                name.to_string()
+        match s.parse::<Uri>() {
+            Ok(uri) => {
+                if let Some(auth) = uri.authority() {
+                    let host_name = auth.host().to_string();
+                    let port = auth.port_u16().unwrap_or(DEFAULT_PORT);
+                    if let Some(scheme) = uri.scheme_str() {
+                        Ok(Host::with_scheme(scheme.to_string(), host_name, port))
+                    } else {
+                        Ok(Host::new(host_name, port))
+                    }
+                } else {
+                    Err(Cow::Borrowed("Missing authority."))
+                }
             }
-        } else {
-            return Err(Cow::Borrowed("Empty host name."));
-        };
-        let port = if let Some(p) = parts.next() {
-            if let Ok(port) = p.parse::<u16>() {
-                port
-            } else {
-                return Err(Cow::Owned(format!("Invalid port: {}", p)));
-            }
-        } else {
-            DEFAULT_PORT
-        };
-
-        if parts.next().is_none() {
-            Ok(Host { host_name, port })
-        } else {
-            Err(Cow::Owned(format!("Invalid remote host: {}", s)))
+            Err(err) => Err(Cow::Owned(format!("{}", err))),
         }
     }
 }
