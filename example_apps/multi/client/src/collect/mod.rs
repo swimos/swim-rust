@@ -18,7 +18,10 @@ use swim::{
     agent::{
         agent_lifecycle::utility::{HandlerContext, JoinValueContext},
         event_handler::{EventHandler, Sequentially},
-        lanes::{JoinValueLane, join_value::{lifecycle::JoinValueLaneLifecycle, LinkClosedResponse}},
+        lanes::{
+            join_value::{lifecycle::JoinValueLaneLifecycle, LinkClosedResponse},
+            JoinValueLane,
+        },
         lifecycle, projections, AgentLaneModel,
     },
     route::RouteUri,
@@ -35,40 +38,59 @@ pub struct CollectAgent {
 #[derive(Clone)]
 pub struct CollectLifecycle {
     remote: String,
-    nodes: Vec<RouteUri>
+    nodes: Vec<RouteUri>,
 }
 
 impl CollectLifecycle {
     pub fn new(remote: &str, nodes: Vec<RouteUri>) -> Self {
-        CollectLifecycle { remote: remote.to_string(), nodes }
+        CollectLifecycle {
+            remote: remote.to_string(),
+            nodes,
+        }
     }
 }
 
 #[lifecycle(CollectAgent)]
 impl CollectLifecycle {
-
     #[join_value_lifecycle(collected)]
     fn register_lifecycle(
         &self,
         context: JoinValueContext<CollectAgent, String, i32>,
     ) -> impl JoinValueLaneLifecycle<String, i32, CollectAgent> + 'static {
-        context.builder()
-            .on_linked(|context, key, _remote| context.effect(move || println!("New link with key: {}", key)))
-            .on_unlinked(|context, key, _remote| context.effect(move || {
-                println!("Link with key {} closed.", key);
-                LinkClosedResponse::Abandon
-            }))
-            .on_failed(|context, key, _remote| context.effect(move || {
-                println!("Link with key {} failed.", key);
-                LinkClosedResponse::Abandon
-            }))
+        context
+            .builder()
+            .on_linked(|context, key, _remote| {
+                context.effect(move || println!("New link with key: {}", key))
+            })
+            .on_unlinked(|context, key, _remote| {
+                context.effect(move || {
+                    println!("Link with key {} closed.", key);
+                    LinkClosedResponse::Abandon
+                })
+            })
+            .on_failed(|context, key, _remote| {
+                context.effect(move || {
+                    println!("Link with key {} failed.", key);
+                    LinkClosedResponse::Abandon
+                })
+            })
             .done()
     }
-    
+
     #[on_start]
-    pub fn open_links(&self, context: HandlerContext<CollectAgent>) -> impl EventHandler<CollectAgent> + '_ {
-        let handlers = self.nodes.iter().map(move |node| context.add_downlink(
-            CollectAgent::COLLECTED, node.to_string(), Some(&self.remote), node.as_str(), LANE_NAME));
+    pub fn open_links(
+        &self,
+        context: HandlerContext<CollectAgent>,
+    ) -> impl EventHandler<CollectAgent> + '_ {
+        let handlers = self.nodes.iter().map(move |node| {
+            context.add_downlink(
+                CollectAgent::COLLECTED,
+                node.to_string(),
+                Some(&self.remote),
+                node.as_str(),
+                LANE_NAME,
+            )
+        });
         Sequentially::new(handlers)
     }
 
@@ -84,7 +106,10 @@ impl CollectLifecycle {
         let v = *new_value;
         context.effect(move || {
             if let Some(p) = prev {
-                println!("Received update for key: {}. Value changed from {} to {}.", key, p, v);
+                println!(
+                    "Received update for key: {}. Value changed from {} to {}.",
+                    key, p, v
+                );
             } else {
                 println!("New entry for key: {}. Value is {}.", key, v);
             }

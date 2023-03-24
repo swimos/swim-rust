@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use futures::future::join;
-use futures::stream::{FuturesUnordered, unfold};
-use futures::{FutureExt, StreamExt, Stream};
+use futures::stream::{unfold, FuturesUnordered};
+use futures::{FutureExt, Stream, StreamExt};
 use ratchet::{SplittableExtension, WebSocket, WebSocketStream};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -90,10 +90,12 @@ pub struct Transport<Net, Ws> {
 }
 
 impl<Net, Ws> Transport<Net, Ws> {
-    pub fn new(networking: Net,
-        websockets: Ws) -> Self {
-            Transport { networking, websockets }
+    pub fn new(networking: Net, websockets: Ws) -> Self {
+        Transport {
+            networking,
+            websockets,
         }
+    }
 }
 
 pub struct StartAgentRequest {
@@ -240,7 +242,10 @@ where
         store: Store,
         introspection: Option<IntrospectionConfig>,
     ) -> Self {
-        let Transport { networking, websockets } = transport;
+        let Transport {
+            networking,
+            websockets,
+        } = transport;
         SwimServer {
             plane,
             addr,
@@ -253,7 +258,9 @@ where
     }
 }
 
-fn start_req_stream(maybe_rx: Option<mpsc::Receiver<StartAgentRequest>>) -> impl Stream<Item = StartAgentRequest> + Send {
+fn start_req_stream(
+    maybe_rx: Option<mpsc::Receiver<StartAgentRequest>>,
+) -> impl Stream<Item = StartAgentRequest> + Send {
     unfold(maybe_rx, |state| async move {
         if let Some(mut rx) = state {
             rx.recv().await.map(move |req| (req, Some(rx)))
@@ -671,7 +678,7 @@ where
                     if response.send(resp_result).is_err() {
                         info!("Agent start request dropped before it was satisfied.");
                     }
-                },
+                }
             }
         }
 

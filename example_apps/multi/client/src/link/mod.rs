@@ -14,9 +14,7 @@
 
 use swim::{
     agent::{
-        agent_lifecycle::utility::HandlerContext,
-        event_handler::{EventHandler},
-        lanes::ValueLane,
+        agent_lifecycle::utility::HandlerContext, event_handler::EventHandler, lanes::ValueLane,
         lifecycle, projections, AgentLaneModel,
     },
     route::RouteUri,
@@ -38,17 +36,25 @@ pub struct LinkLifecycle {
 
 impl LinkLifecycle {
     pub fn new(remote: &str, node: RouteUri) -> Self {
-        LinkLifecycle { remote: remote.to_string(), node }
+        LinkLifecycle {
+            remote: remote.to_string(),
+            node,
+        }
     }
 }
 
 #[lifecycle(LinkAgent)]
 impl LinkLifecycle {
-    
     #[on_start]
     pub fn open_link(&self, context: HandlerContext<LinkAgent>) -> impl EventHandler<LinkAgent> {
         let LinkLifecycle { remote, node } = self;
-        context.event_downlink_builder::<i32>(Some(&remote), node.as_str(), LANE_NAME, Default::default())
+        context
+            .event_downlink_builder::<i32>(
+                Some(&remote),
+                node.as_str(),
+                LANE_NAME,
+                Default::default(),
+            )
             .on_linked(|context| context.effect(|| println!("Downlink linked!")))
             .on_unlinked(|context| context.effect(|| println!("Downlink unlinked!")))
             .on_failed(|context| context.effect(|| println!("Downlink Failed!")))

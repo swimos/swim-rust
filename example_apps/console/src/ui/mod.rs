@@ -26,7 +26,7 @@ use cursive::{
 };
 use std::time::Duration;
 
-use crate::model::{parse_app_command, DisplayResponse};
+use crate::model::{parse_app_command, AppCommand, DisplayResponse};
 use crate::{controller::Controller, model::UIUpdate};
 
 use self::bounded_append::BoundedAppend;
@@ -234,6 +234,8 @@ const SHOW_WITH: &[&str] = &[
 const COMMAND: &[&str] = &[
     "Send a command frame to a remote lane.\n",
     "In all cases, the body must be valid Recon.\n",
+    "Recon values that contain white space must be quoted with backticks.\n",
+    "Example: `@item \"name\"`\n",
     "\n",
     "command [id:(integer)] body:(recon)\n",
     "\n",
@@ -302,12 +304,15 @@ fn on_command(
     text: &str,
 ) {
     appender.append(cursive, Cow::Owned(format!("> {}\n", text)));
-    let command_parts = text.split_whitespace().collect::<Vec<_>>();
 
-    let responses = match command_parts.as_slice() {
-        ["help"] => Some(HELP.iter().map(|s| Cow::Borrowed(*s)).collect()),
-        ["help", cmd_name] => {
-            let help_text = match *cmd_name {
+    let responses = match parse_app_command(text) {
+        Ok(AppCommand::Help { command_name: None }) => {
+            Some(HELP.iter().map(|s| Cow::Borrowed(*s)).collect())
+        }
+        Ok(AppCommand::Help {
+            command_name: Some(cmd_name),
+        }) => {
+            let help_text = match cmd_name.as_str() {
                 "clear" => CLEAR,
                 "help" => HELP_HELP,
                 "quit" => QUIT,
@@ -325,28 +330,23 @@ fn on_command(
             };
             Some(help_text.iter().map(|s| Cow::Borrowed(*s)).collect())
         }
-        ["quit"] => {
+        Ok(AppCommand::Quit) => {
             cursive.quit();
             Some(vec![])
         }
-        ["clear"] => None,
-        _ => {
-            let msgs = match parse_app_command(command_parts.as_slice()) {
-                Ok(command) => controller
-                    .perform_action(command)
-                    .into_iter()
-                    .map(|msg| format!("{}\n", msg))
-                    .map(Cow::Owned)
-                    .collect(),
-                Err(msg) => {
-                    vec![
-                        Cow::Owned(format!("{}\n", msg)),
-                        Cow::Borrowed("Type 'help' to list valid commands.\n"),
-                    ]
-                }
-            };
-            Some(msgs)
-        }
+        Ok(AppCommand::Clear) => None,
+        Ok(AppCommand::Controller(command)) => Some(
+            controller
+                .perform_action(command)
+                .into_iter()
+                .map(|msg| format!("{}\n", msg))
+                .map(Cow::Owned)
+                .collect(),
+        ),
+        Err(msg) => Some(vec![
+            Cow::Owned(format!("{}\n", msg)),
+            Cow::Borrowed("Type 'help' to list valid commands.\n"),
+        ]),
     };
     if let Some(resp) = responses {
         appender.append_many(cursive, resp);

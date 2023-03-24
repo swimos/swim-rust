@@ -15,7 +15,7 @@
 use std::net::SocketAddr;
 
 use futures::future::BoxFuture;
-use swim_utilities::{trigger, routing::route_uri::RouteUri};
+use swim_utilities::{routing::route_uri::RouteUri, trigger};
 
 mod builder;
 mod error;
@@ -24,7 +24,7 @@ mod store;
 
 pub use builder::ServerBuilder;
 
-use tokio::sync::{oneshot, mpsc};
+use tokio::sync::{mpsc, oneshot};
 
 use crate::error::ServerError;
 
@@ -39,9 +39,11 @@ pub struct ServerHandle {
 
 /// Allows the server to be stopped externally.
 impl ServerHandle {
-    fn new(tx: trigger::Sender, 
+    fn new(
+        tx: trigger::Sender,
         addr_rx: oneshot::Receiver<SocketAddr>,
-        start_agent_tx: mpsc::Sender<StartAgentRequest>) -> Self {
+        start_agent_tx: mpsc::Sender<StartAgentRequest>,
+    ) -> Self {
         ServerHandle {
             stop_trigger: Some(tx),
             addr: None,
@@ -69,12 +71,17 @@ impl ServerHandle {
     }
 
     /// Attempt to start an agent instance in the server.
-    /// 
+    ///
     /// #Arguments
     /// * `route` - The node URI of the agent.
     pub async fn start_agent(&self, route: RouteUri) -> Result<(), UnresolvableRoute> {
         let (response_tx, response_rx) = oneshot::channel();
-        if self.start_agent_tx.send(StartAgentRequest::new(route, response_tx)).await.is_err() {
+        if self
+            .start_agent_tx
+            .send(StartAgentRequest::new(route, response_tx))
+            .await
+            .is_err()
+        {
             Err(UnresolvableRoute::Stopped)
         } else if let Ok(result) = response_rx.await {
             result

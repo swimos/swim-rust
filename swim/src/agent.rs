@@ -93,7 +93,7 @@ pub use swim_agent::event_handler;
 pub use swim_agent::reexport;
 
 pub mod config {
-    pub use swim_agent::config::{SimpleDownlinkConfig, MapDownlinkConfig};
+    pub use swim_agent::config::{MapDownlinkConfig, SimpleDownlinkConfig};
 }
 pub mod model {
     pub use swim_agent::model::{MapMessage, Text};

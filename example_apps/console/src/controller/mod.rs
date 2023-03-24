@@ -19,7 +19,9 @@ use swim::route::RouteUri;
 use tokio::sync::mpsc;
 
 use crate::{
-    model::{AppCommand, Endpoint, EndpointOrId, Host, LinkRef, RuntimeCommand, Target, TargetRef},
+    model::{
+        ControllerCommand, Endpoint, EndpointOrId, Host, LinkRef, RuntimeCommand, Target, TargetRef,
+    },
     oneshot::{self, ReceiveError},
     shared_state::SharedState,
 };
@@ -111,9 +113,9 @@ impl Controller {
         }
     }
 
-    pub fn perform_action(&mut self, command: AppCommand) -> Vec<String> {
+    pub fn perform_action(&mut self, command: ControllerCommand) -> Vec<String> {
         match command {
-            AppCommand::WithHost(h) => {
+            ControllerCommand::WithHost(h) => {
                 let new = h.clone();
                 vec![if let Some(old) = self.with_host.replace(h) {
                     format!("Changed active host from {} to {}.", old, new)
@@ -121,7 +123,7 @@ impl Controller {
                     format!("Set active host to {}.", new)
                 }]
             }
-            AppCommand::WithNode(n) => {
+            ControllerCommand::WithNode(n) => {
                 let new = n.clone();
                 vec![if let Some(old) = self.with_node.replace(n) {
                     format!("Changed active node URI from {} to {}.", old, new)
@@ -129,7 +131,7 @@ impl Controller {
                     format!("Set active node URI to {}.", new)
                 }]
             }
-            AppCommand::WithLane(l) => {
+            ControllerCommand::WithLane(l) => {
                 let new = l.clone();
                 vec![if let Some(old) = self.with_lane.replace(l) {
                     format!("Changed active lane from {} to {}.", old, new)
@@ -137,7 +139,7 @@ impl Controller {
                     format!("Set active lane to {}.", new)
                 }]
             }
-            AppCommand::ShowWith => {
+            ControllerCommand::ShowWith => {
                 let Controller {
                     with_host,
                     with_node,
@@ -162,7 +164,7 @@ impl Controller {
                 }
                 response
             }
-            AppCommand::ClearWith => {
+            ControllerCommand::ClearWith => {
                 let Controller {
                     with_host,
                     with_node,
@@ -174,12 +176,12 @@ impl Controller {
                 *with_lane = None;
                 vec!["Clearing with bindings.".to_string()]
             }
-            AppCommand::ListLinks => {
+            ControllerCommand::ListLinks => {
                 let mut response = vec!["Active links:".to_string()];
                 response.extend(self.links().into_iter().map(format_list_entry));
                 response
             }
-            AppCommand::Command { target, body } => match self.resolve(target) {
+            ControllerCommand::Command { target, body } => match self.resolve(target) {
                 Ok(EndpointOrId::Id(id)) => {
                     self.command_tx
                         .send(RuntimeCommand::Command(id, body))
@@ -194,7 +196,7 @@ impl Controller {
                 }
                 Err(msg) => vec![msg],
             },
-            AppCommand::Link { name, target } => match self.resolve_target(target) {
+            ControllerCommand::Link { name, target } => match self.resolve_target(target) {
                 Ok(EndpointOrId::Id(id)) => {
                     if let Some(name) = name {
                         self.names.insert(name, id);
@@ -227,8 +229,8 @@ impl Controller {
                 }
                 Err(msg) => vec![msg],
             },
-            AppCommand::Sync(link) => self.for_link(link, RuntimeCommand::Sync),
-            AppCommand::Unlink(link) => self.for_link(link, RuntimeCommand::Unlink),
+            ControllerCommand::Sync(link) => self.for_link(link, RuntimeCommand::Sync),
+            ControllerCommand::Unlink(link) => self.for_link(link, RuntimeCommand::Unlink),
         }
     }
 

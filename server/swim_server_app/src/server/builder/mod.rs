@@ -170,23 +170,18 @@ impl ServerBuilder {
             routes.check_meta_collisions()?;
         }
         let resolver = Arc::new(Resolver::new().await);
-        let config = AppConfig { server: config, store: store_options, deflate, introspection };
+        let config = AppConfig {
+            server: config,
+            store: store_options,
+            deflate,
+            introspection,
+        };
         if let Some(tls_conf) = tls_config {
             let networking = RustlsNetworking::try_from_config(resolver, tls_conf)?;
-            Ok(BoxServer(with_store(
-                bind_to,
-                routes,
-                networking,
-                config,
-            )?))
+            Ok(BoxServer(with_store(bind_to, routes, networking, config)?))
         } else {
             let networking = TokioPlainTextNetworking::new(resolver);
-            Ok(BoxServer(with_store(
-                bind_to,
-                routes,
-                networking,
-                config,
-            )?))
+            Ok(BoxServer(with_store(bind_to, routes, networking, config)?))
         }
     }
 }
@@ -213,13 +208,7 @@ where
         #[cfg(feature = "rocks_store")]
         StoreConfig::RockStore { path, options } => {
             let store = super::store::rocks::create_rocks_store(path, options)?;
-            Ok(with_websockets(
-                bind_to,
-                routes,
-                networking,
-                config,
-                store,
-            ))
+            Ok(with_websockets(bind_to, routes, networking, config, store))
         }
         StoreConfig::InMemory => Ok(with_websockets(
             bind_to,
@@ -250,7 +239,12 @@ where
     N::Socket: WebSocketStream,
     Store: ServerPersistence + Send + Sync + 'static,
 {
-    let AppConfig { server: server_config, deflate, introspection, .. } = config; 
+    let AppConfig {
+        server: server_config,
+        deflate,
+        introspection,
+        ..
+    } = config;
     let subprotocols = ProtocolRegistry::new(vec!["warp0"]).unwrap();
     if let Some(deflate_config) = deflate {
         let websockets = RatchetNetworking {

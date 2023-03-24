@@ -28,5 +28,3 @@ impl UnresolvableRoute {
         UnresolvableRoute::NoRoute { uri }
     }
 }
-
-

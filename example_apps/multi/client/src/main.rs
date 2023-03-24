@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{error::Error, time::Duration, collections::HashMap};
+use std::{collections::HashMap, error::Error, time::Duration};
 
 use clap::Parser;
 use swim::{
@@ -22,7 +22,11 @@ use swim::{
 };
 use tokio::select;
 
-use crate::{link::{LinkAgent, LinkLifecycle}, collect::{CollectLifecycle, CollectAgent}, args::AppArgs};
+use crate::{
+    args::AppArgs,
+    collect::{CollectAgent, CollectLifecycle},
+    link::{LinkAgent, LinkLifecycle},
+};
 
 mod args;
 mod collect;
@@ -31,17 +35,16 @@ mod link;
 const LANE_NAME: &str = "state";
 
 const EXAMPLE_LINK: &str = "/example";
-const EXAMPLE_LINKS: &[&str] = &[
-    "/link0",
-    "/link2",
-    "/link3",
-    "/link4"
-];
-
+const EXAMPLE_LINKS: &[&str] = &["/link0", "/link2", "/link3", "/link4"];
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let AppArgs { host, port, link, collect } = AppArgs::parse();
+    let AppArgs {
+        host,
+        port,
+        link,
+        collect,
+    } = AppArgs::parse();
     let remote = format!("{}:{}", host, port);
 
     let link_pat = RoutePattern::parse_str("/link")?;
