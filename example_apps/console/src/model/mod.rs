@@ -19,7 +19,8 @@ use std::{
 };
 
 use http::Uri;
-use swim::{model::Value, route::RouteUri};
+use swim_model::Value;
+use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::oneshot;
 

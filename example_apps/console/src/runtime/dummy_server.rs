@@ -22,7 +22,7 @@ use futures::{
 };
 use parking_lot::RwLock;
 use ratchet::{NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry, WebSocketConfig};
-use swim::form::Form;
+use swim_form::Form;
 use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swim_recon::{parser::parse_value, printer::print_recon_compact};
 use swim_utilities::trigger;

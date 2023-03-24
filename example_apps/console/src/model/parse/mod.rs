@@ -14,7 +14,7 @@
 
 use std::borrow::Cow;
 
-use swim::model::Value;
+use swim_model::Value;
 use swim_recon::parser::parse_value;
 
 use super::{AppCommand, ControllerCommand, LinkRef, Target, TargetRef};

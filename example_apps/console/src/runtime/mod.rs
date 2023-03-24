@@ -27,10 +27,12 @@ use ratchet::{
     ErrorKind, NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry, WebSocket,
     WebSocketConfig,
 };
-use swim::route::RouteUri;
 use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swim_recon::{parser::MessageExtractError, printer::print_recon_compact};
-use swim_utilities::{routing::route_uri::InvalidRouteUri, trigger};
+use swim_utilities::{
+    routing::route_uri::{InvalidRouteUri, RouteUri},
+    trigger,
+};
 use tokio::{net::TcpStream, sync::mpsc as tmpsc, task::block_in_place};
 
 use crate::{
