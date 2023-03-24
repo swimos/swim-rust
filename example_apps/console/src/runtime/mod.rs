@@ -86,11 +86,11 @@ impl Runtime {
         let Runtime {
             shared_state,
             mut commands,
-            mut output,
+            output,
             mut stop,
         } = self;
 
-        let mut senders = HashMap::new();
+        let mut senders: HashMap<Host, RemoteHandle> = HashMap::new();
         let mut receivers = SelectAll::new();
         let mut state = State::new(shared_state);
 
@@ -124,7 +124,8 @@ impl Runtime {
                             let id = state.insert(endpoint.clone());
                             let Endpoint { remote, node, lane } = endpoint;
                             if let Some(tx) = senders.get_mut(&remote) {
-                                if let Err(e) = link(tx, &node, &lane).await {
+                                if let Err(e) = link(&mut tx.sender, &node, &lane).await {
+                                    send_log(&*output, format!("Connection to {} failed.", remote));
                                     senders.remove(&remote);
                                     state.remove_all(&remote);
                                     response.send(Err(e));
@@ -133,22 +134,41 @@ impl Runtime {
                                 }
                             } else {
                                 match open_connection(&remote).await {
-                                    Ok(ws) => match ws.split() {
-                                        Ok((mut tx, rx)) => {
-                                            if let Err(e) = link(&mut tx, &node, &lane).await {
-                                                state.remove(id);
+                                    Ok(ws) => {
+                                        match ws.split() {
+                                            Ok((mut tx, rx)) => {
+                                                if let Err(e) = link(&mut tx, &node, &lane).await {
+                                                    send_log(&*output, format!("Connection to remote {} failed with: {}", remote, e));
+                                                    let _ = state.remove(id);
+                                                    response.send(Err(e));
+                                                } else {
+                                                    let (recv_stop_tx, recv_stop_rx) =
+                                                        trigger::trigger();
+                                                    send_log(
+                                                        &*output,
+                                                        format!(
+                                                            "Opened new connection to: {}",
+                                                            remote
+                                                        ),
+                                                    );
+                                                    senders.insert(
+                                                        remote.clone(),
+                                                        RemoteHandle::new(tx, recv_stop_tx),
+                                                    );
+                                                    receivers.push(Box::pin(
+                                                        into_stream(remote, rx)
+                                                            .take_until(recv_stop_rx),
+                                                    ));
+                                                    response.send(Ok(id));
+                                                }
+                                            }
+                                            Err(e) => {
+                                                send_log(&*output, format!("Failed to open a connection to {}, error was: {}", remote, e));
+                                                let _ = state.remove(id);
                                                 response.send(Err(e));
-                                            } else {
-                                                senders.insert(remote.clone(), tx);
-                                                receivers.push(Box::pin(into_stream(remote, rx)));
-                                                response.send(Ok(id));
                                             }
                                         }
-                                        Err(e) => {
-                                            state.remove(id);
-                                            response.send(Err(e));
-                                        }
-                                    },
+                                    }
                                     Err(e) => response.send(Err(e)),
                                 }
                             }
@@ -157,7 +177,8 @@ impl Runtime {
                     RuntimeCommand::Sync(id) => {
                         if let Some(Endpoint { remote, node, lane }) = state.get_endpoint(id) {
                             if let Some(tx) = senders.get_mut(remote) {
-                                if sync(tx, node, lane).await.is_err() {
+                                if sync(&mut tx.sender, node, lane).await.is_err() {
+                                    send_log(&*output, format!("Connection to {} failed.", remote));
                                     state.remove_all(&remote.clone());
                                 }
                             }
@@ -167,7 +188,8 @@ impl Runtime {
                         let recon = format!("{}", print_recon_compact(&body));
                         if let Some(Endpoint { remote, node, lane }) = state.get_endpoint(id) {
                             if let Some(tx) = senders.get_mut(remote) {
-                                if send_cmd(tx, node, lane, &recon).await.is_err() {
+                                if send_cmd(&mut tx.sender, node, lane, &recon).await.is_err() {
+                                    send_log(&*output, format!("Connection to {} failed.", remote));
                                     state.remove_all(&remote.clone());
                                 }
                             }
@@ -177,46 +199,82 @@ impl Runtime {
                         let Endpoint { remote, node, lane } = endpoint;
                         let recon = format!("{}", print_recon_compact(&body));
                         if let Some(tx) = senders.get_mut(&remote) {
-                            if send_cmd(tx, &node, &lane, &recon).await.is_err() {
+                            if send_cmd(&mut tx.sender, &node, &lane, &recon)
+                                .await
+                                .is_err()
+                            {
+                                send_log(&*output, format!("Connection to {} failed.", remote));
                                 senders.remove(&remote);
                             }
                         } else if let Ok((mut tx, rx)) =
                             open_connection(&remote).await.and_then(|ws| ws.split())
                         {
                             if send_cmd(&mut tx, &node, &lane, &recon).await.is_ok() {
-                                senders.insert(remote.clone(), tx);
-                                receivers.push(Box::pin(into_stream(remote, rx)));
+                                let (recv_stop_tx, recv_stop_rx) = trigger::trigger();
+                                senders.insert(remote.clone(), RemoteHandle::new(tx, recv_stop_tx));
+                                receivers.push(Box::pin(
+                                    into_stream(remote, rx).take_until(recv_stop_rx),
+                                ));
                             }
                         }
                     }
                     RuntimeCommand::Unlink(id) => {
                         if let Some(Endpoint { remote, node, lane }) = state.get_endpoint(id) {
                             if let Some(tx) = senders.get_mut(remote) {
-                                if unlink(tx, node, lane).await.is_err() {
+                                if unlink(&mut tx.sender, node, lane).await.is_err() {
+                                    send_log(&*output, format!("Connection to {} failed.", remote));
                                     state.remove_all(&remote.clone());
                                 }
                             }
                         }
                     }
                 },
-                RuntimeEvent::Message(host, body) => match handle_body(&mut state, host, &body) {
-                    Ok(msg) => {
-                        let out_ref = &mut output;
-                        block_in_place(move || out_ref.update(UIUpdate::LinkDisplay(msg)))
-                            .expect(UI_DROPPED);
+                RuntimeEvent::Message(host, body) => {
+                    match handle_body(&mut state, host, &body, &*output, &mut senders) {
+                        Ok(msg) => {
+                            send_link(&*output, msg);
+                        }
+                        Err(BadEnvelope(error)) => {
+                            send_log(&*output, error);
+                        }
                     }
-                    Err(BadEnvelope(error)) => {
-                        let out_ref = &mut output;
-                        block_in_place(move || out_ref.update(UIUpdate::LogMessage(error)))
-                            .expect(UI_DROPPED);
-                    }
-                },
+                }
                 RuntimeEvent::Failed(host) => {
                     state.remove_all(&host);
                 }
             }
         }
     }
+}
+
+pub struct RemoteHandle {
+    sender: Tx,
+    stop_tx: Option<trigger::Sender>,
+}
+
+impl RemoteHandle {
+    pub fn new(sender: Tx, stop_tx: trigger::Sender) -> Self {
+        RemoteHandle {
+            sender,
+            stop_tx: Some(stop_tx),
+        }
+    }
+}
+
+impl Drop for RemoteHandle {
+    fn drop(&mut self) {
+        if let Some(tx) = self.stop_tx.take() {
+            tx.trigger();
+        }
+    }
+}
+
+fn send_link(output: &dyn ViewUpdater, line: DisplayResponse) {
+    block_in_place(move || output.update(UIUpdate::LinkDisplay(line))).expect(UI_DROPPED)
+}
+
+fn send_log(output: &dyn ViewUpdater, message: String) {
+    block_in_place(move || output.update(UIUpdate::LogMessage(message))).expect(UI_DROPPED)
 }
 
 enum RuntimeEvent {
@@ -299,7 +357,13 @@ async fn open_connection(host: &Host) -> Result<WebSocket<TcpStream, NoExt>, rat
 
 struct BadEnvelope(String);
 
-fn handle_body(state: &mut State, host: Host, body: &str) -> Result<DisplayResponse, BadEnvelope> {
+fn handle_body(
+    state: &mut State,
+    host: Host,
+    body: &str,
+    output: &dyn ViewUpdater,
+    senders: &mut HashMap<Host, RemoteHandle>,
+) -> Result<DisplayResponse, BadEnvelope> {
     match peel_envelope_header_str(body)? {
         RawEnvelope::Linked {
             node_uri, lane_uri, ..
@@ -335,7 +399,10 @@ fn handle_body(state: &mut State, host: Host, body: &str) -> Result<DisplayRespo
                 lane: lane_uri.to_string(),
             };
             let id = if let Some(id) = state.get_id(&endpoint) {
-                state.remove(id);
+                if let Some(host) = state.remove(id) {
+                    send_log(output, format!("Closed connection to: {}", host));
+                    senders.remove(&host);
+                }
                 id
             } else {
                 0
@@ -407,12 +474,21 @@ impl State {
         n
     }
 
-    fn remove(&mut self, id: usize) {
+    #[must_use]
+    fn remove(&mut self, id: usize) -> Option<Host> {
         let State { shared, links, rev } = self;
-        if let Some(endpoint) = rev.remove(&id) {
-            links.remove(&endpoint);
-        }
         shared.write().remove(id);
+        let removed = rev.remove(&id);
+        if let Some(endpoint) = removed {
+            links.remove(&endpoint);
+            if links.keys().find(|e| e.remote == endpoint.remote).is_none() {
+                Some(endpoint.remote)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 
     fn remove_all(&mut self, remote: &Host) {
