@@ -60,4 +60,11 @@ impl SharedState {
     pub fn get_id(&self, endpoint: &Endpoint) -> Option<usize> {
         self.links.get(endpoint).copied()
     }
+
+    pub fn clear(&mut self) {
+        let SharedState { count, links, rev } = self;
+        *count = 1;
+        links.clear();
+        rev.clear();
+    }
 }

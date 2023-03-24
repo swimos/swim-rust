@@ -231,6 +231,12 @@ impl Controller {
             },
             ControllerCommand::Sync(link) => self.for_link(link, RuntimeCommand::Sync),
             ControllerCommand::Unlink(link) => self.for_link(link, RuntimeCommand::Unlink),
+            ControllerCommand::UnlinkAll => {
+                self.command_tx
+                    .send(RuntimeCommand::UnlinkAll)
+                    .expect(BAD_CHAN);
+                vec![]
+            }
         }
     }
 

@@ -116,6 +116,7 @@ pub enum ControllerCommand {
     },
     Sync(LinkRef),
     Unlink(LinkRef),
+    UnlinkAll,
 }
 
 pub enum AppCommand {
@@ -135,6 +136,7 @@ pub enum RuntimeCommand {
     Command(usize, Value),
     AdHocCommand(Endpoint, Value),
     Unlink(usize),
+    UnlinkAll,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

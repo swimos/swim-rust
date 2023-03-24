@@ -272,6 +272,12 @@ const UNLINK: &[&str] = &[
     "\n",
     "unlink id:(integer)\n",
     "\n",
+    "Unlink the specified link.\n",
+    "\n",
+    "unlink --all\n",
+    "\n",
+    "Unlink all active links.\n",
+    "\n",
 ];
 
 const WITH_HOST: &[&str] = &[

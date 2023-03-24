@@ -159,6 +159,7 @@ pub fn parse_controller_command(parts: &[&str]) -> Result<ControllerCommand, Cow
             let r = target.parse()?;
             Ok(ControllerCommand::Sync(r))
         }
+        ["unlink", "--all"] => Ok(ControllerCommand::UnlinkAll),
         ["unlink", target] => {
             let r = target.parse()?;
             Ok(ControllerCommand::Unlink(r))

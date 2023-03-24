@@ -181,6 +181,7 @@ impl Runtime {
                             if let Some(tx) = senders.get_mut(remote) {
                                 if sync(&mut tx.sender, node, lane).await.is_err() {
                                     send_log(&*output, format!("Connection to {} failed.", remote));
+                                    senders.remove(remote);
                                     state.remove_all(&remote.clone());
                                 }
                             }
@@ -192,6 +193,7 @@ impl Runtime {
                             if let Some(tx) = senders.get_mut(remote) {
                                 if send_cmd(&mut tx.sender, node, lane, &recon).await.is_err() {
                                     send_log(&*output, format!("Connection to {} failed.", remote));
+                                    senders.remove(remote);
                                     state.remove_all(&remote.clone());
                                 }
                             }
@@ -225,8 +227,23 @@ impl Runtime {
                             if let Some(tx) = senders.get_mut(remote) {
                                 if unlink(&mut tx.sender, node, lane).await.is_err() {
                                     send_log(&*output, format!("Connection to {} failed.", remote));
+                                    senders.remove(remote);
                                     state.remove_all(&remote.clone());
                                 }
+                            }
+                        }
+                    }
+                    RuntimeCommand::UnlinkAll => {
+                        for (_, Endpoint { remote, node, lane }) in state.clear().into_iter() {
+                            let mut senders = std::mem::take(&mut senders);
+                            if let Some(tx) = senders.get_mut(&remote) {
+                                if unlink(&mut tx.sender, &node, &lane).await.is_err() {
+                                    send_log(&*output, format!("Connection to {} failed.", remote));
+                                    senders.remove(&remote);
+                                }
+                            }
+                            for (host, _sender) in senders.into_iter() {
+                                send_log(&*output, format!("Closed connection to: {}", host));
                             }
                         }
                     }
@@ -509,6 +526,13 @@ impl State {
             }
             guard.remove(id);
         }
+    }
+
+    fn clear(&mut self) -> BTreeMap<usize, Endpoint> {
+        let State { shared, links, rev } = self;
+        shared.write().clear();
+        links.clear();
+        std::mem::take(rev)
     }
 }
 
