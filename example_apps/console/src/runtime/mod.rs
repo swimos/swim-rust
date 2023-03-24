@@ -483,10 +483,10 @@ impl State {
         let removed = rev.remove(&id);
         if let Some(endpoint) = removed {
             links.remove(&endpoint);
-            if links.keys().find(|e| e.remote == endpoint.remote).is_none() {
-                Some(endpoint.remote)
-            } else {
+            if links.keys().any(|e| e.remote == endpoint.remote) {
                 None
+            } else {
+                Some(endpoint.remote)
             }
         } else {
             None

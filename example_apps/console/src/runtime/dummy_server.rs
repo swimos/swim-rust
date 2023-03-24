@@ -12,7 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, net::SocketAddr, pin::pin, sync::Arc, time::Duration};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    net::SocketAddr,
+    pin::pin,
+    sync::Arc,
+    time::Duration,
+};
 
 use bytes::BytesMut;
 use futures::{
@@ -327,13 +333,13 @@ async fn send_task(
         match event {
             Either::Left(ConnectionMessage::Link(node, lane)) => {
                 let key = (node, lane);
-                if !lane_senders.contains_key(&key) {
-                    if let Some(fake_lane) = lanes.get(&key).cloned() {
-                        let (node, lane) = key.clone();
+                if let Some(fake_lane) = lanes.get(&key) {
+                    if let Entry::Vacant(entry) = lane_senders.entry(key.clone()) {
+                        let (node, lane) = key;
                         let (lane_tx, lane_rx) = mpsc::unbounded_channel();
                         let _ = lane_tx.send(LaneMessage::Link);
-                        lane_tasks.push(fake_lane.into_stream(node, lane, lane_rx));
-                        lane_senders.insert(key, lane_tx);
+                        lane_tasks.push(fake_lane.clone().into_stream(node, lane, lane_rx));
+                        entry.insert(lane_tx);
                     }
                 }
             }
@@ -610,7 +616,7 @@ where
                     Ok(p) => updater.update(UIUpdate::LogMessage(format!("Bound to port: {}", p))),
                     Err(_) => updater.update(UIUpdate::LogMessage("Failed to bind.".to_string())),
                 };
-                if !r.is_err() {
+                if r.is_ok() {
                     runtime.await;
                 }
             };

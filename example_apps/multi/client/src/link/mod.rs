@@ -50,7 +50,7 @@ impl LinkLifecycle {
         let LinkLifecycle { remote, node } = self;
         context
             .event_downlink_builder::<i32>(
-                Some(&remote),
+                Some(remote),
                 node.as_str(),
                 LANE_NAME,
                 Default::default(),
