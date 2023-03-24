@@ -23,14 +23,13 @@ use futures::future::BoxFuture;
 use futures::Future;
 use model::{RuntimeCommand, UIUpdate};
 use parking_lot::RwLock;
-use runtime::dummy_runtime::DummyRuntimeFactory;
+use runtime::dummy_server::DummyServerRuntimeFac;
 use runtime::dummy_server::{DummyServer, LaneSpec};
 use runtime::ConsoleFactory;
-use runtime::{debug_runtime::DebugFactory, dummy_server::DummyServerRuntimeFac};
 use shared_state::SharedState;
 use swim_utilities::trigger;
 use tokio::runtime::Builder;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, UnboundedReceiver};
 use ui::{CursiveUIUpdater, ViewUpdater};
 
 mod controller;
@@ -53,59 +52,10 @@ fn main() {
 
     let args = std::env::args().collect::<Vec<_>>();
     let runtime = match args.get(1) {
-        Some(arg) if args.len() == 2 => match arg.as_str() {
-            "--debug" => {
-                DebugFactory::default().run(shared_state, command_rx, Arc::new(updater), stop_rx)
-            }
-            "--dummy" => DummyRuntimeFactory::default().run(
-                shared_state,
-                command_rx,
-                Arc::new(updater),
-                stop_rx,
-            ),
-            "--real" => {
-                ConsoleFactory::default().run(shared_state, command_rx, Arc::new(updater), stop_rx)
-            }
-            _ => {
-                panic!("Invalid arguments.");
-            }
-        },
-        None => DummyServerRuntimeFac::new(
-            |stop_rx, port_tx, updater| {
-                let errors = Box::new(move |err| {
-                    updater
-                        .update(UIUpdate::LogMessage(format!("Task error: {:?}", err)))
-                        .is_ok()
-                });
-                let mut lanes = HashMap::new();
-                lanes.insert(
-                    ("/node".to_string(), "lane1".to_string()),
-                    LaneSpec::simple(0),
-                );
-                lanes.insert(
-                    ("/node".to_string(), "lane2".to_string()),
-                    LaneSpec::with_changes(
-                        "I".to_string(),
-                        vec![
-                            "am".to_string(),
-                            "the".to_string(),
-                            "very".to_string(),
-                            "model".to_string(),
-                            "of".to_string(),
-                            "a".to_string(),
-                            "modern".to_string(),
-                            "major".to_string(),
-                            "general.".to_string(),
-                        ],
-                        Duration::from_secs(5),
-                    ),
-                );
-                DummyServer::new(stop_rx, port_tx, lanes, Some(errors))
-            },
-            ConsoleFactory::default(),
-        )
-        .run(shared_state, command_rx, Arc::new(updater), stop_rx),
-        _ => panic!("Invalid arguments."),
+        Some(arg) if args.len() == 2 && arg.as_str() == "--dummy" => {
+            make_dummy_runtime(shared_state, command_rx, Arc::new(updater), stop_rx)
+        }
+        _ => ConsoleFactory::default().run(shared_state, command_rx, Arc::new(updater), stop_rx),
     };
 
     let handle = start_runtime(runtime);
@@ -139,4 +89,47 @@ pub trait RuntimeFactory {
         updater: Arc<dyn ViewUpdater + Send + Sync + 'static>,
         stop: trigger::Receiver,
     ) -> BoxFuture<'static, ()>;
+}
+
+fn make_dummy_runtime(
+    shared_state: Arc<RwLock<SharedState>>,
+    command_rx: UnboundedReceiver<RuntimeCommand>,
+    updater: Arc<dyn ViewUpdater + Send + Sync + 'static>,
+    stop_rx: trigger::Receiver,
+) -> BoxFuture<'static, ()> {
+    DummyServerRuntimeFac::new(
+        |stop_rx, port_tx, updater| {
+            let errors = Box::new(move |err| {
+                updater
+                    .update(UIUpdate::LogMessage(format!("Task error: {:?}", err)))
+                    .is_ok()
+            });
+            let mut lanes = HashMap::new();
+            lanes.insert(
+                ("/node".to_string(), "lane1".to_string()),
+                LaneSpec::simple(0),
+            );
+            lanes.insert(
+                ("/node".to_string(), "lane2".to_string()),
+                LaneSpec::with_changes(
+                    "I".to_string(),
+                    vec![
+                        "am".to_string(),
+                        "the".to_string(),
+                        "very".to_string(),
+                        "model".to_string(),
+                        "of".to_string(),
+                        "a".to_string(),
+                        "modern".to_string(),
+                        "major".to_string(),
+                        "general.".to_string(),
+                    ],
+                    Duration::from_secs(5),
+                ),
+            );
+            DummyServer::new(stop_rx, port_tx, lanes, Some(errors))
+        },
+        ConsoleFactory::default(),
+    )
+    .run(shared_state, command_rx, updater, stop_rx)
 }
