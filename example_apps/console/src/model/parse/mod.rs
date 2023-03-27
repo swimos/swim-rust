@@ -198,6 +198,7 @@ pub fn parse_target_ref<'a, 'b>(
                 };
                 Ok((r, tail))
             }
+            None => Ok((TargetRef::Direct(Target::default()), &[])),
             _ => Err(Cow::Borrowed(
                 "Incorrect parameters for command. Type 'help command' for correct usage.",
             )),
@@ -211,6 +212,7 @@ enum OptionName<'a> {
     Long(&'a str),
 }
 
+#[derive(Debug)]
 struct Options<'a> {
     opts: HashMap<OptionName<'a>, Option<&'a str>>,
 }
@@ -274,6 +276,9 @@ fn parse_options<'a, 'b>(parts: &'a [&'b str]) -> (Options<'b>, &'a [&'b str]) {
                 break Some(i);
             }
         } else {
+            if let Some(name) = current.take() {
+                opts.insert(name, None);
+            }
             break None;
         }
     };

@@ -195,6 +195,7 @@ const HELP: &[&str] = &[
     "command      Send a command to an existing link or directly to a specified remote lane.\n",
     "link         Open a link to a remote lane.\n",
     "list         List all active links.\n",
+    "query        Query the state of an active link.\n",
     "show-with    Show the values current set with 'with-host', 'with-node' and 'with-lane'.\n",
     "sync         Send a sync frame to an existing link.\n",
     "unlink       Send an unlink frame to an existing link.\n",
@@ -237,11 +238,11 @@ const COMMAND: &[&str] = &[
     "Recon values that contain white space must be quoted with backticks.\n",
     "Example: `@item \"name\"`\n",
     "\n",
-    "command [id:(integer)] body:(recon)\n",
+    "command id:(integer) body:(recon)\n",
     "\n",
     "Send a command to the link with the given ID.\n",
     "\n",
-    "command [name:(string)] body:(recon)\n",
+    "command name:(string) body:(recon)\n",
     "\n",
     "Send a command to the link with the given name.\n",
     "\n",
@@ -254,7 +255,12 @@ const COMMAND: &[&str] = &[
 const LINK: &[&str] = &[
     "Open a link to a remote lane.\n",
     "\n",
-    "link [--host|-h host_name:(string)] [--node|-n node_uri:(string)] [--lane|-l lane:(string)] [name:(string)]\n",
+    "If a name is specified this can be used, instead of the link ID, to refer to the link.\n",
+    "\n",
+    "The 'map' flag will cause the link to interpret the events of the lane as map events.\n",
+    "If the events do not have the correct format the link will fail.\n",
+    "\n",
+    "link [--host|-h host_name:(string)] [--node|-n node_uri:(string)] [--lane|-l lane:(string)] ?[--name name:(string)] ?[--map|-m]\n",
     "\n",
 ];
 
@@ -263,7 +269,14 @@ const LIST: &[&str] = &["Show all open links.\n", "\n", "list\n", "\n"];
 const SYNC: &[&str] = &[
     "Send a sync frame to an open link.\n",
     "\n",
-    "sync id:(integer)\n",
+    "sync id:(integer) | name:(string)\n",
+    "\n",
+];
+
+const QUERY: &[&str] = &[
+    "Query the state of an active link.\n",
+    "\n",
+    "query id:(integer) | name:(string)\n",
     "\n",
 ];
 
@@ -328,6 +341,7 @@ fn on_command(
                 "show-with" => SHOW_WITH,
                 "clear-with" => CLEAR_WITH,
                 "link" => LINK,
+                "query" => QUERY,
                 "sync" => SYNC,
                 "unlink" => UNLINK,
                 "list" => LIST,
