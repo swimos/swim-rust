@@ -113,10 +113,17 @@ pub enum ControllerCommand {
     Link {
         name: Option<String>,
         target: Target,
+        kind: LinkKind,
     },
     Sync(LinkRef),
     Unlink(LinkRef),
     UnlinkAll,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LinkKind {
+    Event,
+    Map,
 }
 
 pub enum AppCommand {
@@ -131,6 +138,7 @@ pub enum RuntimeCommand {
     Link {
         endpoint: Endpoint,
         response: oneshot::Sender<Result<usize, ratchet::Error>>,
+        kind: LinkKind,
     },
     Sync(usize),
     Command(usize, Value),

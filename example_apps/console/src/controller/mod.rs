@@ -196,7 +196,7 @@ impl Controller {
                 }
                 Err(msg) => vec![msg],
             },
-            ControllerCommand::Link { name, target } => match self.resolve_target(target) {
+            ControllerCommand::Link { name, target, kind } => match self.resolve_target(target) {
                 Ok(EndpointOrId::Id(id)) => {
                     if let Some(name) = name {
                         self.names.insert(name, id);
@@ -209,6 +209,7 @@ impl Controller {
                         .send(RuntimeCommand::Link {
                             endpoint,
                             response: tx,
+                            kind,
                         })
                         .expect(BAD_CHAN);
                     match rx.recv(self.timeout) {

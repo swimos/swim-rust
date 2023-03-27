@@ -36,13 +36,16 @@ use swim_utilities::{
 use tokio::{net::TcpStream, sync::mpsc as tmpsc, task::block_in_place};
 
 use crate::{
-    model::{DisplayResponse, Endpoint, Host, RuntimeCommand, UIUpdate},
+    model::{DisplayResponse, Endpoint, Host, LinkKind, RuntimeCommand, UIUpdate},
     shared_state::SharedState,
     ui::ViewUpdater,
     RuntimeFactory,
 };
 
+use self::link_state::{BoxLinkState, LinkStateError};
+
 pub mod dummy_server;
+pub mod link_state;
 
 const UI_DROPPED: &str = "The UI task stopped or timed out.";
 
@@ -119,11 +122,15 @@ impl Runtime {
             match event {
                 RuntimeEvent::Stop => break,
                 RuntimeEvent::Command(cmd) => match cmd {
-                    RuntimeCommand::Link { endpoint, response } => {
+                    RuntimeCommand::Link {
+                        endpoint,
+                        response,
+                        kind,
+                    } => {
                         if let Some(id) = state.get_id(&endpoint) {
                             response.send(Ok(id));
                         } else {
-                            let id = state.insert(endpoint.clone());
+                            let id = state.insert(endpoint.clone(), kind);
                             let Endpoint { remote, node, lane } = endpoint;
                             if let Some(tx) = senders.get_mut(&remote) {
                                 if let Err(e) = link(&mut tx.sender, &node, &lane).await {
@@ -376,6 +383,12 @@ async fn open_connection(host: &Host) -> Result<WebSocket<TcpStream, NoExt>, rat
 
 struct BadEnvelope(String);
 
+impl From<LinkStateError> for BadEnvelope {
+    fn from(value: LinkStateError) -> Self {
+        BadEnvelope(value.0)
+    }
+}
+
 fn handle_body(
     state: &mut State,
     host: Host,
@@ -440,8 +453,13 @@ fn handle_body(
                 node,
                 lane: lane_uri.to_string(),
             };
-            let id = state.get_id(&endpoint).unwrap_or(0);
-            Ok(DisplayResponse::event(id, body.trim().to_string()))
+            if let Some((id, link_state)) = state.get_for_endpoint(&endpoint) {
+                let message_body = body.trim().to_string();
+                link_state.update(&message_body)?;
+                Ok(DisplayResponse::event(id, message_body))
+            } else {
+                Ok(DisplayResponse::event(0, body.trim().to_string()))
+            }
         }
         _ => Err(BadEnvelope(format!(
             "Invalid envelope from {}: {}",
@@ -462,45 +480,80 @@ impl From<InvalidRouteUri> for BadEnvelope {
     }
 }
 
+struct Link {
+    endpoint: Endpoint,
+    link_state: BoxLinkState,
+}
+
 struct State {
     shared: Arc<RwLock<SharedState>>,
-    links: HashMap<Endpoint, usize>,
-    rev: BTreeMap<usize, Endpoint>,
+    endpoint_to_id: HashMap<Endpoint, usize>,
+    links: BTreeMap<usize, Link>,
 }
 
 impl State {
     fn new(shared: Arc<RwLock<SharedState>>) -> Self {
         State {
             shared,
+            endpoint_to_id: Default::default(),
             links: Default::default(),
-            rev: Default::default(),
         }
     }
 
     fn get_endpoint(&self, id: usize) -> Option<&Endpoint> {
-        self.rev.get(&id)
+        self.links.get(&id).map(|l| &l.endpoint)
     }
 
     fn get_id(&self, endpoint: &Endpoint) -> Option<usize> {
-        self.links.get(endpoint).copied()
+        self.endpoint_to_id.get(endpoint).copied()
     }
 
-    fn insert(&mut self, endpoint: Endpoint) -> usize {
-        let State { shared, links, rev } = self;
+    fn get_for_endpoint(&mut self, endpoint: &Endpoint) -> Option<(usize, &mut BoxLinkState)> {
+        let State {
+            endpoint_to_id,
+            links,
+            ..
+        } = self;
+        endpoint_to_id
+            .get(endpoint)
+            .copied()
+            .and_then(|id| links.get_mut(&id).map(|l| (id, &mut l.link_state)))
+    }
+
+    fn insert(&mut self, endpoint: Endpoint, kind: LinkKind) -> usize {
+        let State {
+            shared,
+            endpoint_to_id,
+            links,
+        } = self;
         let n = shared.write().insert(endpoint.clone());
-        links.insert(endpoint.clone(), n);
-        rev.insert(n, endpoint);
+        endpoint_to_id.insert(endpoint.clone(), n);
+        let link_state = match kind {
+            LinkKind::Event => link_state::event_link(),
+            LinkKind::Map => link_state::map_link(),
+        };
+        links.insert(
+            n,
+            Link {
+                endpoint,
+                link_state,
+            },
+        );
         n
     }
 
     #[must_use]
     fn remove(&mut self, id: usize) -> Option<Host> {
-        let State { shared, links, rev } = self;
+        let State {
+            shared,
+            endpoint_to_id,
+            links,
+        } = self;
         shared.write().remove(id);
-        let removed = rev.remove(&id);
-        if let Some(endpoint) = removed {
-            links.remove(&endpoint);
-            if links.keys().any(|e| e.remote == endpoint.remote) {
+        let removed = links.remove(&id);
+        if let Some(Link { endpoint, .. }) = removed {
+            endpoint_to_id.remove(&endpoint);
+            if endpoint_to_id.keys().any(|e| e.remote == endpoint.remote) {
                 None
             } else {
                 Some(endpoint.remote)
@@ -511,8 +564,12 @@ impl State {
     }
 
     fn remove_all(&mut self, remote: &Host) {
-        let State { shared, links, rev } = self;
-        let ids = links
+        let State {
+            shared,
+            endpoint_to_id,
+            links,
+        } = self;
+        let ids = endpoint_to_id
             .iter()
             .filter(|(k, _)| &k.remote == remote)
             .map(|(_, v)| *v)
@@ -521,39 +578,24 @@ impl State {
         let mut guard = shared.write();
 
         for id in ids {
-            if let Some(endpoint) = rev.remove(&id) {
-                links.remove(&endpoint);
+            if let Some(l) = links.remove(&id) {
+                endpoint_to_id.remove(&l.endpoint);
             }
             guard.remove(id);
         }
     }
 
-    fn clear(&mut self) -> BTreeMap<usize, Endpoint> {
-        let State { shared, links, rev } = self;
+    fn clear(&mut self) -> Vec<(usize, Endpoint)> {
+        let State {
+            shared,
+            endpoint_to_id,
+            links,
+        } = self;
         shared.write().clear();
-        links.clear();
-        std::mem::take(rev)
-    }
-}
-
-#[cfg(test)]
-mod moo {
-    use ratchet::{NoExtProvider, ProtocolRegistry, WebSocketConfig};
-    use tokio::net::TcpStream;
-
-    #[tokio::test]
-    async fn mooo() {
-        let sock = TcpStream::connect("localhost:49466").await.unwrap();
-        let subprotocols = ProtocolRegistry::new(vec!["warp0"]).unwrap();
-        let host_str = "ws://localhost:49466".to_string();
-        ratchet::subscribe_with(
-            WebSocketConfig::default(),
-            sock,
-            host_str,
-            NoExtProvider,
-            subprotocols,
-        )
-        .await
-        .unwrap();
+        endpoint_to_id.clear();
+        std::mem::take(links)
+            .into_iter()
+            .map(|(k, l)| (k, l.endpoint))
+            .collect()
     }
 }

@@ -26,7 +26,7 @@ mod parser;
 #[cfg(test)]
 mod tests;
 
-pub use parser::extract_header;
+pub use parser::{extract_header, extract_header_str};
 
 /// An operation that can be applied to a map lane. This type is used by map uplinks and downlinks
 /// to describe alterations to the lane.
