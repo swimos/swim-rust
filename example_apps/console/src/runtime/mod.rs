@@ -254,6 +254,14 @@ impl Runtime {
                             }
                         }
                     }
+                    RuntimeCommand::Query(id) => {
+                        if let Some(link_state) = state.get_link_state(id) {
+                            send_log(&*output, format!("State for link {}:", id));
+                            for response in link_state.snapshot() {
+                                send_log(&*output, response);
+                            }
+                        }
+                    }
                 },
                 RuntimeEvent::Message(host, body) => {
                     match handle_body(&mut state, host, &body, &*output, &mut senders) {
@@ -502,6 +510,10 @@ impl State {
 
     fn get_endpoint(&self, id: usize) -> Option<&Endpoint> {
         self.links.get(&id).map(|l| &l.endpoint)
+    }
+
+    fn get_link_state(&self, id: usize) -> Option<&BoxLinkState> {
+        self.links.get(&id).map(|l| &l.link_state)
     }
 
     fn get_id(&self, endpoint: &Endpoint) -> Option<usize> {

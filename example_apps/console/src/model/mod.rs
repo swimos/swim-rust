@@ -118,6 +118,7 @@ pub enum ControllerCommand {
     Sync(LinkRef),
     Unlink(LinkRef),
     UnlinkAll,
+    Query(LinkRef),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -145,6 +146,7 @@ pub enum RuntimeCommand {
     AdHocCommand(Endpoint, Value),
     Unlink(usize),
     UnlinkAll,
+    Query(usize),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

@@ -172,6 +172,10 @@ pub fn parse_controller_command(parts: &[&str]) -> Result<ControllerCommand, Cow
             let r = target.parse()?;
             Ok(ControllerCommand::Unlink(r))
         }
+        ["query", target] => {
+            let r = target.parse()?;
+            Ok(ControllerCommand::Query(r))
+        }
         _ => Err(Cow::Borrowed(
             "Unknown command. Type 'help' to list valid commands.",
         )),

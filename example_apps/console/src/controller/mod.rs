@@ -238,6 +238,7 @@ impl Controller {
                     .expect(BAD_CHAN);
                 vec![]
             }
+            ControllerCommand::Query(link) => self.for_link(link, RuntimeCommand::Query),
         }
     }
 
