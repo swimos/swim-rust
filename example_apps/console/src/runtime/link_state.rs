@@ -39,6 +39,8 @@ impl From<ParseError> for LinkStateError {
 pub trait LinkState: Debug + Send + Sync {
     fn update(&mut self, data: &str) -> Result<(), LinkStateError>;
 
+    fn sync(&mut self);
+
     fn snapshot(&self) -> Vec<String>;
 }
 
@@ -55,6 +57,7 @@ pub fn map_link() -> BoxLinkState {
 #[derive(Default, Debug)]
 struct EventLink {
     state: Option<String>,
+    synced: bool,
 }
 
 impl LinkState for EventLink {
@@ -64,17 +67,25 @@ impl LinkState for EventLink {
     }
 
     fn snapshot(&self) -> Vec<String> {
-        self.state
-            .as_ref()
-            .map(|value| format!("State = {}", value))
-            .into_iter()
-            .collect()
+        let mut messages = vec![];
+        if let Some(value) = self.state.as_ref() {
+            if self.synced {
+                messages.push("Link is synced.".to_string());
+            }
+            messages.push(format!("State => {}", value));
+        }
+        messages
+    }
+
+    fn sync(&mut self) {
+        self.synced = true;
     }
 }
 
 #[derive(Default, Debug)]
 struct MapLink {
     state: BTreeMap<Value, Value>,
+    synced: bool,
 }
 
 impl LinkState for MapLink {
@@ -110,10 +121,20 @@ impl LinkState for MapLink {
         Ok(())
     }
 
+    fn sync(&mut self) {
+        self.synced = true;
+    }
+
     fn snapshot(&self) -> Vec<String> {
-        self.state
-            .iter()
-            .map(|(k, v)| format!("{} => {}", print_recon(k), print_recon(v)))
-            .collect()
+        let mut messages = vec![];
+        if self.synced {
+            messages.push("Link is synced.".to_string());
+        }
+        messages.extend(
+            self.state
+                .iter()
+                .map(|(k, v)| format!("{} => {}", print_recon(k), print_recon(v))),
+        );
+        messages
     }
 }

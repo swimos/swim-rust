@@ -426,8 +426,12 @@ fn handle_body(
                 node,
                 lane: lane_uri.to_string(),
             };
-            let id = state.get_id(&endpoint).unwrap_or(0);
-            Ok(DisplayResponse::synced(id))
+            if let Some((id, link_state)) = state.get_for_endpoint(&endpoint) {
+                link_state.sync();
+                Ok(DisplayResponse::synced(id))
+            } else {
+                Ok(DisplayResponse::synced(0))
+            }
         }
         RawEnvelope::Unlinked {
             node_uri, lane_uri, ..
