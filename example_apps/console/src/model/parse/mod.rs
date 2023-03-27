@@ -249,28 +249,25 @@ fn parse_options<'a, 'b>(parts: &'a [&'b str]) -> (Options<'b>, &'a [&'b str]) {
     let mut opts: HashMap<OptionName<'b>, Option<&'b str>> = HashMap::new();
     let mut current = None;
 
-    let mut it = parts.into_iter().enumerate();
+    let mut it = parts.iter().enumerate();
     let end = loop {
         if let Some((i, part)) = it.next() {
-            if part.starts_with("--") {
+            if let Some(long_name) = part.strip_prefix("--") {
                 if let Some(name) = current.take() {
                     opts.insert(name, None);
                 }
-                current = Some(OptionName::Long(&part[2..]));
-            } else if part.starts_with('-') {
-                let chars = &part[1..];
+                current = Some(OptionName::Long(long_name));
+            } else if let Some(chars) = part.strip_prefix('-') {
                 for c in chars.chars() {
                     if let Some(name) = current.take() {
                         opts.insert(name, None);
                     }
                     current = Some(OptionName::Short(c));
                 }
+            } else if let Some(name) = current.take() {
+                opts.insert(name, Some(*part));
             } else {
-                if let Some(name) = current.take() {
-                    opts.insert(name, Some(*part));
-                } else {
-                    break Some(i);
-                }
+                break Some(i);
             }
         } else {
             break None;

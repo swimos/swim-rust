@@ -45,11 +45,11 @@ pub trait LinkState: Debug + Send + Sync {
 pub type BoxLinkState = Box<dyn LinkState>;
 
 pub fn event_link() -> BoxLinkState {
-    Box::new(EventLink::default())
+    Box::<EventLink>::default()
 }
 
 pub fn map_link() -> BoxLinkState {
-    Box::new(MapLink::default())
+    Box::<MapLink>::default()
 }
 
 #[derive(Default, Debug)]
