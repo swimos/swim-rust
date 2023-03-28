@@ -246,6 +246,10 @@ const COMMAND: &[&str] = &[
     "\n",
     "Send a command to the link with the given name.\n",
     "\n",
+    "command $target:(string) body:(recon)",
+    "\n",
+    "Send a command to an endpoint name defined with the 'target' command.\n",
+    "\n",
     "command [--host|-h host_name] [--node|-n node_uri] [--lane|-l lane] body:(recon)\n",
     "\n",
     "Send a command to the specified lane. If a link is already open to that lane, it will be used.\n",
@@ -279,6 +283,13 @@ const QUERY: &[&str] = &[
     "Query the state of an active link.\n",
     "\n",
     "query id:(integer) | name:(string)\n",
+    "\n",
+];
+
+const TARGET: &[&str] = &[
+    "Defined a named target for issuing commands.\n",
+    "\n",
+    "link [--host|-h host_name:(string)] [--node|-n node_uri:(string)] [--lane|-l lane:(string)] name:(string)\n",
     "\n",
 ];
 
@@ -345,6 +356,7 @@ fn on_command(
                 "link" => LINK,
                 "query" => QUERY,
                 "sync" => SYNC,
+                "target" => TARGET,
                 "unlink" => UNLINK,
                 "list" => LIST,
                 "command" => COMMAND,

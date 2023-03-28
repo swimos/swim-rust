@@ -173,6 +173,19 @@ pub fn parse_controller_command(parts: &[&str]) -> Result<ControllerCommand, Cow
             let r = target.parse()?;
             Ok(ControllerCommand::Sync(r))
         }
+        ["target", tail @ ..] => {
+            let (mut options, tail) = parse_options(tail);
+            let target = options.target()?.unwrap_or_default();
+            match tail {
+                [name] if options.is_empty() => Ok(ControllerCommand::Target {
+                    name: name.to_string(),
+                    target,
+                }),
+                _ => Err(Cow::Borrowed(
+                    "Incorrect parameters to target. Type 'help target' for correct usage.",
+                )),
+            }
+        }
         ["unlink", "--all"] => Ok(ControllerCommand::UnlinkAll),
         ["unlink", target] => {
             let r = target.parse()?;
@@ -197,7 +210,9 @@ pub fn parse_target_ref<'a, 'b>(
     } else {
         match tail.split_first() {
             Some((arg, tail)) if options.is_empty() => {
-                let r = if let Ok(id) = arg.parse() {
+                let r = if let Some(cmd_target) = arg.strip_prefix('$') {
+                    TargetRef::CommandTarget(cmd_target.to_string())
+                } else if let Ok(id) = arg.parse() {
                     TargetRef::Link(LinkRef::ById(id))
                 } else {
                     TargetRef::Link(LinkRef::ByName(arg.to_string()))

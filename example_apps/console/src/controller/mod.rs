@@ -35,6 +35,7 @@ pub struct Controller {
     with_node: Option<RouteUri>,
     with_lane: Option<String>,
     names: HashMap<String, usize>,
+    targets: HashMap<String, Endpoint>,
     timeout: Duration,
 }
 
@@ -50,6 +51,7 @@ impl Controller {
             with_host: None,
             with_node: None,
             with_lane: None,
+            targets: HashMap::new(),
             names: HashMap::new(),
             timeout,
         }
@@ -87,6 +89,7 @@ impl Controller {
         let Controller {
             shared_state,
             names,
+            targets,
             ..
         } = self;
         match target {
@@ -95,6 +98,13 @@ impl Controller {
                     Ok(EndpointOrId::Id(id))
                 } else {
                     Err(format!("{} is not a valid link ID.", id))
+                }
+            }
+            TargetRef::CommandTarget(name) => {
+                if let Some(endpoint) = targets.get(&name) {
+                    Ok(EndpointOrId::Endpoint(endpoint.clone()))
+                } else {
+                    Err(format!("{} is not a defined command target.", name))
                 }
             }
             TargetRef::Link(LinkRef::ByName(name)) => {
@@ -250,6 +260,14 @@ impl Controller {
                 vec![]
             }
             ControllerCommand::Query(link) => self.for_link(link, RuntimeCommand::Query),
+            ControllerCommand::Target { name, target } => {
+                match self.add_target(name.clone(), target) {
+                    Ok(endpoint) => {
+                        vec![format!("Assigned {} to target name ${}.", endpoint, name)]
+                    }
+                    Err(msg) => vec![msg],
+                }
+            }
         }
     }
 
@@ -275,6 +293,27 @@ impl Controller {
                     vec![format!("{} is not a valid link name.", name)]
                 }
             }
+        }
+    }
+
+    fn add_target(&mut self, name: String, target: Target) -> Result<Endpoint, String> {
+        let Controller {
+            with_host,
+            with_node,
+            with_lane,
+            targets,
+            ..
+        } = self;
+        let Target { remote, node, lane } = target;
+        let r = remote.or_else(|| with_host.clone());
+        let n = node.or_else(|| with_node.clone());
+        let l = lane.or_else(|| with_lane.clone());
+        if let Some(((remote, node), lane)) = r.zip(n).zip(l) {
+            let endpoint = Endpoint { remote, node, lane };
+            targets.insert(name, endpoint.clone());
+            Ok(endpoint)
+        } else {
+            Err("Incomplete target.".to_string())
         }
     }
 }

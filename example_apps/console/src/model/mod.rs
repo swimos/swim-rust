@@ -73,6 +73,17 @@ pub struct Endpoint {
     pub lane: String,
 }
 
+impl Display for Endpoint {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let Endpoint { remote, node, lane } = self;
+        write!(
+            f,
+            "{{ host => '{}', node => '{}', lane => '{}' }}",
+            remote, node, lane
+        )
+    }
+}
+
 #[derive(PartialEq, Eq, Debug, Hash, Clone)]
 pub enum EndpointOrId {
     Endpoint(Endpoint),
@@ -95,6 +106,7 @@ pub enum LinkRef {
 #[derive(PartialEq, Eq, Debug, Hash)]
 pub enum TargetRef {
     Link(LinkRef),
+    CommandTarget(String),
     Direct(Target),
 }
 
@@ -117,6 +129,10 @@ pub enum ControllerCommand {
         sync: bool,
     },
     Sync(LinkRef),
+    Target {
+        name: String,
+        target: Target,
+    },
     Unlink(LinkRef),
     UnlinkAll,
     Query(LinkRef),
