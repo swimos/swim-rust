@@ -674,13 +674,16 @@ async fn remove(
     if let Some(mut handle) = senders.remove(remote) {
         let close_reason = reason.unwrap_or_else(|| CloseReason::new(CloseCode::Normal, None));
         if handle.sender.is_active() {
-            if let Err(e) = handle.sender.close(close_reason).await {
-                output
-                    .update(UIUpdate::LogMessage(format!(
-                        "Failed closing connection to {} with: {}",
-                        remote, e
-                    )))
-                    .expect(UI_DROPPED);
+            match handle.sender.close(close_reason).await {
+                Err(e) if !e.is_close() => {
+                    output
+                        .update(UIUpdate::LogMessage(format!(
+                            "Failed closing connection to {} with: {}",
+                            remote, e
+                        )))
+                        .expect(UI_DROPPED);
+                }
+                _ => {}
             }
         }
     }

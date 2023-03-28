@@ -422,7 +422,15 @@ async fn send_task(
             }
         }
     }
-    let result = tx.close(CloseReason::new(CloseCode::GoingAway, None)).await;
+    let result = if tx.is_active() {
+        match tx.close(CloseReason::new(CloseCode::GoingAway, None)).await {
+            Ok(()) => Ok(()),
+            Err(e) if e.is_close() => Ok(()),
+            Err(e) => Err(e),
+        }
+    } else {
+        Ok(())
+    };
     task_stop.trigger();
     result?;
     Ok(())
