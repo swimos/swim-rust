@@ -24,8 +24,8 @@ use futures::{
 };
 use parking_lot::RwLock;
 use ratchet::{
-    ErrorKind, NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry, WebSocket,
-    WebSocketConfig,
+    CloseCode, CloseReason, ErrorKind, NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider,
+    ProtocolRegistry, WebSocket, WebSocketConfig,
 };
 use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swim_recon::{parser::MessageExtractError, printer::print_recon_compact};
@@ -136,7 +136,8 @@ impl Runtime {
                             if let Some(tx) = senders.get_mut(&remote) {
                                 if let Err(e) = link(&mut tx.sender, &node, &lane).await {
                                     send_log(&*output, format!("Connection to {} failed.", remote));
-                                    senders.remove(&remote);
+                                    remove(&*output, &mut senders, &remote, Some(failed())).await;
+                                    remove(&*output, &mut senders, &remote, Some(failed())).await;
                                     state.remove_all(&remote);
                                     response.send(Err(e));
                                 } else {
@@ -149,7 +150,8 @@ impl Runtime {
                                                     remote, e
                                                 ),
                                             );
-                                            senders.remove(&remote);
+                                            remove(&*output, &mut senders, &remote, Some(failed()))
+                                                .await;
                                             state.remove_all(&remote.clone());
                                             Some(e)
                                         } else {
@@ -228,7 +230,7 @@ impl Runtime {
                             if let Some(tx) = senders.get_mut(remote) {
                                 if sync(&mut tx.sender, node, lane).await.is_err() {
                                     send_log(&*output, format!("Connection to {} failed.", remote));
-                                    senders.remove(remote);
+                                    remove(&*output, &mut senders, remote, Some(failed())).await;
                                     state.remove_all(&remote.clone());
                                 }
                             }
@@ -240,7 +242,7 @@ impl Runtime {
                             if let Some(tx) = senders.get_mut(remote) {
                                 if send_cmd(&mut tx.sender, node, lane, &recon).await.is_err() {
                                     send_log(&*output, format!("Connection to {} failed.", remote));
-                                    senders.remove(remote);
+                                    remove(&*output, &mut senders, remote, Some(failed())).await;
                                     state.remove_all(&remote.clone());
                                 }
                             }
@@ -255,7 +257,7 @@ impl Runtime {
                                 .is_err()
                             {
                                 send_log(&*output, format!("Connection to {} failed.", remote));
-                                senders.remove(&remote);
+                                remove(&*output, &mut senders, &remote, Some(failed())).await;
                             }
                         } else if let Ok((mut tx, rx)) =
                             open_connection(&remote).await.and_then(|ws| ws.split())
@@ -274,7 +276,7 @@ impl Runtime {
                             if let Some(tx) = senders.get_mut(remote) {
                                 if unlink(&mut tx.sender, node, lane).await.is_err() {
                                     send_log(&*output, format!("Connection to {} failed.", remote));
-                                    senders.remove(remote);
+                                    remove(&*output, &mut senders, remote, Some(failed())).await;
                                     state.remove_all(&remote.clone());
                                 }
                             }
@@ -286,7 +288,7 @@ impl Runtime {
                             if let Some(tx) = senders.get_mut(&remote) {
                                 if unlink(&mut tx.sender, &node, &lane).await.is_err() {
                                     send_log(&*output, format!("Connection to {} failed.", remote));
-                                    senders.remove(&remote);
+                                    remove(&*output, &mut senders, &remote, Some(failed())).await;
                                 }
                             }
                             for (host, _sender) in senders.into_iter() {
@@ -304,7 +306,7 @@ impl Runtime {
                     }
                 },
                 RuntimeEvent::Message(host, body) => {
-                    match handle_body(&mut state, host, &body, &*output, &mut senders) {
+                    match handle_body(&mut state, host, &body, &*output, &mut senders).await {
                         Ok(msg) => {
                             send_link(&*output, msg);
                         }
@@ -437,11 +439,11 @@ impl From<LinkStateError> for BadEnvelope {
     }
 }
 
-fn handle_body(
+async fn handle_body(
     state: &mut State,
     host: Host,
     body: &str,
-    output: &dyn ViewUpdater,
+    output: &(dyn ViewUpdater + Send + Sync),
     senders: &mut HashMap<Host, RemoteHandle>,
 ) -> Result<DisplayResponse, BadEnvelope> {
     match peel_envelope_header_str(body)? {
@@ -484,8 +486,8 @@ fn handle_body(
             };
             let id = if let Some(id) = state.get_id(&endpoint) {
                 if let Some(host) = state.remove(id) {
+                    remove(output, senders, &endpoint.remote, None).await;
                     send_log(output, format!("Closed connection to: {}", host));
-                    senders.remove(&host);
                 }
                 id
             } else {
@@ -653,5 +655,33 @@ impl State {
             .into_iter()
             .map(|(k, l)| (k, l.endpoint))
             .collect()
+    }
+}
+
+fn failed() -> CloseReason {
+    CloseReason::new(
+        CloseCode::Unexpected,
+        Some("Connection failed.".to_string()),
+    )
+}
+
+async fn remove(
+    output: &(dyn ViewUpdater + Send + Sync),
+    senders: &mut HashMap<Host, RemoteHandle>,
+    remote: &Host,
+    reason: Option<CloseReason>,
+) {
+    if let Some(mut handle) = senders.remove(remote) {
+        let close_reason = reason.unwrap_or_else(|| CloseReason::new(CloseCode::Normal, None));
+        if handle.sender.is_active() {
+            if let Err(e) = handle.sender.close(close_reason).await {
+                output
+                    .update(UIUpdate::LogMessage(format!(
+                        "Failed closing connection to {} with: {}",
+                        remote, e
+                    )))
+                    .expect(UI_DROPPED);
+            }
+        }
     }
 }

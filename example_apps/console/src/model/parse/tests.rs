@@ -210,8 +210,8 @@ fn parse_link() {
         ControllerCommand::Link {
             name: Some("my_link".to_string()),
             target: Target {
-                remote: Some(host.clone()),
-                node: Some(node.clone()),
+                remote: Some(host),
+                node: Some(node),
                 lane: Some("lane".to_string())
             },
             kind: LinkKind::Map,
@@ -324,8 +324,8 @@ fn parse_command() {
         cmd,
         ControllerCommand::Command {
             target: TargetRef::Direct(Target {
-                remote: Some(host.clone()),
-                node: Some(node.clone()),
+                remote: Some(host),
+                node: Some(node),
                 lane: Some("lane".to_string())
             }),
             body: expected_value
@@ -401,8 +401,8 @@ fn parse_target() {
         ControllerCommand::Target {
             name: "name".to_string(),
             target: Target {
-                remote: Some(host.clone()),
-                node: Some(node.clone()),
+                remote: Some(host),
+                node: Some(node),
                 lane: Some("my_lane".to_string())
             }
         }
