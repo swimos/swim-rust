@@ -27,7 +27,10 @@ use futures::{
     FutureExt, Stream, StreamExt,
 };
 use parking_lot::RwLock;
-use ratchet::{NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry, WebSocketConfig};
+use ratchet::{
+    CloseCode, CloseReason, NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry,
+    WebSocketConfig,
+};
 use swim_api::protocol::map::MapMessage;
 use swim_form::Form;
 use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
@@ -224,8 +227,9 @@ impl DummyServer {
                     let ws = upgrader.upgrade().await?;
                     let (tx, rx) = ws.websocket.split()?;
                     let (con_tx, con_rx) = mpsc::unbounded_channel();
-                    tasks.push(read_task(rx, con_tx).boxed());
-                    tasks.push(send_task(tx, lanes.clone(), con_rx).boxed());
+                    let (task_stop_tx, task_stop_rx) = trigger::trigger();
+                    tasks.push(read_task(rx, con_tx, task_stop_rx).boxed());
+                    tasks.push(send_task(tx, lanes.clone(), con_rx, task_stop_tx).boxed());
                 }
                 Event::TaskDone(Err(e)) => {
                     if let Some(err_tx) = errors.as_ref() {
@@ -265,11 +269,17 @@ impl From<std::str::Utf8Error> for TaskError {
 async fn read_task(
     mut rx: ratchet::Receiver<TcpStream, NoExtDecoder>,
     msg_tx: mpsc::UnboundedSender<ConnectionMessage>,
+    mut task_stop_rx: trigger::Receiver,
 ) -> Result<(), TaskError> {
     let mut buffer = BytesMut::new();
     loop {
         buffer.clear();
-        let message = rx.read(&mut buffer).await?;
+        let message = tokio::select! {
+            _ = &mut task_stop_rx => break Ok(()),
+            result = rx.read(&mut buffer) => {
+                result?
+            }
+        };
         match message {
             ratchet::Message::Text => {
                 let body = std::str::from_utf8(buffer.as_ref())?;
@@ -344,6 +354,7 @@ async fn send_task(
     mut tx: ratchet::Sender<TcpStream, NoExtEncoder>,
     lanes: HashMap<(String, String), LaneSpec>,
     mut msg_rx: mpsc::UnboundedReceiver<ConnectionMessage>,
+    task_stop: trigger::Sender,
 ) -> Result<(), TaskError> {
     let mut lane_tasks = SelectAll::new();
     let mut lane_senders = HashMap::new();
@@ -354,7 +365,7 @@ async fn send_task(
                 if let Some(message) = maybe_message {
                     Either::Left(message)
                 } else {
-                    break Ok(());
+                    break;
                 }
             },
             outgoing = lane_tasks.next(), if !lane_tasks.is_empty() => {
@@ -411,6 +422,10 @@ async fn send_task(
             }
         }
     }
+    let result = tx.close(CloseReason::new(CloseCode::GoingAway, None)).await;
+    task_stop.trigger();
+    result?;
+    Ok(())
 }
 
 #[derive(Clone)]
