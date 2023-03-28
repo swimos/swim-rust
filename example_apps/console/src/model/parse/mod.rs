@@ -155,12 +155,18 @@ pub fn parse_controller_command(parts: &[&str]) -> Result<ControllerCommand, Cow
             } else {
                 LinkKind::Event
             };
+            let sync = matches!(options.take("sync", None), Some(None));
             if !tail.is_empty() || !options.is_empty() {
                 Err(Cow::Borrowed(
                     "Incorrect parameters to link. Type 'help link' for correct usage.",
                 ))
             } else {
-                Ok(ControllerCommand::Link { name, target, kind })
+                Ok(ControllerCommand::Link {
+                    name,
+                    target,
+                    kind,
+                    sync,
+                })
             }
         }
         ["sync", target] => {

@@ -116,7 +116,8 @@ fn parse_link() {
         ControllerCommand::Link {
             name: None,
             target: Target::default(),
-            kind: LinkKind::Event
+            kind: LinkKind::Event,
+            sync: false,
         }
     );
 
@@ -132,7 +133,8 @@ fn parse_link() {
                 node: None,
                 lane: None
             },
-            kind: LinkKind::Event
+            kind: LinkKind::Event,
+            sync: false,
         }
     );
 
@@ -149,7 +151,8 @@ fn parse_link() {
                 node: Some(node.clone()),
                 lane: Some("lane".to_string())
             },
-            kind: LinkKind::Event
+            kind: LinkKind::Event,
+            sync: false,
         }
     );
 
@@ -160,7 +163,8 @@ fn parse_link() {
         ControllerCommand::Link {
             name: Some("my_link".to_string()),
             target: Target::default(),
-            kind: LinkKind::Event
+            kind: LinkKind::Event,
+            sync: false,
         }
     );
 
@@ -170,7 +174,8 @@ fn parse_link() {
         ControllerCommand::Link {
             name: None,
             target: Target::default(),
-            kind: LinkKind::Map
+            kind: LinkKind::Map,
+            sync: false,
         }
     );
 
@@ -189,7 +194,28 @@ fn parse_link() {
                 node: Some(node.clone()),
                 lane: Some("lane".to_string())
             },
-            kind: LinkKind::Map
+            kind: LinkKind::Map,
+            sync: false,
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command(
+            "link --host localhost:8080 -n /node -l lane --map --sync --name my_link",
+        )
+        .expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::Link {
+            name: Some("my_link".to_string()),
+            target: Target {
+                remote: Some(host.clone()),
+                node: Some(node.clone()),
+                lane: Some("lane".to_string())
+            },
+            kind: LinkKind::Map,
+            sync: true,
         }
     );
 }

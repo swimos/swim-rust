@@ -196,10 +196,20 @@ impl Controller {
                 }
                 Err(msg) => vec![msg],
             },
-            ControllerCommand::Link { name, target, kind } => match self.resolve_target(target) {
+            ControllerCommand::Link {
+                name,
+                target,
+                kind,
+                sync,
+            } => match self.resolve_target(target) {
                 Ok(EndpointOrId::Id(id)) => {
                     if let Some(name) = name {
                         self.names.insert(name, id);
+                    }
+                    if sync {
+                        self.command_tx
+                            .send(RuntimeCommand::Sync(id))
+                            .expect(BAD_CHAN);
                     }
                     vec!["Already linked.".to_string()]
                 }
@@ -210,6 +220,7 @@ impl Controller {
                             endpoint,
                             response: tx,
                             kind,
+                            immediate_sync: sync,
                         })
                         .expect(BAD_CHAN);
                     match rx.recv(self.timeout) {

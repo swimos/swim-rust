@@ -260,7 +260,9 @@ const LINK: &[&str] = &[
     "The 'map' flag will cause the link to interpret the events of the lane as map events.\n",
     "If the events do not have the correct format the link will fail.\n",
     "\n",
-    "link [--host|-h host_name:(string)] [--node|-n node_uri:(string)] [--lane|-l lane:(string)] ?[--name name:(string)] ?[--map|-m]\n",
+    "The 'sync' flag will cause the link to be synced as soon as it opens successfully.\n",
+    "\n",
+    "link [--host|-h host_name:(string)] [--node|-n node_uri:(string)] [--lane|-l lane:(string)] ?[--name name:(string)] ?[--map|-m] ?[--sync]\n",
     "\n",
 ];
 

@@ -126,6 +126,7 @@ impl Runtime {
                         endpoint,
                         response,
                         kind,
+                        immediate_sync,
                     } => {
                         if let Some(id) = state.get_id(&endpoint) {
                             response.send(Ok(id));
@@ -139,7 +140,29 @@ impl Runtime {
                                     state.remove_all(&remote);
                                     response.send(Err(e));
                                 } else {
-                                    response.send(Ok(id));
+                                    let err = if immediate_sync {
+                                        if let Err(e) = sync(&mut tx.sender, &node, &lane).await {
+                                            send_log(
+                                                &*output,
+                                                format!(
+                                                    "Connection to {} failed with: {}",
+                                                    remote, e
+                                                ),
+                                            );
+                                            senders.remove(&remote);
+                                            state.remove_all(&remote.clone());
+                                            Some(e)
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    };
+                                    if let Some(e) = err {
+                                        response.send(Err(e));
+                                    } else {
+                                        response.send(Ok(id));
+                                    }
                                 }
                             } else {
                                 match open_connection(&remote).await {
@@ -160,15 +183,32 @@ impl Runtime {
                                                             remote
                                                         ),
                                                     );
-                                                    senders.insert(
-                                                        remote.clone(),
-                                                        RemoteHandle::new(tx, recv_stop_tx),
-                                                    );
-                                                    receivers.push(Box::pin(
-                                                        into_stream(remote, rx)
-                                                            .take_until(recv_stop_rx),
-                                                    ));
-                                                    response.send(Ok(id));
+                                                    let err = if immediate_sync {
+                                                        if let Err(e) =
+                                                            sync(&mut tx, &node, &lane).await
+                                                        {
+                                                            send_log(&*output, format!("Connection to {} failed with: {}", remote, e));
+                                                            Some(e)
+                                                        } else {
+                                                            None
+                                                        }
+                                                    } else {
+                                                        None
+                                                    };
+                                                    if let Some(e) = err {
+                                                        let _ = state.remove(id);
+                                                        response.send(Err(e));
+                                                    } else {
+                                                        senders.insert(
+                                                            remote.clone(),
+                                                            RemoteHandle::new(tx, recv_stop_tx),
+                                                        );
+                                                        receivers.push(Box::pin(
+                                                            into_stream(remote, rx)
+                                                                .take_until(recv_stop_rx),
+                                                        ));
+                                                        response.send(Ok(id));
+                                                    }
                                                 }
                                             }
                                             Err(e) => {
