@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -21,15 +20,14 @@ use controller::Controller;
 use cursive::{Cursive, CursiveExt};
 use futures::future::BoxFuture;
 use futures::Future;
-use model::{RuntimeCommand, UIUpdate};
+use model::RuntimeCommand;
 use parking_lot::RwLock;
-use runtime::dummy_server::DummyServerRuntimeFac;
-use runtime::dummy_server::{DummyServer, LaneSpec};
+use runtime::dummy_server::make_dummy_runtime;
 use runtime::ConsoleFactory;
 use shared_state::SharedState;
 use swim_utilities::trigger;
 use tokio::runtime::Builder;
-use tokio::sync::mpsc::{self, UnboundedReceiver};
+use tokio::sync::mpsc;
 use ui::{CursiveUIUpdater, ViewUpdater};
 
 mod controller;
@@ -89,47 +87,4 @@ pub trait RuntimeFactory {
         updater: Arc<dyn ViewUpdater + Send + Sync + 'static>,
         stop: trigger::Receiver,
     ) -> BoxFuture<'static, ()>;
-}
-
-fn make_dummy_runtime(
-    shared_state: Arc<RwLock<SharedState>>,
-    command_rx: UnboundedReceiver<RuntimeCommand>,
-    updater: Arc<dyn ViewUpdater + Send + Sync + 'static>,
-    stop_rx: trigger::Receiver,
-) -> BoxFuture<'static, ()> {
-    DummyServerRuntimeFac::new(
-        |stop_rx, port_tx, updater| {
-            let errors = Box::new(move |err| {
-                updater
-                    .update(UIUpdate::LogMessage(format!("Task error: {:?}", err)))
-                    .is_ok()
-            });
-            let mut lanes = HashMap::new();
-            lanes.insert(
-                ("/node".to_string(), "lane1".to_string()),
-                LaneSpec::simple(0),
-            );
-            lanes.insert(
-                ("/node".to_string(), "lane2".to_string()),
-                LaneSpec::with_changes(
-                    "I".to_string(),
-                    vec![
-                        "am".to_string(),
-                        "the".to_string(),
-                        "very".to_string(),
-                        "model".to_string(),
-                        "of".to_string(),
-                        "a".to_string(),
-                        "modern".to_string(),
-                        "major".to_string(),
-                        "general.".to_string(),
-                    ],
-                    Duration::from_secs(5),
-                ),
-            );
-            DummyServer::new(stop_rx, port_tx, lanes, Some(errors))
-        },
-        ConsoleFactory::default(),
-    )
-    .run(shared_state, command_rx, updater, stop_rx)
 }

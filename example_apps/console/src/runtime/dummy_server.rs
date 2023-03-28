@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::{
-    collections::{hash_map::Entry, HashMap, BTreeMap},
+    collections::{hash_map::Entry, BTreeMap, HashMap},
     net::SocketAddr,
     pin::pin,
     sync::Arc,
@@ -35,7 +35,10 @@ use swim_recon::{parser::parse_value, printer::print_recon_compact};
 use swim_utilities::trigger;
 use tokio::{
     net::{TcpListener, TcpStream},
-    sync::{mpsc, oneshot},
+    sync::{
+        mpsc::{self, UnboundedReceiver},
+        oneshot,
+    },
 };
 
 use crate::{
@@ -45,7 +48,9 @@ use crate::{
     RuntimeFactory,
 };
 
-pub struct DummyServer {
+use super::ConsoleFactory;
+
+struct DummyServer {
     stop_rx: trigger::Receiver,
     port_tx: oneshot::Sender<u16>,
     lanes: HashMap<(String, String), LaneSpec>,
@@ -53,7 +58,7 @@ pub struct DummyServer {
 }
 
 impl DummyServer {
-    pub fn new(
+    fn new(
         stop_rx: trigger::Receiver,
         port_tx: oneshot::Sender<u16>,
         lanes: HashMap<(String, String), LaneSpec>,
@@ -68,10 +73,10 @@ impl DummyServer {
     }
 }
 
-pub struct LaneSpec(Box<dyn FakeLane>);
+struct LaneSpec(Box<dyn FakeLane>);
 
 impl LaneSpec {
-    pub fn simple<T: Form + Clone + Send + 'static>(init: T) -> Self {
+    fn simple<T: Form + Clone + Send + 'static>(init: T) -> Self {
         LaneSpec(Box::new(ValueLane {
             current: init,
             delay: None,
@@ -79,7 +84,7 @@ impl LaneSpec {
         }))
     }
 
-    pub fn simple_map<K, V>(init: BTreeMap<K, V>) -> Self
+    fn simple_map<K, V>(init: BTreeMap<K, V>) -> Self
     where
         K: Form + Clone + Ord + Eq + Send + 'static,
         V: Form + Clone + Send + 'static,
@@ -91,7 +96,7 @@ impl LaneSpec {
         }))
     }
 
-    pub fn with_changes<T: Form + Clone + Send + 'static>(
+    fn with_changes<T: Form + Clone + Send + 'static>(
         init: T,
         changes: Vec<T>,
         delay: Duration,
@@ -103,9 +108,11 @@ impl LaneSpec {
         }))
     }
 
-    pub fn map_with_changes<K, V>(init: BTreeMap<K, V>,
+    fn map_with_changes<K, V>(
+        init: BTreeMap<K, V>,
         changes: Vec<MapMessage<K, V>>,
-        delay: Duration) -> Self
+        delay: Duration,
+    ) -> Self
     where
         K: Form + Clone + Ord + Eq + Send + 'static,
         V: Form + Clone + Send + 'static,
@@ -154,7 +161,7 @@ enum Event {
 }
 
 impl DummyServer {
-    pub async fn run_server(self) -> Result<(), ratchet::Error> {
+    async fn run_server(self) -> Result<(), ratchet::Error> {
         let DummyServer {
             mut stop_rx,
             port_tx,
@@ -235,7 +242,7 @@ impl DummyServer {
 }
 
 #[derive(Debug)]
-pub enum TaskError {
+enum TaskError {
     Ws(ratchet::Error),
     AcceptErr(std::io::ErrorKind),
     BadMessageType,
@@ -475,7 +482,7 @@ where
 impl<K, V> FakeLane for MapLane<K, V>
 where
     K: Form + Clone + Ord + Eq + Send + 'static,
-    V: Form + Clone + Send + 'static
+    V: Form + Clone + Send + 'static,
 {
     fn into_stream(
         self,
@@ -500,14 +507,12 @@ where
     }
 }
 
-
 struct StreamWrapper<L>(L);
 
 impl<L> StreamWrapper<L>
 where
     L: LaneData + 'static,
 {
-
     fn make_stream(
         self,
         node: String,
@@ -558,15 +563,21 @@ where
                                 }
                                 LaneMessage::Sync => {
                                     let events = state.sync();
-                                    
-                                    let mut output: Vec<String> = events.into_iter().map(|data| format!(
-                                        "@event(node:\"{}\",lane:{}) {}",
-                                        node,
-                                        lane,
-                                        print_recon_compact(&data)
-                                    )).collect();
-                                    output.push(format!("@synced(node:\"{}\",lane:{})", node, lane));
-                                    
+
+                                    let mut output: Vec<String> = events
+                                        .into_iter()
+                                        .map(|data| {
+                                            format!(
+                                                "@event(node:\"{}\",lane:{}) {}",
+                                                node,
+                                                lane,
+                                                print_recon_compact(&data)
+                                            )
+                                        })
+                                        .collect();
+                                    output
+                                        .push(format!("@synced(node:\"{}\",lane:{})", node, lane));
+
                                     break Some((
                                         output,
                                         (state, change_stream, node, lane, Some(rx)),
@@ -624,14 +635,13 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub struct MapLane<K, V> {
+struct MapLane<K, V> {
     current: BTreeMap<K, V>,
     delay: Option<Duration>,
     changes: Vec<MapMessage<K, V>>,
 }
 
 trait LaneData: Send {
-
     type Event: Form + Send + 'static;
 
     fn sync(&self) -> Vec<Self::Event>;
@@ -641,12 +651,11 @@ trait LaneData: Send {
     fn changes(&self) -> Vec<Self::Event>;
 
     fn update(&mut self, change: Self::Event);
-
 }
 
 impl<T> LaneData for ValueLane<T>
 where
-    T: Form + Clone + Send + 'static
+    T: Form + Clone + Send + 'static,
 {
     type Event = T;
 
@@ -665,7 +674,6 @@ where
     fn update(&mut self, change: Self::Event) {
         self.current = change;
     }
-
 }
 
 impl<K, V> LaneData for MapLane<K, V>
@@ -676,7 +684,11 @@ where
     type Event = MapMessage<K, V>;
 
     fn sync(&self) -> Vec<Self::Event> {
-        self.current.clone().into_iter().map(|(k, v)| MapMessage::Update { key: k, value: v }).collect()
+        self.current
+            .clone()
+            .into_iter()
+            .map(|(k, v)| MapMessage::Update { key: k, value: v })
+            .collect()
     }
 
     fn delay(&self) -> Option<Duration> {
@@ -692,25 +704,30 @@ where
         match change {
             MapMessage::Update { key, value } => {
                 current.insert(key, value);
-            },
+            }
             MapMessage::Remove { key } => {
                 current.remove(&key);
-            },
+            }
             MapMessage::Clear => {
                 current.clear();
-            },
+            }
             MapMessage::Take(n) => {
-                *current = std::mem::take(current).into_iter().take(n as usize).collect();
-            },
+                *current = std::mem::take(current)
+                    .into_iter()
+                    .take(n as usize)
+                    .collect();
+            }
             MapMessage::Drop(n) => {
-                *current = std::mem::take(current).into_iter().skip(n as usize).collect();
-            },
+                *current = std::mem::take(current)
+                    .into_iter()
+                    .skip(n as usize)
+                    .collect();
+            }
         }
     }
-
 }
 
-pub struct DummyServerRuntimeFac<F, R> {
+struct DummyServerRuntimeFac<F, R> {
     dummy_server_fac: F,
     runtime_fac: R,
 }
@@ -724,7 +741,7 @@ where
         Arc<dyn ViewUpdater + Send + Sync + 'static>,
     ) -> DummyServer,
 {
-    pub fn new(dummy_server_fac: F, runtime_fac: R) -> Self {
+    fn new(dummy_server_fac: F, runtime_fac: R) -> Self {
         DummyServerRuntimeFac {
             dummy_server_fac,
             runtime_fac,
@@ -778,4 +795,84 @@ where
         }
         .boxed()
     }
+}
+
+pub fn make_dummy_runtime(
+    shared_state: Arc<RwLock<SharedState>>,
+    command_rx: UnboundedReceiver<RuntimeCommand>,
+    updater: Arc<dyn ViewUpdater + Send + Sync + 'static>,
+    stop_rx: trigger::Receiver,
+) -> BoxFuture<'static, ()> {
+    DummyServerRuntimeFac::new(
+        |stop_rx, port_tx, updater| {
+            let errors = Box::new(move |err| {
+                updater
+                    .update(UIUpdate::LogMessage(format!("Task error: {:?}", err)))
+                    .is_ok()
+            });
+            let mut lanes = HashMap::new();
+            lanes.insert(
+                ("/node".to_string(), "lane1".to_string()),
+                LaneSpec::simple(0),
+            );
+            lanes.insert(
+                ("/node".to_string(), "lane2".to_string()),
+                LaneSpec::with_changes(
+                    "I".to_string(),
+                    vec![
+                        "am".to_string(),
+                        "the".to_string(),
+                        "very".to_string(),
+                        "model".to_string(),
+                        "of".to_string(),
+                        "a".to_string(),
+                        "modern".to_string(),
+                        "major".to_string(),
+                        "general.".to_string(),
+                    ],
+                    Duration::from_secs(5),
+                ),
+            );
+            lanes.insert(
+                ("/node".to_string(), "map1".to_string()),
+                LaneSpec::simple_map(
+                    [
+                        (1, "aardvark".to_string()),
+                        (2, "bullfrog".to_string()),
+                        (3, "capybara".to_string()),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
+            );
+            lanes.insert(
+                ("/node".to_string(), "map2".to_string()),
+                LaneSpec::map_with_changes(
+                    [
+                        (2, "llama".to_string()),
+                        (4, "moose".to_string()),
+                        (6, "narwhal".to_string()),
+                    ]
+                    .into_iter()
+                    .collect(),
+                    vec![
+                        MapMessage::Update {
+                            key: 8,
+                            value: "ostrich".to_string(),
+                        },
+                        MapMessage::Update {
+                            key: 4,
+                            value: "manatee".to_string(),
+                        },
+                        MapMessage::Remove { key: 2 },
+                        MapMessage::Clear,
+                    ],
+                    Duration::from_secs(10),
+                ),
+            );
+            DummyServer::new(stop_rx, port_tx, lanes, Some(errors))
+        },
+        ConsoleFactory::default(),
+    )
+    .run(shared_state, command_rx, updater, stop_rx)
 }
