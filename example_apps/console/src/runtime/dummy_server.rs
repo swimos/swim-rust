@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{hash_map::Entry, HashMap, BTreeMap},
     net::SocketAddr,
     pin::pin,
     sync::Arc,
@@ -28,6 +28,7 @@ use futures::{
 };
 use parking_lot::RwLock;
 use ratchet::{NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry, WebSocketConfig};
+use swim_api::protocol::map::MapMessage;
 use swim_form::Form;
 use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swim_recon::{parser::parse_value, printer::print_recon_compact};
@@ -71,9 +72,22 @@ pub struct LaneSpec(Box<dyn FakeLane>);
 
 impl LaneSpec {
     pub fn simple<T: Form + Clone + Send + 'static>(init: T) -> Self {
-        LaneSpec(Box::new(Lane {
-            init,
-            changes: None,
+        LaneSpec(Box::new(ValueLane {
+            current: init,
+            delay: None,
+            changes: vec![],
+        }))
+    }
+
+    pub fn simple_map<K, V>(init: BTreeMap<K, V>) -> Self
+    where
+        K: Form + Clone + Ord + Eq + Send + 'static,
+        V: Form + Clone + Send + 'static,
+    {
+        LaneSpec(Box::new(MapLane {
+            current: init,
+            delay: None,
+            changes: vec![],
         }))
     }
 
@@ -82,9 +96,24 @@ impl LaneSpec {
         changes: Vec<T>,
         delay: Duration,
     ) -> Self {
-        LaneSpec(Box::new(Lane {
-            init,
-            changes: Some((changes, delay)),
+        LaneSpec(Box::new(ValueLane {
+            current: init,
+            delay: Some(delay),
+            changes,
+        }))
+    }
+
+    pub fn map_with_changes<K, V>(init: BTreeMap<K, V>,
+        changes: Vec<MapMessage<K, V>>,
+        delay: Duration) -> Self
+    where
+        K: Form + Clone + Ord + Eq + Send + 'static,
+        V: Form + Clone + Send + 'static,
+    {
+        LaneSpec(Box::new(MapLane {
+            current: init,
+            delay: Some(delay),
+            changes,
         }))
     }
 }
@@ -378,9 +407,10 @@ async fn send_task(
 }
 
 #[derive(Clone)]
-struct Lane<T> {
-    init: T,
-    changes: Option<(Vec<T>, Duration)>,
+struct ValueLane<T> {
+    current: T,
+    delay: Option<Duration>,
+    changes: Vec<T>,
 }
 
 enum LaneMessage {
@@ -415,7 +445,7 @@ trait FakeLane: Send {
     fn duplicate(&self) -> Box<dyn FakeLane>;
 }
 
-impl<T> FakeLane for Lane<T>
+impl<T> FakeLane for ValueLane<T>
 where
     T: Form + Clone + Send + 'static,
 {
@@ -425,7 +455,7 @@ where
         lane: String,
         rx: mpsc::UnboundedReceiver<LaneMessage>,
     ) -> BoxStream<'static, Vec<String>> {
-        self.make_stream(node, lane, rx).boxed()
+        StreamWrapper(self).make_stream(node, lane, rx).boxed()
     }
 
     fn duplicate(&self) -> Box<dyn FakeLane> {
@@ -442,19 +472,52 @@ where
     }
 }
 
-impl<T> Lane<T>
+impl<K, V> FakeLane for MapLane<K, V>
 where
-    T: Form + Clone + Send + 'static,
+    K: Form + Clone + Ord + Eq + Send + 'static,
+    V: Form + Clone + Send + 'static
 {
+    fn into_stream(
+        self,
+        node: String,
+        lane: String,
+        rx: mpsc::UnboundedReceiver<LaneMessage>,
+    ) -> BoxStream<'static, Vec<String>> {
+        StreamWrapper(self).make_stream(node, lane, rx).boxed()
+    }
+
+    fn duplicate(&self) -> Box<dyn FakeLane> {
+        Box::new(self.clone())
+    }
+
+    fn into_stream_boxed(
+        self: Box<Self>,
+        node: String,
+        lane: String,
+        rx: mpsc::UnboundedReceiver<LaneMessage>,
+    ) -> BoxStream<'static, Vec<String>> {
+        (*self).into_stream(node, lane, rx)
+    }
+}
+
+
+struct StreamWrapper<L>(L);
+
+impl<L> StreamWrapper<L>
+where
+    L: LaneData + 'static,
+{
+
     fn make_stream(
         self,
         node: String,
         lane: String,
         rx: mpsc::UnboundedReceiver<LaneMessage>,
     ) -> impl Stream<Item = Vec<String>> + Send + 'static {
-        let Lane { init, changes } = self;
-
-        let change_stream = changes.map(|(changes, delay)| {
+        let StreamWrapper(inner) = self;
+        let delay = inner.delay();
+        let changes = inner.changes();
+        let change_stream = delay.map(|delay| {
             Box::pin(unfold(
                 (changes.into_iter(), delay),
                 |(mut it, delay)| async move {
@@ -470,8 +533,8 @@ where
         });
 
         unfold(
-            (init, change_stream, node, lane, Some(rx)),
-            |(state, mut change_stream, node, lane, rx)| async move {
+            (inner, change_stream, node, lane, Some(rx)),
+            |(mut state, mut change_stream, node, lane, rx)| async move {
                 if let Some(mut rx) = rx {
                     loop {
                         let event = if let Some(change_stream) = change_stream.as_mut() {
@@ -494,16 +557,18 @@ where
                                     ));
                                 }
                                 LaneMessage::Sync => {
-                                    let data = format!(
+                                    let events = state.sync();
+                                    
+                                    let mut output: Vec<String> = events.into_iter().map(|data| format!(
                                         "@event(node:\"{}\",lane:{}) {}",
                                         node,
                                         lane,
-                                        print_recon_compact(&state)
-                                    );
-                                    let synced =
-                                        format!("@synced(node:\"{}\",lane:{})", node, lane);
+                                        print_recon_compact(&data)
+                                    )).collect();
+                                    output.push(format!("@synced(node:\"{}\",lane:{})", node, lane));
+                                    
                                     break Some((
-                                        vec![data, synced],
+                                        output,
                                         (state, change_stream, node, lane, Some(rx)),
                                     ));
                                 }
@@ -516,14 +581,15 @@ where
                                 }
                                 LaneMessage::Command(body) => {
                                     if let Ok(v) = parse_value(&body, false) {
-                                        if let Ok(update) = T::try_from_value(&v) {
+                                        if let Ok(update) = L::Event::try_from_value(&v) {
                                             let event = format!(
                                                 "@event(node:\"{}\",lane:{}) {}",
                                                 node, lane, body
                                             );
+                                            state.update(update);
                                             break Some((
                                                 vec![event],
-                                                (update, change_stream, node, lane, Some(rx)),
+                                                (state, change_stream, node, lane, Some(rx)),
                                             ));
                                         }
                                     }
@@ -537,9 +603,10 @@ where
                                     lane,
                                     print_recon_compact(&update)
                                 );
+                                state.update(update);
                                 break Some((
                                     vec![event],
-                                    (update, change_stream, node, lane, Some(rx)),
+                                    (state, change_stream, node, lane, Some(rx)),
                                 ));
                             }
                             Either::Right(_) => {
@@ -554,6 +621,93 @@ where
         )
         .boxed()
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct MapLane<K, V> {
+    current: BTreeMap<K, V>,
+    delay: Option<Duration>,
+    changes: Vec<MapMessage<K, V>>,
+}
+
+trait LaneData: Send {
+
+    type Event: Form + Send + 'static;
+
+    fn sync(&self) -> Vec<Self::Event>;
+
+    fn delay(&self) -> Option<Duration>;
+
+    fn changes(&self) -> Vec<Self::Event>;
+
+    fn update(&mut self, change: Self::Event);
+
+}
+
+impl<T> LaneData for ValueLane<T>
+where
+    T: Form + Clone + Send + 'static
+{
+    type Event = T;
+
+    fn sync(&self) -> Vec<Self::Event> {
+        vec![self.current.clone()]
+    }
+
+    fn delay(&self) -> Option<Duration> {
+        self.delay
+    }
+
+    fn changes(&self) -> Vec<Self::Event> {
+        self.changes.clone()
+    }
+
+    fn update(&mut self, change: Self::Event) {
+        self.current = change;
+    }
+
+}
+
+impl<K, V> LaneData for MapLane<K, V>
+where
+    K: Form + Clone + Ord + Eq + Send + 'static,
+    V: Form + Clone + Send + 'static,
+{
+    type Event = MapMessage<K, V>;
+
+    fn sync(&self) -> Vec<Self::Event> {
+        self.current.clone().into_iter().map(|(k, v)| MapMessage::Update { key: k, value: v }).collect()
+    }
+
+    fn delay(&self) -> Option<Duration> {
+        self.delay
+    }
+
+    fn changes(&self) -> Vec<Self::Event> {
+        self.changes.clone()
+    }
+
+    fn update(&mut self, change: Self::Event) {
+        let MapLane { current, .. } = self;
+        match change {
+            MapMessage::Update { key, value } => {
+                current.insert(key, value);
+            },
+            MapMessage::Remove { key } => {
+                current.remove(&key);
+            },
+            MapMessage::Clear => {
+                current.clear();
+            },
+            MapMessage::Take(n) => {
+                *current = std::mem::take(current).into_iter().take(n as usize).collect();
+            },
+            MapMessage::Drop(n) => {
+                *current = std::mem::take(current).into_iter().skip(n as usize).collect();
+            },
+        }
+    }
+
 }
 
 pub struct DummyServerRuntimeFac<F, R> {
