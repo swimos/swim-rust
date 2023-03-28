@@ -256,6 +256,16 @@ fn parse_command() {
         }
     );
 
+    let cmd =
+        to_controller(super::parse_app_command("command $my_target").expect("Should succeed."));
+    assert_eq!(
+        cmd,
+        ControllerCommand::Command {
+            target: TargetRef::CommandTarget("my_target".to_string()),
+            body: Value::Extant,
+        }
+    );
+
     let cmd = to_controller(super::parse_app_command("command 1 42").expect("Should succeed."));
     assert_eq!(
         cmd,
@@ -272,6 +282,17 @@ fn parse_command() {
         ControllerCommand::Command {
             target: TargetRef::Link(LinkRef::ByName("my_link".to_string())),
             body: Value::text("Hello"),
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("command $my_target true").expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::Command {
+            target: TargetRef::CommandTarget("my_target".to_string()),
+            body: Value::BooleanValue(true),
         }
     );
 
@@ -308,6 +329,82 @@ fn parse_command() {
                 lane: Some("lane".to_string())
             }),
             body: expected_value
+        }
+    );
+}
+
+#[test]
+fn parse_target() {
+    let host: Host = "localhost:8080".parse().unwrap();
+    let node: RouteUri = "/node".parse().unwrap();
+
+    let cmd = to_controller(super::parse_app_command("target name").expect("Should succeed."));
+    assert_eq!(
+        cmd,
+        ControllerCommand::Target {
+            name: "name".to_string(),
+            target: Target::default()
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("target --host localhost:8080 name").expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::Target {
+            name: "name".to_string(),
+            target: Target {
+                remote: Some(host.clone()),
+                node: None,
+                lane: None
+            }
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("target --node /node name").expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::Target {
+            name: "name".to_string(),
+            target: Target {
+                remote: None,
+                node: Some(node.clone()),
+                lane: None
+            }
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("target --lane my_lane name").expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::Target {
+            name: "name".to_string(),
+            target: Target {
+                remote: None,
+                node: None,
+                lane: Some("my_lane".to_string())
+            }
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("target --lane my_lane --node /node --host localhost:8080 name")
+            .expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::Target {
+            name: "name".to_string(),
+            target: Target {
+                remote: Some(host.clone()),
+                node: Some(node.clone()),
+                lane: Some("my_lane".to_string())
+            }
         }
     );
 }
