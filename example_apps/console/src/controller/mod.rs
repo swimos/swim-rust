@@ -85,6 +85,15 @@ impl Controller {
         }
     }
 
+    fn resolve_named_target(&self, name: &str) -> Result<Endpoint, String> {
+        let Controller { targets, .. } = self;
+        if let Some(endpoint) = targets.get(name) {
+            Ok(endpoint.clone())
+        } else {
+            Err(format!("{} is not a defined command target.", name))
+        }
+    }
+
     fn resolve(&mut self, target: TargetRef) -> Result<EndpointOrId, String> {
         let Controller {
             shared_state,
@@ -268,6 +277,25 @@ impl Controller {
                     Err(msg) => vec![msg],
                 }
             }
+            ControllerCommand::Periodically {
+                target,
+                delay,
+                limit,
+                kind,
+            } => match self.resolve_named_target(&target) {
+                Ok(endpoint) => {
+                    self.command_tx
+                        .send(RuntimeCommand::Periodically {
+                            endpoint,
+                            delay,
+                            limit,
+                            kind,
+                        })
+                        .expect(BAD_CHAN);
+                    vec![]
+                }
+                Err(msg) => vec![msg],
+            },
         }
     }
 

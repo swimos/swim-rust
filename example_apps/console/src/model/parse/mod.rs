@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::borrow::Cow;
+use std::num::ParseIntError;
+use std::{borrow::Cow, time::Duration};
 
 use std::collections::HashMap;
 use swim_model::Value;
 use swim_recon::parser::parse_value;
+
+use crate::data::DataKind;
 
 use super::{AppCommand, ControllerCommand, LinkKind, LinkRef, Target, TargetRef};
 
@@ -169,6 +172,30 @@ pub fn parse_controller_command(parts: &[&str]) -> Result<ControllerCommand, Cow
                 })
             }
         }
+        ["periodically", tail @ ..] => {
+            let (mut options, tail) = parse_options(tail);
+            let delay = parse_duration(options.take("delay", Some('d')).flatten().unwrap_or("1s"))?;
+            let kind = parse_kind(options.take("kind", Some('k')).flatten().unwrap_or("words"))?;
+            let limit = if let Some(l) = options.take("limit", None).flatten() {
+                if let Ok(lim) = l.parse::<usize>() {
+                    Some(lim)
+                } else {
+                    return Err(Cow::Borrowed("Limit must be a non-zero integer."));
+                }
+            } else {
+                None
+            };
+            match tail {
+                [target] if options.is_empty() => {
+                    if let Some(target_name) = target.strip_prefix('$') {
+                        Ok(ControllerCommand::Periodically { target: target_name.to_string(), delay, limit, kind })
+                    } else {
+                        Err(Cow::Owned(format!("{} is not a valid target.", target)))
+                    }
+                },
+                _ => Err(Cow::Borrowed("Incorrect parameters to periodically. Type 'help periodically; for correct usage."))
+            }
+        }
         ["sync", target] => {
             let r = target.parse()?;
             Ok(ControllerCommand::Sync(r))
@@ -308,4 +335,28 @@ fn parse_options<'a, 'b>(parts: &'a [&'b str]) -> (Options<'b>, &'a [&'b str]) {
     } else {
         (Options { opts }, &[])
     }
+}
+
+fn parse_duration(dur_str: &str) -> Result<Duration, Cow<'static, str>> {
+    duration_str::parse(dur_str)
+        .map_err(|_| Cow::Owned(format!("{} is not a valid duration.", dur_str)))
+}
+
+fn parse_kind(kind_str: &str) -> Result<DataKind, Cow<'static, str>> {
+    let parts: Vec<_> = kind_str.split("..").collect();
+    match parts.as_slice() {
+        ["", ""] => Ok(DataKind::I32(None)),
+        [start, end] => parse_range(start, end).map_err(|_| Cow::Borrowed("Invalid data kind.")),
+        ["words"] => Ok(DataKind::Words),
+        _ => Err(Cow::Borrowed("Invalid data kind.")),
+    }
+}
+
+fn parse_range(start: &str, end: &str) -> Result<DataKind, ParseIntError> {
+    let s = start.parse::<i64>()?;
+    let e = end.parse::<i64>()?;
+    Ok(match (i32::try_from(s), i32::try_from(e)) {
+        (Ok(s), Ok(e)) => DataKind::I32(Some(s..e)),
+        _ => DataKind::I64(Some(s..e)),
+    })
 }

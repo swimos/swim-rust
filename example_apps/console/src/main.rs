@@ -31,6 +31,7 @@ use tokio::sync::mpsc;
 use ui::{CursiveUIUpdater, ViewUpdater};
 
 mod controller;
+mod data;
 mod model;
 mod oneshot;
 mod runtime;

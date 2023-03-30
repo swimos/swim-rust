@@ -16,13 +16,14 @@ use std::{
     borrow::Cow,
     fmt::{Display, Formatter},
     str::FromStr,
+    time::Duration,
 };
 
 use http::Uri;
 use swim_model::Value;
 use swim_utilities::routing::route_uri::RouteUri;
 
-use crate::oneshot;
+use crate::{data::DataKind, oneshot};
 
 mod parse;
 
@@ -128,6 +129,12 @@ pub enum ControllerCommand {
         kind: LinkKind,
         sync: bool,
     },
+    Periodically {
+        target: String,
+        delay: Duration,
+        limit: Option<usize>,
+        kind: DataKind,
+    },
     Sync(LinkRef),
     Target {
         name: String,
@@ -165,6 +172,12 @@ pub enum RuntimeCommand {
     Unlink(usize),
     UnlinkAll,
     Query(usize),
+    Periodically {
+        endpoint: Endpoint,
+        delay: Duration,
+        limit: Option<usize>,
+        kind: DataKind,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

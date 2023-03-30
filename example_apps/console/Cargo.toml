@@ -21,3 +21,5 @@ bytes = { workspace = true }
 cursive = {version = "0.20", default-features = false, features = ["termion-backend"]}
 console-views = { path = "console_views" }
 http = { workspace = true }
+rand = { workspace = true }
+duration-str = "0.5"

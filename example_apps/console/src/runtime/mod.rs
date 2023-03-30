@@ -28,6 +28,7 @@ use ratchet::{
     ProtocolRegistry, WebSocket, WebSocketConfig,
 };
 use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
+use swim_model::Value;
 use swim_recon::{parser::MessageExtractError, printer::print_recon_compact};
 use swim_utilities::{
     routing::route_uri::{InvalidRouteUri, RouteUri},
@@ -36,6 +37,7 @@ use swim_utilities::{
 use tokio::{net::TcpStream, sync::mpsc as tmpsc, task::block_in_place};
 
 use crate::{
+    data::value_stream,
     model::{DisplayResponse, Endpoint, Host, LinkKind, LogMessageKind, RuntimeCommand, UIUpdate},
     shared_state::SharedState,
     ui::ViewUpdater,
@@ -98,6 +100,7 @@ impl Runtime {
         let mut senders: HashMap<Host, RemoteHandle> = HashMap::new();
         let mut receivers = SelectAll::new();
         let mut state = State::new(shared_state);
+        let mut periodic = SelectAll::new();
 
         loop {
             let event = tokio::select! {
@@ -108,6 +111,13 @@ impl Runtime {
                         RuntimeEvent::Command(cmd)
                     } else {
                         RuntimeEvent::Stop
+                    }
+                },
+                maybe_period = periodic.next(), if !periodic.is_empty() => {
+                    if let Some((endpoint, value)) = maybe_period {
+                        RuntimeEvent::Periodic(endpoint, value)
+                    } else {
+                        continue;
                     }
                 },
                 maybe_msg = receivers.next(), if !receivers.is_empty() => {
@@ -279,8 +289,13 @@ impl Runtime {
                                 let (recv_stop_tx, recv_stop_rx) = trigger::trigger();
                                 senders.insert(remote.clone(), RemoteHandle::new(tx, recv_stop_tx));
                                 receivers.push(Box::pin(
-                                    into_stream(remote, rx).take_until(recv_stop_rx),
+                                    into_stream(remote.clone(), rx).take_until(recv_stop_rx),
                                 ));
+                                send_log(
+                                    &*output,
+                                    LogMessageKind::Report,
+                                    format!("Opened new connection to: {}", remote),
+                                );
                             }
                         }
                     }
@@ -323,6 +338,16 @@ impl Runtime {
                             }
                         }
                     }
+                    RuntimeCommand::Periodically {
+                        endpoint,
+                        delay,
+                        limit,
+                        kind,
+                    } => {
+                        let data_stream =
+                            value_stream(kind, delay, limit).map(move |v| (endpoint.clone(), v));
+                        periodic.push(Box::pin(data_stream));
+                    }
                 },
                 RuntimeEvent::Message(host, body) => {
                     match handle_body(&mut state, host, &body, &*output, &mut senders).await {
@@ -336,6 +361,50 @@ impl Runtime {
                 }
                 RuntimeEvent::Failed(host) => {
                     state.remove_all(&host);
+                }
+                RuntimeEvent::Periodic(endpoint, value) => {
+                    let Endpoint { remote, node, lane } = &endpoint;
+                    send_log(
+                        &*output,
+                        LogMessageKind::Report,
+                        format!("Sending period message to: {}", endpoint),
+                    );
+                    let recon = format!("{}", print_recon_compact(&value));
+                    if let Some(tx) = senders.get_mut(remote) {
+                        if send_cmd(&mut tx.sender, node, lane, &recon).await.is_err() {
+                            send_error_log(
+                                &*output,
+                                format!(
+                                    "Connection failed sending periodic message to {}.",
+                                    endpoint
+                                ),
+                            );
+                            remove(&*output, &mut senders, remote, Some(failed())).await;
+                        }
+                    } else if let Ok((mut tx, rx)) =
+                        open_connection(remote).await.and_then(|ws| ws.split())
+                    {
+                        if send_cmd(&mut tx, node, lane, &recon).await.is_ok() {
+                            let (recv_stop_tx, recv_stop_rx) = trigger::trigger();
+                            senders.insert(remote.clone(), RemoteHandle::new(tx, recv_stop_tx));
+                            receivers.push(Box::pin(
+                                into_stream(remote.clone(), rx).take_until(recv_stop_rx),
+                            ));
+                            send_log(
+                                &*output,
+                                LogMessageKind::Report,
+                                format!("Opened new connection to: {}", remote),
+                            );
+                        }
+                    } else {
+                        send_error_log(
+                            &*output,
+                            format!(
+                                "Connection failed sending periodic message to {}.",
+                                endpoint
+                            ),
+                        );
+                    }
                 }
             }
         }
@@ -381,6 +450,7 @@ enum RuntimeEvent {
     Command(RuntimeCommand),
     Message(Host, String),
     Failed(Host),
+    Periodic(Endpoint, Value),
 }
 
 type Tx = ratchet::Sender<TcpStream, NoExtEncoder>;
