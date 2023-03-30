@@ -12,11 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::time::Duration;
+
 use swim_model::Value;
 use swim_recon::parser::parse_value;
 use swim_utilities::routing::route_uri::RouteUri;
 
-use crate::model::{AppCommand, ControllerCommand, Host, LinkKind, LinkRef, Target, TargetRef};
+use crate::{
+    data::DataKind,
+    model::{AppCommand, ControllerCommand, Host, LinkKind, LinkRef, Target, TargetRef},
+};
 
 use super::Tokenizer;
 
@@ -405,6 +410,63 @@ fn parse_target() {
                 node: Some(node),
                 lane: Some("my_lane".to_string())
             }
+        }
+    );
+}
+
+#[test]
+fn parse_periodically() {
+    let cmd = to_controller(
+        super::parse_app_command("periodically --kind words $target").expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::Periodically {
+            target: "target".to_string(),
+            delay: Duration::from_secs(1),
+            limit: None,
+            kind: DataKind::Words
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("periodically --delay 5s --kind words $target")
+            .expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::Periodically {
+            target: "target".to_string(),
+            delay: Duration::from_secs(5),
+            limit: None,
+            kind: DataKind::Words
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("periodically --delay 5s --limit 10 --kind words $target")
+            .expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::Periodically {
+            target: "target".to_string(),
+            delay: Duration::from_secs(5),
+            limit: Some(10),
+            kind: DataKind::Words
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("periodically --kind 5..10 $target").expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::Periodically {
+            target: "target".to_string(),
+            delay: Duration::from_secs(1),
+            limit: None,
+            kind: DataKind::I32(Some(5..10))
         }
     );
 }
