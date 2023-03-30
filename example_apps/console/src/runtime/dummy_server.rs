@@ -799,7 +799,7 @@ where
             let upd_cpy = updater.clone();
             let server_task = async move {
                 if let Err(e) = dummy_server.run_server().await {
-                    let _ = upd_cpy.update(UIUpdate::LogMessage(format!(
+                    let _ = upd_cpy.update(UIUpdate::log_error(format!(
                         "Server task failed with: {}",
                         e
                     )));
@@ -807,8 +807,8 @@ where
             };
             let runtime_task = async move {
                 let r = match port_rx.await {
-                    Ok(p) => updater.update(UIUpdate::LogMessage(format!("Bound to port: {}", p))),
-                    Err(_) => updater.update(UIUpdate::LogMessage("Failed to bind.".to_string())),
+                    Ok(p) => updater.update(UIUpdate::log_report(format!("Bound to port: {}", p))),
+                    Err(_) => updater.update(UIUpdate::log_error("Failed to bind.".to_string())),
                 };
                 if r.is_ok() {
                     runtime.await;
@@ -830,7 +830,7 @@ pub fn make_dummy_runtime(
         |stop_rx, port_tx, updater| {
             let errors = Box::new(move |err| {
                 updater
-                    .update(UIUpdate::LogMessage(format!("Task error: {:?}", err)))
+                    .update(UIUpdate::log_error(format!("Task error: {:?}", err)))
                     .is_ok()
             });
             let mut lanes = HashMap::new();

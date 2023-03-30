@@ -36,7 +36,7 @@ use swim_utilities::{
 use tokio::{net::TcpStream, sync::mpsc as tmpsc, task::block_in_place};
 
 use crate::{
-    model::{DisplayResponse, Endpoint, Host, LinkKind, RuntimeCommand, UIUpdate},
+    model::{DisplayResponse, Endpoint, Host, LinkKind, LogMessageKind, RuntimeCommand, UIUpdate},
     shared_state::SharedState,
     ui::ViewUpdater,
     RuntimeFactory,
@@ -135,7 +135,10 @@ impl Runtime {
                             let Endpoint { remote, node, lane } = endpoint;
                             if let Some(tx) = senders.get_mut(&remote) {
                                 if let Err(e) = link(&mut tx.sender, &node, &lane).await {
-                                    send_log(&*output, format!("Connection to {} failed.", remote));
+                                    send_error_log(
+                                        &*output,
+                                        format!("Connection to {} failed.", remote),
+                                    );
                                     remove(&*output, &mut senders, &remote, Some(failed())).await;
                                     remove(&*output, &mut senders, &remote, Some(failed())).await;
                                     state.remove_all(&remote);
@@ -143,7 +146,7 @@ impl Runtime {
                                 } else {
                                     let err = if immediate_sync {
                                         if let Err(e) = sync(&mut tx.sender, &node, &lane).await {
-                                            send_log(
+                                            send_error_log(
                                                 &*output,
                                                 format!(
                                                     "Connection to {} failed with: {}",
@@ -172,7 +175,7 @@ impl Runtime {
                                         match ws.split() {
                                             Ok((mut tx, rx)) => {
                                                 if let Err(e) = link(&mut tx, &node, &lane).await {
-                                                    send_log(&*output, format!("Connection to remote {} failed with: {}", remote, e));
+                                                    send_error_log(&*output, format!("Connection to remote {} failed with: {}", remote, e));
                                                     let _ = state.remove(id);
                                                     response.send(Err(e));
                                                 } else {
@@ -180,6 +183,7 @@ impl Runtime {
                                                         trigger::trigger();
                                                     send_log(
                                                         &*output,
+                                                        LogMessageKind::Report,
                                                         format!(
                                                             "Opened new connection to: {}",
                                                             remote
@@ -189,7 +193,7 @@ impl Runtime {
                                                         if let Err(e) =
                                                             sync(&mut tx, &node, &lane).await
                                                         {
-                                                            send_log(&*output, format!("Connection to {} failed with: {}", remote, e));
+                                                            send_error_log(&*output, format!("Connection to {} failed with: {}", remote, e));
                                                             Some(e)
                                                         } else {
                                                             None
@@ -214,7 +218,7 @@ impl Runtime {
                                                 }
                                             }
                                             Err(e) => {
-                                                send_log(&*output, format!("Failed to open a connection to {}, error was: {}", remote, e));
+                                                send_error_log(&*output, format!("Failed to open a connection to {}, error was: {}", remote, e));
                                                 let _ = state.remove(id);
                                                 response.send(Err(e));
                                             }
@@ -229,7 +233,10 @@ impl Runtime {
                         if let Some(Endpoint { remote, node, lane }) = state.get_endpoint(id) {
                             if let Some(tx) = senders.get_mut(remote) {
                                 if sync(&mut tx.sender, node, lane).await.is_err() {
-                                    send_log(&*output, format!("Connection to {} failed.", remote));
+                                    send_error_log(
+                                        &*output,
+                                        format!("Connection to {} failed.", remote),
+                                    );
                                     remove(&*output, &mut senders, remote, Some(failed())).await;
                                     state.remove_all(&remote.clone());
                                 }
@@ -241,7 +248,10 @@ impl Runtime {
                         if let Some(Endpoint { remote, node, lane }) = state.get_endpoint(id) {
                             if let Some(tx) = senders.get_mut(remote) {
                                 if send_cmd(&mut tx.sender, node, lane, &recon).await.is_err() {
-                                    send_log(&*output, format!("Connection to {} failed.", remote));
+                                    send_error_log(
+                                        &*output,
+                                        format!("Connection to {} failed.", remote),
+                                    );
                                     remove(&*output, &mut senders, remote, Some(failed())).await;
                                     state.remove_all(&remote.clone());
                                 }
@@ -256,7 +266,10 @@ impl Runtime {
                                 .await
                                 .is_err()
                             {
-                                send_log(&*output, format!("Connection to {} failed.", remote));
+                                send_error_log(
+                                    &*output,
+                                    format!("Connection to {} failed.", remote),
+                                );
                                 remove(&*output, &mut senders, &remote, Some(failed())).await;
                             }
                         } else if let Ok((mut tx, rx)) =
@@ -275,7 +288,10 @@ impl Runtime {
                         if let Some(Endpoint { remote, node, lane }) = state.get_endpoint(id) {
                             if let Some(tx) = senders.get_mut(remote) {
                                 if unlink(&mut tx.sender, node, lane).await.is_err() {
-                                    send_log(&*output, format!("Connection to {} failed.", remote));
+                                    send_error_log(
+                                        &*output,
+                                        format!("Connection to {} failed.", remote),
+                                    );
                                     remove(&*output, &mut senders, remote, Some(failed())).await;
                                     state.remove_all(&remote.clone());
                                 }
@@ -283,24 +299,27 @@ impl Runtime {
                         }
                     }
                     RuntimeCommand::UnlinkAll => {
-                        for (_, Endpoint { remote, node, lane }) in state.clear().into_iter() {
-                            let mut senders = std::mem::take(&mut senders);
-                            if let Some(tx) = senders.get_mut(&remote) {
-                                if unlink(&mut tx.sender, &node, &lane).await.is_err() {
-                                    send_log(&*output, format!("Connection to {} failed.", remote));
-                                    remove(&*output, &mut senders, &remote, Some(failed())).await;
+                        for Endpoint { remote, node, lane } in state.endpoints() {
+                            if let Some(tx) = senders.get_mut(remote) {
+                                if unlink(&mut tx.sender, node, lane).await.is_err() {
+                                    send_error_log(
+                                        &*output,
+                                        format!("Connection to {} failed.", remote),
+                                    );
+                                    remove(&*output, &mut senders, remote, Some(failed())).await;
                                 }
-                            }
-                            for (host, _sender) in senders.into_iter() {
-                                send_log(&*output, format!("Closed connection to: {}", host));
                             }
                         }
                     }
                     RuntimeCommand::Query(id) => {
                         if let Some(link_state) = state.get_link_state(id) {
-                            send_log(&*output, format!("State for link {}:", id));
+                            send_log(
+                                &*output,
+                                LogMessageKind::Report,
+                                format!("State for link {}:", id),
+                            );
                             for response in link_state.snapshot() {
-                                send_log(&*output, response);
+                                send_log(&*output, LogMessageKind::Data, response);
                             }
                         }
                     }
@@ -311,7 +330,7 @@ impl Runtime {
                             send_link(&*output, msg);
                         }
                         Err(BadEnvelope(error)) => {
-                            send_log(&*output, error);
+                            send_error_log(&*output, error);
                         }
                     }
                 }
@@ -349,8 +368,12 @@ fn send_link(output: &dyn ViewUpdater, line: DisplayResponse) {
     block_in_place(move || output.update(UIUpdate::LinkDisplay(line))).expect(UI_DROPPED)
 }
 
-fn send_log(output: &dyn ViewUpdater, message: String) {
-    block_in_place(move || output.update(UIUpdate::LogMessage(message))).expect(UI_DROPPED)
+fn send_log(output: &dyn ViewUpdater, kind: LogMessageKind, message: String) {
+    block_in_place(move || output.update(UIUpdate::LogMessage(kind, message))).expect(UI_DROPPED)
+}
+
+fn send_error_log(output: &dyn ViewUpdater, message: String) {
+    send_log(output, LogMessageKind::Error, message)
 }
 
 enum RuntimeEvent {
@@ -487,7 +510,11 @@ async fn handle_body(
             let id = if let Some(id) = state.get_id(&endpoint) {
                 if let Some(host) = state.remove(id) {
                     remove(output, senders, &endpoint.remote, None).await;
-                    send_log(output, format!("Closed connection to: {}", host));
+                    send_log(
+                        output,
+                        LogMessageKind::Report,
+                        format!("Closed connection to: {}", host),
+                    );
                 }
                 id
             } else {
@@ -643,18 +670,8 @@ impl State {
         }
     }
 
-    fn clear(&mut self) -> Vec<(usize, Endpoint)> {
-        let State {
-            shared,
-            endpoint_to_id,
-            links,
-        } = self;
-        shared.write().clear();
-        endpoint_to_id.clear();
-        std::mem::take(links)
-            .into_iter()
-            .map(|(k, l)| (k, l.endpoint))
-            .collect()
+    fn endpoints(&self) -> impl Iterator<Item = &Endpoint> {
+        self.endpoint_to_id.keys()
     }
 }
 
@@ -677,7 +694,7 @@ async fn remove(
             match handle.sender.close(close_reason).await {
                 Err(e) if !e.is_close() => {
                     output
-                        .update(UIUpdate::LogMessage(format!(
+                        .update(UIUpdate::log_error(format!(
                             "Failed closing connection to {} with: {}",
                             remote, e
                         )))

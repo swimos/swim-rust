@@ -167,10 +167,31 @@ pub enum RuntimeCommand {
     Query(usize),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LogMessageKind {
+    Report,
+    Data,
+    Error,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum UIUpdate {
     LinkDisplay(DisplayResponse),
-    LogMessage(String),
+    LogMessage(LogMessageKind, String),
+}
+
+impl UIUpdate {
+    pub fn log_error(msg: String) -> Self {
+        UIUpdate::LogMessage(LogMessageKind::Error, msg)
+    }
+
+    pub fn log_report(msg: String) -> Self {
+        UIUpdate::LogMessage(LogMessageKind::Report, msg)
+    }
+
+    pub fn log_data(msg: String) -> Self {
+        UIUpdate::LogMessage(LogMessageKind::Data, msg)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

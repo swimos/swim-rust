@@ -43,9 +43,12 @@ impl SharedState {
     }
 
     pub fn remove(&mut self, id: usize) {
-        let SharedState { links, rev, .. } = self;
+        let SharedState { count, links, rev } = self;
         if let Some(endpoint) = rev.remove(&id) {
             links.remove(&endpoint);
+        }
+        if links.is_empty() {
+            *count = 1;
         }
     }
 
@@ -59,12 +62,5 @@ impl SharedState {
 
     pub fn get_id(&self, endpoint: &Endpoint) -> Option<usize> {
         self.links.get(endpoint).copied()
-    }
-
-    pub fn clear(&mut self) {
-        let SharedState { count, links, rev } = self;
-        *count = 1;
-        links.clear();
-        rev.clear();
     }
 }

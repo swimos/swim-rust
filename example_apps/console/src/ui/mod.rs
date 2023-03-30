@@ -26,7 +26,7 @@ use cursive::{
 };
 use std::time::Duration;
 
-use crate::model::{parse_app_command, AppCommand, DisplayResponse};
+use crate::model::{parse_app_command, AppCommand, DisplayResponse, LogMessageKind};
 use crate::{controller::Controller, model::UIUpdate};
 
 use self::bounded_append::BoundedAppend;
@@ -62,7 +62,7 @@ pub struct CursiveUIUpdater {
     sink: cursive::CbSink,
     timeout: Duration,
     link_appender: BoundedAppend<&'static str, DisplayResponse>,
-    log_appender: BoundedAppend<&'static str, String>,
+    log_appender: BoundedAppend<&'static str, (LogMessageKind, String)>,
 }
 
 impl CursiveUIUpdater {
@@ -71,7 +71,7 @@ impl CursiveUIUpdater {
             sink,
             timeout,
             link_appender: BoundedAppend::new(LINKS_VIEW, max_lines, format_display),
-            log_appender: BoundedAppend::new(LOG_VIEW, max_lines, format_log_msg),
+            log_appender: BoundedAppend::new(LOG_VIEW, max_lines, format_log_line),
         }
     }
 }
@@ -101,11 +101,11 @@ impl ViewUpdater for CursiveUIUpdater {
                     *timeout,
                 )?;
             }
-            UIUpdate::LogMessage(msg) => {
+            UIUpdate::LogMessage(kind, msg) => {
                 let log_appender = *log_appender;
                 sink.send_timeout(
                     Box::new(move |s| {
-                        log_appender.append(s, msg);
+                        log_appender.append(s, (kind, msg));
                     }),
                     *timeout,
                 )?;
@@ -115,11 +115,22 @@ impl ViewUpdater for CursiveUIUpdater {
     }
 }
 
+fn format_log_line(input: (LogMessageKind, String)) -> StyledString {
+    let (kind, message) = input;
+    let colour = match kind {
+        LogMessageKind::Report => BaseColor::Cyan.dark(),
+        LogMessageKind::Data => BaseColor::White.dark(),
+        LogMessageKind::Error => BaseColor::Red.light(),
+    };
+    StyledString::styled(format!("{}\n", message), colour)
+}
+
 const HISTORY_VIEW: &str = "history";
 const LINKS_VIEW: &str = "links";
 const LOG_VIEW: &str = "log";
 
 const COMMAND_EDIT: &str = "command";
+const HISTORY_LEN: usize = 32;
 
 pub fn create_ui(siv: &mut Cursive, mut controller: Controller, max_lines: usize) {
     siv.add_global_callback('q', |s| s.quit());
@@ -142,7 +153,7 @@ pub fn create_ui(siv: &mut Cursive, mut controller: Controller, max_lines: usize
             .child(
                 LinearLayout::vertical()
                     .child(Panel::new(
-                        HistoryEditView::new(5)
+                        HistoryEditView::new(HISTORY_LEN)
                             .on_submit_mut(move |s, text| {
                                 on_command(s, &mut controller, &history_appender, text)
                             })
@@ -394,9 +405,4 @@ fn format_display(display: DisplayResponse) -> StyledString {
     let id = display.id;
     let colour = COLOURS[id % COLOURS.len()];
     StyledString::styled(line, colour)
-}
-
-fn format_log_msg(msg: String) -> StyledString {
-    let line = format!("{}\n", msg);
-    StyledString::styled(line, BaseColor::Red.light())
 }
