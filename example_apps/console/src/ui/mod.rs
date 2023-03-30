@@ -206,6 +206,7 @@ const HELP: &[&str] = &[
     "command      Send a command to an existing link or directly to a specified remote lane.\n",
     "link         Open a link to a remote lane.\n",
     "list         List all active links.\n",
+    "periodically Send a stream of commands to a specified target.\n",
     "query        Query the state of an active link.\n",
     "show-with    Show the values current set with 'with-host', 'with-node' and 'with-lane'.\n",
     "sync         Send a sync frame to an existing link.\n",
@@ -270,6 +271,8 @@ const COMMAND: &[&str] = &[
 const LINK: &[&str] = &[
     "Open a link to a remote lane.\n",
     "\n",
+    "link [--host|-h host_name:(string)] [--node|-n node_uri:(string)] [--lane|-l lane:(string)] ?[--name name:(string)] ?[--map|-m] ?[--sync]\n",
+    "\n",
     "If a name is specified this can be used, instead of the link ID, to refer to the link.\n",
     "\n",
     "The 'map' flag will cause the link to interpret the events of the lane as map events.\n",
@@ -277,7 +280,23 @@ const LINK: &[&str] = &[
     "\n",
     "The 'sync' flag will cause the link to be synced as soon as it opens successfully.\n",
     "\n",
-    "link [--host|-h host_name:(string)] [--node|-n node_uri:(string)] [--lane|-l lane:(string)] ?[--name name:(string)] ?[--map|-m] ?[--sync]\n",
+];
+
+const PERIODICALLY: &[&str] = &[
+    "Send a stream of commands to a specified target.\n",
+    "\n",
+    "periodically ?[--delay | -d delay:(duration)] [--kind | -k kind:(kind)] ?[--limit n:(usize)] $target:(string)\n",
+    "\n",
+    "Commands will be sent with an interval of 'delay'. Durations are specified as '1s' for 1 second, '2ms' for 2 milliseconds, etc.\n",
+    "If not specified the default is 1 second.\n",
+    "\n",
+    "The 'kind' flag indicates the type of the messages that are sent. The supported kinds are:\n",
+    "words    The messages are random words (as strings).\n",
+    "n..m     Random integers in the range n to m (exclusive) (e.g. 1..10). These can be of type i32 or i64.\n",
+    "\n",
+    "The 'limit' flag will limit the number of commands to the specified number. If not supplied the stream is infinite.\n",
+    "\n",
+    "The target must be a named endpoint, defined with the 'target' command.\n",
     "\n",
 ];
 
@@ -365,6 +384,7 @@ fn on_command(
                 "show-with" => SHOW_WITH,
                 "clear-with" => CLEAR_WITH,
                 "link" => LINK,
+                "periodically" => PERIODICALLY,
                 "query" => QUERY,
                 "sync" => SYNC,
                 "target" => TARGET,
