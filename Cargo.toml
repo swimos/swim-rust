@@ -15,7 +15,8 @@ members = [
     "example_apps/console",
     "example_apps/console/console_views",
     "example_apps/multi/server",
-    "example_apps/multi/client"
+    "example_apps/multi/client",
+    "example_apps/single_lane",
 ]
 
 exclude = [
