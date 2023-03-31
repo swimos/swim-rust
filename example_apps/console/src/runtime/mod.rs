@@ -569,7 +569,10 @@ async fn handle_body(
             }
         }
         RawEnvelope::Unlinked {
-            node_uri, lane_uri, ..
+            node_uri,
+            lane_uri,
+            body,
+            ..
         } => {
             let node = node_uri.parse::<RouteUri>()?;
             let endpoint = Endpoint {
@@ -590,7 +593,13 @@ async fn handle_body(
             } else {
                 0
             };
-            Ok(DisplayResponse::unlinked(id))
+            let body_str = body.trim();
+            let body = if body_str.is_empty() {
+                None
+            } else {
+                Some(body_str.to_string())
+            };
+            Ok(DisplayResponse::unlinked(id, body))
         }
         RawEnvelope::Event {
             node_uri,

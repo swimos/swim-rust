@@ -218,7 +218,7 @@ pub enum DisplayResponseBody {
     Linked,
     Synced,
     Event(String),
-    Unlinked,
+    Unlinked(Option<String>),
 }
 
 impl DisplayResponse {
@@ -236,10 +236,10 @@ impl DisplayResponse {
         }
     }
 
-    pub fn unlinked(id: usize) -> Self {
+    pub fn unlinked(id: usize, body: Option<String>) -> Self {
         DisplayResponse {
             id,
-            body: DisplayResponseBody::Unlinked,
+            body: DisplayResponseBody::Unlinked(body),
         }
     }
 
@@ -258,7 +258,8 @@ impl Display for DisplayResponse {
             DisplayResponseBody::Linked => write!(f, "{}: LINKED", id),
             DisplayResponseBody::Synced => write!(f, "{}: SYNCED", id),
             DisplayResponseBody::Event(b) => write!(f, "{}: EVENT => {}", id, b),
-            DisplayResponseBody::Unlinked => write!(f, "{}: UNLINKED", id),
+            DisplayResponseBody::Unlinked(None) => write!(f, "{}: UNLINKED", id),
+            DisplayResponseBody::Unlinked(Some(b)) => write!(f, "{}: UNLINKED => {}", id, b),
         }
     }
 }
