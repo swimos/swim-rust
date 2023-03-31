@@ -29,6 +29,7 @@ use swim_api::{
 use swim_model::{address::Address, Text};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
+    non_zero_usize,
     routing::route_uri::RouteUri,
     trigger::{self, promise},
 };
@@ -55,6 +56,8 @@ use self::{
 pub mod reporting;
 mod store;
 mod task;
+#[cfg(test)]
+mod tests;
 
 use task::AgentRuntimeRequest;
 use tracing::error;
@@ -325,10 +328,10 @@ impl AgentAttachmentRequest {
     }
 }
 
-/// Configuration parameters for the aget runtime task.
+/// Configuration parameters for the agent runtime task.
 #[derive(Debug, Clone, Copy)]
 pub struct AgentRuntimeConfig {
-    /// Size of the queue for hanlding requests to attach remotes to the task.
+    /// Size of the queue for handling requests to attach remotes to the task.
     pub attachment_queue_size: NonZeroUsize,
     /// If the task is idle for more than this length of time, the agent will stop.
     pub inactive_timeout: Duration,
@@ -340,6 +343,22 @@ pub struct AgentRuntimeConfig {
     pub shutdown_timeout: Duration,
     /// If initializing a lane from the store takes longer than this, the agent will fail.
     pub lane_init_timeout: Duration,
+}
+
+const DEFAULT_CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(16);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_INIT_TIMEOUT: Duration = Duration::from_secs(1);
+
+impl Default for AgentRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            attachment_queue_size: DEFAULT_CHANNEL_SIZE,
+            inactive_timeout: DEFAULT_TIMEOUT,
+            prune_remote_delay: DEFAULT_TIMEOUT,
+            shutdown_timeout: DEFAULT_TIMEOUT,
+            lane_init_timeout: DEFAULT_INIT_TIMEOUT,
+        }
+    }
 }
 
 /// Ways in which the agent runtime task can fail.
@@ -373,7 +392,7 @@ pub struct AgentRoute {
     pub route_params: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct CombinedAgentConfig {
     pub agent_config: AgentConfig,
     pub runtime_config: AgentRuntimeConfig,
@@ -460,8 +479,9 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
 
             let (initial_state_result, agent_task_result) =
                 join(runtime_init_task.run(), agent_init_task).await;
-            let (initial_state, _) = initial_state_result?;
+
             let agent_task = agent_task_result?;
+            let (initial_state, _) = initial_state_result?;
 
             let runtime_task = AgentRuntimeTask::new(
                 NodeDescriptor::new(identity, node_uri),
@@ -545,40 +565,5 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             agent_result?;
             Ok(())
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use uuid::Uuid;
-
-    use super::DisconnectionReason;
-
-    #[test]
-    fn disconnection_reason_display() {
-        assert_eq!(
-            DisconnectionReason::AgentStoppedExternally.to_string(),
-            "Agent stopped externally."
-        );
-        assert_eq!(
-            DisconnectionReason::AgentTimedOut.to_string(),
-            "Agent stopped after a period of inactivity."
-        );
-        assert_eq!(
-            DisconnectionReason::RemoteTimedOut.to_string(),
-            "The remote was pruned due to inactivity."
-        );
-        assert_eq!(
-            DisconnectionReason::ChannelClosed.to_string(),
-            "The remote stopped listening."
-        );
-        assert_eq!(
-            DisconnectionReason::Failed.to_string(),
-            "The agent task was dropped or the connection was never established."
-        );
-        assert_eq!(
-            DisconnectionReason::DuplicateRegistration(Uuid::from_u128(84772)).to_string(),
-            "The remote registration for 00000000-0000-0000-0000-000000014b24 was replaced."
-        );
     }
 }

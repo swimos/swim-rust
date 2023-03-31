@@ -38,7 +38,7 @@ use crate::agent::{
         read_task,
         tests::{RemoteSender, BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT},
         timeout_coord::{self, VoteResult},
-        LaneEndpoint, ReadTaskMessage, RwCoorindationMessage, WriteTaskMessage,
+        LaneEndpoint, ReadTaskMessage, RwCoordinationMessage, WriteTaskMessage,
     },
 };
 
@@ -257,7 +257,7 @@ async fn attach_remote_and_link() {
         sender.link(VAL_LANE).await;
         let event = event_rx.recv().await;
         match event {
-            Some(Event::Coord(RwCoorindationMessage::Link { origin, lane })) => {
+            Some(Event::Coord(RwCoordinationMessage::Link { origin, lane })) => {
                 assert_eq!(origin, RID);
                 assert_eq!(lane, VAL_LANE);
             }
@@ -419,7 +419,7 @@ async fn attach_two_remotes_and_link() {
         let event2 = event_rx.recv().await;
         let seen;
         match event1 {
-            Some(Event::Coord(RwCoorindationMessage::Link { origin, lane })) => {
+            Some(Event::Coord(RwCoordinationMessage::Link { origin, lane })) => {
                 assert!(origin == RID || origin == RID2);
                 seen = origin;
                 assert_eq!(lane, VAL_LANE);
@@ -427,7 +427,7 @@ async fn attach_two_remotes_and_link() {
             ow => panic!("Unexpected event: {:?}", ow),
         }
         match event2 {
-            Some(Event::Coord(RwCoorindationMessage::Link { origin, lane })) => {
+            Some(Event::Coord(RwCoordinationMessage::Link { origin, lane })) => {
                 assert!(origin == RID || origin == RID2);
                 assert_ne!(origin, seen);
                 assert_eq!(lane, VAL_LANE);

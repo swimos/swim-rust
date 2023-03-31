@@ -62,7 +62,7 @@ use crate::agent::{
     AgentRuntimeConfig, DisconnectionReason, UplinkReporterRegistration,
 };
 
-use super::{LaneEndpoint, RwCoorindationMessage};
+use super::{LaneEndpoint, RwCoordinationMessage};
 
 mod coordination;
 mod read;
@@ -114,7 +114,7 @@ enum Event {
         name: Text,
         cmd: MapMessage<Text, i32>,
     },
-    Coord(RwCoorindationMessage),
+    Coord(RwCoordinationMessage),
 }
 
 enum Instruction {

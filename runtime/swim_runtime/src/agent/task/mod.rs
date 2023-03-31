@@ -43,8 +43,8 @@ use bytes::{Bytes, BytesMut};
 use futures::future::BoxFuture;
 use futures::stream::FuturesUnordered;
 use futures::{
-    future::{join, select as fselect, Either},
-    stream::{select as sselect, SelectAll},
+    future::{join, select, Either},
+    stream::SelectAll,
     Stream, StreamExt,
 };
 use swim_api::agent::{LaneConfig, StoreConfig};
@@ -314,7 +314,7 @@ pub struct AgentRuntimeTask<Store = StoreDisabled> {
 
 /// Message type used by the read and write tasks to communicate with each other.
 #[derive(Debug, Clone)]
-enum RwCoorindationMessage {
+enum RwCoordinationMessage {
     /// An envelope was received for an unknown lane (and so the write task should issue an appropriate error response).
     UnknownLane { origin: Uuid, path: Path<Text> },
     /// An envelope that was invalid for the subprotocol used by the specified lane was received.
@@ -422,7 +422,7 @@ where
 
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
 
-        let combined_stop = fselect(fselect(stopping.clone(), kill_switch_rx), vote_waiter);
+        let combined_stop = select(select(stopping.clone(), kill_switch_rx), vote_waiter);
         let att = attachment_task(
             rx,
             attachment_rx,
@@ -468,6 +468,8 @@ enum ReadTaskMessage {
         reader: ByteReader,
         on_attached: Option<trigger::Sender>,
     },
+    /// Instruct the read task to stop cleanly.
+    Stop,
 }
 
 /// Control messages consumed by the write task.
@@ -485,7 +487,9 @@ enum WriteTaskMessage {
         on_attached: Option<trigger::Sender>,
     },
     /// A coordination message send by the read task.
-    Coord(RwCoorindationMessage),
+    Coord(RwCoordinationMessage),
+    /// Instruct the write task to stop cleanly.
+    Stop,
 }
 
 impl WriteTaskMessage {
@@ -507,28 +511,26 @@ impl WriteTaskMessage {
 /// shutdown-signal with latch that ensures this task will stop if the read/write tasks stop (to avoid
 /// deadlocks).
 async fn attachment_task<F>(
-    runtime: mpsc::Receiver<AgentRuntimeRequest>,
-    attachment: mpsc::Receiver<AgentAttachmentRequest>,
+    mut runtime: mpsc::Receiver<AgentRuntimeRequest>,
+    mut attachment: mpsc::Receiver<AgentAttachmentRequest>,
     downlink_requests: mpsc::Sender<DownlinkRequest>,
     read_tx: mpsc::Sender<ReadTaskMessage>,
     write_tx: mpsc::Sender<WriteTaskMessage>,
-    combined_stop: F,
+    mut combined_stop: F,
 ) where
     F: Future + Unpin,
 {
-    let mut stream = sselect(
-        ReceiverStream::new(runtime).map(Either::Left),
-        ReceiverStream::new(attachment).map(Either::Right),
-    )
-    .take_until(combined_stop);
-
     let mut attachments = FuturesUnordered::new();
 
     loop {
         tokio::select! {
             biased;
+            _ = &mut combined_stop => break,
             _ = attachments.next(), if !attachments.is_empty() => {},
-            maybe_event = stream.next() => {
+            maybe_event = async { tokio::select! {
+                maybe_runtime = runtime.recv() => maybe_runtime.map(Either::Left),
+                maybe_att = attachment.recv() => maybe_att.map(Either::Right),
+            }} => {
                 if let Some(event) = maybe_event {
                     match event {
                         Either::Left(request) => {
@@ -559,6 +561,11 @@ async fn attachment_task<F>(
             }
         }
     }
+    let _ = join(
+        read_tx.send(ReadTaskMessage::Stop),
+        write_tx.send(WriteTaskMessage::Stop),
+    )
+    .await;
 }
 
 #[inline]
@@ -701,7 +708,7 @@ async fn read_task(
         } else {
             let select_next = timeout(
                 config.inactive_timeout,
-                fselect(reg_stream.next(), remotes.next()),
+                select(reg_stream.next(), remotes.next()),
             );
             let (result, _) = immediate_or_join(select_next, flush).await;
             match result {
@@ -743,6 +750,7 @@ async fn read_task(
                         on_attached.trigger();
                     }
                 }
+                ReadTaskMessage::Stop => break,
             },
             ReadTaskEvent::Envelope(msg) => {
                 if voted {
@@ -781,7 +789,7 @@ async fn read_task(
                                     origin, lane
                                 );
                                 if write_tx
-                                    .send(WriteTaskMessage::Coord(RwCoorindationMessage::Link {
+                                    .send(WriteTaskMessage::Coord(RwCoordinationMessage::Link {
                                         origin,
                                         lane: Text::new(lane.as_str()),
                                     }))
@@ -823,7 +831,7 @@ async fn read_task(
                                         error!(error = ?error, "Received invalid envelope from {} for lane '{}'", origin, lane);
                                         if write_tx
                                             .send(WriteTaskMessage::Coord(
-                                                RwCoorindationMessage::BadEnvelope {
+                                                RwCoordinationMessage::BadEnvelope {
                                                     origin,
                                                     lane: Text::new(lane.as_str()),
                                                     error,
@@ -848,7 +856,7 @@ async fn read_task(
                                     origin, lane
                                 );
                                 if write_tx
-                                    .send(WriteTaskMessage::Coord(RwCoorindationMessage::Unlink {
+                                    .send(WriteTaskMessage::Coord(RwCoordinationMessage::Unlink {
                                         origin,
                                         lane: Text::new(lane.as_str()),
                                     }))
@@ -865,7 +873,7 @@ async fn read_task(
                     info!("Received envelope for non-existent lane '{}'.", path.lane);
                     let flush = flush_lane(&mut lanes, &mut needs_flush);
                     let send_err = write_tx.send(WriteTaskMessage::Coord(
-                        RwCoorindationMessage::UnknownLane {
+                        RwCoordinationMessage::UnknownLane {
                             origin,
                             path: Path::text(path.node.as_str(), path.lane.as_str()),
                         },
@@ -1188,6 +1196,7 @@ enum TaskMessageResult<I> {
     StoreInitFailure(AgentItemInitError),
     /// No effect.
     Nothing,
+    Stop,
 }
 
 impl<I> From<Option<WriteTask>> for TaskMessageResult<I> {
@@ -1341,7 +1350,7 @@ impl WriteTaskState {
                 }
                 TaskMessageResult::AddPruneTimeout(id)
             }
-            WriteTaskMessage::Coord(RwCoorindationMessage::Link { origin, lane }) => {
+            WriteTaskMessage::Coord(RwCoordinationMessage::Link { origin, lane }) => {
                 info!("Attempting to set up link from '{}' to {}.", lane, origin);
                 match remote_tracker.lane_registry().id_for(lane.as_str()) {
                     Some(id) if remote_tracker.has_remote(origin) => {
@@ -1364,7 +1373,7 @@ impl WriteTaskState {
                     }
                 }
             }
-            WriteTaskMessage::Coord(RwCoorindationMessage::Unlink { origin, lane }) => {
+            WriteTaskMessage::Coord(RwCoordinationMessage::Unlink { origin, lane }) => {
                 info!(
                     "Attempting to close any link from '{}' to {}.",
                     lane, origin
@@ -1394,7 +1403,7 @@ impl WriteTaskState {
                     TaskMessageResult::Nothing
                 }
             }
-            WriteTaskMessage::Coord(RwCoorindationMessage::UnknownLane { origin, path }) => {
+            WriteTaskMessage::Coord(RwCoordinationMessage::UnknownLane { origin, path }) => {
                 info!(
                     "Received envelope for non-existent lane '{}' from {}.",
                     path.lane, origin
@@ -1403,7 +1412,7 @@ impl WriteTaskState {
                     .push_special(SpecialAction::lane_not_found(path.lane), &origin)
                     .into()
             }
-            WriteTaskMessage::Coord(RwCoorindationMessage::BadEnvelope {
+            WriteTaskMessage::Coord(RwCoordinationMessage::BadEnvelope {
                 origin,
                 lane,
                 error,
@@ -1411,6 +1420,7 @@ impl WriteTaskState {
                 info!(error = ?error, "Received in invalid envelope for lane '{}' from {}.", lane, origin);
                 TaskMessageResult::Nothing
             }
+            WriteTaskMessage::Stop => TaskMessageResult::Stop,
         }
     }
 
@@ -1684,6 +1694,7 @@ where
                     }
                 }
                 TaskMessageResult::Nothing => {}
+                TaskMessageResult::Stop => break,
             },
             WriteTaskEvent::Event(response) => {
                 if response.is_lane() && voted {
@@ -1800,7 +1811,7 @@ where
 {
     let read = pin!(read);
     let write = pin!(write);
-    let first_finished = fselect(read, write).await;
+    let first_finished = select(read, write).await;
     kill_switch_tx.trigger();
     match first_finished {
         Either::Left((_, write_fut)) => write_fut.await,

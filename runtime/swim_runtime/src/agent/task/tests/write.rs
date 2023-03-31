@@ -40,7 +40,7 @@ use crate::agent::{
         fake_store::FakeStore,
         tests::RemoteReceiver,
         timeout_coord::{self, VoteResult},
-        write_task, LaneEndpoint, ReadTaskMessage, RwCoorindationMessage, StoreEndpoint,
+        write_task, LaneEndpoint, ReadTaskMessage, RwCoordinationMessage, StoreEndpoint,
         WriteTaskConfiguration, WriteTaskEndpoints, WriteTaskMessage,
     },
     DisconnectionReason, NodeReporting,
@@ -419,7 +419,7 @@ async fn attach_remote_and_wait(
 }
 
 async fn link_remote(remote_id: Uuid, lane: &str, messages_tx: &mpsc::Sender<WriteTaskMessage>) {
-    let msg = RwCoorindationMessage::Link {
+    let msg = RwCoordinationMessage::Link {
         origin: remote_id,
         lane: Text::new(lane),
     };
@@ -427,7 +427,7 @@ async fn link_remote(remote_id: Uuid, lane: &str, messages_tx: &mpsc::Sender<Wri
 }
 
 async fn unlink_remote(remote_id: Uuid, lane: &str, messages_tx: &mpsc::Sender<WriteTaskMessage>) {
-    let msg = RwCoorindationMessage::Unlink {
+    let msg = RwCoordinationMessage::Unlink {
         origin: remote_id,
         lane: Text::new(lane),
     };
