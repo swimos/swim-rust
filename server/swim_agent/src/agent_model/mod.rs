@@ -763,7 +763,7 @@ where
                         LaneRequest::Command(body) => {
                             if let Some(handler) = item_model.on_value_command(name.as_str(), body)
                             {
-                                if let Err(e) = run_handler(
+                                let result = run_handler(
                                     &mut ActionContext::new(
                                         &suspended,
                                         &*context,
@@ -776,8 +776,21 @@ where
                                     handler,
                                     &item_ids,
                                     &mut dirty_items,
-                                ) {
-                                    break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                                );
+                                match result {
+                                    Err(
+                                        e @ (EventHandlerError::RuntimeError(_)
+                                        | EventHandlerError::SteppedAfterComplete),
+                                    ) => {
+                                        break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                                    }
+                                    Err(error) => {
+                                        info!(
+                                            error = %error,
+                                            "Incoming frame was rejected by the item."
+                                        );
+                                    }
+                                    _ => {}
                                 }
                             }
                         }
@@ -809,7 +822,7 @@ where
                     match request {
                         LaneRequest::Command(body) => {
                             if let Some(handler) = item_model.on_map_command(name.as_str(), body) {
-                                if let Err(e) = run_handler(
+                                let result = run_handler(
                                     &mut ActionContext::new(
                                         &suspended,
                                         &*context,
@@ -822,8 +835,21 @@ where
                                     handler,
                                     &item_ids,
                                     &mut dirty_items,
-                                ) {
-                                    break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                                );
+                                match result {
+                                    Err(
+                                        e @ (EventHandlerError::RuntimeError(_)
+                                        | EventHandlerError::SteppedAfterComplete),
+                                    ) => {
+                                        break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                                    }
+                                    Err(error) => {
+                                        info!(
+                                            error = %error,
+                                            "Incoming frame was rejected by the item."
+                                        );
+                                    }
+                                    _ => {}
                                 }
                             }
                         }
