@@ -593,7 +593,7 @@ async fn explicit_unlink_from_agent_lane() {
         client.expect_event(NODE, LANE, "0").await;
 
         client.unlink(NODE, LANE).await;
-        client.expect_unlinked(NODE, LANE, "Link closed.").await;
+        client.expect_unlinked(NODE, LANE, "\"Link closed.\"").await;
 
         client.command(NODE, LANE, TestMessage::Event).await;
 

@@ -1381,7 +1381,7 @@ impl WriteTaskState {
                 if let Some(lane_id) = remote_tracker.lane_registry().id_for(lane.as_str()) {
                     if links.is_linked(origin, lane_id) {
                         let schedule_prune = links.remove(lane_id, origin).into_option();
-                        let message = Text::new("Link closed.");
+                        let message = Text::new("\"Link closed.\"");
                         let maybe_write = remote_tracker
                             .push_special(SpecialAction::unlinked(lane_id, message), &origin);
                         if let Some(write) = maybe_write {
