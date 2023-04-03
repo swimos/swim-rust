@@ -33,6 +33,7 @@ use swim_model::{address::Address, Text};
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
+    never::Never,
     routing::route_uri::RouteUri,
 };
 use thiserror::Error;
@@ -275,6 +276,8 @@ pub enum EventHandlerError {
     RuntimeError(#[from] AgentRuntimeError),
     #[error("Invalid key or value type for a join lane lifecycle.")]
     BadJoinLifecycle(DowncastError),
+    #[error("The event handler has instructed the agent to stop.")]
+    StopInstructed,
 }
 
 /// When a handler completes or suspends it can indicate that is has modified the
@@ -1246,3 +1249,22 @@ pub trait JoinValueInitializer<Context>: Send {
 static_assertions::assert_obj_safe!(JoinValueInitializer<()>);
 
 pub type BoxJoinValueInit<'a, Context> = Box<dyn JoinValueInitializer<Context> + Send + 'a>;
+
+/// Causes the agent to stop. If this is encountered during the `on_start` event of an agent it will
+/// fail to start at all. Otherwise, execution of the event handler will terminate and the agent will
+/// begin to shutdown. The 'on_stop' handler will still be run. If a [`Stop`] is encountered in
+/// the 'on_stop' handler, the agent will stop immediately.
+pub struct Stop;
+
+impl<Context> HandlerAction<Context> for Stop {
+    type Completion = Never;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        StepResult::Fail(EventHandlerError::StopInstructed)
+    }
+}

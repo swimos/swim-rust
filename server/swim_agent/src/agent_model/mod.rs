@@ -520,7 +520,7 @@ where
         // Run the agent's `on_start` event handler.
         let on_start_handler = lifecycle.on_start();
 
-        if let Err(e) = run_handler(
+        match run_handler(
             &mut ActionContext::new(
                 &suspended,
                 &*context,
@@ -534,7 +534,9 @@ where
             &item_ids,
             &mut Discard,
         ) {
-            return Err(AgentInitError::UserCodeError(Box::new(e)));
+            Err(EventHandlerError::StopInstructed) => return Err(AgentInitError::FailedToStart),
+            Err(e) => return Err(AgentInitError::UserCodeError(Box::new(e))),
+            Ok(_) => {}
         }
         let agent_task = AgentTask {
             item_model,
@@ -702,7 +704,7 @@ where
                     item_writers.insert(writer.lane_id(), writer);
                 }
                 TaskEvent::SuspendedComplete { handler } => {
-                    if let Err(e) = run_handler(
+                    match run_handler(
                         &mut ActionContext::new(
                             &suspended,
                             &*context,
@@ -716,7 +718,9 @@ where
                         &item_ids,
                         &mut dirty_items,
                     ) {
-                        break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                        Err(EventHandlerError::StopInstructed) => break Ok(()),
+                        Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
+                        Ok(_) => {}
                     }
                 }
                 TaskEvent::DownlinkReady { downlink_event } => {
@@ -732,7 +736,7 @@ where
                             }
                             HostedDownlinkEvent::HandlerReady { failed } => {
                                 if let Some(handler) = downlink.channel.next_event(&item_model) {
-                                    if let Err(e) = run_handler(
+                                    match run_handler(
                                         &mut ActionContext::new(
                                             &suspended,
                                             &*context,
@@ -746,7 +750,11 @@ where
                                         &item_ids,
                                         &mut dirty_items,
                                     ) {
-                                        break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                                        Err(EventHandlerError::StopInstructed) => break Ok(()),
+                                        Err(e) => {
+                                            break Err(AgentTaskError::UserCodeError(Box::new(e)))
+                                        }
+                                        Ok(_) => {}
                                     }
                                 }
                                 if !failed {
@@ -778,6 +786,7 @@ where
                                     &mut dirty_items,
                                 );
                                 match result {
+                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
                                     Err(
                                         e @ (EventHandlerError::RuntimeError(_)
                                         | EventHandlerError::SteppedAfterComplete),
@@ -796,7 +805,7 @@ where
                         }
                         LaneRequest::Sync(remote_id) => {
                             if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
-                                if let Err(e) = run_handler(
+                                match run_handler(
                                     &mut ActionContext::new(
                                         &suspended,
                                         &*context,
@@ -810,7 +819,11 @@ where
                                     &item_ids,
                                     &mut dirty_items,
                                 ) {
-                                    break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
+                                    Err(e) => {
+                                        break Err(AgentTaskError::UserCodeError(Box::new(e)))
+                                    }
+                                    Ok(_) => {}
                                 }
                             }
                         }
@@ -837,6 +850,7 @@ where
                                     &mut dirty_items,
                                 );
                                 match result {
+                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
                                     Err(
                                         e @ (EventHandlerError::RuntimeError(_)
                                         | EventHandlerError::SteppedAfterComplete),
@@ -855,7 +869,7 @@ where
                         }
                         LaneRequest::Sync(remote_id) => {
                             if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
-                                if let Err(e) = run_handler(
+                                match run_handler(
                                     &mut ActionContext::new(
                                         &suspended,
                                         &*context,
@@ -869,7 +883,11 @@ where
                                     &item_ids,
                                     &mut dirty_items,
                                 ) {
-                                    break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
+                                    Err(e) => {
+                                        break Err(AgentTaskError::UserCodeError(Box::new(e)))
+                                    }
+                                    Ok(_) => {}
                                 }
                             }
                         }
@@ -908,7 +926,7 @@ where
                 AgentRuntimeError::Stopping,
             ))
         };
-        if let Err(e) = run_handler(
+        match run_handler(
             &mut ActionContext::new(&suspended, &*context, &discard, &mut join_value_init),
             meta,
             &item_model,
@@ -917,9 +935,8 @@ where
             &item_ids,
             &mut Discard,
         ) {
-            Err(AgentTaskError::UserCodeError(Box::new(e)))
-        } else {
-            Ok(())
+            Ok(_) | Err(EventHandlerError::StopInstructed) => Ok(()),
+            Err(e) => Err(AgentTaskError::UserCodeError(Box::new(e))),
         }
     }
 }

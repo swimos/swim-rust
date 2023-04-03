@@ -33,8 +33,8 @@ use crate::downlink_lifecycle::event::EventDownlinkLifecycle;
 use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
 use crate::event_handler::{
-    run_after, run_schedule, EventHandler, GetParameter, HandlerActionExt, Sequentially, Suspend,
-    UnitHandler,
+    run_after, run_schedule, EventHandler, GetParameter, HandlerActionExt, Sequentially, Stop,
+    Suspend, UnitHandler,
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
@@ -643,6 +643,14 @@ impl<Agent: 'static> HandlerContext<Agent> {
     {
         let address = Address::text(host, node, lane_uri);
         JoinValueAddDownlink::new(lane, key, address)
+    }
+
+    /// Causes the agent to stop. If this is encountered during the `on_start` event of an agent it will
+    /// fail to start at all. Otherwise, execution of the event handler will terminate and the agent will
+    /// begin to shutdown. The 'on_stop' handler will still be run. If a stop is requested in
+    /// the 'on_stop' handler, the agent will stop immediately.
+    pub fn stop(&self) -> impl EventHandler<Agent> + Send + 'static {
+        HandlerActionExt::<Agent>::discard(Stop)
     }
 }
 
