@@ -296,6 +296,9 @@ impl Controller {
                 }
                 Err(msg) => vec![msg],
             },
+            ControllerCommand::Meta(_) => {
+                unimplemented!()
+            }
         }
     }
 

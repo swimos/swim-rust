@@ -143,6 +143,14 @@ pub enum ControllerCommand {
     Unlink(LinkRef),
     UnlinkAll,
     Query(LinkRef),
+    Meta(MetaCommand),
+}
+
+#[derive(PartialEq, Eq, Debug, Hash)]
+pub enum MetaCommand {
+    Lanes(LinkRef),
+    NodePulse(LinkRef),
+    LanePulse(LinkRef),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -122,6 +122,7 @@ impl<S, E> RemoteTask<S, E> {
     }
 }
 
+#[derive(Debug)]
 enum IncomingEvent<M> {
     Register(RegisterIncoming),
     Message(Result<M, InputError>),
@@ -194,12 +195,12 @@ where
                 find_tx,
                 outgoing_tx,
             )
-            .instrument(info_span!("Websocket incoming task.", id = %id));
+            .instrument(info_span!("Websocket incoming task", id = %id));
 
         let mut outgoing = OutgoingTask::default();
         let out_task = outgoing
             .run(stop_signal, &mut tx, outgoing_rx)
-            .instrument(info_span!("Websocket outgoing task."));
+            .instrument(info_span!("Websocket outgoing task"));
 
         let (_, result) = join(reg, await_io_tasks(in_task, out_task, kill_switch_tx)).await;
 

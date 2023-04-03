@@ -157,6 +157,8 @@ pub fn create_ui(siv: &mut Cursive, mut controller: Controller, max_lines: usize
                             .on_submit_mut(move |s, text| {
                                 on_command(s, &mut controller, &history_appender, text)
                             })
+                            .scrollable()
+                            .scroll_strategy(ScrollStrategy::StickToBottom)
                             .with_name(COMMAND_EDIT),
                     ))
                     .child(
@@ -204,8 +206,11 @@ const HELP: &[&str] = &[
     "\n",
     "clear-with   Clear the values current set with 'with-host', 'with-node' and 'with-lane'.\n",
     "command      Send a command to an existing link or directly to a specified remote lane.\n",
+    "lane-pulse   Awaits the next lane pulse on the existing link.\n",
+    "lanes        Lists all of the lanes on the agent.\n",
     "link         Open a link to a remote lane.\n",
     "list         List all active links.\n",
+    "node-pulse   Awaits the next node pulse on the existing link.\n",
     "periodically Send a stream of commands to a specified target.\n",
     "query        Query the state of an active link.\n",
     "show-with    Show the values current set with 'with-host', 'with-node' and 'with-lane'.\n",
@@ -357,6 +362,27 @@ const WITH_LANE: &[&str] = &[
     "\n",
 ];
 
+const LANE_PULSE: &[&str] = &[
+    "Awaits the next lane pulse.\n",
+    "\n",
+    "lane-pulse id:(integer) | name:(string)\n",
+    "\n",
+];
+
+const NODE_PULSE: &[&str] = &[
+    "Awaits the next node pulse.\n",
+    "\n",
+    "node-pulse id:(integer) | name:(string)\n",
+    "\n",
+];
+
+const LANES: &[&str] = &[
+    "Lists all of the lanes on the agent.\n",
+    "\n",
+    "lanes id:(integer) | name:(string)\n",
+    "\n",
+];
+
 const UNKNOWN: &[&str] = &["Unknown command."];
 
 fn on_command(
@@ -383,6 +409,9 @@ fn on_command(
                 "with-lane" => WITH_LANE,
                 "show-with" => SHOW_WITH,
                 "clear-with" => CLEAR_WITH,
+                "lanes" => LANES,
+                "lane-pulse" => LANE_PULSE,
+                "node-pulse" => NODE_PULSE,
                 "link" => LINK,
                 "periodically" => PERIODICALLY,
                 "query" => QUERY,

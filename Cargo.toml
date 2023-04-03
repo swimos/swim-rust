@@ -17,6 +17,7 @@ members = [
     "example_apps/multi/server",
     "example_apps/multi/client",
     "example_apps/single_lane",
+    "example_apps/meta/*"
 ]
 
 exclude = [

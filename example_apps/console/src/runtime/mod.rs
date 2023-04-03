@@ -266,6 +266,8 @@ impl Runtime {
                                     state.remove_all(&remote.clone());
                                 }
                             }
+                        } else {
+                            println!("No such link")
                         }
                     }
                     RuntimeCommand::AdHocCommand(endpoint, body) => {
