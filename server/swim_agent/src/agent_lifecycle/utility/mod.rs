@@ -33,7 +33,8 @@ use crate::downlink_lifecycle::event::EventDownlinkLifecycle;
 use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
 use crate::event_handler::{
-    run_after, run_schedule, EventHandler, GetParameter, Suspend, UnitHandler,
+    run_after, run_schedule, EventHandler, GetParameter, HandlerActionExt, Sequentially, Suspend,
+    UnitHandler,
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
@@ -280,6 +281,53 @@ impl<Agent: 'static> HandlerContext<Agent> {
         V: Send + 'static,
     {
         MapStoreClear::new(store)
+    }
+
+    /// Create an event handler that replaces the entire contents of a map lane.
+    ///
+    /// #Arguments
+    /// * `lane` - Projection to the map lane.
+    /// * `entries` - The new entries for the lane.
+    pub fn replace_map<K, V, I>(
+        &self,
+        lane: fn(&Agent) -> &MapLane<K, V>,
+        entries: I,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Send + 'static,
+        I: IntoIterator<Item = (K, V)>,
+        I::IntoIter: Send + 'static,
+    {
+        let context = *self;
+        let insertions = entries
+            .into_iter()
+            .map(move |(k, v)| context.update(lane, k, v));
+        self.clear(lane).followed_by(Sequentially::new(insertions))
+    }
+
+    /// Create an event handler that replaces the entire contents of a map store.
+    ///
+    /// #Arguments
+    /// * `store` - Projection to the map store.
+    /// * `entries` - The new entries for the store.
+    pub fn replace_map_store<K, V, I>(
+        &self,
+        store: fn(&Agent) -> &MapStore<K, V>,
+        entries: I,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Send + 'static,
+        I: IntoIterator<Item = (K, V)>,
+        I::IntoIter: Send + 'static,
+    {
+        let context = *self;
+        let insertions = entries
+            .into_iter()
+            .map(move |(k, v)| context.update_store(store, k, v));
+        self.clear_store(store)
+            .followed_by(Sequentially::new(insertions))
     }
 
     /// Create an event handler that will attempt to get an entry from a map lane of the agent.
