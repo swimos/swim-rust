@@ -11,12 +11,14 @@ members = [
     "swim_utilities/swim_*",
     "swim_downlink",
     "server/swim_*",
+    "example_apps/example_util",
     "example_apps/basic",
     "example_apps/console",
     "example_apps/console/console_views",
     "example_apps/multi/server",
     "example_apps/multi/client",
     "example_apps/single_lane",
+    "example_apps/map_lane",
 ]
 
 exclude = [

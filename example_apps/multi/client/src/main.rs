@@ -15,12 +15,12 @@
 use std::{collections::HashMap, error::Error, time::Duration};
 
 use clap::Parser;
+use example_util::manage_handle;
 use swim::{
     agent::agent_model::AgentModel,
     route::RoutePattern,
-    server::{Server, ServerBuilder, ServerHandle},
+    server::{Server, ServerBuilder},
 };
-use tokio::select;
 
 use crate::{
     args::AppArgs,
@@ -87,26 +87,4 @@ async fn main() -> Result<(), Box<dyn Error>> {
     result?;
     println!("Server stopped successfully.");
     Ok(())
-}
-
-async fn manage_handle(mut handle: ServerHandle) {
-    let mut shutdown_hook = Box::pin(async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to register interrupt handler.");
-    });
-    let print_addr = handle.bound_addr();
-
-    let maybe_addr = select! {
-        _ = &mut shutdown_hook => None,
-        maybe_addr = print_addr => maybe_addr,
-    };
-
-    if let Some(addr) = maybe_addr {
-        println!("Bound to: {}", addr);
-        shutdown_hook.await;
-    }
-
-    println!("Stopping server.");
-    handle.stop();
 }
