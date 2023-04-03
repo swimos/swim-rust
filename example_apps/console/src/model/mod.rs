@@ -20,6 +20,7 @@ use std::{
 };
 
 use http::Uri;
+use swim_api::protocol::map::MapMessage;
 use swim_model::Value;
 use swim_utilities::routing::route_uri::RouteUri;
 
@@ -121,6 +122,10 @@ pub enum ControllerCommand {
     Command {
         target: TargetRef,
         body: Value,
+    },
+    MapCommand {
+        target: TargetRef,
+        body: MapMessage<Value, Value>,
     },
     ListLinks,
     Link {

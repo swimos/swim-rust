@@ -16,6 +16,7 @@ use std::num::ParseIntError;
 use std::{borrow::Cow, time::Duration};
 
 use std::collections::HashMap;
+use swim_api::protocol::map::MapMessage;
 use swim_model::Value;
 use swim_recon::parser::parse_value;
 
@@ -139,6 +140,46 @@ pub fn parse_controller_command(parts: &[&str]) -> Result<ControllerCommand, Cow
                 [] => Ok(ControllerCommand::Command {
                     target,
                     body: Value::Extant,
+                }),
+                _ => Err(Cow::Borrowed(
+                    "Incorrect parameters for command. Type 'help command' for correct usage.",
+                )),
+            }
+        }
+        ["map-command", tail @ ..] => {
+            let (target, tail) = parse_target_ref(tail)?;
+            match tail {
+                ["update", key, value] => {
+                    let result = parse_value(key, false).and_then(|k| {
+                        parse_value(value, false)
+                            .map(move |v| MapMessage::Update { key: k, value: v })
+                    });
+                    if let Ok(message) = result {
+                        Ok(ControllerCommand::MapCommand {
+                            target,
+                            body: message,
+                        })
+                    } else {
+                        Err(Cow::Owned(format!(
+                            "One of '{}', '{}' is not valid recon.",
+                            key, value
+                        )))
+                    }
+                }
+                ["remove", key] => {
+                    let result = parse_value(key, false).map(|k| MapMessage::Remove { key: k });
+                    if let Ok(message) = result {
+                        Ok(ControllerCommand::MapCommand {
+                            target,
+                            body: message,
+                        })
+                    } else {
+                        Err(Cow::Owned(format!("'{}' is not valid recon.", key)))
+                    }
+                }
+                ["clear"] => Ok(ControllerCommand::MapCommand {
+                    target,
+                    body: MapMessage::Clear,
                 }),
                 _ => Err(Cow::Borrowed(
                     "Incorrect parameters for command. Type 'help command' for correct usage.",
