@@ -350,7 +350,7 @@ const QUERY: &[&str] = &[
 const TARGET: &[&str] = &[
     "Defined a named target for issuing commands.\n",
     "\n",
-    "link [--host|-h host_name:(string)] [--node|-n node_uri:(string)] [--lane|-l lane:(string)] name:(string)\n",
+    "target [--host|-h host_name:(string)] [--node|-n node_uri:(string)] [--lane|-l lane:(string)] name:(string)\n",
     "\n",
 ];
 

@@ -19,7 +19,7 @@ pub enum Instruction {
     #[form(tag = "zero")]
     Zero,
     #[form(tag = "add")]
-    Add(i32),
+    Add(#[form(header_body)] i32),
     #[form(tag = "stop")]
     Stop,
 }
