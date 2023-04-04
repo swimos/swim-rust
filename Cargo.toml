@@ -21,6 +21,7 @@ members = [
     "example_apps/map_lane",
     "example_apps/command_lane",
     "example_apps/value_store",
+    "example_apps/map_store",
 ]
 
 exclude = [
