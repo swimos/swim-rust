@@ -30,7 +30,7 @@ use swim_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
 use swim_api::protocol::WithLengthBytesCodec;
 pub use swim_api::store::StoreKind;
 use swim_api::{
-    agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
+    agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::{AgentInitError, AgentTaskError, FrameIoError},
     protocol::{agent::LaneRequest, map::MapMessage},
 };
@@ -398,10 +398,8 @@ where
 
         let meta = AgentMetadata::new(&route, &route_params, &config);
 
-        let mut value_like_lane_io = HashMap::new();
-        let mut map_lane_io = HashMap::new();
-        let mut value_like_store_io = HashMap::new();
-        let mut map_store_io = HashMap::new();
+        let mut lane_io = HashMap::new();
+        let mut store_io = HashMap::new();
 
         let lane_specs = ItemModel::lane_specs();
         let item_ids = <ItemModel as AgentSpec>::item_ids();
@@ -417,12 +415,7 @@ where
             let default_lane_config = config.default_lane_config.unwrap_or_default();
             macro_rules! with_init {
                 ($init:ident => $body:block) => {{
-                    let mut $init = InitContext::new(
-                        &mut value_like_lane_io,
-                        &mut map_lane_io,
-                        &item_model,
-                        &lane_init_tasks,
-                    );
+                    let mut $init = InitContext::new(&mut lane_io, &item_model, &lane_init_tasks);
 
                     $body
                 }};
@@ -433,9 +426,11 @@ where
                 match kind {
                     ItemKind::Lane(kind) => {
                         if kind.map_like() {
-                            if value_like_lane_io.contains_key(name) {
-                                return Err(AgentInitError::DuplicateLane(Text::new(name)));
+                            let key = (Text::new(name), kind);
+                            if lane_io.contains_key(&key) {
+                                return Err(AgentInitError::DuplicateLane(key.0));
                             }
+                            let (_, kind) = key;
                             let mut lane_conf = default_lane_config;
                             if flags.contains(ItemFlags::TRANSIENT) {
                                 lane_conf.transient = true;
@@ -481,26 +476,18 @@ where
                 let InitializedItem {
                     item_kind,
                     name,
-                    kind,
                     init_fn,
                     io,
                 } = result.map_err(AgentInitError::LaneInitializationFailure)?;
                 init_fn(&item_model);
-                match (item_kind, kind) {
-                    (ItemKind::Lane(_), UplinkKind::Value | UplinkKind::Supply) => {
-                        value_like_lane_io.insert(Text::new(name), io);
-                    }
-                    (ItemKind::Lane(_), UplinkKind::Map) => {
-                        map_lane_io.insert(Text::new(name), io);
+                match item_kind {
+                    ItemKind::Lane(kind) => {
+                        lane_io.insert((Text::new(name), kind), io);
                     }
                     //The receivers for stores are no longer needed as the runtime never sends messages after initialization.
-                    (ItemKind::Store(_), UplinkKind::Value | UplinkKind::Supply) => {
+                    ItemKind::Store(_) => {
                         let (tx, _) = io;
-                        value_like_store_io.insert(Text::new(name), tx);
-                    }
-                    (ItemKind::Store(_), UplinkKind::Map) => {
-                        let (tx, _) = io;
-                        map_store_io.insert(Text::new(name), tx);
+                        store_io.insert(Text::new(name), tx);
                     }
                 };
             }
@@ -545,10 +532,8 @@ where
             route_params,
             config,
             item_ids,
-            value_like_lane_io,
-            value_like_store_io,
-            map_lane_io,
-            map_store_io,
+            lane_io,
+            store_io,
             suspended,
             downlink_channels: downlink_channels.into_inner(),
             join_value_init,
@@ -560,8 +545,7 @@ where
 type InitFut<'a, ItemModel> = BoxFuture<'a, Result<InitializedItem<'a, ItemModel>, FrameIoError>>;
 
 struct InitContext<'a, 'b, ItemModel> {
-    value_like_lane_io: &'a mut HashMap<Text, (ByteWriter, ByteReader)>,
-    map_like_lane_io: &'a mut HashMap<Text, (ByteWriter, ByteReader)>,
+    lane_io: &'a mut HashMap<(Text, LaneKind), (ByteWriter, ByteReader)>,
     item_model: &'a ItemModel,
     item_init_tasks: &'a FuturesUnordered<InitFut<'b, ItemModel>>,
 }
@@ -595,14 +579,12 @@ where
     ItemModel: AgentSpec + 'static,
 {
     fn new(
-        value_like_lane_io: &'a mut HashMap<Text, (ByteWriter, ByteReader)>,
-        map_like_lane_io: &'a mut HashMap<Text, (ByteWriter, ByteReader)>,
+        lane_io: &'a mut HashMap<(Text, LaneKind), (ByteWriter, ByteReader)>,
         item_model: &'a ItemModel,
         item_init_tasks: &'a FuturesUnordered<InitFut<'b, ItemModel>>,
     ) -> Self {
         InitContext {
-            value_like_lane_io,
-            map_like_lane_io,
+            lane_io,
             item_model,
             item_init_tasks,
         }
@@ -616,25 +598,24 @@ where
         io: (ByteWriter, ByteReader),
     ) {
         let InitContext {
-            value_like_lane_io,
+            lane_io,
             item_model,
             item_init_tasks,
             ..
         } = self;
         if lane_conf.transient {
-            value_like_lane_io.insert(Text::new(name), io);
+            lane_io.insert((Text::new(name), kind), io);
         } else if let Some(init) = item_model.init_value_like_item(name) {
             let init_task = run_item_initializer(
                 ItemKind::Lane(kind),
                 name,
-                UplinkKind::Value,
                 io,
                 WithLengthBytesCodec::default(),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
         } else {
-            value_like_lane_io.insert(Text::new(name), io);
+            lane_io.insert((Text::new(name), kind), io);
         }
     }
 
@@ -648,7 +629,6 @@ where
             let init_task = run_item_initializer(
                 ItemKind::Store(StoreKind::Value),
                 name,
-                UplinkKind::Value,
                 io,
                 WithLengthBytesCodec::default(),
                 init,
@@ -665,25 +645,24 @@ where
         io: (ByteWriter, ByteReader),
     ) {
         let InitContext {
-            map_like_lane_io,
+            lane_io,
             item_model,
             item_init_tasks,
             ..
         } = self;
         if lane_conf.transient {
-            map_like_lane_io.insert(Text::new(name), io);
+            lane_io.insert((Text::new(name), kind), io);
         } else if let Some(init) = item_model.init_map_like_item(name) {
             let init_task = run_item_initializer(
                 ItemKind::Lane(kind),
                 name,
-                UplinkKind::Map,
                 io,
                 MapMessageDecoder::new(RawMapOperationDecoder::default()),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
         } else {
-            map_like_lane_io.insert(Text::new(name), io);
+            lane_io.insert((Text::new(name), kind), io);
         }
     }
 
@@ -697,7 +676,6 @@ where
             let init_task = run_item_initializer(
                 ItemKind::Store(StoreKind::Map),
                 name,
-                UplinkKind::Map,
                 io,
                 MapMessageDecoder::new(RawMapOperationDecoder::default()),
                 init,
@@ -714,10 +692,8 @@ struct AgentTask<ItemModel, Lifecycle> {
     route_params: HashMap<String, String>,
     config: AgentConfig,
     item_ids: HashMap<u64, Text>,
-    value_like_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
-    value_like_store_io: HashMap<Text, ByteWriter>,
-    map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
-    map_store_io: HashMap<Text, ByteWriter>,
+    lane_io: HashMap<(Text, LaneKind), (ByteWriter, ByteReader)>,
+    store_io: HashMap<Text, ByteWriter>,
     suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
     join_value_init: HashMap<u64, BoxJoinValueInit<'static, ItemModel>>,
     downlink_channels: Vec<(BoxDownlinkChannel<ItemModel>, WriteStream)>,
@@ -744,10 +720,8 @@ where
             route_params,
             config,
             item_ids,
-            value_like_lane_io,
-            value_like_store_io,
-            map_lane_io,
-            map_store_io,
+            lane_io,
+            store_io,
             mut suspended,
             mut join_value_init,
             downlink_channels,
@@ -770,25 +744,19 @@ where
             downlinks.push(dl.wait_on_downlink());
         }
 
-        // Set up readers and writes for each lane.
-        for (name, (tx, rx)) in value_like_lane_io {
-            let id = item_ids_rev[&name];
-            lane_readers.push(LaneReader::value(id, rx));
-            item_writers.insert(id, ItemWriter::new(id, tx));
+        for ((name, kind), (tx, rx)) in lane_io {
+            if kind.map_like() {
+                let id = item_ids_rev[&name];
+                lane_readers.push(LaneReader::map(id, rx));
+                item_writers.insert(id, ItemWriter::new(id, tx));
+            } else {
+                let id = item_ids_rev[&name];
+                lane_readers.push(LaneReader::value(id, rx));
+                item_writers.insert(id, ItemWriter::new(id, tx));
+            }
         }
 
-        for (name, tx) in value_like_store_io {
-            let id = item_ids_rev[&name];
-            item_writers.insert(id, ItemWriter::new(id, tx));
-        }
-
-        for (name, (tx, rx)) in map_lane_io {
-            let id = item_ids_rev[&name];
-            lane_readers.push(LaneReader::map(id, rx));
-            item_writers.insert(id, ItemWriter::new(id, tx));
-        }
-
-        for (name, tx) in map_store_io {
+        for (name, tx) in store_io {
             let id = item_ids_rev[&name];
             item_writers.insert(id, ItemWriter::new(id, tx));
         }
