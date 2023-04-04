@@ -142,7 +142,7 @@ pub trait AgentSpec: Sized + Send {
     /// The type of handler to run when a request is received to sync with a lane.
     type OnSyncHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
-    /// The names and flags of all items (value lanes and stores, command lanes, etc) in the agent.
+    /// The names and flags of all items (lanes and stores) in the agent.
     fn lane_specs() -> HashMap<&'static str, ItemSpec>;
 
     /// Mapping from item identifiers to lane names for all items in the agent.
@@ -430,7 +430,6 @@ where
                             if lane_io.contains_key(&key) {
                                 return Err(AgentInitError::DuplicateLane(key.0));
                             }
-                            let (_, kind) = key;
                             let mut lane_conf = default_lane_config;
                             if flags.contains(ItemFlags::TRANSIENT) {
                                 lane_conf.transient = true;
