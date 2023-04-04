@@ -1,5 +1,5 @@
 [package]
-name = "client"
+name = "multi-client"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,5 +7,6 @@ edition = "2021"
 
 [dependencies]
 swim = { path = "../../../swim", features = ["server", "agent"] }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"]}
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"]}
 clap = { workspace = true, features = ["derive"] }
+example-util = { path = "../../example_util" }

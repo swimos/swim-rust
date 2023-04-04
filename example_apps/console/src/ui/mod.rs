@@ -205,11 +205,12 @@ const HELP: &[&str] = &[
     "quit         Close the application.\n",
     "\n",
     "clear-with   Clear the values current set with 'with-host', 'with-node' and 'with-lane'.\n",
-    "command      Send a command to an existing link or directly to a specified remote lane.\n",
+    "command      Send a command to an existing link, or directly to a specified remote lane.\n",
+    "link         Open a link to a remote lane.\n",
     "lane-pulse   Awaits the next lane pulse on the existing link.\n",
     "lanes        Lists all of the lanes on the agent.\n",
-    "link         Open a link to a remote lane.\n",
     "list         List all active links.\n",
+    "map-command  Send a map command to an existing link, or directly to a specified remote lane.\n",
     "node-pulse   Awaits the next node pulse on the existing link.\n",
     "periodically Send a stream of commands to a specified target.\n",
     "query        Query the state of an active link.\n",
@@ -273,6 +274,36 @@ const COMMAND: &[&str] = &[
     "\n",
 ];
 
+const MAP_COMMAND: &[&str] = &[
+    "Send a map command frame to a remote lane.\n",
+    "In all cases, the key and/or value must be valid Recon.\n",
+    "Recon values that contain white space must be quoted with backticks.\n",
+    "Example: `@item \"name\"`\n",
+    "\n",
+    "map-command id:(integer) body:(map_cmd)\n",
+    "\n",
+    "Send a command to the link with the given ID.\n",
+    "\n",
+    "map-command name:(string) body:(map_cmd)\n",
+    "\n",
+    "Send a command to the link with the given name.\n",
+    "\n",
+    "map-command $target:(string) body:(map_cmd)",
+    "\n",
+    "Send a command to an endpoint name defined with the 'target' command.\n",
+    "\n",
+    "map-command [--host|-h host_name] [--node|-n node_uri] [--lane|-l lane] body:(map_cmd)\n",
+    "\n",
+    "Send a command to the specified lane. If a link is already open to that lane, it will be used.\n",
+    "\n",
+    "Map commands are one of:\n",
+    "\n",
+    "1. update key:(recon) value:(recon)\n",
+    "2. remove key:(recon)\n",
+    "1. clear\n",
+    "\n",
+];
+
 const LINK: &[&str] = &[
     "Open a link to a remote lane.\n",
     "\n",
@@ -324,7 +355,7 @@ const QUERY: &[&str] = &[
 const TARGET: &[&str] = &[
     "Defined a named target for issuing commands.\n",
     "\n",
-    "link [--host|-h host_name:(string)] [--node|-n node_uri:(string)] [--lane|-l lane:(string)] name:(string)\n",
+    "target [--host|-h host_name:(string)] [--node|-n node_uri:(string)] [--lane|-l lane:(string)] name:(string)\n",
     "\n",
 ];
 
@@ -413,6 +444,7 @@ fn on_command(
                 "lane-pulse" => LANE_PULSE,
                 "node-pulse" => NODE_PULSE,
                 "link" => LINK,
+                "map-command" => MAP_COMMAND,
                 "periodically" => PERIODICALLY,
                 "query" => QUERY,
                 "sync" => SYNC,

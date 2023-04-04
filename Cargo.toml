@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "client/*",
     "swim",
     "api/swim_*",
     "api/formats/swim_*",
@@ -11,11 +12,17 @@ members = [
     "swim_utilities/swim_*",
     "swim_downlink",
     "server/swim_*",
+    "example_apps/example_util",
     "example_apps/basic",
     "example_apps/console",
     "example_apps/console/console_views",
     "example_apps/multi/server",
     "example_apps/multi/client",
+    "example_apps/value_lane",
+    "example_apps/map_lane",
+    "example_apps/command_lane",
+    "example_apps/value_store",
+    "example_apps/map_store",
     "example_apps/single_lane",
     "example_apps/meta/*"
 ]
@@ -62,7 +69,7 @@ thiserror = "1.0"
 static_assertions = "1.1.0"
 url = "2.1.1"
 chrono = "0.4"
-trybuild = "1.0.48"
+trybuild = "1.0.65"
 proc-macro2 = "1.0"
 syn = "1.0"
 quote = "1.0.3"
@@ -78,6 +85,7 @@ webpki = "0.22"
 webpki-roots = "0.22"
 tokio-rustls = "0.23"
 rustls-pemfile = "1.0.0"
+trust-dns-resolver = "0.22.0"
 clap = "4.1"
 crossbeam-queue = { version = "0.3" }
 crossbeam-channel = { version = "0.5" }

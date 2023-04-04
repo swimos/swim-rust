@@ -14,6 +14,7 @@
 
 use std::time::Duration;
 
+use swim_api::protocol::map::MapMessage;
 use swim_model::Value;
 use swim_recon::parser::parse_value;
 use swim_utilities::routing::route_uri::RouteUri;
@@ -467,6 +468,184 @@ fn parse_periodically() {
             delay: Duration::from_secs(1),
             limit: None,
             kind: DataKind::I32(Some(5..10))
+        }
+    );
+}
+
+#[test]
+fn parse_map_command() {
+    let host: Host = "localhost:8080".parse().unwrap();
+    let node: RouteUri = "/node".parse().unwrap();
+
+    let cmd = to_controller(
+        super::parse_app_command("map-command 1 update 45 hello").expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::MapCommand {
+            target: TargetRef::Link(LinkRef::ById(1)),
+            body: MapMessage::Update {
+                key: Value::Int32Value(45),
+                value: Value::text("hello")
+            },
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("map-command 1 remove 45").expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::MapCommand {
+            target: TargetRef::Link(LinkRef::ById(1)),
+            body: MapMessage::Remove {
+                key: Value::Int32Value(45)
+            },
+        }
+    );
+
+    let cmd =
+        to_controller(super::parse_app_command("map-command 1 clear").expect("Should succeed."));
+    assert_eq!(
+        cmd,
+        ControllerCommand::MapCommand {
+            target: TargetRef::Link(LinkRef::ById(1)),
+            body: MapMessage::Clear,
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("map-command my_link update Hello 67").expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::MapCommand {
+            target: TargetRef::Link(LinkRef::ByName("my_link".to_string())),
+            body: MapMessage::Update {
+                key: Value::text("Hello"),
+                value: Value::Int32Value(67)
+            },
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("map-command my_link remove Hello").expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::MapCommand {
+            target: TargetRef::Link(LinkRef::ByName("my_link".to_string())),
+            body: MapMessage::Remove {
+                key: Value::text("Hello")
+            },
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("map-command my_link clear").expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::MapCommand {
+            target: TargetRef::Link(LinkRef::ByName("my_link".to_string())),
+            body: MapMessage::Clear,
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("map-command $my_target update true -6").expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::MapCommand {
+            target: TargetRef::CommandTarget("my_target".to_string()),
+            body: MapMessage::Update {
+                key: Value::BooleanValue(true),
+                value: Value::Int32Value(-6)
+            },
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("map-command $my_target remove true").expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::MapCommand {
+            target: TargetRef::CommandTarget("my_target".to_string()),
+            body: MapMessage::Remove {
+                key: Value::BooleanValue(true)
+            },
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("map-command $my_target clear").expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::MapCommand {
+            target: TargetRef::CommandTarget("my_target".to_string()),
+            body: MapMessage::Clear,
+        }
+    );
+
+    let expected_value = parse_value("@complex {1, 2, 3}", false).unwrap();
+
+    let cmd = to_controller(
+        super::parse_app_command(
+            "map-command --host localhost:8080 -n /node -l lane update 4 `@complex {1, 2, 3}`",
+        )
+        .expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::MapCommand {
+            target: TargetRef::Direct(Target {
+                remote: Some(host.clone()),
+                node: Some(node.clone()),
+                lane: Some("lane".to_string())
+            }),
+            body: MapMessage::Update {
+                key: Value::Int32Value(4),
+                value: expected_value.clone()
+            }
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command(
+            "map-command --host localhost:8080 -n /node -l lane remove `@complex {1, 2, 3}`",
+        )
+        .expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::MapCommand {
+            target: TargetRef::Direct(Target {
+                remote: Some(host.clone()),
+                node: Some(node.clone()),
+                lane: Some("lane".to_string())
+            }),
+            body: MapMessage::Remove {
+                key: expected_value
+            }
+        }
+    );
+
+    let cmd = to_controller(
+        super::parse_app_command("map-command --host localhost:8080 -n /node -l lane clear")
+            .expect("Should succeed."),
+    );
+    assert_eq!(
+        cmd,
+        ControllerCommand::MapCommand {
+            target: TargetRef::Direct(Target {
+                remote: Some(host),
+                node: Some(node),
+                lane: Some("lane".to_string())
+            }),
+            body: MapMessage::Clear
         }
     );
 }

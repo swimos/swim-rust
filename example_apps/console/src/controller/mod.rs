@@ -15,6 +15,7 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use parking_lot::RwLock;
+use swim_form::Form;
 use swim_utilities::routing::route_uri::RouteUri;
 use tokio::sync::mpsc;
 
@@ -215,6 +216,24 @@ impl Controller {
                 }
                 Err(msg) => vec![msg],
             },
+            ControllerCommand::MapCommand { target, body } => {
+                let recon = Form::into_value(body);
+                match self.resolve(target) {
+                    Ok(EndpointOrId::Id(id)) => {
+                        self.command_tx
+                            .send(RuntimeCommand::Command(id, recon))
+                            .expect(BAD_CHAN);
+                        vec![]
+                    }
+                    Ok(EndpointOrId::Endpoint(endpoint)) => {
+                        self.command_tx
+                            .send(RuntimeCommand::AdHocCommand(endpoint, recon))
+                            .expect(BAD_CHAN);
+                        vec![]
+                    }
+                    Err(msg) => vec![msg],
+                }
+            }
             ControllerCommand::Link {
                 name,
                 target,

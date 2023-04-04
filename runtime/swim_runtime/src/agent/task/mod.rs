@@ -872,13 +872,18 @@ async fn read_task(
                 } else {
                     info!("Received envelope for non-existent lane '{}'.", path.lane);
                     let flush = flush_lane(&mut lanes, &mut needs_flush);
-                    let send_err = write_tx.send(WriteTaskMessage::Coord(
-                        RwCoordinationMessage::UnknownLane {
-                            origin,
-                            path: Path::text(path.node.as_str(), path.lane.as_str()),
-                        },
-                    ));
-                    let (_, result) = join(flush, send_err).await;
+                    let result = if envelope.is_command() {
+                        flush.await;
+                        Ok(())
+                    } else {
+                        let send_err = write_tx.send(WriteTaskMessage::Coord(
+                            RwCoordinationMessage::UnknownLane {
+                                origin,
+                                path: Path::text(path.node.as_str(), path.lane.as_str()),
+                            },
+                        ));
+                        join(flush, send_err).await.1
+                    };
                     if result.is_err() {
                         error!(TASK_COORD_ERR);
                         break;

@@ -27,6 +27,7 @@ use swim_api::protocol::agent::{
 use swim_api::{agent::UplinkKind, error::FrameIoError, protocol::map::MapMessage};
 use swim_form::structural::read::{recognizer::RecognizerReadable, ReadError};
 use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
+use swim_utilities::future::try_last;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
 
@@ -200,7 +201,7 @@ impl<Agent, K, V> JoinValueInitializer<Agent, K, V> {
 }
 
 async fn value_like_init<Agent, F, T>(
-    mut stream: BoxStream<'_, Result<BytesMut, FrameIoError>>,
+    stream: BoxStream<'_, Result<BytesMut, FrameIoError>>,
     init: F,
 ) -> Result<InitFn<Agent>, FrameIoError>
 where
@@ -208,10 +209,7 @@ where
     T: RecognizerReadable + Send + 'static,
     F: FnOnce(&Agent, T) + Send + 'static,
 {
-    let mut body = None;
-    while let Some(result) = stream.next().await {
-        body = Some(result?);
-    }
+    let body = try_last(stream).await?;
     if let Some(mut body) = body {
         let mut decoder = RecognizerDecoder::new(T::make_recognizer());
         if let Some(value) = decoder.decode_eof(&mut body)? {
@@ -301,7 +299,9 @@ where
             }
             MapMessage::Drop(n) => {
                 let to_remove = usize::try_from(n).expect("Number to drop too large.");
-                if to_remove > 0 {
+                if to_remove >= map.len() {
+                    map.clear()
+                } else if to_remove > 0 {
                     for k in map.keys().take(to_remove).cloned().collect::<Vec<_>>() {
                         map.remove(&k);
                     }

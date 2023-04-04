@@ -218,8 +218,8 @@ where
         } else {
             let available = permits.load(Ordering::Relaxed);
             if available == *capacity {
+                waker.register(cx.waker());
                 if sender_active.load(Ordering::Acquire) {
-                    waker.register(cx.waker());
                     let check = permits.load(Ordering::Acquire);
                     if check == *capacity {
                         return Poll::Pending;

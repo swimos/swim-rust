@@ -15,7 +15,7 @@
 use std::collections::{HashMap, HashSet};
 
 use std::fmt::Write;
-use swim::agent::agent_model::{ItemSpec, LaneFlags};
+use swim::agent::agent_model::{ItemFlags, ItemSpec};
 use swim::agent::lanes::{CommandLane, MapLane, ValueLane};
 use swim::agent::model::MapMessage;
 use swim::agent::model::Text;

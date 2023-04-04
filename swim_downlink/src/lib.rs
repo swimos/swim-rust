@@ -17,7 +17,7 @@ mod task;
 
 pub use model::{
     event_downlink, value_downlink, DefaultEventDownlinkModel, DefaultValueDownlinkModel,
-    EventDownlinkModel, ValueDownlinkModel,
+    EventDownlinkModel, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation,
 };
 pub mod lifecycle {
     pub use crate::model::lifecycle::{

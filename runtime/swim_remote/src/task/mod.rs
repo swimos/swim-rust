@@ -58,6 +58,7 @@ use tracing::{debug, error, info, info_span, trace, warn};
 use tracing_futures::Instrument;
 
 use crate::error::AgentResolutionError;
+use crate::NoSuchAgent;
 
 use self::envelopes::ReconEncoder;
 
@@ -98,7 +99,7 @@ pub struct RemoteTask<S, E> {
     stop_signal: trigger::Receiver,
     ws: WebSocket<S, E>,
     attach_rx: mpsc::Receiver<AttachClient>,
-    find_tx: mpsc::Sender<FindNode>,
+    find_tx: Option<mpsc::Sender<FindNode>>,
     registration_buffer_size: NonZeroUsize,
 }
 
@@ -108,7 +109,7 @@ impl<S, E> RemoteTask<S, E> {
         stop_signal: trigger::Receiver,
         ws: WebSocket<S, E>,
         attach_rx: mpsc::Receiver<AttachClient>,
-        find_tx: mpsc::Sender<FindNode>,
+        find_tx: Option<mpsc::Sender<FindNode>>,
         registration_buffer_size: NonZeroUsize,
     ) -> Self {
         RemoteTask {
@@ -128,6 +129,7 @@ enum IncomingEvent<M> {
     Message(Result<M, InputError>),
 }
 
+#[derive(Debug)]
 enum OutgoingEvent {
     Message(OutgoingTaskMessage),
     Request(BytesRequestMessage),
@@ -153,7 +155,7 @@ where
     S: WebSocketStream + Send,
     E: SplittableExtension + Send,
 {
-    #[allow(clippy::manual_async_fn)] //To allow the static guarnatee that this future is Send.
+    #[allow(clippy::manual_async_fn)] //To allow the static guarantee that this future is Send.
     pub fn run<'a>(self) -> impl Future<Output = ()> + Send + 'a
     where
         S: 'a,
@@ -179,7 +181,6 @@ where
         let (outgoing_tx, outgoing_rx) = mpsc::channel(registration_buffer_size.get());
 
         let combined_stop = select(stop_signal.clone(), kill_switch_rx);
-
         let reg = registration_task(attach_rx, incoming_tx, outgoing_tx.clone(), combined_stop)
             .instrument(info_span!("Websocket coordination task."));
 
@@ -203,7 +204,6 @@ where
             .instrument(info_span!("Websocket outgoing task"));
 
         let (_, result) = join(reg, await_io_tasks(in_task, out_task, kill_switch_tx)).await;
-
         let close_reason = match result {
             Ok(_) => Some(CloseReason::new(
                 CloseCode::GoingAway,
@@ -298,6 +298,7 @@ enum OutgoingTaskMessage {
         done: trigger::Sender,
     },
     NotFound {
+        command_envelope: bool,
         error: AgentResolutionError,
     },
 }
@@ -334,6 +335,7 @@ async fn registration_task<F>(
                 }
             }
         };
+
         match request {
             AttachClient::AttachDownlink {
                 path,
@@ -420,7 +422,13 @@ impl OutgoingTask {
         loop {
             let event = tokio::select! {
                 _ = &mut stop_signal => break,
-                Some(message) = messages_rx.recv() => OutgoingEvent::Message(message),
+                message = messages_rx.recv() => match message {
+                    // todo: there seems to be some issue with using 'Some(message)' as the condition
+                    //  of this branch as it never triggers any branch (including the else) when the
+                    //  value is 'None'
+                    Some(message) => OutgoingEvent::Message(message),
+                    None => break,
+                },
                 Some(result) = clients.next(), if !clients.is_empty() => {
                     match result {
                         Ok(request) => OutgoingEvent::Request(request),
@@ -441,6 +449,7 @@ impl OutgoingTask {
                 },
                 else => break,
             };
+
             match event {
                 OutgoingEvent::Message(OutgoingTaskMessage::RegisterOutgoing {
                     kind,
@@ -460,21 +469,25 @@ impl OutgoingTask {
                 }
                 OutgoingEvent::Message(OutgoingTaskMessage::NotFound {
                     error: AgentResolutionError::NotFound(error),
+                    command_envelope,
                 }) => {
-                    debug!(lane = ?error, "Sending node/lane not found envelope.");
-                    buffer.clear();
-                    recon_encoder
-                        .encode(error, &mut buffer)
-                        .expect("Encoding a frame should be infallible.");
-                    if let Err(error) = output.write(&buffer, PayloadType::Text).await {
-                        error!(error = %error, "Writing to the websocket connection failed.");
-                        break;
+                    if !command_envelope {
+                        debug!(lane = ?error, "Sending node/lane not found envelope.");
+                        buffer.clear();
+                        recon_encoder
+                            .encode(error, &mut buffer)
+                            .expect("Encoding a frame should be infallible.");
+                        if let Err(error) = output.write(&buffer, PayloadType::Text).await {
+                            error!(error = %error, "Writing to the websocket connection failed.");
+                            break;
+                        }
                     }
                 }
                 OutgoingEvent::Message(OutgoingTaskMessage::NotFound {
                     error: AgentResolutionError::PlaneStopping,
+                    ..
                 }) => {
-                    info!("Ommitting unlinked message as the plane is stopping.");
+                    info!("Omitting unlinked message as the plane is stopping.");
                 }
                 OutgoingEvent::Request(req) => {
                     trace!(envelope = ?req, "Sending request envelope.");
@@ -526,7 +539,7 @@ impl IncomingTask {
         mut stop_signal: trigger::Receiver,
         input: In,
         mut attach_rx: mpsc::Receiver<RegisterIncoming>,
-        find_tx: mpsc::Sender<FindNode>,
+        find_tx: Option<mpsc::Sender<FindNode>>,
         outgoing_tx: mpsc::Sender<OutgoingTaskMessage>,
     ) -> Result<(), InputError>
     where
@@ -579,44 +592,65 @@ impl IncomingTask {
                     let body = frame.as_ref();
                     match peel_envelope_header_str(body) {
                         Ok(envelope) => match interpret_envelope(*id, envelope) {
-                            Some(Either::Left(request)) => {
-                                let node = request.path.node.as_ref();
+                            Some(Either::Left(request)) => match &find_tx {
+                                Some(find_tx) => {
+                                    let node = request.path.node.as_ref();
 
-                                let dispatched = if let Some(writer) = agent_routes.get_mut(node) {
-                                    if let Err(error) = writer.send(&request).await {
-                                        debug!(error = %error, "Forwarding envelope to agent route failed.");
-                                        agent_routes.remove(node);
-                                        false
-                                    } else {
-                                        true
-                                    }
-                                } else {
-                                    false
-                                };
-                                if !dispatched {
-                                    match connect_agent_route(
-                                        *id,
-                                        Text::new(node),
-                                        Text::new(request.path.lane.as_ref()),
-                                        &find_tx,
-                                        &outgoing_tx,
-                                    )
-                                    .await
+                                    let dispatched = if let Some(writer) =
+                                        agent_routes.get_mut(node)
                                     {
-                                        Ok(Some(writer)) => {
-                                            let writer = agent_routes
-                                                .entry(Text::new(node))
-                                                .or_insert_with_key(move |_| writer);
-                                            if let Err(error) = writer.send(&request).await {
-                                                error!(error = %error, "Envelope not dispatched as agent stopped immediately.");
-                                                agent_routes.remove(node);
-                                            }
+                                        if let Err(error) = writer.send(&request).await {
+                                            debug!(error = %error, "Forwarding envelope to agent route failed.");
+                                            agent_routes.remove(node);
+                                            false
+                                        } else {
+                                            true
                                         }
-                                        Err(_) => break Ok(()),
-                                        _ => {}
+                                    } else {
+                                        false
+                                    };
+                                    if !dispatched {
+                                        match connect_agent_route(
+                                            *id,
+                                            Text::new(node),
+                                            Text::new(request.path.lane.as_ref()),
+                                            request.envelope.is_command(),
+                                            find_tx,
+                                            &outgoing_tx,
+                                        )
+                                        .await
+                                        {
+                                            Ok(Some(writer)) => {
+                                                let writer = agent_routes
+                                                    .entry(Text::new(node))
+                                                    .or_insert_with_key(move |_| writer);
+                                                if let Err(error) = writer.send(&request).await {
+                                                    error!(error = %error, "Envelope not dispatched as agent stopped immediately.");
+                                                    agent_routes.remove(node);
+                                                }
+                                            }
+                                            Err(_) => break Ok(()),
+                                            _ => {}
+                                        }
                                     }
                                 }
-                            }
+                                None => {
+                                    let RequestMessage { path, .. } = request;
+                                    if outgoing_tx
+                                        .send(OutgoingTaskMessage::NotFound {
+                                            command_envelope: request.envelope.is_command(),
+                                            error: AgentResolutionError::NotFound(NoSuchAgent {
+                                                node: path.node.into(),
+                                                lane: path.lane.into(),
+                                            }),
+                                        })
+                                        .await
+                                        .is_err()
+                                    {
+                                        break Ok(());
+                                    }
+                                }
+                            },
                             Some(Either::Right(response)) => {
                                 let Path { node, lane } = response.path.clone();
                                 if let Some(node_map) = client_subscriptions.get_mut(node.as_ref())
@@ -669,6 +703,7 @@ async fn connect_agent_route(
     source: Uuid,
     node: Text,
     lane: Text,
+    command_envelope: bool,
     find_tx: &mpsc::Sender<FindNode>,
     outgoing_tx: &mpsc::Sender<OutgoingTaskMessage>,
 ) -> Result<Option<RequestWriter>, ()> {
@@ -703,7 +738,10 @@ async fn connect_agent_route(
             }
         }
         Ok(Err(error)) => outgoing_tx
-            .send(OutgoingTaskMessage::NotFound { error })
+            .send(OutgoingTaskMessage::NotFound {
+                error,
+                command_envelope,
+            })
             .await
             .map(move |_| None)
             .map_err(|_| ()),

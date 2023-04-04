@@ -207,7 +207,7 @@ where
         stop_rx,
         ReceiverStream::new(in_rx),
         attach_rx,
-        find_tx,
+        Some(find_tx),
         outgoing_tx,
     );
 
@@ -552,8 +552,10 @@ async fn incoming_route_not_found_env() {
 
         match outgoing_rx.recv().await {
             Some(OutgoingTaskMessage::NotFound {
+                command_envelope,
                 error: AgentResolutionError::NotFound(NoSuchAgent { node, lane }),
             }) => {
+                assert!(command_envelope);
                 assert_eq!(node, OTHER);
                 assert_eq!(lane, LANE);
             }
@@ -934,6 +936,7 @@ async fn outgoing_lane_not_found() {
 
         outgoing_tx
             .send(OutgoingTaskMessage::NotFound {
+                command_envelope: false,
                 error: AgentResolutionError::NotFound(NoSuchAgent {
                     node: Text::new(OTHER),
                     lane: Text::new(LANE),
@@ -1009,7 +1012,7 @@ where
         client,
     };
 
-    let remote = super::RemoteTask::new(ID, stop_rx, server, attach_rx, find_tx, CHAN_SIZE);
+    let remote = super::RemoteTask::new(ID, stop_rx, server, attach_rx, Some(find_tx), CHAN_SIZE);
 
     let remote_task = remote.run();
 

@@ -43,6 +43,12 @@ pub enum Operation<T> {
     Command(T),
 }
 
+impl<T> Operation<T> {
+    pub fn is_command(&self) -> bool {
+        matches!(self, Operation::Command(_))
+    }
+}
+
 /// Notifications that can be produced by an agent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Notification<T, U> {
