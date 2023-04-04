@@ -207,7 +207,7 @@ where
         stop_rx,
         ReceiverStream::new(in_rx),
         attach_rx,
-        find_tx,
+        Some(find_tx),
         outgoing_tx,
     );
 
@@ -1012,7 +1012,7 @@ where
         client,
     };
 
-    let remote = super::RemoteTask::new(ID, stop_rx, server, attach_rx, find_tx, CHAN_SIZE);
+    let remote = super::RemoteTask::new(ID, stop_rx, server, attach_rx, Some(find_tx), CHAN_SIZE);
 
     let remote_task = remote.run();
 

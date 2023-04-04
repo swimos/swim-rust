@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{hash_map::Entry, BTreeMap, HashMap},
     sync::Arc,
 };
 
@@ -110,7 +110,7 @@ impl PlanePersistence for InMemoryPlanePersistence {
     }
 }
 
-type MapIt<'a> = std::collections::hash_map::Iter<'a, Vec<u8>, Vec<u8>>;
+type MapIt<'a> = std::collections::btree_map::Iter<'a, Vec<u8>, Vec<u8>>;
 
 pub struct InMemRangeConsumer<'a>(Option<MapIt<'a>>);
 
@@ -147,7 +147,7 @@ impl Ids {
 struct NodeState {
     ids: Mutex<Ids>,
     values: HashMap<u64, Vec<u8>>,
-    maps: HashMap<u64, HashMap<Vec<u8>, Vec<u8>>>,
+    maps: HashMap<u64, BTreeMap<Vec<u8>, Vec<u8>>>,
 }
 
 impl NodePersistence for InMemoryNodePersistence {

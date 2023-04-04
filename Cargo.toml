@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "client/*",
     "swim",
     "api/swim_*",
     "api/formats/swim_*",
@@ -66,7 +67,7 @@ thiserror = "1.0"
 static_assertions = "1.1.0"
 url = "2.1.1"
 chrono = "0.4"
-trybuild = "1.0.48"
+trybuild = "1.0.65"
 proc-macro2 = "1.0"
 syn = "1.0"
 quote = "1.0.3"
@@ -82,6 +83,7 @@ webpki = "0.22"
 webpki-roots = "0.22"
 tokio-rustls = "0.23"
 rustls-pemfile = "1.0.0"
+trust-dns-resolver = "0.22.0"
 clap = "4.1"
 crossbeam-queue = { version = "0.3" }
 crossbeam-channel = { version = "0.5" }

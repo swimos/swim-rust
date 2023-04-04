@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Debug;
 use std::num::NonZeroUsize;
 
 use swim_api::{
@@ -21,10 +22,11 @@ use swim_api::{
 };
 
 use swim_utilities::non_zero_usize;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 use super::run_downlink_task;
 use crate::model::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
+use crate::model::{NotYetSyncedError, ValueDownlinkOperation};
 use crate::{DownlinkTask, ValueDownlinkModel};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -61,7 +63,7 @@ where
         })
 }
 
-async fn expect_event<T: Eq + std::fmt::Debug>(
+async fn expect_event<T: Eq + Debug>(
     event_rx: &mut mpsc::UnboundedReceiver<TestMessage<T>>,
     expected: TestMessage<T>,
 ) {
@@ -73,9 +75,9 @@ const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
 #[tokio::test]
 async fn link_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32>>();
-    let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = ValueDownlinkModel::new(set_rx, lifecycle);
+    let (handle_tx, handle_rx) = mpsc::channel(8);
+    let model = ValueDownlinkModel::new(handle_rx, lifecycle);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -90,6 +92,8 @@ async fn link_downlink() {
             let _reader = reader;
             writer.send_value::<i32>(DownlinkNotification::Linked).await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
+            assert!(get_value(handle_tx).await.is_err());
+
             event_rx
         },
     )
@@ -101,9 +105,9 @@ async fn link_downlink() {
 #[tokio::test]
 async fn invalid_sync_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32>>();
-    let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = ValueDownlinkModel::new(set_rx, lifecycle);
+    let (_handle_tx, handle_rx) = mpsc::channel(8);
+    let model = ValueDownlinkModel::new(handle_rx, lifecycle);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -125,12 +129,24 @@ async fn invalid_sync_downlink() {
     assert!(matches!(result, Err(DownlinkTaskError::SyncedWithNoValue)));
 }
 
+async fn get_value<T>(tx: mpsc::Sender<ValueDownlinkOperation<T>>) -> Result<T, NotYetSyncedError>
+where
+    T: Debug,
+{
+    let (callback_tx, callback_rx) = oneshot::channel();
+    tx.send(ValueDownlinkOperation::Get(callback_tx))
+        .await
+        .unwrap();
+    callback_rx.await.unwrap()
+}
+
 #[tokio::test]
 async fn sync_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32>>();
-    let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = ValueDownlinkModel::new(set_rx, lifecycle);
+    let (handle_tx, handle_rx) = mpsc::channel(8);
+
+    let model = ValueDownlinkModel::new(handle_rx, lifecycle);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -138,11 +154,15 @@ async fn sync_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
+    let task_handle_tx = handle_tx.clone();
     let result = run_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
             let _reader = reader;
+
+            assert!(get_value(task_handle_tx).await.is_err());
+
             writer.send_value::<i32>(DownlinkNotification::Linked).await;
             writer
                 .send_value::<i32>(DownlinkNotification::Event { body: 5 })
@@ -150,6 +170,7 @@ async fn sync_downlink() {
             writer.send_value::<i32>(DownlinkNotification::Synced).await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             expect_event(&mut event_rx, TestMessage::Synced(5)).await;
+            assert_eq!(get_value(handle_tx).await.unwrap(), 5);
             event_rx
         },
     )
@@ -161,9 +182,9 @@ async fn sync_downlink() {
 #[tokio::test]
 async fn report_events_before_sync() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32>>();
-    let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = ValueDownlinkModel::new(set_rx, lifecycle);
+    let (_handle_tx, handle_rx) = mpsc::channel(8);
+    let model = ValueDownlinkModel::new(handle_rx, lifecycle);
 
     let config = DownlinkConfig {
         events_when_not_synced: true,
@@ -199,9 +220,9 @@ async fn report_events_before_sync() {
 #[tokio::test]
 async fn report_events_after_sync() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32>>();
-    let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = ValueDownlinkModel::new(set_rx, lifecycle);
+    let (handle_tx, handle_rx) = mpsc::channel(8);
+    let model = ValueDownlinkModel::new(handle_rx, lifecycle);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -226,6 +247,7 @@ async fn report_events_after_sync() {
             expect_event(&mut event_rx, TestMessage::Synced(5)).await;
             expect_event(&mut event_rx, TestMessage::Event(67)).await;
             expect_event(&mut event_rx, TestMessage::Set(Some(5), 67)).await;
+            assert_eq!(get_value(handle_tx.clone()).await.unwrap(), 67);
             event_rx
         },
     )
@@ -237,9 +259,9 @@ async fn report_events_after_sync() {
 #[tokio::test]
 async fn terminate_after_unlinked() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32>>();
-    let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = ValueDownlinkModel::new(set_rx, lifecycle);
+    let (handle_tx, handle_rx) = mpsc::channel(8);
+    let model = ValueDownlinkModel::new(handle_rx, lifecycle);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -256,11 +278,12 @@ async fn terminate_after_unlinked() {
                 .send_value::<i32>(DownlinkNotification::Event { body: 5 })
                 .await;
             writer.send_value::<i32>(DownlinkNotification::Synced).await;
+            expect_event(&mut event_rx, TestMessage::Linked).await;
+            expect_event(&mut event_rx, TestMessage::Synced(5)).await;
+            assert_eq!(get_value(handle_tx).await.unwrap(), 5);
             writer
                 .send_value::<i32>(DownlinkNotification::Unlinked)
                 .await;
-            expect_event(&mut event_rx, TestMessage::Linked).await;
-            expect_event(&mut event_rx, TestMessage::Synced(5)).await;
             expect_event(&mut event_rx, TestMessage::Unlinked).await;
             (writer, reader, event_rx)
         },
@@ -279,9 +302,9 @@ async fn terminate_after_unlinked() {
 #[tokio::test]
 async fn terminate_after_corrupt_frame() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32>>();
-    let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = ValueDownlinkModel::new(set_rx, lifecycle);
+    let (_handle_tx, handle_rx) = mpsc::channel(8);
+    let model = ValueDownlinkModel::new(handle_rx, lifecycle);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -311,9 +334,9 @@ async fn terminate_after_corrupt_frame() {
 #[tokio::test]
 async fn unlink_discards_value() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32>>();
-    let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = ValueDownlinkModel::new(set_rx, lifecycle);
+    let (_handle_tx, handle_rx) = mpsc::channel(8);
+    let model = ValueDownlinkModel::new(handle_rx, lifecycle);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -349,9 +372,9 @@ async fn unlink_discards_value() {
 #[tokio::test]
 async fn relink_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32>>();
-    let (_set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = ValueDownlinkModel::new(set_rx, lifecycle);
+    let (handle_tx, handle_rx) = mpsc::channel(8);
+    let model = ValueDownlinkModel::new(handle_rx, lifecycle);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -382,6 +405,7 @@ async fn relink_downlink() {
             expect_event(&mut event_rx, TestMessage::Unlinked).await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             expect_event(&mut event_rx, TestMessage::Synced(7)).await;
+            assert_eq!(get_value(handle_tx.clone()).await.unwrap(), 7);
             event_rx
         },
     )
@@ -393,9 +417,9 @@ async fn relink_downlink() {
 #[tokio::test]
 async fn send_on_downlink() {
     let (event_tx, _event_rx) = mpsc::unbounded_channel::<TestMessage<i32>>();
-    let (set_tx, set_rx) = mpsc::channel(16);
     let lifecycle = make_lifecycle(event_tx);
-    let model = ValueDownlinkModel::new(set_rx, lifecycle);
+    let (handle_tx, handle_rx) = mpsc::channel(8);
+    let model = ValueDownlinkModel::new(handle_rx, lifecycle);
 
     let config = DownlinkConfig {
         events_when_not_synced: false,
@@ -408,7 +432,10 @@ async fn send_on_downlink() {
         config,
         |writer, mut reader| async move {
             let _writer = writer;
-            assert!(set_tx.send(12).await.is_ok());
+            handle_tx
+                .send(ValueDownlinkOperation::Set(12))
+                .await
+                .unwrap();
             assert_eq!(reader.recv::<i32>().await, Ok(Some(12)));
         },
     )
