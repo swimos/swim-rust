@@ -29,7 +29,7 @@ use swim_model::{Text, ValueKind};
 use crate::agent::UplinkKind;
 
 /// An enumeration representing the type of a lane.
-#[derive(Tag, Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Tag, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 #[form_root(::swim_form)]
 pub enum LaneKind {
     Action,
@@ -45,6 +45,13 @@ pub enum LaneKind {
 }
 
 impl LaneKind {
+    pub fn map_like(&self) -> bool {
+        matches!(
+            self,
+            LaneKind::Map | LaneKind::DemandMap | LaneKind::JoinMap | LaneKind::JoinValue
+        )
+    }
+
     pub fn uplink_kind(&self) -> UplinkKind {
         match self {
             LaneKind::Map | LaneKind::DemandMap | LaneKind::JoinMap => UplinkKind::Map,

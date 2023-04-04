@@ -105,6 +105,8 @@ pub mod agent_model {
         LaneFlags, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,
         ValueStoreInitializer, WriteResult,
     };
+    pub use swim_api::meta::lane::LaneKind;
+    pub use swim_api::store::StoreKind;
 }
 
 pub mod item {

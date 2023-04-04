@@ -146,6 +146,7 @@ pub enum ControllerCommand {
     Meta(MetaCommand),
 }
 
+#[allow(dead_code)]
 #[derive(PartialEq, Eq, Debug, Hash)]
 pub enum MetaCommand {
     Lanes(LinkRef),

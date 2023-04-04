@@ -116,8 +116,6 @@ async fn run_init(
         .add_lane(LANES_LANE, LaneKind::DemandMap, lane_config)
         .await?;
 
-    unimplemented!();
-
     Ok(run_task(pulse_interval, handle, pulse_io, lanes_io).boxed())
 }
 

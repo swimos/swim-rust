@@ -22,7 +22,7 @@ use futures::{
 };
 
 /// Kinds of stores that can be persisted in the state of an agent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StoreKind {
     /// A store containing a single value.
     Value,

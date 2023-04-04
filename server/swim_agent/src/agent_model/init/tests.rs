@@ -73,7 +73,7 @@ async fn init_value_lane() {
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = WithLengthBytesCodec::default();
     let init_task = run_item_initializer(
-        ItemKind::Lane,
+        ItemKind::VALUE_LANE,
         "value_lane",
         UplinkKind::Value,
         (out_tx, in_rx),
@@ -119,7 +119,7 @@ async fn init_value_lane() {
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Lane);
+    assert_eq!(item_kind, ItemKind::VALUE_LANE);
     assert_eq!(name, "value_lane");
     assert_eq!(kind, UplinkKind::Value);
 
@@ -137,7 +137,7 @@ async fn init_value_store() {
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = WithLengthBytesCodec::default();
     let init_task = run_item_initializer(
-        ItemKind::Store,
+        ItemKind::VALUE_STORE,
         "value_store",
         UplinkKind::Value,
         (out_tx, in_rx),
@@ -180,7 +180,7 @@ async fn init_value_store() {
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Store);
+    assert_eq!(item_kind, ItemKind::VALUE_STORE);
     assert_eq!(name, "value_store");
     assert_eq!(kind, UplinkKind::Value);
 
@@ -198,7 +198,7 @@ async fn init_value_lane_no_data() {
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = WithLengthBytesCodec::default();
     let init_task = run_item_initializer(
-        ItemKind::Lane,
+        ItemKind::VALUE_LANE,
         "value_lane",
         UplinkKind::Value,
         (out_tx, in_rx),
@@ -240,7 +240,7 @@ async fn init_value_lane_no_data() {
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Lane);
+    assert_eq!(item_kind, ItemKind::VALUE_LANE);
     assert_eq!(name, "value_lane");
     assert_eq!(kind, UplinkKind::Value);
 
@@ -258,7 +258,7 @@ async fn init_value_store_no_data() {
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = WithLengthBytesCodec::default();
     let init_task = run_item_initializer(
-        ItemKind::Store,
+        ItemKind::VALUE_STORE,
         "value_store",
         UplinkKind::Value,
         (out_tx, in_rx),
@@ -297,7 +297,7 @@ async fn init_value_store_no_data() {
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Store);
+    assert_eq!(item_kind, ItemKind::VALUE_STORE);
     assert_eq!(name, "value_store");
     assert_eq!(kind, UplinkKind::Value);
 
@@ -315,7 +315,7 @@ async fn init_map_lane() {
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
     let init_task = run_item_initializer(
-        ItemKind::Lane,
+        ItemKind::MAP_LANE,
         "map_lane",
         UplinkKind::Map,
         (out_tx, in_rx),
@@ -378,7 +378,7 @@ async fn init_map_lane() {
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Lane);
+    assert_eq!(item_kind, ItemKind::MAP_LANE);
     assert_eq!(name, "map_lane");
     assert_eq!(kind, UplinkKind::Map);
 
@@ -401,7 +401,7 @@ async fn init_map_store() {
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
     let init_task = run_item_initializer(
-        ItemKind::Store,
+        ItemKind::MAP_STORE,
         "map_store",
         UplinkKind::Map,
         (out_tx, in_rx),
@@ -461,7 +461,7 @@ async fn init_map_store() {
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Store);
+    assert_eq!(item_kind, ItemKind::MAP_STORE);
     assert_eq!(name, "map_store");
     assert_eq!(kind, UplinkKind::Map);
 
@@ -484,7 +484,7 @@ async fn init_map_lane_no_data() {
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
     let init_task = run_item_initializer(
-        ItemKind::Lane,
+        ItemKind::MAP_LANE,
         "map_lane",
         UplinkKind::Map,
         (out_tx, in_rx),
@@ -526,7 +526,7 @@ async fn init_map_lane_no_data() {
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Lane);
+    assert_eq!(item_kind, ItemKind::MAP_LANE);
     assert_eq!(name, "map_lane");
     assert_eq!(kind, UplinkKind::Map);
 
@@ -545,7 +545,7 @@ async fn init_map_store_no_data() {
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
     let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
     let init_task = run_item_initializer(
-        ItemKind::Store,
+        ItemKind::MAP_STORE,
         "map_store",
         UplinkKind::Map,
         (out_tx, in_rx),
@@ -584,7 +584,7 @@ async fn init_map_store_no_data() {
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Store);
+    assert_eq!(item_kind, ItemKind::MAP_STORE);
     assert_eq!(name, "map_store");
     assert_eq!(kind, UplinkKind::Map);
 

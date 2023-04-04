@@ -25,67 +25,50 @@ use swim::agent::AgentLaneModel;
 use swim_agent::agent_model::ItemKind;
 use swim_agent::lanes::JoinValueLane;
 use swim_agent::stores::{MapStore, ValueStore};
+use swim_api::meta::lane::LaneKind;
+use swim_api::store::StoreKind;
 
 const SYNC_ID: Uuid = Uuid::from_u128(85883);
 
-fn transient(name: &'static str) -> (&'static str, bool) {
-    (name, true)
+fn persistent_lane(name: &'static str, kind: LaneKind) -> (&'static str, ItemSpec) {
+    (
+        name,
+        ItemSpec::new(ItemKind::Lane(kind), LaneFlags::empty()),
+    )
 }
 
-fn persistent(name: &'static str) -> (&'static str, bool) {
-    (name, false)
+fn transient_lane(name: &'static str, kind: LaneKind) -> (&'static str, ItemSpec) {
+    (
+        name,
+        ItemSpec::new(ItemKind::Lane(kind), LaneFlags::TRANSIENT),
+    )
 }
 
-fn persistent_lane(name: &'static str) -> (ItemKind, &'static str, bool) {
-    (ItemKind::Lane, name, false)
+fn persistent_store(name: &'static str, kind: StoreKind) -> (&'static str, ItemSpec) {
+    (
+        name,
+        ItemSpec::new(ItemKind::Store(kind), LaneFlags::empty()),
+    )
 }
 
-fn transient_lane(name: &'static str) -> (ItemKind, &'static str, bool) {
-    (ItemKind::Lane, name, true)
+fn transient_store(name: &'static str, kind: StoreKind) -> (&'static str, ItemSpec) {
+    (
+        name,
+        ItemSpec::new(ItemKind::Store(kind), LaneFlags::TRANSIENT),
+    )
 }
 
-fn persistent_store(name: &'static str) -> (ItemKind, &'static str, bool) {
-    (ItemKind::Store, name, false)
-}
-
-fn transient_store(name: &'static str) -> (ItemKind, &'static str, bool) {
-    (ItemKind::Store, name, true)
-}
-
-fn check_agent_with_stores<A>(
-    val_items: Vec<(ItemKind, &'static str, bool)>,
-    map_items: Vec<(ItemKind, &'static str, bool)>,
-) where
+fn check_agent<A>(specs: Vec<(&'static str, ItemSpec)>)
+where
     A: AgentLaneModel + Default,
 {
     let agent = A::default();
+    let expected = specs.into_iter().collect::<HashMap<_, _>>();
 
-    let mut val_expected = HashMap::new();
-    let mut map_expected = HashMap::new();
-
-    for (kind, name, is_transient) in &val_items {
-        let spec = if *is_transient {
-            ItemSpec::new(*kind, LaneFlags::TRANSIENT)
-        } else {
-            ItemSpec::new(*kind, LaneFlags::empty())
-        };
-        val_expected.insert(*name, spec);
-    }
-
-    for (kind, name, is_transient) in &map_items {
-        let spec = if *is_transient {
-            ItemSpec::new(*kind, LaneFlags::TRANSIENT)
-        } else {
-            ItemSpec::new(*kind, LaneFlags::empty())
-        };
-        map_expected.insert(*name, spec);
-    }
-
-    assert_eq!(A::value_like_item_specs(), val_expected);
-    assert_eq!(A::map_like_item_specs(), map_expected);
+    assert_eq!(A::lane_specs(), expected);
 
     let id_map = A::item_ids();
-    let expected_len = val_expected.len() + map_expected.len();
+    let expected_len = expected.len();
     assert_eq!(id_map.len(), expected_len);
 
     let mut keys = HashSet::new();
@@ -98,49 +81,28 @@ fn check_agent_with_stores<A>(
 
     let expected_keys = (0..expected_len).map(|n| n as u64).collect::<HashSet<_>>();
     let mut expected_names = HashSet::new();
-    expected_names.extend(val_expected.keys().map(|s| Text::new(s)));
-    expected_names.extend(map_expected.keys().map(|s| Text::new(s)));
+    expected_names.extend(expected.keys().map(|s| Text::new(s)));
 
     assert_eq!(keys, expected_keys);
     assert_eq!(names, expected_names);
 
-    for (kind, name, _) in val_items {
-        assert_eq!(
-            agent.on_value_command(name, get_i32_buffer(4)).is_some(),
-            kind == ItemKind::Lane
-        );
-        assert_eq!(
-            agent.on_sync(name, SYNC_ID).is_some(),
-            kind == ItemKind::Lane
-        );
+    for (name, spec) in expected {
+        let ItemSpec { kind, .. } = spec;
+
+        if kind.map_like() {
+            assert_eq!(
+                agent.on_map_command(name, MapMessage::Clear).is_some(),
+                kind.is_lane_kind()
+            );
+            assert_eq!(agent.on_sync(name, SYNC_ID).is_some(), kind.is_lane_kind());
+        } else {
+            assert_eq!(
+                agent.on_value_command(name, get_i32_buffer(4)).is_some(),
+                kind.is_lane_kind()
+            );
+            assert_eq!(agent.on_sync(name, SYNC_ID).is_some(), kind.is_lane_kind());
+        }
     }
-
-    for (kind, name, _) in map_items {
-        assert_eq!(
-            agent.on_map_command(name, MapMessage::Clear).is_some(),
-            kind == ItemKind::Lane
-        );
-        assert_eq!(
-            agent.on_sync(name, SYNC_ID).is_some(),
-            kind == ItemKind::Lane
-        );
-    }
-}
-
-fn check_agent<A>(val_lanes: Vec<(&'static str, bool)>, map_lanes: Vec<(&'static str, bool)>)
-where
-    A: AgentLaneModel + Default,
-{
-    let val_items = val_lanes
-        .into_iter()
-        .map(|(name, transient)| (ItemKind::Lane, name, transient))
-        .collect();
-    let map_items = map_lanes
-        .into_iter()
-        .map(|(name, transient)| (ItemKind::Lane, name, transient))
-        .collect();
-
-    check_agent_with_stores::<A>(val_items, map_items)
 }
 
 fn get_i32_buffer(n: i32) -> BytesMut {
@@ -156,7 +118,7 @@ fn single_value_lane() {
         lane: ValueLane<i32>,
     }
 
-    check_agent::<SingleValueLane>(vec![persistent("lane")], vec![]);
+    check_agent::<SingleValueLane>(vec![persistent_lane("lane", LaneKind::Value)]);
 }
 
 #[test]
@@ -166,7 +128,7 @@ fn single_value_store() {
         store: ValueStore<i32>,
     }
 
-    check_agent_with_stores::<SingleValueStore>(vec![persistent_store("store")], vec![]);
+    check_agent::<SingleValueStore>(vec![persistent_store("store", StoreKind::Value)]);
 }
 
 #[test]
@@ -176,7 +138,7 @@ fn single_map_lane() {
         lane: MapLane<i32, i32>,
     }
 
-    check_agent::<SingleMapLane>(vec![], vec![persistent("lane")]);
+    check_agent::<SingleMapLane>(vec![persistent_lane("lane", LaneKind::Map)]);
 }
 
 #[test]
@@ -186,7 +148,7 @@ fn single_map_store() {
         store: MapStore<i32, i32>,
     }
 
-    check_agent_with_stores::<SingleMapStore>(vec![], vec![persistent_store("store")]);
+    check_agent::<SingleMapStore>(vec![persistent_store("store", StoreKind::Map)]);
 }
 
 #[test]
@@ -196,7 +158,7 @@ fn single_command_lane() {
         lane: CommandLane<i32>,
     }
 
-    check_agent::<SingleCommandLane>(vec![transient("lane")], vec![]);
+    check_agent::<SingleCommandLane>(vec![transient_lane("lane", LaneKind::Command)]);
 }
 
 #[test]
@@ -207,7 +169,10 @@ fn two_value_lanes() {
         second: ValueLane<i32>,
     }
 
-    check_agent::<TwoValueLanes>(vec![persistent("first"), persistent("second")], vec![]);
+    check_agent::<TwoValueLanes>(vec![
+        persistent_lane("first", LaneKind::Value),
+        persistent_lane("second", LaneKind::Value),
+    ]);
 }
 
 #[test]
@@ -218,10 +183,10 @@ fn two_value_stores() {
         second: ValueStore<i32>,
     }
 
-    check_agent_with_stores::<TwoValueStores>(
-        vec![persistent_store("first"), persistent_store("second")],
-        vec![],
-    );
+    check_agent::<TwoValueStores>(vec![
+        persistent_store("first", StoreKind::Value),
+        persistent_store("second", StoreKind::Value),
+    ]);
 }
 
 #[test]
@@ -232,7 +197,10 @@ fn two_map_lanes() {
         second: MapLane<i32, i32>,
     }
 
-    check_agent::<TwoMapLanes>(vec![], vec![persistent("first"), persistent("second")]);
+    check_agent::<TwoMapLanes>(vec![
+        persistent_lane("first", LaneKind::Map),
+        persistent_lane("second", LaneKind::Map),
+    ]);
 }
 
 #[test]
@@ -243,10 +211,10 @@ fn two_map_stores() {
         second: MapStore<i32, i32>,
     }
 
-    check_agent_with_stores::<TwoMapStores>(
-        vec![],
-        vec![persistent_store("first"), persistent_store("second")],
-    );
+    check_agent::<TwoMapStores>(vec![
+        persistent_store("first", StoreKind::Map),
+        persistent_store("second", StoreKind::Map),
+    ]);
 }
 
 #[test]
@@ -257,7 +225,10 @@ fn two_command_lanes() {
         second: CommandLane<i32>,
     }
 
-    check_agent::<TwoCommandLanes>(vec![transient("first"), transient("second")], vec![]);
+    check_agent::<TwoCommandLanes>(vec![
+        transient_lane("first", LaneKind::Command),
+        transient_lane("second", LaneKind::Command),
+    ]);
 }
 
 #[test]
@@ -268,7 +239,10 @@ fn mixed_lanes() {
         second: MapLane<i32, i32>,
     }
 
-    check_agent::<MixedLanes>(vec![persistent("first")], vec![persistent("second")]);
+    check_agent::<MixedLanes>(vec![
+        persistent_lane("first", LaneKind::Value),
+        persistent_lane("second", LaneKind::Map),
+    ]);
 }
 
 #[test]
@@ -279,10 +253,10 @@ fn mixed_stores() {
         second: MapStore<i32, i32>,
     }
 
-    check_agent_with_stores::<MixedStores>(
-        vec![persistent_store("first")],
-        vec![persistent_store("second")],
-    );
+    check_agent::<MixedStores>(vec![
+        persistent_store("first", StoreKind::Value),
+        persistent_store("second", StoreKind::Map),
+    ]);
 }
 
 #[test]
@@ -297,14 +271,14 @@ fn multiple_lanes() {
         sixth: JoinValueLane<i32, i32>,
     }
 
-    check_agent::<MultipleLanes>(
-        vec![persistent("first"), persistent("third"), transient("fifth")],
-        vec![
-            persistent("second"),
-            persistent("fourth"),
-            persistent("sixth"),
-        ],
-    );
+    check_agent::<MultipleLanes>(vec![
+        persistent_lane("first", LaneKind::Value),
+        persistent_lane("third", LaneKind::Value),
+        transient_lane("fifth", LaneKind::Command),
+        persistent_lane("second", LaneKind::Map),
+        persistent_lane("fourth", LaneKind::Map),
+        persistent_lane("sixth", LaneKind::JoinValue),
+    ]);
 }
 
 #[test]
@@ -317,10 +291,12 @@ fn stores_and_lanes() {
         fourth: MapLane<i32, i32>,
     }
 
-    check_agent_with_stores::<StoresAndLanes>(
-        vec![persistent_store("first"), persistent_lane("second")],
-        vec![persistent_store("third"), persistent_lane("fourth")],
-    );
+    check_agent::<StoresAndLanes>(vec![
+        persistent_store("first", StoreKind::Value),
+        persistent_lane("second", LaneKind::Value),
+        persistent_store("third", StoreKind::Map),
+        persistent_lane("fourth", LaneKind::Map),
+    ]);
 }
 
 #[test]
@@ -332,7 +308,10 @@ fn value_lane_tagged_transient() {
         second: ValueLane<i32>,
     }
 
-    check_agent::<TwoValueLanes>(vec![transient("first"), persistent("second")], vec![]);
+    check_agent::<TwoValueLanes>(vec![
+        transient_lane("first", LaneKind::Value),
+        persistent_lane("second", LaneKind::Value),
+    ]);
 }
 
 #[test]
@@ -344,10 +323,10 @@ fn value_store_tagged_transient() {
         second: ValueStore<i32>,
     }
 
-    check_agent_with_stores::<TwoValueStores>(
-        vec![transient_store("first"), persistent_store("second")],
-        vec![],
-    );
+    check_agent::<TwoValueStores>(vec![
+        transient_store("first", StoreKind::Value),
+        persistent_store("second", StoreKind::Value),
+    ]);
 }
 
 #[test]
@@ -359,7 +338,10 @@ fn map_lane_tagged_transient() {
         second: MapLane<i32, i32>,
     }
 
-    check_agent::<TwoMapLanes>(vec![], vec![persistent("first"), transient("second")]);
+    check_agent::<TwoMapLanes>(vec![
+        persistent_lane("first", LaneKind::Map),
+        transient_lane("second", LaneKind::Map),
+    ]);
 }
 
 #[test]
@@ -371,10 +353,10 @@ fn map_store_tagged_transient() {
         second: MapStore<i32, i32>,
     }
 
-    check_agent_with_stores::<TwoMapStores>(
-        vec![],
-        vec![persistent_store("first"), transient_store("second")],
-    );
+    check_agent::<TwoMapStores>(vec![
+        persistent_store("first", StoreKind::Map),
+        transient_store("second", StoreKind::Map),
+    ]);
 }
 
 #[test]
@@ -386,7 +368,10 @@ fn command_lane_tagged_transient() {
         second: CommandLane<i32>,
     }
 
-    check_agent::<TwoCommandLanes>(vec![transient("first"), transient("second")], vec![]);
+    check_agent::<TwoCommandLanes>(vec![
+        transient_lane("first", LaneKind::Command),
+        transient_lane("second", LaneKind::Command),
+    ]);
 }
 
 #[test]
@@ -396,7 +381,7 @@ fn single_join_value_lane() {
         lane: JoinValueLane<i32, i32>,
     }
 
-    check_agent::<SingleJoinValueLane>(vec![], vec![persistent("lane")]);
+    check_agent::<SingleJoinValueLane>(vec![persistent_lane("lane", LaneKind::JoinValue)]);
 }
 
 #[test]
@@ -407,7 +392,10 @@ fn two_join_value_lanes() {
         second: JoinValueLane<i32, i32>,
     }
 
-    check_agent::<TwoJoinValueLanes>(vec![], vec![persistent("first"), persistent("second")]);
+    check_agent::<TwoJoinValueLanes>(vec![
+        persistent_lane("first", LaneKind::JoinValue),
+        persistent_lane("second", LaneKind::JoinValue),
+    ]);
 }
 
 #[test]
@@ -419,12 +407,16 @@ fn join_value_lane_tagged_transient() {
         second: JoinValueLane<i32, i32>,
     }
 
-    check_agent::<TwoJoinValueLanes>(vec![], vec![persistent("first"), transient("second")]);
+    check_agent::<TwoJoinValueLanes>(vec![
+        persistent_lane("first", LaneKind::JoinValue),
+        transient_lane("second", LaneKind::JoinValue),
+    ]);
 }
 
 mod isolated {
-
-    use super::{check_agent_with_stores, persistent_lane, persistent_store, transient_lane};
+    use super::{check_agent, persistent_lane, persistent_store, transient_lane};
+    use swim_api::meta::lane::LaneKind;
+    use swim_api::store::StoreKind;
 
     #[test]
     fn multiple_items_qualified() {
@@ -440,20 +432,16 @@ mod isolated {
             eighth: swim::agent::lanes::JoinValueLane<i32, i32>,
         }
 
-        check_agent_with_stores::<MultipleLanes>(
-            vec![
-                persistent_lane("first"),
-                persistent_lane("third"),
-                transient_lane("fifth"),
-                persistent_store("sixth"),
-            ],
-            vec![
-                persistent_lane("second"),
-                persistent_lane("fourth"),
-                persistent_store("seventh"),
-                persistent_lane("eighth"),
-            ],
-        );
+        check_agent::<MultipleLanes>(vec![
+            persistent_lane("first", LaneKind::Value),
+            persistent_lane("third", LaneKind::Value),
+            transient_lane("fifth", LaneKind::Command),
+            persistent_store("sixth", StoreKind::Value),
+            persistent_lane("second", LaneKind::Map),
+            persistent_lane("fourth", LaneKind::Map),
+            persistent_store("seventh", StoreKind::Map),
+            persistent_lane("eighth", LaneKind::JoinValue),
+        ]);
     }
 }
 
@@ -469,6 +457,6 @@ fn two_types_single_scope() {
         lane: ValueLane<Text>,
     }
 
-    check_agent::<First>(vec![persistent("lane")], vec![]);
-    check_agent::<Second>(vec![persistent("lane")], vec![]);
+    check_agent::<First>(vec![persistent_lane("lane", LaneKind::Value)]);
+    check_agent::<Second>(vec![persistent_lane("lane", LaneKind::Value)]);
 }
