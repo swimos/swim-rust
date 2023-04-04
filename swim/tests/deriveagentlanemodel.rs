@@ -33,28 +33,28 @@ const SYNC_ID: Uuid = Uuid::from_u128(85883);
 fn persistent_lane(name: &'static str, kind: LaneKind) -> (&'static str, ItemSpec) {
     (
         name,
-        ItemSpec::new(ItemKind::Lane(kind), LaneFlags::empty()),
+        ItemSpec::new(ItemKind::Lane(kind), ItemFlags::empty()),
     )
 }
 
 fn transient_lane(name: &'static str, kind: LaneKind) -> (&'static str, ItemSpec) {
     (
         name,
-        ItemSpec::new(ItemKind::Lane(kind), LaneFlags::TRANSIENT),
+        ItemSpec::new(ItemKind::Lane(kind), ItemFlags::TRANSIENT),
     )
 }
 
 fn persistent_store(name: &'static str, kind: StoreKind) -> (&'static str, ItemSpec) {
     (
         name,
-        ItemSpec::new(ItemKind::Store(kind), LaneFlags::empty()),
+        ItemSpec::new(ItemKind::Store(kind), ItemFlags::empty()),
     )
 }
 
 fn transient_store(name: &'static str, kind: StoreKind) -> (&'static str, ItemSpec) {
     (
         name,
-        ItemSpec::new(ItemKind::Store(kind), LaneFlags::TRANSIENT),
+        ItemSpec::new(ItemKind::Store(kind), ItemFlags::TRANSIENT),
     )
 }
 

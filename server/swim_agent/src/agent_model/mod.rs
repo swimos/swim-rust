@@ -25,7 +25,6 @@ use futures::{
     stream::{FuturesUnordered, SelectAll},
     StreamExt,
 };
-use swim_api::agent::LaneConfig;
 use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swim_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
 use swim_api::protocol::WithLengthBytesCodec;
@@ -368,46 +367,6 @@ impl<Context> HostedDownlink<Context> {
     }
 }
 
-fn init_map_item<'a, ItemModel>(
-    name: &'a str,
-    lane_kind: LaneKind,
-    store: bool,
-    lane_config: LaneConfig,
-    io: (ByteWriter, ByteReader),
-    map_lane_io: &mut HashMap<Text, (ByteWriter, ByteReader)>,
-    lane_init_tasks: &mut FuturesUnordered<
-        BoxFuture<'a, Result<InitializedItem<'a, ItemModel>, FrameIoError>>,
-    >,
-    item_model: &ItemModel,
-) -> Result<(), AgentRuntimeError>
-where
-    ItemModel: AgentSpec + 'static,
-{
-    if lane_config.transient {
-        map_lane_io.insert(Text::new(name), io);
-    } else if let Some(init) = item_model.init_map_like_item(name) {
-        let item_kind = if store {
-            ItemKind::Store(StoreKind::Map)
-        } else {
-            ItemKind::Lane(lane_kind)
-        };
-
-        let init_task = run_item_initializer(
-            item_kind,
-            name,
-            UplinkKind::Map,
-            io,
-            MapMessageDecoder::new(RawMapOperationDecoder::default()),
-            init,
-        );
-        lane_init_tasks.push(init_task.boxed());
-    } else {
-        map_lane_io.insert(Text::new(name), io);
-    }
-
-    Ok(())
-}
-
 impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle>
 where
     ItemModel: AgentSpec + 'static,
@@ -468,52 +427,50 @@ where
                     $body
                 }};
             }
-            // Set up the lanes of the agent.
-            for (name, spec) in val_lane_specs {
-                match spec.kind {
-                    ItemKind::Lane => {
-                        let mut lane_conf = default_lane_config;
-                        if spec.flags.contains(ItemFlags::TRANSIENT) {
-                            lane_conf.transient = true;
+
+            for (name, spec) in lane_specs {
+                let ItemSpec { kind, flags } = spec;
+                match kind {
+                    ItemKind::Lane(kind) => {
+                        if kind.map_like() {
+                            if value_like_lane_io.contains_key(name) {
+                                return Err(AgentInitError::DuplicateLane(Text::new(name)));
+                            }
+                            let mut lane_conf = default_lane_config;
+                            if flags.contains(ItemFlags::TRANSIENT) {
+                                lane_conf.transient = true;
+                            }
+                            let io = context.add_lane(name, LaneKind::Map, lane_conf).await?;
+                            with_init!(init => {
+                                init.init_map_lane(name, kind,lane_conf, io);
+                            })
+                        } else {
+                            let mut lane_conf = default_lane_config;
+                            if flags.contains(ItemFlags::TRANSIENT) {
+                                lane_conf.transient = true;
+                            }
+                            let io = context.add_lane(name, LaneKind::Value, lane_conf).await?;
+                            with_init!(init => {
+                                init.init_value_lane(name, kind, lane_conf, io);
+                            })
                         }
-                        let io = context.add_lane(name, LaneKind::Value, lane_conf).await?;
-                        with_init!(init => {
-                            init.init_value_lane(name, lane_conf, io);
-                        })
                     }
-                    ItemKind::Store => {
+                    ItemKind::Store(StoreKind::Map) => {
+                        if let Some(io) =
+                            handle_store_error(context.add_store(name, StoreKind::Map).await, name)?
+                        {
+                            with_init!(init => {
+                                init.init_map_store(name, io);
+                            })
+                        }
+                    }
+                    ItemKind::Store(StoreKind::Value) => {
                         if let Some(io) = handle_store_error(
                             context.add_store(name, StoreKind::Value).await,
                             name,
                         )? {
                             with_init!(init => {
                                 init.init_value_store(name, io);
-                            })
-                        }
-                    }
-                }
-            }
-            for (name, spec) in map_lane_specs {
-                match spec.kind {
-                    ItemKind::Lane => {
-                        if value_like_lane_io.contains_key(name) {
-                            return Err(AgentInitError::DuplicateLane(Text::new(name)));
-                        }
-                        let mut lane_conf = default_lane_config;
-                        if spec.flags.contains(ItemFlags::TRANSIENT) {
-                            lane_conf.transient = true;
-                        }
-                        let io = context.add_lane(name, LaneKind::Map, lane_conf).await?;
-                        with_init!(init => {
-                            init.init_map_lane(name, lane_conf, io);
-                        })
-                    }
-                    ItemKind::Store => {
-                        if let Some(io) =
-                            handle_store_error(context.add_store(name, StoreKind::Map).await, name)?
-                        {
-                            with_init!(init => {
-                                init.init_map_store(name, io);
                             })
                         }
                     }
@@ -533,15 +490,15 @@ where
                     (ItemKind::Lane(_), UplinkKind::Value | UplinkKind::Supply) => {
                         value_like_lane_io.insert(Text::new(name), io);
                     }
-                    (ItemKind::Lane, UplinkKind::Map) => {
+                    (ItemKind::Lane(_), UplinkKind::Map) => {
                         map_lane_io.insert(Text::new(name), io);
                     }
                     //The receivers for stores are no longer needed as the runtime never sends messages after initialization.
-                    (ItemKind::Store, UplinkKind::Value | UplinkKind::Supply) => {
+                    (ItemKind::Store(_), UplinkKind::Value | UplinkKind::Supply) => {
                         let (tx, _) = io;
                         value_like_store_io.insert(Text::new(name), tx);
                     }
-                    (ItemKind::Store, UplinkKind::Map) => {
+                    (ItemKind::Store(_), UplinkKind::Map) => {
                         let (tx, _) = io;
                         map_store_io.insert(Text::new(name), tx);
                     }
@@ -654,6 +611,7 @@ where
     fn init_value_lane(
         &mut self,
         name: &'b str,
+        kind: LaneKind,
         lane_conf: LaneConfig,
         io: (ByteWriter, ByteReader),
     ) {
@@ -667,7 +625,7 @@ where
             value_like_lane_io.insert(Text::new(name), io);
         } else if let Some(init) = item_model.init_value_like_item(name) {
             let init_task = run_item_initializer(
-                ItemKind::Lane,
+                ItemKind::Lane(kind),
                 name,
                 UplinkKind::Value,
                 io,
@@ -688,7 +646,7 @@ where
         } = self;
         if let Some(init) = item_model.init_value_like_item(name) {
             let init_task = run_item_initializer(
-                ItemKind::Store,
+                ItemKind::Store(StoreKind::Value),
                 name,
                 UplinkKind::Value,
                 io,
@@ -702,6 +660,7 @@ where
     fn init_map_lane(
         &mut self,
         name: &'b str,
+        kind: LaneKind,
         lane_conf: LaneConfig,
         io: (ByteWriter, ByteReader),
     ) {
@@ -715,7 +674,7 @@ where
             map_like_lane_io.insert(Text::new(name), io);
         } else if let Some(init) = item_model.init_map_like_item(name) {
             let init_task = run_item_initializer(
-                ItemKind::Lane,
+                ItemKind::Lane(kind),
                 name,
                 UplinkKind::Map,
                 io,
@@ -736,7 +695,7 @@ where
         } = self;
         if let Some(init) = item_model.init_map_like_item(name) {
             let init_task = run_item_initializer(
-                ItemKind::Store,
+                ItemKind::Store(StoreKind::Map),
                 name,
                 UplinkKind::Map,
                 io,

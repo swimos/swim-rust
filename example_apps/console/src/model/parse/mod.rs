@@ -21,7 +21,6 @@ use swim_model::Value;
 use swim_recon::parser::parse_value;
 
 use crate::data::DataKind;
-use crate::model::MetaCommand;
 
 use super::{AppCommand, ControllerCommand, LinkKind, LinkRef, Target, TargetRef};
 
@@ -263,18 +262,6 @@ pub fn parse_controller_command(parts: &[&str]) -> Result<ControllerCommand, Cow
         ["query", target] => {
             let r = target.parse()?;
             Ok(ControllerCommand::Query(r))
-        }
-        ["lanes", target] => {
-            let r = target.parse()?;
-            Ok(ControllerCommand::Meta(MetaCommand::Lanes(r)))
-        }
-        ["node-pulse", target] => {
-            let r = target.parse()?;
-            Ok(ControllerCommand::Meta(MetaCommand::NodePulse(r)))
-        }
-        ["lane-pulse", target] => {
-            let r = target.parse()?;
-            Ok(ControllerCommand::Meta(MetaCommand::NodePulse(r)))
         }
         _ => Err(Cow::Borrowed(
             "Unknown command. Type 'help' to list valid commands.",
