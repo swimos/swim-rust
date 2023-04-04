@@ -92,15 +92,15 @@ where
         if kind.map_like() {
             assert_eq!(
                 agent.on_map_command(name, MapMessage::Clear).is_some(),
-                kind.is_lane_kind()
+                kind.is_lane()
             );
-            assert_eq!(agent.on_sync(name, SYNC_ID).is_some(), kind.is_lane_kind());
+            assert_eq!(agent.on_sync(name, SYNC_ID).is_some(), kind.is_lane());
         } else {
             assert_eq!(
                 agent.on_value_command(name, get_i32_buffer(4)).is_some(),
-                kind.is_lane_kind()
+                kind.is_lane()
             );
-            assert_eq!(agent.on_sync(name, SYNC_ID).is_some(), kind.is_lane_kind());
+            assert_eq!(agent.on_sync(name, SYNC_ID).is_some(), kind.is_lane());
         }
     }
 }

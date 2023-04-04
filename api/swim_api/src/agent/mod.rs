@@ -90,6 +90,38 @@ impl Default for StoreConfig {
     }
 }
 
+impl<C> AgentContext for Box<C>
+where
+    C: AgentContext,
+{
+    fn add_lane(
+        &self,
+        name: &str,
+        lane_kind: LaneKind,
+        config: LaneConfig,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+        (**self).add_lane(name, lane_kind, config)
+    }
+
+    fn open_downlink(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        kind: DownlinkKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
+        (**self).open_downlink(host, node, lane, kind)
+    }
+
+    fn add_store(
+        &self,
+        name: &str,
+        kind: StoreKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
+        (**self).add_store(name, kind)
+    }
+}
+
 /// Trait for the context that is passed to an agent to allow it to interact with the runtime.
 pub trait AgentContext: Sync {
     /// Add a new lane endpoint to the runtime for this agent.

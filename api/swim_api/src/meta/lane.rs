@@ -44,6 +44,14 @@ pub enum LaneKind {
     Value,
 }
 
+pub enum ValueLaneKind {
+    Action,
+    Command,
+    Demand,
+    Supply,
+    Value,
+}
+
 impl LaneKind {
     pub fn map_like(&self) -> bool {
         matches!(

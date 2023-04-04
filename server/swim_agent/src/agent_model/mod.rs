@@ -66,6 +66,7 @@ pub use init::{
     ItemInitializer, JoinValueInitializer, MapLaneInitializer, MapStoreInitializer,
     ValueLaneInitializer, ValueStoreInitializer,
 };
+use swim_api::agent::LaneConfig;
 pub use swim_api::meta::lane::LaneKind;
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
@@ -96,7 +97,7 @@ impl ItemKind {
         }
     }
 
-    pub fn is_lane_kind(&self) -> bool {
+    pub fn is_lane(&self) -> bool {
         matches!(self, ItemKind::Lane(_))
     }
 }
@@ -109,13 +110,11 @@ impl ItemKind {
 }
 
 bitflags! {
-
     #[derive(Default)]
     pub struct LaneFlags: u8 {
         /// The state of the lane should not be persisted.
         const TRANSIENT = 0b01;
     }
-
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -280,6 +279,7 @@ where
             .boxed()
     }
 }
+
 enum TaskEvent<ItemModel> {
     WriteComplete {
         writer: ItemWriter,
@@ -367,9 +367,49 @@ impl<Context> HostedDownlink<Context> {
     }
 }
 
+fn init_map_item<'a, ItemModel>(
+    name: &'a str,
+    lane_kind: LaneKind,
+    store: bool,
+    lane_config: LaneConfig,
+    io: (ByteWriter, ByteReader),
+    map_lane_io: &mut HashMap<Text, (ByteWriter, ByteReader)>,
+    lane_init_tasks: &mut FuturesUnordered<
+        BoxFuture<'a, Result<InitializedItem<'a, ItemModel>, FrameIoError>>,
+    >,
+    item_model: &ItemModel,
+) -> Result<(), AgentRuntimeError>
+where
+    ItemModel: AgentSpec + 'static,
+{
+    if lane_config.transient {
+        map_lane_io.insert(Text::new(name), io);
+    } else if let Some(init) = item_model.init_map_like_item(name) {
+        let item_kind = if store {
+            ItemKind::Store(StoreKind::Map)
+        } else {
+            ItemKind::Lane(lane_kind)
+        };
+
+        let init_task = run_item_initializer(
+            item_kind,
+            name,
+            UplinkKind::Map,
+            io,
+            MapMessageDecoder::new(RawMapOperationDecoder::default()),
+            init,
+        );
+        lane_init_tasks.push(init_task.boxed());
+    } else {
+        map_lane_io.insert(Text::new(name), io);
+    }
+
+    Ok(())
+}
+
 impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle>
 where
-    ItemModel: AgentSpec + Send + 'static,
+    ItemModel: AgentSpec + 'static,
     Lifecycle: AgentLifecycle<ItemModel> + 'static,
 {
     /// Initialize the agent, performing the initial setup for all of the lanes (including triggering the
@@ -418,6 +458,7 @@ where
         for (name, item) in lane_specs {
             let ItemSpec { kind, flags } = item;
             let mut lane_conf = default_lane_config;
+
             if flags.contains(LaneFlags::TRANSIENT) {
                 lane_conf.transient = true;
             }
@@ -428,44 +469,32 @@ where
                         return Err(AgentInitError::DuplicateLane(Text::new(name)));
                     }
 
-                    let io = context.add_lane(name, lane_kind, lane_conf).await?;
-                    if lane_conf.transient {
-                        map_lane_io.insert(Text::new(name), io);
-                    } else if let Some(init) = item_model.init_map_like_item(name) {
-                        let init_task = run_item_initializer(
-                            kind,
-                            name,
-                            UplinkKind::Map,
-                            io,
-                            MapMessageDecoder::new(RawMapOperationDecoder::default()),
-                            init,
-                        );
-                        lane_init_tasks.push(init_task.boxed());
-                    } else {
-                        map_lane_io.insert(Text::new(name), io);
-                    }
+                    init_map_item(
+                        name,
+                        lane_kind,
+                        false,
+                        lane_conf,
+                        context.add_lane(name, lane_kind, lane_conf).await?,
+                        &mut map_lane_io,
+                        &mut lane_init_tasks,
+                        &item_model,
+                    )?;
                 }
                 ItemKind::Store(StoreKind::Map) => {
                     if value_like_lane_io.contains_key(name) {
                         return Err(AgentInitError::DuplicateLane(Text::new(name)));
                     }
 
-                    let io = context.add_lane(name, LaneKind::Map, lane_conf).await?;
-                    if lane_conf.transient {
-                        map_lane_io.insert(Text::new(name), io);
-                    } else if let Some(init) = item_model.init_map_like_item(name) {
-                        let init_task = run_item_initializer(
-                            kind,
-                            name,
-                            UplinkKind::Map,
-                            io,
-                            MapMessageDecoder::new(RawMapOperationDecoder::default()),
-                            init,
-                        );
-                        lane_init_tasks.push(init_task.boxed());
-                    } else {
-                        map_lane_io.insert(Text::new(name), io);
-                    }
+                    init_map_item(
+                        name,
+                        LaneKind::Map,
+                        true,
+                        lane_conf,
+                        context.add_lane(name, LaneKind::Map, lane_conf).await?,
+                        &mut map_lane_io,
+                        &mut lane_init_tasks,
+                        &item_model,
+                    )?;
                 }
                 ItemKind::Store(StoreKind::Value) => {
                     if !lane_conf.transient {
