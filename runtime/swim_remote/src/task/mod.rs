@@ -297,6 +297,7 @@ enum OutgoingTaskMessage {
         done: trigger::Sender,
     },
     NotFound {
+        command_envelope: bool,
         error: AgentResolutionError,
     },
 }
@@ -459,21 +460,25 @@ impl OutgoingTask {
                 }
                 OutgoingEvent::Message(OutgoingTaskMessage::NotFound {
                     error: AgentResolutionError::NotFound(error),
+                    command_envelope,
                 }) => {
-                    debug!(lane = ?error, "Sending node/lane not found envelope.");
-                    buffer.clear();
-                    recon_encoder
-                        .encode(error, &mut buffer)
-                        .expect("Encoding a frame should be infallible.");
-                    if let Err(error) = output.write(&buffer, PayloadType::Text).await {
-                        error!(error = %error, "Writing to the websocket connection failed.");
-                        break;
+                    if !command_envelope {
+                        debug!(lane = ?error, "Sending node/lane not found envelope.");
+                        buffer.clear();
+                        recon_encoder
+                            .encode(error, &mut buffer)
+                            .expect("Encoding a frame should be infallible.");
+                        if let Err(error) = output.write(&buffer, PayloadType::Text).await {
+                            error!(error = %error, "Writing to the websocket connection failed.");
+                            break;
+                        }
                     }
                 }
                 OutgoingEvent::Message(OutgoingTaskMessage::NotFound {
                     error: AgentResolutionError::PlaneStopping,
+                    ..
                 }) => {
-                    info!("Ommitting unlinked message as the plane is stopping.");
+                    info!("Omitting unlinked message as the plane is stopping.");
                 }
                 OutgoingEvent::Request(req) => {
                     trace!(envelope = ?req, "Sending request envelope.");
@@ -597,6 +602,7 @@ impl IncomingTask {
                                         *id,
                                         Text::new(node),
                                         Text::new(request.path.lane.as_ref()),
+                                        request.envelope.is_command(),
                                         &find_tx,
                                         &outgoing_tx,
                                     )
@@ -668,6 +674,7 @@ async fn connect_agent_route(
     source: Uuid,
     node: Text,
     lane: Text,
+    command_envelope: bool,
     find_tx: &mpsc::Sender<FindNode>,
     outgoing_tx: &mpsc::Sender<OutgoingTaskMessage>,
 ) -> Result<Option<RequestWriter>, ()> {
@@ -702,7 +709,10 @@ async fn connect_agent_route(
             }
         }
         Ok(Err(error)) => outgoing_tx
-            .send(OutgoingTaskMessage::NotFound { error })
+            .send(OutgoingTaskMessage::NotFound {
+                error,
+                command_envelope,
+            })
             .await
             .map(move |_| None)
             .map_err(|_| ()),
