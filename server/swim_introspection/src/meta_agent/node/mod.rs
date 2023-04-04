@@ -115,12 +115,13 @@ async fn run_init(
     let lanes_io = context
         .add_lane(LANES_LANE, LaneKind::DemandMap, lane_config)
         .await?;
-    Ok(run_task(pulse_interval, handle, pulse_io, lanes_io).boxed())
+    Ok(run_task(context, pulse_interval, handle, pulse_io, lanes_io).boxed())
 }
 
 type Io = (ByteWriter, ByteReader);
 
 async fn run_task(
+    context: Box<dyn AgentContext + Send>,
     pulse_interval: Duration,
     handle: AgentIntrospectionHandle,
     pulse_io: Io,
@@ -137,7 +138,7 @@ async fn run_task(
     ));
     let lanes_lane = pin!(run_lanes_descriptor_lane(shutdown_rx, handle, lanes_io));
 
-    match select(pulse_lane, lanes_lane).await {
+    let result = match select(pulse_lane, lanes_lane).await {
         Either::Left((result, fut)) => {
             shutdown_tx.trigger();
             let _ = fut.await;
@@ -154,7 +155,10 @@ async fn run_task(
                 error,
             })
         }
-    }
+    };
+    // deferred drop so the agent doesn't terminate early.
+    let _context = context;
+    result
 }
 
 /// A lane that will return information on all of the lanes of an agent, as a map, when a Sync
