@@ -65,7 +65,7 @@ where
     let agent = A::default();
     let expected = specs.into_iter().collect::<HashMap<_, _>>();
 
-    assert_eq!(A::lane_specs(), expected);
+    assert_eq!(A::item_specs(), expected);
 
     let id_map = A::item_ids();
     let expected_len = expected.len();

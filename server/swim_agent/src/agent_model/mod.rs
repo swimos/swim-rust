@@ -143,7 +143,7 @@ pub trait AgentSpec: Sized + Send {
     type OnSyncHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
     /// The names and flags of all items (lanes and stores) in the agent.
-    fn lane_specs() -> HashMap<&'static str, ItemSpec>;
+    fn item_specs() -> HashMap<&'static str, ItemSpec>;
 
     /// Mapping from item identifiers to lane names for all items in the agent.
     fn item_ids() -> HashMap<u64, Text>;
@@ -401,7 +401,7 @@ where
         let mut lane_io = HashMap::new();
         let mut store_io = HashMap::new();
 
-        let lane_specs = ItemModel::lane_specs();
+        let item_specs = ItemModel::item_specs();
         let item_ids = <ItemModel as AgentSpec>::item_ids();
 
         let suspended = FuturesUnordered::new();
@@ -421,7 +421,7 @@ where
                 }};
             }
 
-            for (name, spec) in lane_specs {
+            for (name, spec) in item_specs {
                 let ItemSpec { kind, flags } = spec;
                 match kind {
                     ItemKind::Lane(kind) => {

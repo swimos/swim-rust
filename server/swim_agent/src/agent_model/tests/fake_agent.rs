@@ -100,7 +100,7 @@ impl AgentSpec for TestAgent {
 
     type OnSyncHandler = TestHandler;
 
-    fn lane_specs() -> HashMap<&'static str, ItemSpec> {
+    fn item_specs() -> HashMap<&'static str, ItemSpec> {
         let mut lanes = HashMap::new();
         lanes.insert(
             VAL_LANE,

@@ -107,7 +107,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             no_handler
         };
 
-        let lane_specs = item_models
+        let item_specs = item_models
             .iter()
             .map(|model| LaneSpecInsert(model.model))
             .map(|insert| insert.into_tokens(root));
@@ -172,9 +172,9 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
                 type OnSyncHandler = #sync_handler;
 
-                fn lane_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
+                fn item_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
                     let mut lanes = ::std::collections::HashMap::new();
-                    #(#lane_specs;)*
+                    #(#item_specs;)*
                     lanes
                 }
 
