@@ -14,8 +14,8 @@
 
 use swim::agent::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, HandlerActionExt},
-    lanes::ValueLane,
+    event_handler::{join3, EventHandler, HandlerActionExt},
+    lanes::{CommandLane, ValueLane},
     lifecycle, projections, AgentLaneModel,
 };
 
@@ -24,7 +24,8 @@ use swim::agent::{
 pub struct ExampleAgent {
     value: ValueLane<i32>,
     #[transient]
-    temporary: ValueLane<String>,
+    temporary: ValueLane<i32>,
+    stop: CommandLane<()>,
 }
 
 #[derive(Clone)]
@@ -37,9 +38,17 @@ impl ExampleLifecycle {
         &self,
         context: HandlerContext<ExampleAgent>,
     ) -> impl EventHandler<ExampleAgent> {
-        context.get_agent_uri().and_then(move |uri| {
+        join3(
+            context.get_agent_uri(),
+            context.get_value(ExampleAgent::VALUE),
+            context.get_value(ExampleAgent::TEMPORARY),
+        )
+        .and_then(move |(uri, v1, v2)| {
             context.effect(move || {
-                println!("Starting agent at: {}", uri);
+                println!(
+                    "Starting agent at: {}. value = {}, temporary = {}",
+                    uri, v1, v2
+                );
             })
         })
     }
@@ -49,10 +58,27 @@ impl ExampleLifecycle {
         &self,
         context: HandlerContext<ExampleAgent>,
     ) -> impl EventHandler<ExampleAgent> {
-        context.get_agent_uri().and_then(move |uri| {
+        join3(
+            context.get_agent_uri(),
+            context.get_value(ExampleAgent::VALUE),
+            context.get_value(ExampleAgent::TEMPORARY),
+        )
+        .and_then(move |(uri, v1, v2)| {
             context.effect(move || {
-                println!("Stopping agent at: {}", uri);
+                println!(
+                    "Stopping agent at: {}. value = {}, temporary = {}",
+                    uri, v1, v2
+                );
             })
         })
+    }
+
+    #[on_command(stop)]
+    pub fn stop_agent(
+        &self,
+        context: HandlerContext<ExampleAgent>,
+        _cmd: &(),
+    ) -> impl EventHandler<ExampleAgent> {
+        context.stop()
     }
 }
