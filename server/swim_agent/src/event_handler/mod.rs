@@ -441,7 +441,7 @@ where
 pub struct Map<H, F>(Option<(H, F)>);
 
 /// Type that is returned by the `and_then` method on the [`HandlerActionExt`] trait.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum AndThen<H1, H2, F> {
     First {
         first: H1,
@@ -453,7 +453,7 @@ pub enum AndThen<H1, H2, F> {
 }
 
 /// Type that is returned by the `and_then_contextual` method on the [`HandlerActionExt`] trait.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum AndThenContextual<H1, H2, F> {
     First {
         first: H1,
@@ -465,7 +465,7 @@ pub enum AndThenContextual<H1, H2, F> {
 }
 
 /// Type that is returned by the `and_then_try` method on the [`HandlerActionExt`] trait.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum AndThenTry<H1, H2, F> {
     First {
         first: H1,
@@ -477,7 +477,7 @@ pub enum AndThenTry<H1, H2, F> {
 }
 
 /// Type that is returned by the `followed_by` method on the [`HandlerActionExt`] trait.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum FollowedBy<H1, H2> {
     First {
         first: H1,
@@ -1088,7 +1088,7 @@ where
 }
 
 /// [`HandlerAction`] that runs a sequence of [`EventHandler`]s.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum Sequentially<I, Item> {
     Init(I),
     Running(I, Item),
@@ -1254,6 +1254,7 @@ pub type BoxJoinValueInit<'a, Context> = Box<dyn JoinValueInitializer<Context> +
 /// fail to start at all. Otherwise, execution of the event handler will terminate and the agent will
 /// begin to shutdown. The 'on_stop' handler will still be run. If a [`Stop`] is encountered in
 /// the 'on_stop' handler, the agent will stop immediately.
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Stop;
 
 impl<Context> HandlerAction<Context> for Stop {
@@ -1266,5 +1267,187 @@ impl<Context> HandlerAction<Context> for Stop {
         _context: &Context,
     ) -> StepResult<Self::Completion> {
         StepResult::Fail(EventHandlerError::StopInstructed)
+    }
+}
+
+enum JoinState<Context, H1: HandlerAction<Context>, H2: HandlerAction<Context>> {
+    Init(H1, H2),
+    FirstDone(H1::Completion, H2),
+    AfterDone,
+}
+
+impl<Context, H1: HandlerAction<Context>, H2: HandlerAction<Context>> Default
+    for JoinState<Context, H1, H2>
+{
+    fn default() -> Self {
+        JoinState::AfterDone
+    }
+}
+
+pub struct Join<Context, H1: HandlerAction<Context>, H2: HandlerAction<Context>> {
+    state: JoinState<Context, H1, H2>,
+}
+
+/// Create a [`HandlerAction`] that runs two other actions and produces a tuple of their results.
+pub fn join<Context, H1, H2>(first: H1, second: H2) -> Join<Context, H1, H2>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+{
+    Join {
+        state: JoinState::Init(first, second),
+    }
+}
+
+impl<Context, H1, H2> HandlerAction<Context> for Join<Context, H1, H2>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+{
+    type Completion = (H1::Completion, H2::Completion);
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let Join { state } = self;
+        match std::mem::take(state) {
+            JoinState::Init(mut h1, h2) => match h1.step(action_context, meta, context) {
+                StepResult::Continue { modified_item } => {
+                    *state = JoinState::Init(h1, h2);
+                    StepResult::Continue { modified_item }
+                }
+                StepResult::Fail(err) => StepResult::Fail(err),
+                StepResult::Complete {
+                    modified_item,
+                    result,
+                } => {
+                    *state = JoinState::FirstDone(result, h2);
+                    StepResult::Continue { modified_item }
+                }
+            },
+            JoinState::FirstDone(v1, mut h2) => match h2.step(action_context, meta, context) {
+                StepResult::Continue { modified_item } => {
+                    *state = JoinState::FirstDone(v1, h2);
+                    StepResult::Continue { modified_item }
+                }
+                StepResult::Fail(err) => StepResult::Fail(err),
+                StepResult::Complete {
+                    modified_item,
+                    result,
+                } => StepResult::Complete {
+                    modified_item,
+                    result: (v1, result),
+                },
+            },
+            JoinState::AfterDone => StepResult::after_done(),
+        }
+    }
+}
+
+enum Join3State<Context, H1, H2, H3>
+where
+    H1: HandlerAction<Context>, 
+    H2: HandlerAction<Context>,
+    H3: HandlerAction<Context>, 
+{
+    Init(H1, H2, H3),
+    FirstDone(H1::Completion, H2, H3),
+    SecondDone(H1::Completion, H2::Completion, H3),
+    AfterDone,
+}
+
+impl<Context, H1, H2, H3> Default
+    for Join3State<Context, H1, H2, H3>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+    H3: HandlerAction<Context>,
+{
+    fn default() -> Self {
+        Join3State::AfterDone
+    }
+}
+
+pub struct Join3<Context, H1, H2, H3>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+    H3: HandlerAction<Context>,
+{
+    state: Join3State<Context, H1, H2, H3>,
+}
+
+/// Create a [`HandlerAction`] that runs three other actions and produces a tuple of their results.
+pub fn join3<Context, H1, H2, H3>(first: H1, second: H2, third: H3) -> Join3<Context, H1, H2, H3>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+    H3: HandlerAction<Context>,
+{
+    Join3 {
+        state: Join3State::Init(first, second, third),
+    }
+}
+
+impl<Context, H1, H2, H3> HandlerAction<Context> for Join3<Context, H1, H2, H3>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+    H3: HandlerAction<Context>,
+{
+    type Completion = (H1::Completion, H2::Completion, H3::Completion);
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let Join3 { state } = self;
+        match std::mem::take(state) {
+            Join3State::Init(mut h1, h2, h3) => match h1.step(action_context, meta, context) {
+                StepResult::Continue { modified_item } => {
+                    *state = Join3State::Init(h1, h2, h3);
+                    StepResult::Continue { modified_item }
+                }
+                StepResult::Fail(err) => StepResult::Fail(err),
+                StepResult::Complete {
+                    modified_item,
+                    result,
+                } => {
+                    *state = Join3State::FirstDone(result, h2, h3);
+                    StepResult::Continue { modified_item }
+                }
+            },
+            Join3State::FirstDone(v1, mut h2, h3) => match h2.step(action_context, meta, context) {
+                StepResult::Continue { modified_item } => {
+                    *state = Join3State::FirstDone(v1, h2, h3);
+                    StepResult::Continue { modified_item }
+                }
+                StepResult::Fail(err) => StepResult::Fail(err),
+                StepResult::Complete {
+                    modified_item,
+                    result,
+                } => {
+                    *state = Join3State::SecondDone(v1, result, h3);
+                    StepResult::Continue { modified_item }
+                },
+            },
+            Join3State::SecondDone(v1, v2, mut h3) => match h3.step(action_context, meta, context) {
+                StepResult::Continue { modified_item } => {
+                    *state = Join3State::SecondDone(v1, v2, h3);
+                    StepResult::Continue { modified_item }
+                }
+                StepResult::Fail(err) => StepResult::Fail(err),
+                StepResult::Complete {
+                    modified_item,
+                    result,
+                } => StepResult::Complete { modified_item, result: (v1, v2, result) },
+            },
+            Join3State::AfterDone => StepResult::after_done(),
+        }
     }
 }
