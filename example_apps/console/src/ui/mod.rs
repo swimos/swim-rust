@@ -157,8 +157,6 @@ pub fn create_ui(siv: &mut Cursive, mut controller: Controller, max_lines: usize
                             .on_submit_mut(move |s, text| {
                                 on_command(s, &mut controller, &history_appender, text)
                             })
-                            .scrollable()
-                            .scroll_strategy(ScrollStrategy::StickToBottom)
                             .with_name(COMMAND_EDIT),
                     ))
                     .child(

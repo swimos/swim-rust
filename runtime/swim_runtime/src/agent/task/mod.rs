@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::collections::HashMap;
-use std::fmt::{Debug, Formatter};
+use std::fmt::Debug;
 use std::future::Future;
 use std::pin::{pin, Pin};
 use std::time::Duration;
@@ -916,6 +916,7 @@ async fn flush_lane(lanes: &mut HashMap<u64, LaneSender>, needs_flush: &mut Opti
 }
 
 /// Events that can occur in the write task.
+#[derive(Debug)]
 enum WriteTaskEvent<I> {
     /// A message received either from the read task or the coordination task.
     Message(WriteTaskMessage),
@@ -933,37 +934,6 @@ enum WriteTaskEvent<I> {
     Timeout,
     /// The stop signal was received.
     Stop,
-}
-
-impl<I> Debug for WriteTaskEvent<I> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            WriteTaskEvent::Message(msg) => {
-                write!(f, "WriteTaskEvent::Message({:?})", msg)
-            }
-            WriteTaskEvent::Event(_) => {
-                write!(f, "WriteTaskEvent::Event(...)")
-            }
-            WriteTaskEvent::WriteDone(i) => {
-                write!(f, "WriteTaskEvent::WriteDone({:?})", i)
-            }
-            WriteTaskEvent::LaneFailed(i) => {
-                write!(f, "WriteTaskEvent::LaneFailed({})", *i)
-            }
-            WriteTaskEvent::StoreFailed(i) => {
-                write!(f, "WriteTaskEvent::StoreFailed({})", *i)
-            }
-            WriteTaskEvent::PruneRemote(i) => {
-                write!(f, "WriteTaskEvent::PruneRemote({})", *i)
-            }
-            WriteTaskEvent::Timeout => {
-                write!(f, "WriteTaskEvent::Timeout")
-            }
-            WriteTaskEvent::Stop => {
-                write!(f, "WriteTaskEvent::Stop")
-            }
-        }
-    }
 }
 
 /// Parameters for the write task.

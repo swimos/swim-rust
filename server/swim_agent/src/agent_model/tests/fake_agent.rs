@@ -28,6 +28,7 @@ use tokio::sync::mpsc;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
+use crate::agent_model::{MapLikeInitializer, ValueLikeInitializer};
 use crate::{
     agent_model::{AgentSpec, ItemFlags, ItemKind, ItemSpec, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
@@ -142,26 +143,14 @@ impl AgentSpec for TestAgent {
         }
     }
 
-    fn init_value_like_item(
-        &self,
-        _item: &str,
-    ) -> Option<Box<dyn crate::agent_model::ItemInitializer<Self, BytesMut> + Send + 'static>>
+    fn init_value_like_item(&self, _item: &str) -> Option<ValueLikeInitializer<Self>>
     where
         Self: 'static,
     {
         None
     }
 
-    fn init_map_like_item(
-        &self,
-        _item: &str,
-    ) -> Option<
-        Box<
-            dyn crate::agent_model::ItemInitializer<Self, MapMessage<BytesMut, BytesMut>>
-                + Send
-                + 'static,
-        >,
-    >
+    fn init_map_like_item(&self, _item: &str) -> Option<MapLikeInitializer<Self>>
     where
         Self: 'static,
     {

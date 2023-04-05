@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::error::StoreError;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 
 use bytes::BytesMut;
 use futures::{
@@ -47,7 +47,7 @@ pub trait NodePersistence {
         Self: 'a;
 
     /// The store assigns IDs of this type to each named state in the store.
-    type LaneId: Copy + Unpin + Send + Sync + Eq + 'static;
+    type LaneId: Debug + Copy + Unpin + Send + Sync + Eq + 'static;
 
     /// Get the ID associated with the specified name.
     fn id_for(&self, name: &str) -> Result<Self::LaneId, StoreError>;

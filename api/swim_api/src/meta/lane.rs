@@ -44,7 +44,7 @@ pub enum LaneKind {
     Value,
 }
 
-pub enum ValueLaneKind {
+pub enum ValueLikeLaneKind {
     Action,
     Command,
     Demand,

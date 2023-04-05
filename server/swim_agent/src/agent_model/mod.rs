@@ -129,6 +129,10 @@ impl ItemSpec {
     }
 }
 
+pub type MapLikeInitializer<T> =
+    Box<dyn ItemInitializer<T, MapMessage<BytesMut, BytesMut>> + Send + 'static>;
+pub type ValueLikeInitializer<T> = Box<dyn ItemInitializer<T, BytesMut> + Send + 'static>;
+
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
 /// although it will not provided any lifecycle events for the agent or its lanes.
@@ -161,10 +165,7 @@ pub trait AgentSpec: Sized + Send {
     ///
     /// #Arguments
     /// * `lane` - The name of the item.
-    fn init_value_like_item(
-        &self,
-        item: &str,
-    ) -> Option<Box<dyn ItemInitializer<Self, BytesMut> + Send + 'static>>
+    fn init_value_like_item(&self, item: &str) -> Option<ValueLikeInitializer<Self>>
     where
         Self: 'static;
 
@@ -172,10 +173,7 @@ pub trait AgentSpec: Sized + Send {
     ///
     /// #Arguments
     /// * `item` - The name of the item.
-    fn init_map_like_item(
-        &self,
-        item: &str,
-    ) -> Option<Box<dyn ItemInitializer<Self, MapMessage<BytesMut, BytesMut>> + Send + 'static>>
+    fn init_map_like_item(&self, item: &str) -> Option<MapLikeInitializer<Self>>
     where
         Self: 'static;
 
