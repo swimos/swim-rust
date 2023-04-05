@@ -477,6 +477,7 @@ impl OutgoingTask {
                         recon_encoder
                             .encode(error, &mut buffer)
                             .expect("Encoding a frame should be infallible.");
+                        debug_assert!(!buffer.is_empty());
                         if let Err(error) = output.write(&buffer, PayloadType::Text).await {
                             error!(error = %error, "Writing to the websocket connection failed.");
                             break;
@@ -495,6 +496,7 @@ impl OutgoingTask {
                     recon_encoder
                         .encode(req, &mut buffer)
                         .expect("Encoding a frame should be infallible.");
+                    debug_assert!(!buffer.is_empty());
                     if let Err(error) = output.write(&buffer, PayloadType::Text).await {
                         error!(error = %error, "Writing to the websocket connection failed.");
                         break;
@@ -506,6 +508,7 @@ impl OutgoingTask {
                     recon_encoder
                         .encode(res, &mut buffer)
                         .expect("Encoding a frame should be infallible.");
+                    debug_assert!(!buffer.is_empty());
                     if let Err(error) = output.write(&buffer, PayloadType::Text).await {
                         error!(error = %error, "Writing to the websocket connection failed.");
                         break;

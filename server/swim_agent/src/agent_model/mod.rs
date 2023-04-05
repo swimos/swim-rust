@@ -425,13 +425,15 @@ where
                         })
                     }
                     ItemKind::Store => {
-                        if let Some(io) = handle_store_error(
-                            context.add_store(name, StoreKind::Value).await,
-                            name,
-                        )? {
-                            with_init!(init => {
-                                init.init_value_store(name, io);
-                            })
+                        if !spec.flags.contains(ItemFlags::TRANSIENT) {
+                            if let Some(io) = handle_store_error(
+                                context.add_store(name, StoreKind::Value).await,
+                                name,
+                            )? {
+                                with_init!(init => {
+                                    init.init_value_store(name, io);
+                                })
+                            }
                         }
                     }
                 }
@@ -452,12 +454,15 @@ where
                         })
                     }
                     ItemKind::Store => {
-                        if let Some(io) =
-                            handle_store_error(context.add_store(name, StoreKind::Map).await, name)?
-                        {
-                            with_init!(init => {
-                                init.init_map_store(name, io);
-                            })
+                        if !spec.flags.contains(ItemFlags::TRANSIENT) {
+                            if let Some(io) = handle_store_error(
+                                context.add_store(name, StoreKind::Map).await,
+                                name,
+                            )? {
+                                with_init!(init => {
+                                    init.init_map_store(name, io);
+                                })
+                            }
                         }
                     }
                 }
