@@ -16,7 +16,9 @@ use swim::agent::{
     agent_lifecycle::utility::HandlerContext,
     event_handler::{join3, EventHandler, HandlerActionExt, UnitHandler},
     lanes::CommandLane,
-    lifecycle, projections, AgentLaneModel, stores::ValueStore,
+    lifecycle, projections,
+    stores::ValueStore,
+    AgentLaneModel,
 };
 
 use crate::model::Instruction;
@@ -83,14 +85,9 @@ impl ExampleLifecycle {
     ) -> impl EventHandler<ExampleAgent> {
         println!("Received command: {:?}", cmd);
         match *cmd {
-            Instruction::Wake => UnitHandler::default()
-                .boxed(),
-            Instruction::SetValue(n) => context
-                .set_store_value(ExampleAgent::VALUE, n)
-                .boxed(),
-            Instruction::SetTemp(n) => context
-                .set_store_value(ExampleAgent::TEMPORARY, n)
-                .boxed(),
+            Instruction::Wake => UnitHandler::default().boxed(),
+            Instruction::SetValue(n) => context.set_store_value(ExampleAgent::VALUE, n).boxed(),
+            Instruction::SetTemp(n) => context.set_store_value(ExampleAgent::TEMPORARY, n).boxed(),
             Instruction::Stop => context.stop().boxed(),
         }
     }

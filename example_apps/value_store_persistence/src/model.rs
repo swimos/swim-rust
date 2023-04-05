@@ -23,5 +23,5 @@ pub enum Instruction {
     #[form(tag = "set_temp")]
     SetTemp(#[form(header_body)] i32),
     #[form(tag = "stop")]
-    Stop
+    Stop,
 }
