@@ -1276,14 +1276,6 @@ enum JoinState<Context, H1: HandlerAction<Context>, H2: HandlerAction<Context>> 
     AfterDone,
 }
 
-impl<Context, H1: HandlerAction<Context>, H2: HandlerAction<Context>> Default
-    for JoinState<Context, H1, H2>
-{
-    fn default() -> Self {
-        JoinState::AfterDone
-    }
-}
-
 pub struct Join<Context, H1: HandlerAction<Context>, H2: HandlerAction<Context>> {
     state: JoinState<Context, H1, H2>,
 }
@@ -1313,7 +1305,7 @@ where
         context: &Context,
     ) -> StepResult<Self::Completion> {
         let Join { state } = self;
-        match std::mem::take(state) {
+        match std::mem::replace(state, JoinState::AfterDone) {
             JoinState::Init(mut h1, h2) => match h1.step(action_context, meta, context) {
                 StepResult::Continue { modified_item } => {
                     *state = JoinState::Init(h1, h2);
@@ -1359,17 +1351,6 @@ where
     AfterDone,
 }
 
-impl<Context, H1, H2, H3> Default for Join3State<Context, H1, H2, H3>
-where
-    H1: HandlerAction<Context>,
-    H2: HandlerAction<Context>,
-    H3: HandlerAction<Context>,
-{
-    fn default() -> Self {
-        Join3State::AfterDone
-    }
-}
-
 pub struct Join3<Context, H1, H2, H3>
 where
     H1: HandlerAction<Context>,
@@ -1406,7 +1387,7 @@ where
         context: &Context,
     ) -> StepResult<Self::Completion> {
         let Join3 { state } = self;
-        match std::mem::take(state) {
+        match std::mem::replace(state, Join3State::AfterDone) {
             Join3State::Init(mut h1, h2, h3) => match h1.step(action_context, meta, context) {
                 StepResult::Continue { modified_item } => {
                     *state = Join3State::Init(h1, h2, h3);
