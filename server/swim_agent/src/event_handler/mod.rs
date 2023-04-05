@@ -1349,9 +1349,9 @@ where
 
 enum Join3State<Context, H1, H2, H3>
 where
-    H1: HandlerAction<Context>, 
+    H1: HandlerAction<Context>,
     H2: HandlerAction<Context>,
-    H3: HandlerAction<Context>, 
+    H3: HandlerAction<Context>,
 {
     Init(H1, H2, H3),
     FirstDone(H1::Completion, H2, H3),
@@ -1359,8 +1359,7 @@ where
     AfterDone,
 }
 
-impl<Context, H1, H2, H3> Default
-    for Join3State<Context, H1, H2, H3>
+impl<Context, H1, H2, H3> Default for Join3State<Context, H1, H2, H3>
 where
     H1: HandlerAction<Context>,
     H2: HandlerAction<Context>,
@@ -1434,19 +1433,24 @@ where
                 } => {
                     *state = Join3State::SecondDone(v1, result, h3);
                     StepResult::Continue { modified_item }
-                },
-            },
-            Join3State::SecondDone(v1, v2, mut h3) => match h3.step(action_context, meta, context) {
-                StepResult::Continue { modified_item } => {
-                    *state = Join3State::SecondDone(v1, v2, h3);
-                    StepResult::Continue { modified_item }
                 }
-                StepResult::Fail(err) => StepResult::Fail(err),
-                StepResult::Complete {
-                    modified_item,
-                    result,
-                } => StepResult::Complete { modified_item, result: (v1, v2, result) },
             },
+            Join3State::SecondDone(v1, v2, mut h3) => {
+                match h3.step(action_context, meta, context) {
+                    StepResult::Continue { modified_item } => {
+                        *state = Join3State::SecondDone(v1, v2, h3);
+                        StepResult::Continue { modified_item }
+                    }
+                    StepResult::Fail(err) => StepResult::Fail(err),
+                    StepResult::Complete {
+                        modified_item,
+                        result,
+                    } => StepResult::Complete {
+                        modified_item,
+                        result: (v1, v2, result),
+                    },
+                }
+            }
             Join3State::AfterDone => StepResult::after_done(),
         }
     }

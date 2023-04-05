@@ -72,13 +72,18 @@ pub struct StoreConfig {
 
 const DEFAULT_BUFFER: NonZeroUsize = non_zero_usize!(4096);
 
+impl LaneConfig {
+    //TODO: Remove this once const impls are stable.
+    const DEFAULT: LaneConfig = LaneConfig {
+        input_buffer_size: DEFAULT_BUFFER,
+        output_buffer_size: DEFAULT_BUFFER,
+        transient: false,
+    };
+}
+
 impl Default for LaneConfig {
     fn default() -> Self {
-        Self {
-            input_buffer_size: DEFAULT_BUFFER,
-            output_buffer_size: DEFAULT_BUFFER,
-            transient: false,
-        }
+        LaneConfig::DEFAULT
     }
 }
 
@@ -138,11 +143,7 @@ pub struct AgentConfig {
 impl AgentConfig {
     //TODO: Remove this once const impls are stable.
     pub const DEFAULT: AgentConfig = AgentConfig {
-        default_lane_config: Some(LaneConfig {
-            input_buffer_size: DEFAULT_BUFFER,
-            output_buffer_size: DEFAULT_BUFFER,
-            transient: true,
-        }),
+        default_lane_config: Some(LaneConfig::DEFAULT),
     };
 }
 
