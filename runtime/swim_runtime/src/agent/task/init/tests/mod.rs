@@ -64,6 +64,7 @@ trait TestInit {
 const INIT_STOPPED: &str = "Inialization task stopped.";
 const NO_RESPONSE: &str = "Initialization task did not provide a response.";
 const NO_LANE: &str = "Initialization task failed to create the lane";
+const NO_STORE: &str = "Initialization task failed to create the store";
 
 const DL_CHAN_SIZE: usize = 8;
 const INIT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -100,7 +101,9 @@ where
         super::AgentInitTask::with_store(req_rx, dl_tx, done_rx, INIT_TIMEOUT, None, store);
     let test = init.run_test(req_tx, dl_rx, done_tx);
 
-    join(runtime.run().map_ok(|(ep, _)| ep), test).await
+    tokio::time::timeout(TEST_TIMEOUT, join(runtime.run().map_ok(|(ep, _)| ep), test))
+        .await
+        .expect("Timed out.")
 }
 
 fn check_connected(first: &mut Io, second: &mut Io) {
@@ -205,12 +208,7 @@ async fn run_initializer_failed_init() {
 
         let result = init_task.await;
         match result {
-            Err(AgentExecError::FailedRestoration {
-                lane_name,
-                error: StoreInitError::Store(StoreError::KeyspaceNotFound),
-            }) => {
-                assert_eq!(lane_name, "lane");
-            }
+            Err(StoreInitError::Store(StoreError::KeyspaceNotFound)) => {}
             ow => panic!("Unexpected result: {:?}", ow),
         }
     })
@@ -255,12 +253,7 @@ async fn run_initializer_bad_response() {
 
         let (result, _) = join(init_task, test_task).await;
         match result {
-            Err(AgentExecError::FailedRestoration {
-                lane_name,
-                error: StoreInitError::NoAckFromLane,
-            }) => {
-                assert_eq!(lane_name, "lane");
-            }
+            Err(StoreInitError::NoAckFromItem) => {}
             ow => panic!("Unexpected result: {:?}", ow),
         }
     })
@@ -298,12 +291,7 @@ async fn run_initializer_timeout() {
 
         let (result, _tx_out) = join(init_task, test_task).await;
         match result {
-            Err(AgentExecError::FailedRestoration {
-                lane_name,
-                error: StoreInitError::LaneInitializationTimeout,
-            }) => {
-                assert_eq!(lane_name, "lane");
-            }
+            Err(StoreInitError::ItemInitializationTimeout) => {}
             ow => panic!("Unexpected result: {:?}", ow),
         }
     })

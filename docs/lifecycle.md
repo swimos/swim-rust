@@ -153,6 +153,11 @@ fn my_clear_handler(
 }
 ```
 
+Store events
+------------
+
+The store types support exactly the same event handlers as their lane equivalents (for example `ValueStore`s have the same events as `ValueLane`s).
+
 Borrowing from lifecycles
 -------------------------
 

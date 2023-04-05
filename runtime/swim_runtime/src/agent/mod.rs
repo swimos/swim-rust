@@ -48,7 +48,7 @@ use crate::downlink::DownlinkOptions;
 use self::{
     reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
-    task::AgentInitTask,
+    task::{AgentInitTask, AgentRuntimeTask, LaneRuntimeSpec, NodeDescriptor, StoreRuntimeSpec},
 };
 
 pub mod reporting;
@@ -105,12 +105,9 @@ impl AgentContext for AgentRuntimeContext {
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(AgentRuntimeRequest::AddLane {
-                    name,
-                    kind: lane_kind,
-                    config,
-                    promise: tx,
-                })
+                .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
+                    name, lane_kind, config, tx,
+                )))
                 .await?;
             rx.await?
         }
@@ -145,10 +142,24 @@ impl AgentContext for AgentRuntimeContext {
 
     fn add_store(
         &self,
-        _name: &str,
-        _kind: StoreKind,
+        name: &str,
+        kind: StoreKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
-        todo!("Non-lane stores not yet implemented.")
+        let name = Text::new(name);
+        let sender = self.tx.clone();
+        async move {
+            let (tx, rx) = oneshot::channel();
+            sender
+                .send(AgentRuntimeRequest::AddStore(StoreRuntimeSpec::new(
+                    name,
+                    kind,
+                    Default::default(),
+                    tx,
+                )))
+                .await?;
+            rx.await?
+        }
+        .boxed()
     }
 }
 
@@ -345,9 +356,9 @@ pub enum AgentExecError {
     /// Sending a downlink request to the runtime failed.
     #[error("The runtime failed to handle a downlink request.")]
     FailedDownlinkRequest,
-    #[error("Restoring the state of the lane `{lane_name}` failed: {error}")]
+    #[error("Restoring the state of the item `{item_name}` failed: {error}")]
     FailedRestoration {
-        lane_name: Text,
+        item_name: Text,
         #[source]
         error: StoreInitError,
     },
@@ -426,7 +437,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let (init_tx, init_rx) = trigger::trigger();
         let runtime_init_task = AgentInitTask::new(
             runtime_rx,
-            downlink_tx,
+            downlink_tx.clone(),
             init_rx,
             runtime_config.lane_init_timeout,
             reporting,
@@ -447,12 +458,13 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             let (initial_state, _) = initial_state_result?;
             let agent_task = agent_task_result?;
 
-            let runtime_task = initial_state.make_runtime_task(
-                identity,
-                node_uri,
+            let runtime_task = AgentRuntimeTask::new(
+                NodeDescriptor::new(identity, node_uri),
+                initial_state,
                 attachment_rx,
-                runtime_config,
+                downlink_tx,
                 stopping,
+                runtime_config,
             );
 
             let (runtime_result, agent_result) = join(runtime_task.run(), agent_task).await;
@@ -493,7 +505,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             let store = store_fut.await?;
             let runtime_init_task = AgentInitTask::with_store(
                 runtime_rx,
-                downlink_tx,
+                downlink_tx.clone(),
                 init_rx,
                 runtime_config.lane_init_timeout,
                 reporting,
@@ -512,12 +524,13 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             let (initial_state, store_per) = initial_state_result?;
             let agent_task = agent_task_result?;
 
-            let runtime_task = initial_state.make_runtime_task_with_store(
-                identity,
-                node_uri,
+            let runtime_task = AgentRuntimeTask::with_store(
+                NodeDescriptor::new(identity, node_uri),
+                initial_state,
                 attachment_rx,
-                runtime_config,
+                downlink_tx,
                 stopping,
+                runtime_config,
                 store_per,
             );
 

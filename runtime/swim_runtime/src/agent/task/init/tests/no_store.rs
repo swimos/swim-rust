@@ -14,14 +14,15 @@
 
 use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use swim_api::{
-    agent::{LaneConfig, UplinkKind},
+    agent::{LaneConfig, StoreConfig, UplinkKind},
+    error::OpenStoreError,
     meta::lane::LaneKind,
     protocol::{
         agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
         map::{MapMessageDecoder, RawMapOperation, RawMapOperationDecoder, RawMapOperationEncoder},
         WithLengthBytesCodec,
     },
-    store::StoreDisabled,
+    store::{StoreDisabled, StoreKind},
 };
 use swim_model::Text;
 use swim_utilities::{
@@ -34,8 +35,8 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use super::{check_connected, run_test, TestInit, CONFIGS, INIT_STOPPED, NO_LANE, NO_RESPONSE};
 use crate::agent::{
     task::{
-        init::tests::{run_test_with_reporting, AGENT_ID},
-        AgentRuntimeRequest, InitialEndpoints, LaneEndpoint,
+        init::tests::{run_test_with_reporting, AGENT_ID, TRANSIENT},
+        AgentRuntimeRequest, InitialEndpoints, LaneEndpoint, LaneRuntimeSpec, StoreRuntimeSpec,
     },
     AgentExecError, DownlinkRequest, Io,
 };
@@ -154,12 +155,12 @@ impl SingleLaneInitTask {
         } = self;
         let (lane_tx, lane_rx) = oneshot::channel();
         requests
-            .send(AgentRuntimeRequest::AddLane {
-                name: Text::new("my_lane"),
-                kind: LaneKind::Value,
+            .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
+                Text::new("my_lane"),
+                LaneKind::Value,
                 config,
-                promise: lane_tx,
-            })
+                lane_tx,
+            )))
             .await
             .expect(INIT_STOPPED);
 
@@ -202,16 +203,22 @@ async fn single_lane() {
         let (initial_result, mut agent_io) = run_test(init, StoreDisabled::default()).await;
         let initial = initial_result.expect("No lanes were registered.");
 
-        let InitialEndpoints { mut endpoints, .. } = initial;
+        let InitialEndpoints {
+            mut lane_endpoints,
+            store_endpoints,
+            ..
+        } = initial;
 
-        assert_eq!(endpoints.len(), 1);
+        assert!(store_endpoints.is_empty());
+
+        assert_eq!(lane_endpoints.len(), 1);
         let LaneEndpoint {
             name,
             kind,
             mut io,
             transient,
             reporter,
-        } = endpoints.pop().unwrap();
+        } = lane_endpoints.pop().unwrap();
         assert_eq!(name, "my_lane");
         assert_eq!(kind, UplinkKind::Value);
         assert_eq!(transient, config.transient);
@@ -231,16 +238,22 @@ async fn single_lane_with_reporting() {
         .await;
         let initial = initial_result.expect("No lanes were registered.");
 
-        let InitialEndpoints { mut endpoints, .. } = initial;
+        let InitialEndpoints {
+            mut lane_endpoints,
+            store_endpoints,
+            ..
+        } = initial;
 
-        assert_eq!(endpoints.len(), 1);
+        assert!(store_endpoints.is_empty());
+
+        assert_eq!(lane_endpoints.len(), 1);
         let LaneEndpoint {
             name,
             kind,
             mut io,
             transient,
             reporter,
-        } = endpoints.pop().unwrap();
+        } = lane_endpoints.pop().unwrap();
         assert_eq!(name, "my_lane");
         assert_eq!(kind, UplinkKind::Value);
         assert_eq!(transient, config.transient);
@@ -291,22 +304,22 @@ impl TwoLanesInitTask {
         let (lane_tx1, lane_rx1) = oneshot::channel();
         let (lane_tx2, lane_rx2) = oneshot::channel();
         requests
-            .send(AgentRuntimeRequest::AddLane {
-                name: Text::new("value_lane"),
-                kind: LaneKind::Value,
+            .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
+                Text::new("value_lane"),
+                LaneKind::Value,
                 config,
-                promise: lane_tx1,
-            })
+                lane_tx1,
+            )))
             .await
             .expect(INIT_STOPPED);
 
         requests
-            .send(AgentRuntimeRequest::AddLane {
-                name: Text::new("map_lane"),
-                kind: LaneKind::Map,
+            .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
+                Text::new("map_lane"),
+                LaneKind::Map,
                 config,
-                promise: lane_tx2,
-            })
+                lane_tx2,
+            )))
             .await
             .expect(INIT_STOPPED);
 
@@ -349,9 +362,14 @@ async fn two_lanes() {
         let (initial_result, agent_lanes) = run_test(init, StoreDisabled::default()).await;
         let initial = initial_result.expect("No lanes were registered.");
 
-        let InitialEndpoints { endpoints, .. } = initial;
+        let InitialEndpoints {
+            lane_endpoints,
+            store_endpoints,
+            ..
+        } = initial;
 
-        assert_eq!(endpoints.len(), 2);
+        assert!(store_endpoints.is_empty());
+        assert_eq!(lane_endpoints.len(), 2);
 
         let mut seen_value = false;
         let mut seen_map = false;
@@ -364,7 +382,7 @@ async fn two_lanes() {
             mut io,
             transient,
             reporter,
-        } in endpoints
+        } in lane_endpoints
         {
             match kind {
                 UplinkKind::Value => {
@@ -385,4 +403,137 @@ async fn two_lanes() {
             assert!(reporter.is_none());
         }
     }
+}
+
+struct StoresInit {
+    lane_config: LaneConfig,
+    store_config: StoreConfig,
+}
+
+impl TestInit for StoresInit {
+    type Output = Io;
+
+    fn run_test(
+        self,
+        requests: mpsc::Sender<AgentRuntimeRequest>,
+        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        init_complete: trigger::Sender,
+    ) -> BoxFuture<'static, Self::Output> {
+        StoresInitTask::new(
+            requests,
+            downlink_requests,
+            init_complete,
+            self.store_config,
+            self.lane_config,
+        )
+        .run()
+        .boxed()
+    }
+}
+
+struct StoresInitTask {
+    requests: mpsc::Sender<AgentRuntimeRequest>,
+    _dl_requests: mpsc::Receiver<DownlinkRequest>,
+    init_complete: trigger::Sender,
+    store_config: StoreConfig,
+    lane_config: LaneConfig,
+}
+
+impl StoresInitTask {
+    fn new(
+        requests: mpsc::Sender<AgentRuntimeRequest>,
+        _dl_requests: mpsc::Receiver<DownlinkRequest>,
+        init_complete: trigger::Sender,
+        store_config: StoreConfig,
+        lane_config: LaneConfig,
+    ) -> Self {
+        StoresInitTask {
+            requests,
+            _dl_requests,
+            init_complete,
+            store_config,
+            lane_config,
+        }
+    }
+
+    async fn run(self) -> Io {
+        let StoresInitTask {
+            requests,
+            _dl_requests,
+            init_complete,
+            store_config,
+            lane_config,
+        } = self;
+        let (lane_tx, lane_rx) = oneshot::channel();
+        let (store_tx1, store_rx1) = oneshot::channel();
+        let (store_tx2, store_rx2) = oneshot::channel();
+
+        // At least one lane is required for initialization to succeed.
+        requests
+            .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
+                Text::new("lane_name"),
+                LaneKind::Command,
+                lane_config,
+                lane_tx,
+            )))
+            .await
+            .expect(INIT_STOPPED);
+
+        requests
+            .send(AgentRuntimeRequest::AddStore(StoreRuntimeSpec::new(
+                Text::new("value_store_name"),
+                StoreKind::Value,
+                store_config,
+                store_tx1,
+            )))
+            .await
+            .expect(INIT_STOPPED);
+
+        requests
+            .send(AgentRuntimeRequest::AddStore(StoreRuntimeSpec::new(
+                Text::new("map_store_name"),
+                StoreKind::Map,
+                store_config,
+                store_tx2,
+            )))
+            .await
+            .expect(INIT_STOPPED);
+
+        let lane_io = lane_rx.await.expect(NO_RESPONSE).expect(NO_LANE);
+
+        let value_store_result = store_rx1.await.expect(NO_RESPONSE);
+
+        assert_eq!(
+            value_store_result.err(),
+            Some(OpenStoreError::StoresNotSupported)
+        );
+
+        let map_store_result = store_rx2.await.expect(NO_RESPONSE);
+        assert_eq!(
+            map_store_result.err(),
+            Some(OpenStoreError::StoresNotSupported)
+        );
+
+        init_complete.trigger();
+        lane_io
+    }
+}
+
+#[tokio::test]
+async fn stores_not_supported() {
+    let init = StoresInit {
+        lane_config: TRANSIENT,
+        store_config: Default::default(),
+    };
+    let (initial_result, _lane_io) = run_test(init, StoreDisabled::default()).await;
+    let initial = initial_result.expect("No lanes were registered.");
+
+    let InitialEndpoints {
+        lane_endpoints,
+        store_endpoints,
+        ..
+    } = initial;
+
+    assert_eq!(lane_endpoints.len(), 1);
+    assert!(store_endpoints.is_empty());
 }

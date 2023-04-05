@@ -1,7 +1,7 @@
 Event Handlers
 ==============
 
-After having defined the lanes of the agent, we now want to add logic to be executed when particular events occur (for example, an event is fired each time an agent starts). Naively, we might expect that this could simply be a function that is called in response to the event. 
+After having defined the lanes and stores of the agent, we now want to add logic to be executed when particular events occur (for example, an event is fired each time an agent starts). Naively, we might expect that this could simply be a function that is called in response to the event. 
 
 Consider the following agent definition:
 

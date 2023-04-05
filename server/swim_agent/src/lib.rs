@@ -18,7 +18,7 @@ pub mod config;
 pub mod downlink_lifecycle;
 pub mod event_handler;
 mod event_queue;
-mod item;
+pub mod item;
 pub mod lanes;
 mod map_storage;
 pub mod meta;

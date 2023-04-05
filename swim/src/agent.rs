@@ -116,17 +116,18 @@
 
 pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 
-/// This trait allows for the definition of an [`crate::api::Agent`] with fixed lanes that are all
-/// registered at startup. Particularly, it defines the names, types and any flags (such as
-/// whether the state is transient) for those lanes. It merely describes the structure and does not
-/// attach any behaviour to those lanes (such as event handlers). To create an [`crate::api::Agent`]
+/// This trait allows for the definition of an [`crate::api::Agent`] with fixed items (lanes and stores)
+/// that are all registered at startup. Particularly, it defines the names, types and any flags (such as
+/// whether the state is transient) for those items. It merely describes the structure and does not
+/// attach any behaviour to the items (such as event handlers). To create an [`crate::api::Agent`]
 /// from a type implementing this trait, it must be combined with an implementation of
 /// [`crate::agent::agent_lifecycle::AgentLifecycle`] using [`crate::agent::agent_model::AgentModel`].
 ///
 /// Implementing this trait should generally be provided by the associated derive macro. The macro can be
 /// applied to any struct with labelled fields where the field types are any type implementing the
-/// [`crate::agent::lanes::LaneItem`] trait, defined in this crate. Note that, although this trait does not require [`std::default::Default`], the derive macro will
-/// generate an implementation of it so you should not try to add your own implementation.
+/// [`crate::agent::item::AgentItem`] trait, defined in this crate. Note that, although this trait does not
+/// require [`std::default::Default`], the derive macro will generate an implementation of it so you should
+/// not try to add your own implementation.
 ///
 /// The supported lane types are:
 ///
@@ -139,26 +140,43 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 /// [`crate::agent::lanes::MapLane`], both parameters must implement [`crate::form::Form`] and additionally,
 /// the key type `K` must additionally satisfy `K: Hash + Eq + Ord + Clone`.
 ///
-/// As an example, the following is a valid agent type defining lanes of each supported kind:
+/// The supported store types are:
+///
+/// 1. [`crate::agent::stores::ValueStore`]
+/// 2. [`crate::agent::stores::MapStore`]
+///
+/// These have exactly the same restrictions on their type parameters as the corresponding lane types.
+///
+/// The supported store types are:
+///
+/// 1. [`crate::agent::stores::ValueStore`]
+/// 2. [`crate::agent::stores::MapStore`]
+///
+/// These have exactly the same restrictions on their type parameters as the corresponding lane types.
+///
+/// As an example, the following is a valid agent type defining items of each supported kind:
 ///
 /// ```no_run
 /// use swim::agent::AgentLaneModel;
 /// use swim::agent::lanes::{ValueLane, CommandLane, MapLane};
+/// use swim::agent::stores::{ValueStore, MapStore};
 ///
 /// #[derive(AgentLaneModel)]
 /// struct ExampleAgent {
 ///     value_lane: ValueLane<i32>,
 ///     command_lane: CommandLane<String>,
 ///     map_lane: MapLane<String, i64>,
+///     value_store: ValueStore<i32>,
+///     map_store: MapStore<String, i64>,
 /// }
 /// ```
 ///
-/// The macro will use the name of the field as the name of the lane (the value lane from this example will
+/// The macro will use the name of the field as the name of the item (the value lane from this example will
 /// have the name `"value_lane"`).
 ///
-/// By default [`crate::agent::lanes::ValueLane`]s and [`crate::agent::lanes::MapLane`]s will persist their
-/// state (where the server has a persistence store). To disable this, the lane field may be marked as transient
-/// with an attribute:
+/// By default [`crate::agent::lanes::ValueLane`]s and [`crate::agent::lanes::MapLane`]s (and the corresponding
+/// stores types) will persist their state (where the server has a persistence store). To disable this, the
+/// lane field may be marked as transient with an attribute:
 ///
 /// / ```no_run
 /// use swim::agent::AgentLaneModel;
@@ -188,6 +206,10 @@ pub mod agent_model {
         AgentModel, AgentSpec, ItemFlags, ItemInitializer, ItemKind, ItemSpec, MapLaneInitializer,
         MapStoreInitializer, ValueLaneInitializer, ValueStoreInitializer, WriteResult,
     };
+}
+
+pub mod item {
+    pub use swim_agent::item::AgentItem;
 }
 
 pub mod lanes {

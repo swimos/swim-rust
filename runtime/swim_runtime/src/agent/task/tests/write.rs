@@ -21,7 +21,7 @@ use futures::{
 };
 use swim_api::{
     agent::UplinkKind,
-    store::{NodePersistence, StoreDisabled},
+    store::{NodePersistence, StoreDisabled, StoreKind},
 };
 use swim_messages::protocol::Notification;
 use swim_model::Text;
@@ -30,7 +30,7 @@ use swim_utilities::{
     trigger::{self, promise},
 };
 use tokio::{sync::mpsc, time::Instant};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
 use uuid::Uuid;
 
 use crate::agent::{
@@ -40,31 +40,52 @@ use crate::agent::{
         fake_store::FakeStore,
         tests::RemoteReceiver,
         timeout_coord::{self, VoteResult},
-        write_task, LaneEndpoint, RwCoorindationMessage, WriteTaskConfiguration, WriteTaskMessage,
+        write_task, LaneEndpoint, ReadTaskMessage, RwCoorindationMessage, StoreEndpoint,
+        WriteTaskConfiguration, WriteTaskEndpoints, WriteTaskMessage,
     },
-    DisconnectionReason,
+    DisconnectionReason, NodeReporting,
 };
 
 use super::{
-    make_config, Instruction, Instructions, MapLaneSender, ReportReaders, Snapshots,
-    ValueLikeLaneSender, BUFFER_SIZE, DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE,
-    SUPPLY_LANE, TEST_TIMEOUT, VAL_LANE,
+    make_config, Instruction, Instructions, MapLaneSender, MapStoreSender, ReportReaders,
+    Snapshots, ValueLikeLaneSender, ValueStoreSender, BUFFER_SIZE, DEFAULT_TIMEOUT,
+    INACTIVE_TEST_TIMEOUT, MAP_LANE, MAP_STORE, QUEUE_SIZE, SUPPLY_LANE, TEST_TIMEOUT, VAL_LANE,
+    VAL_STORE,
 };
 
 struct FakeAgent {
-    initial: Vec<LaneEndpoint<ByteWriter>>,
+    initial_lanes: Vec<LaneEndpoint<ByteWriter>>,
+    initial_stores: Vec<FakeStoreEndpoint>,
     stopping: trigger::Receiver,
     instr_rx: mpsc::UnboundedReceiver<Instruction>,
 }
 
+pub struct FakeStoreEndpoint {
+    name: Text,
+    kind: StoreKind,
+    writer: ByteWriter,
+}
+
+impl FakeStoreEndpoint {
+    pub fn new(name: &str, kind: StoreKind, writer: ByteWriter) -> Self {
+        FakeStoreEndpoint {
+            name: Text::new(name),
+            kind,
+            writer,
+        }
+    }
+}
+
 impl FakeAgent {
     fn new(
-        initial: Vec<LaneEndpoint<ByteWriter>>,
+        initial_lanes: Vec<LaneEndpoint<ByteWriter>>,
+        initial_stores: Vec<FakeStoreEndpoint>,
         stopping: trigger::Receiver,
         instr_rx: mpsc::UnboundedReceiver<Instruction>,
     ) -> Self {
         FakeAgent {
-            initial,
+            initial_lanes,
+            initial_stores,
             stopping,
             instr_rx,
         }
@@ -72,7 +93,8 @@ impl FakeAgent {
 
     async fn run(self) {
         let FakeAgent {
-            initial,
+            initial_lanes,
+            initial_stores,
             stopping,
             instr_rx,
         } = self;
@@ -80,7 +102,10 @@ impl FakeAgent {
         let mut value_lanes = HashMap::new();
         let mut supply_lanes = HashMap::new();
         let mut map_lanes = HashMap::new();
-        for endpoint in initial {
+        let mut value_stores = HashMap::new();
+        let mut map_stores = HashMap::new();
+
+        for endpoint in initial_lanes {
             let LaneEndpoint { name, kind, io, .. } = endpoint;
             match kind {
                 UplinkKind::Value => {
@@ -91,6 +116,17 @@ impl FakeAgent {
                 }
                 UplinkKind::Supply => {
                     supply_lanes.insert(name, ValueLikeLaneSender::new(io));
+                }
+            }
+        }
+
+        for FakeStoreEndpoint { name, kind, writer } in initial_stores {
+            match kind {
+                StoreKind::Value => {
+                    value_stores.insert(name, ValueStoreSender::new(writer));
+                }
+                StoreKind::Map => {
+                    map_stores.insert(name, MapStoreSender::new(writer));
                 }
             }
         }
@@ -141,6 +177,20 @@ impl FakeAgent {
                         tx.synced(id).await;
                     }
                 }
+                Instruction::ValueStoreEvent { store_name, value } => {
+                    if let Some(tx) = value_stores.get_mut(&store_name) {
+                        tx.event(value).await;
+                    }
+                }
+                Instruction::MapStoreEvent {
+                    store_name,
+                    key,
+                    value,
+                } => {
+                    if let Some(tx) = map_stores.get_mut(&store_name) {
+                        tx.update_event(key, value).await;
+                    }
+                }
             }
         }
     }
@@ -153,6 +203,7 @@ struct TestContext {
     vote_rx: timeout_coord::Receiver,
     instr_tx: Instructions,
     reporters: Option<ReportReaders>,
+    read_rx: mpsc::Receiver<ReadTaskMessage>,
 }
 
 const AGENT_ID: Uuid = Uuid::from_u128(1);
@@ -166,7 +217,7 @@ where
     Fut: Future + Send,
     Fut::Output: Debug,
 {
-    run_test_case_with_store(inactive_timeout, false, StoreDisabled, test_case).await
+    run_test_case_with_store(inactive_timeout, false, StoreDisabled, false, test_case).await
 }
 
 async fn run_test_case_with_reporting<F, Fut>(
@@ -178,13 +229,14 @@ where
     Fut: Future + Send,
     Fut::Output: Debug,
 {
-    run_test_case_with_store(inactive_timeout, true, StoreDisabled, test_case).await
+    run_test_case_with_store(inactive_timeout, true, StoreDisabled, false, test_case).await
 }
 
 async fn run_test_case_with_store<F, Fut, Store>(
     inactive_timeout: Duration,
     with_reporting: bool,
     store: Store,
+    register_stores: bool,
     test_case: F,
 ) -> Fut::Output
 where
@@ -196,12 +248,16 @@ where
     let (stop_tx, stop_rx) = trigger::trigger();
     let config = make_config(inactive_timeout);
 
-    let (agg_rep, val_rep, map_rep, sup_rep, reporting) = if with_reporting {
-        let agg_rep = UplinkReporter::default();
+    let (val_rep, map_rep, sup_rep, node_rep, reporting) = if with_reporting {
         let val_rep = UplinkReporter::default();
         let map_rep = UplinkReporter::default();
         let sup_rep = UplinkReporter::default();
+        let agg_rep = UplinkReporter::default();
+
+        let (reg_tx, reg_rx) = mpsc::channel(QUEUE_SIZE.get());
+
         let reporting = ReportReaders {
+            _reg_rx: reg_rx,
             aggregate: agg_rep.reader(),
             lanes: [
                 (VAL_LANE, val_rep.reader()),
@@ -211,11 +267,13 @@ where
             .into_iter()
             .collect(),
         };
+
+        let node_rep = NodeReporting::new(AGENT_ID, agg_rep, reg_tx);
         (
-            Some(agg_rep),
             Some(val_rep),
             Some(map_rep),
             Some(sup_rep),
+            Some(node_rep),
             Some(reporting),
         )
     } else {
@@ -246,20 +304,43 @@ where
         },
     ];
 
+    let mut store_endpoints = vec![];
+    let mut fake_stores = vec![];
+
+    if register_stores {
+        let (vtx, vrx) = byte_channel(BUFFER_SIZE);
+        store_endpoints.push(StoreEndpoint::new(
+            Text::new(VAL_STORE),
+            StoreKind::Value,
+            vrx,
+        ));
+        fake_stores.push(FakeStoreEndpoint::new(VAL_STORE, StoreKind::Value, vtx));
+
+        let (mtx, mrx) = byte_channel(BUFFER_SIZE);
+        store_endpoints.push(StoreEndpoint::new(
+            Text::new(MAP_STORE),
+            StoreKind::Map,
+            mrx,
+        ));
+        fake_stores.push(FakeStoreEndpoint::new(MAP_STORE, StoreKind::Map, mtx));
+    }
+
     let (endpoints_tx, endpoints_rx) = endpoints.into_iter().map(LaneEndpoint::split).unzip();
     let (instr_tx, instr_rx) = mpsc::unbounded_channel();
     let (vote1, vote2, vote_rx) = timeout_coord::timeout_coordinator();
     let (messages_tx, messages_rx) = mpsc::channel(QUEUE_SIZE.get());
 
-    let fake_agent = FakeAgent::new(endpoints_tx, stop_rx.clone(), instr_rx);
+    let fake_agent = FakeAgent::new(endpoints_tx, fake_stores, stop_rx.clone(), instr_rx);
     let write_config = WriteTaskConfiguration::new(AGENT_ID, Text::new(NODE), config);
+
+    let (read_tx, read_rx) = mpsc::channel(QUEUE_SIZE.get());
     let write = write_task(
         write_config,
-        endpoints_rx,
-        messages_rx,
+        WriteTaskEndpoints::new(endpoints_rx, store_endpoints),
+        ReceiverStream::new(messages_rx).take_until(stop_rx),
+        read_tx,
         vote1,
-        stop_rx,
-        agg_rep,
+        node_rep,
         store,
     );
 
@@ -270,6 +351,7 @@ where
         vote_rx,
         instr_tx: Instructions::new(instr_tx),
         reporters: reporting,
+        read_rx,
     };
 
     let test_task = test_case(context);
@@ -1030,29 +1112,35 @@ async fn backpressure_relief_on_map_lanes_with_synced() {
 
 #[tokio::test]
 async fn value_lane_events_persisted() {
-    let store = FakeStore::new(vec![VAL_LANE, MAP_LANE]);
+    let store = FakeStore::new(vec![VAL_LANE, MAP_LANE, VAL_STORE, MAP_STORE]);
     let persistence = StorePersistence(store.clone());
 
-    run_test_case_with_store(DEFAULT_TIMEOUT, false, persistence, |context| async move {
-        let TestContext {
-            stop_sender,
-            messages_tx,
-            vote2: _vote2,
-            vote_rx: _vote_rx,
-            instr_tx,
-            ..
-        } = context;
+    run_test_case_with_store(
+        DEFAULT_TIMEOUT,
+        false,
+        persistence,
+        true,
+        |context| async move {
+            let TestContext {
+                stop_sender,
+                messages_tx,
+                vote2: _vote2,
+                vote_rx: _vote_rx,
+                instr_tx,
+                ..
+            } = context;
 
-        let mut reader = attach_remote(RID1, &messages_tx).await;
-        link_remote(RID1, VAL_LANE, &messages_tx).await;
-        reader.expect_linked(VAL_LANE).await;
+            let mut reader = attach_remote(RID1, &messages_tx).await;
+            link_remote(RID1, VAL_LANE, &messages_tx).await;
+            reader.expect_linked(VAL_LANE).await;
 
-        instr_tx.value_event(VAL_LANE, 747);
-        reader.expect_value_like_event(VAL_LANE, 747).await;
+            instr_tx.value_event(VAL_LANE, 747);
+            reader.expect_value_like_event(VAL_LANE, 747).await;
 
-        stop_sender.trigger();
-        reader.expect_clean_shutdown(vec![VAL_LANE], None).await;
-    })
+            stop_sender.trigger();
+            reader.expect_clean_shutdown(vec![VAL_LANE], None).await;
+        },
+    )
     .await;
 
     let id = store.id_for(VAL_LANE).expect("Lane not valid.");
@@ -1063,33 +1151,39 @@ async fn value_lane_events_persisted() {
 
 #[tokio::test]
 async fn map_lane_events_persisted() {
-    let store = FakeStore::new(vec![VAL_LANE, MAP_LANE]);
+    let store = FakeStore::new(vec![VAL_LANE, MAP_LANE, VAL_STORE, MAP_STORE]);
     let persistence = StorePersistence(store.clone());
 
-    run_test_case_with_store(DEFAULT_TIMEOUT, false, persistence, |context| async move {
-        let TestContext {
-            stop_sender,
-            messages_tx,
-            vote2: _vote2,
-            vote_rx: _vote_rx,
-            instr_tx,
-            ..
-        } = context;
+    run_test_case_with_store(
+        DEFAULT_TIMEOUT,
+        false,
+        persistence,
+        true,
+        |context| async move {
+            let TestContext {
+                stop_sender,
+                messages_tx,
+                vote2: _vote2,
+                vote_rx: _vote_rx,
+                instr_tx,
+                ..
+            } = context;
 
-        let mut reader = attach_remote(RID1, &messages_tx).await;
-        link_remote(RID1, MAP_LANE, &messages_tx).await;
-        reader.expect_linked(MAP_LANE).await;
+            let mut reader = attach_remote(RID1, &messages_tx).await;
+            link_remote(RID1, MAP_LANE, &messages_tx).await;
+            reader.expect_linked(MAP_LANE).await;
 
-        instr_tx.map_event(MAP_LANE, "a", 1);
-        reader.expect_map_event(MAP_LANE, "a", 1).await;
-        instr_tx.map_event(MAP_LANE, "b", 2);
-        reader.expect_map_event(MAP_LANE, "b", 2).await;
-        instr_tx.map_event(MAP_LANE, "c", 3);
-        reader.expect_map_event(MAP_LANE, "c", 3).await;
+            instr_tx.map_event(MAP_LANE, "a", 1);
+            reader.expect_map_event(MAP_LANE, "a", 1).await;
+            instr_tx.map_event(MAP_LANE, "b", 2);
+            reader.expect_map_event(MAP_LANE, "b", 2).await;
+            instr_tx.map_event(MAP_LANE, "c", 3);
+            reader.expect_map_event(MAP_LANE, "c", 3).await;
 
-        stop_sender.trigger();
-        reader.expect_clean_shutdown(vec![MAP_LANE], None).await;
-    })
+            stop_sender.trigger();
+            reader.expect_clean_shutdown(vec![MAP_LANE], None).await;
+        },
+    )
     .await;
 
     let id = store.id_for(MAP_LANE).expect("Lane not valid.");
@@ -1144,6 +1238,7 @@ async fn count_links() {
             vote_rx: _vote_rx,
             instr_tx: _instr_tx,
             reporters,
+            read_rx: _read_rx,
         } = context;
 
         let mut reader = attach_remote(RID1, &messages_tx).await;
@@ -1247,6 +1342,7 @@ async fn count_events() {
             vote_rx: _vote_rx,
             instr_tx,
             reporters,
+            read_rx: _read_rx,
         } = context;
 
         let mut reader = attach_remote(RID1, &messages_tx).await;
@@ -1301,4 +1397,84 @@ async fn count_events() {
         reader.expect_clean_shutdown(vec![VAL_LANE], None).await;
     })
     .await;
+}
+
+#[tokio::test]
+async fn value_store_events_persisted() {
+    let store = FakeStore::new(vec![VAL_LANE, MAP_LANE, VAL_STORE, MAP_STORE]);
+    let persistence = StorePersistence(store.clone());
+
+    let store_cpy = store.clone();
+
+    run_test_case_with_store(
+        DEFAULT_TIMEOUT,
+        false,
+        persistence,
+        true,
+        |context| async move {
+            let TestContext {
+                stop_sender,
+                messages_tx: _messages_tx,
+                vote2: _vote2,
+                vote_rx: _vote_rx,
+                instr_tx,
+                ..
+            } = context;
+
+            let (changed_tx, changed_rx) = trigger::trigger();
+            store_cpy.subscribe_to_changes(changed_tx);
+            instr_tx.value_store_event(VAL_STORE, 6783);
+            assert!(changed_rx.await.is_ok());
+
+            stop_sender.trigger();
+        },
+    )
+    .await;
+
+    let id = store.id_for(VAL_STORE).expect("Lane not valid.");
+    let mut buffer = BytesMut::new();
+    store.get_value(id, &mut buffer).expect("Key not found.");
+    assert_eq!(buffer.as_ref(), b"6783");
+}
+
+#[tokio::test]
+async fn map_store_events_persisted() {
+    let store = FakeStore::new(vec![VAL_LANE, MAP_LANE, VAL_STORE, MAP_STORE]);
+    let persistence = StorePersistence(store.clone());
+
+    let store_cpy = store.clone();
+
+    run_test_case_with_store(
+        DEFAULT_TIMEOUT,
+        false,
+        persistence,
+        true,
+        |context| async move {
+            let TestContext {
+                stop_sender,
+                messages_tx: _messages_tx,
+                vote2: _vote2,
+                vote_rx: _vote_rx,
+                instr_tx,
+                ..
+            } = context;
+
+            let (changed_tx, changed_rx) = trigger::trigger();
+            store_cpy.subscribe_to_changes(changed_tx);
+            instr_tx.map_store_event(MAP_STORE, "a", 22);
+            assert!(changed_rx.await.is_ok());
+
+            stop_sender.trigger();
+        },
+    )
+    .await;
+
+    let id = store.id_for(MAP_STORE).expect("Lane not valid.");
+    let store_map = store
+        .get_map(id)
+        .expect("Bad ID")
+        .expect("No map in store.");
+    let mut expected = HashMap::new();
+    expected.insert(b"a".to_vec(), b"22".to_vec());
+    assert_eq!(store_map, expected);
 }

@@ -106,7 +106,7 @@ impl Display for DownlinkFailureReason {
 }
 
 /// Error type for operations that communicate with the agent runtime.
-#[derive(Error, Debug, Clone, Copy)]
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentRuntimeError {
     #[error("The agent runtime is stopping.")]
     Stopping,
@@ -124,7 +124,7 @@ pub enum DownlinkRuntimeError {
 }
 
 /// Error type for requests so the runtime for creating/opening a state for an agent.
-#[derive(Error, Debug, Clone, Copy)]
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenStoreError {
     #[error(transparent)]
     RuntimeError(#[from] AgentRuntimeError),
@@ -145,6 +145,12 @@ impl<T> From<mpsc::error::SendError<T>> for AgentRuntimeError {
     }
 }
 
+impl<T> From<mpsc::error::SendError<T>> for OpenStoreError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        OpenStoreError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
 impl<T> From<watch::error::SendError<T>> for AgentRuntimeError {
     fn from(_: watch::error::SendError<T>) -> Self {
         AgentRuntimeError::Terminated
@@ -160,6 +166,12 @@ impl From<promise::PromiseError> for AgentRuntimeError {
 impl From<oneshot::error::RecvError> for AgentRuntimeError {
     fn from(_: oneshot::error::RecvError) -> Self {
         AgentRuntimeError::Terminated
+    }
+}
+
+impl From<oneshot::error::RecvError> for OpenStoreError {
+    fn from(_: oneshot::error::RecvError) -> Self {
+        OpenStoreError::RuntimeError(AgentRuntimeError::Terminated)
     }
 }
 
@@ -234,12 +246,16 @@ impl From<AgentRuntimeError> for AgentInitError {
 
 #[derive(Debug, Error)]
 pub enum StoreError {
+    /// This implementation does not provide stores.
+    #[error("No store available.")]
+    NoStoreAvailable,
     /// The provided key was not found in the store.
     #[error("The specified key was not found")]
     KeyNotFound,
     /// A key returned by the store did not have the correct format.
     #[error("The store returned an invalid key")]
     InvalidKey,
+    /// Invalid operation attempted.
     #[error("An invalid operation was attempted (e.g. Updating a map entry on a value entry)")]
     InvalidOperation,
     /// The delegate byte engine failed to initialise.
