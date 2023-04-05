@@ -141,7 +141,7 @@ async fn run_task(
     ));
     let lanes_lane = pin!(run_lanes_descriptor_lane(shutdown_rx, handle, lanes_io));
 
-    let result = match select(pulse_lane, lanes_lane).await {
+    match select(pulse_lane, lanes_lane).await {
         Either::Left((result, fut)) => {
             shutdown_tx.trigger();
             let _ = fut.await;
@@ -158,8 +158,7 @@ async fn run_task(
                 error,
             })
         }
-    };
-    result
+    }
 }
 
 /// A lane that will return information on all of the lanes of an agent, as a map, when a Sync
