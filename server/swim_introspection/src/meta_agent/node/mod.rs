@@ -115,17 +115,21 @@ async fn run_init(
     let lanes_io = context
         .add_lane(LANES_LANE, LaneKind::DemandMap, lane_config)
         .await?;
-    Ok(run_task(pulse_interval, handle, pulse_io, lanes_io).boxed())
+    Ok(run_task(context, pulse_interval, handle, pulse_io, lanes_io).boxed())
 }
 
 type Io = (ByteWriter, ByteReader);
 
 async fn run_task(
+    context: Box<dyn AgentContext + Send>,
     pulse_interval: Duration,
     handle: AgentIntrospectionHandle,
     pulse_io: Io,
     lanes_io: Io,
 ) -> Result<(), AgentTaskError> {
+    // deferred drop so the agent doesn't terminate early.
+    let _context = context;
+
     let report_reader = handle.aggregate_reader();
     let (shutdown_tx, shutdown_rx) = trigger::trigger();
     let pulse_lane = pin!(run_pulse_lane(
