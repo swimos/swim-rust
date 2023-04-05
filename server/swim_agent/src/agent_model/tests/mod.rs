@@ -1,3 +1,4 @@
+use std::time::Duration;
 use std::{collections::HashMap, io::ErrorKind, sync::Arc};
 
 // Copyright 2015-2023 Swim Inc.
@@ -27,6 +28,7 @@ use swim_api::{
 use swim_model::Text;
 use swim_utilities::routing::route_uri::RouteUri;
 use tokio::sync::mpsc;
+use tokio::time::timeout;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use uuid::Uuid;
 
@@ -555,24 +557,28 @@ async fn hosted_downlink_incoming() {
 
 #[tokio::test]
 async fn hosted_downlink_incoming_error() {
-    let agent = TestDlAgent;
+    let result = timeout(Duration::from_secs(10), async {
+        let agent = TestDlAgent;
 
-    let (in_tx, in_rx) = mpsc::unbounded_channel();
-    let (_out_tx, out_rx) = mpsc::unbounded_channel();
-    let hosted = make_test_hosted_downlink(in_rx, out_rx);
+        let (in_tx, in_rx) = mpsc::unbounded_channel();
+        let (_out_tx, out_rx) = mpsc::unbounded_channel();
+        let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
-    assert!(in_tx.send(Err(DownlinkFailed)).is_ok());
-    let (mut hosted, event) = hosted
-        .wait_on_downlink()
-        .await
-        .expect("Closed prematurely.");
-    assert!(matches!(
-        event,
-        HostedDownlinkEvent::HandlerReady { failed: true }
-    ));
-    assert!(hosted.channel.next_event(&agent).is_some());
+        assert!(in_tx.send(Err(DownlinkFailed)).is_ok());
+        let (mut hosted, event) = hosted
+            .wait_on_downlink()
+            .await
+            .expect("Closed prematurely.");
+        assert!(matches!(
+            event,
+            HostedDownlinkEvent::HandlerReady { failed: true }
+        ));
+        assert!(hosted.channel.next_event(&agent).is_some());
 
-    assert!(hosted.wait_on_downlink().await.is_none());
+        assert!(hosted.wait_on_downlink().await.is_none());
+    })
+    .await;
+    result.expect("Test timed out")
 }
 
 #[tokio::test]

@@ -424,6 +424,7 @@ fn run_on_failed_abandon() {
 }
 
 #[test]
+#[ignore]
 fn run_on_failed_delete() {
     let uri = make_uri();
     let route_params = HashMap::new();

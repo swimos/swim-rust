@@ -18,27 +18,6 @@ use std::future::Future;
 use std::pin::{pin, Pin};
 use std::time::Duration;
 
-use crate::agent::store::StoreInitError;
-use crate::agent::task::links::TriggerUnlink;
-use crate::agent::task::sender::LaneSendError;
-use crate::agent::task::timeout_coord::VoteResult;
-use crate::agent::task::write_fut::SpecialAction;
-use crate::error::InvalidKey;
-
-use self::init::Initialization;
-use self::links::Links;
-use self::prune::PruneRemotes;
-use self::receiver::{Failed, ItemResponse, LaneData, ResponseData, ResponseReceiver, StoreData};
-use self::remotes::{RemoteSender, RemoteTracker, UplinkResponse};
-use self::sender::LaneSender;
-use self::write_fut::{WriteResult, WriteTask};
-
-use super::reporting::UplinkReporter;
-use super::store::{AgentItemInitError, AgentPersistence};
-use super::{
-    AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io,
-    NodeReporting,
-};
 use bytes::{Bytes, BytesMut};
 use futures::future::BoxFuture;
 use futures::stream::FuturesUnordered;
@@ -47,6 +26,15 @@ use futures::{
     stream::SelectAll,
     Stream, StreamExt,
 };
+use tokio::sync::{mpsc, oneshot};
+use tokio::time::{sleep, timeout, Instant, Sleep};
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::codec::FramedRead;
+use tracing::{debug, error, info, info_span, trace, warn};
+use tracing_futures::Instrument;
+use uuid::Uuid;
+
+pub use init::AgentInitTask;
 use swim_api::agent::{LaneConfig, StoreConfig};
 use swim_api::error::{OpenStoreError, StoreError};
 use swim_api::meta::lane::LaneKind;
@@ -59,14 +47,28 @@ use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::trigger::{self, promise};
-use tokio::sync::{mpsc, oneshot};
-use tokio::time::{sleep, timeout, Instant, Sleep};
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::codec::FramedRead;
-use uuid::Uuid;
 
-use tracing::{debug, error, info, info_span, trace, warn};
-use tracing_futures::Instrument;
+use crate::agent::store::StoreInitError;
+use crate::agent::task::links::TriggerUnlink;
+use crate::agent::task::sender::LaneSendError;
+use crate::agent::task::timeout_coord::VoteResult;
+use crate::agent::task::write_fut::SpecialAction;
+use crate::error::InvalidKey;
+
+use super::reporting::UplinkReporter;
+use super::store::{AgentItemInitError, AgentPersistence};
+use super::{
+    AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io,
+    NodeReporting,
+};
+
+use self::init::Initialization;
+use self::links::Links;
+use self::prune::PruneRemotes;
+use self::receiver::{Failed, ItemResponse, LaneData, ResponseData, ResponseReceiver, StoreData};
+use self::remotes::{RemoteSender, RemoteTracker, UplinkResponse};
+use self::sender::LaneSender;
+use self::write_fut::{WriteResult, WriteTask};
 
 mod init;
 mod links;
@@ -76,8 +78,6 @@ mod remotes;
 mod sender;
 mod timeout_coord;
 mod write_fut;
-
-pub use init::AgentInitTask;
 
 #[cfg(test)]
 mod fake_store;
@@ -1650,6 +1650,7 @@ where
 
     loop {
         let next = streams.select_next().await;
+        trace!(event = ?next, "Processing write task event");
         match next {
             WriteTaskEvent::Message(reg) => match state
                 .handle_task_message(reg, &initialization, &store)
