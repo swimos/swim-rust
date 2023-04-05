@@ -34,7 +34,7 @@ use crate::{
     meta::AgentMetadata,
     stores::{
         map::{MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate},
-        MapStore, Store,
+        MapStore, StoreItem,
     },
     test_context::dummy_context,
 };

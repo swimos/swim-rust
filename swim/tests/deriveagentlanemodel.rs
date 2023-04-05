@@ -15,7 +15,7 @@
 use std::collections::{HashMap, HashSet};
 
 use std::fmt::Write;
-use swim::agent::agent_model::{ItemSpec, LaneFlags};
+use swim::agent::agent_model::{ItemFlags, ItemSpec};
 use swim::agent::lanes::{CommandLane, MapLane, ValueLane};
 use swim::agent::model::MapMessage;
 use swim::agent::model::Text;
@@ -65,18 +65,18 @@ fn check_agent_with_stores<A>(
 
     for (kind, name, is_transient) in &val_items {
         let spec = if *is_transient {
-            ItemSpec::new(*kind, LaneFlags::TRANSIENT)
+            ItemSpec::new(*kind, ItemFlags::TRANSIENT)
         } else {
-            ItemSpec::new(*kind, LaneFlags::empty())
+            ItemSpec::new(*kind, ItemFlags::empty())
         };
         val_expected.insert(*name, spec);
     }
 
     for (kind, name, is_transient) in &map_items {
         let spec = if *is_transient {
-            ItemSpec::new(*kind, LaneFlags::TRANSIENT)
+            ItemSpec::new(*kind, ItemFlags::TRANSIENT)
         } else {
-            ItemSpec::new(*kind, LaneFlags::empty())
+            ItemSpec::new(*kind, ItemFlags::empty())
         };
         map_expected.insert(*name, spec);
     }

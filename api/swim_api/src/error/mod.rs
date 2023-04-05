@@ -12,16 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::error::Error;
 use std::{fmt::Display, io};
 
 use swim_form::structural::read::ReadError;
 use swim_model::Text;
 use swim_recon::parser::AsyncParseError;
-use swim_utilities::trigger::promise;
+use swim_utilities::{routing::route_pattern::UnapplyError, trigger::promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::store::StoreKind;
+
+use self::introspection::{LaneIntrospectionError, NodeIntrospectionError};
+
+pub mod introspection;
 
 /// Indicates that an agent or downlink failed to read a frame from a byte stream.
 #[derive(Error, Debug)]
@@ -62,6 +67,8 @@ pub enum DownlinkTaskError {
     BadFrame(#[from] FrameIoError),
     #[error("Failed to deserialize frame body: {0}")]
     DeserializationFailed(#[from] ReadError),
+    #[error("{0:?}")]
+    Custom(Box<dyn Error + Send + Sync + 'static>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,6 +79,8 @@ pub enum DownlinkFailureReason {
     RemoteStopped,
     DownlinkStopped,
 }
+
+impl Error for DownlinkFailureReason {}
 
 impl Display for DownlinkFailureReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -212,6 +221,20 @@ pub enum AgentInitError {
     UserCodeError(Box<dyn std::error::Error + Send>),
     #[error("Initializing the state of an agent lane failed: {0}")]
     LaneInitializationFailure(FrameIoError),
+    #[error(
+        "Requested a store of kind {requested} for item {name} but store was of kind {actual}."
+    )]
+    IncorrectStoreKind {
+        name: Text,
+        requested: StoreKind,
+        actual: StoreKind,
+    },
+    #[error("The parameters passed to the agent were invalid: {0}")]
+    InvalidParameters(#[from] UnapplyError),
+    #[error("Failed to initialize introspection for an agent: {0}")]
+    NodeIntrospection(#[from] NodeIntrospectionError),
+    #[error("Failed to initialize introspection for a labe: {0}")]
+    LaneIntrospection(#[from] LaneIntrospectionError),
 }
 
 //TODO Make this more sophisticated.

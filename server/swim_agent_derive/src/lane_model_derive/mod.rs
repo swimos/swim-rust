@@ -511,10 +511,10 @@ impl<'a> WriteToBufferMatch<'a> {
         let ItemModel { name, kind, .. } = model;
         match kind.item_kind() {
             ItemKind::Lane => {
-                quote!(#name_lit => ::core::option::Option::Some(#root::lanes::Lane::write_to_buffer(&self.#name, buffer)))
+                quote!(#name_lit => ::core::option::Option::Some(#root::lanes::LaneItem::write_to_buffer(&self.#name, buffer)))
             }
             ItemKind::Store => {
-                quote!(#name_lit => ::core::option::Option::Some(#root::stores::Store::write_to_buffer(&self.#name, buffer)))
+                quote!(#name_lit => ::core::option::Option::Some(#root::stores::StoreItem::write_to_buffer(&self.#name, buffer)))
             }
         }
     }
@@ -619,9 +619,9 @@ impl<'a> LaneSpecInsert<'a> {
             ItemKind::Store => quote!(#root::agent_model::ItemKind::Store),
         };
         let flags = if model.is_stateful() {
-            quote!(#root::agent_model::LaneFlags::empty())
+            quote!(#root::agent_model::ItemFlags::empty())
         } else {
-            quote!(#root::agent_model::LaneFlags::TRANSIENT)
+            quote!(#root::agent_model::ItemFlags::TRANSIENT)
         };
         quote!(::std::collections::HashMap::insert(&mut lanes, #lane_name, #root::agent_model::ItemSpec::new(#kind, #flags)))
     }

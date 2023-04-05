@@ -44,7 +44,7 @@ use self::queues::WriteQueues;
 
 pub use event::MapLaneEvent;
 
-use super::{Lane, ProjTransform};
+use super::{LaneItem, ProjTransform};
 
 type Inner<K, V> = MapStoreInner<K, V, WriteQueues<K>>;
 
@@ -141,7 +141,7 @@ where
 
 const INFALLIBLE_SER: &str = "Serializing lane responses to recon should be infallible.";
 
-impl<K, V> Lane for MapLane<K, V>
+impl<K, V> LaneItem for MapLane<K, V>
 where
     K: Clone + Eq + Hash + StructuralWritable,
     V: StructuralWritable,

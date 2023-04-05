@@ -38,7 +38,7 @@ use self::default_lifecycle::DefaultJoinValueLifecycle;
 use self::downlink::JoinValueDownlink;
 use self::lifecycle::JoinValueLaneLifecycle;
 
-use super::{map::MapLaneEvent, Lane, MapLane};
+use super::{map::MapLaneEvent, LaneItem, MapLane};
 
 mod default_lifecycle;
 mod downlink;
@@ -108,7 +108,7 @@ impl<K, V> AgentItem for JoinValueLane<K, V> {
     }
 }
 
-impl<K, V> Lane for JoinValueLane<K, V>
+impl<K, V> LaneItem for JoinValueLane<K, V>
 where
     K: Clone + Eq + Hash + StructuralWritable,
     V: StructuralWritable,

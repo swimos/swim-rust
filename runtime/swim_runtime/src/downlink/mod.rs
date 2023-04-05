@@ -102,7 +102,7 @@ impl AttachAction {
 }
 
 /// Configuration parameters for the downlink runtime.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct DownlinkRuntimeConfig {
     /// If the runtime has no consumers for longer than this timeout, it will stop.
     pub empty_timeout: Duration,
@@ -114,6 +114,18 @@ pub struct DownlinkRuntimeConfig {
     pub remote_buffer_size: NonZeroUsize,
     /// Size of the buffers to communicate with the downlink implementation.
     pub downlink_buffer_size: NonZeroUsize,
+}
+
+impl Default for DownlinkRuntimeConfig {
+    fn default() -> Self {
+        DownlinkRuntimeConfig {
+            empty_timeout: Duration::from_secs(30),
+            attachment_queue_size: non_zero_usize!(16),
+            abort_on_bad_frames: true,
+            remote_buffer_size: non_zero_usize!(4096),
+            downlink_buffer_size: non_zero_usize!(4096),
+        }
+    }
 }
 
 /// The runtime component for a value type downlink (i.e. value downlink, event downlink, etc.).
@@ -1084,6 +1096,7 @@ async fn write_task<B: DownlinkBackpressure>(
 use futures::ready;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use swim_utilities::non_zero_usize;
 
 use self::failure::{BadFrameStrategy, InfallibleStrategy};
 use self::interpretation::{value_interpretation, DownlinkInterpretation, MapInterpretation};
