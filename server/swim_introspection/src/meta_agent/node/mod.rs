@@ -127,6 +127,9 @@ async fn run_task(
     pulse_io: Io,
     lanes_io: Io,
 ) -> Result<(), AgentTaskError> {
+    // deferred drop so the agent doesn't terminate early.
+    let _context = context;
+
     let report_reader = handle.aggregate_reader();
     let (shutdown_tx, shutdown_rx) = trigger::trigger();
     let pulse_lane = pin!(run_pulse_lane(
@@ -156,8 +159,6 @@ async fn run_task(
             })
         }
     };
-    // deferred drop so the agent doesn't terminate early.
-    let _context = context;
     result
 }
 
