@@ -1650,7 +1650,7 @@ where
 
     loop {
         let next = streams.select_next().await;
-        debug!(event = ?next, "Processing write task event");
+        trace!(event = ?next, "Processing write task event");
         match next {
             WriteTaskEvent::Message(reg) => match state
                 .handle_task_message(reg, &initialization, &store)
