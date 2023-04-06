@@ -288,6 +288,7 @@ enum TaskEvent<ItemModel> {
 }
 
 struct HostedDownlink<Context> {
+    failed: bool,
     channel: BoxDownlinkChannel<Context>,
     write_stream: Option<BoxStream<'static, Result<(), std::io::Error>>>,
 }
@@ -298,6 +299,7 @@ impl<Context> HostedDownlink<Context> {
         write_stream: BoxStream<'static, Result<(), std::io::Error>>,
     ) -> Self {
         HostedDownlink {
+            failed: false,
             channel,
             write_stream: Some(write_stream),
         }
@@ -315,9 +317,14 @@ enum HostedDownlinkEvent {
 impl<Context> HostedDownlink<Context> {
     async fn wait_on_downlink(mut self) -> Option<(Self, HostedDownlinkEvent)> {
         let HostedDownlink {
+            failed,
             channel,
             write_stream,
         } = &mut self;
+
+        if *failed {
+            return None;
+        }
 
         let next = if let Some(out) = write_stream.as_mut() {
             tokio::select! {
@@ -333,6 +340,7 @@ impl<Context> HostedDownlink<Context> {
                 Some((self, HostedDownlinkEvent::HandlerReady { failed: false }))
             }
             Either::Left(Some(Err(_))) => {
+                *failed = true;
                 Some((self, HostedDownlinkEvent::HandlerReady { failed: true }))
             }
             Either::Right(Some(Ok(_))) => Some((self, HostedDownlinkEvent::Written)),
@@ -346,6 +354,10 @@ impl<Context> HostedDownlink<Context> {
             }
             _ => None,
         }
+    }
+
+    fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+        self.channel.next_event(context)
     }
 }
 
@@ -859,7 +871,7 @@ where
                                 downlinks.push(downlink.wait_on_downlink());
                             }
                             HostedDownlinkEvent::HandlerReady { failed } => {
-                                if let Some(handler) = downlink.channel.next_event(&item_model) {
+                                if let Some(handler) = downlink.next_event(&item_model) {
                                     if let Err(e) = run_handler(
                                         &mut ActionContext::new(
                                             &suspended,

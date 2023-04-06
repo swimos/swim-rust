@@ -1,4 +1,4 @@
-use std::{io::ErrorKind, sync::Arc};
+use std::{io::ErrorKind, sync::Arc, time::Duration};
 
 // Copyright 2015-2021 Swim Inc.
 //
@@ -16,7 +16,7 @@ use std::{io::ErrorKind, sync::Arc};
 
 use futures::{
     future::{join, BoxFuture},
-    FutureExt, StreamExt,
+    Future, FutureExt, StreamExt,
 };
 use parking_lot::Mutex;
 use swim_api::{
@@ -52,6 +52,17 @@ mod fake_context;
 mod fake_lifecycle;
 mod lane_io;
 mod run_handler;
+
+const TIMEOUT: Duration = Duration::from_secs(5);
+
+async fn with_timeout<F>(f: F) -> F::Output
+where
+    F: Future,
+{
+    tokio::time::timeout(TIMEOUT, f)
+        .await
+        .expect("Test timed out.")
+}
 
 #[derive(Debug, Clone)]
 pub enum TestEvent {
@@ -151,343 +162,361 @@ async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) 
 
 #[tokio::test]
 async fn run_agent_init_task() {
-    let context = Box::new(TestAgentContext::default());
-    let (
-        _,
-        TestContext {
-            test_event_rx,
-            lc_event_rx,
-            ..
-        },
-    ) = init_agent(context).await;
+    with_timeout(async {
+        let context = Box::new(TestAgentContext::default());
+        let (
+            _,
+            TestContext {
+                test_event_rx,
+                lc_event_rx,
+                ..
+            },
+        ) = init_agent(context).await;
 
-    //We expect the `on_start` event to have fired and the two lanes to have been attached.
+        //We expect the `on_start` event to have fired and the two lanes to have been attached.
 
-    let events = lc_event_rx.collect::<Vec<_>>().await;
+        let events = lc_event_rx.collect::<Vec<_>>().await;
 
-    assert!(matches!(
-        events.as_slice(),
-        [LifecycleEvent::Init, LifecycleEvent::Start]
-    ));
+        assert!(matches!(
+            events.as_slice(),
+            [LifecycleEvent::Init, LifecycleEvent::Start]
+        ));
 
-    let lane_events = test_event_rx.collect::<Vec<_>>().await;
-    assert!(lane_events.is_empty());
+        let lane_events = test_event_rx.collect::<Vec<_>>().await;
+        assert!(lane_events.is_empty());
+    })
+    .await
 }
 
 #[tokio::test]
 async fn stops_if_all_lanes_stop() {
-    let context = Box::new(TestAgentContext::default());
-    let (
-        task,
-        TestContext {
-            test_event_rx,
-            mut lc_event_rx,
-            val_lane_io,
-            map_lane_io,
-            cmd_lane_io,
-        },
-    ) = init_agent(context).await;
+    with_timeout(async {
+        let context = Box::new(TestAgentContext::default());
+        let (
+            task,
+            TestContext {
+                test_event_rx,
+                mut lc_event_rx,
+                val_lane_io,
+                map_lane_io,
+                cmd_lane_io,
+            },
+        ) = init_agent(context).await;
 
-    let test_case = async move {
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected init event."),
-            LifecycleEvent::Init
-        );
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected start event."),
-            LifecycleEvent::Start
-        );
+        let test_case = async move {
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected init event."),
+                LifecycleEvent::Init
+            );
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected start event."),
+                LifecycleEvent::Start
+            );
 
-        let (vtx, vrx) = val_lane_io;
-        let (mtx, mrx) = map_lane_io;
-        let (ctx, crx) = cmd_lane_io;
+            let (vtx, vrx) = val_lane_io;
+            let (mtx, mrx) = map_lane_io;
+            let (ctx, crx) = cmd_lane_io;
 
-        //Dropping both lane senders should cause the agent to stop.
-        drop(vtx);
-        drop(mtx);
-        drop(ctx);
+            //Dropping both lane senders should cause the agent to stop.
+            drop(vtx);
+            drop(mtx);
+            drop(ctx);
 
-        (lc_event_rx, vrx, mrx, crx)
-    };
+            (lc_event_rx, vrx, mrx, crx)
+        };
 
-    let (result, (lc_event_rx, _vrx, _mrx, _crx)) = join(task, test_case).await;
-    assert!(result.is_ok());
+        let (result, (lc_event_rx, _vrx, _mrx, _crx)) = join(task, test_case).await;
+        assert!(result.is_ok());
 
-    let events = lc_event_rx.collect::<Vec<_>>().await;
+        let events = lc_event_rx.collect::<Vec<_>>().await;
 
-    //Check that the `on_stop` event fired.
-    assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+        //Check that the `on_stop` event fired.
+        assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
 
-    let lane_events = test_event_rx.collect::<Vec<_>>().await;
-    assert!(lane_events.is_empty());
+        let lane_events = test_event_rx.collect::<Vec<_>>().await;
+        assert!(lane_events.is_empty());
+    })
+    .await
 }
 
 #[tokio::test]
 async fn command_to_value_lane() {
-    let context = Box::new(TestAgentContext::default());
-    let (
-        task,
-        TestContext {
-            mut test_event_rx,
-            mut lc_event_rx,
-            val_lane_io,
-            map_lane_io,
-            cmd_lane_io,
-        },
-    ) = init_agent(context).await;
+    with_timeout(async {
+        let context = Box::new(TestAgentContext::default());
+        let (
+            task,
+            TestContext {
+                mut test_event_rx,
+                mut lc_event_rx,
+                val_lane_io,
+                map_lane_io,
+                cmd_lane_io,
+            },
+        ) = init_agent(context).await;
 
-    let test_case = async move {
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected init event."),
-            LifecycleEvent::Init
-        );
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected start event."),
-            LifecycleEvent::Start
-        );
-        let (mut sender, mut receiver) = val_lane_io;
+        let test_case = async move {
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected init event."),
+                LifecycleEvent::Init
+            );
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected start event."),
+                LifecycleEvent::Start
+            );
+            let (mut sender, mut receiver) = val_lane_io;
 
-        sender.command(56).await;
+            sender.command(56).await;
 
-        // The agent should receive the command...
-        assert!(matches!(
-            test_event_rx.next().await.expect("Expected command event."),
-            TestEvent::Value { body: 56 }
-        ));
+            // The agent should receive the command...
+            assert!(matches!(
+                test_event_rx.next().await.expect("Expected command event."),
+                TestEvent::Value { body: 56 }
+            ));
 
-        //... ,trigger the `on_command` event...
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected command event."),
-            LifecycleEvent::Lane(Text::new(VAL_LANE))
-        );
+            //... ,trigger the `on_command` event...
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected command event."),
+                LifecycleEvent::Lane(Text::new(VAL_LANE))
+            );
 
-        //... and then generate an outgoing event.
-        receiver.expect_event(56).await;
+            //... and then generate an outgoing event.
+            receiver.expect_event(56).await;
 
-        drop(sender);
-        drop(map_lane_io);
-        drop(cmd_lane_io);
-        (test_event_rx, lc_event_rx)
-    };
+            drop(sender);
+            drop(map_lane_io);
+            drop(cmd_lane_io);
+            (test_event_rx, lc_event_rx)
+        };
 
-    let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
-    assert!(result.is_ok());
+        let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
+        assert!(result.is_ok());
 
-    let events = lc_event_rx.collect::<Vec<_>>().await;
+        let events = lc_event_rx.collect::<Vec<_>>().await;
 
-    //Check that the `on_stop` event fired.
-    assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+        //Check that the `on_stop` event fired.
+        assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
 
-    let lane_events = test_event_rx.collect::<Vec<_>>().await;
-    assert!(lane_events.is_empty());
+        let lane_events = test_event_rx.collect::<Vec<_>>().await;
+        assert!(lane_events.is_empty());
+    })
+    .await
 }
 
 const SYNC_ID: Uuid = Uuid::from_u128(393883);
 
 #[tokio::test]
 async fn sync_with_lane() {
-    let context = Box::new(TestAgentContext::default());
-    let (
-        task,
-        TestContext {
-            mut test_event_rx,
-            mut lc_event_rx,
-            val_lane_io,
-            map_lane_io,
-            cmd_lane_io,
-        },
-    ) = init_agent(context).await;
+    with_timeout(async {
+        let context = Box::new(TestAgentContext::default());
+        let (
+            task,
+            TestContext {
+                mut test_event_rx,
+                mut lc_event_rx,
+                val_lane_io,
+                map_lane_io,
+                cmd_lane_io,
+            },
+        ) = init_agent(context).await;
 
-    let test_case = async move {
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected init event."),
-            LifecycleEvent::Init
-        );
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected start event."),
-            LifecycleEvent::Start
-        );
-        let (mut sender, mut receiver) = val_lane_io;
+        let test_case = async move {
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected init event."),
+                LifecycleEvent::Init
+            );
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected start event."),
+                LifecycleEvent::Start
+            );
+            let (mut sender, mut receiver) = val_lane_io;
 
-        sender.sync(SYNC_ID).await;
+            sender.sync(SYNC_ID).await;
 
-        // The agent should receive the sync request..
-        assert!(matches!(
-            test_event_rx.next().await.expect("Expected sync event."),
-            TestEvent::Sync { id: SYNC_ID }
-        ));
+            // The agent should receive the sync request..
+            assert!(matches!(
+                test_event_rx.next().await.expect("Expected sync event."),
+                TestEvent::Sync { id: SYNC_ID }
+            ));
 
-        // ... and send out the response.
-        receiver.expect_sync_event(SYNC_ID, SYNC_VALUE).await;
+            // ... and send out the response.
+            receiver.expect_sync_event(SYNC_ID, SYNC_VALUE).await;
 
-        drop(sender);
-        drop(map_lane_io);
-        drop(cmd_lane_io);
-        (test_event_rx, lc_event_rx)
-    };
+            drop(sender);
+            drop(map_lane_io);
+            drop(cmd_lane_io);
+            (test_event_rx, lc_event_rx)
+        };
 
-    let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
-    assert!(result.is_ok());
+        let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
+        assert!(result.is_ok());
 
-    let events = lc_event_rx.collect::<Vec<_>>().await;
+        let events = lc_event_rx.collect::<Vec<_>>().await;
 
-    //Check that the `on_stop` event fired.
-    assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+        //Check that the `on_stop` event fired.
+        assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
 
-    let lane_events = test_event_rx.collect::<Vec<_>>().await;
-    assert!(lane_events.is_empty());
+        let lane_events = test_event_rx.collect::<Vec<_>>().await;
+        assert!(lane_events.is_empty());
+    })
+    .await
 }
 
 #[tokio::test]
 async fn command_to_map_lane() {
-    let context = Box::new(TestAgentContext::default());
-    let (
-        task,
-        TestContext {
-            mut test_event_rx,
-            mut lc_event_rx,
-            val_lane_io,
-            map_lane_io,
-            cmd_lane_io,
-        },
-    ) = init_agent(context).await;
+    with_timeout(async {
+        let context = Box::new(TestAgentContext::default());
+        let (
+            task,
+            TestContext {
+                mut test_event_rx,
+                mut lc_event_rx,
+                val_lane_io,
+                map_lane_io,
+                cmd_lane_io,
+            },
+        ) = init_agent(context).await;
 
-    let test_case = async move {
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected init event."),
-            LifecycleEvent::Init
-        );
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected start event."),
-            LifecycleEvent::Start
-        );
-        let (mut sender, mut receiver) = map_lane_io;
+        let test_case = async move {
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected init event."),
+                LifecycleEvent::Init
+            );
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected start event."),
+                LifecycleEvent::Start
+            );
+            let (mut sender, mut receiver) = map_lane_io;
 
-        sender.command(83, 9282).await;
+            sender.command(83, 9282).await;
 
-        // The agent should receive the command...
-        assert!(matches!(
-            test_event_rx.next().await.expect("Expected command event."),
-            TestEvent::Map {
-                body: MapMessage::Update {
-                    key: 83,
-                    value: 9282
+            // The agent should receive the command...
+            assert!(matches!(
+                test_event_rx.next().await.expect("Expected command event."),
+                TestEvent::Map {
+                    body: MapMessage::Update {
+                        key: 83,
+                        value: 9282
+                    }
                 }
-            }
-        ));
+            ));
 
-        //... ,trigger the `on_command` event...
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected command event."),
-            LifecycleEvent::Lane(Text::new(MAP_LANE))
-        );
+            //... ,trigger the `on_command` event...
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected command event."),
+                LifecycleEvent::Lane(Text::new(MAP_LANE))
+            );
 
-        //... and then generate an outgoing event.
-        receiver
-            .expect_event(MapOperation::Update {
-                key: 83,
-                value: 9282,
-            })
-            .await;
+            //... and then generate an outgoing event.
+            receiver
+                .expect_event(MapOperation::Update {
+                    key: 83,
+                    value: 9282,
+                })
+                .await;
 
-        drop(sender);
-        drop(val_lane_io);
-        drop(cmd_lane_io);
-        (test_event_rx, lc_event_rx)
-    };
+            drop(sender);
+            drop(val_lane_io);
+            drop(cmd_lane_io);
+            (test_event_rx, lc_event_rx)
+        };
 
-    let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
-    assert!(result.is_ok());
+        let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
+        assert!(result.is_ok());
 
-    let events = lc_event_rx.collect::<Vec<_>>().await;
+        let events = lc_event_rx.collect::<Vec<_>>().await;
 
-    //Check that the `on_stop` event fired.
-    assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+        //Check that the `on_stop` event fired.
+        assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
 
-    let lane_events = test_event_rx.collect::<Vec<_>>().await;
-    assert!(lane_events.is_empty());
+        let lane_events = test_event_rx.collect::<Vec<_>>().await;
+        assert!(lane_events.is_empty());
+    })
+    .await
 }
 
 #[tokio::test]
 async fn suspend_future() {
-    let context = Box::new(TestAgentContext::default());
-    let (
-        task,
-        TestContext {
-            mut test_event_rx,
-            mut lc_event_rx,
-            val_lane_io,
-            map_lane_io,
-            cmd_lane_io,
-        },
-    ) = init_agent(context).await;
+    with_timeout(async {
+        let context = Box::new(TestAgentContext::default());
+        let (
+            task,
+            TestContext {
+                mut test_event_rx,
+                mut lc_event_rx,
+                val_lane_io,
+                map_lane_io,
+                cmd_lane_io,
+            },
+        ) = init_agent(context).await;
 
-    let test_case = async move {
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected init event."),
-            LifecycleEvent::Init
-        );
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected start event."),
-            LifecycleEvent::Start
-        );
-        let (mut sender, receiver) = cmd_lane_io;
+        let test_case = async move {
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected init event."),
+                LifecycleEvent::Init
+            );
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected start event."),
+                LifecycleEvent::Start
+            );
+            let (mut sender, receiver) = cmd_lane_io;
 
-        let n = 456;
+            let n = 456;
 
-        sender.command(n).await;
+            sender.command(n).await;
 
-        // The agent should receive the command...
-        assert!(matches!(
-            test_event_rx.next().await.expect("Expected command event."),
-            TestEvent::Cmd { body } if body == n
-        ));
+            // The agent should receive the command...
+            assert!(matches!(
+                test_event_rx.next().await.expect("Expected command event."),
+                TestEvent::Cmd { body } if body == n
+            ));
 
-        //... ,trigger the `on_command` event...
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected command event."),
-            LifecycleEvent::Lane(Text::new(CMD_LANE))
-        );
+            //... ,trigger the `on_command` event...
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected command event."),
+                LifecycleEvent::Lane(Text::new(CMD_LANE))
+            );
 
-        //... and then run the suspended future.
-        assert_eq!(
-            lc_event_rx
-                .next()
-                .await
-                .expect("Expected suspended future."),
-            LifecycleEvent::RanSuspended(n)
-        );
+            //... and then run the suspended future.
+            assert_eq!(
+                lc_event_rx
+                    .next()
+                    .await
+                    .expect("Expected suspended future."),
+                LifecycleEvent::RanSuspended(n)
+            );
 
-        //... and then run the consequence.
-        assert_eq!(
-            lc_event_rx
-                .next()
-                .await
-                .expect("Expected suspended future consequence."),
-            LifecycleEvent::RanSuspendedConsequence
-        );
+            //... and then run the consequence.
+            assert_eq!(
+                lc_event_rx
+                    .next()
+                    .await
+                    .expect("Expected suspended future consequence."),
+                LifecycleEvent::RanSuspendedConsequence
+            );
 
-        drop(sender);
-        drop(receiver);
-        drop(val_lane_io);
-        drop(map_lane_io);
-        (test_event_rx, lc_event_rx)
-    };
+            drop(sender);
+            drop(receiver);
+            drop(val_lane_io);
+            drop(map_lane_io);
+            (test_event_rx, lc_event_rx)
+        };
 
-    let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
-    assert!(result.is_ok());
+        let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
+        assert!(result.is_ok());
 
-    let events = lc_event_rx.collect::<Vec<_>>().await;
+        let events = lc_event_rx.collect::<Vec<_>>().await;
 
-    //Check that the `on_stop` event fired.
-    assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+        //Check that the `on_stop` event fired.
+        assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
 
-    let lane_events = test_event_rx.collect::<Vec<_>>().await;
-    assert!(lane_events.is_empty());
+        let lane_events = test_event_rx.collect::<Vec<_>>().await;
+        assert!(lane_events.is_empty());
+    })
+    .await
 }
 
 struct TestDownlinkChannel {
-    rx: mpsc::UnboundedReceiver<Result<(), DownlinkFailed>>,
+    rx: Option<mpsc::UnboundedReceiver<Result<(), DownlinkFailed>>>,
     ready: bool,
 }
 
@@ -496,9 +525,16 @@ struct TestDlAgent;
 impl DownlinkChannel<TestDlAgent> for TestDownlinkChannel {
     fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), DownlinkFailed>>> {
         async move {
-            let result = self.rx.recv().await;
-            self.ready = true;
-            result
+            if let Some(rx) = self.rx.as_mut() {
+                let result = rx.recv().await;
+                self.ready = true;
+                if !matches!(&result, Some(Ok(_))) {
+                    self.rx = None;
+                }
+                result
+            } else {
+                panic!("Used after finished.");
+            }
         }
         .boxed()
     }
@@ -526,7 +562,7 @@ fn make_test_hosted_downlink(
     out_rx: mpsc::UnboundedReceiver<Result<(), std::io::Error>>,
 ) -> HostedDownlink<TestDlAgent> {
     let channel = TestDownlinkChannel {
-        rx: in_rx,
+        rx: Some(in_rx),
         ready: false,
     };
 
@@ -535,134 +571,152 @@ fn make_test_hosted_downlink(
 
 #[tokio::test]
 async fn hosted_downlink_incoming() {
-    let agent = TestDlAgent;
+    with_timeout(async {
+        let agent = TestDlAgent;
 
-    let (in_tx, in_rx) = mpsc::unbounded_channel();
-    let (_out_tx, out_rx) = mpsc::unbounded_channel();
-    let hosted = make_test_hosted_downlink(in_rx, out_rx);
+        let (in_tx, in_rx) = mpsc::unbounded_channel();
+        let (_out_tx, out_rx) = mpsc::unbounded_channel();
+        let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
-    assert!(in_tx.send(Ok(())).is_ok());
-    let (mut hosted, event) = hosted
-        .wait_on_downlink()
-        .await
-        .expect("Closed prematurely.");
-    assert!(matches!(
-        event,
-        HostedDownlinkEvent::HandlerReady { failed: false }
-    ));
-    assert!(hosted.channel.next_event(&agent).is_some());
+        assert!(in_tx.send(Ok(())).is_ok());
+        let (mut hosted, event) = hosted
+            .wait_on_downlink()
+            .await
+            .expect("Closed prematurely.");
+        assert!(matches!(
+            event,
+            HostedDownlinkEvent::HandlerReady { failed: false }
+        ));
+        assert!(hosted.channel.next_event(&agent).is_some());
+    })
+    .await
 }
 
 #[tokio::test]
 async fn hosted_downlink_incoming_error() {
-    let agent = TestDlAgent;
+    with_timeout(async {
+        let agent = TestDlAgent;
 
-    let (in_tx, in_rx) = mpsc::unbounded_channel();
-    let (_out_tx, out_rx) = mpsc::unbounded_channel();
-    let hosted = make_test_hosted_downlink(in_rx, out_rx);
+        let (in_tx, in_rx) = mpsc::unbounded_channel();
+        let (_out_tx, out_rx) = mpsc::unbounded_channel();
+        let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
-    assert!(in_tx.send(Err(DownlinkFailed)).is_ok());
-    let (mut hosted, event) = hosted
-        .wait_on_downlink()
-        .await
-        .expect("Closed prematurely.");
-    assert!(matches!(
-        event,
-        HostedDownlinkEvent::HandlerReady { failed: true }
-    ));
-    assert!(hosted.channel.next_event(&agent).is_some());
+        assert!(in_tx.send(Err(DownlinkFailed)).is_ok());
+        let (mut hosted, event) = hosted
+            .wait_on_downlink()
+            .await
+            .expect("Closed prematurely.");
 
-    assert!(hosted.wait_on_downlink().await.is_none());
+        assert!(matches!(
+            event,
+            HostedDownlinkEvent::HandlerReady { failed: true }
+        ));
+        assert!(hosted.channel.next_event(&agent).is_some());
+        assert!(hosted.wait_on_downlink().await.is_none());
+    })
+    .await
 }
 
 #[tokio::test]
 async fn hosted_downlink_outgoing() {
-    let agent = TestDlAgent;
+    with_timeout(async {
+        let agent = TestDlAgent;
 
-    let (_in_tx, in_rx) = mpsc::unbounded_channel();
-    let (out_tx, out_rx) = mpsc::unbounded_channel();
-    let hosted = make_test_hosted_downlink(in_rx, out_rx);
+        let (_in_tx, in_rx) = mpsc::unbounded_channel();
+        let (out_tx, out_rx) = mpsc::unbounded_channel();
+        let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
-    assert!(out_tx.send(Ok(())).is_ok());
-    let (mut hosted, event) = hosted
-        .wait_on_downlink()
-        .await
-        .expect("Closed prematurely.");
-    assert!(matches!(event, HostedDownlinkEvent::Written));
-    assert!(hosted.channel.next_event(&agent).is_none());
+        assert!(out_tx.send(Ok(())).is_ok());
+        let (mut hosted, event) = hosted
+            .wait_on_downlink()
+            .await
+            .expect("Closed prematurely.");
+        assert!(matches!(event, HostedDownlinkEvent::Written));
+        assert!(hosted.channel.next_event(&agent).is_none());
+    })
+    .await
 }
 
 #[tokio::test]
 async fn hosted_downlink_write_terminated() {
-    let agent = TestDlAgent;
+    with_timeout(async {
+        let agent = TestDlAgent;
 
-    let (in_tx, in_rx) = mpsc::unbounded_channel();
-    let (out_tx, out_rx) = mpsc::unbounded_channel();
-    let hosted = make_test_hosted_downlink(in_rx, out_rx);
+        let (in_tx, in_rx) = mpsc::unbounded_channel();
+        let (out_tx, out_rx) = mpsc::unbounded_channel();
+        let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
-    drop(out_tx);
-    let (mut hosted, event) = hosted
-        .wait_on_downlink()
-        .await
-        .expect("Closed prematurely.");
-    assert!(matches!(event, HostedDownlinkEvent::WriterTerminated));
-    assert!(hosted.channel.next_event(&agent).is_none());
+        drop(out_tx);
+        let (mut hosted, event) = hosted
+            .wait_on_downlink()
+            .await
+            .expect("Closed prematurely.");
+        assert!(matches!(event, HostedDownlinkEvent::WriterTerminated));
+        assert!(hosted.channel.next_event(&agent).is_none());
 
-    assert!(in_tx.send(Ok(())).is_ok());
-    let (mut hosted, event) = hosted
-        .wait_on_downlink()
-        .await
-        .expect("Closed prematurely.");
-    assert!(matches!(
-        event,
-        HostedDownlinkEvent::HandlerReady { failed: false }
-    ));
-    assert!(hosted.channel.next_event(&agent).is_some());
+        assert!(in_tx.send(Ok(())).is_ok());
+        let (mut hosted, event) = hosted
+            .wait_on_downlink()
+            .await
+            .expect("Closed prematurely.");
+        assert!(matches!(
+            event,
+            HostedDownlinkEvent::HandlerReady { failed: false }
+        ));
+        assert!(hosted.channel.next_event(&agent).is_some());
+    })
+    .await
 }
 
 #[tokio::test]
 async fn hosted_downlink_write_failed() {
-    let agent = TestDlAgent;
+    with_timeout(async {
+        let agent = TestDlAgent;
 
-    let (in_tx, in_rx) = mpsc::unbounded_channel();
-    let (out_tx, out_rx) = mpsc::unbounded_channel();
-    let hosted = make_test_hosted_downlink(in_rx, out_rx);
+        let (in_tx, in_rx) = mpsc::unbounded_channel();
+        let (out_tx, out_rx) = mpsc::unbounded_channel();
+        let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
-    let err = std::io::Error::from(ErrorKind::BrokenPipe);
+        let err = std::io::Error::from(ErrorKind::BrokenPipe);
 
-    assert!(out_tx.send(Err(err)).is_ok());
-    let (mut hosted, event) = hosted
-        .wait_on_downlink()
-        .await
-        .expect("Closed prematurely.");
-    match event {
-        HostedDownlinkEvent::WriterFailed(err) => {
-            assert_eq!(err.kind(), ErrorKind::BrokenPipe);
+        assert!(out_tx.send(Err(err)).is_ok());
+        let (mut hosted, event) = hosted
+            .wait_on_downlink()
+            .await
+            .expect("Closed prematurely.");
+        match event {
+            HostedDownlinkEvent::WriterFailed(err) => {
+                assert_eq!(err.kind(), ErrorKind::BrokenPipe);
+            }
+            ow => {
+                panic!("Unexpected event: {:?}", ow);
+            }
         }
-        ow => {
-            panic!("Unexpected event: {:?}", ow);
-        }
-    }
-    assert!(hosted.channel.next_event(&agent).is_none());
+        assert!(hosted.channel.next_event(&agent).is_none());
 
-    assert!(in_tx.send(Ok(())).is_ok());
-    let (mut hosted, event) = hosted
-        .wait_on_downlink()
-        .await
-        .expect("Closed prematurely.");
-    assert!(matches!(
-        event,
-        HostedDownlinkEvent::HandlerReady { failed: false }
-    ));
-    assert!(hosted.channel.next_event(&agent).is_some());
+        assert!(in_tx.send(Ok(())).is_ok());
+        let (mut hosted, event) = hosted
+            .wait_on_downlink()
+            .await
+            .expect("Closed prematurely.");
+        assert!(matches!(
+            event,
+            HostedDownlinkEvent::HandlerReady { failed: false }
+        ));
+        assert!(hosted.channel.next_event(&agent).is_some());
+    })
+    .await
 }
 
 #[tokio::test]
 async fn hosted_downlink_incoming_terminated() {
-    let (in_tx, in_rx) = mpsc::unbounded_channel();
-    let (_out_tx, out_rx) = mpsc::unbounded_channel();
-    let hosted = make_test_hosted_downlink(in_rx, out_rx);
+    with_timeout(async {
+        let (in_tx, in_rx) = mpsc::unbounded_channel();
+        let (_out_tx, out_rx) = mpsc::unbounded_channel();
+        let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
-    drop(in_tx);
-    assert!(hosted.wait_on_downlink().await.is_none());
+        drop(in_tx);
+        assert!(hosted.wait_on_downlink().await.is_none());
+    })
+    .await
 }
