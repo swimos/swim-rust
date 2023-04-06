@@ -83,7 +83,6 @@ impl ExampleLifecycle {
         context: HandlerContext<ExampleAgent>,
         cmd: &Instruction,
     ) -> impl EventHandler<ExampleAgent> {
-        println!("Received command: {:?}", cmd);
         match *cmd {
             Instruction::Wake => UnitHandler::default().boxed(),
             Instruction::SetValue(n) => context.set_store_value(ExampleAgent::VALUE, n).boxed(),
