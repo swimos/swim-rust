@@ -26,7 +26,7 @@ pub enum Instruction {
         value: i32,
     },
     #[form(tag = "set_temp")]
-    SetTemp { 
+    SetTemp {
         #[form(header_body)]
         key: String,
         #[form(body)]

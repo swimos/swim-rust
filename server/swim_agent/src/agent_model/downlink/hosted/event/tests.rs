@@ -21,7 +21,7 @@ use swim_model::{address::Address, Text};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
     io::byte_channel::{self, ByteWriter},
-    non_zero_usize,
+    non_zero_usize, trigger,
 };
 use tokio::io::AsyncWriteExt;
 use tokio_util::codec::FramedWrite;
@@ -130,6 +130,7 @@ struct TestContext {
     channel: HostedEventDownlinkChannel<i32, FakeLifecycle>,
     events: Events,
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
+    stop_tx: trigger::Sender,
 }
 
 fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
@@ -139,14 +140,16 @@ fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
     };
 
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (stop_tx, stop_rx) = trigger::trigger();
 
     let address = Address::new(None, Text::new("/node"), Text::new("lane"));
 
-    let chan = HostedEventDownlinkChannel::new(address, rx, lc, config);
+    let chan = HostedEventDownlinkChannel::new(address, rx, lc, config, stop_rx);
     TestContext {
         channel: chan,
         events: inner,
         sender: FramedWrite::new(tx, Default::default()),
+        stop_tx,
     }
 }
 
@@ -219,6 +222,7 @@ async fn run_with_expectations(
         channel,
         events,
         sender,
+        stop_tx: _stop_tx,
     } = context;
 
     for (not, expected) in notifications {

@@ -14,7 +14,9 @@
 
 use swim::{
     agent::{
-        agent_lifecycle::utility::HandlerContext, event_handler::EventHandler, lanes::ValueLane,
+        agent_lifecycle::utility::HandlerContext,
+        event_handler::{EventHandler, HandlerActionExt},
+        lanes::ValueLane,
         lifecycle, projections, AgentLaneModel,
     },
     route::RouteUri,
@@ -60,6 +62,7 @@ impl LinkLifecycle {
             .on_failed(|context| context.effect(|| println!("Downlink Failed!")))
             .on_event(|context, value| context.set_value(LinkAgent::FROM_REMOTE, value))
             .done()
+            .discard()
     }
 
     #[on_event(from_remote)]

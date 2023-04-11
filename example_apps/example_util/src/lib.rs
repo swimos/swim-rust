@@ -14,7 +14,8 @@
 
 use std::{
     collections::HashMap,
-    fmt::{Display, Formatter}, net::SocketAddr,
+    fmt::{Display, Formatter},
+    net::SocketAddr,
 };
 
 use swim::server::ServerHandle;
@@ -69,7 +70,10 @@ pub struct StartDependent {
     pub request: oneshot::Sender<ServerHandle>,
 }
 
-pub async fn manage_producer_and_consumer(mut producer_handle: ServerHandle, dep: oneshot::Sender<StartDependent>) {
+pub async fn manage_producer_and_consumer(
+    mut producer_handle: ServerHandle,
+    dep: oneshot::Sender<StartDependent>,
+) {
     let mut shutdown_hook = Box::pin(async {
         tokio::signal::ctrl_c()
             .await
@@ -98,7 +102,7 @@ pub async fn manage_producer_and_consumer(mut producer_handle: ServerHandle, dep
             }
         }
     } else {
-        None  
+        None
     };
 
     if let Some(mut consumer_handle) = maybe_consumer_handler {
@@ -116,7 +120,6 @@ pub async fn manage_producer_and_consumer(mut producer_handle: ServerHandle, dep
 
         consumer_handle.stop();
         producer_handle.stop();
-
     } else {
         println!("Server failed to start.");
         producer_handle.stop();

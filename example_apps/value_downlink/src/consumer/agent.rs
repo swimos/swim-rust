@@ -31,11 +31,9 @@ pub struct ConsumerLifecycle {
 }
 
 impl ConsumerLifecycle {
-
     pub fn new(port: u16) -> Self {
         ConsumerLifecycle { port }
     }
-
 }
 
 #[lifecycle(ConsumerAgent)]

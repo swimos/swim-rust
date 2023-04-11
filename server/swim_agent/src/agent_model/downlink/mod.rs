@@ -24,7 +24,7 @@ use std::hash::Hash;
 use swim_api::{downlink::DownlinkKind, protocol::map::MapOperation};
 use swim_form::{structural::read::recognizer::RecognizerReadable, Form};
 use swim_model::{address::Address, Text};
-use swim_utilities::sync::circular_buffer;
+use swim_utilities::{sync::circular_buffer, trigger};
 use tokio::sync::mpsc;
 use tracing::error;
 
@@ -39,7 +39,7 @@ use crate::{
 };
 
 use self::hosted::{
-    map_dl_write_stream, value_dl_write_stream, HostedEventDownlinkChannel,
+    map_dl_write_stream, value_dl_write_stream, EventDownlinkHandle, HostedEventDownlinkChannel,
     HostedMapDownlinkChannel, HostedValueDownlinkChannel, MapDlState, MapDownlinkHandle,
     ValueDownlinkHandle,
 };
@@ -127,6 +127,7 @@ where
         {
             let state: RefCell<Option<T>> = Default::default();
             let (tx, rx) = circular_buffer::watch_channel();
+            let (stop_tx, stop_rx) = trigger::trigger();
 
             let config = *config;
             let path_cpy = path.clone();
@@ -134,8 +135,10 @@ where
                 path.clone(),
                 DownlinkKind::Value,
                 move |reader| {
-                    HostedValueDownlinkChannel::new(path_cpy, reader, lifecycle, state, config)
-                        .boxed()
+                    HostedValueDownlinkChannel::new(
+                        path_cpy, reader, lifecycle, state, config, stop_rx,
+                    )
+                    .boxed()
                 },
                 move |writer| value_dl_write_stream(writer, rx).boxed(),
                 |result| {
@@ -145,7 +148,7 @@ where
                     UnitHandler::default()
                 },
             );
-            let handle = ValueDownlinkHandle::new(path, tx);
+            let handle = ValueDownlinkHandle::new(path, tx, stop_tx);
             StepResult::done(handle)
         } else {
             StepResult::after_done()
@@ -160,7 +163,7 @@ where
     LC: EventDownlinkLifecycle<T, Context> + Send + 'static,
     T::Rec: Send,
 {
-    type Completion = ();
+    type Completion = EventDownlinkHandle;
 
     fn step(
         &mut self,
@@ -169,18 +172,16 @@ where
         _context: &Context,
     ) -> StepResult<Self::Completion> {
         let OpenEventDownlinkAction { inner, config, .. } = self;
-        if let Some(Inner {
-            address: path,
-            lifecycle,
-        }) = inner.take()
-        {
+        if let Some(Inner { address, lifecycle }) = inner.take() {
             let config = *config;
-            let path_cpy = path.clone();
+            let addr_cpy = address.clone();
+            let (stop_tx, stop_rx) = trigger::trigger();
             action_context.start_downlink(
-                path,
+                addr_cpy.clone(),
                 DownlinkKind::Value,
                 move |reader| {
-                    HostedEventDownlinkChannel::new(path_cpy, reader, lifecycle, config).boxed()
+                    HostedEventDownlinkChannel::new(addr_cpy, reader, lifecycle, config, stop_rx)
+                        .boxed()
                 },
                 move |_writer| stream::empty().boxed(),
                 |result| {
@@ -190,7 +191,7 @@ where
                     UnitHandler::default()
                 },
             );
-            StepResult::done(())
+            StepResult::done(EventDownlinkHandle::new(address, stop_tx))
         } else {
             StepResult::after_done()
         }
@@ -215,21 +216,20 @@ where
         _context: &Context,
     ) -> StepResult<Self::Completion> {
         let OpenMapDownlinkAction { inner, config, .. } = self;
-        if let Some(Inner {
-            address: path,
-            lifecycle,
-        }) = inner.take()
-        {
+        if let Some(Inner { address, lifecycle }) = inner.take() {
             let state: RefCell<MapDlState<K, V>> = Default::default();
             let (tx, rx) = mpsc::channel::<MapOperation<K, V>>(config.channel_size.get());
+            let (stop_tx, stop_rx) = trigger::trigger();
             let config = *config;
-            let path_cpy = path.clone();
+            let addr_cpy = address.clone();
             action_context.start_downlink(
-                path,
+                addr_cpy.clone(),
                 DownlinkKind::Map,
                 move |reader| {
-                    HostedMapDownlinkChannel::new(path_cpy, reader, lifecycle, state, config)
-                        .boxed()
+                    HostedMapDownlinkChannel::new(
+                        addr_cpy, reader, lifecycle, state, config, stop_rx,
+                    )
+                    .boxed()
                 },
                 move |writer| map_dl_write_stream(writer, rx).boxed(),
                 |result| {
@@ -239,7 +239,7 @@ where
                     UnitHandler::default()
                 },
             );
-            let handle = MapDownlinkHandle::new(tx);
+            let handle = MapDownlinkHandle::new(address, tx, stop_tx);
             StepResult::done(handle)
         } else {
             StepResult::after_done()

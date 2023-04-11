@@ -14,7 +14,7 @@
 
 use std::{error::Error, time::Duration};
 
-use example_util::{manage_handle, StartDependent, manage_producer_and_consumer};
+use example_util::{manage_handle, manage_producer_and_consumer, StartDependent};
 use swim::{
     agent::agent_model::AgentModel,
     route::RoutePattern,
@@ -27,7 +27,6 @@ mod producer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    
     let server = producer::make_server().await?;
 
     let (producer_task, handle) = server.run();
@@ -36,7 +35,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let consumer_task = start_consumer(dep_rx);
     let shutdown = manage_producer_and_consumer(handle, dep_tx);
 
-    let (_, producer_result, consumer_result) = tokio::join!(shutdown, producer_task, consumer_task);
+    let (_, producer_result, consumer_result) =
+        tokio::join!(shutdown, producer_task, consumer_task);
 
     producer_result?;
     consumer_result?;

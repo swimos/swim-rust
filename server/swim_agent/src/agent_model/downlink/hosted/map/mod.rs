@@ -34,7 +34,10 @@ use swim_api::{
 };
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_model::{address::Address, Text};
-use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swim_utilities::{
+    io::byte_channel::{ByteReader, ByteWriter},
+    trigger,
+};
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
@@ -255,6 +258,7 @@ pub struct HostedMapDownlinkChannel<K: RecognizerReadable, V: RecognizerReadable
     lifecycle: LC,
     config: MapDownlinkConfig,
     dl_state: DlState,
+    stop_rx: Option<trigger::Receiver>,
 }
 
 impl<K: RecognizerReadable, V: RecognizerReadable, LC, State>
@@ -266,6 +270,7 @@ impl<K: RecognizerReadable, V: RecognizerReadable, LC, State>
         lifecycle: LC,
         state: State,
         config: MapDownlinkConfig,
+        stop_rx: trigger::Receiver,
     ) -> Self {
         HostedMapDownlinkChannel {
             address,
@@ -275,6 +280,7 @@ impl<K: RecognizerReadable, V: RecognizerReadable, LC, State>
             lifecycle,
             config,
             dl_state: DlState::Unlinked,
+            stop_rx: Some(stop_rx),
         }
     }
 }
@@ -294,29 +300,46 @@ where
             address,
             receiver,
             next,
+            stop_rx,
             ..
         } = self;
         async move {
-            if let Some(rx) = receiver {
-                match rx.next().await {
-                    Some(Ok(notification)) => {
-                        *next = Some(Ok(notification));
-                        Some(Ok(()))
+            let result = if let Some(rx) = receiver {
+                if let Some(stop_signal) = stop_rx.as_mut() {
+                    tokio::select! {
+                        biased;
+                        triggered_result = stop_signal => {
+                            *stop_rx = None;
+                            if triggered_result.is_ok() {
+                                None
+                            } else {
+                                rx.next().await
+                            }
+                        }
+                        result = rx.next() => result,
                     }
-                    Some(Err(e)) => {
-                        error!(address = %address, "Downlink input channel failed.");
-                        *next = Some(Err(e));
-                        *receiver = None;
-                        Some(Err(DownlinkFailed))
-                    }
-                    _ => {
-                        info!(address = %address, "Downlink terminated normally.");
-                        *receiver = None;
-                        None
-                    }
+                } else {
+                    rx.next().await
                 }
             } else {
-                None
+                return None;
+            };
+            match result {
+                Some(Ok(notification)) => {
+                    *next = Some(Ok(notification));
+                    Some(Ok(()))
+                }
+                Some(Err(e)) => {
+                    error!(address = %address, "Downlink input channel failed.");
+                    *next = Some(Err(e));
+                    *receiver = None;
+                    Some(Err(DownlinkFailed))
+                }
+                _ => {
+                    info!(address = %address, "Downlink terminated normally.");
+                    *receiver = None;
+                    None
+                }
             }
         }
         .boxed()
@@ -425,13 +448,31 @@ where
 }
 
 /// A handle which can be used to modify the state of a map lane through a downlink.
+#[derive(Debug)]
 pub struct MapDownlinkHandle<K, V> {
+    address: Address<Text>,
     sender: mpsc::Sender<MapOperation<K, V>>,
+    stop_tx: Option<trigger::Sender>,
 }
 
 impl<K, V> MapDownlinkHandle<K, V> {
-    pub fn new(sender: mpsc::Sender<MapOperation<K, V>>) -> Self {
-        MapDownlinkHandle { sender }
+    pub fn new(
+        address: Address<Text>,
+        sender: mpsc::Sender<MapOperation<K, V>>,
+        stop_tx: trigger::Sender,
+    ) -> Self {
+        MapDownlinkHandle {
+            address,
+            sender,
+            stop_tx: Some(stop_tx),
+        }
+    }
+
+    pub fn stop(&mut self) {
+        trace!(address = %self.address, "Stopping a map downlink.");
+        if let Some(tx) = self.stop_tx.take() {
+            tx.trigger();
+        }
     }
 }
 
@@ -445,6 +486,7 @@ where
         key: K,
         value: V,
     ) -> impl Future<Output = Result<(), AgentRuntimeError>> + 'static {
+        trace!(address = %self.address, "Updating an entry on a map downlink.");
         let tx = self.sender.clone();
         async move {
             tx.send(MapOperation::Update { key, value }).await?;
@@ -453,6 +495,7 @@ where
     }
 
     pub fn remove(&self, key: K) -> impl Future<Output = Result<(), AgentRuntimeError>> + 'static {
+        trace!(address = %self.address, "Removing an entry on a map downlink.");
         let tx = self.sender.clone();
         async move {
             tx.send(MapOperation::Remove { key }).await?;
@@ -461,6 +504,7 @@ where
     }
 
     pub fn clear(&self) -> impl Future<Output = Result<(), AgentRuntimeError>> + 'static {
+        trace!(address = %self.address, "Clearing a map downlink.");
         let tx = self.sender.clone();
         async move {
             tx.send(MapOperation::Clear).await?;

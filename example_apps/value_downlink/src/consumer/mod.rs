@@ -14,7 +14,10 @@
 
 use std::{error::Error, time::Duration};
 
-use swim::{route::RoutePattern, server::{ServerBuilder, BoxServer}};
+use swim::{
+    route::RoutePattern,
+    server::{BoxServer, ServerBuilder},
+};
 
 mod agent;
 
@@ -31,6 +34,6 @@ pub async fn make_server(producer_port: u16) -> Result<BoxServer, Box<dyn Error>
         })
         .build()
         .await?;
-    
+
     Ok(server)
 }

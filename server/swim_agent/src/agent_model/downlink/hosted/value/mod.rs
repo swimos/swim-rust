@@ -29,6 +29,7 @@ use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     sync::circular_buffer,
+    trigger,
 };
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
@@ -87,6 +88,7 @@ pub struct HostedValueDownlinkChannel<T: RecognizerReadable, LC, State> {
     lifecycle: LC,
     config: SimpleDownlinkConfig,
     dl_state: DlState,
+    stop_rx: Option<trigger::Receiver>,
 }
 
 impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> {
@@ -96,6 +98,7 @@ impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> 
         lifecycle: LC,
         state: State,
         config: SimpleDownlinkConfig,
+        stop_rx: trigger::Receiver,
     ) -> Self {
         HostedValueDownlinkChannel {
             address,
@@ -105,6 +108,7 @@ impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> 
             lifecycle,
             config,
             dl_state: DlState::Unlinked,
+            stop_rx: Some(stop_rx),
         }
     }
 }
@@ -121,29 +125,46 @@ where
             address,
             receiver,
             next,
+            stop_rx,
             ..
         } = self;
         async move {
-            if let Some(rx) = receiver {
-                match rx.next().await {
-                    Some(Ok(notification)) => {
-                        *next = Some(Ok(notification));
-                        Some(Ok(()))
+            let result = if let Some(rx) = receiver {
+                if let Some(stop_signal) = stop_rx.as_mut() {
+                    tokio::select! {
+                        biased;
+                        triggered_result = stop_signal => {
+                            *stop_rx = None;
+                            if triggered_result.is_ok() {
+                                None
+                            } else {
+                                rx.next().await
+                            }
+                        }
+                        result = rx.next() => result,
                     }
-                    Some(Err(e)) => {
-                        error!(address = %address, "Downlink input channel failed.");
-                        *receiver = None;
-                        *next = Some(Err(e));
-                        Some(Err(DownlinkFailed))
-                    }
-                    _ => {
-                        info!(address = %address, "Downlink terminated normally.");
-                        *receiver = None;
-                        None
-                    }
+                } else {
+                    rx.next().await
                 }
             } else {
-                None
+                return None;
+            };
+            match result {
+                Some(Ok(notification)) => {
+                    *next = Some(Ok(notification));
+                    Some(Ok(()))
+                }
+                Some(Err(e)) => {
+                    error!(address = %address, "Downlink input channel failed.");
+                    *receiver = None;
+                    *next = Some(Err(e));
+                    Some(Err(DownlinkFailed))
+                }
+                _ => {
+                    info!(address = %address, "Downlink terminated normally.");
+                    *receiver = None;
+                    None
+                }
             }
         }
         .boxed()
@@ -220,15 +241,35 @@ where
     }
 }
 
-/// A handle which can be used to set the value of a lane through a value downlink.
+/// A handle which can be used to set the value of a lane through a value downlink or stop the
+/// downlink.
+#[derive(Debug)]
 pub struct ValueDownlinkHandle<T> {
     address: Address<Text>,
     inner: circular_buffer::Sender<T>,
+    stop_tx: Option<trigger::Sender>,
 }
 
 impl<T> ValueDownlinkHandle<T> {
-    pub fn new(address: Address<Text>, inner: circular_buffer::Sender<T>) -> Self {
-        ValueDownlinkHandle { address, inner }
+    pub fn new(
+        address: Address<Text>,
+        inner: circular_buffer::Sender<T>,
+        stop_tx: trigger::Sender,
+    ) -> Self {
+        ValueDownlinkHandle {
+            address,
+            inner,
+            stop_tx: Some(stop_tx),
+        }
+    }
+}
+
+impl<T> ValueDownlinkHandle<T> {
+    pub fn stop(&mut self) {
+        trace!(address = %self.address, "Stopping a value downlink.");
+        if let Some(tx) = self.stop_tx.take() {
+            tx.trigger();
+        }
     }
 }
 

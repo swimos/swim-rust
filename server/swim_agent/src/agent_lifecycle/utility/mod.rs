@@ -24,7 +24,9 @@ use swim_form::Form;
 use swim_model::address::Address;
 use swim_utilities::routing::route_uri::RouteUri;
 
-use crate::agent_model::downlink::hosted::{MapDownlinkHandle, ValueDownlinkHandle};
+use crate::agent_model::downlink::hosted::{
+    EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle,
+};
 use crate::agent_model::downlink::{
     OpenEventDownlinkAction, OpenMapDownlinkAction, OpenValueDownlinkAction,
 };
@@ -522,7 +524,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         lane: &str,
         lifecycle: LC,
         config: SimpleDownlinkConfig,
-    ) -> impl EventHandler<Agent> + Send + 'static
+    ) -> impl HandlerAction<Agent, Completion = EventDownlinkHandle> + Send + 'static
     where
         T: Form + Send + Sync + 'static,
         LC: EventDownlinkLifecycle<T, Agent> + Send + 'static,
