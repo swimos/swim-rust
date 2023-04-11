@@ -130,7 +130,7 @@ struct TestContext {
     channel: HostedEventDownlinkChannel<i32, FakeLifecycle>,
     events: Events,
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
-    stop_tx: trigger::Sender,
+    stop_tx: Option<trigger::Sender>,
 }
 
 fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
@@ -149,7 +149,7 @@ fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
         channel: chan,
         events: inner,
         sender: FramedWrite::new(tx, Default::default()),
-        stop_tx,
+        stop_tx: Some(stop_tx),
     }
 }
 
@@ -158,6 +158,7 @@ async fn event_dl_shutdown_when_input_stops() {
     let TestContext {
         mut channel,
         sender,
+        stop_tx: _stop_tx,
         ..
     } = make_hosted_input(SimpleDownlinkConfig::default());
 
@@ -173,11 +174,34 @@ async fn event_dl_shutdown_when_input_stops() {
 }
 
 #[tokio::test]
+async fn event_dl_shutdown_on_stop_signal() {
+    let TestContext {
+        mut channel,
+        sender: _sender,
+        stop_tx,
+        ..
+    } = make_hosted_input(SimpleDownlinkConfig::default());
+
+    let agent = FakeAgent;
+
+    assert!(channel.next_event(&agent).is_none());
+
+    if let Some(stop_tx) = stop_tx {
+        stop_tx.trigger();
+    }
+
+    assert!(channel.await_ready().await.is_none());
+
+    assert!(channel.next_event(&agent).is_none());
+}
+
+#[tokio::test]
 async fn event_dl_terminate_on_error() {
     let TestContext {
         mut channel,
         mut sender,
         events,
+        stop_tx: _stop_tx,
         ..
     } = make_hosted_input(SimpleDownlinkConfig::default());
 
@@ -222,8 +246,11 @@ async fn run_with_expectations(
         channel,
         events,
         sender,
-        stop_tx: _stop_tx,
+        stop_tx,
+        ..
     } = context;
+
+    *stop_tx = None;
 
     for (not, expected) in notifications {
         let bytes_not = to_bytes(not);
@@ -378,6 +405,7 @@ async fn event_dl_revive_unlinked_downlink() {
     let TestContext {
         mut channel,
         sender,
+        stop_tx: _stop_tx,
         ..
     } = context;
 
