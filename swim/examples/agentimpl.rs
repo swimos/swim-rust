@@ -29,9 +29,8 @@ fn main() {
 
 fn make_agent() -> impl Agent + Send {
     let agent_fac = MyAgent::default;
-    let lifecycle = MyAgentLifecycle::default().into_lifecycle();
 
-    AgentModel::new(agent_fac, lifecycle)
+    AgentModel::from_fn(agent_fac, || MyAgentLifecycle::default().into_lifecycle())
 }
 
 /*

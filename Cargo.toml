@@ -27,7 +27,7 @@ members = [
     "example_apps/map_lane_persistence",
     "example_apps/value_store_persistence",
     "example_apps/map_store_persistence",
-    "example_apps/value_downlink",
+    "example_apps/event_downlink",
 ]
 
 exclude = [

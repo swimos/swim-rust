@@ -1,5 +1,5 @@
 [package]
-name = "value-downlink"
+name = "event-downlink"
 version = "0.1.0"
 edition = "2021"
 

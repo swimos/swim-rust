@@ -12,31 +12,40 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::cell::RefCell;
+
 use swim::agent::{
     agent_lifecycle::utility::HandlerContext,
+    agent_model::downlink::hosted::EventDownlinkHandle,
     event_handler::{EventHandler, HandlerActionExt},
-    lanes::ValueLane,
+    lanes::{CommandLane, ValueLane},
     lifecycle, projections, AgentLaneModel,
 };
+
+use super::model::Instruction;
 
 #[derive(AgentLaneModel)]
 #[projections]
 pub struct ConsumerAgent {
     lane: ValueLane<i32>,
+    instruct: CommandLane<Instruction>,
 }
 
-#[derive(Clone)]
 pub struct ConsumerLifecycle {
     port: u16,
+    handle: RefCell<Option<EventDownlinkHandle>>,
 }
 
 impl ConsumerLifecycle {
     pub fn new(port: u16) -> Self {
-        ConsumerLifecycle { port }
+        ConsumerLifecycle {
+            port,
+            handle: RefCell::new(None),
+        }
     }
 }
 
-#[lifecycle(ConsumerAgent)]
+#[lifecycle(ConsumerAgent, no_clone)]
 impl ConsumerLifecycle {
     #[on_start]
     pub fn on_start(
@@ -45,7 +54,7 @@ impl ConsumerLifecycle {
     ) -> impl EventHandler<ConsumerAgent> {
         context.get_agent_uri().and_then(move |uri| {
             context.effect(move || {
-                println!("Starting producer agent at: {}", uri);
+                println!("Starting consumer agent at: {}", uri);
             })
         })
     }
@@ -57,7 +66,7 @@ impl ConsumerLifecycle {
     ) -> impl EventHandler<ConsumerAgent> {
         context.get_agent_uri().and_then(move |uri| {
             context.effect(move || {
-                println!("Stopping producer agent at: {}", uri);
+                println!("Stopping consumer agent at: {}", uri);
             })
         })
     }
@@ -70,7 +79,7 @@ impl ConsumerLifecycle {
     ) -> impl EventHandler<ConsumerAgent> {
         let n = *value;
         context.effect(move || {
-            println!("Setting value on producer to: {}", n);
+            println!("Setting value on consumer to: {}", n);
         })
     }
 }

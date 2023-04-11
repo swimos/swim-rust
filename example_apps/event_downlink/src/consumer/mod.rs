@@ -15,17 +15,21 @@
 use std::{error::Error, time::Duration};
 
 use swim::{
+    agent::agent_model::AgentModel,
     route::RoutePattern,
     server::{BoxServer, ServerBuilder},
 };
 
+use self::agent::{ConsumerAgent, ConsumerLifecycle};
+
 mod agent;
+mod model;
 
 pub async fn make_server(producer_port: u16) -> Result<BoxServer, Box<dyn Error>> {
     let route = RoutePattern::parse_str("/consumer/:name}")?;
 
-    //let lifecycle = ExampleLifecycle;
-    //let agent = AgentModel::new(ExampleAgent::default, lifecycle.into_lifecycle());
+    let lifecycle_fn = move || ConsumerLifecycle::new(producer_port).into_lifecycle();
+    let agent = AgentModel::from_fn(ConsumerAgent::default, lifecycle_fn);
 
     let server = ServerBuilder::with_plane_name("Consumer Plane")
         //.add_route(route, agent)

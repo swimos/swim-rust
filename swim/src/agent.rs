@@ -207,6 +207,14 @@ pub mod agent_model {
         JoinValueInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,
         ValueStoreInitializer, WriteResult,
     };
+
+    pub mod downlink {
+        pub mod hosted {
+            pub use swim_agent::agent_model::downlink::hosted::{
+                EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle,
+            };
+        }
+    }
 }
 
 pub mod item {

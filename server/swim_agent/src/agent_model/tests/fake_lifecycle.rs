@@ -41,6 +41,7 @@ pub struct LifecycleHandler {
     event: Option<LifecycleEvent>,
 }
 
+#[derive(Clone)]
 pub struct TestLifecycle {
     sender: mpsc::UnboundedSender<LifecycleEvent>,
 }
