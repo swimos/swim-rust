@@ -186,9 +186,7 @@ async fn event_dl_shutdown_on_stop_signal() {
 
     assert!(channel.next_event(&agent).is_none());
 
-    if let Some(stop_tx) = stop_tx {
-        stop_tx.trigger();
-    }
+    stop_tx.expect("Stop trigger missing.").trigger();
 
     assert!(channel.await_ready().await.is_none());
 

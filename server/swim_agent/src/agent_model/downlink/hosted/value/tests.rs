@@ -159,7 +159,7 @@ struct TestContext {
     channel: HostedValueDownlinkChannel<i32, FakeLifecycle, State>,
     events: Events,
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
-    stop_tx: trigger::Sender,
+    stop_tx: Option<trigger::Sender>,
 }
 
 fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
@@ -178,7 +178,7 @@ fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
         channel: chan,
         events: inner,
         sender: FramedWrite::new(tx, Default::default()),
-        stop_tx,
+        stop_tx: Some(stop_tx),
     }
 }
 
@@ -195,6 +195,26 @@ async fn shutdown_when_input_stops() {
     assert!(channel.next_event(&agent).is_none());
 
     drop(sender);
+
+    assert!(channel.await_ready().await.is_none());
+
+    assert!(channel.next_event(&agent).is_none());
+}
+
+#[tokio::test]
+async fn shutdown_on_stop_trigger() {
+    let TestContext {
+        mut channel,
+        sender: _sender,
+        stop_tx,
+        ..
+    } = make_hosted_input(SimpleDownlinkConfig::default());
+
+    let agent = FakeAgent;
+
+    assert!(channel.next_event(&agent).is_none());
+
+    stop_tx.expect("Stop trigger missing.").trigger();
 
     assert!(channel.await_ready().await.is_none());
 
@@ -251,9 +271,10 @@ async fn run_with_expectations(
         channel,
         events,
         sender,
-        stop_tx: _stop_tx,
+        stop_tx,
     } = context;
 
+    *stop_tx = None;
     for (not, expected) in notifications {
         let bytes_not = to_bytes(not);
         assert!(sender.send(bytes_not).await.is_ok());

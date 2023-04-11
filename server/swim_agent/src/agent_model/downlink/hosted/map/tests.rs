@@ -262,7 +262,7 @@ struct TestContext {
     channel: HostedMapDownlinkChannel<i32, Text, FakeLifecycle, State>,
     events: Events,
     sender: Writer,
-    stop_tx: trigger::Sender,
+    stop_tx: Option<trigger::Sender>,
 }
 
 const NODE: &str = "/node";
@@ -284,7 +284,7 @@ fn make_hosted_input(config: MapDownlinkConfig) -> TestContext {
         channel: chan,
         events,
         sender: Writer::new(tx),
-        stop_tx,
+        stop_tx: Some(stop_tx),
     }
 }
 
@@ -301,6 +301,26 @@ async fn shutdown_when_input_stops() {
     assert!(channel.next_event(&agent).is_none());
 
     drop(sender);
+
+    assert!(channel.await_ready().await.is_none());
+
+    assert!(channel.next_event(&agent).is_none());
+}
+
+#[tokio::test]
+async fn shutdown_on_stop_trigger() {
+    let TestContext {
+        mut channel,
+        sender: _sender,
+        stop_tx,
+        ..
+    } = make_hosted_input(MapDownlinkConfig::default());
+
+    let agent = FakeAgent;
+
+    assert!(channel.next_event(&agent).is_none());
+
+    stop_tx.expect("Stop trigger missing.").trigger();
 
     assert!(channel.await_ready().await.is_none());
 
@@ -348,8 +368,10 @@ async fn run_with_expectations(
         channel,
         events,
         sender,
-        stop_tx: _stop_tx,
+        stop_tx,
     } = context;
+
+    *stop_tx = None;
 
     for (not, expected) in notifications {
         assert!(sender.send(not).await.is_ok());
