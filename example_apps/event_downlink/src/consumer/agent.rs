@@ -17,7 +17,7 @@ use std::cell::RefCell;
 use swim::agent::{
     agent_lifecycle::utility::HandlerContext,
     agent_model::downlink::hosted::EventDownlinkHandle,
-    event_handler::{EventHandler, HandlerActionExt},
+    event_handler::{EventHandler, HandlerAction, HandlerActionExt, UnitHandler},
     lanes::{CommandLane, ValueLane},
     lifecycle, projections, AgentLaneModel,
 };
@@ -82,4 +82,57 @@ impl ConsumerLifecycle {
             println!("Setting value on consumer to: {}", n);
         })
     }
+
+    #[on_command(instruct)]
+    pub fn instruct<'a>(
+        &'a self,
+        context: HandlerContext<ConsumerAgent>,
+        command: &Instruction,
+    ) -> impl EventHandler<ConsumerAgent> + 'a {
+        let ConsumerLifecycle { port, handle } = self;
+        match *command {
+            Instruction::OpenLink => {
+                if handle.borrow().is_some() {
+                    UnitHandler::default().boxed()
+                } else {
+                    open_link(context, *port)
+                        .and_then(move |dl_handle| {
+                            context.effect(move || {
+                                handle.borrow_mut().replace(dl_handle);
+                            })
+                        })
+                        .boxed()
+                }
+            }
+            Instruction::CloseLink => context
+                .effect(|| {
+                    let mut guard = handle.borrow_mut();
+                    if let Some(handle) = guard.as_mut() {
+                        handle.stop();
+                    }
+                })
+                .boxed(),
+            Instruction::Stop => context.stop().boxed(),
+        }
+    }
+}
+
+fn open_link(
+    context: HandlerContext<ConsumerAgent>,
+    port: u16,
+) -> impl HandlerAction<ConsumerAgent, Completion = EventDownlinkHandle> {
+    let host = format!("localhost:{}", port);
+    context
+        .event_downlink_builder::<i32>(Some(&host), "/producer/a", "lane", Default::default())
+        .on_linked(|context| context.effect(|| println!("Link opened.")))
+        .on_synced(|context, _| context.effect(|| println!("Link synchronized.")))
+        .on_event(|context, v| {
+            context.value(v).and_then(move |v| {
+                println!("Received value on link: {}", v);
+                context.set_value(ConsumerAgent::LANE, v)
+            })
+        })
+        .on_unlinked(|context| context.effect(|| println!("Link closed.")))
+        .on_failed(|context| context.effect(|| println!("Link failed.")))
+        .done()
 }

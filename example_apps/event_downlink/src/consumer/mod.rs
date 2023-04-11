@@ -32,7 +32,7 @@ pub async fn make_server(producer_port: u16) -> Result<BoxServer, Box<dyn Error>
     let agent = AgentModel::from_fn(ConsumerAgent::default, lifecycle_fn);
 
     let server = ServerBuilder::with_plane_name("Consumer Plane")
-        //.add_route(route, agent)
+        .add_route(route, agent)
         .update_config(|config| {
             config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
         })

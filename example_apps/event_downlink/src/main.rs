@@ -12,14 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{error::Error, time::Duration};
+use std::error::Error;
 
-use example_util::{manage_handle, manage_producer_and_consumer, StartDependent};
-use swim::{
-    agent::agent_model::AgentModel,
-    route::RoutePattern,
-    server::{Server, ServerBuilder},
-};
+use example_util::{manage_producer_and_consumer, StartDependent};
+use swim::server::Server;
 use tokio::sync::oneshot;
 
 mod consumer;

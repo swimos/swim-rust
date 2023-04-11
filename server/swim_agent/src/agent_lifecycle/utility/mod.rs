@@ -35,8 +35,8 @@ use crate::downlink_lifecycle::event::EventDownlinkLifecycle;
 use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
 use crate::event_handler::{
-    run_after, run_schedule, EventHandler, GetParameter, HandlerActionExt, Sequentially, Stop,
-    Suspend, UnitHandler,
+    run_after, run_schedule, ConstHandler, EventHandler, GetParameter, HandlerActionExt,
+    Sequentially, Stop, Suspend, UnitHandler,
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
@@ -98,6 +98,11 @@ impl<Agent> Clone for HandlerContext<Agent> {
 impl<Agent> Copy for HandlerContext<Agent> {}
 
 impl<Agent: 'static> HandlerContext<Agent> {
+    /// Create an event handler that resolves to a specific value.
+    pub fn value<T>(&self, val: T) -> impl HandlerAction<Agent, Completion = T> {
+        ConstHandler::from(val)
+    }
+
     /// Create an event handler that executes a side effect.
     pub fn effect<F, T>(&self, f: F) -> impl HandlerAction<Agent, Completion = T>
     where
