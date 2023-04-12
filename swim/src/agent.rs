@@ -253,6 +253,10 @@ pub mod lanes {
     }
 }
 
+pub mod state {
+    pub use swim_agent::state::{History, State};
+}
+
 pub mod stores {
     pub use swim_agent::stores::{MapStore, StoreItem, ValueStore};
 }

@@ -55,7 +55,7 @@ impl<'a, K: Display, V: Display> Display for FormatMap<'a, K, V> {
         let mut it = self.0.iter();
         if let Some((k, v)) = it.next() {
             write!(f, " ({}, {})", k, v)?;
-            while let Some((k, v)) = it.next() {
+            for (k, v) in it {
                 write!(f, ", ({}, {})", k, v)?;
             }
             write!(f, " ")?;

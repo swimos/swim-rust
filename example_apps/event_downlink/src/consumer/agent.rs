@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::RefCell;
-
 use swim::agent::{
     agent_lifecycle::utility::HandlerContext,
     agent_model::downlink::hosted::EventDownlinkHandle,
-    event_handler::{EventHandler, HandlerAction, HandlerActionExt, UnitHandler},
+    event_handler::{EventHandler, HandlerAction, HandlerActionExt},
     lanes::{CommandLane, ValueLane},
-    lifecycle, projections, AgentLaneModel,
+    lifecycle, projections,
+    state::State,
+    AgentLaneModel,
 };
 
 use super::model::Instruction;
@@ -33,14 +33,14 @@ pub struct ConsumerAgent {
 
 pub struct ConsumerLifecycle {
     port: u16,
-    handle: RefCell<Option<EventDownlinkHandle>>,
+    handle: State<ConsumerAgent, Option<EventDownlinkHandle>>,
 }
 
 impl ConsumerLifecycle {
     pub fn new(port: u16) -> Self {
         ConsumerLifecycle {
             port,
-            handle: RefCell::new(None),
+            handle: State::default(),
         }
     }
 }
@@ -91,24 +91,23 @@ impl ConsumerLifecycle {
     ) -> impl EventHandler<ConsumerAgent> + 'a {
         let ConsumerLifecycle { port, handle } = self;
         match *command {
-            Instruction::OpenLink => {
-                if handle.borrow().is_some() {
-                    UnitHandler::default().boxed()
-                } else {
-                    open_link(context, *port)
-                        .and_then(move |dl_handle| {
-                            context.effect(move || {
-                                handle.borrow_mut().replace(dl_handle);
-                            })
-                        })
-                        .boxed()
-                }
-            }
-            Instruction::CloseLink => context
-                .effect(|| {
-                    let mut guard = handle.borrow_mut();
-                    if let Some(handle) = guard.as_mut() {
-                        handle.stop();
+            Instruction::OpenLink => handle
+                .and_then_with(move |maybe| {
+                    if maybe.is_some() {
+                        None
+                    } else {
+                        Some(
+                            open_link(context, *port)
+                                .and_then(move |dl_handle| handle.set(Some(dl_handle))),
+                        )
+                    }
+                })
+                .discard()
+                .boxed(),
+            Instruction::CloseLink => handle
+                .with_mut(|h| {
+                    if let Some(h) = h.as_mut() {
+                        h.stop();
                     }
                 })
                 .boxed(),
