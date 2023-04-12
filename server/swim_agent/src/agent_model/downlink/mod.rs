@@ -131,12 +131,14 @@ where
 
             let config = *config;
             let path_cpy = path.clone();
+            let dl_state = Default::default();
+            let handle = ValueDownlinkHandle::new(path.clone(), tx, stop_tx, &dl_state);
             action_context.start_downlink(
-                path.clone(),
+                path,
                 DownlinkKind::Value,
                 move |reader| {
                     HostedValueDownlinkChannel::new(
-                        path_cpy, reader, lifecycle, state, config, stop_rx,
+                        path_cpy, reader, lifecycle, state, config, stop_rx, dl_state,
                     )
                     .boxed()
                 },
@@ -148,7 +150,7 @@ where
                     UnitHandler::default()
                 },
             );
-            let handle = ValueDownlinkHandle::new(path, tx, stop_tx);
+
             StepResult::done(handle)
         } else {
             StepResult::after_done()
@@ -176,12 +178,16 @@ where
             let config = *config;
             let addr_cpy = address.clone();
             let (stop_tx, stop_rx) = trigger::trigger();
+            let dl_state = Default::default();
+            let handle = EventDownlinkHandle::new(address, stop_tx, &dl_state);
             action_context.start_downlink(
                 addr_cpy.clone(),
                 DownlinkKind::Value,
                 move |reader| {
-                    HostedEventDownlinkChannel::new(addr_cpy, reader, lifecycle, config, stop_rx)
-                        .boxed()
+                    HostedEventDownlinkChannel::new(
+                        addr_cpy, reader, lifecycle, config, stop_rx, dl_state,
+                    )
+                    .boxed()
                 },
                 move |_writer| stream::empty().boxed(),
                 |result| {
@@ -191,7 +197,7 @@ where
                     UnitHandler::default()
                 },
             );
-            StepResult::done(EventDownlinkHandle::new(address, stop_tx))
+            StepResult::done(handle)
         } else {
             StepResult::after_done()
         }
@@ -222,12 +228,15 @@ where
             let (stop_tx, stop_rx) = trigger::trigger();
             let config = *config;
             let addr_cpy = address.clone();
+            let dl_state = Default::default();
+            let handle = MapDownlinkHandle::new(address, tx, stop_tx, &dl_state);
+
             action_context.start_downlink(
                 addr_cpy.clone(),
                 DownlinkKind::Map,
                 move |reader| {
                     HostedMapDownlinkChannel::new(
-                        addr_cpy, reader, lifecycle, state, config, stop_rx,
+                        addr_cpy, reader, lifecycle, state, config, stop_rx, dl_state,
                     )
                     .boxed()
                 },
@@ -239,7 +248,7 @@ where
                     UnitHandler::default()
                 },
             );
-            let handle = MapDownlinkHandle::new(address, tx, stop_tx);
+
             StepResult::done(handle)
         } else {
             StepResult::after_done()

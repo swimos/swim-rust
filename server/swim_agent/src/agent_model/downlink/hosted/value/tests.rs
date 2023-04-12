@@ -173,7 +173,15 @@ fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
     let address = Address::new(None, Text::new("/node"), Text::new("lane"));
     let (stop_tx, stop_rx) = trigger::trigger();
 
-    let chan = HostedValueDownlinkChannel::new(address, rx, lc, State::default(), config, stop_rx);
+    let chan = HostedValueDownlinkChannel::new(
+        address,
+        rx,
+        lc,
+        State::default(),
+        config,
+        stop_rx,
+        Default::default(),
+    );
     TestContext {
         channel: chan,
         events: inner,
@@ -467,7 +475,7 @@ async fn value_downlink_writer() {
 
     let write = async move {
         let address = Address::new(None, Text::new("/node"), Text::new("lane"));
-        let mut handle = ValueDownlinkHandle::new(address, set_tx, stop_tx);
+        let mut handle = ValueDownlinkHandle::new(address, set_tx, stop_tx, &Default::default());
         for i in 0..=10 {
             assert!(handle.set(i).is_ok());
             if i % 2 == 0 {

@@ -92,15 +92,12 @@ impl ConsumerLifecycle {
         let ConsumerLifecycle { port, handle } = self;
         match *command {
             Instruction::OpenLink => handle
-                .and_then_with(move |maybe| {
-                    if maybe.is_some() {
-                        None
-                    } else {
-                        Some(
-                            open_link(context, *port)
-                                .and_then(move |dl_handle| handle.set(Some(dl_handle))),
-                        )
-                    }
+                .and_then_with(move |maybe| match maybe {
+                    Some(dl_handle) if !dl_handle.is_stopped() => None,
+                    _ => Some(
+                        open_link(context, *port)
+                            .and_then(move |dl_handle| handle.set(Some(dl_handle))),
+                    ),
                 })
                 .discard()
                 .boxed(),

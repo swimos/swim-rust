@@ -16,6 +16,7 @@ use std::{
     cell::RefCell,
     collections::{BTreeSet, HashMap},
     pin::pin,
+    sync::{atomic::AtomicU8, Arc},
 };
 
 use futures::{
@@ -50,7 +51,7 @@ use crate::{
     event_queue::EventQueue,
 };
 
-use super::DlState;
+use super::{DlState, DlStateObserver, DlStateTracker};
 
 #[cfg(test)]
 mod tests;
@@ -257,7 +258,7 @@ pub struct HostedMapDownlinkChannel<K: RecognizerReadable, V: RecognizerReadable
     next: Option<Result<DownlinkNotification<MapMessage<K, V>>, FrameIoError>>,
     lifecycle: LC,
     config: MapDownlinkConfig,
-    dl_state: DlState,
+    dl_state: DlStateTracker,
     stop_rx: Option<trigger::Receiver>,
 }
 
@@ -271,6 +272,7 @@ impl<K: RecognizerReadable, V: RecognizerReadable, LC, State>
         state: State,
         config: MapDownlinkConfig,
         stop_rx: trigger::Receiver,
+        dl_state: Arc<AtomicU8>,
     ) -> Self {
         HostedMapDownlinkChannel {
             address,
@@ -279,7 +281,7 @@ impl<K: RecognizerReadable, V: RecognizerReadable, LC, State>
             next: None,
             lifecycle,
             config,
-            dl_state: DlState::Unlinked,
+            dl_state: DlStateTracker::new(dl_state),
             stop_rx: Some(stop_rx),
         }
     }
@@ -365,23 +367,23 @@ where
             match notification {
                 Ok(DownlinkNotification::Linked) => {
                     debug!(address = %address, "Downlink linked.");
-                    if *dl_state == DlState::Unlinked {
-                        *dl_state = DlState::Linked;
+                    if dl_state.get() == DlState::Unlinked {
+                        dl_state.set(DlState::Linked);
                     }
                     Some(lifecycle.on_linked().boxed())
                 }
                 Ok(DownlinkNotification::Synced) => {
                     debug!(address = %address, "Downlink synced.");
-                    *dl_state = DlState::Synced;
+                    dl_state.set(DlState::Synced);
                     Some(state.with(context, |map| lifecycle.on_synced(&map.map).boxed()))
                 }
                 Ok(DownlinkNotification::Event { body }) => {
-                    let maybe_lifecycle = if *dl_state == DlState::Synced || *events_when_not_synced
-                    {
-                        Some(&*lifecycle)
-                    } else {
-                        None
-                    };
+                    let maybe_lifecycle =
+                        if dl_state.get() == DlState::Synced || *events_when_not_synced {
+                            Some(&*lifecycle)
+                        } else {
+                            None
+                        };
                     trace!(address = %address, "Event received for downlink.");
 
                     match body {
@@ -420,18 +422,22 @@ where
                 }
                 Ok(DownlinkNotification::Unlinked) => {
                     debug!(address = %address, "Downlink unlinked.");
-                    *dl_state = DlState::Unlinked;
                     if *terminate_on_unlinked {
                         *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
                     }
                     state.clear(context);
                     Some(lifecycle.on_unlinked().boxed())
                 }
                 Err(_) => {
                     debug!(address = %address, "Downlink failed.");
-                    *dl_state = DlState::Unlinked;
                     if *terminate_on_unlinked {
                         *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
                     }
                     state.clear(context);
                     Some(lifecycle.on_failed().boxed())
@@ -453,6 +459,7 @@ pub struct MapDownlinkHandle<K, V> {
     address: Address<Text>,
     sender: mpsc::Sender<MapOperation<K, V>>,
     stop_tx: Option<trigger::Sender>,
+    observer: DlStateObserver,
 }
 
 impl<K, V> MapDownlinkHandle<K, V> {
@@ -460,11 +467,13 @@ impl<K, V> MapDownlinkHandle<K, V> {
         address: Address<Text>,
         sender: mpsc::Sender<MapOperation<K, V>>,
         stop_tx: trigger::Sender,
+        state: &Arc<AtomicU8>,
     ) -> Self {
         MapDownlinkHandle {
             address,
             sender,
             stop_tx: Some(stop_tx),
+            observer: DlStateObserver::new(state),
         }
     }
 
@@ -473,6 +482,14 @@ impl<K, V> MapDownlinkHandle<K, V> {
         if let Some(tx) = self.stop_tx.take() {
             tx.trigger();
         }
+    }
+
+    pub fn is_stopped(&self) -> bool {
+        self.observer.get() == DlState::Stopped
+    }
+
+    pub fn is_linked(&self) -> bool {
+        matches!(self.observer.get(), DlState::Linked | DlState::Synced)
     }
 }
 

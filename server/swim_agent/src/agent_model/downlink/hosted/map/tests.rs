@@ -279,7 +279,15 @@ fn make_hosted_input(config: MapDownlinkConfig) -> TestContext {
 
     let address = Address::text(None, NODE, LANE);
 
-    let chan = HostedMapDownlinkChannel::new(address, rx, lc, State::default(), config, stop_rx);
+    let chan = HostedMapDownlinkChannel::new(
+        address,
+        rx,
+        lc,
+        State::default(),
+        config,
+        stop_rx,
+        Default::default(),
+    );
     TestContext {
         channel: chan,
         events,
@@ -731,7 +739,12 @@ async fn map_downlink_writer() {
     let read = async move { receiver.collect::<Vec<_>>().await };
 
     let write = async move {
-        let handle = MapDownlinkHandle::new(Address::text(None, NODE, LANE), op_tx, stop_tx);
+        let handle = MapDownlinkHandle::new(
+            Address::text(None, NODE, LANE),
+            op_tx,
+            stop_tx,
+            &Default::default(),
+        );
         for i in 'a'..='j' {
             for j in 0..3 {
                 assert!(handle.update(j, Text::from(i.to_string())).await.is_ok());

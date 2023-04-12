@@ -14,7 +14,11 @@
 
 use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
-use std::{cell::RefCell, fmt::Write};
+use std::{
+    cell::RefCell,
+    fmt::Write,
+    sync::{atomic::AtomicU8, Arc},
+};
 use swim_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},
@@ -41,7 +45,7 @@ use crate::{
     event_handler::{BoxEventHandler, HandlerActionExt},
 };
 
-use super::DlState;
+use super::{DlState, DlStateObserver, DlStateTracker};
 
 #[cfg(test)]
 mod tests;
@@ -87,7 +91,7 @@ pub struct HostedValueDownlinkChannel<T: RecognizerReadable, LC, State> {
     next: Option<Result<DownlinkNotification<T>, FrameIoError>>,
     lifecycle: LC,
     config: SimpleDownlinkConfig,
-    dl_state: DlState,
+    dl_state: DlStateTracker,
     stop_rx: Option<trigger::Receiver>,
 }
 
@@ -99,6 +103,7 @@ impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> 
         state: State,
         config: SimpleDownlinkConfig,
         stop_rx: trigger::Receiver,
+        dl_state: Arc<AtomicU8>,
     ) -> Self {
         HostedValueDownlinkChannel {
             address,
@@ -107,7 +112,7 @@ impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> 
             next: None,
             lifecycle,
             config,
-            dl_state: DlState::Unlinked,
+            dl_state: DlStateTracker::new(dl_state),
             stop_rx: Some(stop_rx),
         }
     }
@@ -189,20 +194,20 @@ where
             match notification {
                 Ok(DownlinkNotification::Linked) => {
                     debug!(address = %address, "Downlink linked.");
-                    if *dl_state == DlState::Unlinked {
-                        *dl_state = DlState::Linked;
+                    if dl_state.get() == DlState::Unlinked {
+                        dl_state.set(DlState::Linked);
                     }
                     Some(lifecycle.on_linked().boxed())
                 }
                 Ok(DownlinkNotification::Synced) => state.with(context, |maybe_value| {
                     debug!(address = %address, "Downlink synced.");
-                    *dl_state = DlState::Synced;
+                    dl_state.set(DlState::Synced);
                     maybe_value.map(|value| lifecycle.on_synced(value).boxed())
                 }),
                 Ok(DownlinkNotification::Event { body }) => {
                     trace!(address = %address, "Event received for downlink.");
                     let prev = state.take_current(context);
-                    let handler = if *dl_state == DlState::Synced || *events_when_not_synced {
+                    let handler = if dl_state.get() == DlState::Synced || *events_when_not_synced {
                         let handler = lifecycle
                             .on_event(&body)
                             .followed_by(lifecycle.on_set(prev, &body))
@@ -219,6 +224,9 @@ where
                     state.clear(context);
                     if *terminate_on_unlinked {
                         *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
                     }
                     Some(lifecycle.on_unlinked().boxed())
                 }
@@ -227,6 +235,9 @@ where
                     state.clear(context);
                     if *terminate_on_unlinked {
                         *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
                     }
                     Some(lifecycle.on_failed().boxed())
                 }
@@ -248,6 +259,7 @@ pub struct ValueDownlinkHandle<T> {
     address: Address<Text>,
     inner: circular_buffer::Sender<T>,
     stop_tx: Option<trigger::Sender>,
+    observer: DlStateObserver,
 }
 
 impl<T> ValueDownlinkHandle<T> {
@@ -255,11 +267,13 @@ impl<T> ValueDownlinkHandle<T> {
         address: Address<Text>,
         inner: circular_buffer::Sender<T>,
         stop_tx: trigger::Sender,
+        state: &Arc<AtomicU8>,
     ) -> Self {
         ValueDownlinkHandle {
             address,
             inner,
             stop_tx: Some(stop_tx),
+            observer: DlStateObserver::new(state),
         }
     }
 }
@@ -270,6 +284,14 @@ impl<T> ValueDownlinkHandle<T> {
         if let Some(tx) = self.stop_tx.take() {
             tx.trigger();
         }
+    }
+
+    pub fn is_stopped(&self) -> bool {
+        self.observer.get() == DlState::Stopped
+    }
+
+    pub fn is_linked(&self) -> bool {
+        matches!(self.observer.get(), DlState::Linked | DlState::Synced)
     }
 }
 

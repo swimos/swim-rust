@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::sync::{atomic::AtomicU8, Arc};
+
 use futures::{future::BoxFuture, FutureExt, StreamExt};
 use swim_api::{
     downlink::DownlinkKind,
@@ -31,7 +33,7 @@ use crate::{
     event_handler::{BoxEventHandler, HandlerActionExt},
 };
 
-use super::DlState;
+use super::{DlState, DlStateObserver, DlStateTracker};
 
 #[cfg(test)]
 mod tests;
@@ -44,7 +46,7 @@ pub struct HostedEventDownlinkChannel<T: RecognizerReadable, LC> {
     next: Option<Result<DownlinkNotification<T>, FrameIoError>>,
     lifecycle: LC,
     config: SimpleDownlinkConfig,
-    dl_state: DlState,
+    dl_state: DlStateTracker,
     stop_rx: Option<trigger::Receiver>,
 }
 
@@ -55,6 +57,7 @@ impl<T: RecognizerReadable, LC> HostedEventDownlinkChannel<T, LC> {
         lifecycle: LC,
         config: SimpleDownlinkConfig,
         stop_rx: trigger::Receiver,
+        state: Arc<AtomicU8>,
     ) -> Self {
         HostedEventDownlinkChannel {
             address,
@@ -62,7 +65,7 @@ impl<T: RecognizerReadable, LC> HostedEventDownlinkChannel<T, LC> {
             next: None,
             lifecycle,
             config,
-            dl_state: DlState::Unlinked,
+            dl_state: DlStateTracker::new(state),
             stop_rx: Some(stop_rx),
         }
     }
@@ -142,19 +145,19 @@ where
             match notification {
                 Ok(DownlinkNotification::Linked) => {
                     debug!(address = %address, "Downlink linked.");
-                    if *dl_state == DlState::Unlinked {
-                        *dl_state = DlState::Linked;
+                    if dl_state.get() == DlState::Unlinked {
+                        dl_state.set(DlState::Linked);
                     }
                     Some(lifecycle.on_linked().boxed())
                 }
                 Ok(DownlinkNotification::Synced) => {
                     debug!(address = %address, "Downlink synced.");
-                    *dl_state = DlState::Synced;
+                    dl_state.set(DlState::Synced);
                     Some(lifecycle.on_synced(&()).boxed())
                 }
                 Ok(DownlinkNotification::Event { body }) => {
                     trace!(address = %address, "Event received for downlink.");
-                    let handler = if *dl_state == DlState::Synced || *events_when_not_synced {
+                    let handler = if dl_state.get() == DlState::Synced || *events_when_not_synced {
                         let handler = lifecycle.on_event(body).boxed();
                         Some(handler)
                     } else {
@@ -166,6 +169,9 @@ where
                     debug!(address = %address, "Downlink unlinked.");
                     if *terminate_on_unlinked {
                         *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
                     }
                     Some(lifecycle.on_unlinked().boxed())
                 }
@@ -173,6 +179,9 @@ where
                     debug!(address = %address, "Downlink failed.");
                     if *terminate_on_unlinked {
                         *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
                     }
                     Some(lifecycle.on_failed().boxed())
                 }
@@ -192,13 +201,15 @@ where
 pub struct EventDownlinkHandle {
     address: Address<Text>,
     stop_tx: Option<trigger::Sender>,
+    observer: DlStateObserver,
 }
 
 impl EventDownlinkHandle {
-    pub fn new(address: Address<Text>, stop_tx: trigger::Sender) -> Self {
+    pub fn new(address: Address<Text>, stop_tx: trigger::Sender, state: &Arc<AtomicU8>) -> Self {
         EventDownlinkHandle {
             address,
             stop_tx: Some(stop_tx),
+            observer: DlStateObserver::new(state),
         }
     }
 
@@ -207,5 +218,13 @@ impl EventDownlinkHandle {
         if let Some(tx) = self.stop_tx.take() {
             tx.trigger();
         }
+    }
+
+    pub fn is_stopped(&self) -> bool {
+        self.observer.get() == DlState::Stopped
+    }
+
+    pub fn is_linked(&self) -> bool {
+        matches!(self.observer.get(), DlState::Linked | DlState::Synced)
     }
 }

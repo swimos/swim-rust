@@ -144,7 +144,8 @@ fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
 
     let address = Address::new(None, Text::new("/node"), Text::new("lane"));
 
-    let chan = HostedEventDownlinkChannel::new(address, rx, lc, config, stop_rx);
+    let chan =
+        HostedEventDownlinkChannel::new(address, rx, lc, config, stop_rx, Default::default());
     TestContext {
         channel: chan,
         events: inner,
