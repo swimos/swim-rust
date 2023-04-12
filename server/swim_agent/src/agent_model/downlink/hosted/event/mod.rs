@@ -213,6 +213,7 @@ impl EventDownlinkHandle {
         }
     }
 
+    /// Instruct the downlink to stop.
     pub fn stop(&mut self) {
         trace!(address = %self.address, "Stopping an event downlink.");
         if let Some(tx) = self.stop_tx.take() {
@@ -220,10 +221,12 @@ impl EventDownlinkHandle {
         }
     }
 
+    /// True if the downlink has stopped (regardless of whether it stopped cleanly or failed.)
     pub fn is_stopped(&self) -> bool {
         self.observer.get() == DlState::Stopped
     }
 
+    /// True if the downlink is running and linked.
     pub fn is_linked(&self) -> bool {
         matches!(self.observer.get(), DlState::Linked | DlState::Synced)
     }

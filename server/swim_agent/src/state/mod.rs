@@ -23,6 +23,9 @@ use crate::event_handler::{
     ConstHandler, EventHandler, HandlerAction, HandlerActionExt, SideEffect, UnitHandler,
 };
 
+/// A cell with interior mutability for use within agent lifecycles. This is a wrapper around [`RefCell`]
+/// that provides operations that are lifted to be [`HandlerAction`]s to reduce verbosity when writing
+/// event handlers.
 pub struct State<Context, T> {
     _context_type: PhantomData<fn(&Context)>,
     content: RefCell<T>,
@@ -53,6 +56,7 @@ impl<Context, T> State<Context, T>
 where
     T: Clone,
 {
+    /// Get a clone of the value of the state within an event handler.
     pub fn get(&self) -> impl HandlerAction<Context, Completion = T> + '_ {
         SideEffect::from(move || self.content.borrow().clone())
     }
@@ -62,20 +66,26 @@ impl<Context, T> State<Context, T>
 where
     T: Default,
 {
+    /// Take the value from a state within an event handler.
     pub fn take(&self) -> impl HandlerAction<Context, Completion = T> + '_ {
         SideEffect::from(move || self.content.take())
     }
 }
 
 impl<Context, T> State<Context, T> {
+    /// Replace the value of the state within an event handler, producing the previous value
+    /// as the result.
     pub fn replace(&self, value: T) -> impl HandlerAction<Context, Completion = T> + '_ {
         SideEffect::from(move || self.content.replace(value))
     }
 
+    /// Set the value of the state within an event handler, discarding any previous value.
     pub fn set(&self, value: T) -> impl EventHandler<Context> + '_ {
         self.replace(value).discard()
     }
 
+    /// Create an event handler that will run another handler computed using a closure, operating
+    /// on a reference to the value of the state.
     pub fn and_then_with<'a, B, F, H>(
         &'a self,
         f: F,
@@ -91,6 +101,8 @@ impl<Context, T> State<Context, T> {
         })
     }
 
+    /// Create an event handler that will compute a value using a closure, operating
+    /// on a reference to the value of the state.
     pub fn with<'a, B, F, U>(&'a self, f: F) -> impl HandlerAction<Context, Completion = U> + 'a
     where
         T: Borrow<B>,
@@ -100,6 +112,8 @@ impl<Context, T> State<Context, T> {
         self.and_then_with(move |s| ConstHandler::from(f(s)))
     }
 
+    /// Create an event handler that will compute a value using a closure, operating
+    /// on a mutable reference to the value of the state.
     pub fn and_then_with_mut<'a, B, F, H>(
         &'a self,
         f: F,
@@ -115,6 +129,8 @@ impl<Context, T> State<Context, T> {
         })
     }
 
+    /// Create an event handler that will compute a value using a closure, operating
+    /// on a mutable reference to the value of the state.
     pub fn with_mut<'a, B, F, U>(&'a self, f: F) -> impl HandlerAction<Context, Completion = U> + 'a
     where
         T: BorrowMut<B>,
@@ -126,6 +142,8 @@ impl<Context, T> State<Context, T> {
 }
 
 impl<Context, T> State<Context, Option<T>> {
+    /// Create an event handler that will optionally compute a value using a closure, operating
+    /// on a reference to the optional value in the state.
     pub fn with_as_ref<'a, B, F, U>(
         &'a self,
         f: F,
@@ -138,6 +156,8 @@ impl<Context, T> State<Context, Option<T>> {
         self.with(move |maybe| maybe.as_ref().map(move |s| f(s.borrow())))
     }
 
+    /// Create an event handler that will optionally run another handler computed using a closure, operating
+    /// on a reference to the optional value of the state.
     pub fn an_then_as_ref<'a, B, F, H>(
         &'a self,
         f: F,
@@ -150,6 +170,8 @@ impl<Context, T> State<Context, Option<T>> {
         self.and_then_with(move |maybe| maybe.as_ref().map(move |s| f(s.borrow())))
     }
 
+    /// Create an event handler that will optionally compute a value using a closure, operating
+    /// on a mutable reference to the optional value in the state.
     pub fn with_as_mut<'a, B, F, U>(
         &'a self,
         f: F,
@@ -162,6 +184,8 @@ impl<Context, T> State<Context, Option<T>> {
         self.with_mut(move |maybe| maybe.as_mut().map(move |s| f(s.borrow_mut())))
     }
 
+    /// Create an event handler that will optionally run another handler computed using a closure, operating
+    /// on a mutable reference to the optional value of the state.
     pub fn an_then_as_mut<'a, B, F, H>(
         &'a self,
         f: F,
@@ -175,12 +199,15 @@ impl<Context, T> State<Context, Option<T>> {
     }
 }
 
+/// A specialized state to maintain a fixed historical window of a sequence of values.
 pub struct History<Context, T> {
     inner: State<Context, VecDeque<T>>,
     max_size: usize,
 }
 
 impl<Context, T> History<Context, T> {
+    /// #Arguments
+    /// * `max_size` - The maximum size of the window to accumulate in the history.
     pub fn new(max_size: usize) -> Self {
         History {
             inner: Default::default(),
@@ -188,10 +215,12 @@ impl<Context, T> History<Context, T> {
         }
     }
 
+    /// The maximum size of the window to accumulate in the history.
     pub fn max_size(&self) -> usize {
         self.max_size
     }
 
+    /// Add an entry to the history, removing the oldest entry if the maximum size is exceeded.
     pub fn push(&self, item: T) -> impl EventHandler<Context> + '_ {
         let max = self.max_size;
         self.inner.and_then_with_mut(move |history| {
@@ -203,12 +232,15 @@ impl<Context, T> History<Context, T> {
         })
     }
 
+    /// Get the current size of the history.
     pub fn len(&self) -> impl HandlerAction<Context, Completion = usize> + '_ {
         self.inner
             .and_then_with(|history| ConstHandler::from(history.len()))
     }
 
-    pub fn with<'a, F, H>(
+    /// Create an event handler that will run another handler computed using a closure, operating
+    /// on a reference to the contents of the history.
+    pub fn and_then_with<'a, F, H>(
         &'a self,
         f: F,
     ) -> impl HandlerAction<Context, Completion = H::Completion> + 'a
@@ -217,5 +249,15 @@ impl<Context, T> History<Context, T> {
         H: HandlerAction<Context> + 'a,
     {
         self.inner.and_then_with(f)
+    }
+
+    /// Create an event handler that will compute a value using a closure, operating
+    /// on a reference to the contents of the history.
+    pub fn with<'a, F, U>(&'a self, f: F) -> impl HandlerAction<Context, Completion = U> + 'a
+    where
+        F: FnOnce(&VecDeque<T>) -> U + 'a,
+        U: 'a,
+    {
+        self.inner.with(f)
     }
 }
