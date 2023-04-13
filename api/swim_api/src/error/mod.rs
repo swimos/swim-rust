@@ -71,11 +71,11 @@ pub enum DownlinkTaskError {
     Custom(Box<dyn Error + Send + Sync + 'static>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DownlinkFailureReason {
-    Unresolvable,
+    Unresolvable(String),
     ConnectionFailed,
-    WebsocketNegotiationFailed,
+    WebsocketNegotiationFailed(String),
     RemoteStopped,
     DownlinkStopped,
 }
@@ -85,12 +85,12 @@ impl Error for DownlinkFailureReason {}
 impl Display for DownlinkFailureReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DownlinkFailureReason::Unresolvable => write!(f, "The lane was unresolvable."),
+            DownlinkFailureReason::Unresolvable(message) => write!(f, "The lane was unresolvable: {}", message),
             DownlinkFailureReason::ConnectionFailed => {
                 write!(f, "Connection to the remote host failed.")
             }
-            DownlinkFailureReason::WebsocketNegotiationFailed => {
-                write!(f, "Could not negotiate a websocket connection.")
+            DownlinkFailureReason::WebsocketNegotiationFailed(message) => {
+                write!(f, "Could not negotiate a websocket connection: {}", message)
             }
             DownlinkFailureReason::RemoteStopped => {
                 write!(
@@ -115,7 +115,7 @@ pub enum AgentRuntimeError {
 }
 
 /// Error type for the operation of spawning a new downlink on the runtime.
-#[derive(Error, Debug, Clone, Copy)]
+#[derive(Error, Debug, Clone)]
 pub enum DownlinkRuntimeError {
     #[error(transparent)]
     RuntimeError(#[from] AgentRuntimeError),

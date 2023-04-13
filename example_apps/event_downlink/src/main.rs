@@ -17,13 +17,27 @@ use std::error::Error;
 use example_util::{manage_producer_and_consumer, StartDependent};
 use swim::server::Server;
 use tokio::sync::oneshot;
+use tracing_subscriber::EnvFilter;
 
 mod consumer;
 mod producer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    
+    let filter = EnvFilter::from_default_env()
+        .add_directive("swim_server_app=trace".parse()?)
+        .add_directive("swim_runtime=trace".parse()?)
+        .add_directive("swim_agent=trace".parse()?)
+        .add_directive("swim_messages=trace".parse()?)
+        .add_directive("swim_remote=trace".parse()?)
+        .add_directive("mio=warn".parse()?)
+        .add_directive("tokio=warn".parse()?)
+        .add_directive("event_downlink=trace".parse()?);
+    tracing_subscriber::fmt().with_env_filter(filter).init();
+   
     let server = producer::make_server().await?;
+    tracing::info!("Starting event downlink example.");
 
     let (producer_task, handle) = server.run();
 

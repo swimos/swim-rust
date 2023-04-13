@@ -43,18 +43,16 @@ use swim_runtime::{
         failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy},
         AttachAction, DownlinkRuntimeConfig, Io, MapDownlinkRuntime, ValueDownlinkRuntime,
     },
-    net::{dns::DnsResolver, BadUrl, Scheme, SchemeHostPort},
+    net::{dns::DnsResolver, Scheme, SchemeHostPort},
 };
 use swim_utilities::{
     io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter},
     trigger,
 };
-use thiserror::Error;
 use tokio::{
     sync::{mpsc, oneshot},
     task::JoinError,
 };
-use url::Url;
 use uuid::Uuid;
 
 use super::{
@@ -134,28 +132,31 @@ where
                 match event {
                     Event::Request(request) => {
                         if let Some(host) = request.key.0.host.clone() {
-                            if let Ok(SchemeHostPort(scheme, host_name, port)) =
-                                process_host(host.as_str())
-                            {
-                                pending.push_remote(host.clone(), request);
-                                tasks.push(
-                                    dns.resolve(host_name, port)
-                                        .map(move |result| Event::Resolved {
-                                            scheme,
-                                            host,
-                                            result,
-                                        })
-                                        .boxed(),
-                                );
-                            } else {
-                                let DownlinkRequest { promise, .. } = request;
-                                if promise
-                                    .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
-                                        DownlinkFailureReason::Unresolvable,
-                                    )))
-                                    .is_err()
-                                {
-                                    info!("Request for client connection dropped before it failed to resolve.");
+                            match host.as_str().parse::<SchemeHostPort>() {
+                                Ok(shp) => {
+                                    let host_str = shp.to_string().into();
+                                    let SchemeHostPort(scheme, host_name, port) = shp;
+                                    pending.push_remote(host.clone(), request);
+                                    tasks.push(
+                                        dns.resolve(host_name, port)
+                                            .map(move |result| Event::Resolved {
+                                                scheme,
+                                                host: host_str,
+                                                result,
+                                            })
+                                            .boxed(),
+                                    );
+                                }
+                                Err(e) => {
+                                    let DownlinkRequest { promise, .. } = request;
+                                    if promise
+                                        .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
+                                            DownlinkFailureReason::Unresolvable(e.to_string()),
+                                        )))
+                                        .is_err()
+                                    {
+                                        info!("Request for client connection dropped before it failed to resolve.");
+                                    }
                                 }
                             }
                         } else {
@@ -246,14 +247,14 @@ where
                     }
                     Event::Resolved {
                         host,
-                        result: Err(_),
+                        result: Err(e),
                         ..
                     } => {
                         for request in pending.open_client_failed(&host) {
                             let DownlinkRequest { promise, .. } = request;
                             if promise
                                 .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
-                                    DownlinkFailureReason::Unresolvable,
+                                    DownlinkFailureReason::Unresolvable(e.to_string()),
                                 )))
                                 .is_err()
                             {
@@ -299,7 +300,7 @@ where
                                 key: (addr, kind),
                                 ..
                             } = request;
-                            if promise.send(Err(err)).is_err() {
+                            if promise.send(Err(err.clone())).is_err() {
                                 info!(address = %addr, kind = ?kind, "Request for a downlink dropped before it failed to complete.");
                             }
                         }
@@ -492,27 +493,6 @@ impl ClientHandle {
         self.downlinks.remove(key);
         self.downlinks.is_empty()
     }
-}
-
-#[derive(Debug, Error)]
-enum BadHost {
-    #[error("Specified host was not a valid URL.")]
-    BadUrl(
-        #[from]
-        #[source]
-        url::ParseError,
-    ),
-    #[error("Host URL is not a valid Warp URL.")]
-    InvalidUrl(
-        #[from]
-        #[source]
-        BadUrl,
-    ),
-}
-
-fn process_host(host: &str) -> Result<SchemeHostPort, BadHost> {
-    let url = host.parse::<Url>()?;
-    Ok(SchemeHostPort::try_from(&url)?)
 }
 
 async fn attach_to_runtime(

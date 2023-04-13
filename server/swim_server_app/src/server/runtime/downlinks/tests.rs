@@ -249,7 +249,7 @@ impl FakeServerTask {
                             );
                             Ok(())
                         } else {
-                            Err(DownlinkFailureReason::Unresolvable)
+                            Err(DownlinkFailureReason::Unresolvable("Bad remote.".to_string()))
                         };
                         assert!(done.send(result).is_ok());
                     }

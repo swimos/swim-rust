@@ -14,7 +14,7 @@
 
 use swim::form::Form;
 
-#[derive(Clone, Copy, Form)]
+#[derive(Debug, Clone, Copy, Form)]
 pub enum Instruction {
     #[form(tag = "open_link")]
     OpenLink,

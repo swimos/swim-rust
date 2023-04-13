@@ -90,7 +90,8 @@ impl ConsumerLifecycle {
         command: &Instruction,
     ) -> impl EventHandler<ConsumerAgent> + 'a {
         let ConsumerLifecycle { port, handle } = self;
-        match *command {
+        let msg = format!("Handling: {:?}", command);
+        let handle_instr = match *command {
             Instruction::OpenLink => handle
                 .and_then_with(move |maybe| match maybe {
                     Some(dl_handle) if !dl_handle.is_stopped() => None,
@@ -109,7 +110,8 @@ impl ConsumerLifecycle {
                 })
                 .boxed(),
             Instruction::Stop => context.stop().boxed(),
-        }
+        };
+        context.effect(move || println!("{}", msg)).followed_by(handle_instr)
     }
 }
 
