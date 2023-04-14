@@ -121,7 +121,7 @@ fn open_link(
     context: HandlerContext<ConsumerAgent>,
     port: u16,
 ) -> impl HandlerAction<ConsumerAgent, Completion = EventDownlinkHandle> {
-    let host = format!("localhost:{}", port);
+    let host = format!("ws://localhost:{}", port);
     context
         .event_downlink_builder::<i32>(Some(&host), "/producer/a", "lane", Default::default())
         .on_linked(|context| context.effect(|| println!("Link opened.")))
