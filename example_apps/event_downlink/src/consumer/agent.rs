@@ -111,7 +111,9 @@ impl ConsumerLifecycle {
                 .boxed(),
             Instruction::Stop => context.stop().boxed(),
         };
-        context.effect(move || println!("{}", msg)).followed_by(handle_instr)
+        context
+            .effect(move || println!("{}", msg))
+            .followed_by(handle_instr)
     }
 }
 

@@ -24,7 +24,6 @@ mod producer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    
     let filter = EnvFilter::from_default_env()
         .add_directive("swim_server_app=trace".parse()?)
         .add_directive("swim_runtime=trace".parse()?)
@@ -35,7 +34,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .add_directive("tokio=warn".parse()?)
         .add_directive("event_downlink=trace".parse()?);
     tracing_subscriber::fmt().with_env_filter(filter).init();
-   
+
     let server = producer::make_server().await?;
     tracing::info!("Starting event downlink example.");
 

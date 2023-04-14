@@ -654,7 +654,10 @@ where
                         Err(node) => {
                             warn!(node = %node, "Requested agent does not exist.");
                             let message = format!("Local node '{}' does not exist.", node);
-                            if done.send(Err(DownlinkFailureReason::Unresolvable(message))).is_err() {
+                            if done
+                                .send(Err(DownlinkFailureReason::Unresolvable(message)))
+                                .is_err()
+                            {
                                 info!(node = %node, "Downlink request dropped before it was satisfied.");
                             }
                         }
@@ -1029,15 +1032,17 @@ enum NewClientError {
 impl From<NewClientError> for DownlinkRuntimeError {
     fn from(err: NewClientError) -> Self {
         match err {
-            e@NewClientError::InvalidUrl(_) | e@NewClientError::BadWarpUrl(_) => {
-                DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::Unresolvable(e.to_string()))
+            e @ NewClientError::InvalidUrl(_) | e @ NewClientError::BadWarpUrl(_) => {
+                DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::Unresolvable(
+                    e.to_string(),
+                ))
             }
             NewClientError::OpeningSocketFailed { .. } => {
                 DownlinkRuntimeError::DownlinkConnectionFailed(
                     DownlinkFailureReason::ConnectionFailed,
                 )
             }
-            NewClientError::WsNegotationFailed { error  } => {
+            NewClientError::WsNegotationFailed { error } => {
                 DownlinkRuntimeError::DownlinkConnectionFailed(
                     DownlinkFailureReason::WebsocketNegotiationFailed(error.to_string()),
                 )

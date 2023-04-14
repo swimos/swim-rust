@@ -85,7 +85,9 @@ impl Error for DownlinkFailureReason {}
 impl Display for DownlinkFailureReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DownlinkFailureReason::Unresolvable(message) => write!(f, "The lane was unresolvable: {}", message),
+            DownlinkFailureReason::Unresolvable(message) => {
+                write!(f, "The lane was unresolvable: {}", message)
+            }
             DownlinkFailureReason::ConnectionFailed => {
                 write!(f, "Connection to the remote host failed.")
             }

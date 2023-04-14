@@ -37,10 +37,7 @@ use swim_api::{
 use swim_messages::protocol::{
     Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder,
 };
-use swim_model::{
-    address::{Address, RelativeAddress},
-    Text,
-};
+use swim_model::{address::RelativeAddress, Text};
 use swim_remote::AttachClient;
 use swim_runtime::{
     agent::DownlinkRequest,
@@ -249,7 +246,9 @@ impl FakeServerTask {
                             );
                             Ok(())
                         } else {
-                            Err(DownlinkFailureReason::Unresolvable("Bad remote.".to_string()))
+                            Err(DownlinkFailureReason::Unresolvable(
+                                "Bad remote.".to_string(),
+                            ))
                         };
                         assert!(done.send(result).is_ok());
                     }
@@ -306,35 +305,47 @@ fn request_remote(
     kind: DownlinkKind,
     promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 ) -> DownlinkRequest {
-    let address = Address::text(Some(URL), REM_NODE, LANE);
+    let address = RelativeAddress::text(REM_NODE, LANE);
     //Empty options so that downlinks don't try to sync (to reduce noise in the tests).
-    DownlinkRequest::new(address, kind, DownlinkOptions::empty(), promise)
+    DownlinkRequest::new(
+        Some(URL.parse().unwrap()),
+        address,
+        kind,
+        DownlinkOptions::empty(),
+        promise,
+    )
 }
 
 fn request_bad_remote(
     kind: DownlinkKind,
     promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 ) -> DownlinkRequest {
-    let address = Address::text(Some(BAD_URL), REM_NODE, LANE);
-    DownlinkRequest::new(address, kind, DownlinkOptions::empty(), promise)
+    let address = RelativeAddress::text(REM_NODE, LANE);
+    DownlinkRequest::new(
+        Some(BAD_URL.parse().unwrap()),
+        address,
+        kind,
+        DownlinkOptions::empty(),
+        promise,
+    )
 }
 
 fn request_local(
     kind: DownlinkKind,
     promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 ) -> DownlinkRequest {
-    let address = Address::text(None, LOCAL_NODE, LANE);
+    let address = RelativeAddress::text(LOCAL_NODE, LANE);
     //Empty options so that downlinks don't try to sync (to reduce noise in the tests).
-    DownlinkRequest::new(address, kind, DownlinkOptions::empty(), promise)
+    DownlinkRequest::new(None, address, kind, DownlinkOptions::empty(), promise)
 }
 
 fn request_bad_local(
     kind: DownlinkKind,
     promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 ) -> DownlinkRequest {
-    let address = Address::text(None, BAD_NODE, LANE);
+    let address = RelativeAddress::text(BAD_NODE, LANE);
     //Empty options so that downlinks don't try to sync (to reduce noise in the tests).
-    DownlinkRequest::new(address, kind, DownlinkOptions::empty(), promise)
+    DownlinkRequest::new(None, address, kind, DownlinkOptions::empty(), promise)
 }
 
 #[tokio::test]

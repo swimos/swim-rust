@@ -26,7 +26,7 @@ use swim_api::{
     meta::lane::LaneKind,
     store::{NodePersistence, StoreKind},
 };
-use swim_model::{address::Address, Text};
+use swim_model::{address::RelativeAddress, Text};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     non_zero_usize,
@@ -45,7 +45,7 @@ use std::{
     time::Duration,
 };
 
-use crate::downlink::DownlinkOptions;
+use crate::{downlink::DownlinkOptions, net::SchemeHostPort};
 
 use self::{
     reporting::{UplinkReportReader, UplinkReporter},
@@ -64,20 +64,25 @@ use tracing::error;
 
 #[derive(Debug)]
 pub struct DownlinkRequest {
-    pub key: (Address<Text>, DownlinkKind),
+    pub remote: Option<SchemeHostPort>,
+    pub address: RelativeAddress<Text>,
+    pub kind: DownlinkKind,
     pub options: DownlinkOptions,
     pub promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 }
 
 impl DownlinkRequest {
     pub fn new(
-        path: Address<Text>,
+        remote: Option<SchemeHostPort>,
+        address: RelativeAddress<Text>,
         kind: DownlinkKind,
         options: DownlinkOptions,
         promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
     ) -> Self {
         DownlinkRequest {
-            key: (path, kind),
+            remote,
+            address,
+            kind,
             options,
             promise,
         }
@@ -125,17 +130,26 @@ impl AgentContext for AgentRuntimeContext {
         lane: &str,
         kind: DownlinkKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
-        let host = host.map(Text::new);
+        let remote_result = host.map(|h| h.parse::<SchemeHostPort>()).transpose();
         let node = Text::new(node);
         let lane = Text::new(lane);
         let sender = self.tx.clone();
         async move {
             let (tx, rx) = oneshot::channel();
+            let remote = match remote_result {
+                Ok(r) => r,
+                Err(e) => {
+                    return Err(DownlinkRuntimeError::DownlinkConnectionFailed(
+                        swim_api::error::DownlinkFailureReason::Unresolvable(e.to_string()),
+                    ))
+                }
+            };
             sender
                 .send(AgentRuntimeRequest::OpenDownlink(DownlinkRequest::new(
-                    Address::new(host, node, lane),
+                    remote,
+                    RelativeAddress::new(node, lane),
                     kind,
-                    DownlinkOptions::empty(),
+                    DownlinkOptions::DEFAULT,
                     tx,
                 )))
                 .await?;

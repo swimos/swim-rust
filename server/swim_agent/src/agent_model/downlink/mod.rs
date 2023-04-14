@@ -182,7 +182,7 @@ where
             let handle = EventDownlinkHandle::new(address, stop_tx, &dl_state);
             action_context.start_downlink(
                 addr_cpy.clone(),
-                DownlinkKind::Value,
+                DownlinkKind::Event,
                 move |reader| {
                     HostedEventDownlinkChannel::new(
                         addr_cpy, reader, lifecycle, config, stop_rx, dl_state,

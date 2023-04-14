@@ -18,20 +18,12 @@ use std::{
 };
 
 use swim_api::downlink::DownlinkKind;
-use swim_model::{
-    address::{Address, RelativeAddress},
-    Text,
-};
+use swim_model::{address::RelativeAddress, Text};
 use swim_runtime::agent::DownlinkRequest;
 
 pub type DlKey = (RelativeAddress<Text>, DownlinkKind);
 
-fn key_of(abs_key: &(Address<Text>, DownlinkKind)) -> DlKey {
-    let (Address { node, lane, .. }, kind) = abs_key;
-    (RelativeAddress::new(node.clone(), lane.clone()), *kind)
-}
-
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PendingDownlinks {
     awaiting_remote: HashMap<Text, HashMap<DlKey, Vec<DownlinkRequest>>>,
     awaiting_dl: HashMap<SocketAddr, HashMap<DlKey, Vec<DownlinkRequest>>>,
@@ -41,11 +33,10 @@ pub struct PendingDownlinks {
 impl PendingDownlinks {
     pub fn push_remote(&mut self, remote: Text, request: DownlinkRequest) {
         let PendingDownlinks {
-            awaiting_remote: awaiting_socket,
-            ..
+            awaiting_remote, ..
         } = self;
-        let key = key_of(&request.key);
-        awaiting_socket
+        let key = (request.address.clone(), request.kind);
+        awaiting_remote
             .entry(remote)
             .or_default()
             .entry(key)
@@ -70,7 +61,7 @@ impl PendingDownlinks {
 
     pub fn push_local(&mut self, request: DownlinkRequest) {
         let PendingDownlinks { local, .. } = self;
-        let key = key_of(&request.key);
+        let key = (request.address.clone(), request.kind);
         local.entry(key).or_default().push(request);
     }
 

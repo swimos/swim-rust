@@ -287,7 +287,7 @@ async fn runtime_task<Net, Ws>(
                         continue;
                     }
                 };
-                
+
                 let task_shp = shp.clone();
                 let host = Text::from(shp.host().to_string());
                 let address = RemotePath::new(host.clone(), node, lane);

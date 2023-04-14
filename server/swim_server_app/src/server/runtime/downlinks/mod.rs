@@ -18,7 +18,7 @@ mod pending;
 mod tests;
 
 pub use connector::{downlink_task_connector, DlTaskRequest, DownlinksConnector, ServerConnector};
-use tracing::{error, info};
+use tracing::{debug, error, info, trace};
 
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -32,10 +32,7 @@ use swim_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError},
 };
-use swim_model::{
-    address::{Address, RelativeAddress},
-    Text,
-};
+use swim_model::{address::RelativeAddress, Text};
 use swim_remote::AttachClient;
 use swim_runtime::{
     agent::DownlinkRequest,
@@ -131,40 +128,30 @@ where
 
                 match event {
                     Event::Request(request) => {
-                        if let Some(host) = request.key.0.host.clone() {
-                            match host.as_str().parse::<SchemeHostPort>() {
-                                Ok(shp) => {
-                                    let host_str = shp.to_string().into();
-                                    let SchemeHostPort(scheme, host_name, port) = shp;
-                                    pending.push_remote(host.clone(), request);
-                                    tasks.push(
-                                        dns.resolve(host_name, port)
-                                            .map(move |result| Event::Resolved {
-                                                scheme,
-                                                host: host_str,
-                                                result,
-                                            })
-                                            .boxed(),
-                                    );
-                                }
-                                Err(e) => {
-                                    let DownlinkRequest { promise, .. } = request;
-                                    if promise
-                                        .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
-                                            DownlinkFailureReason::Unresolvable(e.to_string()),
-                                        )))
-                                        .is_err()
-                                    {
-                                        info!("Request for client connection dropped before it failed to resolve.");
-                                    }
-                                }
-                            }
+                        let DownlinkRequest {
+                            remote,
+                            address,
+                            kind,
+                            ..
+                        } = &request;
+                        if let Some(shp) = remote.clone() {
+                            debug!(remote = %shp, node = %address.node, lane = %address.lane, kind = ?kind, "Handling request for downlink to remote lane.");
+                            let host_str: Text = shp.to_string().into();
+                            let SchemeHostPort(scheme, host_name, port) = shp;
+                            pending.push_remote(host_str.clone(), request);
+                            tasks.push(
+                                dns.resolve(host_name, port)
+                                    .map(move |result| Event::Resolved {
+                                        scheme,
+                                        host: host_str,
+                                        result,
+                                    })
+                                    .boxed(),
+                            );
                         } else {
-                            let (addr, kind) = &request.key;
-                            let rel_addr =
-                                RelativeAddress::new(addr.node.clone(), addr.lane.clone());
-                            let key = (rel_addr, *kind);
+                            let key = (address.clone(), *kind);
                             if let Some(attach_tx) = local_handle.get(&key) {
+                                debug!(node = %address.node, lane = %address.lane, kind = ?kind, "Attempting to attach to downlink runtime for local lane.");
                                 tasks.push(
                                     attach_to_runtime(
                                         request,
@@ -174,6 +161,7 @@ where
                                     .boxed(),
                                 );
                             } else {
+                                debug!(node = %address.node, lane = %address.lane, kind = ?kind, "Attempting to start downlink runtime for local lane.");
                                 pending.push_local(request);
                                 let identity = id_issuer.next_id();
                                 tasks.push(
@@ -194,12 +182,16 @@ where
                         host,
                         result: Ok(sock_addrs),
                     } => {
+                        debug!(scheme = %scheme, host = %host, resolved = ?sock_addrs, "Downlink DNS resolution completed.");
                         if let Some((addr, handle)) = sock_addrs.iter().find_map(|addr| {
                             downlink_channels.get(addr).map(move |inner| (addr, inner))
                         }) {
+                            debug!(scheme = %scheme, host = %host, socket_address = %addr, "Using already connected socket.");
                             let waiting_map = pending.take_socket_ready(&host);
                             for (key, requests) in waiting_map {
+                                let (lane_addr, kind) = &key;
                                 if let Some(attach_tx) = handle.get(&key) {
+                                    debug!(scheme = %scheme, host = %host, socket_address = %addr, lane_addr = %lane_addr, kind = ?kind, "Connecting to existing downlink runtime.");
                                     for request in requests {
                                         tasks.push(
                                             attach_to_runtime(
@@ -211,6 +203,7 @@ where
                                         );
                                     }
                                 } else {
+                                    debug!(scheme = %scheme, host = %host, socket_address = %addr, lane_addr = %lane_addr, kind = ?kind, "Starting new downlink runtime.");
                                     pending.push_for_socket(*addr, key.clone(), requests);
                                     let identity = id_issuer.next_id();
                                     tasks.push(
@@ -226,6 +219,7 @@ where
                                 }
                             }
                         } else {
+                            debug!(scheme = %scheme, host = %host, resolved = ?sock_addrs, "Requesting new client connection for downlink runtime.");
                             let addr_vec = sock_addrs.into_iter().collect();
                             let (registration, rx) =
                                 ClientRegistration::new(scheme, host.clone(), addr_vec);
@@ -250,6 +244,7 @@ where
                         result: Err(e),
                         ..
                     } => {
+                        error!(host = %host, error = %e, "DNS resolution failed.");
                         for request in pending.open_client_failed(&host) {
                             let DownlinkRequest { promise, .. } = request;
                             if promise
@@ -266,6 +261,7 @@ where
                         host,
                         result: Ok(EstablishedClient { tx, sock_addr }),
                     } => {
+                        debug!(addr = %sock_addr, host = %host, "New client connection opened.");
                         let handle = match downlink_channels.entry(sock_addr) {
                             Entry::Occupied(entry) => {
                                 let handle = entry.into_mut();
@@ -276,6 +272,8 @@ where
                             Entry::Vacant(entry) => entry.insert(ClientHandle::new(tx)),
                         };
                         for key in pending.socket_ready(host, sock_addr).into_iter().flatten() {
+                            let (addr, kind) = &key;
+                            debug!(address = %addr, kind = ?kind, "Starting downlink runtime.");
                             let identity = id_issuer.next_id();
                             tasks.push(
                                 start_downlink_runtime(
@@ -293,15 +291,18 @@ where
                         host,
                         result: Err(e),
                     } => {
+                        error!(host = %host, error = %e, "Opening a new client connection failed.");
                         let err: DownlinkRuntimeError = e.into();
                         for request in pending.open_client_failed(&host) {
                             let DownlinkRequest {
                                 promise,
-                                key: (addr, kind),
+                                remote,
+                                address,
+                                kind,
                                 ..
                             } = request;
                             if promise.send(Err(err.clone())).is_err() {
-                                info!(address = %addr, kind = ?kind, "Request for a downlink dropped before it failed to complete.");
+                                info!(remote = ?remote, address = %address, kind = ?kind, "Request for a downlink dropped before it failed to complete.");
                             }
                         }
                     }
@@ -310,12 +311,14 @@ where
                         key,
                         result: Ok((attach_tx, runtime)),
                     } => {
+                        let (lane_addr, kind) = &key;
                         let handle = if let Some(addr) = remote_address {
                             downlink_channels.get_mut(&addr)
                         } else {
                             Some(&mut local_handle)
                         };
                         if let Some(handle) = handle {
+                            debug!(address = %lane_addr, kind = ?kind, remote = ?remote_address, "Attempting to attach to a downlink runtime.");
                             handle.insert(key.clone(), attach_tx.clone());
                             let key_cpy = key.clone();
                             tasks.push(
@@ -333,6 +336,7 @@ where
                             );
 
                             for request in pending.dl_ready(remote_address, &key) {
+                                trace!("Attaching to a downlink runtime.");
                                 tasks.push(
                                     attach_to_runtime(
                                         request,
@@ -343,9 +347,12 @@ where
                                 );
                             }
                         } else {
+                            info!(address = %lane_addr, kind = ?kind, remote = ?remote_address, "Expected to attach to a downlink runtime but it had already stopped.");
                             for DownlinkRequest {
                                 promise,
-                                key: (addr, kind),
+                                remote,
+                                address,
+                                kind,
                                 ..
                             } in pending.dl_ready(remote_address, &key)
                             {
@@ -355,7 +362,7 @@ where
                                     )))
                                     .is_err()
                                 {
-                                    info!(address = %addr, kind = ?kind, "Request for a downlink dropped before it failed to complete.");
+                                    info!(remote = ?remote, address = %address, kind = ?kind, "Request for a downlink dropped before it failed to complete.");
                                 }
                             }
                         }
@@ -363,11 +370,15 @@ where
                     Event::RuntimeAttachmentResult {
                         remote_address,
                         key,
-                        result: Err(_),
+                        result: Err(err),
                     } => {
+                        let (lane_addr, kind) = &key;
+                        error!(address = %lane_addr, kind = ?kind, error = %err, "A request to attach to a downlink runtime failed.");
                         for DownlinkRequest {
                             promise,
-                            key: (addr, kind),
+                            remote,
+                            address,
+                            kind,
                             ..
                         } in pending.dl_ready(remote_address, &key)
                         {
@@ -377,18 +388,20 @@ where
                                 )))
                                 .is_err()
                             {
-                                info!(address = %addr, kind = ?kind, "The remote connection stopped before a downlink was set up.");
+                                info!(remote = ?remote, address = %address, kind = ?kind, "The remote connection stopped before a downlink was set up.");
                             }
                         }
                     }
                     Event::Attached {
+                        remote,
                         address,
                         kind,
                         promise,
                         result,
                     } => {
+                        debug!(remote = ?remote, address = %address, kind = ?kind, "Attaching to downlink runtime completed successfully.");
                         if promise.send(result).is_err() {
-                            info!(address = %address, kind = ?kind, "A request for a downlink was dropped before it was satisfied.");
+                            info!(remote = ?remote, address = %address, kind = ?kind, "A request for a downlink was dropped before it was satisfied.");
                         }
                     }
                     Event::RuntimeTerminated {
@@ -409,12 +422,16 @@ where
                         let (address, kind) = key;
                         if let Err(e) = result {
                             error!(error = %e, socket_addr = ?socket_addr, address = %address, kind = ?kind, "A downlink runtime task panicked.");
+                        } else {
+                            debug!(socket_addr = ?socket_addr, address = %address, kind = ?kind, "A downlink runtime terminated normally.");
                         }
                     }
                 }
             }
             connector
         };
+
+        debug!("Waiting for downlink runtimes to terminate.");
 
         while let Some(event) = tasks.next().await {
             match event {
@@ -429,6 +446,8 @@ where
                 _ => continue,
             }
         }
+
+        debug!("Reporting that the downlink connector has stopped.");
         connector.stopped();
     }
 }
@@ -461,7 +480,8 @@ enum Event {
     },
     // An attachment to a downlink runtime task has completed.
     Attached {
-        address: Address<Text>,
+        remote: Option<SchemeHostPort>,
+        address: RelativeAddress<Text>,
         kind: DownlinkKind,
         promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
         result: Result<Io, DownlinkRuntimeError>,
@@ -502,7 +522,9 @@ async fn attach_to_runtime(
 ) -> Event {
     let DownlinkRequest {
         promise,
-        key: (address, kind),
+        remote,
+        address,
+        kind,
         options,
         ..
     } = request;
@@ -516,6 +538,7 @@ async fn attach_to_runtime(
             DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::ConnectionFailed)
         });
     Event::Attached {
+        remote,
         address,
         kind,
         promise,

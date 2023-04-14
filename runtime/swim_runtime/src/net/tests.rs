@@ -18,12 +18,16 @@ use super::SchemeHostPort;
 
 #[test]
 fn parse_insecure_warp_url() {
-    let SchemeHostPort(scheme, host, port) = "warp://localhost:8080".parse::<SchemeHostPort>().expect("Parse failed.");
+    let SchemeHostPort(scheme, host, port) = "warp://localhost:8080"
+        .parse::<SchemeHostPort>()
+        .expect("Parse failed.");
     assert_eq!(scheme, Scheme::Ws);
     assert_eq!(host, "localhost");
     assert_eq!(port, 8080);
 
-    let SchemeHostPort(scheme, host, port) = "ws://localhost:8080".parse::<SchemeHostPort>().expect("Parse failed.");
+    let SchemeHostPort(scheme, host, port) = "ws://localhost:8080"
+        .parse::<SchemeHostPort>()
+        .expect("Parse failed.");
     assert_eq!(scheme, Scheme::Ws);
     assert_eq!(host, "localhost");
     assert_eq!(port, 8080);
@@ -31,12 +35,16 @@ fn parse_insecure_warp_url() {
 
 #[test]
 fn parse_secure_warp_url() {
-    let SchemeHostPort(scheme, host, port) = "warps://localhost:8080".parse::<SchemeHostPort>().expect("Parse failed.");
+    let SchemeHostPort(scheme, host, port) = "warps://localhost:8080"
+        .parse::<SchemeHostPort>()
+        .expect("Parse failed.");
     assert_eq!(scheme, Scheme::Wss);
     assert_eq!(host, "localhost");
     assert_eq!(port, 8080);
 
-    let SchemeHostPort(scheme, host, port) = "wss://localhost:8080".parse::<SchemeHostPort>().expect("Parse failed.");
+    let SchemeHostPort(scheme, host, port) = "wss://localhost:8080"
+        .parse::<SchemeHostPort>()
+        .expect("Parse failed.");
     assert_eq!(scheme, Scheme::Wss);
     assert_eq!(host, "localhost");
     assert_eq!(port, 8080);
@@ -44,7 +52,9 @@ fn parse_secure_warp_url() {
 
 #[test]
 fn parse_unqualified_warp_url() {
-    let SchemeHostPort(scheme, host, port) = "localhost:8080".parse::<SchemeHostPort>().expect("Parse failed.");
+    let SchemeHostPort(scheme, host, port) = "localhost:8080"
+        .parse::<SchemeHostPort>()
+        .expect("Parse failed.");
     assert_eq!(scheme, Scheme::Ws);
     assert_eq!(host, "localhost");
     assert_eq!(port, 8080);
