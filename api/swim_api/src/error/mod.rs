@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::error::Error;
-use std::{fmt::Display, io};
+use std::io;
 
 use swim_form::structural::read::ReadError;
 use swim_model::Text;
@@ -71,40 +71,18 @@ pub enum DownlinkTaskError {
     Custom(Box<dyn Error + Send + Sync + 'static>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum DownlinkFailureReason {
+    #[error("The lane was unresolvable: {0}")]
     Unresolvable(String),
+    #[error("Connection to the remote host failed.")]
     ConnectionFailed,
+    #[error("Could not negotiate a websocket connection: {0}")]
     WebsocketNegotiationFailed(String),
+    #[error("The remote client stopped while the downlink was starting.")]
     RemoteStopped,
+    #[error("The downlink runtime task stopped during attachment.")]
     DownlinkStopped,
-}
-
-impl Error for DownlinkFailureReason {}
-
-impl Display for DownlinkFailureReason {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DownlinkFailureReason::Unresolvable(message) => {
-                write!(f, "The lane was unresolvable: {}", message)
-            }
-            DownlinkFailureReason::ConnectionFailed => {
-                write!(f, "Connection to the remote host failed.")
-            }
-            DownlinkFailureReason::WebsocketNegotiationFailed(message) => {
-                write!(f, "Could not negotiate a websocket connection: {}", message)
-            }
-            DownlinkFailureReason::RemoteStopped => {
-                write!(
-                    f,
-                    "The remote client stopped while the downlink was starting."
-                )
-            }
-            DownlinkFailureReason::DownlinkStopped => {
-                write!(f, "The downlink runtime task stopped during attachment.")
-            }
-        }
-    }
 }
 
 /// Error type for operations that communicate with the agent runtime.
