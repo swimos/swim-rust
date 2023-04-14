@@ -141,7 +141,8 @@ where
                         triggered_result = stop_signal => {
                             *stop_rx = None;
                             if triggered_result.is_ok() {
-                                None
+                                *receiver = None;
+                                Some(Ok(DownlinkNotification::Unlinked))
                             } else {
                                 rx.next().await
                             }
