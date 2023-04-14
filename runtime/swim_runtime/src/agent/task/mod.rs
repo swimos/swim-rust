@@ -65,8 +65,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;
 
-use tracing::{debug, error, info, info_span, trace, warn};
-use tracing_futures::Instrument;
+use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
 mod init;
 mod links;

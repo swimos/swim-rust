@@ -51,8 +51,7 @@ use swim_utilities::trigger::{self, promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinError;
-use tracing::{debug, error, info, info_span, warn};
-use tracing_futures::Instrument;
+use tracing::{debug, error, info, info_span, warn, Instrument};
 use uuid::Uuid;
 
 use crate::config::SwimServerConfig;
@@ -196,7 +195,9 @@ where
         );
         let (fut, handle) = self.run_server(server_conn);
 
-        let downlinks_task = downlinks.run();
+        let downlinks_task = downlinks
+            .run()
+            .instrument(info_span!("Downlink connector task."));
         let combined = join(fut, downlinks_task).map(|(r, _)| r);
         (combined.boxed(), handle)
     }

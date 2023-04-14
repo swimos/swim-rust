@@ -25,8 +25,7 @@ use swim_model::Text;
 use swim_recon::printer::print_recon;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio_util::codec::FramedRead;
-use tracing::{info_span, trace};
-use tracing_futures::Instrument;
+use tracing::{info_span, trace, Instrument};
 
 use crate::EventDownlinkModel;
 
