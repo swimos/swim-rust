@@ -203,6 +203,7 @@ where
             .instrument(info_span!("Websocket outgoing task."));
 
         let (_, result) = join(reg, await_io_tasks(in_task, out_task, kill_switch_tx)).await;
+        let _cleanup = info_span!("Websocket clean-up.", id = %id);
         let close_reason = match result {
             Ok(_) => Some(CloseReason::new(
                 CloseCode::GoingAway,

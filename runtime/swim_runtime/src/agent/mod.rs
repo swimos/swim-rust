@@ -60,7 +60,7 @@ mod task;
 mod tests;
 
 use task::AgentRuntimeRequest;
-use tracing::error;
+use tracing::{error, info_span, Instrument};
 
 #[derive(Debug)]
 pub struct DownlinkRequest {
@@ -533,13 +533,17 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             runtime_config,
             reporting,
         } = self;
-        let node_uri = route.to_string().into();
+        let node_uri: Text = route.to_string().into();
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
         let (init_tx, init_rx) = trigger::trigger();
 
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
-        let agent_init = agent.run(route, route_params, agent_config, context);
+        let agent_init = agent
+            .run(route, route_params, agent_config, context)
+            .instrument(
+                info_span!("Agent initialization task.", id = %identity, route = %node_uri),
+            );
 
         async move {
             let store = store_fut.await?;
@@ -562,19 +566,23 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 join(runtime_init_task.run(), agent_init_task).await;
 
             let (initial_state, store_per) = initial_state_result?;
-            let agent_task = agent_task_result?;
+            let agent_task = agent_task_result?.instrument(
+                info_span!("Agent implementation task.", id = %identity, route = %node_uri),
+            );
 
             let runtime_task = AgentRuntimeTask::with_store(
-                NodeDescriptor::new(identity, node_uri),
+                NodeDescriptor::new(identity, node_uri.clone()),
                 initial_state,
                 attachment_rx,
                 downlink_tx,
                 stopping,
                 runtime_config,
                 store_per,
-            );
+            )
+            .run()
+            .instrument(info_span!("Agent runtime task.", id = %identity, route = %node_uri));
 
-            let (runtime_result, agent_result) = join(runtime_task.run(), agent_task).await;
+            let (runtime_result, agent_result) = join(runtime_task, agent_task).await;
             runtime_result?;
             agent_result?;
             Ok(())

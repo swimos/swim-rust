@@ -198,7 +198,8 @@ where
         let downlinks_task = downlinks
             .run()
             .instrument(info_span!("Downlink connector task."));
-        let combined = join(fut, downlinks_task).map(|(r, _)| r);
+        let combined =
+            join(fut.instrument(info_span!("Server task.")), downlinks_task).map(|(r, _)| r);
         (combined.boxed(), handle)
     }
 
