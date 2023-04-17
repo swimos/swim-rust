@@ -935,7 +935,7 @@ fn make_meta<'a>(
     AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
-fn run_handler<'a>(mut event_handler: BoxEventHandler<'a, FakeAgent>) {
+fn run_handler(mut event_handler: BoxEventHandler<'_, FakeAgent>) {
     let uri = make_uri();
     let params = HashMap::new();
     let meta = make_meta(&uri, &params);

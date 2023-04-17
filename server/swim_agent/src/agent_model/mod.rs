@@ -919,6 +919,9 @@ where
                 TaskEvent::DownlinkReady { downlink_event } => {
                     if let Some((mut downlink, event)) = downlink_event {
                         match event {
+                            HostedDownlinkEvent::Written => {
+                                downlinks.push(downlink.wait_on_downlink())
+                            }
                             HostedDownlinkEvent::WriterFailed(err) => {
                                 error!(error = %err, "A downlink hosted by the agent failed.");
                                 downlinks.push(downlink.wait_on_downlink());
@@ -954,7 +957,6 @@ where
                                     downlinks.push(downlink.wait_on_downlink());
                                 }
                             }
-                            _ => {}
                         }
                     }
                 }

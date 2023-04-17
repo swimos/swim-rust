@@ -27,10 +27,7 @@ use swim_api::{
         WithLengthBytesCodec,
     },
 };
-use swim_form::{
-    structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
-    Form,
-};
+use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_model::{address::Address, Text};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
@@ -124,7 +121,7 @@ impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> 
 impl<T, LC, Context, State> DownlinkChannel<Context> for HostedValueDownlinkChannel<T, LC, State>
 where
     State: ValueDlState<T, Context>,
-    T: Form + Send + 'static,
+    T: RecognizerReadable + Send + 'static,
     T::Rec: Send,
     LC: ValueDownlinkLifecycle<T, Context> + 'static,
 {
@@ -209,7 +206,6 @@ where
                     maybe_value.map(|value| lifecycle.on_synced(value).boxed())
                 }),
                 Ok(DownlinkNotification::Event { body }) => {
-                    println!("Received event: {}", print_recon_compact(&body));
                     trace!(address = %address, "Event received for downlink.");
                     let prev = state.take_current(context);
                     let handler = if dl_state.get() == DlState::Synced || *events_when_not_synced {
