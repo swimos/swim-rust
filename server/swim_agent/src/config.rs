@@ -12,10 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::num::NonZeroUsize;
-
-use swim_utilities::non_zero_usize;
-
 /// Configuration parameters for hosted value and event downlinks.
 #[derive(Debug, Clone, Copy)]
 pub struct SimpleDownlinkConfig {
@@ -43,18 +39,13 @@ pub struct MapDownlinkConfig {
     pub events_when_not_synced: bool,
     /// If this is set, the downlink will stop if it enters the unlinked state (default: true).
     pub terminate_on_unlinked: bool,
-    /// Size of the channel used for sending operations to the remote lane (default: 8).
-    pub channel_size: NonZeroUsize,
 }
-
-const DEFAULT_CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
 
 impl Default for MapDownlinkConfig {
     fn default() -> Self {
         Self {
             events_when_not_synced: false,
             terminate_on_unlinked: true,
-            channel_size: DEFAULT_CHAN_SIZE,
         }
     }
 }

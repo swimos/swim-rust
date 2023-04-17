@@ -22,7 +22,7 @@ use std::{
 use futures::{
     future::{select, BoxFuture, Either},
     stream::unfold,
-    Future, FutureExt, SinkExt, Stream, StreamExt,
+    FutureExt, SinkExt, Stream, StreamExt,
 };
 use std::hash::Hash;
 use swim_api::{
@@ -458,7 +458,7 @@ where
 #[derive(Debug)]
 pub struct MapDownlinkHandle<K, V> {
     address: Address<Text>,
-    sender: mpsc::Sender<MapOperation<K, V>>,
+    sender: mpsc::UnboundedSender<MapOperation<K, V>>,
     stop_tx: Option<trigger::Sender>,
     observer: DlStateObserver,
 }
@@ -466,7 +466,7 @@ pub struct MapDownlinkHandle<K, V> {
 impl<K, V> MapDownlinkHandle<K, V> {
     pub fn new(
         address: Address<Text>,
-        sender: mpsc::Sender<MapOperation<K, V>>,
+        sender: mpsc::UnboundedSender<MapOperation<K, V>>,
         stop_tx: trigger::Sender,
         state: &Arc<AtomicU8>,
     ) -> Self {
@@ -502,47 +502,34 @@ where
     K: Send + 'static,
     V: Send + 'static,
 {
-    pub fn update(
-        &self,
-        key: K,
-        value: V,
-    ) -> impl Future<Output = Result<(), AgentRuntimeError>> + 'static {
+    pub fn update(&self, key: K, value: V) -> Result<(), AgentRuntimeError> {
         trace!(address = %self.address, "Updating an entry on a map downlink.");
-        let tx = self.sender.clone();
-        async move {
-            tx.send(MapOperation::Update { key, value }).await?;
-            Ok(())
-        }
+        self.sender.send(MapOperation::Update { key, value })?;
+        Ok(())
     }
 
-    pub fn remove(&self, key: K) -> impl Future<Output = Result<(), AgentRuntimeError>> + 'static {
+    pub fn remove(&self, key: K) -> Result<(), AgentRuntimeError> {
         trace!(address = %self.address, "Removing an entry on a map downlink.");
-        let tx = self.sender.clone();
-        async move {
-            tx.send(MapOperation::Remove { key }).await?;
-            Ok(())
-        }
+        self.sender.send(MapOperation::Remove { key })?;
+        Ok(())
     }
 
-    pub fn clear(&self) -> impl Future<Output = Result<(), AgentRuntimeError>> + 'static {
+    pub fn clear(&self) -> Result<(), AgentRuntimeError> {
         trace!(address = %self.address, "Clearing a map downlink.");
-        let tx = self.sender.clone();
-        async move {
-            tx.send(MapOperation::Clear).await?;
-            Ok(())
-        }
+        self.sender.send(MapOperation::Clear)?;
+        Ok(())
     }
 }
 
 /// The internal state of the [`unfold`] operation used to describe the map downlink writer.
 struct WriteStreamState<K, V> {
-    rx: mpsc::Receiver<MapOperation<K, V>>,
+    rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
     write: Option<FramedWrite<ByteWriter, MapOperationEncoder>>,
     queue: EventQueue<K, V>,
 }
 
 impl<K, V> WriteStreamState<K, V> {
-    fn new(writer: ByteWriter, rx: mpsc::Receiver<MapOperation<K, V>>) -> Self {
+    fn new(writer: ByteWriter, rx: mpsc::UnboundedReceiver<MapOperation<K, V>>) -> Self {
         WriteStreamState {
             rx,
             write: Some(FramedWrite::new(writer, Default::default())),
@@ -554,7 +541,7 @@ impl<K, V> WriteStreamState<K, V> {
 /// Task to write the values sent by a map downlink handle to an outgoing channel.
 pub fn map_dl_write_stream<K, V>(
     writer: ByteWriter,
-    rx: mpsc::Receiver<MapOperation<K, V>>,
+    rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
 ) -> impl Stream<Item = Result<(), std::io::Error>> + Send + 'static
 where
     K: Clone + Eq + Hash + StructuralWritable + Send + Sync + 'static,
