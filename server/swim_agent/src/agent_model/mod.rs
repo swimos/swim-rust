@@ -207,7 +207,7 @@ where
     }
 }
 
-trait LifecycleFac<ItemModel>: Send + Sync {
+pub trait LifecycleFac<ItemModel>: Send + Sync {
     type LifecycleType: AgentLifecycle<ItemModel> + Send;
 
     fn create(&self) -> Self::LifecycleType;
