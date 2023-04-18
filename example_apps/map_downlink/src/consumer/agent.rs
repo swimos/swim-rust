@@ -136,17 +136,27 @@ fn open_link(
     target_key: String,
 ) -> impl HandlerAction<ConsumerAgent, Completion = MapDownlinkHandle<String, i32>> {
     let host = format!("ws://localhost:{}", port);
+    let target_cpy = target_key.clone();
     context
         .map_downlink_builder::<String, i32>(Some(&host), "/producer/a", "lane", Default::default())
         .on_linked(|context| context.effect(|| println!("Link opened.")))
-        .on_synced(|context, map| {
-            let content = format!("{}", format_map(map));
-            context.effect(move || println!("Link synchronized: {}", content))
+        .on_synced(move |context, map| {
+            let message = format!(
+                "{}. Using value: {:?}.",
+                format_map(map),
+                map.get(&target_cpy)
+            );
+            let set = map
+                .get(&target_cpy)
+                .copied()
+                .map(|v| context.set_value(ConsumerAgent::LANE, v));
+            let print = context.effect(move || println!("Link synchronized: {}", message));
+            set.followed_by(print)
         })
         .on_update(move |context, key, _map, _prev, new_value| {
             if key == target_key {
                 Some(context.value(*new_value).and_then(move |v| {
-                    println!("Received new value on link: '{}", v);
+                    println!("Received new value on link: {}", v);
                     context.set_value(ConsumerAgent::LANE, v)
                 }))
             } else {

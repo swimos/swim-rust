@@ -37,11 +37,21 @@ impl ProducerLifecycle {
         &self,
         context: HandlerContext<ProducerAgent>,
     ) -> impl EventHandler<ProducerAgent> {
-        context.get_agent_uri().and_then(move |uri| {
-            context.effect(move || {
-                println!("Starting producer agent at: {}", uri);
+        context
+            .get_agent_uri()
+            .and_then(move |uri| {
+                context.effect(move || {
+                    println!("Starting producer agent at: {}", uri);
+                })
             })
-        })
+            .followed_by(context.replace_map(
+                ProducerAgent::LANE,
+                [
+                    ("apple".to_string(), 5),
+                    ("pear".to_string(), 10),
+                    ("banana".to_string(), 100),
+                ],
+            ))
     }
 
     #[on_stop]
