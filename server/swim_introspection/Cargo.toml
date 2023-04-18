@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 futures = { workspace = true }
-swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger", "text"] }
+swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger", "text", "uri_forest"] }
 swim_runtime = { path = "../../runtime/swim_runtime" }
 bytes = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }

@@ -37,12 +37,13 @@ use thiserror::Error;
 use tokio::time::{Instant, Sleep};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-pub mod lane;
-pub mod node;
 #[cfg(test)]
 mod test_harness;
 #[cfg(test)]
 mod tests;
+
+pub mod lane;
+pub mod node;
 
 const PULSE_LANE: &str = "pulse";
 
