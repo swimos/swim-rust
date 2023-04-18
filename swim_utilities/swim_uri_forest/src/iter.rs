@@ -1,3 +1,17 @@
+// Copyright 2015-2023 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use crate::TreeNode;
 use smol_str::SmolStr;
 use std::collections::{HashMap, VecDeque};
@@ -158,21 +172,24 @@ impl<'l, D> Iterator for UriPartIterator<'l, D> {
                 };
 
                 let ret = if node.has_descendants() {
-                    Some(UriPart::Junction {
+                    let ret = Some(UriPart::Junction {
                         path: make_uri(),
                         descendants: node.descendants_len(),
-                    })
+                    });
+                    uri_stack.pop_back();
+                    op_stack.pop_front();
+                    ret
                 } else {
-                    match node.data.as_ref() {
+                    let ret = match node.data.as_ref() {
                         Some(data) => Some(UriPart::Leaf {
                             path: make_uri(),
                             data,
                         }),
                         None => None,
-                    }
+                    };
+                    dfs(node, visit, uri_stack, op_stack);
+                    ret
                 };
-
-                dfs(node, visit, uri_stack, op_stack);
 
                 if let Some(ret) = ret {
                     return Some(ret);

@@ -1,3 +1,20 @@
+// Copyright 2015-2023 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#[cfg(test)]
+mod tests;
+
 use crate::task::AgentMeta;
 use futures::future::{BoxFuture, Either};
 use futures::stream::select;
@@ -13,11 +30,13 @@ use swim_api::protocol::agent::{
 };
 use swim_api::protocol::map::{MapOperation, MapOperationEncoder};
 use swim_api::protocol::WithLengthBytesCodec;
+use swim_form::structural::write::{StructuralWritable, StructuralWriter};
 use swim_form::Form;
 use swim_model::time::Timestamp;
 use swim_model::Text;
 use swim_runtime::downlink::Io;
 use swim_utilities::routing::route_uri::RouteUri;
+use swim_utilities::trigger;
 use swim_utilities::uri_forest::{UriForest, UriPart};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
@@ -60,26 +79,29 @@ async fn run_init(
     let nodes_count_io = context
         .add_lane(NODES_COUNT_LANE, LaneKind::DemandMap, lane_config)
         .await?;
-    Ok(run_task(agents, context, nodes_io, nodes_count_io)
-        .map_err(|error| AgentTaskError::BadFrame {
-            lane: Text::from("nodes"),
-            error,
-        })
-        .boxed())
+    Ok(Box::pin(async move {
+        let (_shutdown_tx, shutdown_rx) = trigger::trigger();
+        run_task(shutdown_rx, agents, context, nodes_io, nodes_count_io)
+            .map_err(|error| AgentTaskError::BadFrame {
+                lane: Text::from("nodes"),
+                error,
+            })
+            .await
+    }))
 }
 
-#[derive(Form)]
+#[derive(Form, Debug, PartialEq, Ord, PartialOrd, Eq)]
 #[form_root(::swim_form)]
-struct NodeInfo {
+pub struct NodeInfoList {
     #[form(name = "node_uri")]
     node_uri: String,
     created: Timestamp,
     agents: Vec<String>,
 }
 
-#[derive(Form)]
+#[derive(Form, Debug, PartialEq, Ord, PartialOrd, Eq)]
 #[form_root(::swim_form)]
-struct NodeInfoCount {
+pub struct NodeInfoCount {
     #[form(name = "node_uri")]
     node_uri: String,
     created: usize,
@@ -87,12 +109,37 @@ struct NodeInfoCount {
     child_count: usize,
 }
 
-enum NodeInfoKind {
-    List(NodeInfo),
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq)]
+pub enum NodeInfo {
+    List(NodeInfoList),
     Count(NodeInfoCount),
 }
 
+impl StructuralWritable for NodeInfo {
+    fn num_attributes(&self) -> usize {
+        match self {
+            NodeInfo::List(item) => item.num_attributes(),
+            NodeInfo::Count(item) => item.num_attributes(),
+        }
+    }
+
+    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
+        match self {
+            NodeInfo::List(item) => item.write_with(writer),
+            NodeInfo::Count(item) => item.write_with(writer),
+        }
+    }
+
+    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
+        match self {
+            NodeInfo::List(item) => item.write_into(writer),
+            NodeInfo::Count(item) => item.write_into(writer),
+        }
+    }
+}
+
 async fn run_task(
+    shutdown_rx: trigger::Receiver,
     agents: Arc<RwLock<UriForest<AgentMeta>>>,
     context: Box<dyn AgentContext + Send>,
     nodes_io: Io,
@@ -122,9 +169,11 @@ async fn run_task(
     let mut request_stream = select(
         nodes_input.map(Either::Left),
         nodes_count_input.map(Either::Right),
-    );
+    )
+    .take_until(shutdown_rx);
 
     while let Some(request) = request_stream.next().await {
+        println!("{:?}", request);
         match request {
             Either::Left(request) => {
                 if let LaneRequest::Sync(id) = request? {
@@ -135,7 +184,7 @@ async fn run_task(
 
                         forest
                             .uri_iter()
-                            .map(|(node_uri, meta)| NodeInfo {
+                            .map(|(node_uri, meta)| NodeInfoList {
                                 node_uri,
                                 created: meta.created,
                                 agents: vec![meta.name.to_string()],
@@ -152,7 +201,7 @@ async fn run_task(
                         nodes_output.send(LaneResponse::SyncEvent(id, op)).await?;
                     }
 
-                    let synced: LaneResponse<MapOperation<&str, &NodeInfo>> =
+                    let synced: LaneResponse<MapOperation<&str, &NodeInfoList>> =
                         LaneResponse::Synced(id);
                     nodes_output.send(synced).await?;
                 }
@@ -167,12 +216,12 @@ async fn run_task(
                             .part_iter()
                             .map(|part| match part {
                                 UriPart::Leaf { path, data } => {
-                                    let info = NodeInfo {
+                                    let info = NodeInfoList {
                                         node_uri: path.clone(),
                                         created: data.created.clone(),
                                         agents: vec![data.name.clone().into()],
                                     };
-                                    (path, NodeInfoKind::List(info))
+                                    (path, NodeInfo::List(info))
                                 }
                                 UriPart::Junction { path, descendants } => {
                                     let info = NodeInfoCount {
@@ -180,40 +229,26 @@ async fn run_task(
                                         created: 0,
                                         child_count: descendants,
                                     };
-                                    (path, NodeInfoKind::Count(info))
+                                    (path, NodeInfo::Count(info))
                                 }
                             })
                             .collect::<Vec<_>>()
                     };
 
                     for (path, info) in parts {
-                        match info {
-                            NodeInfoKind::List(info) => {
-                                let op = MapOperation::Update {
+                        nodes_count_output
+                            .send(LaneResponse::SyncEvent(
+                                id,
+                                MapOperation::Update {
                                     key: path.as_str(),
                                     value: &info,
-                                };
-                                nodes_output.send(LaneResponse::SyncEvent(id, op)).await?;
-
-                                let synced: LaneResponse<MapOperation<&str, &NodeInfo>> =
-                                    LaneResponse::Synced(id);
-                                nodes_output.send(synced).await?;
-                            }
-                            NodeInfoKind::Count(info) => {
-                                let op = MapOperation::Update {
-                                    key: path.as_str(),
-                                    value: &info,
-                                };
-                                nodes_count_output
-                                    .send(LaneResponse::SyncEvent(id, op))
-                                    .await?;
-
-                                let synced: LaneResponse<MapOperation<&str, &NodeInfoCount>> =
-                                    LaneResponse::Synced(id);
-                                nodes_count_output.send(synced).await?;
-                            }
-                        }
+                                },
+                            ))
+                            .await?
                     }
+
+                    let synced: LaneResponse<MapOperation<&str, &()>> = LaneResponse::Synced(id);
+                    nodes_count_output.send(synced).await?;
                 }
             }
         }
