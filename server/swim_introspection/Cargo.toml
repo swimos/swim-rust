@@ -19,7 +19,7 @@ tracing = { workspace = true }
 tracing-futures = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
-parking_lot = { workspace = true }
+parking_lot = { workspace = true, features = ["send_guard"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "time", "test-util"]}

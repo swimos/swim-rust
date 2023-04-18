@@ -1,4 +1,5 @@
-use crate::{PathSegmentIterator, TreeNode, UriForest};
+use crate::iter::{PathSegmentIterator, UriPart};
+use crate::{TreeNode, UriForest};
 use std::collections::{HashMap, HashSet};
 
 #[test]
@@ -16,7 +17,10 @@ fn iters() {
     forest.insert("/listener/1", ());
     forest.insert("/listener/2", ());
 
-    let uris = forest.prefix_iter("/unit/1").collect::<HashSet<String>>();
+    let uris = forest
+        .prefix_iter("/unit/1")
+        .map(|(uri, _)| uri)
+        .collect::<HashSet<String>>();
 
     assert_eq!(
         uris,
@@ -27,16 +31,25 @@ fn iters() {
         ])
     );
 
-    let uris = forest.prefix_iter("/unit/2").collect::<HashSet<String>>();
+    let uris = forest
+        .prefix_iter("/unit/2")
+        .map(|(uri, _)| uri)
+        .collect::<HashSet<String>>();
     assert_eq!(uris, HashSet::from(["/unit/2/cnt/1".to_string()]));
 
-    let uris = forest.prefix_iter("/listener").collect::<HashSet<String>>();
+    let uris = forest
+        .prefix_iter("/listener")
+        .map(|(uri, _)| uri)
+        .collect::<HashSet<String>>();
     assert_eq!(
         uris,
         HashSet::from(["/listener/1".to_string(), "/listener/2".to_string()])
     );
 
-    let all_uris = forest.uri_iter().collect::<HashSet<String>>();
+    let all_uris = forest
+        .uri_iter()
+        .map(|(uri, _)| uri)
+        .collect::<HashSet<String>>();
     assert_eq!(
         all_uris,
         HashSet::from([
@@ -64,7 +77,10 @@ fn iters2() {
     forest.insert("/unit/1/cnt/2/h/i/j/k", ());
     forest.insert("/unit/1/blah/", ());
 
-    let uris = forest.prefix_iter("/unit/1").collect::<HashSet<String>>();
+    let uris = forest
+        .prefix_iter("/unit/1")
+        .map(|(uri, _)| uri)
+        .collect::<HashSet<String>>();
     assert_eq!(
         uris,
         HashSet::from([
@@ -85,7 +101,10 @@ fn iter3() {
     forest.insert("/unit/1/a/d/e", ());
     forest.insert("/unit/1/blah/", ());
 
-    let uris = forest.prefix_iter("/unit/1").collect::<HashSet<String>>();
+    let uris = forest
+        .prefix_iter("/unit/1")
+        .map(|(uri, _)| uri)
+        .collect::<HashSet<String>>();
     assert_eq!(
         uris,
         HashSet::from([
@@ -299,4 +318,65 @@ fn path_segment_iter() {
 
     let segments = PathSegmentIterator::new("////").collect::<Vec<_>>();
     assert_eq!(segments, Vec::<&str>::new());
+}
+
+#[test]
+fn uri_part_iter() {
+    let mut forest = UriForest::new();
+
+    forest.insert("/listener", ());
+    forest.insert("/unit/1/cnt/", ());
+    forest.insert("/unit/1/cnt/3", ());
+    forest.insert("/unit/2/cnt/3", ());
+    forest.insert("/unit/3/cnt/3/4", ());
+
+    let actual = forest.part_iter().collect::<HashSet<_>>();
+    let expected = HashSet::from([
+        UriPart::Leaf {
+            path: "/listener".to_string(),
+            data: &(),
+        },
+        UriPart::Junction {
+            path: "/unit".to_string(),
+            descendants: 3,
+        },
+        UriPart::Junction {
+            path: "/unit/3".to_string(),
+            descendants: 1,
+        },
+        UriPart::Junction {
+            path: "/unit/3/cnt".to_string(),
+            descendants: 1,
+        },
+        UriPart::Junction {
+            path: "/unit/3/cnt/3".to_string(),
+            descendants: 1,
+        },
+        UriPart::Leaf {
+            path: "/unit/3/cnt/3/4".to_string(),
+            data: &(),
+        },
+        UriPart::Junction {
+            path: "/unit/2".to_string(),
+            descendants: 1,
+        },
+        UriPart::Junction {
+            path: "/unit/2/cnt".to_string(),
+            descendants: 1,
+        },
+        UriPart::Leaf {
+            path: "/unit/2/cnt/3".to_string(),
+            data: &(),
+        },
+        UriPart::Junction {
+            path: "/unit/1".to_string(),
+            descendants: 1,
+        },
+        UriPart::Leaf {
+            path: "/unit/1/cnt".to_string(),
+            data: &(),
+        },
+    ]);
+
+    assert_eq!(actual, expected)
 }

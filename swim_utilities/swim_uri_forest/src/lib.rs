@@ -1,10 +1,14 @@
+mod iter;
 #[cfg(test)]
 mod tests;
 
+use crate::iter::PathSegmentIterator;
 use smol_str::SmolStr;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::iter::Peekable;
+
+pub use crate::iter::{UriForestIterator, UriPart, UriPartIterator};
 
 static_assertions::assert_impl_all!(UriForest<()>: Send, Sync);
 
@@ -37,7 +41,6 @@ static_assertions::assert_impl_all!(UriForest<()>: Send, Sync);
 ///             /                     \
 ///         2                              3
 /// ```
-///
 #[derive(Debug)]
 pub struct UriForest<D> {
     /// A collection of trees in this forest.
@@ -279,6 +282,13 @@ impl<D> UriForest<D> {
     pub fn is_empty(&self) -> bool {
         self.trees.is_empty()
     }
+
+    /// Returns an iterator that yields URI parts; either a leaf item containing node data or a
+    /// junction item containing the number of descendants.
+    pub fn part_iter(&self) -> UriPartIterator<'_, D> {
+        let UriForest { trees } = self;
+        UriPartIterator::new(trees)
+    }
 }
 
 fn traverse_remove<'l, D, I>(
@@ -458,135 +468,8 @@ impl<D> TreeNode<D> {
     fn remove_descendant(&mut self, segment: &str) -> Option<TreeNode<D>> {
         self.descendants.remove(segment)
     }
-}
 
-struct PathSegmentIterator<'a> {
-    path: &'a str,
-}
-
-impl<'a> PathSegmentIterator<'a> {
-    fn new(mut path: &'a str) -> PathSegmentIterator<'a> {
-        while path.starts_with('/') {
-            path = &path[1..];
-        }
-
-        PathSegmentIterator { path }
-    }
-}
-
-impl<'a> Iterator for PathSegmentIterator<'a> {
-    type Item = &'a str;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let PathSegmentIterator { path } = self;
-
-        let lower = path.find(|c| c != '/')?;
-        let upper = path[lower..]
-            .find('/')
-            .map_or(path.len(), |next_slash| lower + next_slash);
-
-        let segment = Some(&path[lower..upper]);
-
-        *path = &path[upper..];
-
-        segment
-    }
-}
-
-pub struct UriForestIterator<'l, D> {
-    /// A prefix that is prepended to each yielded path.
-    prefix: String,
-    /// A stack of nodes to visit.
-    visit: VecDeque<(&'l SmolStr, &'l TreeNode<D>)>,
-    /// A stack containing the current path that is being built.
-    uri_stack: VecDeque<String>,
-    /// A stack of searches that are being performed and a cursor signalling the depth.
-    op_stack: VecDeque<usize>,
-}
-
-impl<'l, D> UriForestIterator<'l, D> {
-    fn empty() -> UriForestIterator<'l, D> {
-        UriForestIterator {
-            prefix: "".to_string(),
-            visit: VecDeque::default(),
-            uri_stack: VecDeque::default(),
-            op_stack: VecDeque::default(),
-        }
-    }
-
-    fn new(prefix: String, nodes: &'l HashMap<SmolStr, TreeNode<D>>) -> UriForestIterator<'l, D> {
-        UriForestIterator {
-            prefix,
-            visit: VecDeque::from_iter(nodes),
-            uri_stack: VecDeque::default(),
-            op_stack: VecDeque::new(),
-        }
-    }
-}
-
-impl<'l, D> Iterator for UriForestIterator<'l, D> {
-    type Item = String;
-
-    /// Performs a depth-first search of the tree, yielding every node that contains data (signals
-    /// the end of a path).
-    fn next(&mut self) -> Option<Self::Item> {
-        let UriForestIterator {
-            prefix,
-            visit,
-            uri_stack,
-            op_stack,
-        } = self;
-
-        loop {
-            if visit.is_empty() {
-                assert!(op_stack.is_empty());
-                return None;
-            }
-
-            while let Some((current_segment, node)) = visit.pop_front() {
-                uri_stack.push_back(current_segment.to_string());
-                op_stack.push_front(node.descendants.len());
-
-                let ret = if node.has_data() {
-                    let suffix = uri_stack.iter().cloned().collect::<Vec<String>>().join("/");
-                    Some(format!("{}/{}", prefix, suffix))
-                } else {
-                    None
-                };
-
-                if node.has_descendants() {
-                    // Insert the next collection of nodes to search
-                    for (key, descendant) in &node.descendants {
-                        visit.push_front((key, descendant));
-                    }
-                } else {
-                    // Drains any path segments that are no longer required.
-                    while let Some(remaining) = op_stack.front_mut() {
-                        if *remaining > 0 {
-                            *remaining -= 1;
-                            // This segment is now complete. We want to update decrement
-                            // indices in the callstack and remove any unrequired nodes.
-                            if *remaining == 0 {
-                                uri_stack.pop_back();
-                                op_stack.pop_front();
-                            } else {
-                                // This node is going to be used as part of another path.
-                                break;
-                            }
-                        } else {
-                            // This callstack was the only route to the node (i.e, it had no other
-                            // children) so it can be removed
-
-                            uri_stack.pop_back();
-                            op_stack.pop_front();
-                        }
-                    }
-                }
-
-                if let Some(ret) = ret {
-                    return Some(ret);
-                }
-            }
-        }
+    fn descendants_len(&self) -> usize {
+        self.descendants.len()
     }
 }
