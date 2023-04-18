@@ -224,7 +224,7 @@ where
     F: FnOnce(Context) -> Fut,
     Fut: Future,
 {
-    NOW.set(Timestamp::now()).unwrap();
+    let _r = NOW.set(Timestamp::now());
 
     let (nodes_in_tx, nodes_in_rx) = byte_channel(BUFFER_SIZE);
     let (nodes_out_tx, nodes_out_rx) = byte_channel(BUFFER_SIZE);
@@ -265,10 +265,27 @@ fn push_uri(forest: &mut UriForest<AgentMeta>, reporter: &UplinkReporter, path: 
         },
     );
 }
+
 static NOW: OnceCell<Timestamp> = OnceCell::new();
 
 #[tokio::test]
-async fn list_lanes() {
+async fn count_lanes_empty() {
+    run_test(|ctx| async {
+        let Context {
+            shutdown_tx,
+            mut nodes_count_channel,
+            ..
+        } = ctx;
+
+        nodes_count_channel.send_sync().await;
+        nodes_count_channel.recv_synced().await;
+        assert!(shutdown_tx.trigger());
+    })
+    .await
+}
+
+#[tokio::test]
+async fn count_lanes() {
     run_test(|ctx| async {
         let Context {
             shutdown_tx,
@@ -308,13 +325,111 @@ async fn list_lanes() {
             ),
         ];
 
-        let mut events = nodes_count_channel.expect_n_sync_events(2).await;
+        let mut events = nodes_count_channel
+            .expect_n_sync_events(expected.len())
+            .await;
+
         expected.sort();
         events.sort();
 
         assert_eq!(expected, events);
 
         nodes_count_channel.recv_synced().await;
+        assert!(shutdown_tx.trigger());
+    })
+    .await
+}
+
+#[tokio::test]
+async fn list_lanes_empty() {
+    run_test(|ctx| async {
+        let Context {
+            shutdown_tx,
+            mut nodes_channel,
+            ..
+        } = ctx;
+
+        nodes_channel.send_sync().await;
+        nodes_channel.recv_synced().await;
+        assert!(shutdown_tx.trigger());
+    })
+    .await
+}
+
+#[tokio::test]
+async fn list_lanes() {
+    run_test(|ctx| async {
+        let Context {
+            shutdown_tx,
+            mut nodes_channel,
+            forest,
+            ..
+        } = ctx;
+
+        let reporter = UplinkReporter::default();
+
+        {
+            let forest = &mut *forest.write();
+            push_uri(forest, &reporter, "/listener", "listener_agent");
+            push_uri(forest, &reporter, "/cnt/1", "counter_1");
+            push_uri(forest, &reporter, "/cnt/2", "counter_2");
+            push_uri(forest, &reporter, "/cnt/3", "counter_3");
+            push_uri(forest, &reporter, "/cnt/4", "counter_4");
+        }
+
+        let mut expected = vec![
+            (
+                "/listener".into(),
+                NodeInfoList {
+                    node_uri: "/listener".to_string(),
+                    created: NOW.get().unwrap().clone(),
+                    agents: vec!["listener_agent".into()],
+                },
+            ),
+            (
+                "/cnt/1".into(),
+                NodeInfoList {
+                    node_uri: "/cnt/1".to_string(),
+                    created: NOW.get().unwrap().clone(),
+                    agents: vec!["counter_1".into()],
+                },
+            ),
+            (
+                "/cnt/2".into(),
+                NodeInfoList {
+                    node_uri: "/cnt/2".to_string(),
+                    created: NOW.get().unwrap().clone(),
+                    agents: vec!["counter_2".into()],
+                },
+            ),
+            (
+                "/cnt/3".into(),
+                NodeInfoList {
+                    node_uri: "/cnt/3".to_string(),
+                    created: NOW.get().unwrap().clone(),
+                    agents: vec!["counter_3".into()],
+                },
+            ),
+            (
+                "/cnt/4".into(),
+                NodeInfoList {
+                    node_uri: "/cnt/4".to_string(),
+                    created: NOW.get().unwrap().clone(),
+                    agents: vec!["counter_4".into()],
+                },
+            ),
+        ];
+
+        nodes_channel.send_sync().await;
+
+        let mut events = nodes_channel.expect_n_sync_events(expected.len()).await;
+
+        expected.sort();
+        events.sort();
+
+        assert_eq!(expected, events);
+
+        nodes_channel.recv_synced().await;
         assert!(shutdown_tx.trigger());
     })
     .await

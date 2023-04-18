@@ -173,7 +173,6 @@ async fn run_task(
     .take_until(shutdown_rx);
 
     while let Some(request) = request_stream.next().await {
-        println!("{:?}", request);
         match request {
             Either::Left(request) => {
                 if let LaneRequest::Sync(id) = request? {
