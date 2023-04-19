@@ -285,7 +285,7 @@ fn is_meta_node(node_uri: &Text) -> bool {
         node_uri = &node_uri[1..];
     }
 
-    node_uri == "swim:meta:node" || node_uri == "swim:meta:mesh"
+    node_uri.starts_with("swim:meta:node") || node_uri.starts_with("swim:meta:mesh")
 }
 
 /// Provides convenience methods for interaction with the introspection task.
