@@ -432,7 +432,7 @@ where
                             if flags.contains(ItemFlags::TRANSIENT) {
                                 lane_conf.transient = true;
                             }
-                            let io = context.add_lane(name, LaneKind::Map, lane_conf).await?;
+                            let io = context.add_lane(name, kind, lane_conf).await?;
                             with_init!(init => {
                                 init.init_map_lane(name, kind,lane_conf, io);
                             })
@@ -441,7 +441,7 @@ where
                             if flags.contains(ItemFlags::TRANSIENT) {
                                 lane_conf.transient = true;
                             }
-                            let io = context.add_lane(name, LaneKind::Value, lane_conf).await?;
+                            let io = context.add_lane(name, kind, lane_conf).await?;
                             with_init!(init => {
                                 init.init_value_lane(name, kind, lane_conf, io);
                             })

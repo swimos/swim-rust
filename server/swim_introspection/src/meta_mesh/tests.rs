@@ -33,9 +33,7 @@ use swim_api::protocol::agent::{
 use swim_api::protocol::map::{MapOperation, MapOperationDecoder};
 use swim_api::protocol::WithLengthBytesCodec;
 use swim_api::store::StoreKind;
-use swim_form::structural::read::event::ReadEvent;
-use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
-use swim_form::structural::read::ReadError;
+use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::time::Timestamp;
 use swim_model::Text;
 use swim_runtime::agent::reporting::UplinkReporter;
@@ -138,77 +136,6 @@ where
             }
         }
         events
-    }
-}
-
-pub struct NodeInfoRec<L, R> {
-    list: L,
-    count: R,
-}
-
-impl<L, R> Recognizer for NodeInfoRec<L, R>
-where
-    L: Recognizer<Target = NodeInfoList>,
-    R: Recognizer<Target = NodeInfoCount>,
-{
-    type Target = NodeInfo;
-
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        let NodeInfoRec { list, count } = self;
-        match list.feed_event(input.clone()) {
-            Some(Ok(item)) => {
-                return Some(Ok(NodeInfo::List(item)));
-            }
-            Some(Err(_)) => match count.feed_event(input)? {
-                Ok(item) => Some(Ok(NodeInfo::Count(item))),
-                Err(e) => Some(Err(e)),
-            },
-            None => match count.feed_event(input)? {
-                Ok(item) => Some(Ok(NodeInfo::Count(item))),
-                _ => None,
-            },
-        }
-    }
-
-    fn reset(&mut self) {
-        self.list.reset();
-        self.count.reset();
-    }
-}
-
-impl RecognizerReadable for NodeInfo {
-    type Rec = NodeInfoRec<
-        <NodeInfoList as RecognizerReadable>::Rec,
-        <NodeInfoCount as RecognizerReadable>::Rec,
-    >;
-    type AttrRec = NodeInfoRec<
-        <NodeInfoList as RecognizerReadable>::AttrRec,
-        <NodeInfoCount as RecognizerReadable>::AttrRec,
-    >;
-    type BodyRec = NodeInfoRec<
-        <NodeInfoList as RecognizerReadable>::BodyRec,
-        <NodeInfoCount as RecognizerReadable>::BodyRec,
-    >;
-
-    fn make_recognizer() -> Self::Rec {
-        NodeInfoRec {
-            list: NodeInfoList::make_recognizer(),
-            count: NodeInfoCount::make_recognizer(),
-        }
-    }
-
-    fn make_attr_recognizer() -> Self::AttrRec {
-        NodeInfoRec {
-            list: NodeInfoList::make_attr_recognizer(),
-            count: NodeInfoCount::make_attr_recognizer(),
-        }
-    }
-
-    fn make_body_recognizer() -> Self::BodyRec {
-        NodeInfoRec {
-            list: NodeInfoList::make_body_recognizer(),
-            count: NodeInfoCount::make_body_recognizer(),
-        }
     }
 }
 

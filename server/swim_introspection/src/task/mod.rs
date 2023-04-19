@@ -217,11 +217,13 @@ pub async fn introspection_task(
                 name,
                 aggregate_reader,
             } => {
-                agents.insert(
-                    agent_id,
-                    node_uri,
-                    AgentMeta::new(name, AgentIntrospectionUpdater::new(aggregate_reader)),
-                );
+                if !is_meta_node(&node_uri) {
+                    agents.insert(
+                        agent_id,
+                        node_uri,
+                        AgentMeta::new(name, AgentIntrospectionUpdater::new(aggregate_reader)),
+                    );
+                }
             }
             IntrospectionMessage::AddLane {
                 agent_id,
@@ -274,6 +276,16 @@ pub async fn introspection_task(
             }
         }
     }
+}
+
+fn is_meta_node(node_uri: &Text) -> bool {
+    let mut node_uri = node_uri.as_str();
+
+    while node_uri.starts_with('/') {
+        node_uri = &node_uri[1..];
+    }
+
+    node_uri == "swim:meta:node" || node_uri == "swim:meta:mesh"
 }
 
 /// Provides convenience methods for interaction with the introspection task.

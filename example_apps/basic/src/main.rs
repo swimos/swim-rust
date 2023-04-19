@@ -38,6 +38,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .update_config(|config| {
             config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
         })
+        .enable_introspection()
         .build()
         .await?;
 
