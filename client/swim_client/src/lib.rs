@@ -42,6 +42,7 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 pub use url::Url;
+pub use runtime::{Commander, CommandError};
 
 #[derive(Debug, Default)]
 pub struct SwimClientBuilder {

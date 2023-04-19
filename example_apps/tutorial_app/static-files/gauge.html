@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Swim Gauge</title>
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, maximum-scale=1, user-scalable=0, shrink-to-fit=no, viewport-fit=cover">
+  </head>
+  <body swim-theme style="position: fixed; display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; margin: 0;">
+    <script src="https://cdn.swimos.org/js/3.11.1/swim-system.js"></script>
+    <script src="https://cdn.swimos.org/js/3.11.1/swim-toolkit.js"></script>
+    <script>
+
+const bodyView = swim.HtmlView.fromNode(document.body);
+
+const containerView = bodyView.append("div").display("flex").width("67%").height("67%").touchAction("none").userSelect("none");
+
+const canvasView = swim.CanvasView.create()
+    .mouseEventsEnabled(true)
+    .pointerEventsEnabled(true)
+    .touchEventsEnabled(true)
+    .touchAction("manipulation");
+
+
+/* Gauge View */
+const gaugeView = canvasView.append(swim.GaugeView)
+    .innerRadius(swim.Length.pct(25))
+    .startAngle(swim.Angle.rad(3 * Math.PI / 4))
+    .sweepAngle(swim.Angle.rad(3 * Math.PI / 2))
+    .font("14px sans-serif")
+    .title(swim.TextRunView.fromAny("Foo, Bar, Baz").font("20px sans-serif"))
+    .font("14px sans-serif")
+    .textColor("#4a4a4a")
+    .on("pointerover", function (event) {
+      if (event.targetView instanceof swim.DialView) {
+        event.targetView.modifyMood(swim.Feel.default, [[swim.Feel.secondary, 1]], true);
+      }
+    })
+    .on("pointerout", function (event) {
+      if (event.targetView instanceof swim.DialView) {
+        event.targetView.modifyMood(swim.Feel.default, [[swim.Feel.secondary, void 0]], true);
+      }
+    });
+
+const fooDial = gaugeView.append(swim.DialView, "FOO");
+
+const barDial = gaugeView.append(swim.DialView, "BAR");
+
+const bazDial = gaugeView.append(swim.DialView, "BAZ");
+
+function updateDial(dial, max, key, value) {
+  const v = value.get(key).numberValue();
+  const percent = v / max;
+  const legend = key + ": " + (v) + " out of " + max;
+  const timing = swim.Easing.linear.withDuration(1000);
+  dial.value(percent, timing);
+  dial.label(legend);
+}
+
+/* Data Subscriptions */
+const valueLink = swim.downlinkValue()
+    .hostUri("warp://localhost:9001")
+    .nodeUri("/unit/master")
+    .laneUri("latest")
+    .didSet(function (value) {
+      updateDial(fooDial, 70, "foo", value);
+      updateDial(barDial, 140, "bar", value);
+      updateDial(bazDial, 210, "baz", value);
+    })
+    .open();
+
+containerView.append(canvasView);
+
+    </script>
+  </body>
+</html>

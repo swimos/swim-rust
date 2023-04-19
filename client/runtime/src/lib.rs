@@ -15,6 +15,7 @@
 #[cfg(test)]
 mod tests;
 
+mod commander;
 mod error;
 mod models;
 mod pending;
@@ -32,6 +33,7 @@ pub use swim_api::downlink::DownlinkKind;
 pub use swim_api::error::DownlinkTaskError;
 use swim_utilities::non_zero_usize;
 pub use transport::{Transport, TransportRequest};
+pub use commander::{Commander, CommandError};
 
 const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
 

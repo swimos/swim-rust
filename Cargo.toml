@@ -29,6 +29,8 @@ members = [
     "example_apps/map_downlink",
     "example_apps/local_downlink",
     "example_apps/tutorial_app",
+    "example_apps/tutorial_app/model",
+    "example_apps/tutorial_app/generator",
 ]
 
 exclude = [

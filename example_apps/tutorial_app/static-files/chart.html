@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Swim Chart</title>
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, maximum-scale=1, user-scalable=0, shrink-to-fit=no, viewport-fit=cover">
+  </head>
+  <body swim-theme style="position: fixed; display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; margin: 0;">
+    <script src="https://cdn.swimos.org/js/3.11.1/swim-system.js"></script>
+    <script src="https://cdn.swimos.org/js/3.11.1/swim-toolkit.js"></script>
+    <script>
+
+const bodyView = swim.HtmlView.fromNode(document.body);
+
+const containerView = bodyView.append("div").display("flex").width("67%").height("67%").touchAction("none").userSelect("none");
+
+const canvasView = swim.CanvasView.create()
+    .wheelEventsEnabled(true)
+    .mouseEventsEnabled(true)
+    .pointerEventsEnabled(true)
+    .touchEventsEnabled(true)
+    .touchAction("manipulation");
+
+
+/* Chart View */
+const chartView = canvasView.append(swim.ChartView)
+    .bottomAxis(true)
+    .leftAxis(true)
+    .xRangePadding([0, 0])
+    .domainTracking(true)
+    .xGestures(true)
+    .font("12px sans-serif")
+    .textColor("#4a4a4a");
+
+const graphView = chartView.graph.injectView();
+
+const plotView = graphView.append(swim.LinePlotView)
+    .hitMode("domain")
+    .stroke("#50e3c2")
+    .strokeWidth(2)
+    .on("pointerover", function (event) {
+      const dataPoint = event.targetView;
+      const y = dataPoint.y.value;
+      dataPoint.label(y.toFixed(2));
+    })
+    .on("pointerout", function (event) {
+      const dataPoint = event.targetView;
+      dataPoint.label(null);
+    });
+plotView.textColor.setLook(swim.Look.mutedColor);
+plotView.modifyMood(swim.Feel.default, [[swim.Feel.primary, 1]]);
+
+function addToPlot(key, value) {
+  const time = new swim.DateTime(key.numberValue());
+  const v = value.get("count").numberValue(0);
+  plotView.insertDataPoint({
+    x: time,
+    y: v,
+    opacity: void 0,
+    labelPadding: 2,
+    labelPlacement: v > 0 ? "above" : v < 0 ? "below" : "middle",
+  });
+}
+
+function removeFromPlot(key) {
+  const time = new swim.DateTime(key.numberValue());
+  plotView.removeDataPoint(time);
+}
+
+const histogramLink = swim.downlinkMap()
+    .hostUri("warp://localhost:9001")
+    .nodeUri("/unit/master")
+    .laneUri("histogram")
+    .didUpdate(function(key, value) {
+      addToPlot(key, value);
+    })
+    .didRemove(function(key) {
+      removeFromPlot(key);
+    })
+    .open();
+
+containerView.append(canvasView);
+
+    </script>
+</body>
+</html>

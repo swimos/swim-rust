@@ -26,8 +26,7 @@ use swim::{
     },
     model::time::Timestamp,
 };
-
-use crate::model::{Counter, HistoryItem, Message};
+use tutorial_app_model::{Message, HistoryItem, Counter};
 
 #[derive(AgentLaneModel)]
 #[projections]

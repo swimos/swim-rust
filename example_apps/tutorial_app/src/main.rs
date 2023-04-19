@@ -21,10 +21,10 @@ use swim::{
     server::{Server, ServerBuilder},
 };
 
-use crate::agent::{ExampleLifecycle, UnitAgent};
+use crate::{unit_agent::{ExampleLifecycle, UnitAgent}, ui::run_web_server};
 
-mod agent;
-mod model;
+mod unit_agent;
+mod ui;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -47,9 +47,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let shutdown = manage_handle(handle);
 
-    let (_, result) = tokio::join!(shutdown, task);
+    let ui = run_web_server(shutdown);
+
+    let (ui_result, result) = tokio::join!(ui, task);
 
     result?;
+    ui_result?;
     println!("Server stopped successfully.");
     Ok(())
 }
