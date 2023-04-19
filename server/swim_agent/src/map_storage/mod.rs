@@ -52,6 +52,12 @@ impl<K, V, Q: Default> MapStoreInner<K, V, Q> {
     }
 }
 
+pub enum WithEntryResult {
+    NoChange,
+    Update,
+    Remove,
+}
+
 impl<K, V, Q> MapStoreInner<K, V, Q>
 where
     K: Eq + Hash + Clone,
@@ -70,6 +76,49 @@ where
         let prev = content.insert(key.clone(), value);
         *previous = Some(MapLaneEvent::Update(key.clone(), prev));
         queue.push(MapOperation::Update { key, value: () });
+    }
+
+    pub fn with_entry<F>(&mut self, key: K, f: F) -> WithEntryResult
+    where
+        V: Clone,
+        F: FnOnce(Option<V>) -> Option<V>, 
+    {
+        let MapStoreInner {
+            content,
+            previous,
+            queue,
+        } = self;
+        match content.remove(&key) {
+            Some(v) => {
+                match f(Some(v.clone())) {
+                    Some(v2) => {
+                        content.insert(key.clone(), v2);
+                        *previous = Some(MapLaneEvent::Update(key.clone(), Some(v)));
+                        queue.push(MapOperation::Update { key, value: () });
+                        WithEntryResult::Update
+                    },
+                    _ => {
+                        *previous = Some(MapLaneEvent::Remove(key.clone(), v));
+                        queue.push(MapOperation::Remove { key: key.clone() });
+                        WithEntryResult::Remove
+                    }
+                }
+            },
+            _ => {
+                match f(None) {
+                    Some(v2) => {
+                        content.insert(key.clone(), v2);
+                        *previous = Some(MapLaneEvent::Update(key.clone(), None));
+                        queue.push(MapOperation::Update { key, value: () });
+                        WithEntryResult::Update
+                    },
+                    _ => {
+                        WithEntryResult::NoChange
+                    }
+                }
+            }
+        }
+        
     }
 
     pub fn remove(&mut self, key: &K) {

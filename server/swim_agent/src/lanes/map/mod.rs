@@ -36,7 +36,7 @@ use crate::{
         Modification, StepResult,
     },
     item::{AgentItem, MapItem},
-    map_storage::MapStoreInner,
+    map_storage::{MapStoreInner, WithEntryResult},
     meta::AgentMetadata,
 };
 
@@ -102,6 +102,14 @@ where
     /// Update the value associated with a key.
     pub fn update(&self, key: K, value: V) {
         self.inner.borrow_mut().update(key, value)
+    }
+
+    /// Transform the value associated with a key.
+    pub fn with_entry<F>(&self, key: K, f: F) -> WithEntryResult
+    where
+        V: Clone,
+        F: FnOnce(Option<V>) -> Option<V>, {
+        self.inner.borrow_mut().with_entry(key, f)
     }
 
     /// Remove and entry from the map.
@@ -518,4 +526,47 @@ where
 {
     let decode: DecodeMapMessage<K, V> = DecodeMapMessage::new(message);
     decode.and_then(ProjTransform::new(projection))
+}
+
+/// An [`EventHandler`] that will alter an entry in the map.
+pub struct MapLaneWithEntry<C, K, V, F> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+    key_and_f: Option<(K, F)>,
+}
+
+impl<C, K, V, F> MapLaneWithEntry<C, K, V, F> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K, f : F) -> Self {
+        MapLaneWithEntry { projection, key_and_f: Some((key, f)) }
+    }
+}
+
+impl<C, K, V, F> HandlerAction<C> for MapLaneWithEntry<C, K, V, F>
+where
+    K: Clone + Eq + Hash,
+    V: Clone,
+    F: FnOnce(Option<V>) -> Option<V>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapLaneWithEntry {
+            projection,
+            key_and_f,
+        } = self;
+        if let Some((key, f)) = key_and_f.take() {
+            let lane = projection(context);
+            if matches!(lane.with_entry(key, f), WithEntryResult::NoChange) {
+                StepResult::done(())
+            } else {
+                StepResult::Complete { modified_item: Some(Modification::of(lane.id())), result: () }
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
 }

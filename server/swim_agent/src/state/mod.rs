@@ -16,7 +16,7 @@ use std::{
     borrow::{Borrow, BorrowMut},
     cell::RefCell,
     collections::VecDeque,
-    marker::PhantomData,
+    marker::PhantomData, fmt::{Debug, Formatter},
 };
 
 use crate::event_handler::{
@@ -34,6 +34,14 @@ pub struct State<Context, T> {
 impl<Context, T: Default> Default for State<Context, T> {
     fn default() -> Self {
         Self::new(Default::default())
+    }
+}
+
+impl<Context, T: Debug> Debug for State<Context, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("State")
+           .field("content", &self.content)
+           .finish()
     }
 }
 
@@ -203,6 +211,15 @@ impl<Context, T> State<Context, Option<T>> {
 pub struct History<Context, T> {
     inner: State<Context, VecDeque<T>>,
     max_size: usize,
+}
+
+impl<Context, T: Debug> Debug for History<Context, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("History")
+            .field("inner", &self.inner)
+            .field("max_size", &self.max_size)
+            .finish()
+    }
 }
 
 impl<Context, T> History<Context, T> {

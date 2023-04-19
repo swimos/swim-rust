@@ -26,7 +26,7 @@ use crate::agent_model::WriteResult;
 use crate::event_handler::{ActionContext, HandlerAction, Modification, StepResult};
 use crate::event_queue::EventQueue;
 use crate::item::{AgentItem, MapItem};
-use crate::map_storage::MapStoreInner;
+use crate::map_storage::{MapStoreInner, WithEntryResult};
 use crate::meta::AgentMetadata;
 
 use super::StoreItem;
@@ -88,6 +88,14 @@ where
     /// Update the value associated with a key.
     pub fn update(&self, key: K, value: V) {
         self.inner.borrow_mut().update(key, value)
+    }
+
+    /// Transform the value associated with a key.
+    pub fn with_entry<F>(&self, key: K, f: F) -> WithEntryResult
+    where
+        V: Clone,
+        F: FnOnce(Option<V>) -> Option<V>, {
+        self.inner.borrow_mut().with_entry(key, f)
     }
 
     /// Remove an entry from the map.
@@ -347,6 +355,49 @@ where
             *done = true;
             let store = projection(context);
             StepResult::done(store.get_map(Clone::clone))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+/// An [`EventHandler`] that will alter an entry in the map.
+pub struct MapStoreWithEntry<C, K, V, F> {
+    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
+    key_and_f: Option<(K, F)>,
+}
+
+impl<C, K, V, F> MapStoreWithEntry<C, K, V, F> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>, key: K, f : F) -> Self {
+        MapStoreWithEntry { projection, key_and_f: Some((key, f)) }
+    }
+}
+
+impl<C, K, V, F> HandlerAction<C> for MapStoreWithEntry<C, K, V, F>
+where
+    K: Clone + Eq + Hash,
+    V: Clone,
+    F: FnOnce(Option<V>) -> Option<V>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapStoreWithEntry {
+            projection,
+            key_and_f,
+        } = self;
+        if let Some((key, f)) = key_and_f.take() {
+            let store = projection(context);
+            if matches!(store.with_entry(key, f), WithEntryResult::NoChange) {
+                StepResult::done(())
+            } else {
+                StepResult::Complete { modified_item: Some(Modification::of(store.id())), result: () }
+            }
         } else {
             StepResult::after_done()
         }

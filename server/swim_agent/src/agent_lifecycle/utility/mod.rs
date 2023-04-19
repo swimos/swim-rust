@@ -40,9 +40,9 @@ use crate::event_handler::{
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
-use crate::lanes::map::MapLaneGetMap;
+use crate::lanes::map::{MapLaneGetMap, MapLaneWithEntry};
 use crate::stores::map::{
-    MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate,
+    MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate, MapStoreWithEntry,
 };
 use crate::stores::value::{ValueStore, ValueStoreGet, ValueStoreSet};
 use crate::stores::MapStore;
@@ -224,6 +224,46 @@ impl<Agent: 'static> HandlerContext<Agent> {
         V: Send + 'static,
     {
         MapStoreUpdate::new(store, key, value)
+    }
+
+    /// Create an event handler that will transform the value in an entry of a map lane of the agent.
+    /// 
+    /// #Arguments
+    /// * `lane` - Projection to the map lane.
+    /// * `key - The key to update.
+    /// * `f` - A function to apple to the entry in the map.
+    pub fn with_entry<K, V, F>(
+        &self,
+        lane: fn(&Agent) -> &MapLane<K, V>,
+        key: K,
+        f: F,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send
+    where
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Clone,
+        F: FnOnce(Option<V>) -> Option<V> + Send,
+    {
+        MapLaneWithEntry::new(lane, key, f)
+    }
+
+    /// Create an event handler that will transform the value in an entry of a map store of the agent.
+    /// 
+    /// #Arguments
+    /// * `store` - Projection to the map store.
+    /// * `key - The key to update.
+    /// * `f` - A function to apple to the entry in the map.
+    pub fn with_entry_store<K, V, F>(
+        &self,
+        store: fn(&Agent) -> &MapStore<K, V>,
+        key: K,
+        f: F,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send
+    where
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Clone,
+        F: FnOnce(Option<V>) -> Option<V> + Send,
+    {
+        MapStoreWithEntry::new(store, key, f)
     }
 
     /// Create an event handler that will remove an entry from a map lane of the agent.
