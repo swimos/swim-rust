@@ -16,7 +16,8 @@ use std::{
     borrow::{Borrow, BorrowMut},
     cell::RefCell,
     collections::VecDeque,
-    marker::PhantomData, fmt::{Debug, Formatter},
+    fmt::{Debug, Formatter},
+    marker::PhantomData,
 };
 
 use crate::event_handler::{
@@ -40,8 +41,8 @@ impl<Context, T: Default> Default for State<Context, T> {
 impl<Context, T: Debug> Debug for State<Context, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("State")
-           .field("content", &self.content)
-           .finish()
+            .field("content", &self.content)
+            .finish()
     }
 }
 

@@ -94,7 +94,8 @@ where
     pub fn with_entry<F>(&self, key: K, f: F) -> WithEntryResult
     where
         V: Clone,
-        F: FnOnce(Option<V>) -> Option<V>, {
+        F: FnOnce(Option<V>) -> Option<V>,
+    {
         self.inner.borrow_mut().with_entry(key, f)
     }
 
@@ -368,8 +369,11 @@ pub struct MapStoreWithEntry<C, K, V, F> {
 }
 
 impl<C, K, V, F> MapStoreWithEntry<C, K, V, F> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>, key: K, f : F) -> Self {
-        MapStoreWithEntry { projection, key_and_f: Some((key, f)) }
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>, key: K, f: F) -> Self {
+        MapStoreWithEntry {
+            projection,
+            key_and_f: Some((key, f)),
+        }
     }
 }
 
@@ -396,7 +400,10 @@ where
             if matches!(store.with_entry(key, f), WithEntryResult::NoChange) {
                 StepResult::done(())
             } else {
-                StepResult::Complete { modified_item: Some(Modification::of(store.id())), result: () }
+                StepResult::Complete {
+                    modified_item: Some(Modification::of(store.id())),
+                    result: (),
+                }
             }
         } else {
             StepResult::after_done()

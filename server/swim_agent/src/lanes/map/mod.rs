@@ -108,7 +108,8 @@ where
     pub fn with_entry<F>(&self, key: K, f: F) -> WithEntryResult
     where
         V: Clone,
-        F: FnOnce(Option<V>) -> Option<V>, {
+        F: FnOnce(Option<V>) -> Option<V>,
+    {
         self.inner.borrow_mut().with_entry(key, f)
     }
 
@@ -535,8 +536,11 @@ pub struct MapLaneWithEntry<C, K, V, F> {
 }
 
 impl<C, K, V, F> MapLaneWithEntry<C, K, V, F> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K, f : F) -> Self {
-        MapLaneWithEntry { projection, key_and_f: Some((key, f)) }
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K, f: F) -> Self {
+        MapLaneWithEntry {
+            projection,
+            key_and_f: Some((key, f)),
+        }
     }
 }
 
@@ -563,7 +567,10 @@ where
             if matches!(lane.with_entry(key, f), WithEntryResult::NoChange) {
                 StepResult::done(())
             } else {
-                StepResult::Complete { modified_item: Some(Modification::of(lane.id())), result: () }
+                StepResult::Complete {
+                    modified_item: Some(Modification::of(lane.id())),
+                    result: (),
+                }
             }
         } else {
             StepResult::after_done()

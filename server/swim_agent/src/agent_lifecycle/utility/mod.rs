@@ -227,7 +227,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 
     /// Create an event handler that will transform the value in an entry of a map lane of the agent.
-    /// 
+    ///
     /// #Arguments
     /// * `lane` - Projection to the map lane.
     /// * `key - The key to update.
@@ -247,7 +247,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 
     /// Create an event handler that will transform the value in an entry of a map store of the agent.
-    /// 
+    ///
     /// #Arguments
     /// * `store` - Projection to the map store.
     /// * `key - The key to update.

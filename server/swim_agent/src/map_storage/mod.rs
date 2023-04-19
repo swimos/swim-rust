@@ -81,7 +81,7 @@ where
     pub fn with_entry<F>(&mut self, key: K, f: F) -> WithEntryResult
     where
         V: Clone,
-        F: FnOnce(Option<V>) -> Option<V>, 
+        F: FnOnce(Option<V>) -> Option<V>,
     {
         let MapStoreInner {
             content,
@@ -89,36 +89,29 @@ where
             queue,
         } = self;
         match content.remove(&key) {
-            Some(v) => {
-                match f(Some(v.clone())) {
-                    Some(v2) => {
-                        content.insert(key.clone(), v2);
-                        *previous = Some(MapLaneEvent::Update(key.clone(), Some(v)));
-                        queue.push(MapOperation::Update { key, value: () });
-                        WithEntryResult::Update
-                    },
-                    _ => {
-                        *previous = Some(MapLaneEvent::Remove(key.clone(), v));
-                        queue.push(MapOperation::Remove { key: key.clone() });
-                        WithEntryResult::Remove
-                    }
+            Some(v) => match f(Some(v.clone())) {
+                Some(v2) => {
+                    content.insert(key.clone(), v2);
+                    *previous = Some(MapLaneEvent::Update(key.clone(), Some(v)));
+                    queue.push(MapOperation::Update { key, value: () });
+                    WithEntryResult::Update
+                }
+                _ => {
+                    *previous = Some(MapLaneEvent::Remove(key.clone(), v));
+                    queue.push(MapOperation::Remove { key: key.clone() });
+                    WithEntryResult::Remove
                 }
             },
-            _ => {
-                match f(None) {
-                    Some(v2) => {
-                        content.insert(key.clone(), v2);
-                        *previous = Some(MapLaneEvent::Update(key.clone(), None));
-                        queue.push(MapOperation::Update { key, value: () });
-                        WithEntryResult::Update
-                    },
-                    _ => {
-                        WithEntryResult::NoChange
-                    }
+            _ => match f(None) {
+                Some(v2) => {
+                    content.insert(key.clone(), v2);
+                    *previous = Some(MapLaneEvent::Update(key.clone(), None));
+                    queue.push(MapOperation::Update { key, value: () });
+                    WithEntryResult::Update
                 }
-            }
+                _ => WithEntryResult::NoChange,
+            },
         }
-        
     }
 
     pub fn remove(&mut self, key: &K) {
