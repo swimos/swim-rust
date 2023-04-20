@@ -23,11 +23,13 @@ pub struct Message {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Form, Clone, Copy, Default)]
+#[form(tag = "counter")]
 pub struct Counter {
     pub count: usize,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Form, Clone, Copy)]
+#[form(tag = "item")]
 pub struct HistoryItem {
     pub message: Message,
     pub timestamp: Timestamp,
