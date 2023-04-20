@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, time::Duration, cell::Cell};
 
 use rand::Rng;
 use swim::{
@@ -21,7 +21,6 @@ use swim::{
         event_handler::{EventHandler, HandlerActionExt, Sequentially},
         lanes::{CommandLane, MapLane, ValueLane},
         lifecycle, projections,
-        state::History,
         AgentLaneModel,
     },
     model::time::Timestamp,
@@ -32,7 +31,7 @@ use tutorial_app_model::{Counter, HistoryItem, Message};
 #[projections]
 pub struct UnitAgent {
     publish: CommandLane<Message>,
-    history: ValueLane<Vec<HistoryItem>>,
+    history: MapLane<usize, HistoryItem>,
     #[transient]
     histogram: MapLane<i64, Counter>,
     last: ValueLane<Option<Message>>,
@@ -40,19 +39,22 @@ pub struct UnitAgent {
 
 #[derive(Debug)]
 pub struct ExampleLifecycle {
-    accumulator: History<UnitAgent, HistoryItem>,
+    max_history: usize,
+    epoch: Cell<usize>,
 }
 
 impl ExampleLifecycle {
-    pub fn new(max_size: usize) -> Self {
+    pub fn new(max_history: usize) -> Self {
         ExampleLifecycle {
-            accumulator: History::new(max_size),
+            max_history,
+            epoch: Cell::new(0),
         }
     }
 }
 
 #[lifecycle(UnitAgent, no_clone)]
 impl ExampleLifecycle {
+    
     #[on_command(publish)]
     pub fn publish_message(
         &self,
@@ -84,11 +86,25 @@ impl ExampleLifecycle {
                     }
                 });
                 let item = HistoryItem::new(message);
-                let add_to_history = update_history(&self.accumulator, context, item);
+                let e = self.epoch.get() + 1;
+                self.epoch.set(e);
+                let add_to_history = context.update(UnitAgent::HISTORY, e, item);
                 let update_hist = update_histogram(context, item);
                 print.followed_by(add_to_history).followed_by(update_hist)
             })
             .discard()
+    }
+
+    #[on_update(history)]
+    fn maintain_history(
+        &self,
+        context: HandlerContext<UnitAgent>,
+        map: &HashMap<usize, HistoryItem>,
+        _key: usize,
+        _prev: Option<HistoryItem>,
+        _new_value: &HistoryItem,
+    ) -> impl EventHandler<UnitAgent> {
+        truncate_history(map, self.max_history, self.epoch.get(), context)
     }
 
     #[on_update(histogram)]
@@ -99,21 +115,20 @@ impl ExampleLifecycle {
         _key: i64,
         _prev: Option<Counter>,
         _new_value: &Counter,
-    ) -> impl EventHandler<UnitAgent> + 'static {
+    ) -> impl EventHandler<UnitAgent> {
         remove_old(context, map)
     }
 }
 
-fn update_history(
-    history: &History<UnitAgent, HistoryItem>,
+fn truncate_history(
+    map: &HashMap<usize, HistoryItem>,
+    max_history: usize,
+    epoch: usize,
     context: HandlerContext<UnitAgent>,
-    item: HistoryItem,
-) -> impl EventHandler<UnitAgent> + '_ {
-    let append = history.push(item.clone());
-    let update_history = history.and_then_with(move |hist| {
-        context.set_value(UnitAgent::HISTORY, hist.iter().cloned().collect())
-    });
-    append.followed_by(update_history)
+) -> impl EventHandler<UnitAgent> {
+    let cut_off = (epoch + 1).saturating_sub(max_history);
+    let to_remove = map.keys().filter(move |k| **k < cut_off).copied().collect::<Vec<_>>();
+    Sequentially::new(to_remove.into_iter().map(move |k| context.remove(UnitAgent::HISTORY, k)))
 }
 
 fn update_histogram(
