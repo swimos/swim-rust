@@ -69,7 +69,7 @@ async fn transport_opens_connection_ok() {
     let ext =
         MockClientConnections::new([(("127.0.0.1".to_string(), 9001), sock)], [(sock, client)]);
     let ws = MockWs::new([("127.0.0.1".to_string(), WsAction::Open)]);
-    let transport = Transport::new(ext, ws, non_zero_usize!(128));
+    let transport = Transport::new(ext, ws, non_zero_usize!(128), Duration::from_secs(5));
 
     let (transport_tx, transport_rx) = mpsc::channel(128);
     let _transport_task = tokio::spawn(transport.run(transport_rx));
@@ -150,7 +150,7 @@ async fn transport_opens_connection_err() {
         "127.0.0.1".to_string(),
         WsAction::fail(|| RatchetError::from(ratchet::Error::new(ratchet::ErrorKind::Http))),
     )]);
-    let transport = Transport::new(ext, ws, non_zero_usize!(128));
+    let transport = Transport::new(ext, ws, non_zero_usize!(128), Duration::from_secs(5));
 
     let (transport_tx, transport_rx) = mpsc::channel(128);
     let _transport_task = tokio::spawn(transport.run(transport_rx));
@@ -290,7 +290,7 @@ fn start() -> Fixture {
     let (handle, task) = start_runtime(
         non_zero_usize!(32),
         stop_rx,
-        Transport::new(ext, ws, non_zero_usize!(128)),
+        Transport::new(ext, ws, non_zero_usize!(128), Duration::from_secs(5)),
         non_zero_usize!(32),
     );
 
@@ -469,7 +469,7 @@ async fn failed_handshake() {
     let (handle, task) = start_runtime(
         non_zero_usize!(128),
         stop_rx,
-        Transport::new(ext, ws, non_zero_usize!(128)),
+        Transport::new(ext, ws, non_zero_usize!(128), Duration::from_secs(5)),
         non_zero_usize!(32),
     );
     let _jh = tokio::spawn(task);

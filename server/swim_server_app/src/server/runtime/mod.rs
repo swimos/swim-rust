@@ -729,6 +729,7 @@ where
         attach_rx,
         Some(find_tx),
         config.remote.registration_buffer_size,
+        config.remote.close_timeout
     );
 
     (

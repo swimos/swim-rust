@@ -117,6 +117,7 @@ where
         remote_buffer_size,
         transport_buffer_size,
         registration_buffer_size,
+        close_timeout,
         ..
     } = config;
 
@@ -155,7 +156,7 @@ where
             start_runtime(
                 registration_buffer_size,
                 stop_rx,
-                Transport::new(networking, websockets, remote_buffer_size),
+                Transport::new(networking, websockets, remote_buffer_size, close_timeout),
                 transport_buffer_size,
             )
         }

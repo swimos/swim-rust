@@ -23,6 +23,7 @@ use ratchet::{WebSocket, WebSocketStream};
 use std::io;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
+use std::time::Duration;
 use swim_remote::{AttachClient, RemoteTask};
 use swim_runtime::net::{ClientConnections, Scheme, SchemeHostPort};
 use swim_runtime::ws::WsConnections;
@@ -125,6 +126,7 @@ pub struct Transport<Net, Ws> {
     networking: Net,
     websockets: Ws,
     buffer_size: NonZeroUsize,
+    close_timeout: Duration,
 }
 
 impl<Net, Ws> Transport<Net, Ws>
@@ -133,11 +135,12 @@ where
     Net::ClientSocket: WebSocketStream,
     Ws: WsConnections<Net::ClientSocket> + Sync,
 {
-    pub fn new(networking: Net, websockets: Ws, buffer_size: NonZeroUsize) -> Transport<Net, Ws> {
+    pub fn new(networking: Net, websockets: Ws, buffer_size: NonZeroUsize, close_timeout: Duration) -> Transport<Net, Ws> {
         Transport {
             networking,
             websockets,
             buffer_size,
+            close_timeout
         }
     }
 
@@ -146,6 +149,7 @@ where
             networking,
             websockets,
             buffer_size,
+            close_timeout
         } = self;
 
         let (stop_tx, stop_rx) = trigger::trigger();
@@ -264,6 +268,7 @@ where
                         attach_rx,
                         None,
                         buffer_size,
+                        close_timeout
                     );
                     events.push(
                         async move {

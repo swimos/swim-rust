@@ -50,6 +50,7 @@ use super::{InputError, OutgoingTaskMessage, RegisterIncoming};
 
 const ID: Uuid = Uuid::from_u128(1484);
 const CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 const NODE: &str = "/node";
@@ -1012,7 +1013,7 @@ where
         client,
     };
 
-    let remote = super::RemoteTask::new(ID, stop_rx, server, attach_rx, Some(find_tx), CHAN_SIZE);
+    let remote = super::RemoteTask::new(ID, stop_rx, server, attach_rx, Some(find_tx), CHAN_SIZE, CLOSE_TIMEOUT);
 
     let remote_task = remote.run();
 

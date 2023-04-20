@@ -53,16 +53,20 @@ pub struct SwimServerConfig {
 pub struct RemoteConnectionsConfig {
     /// Size of the MPSC channel used to register agents with the socket.
     pub registration_buffer_size: NonZeroUsize,
+    /// Time to wait for a websocket to close before giving up.
+    pub close_timeout: Duration,
 }
 
 const DEFAULT_CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(16);
 const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 
 impl Default for RemoteConnectionsConfig {
     fn default() -> Self {
         Self {
             registration_buffer_size: DEFAULT_CHANNEL_SIZE,
+            close_timeout: DEFAULT_CLOSE_TIMEOUT,
         }
     }
 }
