@@ -65,7 +65,7 @@ impl ExampleLifecycle {
         let print = context.effect(move || {
             println!("{}", log_msg);
         });
-        let set = context.set_value(UnitAgent::LAST, Some(*message));
+        let set = context.set_value(UnitAgent::LATEST, Some(*message));
         print.followed_by(set)
     }
 
