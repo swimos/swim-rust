@@ -1013,7 +1013,15 @@ where
         client,
     };
 
-    let remote = super::RemoteTask::new(ID, stop_rx, server, attach_rx, Some(find_tx), CHAN_SIZE, CLOSE_TIMEOUT);
+    let remote = super::RemoteTask::new(
+        ID,
+        stop_rx,
+        server,
+        attach_rx,
+        Some(find_tx),
+        CHAN_SIZE,
+        CLOSE_TIMEOUT,
+    );
 
     let remote_task = remote.run();
 

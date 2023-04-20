@@ -28,8 +28,8 @@ pub use models::RemotePath;
 #[cfg(feature = "deflate")]
 use ratchet::deflate::DeflateConfig;
 pub use runtime::{start_runtime, RawHandle};
-use std::{fmt::Debug, time::Duration};
 use std::num::NonZeroUsize;
+use std::{fmt::Debug, time::Duration};
 pub use swim_api::downlink::DownlinkKind;
 pub use swim_api::error::DownlinkTaskError;
 use swim_utilities::non_zero_usize;

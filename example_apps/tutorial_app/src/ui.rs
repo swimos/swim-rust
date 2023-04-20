@@ -66,9 +66,11 @@ where
     });
 
     let (stop_tx, stop_rx) = oneshot::channel();
-    let server = Server::from_tcp(listener.into_std()?)?.serve(make_svc).with_graceful_shutdown(async move {
-        let _ = stop_rx.await;
-    });
+    let server = Server::from_tcp(listener.into_std()?)?
+        .serve(make_svc)
+        .with_graceful_shutdown(async move {
+            let _ = stop_rx.await;
+        });
 
     let shutdown = pin!(shutdown);
     let server = pin!(server);
@@ -76,8 +78,10 @@ where
     match futures::future::select(shutdown, server).await {
         Either::Left((_, server)) => {
             let _ = stop_tx.send(());
-            tokio::time::timeout(Duration::from_secs(2), server).await.map_err(|_| TimeoutError)??;
-        },
+            tokio::time::timeout(Duration::from_secs(2), server)
+                .await
+                .map_err(|_| TimeoutError)??;
+        }
         Either::Right((result, _)) => result?,
     }
     Ok(())

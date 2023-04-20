@@ -17,7 +17,8 @@ use std::{
     collections::{HashMap, HashSet},
     num::NonZeroUsize,
     pin::pin,
-    str::Utf8Error, time::Duration,
+    str::Utf8Error,
+    time::Duration,
 };
 
 use bytes::BytesMut;
@@ -120,7 +121,7 @@ impl<S, E> RemoteTask<S, E> {
             attach_rx,
             find_tx,
             registration_buffer_size,
-            close_timeout
+            close_timeout,
         }
     }
 }
@@ -234,7 +235,8 @@ where
                 if let Err(error) = tx.close(reason).await {
                     error!(error = %error, "Failed to close websocket.");
                 }
-            }).await;
+            })
+            .await;
             if close_result.is_err() {
                 warn!(id = ?id, "Closing websocket connection timed out.");
             }

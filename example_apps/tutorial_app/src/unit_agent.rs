@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, time::Duration, cell::Cell};
+use std::{cell::Cell, collections::HashMap, time::Duration};
 
 use rand::Rng;
 use swim::{
@@ -20,8 +20,7 @@ use swim::{
         agent_lifecycle::utility::HandlerContext,
         event_handler::{EventHandler, HandlerActionExt, Sequentially},
         lanes::{CommandLane, MapLane, ValueLane},
-        lifecycle, projections,
-        AgentLaneModel,
+        lifecycle, projections, AgentLaneModel,
     },
     model::time::Timestamp,
 };
@@ -54,7 +53,6 @@ impl ExampleLifecycle {
 
 #[lifecycle(UnitAgent, no_clone)]
 impl ExampleLifecycle {
-
     #[on_command(publish)]
     pub fn publish_message(
         &self,
@@ -127,7 +125,11 @@ fn truncate_history(
     context: HandlerContext<UnitAgent>,
 ) -> impl EventHandler<UnitAgent> {
     let cut_off = epoch.saturating_sub(max_history);
-    let to_remove = map.keys().filter(move |k| **k < cut_off).copied().collect::<Vec<_>>();
+    let to_remove = map
+        .keys()
+        .filter(move |k| **k < cut_off)
+        .copied()
+        .collect::<Vec<_>>();
     let len = map.len();
     let n = to_remove.len();
     let print = context.effect(move || {
@@ -135,7 +137,11 @@ fn truncate_history(
             println!("History has {} elements. Removing {}.", len, n);
         }
     });
-    let truncate = Sequentially::new(to_remove.into_iter().map(move |k| context.remove(UnitAgent::HISTORY, k)));
+    let truncate = Sequentially::new(
+        to_remove
+            .into_iter()
+            .map(move |k| context.remove(UnitAgent::HISTORY, k)),
+    );
     print.followed_by(truncate)
 }
 
