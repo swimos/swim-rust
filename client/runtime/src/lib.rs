@@ -22,6 +22,7 @@ mod pending;
 mod runtime;
 mod transport;
 
+pub use commander::{CommandError, Commander};
 pub use error::{DownlinkErrorKind, DownlinkRuntimeError, TimeoutElapsed};
 pub use models::RemotePath;
 #[cfg(feature = "deflate")]
@@ -33,7 +34,6 @@ pub use swim_api::downlink::DownlinkKind;
 pub use swim_api::error::DownlinkTaskError;
 use swim_utilities::non_zero_usize;
 pub use transport::{Transport, TransportRequest};
-pub use commander::{Commander, CommandError};
 
 const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
 

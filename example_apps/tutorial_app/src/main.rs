@@ -14,28 +14,32 @@
 
 use std::{error::Error, time::Duration};
 
-use example_util::{example_logging, manage_handle};
+use example_util::{example_logging, manage_handle_report};
 use swim::{
     agent::agent_model::AgentModel,
     route::RoutePattern,
     server::{Server, ServerBuilder},
 };
+use tokio::sync::oneshot;
 
-use crate::{unit_agent::{ExampleLifecycle, UnitAgent}, ui::run_web_server};
+use crate::{
+    ui::run_web_server,
+    unit_agent::{ExampleLifecycle, UnitAgent},
+};
 
-mod unit_agent;
 mod ui;
+mod unit_agent;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     example_logging()?;
 
-    let route = RoutePattern::parse_str("/example/:name}")?;
+    let route = RoutePattern::parse_str("/unit/:name}")?;
 
     let lifecycle_fn = || ExampleLifecycle::new(200).into_lifecycle();
     let agent = AgentModel::from_fn(UnitAgent::default, lifecycle_fn);
 
-    let server = ServerBuilder::with_plane_name("Example Plane")
+    let server = ServerBuilder::with_plane_name("Tutorial Plane")
         .add_route(route, agent)
         .update_config(|config| {
             config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
@@ -45,11 +49,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let (task, handle) = server.run();
 
-    let shutdown = manage_handle(handle);
+    let (bound_tx, bound_rx) = oneshot::channel();
+    let (stop_tx, stop_rx) = oneshot::channel();
+    let shutdown = manage_handle_report(handle, Some(bound_tx));
 
-    let ui = run_web_server(shutdown);
+    let ui = run_web_server(
+        async move {
+            let _ = stop_rx.await;
+        },
+        bound_rx,
+    );
 
-    let (ui_result, result) = tokio::join!(ui, task);
+    let (ui_result, _, result) = tokio::join!(ui, shutdown, async move {
+        let result = task.await;
+        let _ = stop_tx.send(());
+        result
+    });
 
     result?;
     ui_result?;

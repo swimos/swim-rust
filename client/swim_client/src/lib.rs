@@ -24,6 +24,7 @@ use runtime::{
     start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, RemotePath, Transport,
     WebSocketConfig,
 };
+pub use runtime::{CommandError, Commander};
 use std::sync::Arc;
 use swim_api::downlink::DownlinkConfig;
 use swim_downlink::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
@@ -42,7 +43,6 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 pub use url::Url;
-pub use runtime::{Commander, CommandError};
 
 #[derive(Debug, Default)]
 pub struct SwimClientBuilder {

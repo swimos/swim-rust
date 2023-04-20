@@ -26,7 +26,7 @@ use swim::{
     },
     model::time::Timestamp,
 };
-use tutorial_app_model::{Message, HistoryItem, Counter};
+use tutorial_app_model::{Counter, HistoryItem, Message};
 
 #[derive(AgentLaneModel)]
 #[projections]
@@ -120,7 +120,7 @@ fn update_histogram(
     context: HandlerContext<UnitAgent>,
     item: HistoryItem,
 ) -> impl EventHandler<UnitAgent> {
-    let bucket = item.timestamp.nanos() / (5000 * 5000);
+    let bucket = bucket_of(&item.timestamp);
     context.with_entry(UnitAgent::HISTOGRAM, bucket, |maybe| {
         let mut counter = maybe.unwrap_or_default();
         counter.count += rand::thread_rng().gen_range(0..20);
@@ -130,11 +130,15 @@ fn update_histogram(
 
 const TWO_MINS_NS: i64 = Duration::from_secs(2 * 60).as_nanos() as i64;
 
+fn bucket_of(timestamp: &Timestamp) -> i64 {
+    (timestamp.millis() / 5000) * 5000
+}
+
 fn remove_old(
     context: HandlerContext<UnitAgent>,
     map: &HashMap<i64, Counter>,
 ) -> impl EventHandler<UnitAgent> + 'static {
-    let now = Timestamp::now().nanos();
+    let now = Timestamp::now().millis();
     let removals = map
         .keys()
         .filter(move |key| (now - **key) > TWO_MINS_NS)

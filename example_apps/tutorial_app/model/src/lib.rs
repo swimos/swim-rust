@@ -15,6 +15,7 @@
 use swim::{form::Form, model::time::Timestamp};
 
 #[derive(Debug, PartialEq, Eq, Hash, Form, Clone, Copy)]
+#[form(tag = "message")]
 pub struct Message {
     pub foo: i32,
     pub bar: i32,

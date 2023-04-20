@@ -56,4 +56,12 @@ impl Timestamp {
     pub fn nanos(&self) -> i64 {
         self.0.timestamp_nanos()
     }
+
+    pub fn micros(&self) -> i64 {
+        self.nanos() / 1000
+    }
+
+    pub fn millis(&self) -> i64 {
+        self.micros() / 1000
+    }
 }
