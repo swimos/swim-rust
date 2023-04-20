@@ -134,7 +134,10 @@ fn truncate_history(
     let n = to_remove.len();
     let print = context.effect(move || {
         if n > 0 {
-            println!("History has {} elements. Removing {}.", len, n);
+            println!(
+                "History has {} elements. Truncating to {}.",
+                len, max_history
+            );
         }
     });
     let truncate = Sequentially::new(
