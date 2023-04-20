@@ -30,16 +30,21 @@ use crate::{
 mod ui;
 mod unit_agent;
 
+const MAX_HISTORY: usize = 200;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     example_logging()?;
 
     let route = RoutePattern::parse_str("/unit/:name}")?;
 
-    let lifecycle_fn = || ExampleLifecycle::new(200).into_lifecycle();
+    let lifecycle_fn = || ExampleLifecycle::new(MAX_HISTORY).into_lifecycle();
     let agent = AgentModel::from_fn(UnitAgent::default, lifecycle_fn);
 
+    let bind_addr = "0.0.0.0:9001".parse()?;
+
     let server = ServerBuilder::with_plane_name("Tutorial Plane")
+        .set_bind_addr(bind_addr)
         .add_route(route, agent)
         .update_config(|config| {
             config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);

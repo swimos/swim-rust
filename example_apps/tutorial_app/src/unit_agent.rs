@@ -34,7 +34,7 @@ pub struct UnitAgent {
     history: MapLane<usize, HistoryItem>,
     #[transient]
     histogram: MapLane<i64, Counter>,
-    last: ValueLane<Option<Message>>,
+    latest: ValueLane<Option<Message>>,
 }
 
 #[derive(Debug)]
@@ -54,7 +54,7 @@ impl ExampleLifecycle {
 
 #[lifecycle(UnitAgent, no_clone)]
 impl ExampleLifecycle {
-    
+
     #[on_command(publish)]
     pub fn publish_message(
         &self,
@@ -69,8 +69,8 @@ impl ExampleLifecycle {
         print.followed_by(set)
     }
 
-    #[on_set(last)]
-    pub fn last_updated(
+    #[on_set(latest)]
+    pub fn latest_updated(
         &self,
         context: HandlerContext<UnitAgent>,
         new_message: &Option<Message>,
@@ -80,14 +80,14 @@ impl ExampleLifecycle {
             .map(move |message| {
                 let print = context.effect(move || {
                     if let Some(prev) = previous.flatten() {
-                        println!("Last set from {:?} to {:?}.", prev, message);
+                        println!("Latest set from {:?} to {:?}.", prev, message);
                     } else {
                         println!("Last set to {:?}.", message);
                     }
                 });
                 let item = HistoryItem::new(message);
-                let e = self.epoch.get() + 1;
-                self.epoch.set(e);
+                let e = self.epoch.get();
+                self.epoch.set(e + 1);
                 let add_to_history = context.update(UnitAgent::HISTORY, e, item);
                 let update_hist = update_histogram(context, item);
                 print.followed_by(add_to_history).followed_by(update_hist)
@@ -126,9 +126,17 @@ fn truncate_history(
     epoch: usize,
     context: HandlerContext<UnitAgent>,
 ) -> impl EventHandler<UnitAgent> {
-    let cut_off = (epoch + 1).saturating_sub(max_history);
+    let cut_off = epoch.saturating_sub(max_history);
     let to_remove = map.keys().filter(move |k| **k < cut_off).copied().collect::<Vec<_>>();
-    Sequentially::new(to_remove.into_iter().map(move |k| context.remove(UnitAgent::HISTORY, k)))
+    let len = map.len();
+    let n = to_remove.len();
+    let print = context.effect(move || {
+        if n > 0 {
+            println!("History has {} elements. Removing {}.", len, n);
+        }
+    });
+    let truncate = Sequentially::new(to_remove.into_iter().map(move |k| context.remove(UnitAgent::HISTORY, k)));
+    print.followed_by(truncate)
 }
 
 fn update_histogram(
