@@ -160,7 +160,7 @@ fn update_histogram(
     })
 }
 
-const TWO_MINS_NS: i64 = Duration::from_secs(2 * 60).as_nanos() as i64;
+const TWO_MINS_MS: i64 = Duration::from_secs(2 * 60).as_millis() as i64;
 
 fn bucket_of(timestamp: &Timestamp) -> i64 {
     (timestamp.millis() / 5000) * 5000
@@ -173,7 +173,7 @@ fn remove_old(
     let now = Timestamp::now().millis();
     let removals = map
         .keys()
-        .filter(move |key| (now - **key) > TWO_MINS_NS)
+        .filter(move |key| (now - **key) > TWO_MINS_MS)
         .map(move |k| context.remove(UnitAgent::HISTOGRAM, *k))
         .collect::<Vec<_>>();
     Sequentially::new(removals)
