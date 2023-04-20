@@ -42,16 +42,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     let mut indicator = 0;
     loop {
-        let mut foo = rng.gen_range(-5..=5) + 30;
-        let mut bar = rng.gen_range(-10..=10) + 60;
-        let mut baz = rng.gen_range(-15..=15) + 90;
+        let mut foo_ = rng.gen_range(-5..=5) + 30;
+        let mut bar_ = rng.gen_range(-10..=10) + 60;
+        let mut baz_ = rng.gen_range(-15..=15) + 90;
 
         if (indicator / 25) % 2 == 0 {
-            foo *= 2;
-            bar *= 2;
-            baz *= 2;
+            foo_ *= 2;
+            bar_ *= 2;
+            baz_ *= 2;
         }
-        let message = Message { foo, bar, baz };
+        let message = Message {
+            foo: foo_,
+            bar: bar_,
+            baz: baz_,
+        };
         commander.send_command(&host, NODE, LANE, &message).await?;
         indicator = (indicator + 1) % 1000;
 

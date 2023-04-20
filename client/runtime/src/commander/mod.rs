@@ -76,7 +76,7 @@ impl Commander {
                         }
                         Err(e) => {
                             entry.remove();
-                            return Err(e.into());
+                            return Err(e);
                         }
                     }
                 }
