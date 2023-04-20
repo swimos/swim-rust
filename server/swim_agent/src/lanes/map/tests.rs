@@ -716,7 +716,7 @@ fn map_lane_with_event_handler_update() {
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     ));
 
-    let event = agent.lane.read_with_prev(|event, _| event.clone());
+    let event = agent.lane.read_with_prev(|event, _| event);
     assert_eq!(event, Some(MapLaneEvent::Update(K1, Some(Text::new(V1)))));
 }
 
@@ -744,6 +744,6 @@ fn map_lane_with_event_handler_remove() {
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     ));
 
-    let event = agent.lane.read_with_prev(|event, _| event.clone());
+    let event = agent.lane.read_with_prev(|event, _| event);
     assert_eq!(event, Some(MapLaneEvent::Remove(K1, Text::new(V1))));
 }
