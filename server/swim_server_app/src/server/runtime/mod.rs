@@ -377,6 +377,7 @@ where
                             if let Some(result) = maybe_result {
                                 ServerEvent::NewConnection(result)
                             } else {
+                                info!("Server task moving to stopping downlinks.");
                                 server_conn.stop();
                                 state = TaskState::StoppingDownlinks;
                                 continue;
@@ -393,6 +394,7 @@ where
                                     if let Some(stop) = agent_stop.take() {
                                         stop.trigger();
                                     }
+                                    info!("Server task moving to stopping agents.");
                                     state = TaskState::StoppingAgents;
                                     continue;
                                 }
@@ -409,6 +411,7 @@ where
                                 if let Some(stop) = agent_stop.take() {
                                     stop.trigger();
                                 }
+                                info!("Server task moving to stopping agents.");
                                 state = TaskState::StoppingAgents;
                             }
                             continue;
@@ -432,6 +435,7 @@ where
                                 if let Some(stop) = remote_stop.take() {
                                     stop.trigger();
                                 }
+                                info!("Server task moving to stopping remotes.");
                                 state = TaskState::StoppingRemotes;
                                 continue;
                             }
@@ -448,6 +452,7 @@ where
                             if let Some((id, result)) = maybe_result {
                                 ServerEvent::RemoteStopped(id, result)
                             } else {
+                                info!("Server task is stopped.");
                                 break;
                             }
                         },

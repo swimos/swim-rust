@@ -12,15 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Display;
 use std::future::Future;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::pin::pin;
+use std::time::Duration;
 
+use futures::future::Either;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::Server;
 use std::convert::Infallible;
 use std::path::Path;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
+
+#[derive(Clone, Copy, Debug)]
+struct TimeoutError;
+
+impl Display for TimeoutError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Forcibly stopping web server after timeout.")
+    }
+}
+
+impl std::error::Error for TimeoutError {}
 
 pub async fn run_web_server<Shutdown>(
     shutdown: Shutdown,
@@ -50,8 +65,20 @@ where
         }))
     });
 
-    let server = Server::from_tcp(listener.into_std()?)?.serve(make_svc);
+    let (stop_tx, stop_rx) = oneshot::channel();
+    let server = Server::from_tcp(listener.into_std()?)?.serve(make_svc).with_graceful_shutdown(async move {
+        let _ = stop_rx.await;
+    });
 
-    server.with_graceful_shutdown(shutdown).await?;
+    let shutdown = pin!(shutdown);
+    let server = pin!(server);
+
+    match futures::future::select(shutdown, server).await {
+        Either::Left((_, server)) => {
+            let _ = stop_tx.send(());
+            tokio::time::timeout(Duration::from_secs(2), server).await.map_err(|_| TimeoutError)??;
+        },
+        Either::Right((result, _)) => result?,
+    }
     Ok(())
 }
