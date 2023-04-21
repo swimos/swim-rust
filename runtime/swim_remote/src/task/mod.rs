@@ -34,16 +34,13 @@ use ratchet::{
 };
 use smallvec::SmallVec;
 use swim_api::error::DownlinkFailureReason;
-use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
-use swim_messages::{
-    bytes_str::BytesStr,
-    protocol::{
-        BytesRequestMessage, BytesResponseMessage, Path, RawRequestMessageDecoder,
-        RawRequestMessageEncoder, RawResponseMessageDecoder, RawResponseMessageEncoder,
-        RequestMessage, ResponseMessage,
-    },
+use swim_messages::protocol::{
+    BytesRequestMessage, BytesResponseMessage, Path, RawRequestMessageDecoder,
+    RawRequestMessageEncoder, RawResponseMessageDecoder, RawResponseMessageEncoder, RequestMessage,
+    ResponseMessage,
 };
-use swim_model::{address::RelativeAddress, Text};
+use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
+use swim_model::{address::RelativeAddress, BytesStr, Text};
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},

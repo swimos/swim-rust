@@ -23,15 +23,12 @@ use ratchet::{
     CloseCode, CloseReason, Message, NegotiatedExtension, NoExt, NoExtDecoder, Receiver, Role,
     WebSocket, WebSocketConfig,
 };
-use swim_messages::{
-    bytes_str::BytesStr,
-    protocol::{
-        path_from_static_strs, BytesRequestMessage, BytesResponseMessage, Notification, Operation,
-        Path, RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
-        RawResponseMessageEncoder, RequestMessage, ResponseMessage,
-    },
+use swim_messages::protocol::{
+    path_from_static_strs, BytesRequestMessage, BytesResponseMessage, Notification, Operation,
+    Path, RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
+    RawResponseMessageEncoder, RequestMessage, ResponseMessage,
 };
-use swim_model::{address::RelativeAddress, Text};
+use swim_model::{address::RelativeAddress, BytesStr, Text};
 use swim_utilities::{
     io::byte_channel::{self, byte_channel, ByteReader, ByteWriter},
     non_zero_usize, trigger,

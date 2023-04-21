@@ -36,14 +36,11 @@ use swim_api::{
     },
 };
 use swim_form::structural::read::recognizer::primitive::I32Recognizer;
-use swim_messages::{
-    bytes_str::BytesStr,
-    protocol::{
-        Notification, Path, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,
-        ResponseMessage,
-    },
+use swim_messages::protocol::{
+    Notification, Path, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,
+    ResponseMessage,
 };
-use swim_model::Text;
+use swim_model::{BytesStr, Text};
 use swim_recon::{
     parser::{parse_recognize, Span},
     printer::print_recon_compact,
