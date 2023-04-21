@@ -136,6 +136,10 @@ pub struct FakeContext {
 }
 
 impl AgentContext for FakeContext {
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, AgentRuntimeError>> {
+        panic!("Unexpected request for ad hoc channel.");
+    }
+
     fn add_lane(
         &self,
         name: &str,

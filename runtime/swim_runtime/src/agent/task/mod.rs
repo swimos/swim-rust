@@ -131,9 +131,16 @@ impl StoreRuntimeSpec {
     }
 }
 
+#[derive(Debug)]
+pub struct AdHocChannelRequest {
+    pub promise: oneshot::Sender<Result<ByteWriter, AgentRuntimeError>>,
+}
+
 /// Type for requests that can be sent to the agent runtime task by an agent implementation.
 #[derive(Debug)]
 pub enum AgentRuntimeRequest {
+    /// Attempt to open a channel for ad-hoc commands.
+    AdHoc(AdHocChannelRequest),
     /// Attempt to open a new lane for the agent.
     AddLane(LaneRuntimeSpec),
     /// Attempt to open a new store for the agent.
@@ -534,6 +541,9 @@ async fn attachment_task<F>(
                     match event {
                         Either::Left(request) => {
                             let succeeded = match request {
+                                AgentRuntimeRequest::AdHoc(AdHocChannelRequest { .. }) => {
+                                    todo!()
+                                },
                                 AgentRuntimeRequest::AddLane(req) => write_tx.send(WriteTaskMessage::Lane(req)).await.is_ok(),
                                 AgentRuntimeRequest::AddStore(req) => write_tx.send(WriteTaskMessage::Store(req)).await.is_ok(),
                                 AgentRuntimeRequest::OpenDownlink(req) => downlink_requests.send(req).await.is_ok(),

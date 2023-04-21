@@ -59,6 +59,10 @@ impl<Context> Spawner<Context> for NoSpawn {
 }
 
 impl AgentContext for DummyAgentContext {
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, AgentRuntimeError>> {
+        panic!("Dummy context used.");
+    }
+
     fn add_lane(
         &self,
         _name: &str,

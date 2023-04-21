@@ -62,6 +62,10 @@ struct Inner {
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 impl AgentContext for TestAgentContext {
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, AgentRuntimeError>> {
+        panic!("Unexpected ad hoc channel request.");
+    }
+
     fn add_lane(
         &self,
         name: &str,
@@ -101,7 +105,7 @@ impl AgentContext for TestAgentContext {
         _lane: &str,
         _kind: DownlinkKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
-        panic!("Opening downlinks from agents not yet supported.")
+        panic!("Unexpected downlink request.")
     }
 
     fn add_store(

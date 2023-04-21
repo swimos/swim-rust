@@ -50,7 +50,10 @@ use crate::{downlink::DownlinkOptions, net::SchemeHostPort};
 use self::{
     reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
-    task::{AgentInitTask, AgentRuntimeTask, LaneRuntimeSpec, NodeDescriptor, StoreRuntimeSpec},
+    task::{
+        AdHocChannelRequest, AgentInitTask, AgentRuntimeTask, LaneRuntimeSpec, NodeDescriptor,
+        StoreRuntimeSpec,
+    },
 };
 
 pub mod reporting;
@@ -103,6 +106,20 @@ impl AgentRuntimeContext {
 }
 
 impl AgentContext for AgentRuntimeContext {
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, AgentRuntimeError>> {
+        let sender = self.tx.clone();
+        async move {
+            let (tx, rx) = oneshot::channel();
+            sender
+                .send(AgentRuntimeRequest::AdHoc(AdHocChannelRequest {
+                    promise: tx,
+                }))
+                .await?;
+            rx.await?
+        }
+        .boxed()
+    }
+
     fn add_lane(
         &self,
         name: &str,

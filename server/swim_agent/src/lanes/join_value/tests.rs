@@ -266,6 +266,10 @@ impl<Agent> DownlinkSpawner<Agent> for TestDownlinkContext<Agent> {
 }
 
 impl<Agent> AgentContext for TestDownlinkContext<Agent> {
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, AgentRuntimeError>> {
+        panic!("Unexpected request for ad hoc channel.");
+    }
+
     fn add_lane(
         &self,
         _name: &str,

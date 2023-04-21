@@ -152,6 +152,10 @@ mod test_support {
     struct NoAgentRuntime;
 
     impl AgentContext for NoAgentRuntime {
+        fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, AgentRuntimeError>> {
+            panic!("Unexpected runtime interaction.");
+        }
+
         fn add_lane(
             &self,
             _name: &str,
