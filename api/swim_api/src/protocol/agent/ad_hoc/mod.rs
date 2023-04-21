@@ -18,6 +18,10 @@ use tokio_util::codec::{Decoder, Encoder};
 
 use crate::error::FrameIoError;
 
+#[cfg(test)]
+mod tests;
+
+/// Message type for agents to send ad hoc commands to the runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AdHocCommand<S, T> {
     address: Address<S>,
@@ -72,7 +76,7 @@ impl<S, D> AdHocCommandDecoder<S, D> {
     }
 }
 
-const OPT_TAG_LEN: usize = 0;
+const OPT_TAG_LEN: usize = 1;
 const LEN_LEN: usize = 8;
 
 impl<S, T, E> Encoder<AdHocCommand<S, T>> for AdHocCommandEncoder<E>

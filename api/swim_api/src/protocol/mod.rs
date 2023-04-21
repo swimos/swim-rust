@@ -21,7 +21,6 @@ use swim_recon::{
 };
 use tokio_util::codec::{Decoder, Encoder};
 
-pub mod ad_hoc;
 pub mod agent;
 pub mod downlink;
 pub mod map;
