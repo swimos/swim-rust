@@ -38,7 +38,7 @@ use crate::agent::{
         no_map_init, no_value_init, AgentItemInitError, AgentPersistence, BoxInitializer,
         StoreInitError,
     },
-    AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io, NodeReporting,
+    AgentExecError, AgentRuntimeRequest, Io, NodeReporting, LinkRequest,
 };
 
 use super::{
@@ -56,7 +56,7 @@ mod tests;
 /// the agent.
 pub struct AgentInitTask<Store = StoreDisabled> {
     requests: mpsc::Receiver<AgentRuntimeRequest>,
-    downlink_requests: mpsc::Sender<DownlinkRequest>,
+    link_requests: mpsc::Sender<LinkRequest>,
     init_complete: trigger::Receiver,
     item_init_timeout: Duration,
     reporting: Option<NodeReporting>,
@@ -66,20 +66,20 @@ pub struct AgentInitTask<Store = StoreDisabled> {
 impl AgentInitTask {
     /// #Arguments
     /// * `requests` - Channel for requests to open new lanes and downlinks.
-    /// * `downlink_requests` - Channel for request to the runtime to open new downlinks.
+    /// * `link_requests` - Channel for request to the runtime to open new external links.
     /// * `init_complete` - Triggered when the initialization phase is complete.
     /// * `lane_init_timeout` - Timeout for initializing lanes from the store.
     /// * `reporting` - Reporter for node/lane introspection support.
     pub fn new(
         requests: mpsc::Receiver<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Sender<DownlinkRequest>,
+        link_requests: mpsc::Sender<LinkRequest>,
         init_complete: trigger::Receiver,
         lane_init_timeout: Duration,
         reporting: Option<NodeReporting>,
     ) -> Self {
         Self::with_store(
             requests,
-            downlink_requests,
+            link_requests,
             init_complete,
             lane_init_timeout,
             reporting,
@@ -94,14 +94,14 @@ where
 {
     /// #Arguments
     /// * `requests` - Channel for requests to open new lanes and downlinks.
-    /// * `downlink_requests` - Channel for request to the runtime to open new downlinks.
+    /// * `link_requests` - Channel for request to the runtime to open external links.
     /// * `init_complete` - Triggered when the initialization phase is complete.
     /// * `item_init_timeout` - Timeout for initializing lanes from the store.
     /// * `reporting` - Reporter for node/lane introspection support.
     /// * `store` - Store for lane persistence.
     pub fn with_store(
         requests: mpsc::Receiver<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Sender<DownlinkRequest>,
+        link_requests: mpsc::Sender<LinkRequest>,
         init_complete: trigger::Receiver,
         item_init_timeout: Duration,
         reporting: Option<NodeReporting>,
@@ -109,7 +109,7 @@ where
     ) -> Self {
         AgentInitTask {
             requests,
-            downlink_requests,
+            link_requests,
             init_complete,
             item_init_timeout,
             reporting,
@@ -123,7 +123,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
         let AgentInitTask {
             requests,
             init_complete,
-            downlink_requests,
+            link_requests,
             store,
             item_init_timeout,
             reporting,
@@ -188,7 +188,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                         }
                     }
                     AgentRuntimeRequest::OpenDownlink(request) => {
-                        if downlink_requests.send(request).await.is_err() {
+                        if link_requests.send(LinkRequest::Downlink(request)).await.is_err() {
                             return Err(AgentExecError::FailedDownlinkRequest);
                         }
                     }

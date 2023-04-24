@@ -37,7 +37,7 @@ use super::reporting::UplinkReporter;
 use super::store::{AgentItemInitError, AgentPersistence};
 use super::{
     AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io,
-    NodeReporting,
+    NodeReporting, LinkRequest,
 };
 use bytes::{Bytes, BytesMut};
 use futures::future::BoxFuture;
@@ -311,7 +311,7 @@ pub struct AgentRuntimeTask<Store = StoreDisabled> {
     node: NodeDescriptor,
     init: InitialEndpoints,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-    downlink_requests: mpsc::Sender<DownlinkRequest>,
+    link_requests: mpsc::Sender<LinkRequest>,
     stopping: trigger::Receiver,
     config: AgentRuntimeConfig,
     store: Store,
@@ -340,14 +340,14 @@ impl AgentRuntimeTask {
     /// * `node` - The routing ID and node URI of this agent instance.
     /// * `init` - The initial lane and store endpoints for this agent.
     /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
-    /// * `downlink_requests` - Channel for requests to open downlink runtimes for the agent.
+    /// * `link_requests` - Channel for requests to open external links for the agent.
     /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
     /// * `config` - Configuration parameters for the agent runtime.
     pub fn new(
         node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        downlink_requests: mpsc::Sender<DownlinkRequest>,
+        link_requests: mpsc::Sender<LinkRequest>,
         stopping: trigger::Receiver,
         config: AgentRuntimeConfig,
     ) -> Self {
@@ -355,7 +355,7 @@ impl AgentRuntimeTask {
             node,
             init,
             attachment_rx,
-            downlink_requests,
+            link_requests,
             stopping,
             config,
             store: StoreDisabled::default(),
@@ -372,7 +372,7 @@ where
     /// * `node` - The routing ID and node URI of this agent instance.
     /// * `init` - The initial lane and store endpoints for this agent.
     /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
-    /// * `downlink_requests` - Channel for requests to open downlink runtimes for the agent.
+    /// * `link_requests` - Channel for requests to open external links for the agent.
     /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
     /// * `config` - Configuration parameters for the agent runtime.
     /// * `store` - Persistence store for the agent.
@@ -380,7 +380,7 @@ where
         node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        downlink_requests: mpsc::Sender<DownlinkRequest>,
+        link_requests: mpsc::Sender<LinkRequest>,
         stopping: trigger::Receiver,
         config: AgentRuntimeConfig,
         store: Store,
@@ -389,7 +389,7 @@ where
             node,
             init,
             attachment_rx,
-            downlink_requests,
+            link_requests,
             stopping,
             config,
             store,
@@ -412,7 +412,7 @@ where
                     store_endpoints,
                 },
             attachment_rx,
-            downlink_requests,
+            link_requests,
             stopping,
             config,
             store,
@@ -431,7 +431,7 @@ where
         let att = attachment_task(
             rx,
             attachment_rx,
-            downlink_requests,
+            link_requests,
             read_tx.clone(),
             write_tx.clone(),
             combined_stop,
@@ -518,7 +518,7 @@ impl WriteTaskMessage {
 async fn attachment_task<F>(
     mut runtime: mpsc::Receiver<AgentRuntimeRequest>,
     mut attachment: mpsc::Receiver<AgentAttachmentRequest>,
-    downlink_requests: mpsc::Sender<DownlinkRequest>,
+    downlink_requests: mpsc::Sender<LinkRequest>,
     read_tx: mpsc::Sender<ReadTaskMessage>,
     write_tx: mpsc::Sender<WriteTaskMessage>,
     mut combined_stop: F,
@@ -545,7 +545,7 @@ async fn attachment_task<F>(
                                 },
                                 AgentRuntimeRequest::AddLane(req) => write_tx.send(WriteTaskMessage::Lane(req)).await.is_ok(),
                                 AgentRuntimeRequest::AddStore(req) => write_tx.send(WriteTaskMessage::Store(req)).await.is_ok(),
-                                AgentRuntimeRequest::OpenDownlink(req) => downlink_requests.send(req).await.is_ok(),
+                                AgentRuntimeRequest::OpenDownlink(req) => downlink_requests.send(LinkRequest::Downlink(req)).await.is_ok(),
                             };
                             if !succeeded {
                                 break;

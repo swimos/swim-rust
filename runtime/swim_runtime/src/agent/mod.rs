@@ -66,6 +66,33 @@ use task::AgentRuntimeRequest;
 use tracing::{error, info_span, Instrument};
 
 #[derive(Debug)]
+pub enum LinkRequest {
+    Downlink(DownlinkRequest),
+    Commander(CommanderRequest),
+}
+
+#[derive(Debug)]
+pub struct CommanderRequest {
+    pub remote: Option<SchemeHostPort>,
+    pub address: RelativeAddress<Text>,
+    pub promise: oneshot::Sender<Result<ByteReader, DownlinkRuntimeError>>,
+}
+
+impl CommanderRequest {
+    pub fn new(
+        remote: Option<SchemeHostPort>,
+        address: RelativeAddress<Text>,
+        promise: oneshot::Sender<Result<ByteReader, DownlinkRuntimeError>>,
+    ) -> Self {
+        CommanderRequest {
+            remote,
+            address,
+            promise,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct DownlinkRequest {
     pub remote: Option<SchemeHostPort>,
     pub address: RelativeAddress<Text>,
@@ -434,7 +461,7 @@ pub struct AgentRouteTask<'a, A> {
     route: RouteUri,
     route_params: HashMap<String, String>,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-    downlink_tx: mpsc::Sender<DownlinkRequest>,
+    link_tx: mpsc::Sender<LinkRequest>,
     stopping: trigger::Receiver,
     agent_config: AgentConfig,
     runtime_config: AgentRuntimeConfig,
@@ -446,8 +473,9 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
     ///
     /// #Arguments
     /// * `agent` - The agent instance.
-    /// * `identity` - Routing identify of the agent instance..
+    /// * `identity` - Routing identify of the agent instance.
     /// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
+    /// * `link_tx` - Channel to request external links from the runtime.
     /// * `stopping` - Instructs the agent task to stop.
     /// * `config` - Configuration parameters for the user agent task and agent runtime.
     /// * `reporting` - Uplink metrics reporters.
@@ -455,7 +483,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         agent: &'a A,
         identity: AgentRoute,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        downlink_tx: mpsc::Sender<DownlinkRequest>,
+        link_tx: mpsc::Sender<LinkRequest>,
         stopping: trigger::Receiver,
         config: CombinedAgentConfig,
         reporting: Option<NodeReporting>,
@@ -466,7 +494,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             route: identity.route,
             route_params: identity.route_params,
             attachment_rx,
-            downlink_tx,
+            link_tx,
             stopping,
             agent_config: config.agent_config,
             runtime_config: config.runtime_config,
@@ -481,7 +509,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             route,
             route_params,
             attachment_rx,
-            downlink_tx,
+            link_tx,
             stopping,
             agent_config,
             runtime_config,
@@ -492,7 +520,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let (init_tx, init_rx) = trigger::trigger();
         let runtime_init_task = AgentInitTask::new(
             runtime_rx,
-            downlink_tx.clone(),
+            link_tx.clone(),
             init_rx,
             runtime_config.lane_init_timeout,
             reporting,
@@ -518,7 +546,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 NodeDescriptor::new(identity, node_uri),
                 initial_state,
                 attachment_rx,
-                downlink_tx,
+                link_tx,
                 stopping,
                 runtime_config,
             );
@@ -544,7 +572,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             route,
             route_params,
             attachment_rx,
-            downlink_tx,
+            link_tx,
             stopping,
             agent_config,
             runtime_config,
@@ -566,7 +594,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             let store = store_fut.await?;
             let runtime_init_task = AgentInitTask::with_store(
                 runtime_rx,
-                downlink_tx.clone(),
+                link_tx.clone(),
                 init_rx,
                 runtime_config.lane_init_timeout,
                 reporting,
@@ -591,7 +619,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 NodeDescriptor::new(identity, node_uri.clone()),
                 initial_state,
                 attachment_rx,
-                downlink_tx,
+                link_tx,
                 stopping,
                 runtime_config,
                 store_per,

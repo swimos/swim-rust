@@ -40,7 +40,7 @@ use swim_messages::protocol::{
 use swim_model::{address::RelativeAddress, Text};
 use swim_remote::AttachClient;
 use swim_runtime::{
-    agent::DownlinkRequest,
+    agent::{DownlinkRequest, LinkRequest},
     downlink::{DownlinkOptions, DownlinkRuntimeConfig, Io},
     net::dns::{DnsFut, DnsResolver},
 };
@@ -353,7 +353,7 @@ async fn open_remote_downlink() {
     run_downlinks_test(CONFIG, |context| async move {
         let TestContext { connector } = context;
 
-        let requests = connector.dl_requests();
+        let requests = connector.link_requests();
         let (stop_server, server_task) = FakeServerTask::new(PORT, connector);
 
         let endpoints = server_task.endpoints();
@@ -362,7 +362,7 @@ async fn open_remote_downlink() {
         let request = request_remote(DownlinkKind::Value, connected_tx);
 
         let test = async move {
-            assert!(requests.send(request).await.is_ok());
+            assert!(requests.send(LinkRequest::Downlink(request)).await.is_ok());
 
             let mut io = connected_rx
                 .await
@@ -477,7 +477,7 @@ async fn open_local_downlink() {
     run_downlinks_test(CONFIG, |context| async move {
         let TestContext { connector } = context;
 
-        let requests = connector.dl_requests();
+        let requests = connector.link_requests();
         let (stop_server, server_task) = FakeServerTask::new(PORT, connector);
 
         let endpoints = server_task.endpoints();
@@ -486,7 +486,7 @@ async fn open_local_downlink() {
         let request = request_local(DownlinkKind::Value, connected_tx);
 
         let test = async move {
-            assert!(requests.send(request).await.is_ok());
+            assert!(requests.send(LinkRequest::Downlink(request)).await.is_ok());
 
             let mut io = connected_rx
                 .await
@@ -512,14 +512,14 @@ async fn open_unresolvable_remote_downlink() {
     run_downlinks_test(CONFIG, |context| async move {
         let TestContext { connector } = context;
 
-        let requests = connector.dl_requests();
+        let requests = connector.link_requests();
         let (stop_server, server_task) = FakeServerTask::new(PORT, connector);
 
         let (connected_tx, connected_rx) = oneshot::channel();
         let request = request_bad_remote(DownlinkKind::Value, connected_tx);
 
         let test = async move {
-            assert!(requests.send(request).await.is_ok());
+            assert!(requests.send(LinkRequest::Downlink(request)).await.is_ok());
 
             let error = connected_rx
                 .await
@@ -544,14 +544,14 @@ async fn open_unresolvable_local_downlink() {
     run_downlinks_test(CONFIG, |context| async move {
         let TestContext { connector } = context;
 
-        let requests = connector.dl_requests();
+        let requests = connector.link_requests();
         let (stop_server, server_task) = FakeServerTask::new(PORT, connector);
 
         let (connected_tx, connected_rx) = oneshot::channel();
         let request = request_bad_local(DownlinkKind::Value, connected_tx);
 
         let test = async move {
-            assert!(requests.send(request).await.is_ok());
+            assert!(requests.send(LinkRequest::Downlink(request)).await.is_ok());
 
             let error = connected_rx
                 .await

@@ -43,8 +43,8 @@ use crate::agent::{
     reporting::UplinkReporter,
     store::{AgentPersistence, InitFut, Initializer, StoreInitError},
     task::{InitialEndpoints, LaneEndpoint},
-    AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io, NodeReporting,
-    UplinkReporterRegistration,
+    AgentExecError, AgentRuntimeRequest, Io, NodeReporting,
+    UplinkReporterRegistration, LinkRequest,
 };
 
 mod no_store;
@@ -56,7 +56,7 @@ trait TestInit {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        link_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output>;
 }

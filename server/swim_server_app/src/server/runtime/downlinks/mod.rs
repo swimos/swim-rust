@@ -35,7 +35,7 @@ use swim_api::{
 use swim_model::{address::RelativeAddress, Text};
 use swim_remote::AttachClient;
 use swim_runtime::{
-    agent::DownlinkRequest,
+    agent::{DownlinkRequest, LinkRequest},
     downlink::{
         failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy},
         AttachAction, DownlinkRuntimeConfig, Io, MapDownlinkRuntime, ValueDownlinkRuntime,
@@ -128,7 +128,8 @@ where
                 };
 
                 match event {
-                    Event::Request(request) => {
+                    Event::Request(LinkRequest::Commander(_)) => todo!(),
+                    Event::Request(LinkRequest::Downlink(request)) => {
                         let DownlinkRequest {
                             remote,
                             address,
@@ -455,7 +456,7 @@ where
 
 enum Event {
     // A request has been received for a new downlink.
-    Request(DownlinkRequest),
+    Request(LinkRequest),
     // A DNS resolution has completed.
     Resolved {
         scheme: Scheme,

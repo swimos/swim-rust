@@ -37,7 +37,7 @@ use swim_model::Text;
 use swim_remote::{AgentResolutionError, AttachClient, FindNode, NoSuchAgent, RemoteTask};
 use swim_runtime::agent::{
     AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteTask, CombinedAgentConfig,
-    DisconnectionReason, DownlinkRequest,
+    DisconnectionReason, LinkRequest,
 };
 use swim_utilities::routing::route_uri::RouteUri;
 
@@ -356,7 +356,7 @@ where
                 runtime_config: config.agent_runtime,
             },
             agent_stop_rx,
-            server_conn.dl_requests(),
+            server_conn.link_requests(),
             introspection_resolver,
         );
 
@@ -755,7 +755,7 @@ struct Agents {
     routes: Routes,
     config: CombinedAgentConfig,
     agent_stop_rx: trigger::Receiver,
-    open_dl_tx: mpsc::Sender<DownlinkRequest>,
+    open_link_tx: mpsc::Sender<LinkRequest>,
     introspection_resolver: Option<IntrospectionResolver>,
 }
 
@@ -764,7 +764,7 @@ impl Agents {
         routes: Routes,
         config: CombinedAgentConfig,
         agent_stop_rx: trigger::Receiver,
-        open_dl_tx: mpsc::Sender<DownlinkRequest>,
+        open_link_tx: mpsc::Sender<LinkRequest>,
         introspection_resolver: Option<IntrospectionResolver>,
     ) -> Self {
         Agents {
@@ -773,7 +773,7 @@ impl Agents {
             routes,
             config,
             agent_stop_rx,
-            open_dl_tx,
+            open_link_tx,
             introspection_resolver,
         }
     }
@@ -792,7 +792,7 @@ impl Agents {
             routes,
             config,
             agent_stop_rx,
-            open_dl_tx,
+            open_link_tx,
             introspection_resolver,
         } = self;
         match agent_channels.entry(node) {
@@ -844,7 +844,7 @@ impl Agents {
                             route_params,
                         },
                         attachment_rx,
-                        open_dl_tx.clone(),
+                        open_link_tx.clone(),
                         agent_stop_rx.clone(),
                         *config,
                         node_reporting,
