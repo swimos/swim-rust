@@ -21,7 +21,7 @@ use std::{
 use bytes::{BufMut, BytesMut};
 use futures::{future::Either, stream::FuturesUnordered, Future, FutureExt, StreamExt};
 use swim_api::{
-    error::DownlinkRuntimeError,
+    error::{AgentRuntimeError, DownlinkRuntimeError},
     protocol::{
         agent::{AdHocCommand, AdHocCommandDecoder},
         WithLengthBytesCodec,
@@ -334,11 +334,8 @@ pub async fn ad_hoc_commands_task(
                     }
                 } else {
                     outputs.insert(key.clone(), AdHocOutput::new(identity, retry_strategy));
-                    if let Some(fut) = new_connection(key, &link_requests, None).await {
-                        pending.push(Either::Left(Either::Right(fut)));
-                    } else {
-                        break;
-                    }
+                    let fut = try_open_new(key, link_requests.clone(), None);
+                    pending.push(Either::Left(Either::Right(fut)));
                 }
             }
             AdHocEvent::NewChannel(key, Ok(Ok(channel))) => {
@@ -347,6 +344,9 @@ pub async fn ad_hoc_commands_task(
                 }
             }
             AdHocEvent::NewChannel(key, Ok(Err(err))) => {
+                if matches!(err, DownlinkRuntimeError::RuntimeError(_)) {
+                    break;
+                }
                 if let Some(output) = outputs.get_mut(&key) {
                     match output.retry() {
                         RetryResult::Stop => {
@@ -355,19 +355,13 @@ pub async fn ad_hoc_commands_task(
                         }
                         RetryResult::Immediate => {
                             error!(error = %err, "Opening a new ad hoc command channel failed. Retrying immediately.");
-                            if let Some(fut) = new_connection(key, &link_requests, None).await {
-                                pending.push(Either::Left(Either::Right(fut)));
-                            } else {
-                                break;
-                            }
+                            let fut = try_open_new(key, link_requests.clone(), None);
+                            pending.push(Either::Left(Either::Right(fut)));
                         }
                         RetryResult::Delayed(t) => {
                             error!(error = %err, delay = ?t, "Opening a new ad hoc command channel failed. Retrying after a delay.");
-                            if let Some(fut) = new_connection(key, &link_requests, Some(t)).await {
-                                pending.push(Either::Left(Either::Right(fut)));
-                            } else {
-                                break;
-                            }
+                            let fut = try_open_new(key, link_requests.clone(), Some(t));
+                            pending.push(Either::Left(Either::Right(fut)));
                         }
                     }
                 }
@@ -400,31 +394,28 @@ pub async fn ad_hoc_commands_task(
 
 async fn try_open_new(
     key: CommanderKey,
-    rx: oneshot::Receiver<Result<ByteWriter, DownlinkRuntimeError>>,
+    link_requests: mpsc::Sender<LinkRequest>,
     delay: Option<Duration>,
 ) -> AdHocEvent {
     if let Some(delay) = delay {
         tokio::time::sleep(delay).await;
     }
-    let result = rx.await;
-    AdHocEvent::NewChannel(key, result)
-}
-
-async fn new_connection(
-    key: CommanderKey,
-    link_requests: &mpsc::Sender<LinkRequest>,
-    delay: Option<Duration>,
-) -> Option<impl Future<Output = AdHocEvent> + 'static> {
     let (tx, rx) = oneshot::channel();
     let req = CommanderRequest::new(key.clone(), tx);
     if link_requests
         .send(LinkRequest::Commander(req))
         .await
-        .is_err()
+        .is_ok()
     {
-        None
+        let result = rx.await;
+        AdHocEvent::NewChannel(key, result)
     } else {
-        Some(try_open_new(key, rx, delay))
+        AdHocEvent::NewChannel(
+            key,
+            Ok(Err(DownlinkRuntimeError::RuntimeError(
+                AgentRuntimeError::Stopping,
+            ))),
+        )
     }
 }
 
