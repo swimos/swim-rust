@@ -42,7 +42,7 @@ use tokio::{
     time::Instant,
 };
 use tokio_util::codec::{Encoder, FramedRead};
-use tracing::{debug, error};
+use tracing::{debug, error, trace};
 use uuid::Uuid;
 
 use crate::{
@@ -261,6 +261,7 @@ pub async fn ad_hoc_commands_task(
                     if let Some(request) = maybe_req {
                         AdHocEvent::Request(request)
                     } else {
+                        debug!(identity = %identity, "Stopping after the request channel terminated.");
                         break;
                     }
                 }
@@ -275,6 +276,7 @@ pub async fn ad_hoc_commands_task(
                     if let Some(Ok(msg)) = maybe_msg {
                         AdHocEvent::Command(msg)
                     } else {
+                        debug!(identity = %identity, "The agent dropped its ad hoc command channel.");
                         reader = None;
                         continue;
                     }
@@ -287,6 +289,7 @@ pub async fn ad_hoc_commands_task(
                     if let Some(request) = maybe_req {
                         AdHocEvent::Request(request)
                     } else {
+                        debug!(identity = %identity, "Stopping after the request channel terminated.");
                         break;
                     }
                 }
@@ -303,7 +306,10 @@ pub async fn ad_hoc_commands_task(
             AdHocEvent::Request(AdHocChannelRequest { promise }) => {
                 let (tx, rx) = byte_channel(buffer_size);
                 if promise.send(Ok(tx)).is_ok() {
+                    debug!(identity = %identity, "Attaching a new ad hoc command channel.");
                     reader = Some(FramedRead::new(rx, Default::default()));
+                } else {
+                    debug!(identity = %identity, "The agent dropped its request for an ad hoc command channel before it was completed.");
                 }
             }
             AdHocEvent::Command(AdHocCommand {
@@ -311,6 +317,7 @@ pub async fn ad_hoc_commands_task(
                 mut command,
                 overwrite_permitted,
             }) => {
+                trace!(identify = % identity, address = %address, overwrite_permitted, "Handling an ad hoc command for an agent.");
                 let Address { host, node, lane } = &address;
                 let key = match host.as_ref().map(|h| h.as_ref().parse::<SchemeHostPort>()) {
                     Some(Ok(shp)) => CommanderKey::Remote(shp),
@@ -340,11 +347,13 @@ pub async fn ad_hoc_commands_task(
             }
             AdHocEvent::NewChannel(key, Ok(Ok(channel))) => {
                 if let Some(output) = outputs.get_mut(&key) {
+                    debug!(identity = %identity, key = ?key, "Registered a new outgoing ad hoc command channel.");
                     output.replace_writer(AdHocSender::new(channel));
                 }
             }
             AdHocEvent::NewChannel(key, Ok(Err(err))) => {
                 if matches!(err, DownlinkRuntimeError::RuntimeError(_)) {
+                    debug!(identity = %identity, "Stopping after the link request channel was dropped.");
                     break;
                 }
                 if let Some(output) = outputs.get_mut(&key) {
@@ -373,7 +382,10 @@ pub async fn ad_hoc_commands_task(
             AdHocEvent::WriteDone(key, result) => {
                 if let Some(output) = outputs.get_mut(&key) {
                     match result {
-                        Ok(writer) => output.replace_writer(writer),
+                        Ok(writer) => {
+                            trace!(identify = %identity, key = ?key, "Completed writing an ad hoc command.");
+                            output.replace_writer(writer);
+                        },
                         Err(err) => {
                             error!(error = %err, "Writing ad hoc command to channel failed.");
                             outputs.remove(&key);
@@ -384,6 +396,7 @@ pub async fn ad_hoc_commands_task(
             AdHocEvent::Timeout(key) => {
                 if let Some(output) = outputs.get(&key) {
                     if output.timed_out(timeout_delay) {
+                        debug!(identify = %identity, key = ?key, "Ad hoc output channel closed after a period of inactivity.");
                         outputs.remove(&key);
                     }
                 }
@@ -398,6 +411,7 @@ async fn try_open_new(
     delay: Option<Duration>,
 ) -> AdHocEvent {
     if let Some(delay) = delay {
+        trace!(delay = ?delay, "Waiting before next connection attempt.");
         tokio::time::sleep(delay).await;
     }
     let (tx, rx) = oneshot::channel();
