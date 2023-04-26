@@ -38,7 +38,7 @@ use crate::agent::{
         no_map_init, no_value_init, AgentItemInitError, AgentPersistence, BoxInitializer,
         StoreInitError,
     },
-    AgentExecError, AgentRuntimeRequest, Io, NodeReporting, LinkRequest,
+    AgentExecError, AgentRuntimeRequest, Io, LinkRequest, NodeReporting,
 };
 
 use super::{
@@ -188,7 +188,11 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                         }
                     }
                     AgentRuntimeRequest::OpenDownlink(request) => {
-                        if link_requests.send(LinkRequest::Downlink(request)).await.is_err() {
+                        if link_requests
+                            .send(LinkRequest::Downlink(request))
+                            .await
+                            .is_err()
+                        {
                             return Err(AgentExecError::FailedDownlinkRequest);
                         }
                     }

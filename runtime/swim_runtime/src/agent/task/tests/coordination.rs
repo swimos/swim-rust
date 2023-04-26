@@ -22,8 +22,8 @@ use crate::agent::{
         tests::{RemoteReceiver, RemoteSender},
         AgentRuntimeTask, InitialEndpoints, LaneEndpoint, NodeDescriptor,
     },
-    AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io,
-    LaneRuntimeSpec, LinkRequest,
+    AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io, LaneRuntimeSpec,
+    LinkRequest,
 };
 use futures::{
     future::{join, join3, Either},

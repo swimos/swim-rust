@@ -62,7 +62,7 @@ struct Inner {
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 impl AgentContext for TestAgentContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, AgentRuntimeError>> {
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Unexpected ad hoc channel request.");
     }
 

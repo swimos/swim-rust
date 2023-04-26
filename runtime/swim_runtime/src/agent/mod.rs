@@ -71,24 +71,24 @@ pub enum LinkRequest {
     Commander(CommanderRequest),
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub enum CommanderKey {
+    Remote(SchemeHostPort),
+    Local(RelativeAddress<Text>),
+}
+
 #[derive(Debug)]
 pub struct CommanderRequest {
-    pub remote: Option<SchemeHostPort>,
-    pub address: RelativeAddress<Text>,
-    pub promise: oneshot::Sender<Result<ByteReader, DownlinkRuntimeError>>,
+    pub key: CommanderKey,
+    pub promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
 }
 
 impl CommanderRequest {
     pub fn new(
-        remote: Option<SchemeHostPort>,
-        address: RelativeAddress<Text>,
-        promise: oneshot::Sender<Result<ByteReader, DownlinkRuntimeError>>,
+        key: CommanderKey,
+        promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
     ) -> Self {
-        CommanderRequest {
-            remote,
-            address,
-            promise,
-        }
+        CommanderRequest { key, promise }
     }
 }
 
@@ -133,7 +133,7 @@ impl AgentRuntimeContext {
 }
 
 impl AgentContext for AgentRuntimeContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, AgentRuntimeError>> {
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         let sender = self.tx.clone();
         async move {
             let (tx, rx) = oneshot::channel();

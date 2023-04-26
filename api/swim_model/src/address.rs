@@ -109,9 +109,13 @@ impl Address<Text> {
     }
 }
 
-impl Address<&str> {
+impl<S: AsRef<str>> Address<S> {
     pub fn to_text(&self) -> Address<Text> {
         let Address { host, node, lane } = self;
-        Address::text(*host, node, lane)
+        Address::text(
+            host.as_ref().map(AsRef::as_ref),
+            node.as_ref(),
+            lane.as_ref(),
+        )
     }
 }

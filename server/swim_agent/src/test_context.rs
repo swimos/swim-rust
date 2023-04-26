@@ -59,7 +59,7 @@ impl<Context> Spawner<Context> for NoSpawn {
 }
 
 impl AgentContext for DummyAgentContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, AgentRuntimeError>> {
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Dummy context used.");
     }
 

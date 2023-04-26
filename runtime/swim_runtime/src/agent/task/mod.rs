@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::pin::{pin, Pin};
 use std::time::Duration;
 
@@ -37,7 +38,7 @@ use super::reporting::UplinkReporter;
 use super::store::{AgentItemInitError, AgentPersistence};
 use super::{
     AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io,
-    NodeReporting, LinkRequest,
+    LinkRequest, NodeReporting,
 };
 use bytes::{Bytes, BytesMut};
 use futures::future::BoxFuture;
@@ -48,15 +49,17 @@ use futures::{
     Stream, StreamExt,
 };
 use swim_api::agent::{LaneConfig, StoreConfig};
-use swim_api::error::{OpenStoreError, StoreError};
+use swim_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
 use swim_api::meta::lane::LaneKind;
+use swim_api::protocol::agent::{AdHocCommand, AdHocCommandDecoder};
+use swim_api::protocol::WithLengthBytesCodec;
 use swim_api::store::{StoreDisabled, StoreKind};
 use swim_api::{agent::UplinkKind, error::AgentRuntimeError};
 use swim_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
 use swim_model::{BytesStr, Text};
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError};
-use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swim_utilities::trigger::{self, promise};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{sleep, timeout, Instant, Sleep};
@@ -66,6 +69,7 @@ use uuid::Uuid;
 
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
+mod ad_hoc;
 mod init;
 mod links;
 mod prune;
@@ -132,7 +136,7 @@ impl StoreRuntimeSpec {
 
 #[derive(Debug)]
 pub struct AdHocChannelRequest {
-    pub promise: oneshot::Sender<Result<ByteWriter, AgentRuntimeError>>,
+    pub promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
 }
 
 /// Type for requests that can be sent to the agent runtime task by an agent implementation.
@@ -509,7 +513,7 @@ impl WriteTaskMessage {
 /// #Arguments
 /// * `runtime` - Requests from the agent.
 /// * `attachment` - External requests to attach new remotes.
-/// * `downlink_requests` - Requests to open downlink runtimes for the agent.
+/// * `link_requests` - Requests to open external connections for the agent.
 /// * `read_tx` - Channel to communicate with the read task.
 /// * `write_tx` - Channel to communicate with the write task.
 /// * `combined_stop` - The task will stop when this future completes. This should combined the overall
@@ -518,7 +522,7 @@ impl WriteTaskMessage {
 async fn attachment_task<F>(
     mut runtime: mpsc::Receiver<AgentRuntimeRequest>,
     mut attachment: mpsc::Receiver<AgentAttachmentRequest>,
-    downlink_requests: mpsc::Sender<LinkRequest>,
+    link_requests: mpsc::Sender<LinkRequest>,
     read_tx: mpsc::Sender<ReadTaskMessage>,
     write_tx: mpsc::Sender<WriteTaskMessage>,
     mut combined_stop: F,
@@ -540,12 +544,12 @@ async fn attachment_task<F>(
                     match event {
                         Either::Left(request) => {
                             let succeeded = match request {
+                                AgentRuntimeRequest::AddLane(req) => write_tx.send(WriteTaskMessage::Lane(req)).await.is_ok(),
+                                AgentRuntimeRequest::AddStore(req) => write_tx.send(WriteTaskMessage::Store(req)).await.is_ok(),
                                 AgentRuntimeRequest::AdHoc(AdHocChannelRequest { .. }) => {
                                     todo!()
                                 },
-                                AgentRuntimeRequest::AddLane(req) => write_tx.send(WriteTaskMessage::Lane(req)).await.is_ok(),
-                                AgentRuntimeRequest::AddStore(req) => write_tx.send(WriteTaskMessage::Store(req)).await.is_ok(),
-                                AgentRuntimeRequest::OpenDownlink(req) => downlink_requests.send(LinkRequest::Downlink(req)).await.is_ok(),
+                                AgentRuntimeRequest::OpenDownlink(req) => link_requests.send(LinkRequest::Downlink(req)).await.is_ok(),
                             };
                             if !succeeded {
                                 break;

@@ -106,89 +106,169 @@ fn round_trip_partial(message: AdHocCommand<&str, &[u8]>) -> AdHocCommand<String
 }
 
 #[test]
-fn round_trip_with_host() {
+fn round_trip_with_host_with_ow() {
     let addr = Address::new(Some("localhost:8080"), "/node", "lane");
-    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3]);
+    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], true);
     let AdHocCommand {
         address: Address { host, node, lane },
         command,
+        overwrite_permitted,
     } = round_trip(msg);
 
     assert_eq!(host, Some("localhost:8080".to_string()));
     assert_eq!(node, "/node");
     assert_eq!(lane, "lane");
     assert_eq!(command.as_ref(), &[1, 2, 3]);
+    assert!(overwrite_permitted);
 }
 
 #[test]
-fn round_trip_with_host_partial() {
+fn round_trip_with_host_no_ow() {
     let addr = Address::new(Some("localhost:8080"), "/node", "lane");
-    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3]);
+    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], false);
     let AdHocCommand {
         address: Address { host, node, lane },
         command,
+        overwrite_permitted,
+    } = round_trip(msg);
+
+    assert_eq!(host, Some("localhost:8080".to_string()));
+    assert_eq!(node, "/node");
+    assert_eq!(lane, "lane");
+    assert_eq!(command.as_ref(), &[1, 2, 3]);
+    assert!(!overwrite_permitted);
+}
+
+#[test]
+fn round_trip_with_host_partial_with_ow() {
+    let addr = Address::new(Some("localhost:8080"), "/node", "lane");
+    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], true);
+    let AdHocCommand {
+        address: Address { host, node, lane },
+        command,
+        overwrite_permitted,
     } = round_trip_partial(msg);
 
     assert_eq!(host, Some("localhost:8080".to_string()));
     assert_eq!(node, "/node");
     assert_eq!(lane, "lane");
     assert_eq!(command.as_ref(), &[1, 2, 3]);
+    assert!(overwrite_permitted);
 }
 
 #[test]
-fn round_trip_no_host() {
-    let addr = Address::new(None, "/node", "lane");
-    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3]);
+fn round_trip_with_host_partial_no_ow() {
+    let addr = Address::new(Some("localhost:8080"), "/node", "lane");
+    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], false);
     let AdHocCommand {
         address: Address { host, node, lane },
         command,
+        overwrite_permitted,
+    } = round_trip_partial(msg);
+
+    assert_eq!(host, Some("localhost:8080".to_string()));
+    assert_eq!(node, "/node");
+    assert_eq!(lane, "lane");
+    assert_eq!(command.as_ref(), &[1, 2, 3]);
+    assert!(!overwrite_permitted);
+}
+
+#[test]
+fn round_trip_no_host_with_ow() {
+    let addr = Address::new(None, "/node", "lane");
+    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], true);
+    let AdHocCommand {
+        address: Address { host, node, lane },
+        command,
+        overwrite_permitted,
     } = round_trip(msg);
 
     assert!(host.is_none());
     assert_eq!(node, "/node");
     assert_eq!(lane, "lane");
     assert_eq!(command.as_ref(), &[1, 2, 3]);
+    assert!(overwrite_permitted);
 }
 
 #[test]
-fn round_trip_no_host_partial() {
+fn round_trip_no_host_no_ow() {
     let addr = Address::new(None, "/node", "lane");
-    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3]);
+    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], false);
     let AdHocCommand {
         address: Address { host, node, lane },
         command,
+        overwrite_permitted,
+    } = round_trip(msg);
+
+    assert!(host.is_none());
+    assert_eq!(node, "/node");
+    assert_eq!(lane, "lane");
+    assert_eq!(command.as_ref(), &[1, 2, 3]);
+    assert!(!overwrite_permitted);
+}
+
+#[test]
+fn round_trip_no_host_partial_with_ow() {
+    let addr = Address::new(None, "/node", "lane");
+    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], true);
+    let AdHocCommand {
+        address: Address { host, node, lane },
+        command,
+        overwrite_permitted,
     } = round_trip_partial(msg);
 
     assert!(host.is_none());
     assert_eq!(node, "/node");
     assert_eq!(lane, "lane");
     assert_eq!(command.as_ref(), &[1, 2, 3]);
+    assert!(overwrite_permitted);
+}
+
+#[test]
+fn round_trip_no_host_partial_no_ow() {
+    let addr = Address::new(None, "/node", "lane");
+    let msg = AdHocCommand::<_, &[u8]>::new(addr, &[1, 2, 3], false);
+    let AdHocCommand {
+        address: Address { host, node, lane },
+        command,
+        overwrite_permitted,
+    } = round_trip_partial(msg);
+
+    assert!(host.is_none());
+    assert_eq!(node, "/node");
+    assert_eq!(lane, "lane");
+    assert_eq!(command.as_ref(), &[1, 2, 3]);
+    assert!(!overwrite_permitted);
 }
 
 #[test]
 fn round_trip_two_messages() {
     let addr1 = Address::new(Some("localhost:8080"), "/first_node", "lane1");
-    let msg1 = AdHocCommand::<_, &[u8]>::new(addr1, &[1, 2, 3]);
+    let msg1 = AdHocCommand::<_, &[u8]>::new(addr1, &[1, 2, 3], true);
 
     let addr2 = Address::new(None, "/second_node", "lane2");
-    let msg2 = AdHocCommand::<_, &[u8]>::new(addr2, &[4, 5, 6, 7, 8]);
+    let msg2 = AdHocCommand::<_, &[u8]>::new(addr2, &[4, 5, 6, 7, 8], false);
     let (first, second) = round_trip2(msg1, msg2);
 
     let AdHocCommand {
         address: Address { host, node, lane },
         command,
+        overwrite_permitted,
     } = first;
     assert_eq!(host, Some("localhost:8080".to_string()));
     assert_eq!(node, "/first_node");
     assert_eq!(lane, "lane1");
     assert_eq!(command.as_ref(), &[1, 2, 3]);
+    assert!(overwrite_permitted);
 
     let AdHocCommand {
         address: Address { host, node, lane },
         command,
+        overwrite_permitted,
     } = second;
     assert!(host.is_none());
     assert_eq!(node, "/second_node");
     assert_eq!(lane, "lane2");
     assert_eq!(command.as_ref(), &[4, 5, 6, 7, 8]);
+    assert!(!overwrite_permitted);
 }

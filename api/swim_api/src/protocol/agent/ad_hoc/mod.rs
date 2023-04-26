@@ -24,13 +24,18 @@ mod tests;
 /// Message type for agents to send ad hoc commands to the runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AdHocCommand<S, T> {
-    address: Address<S>,
-    command: T,
+    pub address: Address<S>,
+    pub command: T,
+    pub overwrite_permitted: bool,
 }
 
 impl<S, T> AdHocCommand<S, T> {
-    pub fn new(address: Address<S>, command: T) -> Self {
-        AdHocCommand { address, command }
+    pub fn new(address: Address<S>, command: T, overwrite_permitted: bool) -> Self {
+        AdHocCommand {
+            address,
+            command,
+            overwrite_permitted,
+        }
     }
 }
 
@@ -49,7 +54,7 @@ impl<E> AdHocCommandEncoder<E> {
 enum DecoderState<S> {
     #[default]
     ReadingHeader,
-    ReadingBody(Address<S>),
+    ReadingBody(Address<S>, bool),
 }
 
 #[derive(Debug)]
@@ -95,6 +100,7 @@ where
         let AdHocCommand {
             address: Address { host, node, lane },
             command,
+            overwrite_permitted,
         } = item;
         let node_str = node.as_ref();
         let lane_str = lane.as_ref();
@@ -104,7 +110,11 @@ where
                 let host_str = host.as_ref();
                 let required = required_base + LEN_LEN + host_str.len();
                 dst.reserve(required);
-                dst.put_u8(1);
+                if overwrite_permitted {
+                    dst.put_u8(1 & 1 << 1);
+                } else {
+                    dst.put_u8(1);
+                }
                 dst.put_u64(host_str.len() as u64);
                 dst.put_u64(node_str.len() as u64);
                 dst.put_u64(lane_str.len() as u64);
@@ -112,7 +122,11 @@ where
             }
             None => {
                 dst.reserve(required_base);
-                dst.put_u8(0);
+                if overwrite_permitted {
+                    dst.put_u8(1 << 1);
+                } else {
+                    dst.put_u8(0);
+                }
                 dst.put_u64(node_str.len() as u64);
                 dst.put_u64(lane_str.len() as u64);
             }
@@ -150,7 +164,9 @@ where
                         break Ok(None);
                     }
                     let mut bytes = src.as_ref();
-                    let has_host = bytes.get_u8() != 0;
+                    let tag = bytes.get_u8();
+                    let has_host = tag & 1 != 0;
+                    let overwrite_permitted = (tag >> 1) & 1 != 0;
                     let host_len = if has_host {
                         if remaining < MAX_REQUIRED {
                             break Ok(None);
@@ -184,13 +200,18 @@ where
                         Ok(lane) => lane,
                         Err(_) => break Err(bad_utf8()),
                     };
-                    *state = DecoderState::ReadingBody(Address::new(host, node, lane));
+                    *state = DecoderState::ReadingBody(
+                        Address::new(host, node, lane),
+                        overwrite_permitted,
+                    );
                 }
-                DecoderState::ReadingBody(header) => {
+                DecoderState::ReadingBody(address, overwrite_permitted) => {
                     break match body_decoder.decode(src) {
-                        Ok(Some(body)) => Ok(Some(AdHocCommand::new(header, body))),
+                        Ok(Some(body)) => {
+                            Ok(Some(AdHocCommand::new(address, body, overwrite_permitted)))
+                        }
                         Ok(_) => {
-                            *state = DecoderState::ReadingBody(header);
+                            *state = DecoderState::ReadingBody(address, overwrite_permitted);
                             Ok(None)
                         }
                         Err(e) => Err(e.into()),

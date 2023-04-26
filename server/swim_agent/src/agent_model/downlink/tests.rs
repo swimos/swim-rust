@@ -103,7 +103,7 @@ const NODE: &str = "/node";
 const LANE: &str = "lane";
 
 impl AgentContext for TestContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, AgentRuntimeError>> {
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Unexpected request for ad-hoc channel.");
     }
 

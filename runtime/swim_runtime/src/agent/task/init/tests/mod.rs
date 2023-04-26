@@ -43,8 +43,8 @@ use crate::agent::{
     reporting::UplinkReporter,
     store::{AgentPersistence, InitFut, Initializer, StoreInitError},
     task::{InitialEndpoints, LaneEndpoint},
-    AgentExecError, AgentRuntimeRequest, Io, NodeReporting,
-    UplinkReporterRegistration, LinkRequest,
+    AgentExecError, AgentRuntimeRequest, Io, LinkRequest, NodeReporting,
+    UplinkReporterRegistration,
 };
 
 mod no_store;
