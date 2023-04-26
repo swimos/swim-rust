@@ -148,7 +148,6 @@ impl AdHocOutput {
     fn get_buffer(&mut self, key: &RelativeAddress<Text>) -> (usize, &mut LaneBuffer) {
         let AdHocOutput {
             count,
-            writer,
             ids,
             lane_buffers,
             ..
@@ -242,7 +241,7 @@ enum AdHocEvent {
     Timeout(CommanderKey),
 }
 
-async fn ad_hoc_commands_task(
+pub async fn ad_hoc_commands_task(
     identity: Uuid,
     mut open_requests: mpsc::Receiver<AdHocChannelRequest>,
     link_requests: mpsc::Sender<LinkRequest>,

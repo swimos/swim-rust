@@ -15,7 +15,6 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
-use std::num::NonZeroUsize;
 use std::pin::{pin, Pin};
 use std::time::Duration;
 
@@ -41,7 +40,7 @@ use super::{
     LinkRequest, NodeReporting,
 };
 use bytes::{Bytes, BytesMut};
-use futures::future::BoxFuture;
+use futures::future::{join3, BoxFuture};
 use futures::stream::FuturesUnordered;
 use futures::{
     future::{join, select, Either},
@@ -51,15 +50,13 @@ use futures::{
 use swim_api::agent::{LaneConfig, StoreConfig};
 use swim_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
 use swim_api::meta::lane::LaneKind;
-use swim_api::protocol::agent::{AdHocCommand, AdHocCommandDecoder};
-use swim_api::protocol::WithLengthBytesCodec;
 use swim_api::store::{StoreDisabled, StoreKind};
 use swim_api::{agent::UplinkKind, error::AgentRuntimeError};
 use swim_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
 use swim_model::{BytesStr, Text};
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError};
-use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
+use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::trigger::{self, promise};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{sleep, timeout, Instant, Sleep};
@@ -427,20 +424,24 @@ where
 
         let (read_tx, read_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (write_tx, write_rx) = mpsc::channel(config.attachment_queue_size.get());
+        let (ad_hoc_tx, ad_hoc_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (read_vote, write_vote, vote_waiter) = timeout_coord::timeout_coordinator();
 
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
 
         let combined_stop = select(select(stopping.clone(), kill_switch_rx), vote_waiter);
+
         let att = attachment_task(
             rx,
             attachment_rx,
-            link_requests,
+            link_requests.clone(),
             read_tx.clone(),
             write_tx.clone(),
+            ad_hoc_tx,
             combined_stop,
         )
         .instrument(info_span!("Agent Runtime Attachment Task", %identity, %node_uri));
+
         let read = read_task(
             config,
             write_endpoints,
@@ -451,6 +452,7 @@ where
             reporting.as_ref().map(NodeReporting::aggregate),
         )
         .instrument(info_span!("Agent Runtime Read Task", %identity, %node_uri));
+
         let write = write_task(
             WriteTaskConfiguration::new(identity, node_uri.clone(), config),
             WriteTaskEndpoints::new(read_endpoints, store_endpoints),
@@ -462,8 +464,18 @@ where
         )
         .instrument(info_span!("Agent Runtime Write Task", %identity, %node_uri));
 
+        let ad_hoc = ad_hoc::ad_hoc_commands_task(
+            identity,
+            ad_hoc_rx,
+            link_requests,
+            config.ad_hoc_buffer_size,
+            config.ad_hoc_output_retry,
+            config.ad_hoc_output_timeout,
+        )
+        .instrument(info_span!("Agent Ad Hoc Command Task", %identity, %node_uri));
+
         let io = await_io_tasks(read, write, kill_switch_tx);
-        let (_, result) = join(att, io).await;
+        let (_, _, result) = join3(att, ad_hoc, io).await;
         result
     }
 }
@@ -525,6 +537,7 @@ async fn attachment_task<F>(
     link_requests: mpsc::Sender<LinkRequest>,
     read_tx: mpsc::Sender<ReadTaskMessage>,
     write_tx: mpsc::Sender<WriteTaskMessage>,
+    ad_hoc_tx: mpsc::Sender<AdHocChannelRequest>,
     mut combined_stop: F,
 ) where
     F: Future + Unpin,
@@ -546,9 +559,7 @@ async fn attachment_task<F>(
                             let succeeded = match request {
                                 AgentRuntimeRequest::AddLane(req) => write_tx.send(WriteTaskMessage::Lane(req)).await.is_ok(),
                                 AgentRuntimeRequest::AddStore(req) => write_tx.send(WriteTaskMessage::Store(req)).await.is_ok(),
-                                AgentRuntimeRequest::AdHoc(AdHocChannelRequest { .. }) => {
-                                    todo!()
-                                },
+                                AgentRuntimeRequest::AdHoc(request) => ad_hoc_tx.send(request).await.is_ok(),
                                 AgentRuntimeRequest::OpenDownlink(req) => link_requests.send(LinkRequest::Downlink(req)).await.is_ok(),
                             };
                             if !succeeded {

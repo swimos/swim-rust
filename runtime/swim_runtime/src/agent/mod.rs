@@ -28,6 +28,7 @@ use swim_api::{
 };
 use swim_model::{address::RelativeAddress, Text};
 use swim_utilities::{
+    future::retryable::RetryStrategy,
     io::byte_channel::{ByteReader, ByteWriter},
     non_zero_usize,
     routing::route_uri::RouteUri,
@@ -401,8 +402,15 @@ pub struct AgentRuntimeConfig {
     pub shutdown_timeout: Duration,
     /// If initializing a lane from the store takes longer than this, the agent will fail.
     pub lane_init_timeout: Duration,
+    /// Timeout for outgoing channels to send ad hoc commands.
+    pub ad_hoc_output_timeout: Duration,
+    /// Retry strategy for opening outgoing channels for ad hoc commands.
+    pub ad_hoc_output_retry: RetryStrategy,
+    /// The size of the buffer used by the agent to send ad hoc commands to the runtime.
+    pub ad_hoc_buffer_size: NonZeroUsize,
 }
 
+const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const DEFAULT_CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(16);
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_INIT_TIMEOUT: Duration = Duration::from_secs(1);
@@ -415,6 +423,9 @@ impl Default for AgentRuntimeConfig {
             prune_remote_delay: DEFAULT_TIMEOUT,
             shutdown_timeout: DEFAULT_TIMEOUT,
             lane_init_timeout: DEFAULT_INIT_TIMEOUT,
+            ad_hoc_output_timeout: DEFAULT_TIMEOUT,
+            ad_hoc_output_retry: RetryStrategy::none(),
+            ad_hoc_buffer_size: DEFAULT_BUFFER_SIZE,
         }
     }
 }
