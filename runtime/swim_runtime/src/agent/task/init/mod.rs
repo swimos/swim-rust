@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{convert::identity, time::Duration};
+use std::{convert::identity, num::NonZeroUsize, time::Duration};
 
 use futures::{
-    future::Either, stream::FuturesUnordered, Future, FutureExt, StreamExt, TryFutureExt,
+    future::{Either, join}, stream::FuturesUnordered, Future, FutureExt, StreamExt, TryFutureExt, Stream,
 };
 use swim_api::{
     agent::{LaneConfig, StoreConfig, UplinkKind},
@@ -32,6 +32,7 @@ use swim_utilities::{
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::FramedRead;
+use uuid::Uuid;
 
 use crate::agent::{
     store::{
@@ -43,7 +44,7 @@ use crate::agent::{
 
 use super::{
     AdHocChannelRequest, InitialEndpoints, ItemEndpoint, ItemInitTask, LaneEndpoint, LaneResult,
-    LaneRuntimeSpec, StoreEndpoint, StoreResult, StoreRuntimeSpec,
+    LaneRuntimeSpec, StoreEndpoint, StoreResult, StoreRuntimeSpec, ad_hoc::{AdHocTaskState, ad_hoc_commands_task, AdHocTaskConfig},
 };
 
 use tracing::{error, info};
@@ -55,33 +56,43 @@ mod tests;
 /// registered but they will not be driven and no remote connections will exist attached to
 /// the agent.
 pub struct AgentInitTask<Store = StoreDisabled> {
+    identity: Uuid,
     requests: mpsc::Receiver<AgentRuntimeRequest>,
     link_requests: mpsc::Sender<LinkRequest>,
     init_complete: trigger::Receiver,
-    item_init_timeout: Duration,
+    config: InitTaskConfig,
     reporting: Option<NodeReporting>,
     store: Store,
 }
 
+pub struct InitTaskConfig {
+    pub ad_hoc_queue_size: NonZeroUsize,
+    pub item_init_timeout: Duration,
+    pub ad_hoc: AdHocTaskConfig,
+}
+
 impl AgentInitTask {
     /// #Arguments
+    /// * `identity` - Unique ID of the agent.
     /// * `requests` - Channel for requests to open new lanes and downlinks.
     /// * `link_requests` - Channel for request to the runtime to open new external links.
     /// * `init_complete` - Triggered when the initialization phase is complete.
-    /// * `lane_init_timeout` - Timeout for initializing lanes from the store.
+    /// * `config` - Task configuration parameters.
     /// * `reporting` - Reporter for node/lane introspection support.
     pub fn new(
+        identity: Uuid,
         requests: mpsc::Receiver<AgentRuntimeRequest>,
         link_requests: mpsc::Sender<LinkRequest>,
         init_complete: trigger::Receiver,
-        lane_init_timeout: Duration,
+        config: InitTaskConfig,
         reporting: Option<NodeReporting>,
     ) -> Self {
         Self::with_store(
+            identity,
             requests,
             link_requests,
             init_complete,
-            lane_init_timeout,
+            config,
             reporting,
             StoreDisabled::default(),
         )
@@ -93,25 +104,28 @@ where
     Store: AgentPersistence + Send + Sync,
 {
     /// #Arguments
+    /// * `identity` - Unique ID of the agent.
     /// * `requests` - Channel for requests to open new lanes and downlinks.
     /// * `link_requests` - Channel for request to the runtime to open external links.
     /// * `init_complete` - Triggered when the initialization phase is complete.
-    /// * `item_init_timeout` - Timeout for initializing lanes from the store.
+    /// * `config` - Task configuration parameters.
     /// * `reporting` - Reporter for node/lane introspection support.
     /// * `store` - Store for lane persistence.
     pub fn with_store(
+        identity: Uuid,
         requests: mpsc::Receiver<AgentRuntimeRequest>,
         link_requests: mpsc::Sender<LinkRequest>,
         init_complete: trigger::Receiver,
-        item_init_timeout: Duration,
+        config: InitTaskConfig,
         reporting: Option<NodeReporting>,
         store: Store,
     ) -> Self {
         AgentInitTask {
+            identity,
             requests,
             link_requests,
             init_complete,
-            item_init_timeout,
+            config,
             reporting,
             store,
         }
@@ -121,95 +135,39 @@ where
 impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
     pub async fn run(self) -> Result<(InitialEndpoints, Store), AgentExecError> {
         let AgentInitTask {
+            identity,
             requests,
             init_complete,
             link_requests,
             store,
-            item_init_timeout,
+            config,
             reporting,
         } = self;
-
+        let InitTaskConfig { ad_hoc_queue_size, item_init_timeout, ad_hoc } = config;
         let initialization = Initialization::new(reporting, item_init_timeout);
         let mut request_stream = ReceiverStream::new(requests);
-        let mut terminated = (&mut request_stream).take_until(init_complete);
+        let terminated = (&mut request_stream).take_until(init_complete);
 
         let mut lane_endpoints: Vec<LaneEndpoint<Io>> = vec![];
         let mut store_endpoints: Vec<StoreEndpoint> = vec![];
 
-        let mut initializers: FuturesUnordered<ItemInitTask<'_, Store::StoreId>> =
-            FuturesUnordered::new();
+        let (ad_hoc_tx, ad_hoc_rx) = mpsc::channel(ad_hoc_queue_size.get());
 
-        loop {
-            let event = tokio::select! {
-                Some(item_init_done) = initializers.next(), if !initializers.is_empty() => Either::Left(item_init_done),
-                maybe_request = terminated.next() => {
-                    if let Some(request) = maybe_request {
-                        Either::Right(request)
-                    } else {
-                        break;
-                    }
-                }
-            };
-            match event {
-                Either::Left(endpoint_result) => match endpoint_result? {
-                    ItemEndpoint::Lane { endpoint: lane, .. } => lane_endpoints.push(lane),
-                    ItemEndpoint::Store {
-                        endpoint: store, ..
-                    } => store_endpoints.push(store),
-                },
-                Either::Right(request) => match request {
-                    AgentRuntimeRequest::AdHoc(AdHocChannelRequest { .. }) => {
-                        todo!()
-                    }
-                    AgentRuntimeRequest::AddLane(LaneRuntimeSpec {
-                        name,
-                        kind,
-                        config,
-                        promise,
-                    }) => {
-                        info!("Registering a new {} lane with name '{}'.", kind, name);
-                        if let Some(init) =
-                            initialization.add_lane(&store, name.clone(), kind, config, promise)
-                        {
-                            initializers.push(init.map_ok(Into::into).boxed());
-                        }
-                    }
-                    AgentRuntimeRequest::AddStore(StoreRuntimeSpec {
-                        name,
-                        kind,
-                        config,
-                        promise,
-                    }) => {
-                        info!("Registering a new {} store with name '{}'.", kind, name);
-                        if let Some(init) =
-                            initialization.add_store(&store, name.clone(), kind, config, promise)?
-                        {
-                            initializers.push(init.map_ok(Into::into).boxed());
-                        }
-                    }
-                    AgentRuntimeRequest::OpenDownlink(request) => {
-                        if link_requests
-                            .send(LinkRequest::Downlink(request))
-                            .await
-                            .is_err()
-                        {
-                            return Err(AgentExecError::FailedDownlinkRequest);
-                        }
-                    }
-                },
-            }
-        }
-        if !initializers.is_empty() {
-            while let Some(endpoint_result) = initializers.next().await {
-                match endpoint_result? {
-                    ItemEndpoint::Lane { endpoint: lane, .. } => lane_endpoints.push(lane),
-                    ItemEndpoint::Store {
-                        endpoint: store, ..
-                    } => store_endpoints.push(store),
-                }
-            }
-        }
-        drop(initializers);
+        let ad_hoc_state = AdHocTaskState::new(link_requests.clone());
+
+        let ad_hoc_task = ad_hoc_commands_task(identity, ad_hoc_rx, ad_hoc_state, ad_hoc);
+
+        let item_init_task = initialize_items(&store, 
+            terminated, 
+            &link_requests, 
+            &ad_hoc_tx,
+            &initialization, 
+            &mut lane_endpoints, 
+            &mut store_endpoints);
+
+        let(result, ad_hoc_state) = join(item_init_task, ad_hoc_task).await;
+        result?;
+
         let Initialization { reporting, .. } = initialization;
         if lane_endpoints.is_empty() {
             Err(AgentExecError::NoInitialLanes)
@@ -220,6 +178,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                     request_stream.into_inner(),
                     lane_endpoints,
                     store_endpoints,
+                    ad_hoc_state,
                 ),
                 store,
             ))
@@ -468,4 +427,97 @@ async fn store_initialization(
     result
         .map_err(move |_| StoreInitError::ItemInitializationTimeout)
         .and_then(identity)
+}
+
+async fn initialize_items<Store, R>(
+    store: &Store,
+    mut terminated: R,
+    link_requests: &mpsc::Sender<LinkRequest>,
+    ad_hoc_tx: &mpsc::Sender<AdHocChannelRequest>,
+    initialization: &Initialization,
+    lane_endpoints: &mut Vec<LaneEndpoint<Io>>,
+    store_endpoints: &mut Vec<StoreEndpoint>) -> Result<(), AgentExecError>
+where
+    Store: AgentPersistence + Send + Sync,
+    R: Stream<Item = AgentRuntimeRequest> + Unpin {
+    let mut initializers: FuturesUnordered<ItemInitTask<'_, Store::StoreId>> =
+            FuturesUnordered::new();
+    loop {
+        let event = tokio::select! {
+            Some(item_init_done) = initializers.next(), if !initializers.is_empty() => Either::Left(item_init_done),
+            maybe_request = terminated.next() => {
+                if let Some(request) = maybe_request {
+                    Either::Right(request)
+                } else {
+                    break Ok(());
+                }
+            }
+        };
+        match event {
+            Either::Left(endpoint_result) => match endpoint_result? {
+                ItemEndpoint::Lane { endpoint: lane, .. } => lane_endpoints.push(lane),
+                ItemEndpoint::Store {
+                    endpoint: store, ..
+                } => store_endpoints.push(store),
+            },
+            Either::Right(request) => match request {
+                AgentRuntimeRequest::AdHoc(req) => {
+                    if ad_hoc_tx
+                        .send(req)
+                        .await
+                        .is_err()
+                    {
+                        break Err(AgentExecError::FailedDownlinkRequest);
+                    }
+                }
+                AgentRuntimeRequest::AddLane(LaneRuntimeSpec {
+                    name,
+                    kind,
+                    config,
+                    promise,
+                }) => {
+                    info!("Registering a new {} lane with name '{}'.", kind, name);
+                    if let Some(init) =
+                        initialization.add_lane(store, name.clone(), kind, config, promise)
+                    {
+                        initializers.push(init.map_ok(Into::into).boxed());
+                    }
+                }
+                AgentRuntimeRequest::AddStore(StoreRuntimeSpec {
+                    name,
+                    kind,
+                    config,
+                    promise,
+                }) => {
+                    info!("Registering a new {} store with name '{}'.", kind, name);
+                    if let Some(init) =
+                        initialization.add_store(store, name.clone(), kind, config, promise)?
+                    {
+                        initializers.push(init.map_ok(Into::into).boxed());
+                    }
+                }
+                AgentRuntimeRequest::OpenDownlink(request) => {
+                    if link_requests
+                        .send(LinkRequest::Downlink(request))
+                        .await
+                        .is_err()
+                    {
+                        break Err(AgentExecError::FailedDownlinkRequest);
+                    }
+                }
+            },
+        }
+    }?;
+
+    if !initializers.is_empty() {
+        while let Some(endpoint_result) = initializers.next().await {
+            match endpoint_result? {
+                ItemEndpoint::Lane { endpoint: lane, .. } => lane_endpoints.push(lane),
+                ItemEndpoint::Store {
+                    endpoint: store, ..
+                } => store_endpoints.push(store),
+            }
+        }
+    }
+    Ok(())
 }

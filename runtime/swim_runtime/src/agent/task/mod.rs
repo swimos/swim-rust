@@ -25,6 +25,7 @@ use crate::agent::task::timeout_coord::VoteResult;
 use crate::agent::task::write_fut::SpecialAction;
 use crate::error::InvalidKey;
 
+use self::ad_hoc::AdHocTaskState;
 use self::init::Initialization;
 use self::links::Links;
 use self::prune::PruneRemotes;
@@ -76,7 +77,8 @@ mod sender;
 mod timeout_coord;
 mod write_fut;
 
-pub use init::AgentInitTask;
+pub use init::{AgentInitTask, InitTaskConfig};
+pub use ad_hoc::AdHocTaskConfig;
 
 #[cfg(test)]
 mod fake_store;
@@ -272,6 +274,7 @@ pub struct InitialEndpoints {
     rx: mpsc::Receiver<AgentRuntimeRequest>,
     lane_endpoints: Vec<LaneEndpoint<Io>>,
     store_endpoints: Vec<StoreEndpoint>,
+    ad_hoc_state: AdHocTaskState,
 }
 
 impl InitialEndpoints {
@@ -280,12 +283,14 @@ impl InitialEndpoints {
         rx: mpsc::Receiver<AgentRuntimeRequest>,
         lane_endpoints: Vec<LaneEndpoint<Io>>,
         store_endpoints: Vec<StoreEndpoint>,
+        ad_hoc_state: AdHocTaskState,
     ) -> Self {
         InitialEndpoints {
             reporting,
             rx,
             lane_endpoints,
             store_endpoints,
+            ad_hoc_state,
         }
     }
 }
@@ -411,6 +416,7 @@ where
                     rx,
                     lane_endpoints,
                     store_endpoints,
+                    ad_hoc_state,
                 },
             attachment_rx,
             link_requests,
@@ -464,13 +470,17 @@ where
         )
         .instrument(info_span!("Agent Runtime Write Task", %identity, %node_uri));
 
+        let ad_hoc_config = AdHocTaskConfig { 
+            buffer_size: config.ad_hoc_buffer_size, 
+            retry_strategy: config.ad_hoc_output_retry, 
+            timeout_delay: config.ad_hoc_output_timeout 
+        };
+
         let ad_hoc = ad_hoc::ad_hoc_commands_task(
             identity,
             ad_hoc_rx,
-            link_requests,
-            config.ad_hoc_buffer_size,
-            config.ad_hoc_output_retry,
-            config.ad_hoc_output_timeout,
+            ad_hoc_state,
+            ad_hoc_config
         )
         .instrument(info_span!("Agent Ad Hoc Command Task", %identity, %node_uri));
 
@@ -1626,7 +1636,7 @@ where
         runtime_config,
     } = configuration;
 
-    let initialization = Initialization::new(reporting, runtime_config.lane_init_timeout);
+    let initialization = Initialization::new(reporting, runtime_config.item_init_timeout);
 
     let mut timeout_delay = pin!(sleep(runtime_config.inactive_timeout));
     let remote_prune_delay = pin!(sleep(Duration::default()));

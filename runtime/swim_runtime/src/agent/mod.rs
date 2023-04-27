@@ -53,7 +53,7 @@ use self::{
     store::{StoreInitError, StorePersistence},
     task::{
         AdHocChannelRequest, AgentInitTask, AgentRuntimeTask, LaneRuntimeSpec, NodeDescriptor,
-        StoreRuntimeSpec,
+        StoreRuntimeSpec, InitTaskConfig, AdHocTaskConfig,
     },
 };
 
@@ -400,8 +400,8 @@ pub struct AgentRuntimeConfig {
     /// If the clean-shutdown mechanism for the task takes longer than this, it will be
     /// terminated.
     pub shutdown_timeout: Duration,
-    /// If initializing a lane from the store takes longer than this, the agent will fail.
-    pub lane_init_timeout: Duration,
+    /// If initializing an item from the store takes longer than this, the agent will fail.
+    pub item_init_timeout: Duration,
     /// Timeout for outgoing channels to send ad hoc commands.
     pub ad_hoc_output_timeout: Duration,
     /// Retry strategy for opening outgoing channels for ad hoc commands.
@@ -422,7 +422,7 @@ impl Default for AgentRuntimeConfig {
             inactive_timeout: DEFAULT_TIMEOUT,
             prune_remote_delay: DEFAULT_TIMEOUT,
             shutdown_timeout: DEFAULT_TIMEOUT,
-            lane_init_timeout: DEFAULT_INIT_TIMEOUT,
+            item_init_timeout: DEFAULT_INIT_TIMEOUT,
             ad_hoc_output_timeout: DEFAULT_TIMEOUT,
             ad_hoc_output_retry: RetryStrategy::none(),
             ad_hoc_buffer_size: DEFAULT_BUFFER_SIZE,
@@ -529,11 +529,23 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let node_uri = route.to_string().into();
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
         let (init_tx, init_rx) = trigger::trigger();
+
+        let ad_hoc_config = AdHocTaskConfig { 
+            buffer_size: runtime_config.ad_hoc_buffer_size, 
+            retry_strategy: runtime_config.ad_hoc_output_retry, 
+            timeout_delay: runtime_config.ad_hoc_output_timeout 
+        };
+
         let runtime_init_task = AgentInitTask::new(
+            identity,
             runtime_rx,
             link_tx.clone(),
             init_rx,
-            runtime_config.lane_init_timeout,
+            InitTaskConfig {
+                ad_hoc_queue_size: runtime_config.attachment_queue_size,
+                item_init_timeout: runtime_config.item_init_timeout,
+                ad_hoc: ad_hoc_config,
+            },
             reporting,
         );
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
@@ -543,7 +555,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         async move {
             let agent_init_task = async move {
                 let agent_task_result = agent_init.await;
-                drop(init_tx);
+                init_tx.trigger();
                 agent_task_result
             };
 
@@ -600,14 +612,25 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             .instrument(
                 info_span!("Agent initialization task.", id = %identity, route = %node_uri),
             );
+        
+        let ad_hoc_config = AdHocTaskConfig { 
+            buffer_size: runtime_config.ad_hoc_buffer_size, 
+            retry_strategy: runtime_config.ad_hoc_output_retry, 
+            timeout_delay: runtime_config.ad_hoc_output_timeout 
+        };
 
         async move {
             let store = store_fut.await?;
             let runtime_init_task = AgentInitTask::with_store(
+                identity,
                 runtime_rx,
                 link_tx.clone(),
                 init_rx,
-                runtime_config.lane_init_timeout,
+                InitTaskConfig {
+                    ad_hoc_queue_size: runtime_config.attachment_queue_size,
+                    item_init_timeout: runtime_config.item_init_timeout,
+                    ad_hoc: ad_hoc_config,
+                },
                 reporting,
                 StorePersistence(store),
             );

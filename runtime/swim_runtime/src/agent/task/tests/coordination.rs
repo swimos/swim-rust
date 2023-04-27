@@ -19,6 +19,7 @@ use std::{
 
 use crate::agent::{
     task::{
+        ad_hoc::AdHocTaskState,
         tests::{RemoteReceiver, RemoteSender},
         AgentRuntimeTask, InitialEndpoints, LaneEndpoint, NodeDescriptor,
     },
@@ -328,7 +329,7 @@ const RID3: Uuid = Uuid::from_u128(222);
 async fn run_test_case<F, Fut>(
     inactive_timeout: Duration,
     prune_timeout: Duration,
-    intial_state: Option<AgentState>,
+    initial_state: Option<AgentState>,
     test_case: F,
 ) -> (AgentState, Fut::Output)
 where
@@ -381,7 +382,13 @@ where
         None,
     ));
 
-    let init = InitialEndpoints::new(None, req_rx, runtime_endpoints, vec![]);
+    let init = InitialEndpoints::new(
+        None,
+        req_rx,
+        runtime_endpoints,
+        vec![],
+        AdHocTaskState::new(links_tx.clone()),
+    );
 
     let agent_task = AgentRuntimeTask::new(
         NodeDescriptor::new(AGENT_ID, Text::new(NODE)),
@@ -394,7 +401,7 @@ where
 
     let agent = FakeAgent::new(
         agent_endpoints,
-        intial_state,
+        initial_state,
         stop_rx.clone(),
         req_tx,
         create_rx,

@@ -85,7 +85,7 @@ fn make_prune_config(
         inactive_timeout,
         prune_remote_delay,
         shutdown_timeout: SHUTDOWN_TIMEOUT,
-        lane_init_timeout: INIT_TIMEOUT,
+        item_init_timeout: INIT_TIMEOUT,
         ad_hoc_output_timeout: AD_HOC_TIMEOUT,
         ad_hoc_output_retry: RetryStrategy::none(),
         ad_hoc_buffer_size: non_zero_usize!(4096),

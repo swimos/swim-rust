@@ -241,16 +241,37 @@ enum AdHocEvent {
     Timeout(CommanderKey),
 }
 
+#[derive(Debug)]
+pub struct AdHocTaskState {
+    reader: Option<AdHocReader>,
+    outputs: HashMap<CommanderKey, AdHocOutput>,
+    link_requests: mpsc::Sender<LinkRequest>,
+}
+
+impl AdHocTaskState {
+    pub fn new(link_requests: mpsc::Sender<LinkRequest>) -> Self {
+        AdHocTaskState { 
+            reader: Default::default(), 
+            outputs: Default::default(), 
+            link_requests 
+        }
+    }
+}
+
+pub struct AdHocTaskConfig {
+    pub buffer_size: NonZeroUsize,
+    pub retry_strategy: RetryStrategy,
+    pub timeout_delay: Duration,
+}
+
 pub async fn ad_hoc_commands_task(
     identity: Uuid,
     mut open_requests: mpsc::Receiver<AdHocChannelRequest>,
-    link_requests: mpsc::Sender<LinkRequest>,
-    buffer_size: NonZeroUsize,
-    retry_strategy: RetryStrategy,
-    timeout_delay: Duration,
-) {
-    let mut reader: Option<AdHocReader> = None;
-    let mut outputs: HashMap<CommanderKey, AdHocOutput> = HashMap::new();
+    state: AdHocTaskState,
+    config: AdHocTaskConfig,
+) -> AdHocTaskState {
+    let AdHocTaskState { mut reader, mut outputs, link_requests } = state;
+    let AdHocTaskConfig { buffer_size, retry_strategy, timeout_delay } = config;
     let mut pending = FuturesUnordered::new();
 
     loop {
@@ -403,6 +424,7 @@ pub async fn ad_hoc_commands_task(
             }
         }
     }
+    AdHocTaskState { reader, outputs, link_requests }
 }
 
 async fn try_open_new(
