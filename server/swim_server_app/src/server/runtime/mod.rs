@@ -34,7 +34,9 @@ use swim_introspection::{init_introspection, IntrospectionResolver};
 use swim_introspection::{IntrospectionConfig, LaneMetaAgent, NodeMetaAgent};
 use swim_model::address::RelativeAddress;
 use swim_model::Text;
-use swim_remote::{AgentResolutionError, AttachClient, FindNode, NoSuchAgent, RemoteTask};
+use swim_remote::{
+    AgentResolutionError, AttachClient, FindNode, LinkError, NoSuchAgent, RemoteTask,
+};
 use swim_runtime::agent::{
     AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteTask, CombinedAgentConfig,
     DisconnectionReason, LinkRequest,
@@ -639,10 +641,10 @@ where
                     receiver,
                     done,
                 }) => {
-                    let RelativeAddress { node, .. } = path;
+                    let RelativeAddress { node, .. } = &path;
                     info!(source = %downlink_id, node = %node, "Attempting to connect a downlink to an agent.");
                     let node_store_fut = plane_store.node_store(node.as_str());
-                    let result = agents.resolve_agent(node, |name, route_task| {
+                    let result = agents.resolve_agent(node.clone(), |name, route_task| {
                         let task = route_task.run_agent_with_store(node_store_fut);
                         agent_tasks.push(attach_node(name, config.channel_coop_budget, task));
                     });
@@ -660,11 +662,7 @@ where
                         }
                         Err(node) => {
                             warn!(node = %node, "Requested agent does not exist.");
-                            let message = format!("Local node '{}' does not exist.", node);
-                            if done
-                                .send(Err(DownlinkFailureReason::Unresolvable(message)))
-                                .is_err()
-                            {
+                            if done.send(Err(LinkError::NoEndpoint(path))).is_err() {
                                 info!(node = %node, "Downlink request dropped before it was satisfied.");
                             }
                         }
@@ -987,7 +985,7 @@ async fn attach_downlink(
     tx: mpsc::Sender<AgentAttachmentRequest>,
     io: (ByteWriter, ByteReader),
     connect_timeout: Duration,
-    done: oneshot::Sender<Result<(), DownlinkFailureReason>>,
+    done: oneshot::Sender<Result<(), LinkError>>,
 ) -> ConnectionTerminated {
     let (disconnect_tx, disconnect_rx) = promise::promise();
     let (connected_tx, connected_rx) = trigger::trigger();

@@ -32,8 +32,9 @@ use swim_api::{
 };
 use swim_model::Text;
 use swim_utilities::{
+    future::retryable::RetryStrategy,
     io::byte_channel::{self, byte_channel, ByteWriter},
-    non_zero_usize, trigger, future::retryable::RetryStrategy,
+    non_zero_usize, trigger,
 };
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
@@ -42,7 +43,7 @@ use uuid::Uuid;
 use crate::agent::{
     reporting::UplinkReporter,
     store::{AgentPersistence, InitFut, Initializer, StoreInitError},
-    task::{InitialEndpoints, LaneEndpoint, AdHocTaskConfig},
+    task::{AdHocTaskConfig, InitialEndpoints, LaneEndpoint},
     AgentExecError, AgentRuntimeRequest, Io, LinkRequest, NodeReporting,
     UplinkReporterRegistration,
 };
@@ -72,14 +73,14 @@ const DL_CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
 const INIT_TIMEOUT: Duration = Duration::from_secs(5);
 const AD_HOC_TIMEOUT: Duration = Duration::from_secs(1);
 
-const INIT_CONFIG: InitTaskConfig = InitTaskConfig { 
-    ad_hoc_queue_size: DL_CHAN_SIZE, 
-    item_init_timeout: INIT_TIMEOUT, 
+const INIT_CONFIG: InitTaskConfig = InitTaskConfig {
+    ad_hoc_queue_size: DL_CHAN_SIZE,
+    item_init_timeout: INIT_TIMEOUT,
     ad_hoc: AdHocTaskConfig {
         buffer_size: BUFFER_SIZE,
         retry_strategy: RetryStrategy::none(),
         timeout_delay: AD_HOC_TIMEOUT,
-    } 
+    },
 };
 
 const TRANSIENT: LaneConfig = LaneConfig {
@@ -110,8 +111,15 @@ where
     let (done_tx, done_rx) = trigger::trigger();
     let (dl_tx, dl_rx) = mpsc::channel(DL_CHAN_SIZE.get());
 
-    let runtime =
-        super::AgentInitTask::with_store(AGENT_ID, req_rx, dl_tx, done_rx, INIT_CONFIG, None, store);
+    let runtime = super::AgentInitTask::with_store(
+        AGENT_ID,
+        req_rx,
+        dl_tx,
+        done_rx,
+        INIT_CONFIG,
+        None,
+        store,
+    );
     let test = init.run_test(req_tx, dl_rx, done_tx);
 
     tokio::time::timeout(TEST_TIMEOUT, join(runtime.run().map_ok(|(ep, _)| ep), test))

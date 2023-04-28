@@ -47,6 +47,7 @@ use swim_utilities::{
     multi_reader::MultiReader,
     trigger,
 };
+use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
@@ -63,13 +64,25 @@ mod envelopes;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug, Error)]
+pub enum LinkError {
+    #[error("No endpoint with address: {0}")]
+    NoEndpoint(RelativeAddress<Text>),
+}
+
+impl From<LinkError> for DownlinkFailureReason {
+    fn from(err: LinkError) -> Self {
+        DownlinkFailureReason::Unresolvable(err.to_string())
+    }
+}
+
 /// Message to attach a new client to a socket.
 #[derive(Debug)]
 pub enum AttachClient {
     /// Attach a send only client.
     OneWay {
         receiver: ByteReader,
-        done: trigger::Sender,
+        done: oneshot::Sender<Result<(), LinkError>>,
     },
     /// Attach a two way (downlink) client.
     AttachDownlink {
@@ -77,7 +90,7 @@ pub enum AttachClient {
         path: RelativeAddress<Text>,
         sender: ByteWriter,
         receiver: ByteReader,
-        done: oneshot::Sender<Result<(), DownlinkFailureReason>>,
+        done: oneshot::Sender<Result<(), LinkError>>,
     },
 }
 
@@ -304,7 +317,7 @@ enum OutgoingTaskMessage {
     RegisterOutgoing {
         kind: OutgoingKind,
         receiver: ByteReader,
-        done: trigger::Sender,
+        done: oneshot::Sender<Result<(), LinkError>>,
     },
     NotFound {
         command_envelope: bool,
@@ -328,7 +341,7 @@ async fn registration_task<F>(
     loop {
         let request = tokio::select! {
             done = trackers.next(), if !trackers.is_empty() => {
-                let done: Option<Option<oneshot::Sender<Result<(), DownlinkFailureReason>>>> = done;
+                let done: Option<Option<oneshot::Sender<_>>> = done;
                 if let Some(Some(done)) = done {
                     if done.send(Ok(())).is_err() {
                         info!("Downlink request dropped before it was satisfied.");
@@ -358,7 +371,7 @@ async fn registration_task<F>(
                     join(incoming_tx.reserve(), outgoing_tx.reserve()).await
                 {
                     let (in_done_tx, in_done_rx) = trigger::trigger();
-                    let (out_done_tx, out_done_rx) = trigger::trigger();
+                    let (out_done_tx, out_done_rx) = oneshot::channel();
                     in_res.send(RegisterIncoming {
                         path,
                         sender,
@@ -466,15 +479,18 @@ impl OutgoingTask {
                     done,
                 }) => {
                     debug!(kind = ?kind, "Registering new outgoing chanel.");
-                    match kind {
-                        OutgoingKind::Client => {
-                            clients.add(RequestReader::new(receiver, Default::default()));
+                    if done.send(Ok(())).is_ok() {
+                        match kind {
+                            OutgoingKind::Client => {
+                                clients.add(RequestReader::new(receiver, Default::default()));
+                            }
+                            OutgoingKind::Server => {
+                                agents.add(ResponseReader::new(receiver, Default::default()));
+                            }
                         }
-                        OutgoingKind::Server => {
-                            agents.add(ResponseReader::new(receiver, Default::default()));
-                        }
+                    } else {
+                        info!("Request for attachment dropped before it completed.");
                     }
-                    done.trigger();
                 }
                 OutgoingEvent::Message(OutgoingTaskMessage::NotFound {
                     error: AgentResolutionError::NotFound(error),
@@ -730,7 +746,7 @@ async fn connect_agent_route(
     find_tx.send(find).await.map_err(|_| ())?;
     match rx.await {
         Ok(Ok((writer, reader))) => {
-            let (done_tx, done_rx) = trigger::trigger();
+            let (done_tx, done_rx) = oneshot::channel();
             if outgoing_tx
                 .send(OutgoingTaskMessage::RegisterOutgoing {
                     kind: OutgoingKind::Server,

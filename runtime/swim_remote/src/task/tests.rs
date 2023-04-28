@@ -143,7 +143,7 @@ async fn register_for_downlinks() {
             assert_eq!(kind, OutgoingKind::Client);
             assert!(byte_channel::are_connected(&tx2, &receiver));
 
-            done_out.trigger();
+            assert!(done_out.send(Ok(())).is_ok());
 
             assert!(matches!(done_rx.await, Ok(Ok(_))));
         } else {
@@ -413,7 +413,7 @@ async fn incoming_route_valid_agent_env() {
                 done,
                 ..
             }) => {
-                done.trigger();
+                assert!(done.send(Ok(())).is_ok());
             }
             ow => panic!("Unexpected registration: {:?}", ow),
         }
@@ -449,7 +449,7 @@ async fn incoming_route_valid_agent_restart() {
                 done,
                 ..
             }) => {
-                done.trigger();
+                assert!(done.send(Ok(())).is_ok());
             }
             ow => panic!("Unexpected registration: {:?}", ow),
         }
@@ -482,7 +482,7 @@ async fn incoming_route_valid_agent_restart() {
                 done,
                 ..
             }) => {
-                done.trigger();
+                assert!(done.send(Ok(())).is_ok());
             }
             ow => panic!("Unexpected registration: {:?}", ow),
         }
@@ -515,7 +515,7 @@ async fn incoming_route_multiple_agent_env() {
                 done,
                 ..
             }) => {
-                done.trigger();
+                assert!(done.send(Ok(())).is_ok());
             }
             ow => panic!("Unexpected registration: {:?}", ow),
         }
@@ -843,7 +843,7 @@ async fn outgoing_downlink_message() {
         } = &mut context;
 
         let (dl_tx, dl_rx) = byte_channel(BUFFER_SIZE);
-        let (done_tx, done_rx) = trigger::trigger();
+        let (done_tx, done_rx) = oneshot::channel();
 
         outgoing_tx
             .send(OutgoingTaskMessage::RegisterOutgoing {
@@ -888,7 +888,7 @@ async fn outgoing_agent_message() {
         } = &mut context;
 
         let (agent_tx, agent_rx) = byte_channel(BUFFER_SIZE);
-        let (done_tx, done_rx) = trigger::trigger();
+        let (done_tx, done_rx) = oneshot::channel();
 
         outgoing_tx
             .send(OutgoingTaskMessage::RegisterOutgoing {

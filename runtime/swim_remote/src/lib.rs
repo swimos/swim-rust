@@ -17,5 +17,5 @@ mod task;
 
 pub use self::{
     error::{AgentResolutionError, NoSuchAgent},
-    task::{AttachClient, FindNode, RemoteTask},
+    task::{AttachClient, FindNode, LinkError, RemoteTask},
 };

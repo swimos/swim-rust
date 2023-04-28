@@ -660,7 +660,7 @@ async fn start_downlink_runtime(
         };
     }
     let err = match done_rx.await {
-        Ok(Err(e)) => Some(e),
+        Ok(Err(e)) => Some(e.into()),
         Err(_) => Some(DownlinkFailureReason::RemoteStopped),
         _ => None,
     };

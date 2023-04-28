@@ -52,8 +52,8 @@ use self::{
     reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
     task::{
-        AdHocChannelRequest, AgentInitTask, AgentRuntimeTask, LaneRuntimeSpec, NodeDescriptor,
-        StoreRuntimeSpec, InitTaskConfig, AdHocTaskConfig,
+        AdHocChannelRequest, AdHocTaskConfig, AgentInitTask, AgentRuntimeTask, InitTaskConfig,
+        LaneRuntimeSpec, NodeDescriptor, StoreRuntimeSpec,
     },
 };
 
@@ -530,10 +530,10 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
         let (init_tx, init_rx) = trigger::trigger();
 
-        let ad_hoc_config = AdHocTaskConfig { 
-            buffer_size: runtime_config.ad_hoc_buffer_size, 
-            retry_strategy: runtime_config.ad_hoc_output_retry, 
-            timeout_delay: runtime_config.ad_hoc_output_timeout 
+        let ad_hoc_config = AdHocTaskConfig {
+            buffer_size: runtime_config.ad_hoc_buffer_size,
+            retry_strategy: runtime_config.ad_hoc_output_retry,
+            timeout_delay: runtime_config.ad_hoc_output_timeout,
         };
 
         let runtime_init_task = AgentInitTask::new(
@@ -612,11 +612,11 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             .instrument(
                 info_span!("Agent initialization task.", id = %identity, route = %node_uri),
             );
-        
-        let ad_hoc_config = AdHocTaskConfig { 
-            buffer_size: runtime_config.ad_hoc_buffer_size, 
-            retry_strategy: runtime_config.ad_hoc_output_retry, 
-            timeout_delay: runtime_config.ad_hoc_output_timeout 
+
+        let ad_hoc_config = AdHocTaskConfig {
+            buffer_size: runtime_config.ad_hoc_buffer_size,
+            retry_strategy: runtime_config.ad_hoc_output_retry,
+            timeout_delay: runtime_config.ad_hoc_output_timeout,
         };
 
         async move {

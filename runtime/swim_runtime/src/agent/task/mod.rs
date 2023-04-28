@@ -77,8 +77,8 @@ mod sender;
 mod timeout_coord;
 mod write_fut;
 
-pub use init::{AgentInitTask, InitTaskConfig};
 pub use ad_hoc::AdHocTaskConfig;
+pub use init::{AgentInitTask, InitTaskConfig};
 
 #[cfg(test)]
 mod fake_store;
@@ -470,19 +470,14 @@ where
         )
         .instrument(info_span!("Agent Runtime Write Task", %identity, %node_uri));
 
-        let ad_hoc_config = AdHocTaskConfig { 
-            buffer_size: config.ad_hoc_buffer_size, 
-            retry_strategy: config.ad_hoc_output_retry, 
-            timeout_delay: config.ad_hoc_output_timeout 
+        let ad_hoc_config = AdHocTaskConfig {
+            buffer_size: config.ad_hoc_buffer_size,
+            retry_strategy: config.ad_hoc_output_retry,
+            timeout_delay: config.ad_hoc_output_timeout,
         };
 
-        let ad_hoc = ad_hoc::ad_hoc_commands_task(
-            identity,
-            ad_hoc_rx,
-            ad_hoc_state,
-            ad_hoc_config
-        )
-        .instrument(info_span!("Agent Ad Hoc Command Task", %identity, %node_uri));
+        let ad_hoc = ad_hoc::ad_hoc_commands_task(identity, ad_hoc_rx, ad_hoc_state, ad_hoc_config)
+            .instrument(info_span!("Agent Ad Hoc Command Task", %identity, %node_uri));
 
         let io = await_io_tasks(read, write, kill_switch_tx);
         let (_, _, result) = join3(att, ad_hoc, io).await;

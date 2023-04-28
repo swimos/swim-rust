@@ -15,7 +15,9 @@
 use std::{convert::identity, num::NonZeroUsize, time::Duration};
 
 use futures::{
-    future::{Either, join}, stream::FuturesUnordered, Future, FutureExt, StreamExt, TryFutureExt, Stream,
+    future::{join, Either},
+    stream::FuturesUnordered,
+    Future, FutureExt, Stream, StreamExt, TryFutureExt,
 };
 use swim_api::{
     agent::{LaneConfig, StoreConfig, UplinkKind},
@@ -43,8 +45,9 @@ use crate::agent::{
 };
 
 use super::{
+    ad_hoc::{ad_hoc_commands_task, AdHocTaskConfig, AdHocTaskState},
     AdHocChannelRequest, InitialEndpoints, ItemEndpoint, ItemInitTask, LaneEndpoint, LaneResult,
-    LaneRuntimeSpec, StoreEndpoint, StoreResult, StoreRuntimeSpec, ad_hoc::{AdHocTaskState, ad_hoc_commands_task, AdHocTaskConfig},
+    LaneRuntimeSpec, StoreEndpoint, StoreResult, StoreRuntimeSpec,
 };
 
 use tracing::{error, info};
@@ -143,7 +146,11 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
             config,
             reporting,
         } = self;
-        let InitTaskConfig { ad_hoc_queue_size, item_init_timeout, ad_hoc } = config;
+        let InitTaskConfig {
+            ad_hoc_queue_size,
+            item_init_timeout,
+            ad_hoc,
+        } = config;
         let initialization = Initialization::new(reporting, item_init_timeout);
         let mut request_stream = ReceiverStream::new(requests);
         let terminated = (&mut request_stream).take_until(init_complete);
@@ -157,15 +164,17 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
 
         let ad_hoc_task = ad_hoc_commands_task(identity, ad_hoc_rx, ad_hoc_state, ad_hoc);
 
-        let item_init_task = initialize_items(&store, 
-            terminated, 
-            &link_requests, 
+        let item_init_task = initialize_items(
+            &store,
+            terminated,
+            &link_requests,
             &ad_hoc_tx,
-            &initialization, 
-            &mut lane_endpoints, 
-            &mut store_endpoints);
+            &initialization,
+            &mut lane_endpoints,
+            &mut store_endpoints,
+        );
 
-        let(result, ad_hoc_state) = join(item_init_task, ad_hoc_task).await;
+        let (result, ad_hoc_state) = join(item_init_task, ad_hoc_task).await;
         result?;
 
         let Initialization { reporting, .. } = initialization;
@@ -436,12 +445,14 @@ async fn initialize_items<Store, R>(
     ad_hoc_tx: &mpsc::Sender<AdHocChannelRequest>,
     initialization: &Initialization,
     lane_endpoints: &mut Vec<LaneEndpoint<Io>>,
-    store_endpoints: &mut Vec<StoreEndpoint>) -> Result<(), AgentExecError>
+    store_endpoints: &mut Vec<StoreEndpoint>,
+) -> Result<(), AgentExecError>
 where
     Store: AgentPersistence + Send + Sync,
-    R: Stream<Item = AgentRuntimeRequest> + Unpin {
+    R: Stream<Item = AgentRuntimeRequest> + Unpin,
+{
     let mut initializers: FuturesUnordered<ItemInitTask<'_, Store::StoreId>> =
-            FuturesUnordered::new();
+        FuturesUnordered::new();
     loop {
         let event = tokio::select! {
             Some(item_init_done) = initializers.next(), if !initializers.is_empty() => Either::Left(item_init_done),
@@ -462,11 +473,7 @@ where
             },
             Either::Right(request) => match request {
                 AgentRuntimeRequest::AdHoc(req) => {
-                    if ad_hoc_tx
-                        .send(req)
-                        .await
-                        .is_err()
-                    {
+                    if ad_hoc_tx.send(req).await.is_err() {
                         break Err(AgentExecError::FailedDownlinkRequest);
                     }
                 }

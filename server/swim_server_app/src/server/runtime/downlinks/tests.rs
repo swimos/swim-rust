@@ -29,7 +29,7 @@ use futures::{
 use parking_lot::Mutex;
 use swim_api::{
     downlink::DownlinkKind,
-    error::{DownlinkFailureReason, DownlinkRuntimeError},
+    error::DownlinkRuntimeError,
     protocol::downlink::{
         DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
     },
@@ -38,7 +38,7 @@ use swim_messages::protocol::{
     Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder,
 };
 use swim_model::{address::RelativeAddress, Text};
-use swim_remote::AttachClient;
+use swim_remote::{AttachClient, LinkError};
 use swim_runtime::{
     agent::{DownlinkRequest, LinkRequest},
     downlink::{DownlinkOptions, DownlinkRuntimeConfig, Io},
@@ -246,9 +246,7 @@ impl FakeServerTask {
                             );
                             Ok(())
                         } else {
-                            Err(DownlinkFailureReason::Unresolvable(
-                                "Bad remote.".to_string(),
-                            ))
+                            Err(LinkError::NoEndpoint(path))
                         };
                         assert!(done.send(result).is_ok());
                     }

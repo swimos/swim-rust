@@ -250,10 +250,10 @@ pub struct AdHocTaskState {
 
 impl AdHocTaskState {
     pub fn new(link_requests: mpsc::Sender<LinkRequest>) -> Self {
-        AdHocTaskState { 
-            reader: Default::default(), 
-            outputs: Default::default(), 
-            link_requests 
+        AdHocTaskState {
+            reader: Default::default(),
+            outputs: Default::default(),
+            link_requests,
         }
     }
 }
@@ -270,8 +270,16 @@ pub async fn ad_hoc_commands_task(
     state: AdHocTaskState,
     config: AdHocTaskConfig,
 ) -> AdHocTaskState {
-    let AdHocTaskState { mut reader, mut outputs, link_requests } = state;
-    let AdHocTaskConfig { buffer_size, retry_strategy, timeout_delay } = config;
+    let AdHocTaskState {
+        mut reader,
+        mut outputs,
+        link_requests,
+    } = state;
+    let AdHocTaskConfig {
+        buffer_size,
+        retry_strategy,
+        timeout_delay,
+    } = config;
     let mut pending = FuturesUnordered::new();
 
     loop {
@@ -406,7 +414,7 @@ pub async fn ad_hoc_commands_task(
                         Ok(writer) => {
                             trace!(identify = %identity, key = ?key, "Completed writing an ad hoc command.");
                             output.replace_writer(writer);
-                        },
+                        }
                         Err(err) => {
                             error!(error = %err, "Writing ad hoc command to channel failed.");
                             outputs.remove(&key);
@@ -424,7 +432,11 @@ pub async fn ad_hoc_commands_task(
             }
         }
     }
-    AdHocTaskState { reader, outputs, link_requests }
+    AdHocTaskState {
+        reader,
+        outputs,
+        link_requests,
+    }
 }
 
 async fn try_open_new(
