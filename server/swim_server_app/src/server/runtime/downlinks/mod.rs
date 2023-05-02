@@ -30,7 +30,7 @@ use futures::{stream::FuturesUnordered, Future, FutureExt, StreamExt};
 pub use pending::{DlKey, PendingDownlinks};
 use swim_api::{
     downlink::DownlinkKind,
-    error::{DownlinkFailureReason, DownlinkRuntimeError},
+    error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError},
 };
 use swim_model::{address::RelativeAddress, Text};
 use swim_remote::AttachClient;
@@ -149,7 +149,14 @@ where
                                     );
                                 }
                             }
-                            CommanderKey::Local(_) => todo!(),
+                            CommanderKey::Local(_) => tasks.push(
+                                attach_cmd_request_local(
+                                    request,
+                                    local_handle.client_tx.clone(),
+                                    config.remote_buffer_size,
+                                )
+                                .boxed(),
+                            ),
                         }
                     }
                     Event::Request(LinkRequest::Downlink(request)) => {
@@ -291,12 +298,12 @@ where
                         } in dl_requests
                         {
                             if promise.send(Err(error.clone())).is_err() {
-                                info!(error = %error, remote = ?remote, address = %address, kind = ?kind, "Request for downlink dropped before it failed to resolve.");
+                                debug!(error = %error, remote = ?remote, address = %address, kind = ?kind, "Request for downlink dropped before it failed to resolve.");
                             }
                         }
                         for CommanderRequest { key, promise } in cmd_requests {
                             if promise.send(Err(error.clone())).is_err() {
-                                info!(error = %error, key = ?key, "Request for client connection dropped before it failed to resolve.");
+                                debug!(error = %error, key = ?key, "Request for client connection dropped before it failed to resolve.");
                             }
                         }
                     }
@@ -368,7 +375,7 @@ where
                         }
                         for CommanderRequest { key, promise } in cmd_requests {
                             if promise.send(Err(err.clone())).is_err() {
-                                info!(error = %err, key = ?key, "Request for client connection dropped before it failed to complete.");
+                                debug!(error = %err, key = ?key, "Request for client connection dropped before it failed to complete.");
                             }
                         }
                     }
@@ -428,7 +435,7 @@ where
                                     )))
                                     .is_err()
                                 {
-                                    info!(remote = ?remote, address = %address, kind = ?kind, "Request for a downlink dropped before it failed to complete.");
+                                    debug!(remote = ?remote, address = %address, kind = ?kind, "Request for a downlink dropped before it failed to complete.");
                                 }
                             }
                         }
@@ -467,7 +474,7 @@ where
                     } => {
                         debug!(remote = ?remote, address = %address, kind = ?kind, "Attaching to downlink runtime completed successfully.");
                         if promise.send(result).is_err() {
-                            info!(remote = ?remote, address = %address, kind = ?kind, "A request for a downlink was dropped before it was satisfied.");
+                            debug!(remote = ?remote, address = %address, kind = ?kind, "A request for a downlink was dropped before it was satisfied.");
                         }
                     }
                     Event::RuntimeTerminated {
@@ -498,7 +505,7 @@ where
                     } => {
                         debug!(key = ?key, "Completing command channel request.");
                         if promise.send(result).is_err() {
-                            info!(key = ?key, "A request for a command channel was dropped before it was satisfied.");
+                            debug!(key = ?key, "A request for a command channel was dropped before it was satisfied.");
                         }
                     }
                     Event::ClientStopped {
@@ -517,6 +524,21 @@ where
                                 break;
                             }
                         }
+                    }
+                    Event::LocalAttachFailed { request } => {
+                        let CommanderRequest { key, promise } = request;
+                        if promise
+                            .send(Err(DownlinkRuntimeError::RuntimeError(
+                                AgentRuntimeError::Stopping,
+                            )))
+                            .is_err()
+                        {
+                            debug!(key = ?key, "Request for client connection dropped before it failed to complete.");
+                        }
+                        info!(
+                            "Local agent attachment channel stopped indicating server is stopping."
+                        );
+                        break;
                     }
                 }
             }
@@ -587,6 +609,9 @@ enum Event {
         socket_addr: SocketAddr,
         scheme: Scheme,
         host: Text,
+        request: CommanderRequest,
+    },
+    LocalAttachFailed {
         request: CommanderRequest,
     },
 }
@@ -810,6 +835,36 @@ async fn attach_cmd_request(
             host,
             request,
         },
+    }
+}
+
+async fn attach_cmd_request_local(
+    request: CommanderRequest,
+    client_tx: mpsc::Sender<AttachClient>,
+    remote_buffer_size: NonZeroUsize,
+) -> Event {
+    let (tx, rx) = byte_channel(remote_buffer_size);
+    let (done_tx, done_rx) = oneshot::channel();
+    if client_tx
+        .send(AttachClient::OneWay {
+            receiver: rx,
+            done: done_tx,
+        })
+        .await
+        .is_err()
+    {
+        return Event::LocalAttachFailed { request };
+    };
+    match done_rx.await {
+        Ok(Ok(_)) => Event::CommanderAttached {
+            request,
+            result: Ok(tx),
+        },
+        Ok(Err(e)) => Event::CommanderAttached {
+            request,
+            result: Err(DownlinkRuntimeError::DownlinkConnectionFailed(e.into())),
+        },
+        Err(_) => Event::LocalAttachFailed { request },
     }
 }
 
