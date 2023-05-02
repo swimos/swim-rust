@@ -76,12 +76,10 @@ impl AdHocSender {
         self.buffer.put(buffer)
     }
 
-    fn send_commands<'a>(mut self) -> impl Future<Output = Result<Self, std::io::Error>> + 'static {
-        async move {
-            let AdHocSender { sender, buffer } = &mut self;
-            sender.write(buffer).await?;
-            Ok(self)
-        }
+    async fn send_commands<'a>(mut self) -> Result<Self, std::io::Error> {
+        let AdHocSender { sender, buffer } = &mut self;
+        sender.write_all(buffer).await?;
+        Ok(self)
     }
 }
 
@@ -205,7 +203,7 @@ impl AdHocOutput {
         let l = dirty.len();
         match (
             writer.take(),
-            dirty.get(0).and_then(|i| lane_buffers.get_mut(i)),
+            dirty.first().and_then(|i| lane_buffers.get_mut(i)),
         ) {
             (_, None) | (None, _) => None,
             (Some(mut writer), Some(lane_buffer)) if l == 1 => {
