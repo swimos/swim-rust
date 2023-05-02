@@ -81,6 +81,8 @@ impl From<LinkError> for DownlinkFailureReason {
 pub enum AttachClient {
     /// Attach a send only client.
     OneWay {
+        agent_id: Uuid,
+        path: Option<RelativeAddress<Text>>,
         receiver: ByteReader,
         done: oneshot::Sender<Result<(), LinkError>>,
     },
@@ -395,7 +397,7 @@ async fn registration_task<F>(
                     break;
                 }
             }
-            AttachClient::OneWay { receiver, done } => {
+            AttachClient::OneWay { receiver, done, .. } => {
                 debug!("Attaching send only client.");
                 if outgoing_tx
                     .send(OutgoingTaskMessage::RegisterOutgoing {

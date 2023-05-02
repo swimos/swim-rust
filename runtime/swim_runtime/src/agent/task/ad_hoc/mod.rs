@@ -368,7 +368,7 @@ pub async fn ad_hoc_commands_task(
                     }
                 } else {
                     outputs.insert(key.clone(), AdHocOutput::new(identity, retry_strategy));
-                    let fut = try_open_new(key, link_requests.clone(), None);
+                    let fut = try_open_new(identity, key, link_requests.clone(), None);
                     pending.push(Either::Left(Either::Right(fut)));
                 }
             }
@@ -391,12 +391,12 @@ pub async fn ad_hoc_commands_task(
                         }
                         RetryResult::Immediate => {
                             error!(error = %err, "Opening a new ad hoc command channel failed. Retrying immediately.");
-                            let fut = try_open_new(key, link_requests.clone(), None);
+                            let fut = try_open_new(identity, key, link_requests.clone(), None);
                             pending.push(Either::Left(Either::Right(fut)));
                         }
                         RetryResult::Delayed(t) => {
                             error!(error = %err, delay = ?t, "Opening a new ad hoc command channel failed. Retrying after a delay.");
-                            let fut = try_open_new(key, link_requests.clone(), Some(t));
+                            let fut = try_open_new(identity, key, link_requests.clone(), Some(t));
                             pending.push(Either::Left(Either::Right(fut)));
                         }
                     }
@@ -438,6 +438,7 @@ pub async fn ad_hoc_commands_task(
 }
 
 async fn try_open_new(
+    agent_id: Uuid,
     key: CommanderKey,
     link_requests: mpsc::Sender<LinkRequest>,
     delay: Option<Duration>,
@@ -447,7 +448,7 @@ async fn try_open_new(
         tokio::time::sleep(delay).await;
     }
     let (tx, rx) = oneshot::channel();
-    let req = CommanderRequest::new(key.clone(), tx);
+    let req = CommanderRequest::new(agent_id, key.clone(), tx);
     if link_requests
         .send(LinkRequest::Commander(req))
         .await

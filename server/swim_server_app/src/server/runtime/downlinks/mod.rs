@@ -149,14 +149,18 @@ where
                                     );
                                 }
                             }
-                            CommanderKey::Local(_) => tasks.push(
-                                attach_cmd_request_local(
-                                    request,
-                                    local_handle.client_tx.clone(),
-                                    config.remote_buffer_size,
+                            CommanderKey::Local(path) => {
+                                let path = path.clone();
+                                tasks.push(
+                                    attach_cmd_request_local(
+                                        request,
+                                        path,
+                                        local_handle.client_tx.clone(),
+                                        config.remote_buffer_size,
+                                    )
+                                    .boxed(),
                                 )
-                                .boxed(),
-                            ),
+                            }
                         }
                     }
                     Event::Request(LinkRequest::Downlink(request)) => {
@@ -301,9 +305,14 @@ where
                                 debug!(error = %error, remote = ?remote, address = %address, kind = ?kind, "Request for downlink dropped before it failed to resolve.");
                             }
                         }
-                        for CommanderRequest { key, promise } in cmd_requests {
+                        for CommanderRequest {
+                            agent_id,
+                            key,
+                            promise,
+                        } in cmd_requests
+                        {
                             if promise.send(Err(error.clone())).is_err() {
-                                debug!(error = %error, key = ?key, "Request for client connection dropped before it failed to resolve.");
+                                debug!(agent_id =%agent_id, error = %error, key = ?key, "Request for client connection dropped before it failed to resolve.");
                             }
                         }
                     }
@@ -373,9 +382,14 @@ where
                                 info!(remote = ?remote, address = %address, kind = ?kind, "Request for a downlink dropped before it failed to complete.");
                             }
                         }
-                        for CommanderRequest { key, promise } in cmd_requests {
+                        for CommanderRequest {
+                            agent_id,
+                            key,
+                            promise,
+                        } in cmd_requests
+                        {
                             if promise.send(Err(err.clone())).is_err() {
-                                debug!(error = %err, key = ?key, "Request for client connection dropped before it failed to complete.");
+                                debug!(agent_id = %agent_id, error = %err, key = ?key, "Request for client connection dropped before it failed to complete.");
                             }
                         }
                     }
@@ -500,12 +514,17 @@ where
                         }
                     }
                     Event::CommanderAttached {
-                        request: CommanderRequest { key, promise },
+                        request:
+                            CommanderRequest {
+                                agent_id,
+                                key,
+                                promise,
+                            },
                         result,
                     } => {
-                        debug!(key = ?key, "Completing command channel request.");
+                        debug!(agent_id = %agent_id, key = ?key, "Completing command channel request.");
                         if promise.send(result).is_err() {
-                            debug!(key = ?key, "A request for a command channel was dropped before it was satisfied.");
+                            debug!(agent_id = %agent_id, key = ?key, "A request for a command channel was dropped before it was satisfied.");
                         }
                     }
                     Event::ClientStopped {
@@ -526,16 +545,20 @@ where
                         }
                     }
                     Event::LocalAttachFailed { request } => {
-                        let CommanderRequest { key, promise } = request;
+                        let CommanderRequest {
+                            agent_id,
+                            key,
+                            promise,
+                        } = request;
                         if promise
                             .send(Err(DownlinkRuntimeError::RuntimeError(
                                 AgentRuntimeError::Stopping,
                             )))
                             .is_err()
                         {
-                            debug!(key = ?key, "Request for client connection dropped before it failed to complete.");
+                            debug!(agent_id = %agent_id, key = ?key, "Request for client connection dropped before it failed to complete.");
                         }
-                        info!(
+                        info!(agent_id = %agent_id,
                             "Local agent attachment channel stopped indicating server is stopping."
                         );
                         break;
@@ -807,6 +830,8 @@ async fn attach_cmd_request(
     let (done_tx, done_rx) = oneshot::channel();
     if client_tx
         .send(AttachClient::OneWay {
+            agent_id: request.agent_id,
+            path: None,
             receiver: rx,
             done: done_tx,
         })
@@ -840,6 +865,7 @@ async fn attach_cmd_request(
 
 async fn attach_cmd_request_local(
     request: CommanderRequest,
+    path: RelativeAddress<Text>,
     client_tx: mpsc::Sender<AttachClient>,
     remote_buffer_size: NonZeroUsize,
 ) -> Event {
@@ -847,6 +873,8 @@ async fn attach_cmd_request_local(
     let (done_tx, done_rx) = oneshot::channel();
     if client_tx
         .send(AttachClient::OneWay {
+            agent_id: request.agent_id,
+            path: Some(path),
             receiver: rx,
             done: done_tx,
         })

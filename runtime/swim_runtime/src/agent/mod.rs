@@ -80,16 +80,22 @@ pub enum CommanderKey {
 
 #[derive(Debug)]
 pub struct CommanderRequest {
+    pub agent_id: Uuid,
     pub key: CommanderKey,
     pub promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
 }
 
 impl CommanderRequest {
     pub fn new(
+        agent_id: Uuid,
         key: CommanderKey,
         promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
     ) -> Self {
-        CommanderRequest { key, promise }
+        CommanderRequest {
+            agent_id,
+            key,
+            promise,
+        }
     }
 }
 
@@ -275,13 +281,19 @@ pub struct AgentAttachmentRequest {
     /// The unique ID of the remote endpoint.
     id: Uuid,
     /// Channels over which the agent runtime task should communicate with the endpoint.
-    io: Io,
+    io: AgentChannel,
     /// A promise that will be satisfied when the agent runtime task closes the remote.
     completion: promise::Sender<DisconnectionReason>,
     /// If provided, this will be triggered when the remote has been fully registered with
     /// the agent runtime request. The completion promise will only receive a non-failed
     /// result after this occurs.
     on_attached: Option<trigger::Sender>,
+}
+
+#[derive(Debug)]
+pub enum AgentChannel {
+    OneWay(ByteReader),
+    TwoWay(Io),
 }
 
 /// A request from an agent to register a new lane for metadata reporting.
@@ -365,7 +377,7 @@ impl AgentAttachmentRequest {
     pub fn new(id: Uuid, io: Io, completion: promise::Sender<DisconnectionReason>) -> Self {
         AgentAttachmentRequest {
             id,
-            io,
+            io: AgentChannel::TwoWay(io),
             completion,
             on_attached: None,
         }
@@ -374,7 +386,7 @@ impl AgentAttachmentRequest {
     /// Constructs a request with a trigger that will be called when the registration completes.
     pub fn with_confirmation(
         id: Uuid,
-        io: Io,
+        io: AgentChannel,
         completion: promise::Sender<DisconnectionReason>,
         on_attached: trigger::Sender,
     ) -> Self {

@@ -23,6 +23,7 @@ use crate::agent::task::links::TriggerUnlink;
 use crate::agent::task::sender::LaneSendError;
 use crate::agent::task::timeout_coord::VoteResult;
 use crate::agent::task::write_fut::SpecialAction;
+use crate::agent::AgentChannel;
 use crate::error::InvalidKey;
 
 use self::ad_hoc::AdHocTaskState;
@@ -606,49 +607,77 @@ async fn handle_att_request<F>(
 where
     F: FnOnce(trigger::Receiver, trigger::Receiver, trigger::Sender),
 {
-    let AgentAttachmentRequest {
-        id,
-        io: (tx, rx),
-        completion,
-        on_attached,
-    } = request;
-    info!(
-        "Attaching a new remote endpoint with ID {id} to the agent.",
-        id = id
-    );
-    let read_permit = match read_tx.reserve().await {
-        Err(_) => {
-            warn!("Read task stopped while attempting to attach a remote endpoint.");
-            return false;
+    match request {
+        AgentAttachmentRequest {
+            id,
+            io: AgentChannel::TwoWay((tx, rx)),
+            completion,
+            on_attached,
+        } => {
+            info!(
+                "Attaching a new remote endpoint with ID {id} to the agent.",
+                id = id
+            );
+            let read_permit = match read_tx.reserve().await {
+                Err(_) => {
+                    warn!("Read task stopped while attempting to attach a remote endpoint.");
+                    return false;
+                }
+                Ok(permit) => permit,
+            };
+            let write_permit = match write_tx.reserve().await {
+                Err(_) => {
+                    warn!("Write task stopped while attempting to attach a remote endpoint.");
+                    return false;
+                }
+                Ok(permit) => permit,
+            };
+            let (read_on_attached, write_on_attached) = if let Some(on_attached) = on_attached {
+                let (read_tx, read_rx) = trigger::trigger();
+                let (write_tx, write_rx) = trigger::trigger();
+                add_att(read_rx, write_rx, on_attached);
+                (Some(read_tx), Some(write_tx))
+            } else {
+                (None, None)
+            };
+            read_permit.send(ReadTaskMessage::Remote {
+                reader: rx,
+                on_attached: read_on_attached,
+            });
+            write_permit.send(WriteTaskMessage::Remote {
+                id,
+                writer: tx,
+                completion,
+                on_attached: write_on_attached,
+            });
+            true
         }
-        Ok(permit) => permit,
-    };
-    let write_permit = match write_tx.reserve().await {
-        Err(_) => {
-            warn!("Write task stopped while attempting to attach a remote endpoint.");
-            return false;
+        AgentAttachmentRequest {
+            io: AgentChannel::OneWay(rx),
+            id,
+            completion,
+            on_attached,
+        } => {
+            info!(
+                "Attaching a new command channel from ID {id} to the agent.",
+                id = id
+            );
+            let (read_attached_tx, read_attached_rx) = trigger::trigger();
+            if read_tx
+                .send(ReadTaskMessage::Remote {
+                    reader: rx,
+                    on_attached: Some(read_attached_tx),
+                })
+                .await
+                .is_err()
+            {
+                warn!("Read task stopped while attempting to attach a command channel.");
+                false
+            } else {
+                true
+            }
         }
-        Ok(permit) => permit,
-    };
-    let (read_on_attached, write_on_attached) = if let Some(on_attached) = on_attached {
-        let (read_tx, read_rx) = trigger::trigger();
-        let (write_tx, write_rx) = trigger::trigger();
-        add_att(read_rx, write_rx, on_attached);
-        (Some(read_tx), Some(write_tx))
-    } else {
-        (None, None)
-    };
-    read_permit.send(ReadTaskMessage::Remote {
-        reader: rx,
-        on_attached: read_on_attached,
-    });
-    write_permit.send(WriteTaskMessage::Remote {
-        id,
-        writer: tx,
-        completion,
-        on_attached: write_on_attached,
-    });
-    true
+    }
 }
 
 type RemoteReceiver = FramedRead<ByteReader, RawRequestMessageDecoder>;

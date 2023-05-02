@@ -38,8 +38,8 @@ use swim_remote::{
     AgentResolutionError, AttachClient, FindNode, LinkError, NoSuchAgent, RemoteTask,
 };
 use swim_runtime::agent::{
-    AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteTask, CombinedAgentConfig,
-    DisconnectionReason, LinkRequest,
+    AgentAttachmentRequest, AgentChannel, AgentExecError, AgentRoute, AgentRouteTask,
+    CombinedAgentConfig, DisconnectionReason, LinkRequest,
 };
 use swim_utilities::routing::route_uri::RouteUri;
 
@@ -650,11 +650,11 @@ where
                     });
                     match result {
                         Ok((agent_id, agent_tx)) => {
-                            let task = attach_downlink(
+                            let task = attach_link(
                                 downlink_id,
                                 agent_id,
                                 agent_tx.clone(),
-                                (sender, receiver),
+                                AgentChannel::TwoWay((sender, receiver)),
                                 config.attachment_timeout,
                                 done,
                             );
@@ -668,8 +668,41 @@ where
                         }
                     }
                 }
-                ServerEvent::LocalClient(_) => {
-                    todo!("Intra-plane commands not yet supported.")
+                ServerEvent::LocalClient(AttachClient::OneWay {
+                    agent_id,
+                    path,
+                    receiver,
+                    done,
+                }) => {
+                    if let Some(path) = path {
+                        let RelativeAddress { node, .. } = &path;
+                        info!(source = %agent_id, node = %node, "Attempting to connect a downlink to an agent.");
+                        let node_store_fut = plane_store.node_store(node.as_str());
+                        let result = agents.resolve_agent(node.clone(), |name, route_task| {
+                            let task = route_task.run_agent_with_store(node_store_fut);
+                            agent_tasks.push(attach_node(name, config.channel_coop_budget, task));
+                        });
+                        match result {
+                            Ok((target_id, agent_tx)) => {
+                                let task = attach_link(
+                                    agent_id,
+                                    target_id,
+                                    agent_tx.clone(),
+                                    AgentChannel::OneWay(receiver),
+                                    config.attachment_timeout,
+                                    done,
+                                );
+                                dl_connection_tasks.push(task);
+                            }
+                            Err(node) => {
+                                warn!(node = %node, "Requested agent does not exist.");
+                                if done.send(Err(LinkError::NoEndpoint(path))).is_err() {
+                                    info!(node = %node, "Command channel request dropped before it was satisfied.");
+                                }
+                            }
+                        }
+                        todo!("Intra-plane commands not yet supported.")
+                    }
                 }
                 ServerEvent::StartAgent(StartAgentRequest { route, response }) => {
                     info!(route = %route, "Attempting to start an agent instance.");
@@ -948,7 +981,7 @@ async fn attach_agent(
 
     let req = AgentAttachmentRequest::with_confirmation(
         remote_id,
-        (out_tx, in_rx),
+        AgentChannel::TwoWay((out_tx, in_rx)),
         disconnect_tx,
         connnected_tx,
     );
@@ -979,11 +1012,11 @@ async fn attach_agent(
     }
 }
 
-async fn attach_downlink(
+async fn attach_link(
     downlink_id: Uuid,
     agent_id: Uuid,
     tx: mpsc::Sender<AgentAttachmentRequest>,
-    io: (ByteWriter, ByteReader),
+    io: AgentChannel,
     connect_timeout: Duration,
     done: oneshot::Sender<Result<(), LinkError>>,
 ) -> ConnectionTerminated {
