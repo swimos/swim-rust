@@ -23,7 +23,6 @@ use crate::agent::task::links::TriggerUnlink;
 use crate::agent::task::sender::LaneSendError;
 use crate::agent::task::timeout_coord::VoteResult;
 use crate::agent::task::write_fut::SpecialAction;
-use crate::agent::AgentChannel;
 use crate::error::InvalidKey;
 
 use self::ad_hoc::AdHocTaskState;
@@ -573,9 +572,13 @@ async fn attachment_task<F>(
                             }
                         }
                         Either::Right(request) => {
-                            if !handle_att_request(request, &read_tx, &write_tx, |read_rx, write_rx, on_attached| {
+                            if !handle_att_request(request, &read_tx, &write_tx, |read_rx, maybe_write_rx, on_attached| {
                                 attachments.push(async move {
-                                    if matches!(join(read_rx, write_rx).await, (Ok(_), Ok(_))) {
+                                    if let Some(write_rx) = maybe_write_rx {
+                                        if matches!(join(read_rx, write_rx).await, (Ok(_), Ok(_))) {
+                                            on_attached.trigger();
+                                        }
+                                    } else if read_rx.await.is_ok() {
                                         on_attached.trigger();
                                     }
                                 })
@@ -605,12 +608,12 @@ async fn handle_att_request<F>(
     add_att: F,
 ) -> bool
 where
-    F: FnOnce(trigger::Receiver, trigger::Receiver, trigger::Sender),
+    F: FnOnce(trigger::Receiver, Option<trigger::Receiver>, trigger::Sender),
 {
     match request {
-        AgentAttachmentRequest {
+        AgentAttachmentRequest::TwoWay {
             id,
-            io: AgentChannel::TwoWay((tx, rx)),
+            io: (tx, rx),
             completion,
             on_attached,
         } => {
@@ -635,7 +638,7 @@ where
             let (read_on_attached, write_on_attached) = if let Some(on_attached) = on_attached {
                 let (read_tx, read_rx) = trigger::trigger();
                 let (write_tx, write_rx) = trigger::trigger();
-                add_att(read_rx, write_rx, on_attached);
+                add_att(read_rx, Some(write_rx), on_attached);
                 (Some(read_tx), Some(write_tx))
             } else {
                 (None, None)
@@ -652,30 +655,34 @@ where
             });
             true
         }
-        AgentAttachmentRequest {
-            io: AgentChannel::OneWay(rx),
+        AgentAttachmentRequest::OneWay {
+            io: rx,
             id,
-            completion,
             on_attached,
         } => {
             info!(
                 "Attaching a new command channel from ID {id} to the agent.",
                 id = id
             );
-            let (read_attached_tx, read_attached_rx) = trigger::trigger();
-            if read_tx
-                .send(ReadTaskMessage::Remote {
-                    reader: rx,
-                    on_attached: Some(read_attached_tx),
-                })
-                .await
-                .is_err()
-            {
-                warn!("Read task stopped while attempting to attach a command channel.");
-                false
+            let read_permit = match read_tx.reserve().await {
+                Err(_) => {
+                    warn!("Read task stopped while attempting to attach a command channel.");
+                    return false;
+                }
+                Ok(permit) => permit,
+            };
+            let read_on_attached = if let Some(on_attached) = on_attached {
+                let (read_tx, read_rx) = trigger::trigger();
+                add_att(read_rx, None, on_attached);
+                Some(read_tx)
             } else {
-                true
-            }
+                None
+            };
+            read_permit.send(ReadTaskMessage::Remote {
+                reader: rx,
+                on_attached: read_on_attached,
+            });
+            true
         }
     }
 }
@@ -686,7 +693,7 @@ fn remote_receiver(reader: ByteReader) -> RemoteReceiver {
     RemoteReceiver::new(reader, Default::default())
 }
 
-const TASK_COORD_ERR: &str = "Stopping after communcating with the write task failed.";
+const TASK_COORD_ERR: &str = "Stopping after communicating with the write task failed.";
 const STOP_VOTED: &str = "Stopping as read and write tasks have both voted to do so.";
 
 /// Events that can occur within the read task.

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::future::join;
+use futures::future::{join, Either};
 use futures::stream::{unfold, FuturesUnordered};
 use futures::{FutureExt, Stream, StreamExt};
 use ratchet::{SplittableExtension, WebSocket, WebSocketStream};
@@ -38,9 +38,10 @@ use swim_remote::{
     AgentResolutionError, AttachClient, FindNode, LinkError, NoSuchAgent, RemoteTask,
 };
 use swim_runtime::agent::{
-    AgentAttachmentRequest, AgentChannel, AgentExecError, AgentRoute, AgentRouteTask,
-    CombinedAgentConfig, DisconnectionReason, LinkRequest,
+    AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteTask, CombinedAgentConfig,
+    DisconnectionReason, LinkRequest,
 };
+use swim_runtime::downlink::Io;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use swim_runtime::net::{
@@ -120,6 +121,7 @@ enum ServerEvent<Sock, Ext> {
     RemoteStopped(SocketAddr, Result<(), JoinError>),
     AgentStopped(Text, Result<Result<(), AgentExecError>, JoinError>),
     ConnectionStopped(ConnectionTerminated),
+    CmdChannelResult(Result<(), CmdLinkTimeout>),
     RemoteClientRequest(ClientRegistration),
     NewClient(
         Result<(SocketAddr, WebSocket<Sock, Ext>), NewClientError>,
@@ -328,7 +330,7 @@ where
         let mut remote_tasks = FuturesUnordered::new();
         let mut agent_tasks = FuturesUnordered::new();
         let mut connection_tasks = FuturesUnordered::new();
-        let mut dl_connection_tasks = FuturesUnordered::new();
+        let mut cmd_connection_tasks = FuturesUnordered::new();
         let mut client_tasks = FuturesUnordered::new();
 
         let mut accept_stream = listener.into_stream().take_until(stop_signal);
@@ -372,7 +374,7 @@ where
                         Some((addr, result)) = remote_tasks.next(), if !remote_tasks.is_empty() => ServerEvent::RemoteStopped(addr, result),
                         Some((id, result)) = agent_tasks.next(), if !agent_tasks.is_empty() => ServerEvent::AgentStopped(id, result),
                         Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
-                        Some(reason) = dl_connection_tasks.next(), if !dl_connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
+                        Some(result) = cmd_connection_tasks.next(), if !cmd_connection_tasks.is_empty() => ServerEvent::CmdChannelResult(result),
                         Some(event) = client_tasks.next(), if !client_tasks.is_empty() => event,
                         Some(req) = start_reqs.next() => ServerEvent::StartAgent(req),
                         maybe_result = accept_stream.next() => {
@@ -421,7 +423,7 @@ where
                         Some((id, result)) = remote_tasks.next(), if !remote_tasks.is_empty() => ServerEvent::RemoteStopped(id, result),
                         Some((id, result)) = agent_tasks.next(), if !agent_tasks.is_empty() => ServerEvent::AgentStopped(id, result),
                         Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
-                        Some(reason) = dl_connection_tasks.next(), if !dl_connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
+                        Some(result) = cmd_connection_tasks.next(), if !cmd_connection_tasks.is_empty() => ServerEvent::CmdChannelResult(result),
                         Some(find_route) = find_rx.recv() => ServerEvent::FindRoute(find_route),
                         else => continue,
                     }
@@ -443,6 +445,7 @@ where
                             }
                         },
                         Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
+                        Some(result) = cmd_connection_tasks.next(), if !cmd_connection_tasks.is_empty() => ServerEvent::CmdChannelResult(result),
                         Some(find_route) = find_rx.recv() => ServerEvent::FailRoute(find_route),
                         else => continue,
                     }
@@ -459,7 +462,7 @@ where
                             }
                         },
                         Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
-                        Some(reason) = dl_connection_tasks.next(), if !dl_connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
+                        Some(result) = cmd_connection_tasks.next(), if !cmd_connection_tasks.is_empty() => ServerEvent::CmdChannelResult(result),
                         Some(find_route) = find_rx.recv() => ServerEvent::FailRoute(find_route),
                         else => continue,
                     }
@@ -526,11 +529,16 @@ where
                     } = reason;
                     match &reason {
                         DisconnectionReason::DuplicateRegistration(_) => {
-                            error!(conected_id = %connected_id, agent_id = %agent_id, "Multiple connections attempted between a remote and an agent.");
+                            error!(connected_id = %connected_id, agent_id = %agent_id, "Multiple connections attempted between a remote and an agent.");
                         }
                         _ => {
                             info!(conected_id = %connected_id, agent_id = %agent_id, reason = %reason, "A connection between and agent and a remote stopped.");
                         }
+                    }
+                }
+                ServerEvent::CmdChannelResult(result) => {
+                    if let Err(err) = result {
+                        error!(error = ?err, "Connecting a local command channel failed.");
                     }
                 }
                 ServerEvent::FailRoute(FindNode {
@@ -569,7 +577,7 @@ where
                                 config.attachment_timeout,
                                 provider,
                             ).instrument(info_span!("Remote to agent connection task.", remote_id = %source, agent_id = %agent_id));
-                            connection_tasks.push(connect_task);
+                            connection_tasks.push(Either::Left(connect_task));
                         }
                         Err(node) => {
                             debug!(node = %node, "Requested agent does not exist.");
@@ -650,15 +658,15 @@ where
                     });
                     match result {
                         Ok((agent_id, agent_tx)) => {
-                            let task = attach_link(
+                            let task = attach_link_remote(
                                 downlink_id,
                                 agent_id,
                                 agent_tx.clone(),
-                                AgentChannel::TwoWay((sender, receiver)),
+                                (sender, receiver),
                                 config.attachment_timeout,
                                 done,
                             );
-                            dl_connection_tasks.push(task);
+                            connection_tasks.push(Either::Right(task));
                         }
                         Err(node) => {
                             warn!(node = %node, "Requested agent does not exist.");
@@ -684,15 +692,15 @@ where
                         });
                         match result {
                             Ok((target_id, agent_tx)) => {
-                                let task = attach_link(
+                                let task = attach_link_local(
                                     agent_id,
                                     target_id,
                                     agent_tx.clone(),
-                                    AgentChannel::OneWay(receiver),
+                                    receiver,
                                     config.attachment_timeout,
                                     done,
                                 );
-                                dl_connection_tasks.push(task);
+                                cmd_connection_tasks.push(task);
                             }
                             Err(node) => {
                                 warn!(node = %node, "Requested agent does not exist.");
@@ -981,7 +989,7 @@ async fn attach_agent(
 
     let req = AgentAttachmentRequest::with_confirmation(
         remote_id,
-        AgentChannel::TwoWay((out_tx, in_rx)),
+        (out_tx, in_rx),
         disconnect_tx,
         connnected_tx,
     );
@@ -1012,11 +1020,11 @@ async fn attach_agent(
     }
 }
 
-async fn attach_link(
+async fn attach_link_remote(
     downlink_id: Uuid,
     agent_id: Uuid,
     tx: mpsc::Sender<AgentAttachmentRequest>,
-    io: AgentChannel,
+    io: Io,
     connect_timeout: Duration,
     done: oneshot::Sender<Result<(), LinkError>>,
 ) -> ConnectionTerminated {
@@ -1045,6 +1053,46 @@ async fn attach_link(
         connected_id: downlink_id,
         agent_id,
         reason,
+    }
+}
+
+#[derive(Debug, Clone, Copy, Error)]
+#[error("Connecting command channel from {source_agent} to {target_agent} timed out.")]
+struct CmdLinkTimeout {
+    source_agent: Uuid,
+    target_agent: Uuid,
+}
+
+async fn attach_link_local(
+    source_agent_id: Uuid,
+    agent_id: Uuid,
+    tx: mpsc::Sender<AgentAttachmentRequest>,
+    io: ByteReader,
+    connect_timeout: Duration,
+    done: oneshot::Sender<Result<(), LinkError>>,
+) -> Result<(), CmdLinkTimeout> {
+    let (connected_tx, connected_rx) = trigger::trigger();
+    let req = AgentAttachmentRequest::commander(source_agent_id, io, connected_tx);
+    match tokio::time::timeout(connect_timeout, async move {
+        tx.send(req).await.is_ok() && connected_rx.await.is_ok()
+    })
+    .await
+    {
+        Ok(_) => {
+            if done.send(Ok(())).is_err() {
+                debug!("Downlink request dropped before satisfied.");
+                Err(CmdLinkTimeout {
+                    source_agent: source_agent_id,
+                    target_agent: agent_id,
+                })
+            } else {
+                Ok(())
+            }
+        }
+        _ => Err(CmdLinkTimeout {
+            source_agent: source_agent_id,
+            target_agent: agent_id,
+        }),
     }
 }
 

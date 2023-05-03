@@ -277,23 +277,29 @@ impl Display for DisconnectionReason {
 
 /// A request to attach a new remote connection to an agent runtime task.
 #[derive(Debug)]
-pub struct AgentAttachmentRequest {
-    /// The unique ID of the remote endpoint.
-    id: Uuid,
-    /// Channels over which the agent runtime task should communicate with the endpoint.
-    io: AgentChannel,
-    /// A promise that will be satisfied when the agent runtime task closes the remote.
-    completion: promise::Sender<DisconnectionReason>,
-    /// If provided, this will be triggered when the remote has been fully registered with
-    /// the agent runtime request. The completion promise will only receive a non-failed
-    /// result after this occurs.
-    on_attached: Option<trigger::Sender>,
-}
-
-#[derive(Debug)]
-pub enum AgentChannel {
-    OneWay(ByteReader),
-    TwoWay(Io),
+pub enum AgentAttachmentRequest {
+    OneWay {
+        /// The unique ID of the remote endpoint.
+        id: Uuid,
+        /// Channels over which the agent runtime task should communicate with the endpoint.
+        io: ByteReader,
+        /// If provided, this will be triggered when the remote has been fully registered with
+        /// the agent runtime request. The completion promise will only receive a non-failed
+        /// result after this occurs.
+        on_attached: Option<trigger::Sender>,
+    },
+    TwoWay {
+        /// The unique ID of the remote endpoint.
+        id: Uuid,
+        /// Channels over which the agent runtime task should communicate with the endpoint.
+        io: Io,
+        /// If provided, this will be triggered when the remote has been fully registered with
+        /// the agent runtime request. The completion promise will only receive a non-failed
+        /// result after this occurs.
+        on_attached: Option<trigger::Sender>,
+        /// A promise that will be satisfied when the agent runtime task closes the remote.
+        completion: promise::Sender<DisconnectionReason>,
+    },
 }
 
 /// A request from an agent to register a new lane for metadata reporting.
@@ -374,10 +380,10 @@ impl NodeReporting {
 }
 
 impl AgentAttachmentRequest {
-    pub fn new(id: Uuid, io: Io, completion: promise::Sender<DisconnectionReason>) -> Self {
-        AgentAttachmentRequest {
+    pub fn downlink(id: Uuid, io: Io, completion: promise::Sender<DisconnectionReason>) -> Self {
+        AgentAttachmentRequest::TwoWay {
             id,
-            io: AgentChannel::TwoWay(io),
+            io,
             completion,
             on_attached: None,
         }
@@ -386,14 +392,22 @@ impl AgentAttachmentRequest {
     /// Constructs a request with a trigger that will be called when the registration completes.
     pub fn with_confirmation(
         id: Uuid,
-        io: AgentChannel,
+        io: Io,
         completion: promise::Sender<DisconnectionReason>,
         on_attached: trigger::Sender,
     ) -> Self {
-        AgentAttachmentRequest {
+        AgentAttachmentRequest::TwoWay {
             id,
             io,
             completion,
+            on_attached: Some(on_attached),
+        }
+    }
+
+    pub fn commander(id: Uuid, io: ByteReader, on_attached: trigger::Sender) -> Self {
+        AgentAttachmentRequest::OneWay {
+            id,
+            io,
             on_attached: Some(on_attached),
         }
     }
