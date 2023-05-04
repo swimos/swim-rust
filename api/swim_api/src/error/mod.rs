@@ -188,6 +188,8 @@ pub enum AgentTaskError {
     DeserializationFailed(#[from] ReadError),
     #[error("Error in use code (likely an event handler): {0}")]
     UserCodeError(Box<dyn std::error::Error + Send>),
+    #[error("The agent failed to generate a required output: {0}")]
+    OutputFailed(std::io::Error),
 }
 
 /// Error type that is returned by implementations of the agent interface trait during the initialization phase.

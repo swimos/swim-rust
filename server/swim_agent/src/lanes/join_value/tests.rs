@@ -22,6 +22,7 @@ use std::{
     },
 };
 
+use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt};
 use parking_lot::Mutex;
 use swim_api::{
@@ -172,15 +173,27 @@ fn join_value_lane_get_event_handler() {
 
     let mut handler = JoinValueLaneGet::new(TestAgent::LANE, K1);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(Some(V1.to_string())));
 
     let mut handler = JoinValueLaneGet::new(TestAgent::LANE, ABSENT);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(None));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -198,10 +211,18 @@ fn join_value_lane_get_map_event_handler() {
 
     let expected = init();
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(expected));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -325,8 +346,10 @@ async fn join_value_lane_add_downlinks_event_handler() {
     let context = TestDownlinkContext::default();
     let spawner = FuturesUnordered::new();
     let mut inits = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
 
-    let mut action_context = ActionContext::new(&spawner, &context, &context, &mut inits);
+    let mut action_context =
+        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
     let result = handler.step(&mut action_context, meta, &agent);
     check_result(result, false, false, Some(()));
 
@@ -336,7 +359,16 @@ async fn join_value_lane_add_downlinks_event_handler() {
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     ));
 
-    run_event_handlers(&context, &context, &agent, meta, &mut inits, spawner).await;
+    run_event_handlers(
+        &context,
+        &context,
+        &agent,
+        meta,
+        &mut inits,
+        &mut ad_hoc_buffer,
+        spawner,
+    )
+    .await;
 
     let guard = context.inner.lock();
     let Inner {
@@ -382,15 +414,26 @@ async fn open_downlink_from_registered() {
 
     let context = TestDownlinkContext::default();
     let mut inits = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
 
     let count = Arc::new(AtomicUsize::new(0));
 
     let spawner = FuturesUnordered::new();
-    let mut action_context = ActionContext::new(&spawner, &context, &context, &mut inits);
+    let mut action_context =
+        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
     register_lifecycle(&mut action_context, &agent, count.clone());
     assert!(spawner.is_empty());
 
-    run_with_futures(&context, &context, &agent, meta, &mut inits, handler).await;
+    run_with_futures(
+        &context,
+        &context,
+        &agent,
+        meta,
+        &mut inits,
+        &mut ad_hoc_buffer,
+        handler,
+    )
+    .await;
 
     assert_eq!(count.load(Ordering::Relaxed), 1);
 }

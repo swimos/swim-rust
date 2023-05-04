@@ -14,6 +14,8 @@
 
 use std::collections::HashMap;
 
+use bytes::BytesMut;
+
 use crate::{
     agent_lifecycle::item_event::{HLeaf, ItemEvent},
     event_handler::{HandlerAction, StepResult},
@@ -33,8 +35,13 @@ where
     H: HandlerAction<Agent, Completion = ()>,
 {
     let mut join_value_init = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
     loop {
-        match event_handler.step(&mut dummy_context(&mut join_value_init), meta, agent) {
+        match event_handler.step(
+            &mut dummy_context(&mut join_value_init, &mut ad_hoc_buffer),
+            meta,
+            agent,
+        ) {
             StepResult::Continue { modified_item } => {
                 assert!(modified_item.is_none());
             }
@@ -48,4 +55,5 @@ where
         }
     }
     assert!(join_value_init.is_empty());
+    assert!(ad_hoc_buffer.is_empty());
 }

@@ -176,13 +176,21 @@ fn value_store_set_event_handler() {
 
     let mut handler = ValueStoreSet::new(TestAgent::STORE, 84);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, true, true, Some(()));
 
     assert!(agent.store.has_data_to_write());
     assert_eq!(agent.store.read(|n| *n), 84);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -198,10 +206,18 @@ fn value_store_get_event_handler() {
 
     let mut handler = ValueStoreGet::new(TestAgent::STORE);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(0));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

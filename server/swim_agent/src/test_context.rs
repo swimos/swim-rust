@@ -14,6 +14,7 @@
 
 use std::collections::HashMap;
 
+use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use swim_api::{
     agent::{AgentContext, LaneConfig},
@@ -48,8 +49,15 @@ const NO_AGENT: DummyAgentContext = DummyAgentContext;
 
 pub fn dummy_context<'a, Context>(
     join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
+    ad_hoc_buffer: &'a mut BytesMut,
 ) -> ActionContext<'a, Context> {
-    ActionContext::new(&NO_SPAWN, &NO_AGENT, &no_downlink, join_value_init)
+    ActionContext::new(
+        &NO_SPAWN,
+        &NO_AGENT,
+        &no_downlink,
+        join_value_init,
+        ad_hoc_buffer,
+    )
 }
 
 impl<Context> Spawner<Context> for NoSpawn {
@@ -97,6 +105,7 @@ pub async fn run_with_futures<H, Agent>(
     agent: &Agent,
     meta: AgentMetadata<'_>,
     inits: &mut HashMap<u64, BoxJoinValueInit<'static, Agent>>,
+    ad_hoc_buffer: &mut BytesMut,
     mut handler: H,
 ) -> H::Completion
 where
@@ -105,8 +114,13 @@ where
     let pending = FuturesUnordered::new();
 
     let result = loop {
-        let mut action_context =
-            ActionContext::new(&pending, agent_context, downlink_spawner, inits);
+        let mut action_context = ActionContext::new(
+            &pending,
+            agent_context,
+            downlink_spawner,
+            inits,
+            ad_hoc_buffer,
+        );
         match handler.step(&mut action_context, meta, agent) {
             StepResult::Continue { .. } => {}
             StepResult::Fail(err) => panic!("Handler failed: {:?}", err),
@@ -116,7 +130,16 @@ where
         };
     };
 
-    run_event_handlers(agent_context, downlink_spawner, agent, meta, inits, pending).await;
+    run_event_handlers(
+        agent_context,
+        downlink_spawner,
+        agent,
+        meta,
+        inits,
+        ad_hoc_buffer,
+        pending,
+    )
+    .await;
 
     result
 }
@@ -127,13 +150,19 @@ pub async fn run_event_handlers<'a, Agent>(
     agent: &Agent,
     meta: AgentMetadata<'_>,
     inits: &mut HashMap<u64, BoxJoinValueInit<'static, Agent>>,
+    ad_hoc_buffer: &mut BytesMut,
     mut handlers: FuturesUnordered<HandlerFuture<Agent>>,
 ) {
     if !handlers.is_empty() {
         while let Some(mut h) = handlers.next().await {
             loop {
-                let mut action_context =
-                    ActionContext::new(&handlers, agent_context, downlink_spawner, inits);
+                let mut action_context = ActionContext::new(
+                    &handlers,
+                    agent_context,
+                    downlink_spawner,
+                    inits,
+                    ad_hoc_buffer,
+                );
                 match h.step(&mut action_context, meta, agent) {
                     StepResult::Continue { .. } => {}
                     StepResult::Fail(err) => panic!("Handler failed: {:?}", err),

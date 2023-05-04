@@ -116,7 +116,11 @@ fn command_event_handler() {
 
     let mut handler = DoCommand::new(TestAgent::LANE, 546);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
 
     assert!(matches!(
         result,
@@ -131,7 +135,11 @@ fn command_event_handler() {
 
     assert_eq!(agent.lane.with_prev(Clone::clone), Some(546));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

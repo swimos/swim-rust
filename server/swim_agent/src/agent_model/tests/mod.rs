@@ -14,6 +14,7 @@ use std::{cell::RefCell, collections::HashMap, io::ErrorKind, sync::Arc};
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bytes::BytesMut;
 use futures::{
     future::{join, BoxFuture},
     FutureExt, SinkExt, StreamExt,
@@ -941,8 +942,13 @@ fn run_handler(mut event_handler: BoxEventHandler<'_, FakeAgent>) {
     let meta = make_meta(&uri, &params);
     let agent = FakeAgent;
     let mut join_value_init = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
     loop {
-        match event_handler.step(&mut dummy_context(&mut join_value_init), meta, &agent) {
+        match event_handler.step(
+            &mut dummy_context(&mut join_value_init, &mut ad_hoc_buffer),
+            meta,
+            &agent,
+        ) {
             StepResult::Continue { modified_item } => {
                 assert!(modified_item.is_none());
             }

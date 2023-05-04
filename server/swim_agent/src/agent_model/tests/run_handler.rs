@@ -17,6 +17,7 @@ use std::{
     sync::Arc,
 };
 
+use bytes::BytesMut;
 use parking_lot::Mutex;
 use swim_api::agent::AgentConfig;
 use swim_model::Text;
@@ -217,7 +218,7 @@ fn run_test_handler(agent: &TestAgent, lifecycle: TestLifecycle, start_with: Lan
 
     if let Some(handler) = lifecycle.item_event(agent, start_with.name()) {
         let result = run_handler(
-            &mut dummy_context(&mut HashMap::new()),
+            &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
             meta,
             agent,
             &lifecycle,

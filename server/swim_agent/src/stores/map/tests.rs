@@ -418,7 +418,11 @@ fn map_store_update_event_handler() {
 
     let mut handler = MapStoreUpdate::new(TestAgent::STORE, K1, Text::new(V1));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, true, true, Some(()));
 
     agent.store.get_map(|map| {
@@ -426,7 +430,11 @@ fn map_store_update_event_handler() {
         assert_eq!(map.get(&K1), Some(&Text::new(V1)));
     });
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -442,7 +450,11 @@ fn map_store_remove_event_handler() {
 
     let mut handler = MapStoreRemove::new(TestAgent::STORE, K1);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, true, true, Some(()));
 
     agent.store.get_map(|map| {
@@ -451,7 +463,11 @@ fn map_store_remove_event_handler() {
         assert_eq!(map.get(&K3), Some(&Text::new(V3)));
     });
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -467,14 +483,22 @@ fn map_store_clear_event_handler() {
 
     let mut handler = MapStoreClear::new(TestAgent::STORE);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, true, true, Some(()));
 
     agent.store.get_map(|map| {
         assert!(map.is_empty());
     });
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -490,15 +514,27 @@ fn map_store_get_event_handler() {
 
     let mut handler = MapStoreGet::new(TestAgent::STORE, K1);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(Some(Text::new(V1))));
 
     let mut handler = MapStoreGet::new(TestAgent::STORE, ABSENT);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(None));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -516,10 +552,18 @@ fn map_store_get_map_event_handler() {
 
     let expected = init();
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(expected));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -537,7 +581,11 @@ fn map_store_with_event_handler_update() {
         maybe.map(|v| Text::from(v.as_str().to_uppercase()))
     });
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, true, true, Some(()));
 
     agent.store.get_map(|map| {
@@ -547,7 +595,11 @@ fn map_store_with_event_handler_update() {
         assert_eq!(map.get(&K3), Some(&Text::new(V3)));
     });
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -566,7 +618,11 @@ fn map_lane_with_event_handler_remove() {
 
     let mut handler = MapStoreWithEntry::new(TestAgent::STORE, K1, |_: Option<Text>| None);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, true, true, Some(()));
 
     agent.store.get_map(|map| {
@@ -575,7 +631,11 @@ fn map_lane_with_event_handler_remove() {
         assert_eq!(map.get(&K3), Some(&Text::new(V3)));
     });
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

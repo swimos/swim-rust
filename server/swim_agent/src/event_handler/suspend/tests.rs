@@ -21,6 +21,7 @@ use crate::{
     meta::AgentMetadata,
     test_context::{no_downlink, DummyAgentContext},
 };
+use bytes::BytesMut;
 use futures::{stream::FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use swim_api::agent::AgentConfig;
@@ -59,6 +60,7 @@ async fn suspend_future() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_value_init = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
 
     let (tx, mut rx) = mpsc::channel(4);
     let (done_tx, done_rx) = trigger::trigger();
@@ -78,6 +80,7 @@ async fn suspend_future() {
             &DummyAgentContext,
             &no_downlink,
             &mut join_value_init,
+            &mut ad_hoc_buffer,
         ),
         meta,
         &DummyAgent,
@@ -103,6 +106,7 @@ async fn suspend_future() {
                 &DummyAgentContext,
                 &no_downlink,
                 &mut join_value_init,
+                &mut ad_hoc_buffer,
             ),
             meta,
             &DummyAgent,
@@ -123,6 +127,7 @@ async fn suspend_future() {
                 &DummyAgentContext,
                 &no_downlink,
                 &mut join_value_init,
+                &mut ad_hoc_buffer,
             ),
             meta,
             &DummyAgent,
@@ -146,11 +151,14 @@ where
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_value_init = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
+
     let mut action_context = ActionContext::new(
         spawner,
         &DummyAgentContext,
         &no_downlink,
         &mut join_value_init,
+        &mut ad_hoc_buffer,
     );
     loop {
         match handler.step(&mut action_context, meta, &DummyAgent) {
