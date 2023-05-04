@@ -60,6 +60,7 @@ mod tests;
 
 pub use suspend::{run_after, run_schedule, HandlerFuture, Spawner, Suspend};
 
+pub use command::SendCommand;
 pub use handler_fn::{
     EventConsumeFn, EventFn, HandlerFn0, MapRemoveFn, MapUpdateBorrowFn, MapUpdateFn, TakeFn,
     UpdateBorrowFn, UpdateFn,

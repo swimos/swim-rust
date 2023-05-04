@@ -24,6 +24,18 @@ pub struct SendCommand<S, T> {
     overwrite_permitted: bool,
 }
 
+impl<S, T> SendCommand<S, T> {
+    pub fn new(address: Address<S>, command: T, overwrite_permitted: bool) -> Self {
+        SendCommand {
+            body: Some(Body {
+                address,
+                value: command,
+            }),
+            overwrite_permitted,
+        }
+    }
+}
+
 struct Body<S, T> {
     address: Address<S>,
     value: T,
