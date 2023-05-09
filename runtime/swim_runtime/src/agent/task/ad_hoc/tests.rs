@@ -18,10 +18,11 @@ use crate::{
     agent::{task::AdHocChannelRequest, CommanderKey, CommanderRequest, LinkRequest},
     net::SchemeHostPort,
 };
+use bytes::Bytes;
 use futures::{
     future::join,
     stream::{unfold, SelectAll},
-    Future, SinkExt, Stream, StreamExt,
+    Future, SinkExt, Stream, StreamExt, TryStreamExt,
 };
 use rand::Rng;
 use swim_api::protocol::{
@@ -30,7 +31,10 @@ use swim_api::protocol::{
 };
 use swim_form::structural::write::StructuralWritable;
 use swim_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
-use swim_model::address::{Address, RelativeAddress};
+use swim_model::{
+    address::{Address, RelativeAddress},
+    BytesStr,
+};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
     future::retryable::RetryStrategy,
@@ -41,7 +45,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
-use super::{ad_hoc_commands_task, AdHocTaskConfig, AdHocTaskState};
+use super::{ad_hoc_commands_task, AdHocOutput, AdHocSender, AdHocTaskConfig, AdHocTaskState};
 
 struct TestContext {
     chan_tx: mpsc::Sender<AdHocChannelRequest>,
@@ -397,4 +401,298 @@ async fn multiple_commands_different_targets() {
 
     assert!(state.reader.is_some());
     assert_eq!(state.outputs.len(), 3);
+}
+
+#[test]
+fn output_replace_writer_no_data() {
+    let mut output = super::AdHocOutput::new(ID, RetryStrategy::none());
+    assert!(output.write().is_none());
+
+    check_no_data(&mut output);
+}
+
+#[tokio::test]
+async fn output_replace_writer_pending_record() {
+    let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let mut output = super::AdHocOutput::new(ID, RetryStrategy::none());
+
+    output.append(RelativeAddress::text("/node", "lane"), b"content", true);
+    assert!(output.write().is_none());
+
+    let sender = super::AdHocSender::new(tx);
+    output.replace_writer(sender);
+
+    let fut = output.write().expect("Writer should be scheduled.");
+
+    let requests = run_write_fut(fut, rx).await;
+
+    match requests.as_slice() {
+        [RequestMessage {
+            origin,
+            path: RelativeAddress { node, lane },
+            envelope: Operation::Command(body),
+        }] => {
+            assert_eq!(*origin, ID);
+            assert_eq!(node, "/node");
+            assert_eq!(lane, "lane");
+            assert_eq!(body.as_ref(), b"content");
+        }
+        ow => panic!("Unexpected responses: {:?}", ow),
+    }
+    check_no_data(&mut output);
+}
+
+fn check_no_data(output: &mut AdHocOutput) {
+    let (tx, _rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let sender = super::AdHocSender::new(tx);
+    output.replace_writer(sender);
+    assert!(output.write().is_none());
+}
+
+async fn run_write_fut<Fut>(f: Fut, rx: ByteReader) -> Vec<RequestMessage<BytesStr, Bytes>>
+where
+    Fut: Future<Output = Result<AdHocSender, std::io::Error>>,
+{
+    let write = async move {
+        let writer = f.await.expect("Write failed");
+        drop(writer);
+    };
+    let read = async move {
+        let reader = RequestReader::new(rx, Default::default());
+        reader.try_collect::<Vec<_>>().await.expect("Read failed.")
+    };
+    join(write, read).await.1
+}
+
+#[tokio::test]
+async fn output_overwrite_record() {
+    let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let mut output = super::AdHocOutput::new(ID, RetryStrategy::none());
+
+    output.append(RelativeAddress::text("/node", "lane"), b"content1", true);
+    assert!(output.write().is_none());
+    output.append(RelativeAddress::text("/node", "lane"), b"content2", true);
+    assert!(output.write().is_none());
+
+    let sender = super::AdHocSender::new(tx);
+    output.replace_writer(sender);
+
+    let fut = output.write().expect("Writer should be scheduled.");
+
+    let requests = run_write_fut(fut, rx).await;
+
+    match requests.as_slice() {
+        [RequestMessage {
+            origin,
+            path: RelativeAddress { node, lane },
+            envelope: Operation::Command(body),
+        }] => {
+            assert_eq!(*origin, ID);
+            assert_eq!(node, "/node");
+            assert_eq!(lane, "lane");
+            assert_eq!(body.as_ref(), b"content2");
+        }
+        ow => panic!("Unexpected responses: {:?}", ow),
+    }
+    check_no_data(&mut output);
+}
+
+#[tokio::test]
+async fn output_queue_records() {
+    let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let mut output = super::AdHocOutput::new(ID, RetryStrategy::none());
+
+    output.append(RelativeAddress::text("/node", "lane"), b"content1", false);
+    assert!(output.write().is_none());
+    output.append(RelativeAddress::text("/node", "lane"), b"content2", false);
+    assert!(output.write().is_none());
+    output.append(RelativeAddress::text("/node", "lane"), b"content3", false);
+    assert!(output.write().is_none());
+
+    let sender = super::AdHocSender::new(tx);
+    output.replace_writer(sender);
+
+    let fut = output.write().expect("Writer should be scheduled.");
+
+    let requests = run_write_fut(fut, rx).await;
+
+    match requests.as_slice() {
+        [r1, r2, r3] => {
+            if let RequestMessage {
+                origin,
+                path: RelativeAddress { node, lane },
+                envelope: Operation::Command(body),
+            } = r1
+            {
+                assert_eq!(*origin, ID);
+                assert_eq!(node, "/node");
+                assert_eq!(lane, "lane");
+                assert_eq!(body.as_ref(), b"content1");
+            } else {
+                panic!("Incorrect message kind.");
+            }
+
+            if let RequestMessage {
+                origin,
+                path: RelativeAddress { node, lane },
+                envelope: Operation::Command(body),
+            } = r2
+            {
+                assert_eq!(*origin, ID);
+                assert_eq!(node, "/node");
+                assert_eq!(lane, "lane");
+                assert_eq!(body.as_ref(), b"content2");
+            } else {
+                panic!("Incorrect message kind.");
+            }
+
+            if let RequestMessage {
+                origin,
+                path: RelativeAddress { node, lane },
+                envelope: Operation::Command(body),
+            } = r3
+            {
+                assert_eq!(*origin, ID);
+                assert_eq!(node, "/node");
+                assert_eq!(lane, "lane");
+                assert_eq!(body.as_ref(), b"content3");
+            } else {
+                panic!("Incorrect message kind.");
+            }
+        }
+        ow => panic!("Unexpected responses: {:?}", ow),
+    }
+    check_no_data(&mut output);
+}
+
+#[tokio::test]
+async fn output_multiple_targets() {
+    let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let mut output = super::AdHocOutput::new(ID, RetryStrategy::none());
+
+    output.append(RelativeAddress::text("/node", "lane"), b"content1", true);
+    assert!(output.write().is_none());
+    output.append(RelativeAddress::text("/node", "lane2"), b"content2", true);
+    assert!(output.write().is_none());
+    output.append(RelativeAddress::text("/node2", "lane"), b"content3", true);
+    assert!(output.write().is_none());
+
+    let sender = super::AdHocSender::new(tx);
+    output.replace_writer(sender);
+
+    let fut = output.write().expect("Writer should be scheduled.");
+    let requests = run_write_fut(fut, rx).await;
+    assert_eq!(requests.len(), 3);
+    let requests = requests
+        .into_iter()
+        .map(|r| {
+            let key = RelativeAddress::new(r.path.node.to_string(), r.path.lane.to_string());
+            (key, r)
+        })
+        .collect::<HashMap<_, _>>();
+
+    let r1 = &requests[&RelativeAddress::new("/node".to_string(), "lane".to_string())];
+    if let RequestMessage {
+        origin,
+        envelope: Operation::Command(body),
+        ..
+    } = r1
+    {
+        assert_eq!(*origin, ID);
+        assert_eq!(body.as_ref(), b"content1");
+    } else {
+        panic!("Incorrect message kind.");
+    }
+
+    let r2 = &requests[&RelativeAddress::new("/node".to_string(), "lane2".to_string())];
+    if let RequestMessage {
+        origin,
+        envelope: Operation::Command(body),
+        ..
+    } = r2
+    {
+        assert_eq!(*origin, ID);
+        assert_eq!(body.as_ref(), b"content2");
+    } else {
+        panic!("Incorrect message kind.");
+    }
+
+    let r3 = &requests[&RelativeAddress::new("/node2".to_string(), "lane".to_string())];
+    if let RequestMessage {
+        origin,
+        envelope: Operation::Command(body),
+        ..
+    } = r3
+    {
+        assert_eq!(*origin, ID);
+        assert_eq!(body.as_ref(), b"content3");
+    } else {
+        panic!("Incorrect message kind.");
+    }
+
+    check_no_data(&mut output);
+}
+
+#[tokio::test(start_paused = true)]
+async fn output_never_times_out_pending_write() {
+    let (tx, _rx) = byte_channel::byte_channel(BUFFER_SIZE);
+
+    let timeout = Duration::from_secs(30);
+    let mut output = super::AdHocOutput::new(ID, RetryStrategy::none());
+
+    //New output that has never written.
+
+    assert!(!output.timed_out(timeout));
+
+    tokio::time::advance(timeout + Duration::from_secs(1)).await;
+    assert!(!output.timed_out(timeout));
+
+    let sender = super::AdHocSender::new(tx);
+    output.replace_writer(sender);
+
+    output.append(RelativeAddress::text("/node", "lane"), b"content", true);
+
+    //Output with pending write.
+
+    let fut = output.write();
+    assert!(fut.is_some());
+
+    assert!(!output.timed_out(timeout));
+
+    tokio::time::advance(timeout + Duration::from_secs(1)).await;
+    assert!(!output.timed_out(timeout));
+}
+
+#[tokio::test(start_paused = true)]
+async fn output_times_out() {
+    let (tx, _rx) = byte_channel::byte_channel(BUFFER_SIZE);
+
+    let timeout = Duration::from_secs(30);
+    let mut output = super::AdHocOutput::new(ID, RetryStrategy::none());
+
+    let sender = super::AdHocSender::new(tx);
+    output.replace_writer(sender);
+
+    //New output that has never written.
+
+    tokio::time::advance(timeout + Duration::from_secs(1)).await;
+
+    assert!(output.timed_out(timeout));
+
+    //Output with pending write.
+
+    output.append(RelativeAddress::text("/node", "lane"), b"content", true);
+    assert!(!output.timed_out(timeout));
+
+    let fut = output.write().expect("Write should be staged.");
+    drop(fut);
+
+    let (tx, _rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let sender = super::AdHocSender::new(tx);
+    output.replace_writer(sender);
+
+    assert!(!output.timed_out(timeout));
+
+    tokio::time::advance(timeout + Duration::from_secs(1)).await;
+    assert!(output.timed_out(timeout));
 }

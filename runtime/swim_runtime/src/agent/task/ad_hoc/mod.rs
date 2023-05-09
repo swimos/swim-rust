@@ -127,7 +127,6 @@ impl AdHocOutput {
     fn replace_writer(&mut self, sender: AdHocSender) {
         self.writer = Some(sender);
         self.retry_strategy.reset();
-        self.last_used = Instant::now();
     }
 
     fn retry(&mut self) -> RetryResult {
@@ -170,12 +169,7 @@ impl AdHocOutput {
         )
     }
 
-    fn append(
-        &mut self,
-        key: RelativeAddress<Text>,
-        body: &mut BytesMut,
-        overwrite_permitted: bool,
-    ) {
+    fn append(&mut self, key: RelativeAddress<Text>, body: &[u8], overwrite_permitted: bool) {
         let id = self.identity;
         let (i, LaneBuffer { buffer, offset, .. }) = self.get_buffer(&key);
         let addr = RelativeAddress::new(key.node.as_str(), key.lane.as_str());
@@ -191,6 +185,7 @@ impl AdHocOutput {
         } else {
             *offset = buffer.len();
         }
+        self.last_used = Instant::now();
         self.dirty.push(i);
     }
 
@@ -347,7 +342,7 @@ pub async fn ad_hoc_commands_task(
             }
             AdHocEvent::Command(AdHocCommand {
                 address,
-                mut command,
+                command,
                 overwrite_permitted,
             }) => {
                 trace!(identify = % identity, address = %address, overwrite_permitted, "Handling an ad hoc command for an agent.");
@@ -364,7 +359,7 @@ pub async fn ad_hoc_commands_task(
                 };
                 let addr = RelativeAddress::text(node.as_str(), lane.as_str());
                 if let Some(output) = outputs.get_mut(&key) {
-                    output.append(addr, &mut command, overwrite_permitted);
+                    output.append(addr, &command, overwrite_permitted);
                     if let Some(fut) = output.write() {
                         pending.push(Either::Left(Either::Left(wrap_result(key, fut))));
                     } else {
@@ -372,7 +367,7 @@ pub async fn ad_hoc_commands_task(
                     }
                 } else {
                     let mut output = AdHocOutput::new(identity, retry_strategy);
-                    output.append(addr, &mut command, overwrite_permitted);
+                    output.append(addr, &command, overwrite_permitted);
                     outputs.insert(key.clone(), output);
                     let fut = try_open_new(identity, key, link_requests.clone(), None);
                     pending.push(Either::Left(Either::Right(fut)));
