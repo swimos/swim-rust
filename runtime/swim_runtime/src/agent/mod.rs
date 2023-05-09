@@ -145,9 +145,7 @@ impl AgentContext for AgentRuntimeContext {
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(AgentRuntimeRequest::AdHoc(AdHocChannelRequest {
-                    promise: tx,
-                }))
+                .send(AgentRuntimeRequest::AdHoc(AdHocChannelRequest::new(tx)))
                 .await?;
             rx.await?
         }

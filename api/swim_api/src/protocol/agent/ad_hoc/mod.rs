@@ -110,11 +110,8 @@ where
                 let host_str = host.as_ref();
                 let required = required_base + LEN_LEN + host_str.len();
                 dst.reserve(required);
-                if overwrite_permitted {
-                    dst.put_u8(1 & 1 << 1);
-                } else {
-                    dst.put_u8(1);
-                }
+                let tag = if overwrite_permitted { 1 | 1 << 1 } else { 1 };
+                dst.put_u8(tag);
                 dst.put_u64(host_str.len() as u64);
                 dst.put_u64(node_str.len() as u64);
                 dst.put_u64(lane_str.len() as u64);
@@ -142,7 +139,7 @@ const MAX_REQUIRED: usize = OPT_TAG_LEN + 3 * LEN_LEN;
 
 impl<S, D> Decoder for AdHocCommandDecoder<S, D>
 where
-    S: TryFromUtf8Bytes,
+    S: TryFromUtf8Bytes + std::fmt::Debug,
     D: Decoder,
     FrameIoError: From<D::Error>,
 {
@@ -167,6 +164,7 @@ where
                     let tag = bytes.get_u8();
                     let has_host = tag & 1 != 0;
                     let overwrite_permitted = (tag >> 1) & 1 != 0;
+
                     let host_len = if has_host {
                         if remaining < MAX_REQUIRED {
                             break Ok(None);
@@ -192,6 +190,7 @@ where
                         src.advance(MIN_REQUIRED);
                         None
                     };
+
                     let node = match S::try_from_utf8_bytes(src.split_to(node_len).freeze()) {
                         Ok(node) => node,
                         Err(_) => break Err(bad_utf8()),

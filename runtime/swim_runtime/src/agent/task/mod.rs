@@ -138,6 +138,12 @@ pub struct AdHocChannelRequest {
     pub promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
 }
 
+impl AdHocChannelRequest {
+    pub fn new(promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>) -> Self {
+        AdHocChannelRequest { promise }
+    }
+}
+
 /// Type for requests that can be sent to the agent runtime task by an agent implementation.
 #[derive(Debug)]
 pub enum AgentRuntimeRequest {

@@ -19,7 +19,7 @@ use std::{
 };
 
 use bytes::{BufMut, BytesMut};
-use futures::{future::Either, stream::FuturesUnordered, Future, FutureExt, StreamExt};
+use futures::{future::Either, stream::FuturesUnordered, Future, StreamExt};
 use swim_api::{
     error::{AgentRuntimeError, DownlinkRuntimeError},
     protocol::{
@@ -51,6 +51,9 @@ use crate::{
 };
 
 use super::AdHocChannelRequest;
+
+#[cfg(test)]
+mod tests;
 
 /// Sender to write outgoing frames to to remotes connected to the agent.
 #[derive(Debug)]
@@ -210,6 +213,7 @@ impl AdHocOutput {
                 let LaneBuffer { buffer, offset } = lane_buffer;
                 writer.swap_buffer(buffer);
                 *offset = 0;
+                dirty.clear();
                 Some(writer.send_commands())
             }
             (Some(mut writer), _) => {
@@ -256,6 +260,7 @@ impl AdHocTaskState {
     }
 }
 
+#[derive(Debug)]
 pub struct AdHocTaskConfig {
     pub buffer_size: NonZeroUsize,
     pub retry_strategy: RetryStrategy,
@@ -299,8 +304,8 @@ pub async fn ad_hoc_commands_task(
                         continue;
                     }
                 },
-                maybe_msg = rx.next() => {
-                    if let Some(Ok(msg)) = maybe_msg {
+                maybe_msg = tokio::time::timeout(Duration::from_secs(1), rx.next()) => {
+                    if let Some(Ok(msg)) = maybe_msg.unwrap() {
                         AdHocEvent::Command(msg)
                     } else {
                         debug!(identity = %identity, "The agent dropped its ad hoc command channel.");
@@ -329,6 +334,7 @@ pub async fn ad_hoc_commands_task(
                 },
             }
         };
+
         match event {
             AdHocEvent::Request(AdHocChannelRequest { promise }) => {
                 let (tx, rx) = byte_channel(buffer_size);
@@ -356,18 +362,18 @@ pub async fn ad_hoc_commands_task(
                         continue;
                     }
                 };
+                let addr = RelativeAddress::text(node.as_str(), lane.as_str());
                 if let Some(output) = outputs.get_mut(&key) {
-                    let addr = RelativeAddress::text(node.as_str(), lane.as_str());
                     output.append(addr, &mut command, overwrite_permitted);
                     if let Some(fut) = output.write() {
-                        pending.push(Either::Left(Either::Left(
-                            fut.map(move |r| AdHocEvent::WriteDone(key, r)),
-                        )));
+                        pending.push(Either::Left(Either::Left(wrap_result(key, fut))));
                     } else {
                         pending.push(Either::Right(output_timeout(key, timeout_delay)))
                     }
                 } else {
-                    outputs.insert(key.clone(), AdHocOutput::new(identity, retry_strategy));
+                    let mut output = AdHocOutput::new(identity, retry_strategy);
+                    output.append(addr, &mut command, overwrite_permitted);
+                    outputs.insert(key.clone(), output);
                     let fut = try_open_new(identity, key, link_requests.clone(), None);
                     pending.push(Either::Left(Either::Right(fut)));
                 }
@@ -376,6 +382,11 @@ pub async fn ad_hoc_commands_task(
                 if let Some(output) = outputs.get_mut(&key) {
                     debug!(identity = %identity, key = ?key, "Registered a new outgoing ad hoc command channel.");
                     output.replace_writer(AdHocSender::new(channel));
+                    if let Some(fut) = output.write() {
+                        pending.push(Either::Left(Either::Left(wrap_result(key, fut))));
+                    } else {
+                        pending.push(Either::Right(output_timeout(key, timeout_delay)))
+                    }
                 }
             }
             AdHocEvent::NewChannel(key, Ok(Err(err))) => {
@@ -412,6 +423,11 @@ pub async fn ad_hoc_commands_task(
                         Ok(writer) => {
                             trace!(identify = %identity, key = ?key, "Completed writing an ad hoc command.");
                             output.replace_writer(writer);
+                            if let Some(fut) = output.write() {
+                                pending.push(Either::Left(Either::Left(wrap_result(key, fut))));
+                            } else {
+                                pending.push(Either::Right(output_timeout(key, timeout_delay)))
+                            }
                         }
                         Err(err) => {
                             error!(error = %err, "Writing ad hoc command to channel failed.");
@@ -435,6 +451,14 @@ pub async fn ad_hoc_commands_task(
         outputs,
         link_requests,
     }
+}
+
+async fn wrap_result<F>(key: CommanderKey, f: F) -> AdHocEvent
+where
+    F: Future<Output = Result<AdHocSender, std::io::Error>>,
+{
+    let result = f.await;
+    AdHocEvent::WriteDone(key, result)
 }
 
 async fn try_open_new(
