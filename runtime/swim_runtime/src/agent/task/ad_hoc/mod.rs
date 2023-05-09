@@ -173,7 +173,7 @@ impl AdHocOutput {
         let id = self.identity;
         let (i, LaneBuffer { buffer, offset, .. }) = self.get_buffer(&key);
         let addr = RelativeAddress::new(key.node.as_str(), key.lane.as_str());
-        let message = RequestMessage::command(id, addr, body.as_ref());
+        let message = RequestMessage::command(id, addr, body);
         buffer.truncate(*offset);
         let off = buffer.len();
         let mut encoder = RawRequestMessageEncoder::default();
@@ -203,7 +203,10 @@ impl AdHocOutput {
             writer.take(),
             dirty.first().and_then(|i| lane_buffers.get_mut(i)),
         ) {
-            (_, None) | (None, _) => None,
+            (w, None) | (w @ None, _) => {
+                *writer = w;
+                None
+            }
             (Some(mut writer), Some(lane_buffer)) if l == 1 => {
                 let LaneBuffer { buffer, offset } = lane_buffer;
                 writer.swap_buffer(buffer);
@@ -227,6 +230,7 @@ impl AdHocOutput {
 
 type AdHocReader = FramedRead<ByteReader, AdHocCommandDecoder<BytesStr, WithLengthBytesCodec>>;
 
+#[derive(Debug)]
 enum AdHocEvent {
     Request(AdHocChannelRequest),
     Command(AdHocCommand<BytesStr, BytesMut>),
@@ -299,8 +303,8 @@ pub async fn ad_hoc_commands_task(
                         continue;
                     }
                 },
-                maybe_msg = tokio::time::timeout(Duration::from_secs(1), rx.next()) => {
-                    if let Some(Ok(msg)) = maybe_msg.unwrap() {
+                maybe_msg = rx.next() => {
+                    if let Some(Ok(msg)) = maybe_msg {
                         AdHocEvent::Command(msg)
                     } else {
                         debug!(identity = %identity, "The agent dropped its ad hoc command channel.");

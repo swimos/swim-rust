@@ -55,7 +55,7 @@ struct TestContext {
 const ID: Uuid = Uuid::from_u128(1);
 const CHAN_SIZE: usize = 8;
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
-const TIMEOUT: Duration = Duration::from_secs(1);
+const OUTPUT_TIMEOUT: Duration = Duration::from_secs(1);
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 async fn run_test<F, Fut>(test_case: F) -> (AdHocTaskState, Fut::Output)
@@ -69,7 +69,7 @@ where
     let config = AdHocTaskConfig {
         buffer_size: BUFFER_SIZE,
         retry_strategy: RetryStrategy::none(),
-        timeout_delay: TIMEOUT,
+        timeout_delay: OUTPUT_TIMEOUT,
     };
     let task = ad_hoc_commands_task(ID, chan_rx, state, config);
     let context = TestContext { chan_tx, links_rx };
@@ -401,6 +401,46 @@ async fn multiple_commands_different_targets() {
 
     assert!(state.reader.is_some());
     assert_eq!(state.outputs.len(), 3);
+}
+
+#[tokio::test(start_paused = true)]
+async fn drop_output_on_timeout() {
+    let target = 0;
+    let test_value = 5;
+
+    let (state, _) = run_test(|context| async move {
+        let TestContext {
+            chan_tx,
+            mut links_rx,
+        } = context;
+        let writer = register(&chan_tx).await;
+        let mut sender = CommandSender::new(writer, Default::default());
+
+        let recv_task = async move {
+            let (key, rx) = open_link(&mut links_rx).await;
+            assert_eq!(key, make_key(target));
+
+            let mut channel = RequestReader::new(rx, Default::default());
+            //Consume the output.
+            assert!(matches!(channel.next().await, Some(Ok(_))));
+            //Wait for the output to be dropped (after the runtime auto advances time triggering the timeout).
+            assert!(channel.next().await.is_none());
+            links_rx
+        };
+
+        let send_task = async move {
+            send_command(&mut sender, target, test_value, true).await;
+            sender
+        };
+
+        let (links_rx, sender) = join(recv_task, send_task).await;
+        drop(chan_tx);
+        (sender, links_rx)
+    })
+    .await;
+
+    assert!(state.reader.is_some());
+    assert!(state.outputs.is_empty());
 }
 
 #[test]
