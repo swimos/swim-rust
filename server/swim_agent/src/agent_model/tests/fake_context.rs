@@ -30,12 +30,24 @@ use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
 };
+use tokio::sync::oneshot;
 
 use super::{CMD_LANE, MAP_LANE, VAL_LANE};
 
 #[derive(Debug, Default, Clone)]
 pub struct TestAgentContext {
     inner: Arc<Mutex<Inner>>,
+}
+
+impl TestAgentContext {
+    pub fn new(promise: oneshot::Sender<ByteReader>) -> Self {
+        TestAgentContext {
+            inner: Arc::new(Mutex::new(Inner {
+                ad_hoc_consumer: Some(promise),
+                ..Default::default()
+            })),
+        }
+    }
 }
 
 impl TestAgentContext {
@@ -58,17 +70,21 @@ struct Inner {
     value_lane_io: Option<Io>,
     map_lane_io: Option<Io>,
     cmd_lane_io: Option<Io>,
-    ad_hoc_io: Option<ByteReader>,
+    ad_hoc_consumer: Option<oneshot::Sender<ByteReader>>,
+    ad_hoc_rx: Option<ByteReader>,
 }
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 impl AgentContext for TestAgentContext {
-    
     fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
-        let (tx, rx) = byte_channel(BUFFER_SIZE);
         let mut guard = self.inner.lock();
-        guard.ad_hoc_io = Some(rx);
+        let (tx, rx) = byte_channel(BUFFER_SIZE);
+        if let Some(sender) = guard.ad_hoc_consumer.take() {
+            sender.send(rx).expect("Registering ad hoc channel failed.");
+        } else {
+            guard.ad_hoc_rx = Some(rx);
+        }
         ready(Ok(tx)).boxed()
     }
 

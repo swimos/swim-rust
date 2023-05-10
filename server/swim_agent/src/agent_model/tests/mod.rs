@@ -24,17 +24,22 @@ use swim_api::{
     agent::{AgentConfig, AgentTask},
     downlink::DownlinkKind,
     protocol::{
+        agent::{AdHocCommand, AdHocCommandDecoder},
         downlink::{DownlinkNotification, DownlinkNotificationEncoder},
         map::{MapMessage, MapOperation},
-        WithLengthBytesCodec,
+        WithLenRecognizerDecoder, WithLengthBytesCodec,
     },
 };
-use swim_model::{address::Address, Text};
+use swim_form::structural::read::recognizer::{primitive::TextRecognizer, RecognizerReadable};
+use swim_model::{address::Address, BytesStr, Text};
 use swim_utilities::{
-    io::byte_channel::byte_channel, non_zero_usize, routing::route_uri::RouteUri,
-    sync::circular_buffer, trigger::trigger,
+    io::byte_channel::{byte_channel, ByteReader},
+    non_zero_usize,
+    routing::route_uri::RouteUri,
+    sync::circular_buffer,
+    trigger::trigger,
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
@@ -98,9 +103,21 @@ const NODE_URI: &str = "/node";
 
 const SYNC_VALUE: i32 = -1;
 
+const AD_HOC_HOST: &str = "localhost:8080";
+const AD_HOC_NODE: &str = "/node";
+const AD_HOC_LANE: &str = "lane";
+
+//Event values cause the mock command lane to suspend a future.
+const SUSPEND_VALUE: i32 = 456;
+//Odd values cause the mock command lane to send an ad ho command.
+const AD_HOC_CMD_VALUE: i32 = 891;
+
 fn make_uri() -> RouteUri {
     RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
+
+type CommandReceiver =
+    FramedRead<ByteReader, AdHocCommandDecoder<BytesStr, WithLenRecognizerDecoder<TextRecognizer>>>;
 
 struct TestContext {
     test_event_rx: UnboundedReceiverStream<TestEvent>,
@@ -457,7 +474,7 @@ async fn suspend_future() {
         );
         let (mut sender, receiver) = cmd_lane_io;
 
-        let n = 456;
+        let n = SUSPEND_VALUE;
 
         sender.command(n).await;
 
@@ -490,6 +507,93 @@ async fn suspend_future() {
                 .expect("Expected suspended future consequence."),
             LifecycleEvent::RanSuspendedConsequence
         );
+
+        drop(sender);
+        drop(receiver);
+        drop(val_lane_io);
+        drop(map_lane_io);
+        (test_event_rx, lc_event_rx)
+    };
+
+    let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
+    assert!(result.is_ok());
+
+    let events = lc_event_rx.collect::<Vec<_>>().await;
+
+    //Check that the `on_stop` event fired.
+    assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+
+    let lane_events = test_event_rx.collect::<Vec<_>>().await;
+    assert!(lane_events.is_empty());
+}
+
+#[tokio::test]
+async fn trigger_ad_hoc_command() {
+    let (ad_hoc_tx, ad_hoc_rx) = oneshot::channel();
+    let context = Box::new(TestAgentContext::new(ad_hoc_tx));
+    let (
+        task,
+        TestContext {
+            mut test_event_rx,
+            mut lc_event_rx,
+            val_lane_io,
+            map_lane_io,
+            cmd_lane_io,
+        },
+    ) = init_agent(context).await;
+
+    let test_case = async move {
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected init event."),
+            LifecycleEvent::Init
+        );
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected start event."),
+            LifecycleEvent::Start
+        );
+        let (mut sender, receiver) = cmd_lane_io;
+
+        let mut cmd_receiver = CommandReceiver::new(
+            ad_hoc_rx
+                .await
+                .expect("Ad hoc command channel not registered."),
+            AdHocCommandDecoder::new(WithLenRecognizerDecoder::new(Text::make_recognizer())),
+        );
+
+        let n = AD_HOC_CMD_VALUE;
+
+        sender.command(n).await;
+
+        // The agent should receive the command...
+        assert!(matches!(
+            test_event_rx.next().await.expect("Expected command event."),
+            TestEvent::Cmd { body } if body == n
+        ));
+
+        //... ,trigger the `on_command` event...
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected command event."),
+            LifecycleEvent::Lane(Text::new(CMD_LANE))
+        );
+
+        //... and then issue an outgoing command.
+
+        let expected = AdHocCommand::new(
+            Address::new(
+                Some(BytesStr::from_static_str(AD_HOC_HOST)),
+                BytesStr::from_static_str(AD_HOC_NODE),
+                BytesStr::from_static_str(AD_HOC_LANE),
+            ),
+            Text::new("content"),
+            true,
+        );
+
+        let received = cmd_receiver
+            .next()
+            .await
+            .expect("Command sender dropped.")
+            .expect("Command channel failed");
+        assert_eq!(received, expected);
 
         drop(sender);
         drop(receiver);
@@ -590,7 +694,7 @@ async fn hosted_downlink_incoming_error() {
         .wait_on_downlink()
         .await
         .expect("Closed prematurely.");
-    
+
     assert!(matches!(
         event,
         HostedDownlinkEvent::HandlerReady { failed: true }
