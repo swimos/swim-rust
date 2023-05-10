@@ -590,10 +590,12 @@ async fn hosted_downlink_incoming_error() {
         .wait_on_downlink()
         .await
         .expect("Closed prematurely.");
+    
     assert!(matches!(
         event,
         HostedDownlinkEvent::HandlerReady { failed: true }
     ));
+
     assert!(hosted.channel.next_event(&agent).is_some());
 
     assert!(hosted.wait_on_downlink().await.is_none());

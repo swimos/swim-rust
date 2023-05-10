@@ -348,6 +348,7 @@ enum TaskEvent<ItemModel> {
 
 struct HostedDownlink<Context> {
     channel: BoxDownlinkChannel<Context>,
+    failed: bool,
     write_stream: Option<BoxStream<'static, Result<(), std::io::Error>>>,
 }
 
@@ -358,6 +359,7 @@ impl<Context> HostedDownlink<Context> {
     ) -> Self {
         HostedDownlink {
             channel,
+            failed: false,
             write_stream: Some(write_stream),
         }
     }
@@ -376,7 +378,12 @@ impl<Context> HostedDownlink<Context> {
         let HostedDownlink {
             channel,
             write_stream,
+            failed,
         } = &mut self;
+
+        if *failed {
+            return None;
+        }
 
         let next = if let Some(out) = write_stream.as_mut() {
             tokio::select! {
@@ -392,6 +399,7 @@ impl<Context> HostedDownlink<Context> {
                 Some((self, HostedDownlinkEvent::HandlerReady { failed: false }))
             }
             Either::Left(Some(Err(_))) => {
+                *failed = true;
                 Some((self, HostedDownlinkEvent::HandlerReady { failed: true }))
             }
             Either::Right(Some(Ok(_))) => Some((self, HostedDownlinkEvent::Written)),

@@ -45,6 +45,7 @@ impl TestAgentContext {
             value_lane_io,
             map_lane_io,
             cmd_lane_io,
+            ..
         } = &mut *guard;
         (value_lane_io.take(), map_lane_io.take(), cmd_lane_io.take())
     }
@@ -57,13 +58,18 @@ struct Inner {
     value_lane_io: Option<Io>,
     map_lane_io: Option<Io>,
     cmd_lane_io: Option<Io>,
+    ad_hoc_io: Option<ByteReader>,
 }
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 impl AgentContext for TestAgentContext {
+    
     fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
-        panic!("Unexpected ad hoc channel request.");
+        let (tx, rx) = byte_channel(BUFFER_SIZE);
+        let mut guard = self.inner.lock();
+        guard.ad_hoc_io = Some(rx);
+        ready(Ok(tx)).boxed()
     }
 
     fn add_lane(
