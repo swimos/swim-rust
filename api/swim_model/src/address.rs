@@ -14,7 +14,7 @@
 
 use std::fmt::{Debug, Display};
 
-use crate::Text;
+use crate::{BytesStr, Text};
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RelativeAddress<T> {
@@ -117,5 +117,21 @@ impl<S: AsRef<str>> Address<S> {
             node.as_ref(),
             lane.as_ref(),
         )
+    }
+}
+
+impl PartialEq<Address<&str>> for Address<Text> {
+    fn eq(&self, other: &Address<&str>) -> bool {
+        self.host.as_ref().map(Text::as_str) == other.host
+            && self.node.as_str() == other.node
+            && self.lane.as_str() == other.lane
+    }
+}
+
+impl PartialEq<Address<&str>> for Address<BytesStr> {
+    fn eq(&self, other: &Address<&str>) -> bool {
+        self.host.as_ref().map(BytesStr::as_ref) == other.host
+            && self.node.as_str() == other.node
+            && self.lane.as_str() == other.lane
     }
 }

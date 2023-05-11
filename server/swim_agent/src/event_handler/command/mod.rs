@@ -19,6 +19,9 @@ use crate::meta::AgentMetadata;
 
 use super::{ActionContext, HandlerAction, StepResult};
 
+#[cfg(test)]
+mod tests;
+
 pub struct SendCommand<S, T> {
     body: Option<Body<S, T>>,
     overwrite_permitted: bool,

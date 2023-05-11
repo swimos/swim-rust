@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut};
-use swim_model::{address::Address, Text, TryFromUtf8Bytes};
+use swim_model::{address::Address, BytesStr, Text, TryFromUtf8Bytes};
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::error::FrameIoError;
@@ -225,4 +225,26 @@ fn bad_utf8() -> FrameIoError {
     FrameIoError::BadFrame(crate::error::InvalidFrame::InvalidHeader {
         problem: Text::new("Ad-hoc message header contained invalid UTF8."),
     })
+}
+
+impl<T1, T2> PartialEq<AdHocCommand<&str, T1>> for AdHocCommand<Text, T2>
+where
+    T2: PartialEq<T1>,
+{
+    fn eq(&self, other: &AdHocCommand<&str, T1>) -> bool {
+        self.address == other.address
+            && self.command == other.command
+            && self.overwrite_permitted == other.overwrite_permitted
+    }
+}
+
+impl<T1, T2> PartialEq<AdHocCommand<&str, T1>> for AdHocCommand<BytesStr, T2>
+where
+    T2: PartialEq<T1>,
+{
+    fn eq(&self, other: &AdHocCommand<&str, T1>) -> bool {
+        self.address == other.address
+            && self.command == other.command
+            && self.overwrite_permitted == other.overwrite_permitted
+    }
 }
