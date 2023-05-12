@@ -29,12 +29,10 @@ use swim_api::{
     error::{DownlinkFailureReason, DownlinkRuntimeError},
     protocol::{
         agent::{AdHocCommand, AdHocCommandEncoder},
-        WithLenRecognizerDecoder, WithLenReconEncoder,
+        WithLenReconEncoder,
     },
 };
-use swim_form::structural::{
-    read::recognizer::primitive::I32Recognizer, write::StructuralWritable,
-};
+use swim_form::structural::write::StructuralWritable;
 use swim_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
 use swim_model::{
     address::{Address, RelativeAddress},
@@ -69,7 +67,6 @@ const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 const RETRY_LIMIT: NonZeroUsize = non_zero_usize!(3);
 const WITHIN_LIMIT: usize = 1;
-const EXCEED_LIMIT: usize = 5;
 
 async fn run_test<F, Fut>(test_case: F) -> (AdHocTaskState, Fut::Output)
 where
@@ -876,7 +873,7 @@ async fn fail_link_fatal(
             assert_eq!(agent_id, ID);
             promise
                 .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
-                    DownlinkFailureReason::InvalidUrl,
+                    DownlinkFailureReason::InvalidUrl, //Fatal error.
                 )))
                 .expect("Request dropped.");
         }
@@ -952,4 +949,68 @@ fn check_pending_single(mut pending: PendingWrites, target: usize, expected_valu
         }
         _ => panic!("Expected exactly one record."),
     }
+}
+
+async fn fail_link_non_fatal(
+    rx: &mut mpsc::Receiver<LinkRequest>,
+    mut failures: mpsc::UnboundedReceiver<PendingWrites>,
+) -> (usize, PendingWrites) {
+    let mut attempts = 0;
+    let pending = loop {
+        let request = tokio::select! {
+            maybe_request = rx.recv() => maybe_request.expect("Request channel dropped."),
+            writes = failures.recv() => break writes.expect("Failure channel dropped."),
+        };
+        match request {
+            LinkRequest::Downlink(_) => panic!("Downlink requested."),
+            LinkRequest::Commander(CommanderRequest {
+                agent_id, promise, ..
+            }) => {
+                attempts += 1;
+                assert_eq!(agent_id, ID);
+                promise
+                    .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
+                        DownlinkFailureReason::DownlinkStopped, //Non-fatal error.
+                    )))
+                    .expect("Request dropped.");
+            }
+        }
+    };
+    (attempts, pending)
+}
+
+#[tokio::test]
+async fn route_single_command_repeated_errors() {
+    let target = 0;
+    let test_value = 5;
+
+    let (state, (attempts, pending)) = run_test(|context| async move {
+        let TestContext {
+            chan_tx,
+            mut links_rx,
+            failures,
+        } = context;
+        let writer = register(&chan_tx).await;
+        let mut sender = CommandSender::new(writer, Default::default());
+
+        let recv_task = async move {
+            let (attempts, pending) = fail_link_non_fatal(&mut links_rx, failures).await;
+            (links_rx, attempts, pending)
+        };
+
+        let send_task = async move {
+            send_command(&mut sender, target, test_value, true).await;
+            sender
+        };
+
+        let ((_, attempts, pending), _) = join(recv_task, send_task).await;
+        drop(chan_tx);
+        (attempts, pending)
+    })
+    .await;
+    assert_eq!(attempts, RETRY_LIMIT.get() + 1);
+    check_pending_single(pending, target, test_value);
+
+    assert!(state.reader.is_some());
+    assert!(state.outputs.is_empty());
 }
