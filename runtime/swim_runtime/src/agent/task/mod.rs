@@ -25,7 +25,7 @@ use crate::agent::task::timeout_coord::VoteResult;
 use crate::agent::task::write_fut::SpecialAction;
 use crate::error::InvalidKey;
 
-use self::ad_hoc::AdHocTaskState;
+use self::ad_hoc::{AdHocTaskState, NoReport};
 use self::init::Initialization;
 use self::links::Links;
 use self::prune::PruneRemotes;
@@ -482,8 +482,14 @@ where
             timeout_delay: config.ad_hoc_output_timeout,
         };
 
-        let ad_hoc = ad_hoc::ad_hoc_commands_task(identity, ad_hoc_rx, ad_hoc_state, ad_hoc_config)
-            .instrument(info_span!("Agent Ad Hoc Command Task", %identity, %node_uri));
+        let ad_hoc = ad_hoc::ad_hoc_commands_task::<NoReport>(
+            identity,
+            ad_hoc_rx,
+            ad_hoc_state,
+            ad_hoc_config,
+            None,
+        )
+        .instrument(info_span!("Agent Ad Hoc Command Task", %identity, %node_uri));
 
         let io = await_io_tasks(read, write, kill_switch_tx);
         let (_, _, result) = join3(att, ad_hoc, io).await;

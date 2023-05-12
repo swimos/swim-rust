@@ -45,7 +45,7 @@ use crate::agent::{
 };
 
 use super::{
-    ad_hoc::{ad_hoc_commands_task, AdHocTaskConfig, AdHocTaskState},
+    ad_hoc::{ad_hoc_commands_task, AdHocTaskConfig, AdHocTaskState, NoReport},
     AdHocChannelRequest, InitialEndpoints, ItemEndpoint, ItemInitTask, LaneEndpoint, LaneResult,
     LaneRuntimeSpec, StoreEndpoint, StoreResult, StoreRuntimeSpec,
 };
@@ -162,7 +162,8 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
 
         let ad_hoc_state = AdHocTaskState::new(link_requests.clone());
 
-        let ad_hoc_task = ad_hoc_commands_task(identity, ad_hoc_rx, ad_hoc_state, ad_hoc);
+        let ad_hoc_task =
+            ad_hoc_commands_task::<NoReport>(identity, ad_hoc_rx, ad_hoc_state, ad_hoc, None);
 
         let item_init_task = initialize_items(
             &store,

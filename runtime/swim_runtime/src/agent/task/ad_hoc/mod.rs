@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{hash_map::Entry, HashMap, HashSet},
     num::NonZeroUsize,
     time::Duration,
 };
@@ -104,6 +104,8 @@ struct AdHocOutput {
     retry_strategy: RetryStrategy,
     last_used: Instant,
 }
+
+pub type PendingWrites = Vec<(RelativeAddress<Text>, BytesMut)>;
 
 enum RetryResult {
     Stop,
@@ -227,6 +229,24 @@ impl AdHocOutput {
             }
         }
     }
+
+    fn into_pending(self) -> PendingWrites {
+        let AdHocOutput {
+            ids,
+            mut lane_buffers,
+            dirty,
+            ..
+        } = self;
+        let dirty_set = dirty.into_iter().collect::<HashSet<_>>();
+        ids.into_iter()
+            .filter(|(_, v)| dirty_set.contains(v))
+            .filter_map(|(k, v)| {
+                lane_buffers
+                    .remove(&v)
+                    .map(move |lane_buffer| (k, lane_buffer.buffer))
+            })
+            .collect()
+    }
 }
 
 type AdHocReader = FramedRead<ByteReader, AdHocCommandDecoder<BytesStr, WithLengthBytesCodec>>;
@@ -267,11 +287,23 @@ pub struct AdHocTaskConfig {
     pub timeout_delay: Duration,
 }
 
-pub async fn ad_hoc_commands_task(
+pub trait ReportFailed {
+    fn failed(&mut self, pending: PendingWrites);
+}
+
+#[derive(Default, Debug, Clone, Copy)]
+pub struct NoReport;
+
+impl ReportFailed for NoReport {
+    fn failed(&mut self, _pending: PendingWrites) {}
+}
+
+pub async fn ad_hoc_commands_task<F: ReportFailed>(
     identity: Uuid,
     mut open_requests: mpsc::Receiver<AdHocChannelRequest>,
     state: AdHocTaskState,
     config: AdHocTaskConfig,
+    mut report_failed: Option<F>,
 ) -> AdHocTaskState {
     let AdHocTaskState {
         mut reader,
@@ -397,12 +429,20 @@ pub async fn ad_hoc_commands_task(
                 if let Some(output) = outputs.get_mut(&key) {
                     if err.is_fatal() {
                         error!(error = %err, "Opening a new ad hoc command channel failed with a fatal error.");
-                        outputs.remove(&key);
+                        if let (Some(output), Some(reporter)) =
+                            (outputs.remove(&key), report_failed.as_mut())
+                        {
+                            reporter.failed(output.into_pending());
+                        }
                     } else {
                         match output.retry() {
                             RetryResult::Stop => {
                                 error!(error = %err, "Opening a new ad hoc command channel failed after retry attempts exhausted.");
-                                outputs.remove(&key);
+                                if let (Some(output), Some(reporter)) =
+                                    (outputs.remove(&key), report_failed.as_mut())
+                                {
+                                    reporter.failed(output.into_pending());
+                                }
                             }
                             RetryResult::Immediate => {
                                 error!(error = %err, "Opening a new ad hoc command channel failed. Retrying immediately.");

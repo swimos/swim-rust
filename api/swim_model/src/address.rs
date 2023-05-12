@@ -120,6 +120,12 @@ impl<S: AsRef<str>> Address<S> {
     }
 }
 
+impl PartialEq<RelativeAddress<&str>> for RelativeAddress<Text> {
+    fn eq(&self, other: &RelativeAddress<&str>) -> bool {
+        self.node.as_str() == other.node && self.lane.as_str() == other.lane
+    }
+}
+
 impl PartialEq<Address<&str>> for Address<Text> {
     fn eq(&self, other: &Address<&str>) -> bool {
         self.host.as_ref().map(Text::as_str) == other.host
@@ -133,5 +139,11 @@ impl PartialEq<Address<&str>> for Address<BytesStr> {
         self.host.as_ref().map(BytesStr::as_ref) == other.host
             && self.node.as_str() == other.node
             && self.lane.as_str() == other.lane
+    }
+}
+
+impl PartialEq<RelativeAddress<&str>> for RelativeAddress<BytesStr> {
+    fn eq(&self, other: &RelativeAddress<&str>) -> bool {
+        self.node.as_str() == other.node && self.lane.as_str() == other.lane
     }
 }

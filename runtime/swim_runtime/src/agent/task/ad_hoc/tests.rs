@@ -29,10 +29,12 @@ use swim_api::{
     error::{DownlinkFailureReason, DownlinkRuntimeError},
     protocol::{
         agent::{AdHocCommand, AdHocCommandEncoder},
-        WithLenReconEncoder,
+        WithLenRecognizerDecoder, WithLenReconEncoder,
     },
 };
-use swim_form::structural::write::StructuralWritable;
+use swim_form::structural::{
+    read::recognizer::primitive::I32Recognizer, write::StructuralWritable,
+};
 use swim_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
 use swim_model::{
     address::{Address, RelativeAddress},
@@ -45,14 +47,18 @@ use swim_utilities::{
     non_zero_usize,
 };
 use tokio::sync::{mpsc, oneshot};
-use tokio_util::codec::{FramedRead, FramedWrite};
+use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
 use uuid::Uuid;
 
-use super::{ad_hoc_commands_task, AdHocOutput, AdHocSender, AdHocTaskConfig, AdHocTaskState};
+use super::{
+    ad_hoc_commands_task, AdHocOutput, AdHocSender, AdHocTaskConfig, AdHocTaskState, PendingWrites,
+    ReportFailed,
+};
 
 struct TestContext {
     chan_tx: mpsc::Sender<AdHocChannelRequest>,
     links_rx: mpsc::Receiver<LinkRequest>,
+    failures: mpsc::UnboundedReceiver<PendingWrites>,
 }
 
 const ID: Uuid = Uuid::from_u128(1);
@@ -81,8 +87,14 @@ where
         ),
         timeout_delay: OUTPUT_TIMEOUT,
     };
-    let task = ad_hoc_commands_task(ID, chan_rx, state, config);
-    let context = TestContext { chan_tx, links_rx };
+    let (fail_tx, fail_rx) = mpsc::unbounded_channel();
+    let failure_report = FailureReport::new(fail_tx);
+    let task = ad_hoc_commands_task(ID, chan_rx, state, config, Some(failure_report));
+    let context = TestContext {
+        chan_tx,
+        links_rx,
+        failures: fail_rx,
+    };
     let test_task = test_case(context);
     tokio::time::timeout(TEST_TIMEOUT, join(task, test_task))
         .await
@@ -92,7 +104,9 @@ where
 #[tokio::test]
 async fn clean_shutdown_no_registration() {
     let (state, _) = run_test(|context| async move {
-        let TestContext { chan_tx, links_rx } = context;
+        let TestContext {
+            chan_tx, links_rx, ..
+        } = context;
         drop(chan_tx);
         links_rx
     })
@@ -113,7 +127,9 @@ async fn register(chan_tx: &mpsc::Sender<AdHocChannelRequest>) -> ByteWriter {
 #[tokio::test]
 async fn clean_shutdown_after_registration() {
     let (state, (writer, _)) = run_test(|context| async move {
-        let TestContext { chan_tx, links_rx } = context;
+        let TestContext {
+            chan_tx, links_rx, ..
+        } = context;
         let writer = register(&chan_tx).await;
         drop(chan_tx);
         (writer, links_rx)
@@ -131,7 +147,9 @@ async fn clean_shutdown_after_registration() {
 #[tokio::test]
 async fn replace_channel() {
     let (state, (_writer1, writer2, _)) = run_test(|context| async move {
-        let TestContext { chan_tx, links_rx } = context;
+        let TestContext {
+            chan_tx, links_rx, ..
+        } = context;
         let writer1 = register(&chan_tx).await;
         let writer2 = register(&chan_tx).await;
         drop(chan_tx);
@@ -285,6 +303,7 @@ async fn route_single_command() {
         let TestContext {
             chan_tx,
             mut links_rx,
+            ..
         } = context;
         let writer = register(&chan_tx).await;
         let mut sender = CommandSender::new(writer, Default::default());
@@ -325,6 +344,7 @@ async fn multiple_commands_same_target() {
         let TestContext {
             chan_tx,
             mut links_rx,
+            ..
         } = context;
         let writer = register(&chan_tx).await;
         let mut sender = CommandSender::new(writer, Default::default());
@@ -391,6 +411,7 @@ async fn multiple_commands_different_targets() {
         let TestContext {
             chan_tx,
             mut links_rx,
+            ..
         } = context;
         let writer = register(&chan_tx).await;
         let mut sender = CommandSender::new(writer, Default::default());
@@ -455,6 +476,7 @@ async fn drop_output_on_timeout() {
         let TestContext {
             chan_tx,
             mut links_rx,
+            ..
         } = context;
         let writer = register(&chan_tx).await;
         let mut sender = CommandSender::new(writer, Default::default());
@@ -789,6 +811,7 @@ async fn route_single_command_with_retry() {
         let TestContext {
             chan_tx,
             mut links_rx,
+            ..
         } = context;
         let writer = register(&chan_tx).await;
         let mut sender = CommandSender::new(writer, Default::default());
@@ -817,4 +840,116 @@ async fn route_single_command_with_retry() {
     assert!(state.reader.is_some());
     assert_eq!(state.outputs.len(), 1);
     assert!(state.outputs.contains_key(&expected_key));
+}
+
+#[derive(Debug, Clone)]
+struct FailureReport {
+    inner: Option<mpsc::UnboundedSender<PendingWrites>>,
+}
+
+impl FailureReport {
+    fn new(tx: mpsc::UnboundedSender<PendingWrites>) -> Self {
+        FailureReport { inner: Some(tx) }
+    }
+}
+
+impl ReportFailed for FailureReport {
+    fn failed(&mut self, pending: PendingWrites) {
+        let FailureReport { inner } = self;
+        if let Some(tx) = inner {
+            if tx.send(pending).is_err() {
+                *inner = None;
+            }
+        }
+    }
+}
+
+async fn fail_link_fatal(
+    rx: &mut mpsc::Receiver<LinkRequest>,
+    mut failures: mpsc::UnboundedReceiver<PendingWrites>,
+) -> PendingWrites {
+    match rx.recv().await.expect("Channel dropped.") {
+        LinkRequest::Downlink(_) => panic!("Downlink requested."),
+        LinkRequest::Commander(CommanderRequest {
+            agent_id, promise, ..
+        }) => {
+            assert_eq!(agent_id, ID);
+            promise
+                .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
+                    DownlinkFailureReason::InvalidUrl,
+                )))
+                .expect("Request dropped.");
+        }
+    }
+
+    tokio::select! {
+        _ = rx.recv() => panic!("Unexpected retry."),
+        writes = failures.recv() => writes.expect("Failure channel dropped.")
+    }
+}
+
+#[tokio::test]
+async fn route_single_command_fatal_error() {
+    let target = 0;
+    let test_value = 5;
+
+    let (state, pending) = run_test(|context| async move {
+        let TestContext {
+            chan_tx,
+            mut links_rx,
+            failures,
+        } = context;
+        let writer = register(&chan_tx).await;
+        let mut sender = CommandSender::new(writer, Default::default());
+
+        let recv_task = async move {
+            let pending = fail_link_fatal(&mut links_rx, failures).await;
+            (links_rx, pending)
+        };
+
+        let send_task = async move {
+            send_command(&mut sender, target, test_value, true).await;
+            sender
+        };
+
+        let ((_, pending), _) = join(recv_task, send_task).await;
+        drop(chan_tx);
+        pending
+    })
+    .await;
+    check_pending_single(pending, target, test_value);
+
+    assert!(state.reader.is_some());
+    assert!(state.outputs.is_empty());
+}
+
+fn check_pending_single(mut pending: PendingWrites, target: usize, expected_value: i32) {
+    let (_, node, lane) = &ADDRS[target];
+    let expected = RelativeAddress::new(*node, *lane);
+    match pending.as_mut_slice() {
+        [(addr, buffer)] => {
+            assert_eq!(*addr, expected);
+            let mut decoder = RawRequestMessageDecoder;
+            let RequestMessage {
+                origin,
+                path,
+                envelope,
+            } = decoder
+                .decode_eof(buffer)
+                .expect("Decoding failed.")
+                .expect("Incomplete record.");
+            assert_eq!(origin, ID);
+            assert_eq!(path, expected);
+            if let Operation::Command(body) = envelope {
+                let value = std::str::from_utf8(body.as_ref())
+                    .expect("Invalid UTF8")
+                    .parse::<i32>()
+                    .expect("Invalid integer.");
+                assert_eq!(value, expected_value);
+            } else {
+                panic!("Unexpected envelope: {:?}", envelope);
+            }
+        }
+        _ => panic!("Expected exactly one record."),
+    }
 }
