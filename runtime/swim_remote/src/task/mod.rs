@@ -72,7 +72,9 @@ pub enum LinkError {
 
 impl From<LinkError> for DownlinkFailureReason {
     fn from(err: LinkError) -> Self {
-        DownlinkFailureReason::Unresolvable(err.to_string())
+        match err {
+            LinkError::NoEndpoint(addr) => DownlinkFailureReason::UnresolvableLocal(addr),
+        }
     }
 }
 

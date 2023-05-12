@@ -112,10 +112,10 @@ pub enum ConnectionError {
     ),
     /// A connection could not be negotiated (for example, a TLS handshake failed).
     #[error("Negotiating a new connection failed: {0}")]
-    NegotiationFailed(#[source] Box<dyn std::error::Error + Send>),
+    NegotiationFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
     /// A connection parameter was invalid (for example, requesting a secure connection when TLS is not enabled).
     #[error("Negotiating a new connection failed: {0}")]
-    BadParameter(#[source] Box<dyn std::error::Error + Send>),
+    BadParameter(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 /// Errors that can be generated when listening for incoming connections. Particularly, this

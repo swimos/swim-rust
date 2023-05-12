@@ -24,6 +24,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     net::SocketAddr,
     num::NonZeroUsize,
+    sync::Arc,
 };
 
 use futures::{stream::FuturesUnordered, Future, FutureExt, StreamExt};
@@ -291,7 +292,7 @@ where
                         error!(host = %host, error = %e, "DNS resolution failed.");
                         let (dl_requests, cmd_requests) = pending.open_client_failed(&host);
                         let error = DownlinkRuntimeError::DownlinkConnectionFailed(
-                            DownlinkFailureReason::Unresolvable(e.to_string()),
+                            DownlinkFailureReason::UnresolvableRemote(Arc::new(e)),
                         );
                         for DownlinkRequest {
                             remote,
@@ -312,7 +313,7 @@ where
                         } in cmd_requests
                         {
                             if promise.send(Err(error.clone())).is_err() {
-                                debug!(agent_id =%agent_id, error = %error, key = ?key, "Request for client connection dropped before it failed to resolve.");
+                                debug!(error = %error, agent_id = %agent_id, key = ?key, "Request for client connection dropped before it failed to resolve.");
                             }
                         }
                     }
@@ -389,7 +390,7 @@ where
                         } in cmd_requests
                         {
                             if promise.send(Err(err.clone())).is_err() {
-                                debug!(agent_id = %agent_id, error = %err, key = ?key, "Request for client connection dropped before it failed to complete.");
+                                debug!(error = %err, agent_id = %agent_id, key = ?key, "Request for client connection dropped before it failed to complete.");
                             }
                         }
                     }
@@ -686,7 +687,7 @@ async fn attach_to_runtime(
         .await
         .map(move |_| (out_tx, in_rx))
         .map_err(|_| {
-            DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::ConnectionFailed)
+            DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::DownlinkStopped)
         });
     Event::Attached {
         remote,

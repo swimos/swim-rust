@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, num::NonZeroUsize, time::Duration};
+use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
 
 use crate::{
     agent::{task::AdHocChannelRequest, CommanderKey, CommanderRequest, LinkRequest},
@@ -25,9 +25,12 @@ use futures::{
     Future, SinkExt, Stream, StreamExt, TryStreamExt,
 };
 use rand::Rng;
-use swim_api::protocol::{
-    agent::{AdHocCommand, AdHocCommandEncoder},
-    WithLenReconEncoder,
+use swim_api::{
+    error::{DownlinkFailureReason, DownlinkRuntimeError},
+    protocol::{
+        agent::{AdHocCommand, AdHocCommandEncoder},
+        WithLenReconEncoder,
+    },
 };
 use swim_form::structural::write::StructuralWritable;
 use swim_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
@@ -37,7 +40,7 @@ use swim_model::{
 };
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
-    future::retryable::RetryStrategy,
+    future::retryable::{Quantity, RetryStrategy},
     io::byte_channel::{self, ByteReader, ByteWriter},
     non_zero_usize,
 };
@@ -58,6 +61,10 @@ const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(1024);
 const OUTPUT_TIMEOUT: Duration = Duration::from_secs(1);
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 
+const RETRY_LIMIT: NonZeroUsize = non_zero_usize!(3);
+const WITHIN_LIMIT: usize = 1;
+const EXCEED_LIMIT: usize = 5;
+
 async fn run_test<F, Fut>(test_case: F) -> (AdHocTaskState, Fut::Output)
 where
     F: FnOnce(TestContext) -> Fut,
@@ -68,7 +75,10 @@ where
     let state = AdHocTaskState::new(links_tx);
     let config = AdHocTaskConfig {
         buffer_size: BUFFER_SIZE,
-        retry_strategy: RetryStrategy::none(),
+        retry_strategy: RetryStrategy::interval(
+            Duration::from_millis(100),
+            Quantity::Finite(RETRY_LIMIT),
+        ),
         timeout_delay: OUTPUT_TIMEOUT,
     };
     let task = ad_hoc_commands_task(ID, chan_rx, state, config);
@@ -166,6 +176,36 @@ where
 }
 
 async fn open_link(rx: &mut mpsc::Receiver<LinkRequest>) -> (CommanderKey, ByteReader) {
+    open_link_with_failures(rx, 0).await
+}
+
+async fn open_link_with_failures(
+    rx: &mut mpsc::Receiver<LinkRequest>,
+    failures: usize,
+) -> (CommanderKey, ByteReader) {
+    let mut k = None;
+    for _ in 0..failures {
+        match rx.recv().await.expect("Channel dropped.") {
+            LinkRequest::Downlink(_) => panic!("Downlink requested."),
+            LinkRequest::Commander(CommanderRequest {
+                agent_id,
+                key,
+                promise,
+            }) => {
+                assert_eq!(agent_id, ID);
+                let io_err = std::io::Error::from(std::io::ErrorKind::ConnectionReset);
+                promise
+                    .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
+                        DownlinkFailureReason::ConnectionFailed(Arc::new(io_err)),
+                    )))
+                    .expect("Request dropped.");
+                if let Some(k) = &k {
+                    assert_eq!(&key, k);
+                }
+                k = Some(key);
+            }
+        }
+    }
     match rx.recv().await.expect("Channel dropped.") {
         LinkRequest::Downlink(_) => panic!("Downlink requested."),
         LinkRequest::Commander(CommanderRequest {
@@ -176,6 +216,9 @@ async fn open_link(rx: &mut mpsc::Receiver<LinkRequest>) -> (CommanderKey, ByteR
             assert_eq!(agent_id, ID);
             let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
             promise.send(Ok(tx)).expect("Request dropped.");
+            if let Some(k) = &k {
+                assert_eq!(&key, k);
+            }
             (key, rx)
         }
     }
@@ -735,4 +778,43 @@ async fn output_times_out() {
 
     tokio::time::advance(timeout + Duration::from_secs(1)).await;
     assert!(output.timed_out(timeout));
+}
+
+#[tokio::test]
+async fn route_single_command_with_retry() {
+    let target = 0;
+    let test_value = 5;
+
+    let (state, _) = run_test(|context| async move {
+        let TestContext {
+            chan_tx,
+            mut links_rx,
+        } = context;
+        let writer = register(&chan_tx).await;
+        let mut sender = CommandSender::new(writer, Default::default());
+
+        let recv_task = async move {
+            let (key, rx) = open_link_with_failures(&mut links_rx, WITHIN_LIMIT).await;
+            assert_eq!(key, make_key(target));
+
+            let mut channel = RequestReader::new(rx, Default::default());
+            expect_msg(&mut channel, target, test_value).await;
+            links_rx
+        };
+
+        let send_task = async move {
+            send_command(&mut sender, target, test_value, true).await;
+            sender
+        };
+
+        let (links_rx, sender) = join(recv_task, send_task).await;
+        drop(chan_tx);
+        (sender, links_rx)
+    })
+    .await;
+
+    let expected_key = make_key(target);
+    assert!(state.reader.is_some());
+    assert_eq!(state.outputs.len(), 1);
+    assert!(state.outputs.contains_key(&expected_key));
 }

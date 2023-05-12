@@ -1119,15 +1119,32 @@ enum NewClientError {
 impl From<NewClientError> for DownlinkRuntimeError {
     fn from(err: NewClientError) -> Self {
         match err {
-            e @ NewClientError::InvalidUrl(_) | e @ NewClientError::BadWarpUrl(_) => {
-                DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::Unresolvable(
-                    e.to_string(),
-                ))
+            NewClientError::InvalidUrl(_) | NewClientError::BadWarpUrl(_) => {
+                DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::InvalidUrl)
             }
-            NewClientError::OpeningSocketFailed { .. } => {
-                DownlinkRuntimeError::DownlinkConnectionFailed(
-                    DownlinkFailureReason::ConnectionFailed,
-                )
+            NewClientError::OpeningSocketFailed { mut errors } => {
+                let err = errors.pop().map(|(_, e)| e).unwrap_or_else(|| {
+                    let e = std::io::Error::from(std::io::ErrorKind::Other);
+                    ConnectionError::ConnectionFailed(e)
+                });
+                let reason = match err {
+                    ConnectionError::ConnectionFailed(err) => {
+                        DownlinkFailureReason::ConnectionFailed(Arc::new(err))
+                    }
+                    ConnectionError::NegotiationFailed(err) => {
+                        DownlinkFailureReason::TlsConnectionFailed {
+                            error: err.into(),
+                            recoverable: true,
+                        }
+                    }
+                    ConnectionError::BadParameter(err) => {
+                        DownlinkFailureReason::TlsConnectionFailed {
+                            error: err.into(),
+                            recoverable: false,
+                        }
+                    }
+                };
+                DownlinkRuntimeError::DownlinkConnectionFailed(reason)
             }
             NewClientError::WsNegotationFailed { error } => {
                 DownlinkRuntimeError::DownlinkConnectionFailed(

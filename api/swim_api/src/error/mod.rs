@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::error::Error;
 use std::io;
+use std::{error::Error, sync::Arc};
 
 use swim_form::structural::read::ReadError;
-use swim_model::Text;
+use swim_model::{address::RelativeAddress, Text};
 use swim_recon::parser::AsyncParseError;
-use swim_utilities::{routing::route_pattern::UnapplyError, trigger::promise};
+use swim_utilities::{errors::Recoverable, routing::route_pattern::UnapplyError, trigger::promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 
@@ -71,12 +71,21 @@ pub enum DownlinkTaskError {
     Custom(Box<dyn Error + Send + Sync + 'static>),
 }
 
-#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone)]
 pub enum DownlinkFailureReason {
+    #[error("The specified remote URL was not valid.")]
+    InvalidUrl,
     #[error("The lane was unresolvable: {0}")]
-    Unresolvable(String),
-    #[error("Connection to the remote host failed.")]
-    ConnectionFailed,
+    UnresolvableRemote(Arc<std::io::Error>),
+    #[error("A local lane was not resolvable: {0}")]
+    UnresolvableLocal(RelativeAddress<Text>),
+    #[error("Connection to the remote host failed: {0}")]
+    ConnectionFailed(Arc<std::io::Error>),
+    #[error("Failed to negotiate a TLS connection: {error}")]
+    TlsConnectionFailed {
+        error: Arc<dyn std::error::Error + Send + Sync>,
+        recoverable: bool,
+    },
     #[error("Could not negotiate a websocket connection: {0}")]
     WebsocketNegotiationFailed(String),
     #[error("The remote client stopped while the downlink was starting.")]
@@ -176,6 +185,30 @@ impl From<promise::PromiseError> for DownlinkRuntimeError {
 impl From<oneshot::error::RecvError> for DownlinkRuntimeError {
     fn from(_: oneshot::error::RecvError) -> Self {
         DownlinkRuntimeError::RuntimeError(AgentRuntimeError::Terminated)
+    }
+}
+
+impl Recoverable for DownlinkFailureReason {
+    fn is_fatal(&self) -> bool {
+        match self {
+            DownlinkFailureReason::InvalidUrl => true,
+            DownlinkFailureReason::UnresolvableRemote(_) => false,
+            DownlinkFailureReason::ConnectionFailed(_) => false,
+            DownlinkFailureReason::WebsocketNegotiationFailed(_) => false,
+            DownlinkFailureReason::RemoteStopped => false,
+            DownlinkFailureReason::DownlinkStopped => false,
+            DownlinkFailureReason::UnresolvableLocal(_) => true,
+            DownlinkFailureReason::TlsConnectionFailed { recoverable, .. } => !recoverable,
+        }
+    }
+}
+
+impl Recoverable for DownlinkRuntimeError {
+    fn is_fatal(&self) -> bool {
+        match self {
+            DownlinkRuntimeError::RuntimeError(_) => true,
+            DownlinkRuntimeError::DownlinkConnectionFailed(err) => err.is_fatal(),
+        }
     }
 }
 

@@ -33,6 +33,7 @@ use swim_model::{
     BytesStr, Text,
 };
 use swim_utilities::{
+    errors::Recoverable,
     future::retryable::RetryStrategy,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
 };
@@ -394,20 +395,26 @@ pub async fn ad_hoc_commands_task(
                     break;
                 }
                 if let Some(output) = outputs.get_mut(&key) {
-                    match output.retry() {
-                        RetryResult::Stop => {
-                            error!(error = %err, "Opening a new ad hoc command channel failed.");
-                            outputs.remove(&key);
-                        }
-                        RetryResult::Immediate => {
-                            error!(error = %err, "Opening a new ad hoc command channel failed. Retrying immediately.");
-                            let fut = try_open_new(identity, key, link_requests.clone(), None);
-                            pending.push(Either::Left(Either::Right(fut)));
-                        }
-                        RetryResult::Delayed(t) => {
-                            error!(error = %err, delay = ?t, "Opening a new ad hoc command channel failed. Retrying after a delay.");
-                            let fut = try_open_new(identity, key, link_requests.clone(), Some(t));
-                            pending.push(Either::Left(Either::Right(fut)));
+                    if err.is_fatal() {
+                        error!(error = %err, "Opening a new ad hoc command channel failed with a fatal error.");
+                        outputs.remove(&key);
+                    } else {
+                        match output.retry() {
+                            RetryResult::Stop => {
+                                error!(error = %err, "Opening a new ad hoc command channel failed after retry attempts exhausted.");
+                                outputs.remove(&key);
+                            }
+                            RetryResult::Immediate => {
+                                error!(error = %err, "Opening a new ad hoc command channel failed. Retrying immediately.");
+                                let fut = try_open_new(identity, key, link_requests.clone(), None);
+                                pending.push(Either::Left(Either::Right(fut)));
+                            }
+                            RetryResult::Delayed(t) => {
+                                error!(error = %err, delay = ?t, "Opening a new ad hoc command channel failed. Retrying after a delay.");
+                                let fut =
+                                    try_open_new(identity, key, link_requests.clone(), Some(t));
+                                pending.push(Either::Left(Either::Right(fut)));
+                            }
                         }
                     }
                 }

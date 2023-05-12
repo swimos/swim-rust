@@ -187,9 +187,9 @@ impl AgentContext for AgentRuntimeContext {
             let (tx, rx) = oneshot::channel();
             let remote = match remote_result {
                 Ok(r) => r,
-                Err(e) => {
+                Err(_) => {
                     return Err(DownlinkRuntimeError::DownlinkConnectionFailed(
-                        swim_api::error::DownlinkFailureReason::Unresolvable(e.to_string()),
+                        swim_api::error::DownlinkFailureReason::InvalidUrl,
                     ))
                 }
             };
