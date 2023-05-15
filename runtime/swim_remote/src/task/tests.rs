@@ -369,7 +369,7 @@ fn make_agent_envelope(a: i32) -> BytesStr {
 }
 
 fn make_bad_agent_envelope() -> BytesStr {
-    let env = format!("@command(node:\"{}\",lane:{}) {{a:2}}", OTHER, LANE);
+    let env = format!("@link(node:\"{}\",lane:{}) {{a:2}}", OTHER, LANE);
     BytesStr::from(env)
 }
 
@@ -553,7 +553,7 @@ async fn incoming_route_not_found_env() {
                 command_envelope,
                 error: AgentResolutionError::NotFound(NoSuchAgent { node, lane }),
             }) => {
-                assert!(command_envelope);
+                assert!(!command_envelope);
                 assert_eq!(node, OTHER);
                 assert_eq!(lane, LANE);
             }

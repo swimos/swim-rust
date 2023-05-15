@@ -661,8 +661,29 @@ impl IncomingTask {
                                                     agent_routes.remove(node);
                                                 }
                                             }
-                                            Err(_) => break Ok(()),
-                                            _ => {}
+                                            Err(_) => {
+                                                break Ok(());
+                                            }
+                                            _ => {
+                                                let RequestMessage { path, .. } = request;
+                                                if outgoing_tx
+                                                    .send(OutgoingTaskMessage::NotFound {
+                                                        command_envelope: request
+                                                            .envelope
+                                                            .is_command(),
+                                                        error: AgentResolutionError::NotFound(
+                                                            NoSuchAgent {
+                                                                node: path.node.into(),
+                                                                lane: path.lane.into(),
+                                                            },
+                                                        ),
+                                                    })
+                                                    .await
+                                                    .is_err()
+                                                {
+                                                    break Ok(());
+                                                }
+                                            }
                                         }
                                     }
                                 }
