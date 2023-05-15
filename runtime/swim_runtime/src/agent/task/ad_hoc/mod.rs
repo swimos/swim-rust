@@ -71,15 +71,20 @@ impl AdHocSender {
         }
     }
 
+    /// Replace the send buffer with a filled buffer (used when sending commands for a single
+    /// target).
     fn swap_buffer(&mut self, buffer: &mut BytesMut) {
         self.buffer.clear();
         std::mem::swap(&mut self.buffer, buffer);
     }
 
+    /// Append the contents of another buffer to the send buffer (used when sending commands
+    /// to multiple targets).
     fn append_buffer(&mut self, buffer: &mut BytesMut) {
         self.buffer.put(buffer)
     }
 
+    /// Send the contents of the buffer.
     async fn send_commands<'a>(mut self) -> Result<Self, std::io::Error> {
         let AdHocSender { sender, buffer } = &mut self;
         sender.write_all(buffer).await?;
@@ -87,22 +92,26 @@ impl AdHocSender {
     }
 }
 
+/// Buffer to collect commands destined for a single target.
 #[derive(Debug, Default)]
 struct LaneBuffer {
-    buffer: BytesMut,
-    offset: usize,
+    buffer: BytesMut, // Buffer containing one or or more records.
+    offset: usize,    // The offset in the buffer of the last written record.
 }
 
+/// State to keep track of the commands being sent to a single endpoint. For remote targets
+/// this will be attached to a socket and will track multiple lanes. For a local target it
+/// will have a direct connection and will track only a single lane.
 #[derive(Debug)]
 struct AdHocOutput {
-    identity: Uuid,
-    count: usize,
-    writer: Option<AdHocSender>,
-    ids: HashMap<RelativeAddress<Text>, usize>,
-    lane_buffers: HashMap<usize, LaneBuffer>,
-    dirty: Vec<usize>,
-    retry_strategy: RetryStrategy,
-    last_used: Instant,
+    identity: Uuid,                             // ID of the agent sending commands.
+    count: usize,                               // Running counter of IDs for targets.
+    writer: Option<AdHocSender>,                // Sender for the output channel.
+    ids: HashMap<RelativeAddress<Text>, usize>, // Mapping from target paths to IDs.
+    lane_buffers: HashMap<usize, LaneBuffer>,   // Mapping from IDs to data buffers.
+    dirty: Vec<usize>, // Targets that have been written to since the last write was scheduled.
+    retry_strategy: RetryStrategy, // Retry strategy to use when establishing the outgoing channel.
+    last_used: Instant, // The last time new data was provided (for timing out the output).
 }
 
 pub type PendingWrites = Vec<(RelativeAddress<Text>, BytesMut)>;
@@ -114,6 +123,10 @@ enum RetryResult {
 }
 
 impl AdHocOutput {
+    /// Create a new output tracker.
+    /// # Arguments
+    /// * `identity` - The unique ID of the agent that owns this task.
+    /// * `strategy - Retry strategy to use for establishing the outgoing connection.
     fn new(identity: Uuid, strategy: RetryStrategy) -> Self {
         AdHocOutput {
             identity,
@@ -127,11 +140,14 @@ impl AdHocOutput {
         }
     }
 
+    /// Replace the writer when the connection is initially established or when a write
+    /// completes.
     fn replace_writer(&mut self, sender: AdHocSender) {
         self.writer = Some(sender);
         self.retry_strategy.reset();
     }
 
+    /// If establishing the connection fails, determine whether to retry.
     fn retry(&mut self) -> RetryResult {
         match self.retry_strategy.next() {
             Some(Some(t)) => RetryResult::Delayed(t),
@@ -140,6 +156,7 @@ impl AdHocOutput {
         }
     }
 
+    /// Check if the output has timed out.
     fn timed_out(&self, timeout: Duration) -> bool {
         let AdHocOutput {
             writer, last_used, ..
@@ -148,6 +165,7 @@ impl AdHocOutput {
         writer.is_some() && now.duration_since(*last_used) >= timeout
     }
 
+    /// Get the ID and output buffer for a target path (creating a new entry if it does not exist).
     fn get_buffer(&mut self, key: &RelativeAddress<Text>) -> (usize, &mut LaneBuffer) {
         let AdHocOutput {
             count,
@@ -172,6 +190,7 @@ impl AdHocOutput {
         )
     }
 
+    /// Append a command for specified target.
     fn append(&mut self, key: RelativeAddress<Text>, body: &[u8], overwrite_permitted: bool) {
         let id = self.identity;
         let (i, LaneBuffer { buffer, offset, .. }) = self.get_buffer(&key);
@@ -192,6 +211,8 @@ impl AdHocOutput {
         self.dirty.push(i);
     }
 
+    /// If the write is present, create a future that will write all pending commands to the
+    /// output channel.
     fn write(
         &mut self,
     ) -> Option<impl Future<Output = Result<AdHocSender, std::io::Error>> + 'static> {
@@ -230,6 +251,7 @@ impl AdHocOutput {
         }
     }
 
+    /// Close the output tracker returning all pending writes.
     fn into_pending(self) -> PendingWrites {
         let AdHocOutput {
             ids,
@@ -263,6 +285,8 @@ enum AdHocEvent {
     Timeout(CommanderKey),
 }
 
+/// The state of the ad-hoc command task. This is public as it must be passed between from the
+/// agent initialization task to the agent runtime task.
 #[derive(Debug)]
 pub struct AdHocTaskState {
     reader: Option<AdHocReader>,
@@ -280,10 +304,14 @@ impl AdHocTaskState {
     }
 }
 
+/// Configuration parameters for the ad-hoc commands channel.
 #[derive(Debug)]
 pub struct AdHocTaskConfig {
+    /// Buffer size for the channel between the agent runtime and agent implementation.
     pub buffer_size: NonZeroUsize,
+    /// Retry strategy for establishing remote connections to send commands.
     pub retry_strategy: RetryStrategy,
+    /// If an output channel receives no new commands for this time period, it will be closed.
     pub timeout_delay: Duration,
 }
 
@@ -298,6 +326,16 @@ impl ReportFailed for NoReport {
     fn failed(&mut self, _pending: PendingWrites) {}
 }
 
+/// A task that receives requests from the agent implementation to send ad-hoc commands
+/// and routes them to the appropriate remote or local lanes.
+///
+/// #Arguments
+/// * `identity` - The unique ID of this agent instance.
+/// * `open_requests` - Requests for the agent implementation to create a channel for sending ad-hoc commands.
+/// * `state` - The state of the task. For agent initialization this should be empty. This is then passed from
+/// the initialization task to the runtime task.
+/// * `config` - Configuration parameters for the task.
+/// * `report_failed` - Callback to report commands that were still pending when an output channel failed.
 pub async fn ad_hoc_commands_task<F: ReportFailed>(
     identity: Uuid,
     mut open_requests: mpsc::Receiver<AdHocChannelRequest>,
