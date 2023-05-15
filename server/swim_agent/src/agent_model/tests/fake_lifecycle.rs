@@ -24,7 +24,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::{fake_agent::TestAgent, AD_HOC_HOST, CMD_LANE, AD_HOC_NODE, AD_HOC_LANE};
+use super::{fake_agent::TestAgent, AD_HOC_HOST, AD_HOC_LANE, AD_HOC_NODE, CMD_LANE};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum LifecycleEvent {

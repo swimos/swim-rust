@@ -315,7 +315,7 @@ impl<Agent> AgentContext for TestDownlinkContext<Agent> {
         lane: &str,
         kind: DownlinkKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
-        assert_eq!(kind, DownlinkKind::Value);
+        assert_eq!(kind, DownlinkKind::Event);
         let key = Address::text(host, node, lane);
         let (in_tx, in_rx) = byte_channel(BUFFER_SIZE);
         let (out_tx, out_rx) = byte_channel(BUFFER_SIZE);
