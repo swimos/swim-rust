@@ -24,7 +24,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::{fake_agent::TestAgent, AD_HOC_HOST, CMD_LANE};
+use super::{fake_agent::TestAgent, AD_HOC_HOST, CMD_LANE, AD_HOC_NODE, AD_HOC_LANE};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum LifecycleEvent {
@@ -132,7 +132,7 @@ impl HandlerAction<TestAgent> for LifecycleHandler {
                         };
                         action_context.spawn_suspend(fut.boxed());
                     } else {
-                        let address = Address::new(Some(AD_HOC_HOST), AD_HOC_HOST, AD_HOC_HOST);
+                        let address = Address::new(Some(AD_HOC_HOST), AD_HOC_NODE, AD_HOC_LANE);
                         action_context.send_command(address, "content", true);
                     }
                 }
