@@ -60,13 +60,15 @@ use super::{
     ClientRegistration, EstablishedClient, NewClientError,
 };
 
-/// A task that manages downlink runtime tasks for the server. This taks has the following
+/// A task that manages downlink runtime tasks for the server. This task has the following
 /// responsibilities:
 /// * Accept requests for new downlink connections.
-/// * Perform a DNS lookup for remote downlinks.
+/// * Accept requests for one way links for sending ad hoc commands.
+/// * Perform a DNS lookup for remote endpoints.
 /// * Attach new clients to existing running downlink runtime tasks where appropriate.
 /// * Register a new socket with the main server task for new remotes.
 /// * Spawn new downlink runtime tasks and keep track of their results.
+/// * Establish direct connections between agents and remote sockets (or other local lanes) for sending ad hoc commands.
 pub struct DownlinkConnectionTask<Dns> {
     connector: DownlinksConnector,
     coop_budget: Option<NonZeroUsize>,
