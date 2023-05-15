@@ -1168,7 +1168,12 @@ where
                 }
                 TaskEvent::CommandSendComplete { result: Ok(writer) } => {
                     cmd_send_fut.set(None.into());
-                    cmd_writer = Some(writer);
+                    if !ad_hoc_buffer.is_empty() {
+                        let fut = writer.write(&mut ad_hoc_buffer);
+                        cmd_send_fut.set(Some(fut.fuse()).into());
+                    } else {
+                        cmd_writer = Some(writer);
+                    }
                 }
                 TaskEvent::CommandSendComplete { result: Err(err) } => {
                     break Err(AgentTaskError::OutputFailed(err));
@@ -1361,6 +1366,8 @@ impl CommandWriter {
     }
 }
 
+/// Check of an event handler wrote into the ad-hoc commands buffer and schedule a
+/// write to the command channel.
 #[inline]
 fn check_cmds<Fut>(
     ad_hoc_buffer: &mut BytesMut,
