@@ -17,7 +17,7 @@ error[E0599]: the method `as_value` exists for struct `S<Valid, Skipped>`, but i
            which is required by `S<Valid, Skipped>: Form`
            `S<Valid, Skipped>: StructuralWritable`
            which is required by `S<Valid, Skipped>: Form`
-note: the following traits must be implemented
+note: the traits `StructuralReadable` and `StructuralWritable` must be implemented
   --> src/structural/read/mod.rs
    |
    | pub trait StructuralReadable: RecognizerReadable {
@@ -35,7 +35,3 @@ error[E0277]: the trait bound `B: Default` is not satisfied
    |              ^^^^ the trait `Default` is not implemented for `B`
    |
    = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
-help: consider further restricting type parameter `B`
-   |
-24 |     #[derive(Form, B: std::default::Default, Debug, PartialEq, Clone)]
-   |                  ++++++++++++++++++++++++++
