@@ -126,7 +126,7 @@ impl DownlinkRequest {
     }
 }
 
-/// Implementaton of [`AgentContext`] that communicates with with another task over a channel
+/// Implementation of [`AgentContext`] that communicates with with another task over a channel
 /// to perform the supported operations.
 #[derive(Clone)]
 struct AgentRuntimeContext {

@@ -545,7 +545,7 @@ impl WriteTaskMessage {
 /// * `link_requests` - Requests to open external connections for the agent.
 /// * `read_tx` - Channel to communicate with the read task.
 /// * `write_tx` - Channel to communicate with the write task.
-/// * `ad_hoc_tx` - Channel to communicate with the ad-hoc commands task.
+/// * `ad_hoc_tx` - Channel to communicate with the ad-hoc commands
 /// * `combined_stop` - The task will stop when this future completes. This should combined the overall
 /// shutdown-signal with latch that ensures this task will stop if the read/write tasks stop (to avoid
 /// deadlocks).
