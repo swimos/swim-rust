@@ -34,7 +34,7 @@ use swim_api::{
     error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError},
 };
 use swim_model::{address::RelativeAddress, Text};
-use swim_remote::AttachClient;
+use swim_remote::{AttachClient, LinkError};
 use swim_runtime::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
     downlink::{
@@ -726,10 +726,12 @@ async fn start_downlink_runtime(
             result: Err(DownlinkFailureReason::RemoteStopped),
         };
     }
-    let err = if done_rx.await.is_err() {
-        Some(DownlinkFailureReason::RemoteStopped)
-    } else {
-        None
+    let err = match done_rx.await {
+        Ok(Ok(_)) => None,
+        Ok(Err(LinkError::NoEndpoint(addr))) => {
+            Some(DownlinkFailureReason::UnresolvableLocal(addr))
+        }
+        _ => Some(DownlinkFailureReason::RemoteStopped),
     };
     if let Some(err) = err {
         return Event::RuntimeAttachmentResult {
