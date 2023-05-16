@@ -22,12 +22,12 @@ mod pending;
 mod runtime;
 mod transport;
 
+pub use crate::runtime::{start_runtime, RawHandle};
 pub use commander::{CommandError, Commander};
 pub use error::{DownlinkErrorKind, DownlinkRuntimeError, TimeoutElapsed};
 pub use models::RemotePath;
 #[cfg(feature = "deflate")]
 use ratchet::deflate::DeflateConfig;
-pub use runtime::{start_runtime, RawHandle};
 use std::num::NonZeroUsize;
 use std::{fmt::Debug, time::Duration};
 pub use swim_api::downlink::DownlinkKind;
