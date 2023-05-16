@@ -169,7 +169,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
             &store,
             terminated,
             &link_requests,
-            &ad_hoc_tx,
+            ad_hoc_tx,
             &initialization,
             &mut lane_endpoints,
             &mut store_endpoints,
@@ -443,7 +443,7 @@ async fn initialize_items<Store, R>(
     store: &Store,
     mut terminated: R,
     link_requests: &mpsc::Sender<LinkRequest>,
-    ad_hoc_tx: &mpsc::Sender<AdHocChannelRequest>,
+    ad_hoc_tx: mpsc::Sender<AdHocChannelRequest>,
     initialization: &Initialization,
     lane_endpoints: &mut Vec<LaneEndpoint<Io>>,
     store_endpoints: &mut Vec<StoreEndpoint>,
@@ -527,5 +527,6 @@ where
             }
         }
     }
+
     Ok(())
 }
