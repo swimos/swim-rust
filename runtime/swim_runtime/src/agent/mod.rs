@@ -568,7 +568,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             InitTaskConfig {
                 ad_hoc_queue_size: runtime_config.attachment_queue_size,
                 item_init_timeout: runtime_config.item_init_timeout,
-                ad_hoc: ad_hoc_config,
+                external_links: ad_hoc_config,
             },
             reporting,
         );
@@ -593,7 +593,6 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 NodeDescriptor::new(identity, node_uri),
                 initial_state,
                 attachment_rx,
-                link_tx,
                 stopping,
                 runtime_config,
             );
@@ -653,7 +652,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 InitTaskConfig {
                     ad_hoc_queue_size: runtime_config.attachment_queue_size,
                     item_init_timeout: runtime_config.item_init_timeout,
-                    ad_hoc: ad_hoc_config,
+                    external_links: ad_hoc_config,
                 },
                 reporting,
                 StorePersistence(store),
@@ -677,7 +676,6 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 NodeDescriptor::new(identity, node_uri.clone()),
                 initial_state,
                 attachment_rx,
-                link_tx,
                 stopping,
                 runtime_config,
                 store_per,

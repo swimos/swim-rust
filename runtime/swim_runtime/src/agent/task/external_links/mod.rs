@@ -51,7 +51,7 @@ use crate::{
     net::SchemeHostPort,
 };
 
-use super::AdHocChannelRequest;
+use super::{AdHocChannelRequest, ExternalLinkRequest};
 
 #[cfg(test)]
 mod tests;
@@ -275,7 +275,7 @@ type AdHocReader = FramedRead<ByteReader, AdHocCommandDecoder<BytesStr, WithLeng
 
 #[derive(Debug)]
 enum LinksTaskEvent {
-    Request(AdHocChannelRequest),
+    Request(ExternalLinkRequest),
     Command(AdHocCommand<BytesStr, BytesMut>),
     NewChannel(
         CommanderKey,
@@ -338,7 +338,7 @@ impl ReportFailed for NoReport {
 /// * `report_failed` - Callback to report commands that were still pending when an output channel failed.
 pub async fn external_links_task<F: ReportFailed>(
     identity: Uuid,
-    mut open_requests: mpsc::Receiver<AdHocChannelRequest>,
+    mut open_requests: mpsc::Receiver<ExternalLinkRequest>,
     state: LinksTaskState,
     config: LinksTaskConfig,
     mut report_failed: Option<F>,
@@ -406,7 +406,7 @@ pub async fn external_links_task<F: ReportFailed>(
         };
 
         match event {
-            LinksTaskEvent::Request(AdHocChannelRequest { promise }) => {
+            LinksTaskEvent::Request(ExternalLinkRequest::AdHoc(AdHocChannelRequest { promise })) => {
                 let (tx, rx) = byte_channel(buffer_size);
                 if promise.send(Ok(tx)).is_ok() {
                     debug!(identity = %identity, "Attaching a new ad hoc command channel.");
@@ -415,6 +415,13 @@ pub async fn external_links_task<F: ReportFailed>(
                     debug!(identity = %identity, "The agent dropped its request for an ad hoc command channel before it was completed.");
                 }
             }
+            LinksTaskEvent::Request(ExternalLinkRequest::Downlink(req)) => {
+                // TODO restart
+                if link_requests.send(LinkRequest::Downlink(req)).await.is_err() {
+                    debug!(identity = %identity, "Stopping after the link request channel was dropped.");
+                    break;
+                }
+            },
             LinksTaskEvent::Command(AdHocCommand {
                 address,
                 command,

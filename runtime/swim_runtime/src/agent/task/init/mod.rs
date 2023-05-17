@@ -46,8 +46,8 @@ use crate::agent::{
 
 use super::{
     external_links::{external_links_task, LinksTaskConfig, LinksTaskState, NoReport},
-    AdHocChannelRequest, InitialEndpoints, ItemEndpoint, ItemInitTask, LaneEndpoint, LaneResult,
-    LaneRuntimeSpec, StoreEndpoint, StoreResult, StoreRuntimeSpec,
+    InitialEndpoints, ItemEndpoint, ItemInitTask, LaneEndpoint, LaneResult,
+    LaneRuntimeSpec, StoreEndpoint, StoreResult, StoreRuntimeSpec, ExternalLinkRequest,
 };
 
 use tracing::{error, info};
@@ -71,7 +71,7 @@ pub struct AgentInitTask<Store = StoreDisabled> {
 pub struct InitTaskConfig {
     pub ad_hoc_queue_size: NonZeroUsize,
     pub item_init_timeout: Duration,
-    pub ad_hoc: LinksTaskConfig,
+    pub external_links: LinksTaskConfig,
 }
 
 impl AgentInitTask {
@@ -149,7 +149,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
         let InitTaskConfig {
             ad_hoc_queue_size,
             item_init_timeout,
-            ad_hoc,
+            external_links,
         } = config;
         let initialization = Initialization::new(reporting, item_init_timeout);
         let mut request_stream = ReceiverStream::new(requests);
@@ -158,24 +158,24 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
         let mut lane_endpoints: Vec<LaneEndpoint<Io>> = vec![];
         let mut store_endpoints: Vec<StoreEndpoint> = vec![];
 
-        let (ad_hoc_tx, ad_hoc_rx) = mpsc::channel(ad_hoc_queue_size.get());
+        let (ext_link_tx, ext_link_rx) = mpsc::channel(ad_hoc_queue_size.get());
 
-        let ad_hoc_state = LinksTaskState::new(link_requests.clone());
+        let ext_link_state = LinksTaskState::new(link_requests.clone());
 
         let ext_links_task =
-            external_links_task::<NoReport>(identity, ad_hoc_rx, ad_hoc_state, ad_hoc, None);
+            external_links_task::<NoReport>(identity, ext_link_rx, ext_link_state, external_links, None);
 
         let item_init_task = initialize_items(
             &store,
             terminated,
             &link_requests,
-            ad_hoc_tx,
+            ext_link_tx,
             &initialization,
             &mut lane_endpoints,
             &mut store_endpoints,
         );
 
-        let (result, ad_hoc_state) = join(item_init_task, ext_links_task).await;
+        let (result, ext_link_state) = join(item_init_task, ext_links_task).await;
         result?;
 
         let Initialization { reporting, .. } = initialization;
@@ -188,7 +188,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
                     request_stream.into_inner(),
                     lane_endpoints,
                     store_endpoints,
-                    ad_hoc_state,
+                    ext_link_state,
                 ),
                 store,
             ))
@@ -443,7 +443,7 @@ async fn initialize_items<Store, R>(
     store: &Store,
     mut terminated: R,
     link_requests: &mpsc::Sender<LinkRequest>,
-    ad_hoc_tx: mpsc::Sender<AdHocChannelRequest>,
+    ext_link_tx: mpsc::Sender<ExternalLinkRequest>,
     initialization: &Initialization,
     lane_endpoints: &mut Vec<LaneEndpoint<Io>>,
     store_endpoints: &mut Vec<StoreEndpoint>,
@@ -474,7 +474,7 @@ where
             },
             Either::Right(request) => match request {
                 AgentRuntimeRequest::AdHoc(req) => {
-                    if ad_hoc_tx.send(req).await.is_err() {
+                    if ext_link_tx.send(ExternalLinkRequest::AdHoc(req)).await.is_err() {
                         break Err(AgentExecError::FailedDownlinkRequest);
                     }
                 }

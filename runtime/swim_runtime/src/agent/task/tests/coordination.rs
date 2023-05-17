@@ -394,7 +394,6 @@ where
         NodeDescriptor::new(AGENT_ID, Text::new(NODE)),
         init,
         att_rx,
-        links_tx,
         stop_rx.clone(),
         config,
     );

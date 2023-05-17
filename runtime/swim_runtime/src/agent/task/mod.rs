@@ -38,7 +38,7 @@ use super::reporting::UplinkReporter;
 use super::store::{AgentItemInitError, AgentPersistence};
 use super::{
     AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io,
-    LinkRequest, NodeReporting,
+    NodeReporting,
 };
 use bytes::{Bytes, BytesMut};
 use futures::future::{join3, BoxFuture};
@@ -142,6 +142,12 @@ impl AdHocChannelRequest {
     pub fn new(promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>) -> Self {
         AdHocChannelRequest { promise }
     }
+}
+
+#[derive(Debug)]
+pub enum ExternalLinkRequest {
+    AdHoc(AdHocChannelRequest),
+    Downlink(DownlinkRequest),
 }
 
 /// Type for requests that can be sent to the agent runtime task by an agent implementation.
@@ -280,7 +286,7 @@ pub struct InitialEndpoints {
     rx: mpsc::Receiver<AgentRuntimeRequest>,
     lane_endpoints: Vec<LaneEndpoint<Io>>,
     store_endpoints: Vec<StoreEndpoint>,
-    ad_hoc_state: LinksTaskState,
+    ext_link_state: LinksTaskState,
 }
 
 impl InitialEndpoints {
@@ -289,14 +295,14 @@ impl InitialEndpoints {
         rx: mpsc::Receiver<AgentRuntimeRequest>,
         lane_endpoints: Vec<LaneEndpoint<Io>>,
         store_endpoints: Vec<StoreEndpoint>,
-        ad_hoc_state: LinksTaskState,
+        ext_link_state: LinksTaskState,
     ) -> Self {
         InitialEndpoints {
             reporting,
             rx,
             lane_endpoints,
             store_endpoints,
-            ad_hoc_state,
+            ext_link_state,
         }
     }
 }
@@ -323,7 +329,6 @@ pub struct AgentRuntimeTask<Store = StoreDisabled> {
     node: NodeDescriptor,
     init: InitialEndpoints,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-    link_requests: mpsc::Sender<LinkRequest>,
     stopping: trigger::Receiver,
     config: AgentRuntimeConfig,
     store: Store,
@@ -352,14 +357,12 @@ impl AgentRuntimeTask {
     /// * `node` - The routing ID and node URI of this agent instance.
     /// * `init` - The initial lane and store endpoints for this agent.
     /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
-    /// * `link_requests` - Channel for requests to open external links for the agent.
     /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
     /// * `config` - Configuration parameters for the agent runtime.
     pub fn new(
         node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        link_requests: mpsc::Sender<LinkRequest>,
         stopping: trigger::Receiver,
         config: AgentRuntimeConfig,
     ) -> Self {
@@ -367,7 +370,6 @@ impl AgentRuntimeTask {
             node,
             init,
             attachment_rx,
-            link_requests,
             stopping,
             config,
             store: StoreDisabled::default(),
@@ -384,7 +386,6 @@ where
     /// * `node` - The routing ID and node URI of this agent instance.
     /// * `init` - The initial lane and store endpoints for this agent.
     /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
-    /// * `link_requests` - Channel for requests to open external links for the agent.
     /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
     /// * `config` - Configuration parameters for the agent runtime.
     /// * `store` - Persistence store for the agent.
@@ -392,7 +393,6 @@ where
         node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        link_requests: mpsc::Sender<LinkRequest>,
         stopping: trigger::Receiver,
         config: AgentRuntimeConfig,
         store: Store,
@@ -401,7 +401,6 @@ where
             node,
             init,
             attachment_rx,
-            link_requests,
             stopping,
             config,
             store,
@@ -422,10 +421,9 @@ where
                     rx,
                     lane_endpoints,
                     store_endpoints,
-                    ad_hoc_state,
+                    ext_link_state,
                 },
             attachment_rx,
-            link_requests,
             stopping,
             config,
             store,
@@ -436,7 +434,7 @@ where
 
         let (read_tx, read_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (write_tx, write_rx) = mpsc::channel(config.attachment_queue_size.get());
-        let (ad_hoc_tx, ad_hoc_rx) = mpsc::channel(config.attachment_queue_size.get());
+        let (ext_link_tx, ext_link_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (read_vote, write_vote, vote_waiter) = timeout_coord::timeout_coordinator();
 
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
@@ -446,10 +444,9 @@ where
         let att = attachment_task(
             rx,
             attachment_rx,
-            link_requests.clone(),
             read_tx.clone(),
             write_tx.clone(),
-            ad_hoc_tx,
+            ext_link_tx,
             combined_stop,
         )
         .instrument(info_span!("Agent Runtime Attachment Task", %identity, %node_uri));
@@ -476,7 +473,7 @@ where
         )
         .instrument(info_span!("Agent Runtime Write Task", %identity, %node_uri));
 
-        let ad_hoc_config = LinksTaskConfig {
+        let ext_link_config = LinksTaskConfig {
             buffer_size: config.ad_hoc_buffer_size,
             retry_strategy: config.ad_hoc_output_retry,
             timeout_delay: config.ad_hoc_output_timeout,
@@ -484,9 +481,9 @@ where
 
         let ext_links = external_links::external_links_task::<NoReport>(
             identity,
-            ad_hoc_rx,
-            ad_hoc_state,
-            ad_hoc_config,
+            ext_link_rx,
+            ext_link_state,
+            ext_link_config,
             None,
         )
         .instrument(info_span!("Agent Ad Hoc Command Task", %identity, %node_uri));
@@ -542,20 +539,18 @@ impl WriteTaskMessage {
 /// #Arguments
 /// * `runtime` - Requests from the agent.
 /// * `attachment` - External requests to attach new remotes.
-/// * `link_requests` - Requests to open external connections for the agent.
 /// * `read_tx` - Channel to communicate with the read task.
 /// * `write_tx` - Channel to communicate with the write task.
-/// * `ad_hoc_tx` - Channel to communicate with the ad-hoc commands
+/// * `ext_link_tx` - Channel to communicate with the external links task.
 /// * `combined_stop` - The task will stop when this future completes. This should combined the overall
 /// shutdown-signal with latch that ensures this task will stop if the read/write tasks stop (to avoid
 /// deadlocks).
 async fn attachment_task<F>(
     mut runtime: mpsc::Receiver<AgentRuntimeRequest>,
     mut attachment: mpsc::Receiver<AgentAttachmentRequest>,
-    link_requests: mpsc::Sender<LinkRequest>,
     read_tx: mpsc::Sender<ReadTaskMessage>,
     write_tx: mpsc::Sender<WriteTaskMessage>,
-    ad_hoc_tx: mpsc::Sender<AdHocChannelRequest>,
+    ext_link_tx: mpsc::Sender<ExternalLinkRequest>,
     mut combined_stop: F,
 ) where
     F: Future + Unpin,
@@ -577,8 +572,8 @@ async fn attachment_task<F>(
                             let succeeded = match request {
                                 AgentRuntimeRequest::AddLane(req) => write_tx.send(WriteTaskMessage::Lane(req)).await.is_ok(),
                                 AgentRuntimeRequest::AddStore(req) => write_tx.send(WriteTaskMessage::Store(req)).await.is_ok(),
-                                AgentRuntimeRequest::AdHoc(request) => ad_hoc_tx.send(request).await.is_ok(),
-                                AgentRuntimeRequest::OpenDownlink(req) => link_requests.send(LinkRequest::Downlink(req)).await.is_ok(),
+                                AgentRuntimeRequest::AdHoc(request) => ext_link_tx.send(ExternalLinkRequest::AdHoc(request)).await.is_ok(),
+                                AgentRuntimeRequest::OpenDownlink(req) => ext_link_tx.send(ExternalLinkRequest::Downlink(req)).await.is_ok(),
                             };
                             if !succeeded {
                                 break;

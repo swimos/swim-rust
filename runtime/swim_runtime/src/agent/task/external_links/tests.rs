@@ -16,7 +16,7 @@ use std::{collections::HashMap, num::NonZeroUsize, sync::Arc, time::Duration};
 
 use crate::{
     agent::{
-        task::{external_links, AdHocChannelRequest},
+        task::{external_links, AdHocChannelRequest, ExternalLinkRequest},
         CommanderKey, CommanderRequest, LinkRequest,
     },
     net::SchemeHostPort,
@@ -57,7 +57,7 @@ use super::{
 };
 
 struct TestContext {
-    chan_tx: mpsc::Sender<AdHocChannelRequest>,
+    chan_tx: mpsc::Sender<ExternalLinkRequest>,
     links_rx: mpsc::Receiver<LinkRequest>,
     failures: mpsc::UnboundedReceiver<PendingWrites>,
 }
@@ -116,9 +116,9 @@ async fn clean_shutdown_no_registration() {
     assert!(state.reader.is_none());
 }
 
-async fn register(chan_tx: &mpsc::Sender<AdHocChannelRequest>) -> ByteWriter {
+async fn register(chan_tx: &mpsc::Sender<ExternalLinkRequest>) -> ByteWriter {
     let (tx, rx) = oneshot::channel();
-    assert!(chan_tx.send(AdHocChannelRequest::new(tx)).await.is_ok());
+    assert!(chan_tx.send(ExternalLinkRequest::AdHoc(AdHocChannelRequest::new(tx))).await.is_ok());
     rx.await
         .expect("Request dropped.")
         .expect("Registering channel failed.")
