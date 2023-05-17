@@ -23,6 +23,10 @@ members = [
     "example_apps/command_lane",
     "example_apps/value_store",
     "example_apps/map_store",
+    "example_apps/value_lane_persistence",
+    "example_apps/map_lane_persistence",
+    "example_apps/value_store_persistence",
+    "example_apps/map_store_persistence",
 ]
 
 exclude = [

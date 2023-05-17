@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::{fmt::{Display, Formatter}, collections::HashMap};
+
 use swim::server::ServerHandle;
 use tokio::select;
 
@@ -35,4 +37,26 @@ pub async fn manage_handle(mut handle: ServerHandle) {
 
     println!("Stopping server.");
     handle.stop();
+}
+
+struct FormatMap<'a, K, V>(&'a HashMap<K, V>);
+
+pub fn format_map<K: Display, V: Display>(map: &HashMap<K, V>) -> impl Display + '_ {
+    FormatMap(map)
+}
+
+impl<'a, K: Display, V: Display> Display for FormatMap<'a, K, V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{{")?;
+        let mut it = self.0.iter();
+        if let Some((k, v)) = it.next() {
+            write!(f, " ({}, {})", k, v)?;
+            while let Some((k, v)) = it.next() {
+                write!(f, ", ({}, {})", k, v)?;
+            }
+            write!(f, " ")?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
 }

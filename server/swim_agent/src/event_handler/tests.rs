@@ -21,6 +21,7 @@ use swim_recon::parser::AsyncParseError;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::event_handler::GetParameter;
+
 use crate::{
     event_handler::{
         ConstHandler, EventHandlerError, GetAgentUri, HandlerActionExt, Sequentially, SideEffects,
@@ -31,7 +32,7 @@ use crate::{
 };
 
 use super::{
-    ActionContext, Decode, HandlerAction, HandlerFuture, Modification, SideEffect, Spawner,
+    join, ActionContext, Decode, HandlerAction, HandlerFuture, Modification, SideEffect, Spawner,
     StepResult,
 };
 
@@ -624,4 +625,195 @@ fn sequentially_handler() {
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     ));
+}
+
+#[test]
+fn join_handler() {
+    let first = ConstHandler::from(2);
+    let second = ConstHandler::from("Hello".to_string());
+
+    let mut both = join::<(), _, _>(first, second);
+
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+
+    loop {
+        match both.step(&mut dummy_context(&mut HashMap::new()), meta, &()) {
+            StepResult::Continue { modified_item } => assert!(modified_item.is_none()),
+            StepResult::Fail(err) => panic!("{}", err),
+            StepResult::Complete {
+                modified_item,
+                result,
+            } => {
+                assert!(modified_item.is_none());
+                assert_eq!(result, (2, "Hello".to_string()));
+                break;
+            }
+        }
+    }
+
+    let result = both.step(&mut dummy_context(&mut HashMap::new()), meta, &());
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn join_handler_modify() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+
+    struct TestAgent {
+        lane1: ValueLane<i32>,
+        lane2: ValueLane<i32>,
+    }
+
+    let first = ValueLaneSet::new(|agent: &TestAgent| &agent.lane1, 2);
+    let second = ValueLaneSet::new(|agent: &TestAgent| &agent.lane2, 3);
+    let mut both = join::<TestAgent, _, _>(first, second);
+
+    let mut modifications = vec![];
+
+    let agent = TestAgent {
+        lane1: ValueLane::new(0, 0),
+        lane2: ValueLane::new(1, 0),
+    };
+
+    loop {
+        match both.step(&mut dummy_context(&mut HashMap::new()), meta, &agent) {
+            StepResult::Continue { modified_item } => {
+                if let Some(modification) = modified_item {
+                    modifications.push(modification);
+                }
+            }
+            StepResult::Fail(err) => panic!("{}", err),
+            StepResult::Complete {
+                modified_item,
+                result,
+            } => {
+                if let Some(modification) = modified_item {
+                    modifications.push(modification);
+                }
+                assert_eq!(result, ((), ()));
+                break;
+            }
+        }
+    }
+
+    assert_eq!(
+        modifications,
+        vec![Modification::of(0), Modification::of(1)]
+    );
+
+    let result = both.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    agent.lane1.read(|v| assert_eq!(*v, 2));
+    agent.lane2.read(|v| assert_eq!(*v, 3));
+}
+
+#[test]
+fn join3_handler() {
+    let first = ConstHandler::from(2);
+    let second = ConstHandler::from("Hello".to_string());
+    let third = ConstHandler::from(true);
+
+    let mut both = super::join3::<(), _, _, _>(first, second, third);
+
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+
+    loop {
+        match both.step(&mut dummy_context(&mut HashMap::new()), meta, &()) {
+            StepResult::Continue { modified_item } => assert!(modified_item.is_none()),
+            StepResult::Fail(err) => panic!("{}", err),
+            StepResult::Complete {
+                modified_item,
+                result,
+            } => {
+                assert!(modified_item.is_none());
+                assert_eq!(result, (2, "Hello".to_string(), true));
+                break;
+            }
+        }
+    }
+
+    let result = both.step(&mut dummy_context(&mut HashMap::new()), meta, &());
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn join3_handler_modify() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+
+    struct TestAgent {
+        lane1: ValueLane<i32>,
+        lane2: ValueLane<i32>,
+        lane3: ValueLane<i32>,
+    }
+
+    let first = ValueLaneSet::new(|agent: &TestAgent| &agent.lane1, 2);
+    let second = ValueLaneSet::new(|agent: &TestAgent| &agent.lane2, 3);
+    let third = ValueLaneSet::new(|agent: &TestAgent| &agent.lane3, 4);
+    let mut both = super::join3::<TestAgent, _, _, _>(first, second, third);
+
+    let mut modifications = vec![];
+
+    let agent = TestAgent {
+        lane1: ValueLane::new(0, 0),
+        lane2: ValueLane::new(1, 0),
+        lane3: ValueLane::new(2, 0),
+    };
+
+    loop {
+        match both.step(&mut dummy_context(&mut HashMap::new()), meta, &agent) {
+            StepResult::Continue { modified_item } => {
+                if let Some(modification) = modified_item {
+                    modifications.push(modification);
+                }
+            }
+            StepResult::Fail(err) => panic!("{}", err),
+            StepResult::Complete {
+                modified_item,
+                result,
+            } => {
+                if let Some(modification) = modified_item {
+                    modifications.push(modification);
+                }
+                assert_eq!(result, ((), (), ()));
+                break;
+            }
+        }
+    }
+
+    assert_eq!(
+        modifications,
+        vec![
+            Modification::of(0),
+            Modification::of(1),
+            Modification::of(2)
+        ]
+    );
+
+    let result = both.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    agent.lane1.read(|v| assert_eq!(*v, 2));
+    agent.lane2.read(|v| assert_eq!(*v, 3));
+    agent.lane3.read(|v| assert_eq!(*v, 4));
 }

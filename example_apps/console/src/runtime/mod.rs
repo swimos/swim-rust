@@ -24,7 +24,7 @@ use futures::{
 };
 use parking_lot::RwLock;
 use ratchet::{
-    CloseCode, CloseReason, ErrorKind, NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider,
+    CloseCode, CloseReason, ErrorKind, Message, NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider,
     ProtocolRegistry, WebSocket, WebSocketConfig,
 };
 use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
@@ -488,14 +488,24 @@ fn into_stream(remote: Host, rx: Rx) -> impl Stream<Item = Result<(Host, String)
         (remote, Some(rx), BytesMut::new()),
         |(remote, rx, mut buffer)| async move {
             if let Some(mut rx) = rx {
-                buffer.clear();
-                if rx.read(&mut buffer).await.is_err() {
-                    Some((Err(Failed(remote.clone())), (remote, None, buffer)))
-                } else if let Ok(body) = std::str::from_utf8(buffer.as_ref()) {
-                    let response = (remote.clone(), body.to_string());
-                    Some((Ok(response), (remote, Some(rx), buffer)))
-                } else {
-                    Some((Err(Failed(remote.clone())), (remote, None, buffer)))
+                loop {
+                    buffer.clear();
+                    match rx.read(&mut buffer).await {
+                        Ok(Message::Text) => {
+                            let response = if let Ok(body) = std::str::from_utf8(buffer.as_ref()) {
+                                let response = (remote.clone(), body.to_string());
+                                Some((Ok(response), (remote, Some(rx), buffer)))
+                            } else {
+                                Some((Err(Failed(remote.clone())), (remote, None, buffer)))
+                            };
+                            break response;
+                        }
+                        Ok(Message::Ping(_) | Message::Pong(_)) => {}
+                        Ok(Message::Close(_)) => {
+                            break None;
+                        }
+                        _ => break Some((Err(Failed(remote.clone())), (remote, None, buffer))),
+                    }
                 }
             } else {
                 None
