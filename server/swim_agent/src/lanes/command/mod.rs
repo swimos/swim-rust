@@ -31,10 +31,11 @@ use crate::{
         ActionContext, AndThen, Decode, HandlerAction, HandlerActionExt, HandlerTrans,
         Modification, StepResult,
     },
+    item::AgentItem,
     meta::AgentMetadata,
 };
 
-use super::{Lane, ProjTransform};
+use super::{LaneItem, ProjTransform};
 
 pub mod lifecycle;
 #[cfg(test)]
@@ -62,7 +63,7 @@ impl<T> CommandLane<T> {
         }
     }
 
-    /// Exectute a command agaist the lane.
+    /// Execute a command against the lane.
     pub fn command(&self, value: T) {
         let CommandLane {
             prev_command,
@@ -122,7 +123,7 @@ impl<Context, T> HandlerAction<Context> for DoCommand<Context, T> {
             let lane = projection(context);
             lane.command(cmd);
             StepResult::Complete {
-                modified_lane: Some(Modification::of(lane.id)),
+                modified_item: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {
@@ -152,7 +153,7 @@ pub fn decode_and_command<C, T: RecognizerReadable>(
     decode.and_then(ProjTransform::new(projection))
 }
 
-impl<T: StructuralWritable> Lane for CommandLane<T> {
+impl<T: StructuralWritable> LaneItem for CommandLane<T> {
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         let CommandLane {
             prev_command,
@@ -173,6 +174,12 @@ impl<T: StructuralWritable> Lane for CommandLane<T> {
         } else {
             WriteResult::NoData
         }
+    }
+}
+
+impl<T> AgentItem for CommandLane<T> {
+    fn id(&self) -> u64 {
+        self.id
     }
 }
 

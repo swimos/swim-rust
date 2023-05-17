@@ -18,7 +18,9 @@ use syn::{parse_quote, Ident};
 
 mod model;
 
-pub use model::{validate_input, LaneKind, LaneModel, LanesModel};
+pub use model::{validate_input, ItemModel, ItemSpec, LanesModel};
+
+use self::model::{ItemKind, LaneModel, LaneSpec};
 
 pub struct DeriveAgentLaneModel<'a> {
     root: &'a syn::Path,
@@ -41,13 +43,13 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             },
         } = *self;
 
-        let lane_models = lanes
+        let item_models = lanes
             .iter()
             .zip(0u64..)
-            .map(|(model, i)| OrdinalLaneModel::new(agent_type, i, *model))
+            .map(|(model, i)| OrdinalItemModel::new(agent_type, i, *model))
             .collect::<Vec<_>>();
 
-        let initializers = lane_models
+        let initializers = item_models
             .iter()
             .copied()
             .map(FieldInitializer)
@@ -57,13 +59,20 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
         let no_handler: syn::Type = parse_quote!(#root::event_handler::UnitHandler);
 
-        let (map_type_models, value_type_models) = lane_models
+        let (map_item_models, value_item_models) = item_models
+            .iter()
+            .copied()
+            .partition::<Vec<_>, _>(OrdinalItemModel::map_like);
+
+        let lane_models = OrdinalLaneModel::from_item_models(&item_models);
+
+        let (map_lane_models, value_lane_models) = lane_models
             .iter()
             .copied()
             .partition::<Vec<_>, _>(OrdinalLaneModel::map_like);
 
-        let value_handler = if !value_type_models.is_empty() {
-            value_type_models
+        let value_handler = if !value_lane_models.is_empty() {
+            value_lane_models
                 .iter()
                 .rev()
                 .fold(base.clone(), |acc, model| {
@@ -75,8 +84,8 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             no_handler.clone()
         };
 
-        let map_handler = if !map_type_models.is_empty() {
-            map_type_models
+        let map_handler = if !map_lane_models.is_empty() {
+            map_lane_models
                 .iter()
                 .rev()
                 .fold(base.clone(), |acc, model| {
@@ -98,28 +107,28 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             no_handler
         };
 
-        let val_lane_specs = value_type_models
+        let val_lane_specs = value_item_models
             .iter()
             .map(|model| LaneSpecInsert(model.model))
             .map(|insert| insert.into_tokens(root));
 
-        let map_lane_specs = map_type_models
+        let map_lane_specs = map_item_models
             .iter()
             .map(|model| LaneSpecInsert(model.model))
             .map(|insert| insert.into_tokens(root));
 
-        let lane_ids = lane_models
+        let lane_ids = item_models
             .iter()
             .map(|model| (model.ordinal, model.model.literal()))
             .map(|(i, lit)| quote!(::std::collections::HashMap::insert(&mut map, #i, #root::model::Text::new(#lit))));
 
-        let value_match_blocks = value_type_models
+        let value_match_blocks = value_lane_models
             .iter()
             .enumerate()
             .map(|(i, model)| LaneHandlerMatch::new(i, *model))
             .map(|hmatch| hmatch.into_tokens(root));
 
-        let map_match_blocks = map_type_models
+        let map_match_blocks = map_lane_models
             .iter()
             .enumerate()
             .map(|(i, model)| LaneHandlerMatch::new(i, *model))
@@ -131,24 +140,22 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             .map(|model| SyncHandlerMatch::new(root, model))
             .map(SyncHandlerMatch::into_tokens);
 
-        let write_match_blocks = lane_models
+        let write_match_blocks = item_models
             .iter()
             .copied()
             .map(|model| WriteToBufferMatch(model.model))
             .map(|wmatch| wmatch.into_tokens(root));
 
-        let value_init_match_blocks = value_type_models
+        let value_init_match_blocks = value_item_models
             .iter()
             .filter(|model| model.model.is_stateful())
-            .copied()
-            .map(ValueLaneInitMatch)
+            .map(ValueItemInitMatch::new)
             .map(|model| model.into_tokens(root));
 
-        let map_init_match_blocks = map_type_models
+        let map_init_match_blocks = map_item_models
             .iter()
             .filter(|model| model.model.is_stateful())
-            .copied()
-            .map(MapLaneInitMatch)
+            .map(MapItemInitMatch::new)
             .map(|model| model.into_tokens(root));
 
         tokens.append_all(quote! {
@@ -163,26 +170,26 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             }
 
             #[automatically_derived]
-            impl #root::agent_model::AgentLaneModel for #agent_type {
+            impl #root::agent_model::AgentSpec for #agent_type {
                 type ValCommandHandler = #value_handler;
 
                 type MapCommandHandler = #map_handler;
 
                 type OnSyncHandler = #sync_handler;
 
-                fn value_like_lane_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::LaneSpec> {
+                fn value_like_item_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
                     let mut lanes = ::std::collections::HashMap::new();
                     #(#val_lane_specs;)*
                     lanes
                 }
 
-                fn map_like_lane_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::LaneSpec> {
+                fn map_like_item_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
                     let mut lanes = ::std::collections::HashMap::new();
                     #(#map_lane_specs;)*
                     lanes
                 }
 
-                fn lane_ids() -> ::std::collections::HashMap<u64, #root::model::Text> {
+                fn item_ids() -> ::std::collections::HashMap<u64, #root::model::Text> {
                     let mut map = ::std::collections::HashMap::new();
                     #(#lane_ids;)*
                     map
@@ -220,27 +227,27 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
                     }
                 }
 
-                fn init_value_like_lane(
+                fn init_value_like_item(
                     &self,
-                    lane: &str,
-                ) -> ::core::option::Option<::std::boxed::Box<dyn #root::agent_model::LaneInitializer<Self, #root::reexport::bytes::BytesMut> + ::core::marker::Send + 'static>>
+                    item: &str,
+                ) -> ::core::option::Option<::std::boxed::Box<dyn #root::agent_model::ItemInitializer<Self, #root::reexport::bytes::BytesMut> + ::core::marker::Send + 'static>>
                 where
                     Self: 'static,
                 {
-                    match lane {
+                    match item {
                         #(#value_init_match_blocks,)*
                         _ => ::core::option::Option::None,
                     }
                 }
 
-                fn init_map_like_lane(
+                fn init_map_like_item(
                     &self,
-                    lane: &str,
-                ) -> ::core::option::Option<::std::boxed::Box<dyn #root::agent_model::LaneInitializer<Self, #root::model::MapMessage<#root::reexport::bytes::BytesMut, #root::reexport::bytes::BytesMut>> + ::core::marker::Send + 'static>>
+                    item: &str,
+                ) -> ::core::option::Option<::std::boxed::Box<dyn #root::agent_model::ItemInitializer<Self, #root::model::MapMessage<#root::reexport::bytes::BytesMut, #root::reexport::bytes::BytesMut>> + ::core::marker::Send + 'static>>
                 where
                     Self: 'static,
                 {
-                    match lane {
+                    match item {
                         #(#map_init_match_blocks,)*
                         _ => ::core::option::Option::None,
                     }
@@ -252,15 +259,46 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 }
 
 #[derive(Clone, Copy)]
-struct OrdinalLaneModel<'a> {
+struct OrdinalItemModel<'a> {
     agent_name: &'a Ident,
     ordinal: u64,
+    model: ItemModel<'a>,
+}
+
+#[derive(Clone, Copy)]
+struct OrdinalLaneModel<'a> {
+    agent_name: &'a Ident,
+    lane_ordinal: usize,
     model: LaneModel<'a>,
 }
 
 impl<'a> OrdinalLaneModel<'a> {
-    fn new(agent_name: &'a Ident, ordinal: u64, model: LaneModel<'a>) -> Self {
-        OrdinalLaneModel {
+    pub fn from_item_models(models: &[OrdinalItemModel<'a>]) -> Vec<OrdinalLaneModel<'a>> {
+        models
+            .iter()
+            .copied()
+            .filter_map(
+                |OrdinalItemModel {
+                     agent_name, model, ..
+                 }| model.lane().map(move |lane_model| (agent_name, lane_model)),
+            )
+            .enumerate()
+            .map(|(lane_ordinal, (agent_name, model))| OrdinalLaneModel {
+                agent_name,
+                lane_ordinal,
+                model,
+            })
+            .collect()
+    }
+
+    pub fn map_like(&self) -> bool {
+        matches!(&self.model.kind, LaneSpec::Map(_, _))
+    }
+}
+
+impl<'a> OrdinalItemModel<'a> {
+    fn new(agent_name: &'a Ident, ordinal: u64, model: ItemModel<'a>) -> Self {
+        OrdinalItemModel {
             agent_name,
             ordinal,
             model,
@@ -268,29 +306,35 @@ impl<'a> OrdinalLaneModel<'a> {
     }
 
     fn map_like(&self) -> bool {
-        matches!(&self.model.kind, LaneKind::Map(_, _))
+        matches!(&self.model.kind, ItemSpec::Map(_, _, _))
     }
 }
 
-struct FieldInitializer<'a>(OrdinalLaneModel<'a>);
+struct FieldInitializer<'a>(OrdinalItemModel<'a>);
 
 impl<'a> FieldInitializer<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
-        let FieldInitializer(OrdinalLaneModel {
+        let FieldInitializer(OrdinalItemModel {
             ordinal,
-            model: LaneModel { name, kind, .. },
+            model: ItemModel { name, kind, .. },
             ..
         }) = self;
 
         match kind {
-            LaneKind::Command(_) => {
+            ItemSpec::Command(_) => {
                 quote!(#name: #root::lanes::CommandLane::new(#ordinal))
             }
-            LaneKind::Value(_) => {
+            ItemSpec::Value(ItemKind::Lane, _) => {
                 quote!(#name: #root::lanes::ValueLane::new(#ordinal, ::core::default::Default::default()))
             }
-            LaneKind::Map(_, _) => {
+            ItemSpec::Value(ItemKind::Store, _) => {
+                quote!(#name: #root::stores::ValueStore::new(#ordinal, ::core::default::Default::default()))
+            }
+            ItemSpec::Map(ItemKind::Lane, _, _) => {
                 quote!(#name: #root::lanes::MapLane::new(#ordinal, ::core::default::Default::default()))
+            }
+            ItemSpec::Map(ItemKind::Store, _, _) => {
+                quote!(#name: #root::stores::MapStore::new(#ordinal, ::core::default::Default::default()))
             }
         }
     }
@@ -309,13 +353,13 @@ impl<'a> HandlerType<'a> {
         }) = self;
 
         match kind {
-            LaneKind::Command(t) => {
+            LaneSpec::Command(t) => {
                 quote!(#root::lanes::command::DecodeAndCommand<#agent_name, #t>)
             }
-            LaneKind::Value(t) => {
+            LaneSpec::Value(t) => {
                 quote!(#root::lanes::value::DecodeAndSet<#agent_name, #t>)
             }
-            LaneKind::Map(k, v) => {
+            LaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::DecodeAndApply<#agent_name, #k, #v>)
             }
         }
@@ -331,11 +375,11 @@ impl<'a> SyncHandlerType<'a> {
         }) = self;
 
         match kind {
-            LaneKind::Command(_) => quote!(#root::event_handler::UnitHandler), //TODO Do this properly later.
-            LaneKind::Value(t) => {
+            LaneSpec::Command(_) => quote!(#root::event_handler::UnitHandler), //TODO Do this properly later.
+            LaneSpec::Value(t) => {
                 quote!(#root::lanes::value::ValueLaneSync<#agent_name, #t>)
             }
-            LaneKind::Map(k, v) => {
+            LaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::MapLaneSync<#agent_name, #k, #v>)
             }
         }
@@ -367,13 +411,13 @@ impl<'a> LaneHandlerMatch<'a> {
         let handler_base: syn::Expr = parse_quote!(handler);
         let coprod_con = coproduct_constructor(root, handler_base, group_ordinal);
         let lane_handler_expr = match kind {
-            LaneKind::Command(ty) => {
+            LaneSpec::Command(ty) => {
                 quote!(#root::lanes::command::decode_and_command::<#agent_name, #ty>(body, |agent: &#agent_name| &agent.#name))
             }
-            LaneKind::Value(ty) => {
+            LaneSpec::Value(ty) => {
                 quote!(#root::lanes::value::decode_and_set::<#agent_name, #ty>(body, |agent: &#agent_name| &agent.#name))
             }
-            LaneKind::Map(k, v) => {
+            LaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v>(body, |agent: &#agent_name| &agent.#name))
             }
         };
@@ -412,24 +456,21 @@ impl<'a> SyncHandlerMatch<'a> {
             model:
                 OrdinalLaneModel {
                     agent_name,
-                    ordinal,
+                    lane_ordinal: ord,
                     model,
                     ..
                 },
         } = self;
         let name_lit = model.literal();
         let LaneModel { name, kind, .. } = model;
-        let ord = ordinal as usize;
         let handler_base: syn::Expr = parse_quote!(handler);
         let coprod_con = coproduct_constructor(root, handler_base, ord);
         let sync_handler_expr = match kind {
-            LaneKind::Command(_) => {
-                quote!(#root::event_handler::UnitHandler::default())
-            }
-            LaneKind::Value(ty) => {
+            LaneSpec::Command(_) => quote!(#root::event_handler::UnitHandler::default()),
+            LaneSpec::Value(ty) => {
                 quote!(#root::lanes::value::ValueLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &agent.#name, id))
             }
-            LaneKind::Map(k, v) => {
+            LaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::MapLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
             }
         };
@@ -442,54 +483,113 @@ impl<'a> SyncHandlerMatch<'a> {
     }
 }
 
-struct WriteToBufferMatch<'a>(LaneModel<'a>);
+struct WriteToBufferMatch<'a>(ItemModel<'a>);
 
 impl<'a> WriteToBufferMatch<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let WriteToBufferMatch(model) = self;
         let name_lit = model.literal();
-        let LaneModel { name, .. } = model;
-        quote!(#name_lit => ::core::option::Option::Some(#root::lanes::Lane::write_to_buffer(&self.#name, buffer)))
+        let ItemModel { name, kind, .. } = model;
+        match kind.item_kind() {
+            ItemKind::Lane => {
+                quote!(#name_lit => ::core::option::Option::Some(#root::lanes::LaneItem::write_to_buffer(&self.#name, buffer)))
+            }
+            ItemKind::Store => {
+                quote!(#name_lit => ::core::option::Option::Some(#root::stores::StoreItem::write_to_buffer(&self.#name, buffer)))
+            }
+        }
     }
 }
 
-struct ValueLaneInitMatch<'a>(OrdinalLaneModel<'a>);
+struct ValueItemInitMatch<'a> {
+    agent_name: &'a Ident,
+    name: &'a Ident,
+    name_lit: proc_macro2::Literal,
+    kind: ItemKind,
+}
 
-impl<'a> ValueLaneInitMatch<'a> {
+impl<'a> ValueItemInitMatch<'a> {
+    pub fn new(item: &OrdinalItemModel<'a>) -> Self {
+        ValueItemInitMatch {
+            agent_name: item.agent_name,
+            name: item.model.name,
+            name_lit: item.model.literal(),
+            kind: item.model.item_kind(),
+        }
+    }
+}
+
+impl<'a> ValueItemInitMatch<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
-        let ValueLaneInitMatch(OrdinalLaneModel {
-            agent_name, model, ..
-        }) = self;
-        let name_lit = model.literal();
-        let LaneModel { name, .. } = model;
-        quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::ValueLaneInitializer::new(|agent: &#agent_name| &agent.#name))))
+        let ValueItemInitMatch {
+            agent_name,
+            name,
+            name_lit,
+            kind,
+        } = self;
+        match kind {
+            ItemKind::Lane => {
+                quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::ValueLaneInitializer::new(|agent: &#agent_name| &agent.#name))))
+            }
+            ItemKind::Store => {
+                quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::ValueStoreInitializer::new(|agent: &#agent_name| &agent.#name))))
+            }
+        }
     }
 }
 
-struct MapLaneInitMatch<'a>(OrdinalLaneModel<'a>);
+struct MapItemInitMatch<'a> {
+    agent_name: &'a Ident,
+    name: &'a Ident,
+    name_lit: proc_macro2::Literal,
+    kind: ItemKind,
+}
 
-impl<'a> MapLaneInitMatch<'a> {
+impl<'a> MapItemInitMatch<'a> {
+    pub fn new(item: &OrdinalItemModel<'a>) -> Self {
+        MapItemInitMatch {
+            agent_name: item.agent_name,
+            name: item.model.name,
+            name_lit: item.model.literal(),
+            kind: item.model.item_kind(),
+        }
+    }
+}
+
+impl<'a> MapItemInitMatch<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
-        let MapLaneInitMatch(OrdinalLaneModel {
-            agent_name, model, ..
-        }) = self;
-        let name_lit = model.literal();
-        let LaneModel { name, .. } = model;
-        quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::MapLaneInitializer::new(|agent: &#agent_name| &agent.#name))))
+        let MapItemInitMatch {
+            agent_name,
+            name,
+            name_lit,
+            kind,
+        } = self;
+        match kind {
+            ItemKind::Lane => {
+                quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::MapLaneInitializer::new(|agent: &#agent_name| &agent.#name))))
+            }
+            ItemKind::Store => {
+                quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::MapStoreInitializer::new(|agent: &#agent_name| &agent.#name))))
+            }
+        }
     }
 }
 
-struct LaneSpecInsert<'a>(LaneModel<'a>);
+struct LaneSpecInsert<'a>(ItemModel<'a>);
 
 impl<'a> LaneSpecInsert<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let LaneSpecInsert(model) = self;
         let lane_name = model.literal();
-        let flags = if model.is_stateful() {
-            quote!(#root::agent_model::LaneFlags::empty())
-        } else {
-            quote!(#root::agent_model::LaneFlags::TRANSIENT)
+        let kind = match model.item_kind() {
+            ItemKind::Lane => quote!(#root::agent_model::ItemKind::Lane),
+            ItemKind::Store => quote!(#root::agent_model::ItemKind::Store),
         };
-        quote!(::std::collections::HashMap::insert(&mut lanes, #lane_name, #root::agent_model::LaneSpec::new(#flags)))
+        let flags = if model.is_stateful() {
+            quote!(#root::agent_model::ItemFlags::empty())
+        } else {
+            quote!(#root::agent_model::ItemFlags::TRANSIENT)
+        };
+        quote!(::std::collections::HashMap::insert(&mut lanes, #lane_name, #root::agent_model::ItemSpec::new(#kind, #flags)))
     }
 }

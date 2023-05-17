@@ -12,26 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[doc(hidden)]
-#[allow(unused_imports)]
-pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
-
 pub mod agent_lifecycle;
 pub mod agent_model;
 pub mod config;
 pub mod downlink_lifecycle;
 pub mod event_handler;
 mod event_queue;
+pub mod item;
 pub mod lanes;
+mod map_storage;
 pub mod meta;
+pub mod stores;
 #[cfg(test)]
 mod test_context;
 
-pub use agent_model::AgentLaneModel;
+pub use agent_model::AgentSpec;
 
 pub mod model {
     pub use swim_api::protocol::map::{MapMessage, MapOperation};
     pub use swim_model::Text;
+}
+
+/// Base trait for all agent items (lanes and stores).
+pub trait AgentItem {
+    /// Each item has a (unique within an agent instance) ID. This is used by the task that drives the
+    /// agent to avoid keying internal hash-maps on the name.
+    fn id(&self) -> u64;
 }
 
 pub mod reexport {

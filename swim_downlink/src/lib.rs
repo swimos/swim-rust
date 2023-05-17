@@ -19,6 +19,8 @@ pub use model::{
     event_downlink, map_downlink, value_downlink, ChannelError, DefaultEventDownlinkModel,
     DefaultMapDownlinkModel, DefaultValueDownlinkModel, EventDownlinkModel, MapDownlinkHandle,
     MapDownlinkModel, ValueDownlinkModel,
+    event_downlink, value_downlink, DefaultEventDownlinkModel, DefaultValueDownlinkModel,
+    EventDownlinkModel, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation,
 };
 pub mod lifecycle {
     pub use crate::model::lifecycle::{

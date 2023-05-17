@@ -14,7 +14,6 @@
 
 use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-    path::PathBuf,
     sync::Arc,
 };
 
@@ -24,12 +23,10 @@ use ratchet::{
 };
 use swim_api::{agent::Agent, error::StoreError, store::StoreDisabled};
 use swim_runtime::{
-    net::{
-        dns::Resolver, plain::TokioPlainTextNetworking, tls::TokioTlsNetworking,
-        ExternalConnections,
-    },
+    net::{dns::Resolver, plain::TokioPlainTextNetworking, ExternalConnections},
     ws::ext::RatchetNetworking,
 };
+use swim_tls::{RustlsNetworking, TlsConfig};
 use swim_utilities::routing::route_pattern::RoutePattern;
 
 use crate::{
@@ -39,13 +36,17 @@ use crate::{
     plane::{PlaneBuilder, PlaneModel},
 };
 
-use super::{runtime::SwimServer, store::ServerPersistence, BoxServer, Server};
+use super::{
+    runtime::SwimServer,
+    store::{in_memory::InMemoryPersistence, ServerPersistence},
+    BoxServer, Server,
+};
 
 /// Builder for a swim server that will listen on a socket and run a suite of agents.
 pub struct ServerBuilder {
     bind_to: SocketAddr,
     plane: PlaneBuilder,
-    enable_tls: bool,
+    tls_config: Option<TlsConfig>,
     deflate: Option<DeflateConfig>,
     config: SwimServerConfig,
     store_options: StoreConfig,
@@ -55,9 +56,10 @@ pub struct ServerBuilder {
 #[non_exhaustive]
 enum StoreConfig {
     NoStore,
-    #[cfg(feature = "persistence")]
+    InMemory,
+    #[cfg(feature = "rocks_store")]
     RockStore {
-        path: Option<PathBuf>,
+        path: Option<std::path::PathBuf>,
         options: crate::RocksOpts,
     },
 }
@@ -75,7 +77,7 @@ impl ServerBuilder {
         Self {
             bind_to: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), DEFAULT_PORT)),
             plane: PlaneBuilder::with_name(name),
-            enable_tls: false,
+            tls_config: None,
             deflate: Default::default(),
             config: Default::default(),
             store_options: Default::default(),
@@ -103,8 +105,8 @@ impl ServerBuilder {
     }
 
     /// Enable TLS on the server.
-    pub fn add_tls_support(mut self) -> Self {
-        self.enable_tls = true;
+    pub fn add_tls_support(mut self, config: TlsConfig) -> Self {
+        self.tls_config = Some(config);
         self
     }
 
@@ -148,13 +150,20 @@ impl ServerBuilder {
         self
     }
 
+    /// Enable the in memory persistence store. The state of agents will be kept across restarts but will
+    /// be lost when the process stops.
+    pub fn with_in_memory_store(mut self) -> Self {
+        self.store_options = StoreConfig::InMemory;
+        self
+    }
+
     /// Attempt to make a server instance. This will fail if the routes specified for the
     /// agents are ambiguous.
     pub async fn build(self) -> Result<BoxServer, ServerBuilderError> {
         let ServerBuilder {
             bind_to,
             plane,
-            enable_tls,
+            tls_config,
             deflate,
             config,
             store_options,
@@ -165,10 +174,8 @@ impl ServerBuilder {
             routes.check_meta_collisions()?;
         }
         let resolver = Arc::new(Resolver::new().await);
-        if enable_tls {
-            //TODO Make this support actual identities.
-            let networking =
-                TokioTlsNetworking::new::<_, Box<PathBuf>>(std::iter::empty(), resolver);
+        if let Some(tls_conf) = tls_config {
+            let networking = RustlsNetworking::try_from_config(resolver, tls_conf)?;
             Ok(BoxServer(with_store(
                 bind_to,
                 routes,
@@ -207,7 +214,7 @@ where
     N::Socket: WebSocketStream,
 {
     match store_config {
-        #[cfg(feature = "persistence")]
+        #[cfg(feature = "rocks_store")]
         StoreConfig::RockStore { path, options } => {
             let store = super::store::rocks::create_rocks_store(path, options)?;
             Ok(with_websockets(
@@ -220,6 +227,15 @@ where
                 introspection,
             ))
         }
+        StoreConfig::InMemory => Ok(with_websockets(
+            bind_to,
+            routes,
+            networking,
+            config,
+            deflate,
+            InMemoryPersistence::default(),
+            introspection,
+        )),
         _ => Ok(with_websockets(
             bind_to,
             routes,
@@ -280,7 +296,7 @@ where
     }
 }
 
-#[cfg(feature = "persistence")]
+#[cfg(feature = "rocks_store")]
 const _: () = {
     use swim_persistence::rocks::default_db_opts;
     impl ServerBuilder {
@@ -292,8 +308,8 @@ const _: () = {
             self
         }
 
-        pub fn set_store_path<P: AsRef<std::ffi::OsStr>>(mut self, base_path: P) -> Self {
-            let db_path = PathBuf::from(std::path::Path::new(&base_path));
+        pub fn set_rocks_store_path<P: AsRef<std::ffi::OsStr>>(mut self, base_path: P) -> Self {
+            let db_path = std::path::PathBuf::from(std::path::Path::new(&base_path));
             match &mut self.store_options {
                 StoreConfig::RockStore { path, .. } => {
                     *path = Some(db_path);

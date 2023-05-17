@@ -29,8 +29,16 @@ use super::{
     WithLenReconEncoder, WithLengthBytesCodec,
 };
 
+mod store;
 #[cfg(test)]
 mod tests;
+
+pub use store::{
+    MapStoreResponse, MapStoreResponseDecoder, MapStoreResponseEncoder, StoreInitMessage,
+    StoreInitMessageDecoder, StoreInitMessageEncoder, StoreInitialized, StoreInitializedCodec,
+    StoreResponse, StoreResponseDecoder, StoreResponseEncoder, ValueStoreResponseDecoder,
+    ValueStoreResponseEncoder,
+};
 
 /// Message type for communication between the agent runtime and agent implementation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,12 +51,12 @@ pub enum LaneRequest<T> {
     Sync(Uuid),
 }
 
-/// Message type for communication from the agent implentation to the agent runtime.
+/// Message type for communication from the agent implementation to the agent runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaneResponse<T> {
-    /// An event to be broadast to all uplinks.
+    /// An event to be broadcast to all uplinks.
     StandardEvent(T),
-    /// Indicates that the lane has been initalized.
+    /// Indicates that the lane has been initialized.
     Initialized,
     /// An event to be sent to a specific uplink.
     SyncEvent(Uuid, T),
@@ -202,7 +210,7 @@ where
                         t => {
                             src.advance(TAG_LEN);
                             break Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
-                                problem: Text::from(format!("Invalid agent request tag: {}", t)),
+                                problem: Text::from(format!("Invalid lane request tag: {}", t)),
                             }));
                         }
                     }
@@ -347,7 +355,7 @@ where
                         }
                         t => {
                             return Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
-                                problem: Text::from(format!("Invalid agent response tag: {}", t)),
+                                problem: Text::from(format!("Invalid lane response tag: {}", t)),
                             }));
                         }
                     }

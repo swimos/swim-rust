@@ -19,10 +19,10 @@ use std::{net::SocketAddr, pin::Pin};
 
 use bytes::BytesMut;
 use futures::future::ready;
-use futures::{future::BoxFuture, stream::Fuse, FutureExt, Stream, StreamExt};
+use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use ratchet::{NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use swim_runtime::net::dns::{DnsFut, DnsResolver};
-use swim_runtime::net::{ExternalConnections, Listener, Scheme, SchemeHostPort, SchemeSocketAddr};
+use swim_runtime::net::{ConnectionError, ExternalConnections, Listener, ListenerResult, Scheme};
 use swim_runtime::ws::{RatchetError, WsConnections, WsOpenFuture};
 use tokio::{
     io::{self, DuplexStream},
@@ -32,12 +32,16 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 #[derive(Debug)]
 enum ConnReq {
-    Remote(SocketAddr, oneshot::Sender<io::Result<DuplexStream>>),
-    Resolve(
-        SchemeHostPort,
-        oneshot::Sender<io::Result<Vec<SchemeSocketAddr>>>,
+    Remote(
+        Scheme,
+        SocketAddr,
+        oneshot::Sender<Result<DuplexStream, ConnectionError>>,
     ),
-    Listener(SocketAddr, oneshot::Sender<io::Result<TestListener>>),
+    Resolve(String, u16, oneshot::Sender<io::Result<Vec<SocketAddr>>>),
+    Listener(
+        SocketAddr,
+        oneshot::Sender<Result<TestListener, ConnectionError>>,
+    ),
 }
 
 /// Fake networking that communicates over in-memory buffers.
@@ -89,7 +93,7 @@ const CHAN_SIZE: usize = 8;
 
 impl TestConnections {
     pub fn new(
-        resolve: HashMap<SchemeHostPort, SocketAddr>,
+        resolve: HashMap<(String, u16), SocketAddr>,
         remotes: HashMap<SocketAddr, DuplexStream>,
         incoming: mpsc::UnboundedReceiver<(SocketAddr, DuplexStream)>,
     ) -> (Self, TestConnectionsTask) {
@@ -101,7 +105,7 @@ impl TestConnections {
     }
 }
 
-pub struct TestListener(BoxedAcc<io::Result<(DuplexStream, SchemeSocketAddr)>>);
+pub struct TestListener(BoxedAcc<ListenerResult<(DuplexStream, Scheme, SocketAddr)>>);
 
 impl Debug for TestListener {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -112,12 +116,12 @@ impl Debug for TestListener {
 impl DnsResolver for TestConnections {
     type ResolveFuture = DnsFut;
 
-    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
+    fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {
         let sender = self.requests.clone();
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(ConnReq::Resolve(host, tx))
+                .send(ConnReq::Resolve(host, port, tx))
                 .await
                 .expect("Channel closed.");
             rx.await.expect("Connections task stopped.")
@@ -134,7 +138,7 @@ impl ExternalConnections for TestConnections {
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, io::Result<(SocketAddr, Self::ListenerType)>> {
+    ) -> BoxFuture<'static, Result<(SocketAddr, Self::ListenerType), ConnectionError>> {
         let sender = self.requests.clone();
         async move {
             let (tx, rx) = oneshot::channel();
@@ -149,12 +153,17 @@ impl ExternalConnections for TestConnections {
         .boxed()
     }
 
-    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, io::Result<Self::Socket>> {
+    fn try_open(
+        &self,
+        scheme: Scheme,
+        _host: Option<&str>,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, Result<Self::Socket, ConnectionError>> {
         let sender = self.requests.clone();
         async move {
             let (tx, rx) = oneshot::channel();
             sender
-                .send(ConnReq::Remote(addr, tx))
+                .send(ConnReq::Remote(scheme, addr, tx))
                 .await
                 .expect("Channel closed.");
             rx.await.expect("Connections task stopped.")
@@ -162,11 +171,8 @@ impl ExternalConnections for TestConnections {
         .boxed()
     }
 
-    fn lookup(
-        &self,
-        host: SchemeHostPort,
-    ) -> BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>> {
-        self.resolve(host)
+    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, io::Result<Vec<SocketAddr>>> {
+        self.resolve(host, port)
     }
 
     fn dns_resolver(&self) -> swim_runtime::net::dns::BoxDnsResolver {
@@ -176,18 +182,16 @@ impl ExternalConnections for TestConnections {
 
 pub type BoxedAcc<T> = Pin<Box<dyn Stream<Item = T> + Send + Sync + 'static>>;
 
-impl Listener for TestListener {
-    type Socket = DuplexStream;
-
-    type AcceptStream = Fuse<BoxedAcc<io::Result<(Self::Socket, SchemeSocketAddr)>>>;
+impl Listener<DuplexStream> for TestListener {
+    type AcceptStream = BoxedAcc<ListenerResult<(DuplexStream, Scheme, SocketAddr)>>;
 
     fn into_stream(self) -> Self::AcceptStream {
-        self.0.fuse()
+        self.0
     }
 }
 
 pub struct TestConnectionsTask {
-    resolve: HashMap<SchemeHostPort, SocketAddr>,
+    resolve: HashMap<(String, u16), SocketAddr>,
     remotes: HashMap<SocketAddr, DuplexStream>,
     incoming: Option<mpsc::UnboundedReceiver<(SocketAddr, DuplexStream)>>,
     receiver: mpsc::Receiver<ConnReq>,
@@ -195,7 +199,7 @@ pub struct TestConnectionsTask {
 
 impl TestConnectionsTask {
     fn new(
-        resolve: HashMap<SchemeHostPort, SocketAddr>,
+        resolve: HashMap<(String, u16), SocketAddr>,
         remotes: HashMap<SocketAddr, DuplexStream>,
         incoming: mpsc::UnboundedReceiver<(SocketAddr, DuplexStream)>,
         receiver: mpsc::Receiver<ConnReq>,
@@ -217,17 +221,17 @@ impl TestConnectionsTask {
         } = self;
         while let Some(req) = receiver.recv().await {
             match req {
-                ConnReq::Remote(addr, tx) => {
+                ConnReq::Remote(_, addr, tx) => {
                     let result = if let Some(stream) = remotes.remove(&addr) {
                         Ok(stream)
                     } else {
-                        Err(io::Error::from(ErrorKind::ConnectionAborted))
+                        Err(io::Error::from(ErrorKind::ConnectionAborted).into())
                     };
                     tx.send(result).expect("Oneshot dropped.");
                 }
-                ConnReq::Resolve(host, tx) => {
-                    let result = if let Some(addr) = resolve.get(&host).cloned() {
-                        Ok(vec![SchemeSocketAddr::new(Scheme::Ws, addr)])
+                ConnReq::Resolve(host, port, tx) => {
+                    let result = if let Some(addr) = resolve.get(&(host, port)).cloned() {
+                        Ok(vec![addr])
                     } else {
                         Err(io::Error::from(ErrorKind::NotFound))
                     };
@@ -237,12 +241,12 @@ impl TestConnectionsTask {
                     let result = if let Some(incoming) = incoming.take() {
                         let stream = Box::pin(
                             UnboundedReceiverStream::new(incoming)
-                                .map(|(addr, s)| Ok((s, SchemeSocketAddr::new(Scheme::Ws, addr)))),
+                                .map(|(addr, s)| Ok((s, Scheme::Ws, addr))),
                         );
                         let listener = TestListener(stream);
                         Ok(listener)
                     } else {
-                        Err(io::Error::from(ErrorKind::AddrInUse))
+                        Err(io::Error::from(ErrorKind::AddrInUse).into())
                     };
                     tx.send(result).expect("Oneshot dropped.");
                 }

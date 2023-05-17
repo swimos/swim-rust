@@ -23,9 +23,10 @@ use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, ReadOptions};
 use rocksdb::{Options, DB};
 use std::path::Path;
 use std::sync::Arc;
+use store_common::EnginePrefixIterator;
 use store_common::{
-    serialize_u64, EngineInfo, EnginePrefixIterator, EngineRefIterator, Keyspace,
-    KeyspaceByteEngine, KeyspaceResolver, Keyspaces, Store, StoreBuilder, StoreError, MAX_ID_SIZE,
+    serialize_u64, EngineInfo, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces, Store,
+    StoreBuilder, StoreError, MAX_ID_SIZE,
 };
 
 /// A Rocks database engine.
@@ -41,6 +42,28 @@ impl RocksEngine {
         RocksEngine {
             delegate: Arc::new(delegate),
         }
+    }
+
+    /// Returns an iterator over the entire store.
+    pub fn iterator<'a: 'b, 'b>(
+        &'a self,
+        space: &'b <Self as KeyspaceResolver>::ResolvedKeyspace,
+    ) -> Result<RocksIterator<'b>, StoreError> {
+        let mut iter = self.delegate.raw_iterator_cf(space);
+        iter.seek_to_first();
+
+        Ok(iter.into())
+    }
+
+    /// Returns an iterator for all of the elements in the keyspace `space` that have keys that are
+    /// prefixed by `prefix` and with the default iterator options.
+    pub fn prefix_iterator<'a: 'b, 'b>(
+        &'a self,
+        space: &'b <Self as KeyspaceResolver>::ResolvedKeyspace,
+        prefix: &'b [u8],
+    ) -> Result<RocksPrefixIterator<'b>, StoreError> {
+        let it = self.delegate.prefix_iterator_cf(space, prefix);
+        Ok(it.into())
     }
 }
 

@@ -6,7 +6,7 @@ edition = "2021"
 
 [features]
 default = []
-tls = ["tokio-native-tls"]
+trust_dns = ["trust-dns-resolver"]
 
 [dependencies]
 bitflags = { workspace = true }
@@ -20,7 +20,6 @@ futures-util = { workspace = true }
 http = { workspace = true }
 pin-project = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt", "macros"] }
-tokio-native-tls = { workspace = true, optional = true }
 tokio-util = { workspace = true, features = ["codec"] }
 swim_utilities = { path = "../../swim_utilities", features = ["sync", "errors", "future", "io"] }
 url = { workspace = true }
@@ -36,6 +35,7 @@ thiserror = { workspace = true }
 tokio-stream = { workspace = true, features = ["sync"] }
 uuid = { workspace = true }
 static_assertions = { workspace = true }
+trust-dns-resolver = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

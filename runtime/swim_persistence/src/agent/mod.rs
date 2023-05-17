@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod in_memory;
 pub mod lane;
 pub mod mock;
 
@@ -19,6 +20,8 @@ use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use bytes::BytesMut;
+use futures::future::{ready, BoxFuture};
+use futures::FutureExt;
 use swim_api::store::{NodePersistence, PlanePersistence};
 use swim_model::Text;
 
@@ -172,9 +175,9 @@ where
 {
     type Node = StoreWrapper<S::NodeStore>;
 
-    fn node_store(&self, node_uri: &str) -> Result<Self::Node, StoreError> {
+    fn node_store(&self, node_uri: &str) -> BoxFuture<'static, Result<Self::Node, StoreError>> {
         let StoreWrapper(inner) = self;
-        Ok(StoreWrapper(inner.node_store(node_uri)))
+        ready(Ok(StoreWrapper(inner.node_store(node_uri)))).boxed()
     }
 }
 
@@ -204,13 +207,13 @@ where
         }
     }
 
-    fn put_value(&self, lane_id: Self::LaneId, value: &[u8]) -> Result<(), StoreError> {
+    fn put_value(&mut self, lane_id: Self::LaneId, value: &[u8]) -> Result<(), StoreError> {
         let StoreWrapper(store) = self;
         store.put(StoreKey::Value { lane_id }, value)
     }
 
     fn update_map(
-        &self,
+        &mut self,
         lane_id: Self::LaneId,
         key: &[u8],
         value: &[u8],
@@ -223,7 +226,7 @@ where
         store.put(key, value)
     }
 
-    fn remove_map(&self, lane_id: Self::LaneId, key: &[u8]) -> Result<(), StoreError> {
+    fn remove_map(&mut self, lane_id: Self::LaneId, key: &[u8]) -> Result<(), StoreError> {
         let StoreWrapper(store) = self;
         let key = StoreKey::Map {
             lane_id,
@@ -232,12 +235,12 @@ where
         store.delete(key)
     }
 
-    fn clear_map(&self, id: Self::LaneId) -> Result<(), StoreError> {
+    fn clear_map(&mut self, id: Self::LaneId) -> Result<(), StoreError> {
         let StoreWrapper(store) = self;
         store.delete_map(id)
     }
 
-    fn delete_value(&self, lane_id: Self::LaneId) -> Result<(), StoreError> {
+    fn delete_value(&mut self, lane_id: Self::LaneId) -> Result<(), StoreError> {
         let StoreWrapper(store) = self;
         store.delete(StoreKey::Value { lane_id })
     }

@@ -28,7 +28,7 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use crate::{
-    agent_model::{AgentLaneModel, LaneFlags, LaneSpec, WriteResult},
+    agent_model::{AgentSpec, ItemFlags, ItemKind, ItemSpec, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
 };
@@ -92,27 +92,36 @@ impl From<TestEvent> for TestHandler {
     }
 }
 
-impl AgentLaneModel for TestAgent {
+impl AgentSpec for TestAgent {
     type ValCommandHandler = TestHandler;
 
     type MapCommandHandler = TestHandler;
 
     type OnSyncHandler = TestHandler;
 
-    fn value_like_lane_specs() -> HashMap<&'static str, crate::agent_model::LaneSpec> {
+    fn value_like_item_specs() -> HashMap<&'static str, crate::agent_model::ItemSpec> {
         let mut lanes = HashMap::new();
-        lanes.insert(VAL_LANE, LaneSpec::new(LaneFlags::TRANSIENT));
-        lanes.insert(CMD_LANE, LaneSpec::new(LaneFlags::TRANSIENT));
+        lanes.insert(
+            VAL_LANE,
+            ItemSpec::new(ItemKind::Lane, ItemFlags::TRANSIENT),
+        );
+        lanes.insert(
+            CMD_LANE,
+            ItemSpec::new(ItemKind::Lane, ItemFlags::TRANSIENT),
+        );
         lanes
     }
 
-    fn map_like_lane_specs() -> HashMap<&'static str, crate::agent_model::LaneSpec> {
+    fn map_like_item_specs() -> HashMap<&'static str, crate::agent_model::ItemSpec> {
         let mut lanes = HashMap::new();
-        lanes.insert(MAP_LANE, LaneSpec::new(LaneFlags::TRANSIENT));
+        lanes.insert(
+            MAP_LANE,
+            ItemSpec::new(ItemKind::Lane, ItemFlags::TRANSIENT),
+        );
         lanes
     }
 
-    fn lane_ids() -> HashMap<u64, Text> {
+    fn item_ids() -> HashMap<u64, Text> {
         [(VAL_ID, VAL_LANE), (MAP_ID, MAP_LANE), (CMD_ID, CMD_LANE)]
             .into_iter()
             .map(|(k, v)| (k, Text::new(v)))
@@ -210,22 +219,22 @@ impl AgentLaneModel for TestAgent {
         }
     }
 
-    fn init_value_like_lane(
+    fn init_value_like_item(
         &self,
-        _lane: &str,
-    ) -> Option<Box<dyn crate::agent_model::LaneInitializer<Self, BytesMut> + Send + 'static>>
+        _item: &str,
+    ) -> Option<Box<dyn crate::agent_model::ItemInitializer<Self, BytesMut> + Send + 'static>>
     where
         Self: 'static,
     {
         None
     }
 
-    fn init_map_like_lane(
+    fn init_map_like_item(
         &self,
-        _lane: &str,
+        _item: &str,
     ) -> Option<
         Box<
-            dyn crate::agent_model::LaneInitializer<Self, MapMessage<BytesMut, BytesMut>>
+            dyn crate::agent_model::ItemInitializer<Self, MapMessage<BytesMut, BytesMut>>
                 + Send
                 + 'static,
         >,
@@ -248,7 +257,7 @@ impl HandlerAction<TestAgent> for TestHandler {
     ) -> StepResult<Self::Completion> {
         let TestHandler { event } = self;
         if let Some(event) = event.take() {
-            let modified_lane = match &event {
+            let modified_item = match &event {
                 TestEvent::Value { body } => {
                     context.stage_value(*body);
                     Some(Modification::of(VAL_ID))
@@ -269,7 +278,7 @@ impl HandlerAction<TestAgent> for TestHandler {
             };
             context.sender.send(event).expect("Receiver dropped.");
             StepResult::Complete {
-                modified_lane,
+                modified_item,
                 result: (),
             }
         } else {

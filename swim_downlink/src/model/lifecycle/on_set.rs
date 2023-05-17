@@ -14,7 +14,6 @@
 
 use futures::future::{ready, Ready};
 use std::future::Future;
-use std::sync::Arc;
 use swim_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
 use super::{SetFn, SharedSetFn};
@@ -29,11 +28,7 @@ pub trait OnSet<T>: Send {
     /// #Arguments
     /// * `existing` - The existing value, if it is defined.
     /// * `new_value` - The replacement value.
-    fn on_set<'a>(
-        &'a mut self,
-        existing: Option<&'a Arc<T>>,
-        new_value: &'a T,
-    ) -> Self::OnSetFut<'a>;
+    fn on_set<'a>(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut<'a>;
 }
 
 /// Trait for event handlers, that share state with other handlers, called when a downlink
@@ -52,7 +47,7 @@ pub trait OnSetShared<T, Shared>: Send {
     fn on_set<'a>(
         &'a mut self,
         shared: &'a mut Shared,
-        existing: Option<&'a Arc<T>>,
+        existing: Option<&'a T>,
         new_value: &'a T,
     ) -> Self::OnSetFut<'a>;
 }
@@ -63,11 +58,7 @@ impl<T> OnSet<T> for NoHandler {
         Self: 'a,
         T: 'a;
 
-    fn on_set<'a>(
-        &'a mut self,
-        _existing: Option<&'a Arc<T>>,
-        _new_value: &'a T,
-    ) -> Self::OnSetFut<'a> {
+    fn on_set<'a>(&'a mut self, _existing: Option<&'a T>, _new_value: &'a T) -> Self::OnSetFut<'a> {
         ready(())
     }
 }
@@ -81,11 +72,7 @@ where
         Self: 'a,
         T: 'a;
 
-    fn on_set<'a>(
-        &'a mut self,
-        existing: Option<&'a Arc<T>>,
-        new_value: &'a T,
-    ) -> Self::OnSetFut<'a> {
+    fn on_set<'a>(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut<'a> {
         let FnMutHandler(f) = self;
         f.apply(existing, new_value)
     }
@@ -101,7 +88,7 @@ impl<T, Shared> OnSetShared<T, Shared> for NoHandler {
     fn on_set<'a>(
         &'a mut self,
         _shared: &'a mut Shared,
-        _existing: Option<&'a Arc<T>>,
+        _existing: Option<&'a T>,
         _new_value: &'a T,
     ) -> Self::OnSetFut<'a> {
         ready(())
@@ -121,7 +108,7 @@ where
     fn on_set<'a>(
         &'a mut self,
         shared: &'a mut Shared,
-        existing: Option<&'a Arc<T>>,
+        existing: Option<&'a T>,
         new_value: &'a T,
     ) -> Self::OnSetFut<'a> {
         let FnMutHandler(f) = self;
@@ -142,7 +129,7 @@ where
     fn on_set<'a>(
         &'a mut self,
         _shared: &'a mut Shared,
-        existing: Option<&'a Arc<T>>,
+        existing: Option<&'a T>,
         new_value: &'a T,
     ) -> Self::OnSetFut<'a> {
         self.0.on_set(existing, new_value)
@@ -151,18 +138,14 @@ where
 
 impl<F, T> OnSet<T> for BlockingHandler<F>
 where
-    F: FnMut(Option<&Arc<T>>, &T) + Send,
+    F: FnMut(Option<&T>, &T) + Send,
 {
     type OnSetFut<'a> = Ready<()>
     where
         Self: 'a,
         T: 'a;
 
-    fn on_set<'a>(
-        &'a mut self,
-        existing: Option<&'a Arc<T>>,
-        new_value: &'a T,
-    ) -> Self::OnSetFut<'a> {
+    fn on_set<'a>(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut<'a> {
         let BlockingHandler(f) = self;
         f(existing, new_value);
         ready(())
@@ -171,7 +154,7 @@ where
 
 impl<T, F, Shared> OnSetShared<T, Shared> for BlockingHandler<F>
 where
-    F: FnMut(&mut Shared, Option<&Arc<T>>, &T) + Send,
+    F: FnMut(&mut Shared, Option<&T>, &T) + Send,
 {
     type OnSetFut<'a> = Ready<()>
     where
@@ -182,7 +165,7 @@ where
     fn on_set<'a>(
         &'a mut self,
         shared: &'a mut Shared,
-        existing: Option<&'a Arc<T>>,
+        existing: Option<&'a T>,
         new_value: &'a T,
     ) -> Self::OnSetFut<'a> {
         let BlockingHandler(f) = self;

@@ -28,7 +28,8 @@ use swim_api::{
     protocol::{
         agent::{
             LaneRequest, LaneRequestDecoder, LaneResponse, MapLaneResponse, MapLaneResponseEncoder,
-            ValueLaneResponseEncoder,
+            MapStoreResponseEncoder, StoreResponse, ValueLaneResponseEncoder,
+            ValueStoreResponseEncoder,
         },
         map::{MapMessage, MapMessageDecoder, MapOperation, MapOperationDecoder},
         WithLenRecognizerDecoder,
@@ -58,7 +59,7 @@ use uuid::Uuid;
 
 use crate::agent::{
     reporting::{UplinkReportReader, UplinkSnapshot},
-    AgentRuntimeConfig, DisconnectionReason,
+    AgentRuntimeConfig, DisconnectionReason, UplinkReporterRegistration,
 };
 
 use super::{LaneEndpoint, RwCoorindationMessage};
@@ -92,6 +93,8 @@ fn make_prune_config(
 const VAL_LANE: &str = "value_lane";
 const SUPPLY_LANE: &str = "supply_lane";
 const MAP_LANE: &str = "map_lane";
+const VAL_STORE: &str = "value_store";
+const MAP_STORE: &str = "map_store";
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -141,6 +144,15 @@ enum Instruction {
     MapSynced {
         lane: Text,
         id: Uuid,
+    },
+    ValueStoreEvent {
+        store_name: Text,
+        value: i32,
+    },
+    MapStoreEvent {
+        store_name: Text,
+        key: Text,
+        value: i32,
     },
 }
 
@@ -225,6 +237,27 @@ impl Instructions {
             })
             .is_ok());
     }
+
+    fn value_store_event(&self, store_name: &str, value: i32) {
+        let Instructions(inner) = self;
+        assert!(inner
+            .send(Instruction::ValueStoreEvent {
+                store_name: Text::new(store_name),
+                value
+            })
+            .is_ok());
+    }
+
+    fn map_store_event(&self, store_name: &str, key: &str, value: i32) {
+        let Instructions(inner) = self;
+        assert!(inner
+            .send(Instruction::MapStoreEvent {
+                store_name: Text::new(store_name),
+                key: Text::new(key),
+                value,
+            })
+            .is_ok());
+    }
 }
 
 struct ValueLikeLaneSender {
@@ -301,6 +334,42 @@ impl MapLaneSender {
         let MapLaneSender { inner } = self;
         assert!(inner
             .send(MapLaneResponse::<Text, i32>::synced(id))
+            .await
+            .is_ok());
+    }
+}
+
+struct ValueStoreSender {
+    inner: FramedWrite<ByteWriter, ValueStoreResponseEncoder>,
+}
+
+impl ValueStoreSender {
+    fn new(writer: ByteWriter) -> Self {
+        ValueStoreSender {
+            inner: FramedWrite::new(writer, Default::default()),
+        }
+    }
+
+    async fn event(&mut self, value: i32) {
+        assert!(self.inner.send(StoreResponse::new(value)).await.is_ok());
+    }
+}
+
+struct MapStoreSender {
+    inner: FramedWrite<ByteWriter, MapStoreResponseEncoder>,
+}
+
+impl MapStoreSender {
+    fn new(writer: ByteWriter) -> Self {
+        MapStoreSender {
+            inner: FramedWrite::new(writer, Default::default()),
+        }
+    }
+
+    async fn update_event(&mut self, key: Text, value: i32) {
+        let MapStoreSender { inner } = self;
+        assert!(inner
+            .send(StoreResponse::new(MapOperation::Update { key, value }))
             .await
             .is_ok());
     }
@@ -604,6 +673,7 @@ impl RemoteSender {
 }
 
 struct ReportReaders {
+    _reg_rx: mpsc::Receiver<UplinkReporterRegistration>,
     aggregate: UplinkReportReader,
     lanes: HashMap<&'static str, UplinkReportReader>,
 }
@@ -615,7 +685,9 @@ struct Snapshots {
 
 impl ReportReaders {
     fn snapshot(&self) -> Option<Snapshots> {
-        let ReportReaders { aggregate, lanes } = self;
+        let ReportReaders {
+            aggregate, lanes, ..
+        } = self;
         let mut lane_snapshots = HashMap::new();
         for (name, reader) in lanes.iter() {
             lane_snapshots.insert(*name, reader.snapshot()?);

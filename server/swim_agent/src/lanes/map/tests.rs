@@ -39,7 +39,7 @@ use crate::{
             MapLane, MapLaneClear, MapLaneGet, MapLaneGetMap, MapLaneRemove, MapLaneSync,
             MapLaneUpdate,
         },
-        Lane,
+        LaneItem,
     },
     meta::AgentMetadata,
     test_context::dummy_context,
@@ -519,16 +519,16 @@ fn check_result<T: Eq + Debug>(
     match (result, complete) {
         (
             StepResult::Complete {
-                modified_lane,
+                modified_item,
                 result,
             },
             Some(expected),
         ) => {
-            assert_eq!(modified_lane, expected_mod);
+            assert_eq!(modified_item, expected_mod);
             assert_eq!(result, expected);
         }
-        (StepResult::Continue { modified_lane }, None) => {
-            assert_eq!(modified_lane, expected_mod);
+        (StepResult::Continue { modified_item }, None) => {
+            assert_eq!(modified_item, expected_mod);
         }
         ow => {
             panic!("Unexpected result: {:?}", ow);

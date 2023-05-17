@@ -106,7 +106,7 @@ impl Display for DownlinkFailureReason {
 }
 
 /// Error type for operations that communicate with the agent runtime.
-#[derive(Error, Debug, Clone, Copy)]
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentRuntimeError {
     #[error("The agent runtime is stopping.")]
     Stopping,
@@ -124,14 +124,14 @@ pub enum DownlinkRuntimeError {
 }
 
 /// Error type for requests so the runtime for creating/opening a state for an agent.
-#[derive(Error, Debug, Clone, Copy)]
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenStoreError {
     #[error(transparent)]
     RuntimeError(#[from] AgentRuntimeError),
     #[error("The runtime does not support stores.")]
     StoresNotSupported,
     #[error(
-        "A store of kind {requested} was requested but the prexisting store is of kind {actual}."
+        "A store of kind {requested} was requested but the pre-existing store is of kind {actual}."
     )]
     IncorrectStoreKind {
         requested: StoreKind,
@@ -142,6 +142,12 @@ pub enum OpenStoreError {
 impl<T> From<mpsc::error::SendError<T>> for AgentRuntimeError {
     fn from(_: mpsc::error::SendError<T>) -> Self {
         AgentRuntimeError::Terminated
+    }
+}
+
+impl<T> From<mpsc::error::SendError<T>> for OpenStoreError {
+    fn from(_: mpsc::error::SendError<T>) -> Self {
+        OpenStoreError::RuntimeError(AgentRuntimeError::Terminated)
     }
 }
 
@@ -160,6 +166,12 @@ impl From<promise::PromiseError> for AgentRuntimeError {
 impl From<oneshot::error::RecvError> for AgentRuntimeError {
     fn from(_: oneshot::error::RecvError) -> Self {
         AgentRuntimeError::Terminated
+    }
+}
+
+impl From<oneshot::error::RecvError> for OpenStoreError {
+    fn from(_: oneshot::error::RecvError) -> Self {
+        OpenStoreError::RuntimeError(AgentRuntimeError::Terminated)
     }
 }
 
@@ -209,6 +221,14 @@ pub enum AgentInitError {
     UserCodeError(Box<dyn std::error::Error + Send>),
     #[error("Initializing the state of an agent lane failed: {0}")]
     LaneInitializationFailure(FrameIoError),
+    #[error(
+        "Requested a store of kind {requested} for item {name} but store was of kind {actual}."
+    )]
+    IncorrectStoreKind {
+        name: Text,
+        requested: StoreKind,
+        actual: StoreKind,
+    },
     #[error("The parameters passed to the agent were invalid: {0}")]
     InvalidParameters(#[from] UnapplyError),
     #[error("Failed to initialize introspection for an agent: {0}")]
@@ -226,13 +246,19 @@ impl From<AgentRuntimeError> for AgentInitError {
 
 #[derive(Debug, Error)]
 pub enum StoreError {
+    /// This implementation does not provide stores.
+    #[error("No store available.")]
+    NoStoreAvailable,
     /// The provided key was not found in the store.
     #[error("The specified key was not found")]
     KeyNotFound,
     /// A key returned by the store did not have the correct format.
     #[error("The store returned an invalid key")]
     InvalidKey,
-    /// The delegate byte engine failed to initialised.
+    /// Invalid operation attempted.
+    #[error("An invalid operation was attempted (e.g. Updating a map entry on a value entry)")]
+    InvalidOperation,
+    /// The delegate byte engine failed to initialise.
     #[error("The delegate store engine failed to initialise: {0}")]
     InitialisationFailure(String),
     /// An IO error produced by the delegate byte engine.
@@ -247,7 +273,7 @@ pub enum StoreError {
     /// A raw error produced by the delegate byte engine.
     #[error("Delegate store error: {0}")]
     Delegate(Box<dyn std::error::Error + Send + Sync>),
-    /// A raw error produced by the delegate byte engine that isnt send or sync
+    /// A raw error produced by the delegate byte engine that isn't send or sync
     #[error("Delegate store error: {0}")]
     DelegateMessage(String),
     /// An operation was attempted on the byte engine when it was closing.

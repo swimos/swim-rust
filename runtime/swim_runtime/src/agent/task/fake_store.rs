@@ -26,6 +26,7 @@ use swim_api::{
 use swim_form::structural::write::StructuralWritable;
 use swim_model::Text;
 use swim_recon::printer::print_recon_compact;
+use swim_utilities::trigger;
 
 #[derive(Debug, Default)]
 struct FakeMapLaneStore {
@@ -41,6 +42,7 @@ struct FakeStoreInner {
     ids_forward: HashMap<Text, u64>,
     ids_back: HashMap<u64, Text>,
     valid: HashSet<Text>,
+    waiters: Vec<trigger::Sender>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -87,6 +89,11 @@ impl FakeStore {
         } else {
             Ok(maps.get(&id).map(|map_store| map_store.data.clone()))
         }
+    }
+
+    pub fn subscribe_to_changes(&self, on_change: trigger::Sender) {
+        let mut guard = self.inner.lock();
+        guard.waiters.push(on_change);
     }
 }
 
@@ -172,64 +179,100 @@ impl NodePersistence for FakeStore {
         }
     }
 
-    fn put_value(&self, id: Self::LaneId, value: &[u8]) -> Result<(), StoreError> {
+    fn put_value(&mut self, id: Self::LaneId, value: &[u8]) -> Result<(), StoreError> {
         let mut guard = self.inner.lock();
         let FakeStoreInner {
-            values, ids_back, ..
+            values,
+            ids_back,
+            waiters,
+            ..
         } = &mut *guard;
         if !ids_back.contains_key(&id) {
             Err(StoreError::KeyNotFound)
         } else {
             values.insert(id, value.to_owned());
+            waiters.drain(..).for_each(|t| {
+                t.trigger();
+            });
             Ok(())
         }
     }
 
-    fn update_map(&self, id: Self::LaneId, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
+    fn update_map(&mut self, id: Self::LaneId, key: &[u8], value: &[u8]) -> Result<(), StoreError> {
         let mut guard = self.inner.lock();
-        let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
+        let FakeStoreInner {
+            maps,
+            ids_back,
+            waiters,
+            ..
+        } = &mut *guard;
         if !ids_back.contains_key(&id) {
             Err(StoreError::KeyNotFound)
         } else {
             let FakeMapLaneStore { data, .. } = maps.entry(id).or_insert_with(Default::default);
             data.insert(key.to_vec(), value.to_vec());
+            waiters.drain(..).for_each(|t| {
+                t.trigger();
+            });
             Ok(())
         }
     }
 
-    fn remove_map(&self, id: Self::LaneId, key: &[u8]) -> Result<(), StoreError> {
+    fn remove_map(&mut self, id: Self::LaneId, key: &[u8]) -> Result<(), StoreError> {
         let mut guard = self.inner.lock();
-        let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
+        let FakeStoreInner {
+            maps,
+            ids_back,
+            waiters,
+            ..
+        } = &mut *guard;
         if !ids_back.contains_key(&id) {
             Err(StoreError::KeyNotFound)
         } else {
             let FakeMapLaneStore { data, .. } = maps.entry(id).or_insert_with(Default::default);
             data.remove(key);
+            waiters.drain(..).for_each(|t| {
+                t.trigger();
+            });
             Ok(())
         }
     }
 
-    fn clear_map(&self, id: Self::LaneId) -> Result<(), StoreError> {
+    fn clear_map(&mut self, id: Self::LaneId) -> Result<(), StoreError> {
         let mut guard = self.inner.lock();
-        let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
+        let FakeStoreInner {
+            maps,
+            ids_back,
+            waiters,
+            ..
+        } = &mut *guard;
         if !ids_back.contains_key(&id) {
             Err(StoreError::KeyNotFound)
         } else {
             let FakeMapLaneStore { data, .. } = maps.entry(id).or_insert_with(Default::default);
             data.clear();
+            waiters.drain(..).for_each(|t| {
+                t.trigger();
+            });
             Ok(())
         }
     }
 
-    fn delete_value(&self, id: Self::LaneId) -> Result<(), StoreError> {
+    fn delete_value(&mut self, id: Self::LaneId) -> Result<(), StoreError> {
         let mut guard = self.inner.lock();
         let FakeStoreInner {
-            values, ids_back, ..
+            values,
+            ids_back,
+            waiters,
+            ..
         } = &mut *guard;
         if !ids_back.contains_key(&id) {
             Err(StoreError::KeyNotFound)
         } else {
             values.remove(&id);
+            waiters.drain(..).for_each(|t| {
+                t.trigger();
+            });
             Ok(())
         }
     }

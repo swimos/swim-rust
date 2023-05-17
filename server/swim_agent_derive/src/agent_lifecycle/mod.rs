@@ -18,7 +18,7 @@ use syn::{parse_quote, Path, Type};
 
 use self::{
     model::{
-        AgentLifecycleDescriptor, CommandLifecycleDescriptor, LaneLifecycle,
+        AgentLifecycleDescriptor, CommandLifecycleDescriptor, ItemLifecycle,
         MapLifecycleDescriptor, ValueLifecycleDescriptor,
     },
     tree::BinTree,
@@ -47,20 +47,20 @@ struct LifecycleTree<'a> {
     root: &'a Path,
     agent_type: &'a Path,
     lifecycle_type: &'a Type,
-    tree: &'a BinTree<String, LaneLifecycle<'a>>,
+    tree: &'a BinTree<String, ItemLifecycle<'a>>,
 }
 
 struct LaneLifecycleBuilder<'a> {
     agent_type: &'a Path,
     lifecycle_type: &'a Type,
-    lifecycle: &'a LaneLifecycle<'a>,
+    lifecycle: &'a ItemLifecycle<'a>,
 }
 
 impl<'a> LaneLifecycleBuilder<'a> {
     fn new(
         agent_type: &'a Path,
         lifecycle_type: &'a Type,
-        lifecycle: &'a LaneLifecycle<'a>,
+        lifecycle: &'a ItemLifecycle<'a>,
     ) -> Self {
         LaneLifecycleBuilder {
             agent_type,
@@ -76,7 +76,7 @@ impl<'a> LaneLifecycleBuilder<'a> {
             lifecycle,
         } = self;
         match lifecycle {
-            LaneLifecycle::Value(ValueLifecycleDescriptor {
+            ItemLifecycle::Value(ValueLifecycleDescriptor {
                 on_event, on_set, ..
             }) => {
                 let mut builder: syn::Expr = parse_quote! {
@@ -94,7 +94,7 @@ impl<'a> LaneLifecycleBuilder<'a> {
                 }
                 builder
             }
-            LaneLifecycle::Command(CommandLifecycleDescriptor { on_command, .. }) => {
+            ItemLifecycle::Command(CommandLifecycleDescriptor { on_command, .. }) => {
                 parse_quote! {
                     #root::lanes::command::lifecycle::StatefulCommandLaneLifecycle::on_command(
                         <#root::lanes::command::lifecycle::StatefulCommandLaneLifecycle::<#agent_type, #lifecycle_type, _> as ::core::default::Default>::default(),
@@ -102,7 +102,7 @@ impl<'a> LaneLifecycleBuilder<'a> {
                     )
                 }
             }
-            LaneLifecycle::Map(MapLifecycleDescriptor {
+            ItemLifecycle::Map(MapLifecycleDescriptor {
                 on_update,
                 on_remove,
                 on_clear,
@@ -137,7 +137,7 @@ impl<'a> LifecycleTree<'a> {
         root: &'a Path,
         agent_type: &'a Path,
         lifecycle_type: &'a Type,
-        tree: &'a BinTree<String, LaneLifecycle<'a>>,
+        tree: &'a BinTree<String, ItemLifecycle<'a>>,
     ) -> Self {
         LifecycleTree {
             root,
@@ -163,7 +163,7 @@ impl<'a> ToTokens for LifecycleTree<'a> {
                 left,
                 right,
             } => {
-                let field_ident = lifecycle.lane_ident();
+                let field_ident = lifecycle.item_ident();
                 let builder = LaneLifecycleBuilder::new(agent_type, lifecycle_type, lifecycle);
                 let builder_expr = builder.into_builder_expr(root);
                 let branch_type = lifecycle.branch_type(root);
@@ -174,7 +174,7 @@ impl<'a> ToTokens for LifecycleTree<'a> {
                 }
             }
             BinTree::Leaf => {
-                quote!(#root::agent_lifecycle::lane_event::HLeaf)
+                quote!(#root::agent_lifecycle::item_event::HLeaf)
             }
         });
     }

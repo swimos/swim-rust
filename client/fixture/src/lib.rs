@@ -1,6 +1,5 @@
 use bytes::BytesMut;
 use futures_util::future::{ready, BoxFuture};
-use futures_util::stream::Empty;
 use futures_util::FutureExt;
 use parking_lot::Mutex;
 use ratchet::{Message, NegotiatedExtension, NoExt, PayloadType, Role, WebSocket, WebSocketConfig};
@@ -16,20 +15,20 @@ use swim_model::{Text, Value};
 use swim_recon::parser::{parse_recognize, Span};
 use swim_recon::printer::print_recon;
 use swim_runtime::net::dns::{BoxDnsResolver, DnsResolver};
-use swim_runtime::net::{ExternalConnections, Listener, SchemeHostPort, SchemeSocketAddr};
+use swim_runtime::net::{ClientConnections, ConnResult, ConnectionError, IoResult, Scheme};
 use swim_runtime::ws::{RatchetError, WsConnections, WsOpenFuture};
 use tokio::io::DuplexStream;
 
 #[derive(Debug)]
 struct Inner {
-    addrs: HashMap<SchemeHostPort, SchemeSocketAddr>,
+    addrs: HashMap<(String, u16), SocketAddr>,
     sockets: HashMap<SocketAddr, DuplexStream>,
 }
 
 impl Inner {
     fn new<R, S>(resolver: R, sockets: S) -> Inner
     where
-        R: IntoIterator<Item = (SchemeHostPort, SchemeSocketAddr)>,
+        R: IntoIterator<Item = ((String, u16), SocketAddr)>,
         S: IntoIterator<Item = (SocketAddr, DuplexStream)>,
     {
         Inner {
@@ -40,50 +39,37 @@ impl Inner {
 }
 
 #[derive(Debug, Clone)]
-pub struct MockExternalConnections {
+pub struct MockClientConnections {
     inner: Arc<Mutex<Inner>>,
 }
 
-impl MockExternalConnections {
-    pub fn new<R, S>(resolver: R, sockets: S) -> MockExternalConnections
+impl MockClientConnections {
+    pub fn new<R, S>(resolver: R, sockets: S) -> MockClientConnections
     where
-        R: IntoIterator<Item = (SchemeHostPort, SchemeSocketAddr)>,
+        R: IntoIterator<Item = ((String, u16), SocketAddr)>,
         S: IntoIterator<Item = (SocketAddr, DuplexStream)>,
     {
-        MockExternalConnections {
+        MockClientConnections {
             inner: Arc::new(Mutex::new(Inner::new(resolver, sockets))),
         }
     }
 }
 
-pub struct MockListener;
-impl Listener for MockListener {
-    type Socket = DuplexStream;
-    type AcceptStream = Empty<io::Result<(DuplexStream, SchemeSocketAddr)>>;
+impl ClientConnections for MockClientConnections {
+    type ClientSocket = DuplexStream;
 
-    fn into_stream(self) -> Self::AcceptStream {
-        panic!("Unexpected listener invocation")
-    }
-}
-
-impl ExternalConnections for MockExternalConnections {
-    type Socket = DuplexStream;
-    type ListenerType = MockListener;
-
-    fn bind(
+    fn try_open(
         &self,
-        _addr: SocketAddr,
-    ) -> BoxFuture<'static, io::Result<(SocketAddr, Self::ListenerType)>> {
-        panic!("Unexpected bind invocation")
-    }
-
-    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, io::Result<Self::Socket>> {
+        _scheme: Scheme,
+        _host: Option<&str>,
+        addr: SocketAddr,
+    ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
         let result = self
             .inner
             .lock()
             .sockets
             .remove(&addr)
-            .ok_or_else(|| ErrorKind::NotFound.into());
+            .ok_or_else(|| ConnectionError::ConnectionFailed(ErrorKind::NotFound.into()));
         ready(result).boxed()
     }
 
@@ -91,19 +77,16 @@ impl ExternalConnections for MockExternalConnections {
         Box::new(self.clone())
     }
 
-    fn lookup(
-        &self,
-        host: SchemeHostPort,
-    ) -> BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>> {
-        self.resolve(host).boxed()
+    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+        self.resolve(host, port).boxed()
     }
 }
 
-impl DnsResolver for MockExternalConnections {
-    type ResolveFuture = BoxFuture<'static, io::Result<Vec<SchemeSocketAddr>>>;
+impl DnsResolver for MockClientConnections {
+    type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
-    fn resolve(&self, host: SchemeHostPort) -> Self::ResolveFuture {
-        let result = match self.inner.lock().addrs.get(&host) {
+    fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {
+        let result = match self.inner.lock().unwrap().addrs.get(&(host, port)) {
             Some(sock) => Ok(vec![*sock]),
             None => Err(io::ErrorKind::NotFound.into()),
         };

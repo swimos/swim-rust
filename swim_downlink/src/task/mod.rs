@@ -52,7 +52,7 @@ impl<Model> DownlinkTask<Model> {
 
 impl<T, LC> Downlink for DownlinkTask<ValueDownlinkModel<T, LC>>
 where
-    T: Form + Send + Sync + 'static,
+    T: Form + Send + Sync + Clone + 'static,
     <T as RecognizerReadable>::Rec: Send,
     LC: ValueDownlinkLifecycle<T> + 'static,
 {

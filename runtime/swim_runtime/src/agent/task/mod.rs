@@ -16,51 +16,49 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
-use std::task::{Context, Poll};
 use std::time::Duration;
 
+use crate::agent::store::StoreInitError;
 use crate::agent::task::links::TriggerUnlink;
 use crate::agent::task::sender::LaneSendError;
 use crate::agent::task::timeout_coord::VoteResult;
 use crate::agent::task::write_fut::SpecialAction;
 use crate::error::InvalidKey;
 
+use self::init::Initialization;
 use self::links::Links;
 use self::prune::PruneRemotes;
+use self::receiver::{Failed, ItemResponse, LaneData, ResponseData, ResponseReceiver, StoreData};
 use self::remotes::{RemoteSender, RemoteTracker, UplinkResponse};
 use self::sender::LaneSender;
 use self::write_fut::{WriteResult, WriteTask};
 
 use super::reporting::UplinkReporter;
-use super::store::AgentPersistence;
+use super::store::{AgentItemInitError, AgentPersistence};
 use super::{
     AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io,
     NodeReporting,
 };
 use bytes::{Bytes, BytesMut};
+use futures::future::BoxFuture;
+use futures::pin_mut;
 use futures::stream::FuturesUnordered;
 use futures::{
     future::{join, select as fselect, Either},
     stream::{select as sselect, SelectAll},
     Stream, StreamExt,
 };
-use futures::{pin_mut, ready};
-use swim_api::agent::LaneConfig;
-use swim_api::error::StoreError;
+use swim_api::agent::{LaneConfig, StoreConfig};
+use swim_api::error::{OpenStoreError, StoreError};
 use swim_api::meta::lane::LaneKind;
-use swim_api::protocol::agent::{LaneResponse, MapLaneResponse};
-use swim_api::store::StoreDisabled;
-use swim_api::{
-    agent::UplinkKind,
-    error::AgentRuntimeError,
-    protocol::agent::{MapLaneResponseDecoder, ValueLaneResponseDecoder},
-};
+use swim_api::store::{StoreDisabled, StoreKind};
+use swim_api::{agent::UplinkKind, error::AgentRuntimeError};
 use swim_messages::bytes_str::BytesStr;
 use swim_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
 use swim_model::Text;
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError};
-use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
+use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::trigger::{self, promise};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{sleep, timeout, Instant, Sleep};
@@ -74,6 +72,7 @@ use tracing_futures::Instrument;
 mod init;
 mod links;
 mod prune;
+mod receiver;
 mod remotes;
 mod sender;
 mod timeout_coord;
@@ -86,23 +85,68 @@ mod fake_store;
 #[cfg(test)]
 mod tests;
 
-/// Type for requests that can be sent to the agent runtime task by an agent implementation.
 #[derive(Debug)]
-pub enum AgentRuntimeRequest {
-    /// Attempt to open a new lane for the agent.
-    AddLane {
+pub struct LaneRuntimeSpec {
+    pub name: Text,
+    pub kind: LaneKind,
+    pub config: LaneConfig,
+    pub promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+}
+
+impl LaneRuntimeSpec {
+    pub fn new(
         name: Text,
         kind: LaneKind,
         config: LaneConfig,
         promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
-    },
+    ) -> Self {
+        LaneRuntimeSpec {
+            name,
+            kind,
+            config,
+            promise,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct StoreRuntimeSpec {
+    pub name: Text,
+    pub kind: StoreKind,
+    pub config: StoreConfig,
+    pub promise: oneshot::Sender<Result<Io, OpenStoreError>>,
+}
+
+impl StoreRuntimeSpec {
+    pub fn new(
+        name: Text,
+        kind: StoreKind,
+        config: StoreConfig,
+        promise: oneshot::Sender<Result<Io, OpenStoreError>>,
+    ) -> Self {
+        StoreRuntimeSpec {
+            name,
+            kind,
+            config,
+            promise,
+        }
+    }
+}
+
+/// Type for requests that can be sent to the agent runtime task by an agent implementation.
+#[derive(Debug)]
+pub enum AgentRuntimeRequest {
+    /// Attempt to open a new lane for the agent.
+    AddLane(LaneRuntimeSpec),
+    /// Attempt to open a new store for the agent.
+    AddStore(StoreRuntimeSpec),
     /// Attempt to open a downlink to a lane on another agent.
     OpenDownlink(DownlinkRequest),
 }
 
 /// A labelled channel endpoint (or pair) for a lane.
 #[derive(Debug)]
-struct LaneEndpoint<T> {
+pub struct LaneEndpoint<T> {
     /// The name of the lane.
     name: Text,
     /// The subprotocol used by the lane.
@@ -154,43 +198,65 @@ impl LaneEndpoint<Io> {
 
 impl LaneEndpoint<ByteReader> {
     /// Create a [`Stream`] that will read messages from an endpoint.
-    /// #Arguments
-    /// * `registry` - The registry that assigns identifiiers to active lanes.
-    fn into_lane_stream<Store>(
+    fn into_lane_stream<I>(
         self,
-        store: &Store,
+        store_id: Option<I>,
         state: &mut WriteTaskState,
-    ) -> Result<LaneStream<Store::LaneId>, StoreError>
-    where
-        Store: AgentPersistence,
-    {
+    ) -> ResponseReceiver<I> {
         let LaneEndpoint {
             name,
             kind,
-            transient,
             io: reader,
             reporter,
+            ..
         } = self;
-        let store_id = if transient {
-            None
-        } else {
-            Some(store.lane_id(name.as_str())?)
-        };
-        let id = state.register(name, reporter);
-        Ok(match kind {
-            UplinkKind::Value => {
-                let receiver = ValueLikeLaneReceiver::value(id, store_id, reader);
-                StopAfterError::new(Either::Left(receiver))
-            }
-            UplinkKind::Supply => {
-                let receiver = ValueLikeLaneReceiver::supply(id, store_id, reader);
-                StopAfterError::new(Either::Left(receiver))
-            }
-            UplinkKind::Map => {
-                let receiver = MapLaneReceiver::new(id, store_id, reader);
-                StopAfterError::new(Either::Right(receiver))
-            }
-        })
+        let id = state.register_lane(name, reporter);
+        match kind {
+            UplinkKind::Value => ResponseReceiver::value_like_lane(id, store_id, reader),
+            UplinkKind::Supply => ResponseReceiver::supply_lane(id, store_id, reader),
+            UplinkKind::Map => ResponseReceiver::map_lane(id, store_id, reader),
+        }
+    }
+}
+
+impl LaneEndpoint<ByteWriter> {
+    fn into_read_task_message(self) -> ReadTaskMessage {
+        let LaneEndpoint {
+            name,
+            kind,
+            io: tx,
+            reporter,
+            ..
+        } = self;
+        let sender = LaneSender::new(tx, kind, reporter);
+        ReadTaskMessage::Lane { name, sender }
+    }
+}
+
+/// A labelled channel endpoint (or pair) for a lane.
+#[derive(Debug)]
+pub struct StoreEndpoint {
+    /// The name of the lane.
+    name: Text,
+    /// The subprotocol used by the lane.
+    kind: StoreKind,
+    /// The channel endpoint.
+    reader: ByteReader,
+}
+
+impl StoreEndpoint {
+    fn new(name: Text, kind: StoreKind, reader: ByteReader) -> Self {
+        StoreEndpoint { name, kind, reader }
+    }
+
+    /// Create a [`Stream`] that will read messages from an endpoint.
+    fn into_store_stream<I>(self, store_id: I, state: &mut WriteTaskState) -> ResponseReceiver<I> {
+        let StoreEndpoint { kind, reader, .. } = self;
+        let item_id = state.item_id_for_store();
+        match kind {
+            StoreKind::Value => ResponseReceiver::value_store(item_id, store_id, reader),
+            StoreKind::Map => ResponseReceiver::map_store(item_id, store_id, reader),
+        }
     }
 }
 
@@ -199,85 +265,34 @@ impl LaneEndpoint<ByteReader> {
 pub struct InitialEndpoints {
     reporting: Option<NodeReporting>,
     rx: mpsc::Receiver<AgentRuntimeRequest>,
-    endpoints: Vec<LaneEndpoint<Io>>,
+    lane_endpoints: Vec<LaneEndpoint<Io>>,
+    store_endpoints: Vec<StoreEndpoint>,
 }
 
 impl InitialEndpoints {
     fn new(
         reporting: Option<NodeReporting>,
         rx: mpsc::Receiver<AgentRuntimeRequest>,
-        endpoints: Vec<LaneEndpoint<Io>>,
+        lane_endpoints: Vec<LaneEndpoint<Io>>,
+        store_endpoints: Vec<StoreEndpoint>,
     ) -> Self {
         InitialEndpoints {
             reporting,
             rx,
-            endpoints,
+            lane_endpoints,
+            store_endpoints,
         }
-    }
-
-    /// Create the agent runtime task based on these intial lane endpoints.
-    /// #Arguments
-    /// * `identity` The routing ID of this agent instance for outgoing envelopes.
-    /// * `node_uri` - The node URI of this agent instance for outgoing envelopes.
-    /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
-    /// * `config` - Configuration parameters for the agent runtime.
-    /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
-    pub fn make_runtime_task(
-        self,
-        identity: Uuid,
-        node_uri: Text,
-        attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        config: AgentRuntimeConfig,
-        stopping: trigger::Receiver,
-    ) -> AgentRuntimeTask {
-        AgentRuntimeTask::new(
-            NodeDescriptor::new(identity, node_uri),
-            self,
-            attachment_rx,
-            stopping,
-            config,
-        )
-    }
-
-    /// Create the agent runtime task based on these intial lane endpoints.
-    /// #Arguments
-    /// * `identity` The routing ID of this agent instance for outgoing envelopes.
-    /// * `node_uri` - The node URI of this agent instance for outgoing envelopes.
-    /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
-    /// * `config` - Configuration parameters for the agent runtime.
-    /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
-    /// * `store` - Persistence store for the agent.
-    pub fn make_runtime_task_with_store<Store>(
-        self,
-        identity: Uuid,
-        node_uri: Text,
-        attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        config: AgentRuntimeConfig,
-        stopping: trigger::Receiver,
-        store: Store,
-    ) -> AgentRuntimeTask<Store>
-    where
-        Store: AgentPersistence + Clone + Send + Sync + 'static,
-    {
-        AgentRuntimeTask::with_store(
-            NodeDescriptor::new(identity, node_uri),
-            self,
-            attachment_rx,
-            stopping,
-            config,
-            store,
-        )
     }
 }
 
 #[derive(Debug)]
-struct NodeDescriptor {
+pub struct NodeDescriptor {
     identity: Uuid,
     node_uri: Text,
 }
 
 impl NodeDescriptor {
-    fn new(identity: Uuid, node_uri: Text) -> Self {
+    pub fn new(identity: Uuid, node_uri: Text) -> Self {
         NodeDescriptor { identity, node_uri }
     }
 }
@@ -292,6 +307,7 @@ pub struct AgentRuntimeTask<Store = StoreDisabled> {
     node: NodeDescriptor,
     init: InitialEndpoints,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+    downlink_requests: mpsc::Sender<DownlinkRequest>,
     stopping: trigger::Receiver,
     config: AgentRuntimeConfig,
     store: Store,
@@ -314,191 +330,20 @@ enum RwCoorindationMessage {
     Unlink { origin: Uuid, lane: Text },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ValueOrSupply {
-    Value,
-    Supply,
-}
-
-/// Recives a stream of messages sent by a lane.
-#[derive(Debug)]
-struct ValueLikeLaneReceiver<I> {
-    lane_id: u64,
-    store_id: Option<I>,
-    kind: ValueOrSupply,
-    receiver: FramedRead<ByteReader, ValueLaneResponseDecoder>,
-}
-
-/// Recives a stream of messages sent by a lane.
-#[derive(Debug)]
-struct MapLaneReceiver<I> {
-    lane_id: u64,
-    store_id: Option<I>,
-    receiver: FramedRead<ByteReader, MapLaneResponseDecoder>,
-}
-
-/// Unified response type from all lane types.
-#[derive(Debug)]
-struct RawLaneResponse {
-    /// A specific remote to forward the message to (otherwise broadcast to all linked).
-    target: Option<Uuid>,
-    /// The response to send to the specified remote.
-    response: UplinkResponse,
-}
-
-impl RawLaneResponse {
-    /// Target a response at a specific remote.
-    /// #Arguments
-    /// * `id` - The target remote.
-    /// * `response` - The message to send.
-    pub fn targetted(id: Uuid, response: UplinkResponse) -> Self {
-        RawLaneResponse {
-            target: Some(id),
-            response,
-        }
-    }
-
-    /// Broadcast a response to all linked remotes.
-    /// #Arguments
-    /// * `response` = The message to send.
-    pub fn broadcast(response: UplinkResponse) -> Self {
-        RawLaneResponse {
-            target: None,
-            response,
-        }
-    }
-}
-
-fn value_or_supply_raw_response(
-    resp: LaneResponse<BytesMut>,
-    kind: ValueOrSupply,
-) -> Option<RawLaneResponse> {
-    match resp {
-        LaneResponse::StandardEvent(body) => Some(RawLaneResponse::broadcast(match kind {
-            ValueOrSupply::Value => UplinkResponse::Value(body.freeze()),
-            ValueOrSupply::Supply => UplinkResponse::Supply(body.freeze()),
-        })),
-        LaneResponse::Initialized => None,
-        LaneResponse::SyncEvent(id, body) => Some(RawLaneResponse::targetted(
-            id,
-            UplinkResponse::Value(body.freeze()),
-        )),
-        LaneResponse::Synced(id) => Some(RawLaneResponse::targetted(
-            id,
-            UplinkResponse::Synced(UplinkKind::Value),
-        )),
-    }
-}
-
-fn map_raw_response(resp: MapLaneResponse<BytesMut, BytesMut>) -> Option<RawLaneResponse> {
-    match resp {
-        LaneResponse::StandardEvent(body) => {
-            Some(RawLaneResponse::broadcast(UplinkResponse::Map(body)))
-        }
-        LaneResponse::Initialized => None,
-        LaneResponse::SyncEvent(id, body) => {
-            Some(RawLaneResponse::targetted(id, UplinkResponse::Map(body)))
-        }
-        LaneResponse::Synced(id) => Some(RawLaneResponse::targetted(
-            id,
-            UplinkResponse::Synced(UplinkKind::Map),
-        )),
-    }
-}
-
-impl<I> ValueLikeLaneReceiver<I> {
-    fn value(lane_id: u64, store_id: Option<I>, reader: ByteReader) -> Self {
-        ValueLikeLaneReceiver {
-            lane_id,
-            store_id,
-            kind: ValueOrSupply::Value,
-            receiver: FramedRead::new(reader, Default::default()),
-        }
-    }
-
-    fn supply(lane_id: u64, store_id: Option<I>, reader: ByteReader) -> Self {
-        ValueLikeLaneReceiver {
-            lane_id,
-            store_id,
-            kind: ValueOrSupply::Supply,
-            receiver: FramedRead::new(reader, Default::default()),
-        }
-    }
-}
-
-impl<I> MapLaneReceiver<I> {
-    fn new(lane_id: u64, store_id: Option<I>, reader: ByteReader) -> Self {
-        MapLaneReceiver {
-            lane_id,
-            store_id,
-            receiver: FramedRead::new(reader, Default::default()),
-        }
-    }
-}
-
-/// Error type indicating that a lane has failed (specifying its ID).
-#[derive(Debug)]
-struct Failed(u64);
-
-impl<I> Stream for ValueLikeLaneReceiver<I>
-where
-    I: Copy + Unpin,
-{
-    type Item = Result<(u64, Option<I>, RawLaneResponse), Failed>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let this = self.get_mut();
-        let id = this.lane_id;
-        let store_id = this.store_id;
-        let next = loop {
-            let maybe_result = ready!(this.receiver.poll_next_unpin(cx));
-
-            match maybe_result {
-                Some(Ok(r)) => {
-                    if let Some(raw) = value_or_supply_raw_response(r, this.kind) {
-                        break Some(Ok((id, store_id, raw)));
-                    }
-                }
-                Some(Err(_)) => break Some(Err(Failed(id))),
-                _ => break None,
-            };
-        };
-        Poll::Ready(next)
-    }
-}
-
-impl<I> Stream for MapLaneReceiver<I>
-where
-    I: Copy + Unpin,
-{
-    type Item = Result<(u64, Option<I>, RawLaneResponse), Failed>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let this = self.get_mut();
-
-        let id = this.lane_id;
-        let store_id = this.store_id;
-        let next = loop {
-            let maybe_result = ready!(this.receiver.poll_next_unpin(cx));
-            match maybe_result {
-                Some(Ok(r)) => {
-                    if let Some(raw) = map_raw_response(r) {
-                        break Some(Ok((id, store_id, raw)));
-                    }
-                }
-                Some(Err(_)) => break Some(Err(Failed(id))),
-                _ => break None,
-            };
-        };
-        Poll::Ready(next)
-    }
-}
-
 impl AgentRuntimeTask {
-    fn new(
+    /// Create the agent runtime task.
+    /// #Arguments
+    /// * `node` - The routing ID and node URI of this agent instance.
+    /// * `init` - The initial lane and store endpoints for this agent.
+    /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
+    /// * `downlink_requests` - Channel for requests to open downlink runtimes for the agent.
+    /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
+    /// * `config` - Configuration parameters for the agent runtime.
+    pub fn new(
         node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+        downlink_requests: mpsc::Sender<DownlinkRequest>,
         stopping: trigger::Receiver,
         config: AgentRuntimeConfig,
     ) -> Self {
@@ -506,6 +351,7 @@ impl AgentRuntimeTask {
             node,
             init,
             attachment_rx,
+            downlink_requests,
             stopping,
             config,
             store: StoreDisabled::default(),
@@ -515,12 +361,22 @@ impl AgentRuntimeTask {
 
 impl<Store> AgentRuntimeTask<Store>
 where
-    Store: AgentPersistence + Clone + Send + Sync + 'static,
+    Store: AgentPersistence + Send + Sync + 'static,
 {
-    fn with_store(
+    /// Create the agent runtime task with a store implementation.
+    /// #Arguments
+    /// * `node` - The routing ID and node URI of this agent instance.
+    /// * `init` - The initial lane and store endpoints for this agent.
+    /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
+    /// * `downlink_requests` - Channel for requests to open downlink runtimes for the agent.
+    /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
+    /// * `config` - Configuration parameters for the agent runtime.
+    /// * `store` - Persistence store for the agent.
+    pub fn with_store(
         node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+        downlink_requests: mpsc::Sender<DownlinkRequest>,
         stopping: trigger::Receiver,
         config: AgentRuntimeConfig,
         store: Store,
@@ -529,6 +385,7 @@ where
             node,
             init,
             attachment_rx,
+            downlink_requests,
             stopping,
             config,
             store,
@@ -538,7 +395,7 @@ where
 
 impl<Store> AgentRuntimeTask<Store>
 where
-    Store: AgentPersistence + Clone + Send + Sync,
+    Store: AgentPersistence + Send + Sync,
 {
     pub async fn run(self) -> Result<(), StoreError> {
         let AgentRuntimeTask {
@@ -547,16 +404,18 @@ where
                 InitialEndpoints {
                     reporting,
                     rx,
-                    endpoints,
+                    lane_endpoints,
+                    store_endpoints,
                 },
             attachment_rx,
+            downlink_requests,
             stopping,
             config,
             store,
         } = self;
 
         let (write_endpoints, read_endpoints): (Vec<_>, Vec<_>) =
-            endpoints.into_iter().map(LaneEndpoint::split).unzip();
+            lane_endpoints.into_iter().map(LaneEndpoint::split).unzip();
 
         let (read_tx, read_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (write_tx, write_rx) = mpsc::channel(config.attachment_queue_size.get());
@@ -568,8 +427,8 @@ where
         let att = attachment_task(
             rx,
             attachment_rx,
-            reporting.clone(),
-            read_tx,
+            downlink_requests,
+            read_tx.clone(),
             write_tx.clone(),
             combined_stop,
         )
@@ -586,11 +445,11 @@ where
         .instrument(info_span!("Agent Runtime Read Task", %identity, %node_uri));
         let write = write_task(
             WriteTaskConfiguration::new(identity, node_uri.clone(), config),
-            read_endpoints,
-            write_rx,
+            WriteTaskEndpoints::new(read_endpoints, store_endpoints),
+            ReceiverStream::new(write_rx).take_until(stopping),
+            read_tx,
             write_vote,
-            stopping,
-            reporting.as_ref().map(NodeReporting::aggregate),
+            reporting,
             store,
         )
         .instrument(info_span!("Agent Runtime Write Task", %identity, %node_uri));
@@ -602,7 +461,7 @@ where
 }
 
 /// Control messages consumed by the read task.
-enum ReadTaskMessages {
+enum ReadTaskMessage {
     /// Create a new lane endpoint.
     Lane { name: Text, sender: LaneSender },
     /// Attach a new remote.
@@ -616,7 +475,9 @@ enum ReadTaskMessages {
 #[derive(Debug)]
 enum WriteTaskMessage {
     /// Create a new lane endpoint.
-    Lane(LaneEndpoint<ByteReader>),
+    Lane(LaneRuntimeSpec),
+    /// Create a new store endpoint.
+    Store(StoreRuntimeSpec),
     /// Attach a new remote.
     Remote {
         id: Uuid,
@@ -636,13 +497,11 @@ impl WriteTaskMessage {
     }
 }
 
-const BAD_LANE_REG: &str = "Agent failed to receive lane registration result.";
-
 /// The task that coordinates the attachment of new lanes and remotes to the read and write tasks.
 /// #Arguments
 /// * `runtime` - Requests from the agent.
 /// * `attachment` - External requests to attach new remotes.
-/// * `reporting` - Uplink metadata reporter.
+/// * `downlink_requests` - Requests to open downlink runtimes for the agent.
 /// * `read_tx` - Channel to communicate with the read task.
 /// * `write_tx` - Channel to communicate with the write task.
 /// * `combined_stop` - The task will stop when this future completes. This should combined the overall
@@ -651,8 +510,8 @@ const BAD_LANE_REG: &str = "Agent failed to receive lane registration result.";
 async fn attachment_task<F>(
     runtime: mpsc::Receiver<AgentRuntimeRequest>,
     attachment: mpsc::Receiver<AgentAttachmentRequest>,
-    reporting: Option<NodeReporting>,
-    read_tx: mpsc::Sender<ReadTaskMessages>,
+    downlink_requests: mpsc::Sender<DownlinkRequest>,
+    read_tx: mpsc::Sender<ReadTaskMessage>,
     write_tx: mpsc::Sender<WriteTaskMessage>,
     combined_stop: F,
 ) where
@@ -674,7 +533,12 @@ async fn attachment_task<F>(
                 if let Some(event) = maybe_event {
                     match event {
                         Either::Left(request) => {
-                            if !handle_runtime_request(request, &read_tx, &write_tx, reporting.as_ref()).await {
+                            let succeeded = match request {
+                                AgentRuntimeRequest::AddLane(req) => write_tx.send(WriteTaskMessage::Lane(req)).await.is_ok(),
+                                AgentRuntimeRequest::AddStore(req) => write_tx.send(WriteTaskMessage::Store(req)).await.is_ok(),
+                                AgentRuntimeRequest::OpenDownlink(req) => downlink_requests.send(req).await.is_ok(),
+                            };
+                            if !succeeded {
                                 break;
                             }
                         }
@@ -699,76 +563,9 @@ async fn attachment_task<F>(
 }
 
 #[inline]
-async fn handle_runtime_request(
-    request: AgentRuntimeRequest,
-    read_tx: &mpsc::Sender<ReadTaskMessages>,
-    write_tx: &mpsc::Sender<WriteTaskMessage>,
-    reporting: Option<&NodeReporting>,
-) -> bool {
-    match request {
-        AgentRuntimeRequest::AddLane {
-            name,
-            kind,
-            config,
-            promise,
-        } => {
-            info!("Registering a new {} lane with name {}.", kind, name);
-            let uplink_kind = kind.uplink_kind();
-            let (in_tx, in_rx) = byte_channel(config.input_buffer_size);
-            let (out_tx, out_rx) = byte_channel(config.output_buffer_size);
-
-            let reporter = if let Some(reporting) = reporting {
-                reporting.register(name.clone(), kind).await
-            } else {
-                None
-            };
-
-            let sender = LaneSender::new(in_tx, uplink_kind, reporter.clone());
-            let read_permit = match read_tx.reserve().await {
-                Err(_) => {
-                    warn!(
-                        "Read task stopped while attempting to register a new {} lane named '{}'.",
-                        kind, name
-                    );
-                    if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
-                        error!(BAD_LANE_REG);
-                    }
-                    return false;
-                }
-                Ok(permit) => permit,
-            };
-            let write_permit = match write_tx.reserve().await {
-                Err(_) => {
-                    warn!(
-                        "Write task stopped while attempting to register a new {} lane named '{}'.",
-                        kind, name
-                    );
-                    if promise.send(Err(AgentRuntimeError::Terminated)).is_err() {
-                        error!(BAD_LANE_REG);
-                    }
-                    return false;
-                }
-                Ok(permit) => permit,
-            };
-            read_permit.send(ReadTaskMessages::Lane {
-                name: name.clone(),
-                sender,
-            });
-            let endpoint = LaneEndpoint::new(name, uplink_kind, config.transient, out_rx, reporter);
-            write_permit.send(WriteTaskMessage::Lane(endpoint));
-            if promise.send(Ok((out_tx, in_rx))).is_err() {
-                error!(BAD_LANE_REG);
-            }
-            true
-        }
-        _ => todo!("Opening downlinks form agents not implemented."),
-    }
-}
-
-#[inline]
 async fn handle_att_request<F>(
     request: AgentAttachmentRequest,
-    read_tx: &mpsc::Sender<ReadTaskMessages>,
+    read_tx: &mpsc::Sender<ReadTaskMessage>,
     write_tx: &mpsc::Sender<WriteTaskMessage>,
     add_att: F,
 ) -> bool
@@ -807,7 +604,7 @@ where
     } else {
         (None, None)
     };
-    read_permit.send(ReadTaskMessages::Remote {
+    read_permit.send(ReadTaskMessage::Remote {
         reader: rx,
         on_attached: read_on_attached,
     });
@@ -832,7 +629,7 @@ const STOP_VOTED: &str = "Stopping as read and write tasks have both voted to do
 /// Events that can occur within the read task.
 enum ReadTaskEvent {
     /// Register a new lane or remote.
-    Registration(ReadTaskMessages),
+    Registration(ReadTaskMessage),
     /// An envelope was received from a connected remote.
     Envelope(RequestMessage<BytesStr, Bytes>),
     /// The read task timed out due to inactivity.
@@ -854,7 +651,7 @@ enum ReadTaskEvent {
 async fn read_task(
     config: AgentRuntimeConfig,
     initial_endpoints: Vec<LaneEndpoint<ByteWriter>>,
-    reg_rx: mpsc::Receiver<ReadTaskMessages>,
+    reg_rx: mpsc::Receiver<ReadTaskMessage>,
     write_tx: mpsc::Sender<WriteTaskMessage>,
     stop_vote: timeout_coord::Voter,
     stopping: trigger::Receiver,
@@ -927,7 +724,7 @@ async fn read_task(
         };
         match next {
             ReadTaskEvent::Registration(reg) => match reg {
-                ReadTaskMessages::Lane { name, sender } => {
+                ReadTaskMessage::Lane { name, sender } => {
                     let id = next_id();
                     info!(
                         "Reading from new lane named '{}'. Assigned ID is {}.",
@@ -936,7 +733,7 @@ async fn read_task(
                     name_mapping.insert(name, id);
                     lanes.insert(id, sender);
                 }
-                ReadTaskMessages::Remote {
+                ReadTaskMessage::Remote {
                     reader,
                     on_attached,
                 } => {
@@ -1066,7 +863,7 @@ async fn read_task(
                         }
                     }
                 } else {
-                    info!("Recevied envelope for non-existent lane '{}'.", path.lane);
+                    info!("Received envelope for non-existent lane '{}'.", path.lane);
                     let flush = flush_lane(&mut lanes, &mut needs_flush);
                     let send_err = write_tx.send(WriteTaskMessage::Coord(
                         RwCoorindationMessage::UnknownLane {
@@ -1111,16 +908,14 @@ async fn flush_lane(lanes: &mut HashMap<u64, LaneSender>, needs_flush: &mut Opti
 enum WriteTaskEvent<I> {
     /// A message received either from the read task or the coordination task.
     Message(WriteTaskMessage),
-    /// An message received from one of the attached lanes.
-    Event {
-        id: u64,
-        store_id: Option<I>,
-        response: RawLaneResponse,
-    },
+    /// An message received from one of the attached lanes or stores.
+    Event(ItemResponse<I>),
     /// A write (to one of the attached remotes) completed.
     WriteDone(WriteResult),
     /// Reading from a lane failed.
     LaneFailed(u64),
+    /// Reading from a store failed.
+    StoreFailed(u64),
     /// A remote may have been without active links beyond the configured timeout.
     PruneRemote(Uuid),
     /// The task timed out due to inactivity.
@@ -1128,8 +923,6 @@ enum WriteTaskEvent<I> {
     /// The stop signal was received.
     Stop,
 }
-
-type LaneStream<I> = StopAfterError<Either<ValueLikeLaneReceiver<I>, MapLaneReceiver<I>>>;
 
 /// Parameters for the write task.
 #[derive(Debug)]
@@ -1158,6 +951,36 @@ struct InactiveTimeout<'a> {
     enabled: bool,
 }
 
+pub enum ItemEndpoint<I> {
+    Lane {
+        endpoint: LaneEndpoint<Io>,
+        store_id: Option<I>,
+    },
+    Store {
+        endpoint: StoreEndpoint,
+        store_id: I,
+    },
+}
+
+impl<I> From<(LaneEndpoint<Io>, Option<I>)> for ItemEndpoint<I> {
+    fn from((endpoint, store_id): (LaneEndpoint<Io>, Option<I>)) -> Self {
+        ItemEndpoint::Lane { endpoint, store_id }
+    }
+}
+
+impl<I> From<(StoreEndpoint, I)> for ItemEndpoint<I> {
+    fn from((endpoint, store_id): (StoreEndpoint, I)) -> Self {
+        ItemEndpoint::Store { endpoint, store_id }
+    }
+}
+
+type InitResult<T> = Result<T, AgentItemInitError>;
+
+type LaneResult<I> = InitResult<(LaneEndpoint<Io>, Option<I>)>;
+type StoreResult<I> = InitResult<(StoreEndpoint, I)>;
+
+type ItemInitTask<'a, I> = BoxFuture<'a, InitResult<ItemEndpoint<I>>>;
+
 /// Aggregates all of the streams of events for the write task.
 #[derive(Debug)]
 struct WriteTaskEvents<'a, S, W, I> {
@@ -1165,7 +988,7 @@ struct WriteTaskEvents<'a, S, W, I> {
     remote_timeout: Duration,
     prune_remotes: PruneRemotes<'a>,
     message_stream: S,
-    lanes: SelectAll<LaneStream<I>>,
+    lanes_and_stores: SelectAll<StopAfterError<ResponseReceiver<I>>>,
     pending_writes: FuturesUnordered<W>,
 }
 
@@ -1197,19 +1020,20 @@ where
             remote_timeout,
             prune_remotes: PruneRemotes::new(prune_delay),
             message_stream,
-            lanes: Default::default(),
+
+            lanes_and_stores: Default::default(),
             pending_writes: Default::default(),
         }
     }
 
-    /// Add a new lane stream.
-    fn add_lane(&mut self, lane: LaneStream<I>) {
-        self.lanes.push(lane);
+    /// Add a new receiver to receive messages from a lane or store in the agent.
+    fn add_receiver(&mut self, receiver: ResponseReceiver<I>) {
+        self.lanes_and_stores.push(StopAfterError::new(receiver));
     }
 
-    /// Clear all lane streams.
-    fn clear_lanes(&mut self) {
-        self.lanes.clear()
+    /// Remove (and destroy) all receivers from the agent.
+    fn clear_lanes_and_stores(&mut self) {
+        self.lanes_and_stores.clear();
     }
 
     /// Schedule a new write task (to a remote) to be polled.
@@ -1250,7 +1074,7 @@ where
         let WriteTaskEvents {
             inactive_timeout,
             message_stream,
-            lanes,
+            lanes_and_stores,
             pending_writes,
             prune_remotes,
             ..
@@ -1292,24 +1116,29 @@ where
                         break WriteTaskEvent::WriteDone(result);
                     }
                 }
-                maybe_result = lanes.next(), if !lanes.is_empty() => {
+                maybe_result = lanes_and_stores.next(), if !lanes_and_stores.is_empty() => {
                     match maybe_result {
-                        Some(Ok((id, store_id, response))) =>  {
-                            delay.as_mut().reset(
-                                Instant::now()
-                                    .checked_add(*timeout)
-                                    .expect("Timer overflow."),
-                            );
-                            break WriteTaskEvent::Event { id, store_id, response };
+                        Some(Ok(response)) =>  {
+                            if response.is_lane() {
+                                delay.as_mut().reset(
+                                    Instant::now()
+                                        .checked_add(*timeout)
+                                        .expect("Timer overflow."),
+                                );
+                            }
+                            break WriteTaskEvent::Event(response);
                         },
-                        Some(Err(Failed(lane_id))) => {
-                            break WriteTaskEvent::LaneFailed(lane_id);
-                        }
+                        Some(Err(Failed::Lane(item_id))) => {
+                            break WriteTaskEvent::LaneFailed(item_id);
+                        },
+                        Some(Err(Failed::Store(item_id))) => {
+                            break WriteTaskEvent::StoreFailed(item_id);
+                        },
                         _ => {}
                     }
-                }
+                },
                 _ = &mut delay, if *timeout_enabled => {
-                    break if lanes.is_empty() {
+                    break if lanes_and_stores.is_empty() {
                         trace!("Stopping as there are no active lanes.");
                         WriteTaskEvent::Stop
                     } else {
@@ -1338,6 +1167,7 @@ struct WriteTaskState {
     links: Links,
     /// Manages writes to remotes (particularly backpressure relief).
     remote_tracker: RemoteTracker,
+    store_counter: u64,
 }
 
 /// Possible results of handling a message from the coordination/read tasks.
@@ -1345,7 +1175,9 @@ struct WriteTaskState {
 #[must_use]
 enum TaskMessageResult<I> {
     /// Register a new lane.
-    AddLane(LaneStream<I>),
+    AddLane(LaneEndpoint<Io>, Option<I>),
+    /// Register a new store.
+    AddStore(StoreEndpoint, I),
     /// Schedule a write to one or all remotes (if no ID is specified).
     ScheduleWrite {
         write: WriteTask,
@@ -1353,8 +1185,8 @@ enum TaskMessageResult<I> {
     },
     /// Track a remote to be pruned after the configured timeout (as it no longer has any links).
     AddPruneTimeout(Uuid),
-    /// Persisting the state of a lane failed.
-    StoreFailure(StoreError),
+    /// Initializing a lane from the store failed.
+    StoreInitFailure(AgentItemInitError),
     /// No effect.
     Nothing,
 }
@@ -1430,13 +1262,16 @@ impl WriteTaskState {
         WriteTaskState {
             links: Links::new(aggregate_reporter),
             remote_tracker: RemoteTracker::new(identity, node_uri),
+            store_counter: 0,
         }
     }
 
-    fn register(&mut self, name: Text, reporter: Option<UplinkReporter>) -> u64 {
+    /// Register a new lane with the state, assigning it a unique ID.
+    fn register_lane(&mut self, name: Text, reporter: Option<UplinkReporter>) -> u64 {
         let WriteTaskState {
             links,
             remote_tracker,
+            ..
         } = self;
         let lane_id = remote_tracker.lane_registry().add_endpoint(name);
         if let Some(reporter) = reporter {
@@ -1445,14 +1280,22 @@ impl WriteTaskState {
         lane_id
     }
 
+    /// Register a new store with the state, assigning it a unique ID.
+    fn item_id_for_store(&mut self) -> u64 {
+        let id = self.store_counter;
+        self.store_counter += 1;
+        id
+    }
+
     /// Handle a message from the coordination or read task.
-    fn handle_task_message<Store>(
+    async fn handle_task_message<'a, Store>(
         &mut self,
         reg: WriteTaskMessage,
-        store: &Store,
-    ) -> TaskMessageResult<Store::LaneId>
+        initialization: &'a Initialization,
+        store: &'a Store,
+    ) -> TaskMessageResult<Store::StoreId>
     where
-        Store: AgentPersistence,
+        Store: AgentPersistence + Send + Sync,
     {
         let WriteTaskState {
             links,
@@ -1460,10 +1303,37 @@ impl WriteTaskState {
             ..
         } = self;
         match reg {
-            WriteTaskMessage::Lane(endpoint) => match endpoint.into_lane_stream(store, self) {
-                Ok(lane_stream) => TaskMessageResult::AddLane(lane_stream),
-                Err(error) => TaskMessageResult::StoreFailure(error),
-            },
+            WriteTaskMessage::Lane(LaneRuntimeSpec {
+                name,
+                kind,
+                config,
+                promise,
+            }) => {
+                info!("Registering a new {} lane with name {}.", kind, name);
+                match initialization.add_lane(store, name, kind, config, promise) {
+                    Some(fut) => match fut.await {
+                        Ok((endpoint, store_id)) => TaskMessageResult::AddLane(endpoint, store_id),
+                        Err(err) => TaskMessageResult::StoreInitFailure(err),
+                    },
+                    _ => TaskMessageResult::Nothing,
+                }
+            }
+            WriteTaskMessage::Store(StoreRuntimeSpec {
+                name,
+                kind,
+                config,
+                promise,
+            }) => {
+                info!("Registering a new {} store with name {}.", kind, name);
+                match initialization.add_store(store, name, kind, config, promise) {
+                    Ok(Some(fut)) => match fut.await {
+                        Ok((endpoint, store_id)) => TaskMessageResult::AddStore(endpoint, store_id),
+                        Err(err) => TaskMessageResult::StoreInitFailure(err),
+                    },
+                    Err(err) => TaskMessageResult::StoreInitFailure(err),
+                    _ => TaskMessageResult::Nothing,
+                }
+            }
             WriteTaskMessage::Remote {
                 id,
                 writer,
@@ -1553,7 +1423,7 @@ impl WriteTaskState {
     fn handle_event(
         &mut self,
         id: u64,
-        response: RawLaneResponse,
+        response: LaneData,
     ) -> impl Iterator<Item = WriteTask> + '_ {
         let WriteTaskState {
             links,
@@ -1563,7 +1433,7 @@ impl WriteTaskState {
 
         use either::Either;
 
-        let RawLaneResponse { target, response } = response;
+        let LaneData { target, response } = response;
         if let Some(remote_id) = target {
             trace!(response = ?response, "Routing response to {}.", remote_id);
             links.count_single(id);
@@ -1657,6 +1527,7 @@ impl WriteTaskState {
         let WriteTaskState {
             links,
             remote_tracker,
+            ..
         } = self;
         links
             .remove_all_links()
@@ -1670,37 +1541,59 @@ impl WriteTaskState {
     }
 }
 
+#[derive(Debug)]
+struct WriteTaskEndpoints {
+    lane_endpoints: Vec<LaneEndpoint<ByteReader>>,
+    store_endpoints: Vec<StoreEndpoint>,
+}
+
+impl WriteTaskEndpoints {
+    fn new(
+        lane_endpoints: Vec<LaneEndpoint<ByteReader>>,
+        store_endpoints: Vec<StoreEndpoint>,
+    ) -> Self {
+        WriteTaskEndpoints {
+            lane_endpoints,
+            store_endpoints,
+        }
+    }
+}
+
 /// The write task of the agent runtime. This receives messages from the agent lanes and forwards them
 /// to linked remotes. It also receives messages from the read task to maintain the set of uplinks.
 ///
 /// #Arguments
 /// * `configuration` - Configuration parameters for the task.
-/// * `initial_endpoints` - Initial lane endpoints that were created in the agent initialization phase.
-/// * `message_rx` - Channel for messages from the read and coordination tasks.
+/// * `initial_endpoints` - Initial lane and store endpoints that were created in the agent initialization phase.
+/// * `message_stream` - Channel for messages from the read and coordination tasks. This will terminate when the agent
+/// runtime is stopping.
+/// * `read_task_tx` - Channel to communicate with the read task (after initializing new lanes).
 /// * `stop_voter` - Votes to stop if this task becomes inactive (unanimity with the write task is required).
-/// * `stopping` - Initiates the clean shutdown procedure.
-/// * `aggregate_reporter` - Aggregated uplink reporter for all lanes of the agent.
+/// * `reporting` - Introspection reporting context for the agent (if introspection is enabled).
 /// * `store` - Persistence for the state of the lanes.
 ///
-async fn write_task<Store>(
+async fn write_task<Msg, Store>(
     configuration: WriteTaskConfiguration,
-    initial_endpoints: Vec<LaneEndpoint<ByteReader>>,
-    message_rx: mpsc::Receiver<WriteTaskMessage>,
+    initial_endpoints: WriteTaskEndpoints,
+    message_stream: Msg,
+    read_task_tx: mpsc::Sender<ReadTaskMessage>,
     stop_voter: timeout_coord::Voter,
-    stopping: trigger::Receiver,
-    aggregate_reporter: Option<UplinkReporter>,
-    store: Store,
+    reporting: Option<NodeReporting>,
+    mut store: Store,
 ) -> Result<(), StoreError>
 where
-    Store: AgentPersistence + Clone + Send + Sync,
+    Msg: Stream<Item = WriteTaskMessage> + Send + Unpin,
+    Store: AgentPersistence + Send + Sync,
 {
-    let message_stream = ReceiverStream::new(message_rx).take_until(stopping);
+    let aggregate_reporter = reporting.as_ref().map(NodeReporting::aggregate);
 
     let WriteTaskConfiguration {
         identity,
         node_uri,
         runtime_config,
     } = configuration;
+
+    let initialization = Initialization::new(reporting, runtime_config.lane_init_timeout);
 
     let timeout_delay = sleep(runtime_config.inactive_timeout);
     let remote_prune_delay = sleep(Duration::default());
@@ -1717,9 +1610,30 @@ where
     let mut state = WriteTaskState::new(identity, node_uri, aggregate_reporter);
 
     info!(endpoints = ?initial_endpoints, "Adding initial endpoints.");
-    for endpoint in initial_endpoints {
-        let lane_stream = endpoint.into_lane_stream(&store, &mut state)?;
-        streams.add_lane(lane_stream);
+
+    let WriteTaskEndpoints {
+        lane_endpoints,
+        store_endpoints,
+    } = initial_endpoints;
+
+    for endpoint in lane_endpoints {
+        let store_id = if endpoint.transient {
+            None
+        } else {
+            match store.store_id(endpoint.name.as_str()) {
+                Ok(id) => Some(id),
+                Err(StoreError::NoStoreAvailable) => None,
+                Err(err) => return Err(err),
+            }
+        };
+        let lane_stream = endpoint.into_lane_stream(store_id, &mut state);
+        streams.add_receiver(lane_stream);
+    }
+
+    for endpoint in store_endpoints.into_iter() {
+        let store_id = store.store_id(endpoint.name.as_str())?;
+        let store_stream = endpoint.into_store_stream(store_id, &mut state);
+        streams.add_receiver(store_stream);
     }
 
     let mut voted = false;
@@ -1729,9 +1643,24 @@ where
     loop {
         let next = streams.select_next().await;
         match next {
-            WriteTaskEvent::Message(reg) => match state.handle_task_message(reg, &store) {
-                TaskMessageResult::AddLane(lane) => {
-                    streams.add_lane(lane);
+            WriteTaskEvent::Message(reg) => match state
+                .handle_task_message(reg, &initialization, &store)
+                .await
+            {
+                TaskMessageResult::AddLane(lane, store_id) => {
+                    let (read_endpoint, write_endpoint) = lane.split();
+                    streams.add_receiver(write_endpoint.into_lane_stream(store_id, &mut state));
+                    if read_task_tx
+                        .send(read_endpoint.into_read_task_message())
+                        .await
+                        .is_err()
+                    {
+                        error!("Could not communicate with read task.");
+                        break;
+                    }
+                }
+                TaskMessageResult::AddStore(store, store_id) => {
+                    streams.add_receiver(store.into_store_stream(store_id, &mut state));
                 }
                 TaskMessageResult::ScheduleWrite {
                     write,
@@ -1754,17 +1683,17 @@ where
                 TaskMessageResult::AddPruneTimeout(remote_id) => {
                     streams.schedule_prune(remote_id);
                 }
-                TaskMessageResult::StoreFailure(error) => {
-                    return Err(error);
+                TaskMessageResult::StoreInitFailure(error) => {
+                    let AgentItemInitError { name, source } = error;
+                    error!(error = %source, "Initializing a store for {} failed.", name);
+                    if let StoreInitError::Store(err) = source {
+                        return Err(err);
+                    }
                 }
                 TaskMessageResult::Nothing => {}
             },
-            WriteTaskEvent::Event {
-                id,
-                store_id,
-                response,
-            } => {
-                if voted {
+            WriteTaskEvent::Event(response) => {
+                if response.is_lane() && voted {
                     if stop_voter.rescind() == VoteResult::Unanimous {
                         info!(STOP_VOTED);
                         remote_reason = DisconnectionReason::AgentTimedOut;
@@ -1773,11 +1702,11 @@ where
                     streams.enable_timeout();
                     voted = false;
                 }
-                if let Some(store_id) = store_id {
-                    persist_response(&store, store_id, &response)?;
-                }
-                for write in state.handle_event(id, response) {
-                    streams.schedule_write(write.into_future());
+                persist_response(&mut store, &response)?;
+                if let Some((item_id, response)) = response.into_uplink_response() {
+                    for write in state.handle_event(item_id, response) {
+                        streams.schedule_write(write.into_future());
+                    }
                 }
             }
             WriteTaskEvent::WriteDone((writer, buffer, result)) => {
@@ -1812,6 +1741,9 @@ where
                     }
                 }
             }
+            WriteTaskEvent::StoreFailed(item_id) => {
+                error!("Store with ID {} failed.", item_id);
+            }
             WriteTaskEvent::PruneRemote(remote_id) => {
                 state.remove_remote_if_idle(remote_id);
             }
@@ -1840,7 +1772,7 @@ where
     }
     let cleanup_result = timeout(runtime_config.shutdown_timeout, async move {
         info!("Unlinking all links on shutdown.");
-        streams.clear_lanes();
+        streams.clear_lanes_and_stores();
         for write in state.unlink_all() {
             streams.schedule_write(write.into_future());
         }
@@ -1854,6 +1786,7 @@ where
         state.dispose_of_remotes(remote_reason);
     })
     .await;
+
     if cleanup_result.is_err() {
         error!(
             "Unlinking lanes on shutdown did not complete within {:?}.",
@@ -1886,22 +1819,34 @@ where
 }
 
 fn persist_response<Store>(
-    store: &Store,
-    store_id: Store::LaneId,
-    response: &RawLaneResponse,
+    store: &mut Store,
+    response: &ItemResponse<Store::StoreId>,
 ) -> Result<(), StoreError>
 where
     Store: AgentPersistence,
 {
-    match response {
-        RawLaneResponse {
-            target: None,
-            response: UplinkResponse::Value(body),
-        } => store.put_value(store_id, body.as_ref()),
-        RawLaneResponse {
-            target: None,
-            response: UplinkResponse::Map(operation),
-        } => store.apply_map(store_id, operation),
-        _ => Ok(()),
+    let ItemResponse { store_id, body, .. } = response;
+    if let Some(store_id) = store_id {
+        match body {
+            ResponseData::Lane(LaneData {
+                response: UplinkResponse::Value(body),
+                ..
+            })
+            | ResponseData::Lane(LaneData {
+                response: UplinkResponse::Supply(body),
+                ..
+            })
+            | ResponseData::Store(StoreData::Value(body)) => {
+                store.put_value(*store_id, body.as_ref())
+            }
+            ResponseData::Lane(LaneData {
+                response: UplinkResponse::Map(body),
+                ..
+            })
+            | ResponseData::Store(StoreData::Map(body)) => store.apply_map(*store_id, body),
+            _ => Ok(()),
+        }
+    } else {
+        Ok(())
     }
 }

@@ -3,6 +3,10 @@ name = "runtime"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+deflate = ["ratchet/deflate"]
+
 [dependencies]
 fixture = { path = "../fixture" }
 swim_downlink = { path = "../../swim_downlink" }

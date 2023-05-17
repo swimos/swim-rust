@@ -25,7 +25,7 @@ use crate::{
     event_handler::{
         EventHandlerError, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
     },
-    lanes::{command::DoCommand, Lane},
+    lanes::{command::DoCommand, LaneItem},
     meta::AgentMetadata,
     test_context::dummy_context,
 };
@@ -115,8 +115,8 @@ fn command_event_handler() {
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: Some(Modification {
-                lane_id: LANE_ID,
+            modified_item: Some(Modification {
+                item_id: LANE_ID,
                 trigger_handler: true
             }),
             result: ()

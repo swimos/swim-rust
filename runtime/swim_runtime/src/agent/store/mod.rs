@@ -17,18 +17,45 @@ use futures::{future::BoxFuture, FutureExt, SinkExt};
 use swim_api::{
     error::StoreError,
     protocol::{
-        agent::{LaneRequest, LaneRequestEncoder},
+        agent::{StoreInitMessage, StoreInitMessageEncoder},
         map::{MapMessage, MapMessageEncoder, MapOperation, RawMapOperationEncoder},
         WithLengthBytesCodec,
     },
     store::{NodePersistence, RangeConsumer, StoreDisabled},
 };
+use swim_model::Text;
 use swim_utilities::io::byte_channel::ByteWriter;
 use thiserror::Error;
 use tokio_util::codec::FramedWrite;
 
+use super::AgentExecError;
+
 #[cfg(test)]
 mod tests;
+
+#[derive(Debug, Error)]
+#[error("Failed to initialize item named {name}.")]
+pub struct AgentItemInitError {
+    pub name: Text,
+    #[source]
+    pub source: StoreInitError,
+}
+
+impl From<AgentItemInitError> for AgentExecError {
+    fn from(error: AgentItemInitError) -> Self {
+        let AgentItemInitError { name, source } = error;
+        AgentExecError::FailedRestoration {
+            item_name: name,
+            error: source,
+        }
+    }
+}
+
+impl AgentItemInitError {
+    pub fn new(name: Text, source: StoreInitError) -> Self {
+        AgentItemInitError { name, source }
+    }
+}
 
 /// Possible error conditions when the runtime attempts to initialize the state of a lane in an agent.
 #[derive(Debug, Error)]
@@ -37,10 +64,10 @@ pub enum StoreInitError {
     Store(#[from] StoreError),
     #[error("An error occurred sending the state to the agent implementation.")]
     Channel(#[from] std::io::Error),
-    #[error("The lane did not acknowledge initialization.")]
-    NoAckFromLane,
-    #[error("Attempting to initialize a lane timed out.")]
-    LaneInitiailizationTimeout,
+    #[error("The item did not acknowledge initialization.")]
+    NoAckFromItem,
+    #[error("Attempting to initialize an item timed out.")]
+    ItemInitializationTimeout,
 }
 
 pub type InitFut<'a> = BoxFuture<'a, Result<(), StoreInitError>>;
@@ -48,7 +75,7 @@ pub type InitFut<'a> = BoxFuture<'a, Result<(), StoreInitError>>;
 /// An initializer will attempt to transmit the state of the lane to the lane implementation
 /// over a channel. Typically, the value will be read from a store implementation.
 pub trait Initializer<'a> {
-    /// Attempt to initalize the state of the lane.
+    /// Attempt to initialize the state of the lane.
     fn initialize<'b>(self: Box<Self>, writer: &'b mut ByteWriter) -> InitFut<'b>
     where
         'a: 'b;
@@ -57,8 +84,11 @@ pub trait Initializer<'a> {
 /// [`Initializer`] that attempts to initialize a value lane from a [`NodePersistence`] store.
 struct ValueInit<'a, S, Id> {
     store: &'a S,
-    lane_id: Id,
+    store_id: Id,
 }
+
+type ValueInitEncoder = StoreInitMessageEncoder<WithLengthBytesCodec>;
+type MapInitEncoder = StoreInitMessageEncoder<MapMessageEncoder<RawMapOperationEncoder>>;
 
 impl<'a, S> Initializer<'a> for ValueInit<'a, S, S::LaneId>
 where
@@ -69,13 +99,13 @@ where
         'a: 'b,
     {
         async move {
-            let ValueInit { store, lane_id } = *self;
-            let mut writer = FramedWrite::new(channel, ValueLaneEncoder::default());
+            let ValueInit { store, store_id } = *self;
+            let mut writer = FramedWrite::new(channel, ValueInitEncoder::default());
             let mut buffer = BytesMut::new();
-            if store.get_value(lane_id, &mut buffer)?.is_some() {
-                writer.send(LaneRequest::Command(buffer)).await?;
+            if store.get_value(store_id, &mut buffer)?.is_some() {
+                writer.send(StoreInitMessage::Command(buffer)).await?;
             }
-            writer.send(LaneRequest::<&[u8]>::InitComplete).await?;
+            writer.send(StoreInitMessage::<&[u8]>::InitComplete).await?;
             Ok(())
         }
         .boxed()
@@ -85,7 +115,7 @@ where
 /// [`Initializer`] that attempts to initialize a map lane from a [`NodePersistence`] store.
 struct MapInit<'a, S, Id> {
     store: &'a S,
-    lane_id: Id,
+    store_id: Id,
 }
 
 impl<'a, S> Initializer<'a> for MapInit<'a, S, S::LaneId>
@@ -97,16 +127,16 @@ where
         'a: 'b,
     {
         async move {
-            let MapInit { store, lane_id } = *self;
-            let mut writer = FramedWrite::new(channel, MapLaneEncoder::default());
-            let mut it = store.read_map(lane_id)?;
+            let MapInit { store, store_id } = *self;
+            let mut writer = FramedWrite::new(channel, MapInitEncoder::default());
+            let mut it = store.read_map(store_id)?;
             while let Some((key, value)) = it.consume_next()? {
                 writer
-                    .send(LaneRequest::Command(MapMessage::Update { key, value }))
+                    .send(StoreInitMessage::Command(MapMessage::Update { key, value }))
                     .await?;
             }
             writer
-                .send(LaneRequest::<MapMessage<&[u8], &[u8]>>::InitComplete)
+                .send(StoreInitMessage::<MapMessage<&[u8], &[u8]>>::InitComplete)
                 .await?;
             Ok(())
         }
@@ -118,56 +148,56 @@ pub type BoxInitializer<'a> = Box<dyn Initializer<'a> + Send + 'a>;
 
 /// Operations required by an agent to interact with a store of the state of its lanes.
 pub trait AgentPersistence {
-    /// Type of IDs assigned to the names of the lanes of the agent.
-    type LaneId: Copy + Unpin + Send + Sync + Eq + 'static;
+    /// Type of IDs assigned to the names of the items of the agent.
+    type StoreId: Copy + Unpin + Send + Sync + Eq + 'static;
 
-    /// Attempt to get the ID associated with a lane name.
-    fn lane_id(&self, name: &str) -> Result<Self::LaneId, StoreError>;
+    /// Attempt to get the ID associated with a store name.
+    fn store_id(&self, name: &str) -> Result<Self::StoreId, StoreError>;
 
-    /// If a state for a value lane exists in the store, create an initializer that
-    /// will communicate that state to the lane.
-    fn init_value_lane(&self, _lane_id: Self::LaneId) -> Option<BoxInitializer<'_>>;
+    /// If a state for a value store exists in the store, create an initializer that
+    /// will communicate that state to the store.
+    fn init_value_store(&self, _store_id: Self::StoreId) -> Option<BoxInitializer<'_>>;
 
-    /// If a state for a map lane exists in the store, create an initializer that
-    /// will communicate that state to the lane.
-    fn init_map_lane(&self, _lane_id: Self::LaneId) -> Option<BoxInitializer<'_>>;
+    /// If a state for a map store exists in the store, create an initializer that
+    /// will communicate that state to the store.
+    fn init_map_store(&self, _store_id: Self::StoreId) -> Option<BoxInitializer<'_>>;
 
-    /// Put a value from a value lane into the store.
-    fn put_value(&self, lane_id: Self::LaneId, bytes: &[u8]) -> Result<(), StoreError>;
+    /// Put a value from a value store into the store.
+    fn put_value(&mut self, store_id: Self::StoreId, bytes: &[u8]) -> Result<(), StoreError>;
 
-    /// Apply an operation from a map lane into the store.
+    /// Apply an operation from a map store into the store.
     fn apply_map<B: AsRef<[u8]>>(
-        &self,
-        lane_id: Self::LaneId,
+        &mut self,
+        store_id: Self::StoreId,
         op: &MapOperation<B, B>,
     ) -> Result<(), StoreError>;
 }
 
 impl AgentPersistence for StoreDisabled {
-    type LaneId = ();
+    type StoreId = ();
 
-    fn lane_id(&self, _name: &str) -> Result<Self::LaneId, StoreError> {
-        Ok(())
+    fn store_id(&self, _name: &str) -> Result<Self::StoreId, StoreError> {
+        Err(StoreError::NoStoreAvailable)
     }
 
-    fn init_value_lane(&self, _lane_id: Self::LaneId) -> Option<BoxInitializer<'_>> {
+    fn init_value_store(&self, _store_id: Self::StoreId) -> Option<BoxInitializer<'_>> {
         None
     }
 
-    fn init_map_lane(&self, _lane_id: Self::LaneId) -> Option<BoxInitializer<'_>> {
+    fn init_map_store(&self, _store_id: Self::StoreId) -> Option<BoxInitializer<'_>> {
         None
     }
 
-    fn put_value(&self, _lane_id: Self::LaneId, _bytes: &[u8]) -> Result<(), StoreError> {
-        Ok(())
+    fn put_value(&mut self, _store_id: Self::StoreId, _bytes: &[u8]) -> Result<(), StoreError> {
+        Err(StoreError::NoStoreAvailable)
     }
 
     fn apply_map<B: AsRef<[u8]>>(
-        &self,
-        _lane_id: Self::LaneId,
+        &mut self,
+        _store_id: Self::StoreId,
         _op: &MapOperation<B, B>,
     ) -> Result<(), StoreError> {
-        Ok(())
+        Err(StoreError::NoStoreAvailable)
     }
 }
 
@@ -176,28 +206,25 @@ impl AgentPersistence for StoreDisabled {
 #[derive(Debug, Clone)]
 pub struct StorePersistence<S>(pub S);
 
-type ValueLaneEncoder = LaneRequestEncoder<WithLengthBytesCodec>;
-type MapLaneEncoder = LaneRequestEncoder<MapMessageEncoder<RawMapOperationEncoder>>;
-
 impl<S> AgentPersistence for StorePersistence<S>
 where
     S: NodePersistence + Send + Sync + 'static,
 {
-    type LaneId = <S as NodePersistence>::LaneId;
+    type StoreId = <S as NodePersistence>::LaneId;
 
-    fn lane_id(&self, name: &str) -> Result<Self::LaneId, StoreError> {
+    fn store_id(&self, name: &str) -> Result<Self::StoreId, StoreError> {
         let StorePersistence(store) = self;
         store.id_for(name)
     }
 
-    fn put_value(&self, lane_id: Self::LaneId, bytes: &[u8]) -> Result<(), StoreError> {
+    fn put_value(&mut self, lane_id: Self::StoreId, bytes: &[u8]) -> Result<(), StoreError> {
         let StorePersistence(store) = self;
         store.put_value(lane_id, bytes)
     }
 
     fn apply_map<B: AsRef<[u8]>>(
-        &self,
-        lane_id: Self::LaneId,
+        &mut self,
+        lane_id: Self::StoreId,
         op: &MapOperation<B, B>,
     ) -> Result<(), StoreError> {
         let StorePersistence(store) = self;
@@ -210,15 +237,15 @@ where
         }
     }
 
-    fn init_value_lane(&self, lane_id: Self::LaneId) -> Option<BoxInitializer<'_>> {
+    fn init_value_store(&self, store_id: Self::StoreId) -> Option<BoxInitializer<'_>> {
         let StorePersistence(store) = self;
-        let init = ValueInit { store, lane_id };
+        let init = ValueInit { store, store_id };
         Some(Box::new(init))
     }
 
-    fn init_map_lane(&self, lane_id: Self::LaneId) -> Option<BoxInitializer<'_>> {
+    fn init_map_store(&self, store_id: Self::StoreId) -> Option<BoxInitializer<'_>> {
         let StorePersistence(store) = self;
-        let init = MapInit { store, lane_id };
+        let init = MapInit { store, store_id };
         Some(Box::new(init))
     }
 }
@@ -242,8 +269,8 @@ impl<'a> Initializer<'a> for NoValueInit {
         'a: 'b,
     {
         async move {
-            let mut writer = FramedWrite::new(channel, ValueLaneEncoder::default());
-            writer.send(LaneRequest::<&[u8]>::InitComplete).await?;
+            let mut writer = FramedWrite::new(channel, ValueInitEncoder::default());
+            writer.send(StoreInitMessage::<&[u8]>::InitComplete).await?;
             Ok(())
         }
         .boxed()
@@ -256,9 +283,9 @@ impl<'a> Initializer<'a> for NoMapInit {
         'a: 'b,
     {
         async move {
-            let mut writer = FramedWrite::new(channel, MapLaneEncoder::default());
+            let mut writer = FramedWrite::new(channel, MapInitEncoder::default());
             writer
-                .send(LaneRequest::<MapMessage<&[u8], &[u8]>>::InitComplete)
+                .send(StoreInitMessage::<MapMessage<&[u8], &[u8]>>::InitComplete)
                 .await?;
             Ok(())
         }

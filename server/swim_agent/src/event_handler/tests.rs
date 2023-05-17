@@ -69,7 +69,7 @@ fn side_effect_handler() {
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             ..
         }
     ));
@@ -105,7 +105,7 @@ fn side_effects_handler() {
         assert!(matches!(
             result,
             StepResult::Continue {
-                modified_lane: None
+                modified_item: None
             }
         ));
 
@@ -116,7 +116,7 @@ fn side_effects_handler() {
 
     let result = handler.step(dummy_context(), meta, &DUMMY);
     if let StepResult::Complete {
-        modified_lane: None,
+        modified_item: None,
         result,
     } = result
     {
@@ -142,7 +142,7 @@ fn constant_handler() {
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             result: 5
         }
     ));
@@ -162,7 +162,7 @@ fn get_agent_uri() {
     let mut handler = GetAgentUri::default();
     let result = handler.step(dummy_context(), meta, &DUMMY);
     if let StepResult::Complete {
-        modified_lane: None,
+        modified_item: None,
         result,
     } = result
     {
@@ -190,7 +190,7 @@ fn map_handler() {
     let result = handler.step(dummy_context(), meta, &DUMMY);
     match result {
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             result,
         } => {
             assert_eq!(result, "/node");
@@ -223,7 +223,7 @@ fn and_then_handler() {
     assert!(matches!(
         result,
         StepResult::Continue {
-            modified_lane: None
+            modified_item: None
         }
     ));
 
@@ -231,7 +231,7 @@ fn and_then_handler() {
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             ..
         }
     ));
@@ -268,7 +268,7 @@ fn followed_by_handler() {
     assert!(matches!(
         result,
         StepResult::Continue {
-            modified_lane: None
+            modified_item: None
         }
     ));
 
@@ -281,7 +281,7 @@ fn followed_by_handler() {
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             ..
         }
     ));
@@ -312,7 +312,7 @@ fn decoding_handler_success() {
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             result: 56
         }
     ));
@@ -367,7 +367,7 @@ impl HandlerAction<DummyAgent> for FakeLaneWriter {
         let FakeLaneWriter(id) = self;
         if let Some(n) = id.take() {
             StepResult::Complete {
-                modified_lane: Some(Modification::of(n)),
+                modified_item: Some(Modification::of(n)),
                 result: (),
             }
         } else {
@@ -386,8 +386,8 @@ fn and_then_handler_with_lane_write() {
     assert!(matches!(
         result,
         StepResult::Continue {
-            modified_lane: Some(Modification {
-                lane_id: 7,
+            modified_item: Some(Modification {
+                item_id: 7,
                 trigger_handler: true
             })
         }
@@ -397,7 +397,7 @@ fn and_then_handler_with_lane_write() {
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             result: 34
         }
     ));
@@ -419,8 +419,8 @@ fn followed_by_handler_with_lane_write() {
     assert!(matches!(
         result,
         StepResult::Continue {
-            modified_lane: Some(Modification {
-                lane_id: 7,
+            modified_item: Some(Modification {
+                item_id: 7,
                 trigger_handler: true
             })
         }
@@ -430,8 +430,8 @@ fn followed_by_handler_with_lane_write() {
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: Some(Modification {
-                lane_id: 8,
+            modified_item: Some(Modification {
+                item_id: 8,
                 trigger_handler: true
             }),
             ..
@@ -489,7 +489,7 @@ fn sequentially_handler() {
     assert!(matches!(
         result,
         StepResult::Continue {
-            modified_lane: None
+            modified_item: None
         }
     ));
     assert_eq!(values.borrow().as_slice(), &[1]);
@@ -498,8 +498,8 @@ fn sequentially_handler() {
     assert!(matches!(
         result,
         StepResult::Continue {
-            modified_lane: Some(Modification {
-                lane_id: 0,
+            modified_item: Some(Modification {
+                item_id: 0,
                 trigger_handler: true
             })
         }
@@ -510,7 +510,7 @@ fn sequentially_handler() {
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_lane: None,
+            modified_item: None,
             ..
         }
     ));

@@ -16,18 +16,20 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 
 use crate::net::dns::{DnsResolver, Resolver};
-use crate::net::{ExternalConnections, IoResult, Listener};
-use crate::net::{Scheme, SchemeHostPort, SchemeSocketAddr};
+use crate::net::Scheme;
+use crate::net::{IoResult, Listener};
 use futures::future::BoxFuture;
-use futures::stream::Fuse;
 use futures::task::{Context, Poll};
 use futures::FutureExt;
-use futures::{Stream, StreamExt};
+use futures::Stream;
 use pin_project::pin_project;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
+use thiserror::Error;
+
 use super::dns::BoxDnsResolver;
+use super::{ClientConnections, ConnResult, ListenerResult, ServerConnections};
 
 /// Implementation of [`ExternalConnections`] using [`TcpListener`] and [`TcpStream`] from Tokio.
 #[derive(Debug, Clone)]
@@ -41,29 +43,36 @@ impl TokioPlainTextNetworking {
     }
 }
 
-async fn bind_to(addr: SocketAddr) -> IoResult<(SocketAddr, TcpListener)> {
+async fn bind_to(addr: SocketAddr) -> ConnResult<(SocketAddr, TcpListener)> {
     let listener = TcpListener::bind(addr).await?;
     let addr = listener.local_addr()?;
     Ok((addr, listener))
 }
 
-impl ExternalConnections for TokioPlainTextNetworking {
-    type Socket = TcpStream;
-    type ListenerType = TcpListener;
+#[derive(Debug, Error)]
+#[error("TLS connections are not supported.")]
+pub struct NoTls;
 
-    fn bind(
+impl ClientConnections for TokioPlainTextNetworking {
+    type ClientSocket = TcpStream;
+
+    fn try_open(
         &self,
+        scheme: Scheme,
+        _host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, IoResult<(SocketAddr, Self::ListenerType)>> {
-        bind_to(addr).boxed()
+    ) -> BoxFuture<'static, ConnResult<Self::ClientSocket>> {
+        async move {
+            match scheme {
+                Scheme::Ws => Ok(TcpStream::connect(addr).await?),
+                Scheme::Wss => Err(super::ConnectionError::BadParameter(Box::new(NoTls))),
+            }
+        }
+        .boxed()
     }
 
-    fn try_open(&self, addr: SocketAddr) -> BoxFuture<'static, IoResult<Self::Socket>> {
-        TcpStream::connect(addr).boxed()
-    }
-
-    fn lookup(&self, host: SchemeHostPort) -> BoxFuture<'static, IoResult<Vec<SchemeSocketAddr>>> {
-        self.resolver.resolve(host)
+    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+        self.resolver.resolve(host, port)
     }
 
     fn dns_resolver(&self) -> BoxDnsResolver {
@@ -71,26 +80,44 @@ impl ExternalConnections for TokioPlainTextNetworking {
     }
 }
 
+impl ServerConnections for TokioPlainTextNetworking {
+    type ServerSocket = TcpStream;
+
+    type ListenerType = TcpListener;
+
+    fn bind(
+        &self,
+        addr: SocketAddr,
+    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
+        bind_to(addr).boxed()
+    }
+}
+
 #[pin_project]
 #[derive(Debug)]
 pub struct WithPeer(#[pin] TcpListener);
 
+impl WithPeer {
+    pub fn new(listener: TcpListener) -> Self {
+        WithPeer(listener)
+    }
+}
+
 impl Stream for WithPeer {
-    type Item = IoResult<(TcpStream, SchemeSocketAddr)>;
+    type Item = ListenerResult<(TcpStream, Scheme, SocketAddr)>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.project()
             .0
             .poll_accept(cx)?
-            .map(|(stream, addr)| Some(Ok((stream, SchemeSocketAddr::new(Scheme::Ws, addr)))))
+            .map(|(stream, addr)| Some(Ok((stream, Scheme::Ws, addr))))
     }
 }
 
-impl Listener for TcpListener {
-    type Socket = TcpStream;
-    type AcceptStream = Fuse<WithPeer>;
+impl Listener<TcpStream> for TcpListener {
+    type AcceptStream = WithPeer;
 
     fn into_stream(self) -> Self::AcceptStream {
-        WithPeer(self).fuse()
+        WithPeer(self)
     }
 }

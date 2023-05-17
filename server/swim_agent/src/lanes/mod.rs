@@ -18,7 +18,7 @@ pub mod value;
 
 use bytes::BytesMut;
 
-use crate::agent_model::WriteResult;
+use crate::{agent_model::WriteResult, item::AgentItem};
 
 pub use self::{command::CommandLane, map::MapLane, value::ValueLane};
 
@@ -34,8 +34,8 @@ impl<C, L> ProjTransform<C, L> {
     }
 }
 
-/// Common functionality shared by all lane types.
-pub trait Lane {
+/// Base trait for all agent items that model lanes.
+pub trait LaneItem: AgentItem {
     /// If the state of the lane has changed, write an event into the buffer.
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult;
 }

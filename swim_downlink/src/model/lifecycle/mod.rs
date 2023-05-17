@@ -14,7 +14,6 @@
 
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 use crate::model::lifecycle::on_remove::{OnRemove, OnRemoveShared};
 pub use handler_fn::*;
@@ -409,11 +408,7 @@ where
         Self: 'a,
         T: 'a;
 
-    fn on_set<'a>(
-        &'a mut self,
-        existing: Option<&'a Arc<T>>,
-        new_value: &'a T,
-    ) -> Self::OnSetFut<'a> {
+    fn on_set<'a>(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut<'a> {
         self.on_set.on_set(existing, new_value)
     }
 }
@@ -633,7 +628,7 @@ where
         FUnlinked,
     >
     where
-        F: FnMut(&mut Shared, Option<&Arc<T>>, &T),
+        F: FnMut(&mut Shared, Option<&T>, &T),
     {
         StatefulValueDownlinkLifecycle {
             _value_type: PhantomData,
@@ -774,11 +769,7 @@ where
         Self: 'a,
         T: 'a;
 
-    fn on_set<'a>(
-        &'a mut self,
-        existing: Option<&'a Arc<T>>,
-        new_value: &'a T,
-    ) -> Self::OnSetFut<'a> {
+    fn on_set<'a>(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut<'a> {
         let StatefulValueDownlinkLifecycle { shared, on_set, .. } = self;
         on_set.on_set(shared, existing, new_value)
     }
