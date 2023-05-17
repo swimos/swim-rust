@@ -185,6 +185,37 @@ enum RuntimeEvent {
     Shutdown,
 }
 
+impl Debug for RuntimeEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RuntimeEvent::StartDownlink(_) => {
+                write!(f, "RuntimeEvent::StartDownlink")
+            }
+            RuntimeEvent::Resolved { .. } => {
+                write!(f, "RuntimeEvent::Resolved")
+            }
+            RuntimeEvent::ConnectionResult { result, .. } => {
+                write!(f, "RuntimeEvent::ConnectionResult({})", result.is_ok())
+            }
+            RuntimeEvent::DownlinkRuntimeStarted { .. } => {
+                write!(f, "RuntimeEvent::DownlinkRuntimeStarted")
+            }
+            RuntimeEvent::DownlinkRuntimeAttached { .. } => {
+                write!(f, "RuntimeEvent::DownlinkRuntimeAttached")
+            }
+            RuntimeEvent::DownlinkTaskComplete { .. } => {
+                write!(f, "RuntimeEvent::DownlinkTaskComplete")
+            }
+            RuntimeEvent::DownlinkRuntimeComplete { .. } => {
+                write!(f, "RuntimeEvent::DownlinkRuntimeComplete")
+            }
+            RuntimeEvent::Shutdown => {
+                write!(f, "RuntimeEvent::Shutdown")
+            }
+        }
+    }
+}
+
 /// Spawns a runtime task that uses the provided transport task and returns a handle that can be
 /// used to dispatch downlink registration requests.
 pub fn start_runtime<Net, Ws>(
@@ -203,7 +234,14 @@ where
     let notified = Arc::new(Notify::new());
     let completed = notified.clone();
     let task = async move {
-        runtime_task(transport, transport_buffer_size, stop_rx, requests_rx).await;
+        runtime_task(
+            transport,
+            transport_buffer_size,
+            stop_rx,
+            requests_rx,
+            interpret_frame_data,
+        )
+        .await;
         completed.notify_waiters();
     };
 
@@ -310,6 +348,7 @@ async fn runtime_task<Net, Ws>(
                 };
 
                 let task_shp = shp.clone();
+                let host = Text::from(shp.host().to_string());
                 let address = RemotePath::new(host.clone(), node, lane);
 
                 pending.feed_waiter(Waiting::Connection {
@@ -325,6 +364,7 @@ async fn runtime_task<Net, Ws>(
                 });
 
                 let handle_ref = &transport_handle;
+
                 pending.feed_task(
                     async move {
                         Either::Left((*task_shp.scheme(), host, handle_ref.resolve(task_shp).await))

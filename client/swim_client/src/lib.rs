@@ -15,9 +15,8 @@
 #[cfg(not(feature = "deflate"))]
 use ratchet::NoExtProvider;
 use ratchet::WebSocketStream;
-use std::num::NonZeroUsize;
 use std::collections::BTreeMap;
-use std::ops::Deref;
+use std::num::NonZeroUsize;
 
 use futures_util::future::BoxFuture;
 #[cfg(feature = "deflate")]
@@ -28,16 +27,12 @@ use runtime::{
 };
 use std::sync::Arc;
 use swim_api::downlink::DownlinkConfig;
-use swim_downlink::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
-use swim_downlink::{DownlinkTask, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation};
 use swim_downlink::lifecycle::{
     BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle, MapDownlinkLifecycle,
     ValueDownlinkLifecycle,
 };
-use swim_downlink::{
-    ChannelError, DownlinkTask, MapDownlinkHandle, MapDownlinkModel, MapKey, MapValue,
-    ValueDownlinkModel,
-};
+use swim_downlink::{ChannelError, MapDownlinkHandle, MapDownlinkModel, MapKey, MapValue};
+use swim_downlink::{DownlinkTask, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation};
 use swim_form::Form;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use swim_runtime::net::dns::Resolver;
@@ -54,7 +49,6 @@ use tokio::sync::{mpsc, oneshot};
 pub use url::Url;
 
 pub type DownlinkOperationResult<T> = Result<T, DownlinkRuntimeError>;
-
 
 #[derive(Debug, Default)]
 pub struct SwimClientBuilder {
@@ -129,6 +123,7 @@ where
         remote_buffer_size,
         transport_buffer_size,
         registration_buffer_size,
+        interpret_frame_data,
         ..
     } = config;
 
@@ -152,6 +147,7 @@ where
                 stop_rx,
                 Transport::new(networking, websockets, remote_buffer_size),
                 transport_buffer_size,
+                interpret_frame_data,
             )
         }
         #[cfg(not(feature = "deflate"))]
@@ -169,6 +165,7 @@ where
                 stop_rx,
                 Transport::new(networking, websockets, remote_buffer_size),
                 transport_buffer_size,
+                interpret_frame_data,
             )
         }
     };

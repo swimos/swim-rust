@@ -86,7 +86,7 @@ impl DnsResolver for MockClientConnections {
     type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
     fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {
-        let result = match self.inner.lock().unwrap().addrs.get(&(host, port)) {
+        let result = match self.inner.lock().addrs.get(&(host, port)) {
             Some(sock) => Ok(vec![*sock]),
             None => Err(io::ErrorKind::NotFound.into()),
         };
