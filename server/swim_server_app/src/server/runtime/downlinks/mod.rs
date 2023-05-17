@@ -37,6 +37,7 @@ use swim_model::{
     Text,
 };
 use swim_remote::AttachClient;
+use swim_runtime::downlink::IdentifiedAddress;
 use swim_runtime::{
     agent::DownlinkRequest,
     downlink::{
@@ -641,8 +642,10 @@ impl DownlinkRuntime {
                         attachment_rx,
                         io,
                         stopping,
-                        identity,
-                        path,
+                        IdentifiedAddress {
+                            identity,
+                            address: path,
+                        },
                         config,
                         bad_frame_strat,
                     );
@@ -653,8 +656,10 @@ impl DownlinkRuntime {
                         attachment_rx,
                         io,
                         stopping,
-                        identity,
-                        path,
+                        IdentifiedAddress {
+                            identity,
+                            address: path,
+                        },
                         config,
                     );
                     runtime.run().await;

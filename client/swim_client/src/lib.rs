@@ -81,7 +81,7 @@ impl SwimClientBuilder {
     /// Sets the deflate extension configuration for WebSocket connections.
     #[cfg(feature = "deflate")]
     pub fn set_deflate_config(mut self, to: DeflateConfig) -> SwimClientBuilder {
-        self.config.deflate = Some(to);
+        self.config.websocket.deflate_config = Some(to);
         self
     }
 

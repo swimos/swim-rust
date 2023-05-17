@@ -17,4 +17,3 @@ futures = { workspace = true }
 futures-util = { workspace = true }
 bytes = { workspace = true }
 tokio = { workspace = true, features = ["io-util"] }
-parking_lot = { workspace = true }

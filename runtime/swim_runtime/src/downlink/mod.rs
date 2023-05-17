@@ -187,11 +187,14 @@ impl ValueDownlinkRuntime {
         requests: mpsc::Receiver<AttachAction>,
         io: Io,
         stopping: trigger::Receiver,
-        identity: Uuid,
-        path: RelativeAddress<Text>,
+        address: IdentifiedAddress,
         config: DownlinkRuntimeConfig,
     ) -> Self {
         let (output, input) = io;
+        let IdentifiedAddress {
+            identity,
+            address: path,
+        } = address;
         ValueDownlinkRuntime {
             requests,
             input,
@@ -268,12 +271,15 @@ impl<H> MapDownlinkRuntime<H, MapInterpretation> {
         requests: mpsc::Receiver<AttachAction>,
         io: Io,
         stopping: trigger::Receiver,
-        identity: Uuid,
-        path: RelativeAddress<Text>,
+        address: IdentifiedAddress,
         config: DownlinkRuntimeConfig,
         failure_handler: H,
     ) -> Self {
         let (output, input) = io;
+        let IdentifiedAddress {
+            identity,
+            address: path,
+        } = address;
         MapDownlinkRuntime {
             requests,
             input,
@@ -304,13 +310,16 @@ impl<I, H> MapDownlinkRuntime<H, I> {
         requests: mpsc::Receiver<AttachAction>,
         io: Io,
         stopping: trigger::Receiver,
-        identity: Uuid,
-        path: RelativeAddress<Text>,
+        address: IdentifiedAddress,
         config: DownlinkRuntimeConfig,
         failure_handler: H,
         interpretation: I,
     ) -> Self {
         let (output, input) = io;
+        let IdentifiedAddress {
+            identity,
+            address: path,
+        } = address;
         MapDownlinkRuntime {
             requests,
             input,
@@ -323,6 +332,11 @@ impl<I, H> MapDownlinkRuntime<H, I> {
             interpretation,
         }
     }
+}
+
+pub struct IdentifiedAddress {
+    pub identity: Uuid,
+    pub address: RelativeAddress<Text>,
 }
 
 impl<I, H> MapDownlinkRuntime<H, I>

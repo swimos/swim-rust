@@ -1,7 +1,6 @@
 use bytes::BytesMut;
 use futures_util::future::{ready, BoxFuture};
 use futures_util::FutureExt;
-use parking_lot::Mutex;
 use ratchet::{Message, NegotiatedExtension, NoExt, PayloadType, Role, WebSocket, WebSocketConfig};
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
@@ -18,6 +17,7 @@ use swim_runtime::net::dns::{BoxDnsResolver, DnsResolver};
 use swim_runtime::net::{ClientConnections, ConnResult, ConnectionError, IoResult, Scheme};
 use swim_runtime::ws::{RatchetError, WsConnections, WsOpenFuture};
 use tokio::io::DuplexStream;
+use tokio::sync::Mutex;
 
 #[derive(Debug)]
 struct Inner {
@@ -64,13 +64,15 @@ impl ClientConnections for MockClientConnections {
         _host: Option<&str>,
         addr: SocketAddr,
     ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
-        let result = self
-            .inner
-            .lock()
-            .sockets
-            .remove(&addr)
-            .ok_or_else(|| ConnectionError::ConnectionFailed(ErrorKind::NotFound.into()));
-        ready(result).boxed()
+        async move {
+            self.inner
+                .lock()
+                .await
+                .sockets
+                .remove(&addr)
+                .ok_or_else(|| ConnectionError::ConnectionFailed(ErrorKind::NotFound.into()))
+        }
+        .boxed()
     }
 
     fn dns_resolver(&self) -> BoxDnsResolver {
@@ -86,11 +88,14 @@ impl DnsResolver for MockClientConnections {
     type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
     fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {
-        let result = match self.inner.lock().addrs.get(&(host, port)) {
-            Some(sock) => Ok(vec![*sock]),
-            None => Err(io::ErrorKind::NotFound.into()),
-        };
-        ready(result).boxed()
+        let inner = self.inner.clone();
+        async move {
+            match inner.lock().await.addrs.get(&(host, port)) {
+                Some(sock) => Ok(vec![*sock]),
+                None => Err(io::ErrorKind::NotFound.into()),
+            }
+        }
+        .boxed()
     }
 }
 
@@ -245,7 +250,7 @@ pub struct Lane {
 impl Lane {
     pub async fn read(&mut self) -> Envelope {
         let Lane { server, .. } = self;
-        let mut guard = server.lock();
+        let mut guard = server.lock().await;
         let Server { buf, transport } = &mut guard.deref_mut();
 
         match transport.read(buf).await.unwrap() {
@@ -260,7 +265,7 @@ impl Lane {
 
     pub async fn write(&mut self, env: Envelope) {
         let Lane { server, .. } = self;
-        let mut guard = server.lock();
+        let mut guard = server.lock().await;
         let Server { transport, .. } = &mut guard.deref_mut();
 
         let response = print_recon(&env);
@@ -272,7 +277,7 @@ impl Lane {
 
     pub async fn write_bytes(&mut self, msg: &[u8]) {
         let Lane { server, .. } = self;
-        let mut guard = server.lock();
+        let mut guard = server.lock().await;
         let Server { transport, .. } = &mut guard.deref_mut();
 
         transport.write(msg, PayloadType::Text).await.unwrap();
@@ -361,7 +366,7 @@ impl Lane {
 
     pub async fn await_closed(&mut self) {
         let Lane { server, .. } = self;
-        let mut guard = server.lock();
+        let mut guard = server.lock().await;
         let Server { buf, transport } = &mut guard.deref_mut();
 
         match transport.borrow_mut().read(buf).await.unwrap() {

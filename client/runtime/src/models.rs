@@ -21,7 +21,8 @@ use swim_model::Text;
 use swim_remote::AttachClient;
 use swim_runtime::downlink::failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy};
 use swim_runtime::downlink::{
-    AttachAction, DownlinkRuntimeConfig, MapDownlinkRuntime, NoInterpretation, ValueDownlinkRuntime,
+    AttachAction, DownlinkRuntimeConfig, IdentifiedAddress, MapDownlinkRuntime, NoInterpretation,
+    ValueDownlinkRuntime,
 };
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::trigger;
@@ -154,8 +155,10 @@ impl DownlinkRuntime {
                         attachment_rx,
                         io,
                         stopping,
-                        identity,
-                        path,
+                        IdentifiedAddress {
+                            identity,
+                            address: path,
+                        },
                         config,
                     );
                     runtime.run().await;
@@ -172,8 +175,10 @@ impl DownlinkRuntime {
                             attachment_rx,
                             io,
                             stopping,
-                            identity,
-                            path,
+                            IdentifiedAddress {
+                                identity,
+                                address: path,
+                            },
                             config,
                             strategy,
                         );
@@ -183,8 +188,10 @@ impl DownlinkRuntime {
                             attachment_rx,
                             io,
                             stopping,
-                            identity,
-                            path,
+                            IdentifiedAddress {
+                                identity,
+                                address: path,
+                            },
                             config,
                             ReportStrategy::new(AlwaysIgnoreStrategy).boxed(),
                             NoInterpretation,

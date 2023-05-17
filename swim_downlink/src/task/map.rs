@@ -294,12 +294,10 @@ where
                 "Received Synced in state {state}",
                 state = ShowState(&state)
             );
-            match state {
-                State::Linked(value) => {
-                    lifecycle.on_synced(&value).await;
-                    state = State::Synced(value);
-                }
-                _ => {}
+
+            if let State::Linked(value) = state {
+                lifecycle.on_synced(&value).await;
+                state = State::Synced(value);
             }
         }
         DownlinkNotification::Event { body } => {
