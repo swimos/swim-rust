@@ -45,7 +45,7 @@ use crate::agent::{
 };
 
 use super::{
-    ad_hoc::{ad_hoc_commands_task, AdHocTaskConfig, AdHocTaskState, NoReport},
+    external_links::{external_links_task, LinksTaskConfig, LinksTaskState, NoReport},
     AdHocChannelRequest, InitialEndpoints, ItemEndpoint, ItemInitTask, LaneEndpoint, LaneResult,
     LaneRuntimeSpec, StoreEndpoint, StoreResult, StoreRuntimeSpec,
 };
@@ -71,7 +71,7 @@ pub struct AgentInitTask<Store = StoreDisabled> {
 pub struct InitTaskConfig {
     pub ad_hoc_queue_size: NonZeroUsize,
     pub item_init_timeout: Duration,
-    pub ad_hoc: AdHocTaskConfig,
+    pub ad_hoc: LinksTaskConfig,
 }
 
 impl AgentInitTask {
@@ -160,10 +160,10 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
 
         let (ad_hoc_tx, ad_hoc_rx) = mpsc::channel(ad_hoc_queue_size.get());
 
-        let ad_hoc_state = AdHocTaskState::new(link_requests.clone());
+        let ad_hoc_state = LinksTaskState::new(link_requests.clone());
 
-        let ad_hoc_task =
-            ad_hoc_commands_task::<NoReport>(identity, ad_hoc_rx, ad_hoc_state, ad_hoc, None);
+        let ext_links_task =
+            external_links_task::<NoReport>(identity, ad_hoc_rx, ad_hoc_state, ad_hoc, None);
 
         let item_init_task = initialize_items(
             &store,
@@ -175,7 +175,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
             &mut store_endpoints,
         );
 
-        let (result, ad_hoc_state) = join(item_init_task, ad_hoc_task).await;
+        let (result, ad_hoc_state) = join(item_init_task, ext_links_task).await;
         result?;
 
         let Initialization { reporting, .. } = initialization;

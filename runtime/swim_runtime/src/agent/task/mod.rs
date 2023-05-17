@@ -25,7 +25,7 @@ use crate::agent::task::timeout_coord::VoteResult;
 use crate::agent::task::write_fut::SpecialAction;
 use crate::error::InvalidKey;
 
-use self::ad_hoc::{AdHocTaskState, NoReport};
+use self::external_links::{LinksTaskState, NoReport};
 use self::init::Initialization;
 use self::links::Links;
 use self::prune::PruneRemotes;
@@ -67,7 +67,7 @@ use uuid::Uuid;
 
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
-mod ad_hoc;
+mod external_links;
 mod init;
 mod links;
 mod prune;
@@ -77,7 +77,7 @@ mod sender;
 mod timeout_coord;
 mod write_fut;
 
-pub use ad_hoc::AdHocTaskConfig;
+pub use external_links::LinksTaskConfig;
 pub use init::{AgentInitTask, InitTaskConfig};
 
 #[cfg(test)]
@@ -280,7 +280,7 @@ pub struct InitialEndpoints {
     rx: mpsc::Receiver<AgentRuntimeRequest>,
     lane_endpoints: Vec<LaneEndpoint<Io>>,
     store_endpoints: Vec<StoreEndpoint>,
-    ad_hoc_state: AdHocTaskState,
+    ad_hoc_state: LinksTaskState,
 }
 
 impl InitialEndpoints {
@@ -289,7 +289,7 @@ impl InitialEndpoints {
         rx: mpsc::Receiver<AgentRuntimeRequest>,
         lane_endpoints: Vec<LaneEndpoint<Io>>,
         store_endpoints: Vec<StoreEndpoint>,
-        ad_hoc_state: AdHocTaskState,
+        ad_hoc_state: LinksTaskState,
     ) -> Self {
         InitialEndpoints {
             reporting,
@@ -476,13 +476,13 @@ where
         )
         .instrument(info_span!("Agent Runtime Write Task", %identity, %node_uri));
 
-        let ad_hoc_config = AdHocTaskConfig {
+        let ad_hoc_config = LinksTaskConfig {
             buffer_size: config.ad_hoc_buffer_size,
             retry_strategy: config.ad_hoc_output_retry,
             timeout_delay: config.ad_hoc_output_timeout,
         };
 
-        let ad_hoc = ad_hoc::ad_hoc_commands_task::<NoReport>(
+        let ext_links = external_links::external_links_task::<NoReport>(
             identity,
             ad_hoc_rx,
             ad_hoc_state,
@@ -492,7 +492,7 @@ where
         .instrument(info_span!("Agent Ad Hoc Command Task", %identity, %node_uri));
 
         let io = await_io_tasks(read, write, kill_switch_tx);
-        let (_, _, result) = join3(att, ad_hoc, io).await;
+        let (_, _, result) = join3(att, ext_links, io).await;
         result
     }
 }

@@ -19,7 +19,7 @@ use std::{
 
 use crate::agent::{
     task::{
-        ad_hoc::AdHocTaskState,
+        external_links::LinksTaskState,
         tests::{RemoteReceiver, RemoteSender},
         AgentRuntimeTask, InitialEndpoints, LaneEndpoint, NodeDescriptor,
     },
@@ -387,7 +387,7 @@ where
         req_rx,
         runtime_endpoints,
         vec![],
-        AdHocTaskState::new(links_tx.clone()),
+        LinksTaskState::new(links_tx.clone()),
     );
 
     let agent_task = AgentRuntimeTask::new(
