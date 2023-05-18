@@ -22,7 +22,7 @@ use pin_project::pin_project;
 
 #[derive(Debug, Clone, Copy)]
 #[pin_project(project = Union3Proj)]
-pub enum Union3<F1, F2, F3> {
+pub enum UnionFuture3<F1, F2, F3> {
     First(#[pin] F1),
     Second(#[pin] F2),
     Third(#[pin] F3),
@@ -30,28 +30,28 @@ pub enum Union3<F1, F2, F3> {
 
 #[derive(Debug, Clone, Copy)]
 #[pin_project(project = Union4Proj)]
-pub enum Union4<F1, F2, F3, F4> {
+pub enum UnionFuture4<F1, F2, F3, F4> {
     First(#[pin] F1),
     Second(#[pin] F2),
     Third(#[pin] F3),
     Fourth(#[pin] F4),
 }
 
-impl<F1, F2, F3> Union3<F1, F2, F3> {
+impl<F1, F2, F3> UnionFuture3<F1, F2, F3> {
     pub fn first(f: F1) -> Self {
-        Union3::First(f)
+        UnionFuture3::First(f)
     }
 
     pub fn second(f: F2) -> Self {
-        Union3::Second(f)
+        UnionFuture3::Second(f)
     }
 
     pub fn third(f: F3) -> Self {
-        Union3::Third(f)
+        UnionFuture3::Third(f)
     }
 }
 
-impl<F1, F2, F3> Future for Union3<F1, F2, F3>
+impl<F1, F2, F3> Future for UnionFuture3<F1, F2, F3>
 where
     F1: Future,
     F2: Future<Output = F1::Output>,
@@ -68,25 +68,25 @@ where
     }
 }
 
-impl<F1, F2, F3, F4> Union4<F1, F2, F3, F4> {
+impl<F1, F2, F3, F4> UnionFuture4<F1, F2, F3, F4> {
     pub fn first(f: F1) -> Self {
-        Union4::First(f)
+        UnionFuture4::First(f)
     }
 
     pub fn second(f: F2) -> Self {
-        Union4::Second(f)
+        UnionFuture4::Second(f)
     }
 
     pub fn third(f: F3) -> Self {
-        Union4::Third(f)
+        UnionFuture4::Third(f)
     }
 
     pub fn fourth(f: F4) -> Self {
-        Union4::Fourth(f)
+        UnionFuture4::Fourth(f)
     }
 }
 
-impl<F1, F2, F3, F4> Future for Union4<F1, F2, F3, F4>
+impl<F1, F2, F3, F4> Future for UnionFuture4<F1, F2, F3, F4>
 where
     F1: Future,
     F2: Future<Output = F1::Output>,

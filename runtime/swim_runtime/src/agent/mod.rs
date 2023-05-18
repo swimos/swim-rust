@@ -109,6 +109,21 @@ pub struct DownlinkRequest {
 }
 
 impl DownlinkRequest {
+    pub fn replace_promise(
+        &self,
+        replacement: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
+    ) -> Self {
+        DownlinkRequest {
+            remote: self.remote.clone(),
+            address: self.address.clone(),
+            kind: self.kind,
+            options: self.options,
+            promise: replacement,
+        }
+    }
+}
+
+impl DownlinkRequest {
     pub fn new(
         remote: Option<SchemeHostPort>,
         address: RelativeAddress<Text>,
@@ -563,7 +578,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let runtime_init_task = AgentInitTask::new(
             identity,
             runtime_rx,
-            link_tx.clone(),
+            link_tx,
             init_rx,
             InitTaskConfig {
                 ad_hoc_queue_size: runtime_config.attachment_queue_size,

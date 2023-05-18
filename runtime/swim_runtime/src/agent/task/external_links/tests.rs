@@ -118,7 +118,10 @@ async fn clean_shutdown_no_registration() {
 
 async fn register(chan_tx: &mpsc::Sender<ExternalLinkRequest>) -> ByteWriter {
     let (tx, rx) = oneshot::channel();
-    assert!(chan_tx.send(ExternalLinkRequest::AdHoc(AdHocChannelRequest::new(tx))).await.is_ok());
+    assert!(chan_tx
+        .send(ExternalLinkRequest::AdHoc(AdHocChannelRequest::new(tx)))
+        .await
+        .is_ok());
     rx.await
         .expect("Request dropped.")
         .expect("Registering channel failed.")

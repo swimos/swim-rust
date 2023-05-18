@@ -46,8 +46,8 @@ use crate::agent::{
 
 use super::{
     external_links::{external_links_task, LinksTaskConfig, LinksTaskState, NoReport},
-    InitialEndpoints, ItemEndpoint, ItemInitTask, LaneEndpoint, LaneResult,
-    LaneRuntimeSpec, StoreEndpoint, StoreResult, StoreRuntimeSpec, ExternalLinkRequest,
+    ExternalLinkRequest, InitialEndpoints, ItemEndpoint, ItemInitTask, LaneEndpoint, LaneResult,
+    LaneRuntimeSpec, StoreEndpoint, StoreResult, StoreRuntimeSpec,
 };
 
 use tracing::{error, info};
@@ -162,8 +162,13 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
 
         let ext_link_state = LinksTaskState::new(link_requests.clone());
 
-        let ext_links_task =
-            external_links_task::<NoReport>(identity, ext_link_rx, ext_link_state, external_links, None);
+        let ext_links_task = external_links_task::<NoReport>(
+            identity,
+            ext_link_rx,
+            ext_link_state,
+            external_links,
+            None,
+        );
 
         let item_init_task = initialize_items(
             &store,
@@ -474,7 +479,11 @@ where
             },
             Either::Right(request) => match request {
                 AgentRuntimeRequest::AdHoc(req) => {
-                    if ext_link_tx.send(ExternalLinkRequest::AdHoc(req)).await.is_err() {
+                    if ext_link_tx
+                        .send(ExternalLinkRequest::AdHoc(req))
+                        .await
+                        .is_err()
+                    {
                         break Err(AgentExecError::FailedDownlinkRequest);
                     }
                 }
