@@ -28,7 +28,7 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use crate::{
-    agent_model::{AgentSpec, ItemKind, ItemSpec, LaneFlags, WriteResult},
+    agent_model::{AgentSpec, ItemFlags, ItemKind, ItemSpec, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
 };
@@ -103,11 +103,11 @@ impl AgentSpec for TestAgent {
         let mut lanes = HashMap::new();
         lanes.insert(
             VAL_LANE,
-            ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT),
+            ItemSpec::new(ItemKind::Lane, ItemFlags::TRANSIENT),
         );
         lanes.insert(
             CMD_LANE,
-            ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT),
+            ItemSpec::new(ItemKind::Lane, ItemFlags::TRANSIENT),
         );
         lanes
     }
@@ -116,7 +116,7 @@ impl AgentSpec for TestAgent {
         let mut lanes = HashMap::new();
         lanes.insert(
             MAP_LANE,
-            ItemSpec::new(ItemKind::Lane, LaneFlags::TRANSIENT),
+            ItemSpec::new(ItemKind::Lane, ItemFlags::TRANSIENT),
         );
         lanes
     }

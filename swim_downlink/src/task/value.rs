@@ -12,11 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use either::Either;
 use std::fmt::Display;
 
-use crate::model::lifecycle::ValueDownlinkLifecycle;
-use futures::future::join;
 use futures::{Sink, SinkExt, StreamExt};
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::codec::{FramedRead, FramedWrite};
+use tracing::{info_span, trace};
+use tracing_futures::Instrument;
+
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::downlink::{
@@ -27,15 +32,11 @@ use swim_form::Form;
 use swim_model::address::Address;
 use swim_model::Text;
 use swim_recon::printer::print_recon;
-use swim_utilities::future::immediate_or_join;
+use swim_utilities::future::{immediate_or_join, race};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
-use swim_utilities::trigger;
-use tokio::sync::mpsc;
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::codec::{FramedRead, FramedWrite};
-use tracing::{info_span, trace};
-use tracing_futures::Instrument;
 
+use crate::model::lifecycle::ValueDownlinkLifecycle;
+use crate::model::{NotYetSyncedError, ValueDownlinkOperation};
 use crate::ValueDownlinkModel;
 
 /// Task to drive a value downlink, calling lifecyle events at appropriate points.
@@ -47,7 +48,7 @@ use crate::ValueDownlinkModel;
 /// * `config` - Configuration parameters to the downlink.
 /// * `input` - Input stream for messages to the downlink from the runtime.
 /// * `output` - Output stream for messages from the downlink to the runtime.
-pub async fn value_dowinlink_task<T, LC>(
+pub async fn value_downlink_task<T, LC>(
     model: ValueDownlinkModel<T, LC>,
     path: Address<Text>,
     config: DownlinkConfig,
@@ -55,25 +56,19 @@ pub async fn value_dowinlink_task<T, LC>(
     output: ByteWriter,
 ) -> Result<(), DownlinkTaskError>
 where
-    T: Form + Send + Sync + 'static,
+    T: Form + Send + Sync + Clone + 'static,
     LC: ValueDownlinkLifecycle<T>,
 {
-    let ValueDownlinkModel {
-        set_value,
+    let ValueDownlinkModel { handle, lifecycle } = model;
+    run_io(
+        config,
+        input,
         lifecycle,
-    } = model;
-    let (stop_tx, stop_rx) = trigger::trigger();
-    let read = async move {
-        let result = read_task(config, input, lifecycle).await;
-        let _ = stop_tx.trigger();
-        result
-    }
-    .instrument(info_span!("Downlink read task.", %path));
-    let framed_writer = FramedWrite::new(output, DownlinkOperationEncoder);
-    let write = write_task(framed_writer, set_value, stop_rx)
-        .instrument(info_span!("Downlink write task.", %path));
-    let (read_result, _) = join(read, write).await;
-    read_result
+        handle,
+        FramedWrite::new(output, DownlinkOperationEncoder),
+    )
+    .instrument(info_span!("Downlink io task.", %path))
+    .await
 }
 
 enum State<T> {
@@ -96,106 +91,184 @@ impl<'a, T: StructuralWritable> Display for ShowState<'a, T> {
     }
 }
 
-async fn read_task<T, LC>(
+enum Mode {
+    ReadWrite,
+    Read,
+}
+
+async fn run_io<T, LC, S>(
     config: DownlinkConfig,
     input: ByteReader,
     mut lifecycle: LC,
+    handle_rx: mpsc::Receiver<ValueDownlinkOperation<T>>,
+    mut framed: S,
 ) -> Result<(), DownlinkTaskError>
 where
-    T: Form + Send + Sync + 'static,
     LC: ValueDownlinkLifecycle<T>,
+    T: Form + Send + Sync + Clone + 'static,
+    S: Sink<DownlinkOperation<T>> + Unpin,
 {
+    let mut mode = Mode::ReadWrite;
+    let mut state: State<T> = State::Unlinked;
+    let mut framed_read = FramedRead::new(input, ValueNotificationDecoder::default());
+    let mut set_stream = ReceiverStream::new(handle_rx);
+
     let DownlinkConfig {
         events_when_not_synced,
         terminate_on_unlinked,
         ..
     } = config;
-    let mut state: State<T> = State::Unlinked;
-    let mut framed_read = FramedRead::new(input, ValueNotificationDecoder::default());
 
-    while let Some(result) = framed_read.next().await {
-        match result? {
-            DownlinkNotification::Linked => {
-                trace!(
-                    "Received Linked in state {state}",
-                    state = ShowState(&state)
-                );
-                if matches!(&state, State::Unlinked) {
-                    lifecycle.on_linked().await;
-                    state = State::Linked(None);
-                }
-            }
-            DownlinkNotification::Synced => {
-                trace!(
-                    "Received Synced in state {state}",
-                    state = ShowState(&state)
-                );
-                match state {
-                    State::Linked(Some(value)) => {
-                        lifecycle.on_synced(&value).await;
-                        state = State::Synced(value);
-                    }
-                    _ => {
-                        return Err(DownlinkTaskError::SyncedWithNoValue);
-                    }
-                }
-            }
-            DownlinkNotification::Event { body } => {
-                trace!(
-                    "Received Event with body '{body}' in state {state}",
-                    body = print_recon(&body),
-                    state = ShowState(&state)
-                );
-                match &mut state {
-                    State::Linked(value) => {
-                        if events_when_not_synced {
-                            lifecycle.on_event(&body).await;
-                            lifecycle.on_set(value.as_ref(), &body).await;
+    loop {
+        match mode {
+            Mode::ReadWrite => {
+                match race(
+                    immediate_or_join(set_stream.next(), framed.flush()),
+                    framed_read.next(),
+                )
+                .await
+                {
+                    Either::Left((Some(value), Some(Ok(_)) | None)) => match value {
+                        ValueDownlinkOperation::Set(to) => {
+                            if write(&mut framed, to).await.is_err() {
+                                mode = Mode::Read;
+                            }
                         }
-                        *value = Some(body);
+                        ValueDownlinkOperation::Get(callback) => {
+                            let message = match &state {
+                                State::Synced(state) => Ok(state.clone()),
+                                State::Unlinked | State::Linked(_) => Err(NotYetSyncedError),
+                            };
+
+                            let _r = callback.send(message);
+                        }
+                    },
+                    Either::Left(_) => mode = Mode::Read,
+                    Either::Right(Some(Ok(frame))) => {
+                        match on_read(
+                            state,
+                            &mut lifecycle,
+                            frame,
+                            events_when_not_synced,
+                            terminate_on_unlinked,
+                        )
+                        .await
+                        {
+                            Ok(Some(new_state)) => state = new_state,
+                            Ok(None) => return Ok(()),
+                            Err(e) => return Err(e),
+                        }
                     }
-                    State::Synced(value) => {
-                        lifecycle.on_event(&body).await;
-                        lifecycle.on_set(Some(value), &body).await;
-                        *value = body;
-                    }
-                    _ => {}
+                    Either::Right(Some(Err(e))) => return Err(e.into()),
+                    Either::Right(None) => return Ok(()),
                 }
             }
-            DownlinkNotification::Unlinked => {
-                trace!(
-                    "Received Unlinked in state {state}",
-                    state = ShowState(&state)
-                );
-                lifecycle.on_unlinked().await;
-                if terminate_on_unlinked {
-                    trace!("Terminating on Unlinked.");
-                    break;
-                } else {
-                    state = State::Unlinked;
+            Mode::Read => {
+                while let Some(result) = framed_read.next().await {
+                    match on_read(
+                        state,
+                        &mut lifecycle,
+                        result?,
+                        events_when_not_synced,
+                        terminate_on_unlinked,
+                    )
+                    .await
+                    {
+                        Ok(Some(new_state)) => state = new_state,
+                        Ok(None) => return Ok(()),
+                        Err(e) => return Err(e),
+                    }
                 }
+                return Ok(());
             }
         }
     }
-    Ok(())
 }
 
-async fn write_task<Snk, T>(
-    mut framed: Snk,
-    set_value: mpsc::Receiver<T>,
-    stop_trigger: trigger::Receiver,
-) where
-    Snk: Sink<DownlinkOperation<T>> + Unpin,
-    T: Form + Send + 'static,
+async fn write<S, T>(framed: &mut S, op: T) -> Result<(), ()>
+where
+    S: Sink<DownlinkOperation<T>> + Unpin,
+    T: Form + Send + Sync + 'static,
 {
-    let mut set_stream = ReceiverStream::new(set_value).take_until(stop_trigger);
-    while let (Some(value), Some(Ok(_)) | None) =
-        immediate_or_join(set_stream.next(), framed.flush()).await
-    {
-        trace!("Sending command '{cmd}'.", cmd = print_recon(&value));
-        let op = DownlinkOperation::new(value);
-        if framed.feed(op).await.is_err() {
-            break;
+    trace!("Sending command '{cmd}'.", cmd = print_recon(&op));
+    let op = DownlinkOperation::new(op);
+    if framed.feed(op).await.is_ok() {
+        Ok(())
+    } else {
+        Err(())
+    }
+}
+
+async fn on_read<T, LC>(
+    mut state: State<T>,
+    lifecycle: &mut LC,
+    notification: DownlinkNotification<T>,
+    events_when_not_synced: bool,
+    terminate_on_unlinked: bool,
+) -> Result<Option<State<T>>, DownlinkTaskError>
+where
+    T: 'static + Form + Send + Sync,
+    LC: ValueDownlinkLifecycle<T>,
+{
+    match notification {
+        DownlinkNotification::Linked => {
+            trace!(
+                "Received Linked in state {state}",
+                state = ShowState(&state)
+            );
+            if matches!(&state, State::Unlinked) {
+                lifecycle.on_linked().await;
+                state = State::Linked(None);
+            }
+        }
+        DownlinkNotification::Synced => {
+            trace!(
+                "Received Synced in state {state}",
+                state = ShowState(&state)
+            );
+            return match state {
+                State::Linked(Some(value)) => {
+                    lifecycle.on_synced(&value).await;
+                    Ok(Some(State::Synced(value)))
+                }
+                _ => Err(DownlinkTaskError::SyncedWithNoValue),
+            };
+        }
+        DownlinkNotification::Event { body } => {
+            trace!(
+                "Received Event with body '{body}' in state {state}",
+                body = print_recon(&body),
+                state = ShowState(&state)
+            );
+            match state {
+                State::Linked(value) => {
+                    if events_when_not_synced {
+                        lifecycle.on_event(&body).await;
+                        lifecycle.on_set(value.as_ref(), &body).await;
+                    }
+                    return Ok(Some(State::Linked(Some(body))));
+                }
+                State::Synced(value) => {
+                    lifecycle.on_event(&body).await;
+                    lifecycle.on_set(Some(&value), &body).await;
+                    return Ok(Some(State::Synced(body)));
+                }
+                _ => {}
+            }
+        }
+        DownlinkNotification::Unlinked => {
+            trace!(
+                "Received Unlinked in state {state}",
+                state = ShowState(&state)
+            );
+            lifecycle.on_unlinked().await;
+            if terminate_on_unlinked {
+                trace!("Terminating on Unlinked.");
+                return Ok(None);
+            } else {
+                state = State::Unlinked;
+            }
         }
     }
+    Ok(Some(state))
 }

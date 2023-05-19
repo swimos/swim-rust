@@ -27,7 +27,7 @@ use crate::{
     event_handler::{
         EventHandlerError, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
     },
-    lanes::{command::DoCommand, Lane},
+    lanes::{command::DoCommand, LaneItem},
     meta::AgentMetadata,
     test_context::dummy_context,
 };

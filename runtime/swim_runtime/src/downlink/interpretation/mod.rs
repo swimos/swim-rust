@@ -62,12 +62,12 @@ fn trivial_interpretation(frame: Bytes, buffer: &mut BytesMut) -> Result<(), Inf
     Ok(())
 }
 
-/// For value downlinks, simply copy bewteen the buffers.
+/// For value downlinks, simply copy between the buffers.
 pub fn value_interpretation() -> impl DownlinkInterpretation<Error = Infallible> {
     FnMutInterpretation(trivial_interpretation)
 }
 
-/// Interpretation for map downlinks that attemps to extract key and value information
+/// Interpretation for map downlinks that attempts to extract key and value information
 /// from the event.
 #[derive(Debug, Default)]
 pub struct MapInterpretation {

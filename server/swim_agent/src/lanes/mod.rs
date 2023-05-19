@@ -35,8 +35,8 @@ impl<C, L> ProjTransform<C, L> {
     }
 }
 
-/// Common functionality shared by all lane types.
-pub trait Lane: AgentItem {
+/// Base trait for all agent items that model lanes.
+pub trait LaneItem: AgentItem {
     /// If the state of the lane has changed, write an event into the buffer.
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult;
 }

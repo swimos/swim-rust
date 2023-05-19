@@ -16,6 +16,9 @@ use std::{collections::HashMap, num::NonZeroUsize};
 
 use futures::StreamExt;
 use futures::{stream::select, Future};
+use swim_api::error::introspection::{
+    IntrospectionStopped, LaneIntrospectionError, NodeIntrospectionError,
+};
 use swim_api::meta::lane::LaneKind;
 use swim_model::Text;
 use swim_runtime::agent::{
@@ -28,10 +31,7 @@ use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
 use tracing::info;
 use uuid::Uuid;
 
-use crate::{
-    error::{IntrospectionStopped, LaneIntrospectionError, NodeIntrospectionError},
-    model::{AgentIntrospectionHandle, AgentIntrospectionUpdater, LaneView},
-};
+use crate::model::{AgentIntrospectionHandle, AgentIntrospectionUpdater, LaneView};
 
 /// Requests that can be made by to the introspection task.
 pub enum IntrospectionMessage {
