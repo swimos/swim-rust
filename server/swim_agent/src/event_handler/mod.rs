@@ -52,7 +52,7 @@ mod suspend;
 #[cfg(test)]
 mod tests;
 
-pub use suspend::{HandlerFuture, Spawner, Suspend};
+pub use suspend::{run_after, run_schedule, HandlerFuture, Spawner, Suspend};
 
 pub use handler_fn::{
     EventConsumeFn, EventFn, HandlerFn0, MapRemoveFn, MapUpdateBorrowFn, MapUpdateFn, TakeFn,
