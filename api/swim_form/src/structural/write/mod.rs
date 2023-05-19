@@ -69,7 +69,7 @@ pub trait StructuralWritable {
         }
     }
 
-    /// Create a [`Value`] based on the strucuture of this value.
+    /// Create a [`Value`] based on the structure of this value.
     fn structure(&self) -> Value {
         self.write_with_infallible(ValueInterpreter::default())
     }
@@ -160,6 +160,12 @@ pub trait HeaderWriter: Sized {
     /// * `value` - The value whose structure will be used for the remainder of the process.
     fn delegate<V: StructuralWritable>(self, value: &V) -> Result<Self::Repr, Self::Error>;
 
+    /// Delegate the remainder of the process to another value (its attributes will be appended
+    /// to those already described), consuming it.
+    /// #Arguments
+    /// * `value` - The value whose structure will be used for the remainder of the process.
+    fn delegate_into<V: StructuralWritable>(self, value: V) -> Result<Self::Repr, Self::Error>;
+
     /// Write an attribute into the header, consuming the value.
     /// #Arguments
     /// * `name` - The name of the attribute.
@@ -169,12 +175,6 @@ pub trait HeaderWriter: Sized {
         name: L,
         value: V,
     ) -> Result<Self, Self::Error>;
-
-    /// Delegate the remainder of the process to another value (its attributes will be appended
-    /// to those already described), consuming it.
-    /// #Arguments
-    /// * `value` - The value whose structure will be used for the remainder of the process.
-    fn delegate_into<V: StructuralWritable>(self, value: V) -> Result<Self::Repr, Self::Error>;
 
     fn write_extant_attr<L: Label>(self, name: L) -> Result<Self, Self::Error> {
         self.write_attr(name.as_cow(), &())

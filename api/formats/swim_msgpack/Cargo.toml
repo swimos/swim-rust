@@ -12,6 +12,3 @@ swim_model = { path = "../../swim_model" }
 bytes = { workspace = true }
 byteorder = "1.4"
 rmp = "0.8"
-
-[dev-dependencies]
-

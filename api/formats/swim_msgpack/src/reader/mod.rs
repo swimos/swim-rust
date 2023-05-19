@@ -33,7 +33,7 @@ macro_rules! feed {
     ($e:expr) => {
         match $e {
             Some(Ok(_)) => {
-                return Err(MsgPackReadError::UncomsumedData);
+                return Err(MsgPackReadError::UnconsumedData);
             }
             Some(Err(e)) => {
                 return Err(e.into());
@@ -178,7 +178,7 @@ where
 
 #[derive(Debug, PartialEq)]
 pub enum MsgPackReadError {
-    /// The parsed strucuture was not valid for the target type.
+    /// The parsed structure was not valid for the target type.
     Structure(ReadError),
     /// The MessagePack data contained invalid UTF8 in a string.
     StringDecode(Utf8Error),
@@ -191,7 +191,7 @@ pub enum MsgPackReadError {
     /// The input terminated mid-way through a record.
     Incomplete,
     /// Not all input was consumed.
-    UncomsumedData,
+    UnconsumedData,
 }
 
 impl Display for MsgPackReadError {
@@ -215,7 +215,7 @@ impl Display for MsgPackReadError {
             MsgPackReadError::Incomplete => {
                 write!(f, "The input ended part way through a record.")
             }
-            MsgPackReadError::UncomsumedData => {
+            MsgPackReadError::UnconsumedData => {
                 write!(f, "Not all of the input was consumed.")
             }
         }
@@ -443,7 +443,7 @@ where
     Rec: Recognizer,
 {
     match read_record(reader, str_buf, attrs, recognizer) {
-        Ok(Some(_)) => Err(MsgPackReadError::UncomsumedData),
+        Ok(Some(_)) => Err(MsgPackReadError::UnconsumedData),
         Err(e) => Err(e),
         _ => Ok(()),
     }

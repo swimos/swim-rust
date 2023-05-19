@@ -12,27 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::MsgPackInterpreter;
-use crate::{read_from_msg_pack, MsgPackReadError};
-use bytes::{BufMut, BytesMut};
 use std::collections::HashMap;
 use std::fmt::Debug;
+
 use swim_form::Form;
 use swim_model::{Attr, Item, Value};
 
+use crate::MsgPackInterpreter;
+use crate::{read_from_msg_pack, MsgPackReadError};
+
 fn validate<T: Form + PartialEq + Debug>(value: &T) {
-    let mut buffer = BytesMut::new();
-    let mut writer = (&mut buffer).writer();
-
-    let interp = MsgPackInterpreter::new(&mut writer);
-    assert!(value.write_with(interp).is_ok());
-
-    let mut bytes = buffer.split().freeze();
-
+    let mut bytes = value.write_with(MsgPackInterpreter).expect("Write failure");
     let restored: Result<T, MsgPackReadError> = read_from_msg_pack(&mut bytes);
 
     assert!(restored.is_ok());
-
     assert_eq!(value, &restored.unwrap());
 }
 
@@ -190,5 +183,79 @@ fn msgpack_nested_record() {
 #[test]
 fn msgpack_nested_attribute() {
     let value = Value::of_attr(("tag", Value::from_vec(vec![1, 2, 3])));
+    validate(&value);
+}
+
+#[test]
+fn delegate_primitive() {
+    #[derive(Form, PartialEq, Debug)]
+    #[form_root(::swim_form)]
+    struct Prop {
+        #[form(attr)]
+        a: i32,
+        #[form(header)]
+        b: String,
+        #[form(body)]
+        c: i32,
+    }
+
+    let value = Prop {
+        a: 1,
+        b: "2".to_string(),
+        c: 3,
+    };
+
+    validate(&value);
+}
+
+#[test]
+fn delegate_struct() {
+    #[derive(Form, PartialEq, Debug)]
+    #[form_root(::swim_form)]
+    struct Parent {
+        #[form(attr)]
+        a: i32,
+        #[form(header)]
+        b: String,
+        #[form(body)]
+        c: Child,
+    }
+
+    #[derive(Form, PartialEq, Debug)]
+    #[form_root(::swim_form)]
+    struct Child {
+        #[form(attr)]
+        d: i32,
+        #[form(header)]
+        e: String,
+        #[form(body)]
+        f: GrandChild,
+    }
+
+    #[derive(Form, PartialEq, Debug)]
+    #[form_root(::swim_form)]
+    struct GrandChild {
+        #[form(attr)]
+        g: i32,
+        #[form(header)]
+        h: String,
+        #[form(body)]
+        i: i32,
+    }
+
+    let value = Parent {
+        a: 1,
+        b: "2".to_string(),
+        c: Child {
+            d: 3,
+            e: "4".to_string(),
+            f: GrandChild {
+                g: 5,
+                h: "6".to_string(),
+                i: 7,
+            },
+        },
+    };
+
     validate(&value);
 }
