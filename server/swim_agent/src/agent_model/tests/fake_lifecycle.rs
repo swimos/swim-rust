@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ use swim_model::Text;
 use tokio::sync::mpsc;
 
 use crate::{
-    agent_lifecycle::{item_event::ItemEvent, on_start::OnStart, on_stop::OnStop},
+    agent_lifecycle::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop},
     event_handler::{
         ActionContext, BoxEventHandler, HandlerAction, SideEffect, Spawner, StepResult,
     },
@@ -28,6 +28,7 @@ use super::{fake_agent::TestAgent, CMD_LANE};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum LifecycleEvent {
+    Init,
     Start,
     Lane(Text),
     RanSuspended(i32),
@@ -56,6 +57,17 @@ impl TestLifecycle {
             sender: self.sender.clone(),
             event: Some(event),
         }
+    }
+}
+
+impl OnInit<TestAgent> for TestLifecycle {
+    fn initialize(
+        &self,
+        _action_context: &mut ActionContext<TestAgent>,
+        _meta: AgentMetadata,
+        _context: &TestAgent,
+    ) {
+        assert!(self.sender.send(LifecycleEvent::Init).is_ok());
     }
 }
 
@@ -96,7 +108,7 @@ impl HandlerAction<TestAgent> for LifecycleHandler {
 
     fn step(
         &mut self,
-        action_context: ActionContext<TestAgent>,
+        action_context: &mut ActionContext<TestAgent>,
         _meta: AgentMetadata,
         context: &TestAgent,
     ) -> StepResult<Self::Completion> {

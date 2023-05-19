@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ use futures::{
 };
 use std::hash::Hash;
 use swim_api::{
+    downlink::DownlinkKind,
     error::{AgentRuntimeError, FrameIoError},
     protocol::{
         downlink::{DownlinkNotification, MapNotificationDecoder},
@@ -39,10 +40,10 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::handlers::DownlinkChannel,
+    agent_model::downlink::handlers::{DownlinkChannel, DownlinkFailed},
     config::MapDownlinkConfig,
     downlink_lifecycle::map::MapDownlinkLifecycle,
-    event_handler::{BoxEventHandler, EventHandlerExt, Sequentially},
+    event_handler::{BoxEventHandler, HandlerActionExt, Sequentially},
     event_queue::EventQueue,
 };
 
@@ -250,7 +251,7 @@ pub struct HostedMapDownlinkChannel<K: RecognizerReadable, V: RecognizerReadable
     address: Address<Text>,
     receiver: Option<FramedRead<ByteReader, MapNotificationDecoder<K, V>>>,
     state: State,
-    next: Option<DownlinkNotification<MapMessage<K, V>>>,
+    next: Option<Result<DownlinkNotification<MapMessage<K, V>>, FrameIoError>>,
     lifecycle: LC,
     config: MapDownlinkConfig,
     dl_state: DlState,
@@ -288,7 +289,7 @@ where
     V::Rec: Send,
     LC: MapDownlinkLifecycle<K, V, Context> + 'static,
 {
-    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), FrameIoError>>> {
+    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), DownlinkFailed>>> {
         let HostedMapDownlinkChannel {
             address,
             receiver,
@@ -299,13 +300,14 @@ where
             if let Some(rx) = receiver {
                 match rx.next().await {
                     Some(Ok(notification)) => {
-                        *next = Some(notification);
+                        *next = Some(Ok(notification));
                         Some(Ok(()))
                     }
                     Some(Err(e)) => {
                         error!(address = %address, "Downlink input channel failed.");
+                        *next = Some(Err(e));
                         *receiver = None;
-                        Some(Err(e))
+                        Some(Err(DownlinkFailed))
                     }
                     _ => {
                         info!(address = %address, "Downlink terminated normally.");
@@ -338,19 +340,19 @@ where
         } = self;
         if let Some(notification) = next.take() {
             match notification {
-                DownlinkNotification::Linked => {
+                Ok(DownlinkNotification::Linked) => {
                     debug!(address = %address, "Downlink linked.");
                     if *dl_state == DlState::Unlinked {
                         *dl_state = DlState::Linked;
                     }
                     Some(lifecycle.on_linked().boxed())
                 }
-                DownlinkNotification::Synced => {
+                Ok(DownlinkNotification::Synced) => {
                     debug!(address = %address, "Downlink synced.");
                     *dl_state = DlState::Synced;
                     Some(state.with(context, |map| lifecycle.on_synced(&map.map).boxed()))
                 }
-                DownlinkNotification::Event { body } => {
+                Ok(DownlinkNotification::Event { body }) => {
                     let maybe_lifecycle = if *dl_state == DlState::Synced || *events_when_not_synced
                     {
                         Some(&*lifecycle)
@@ -393,7 +395,7 @@ where
                         }
                     }
                 }
-                DownlinkNotification::Unlinked => {
+                Ok(DownlinkNotification::Unlinked) => {
                     debug!(address = %address, "Downlink unlinked.");
                     *dl_state = DlState::Unlinked;
                     if *terminate_on_unlinked {
@@ -402,10 +404,23 @@ where
                     state.clear(context);
                     Some(lifecycle.on_unlinked().boxed())
                 }
+                Err(_) => {
+                    debug!(address = %address, "Downlink failed.");
+                    *dl_state = DlState::Unlinked;
+                    if *terminate_on_unlinked {
+                        *receiver = None;
+                    }
+                    state.clear(context);
+                    Some(lifecycle.on_failed().boxed())
+                }
             }
         } else {
             None
         }
+    }
+
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Map
     }
 }
 

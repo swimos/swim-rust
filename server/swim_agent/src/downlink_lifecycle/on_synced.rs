@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ use crate::{
     event_handler::{EventFn, EventHandler, UnitHandler},
 };
 
-use super::{LiftShared, WithHandlerContext, WithHandlerContextBorrow};
+use crate::lifecycle_fn::{LiftShared, WithHandlerContext, WithHandlerContextBorrow};
 
 /// Lifecycle event for the `on_synced` event of a downlink, from an agent.
 pub trait OnSynced<T, Context>: Send {
@@ -152,7 +152,7 @@ where
     }
 }
 
-impl<Context, T, F, H> OnSynced<T, Context> for WithHandlerContext<Context, F>
+impl<Context, T, F, H> OnSynced<T, Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>, &T) -> H + Send,
     H: EventHandler<Context> + 'static,
@@ -162,15 +162,12 @@ where
         Self: 'a;
 
     fn on_synced<'a>(&'a self, value: &T) -> Self::OnSyncedHandler<'a> {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context, value)
+        let WithHandlerContext { inner } = self;
+        inner(Default::default(), value)
     }
 }
 
-impl<Context, T, B, F, H> OnSynced<T, Context> for WithHandlerContextBorrow<Context, F, B>
+impl<Context, T, B, F, H> OnSynced<T, Context> for WithHandlerContextBorrow<F, B>
 where
     B: ?Sized,
     T: Borrow<B>,
@@ -182,12 +179,8 @@ where
         Self: 'a;
 
     fn on_synced<'a>(&'a self, value: &T) -> Self::OnSyncedHandler<'a> {
-        let WithHandlerContextBorrow {
-            inner,
-            handler_context,
-            ..
-        } = self;
-        inner(*handler_context, value.borrow())
+        let WithHandlerContextBorrow { inner, .. } = self;
+        inner(Default::default(), value.borrow())
     }
 }
 

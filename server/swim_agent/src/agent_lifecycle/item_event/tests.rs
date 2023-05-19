@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+use std::collections::HashMap;
 
 use crate::{
     agent_lifecycle::item_event::{HLeaf, ItemEvent},
@@ -30,8 +32,9 @@ pub fn run_handler<H, Agent>(meta: AgentMetadata<'_>, agent: &Agent, mut event_h
 where
     H: HandlerAction<Agent, Completion = ()>,
 {
+    let mut join_value_init = HashMap::new();
     loop {
-        match event_handler.step(dummy_context(), meta, agent) {
+        match event_handler.step(&mut dummy_context(&mut join_value_init), meta, agent) {
             StepResult::Continue { modified_item } => {
                 assert!(modified_item.is_none());
             }
@@ -44,4 +47,5 @@ where
             }
         }
     }
+    assert!(join_value_init.is_empty());
 }

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -544,7 +544,7 @@ fn map_lane_update_event_handler() {
 
     let mut handler = MapLaneUpdate::new(TestAgent::LANE, K1, Text::new(V1));
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, true, true, Some(()));
 
     agent.lane.get_map(|map| {
@@ -552,7 +552,7 @@ fn map_lane_update_event_handler() {
         assert_eq!(map.get(&K1), Some(&Text::new(V1)));
     });
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -567,7 +567,7 @@ fn map_lane_remove_event_handler() {
 
     let mut handler = MapLaneRemove::new(TestAgent::LANE, K1);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, true, true, Some(()));
 
     agent.lane.get_map(|map| {
@@ -576,7 +576,7 @@ fn map_lane_remove_event_handler() {
         assert_eq!(map.get(&K3), Some(&Text::new(V3)));
     });
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -591,14 +591,14 @@ fn map_lane_clear_event_handler() {
 
     let mut handler = MapLaneClear::new(TestAgent::LANE);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, true, true, Some(()));
 
     agent.lane.get_map(|map| {
         assert!(map.is_empty());
     });
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -613,15 +613,15 @@ fn map_lane_get_event_handler() {
 
     let mut handler = MapLaneGet::new(TestAgent::LANE, K1);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, false, false, Some(Some(Text::new(V1))));
 
     let mut handler = MapLaneGet::new(TestAgent::LANE, ABSENT);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, false, false, Some(None));
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -638,10 +638,10 @@ fn map_lane_get_map_event_handler() {
 
     let expected = init();
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, false, false, Some(expected));
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -656,10 +656,10 @@ fn map_lane_sync_event_handler() {
 
     let mut handler = MapLaneSync::new(TestAgent::LANE, SYNC_ID1);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, true, false, Some(()));
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

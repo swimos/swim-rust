@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::RefCell;
-
 use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
-use std::fmt::Write;
+use std::{cell::RefCell, fmt::Write};
 use swim_api::{
+    downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},
     protocol::{
         downlink::{DownlinkNotification, ValueNotificationDecoder},
@@ -35,10 +34,10 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::handlers::DownlinkChannel,
-    config::ValueDownlinkConfig,
+    agent_model::downlink::handlers::{DownlinkChannel, DownlinkFailed},
+    config::SimpleDownlinkConfig,
     downlink_lifecycle::value::ValueDownlinkLifecycle,
-    event_handler::{BoxEventHandler, EventHandlerExt, HandlerActionExt},
+    event_handler::{BoxEventHandler, HandlerActionExt},
 };
 
 use super::DlState;
@@ -78,36 +77,15 @@ impl<T, Context> ValueDlState<T, Context> for RefCell<Option<T>> {
     }
 }
 
-impl<T, Context, F> ValueDlState<T, Context> for F
-where
-    F: for<'a> Fn(&'a Context) -> &'a RefCell<Option<T>>,
-{
-    fn take_current(&self, context: &Context) -> Option<T> {
-        self(context).replace(None)
-    }
-
-    fn replace(&self, context: &Context, value: T) {
-        self(context).replace(Some(value));
-    }
-
-    fn with<R, Op: FnOnce(Option<&T>) -> R>(&self, context: &Context, op: Op) -> R {
-        op(self(context).borrow().as_ref())
-    }
-
-    fn clear(&self, context: &Context) {
-        self(context).replace(None);
-    }
-}
-
 /// An implementation of [`DownlinkChannel`] to allow a value downlink to be driven by an agent
 /// task.
 pub struct HostedValueDownlinkChannel<T: RecognizerReadable, LC, State> {
     address: Address<Text>,
     receiver: Option<FramedRead<ByteReader, ValueNotificationDecoder<T>>>,
     state: State,
-    next: Option<DownlinkNotification<T>>,
+    next: Option<Result<DownlinkNotification<T>, FrameIoError>>,
     lifecycle: LC,
-    config: ValueDownlinkConfig,
+    config: SimpleDownlinkConfig,
     dl_state: DlState,
 }
 
@@ -117,7 +95,7 @@ impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> 
         receiver: ByteReader,
         lifecycle: LC,
         state: State,
-        config: ValueDownlinkConfig,
+        config: SimpleDownlinkConfig,
     ) -> Self {
         HostedValueDownlinkChannel {
             address,
@@ -131,14 +109,14 @@ impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> 
     }
 }
 
-impl<T, LC, State, Context> DownlinkChannel<Context> for HostedValueDownlinkChannel<T, LC, State>
+impl<T, LC, Context, State> DownlinkChannel<Context> for HostedValueDownlinkChannel<T, LC, State>
 where
     State: ValueDlState<T, Context>,
     T: RecognizerReadable + Send + 'static,
     T::Rec: Send,
     LC: ValueDownlinkLifecycle<T, Context> + 'static,
 {
-    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), FrameIoError>>> {
+    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), DownlinkFailed>>> {
         let HostedValueDownlinkChannel {
             address,
             receiver,
@@ -149,13 +127,14 @@ where
             if let Some(rx) = receiver {
                 match rx.next().await {
                     Some(Ok(notification)) => {
-                        *next = Some(notification);
+                        *next = Some(Ok(notification));
                         Some(Ok(()))
                     }
                     Some(Err(e)) => {
                         error!(address = %address, "Downlink input channel failed.");
                         *receiver = None;
-                        Some(Err(e))
+                        *next = Some(Err(e));
+                        Some(Err(DownlinkFailed))
                     }
                     _ => {
                         info!(address = %address, "Downlink terminated normally.");
@@ -173,13 +152,13 @@ where
     fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>> {
         let HostedValueDownlinkChannel {
             address,
-            state,
             receiver,
+            state,
             next,
             lifecycle,
             dl_state,
             config:
-                ValueDownlinkConfig {
+                SimpleDownlinkConfig {
                     events_when_not_synced,
                     terminate_on_unlinked,
                 },
@@ -187,19 +166,19 @@ where
         } = self;
         if let Some(notification) = next.take() {
             match notification {
-                DownlinkNotification::Linked => {
+                Ok(DownlinkNotification::Linked) => {
                     debug!(address = %address, "Downlink linked.");
                     if *dl_state == DlState::Unlinked {
                         *dl_state = DlState::Linked;
                     }
                     Some(lifecycle.on_linked().boxed())
                 }
-                DownlinkNotification::Synced => state.with(context, |maybe_value| {
+                Ok(DownlinkNotification::Synced) => state.with(context, |maybe_value| {
                     debug!(address = %address, "Downlink synced.");
                     *dl_state = DlState::Synced;
                     maybe_value.map(|value| lifecycle.on_synced(value).boxed())
                 }),
-                DownlinkNotification::Event { body } => {
+                Ok(DownlinkNotification::Event { body }) => {
                     trace!(address = %address, "Event received for downlink.");
                     let prev = state.take_current(context);
                     let handler = if *dl_state == DlState::Synced || *events_when_not_synced {
@@ -214,7 +193,7 @@ where
                     state.replace(context, body);
                     handler
                 }
-                DownlinkNotification::Unlinked => {
+                Ok(DownlinkNotification::Unlinked) => {
                     debug!(address = %address, "Downlink unlinked.");
                     state.clear(context);
                     if *terminate_on_unlinked {
@@ -222,10 +201,22 @@ where
                     }
                     Some(lifecycle.on_unlinked().boxed())
                 }
+                Err(_) => {
+                    debug!(address = %address, "Downlink failed.");
+                    state.clear(context);
+                    if *terminate_on_unlinked {
+                        *receiver = None;
+                    }
+                    Some(lifecycle.on_failed().boxed())
+                }
             }
         } else {
             None
         }
+    }
+
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Value
     }
 }
 
@@ -264,7 +255,7 @@ pub fn value_dl_write_stream<T>(
     watch_rx: circular_buffer::Receiver<T>,
 ) -> impl Stream<Item = Result<(), std::io::Error>> + Send + 'static
 where
-    T: StructuralWritable + Send + Sync + 'static,
+    T: StructuralWritable + Send + 'static,
 {
     let buffer = BytesMut::new();
 

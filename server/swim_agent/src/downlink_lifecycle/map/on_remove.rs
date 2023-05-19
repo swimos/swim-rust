@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    downlink_lifecycle::{LiftShared, WithHandlerContext},
     event_handler::{EventHandler, MapRemoveFn, UnitHandler},
+    lifecycle_fn::{LiftShared, WithHandlerContext},
 };
 
 /// Lifecycle event for the `on_remove` event of a downlink, from an agent.
@@ -139,7 +139,7 @@ where
     }
 }
 
-impl<Context, K, V, F, H> OnDownlinkRemove<K, V, Context> for WithHandlerContext<Context, F>
+impl<Context, K, V, F, H> OnDownlinkRemove<K, V, Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>, K, &HashMap<K, V>, V) -> H + Send,
     H: EventHandler<Context> + 'static,
@@ -154,11 +154,8 @@ where
         map: &HashMap<K, V>,
         removed: V,
     ) -> Self::OnRemoveHandler<'a> {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context, key, map, removed)
+        let WithHandlerContext { inner } = self;
+        inner(Default::default(), key, map, removed)
     }
 }
 

@@ -32,6 +32,7 @@ Contents
     * `CommandLane` events.
     * `ValueLane` events.
     * `MapLane` events.
+    * `JoinValueLane` events.
     * Store events.
     * Borrowing from lifecycles.
     * Interior mutability in lifecycles.

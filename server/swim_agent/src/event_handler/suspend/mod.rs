@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ pub type HandlerFuture<Context> = BoxFuture<'static, BoxEventHandler<'static, Co
 
 /// Trait for suspend handler futures into the task for an agent.
 pub trait Spawner<Context> {
-    /// Suspend a future and hand it over to the task runing the agent. The future will
+    /// Suspend a future and hand it over to the task running the agent. The future will
     /// result in an event handler that will be executed by the agent task after the
     /// future completes.
     fn spawn_suspend(&self, fut: HandlerFuture<Context>);
@@ -73,7 +73,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {

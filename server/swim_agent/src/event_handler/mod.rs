@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, marker::PhantomData};
+use std::{
+    any::{Any, TypeId},
+    cell::RefCell,
+    collections::HashMap,
+    marker::PhantomData,
+};
 
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
@@ -24,7 +29,7 @@ use swim_api::{
     error::{AgentRuntimeError, DownlinkRuntimeError},
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
-use swim_model::address::Address;
+use swim_model::{address::Address, Text};
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
@@ -50,8 +55,8 @@ mod tests;
 pub use suspend::{HandlerFuture, Spawner, Suspend};
 
 pub use handler_fn::{
-    EventFn, HandlerFn0, MapRemoveFn, MapUpdateBorrowFn, MapUpdateFn, TakeFn, UpdateBorrowFn,
-    UpdateFn,
+    EventConsumeFn, EventFn, HandlerFn0, MapRemoveFn, MapUpdateBorrowFn, MapUpdateFn, TakeFn,
+    UpdateBorrowFn, UpdateFn,
 };
 
 use self::register_downlink::RegisterHostedDownlink;
@@ -96,19 +101,8 @@ pub struct ActionContext<'a, Context> {
     spawner: &'a dyn Spawner<Context>,
     agent_context: &'a dyn AgentContext,
     downlink: &'a dyn DownlinkSpawner<Context>,
+    join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
 }
-
-impl<'a, Context> Clone for ActionContext<'a, Context> {
-    fn clone(&self) -> Self {
-        Self {
-            spawner: self.spawner,
-            agent_context: self.agent_context,
-            downlink: self.downlink,
-        }
-    }
-}
-
-impl<'a, Context> Copy for ActionContext<'a, Context> {}
 
 impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
     fn spawn_suspend(&self, fut: HandlerFuture<Context>) {
@@ -131,12 +125,29 @@ impl<'a, Context> ActionContext<'a, Context> {
         spawner: &'a dyn Spawner<Context>,
         agent_context: &'a dyn AgentContext,
         downlink: &'a dyn DownlinkSpawner<Context>,
+        join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
     ) -> Self {
         ActionContext {
             spawner,
             agent_context,
             downlink,
+            join_value_init,
         }
+    }
+
+    pub fn join_value_initializer(
+        &self,
+        lane_id: u64,
+    ) -> Option<&BoxJoinValueInit<'static, Context>> {
+        self.join_value_init.get(&lane_id)
+    }
+
+    pub fn register_join_value_initializer(
+        &mut self,
+        lane_id: u64,
+        factory: BoxJoinValueInit<'static, Context>,
+    ) {
+        self.join_value_init.insert(lane_id, factory);
     }
 
     pub(crate) fn start_downlink<S, F, G, OnDone, H>(
@@ -204,7 +215,7 @@ pub trait HandlerAction<Context> {
     /// * `context` - The execution context of the handler (providing access to the lanes of the agent).
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion>;
@@ -214,7 +225,8 @@ pub trait EventHandler<Context>: HandlerAction<Context, Completion = ()> {}
 
 assert_obj_safe!(EventHandler<()>);
 
-pub type BoxEventHandler<'a, Context> = Box<dyn EventHandler<Context> + 'a>;
+pub type BoxHandlerAction<'a, Context, T> = Box<dyn HandlerAction<Context, Completion = T> + 'a>;
+pub type BoxEventHandler<'a, Context> = BoxHandlerAction<'a, Context, ()>;
 
 impl<Context, H> EventHandler<Context> for H where H: HandlerAction<Context, Completion = ()> {}
 
@@ -226,7 +238,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -242,7 +254,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -261,6 +273,8 @@ pub enum EventHandlerError {
     IncompleteCommand,
     #[error("An error occurred in the agent runtime.")]
     RuntimeError(#[from] AgentRuntimeError),
+    #[error("Invalid key or value type for a join lane lifecycle.")]
+    BadJoinLifecycle(#[from] DowncastError),
 }
 
 /// When a handler completes or suspends it can indicate that is has modified the
@@ -327,7 +341,7 @@ impl<C> StepResult<C> {
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     }
 
-    fn is_cont(&self) -> bool {
+    pub fn is_cont(&self) -> bool {
         matches!(self, StepResult::Continue { .. })
     }
 
@@ -383,7 +397,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -403,7 +417,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -425,6 +439,13 @@ pub struct Map<H, F>(Option<(H, F)>);
 
 /// Type that is returned by the `and_then` method on the [`HandlerActionExt`] trait.
 pub enum AndThen<H1, H2, F> {
+    First { first: H1, next: F },
+    Second(H2),
+    Done,
+}
+
+/// Type that is returned by the `and_then_contextual` method on the [`HandlerActionExt`] trait.
+pub enum AndThenContextual<H1, H2, F> {
     First { first: H1, next: F },
     Second(H2),
     Done,
@@ -456,6 +477,12 @@ impl<H1, H2, F> Default for AndThen<H1, H2, F> {
     }
 }
 
+impl<H1, H2, F> Default for AndThenContextual<H1, H2, F> {
+    fn default() -> Self {
+        AndThenContextual::Done
+    }
+}
+
 impl<H1, H2, F> Default for AndThenTry<H1, H2, F> {
     fn default() -> Self {
         AndThenTry::Done
@@ -477,6 +504,12 @@ impl<H, F> Map<H, F> {
 impl<H1, H2, F> AndThen<H1, H2, F> {
     fn new(first: H1, f: F) -> Self {
         AndThen::First { first, next: f }
+    }
+}
+
+impl<H1, H2, F> AndThenContextual<H1, H2, F> {
+    fn new(first: H1, f: F) -> Self {
+        AndThenContextual::First { first, next: f }
     }
 }
 
@@ -512,6 +545,23 @@ where
     }
 }
 
+/// Transformation within a context.
+pub trait ContextualTrans<Context, In> {
+    type Out;
+    fn transform(self, context: &Context, input: In) -> Self::Out;
+}
+
+impl<Context, In, Out, F> ContextualTrans<Context, In> for F
+where
+    F: FnOnce(&Context, In) -> Out,
+{
+    type Out = Out;
+
+    fn transform(self, context: &Context, input: In) -> Self::Out {
+        self(context, input)
+    }
+}
+
 impl<Context, H, F, T> HandlerAction<Context> for Map<H, F>
 where
     H: HandlerAction<Context>,
@@ -521,7 +571,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -546,6 +596,56 @@ where
     }
 }
 
+impl<Context, H1, H2, F> HandlerAction<Context> for AndThenContextual<H1, H2, F>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+    F: ContextualTrans<Context, H1::Completion, Out = H2>,
+{
+    type Completion = H2::Completion;
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        match std::mem::take(self) {
+            AndThenContextual::First { mut first, next } => {
+                match first.step(action_context, meta, context) {
+                    StepResult::Fail(e) => StepResult::Fail(e),
+                    StepResult::Complete {
+                        modified_item: dirty_lane,
+                        result,
+                    } => {
+                        let second = next.transform(context, result);
+                        *self = AndThenContextual::Second(second);
+                        StepResult::Continue {
+                            modified_item: dirty_lane,
+                        }
+                    }
+                    StepResult::Continue {
+                        modified_item: dirty_lane,
+                    } => {
+                        *self = AndThenContextual::First { first, next };
+                        StepResult::Continue {
+                            modified_item: dirty_lane,
+                        }
+                    }
+                }
+            }
+            AndThenContextual::Second(mut second) => {
+                let step_result = second.step(action_context, meta, context);
+                if step_result.is_cont() {
+                    *self = AndThenContextual::Second(second);
+                }
+                step_result
+            }
+            _ => StepResult::after_done(),
+        }
+    }
+}
+
 impl<Context, H1, H2, F> HandlerAction<Context> for AndThen<H1, H2, F>
 where
     H1: HandlerAction<Context>,
@@ -556,7 +656,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -604,7 +704,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -655,7 +755,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -716,7 +816,7 @@ impl<T, Context> HandlerAction<Context> for ConstHandler<T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -733,7 +833,7 @@ impl<Context> HandlerAction<Context> for CNil {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -750,7 +850,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -772,7 +872,7 @@ impl<Context> HandlerAction<Context> for GetAgentUri {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -809,7 +909,7 @@ impl<Context, T: RecognizerReadable> HandlerAction<Context> for Decode<T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -839,7 +939,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -870,6 +970,18 @@ pub trait HandlerActionExt<Context>: HandlerAction<Context> {
         H2: HandlerAction<Context>,
     {
         AndThen::new(self, f)
+    }
+
+    /// Create a new handler which applies a function to the result of this handler and then executes
+    /// an additional handler returned by the function. The functional also receives access to the
+    /// context.
+    fn and_then_contextual<F, H2>(self, f: F) -> AndThenContextual<Self, H2, F>
+    where
+        Self: Sized,
+        F: ContextualTrans<Context, Self::Completion, Out = H2>,
+        H2: HandlerAction<Context>,
+    {
+        AndThenContextual::new(self, f)
     }
 
     /// Create a new handler which applies a function to the result of this handler and then executes
@@ -908,12 +1020,8 @@ pub trait HandlerActionExt<Context>: HandlerAction<Context> {
     {
         Discard::new(self)
     }
-}
 
-impl<Context, H: HandlerAction<Context>> HandlerActionExt<Context> for H {}
-
-pub trait EventHandlerExt<Context>: EventHandler<Context> {
-    fn boxed<'a>(self) -> BoxEventHandler<'a, Context>
+    fn boxed<'a>(self) -> BoxHandlerAction<'a, Context, Self::Completion>
     where
         Self: Sized + 'a,
     {
@@ -921,7 +1029,7 @@ pub trait EventHandlerExt<Context>: EventHandler<Context> {
     }
 }
 
-impl<Context, H: EventHandler<Context>> EventHandlerExt<Context> for H {}
+impl<Context, H: HandlerAction<Context>> HandlerActionExt<Context> for H {}
 
 pub struct Fail<T, E>(Option<Result<T, E>>);
 
@@ -939,7 +1047,7 @@ where
 
     fn step(
         &mut self,
-        _action_context: ActionContext<Context>,
+        _action_context: &mut ActionContext<Context>,
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -979,7 +1087,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -1040,7 +1148,7 @@ impl<Context, H: HandlerAction<Context>> HandlerAction<Context> for Discard<H> {
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -1079,7 +1187,7 @@ where
 
     fn step(
         &mut self,
-        action_context: ActionContext<Context>,
+        action_context: &mut ActionContext<Context>,
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
@@ -1090,3 +1198,30 @@ where
         }
     }
 }
+
+#[derive(Debug, Error)]
+pub enum DowncastError {
+    #[error("Expected a key of type {expected_type:?} but received type {:?}", key.type_id())]
+    Key {
+        key: Box<dyn Any + Send>,
+        expected_type: TypeId,
+    },
+    #[error("Expected value type {expected_type:?} but received type {actual_type:?}")]
+    Value {
+        actual_type: TypeId,
+        expected_type: TypeId,
+    },
+}
+
+pub trait JoinValueInitializer<Context>: Send {
+    fn try_create_action(
+        &self,
+        key: Box<dyn Any + Send>,
+        value_type: TypeId,
+        address: Address<Text>,
+    ) -> Result<Box<dyn EventHandler<Context> + Send + 'static>, DowncastError>;
+}
+
+static_assertions::assert_obj_safe!(JoinValueInitializer<()>);
+
+pub type BoxJoinValueInit<'a, Context> = Box<dyn JoinValueInitializer<Context> + Send + 'a>;
