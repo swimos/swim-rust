@@ -13,11 +13,9 @@
 // limitations under the License.
 
 pub use model::{
-    ChannelError,  DefaultEventDownlinkModel, DefaultMapDownlinkModel,
-    DefaultValueDownlinkModel,  event_downlink, EventDownlinkModel,
-     map_downlink,
-    MapDownlinkHandle, MapDownlinkModel, NotYetSyncedError, value_downlink,
-      ValueDownlinkModel, ValueDownlinkOperation,
+    event_downlink, map_downlink, value_downlink, ChannelError, DefaultEventDownlinkModel,
+    DefaultMapDownlinkModel, DefaultValueDownlinkModel, EventDownlinkModel, MapDownlinkHandle,
+    MapDownlinkModel, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation,
 };
 pub use task::{DownlinkTask, MapKey, MapValue};
 

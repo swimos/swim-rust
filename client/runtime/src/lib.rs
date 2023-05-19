@@ -24,6 +24,7 @@ pub use runtime::{start_runtime, RawHandle};
 pub use swim_api::downlink::DownlinkKind;
 pub use swim_api::error::DownlinkTaskError;
 use swim_utilities::non_zero_usize;
+pub use transport::Transport;
 
 #[cfg(test)]
 mod tests;

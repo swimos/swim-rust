@@ -24,7 +24,9 @@ use tracing_futures::Instrument;
 
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
-use swim_api::protocol::downlink::{DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, RecNotificationDecoder};
+use swim_api::protocol::downlink::{
+    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, RecNotificationDecoder,
+};
 use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
 use swim_model::address::Address;
