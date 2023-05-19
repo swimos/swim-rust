@@ -4,11 +4,11 @@ jobs:
     strategy:
       matrix:
         Linux:
-          vmImage: ubuntu-18.04
+          vmImage: ubuntu-22.04
 
         ${{ if parameters.cross }}:
           MacOS:
-            vmImage: macOS-10.15
+            vmImage: macOS-12
           Windows:
             vmImage: windows-2019
     pool:
