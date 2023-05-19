@@ -39,7 +39,7 @@ use crate::{
             MapLane, MapLaneClear, MapLaneGet, MapLaneGetMap, MapLaneRemove, MapLaneSync,
             MapLaneUpdate,
         },
-        Lane,
+        LaneItem,
     },
     meta::AgentMetadata,
     test_context::dummy_context,

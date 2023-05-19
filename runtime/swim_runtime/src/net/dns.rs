@@ -108,8 +108,7 @@ impl DnsResolver for Resolver {
 
 #[cfg(feature = "trust-dns")]
 mod trust_dns_impl {
-    use crate::remote::net::dns::DnsResolver;
-    use crate::remote::table::SchemeHostPort;
+    use crate::net::dns::DnsResolver;
     use futures::future::BoxFuture;
     use std::io;
     use std::net::{SocketAddr, ToSocketAddrs};

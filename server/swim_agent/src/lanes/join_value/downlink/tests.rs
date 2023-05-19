@@ -430,7 +430,8 @@ fn run_on_failed_delete() {
     let downlink_lifecycle = JoinValueDownlink::new(TestAgent::LANE, 4, make_address(), lifecycle);
 
     let on_failed = downlink_lifecycle.on_failed();
-    assert!(run_handler(on_failed, meta, &agent).is_empty());
+    let modifications = run_handler(on_failed, meta, &agent);
+    assert_eq!(modifications, vec![Modification::of(ID)]);
     let events = downlink_lifecycle.lifecycle.take();
     if let [Event::Failed { key, remote }] = events.as_slice() {
         assert_eq!(*key, 4);

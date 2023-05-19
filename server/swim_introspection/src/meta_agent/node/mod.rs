@@ -25,7 +25,7 @@ use futures::{
 };
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
-    error::{AgentInitError, AgentTaskError, FrameIoError},
+    error::{AgentTaskError, FrameIoError},
     meta::{
         lane::{LaneInfo, LaneKind},
         uplink::NodePulse,
@@ -97,15 +97,9 @@ async fn run_init(
     context: Box<dyn AgentContext + Send>,
 ) -> AgentInitResult {
     let pattern = node_pattern();
-    let params = match pattern.unapply_route_uri(&route) {
-        Ok(params) => params,
-        Err(e) => return Err(AgentInitError::UserCodeError(Box::new(e))),
-    };
+    let params = pattern.unapply_route_uri(&route)?;
     let node_uri = &params[NODE_PARAM];
-    let handle = match resolver.resolve_agent(Text::from(node_uri)).await {
-        Ok(handle) => handle,
-        Err(e) => return Err(AgentInitError::UserCodeError(Box::new(e))),
-    };
+    let handle = resolver.resolve_agent(Text::from(node_uri)).await?;
     let mut lane_config = config.default_lane_config.unwrap_or_default();
     lane_config.transient = true;
     let pulse_io = context

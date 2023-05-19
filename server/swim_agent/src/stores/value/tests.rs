@@ -24,11 +24,10 @@ use tokio_util::codec::Decoder;
 use crate::{
     agent_model::WriteResult,
     event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
-    item::ValueItem,
     meta::AgentMetadata,
     stores::{
         value::{ValueStore, ValueStoreGet, ValueStoreSet},
-        Store,
+        StoreItem,
     },
     test_context::dummy_context,
 };

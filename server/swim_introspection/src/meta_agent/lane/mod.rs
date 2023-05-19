@@ -17,7 +17,7 @@ use std::time::Duration;
 use futures::{future::BoxFuture, FutureExt};
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
-    error::{AgentInitError, AgentTaskError},
+    error::AgentTaskError,
     meta::{lane::LaneKind, uplink::LanePulse},
 };
 use swim_model::Text;
@@ -81,19 +81,12 @@ async fn run_init(
     context: Box<dyn AgentContext + Send>,
 ) -> AgentInitResult {
     let pattern = lane_pattern();
-    let params = match pattern.unapply_route_uri(&route) {
-        Ok(params) => params,
-        Err(e) => return Err(AgentInitError::UserCodeError(Box::new(e))),
-    };
+    let params = pattern.unapply_route_uri(&route)?;
     let node_uri = &params[NODE_PARAM];
     let lane_name = &params[LANE_PARAM];
-    let view = match resolver
+    let view = resolver
         .resolve_lane(Text::new(node_uri), Text::new(lane_name))
-        .await
-    {
-        Ok(view) => view,
-        Err(e) => return Err(AgentInitError::UserCodeError(Box::new(e))),
-    };
+        .await?;
     let mut lane_config = config.default_lane_config.unwrap_or_default();
     lane_config.transient = true;
     let pulse_io = context
