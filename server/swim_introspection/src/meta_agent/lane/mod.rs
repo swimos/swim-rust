@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use futures::{future::BoxFuture, FutureExt};
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
-    error::AgentTaskError,
+    error::{AgentInitError, AgentTaskError},
     meta::{lane::LaneKind, uplink::LanePulse},
 };
 use swim_model::Text;
@@ -30,11 +30,11 @@ use swim_utilities::{
 use crate::{
     config::IntrospectionConfig,
     model::LaneView,
-    route::{lane_pattern, LANE_PARAM, NODE_PARAM},
+    route::{LANE_PARAM, NODE_PARAM},
     task::IntrospectionResolver,
 };
 
-use super::{run_pulse_lane, PULSE_LANE};
+use super::{run_pulse_lane, MetaRouteError, PULSE_LANE};
 
 #[cfg(test)]
 mod tests;
@@ -58,6 +58,7 @@ impl Agent for LaneMetaAgent {
     fn run(
         &self,
         route: RouteUri,
+        route_params: HashMap<String, String>,
         agent_config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
@@ -66,6 +67,7 @@ impl Agent for LaneMetaAgent {
             config.node_pulse_interval,
             resolver.clone(),
             route,
+            route_params,
             agent_config,
             context,
         )
@@ -77,16 +79,29 @@ async fn run_init(
     pulse_interval: Duration,
     resolver: IntrospectionResolver,
     route: RouteUri,
+    route_params: HashMap<String, String>,
     config: AgentConfig,
     context: Box<dyn AgentContext + Send>,
 ) -> AgentInitResult {
-    let pattern = lane_pattern();
-    let params = pattern.unapply_route_uri(&route)?;
-    let node_uri = &params[NODE_PARAM];
-    let lane_name = &params[LANE_PARAM];
-    let view = resolver
-        .resolve_lane(Text::new(node_uri), Text::new(lane_name))
-        .await?;
+    let node_uri = if let Some(node_uri) = route_params.get(NODE_PARAM) {
+        Text::new(node_uri)
+    } else {
+        return Err(AgentInitError::UserCodeError(Box::new(
+            MetaRouteError::new(route, NODE_PARAM),
+        )));
+    };
+    let lane_name = if let Some(lane_name) = route_params.get(LANE_PARAM) {
+        Text::new(lane_name)
+    } else {
+        return Err(AgentInitError::UserCodeError(Box::new(
+            MetaRouteError::new(route, LANE_PARAM),
+        )));
+    };
+
+    let view = match resolver.resolve_lane(node_uri, lane_name).await {
+        Ok(view) => view,
+        Err(e) => return Err(AgentInitError::UserCodeError(Box::new(e))),
+    };
     let mut lane_config = config.default_lane_config.unwrap_or_default();
     lane_config.transient = true;
     let pulse_io = context

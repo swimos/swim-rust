@@ -886,6 +886,35 @@ impl<Context> HandlerAction<Context> for GetAgentUri {
     }
 }
 
+/// Get a parameter from the route URI of the running agent.
+pub struct GetParameter<S> {
+    key: Option<S>,
+}
+
+impl<S> GetParameter<S> {
+    pub fn new(key: S) -> Self {
+        GetParameter { key: Some(key) }
+    }
+}
+
+impl<Context, S: AsRef<str>> HandlerAction<Context> for GetParameter<S> {
+    type Completion = Option<String>;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let GetParameter { key } = self;
+        if let Some(key) = key.take() {
+            StepResult::done(meta.get_param(key.as_ref()).map(ToString::to_string))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
 /// An event handler that will attempt to decode a [`StructuralReadable`] type from a buffer, immediately
 /// returning the result or an error.
 pub struct Decode<T> {

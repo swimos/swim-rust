@@ -19,6 +19,7 @@ use crate::{
         PULSE_LANE,
     },
     model::LaneView,
+    route::{LANE_PARAM, NODE_PARAM},
     task::IntrospectionMessage,
 };
 use futures::StreamExt;
@@ -47,12 +48,19 @@ async fn run_lane_meta_agent() {
     let route = "swim:meta:node/%2Fnode/lane/my_lane"
         .parse()
         .expect("Invalid route.");
+    let route_params = [
+        (NODE_PARAM.to_string(), "/node".to_string()),
+        (LANE_PARAM.to_string(), "my_lane".to_string()),
+    ]
+    .into_iter()
+    .collect();
 
     let lanes = vec![(PULSE_LANE.to_string(), LaneKind::Supply)];
     introspection_agent_test(
         expected_lane_config,
         lanes,
         route,
+        route_params,
         |resolver| LaneMetaAgent::new(IntrospectionConfig::default(), resolver),
         |context| async move {
             let IntrospectionTestContext {

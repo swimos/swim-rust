@@ -12,20 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
-use crate::{
-    config::IntrospectionConfig,
-    meta_agent::run_pulse_lane,
-    route::{node_pattern, NODE_PARAM},
-};
+use crate::{config::IntrospectionConfig, meta_agent::run_pulse_lane, route::NODE_PARAM};
 use futures::{
     future::{BoxFuture, Either},
     pin_mut, FutureExt, SinkExt, StreamExt,
 };
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
-    error::{AgentTaskError, FrameIoError},
+    error::{AgentInitError, AgentTaskError, FrameIoError},
     meta::{
         lane::{LaneInfo, LaneKind},
         uplink::NodePulse,
@@ -47,7 +43,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use crate::{model::AgentIntrospectionHandle, task::IntrospectionResolver};
 use futures::future::select;
 
-use super::PULSE_LANE;
+use super::{MetaRouteError, PULSE_LANE};
 
 #[cfg(test)]
 mod tests;
@@ -56,7 +52,7 @@ const LANES_LANE: &str = "lanes";
 
 /// A meta agent providing information on the lanes of an agent and aggregate statistics on
 /// the uplinks for all of its lanes. The meta agent extracts the target node URI from its own
-/// node URI and then attempts to resolve the introspection handl during it's initialization
+/// node URI and then attempts to resolve the introspection handle during it's initialization
 /// phase. If the node cannot be resolved, the meta-agent will fail to start with an appropriate
 /// error.
 pub struct NodeMetaAgent {
@@ -74,6 +70,7 @@ impl Agent for NodeMetaAgent {
     fn run(
         &self,
         route: RouteUri,
+        route_params: HashMap<String, String>,
         agent_config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
@@ -82,6 +79,7 @@ impl Agent for NodeMetaAgent {
             config.node_pulse_interval,
             resolver.clone(),
             route,
+            route_params,
             agent_config,
             context,
         )
@@ -93,13 +91,22 @@ async fn run_init(
     pulse_interval: Duration,
     resolver: IntrospectionResolver,
     route: RouteUri,
+    route_params: HashMap<String, String>,
     config: AgentConfig,
     context: Box<dyn AgentContext + Send>,
 ) -> AgentInitResult {
-    let pattern = node_pattern();
-    let params = pattern.unapply_route_uri(&route)?;
-    let node_uri = &params[NODE_PARAM];
-    let handle = resolver.resolve_agent(Text::from(node_uri)).await?;
+    let node_uri = if let Some(node_uri) = route_params.get(NODE_PARAM) {
+        Text::new(node_uri)
+    } else {
+        return Err(AgentInitError::UserCodeError(Box::new(
+            MetaRouteError::new(route, NODE_PARAM),
+        )));
+    };
+
+    let handle = match resolver.resolve_agent(node_uri).await {
+        Ok(handle) => handle,
+        Err(e) => return Err(AgentInitError::UserCodeError(Box::new(e))),
+    };
     let mut lane_config = config.default_lane_config.unwrap_or_default();
     lane_config.transient = true;
     let pulse_io = context

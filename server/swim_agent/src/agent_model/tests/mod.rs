@@ -1,4 +1,4 @@
-use std::{io::ErrorKind, sync::Arc, time::Duration};
+use std::{collections::HashMap, io::ErrorKind, sync::Arc, time::Duration};
 
 // Copyright 2015-2023 Swim Inc.
 //
@@ -130,7 +130,7 @@ async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) 
     let model = AgentModel::<TestAgent, TestLifecycle>::new(lane_model_fac, lifecycle);
 
     let task = model
-        .initialize_agent(make_uri(), CONFIG, context.clone())
+        .initialize_agent(make_uri(), HashMap::new(), CONFIG, context.clone())
         .await
         .expect("Initialization failed.");
 
