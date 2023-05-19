@@ -56,6 +56,17 @@ pub trait EventFn<'a, Context, Shared, T: ?Sized> {
     ) -> Self::Handler;
 }
 
+pub trait EventConsumeFn<'a, Context, Shared, T> {
+    type Handler: EventHandler<Context> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: T,
+    ) -> Self::Handler;
+}
+
 impl<'a, Context, Shared, T, F, H> EventFn<'a, Context, Shared, T> for F
 where
     T: ?Sized,
@@ -70,6 +81,24 @@ where
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         value: &T,
+    ) -> Self::Handler {
+        self(shared, handler_context, value)
+    }
+}
+
+impl<'a, Context, Shared, T, F, H> EventConsumeFn<'a, Context, Shared, T> for F
+where
+    H: EventHandler<Context> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, T) -> H + 'a,
+    Shared: 'a,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: T,
     ) -> Self::Handler {
         self(shared, handler_context, value)
     }

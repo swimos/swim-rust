@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
 use bytes::BytesMut;
 use swim_api::{
@@ -333,13 +333,13 @@ fn value_lane_set_event_handler() {
 
     let mut handler = ValueLaneSet::new(TestAgent::LANE, 84);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, true, true, Some(()));
 
     assert!(agent.lane.store.has_data_to_write());
     assert_eq!(agent.lane.read(|n| *n), 84);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -354,10 +354,10 @@ fn value_lane_get_event_handler() {
 
     let mut handler = ValueLaneGet::new(TestAgent::LANE);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, false, false, Some(0));
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -372,10 +372,10 @@ fn value_lane_sync_event_handler() {
 
     let mut handler = ValueLaneSync::new(TestAgent::LANE, SYNC_ID1);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     check_result(result, true, false, Some(()));
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

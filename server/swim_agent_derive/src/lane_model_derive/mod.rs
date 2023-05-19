@@ -292,7 +292,10 @@ impl<'a> OrdinalLaneModel<'a> {
     }
 
     pub fn map_like(&self) -> bool {
-        matches!(&self.model.kind, LaneSpec::Map(_, _))
+        matches!(
+            &self.model.kind,
+            LaneSpec::Map(_, _) | LaneSpec::JoinValue(_, _)
+        )
     }
 }
 
@@ -306,7 +309,10 @@ impl<'a> OrdinalItemModel<'a> {
     }
 
     fn map_like(&self) -> bool {
-        matches!(&self.model.kind, ItemSpec::Map(_, _, _))
+        matches!(
+            &self.model.kind,
+            ItemSpec::Map(_, _, _) | ItemSpec::JoinValue(_, _)
+        )
     }
 }
 
@@ -336,6 +342,9 @@ impl<'a> FieldInitializer<'a> {
             ItemSpec::Map(ItemKind::Store, _, _) => {
                 quote!(#name: #root::stores::MapStore::new(#ordinal, ::core::default::Default::default()))
             }
+            ItemSpec::JoinValue(_, _) => {
+                quote!(#name: #root::lanes::JoinValueLane::new(#ordinal))
+            }
         }
     }
 }
@@ -362,6 +371,7 @@ impl<'a> HandlerType<'a> {
             LaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::DecodeAndApply<#agent_name, #k, #v>)
             }
+            LaneSpec::JoinValue(_, _) => quote!(#root::event_handler::UnitHandler),
         }
     }
 }
@@ -381,6 +391,9 @@ impl<'a> SyncHandlerType<'a> {
             }
             LaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::MapLaneSync<#agent_name, #k, #v>)
+            }
+            LaneSpec::JoinValue(k, v) => {
+                quote!(#root::lanes::join_value::JoinValueLaneSync<#agent_name, #k, #v>)
             }
         }
     }
@@ -419,6 +432,9 @@ impl<'a> LaneHandlerMatch<'a> {
             }
             LaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v>(body, |agent: &#agent_name| &agent.#name))
+            }
+            LaneSpec::JoinValue(_, _) => {
+                quote!(#root::event_handler::UnitHandler::default())
             }
         };
         quote! {
@@ -472,6 +488,9 @@ impl<'a> SyncHandlerMatch<'a> {
             }
             LaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::MapLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
+            }
+            LaneSpec::JoinValue(k, v) => {
+                quote!(#root::lanes::join_value::JoinValueLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
             }
         };
         quote! {
@@ -538,20 +557,31 @@ impl<'a> ValueItemInitMatch<'a> {
     }
 }
 
+enum InitKind {
+    MapLane,
+    MapStore,
+    JoinValueLane,
+}
+
 struct MapItemInitMatch<'a> {
     agent_name: &'a Ident,
     name: &'a Ident,
     name_lit: proc_macro2::Literal,
-    kind: ItemKind,
+    init_kind: InitKind,
 }
 
 impl<'a> MapItemInitMatch<'a> {
     pub fn new(item: &OrdinalItemModel<'a>) -> Self {
+        let init_kind = match &item.model.kind {
+            ItemSpec::Map(ItemKind::Lane, _, _) => InitKind::MapLane,
+            ItemSpec::Map(ItemKind::Store, _, _) => InitKind::MapStore,
+            _ => InitKind::JoinValueLane,
+        };
         MapItemInitMatch {
             agent_name: item.agent_name,
             name: item.model.name,
             name_lit: item.model.literal(),
-            kind: item.model.item_kind(),
+            init_kind,
         }
     }
 }
@@ -562,14 +592,17 @@ impl<'a> MapItemInitMatch<'a> {
             agent_name,
             name,
             name_lit,
-            kind,
+            init_kind,
         } = self;
-        match kind {
-            ItemKind::Lane => {
+        match init_kind {
+            InitKind::MapLane => {
                 quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::MapLaneInitializer::new(|agent: &#agent_name| &agent.#name))))
             }
-            ItemKind::Store => {
+            InitKind::MapStore => {
                 quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::MapStoreInitializer::new(|agent: &#agent_name| &agent.#name))))
+            }
+            InitKind::JoinValueLane => {
+                quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::JoinValueInitializer::new(|agent: &#agent_name| &agent.#name))))
             }
         }
     }

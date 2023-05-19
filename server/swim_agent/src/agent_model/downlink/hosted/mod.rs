@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod event;
 mod map;
 mod value;
 
+pub use event::HostedEventDownlinkChannel;
 pub use map::{map_dl_write_stream, HostedMapDownlinkChannel, MapDlState, MapDownlinkHandle};
 pub use value::{value_dl_write_stream, HostedValueDownlinkChannel, ValueDownlinkHandle};
 
@@ -27,6 +29,8 @@ enum DlState {
 
 #[cfg(test)]
 mod test_support {
+    use std::collections::HashMap;
+
     use futures::future::BoxFuture;
     use swim_api::{
         agent::{AgentConfig, AgentContext, LaneConfig},
@@ -114,9 +118,11 @@ mod test_support {
         let meta = make_meta(&uri);
         let no_spawn = NoSpawn;
         let no_runtime = NoAgentRuntime;
-        let context = ActionContext::new(&no_spawn, &no_runtime, &no_spawn);
+        let mut join_value_init = HashMap::new();
+        let mut context =
+            ActionContext::new(&no_spawn, &no_runtime, &no_spawn, &mut join_value_init);
         loop {
-            match handler.step(context, meta, agent) {
+            match handler.step(&mut context, meta, agent) {
                 StepResult::Continue { modified_item } => {
                     assert!(modified_item.is_none());
                 }

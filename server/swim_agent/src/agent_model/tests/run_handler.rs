@@ -116,7 +116,7 @@ impl HandlerAction<TestAgent> for Handler {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<TestAgent>,
+        _action_context: &mut ActionContext<TestAgent>,
         _meta: AgentMetadata,
         context: &TestAgent,
     ) -> StepResult<Self::Completion> {
@@ -213,7 +213,7 @@ fn run_test_handler(agent: &TestAgent, lifecycle: TestLifecycle, start_with: Lan
 
     if let Some(handler) = lifecycle.item_event(agent, start_with.name()) {
         let result = run_handler(
-            dummy_context(),
+            &mut dummy_context(&mut HashMap::new()),
             meta,
             agent,
             &lifecycle,

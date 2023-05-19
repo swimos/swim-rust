@@ -23,6 +23,7 @@ use swim::agent::reexport::bytes::BytesMut;
 use swim::agent::reexport::uuid::Uuid;
 use swim::agent::AgentLaneModel;
 use swim_agent::agent_model::ItemKind;
+use swim_agent::lanes::JoinValueLane;
 use swim_agent::stores::{MapStore, ValueStore};
 
 const SYNC_ID: Uuid = Uuid::from_u128(85883);
@@ -293,11 +294,16 @@ fn multiple_lanes() {
         third: ValueLane<i32>,
         fourth: MapLane<i32, i32>,
         fifth: CommandLane<i32>,
+        sixth: JoinValueLane<i32, i32>,
     }
 
     check_agent::<MultipleLanes>(
         vec![persistent("first"), persistent("third"), transient("fifth")],
-        vec![persistent("second"), persistent("fourth")],
+        vec![
+            persistent("second"),
+            persistent("fourth"),
+            persistent("sixth"),
+        ],
     );
 }
 
@@ -383,6 +389,39 @@ fn command_lane_tagged_transient() {
     check_agent::<TwoCommandLanes>(vec![transient("first"), transient("second")], vec![]);
 }
 
+#[test]
+fn single_join_value_lane() {
+    #[derive(AgentLaneModel)]
+    struct SingleJoinValueLane {
+        lane: JoinValueLane<i32, i32>,
+    }
+
+    check_agent::<SingleJoinValueLane>(vec![], vec![persistent("lane")]);
+}
+
+#[test]
+fn two_join_value_lanes() {
+    #[derive(AgentLaneModel)]
+    struct TwoJoinValueLanes {
+        first: JoinValueLane<i32, i32>,
+        second: JoinValueLane<i32, i32>,
+    }
+
+    check_agent::<TwoJoinValueLanes>(vec![], vec![persistent("first"), persistent("second")]);
+}
+
+#[test]
+fn join_value_lane_tagged_transient() {
+    #[derive(AgentLaneModel)]
+    struct TwoJoinValueLanes {
+        first: JoinValueLane<i32, i32>,
+        #[transient]
+        second: JoinValueLane<i32, i32>,
+    }
+
+    check_agent::<TwoJoinValueLanes>(vec![], vec![persistent("first"), transient("second")]);
+}
+
 mod isolated {
 
     use super::{check_agent_with_stores, persistent_lane, persistent_store, transient_lane};
@@ -398,6 +437,7 @@ mod isolated {
             fifth: swim::agent::lanes::CommandLane<i32>,
             sixth: swim::agent::stores::ValueStore<i32>,
             seventh: swim::agent::stores::MapStore<i32, i32>,
+            eighth: swim::agent::lanes::JoinValueLane<i32, i32>,
         }
 
         check_agent_with_stores::<MultipleLanes>(
@@ -411,6 +451,7 @@ mod isolated {
                 persistent_lane("second"),
                 persistent_lane("fourth"),
                 persistent_store("seventh"),
+                persistent_lane("eighth"),
             ],
         );
     }

@@ -20,6 +20,7 @@ pub mod event_handler;
 mod event_queue;
 pub mod item;
 pub mod lanes;
+mod lifecycle_fn;
 mod map_storage;
 pub mod meta;
 pub mod stores;

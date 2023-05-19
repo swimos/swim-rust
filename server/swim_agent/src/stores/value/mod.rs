@@ -208,7 +208,7 @@ impl<C, T: Clone> HandlerAction<C> for ValueStoreGet<C, T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -229,7 +229,7 @@ impl<C, T> HandlerAction<C> for ValueStoreSet<C, T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {

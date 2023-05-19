@@ -110,7 +110,7 @@ impl<K: Clone, V: Clone> HandlerAction<TestAgent> for OnUpdateHandler<K, V> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<TestAgent>,
+        _action_context: &mut ActionContext<TestAgent>,
         _meta: AgentMetadata,
         _context: &TestAgent,
     ) -> StepResult<Self::Completion> {
@@ -149,7 +149,7 @@ impl<K: Clone, V: Clone> HandlerAction<TestAgent> for OnRemoveHandler<K, V> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<TestAgent>,
+        _action_context: &mut ActionContext<TestAgent>,
         _meta: AgentMetadata,
         _context: &TestAgent,
     ) -> StepResult<Self::Completion> {
@@ -185,7 +185,7 @@ impl<K: Clone, V: Clone> HandlerAction<TestAgent> for OnClearHandler<K, V> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<TestAgent>,
+        _action_context: &mut ActionContext<TestAgent>,
         _meta: AgentMetadata,
         _context: &TestAgent,
     ) -> StepResult<Self::Completion> {

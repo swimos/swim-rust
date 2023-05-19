@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{num::NonZeroUsize, sync::Arc};
+use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 
 use futures::{
     future::{ready, BoxFuture},
@@ -35,13 +35,13 @@ use swim_utilities::{
 };
 
 use crate::{
-    config::{MapDownlinkConfig, ValueDownlinkConfig},
+    config::{MapDownlinkConfig, SimpleDownlinkConfig},
     downlink_lifecycle::{
         map::StatefulMapDownlinkLifecycle, value::StatefulValueDownlinkLifecycle,
     },
     event_handler::{
-        ActionContext, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner, StepResult,
-        WriteStream,
+        ActionContext, BoxJoinValueInit, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner,
+        StepResult, WriteStream,
     },
     meta::AgentMetadata,
 };
@@ -153,12 +153,14 @@ async fn run_all_and_check(
     mut spawner: TestSpawner,
     context: TestContext,
     meta: AgentMetadata<'_>,
+    join_value_init: &mut HashMap<u64, BoxJoinValueInit<'static, TestAgent>>,
     agent: &TestAgent,
 ) {
     while let Some(handler) = spawner.futures.next().await {
-        let action_context = ActionContext::new(&spawner, &context, &spawner);
-        run_handler(handler, action_context, agent, meta);
+        let mut action_context = ActionContext::new(&spawner, &context, &spawner, join_value_init);
+        run_handler(handler, &mut action_context, agent, meta);
     }
+    assert!(join_value_init.is_empty());
     spawner
         .inner
         .lock()
@@ -169,7 +171,7 @@ async fn run_all_and_check(
 
 fn run_handler<H>(
     mut handler: H,
-    action_context: ActionContext<'_, TestAgent>,
+    action_context: &mut ActionContext<'_, TestAgent>,
     agent: &TestAgent,
     meta: AgentMetadata<'_>,
 ) -> H::Completion
@@ -197,12 +199,13 @@ where
 async fn open_value_downlink() {
     let uri = make_uri();
     let meta = make_meta(&uri);
+    let mut join_value_init = HashMap::new();
     let lifecycle = StatefulValueDownlinkLifecycle::<TestAgent, _, i32>::new(());
 
     let handler = OpenValueDownlinkAction::<i32, _>::new(
         Address::text(Some(HOST), NODE, LANE),
         lifecycle,
-        ValueDownlinkConfig::default(),
+        SimpleDownlinkConfig::default(),
     );
 
     let spawner = TestSpawner::default();
@@ -211,16 +214,17 @@ async fn open_value_downlink() {
     let context = TestContext::new(DownlinkKind::Value, (in_tx, out_rx));
 
     let agent = TestAgent;
-    let action_context = ActionContext::new(&spawner, &context, &spawner);
-    let _handle = run_handler(handler, action_context, &agent, meta);
+    let mut action_context = ActionContext::new(&spawner, &context, &spawner, &mut join_value_init);
+    let _handle = run_handler(handler, &mut action_context, &agent, meta);
 
-    run_all_and_check(spawner, context, meta, &agent).await;
+    run_all_and_check(spawner, context, meta, &mut join_value_init, &agent).await;
 }
 
 #[tokio::test]
 async fn open_map_downlink() {
     let uri = make_uri();
     let meta = make_meta(&uri);
+    let mut join_value_init = HashMap::new();
     let lifecycle = StatefulMapDownlinkLifecycle::<TestAgent, _, i32, Text>::new(());
 
     let handler = OpenMapDownlinkAction::<i32, Text, _>::new(
@@ -235,8 +239,8 @@ async fn open_map_downlink() {
     let context = TestContext::new(DownlinkKind::Map, (in_tx, out_rx));
 
     let agent = TestAgent;
-    let action_context = ActionContext::new(&spawner, &context, &spawner);
-    let _handle = run_handler(handler, action_context, &agent, meta);
+    let mut action_context = ActionContext::new(&spawner, &context, &spawner, &mut join_value_init);
+    let _handle = run_handler(handler, &mut action_context, &agent, meta);
 
-    run_all_and_check(spawner, context, meta, &agent).await;
+    run_all_and_check(spawner, context, meta, &mut join_value_init, &agent).await;
 }

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
+
 use bytes::BytesMut;
 use swim_api::{
     agent::AgentConfig,
@@ -110,7 +112,7 @@ fn command_event_handler() {
 
     let mut handler = DoCommand::new(TestAgent::LANE, 546);
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
 
     assert!(matches!(
         result,
@@ -125,7 +127,7 @@ fn command_event_handler() {
 
     assert_eq!(agent.lane.with_prev(Clone::clone), Some(546));
 
-    let result = handler.step(dummy_context(), meta, &agent);
+    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)

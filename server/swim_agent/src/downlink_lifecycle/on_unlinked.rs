@@ -19,7 +19,7 @@ use crate::{
     event_handler::{EventHandler, HandlerFn0, UnitHandler},
 };
 
-use super::{LiftShared, WithHandlerContext};
+use crate::lifecycle_fn::{LiftShared, WithHandlerContext};
 
 /// Lifecycle event for the `on_unlinked` event of a downlink, from an agent.
 pub trait OnUnlinked<Context>: Send {
@@ -107,7 +107,7 @@ where
     }
 }
 
-impl<Context, F, H> OnUnlinked<Context> for WithHandlerContext<Context, F>
+impl<Context, F, H> OnUnlinked<Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>) -> H + Send,
     H: EventHandler<Context> + 'static,
@@ -117,11 +117,8 @@ where
         Self: 'a;
 
     fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context)
+        let WithHandlerContext { inner } = self;
+        inner(Default::default())
     }
 }
 

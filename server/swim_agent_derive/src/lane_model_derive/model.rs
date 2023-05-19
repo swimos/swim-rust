@@ -51,6 +51,7 @@ pub enum ItemSpec<'a> {
     Command(&'a Type),
     Value(ItemKind, &'a Type),
     Map(ItemKind, &'a Type, &'a Type),
+    JoinValue(&'a Type, &'a Type),
 }
 
 impl<'a> ItemSpec<'a> {
@@ -59,15 +60,16 @@ impl<'a> ItemSpec<'a> {
             ItemSpec::Command(t) => Some(LaneSpec::Command(t)),
             ItemSpec::Value(ItemKind::Lane, t) => Some(LaneSpec::Value(t)),
             ItemSpec::Map(ItemKind::Lane, k, v) => Some(LaneSpec::Map(k, v)),
+            ItemSpec::JoinValue(k, v) => Some(LaneSpec::JoinValue(k, v)),
             _ => None,
         }
     }
 
     pub fn item_kind(&self) -> ItemKind {
         match self {
-            ItemSpec::Command(_) => ItemKind::Lane,
             ItemSpec::Value(k, _) => *k,
             ItemSpec::Map(k, _, _) => *k,
+            _ => ItemKind::Lane,
         }
     }
 }
@@ -78,18 +80,19 @@ pub enum LaneSpec<'a> {
     Command(&'a Type),
     Value(&'a Type),
     Map(&'a Type, &'a Type),
+    JoinValue(&'a Type, &'a Type),
 }
 
 impl<'a> ItemSpec<'a> {
     pub fn is_stateful(&self) -> bool {
-        matches!(self, ItemSpec::Value(_, _) | ItemSpec::Map(_, _, _))
+        !matches!(self, ItemSpec::Command(_))
     }
 }
 
 bitflags! {
 
     pub struct ItemFlags: u8 {
-        /// The state of the lane should not be persistend.
+        /// The state of the lane should not be persisted.
         const TRANSIENT = 0b01;
     }
 }
@@ -113,11 +116,7 @@ impl<'a> ItemModel<'a> {
     }
 
     pub fn item_kind(&self) -> ItemKind {
-        match self.kind {
-            ItemSpec::Command(_) => ItemKind::Lane,
-            ItemSpec::Value(kind, _) => kind,
-            ItemSpec::Map(kind, _, _) => kind,
-        }
+        self.kind.item_kind()
     }
 }
 
@@ -219,6 +218,7 @@ const VALUE_LANE_NAME: &str = "ValueLane";
 const VALUE_STORE_NAME: &str = "ValueStore";
 const MAP_LANE_NAME: &str = "MapLane";
 const MAP_STORE_NAME: &str = "MapStore";
+const JOIN_VALUE_LANE_NAME: &str = "JoinValueLane";
 
 fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
     if let (Some(fld_name), Type::Path(TypePath { qself: None, path })) = (&field.ident, &field.ty)
@@ -268,6 +268,14 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
                     Ok(ItemModel::new(
                         fld_name,
                         ItemSpec::Map(ItemKind::Store, param1, param2),
+                        lane_flags,
+                    ))
+                }
+                JOIN_VALUE_LANE_NAME => {
+                    let (param1, param2) = two_params(arguments)?;
+                    Ok(ItemModel::new(
+                        fld_name,
+                        ItemSpec::JoinValue(param1, param2),
                         lane_flags,
                     ))
                 }

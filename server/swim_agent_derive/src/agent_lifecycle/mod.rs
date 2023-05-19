@@ -18,7 +18,7 @@ use syn::{parse_quote, Path, Type};
 
 use self::{
     model::{
-        AgentLifecycleDescriptor, CommandLifecycleDescriptor, ItemLifecycle,
+        AgentLifecycleDescriptor, CommandLifecycleDescriptor, ItemLifecycle, JoinValueInit,
         MapLifecycleDescriptor, ValueLifecycleDescriptor,
     },
     tree::BinTree,
@@ -191,14 +191,23 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
                     on_start,
                     on_stop,
                     ref lane_lifecycles,
+                    ref init_blocks,
                 },
         } = *self;
 
-        let lane_lifecycles = LifecycleTree::new(root, agent_type, lifecycle_type, lane_lifecycles);
+        let lane_lifecycle_tree =
+            LifecycleTree::new(root, agent_type, lifecycle_type, lane_lifecycles);
 
         let mut lifecycle_builder: syn::Expr = parse_quote! {
             #root::agent_lifecycle::stateful::StatefulAgentLifecycle::<#agent_type, _>::new(self)
         };
+
+        if !init_blocks.is_empty() {
+            let init_handler = construct_join_init(init_blocks, root, agent_type, lifecycle_type);
+            lifecycle_builder = parse_quote! {
+                #root::agent_lifecycle::stateful::StatefulAgentLifecycle::on_init(#lifecycle_builder, #init_handler)
+            };
+        }
 
         if let Some(on_start) = on_start {
             lifecycle_builder = parse_quote! {
@@ -216,7 +225,7 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
 
             impl #lifecycle_type {
                 pub fn into_lifecycle(self) -> impl #root::agent_lifecycle::AgentLifecycle<#agent_type> + ::core::clone::Clone + ::core::marker::Send + 'static {
-                    let lane_lifecycle = #lane_lifecycles;
+                    let lane_lifecycle = #lane_lifecycle_tree;
                     #root::agent_lifecycle::stateful::StatefulAgentLifecycle::on_lane_event(
                         #lifecycle_builder,
                         lane_lifecycle
@@ -226,4 +235,22 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
 
         });
     }
+}
+
+fn construct_join_init(
+    join_inits: &[JoinValueInit<'_>],
+    root: &Path,
+    agent_type: &Path,
+    lifecycle_type: &Type,
+) -> impl ToTokens {
+    let base =
+        quote!(<#root::agent_lifecycle::on_init::InitNil as ::core::default::Default>::default());
+    join_inits.iter().rev().fold(base, |acc, init| {
+        let item_name = init.item_ident();
+        let lifecycle = init.lifecycle;
+        let constructor = quote! {
+            #root::agent_lifecycle::on_init::RegisterJoinValue::new(|agent: &#agent_type| &agent.#item_name, #lifecycle_type::#lifecycle)
+        };
+        quote!(#root::agent_lifecycle::on_init::InitCons::cons(#constructor, #acc))
+    })
 }

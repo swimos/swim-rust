@@ -29,6 +29,20 @@ pub struct Address<T> {
     pub lane: T,
 }
 
+impl<T> Address<T> {
+    pub fn borrow_parts<R: ?Sized>(&self) -> Address<&R>
+    where
+        T: AsRef<R>,
+    {
+        let Address { host, node, lane } = self;
+        Address {
+            host: host.as_ref().map(AsRef::as_ref),
+            node: node.as_ref(),
+            lane: lane.as_ref(),
+        }
+    }
+}
+
 impl<T: Display + Debug> Display for Address<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -92,5 +106,12 @@ impl Address<Text> {
             node: Text::new(node),
             lane: Text::new(lane),
         }
+    }
+}
+
+impl Address<&str> {
+    pub fn to_text(&self) -> Address<Text> {
+        let Address { host, node, lane } = self;
+        Address::text(*host, node, lane)
     }
 }

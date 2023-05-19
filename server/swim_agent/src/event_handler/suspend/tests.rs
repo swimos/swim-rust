@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use crate::{
     event_handler::{ActionContext, EventHandlerError, HandlerAction, SideEffect, StepResult},
@@ -51,6 +51,7 @@ struct DummyAgent;
 async fn suspend_future() {
     let uri = make_uri();
     let meta = make_meta(&uri);
+    let mut join_value_init = HashMap::new();
 
     let (tx, mut rx) = mpsc::channel(4);
     let (done_tx, done_rx) = trigger::trigger();
@@ -65,7 +66,12 @@ async fn suspend_future() {
     let mut spawner = FuturesUnordered::new();
 
     let result = suspend.step(
-        ActionContext::new(&spawner, &DummyAgentContext, &no_downlink),
+        &mut ActionContext::new(
+            &spawner,
+            &DummyAgentContext,
+            &no_downlink,
+            &mut join_value_init,
+        ),
         meta,
         &DummyAgent,
     );
@@ -85,7 +91,12 @@ async fn suspend_future() {
         assert_eq!(rx.recv().await, Some(45));
 
         let result = handler.step(
-            ActionContext::new(&spawner, &DummyAgentContext, &no_downlink),
+            &mut ActionContext::new(
+                &spawner,
+                &DummyAgentContext,
+                &no_downlink,
+                &mut join_value_init,
+            ),
             meta,
             &DummyAgent,
         );
@@ -100,7 +111,12 @@ async fn suspend_future() {
         assert!(done_rx.await.is_ok());
 
         let result = suspend.step(
-            ActionContext::new(&spawner, &DummyAgentContext, &no_downlink),
+            &mut ActionContext::new(
+                &spawner,
+                &DummyAgentContext,
+                &no_downlink,
+                &mut join_value_init,
+            ),
             meta,
             &DummyAgent,
         );

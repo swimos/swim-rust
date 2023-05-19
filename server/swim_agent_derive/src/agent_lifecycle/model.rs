@@ -20,9 +20,9 @@ use swim_utilities::errors::{
     Errors,
 };
 use syn::{
-    parse_quote, Attribute, AttributeArgs, FnArg, GenericParam, Ident, ImplItem, ImplItemMethod,
-    Item, Lit, Meta, NestedMeta, Path, PathArguments, PathSegment, ReturnType, Signature, Type,
-    TypeReference,
+    parse_quote, AngleBracketedGenericArguments, Attribute, AttributeArgs, FnArg, GenericArgument,
+    GenericParam, Ident, ImplItem, ImplItemMethod, Item, Lit, Meta, NestedMeta, Path,
+    PathArguments, PathSegment, ReturnType, Signature, Type, TypePath, TypeReference,
 };
 
 use super::tree::BinTree;
@@ -177,7 +177,7 @@ impl HandlerDescriptor {
         }
     }
 }
-/// Valiate a single method and, if it is an event handler, attempt to add it to the
+/// Validate a single method and, if it is an event handler, attempt to add it to the
 /// lifecycle descriptor.
 fn validate_method<'a>(
     acc: AgentLifecycleDescriptorBuilder<'a>,
@@ -287,28 +287,46 @@ fn validate_method_as<'a>(
                     Validation::valid(acc)
                 })
             }
-            HandlerKind::Update => Validation::join(acc, validate_typed_sig(sig, 4, true))
-                .and_then(|(mut acc, t)| {
-                    for target in targets {
-                        if let Err(e) = acc.add_on_update(target, t, &sig.ident) {
-                            return Validation::Validated(acc, Errors::of(e));
-                        }
+            HandlerKind::Update => Validation::join(
+                acc,
+                validate_typed_sig(sig, 4, true).and_then(|t| hash_map_type_params(sig, t)),
+            )
+            .and_then(|(mut acc, (k, v))| {
+                for target in targets {
+                    if let Err(e) = acc.add_on_update(target, k, v, &sig.ident) {
+                        return Validation::Validated(acc, Errors::of(e));
                     }
-                    Validation::valid(acc)
-                }),
-            HandlerKind::Remove => Validation::join(acc, validate_typed_sig(sig, 3, true))
-                .and_then(|(mut acc, t)| {
-                    for target in targets {
-                        if let Err(e) = acc.add_on_remove(target, t, &sig.ident) {
-                            return Validation::Validated(acc, Errors::of(e));
-                        }
+                }
+                Validation::valid(acc)
+            }),
+            HandlerKind::Remove => Validation::join(
+                acc,
+                validate_typed_sig(sig, 3, true).and_then(|t| hash_map_type_params(sig, t)),
+            )
+            .and_then(|(mut acc, (k, v))| {
+                for target in targets {
+                    if let Err(e) = acc.add_on_remove(target, k, v, &sig.ident) {
+                        return Validation::Validated(acc, Errors::of(e));
                     }
-                    Validation::valid(acc)
-                }),
-            HandlerKind::Clear => Validation::join(acc, validate_typed_sig(sig, 1, false))
-                .and_then(|(mut acc, t)| {
+                }
+                Validation::valid(acc)
+            }),
+            HandlerKind::Clear => Validation::join(
+                acc,
+                validate_typed_sig(sig, 1, false).and_then(|t| hash_map_type_params(sig, t)),
+            )
+            .and_then(|(mut acc, (k, v))| {
+                for target in targets {
+                    if let Err(e) = acc.add_on_clear(target, k, v, &sig.ident) {
+                        return Validation::Validated(acc, Errors::of(e));
+                    }
+                }
+                Validation::valid(acc)
+            }),
+            HandlerKind::JoinValue => Validation::join(acc, validate_join_lifecycle_sig(sig))
+                .and_then(|(mut acc, (k, v))| {
                     for target in targets {
-                        if let Err(e) = acc.add_on_clear(target, t, &sig.ident) {
+                        if let Err(e) = acc.add_join_lifecycle(target, k, v, &sig.ident) {
                             return Validation::Validated(acc, Errors::of(e));
                         }
                     }
@@ -367,6 +385,47 @@ fn validate_no_type_sig(sig: &Signature) -> Validation<(), Errors<syn::Error>> {
         })
 }
 
+fn validate_join_lifecycle_sig(sig: &Signature) -> Validation<(&Type, &Type), Errors<syn::Error>> {
+    let iter = sig.inputs.iter();
+    check_receiver(sig, iter).and_then(|iter| {
+        let param_types = extract_types(iter);
+        match param_types.first() {
+            Some(context_type) if param_types.len() == 1 => {
+                extract_join_value_params(sig, context_type)
+            }
+            _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+        }
+    })
+}
+
+const JOIN_VALUE_CONTEXT: &str = "JoinValueContext";
+
+fn extract_join_value_params<'a>(
+    sig: &Signature,
+    param_type: &'a Type,
+) -> Validation<(&'a Type, &'a Type), Errors<syn::Error>> {
+    match param_type {
+        Type::Path(TypePath { qself: None, path }) => match path.segments.last() {
+            Some(PathSegment {
+                ident,
+                arguments:
+                    PathArguments::AngleBracketed(AngleBracketedGenericArguments { args, .. }),
+            }) if ident == JOIN_VALUE_CONTEXT && args.len() == 3 => {
+                match (&args[0], &args[1], &args[2]) {
+                    (
+                        GenericArgument::Type(_),
+                        GenericArgument::Type(key_type),
+                        GenericArgument::Type(value_type),
+                    ) => Validation::valid((key_type, value_type)),
+                    _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+                }
+            }
+            _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+        },
+        _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+    }
+}
+
 /// Check a method for use as a lane lifecycle handler. Returns the type that the lane should
 /// have.
 fn validate_typed_sig(
@@ -413,6 +472,32 @@ fn peel_ref_type<'a>(
     }
 }
 
+const HASH_MAP: &str = "HashMap";
+
+fn hash_map_type_params<'a>(
+    sig: &Signature,
+    map_type: &'a Type,
+) -> Validation<(&'a Type, &'a Type), Errors<syn::Error>> {
+    match map_type {
+        Type::Path(TypePath { qself: None, path }) => match path.segments.last() {
+            Some(PathSegment {
+                ident,
+                arguments:
+                    PathArguments::AngleBracketed(AngleBracketedGenericArguments { args, .. }),
+            }) if ident == HASH_MAP && (args.len() == 2 || args.len() == 3) => {
+                match (&args[0], &args[1]) {
+                    (GenericArgument::Type(key_type), GenericArgument::Type(value_type)) => {
+                        Validation::valid((key_type, value_type))
+                    }
+                    _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+                }
+            }
+            _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+        },
+        _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+    }
+}
+
 /// Check that the receiver of the method is &self.
 fn check_receiver<'a, I: Iterator<Item = &'a FnArg> + 'a>(
     sig: &'a Signature,
@@ -451,6 +536,7 @@ fn get_kind(attr: &Attribute) -> Option<Result<(HandlerKind, Vec<String>), syn::
             ON_UPDATE => Some(HandlerKind::Update),
             ON_REMOVE => Some(HandlerKind::Remove),
             ON_CLEAR => Some(HandlerKind::Clear),
+            JOIN_VALUE => Some(HandlerKind::JoinValue),
             _ => None,
         };
         kind.map(|k| match &k {
@@ -468,7 +554,7 @@ fn get_kind(attr: &Attribute) -> Option<Result<(HandlerKind, Vec<String>), syn::
     }
 }
 
-/// Extract the lanes to which a handler shoulld be attached. This supports a comma
+/// Extract the lanes to which a handler should be attached. This supports a comma
 /// separated list of literal strings or identifiers.
 fn extract_targets(attr: &Attribute) -> Result<Vec<String>, syn::Error> {
     let meta = attr.parse_meta()?;
@@ -515,13 +601,14 @@ fn extract_targets(attr: &Attribute) -> Result<Vec<String>, syn::Error> {
 enum HandlerKind {
     Start,
     Stop,
-    StartAndStop, // Inidicates that a single method is used for the on_start and on_stop events.
+    StartAndStop, // Indicates that a single method is used for the on_start and on_stop events.
     Command,
     Event,
     Set,
     Update,
     Remove,
     Clear,
+    JoinValue,
 }
 
 impl HandlerKind {
@@ -552,6 +639,7 @@ const ON_SET: &str = "on_set";
 const ON_UPDATE: &str = "on_update";
 const ON_REMOVE: &str = "on_remove";
 const ON_CLEAR: &str = "on_clear";
+const JOIN_VALUE: &str = "join_value_lifecycle";
 
 /// Check if an attribute is an event handler attribute. This simple checks the name and not
 /// the contents.
@@ -573,6 +661,7 @@ fn assess_attr(attr: &Attribute) -> bool {
                         | ON_UPDATE
                         | ON_REMOVE
                         | ON_CLEAR
+                        | JOIN_VALUE
                 )
             }
             _ => false,
@@ -580,13 +669,29 @@ fn assess_attr(attr: &Attribute) -> bool {
     }
 }
 
+pub struct JoinValueInit<'a> {
+    pub name: String,
+    pub lifecycle: &'a Ident,
+}
+
+impl<'a> JoinValueInit<'a> {
+    pub fn new(name: String, lifecycle: &'a Ident) -> Self {
+        JoinValueInit { name, lifecycle }
+    }
+
+    pub fn item_ident(&self) -> Ident {
+        Ident::new(&self.name, Span::call_site())
+    }
+}
+
 /// Descriptor of an agent lifecycle, extracted from an impl block.
 pub struct AgentLifecycleDescriptor<'a> {
-    pub root: Path,                                          //The root module path.
-    pub agent_type: Path,                                    //The agent this is a lifecycle of.
+    pub root: Path,               //The root module path.
+    pub agent_type: Path,         //The agent this is a lifecycle of.
     pub lifecycle_type: &'a Type, //The type of the lifecycle (taken from the impl block).
+    pub init_blocks: Vec<JoinValueInit<'a>>,
     pub on_start: Option<&'a Ident>, //A handler attached to the on_start event.
-    pub on_stop: Option<&'a Ident>, //A handler attached to the on_stop event.
+    pub on_stop: Option<&'a Ident>,  //A handler attached to the on_stop event.
     pub lane_lifecycles: BinTree<String, ItemLifecycle<'a>>, //Labelled tree of lane handlers.
 }
 
@@ -621,10 +726,24 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             on_stop,
             lane_lifecycles,
         } = self;
+
+        let init_blocks = lane_lifecycles
+            .values()
+            .filter_map(|item| match item {
+                ItemLifecycle::Map(MapLifecycleDescriptor {
+                    name,
+                    join_lifecycle: Some(join_lc),
+                    ..
+                }) => Some(JoinValueInit::new(name.clone(), join_lc)),
+                _ => None,
+            })
+            .collect();
+
         AgentLifecycleDescriptor {
             root,
             agent_type,
             lifecycle_type,
+            init_blocks,
             on_start,
             on_stop,
             lane_lifecycles: BinTree::from(lane_lifecycles),
@@ -648,6 +767,39 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
         } else {
             *on_start = Some(method);
             Ok(())
+        }
+    }
+
+    pub fn add_join_lifecycle(
+        &mut self,
+        name: String,
+        key_type: &'a Type,
+        value_type: &'a Type,
+        method: &'a Ident,
+    ) -> Result<(), syn::Error> {
+        let AgentLifecycleDescriptorBuilder {
+            lane_lifecycles, ..
+        } = self;
+        match lane_lifecycles.get_mut(&name) {
+            Some(ItemLifecycle::Map(desc)) => desc.add_join_lifecycle(key_type, value_type, method),
+            None => {
+                lane_lifecycles.insert(
+                    name.clone(),
+                    ItemLifecycle::Map(MapLifecycleDescriptor::new_join_lifecycle(
+                        name,
+                        (key_type, value_type),
+                        method,
+                    )),
+                );
+                Ok(())
+            }
+            _ => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both a join lane lifecycle and non-map event handlers.",
+                    name
+                ),
+            )),
         }
     }
 
@@ -774,7 +926,8 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
     pub fn add_on_update(
         &mut self,
         name: String,
-        map_type: &'a Type,
+        key_type: &'a Type,
+        value_type: &'a Type,
         method: &'a Ident,
     ) -> Result<(), syn::Error> {
         let AgentLifecycleDescriptorBuilder {
@@ -795,8 +948,9 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     name
                 ),
             )),
-            Some(ItemLifecycle::Map(desc)) => desc.add_on_update(map_type, method),
+            Some(ItemLifecycle::Map(desc)) => desc.add_on_update(key_type, value_type, method),
             _ => {
+                let map_type = (key_type, value_type);
                 lane_lifecycles.insert(
                     name.clone(),
                     ItemLifecycle::Map(MapLifecycleDescriptor::new_on_update(
@@ -811,7 +965,8 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
     pub fn add_on_remove(
         &mut self,
         name: String,
-        map_type: &'a Type,
+        key_type: &'a Type,
+        value_type: &'a Type,
         method: &'a Ident,
     ) -> Result<(), syn::Error> {
         let AgentLifecycleDescriptorBuilder {
@@ -832,8 +987,9 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     name
                 ),
             )),
-            Some(ItemLifecycle::Map(desc)) => desc.add_on_remove(map_type, method),
+            Some(ItemLifecycle::Map(desc)) => desc.add_on_remove(key_type, value_type, method),
             _ => {
+                let map_type = (key_type, value_type);
                 lane_lifecycles.insert(
                     name.clone(),
                     ItemLifecycle::Map(MapLifecycleDescriptor::new_on_remove(
@@ -848,7 +1004,8 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
     pub fn add_on_clear(
         &mut self,
         name: String,
-        map_type: &'a Type,
+        key_type: &'a Type,
+        value_type: &'a Type,
         method: &'a Ident,
     ) -> Result<(), syn::Error> {
         let AgentLifecycleDescriptorBuilder {
@@ -869,8 +1026,9 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     name
                 ),
             )),
-            Some(ItemLifecycle::Map(desc)) => desc.add_on_clear(map_type, method),
+            Some(ItemLifecycle::Map(desc)) => desc.add_on_clear(key_type, value_type, method),
             _ => {
+                let map_type = (key_type, value_type);
                 lane_lifecycles.insert(
                     name.clone(),
                     ItemLifecycle::Map(MapLifecycleDescriptor::new_on_clear(
@@ -1023,16 +1181,21 @@ impl<'a> CommandLifecycleDescriptor<'a> {
 }
 
 pub struct MapLifecycleDescriptor<'a> {
-    name: String,                              //The name of the lane.
-    primary_lane_type: &'a Type,               //First observed type of the lane.
-    alternative_lane_types: HashSet<&'a Type>, //Further types observed for the lane.
+    name: String,                                          //The name of the lane.
+    primary_lane_type: (&'a Type, &'a Type),               //First observed type of the lane.
+    alternative_lane_types: HashSet<(&'a Type, &'a Type)>, //Further types observed for the lane.
     pub on_update: Option<&'a Ident>,
     pub on_remove: Option<&'a Ident>,
     pub on_clear: Option<&'a Ident>,
+    pub join_lifecycle: Option<&'a Ident>,
 }
 
 impl<'a> MapLifecycleDescriptor<'a> {
-    pub fn new_on_update(name: String, map_type: &'a Type, on_update: &'a Ident) -> Self {
+    pub fn new_on_update(
+        name: String,
+        map_type: (&'a Type, &'a Type),
+        on_update: &'a Ident,
+    ) -> Self {
         MapLifecycleDescriptor {
             name,
             primary_lane_type: map_type,
@@ -1040,10 +1203,15 @@ impl<'a> MapLifecycleDescriptor<'a> {
             on_update: Some(on_update),
             on_remove: None,
             on_clear: None,
+            join_lifecycle: None,
         }
     }
 
-    pub fn new_on_remove(name: String, map_type: &'a Type, on_remove: &'a Ident) -> Self {
+    pub fn new_on_remove(
+        name: String,
+        map_type: (&'a Type, &'a Type),
+        on_remove: &'a Ident,
+    ) -> Self {
         MapLifecycleDescriptor {
             name,
             primary_lane_type: map_type,
@@ -1051,10 +1219,11 @@ impl<'a> MapLifecycleDescriptor<'a> {
             on_update: None,
             on_remove: Some(on_remove),
             on_clear: None,
+            join_lifecycle: None,
         }
     }
 
-    pub fn new_on_clear(name: String, map_type: &'a Type, on_clear: &'a Ident) -> Self {
+    pub fn new_on_clear(name: String, map_type: (&'a Type, &'a Type), on_clear: &'a Ident) -> Self {
         MapLifecycleDescriptor {
             name,
             primary_lane_type: map_type,
@@ -1062,12 +1231,30 @@ impl<'a> MapLifecycleDescriptor<'a> {
             on_update: None,
             on_remove: None,
             on_clear: Some(on_clear),
+            join_lifecycle: None,
+        }
+    }
+
+    pub fn new_join_lifecycle(
+        name: String,
+        map_type: (&'a Type, &'a Type),
+        join_lifecycle: &'a Ident,
+    ) -> Self {
+        MapLifecycleDescriptor {
+            name,
+            primary_lane_type: map_type,
+            alternative_lane_types: Default::default(),
+            on_update: None,
+            on_remove: None,
+            on_clear: None,
+            join_lifecycle: Some(join_lifecycle),
         }
     }
 
     pub fn add_on_update(
         &mut self,
-        map_type: &'a Type,
+        key_type: &'a Type,
+        value_type: &'a Type,
         method: &'a Ident,
     ) -> Result<(), syn::Error> {
         let MapLifecycleDescriptor {
@@ -1077,6 +1264,7 @@ impl<'a> MapLifecycleDescriptor<'a> {
             on_update,
             ..
         } = self;
+        let map_type = (key_type, value_type);
         if on_update.is_some() {
             Err(syn::Error::new_spanned(
                 method,
@@ -1093,7 +1281,8 @@ impl<'a> MapLifecycleDescriptor<'a> {
 
     pub fn add_on_remove(
         &mut self,
-        map_type: &'a Type,
+        key_type: &'a Type,
+        value_type: &'a Type,
         method: &'a Ident,
     ) -> Result<(), syn::Error> {
         let MapLifecycleDescriptor {
@@ -1103,6 +1292,7 @@ impl<'a> MapLifecycleDescriptor<'a> {
             on_remove,
             ..
         } = self;
+        let map_type = (key_type, value_type);
         if on_remove.is_some() {
             Err(syn::Error::new_spanned(
                 method,
@@ -1119,7 +1309,8 @@ impl<'a> MapLifecycleDescriptor<'a> {
 
     pub fn add_on_clear(
         &mut self,
-        map_type: &'a Type,
+        key_type: &'a Type,
+        value_type: &'a Type,
         method: &'a Ident,
     ) -> Result<(), syn::Error> {
         let MapLifecycleDescriptor {
@@ -1129,6 +1320,7 @@ impl<'a> MapLifecycleDescriptor<'a> {
             on_clear,
             ..
         } = self;
+        let map_type = (key_type, value_type);
         if on_clear.is_some() {
             Err(syn::Error::new_spanned(
                 method,
@@ -1139,6 +1331,34 @@ impl<'a> MapLifecycleDescriptor<'a> {
                 alternative_lane_types.insert(map_type);
             }
             *on_clear = Some(method);
+            Ok(())
+        }
+    }
+
+    pub fn add_join_lifecycle(
+        &mut self,
+        key_type: &'a Type,
+        value_type: &'a Type,
+        method: &'a Ident,
+    ) -> Result<(), syn::Error> {
+        let MapLifecycleDescriptor {
+            name,
+            primary_lane_type,
+            alternative_lane_types,
+            join_lifecycle,
+            ..
+        } = self;
+        let map_type = (key_type, value_type);
+        if join_lifecycle.is_some() {
+            Err(syn::Error::new_spanned(
+                method,
+                format!("Duplicate join lane lifecycle for '{}'.", name),
+            ))
+        } else {
+            *join_lifecycle = Some(method);
+            if map_type != *primary_lane_type {
+                alternative_lane_types.insert(map_type);
+            }
             Ok(())
         }
     }
