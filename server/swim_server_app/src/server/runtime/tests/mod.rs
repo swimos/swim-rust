@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -113,7 +113,7 @@ where
 
     plane_builder.add_route(
         pattern,
-        TestAgent::new(report_tx, event_tx, |uri, _conf| {
+        TestAgent::new(report_tx, event_tx, |uri, _route_params, _conf| {
             assert_eq!(uri, "/node");
         }),
     );

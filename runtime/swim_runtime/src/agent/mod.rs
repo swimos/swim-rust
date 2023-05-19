@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 use std::{
+    collections::HashMap,
     fmt::{Debug, Display},
     future::Future,
     num::NonZeroUsize,
@@ -369,6 +370,7 @@ pub enum AgentExecError {
 pub struct AgentRoute {
     pub identity: Uuid,
     pub route: RouteUri,
+    pub route_params: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -380,6 +382,7 @@ pub struct AgentRouteTask<'a, A> {
     agent: &'a A,
     identity: Uuid,
     route: RouteUri,
+    route_params: HashMap<String, String>,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
     downlink_tx: mpsc::Sender<DownlinkRequest>,
     stopping: trigger::Receiver,
@@ -411,6 +414,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             agent,
             identity: identity.identity,
             route: identity.route,
+            route_params: identity.route_params,
             attachment_rx,
             downlink_tx,
             stopping,
@@ -425,6 +429,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             agent,
             identity,
             route,
+            route_params,
             attachment_rx,
             downlink_tx,
             stopping,
@@ -444,7 +449,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         );
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
-        let agent_init = agent.run(route, agent_config, context);
+        let agent_init = agent.run(route, route_params, agent_config, context);
 
         async move {
             let agent_init_task = async move {
@@ -486,6 +491,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             agent,
             identity,
             route,
+            route_params,
             attachment_rx,
             downlink_tx,
             stopping,
@@ -499,7 +505,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
 
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
-        let agent_init = agent.run(route, agent_config, context);
+        let agent_init = agent.run(route, route_params, agent_config, context);
 
         async move {
             let store = store_fut.await?;

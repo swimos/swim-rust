@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -724,13 +724,14 @@ impl Agents {
             }
             Entry::Vacant(entry) => {
                 debug!("Attempting to start new agent instance.");
-                if let Some((route_uri, route)) = RouteUri::from_str(entry.key().as_str())
-                    .ok()
-                    .and_then(|route_uri| {
-                        routes
-                            .find_route(&route_uri)
-                            .map(move |route| (route_uri, route))
-                    })
+                if let Some((route_uri, (route, route_params))) =
+                    RouteUri::from_str(entry.key().as_str())
+                        .ok()
+                        .and_then(|route_uri| {
+                            routes
+                                .find_route(&route_uri)
+                                .map(move |route| (route_uri, route))
+                        })
                 {
                     let id = plane_issuer.next_id();
                     let (attachment_tx, attachment_rx) =
@@ -761,6 +762,7 @@ impl Agents {
                         AgentRoute {
                             identity: id,
                             route: route_uri,
+                            route_params,
                         },
                         attachment_rx,
                         open_dl_tx.clone(),
@@ -833,11 +835,15 @@ impl Routes {
         routes.push(Route::new(route_pattern, Box::new(agent), true));
     }
 
-    fn find_route<'a>(&'a self, node: &RouteUri) -> Option<&'a Route> {
+    fn find_route<'a>(&'a self, node: &RouteUri) -> Option<(&'a Route, HashMap<String, String>)> {
         let Routes(routes) = self;
-        routes
-            .iter()
-            .find(|Route { pattern, .. }| pattern.unapply_route_uri(node).is_ok())
+        routes.iter().find_map(|route| {
+            route
+                .pattern
+                .unapply_route_uri(node)
+                .ok()
+                .map(move |route_params| (route, route_params))
+        })
     }
 }
 

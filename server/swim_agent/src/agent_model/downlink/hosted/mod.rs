@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod event;
 mod map;
 mod value;
 
+pub use event::HostedEventDownlinkChannel;
 pub use map::{map_dl_write_stream, HostedMapDownlinkChannel, MapDlState, MapDownlinkHandle};
 pub use value::{value_dl_write_stream, HostedValueDownlinkChannel, ValueDownlinkHandle};
 
@@ -27,6 +29,8 @@ enum DlState {
 
 #[cfg(test)]
 mod test_support {
+    use std::collections::HashMap;
+
     use futures::future::BoxFuture;
     use swim_api::{
         agent::{AgentConfig, AgentContext, LaneConfig},
@@ -105,18 +109,24 @@ mod test_support {
         RouteUri::try_from(NODE_URI).expect("Bad URI.")
     }
 
-    fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
-        AgentMetadata::new(uri, &CONFIG)
+    fn make_meta<'a>(
+        uri: &'a RouteUri,
+        route_params: &'a HashMap<String, String>,
+    ) -> AgentMetadata<'a> {
+        AgentMetadata::new(uri, route_params, &CONFIG)
     }
 
     pub fn run_handler<FakeAgent>(mut handler: BoxEventHandler<'_, FakeAgent>, agent: &FakeAgent) {
         let uri = make_uri();
-        let meta = make_meta(&uri);
+        let route_params = HashMap::new();
+        let meta = make_meta(&uri, &route_params);
         let no_spawn = NoSpawn;
         let no_runtime = NoAgentRuntime;
-        let context = ActionContext::new(&no_spawn, &no_runtime, &no_spawn);
+        let mut join_value_init = HashMap::new();
+        let mut context =
+            ActionContext::new(&no_spawn, &no_runtime, &no_spawn, &mut join_value_init);
         loop {
-            match handler.step(context, meta, agent) {
+            match handler.step(&mut context, meta, agent) {
                 StepResult::Continue { modified_item } => {
                     assert!(modified_item.is_none());
                 }

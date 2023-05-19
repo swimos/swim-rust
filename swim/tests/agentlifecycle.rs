@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::hash::Hash;
 use std::{collections::HashMap, sync::Arc};
 
 use parking_lot::Mutex;
@@ -24,8 +25,16 @@ use swim::agent::{
     lanes::{CommandLane, MapLane, ValueLane},
     AgentLaneModel,
 };
+use swim_agent::agent_lifecycle::on_init::OnInit;
+use swim_agent::agent_lifecycle::utility::JoinValueContext;
 use swim_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
-use swim_agent::event_handler::{HandlerFuture, Spawner, WriteStream};
+use swim_agent::event_handler::{
+    BoxJoinValueInit, HandlerFuture, Modification, Spawner, WriteStream,
+};
+use swim_agent::item::{AgentItem, MapItem};
+use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
+use swim_agent::lanes::join_value::{AfterClosed, JoinValueLaneUpdate, LinkClosedResponse};
+use swim_agent::lanes::JoinValueLane;
 use swim_agent::meta::AgentMetadata;
 use swim_agent::stores::{MapStore, ValueStore};
 use swim_api::agent::AgentConfig;
@@ -57,8 +66,10 @@ pub fn no_downlink<Context>(
     panic!("Launching downlinks no supported.");
 }
 
-pub fn dummy_context<'a, Context>() -> ActionContext<'a, Context> {
-    ActionContext::new(&NO_SPAWN, &NO_AGENT, &no_downlink)
+pub fn dummy_context<'a, Context>(
+    join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
+) -> ActionContext<'a, Context> {
+    ActionContext::new(&NO_SPAWN, &NO_AGENT, &no_downlink, join_value_init)
 }
 
 impl<Context> Spawner<Context> for NoSpawn {
@@ -105,6 +116,7 @@ struct TestAgent {
     map: MapLane<i32, Text>,
     value_store: ValueStore<i32>,
     map_store: MapStore<i32, Text>,
+    join_value: JoinValueLane<i32, Text>,
 }
 
 impl From<(i32, i32, HashMap<i32, Text>, i32, HashMap<i32, Text>)> for TestAgent {
@@ -124,6 +136,7 @@ impl From<(i32, i32, HashMap<i32, Text>, i32, HashMap<i32, Text>)> for TestAgent
             map: MapLane::new(3, map_init),
             value_store: ValueStore::new(4, val_store_init),
             map_store: MapStore::new(5, map_store_init),
+            join_value: JoinValueLane::new(6),
         }
     }
 }
@@ -172,27 +185,41 @@ fn make_uri() -> RouteUri {
     RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
-    AgentMetadata::new(uri, &CONFIG)
+fn make_meta<'a>(
+    uri: &'a RouteUri,
+    route_params: &'a HashMap<String, String>,
+) -> AgentMetadata<'a> {
+    AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
-fn run_handler<Agent, H: EventHandler<Agent>>(agent: &Agent, mut handler: H) {
+fn run_handler_mod<Agent, H: EventHandler<Agent>>(
+    agent: &Agent,
+    mut handler: H,
+    modified: Option<u64>,
+) {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let mut join_value_init = HashMap::new();
     loop {
-        match handler.step(dummy_context(), meta, agent) {
+        match handler.step(&mut dummy_context(&mut join_value_init), meta, agent) {
             StepResult::Continue { modified_item } => {
-                assert!(modified_item.is_none());
+                assert_eq!(modified_item, modified.map(Modification::of));
             }
             StepResult::Fail(e) => {
                 panic!("{}", e);
             }
             StepResult::Complete { modified_item, .. } => {
-                assert!(modified_item.is_none());
+                assert_eq!(modified_item, modified.map(Modification::of));
                 break;
             }
         }
     }
+    assert!(join_value_init.is_empty());
+}
+
+fn run_handler<Agent, H: EventHandler<Agent>>(agent: &Agent, handler: H) {
+    run_handler_mod(agent, handler, None)
 }
 
 #[test]
@@ -1240,4 +1267,212 @@ fn on_update_borrow_handler() {
             "hello".to_string()
         )]
     );
+}
+
+#[test]
+fn on_update_handler_join_value() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(LifecycleInner);
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_update(join_value)]
+        fn my_on_update(
+            &self,
+            context: HandlerContext<TestAgent>,
+            map: &HashMap<i32, Text>,
+            key: i32,
+            prev: Option<Text>,
+            _new_value: &Text,
+        ) -> impl EventHandler<TestAgent> + '_ {
+            let map_state = map.clone();
+            context.effect(move || {
+                self.0
+                    .push(Event::Map(MapEvent::Update(map_state, key, prev)));
+            })
+        }
+    }
+
+    let agent = TestAgent::default();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    update_join_value(&agent, K2, Text::new("a"), |agent| &agent.join_value);
+
+    let handler = lifecycle
+        .item_event(&agent, "join_value")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    let mut expected_map = HashMap::new();
+    expected_map.insert(K2, Text::new("a"));
+    assert_eq!(
+        events,
+        vec![Event::Map(MapEvent::Update(expected_map, K2, None))]
+    );
+}
+
+#[test]
+fn on_remove_handler_join_value() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(LifecycleInner);
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_remove(join_value)]
+        fn my_on_remove(
+            &self,
+            context: HandlerContext<TestAgent>,
+            map: &HashMap<i32, Text>,
+            key: i32,
+            removed: Text,
+        ) -> impl EventHandler<TestAgent> + '_ {
+            let map_state = map.clone();
+            context.effect(move || {
+                self.0
+                    .push(Event::Map(MapEvent::Remove(map_state, key, removed)));
+            })
+        }
+    }
+
+    let agent = TestAgent::default();
+    agent.join_value.init(init_map());
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.clone().into_lifecycle();
+
+    remove_join_value(&agent, K1, |agent| &agent.join_value);
+
+    let handler = lifecycle
+        .item_event(&agent, "join_value")
+        .expect("Expected handler for lane.");
+    run_handler(&agent, handler);
+
+    let events = template.0.take();
+
+    let mut expected_map = init_map();
+    expected_map.remove(&K1);
+    assert_eq!(
+        events,
+        vec![Event::Map(MapEvent::Remove(
+            expected_map,
+            K1,
+            Text::new(V1)
+        ))]
+    );
+}
+
+fn update_join_value<K, V>(
+    agent: &TestAgent,
+    key: K,
+    value: V,
+    projection: fn(&TestAgent) -> &JoinValueLane<K, V>,
+) where
+    K: Clone + Eq + Hash,
+{
+    let handler = JoinValueLaneUpdate::new(projection, key, value);
+    let id = projection(agent).id();
+    run_handler_mod(agent, handler, Some(id));
+}
+
+fn remove_join_value<K, V>(
+    agent: &TestAgent,
+    key: K,
+    projection: fn(&TestAgent) -> &JoinValueLane<K, V>,
+) where
+    K: Clone + Eq + Hash,
+{
+    let handler = AfterClosed::new(projection, key, LinkClosedResponse::Delete);
+    let id = projection(agent).id();
+    run_handler_mod(agent, handler, Some(id));
+}
+
+#[test]
+fn register_join_value_lifecycle() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle;
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[join_value_lifecycle(join_value)]
+        fn register_lifecycle(
+            &self,
+            context: JoinValueContext<TestAgent, i32, Text>,
+        ) -> impl JoinValueLaneLifecycle<i32, Text, TestAgent> + 'static {
+            context.builder().done()
+        }
+    }
+
+    let agent = TestAgent::default();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.into_lifecycle();
+
+    let mut join_value_init = HashMap::new();
+    let mut action_context = dummy_context(&mut join_value_init);
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+
+    lifecycle.initialize(&mut action_context, meta, &agent);
+
+    let lane_id = agent.join_value.id();
+
+    assert_eq!(join_value_init.len(), 1);
+    assert!(join_value_init.contains_key(&lane_id));
+}
+
+#[derive(AgentLaneModel)]
+#[agent_root(::swim_agent)]
+struct TwoJoinValueAgent {
+    join_value1: JoinValueLane<i32, Text>,
+    join_value2: JoinValueLane<i32, i64>,
+}
+
+#[test]
+fn register_two_join_value_lifecycles() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle;
+
+    #[lifecycle(TwoJoinValueAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[join_value_lifecycle(join_value1)]
+        fn register_lifecycle1(
+            &self,
+            context: JoinValueContext<TwoJoinValueAgent, i32, Text>,
+        ) -> impl JoinValueLaneLifecycle<i32, Text, TwoJoinValueAgent> + 'static {
+            context.builder().done()
+        }
+
+        #[join_value_lifecycle(join_value2)]
+        fn register_lifecycle2(
+            &self,
+            context: JoinValueContext<TwoJoinValueAgent, i32, i64>,
+        ) -> impl JoinValueLaneLifecycle<i32, i64, TwoJoinValueAgent> + 'static {
+            context.builder().done()
+        }
+    }
+
+    let agent = TwoJoinValueAgent::default();
+    let template = TestLifecycle::default();
+
+    let lifecycle = template.into_lifecycle();
+
+    let mut join_value_init = HashMap::new();
+    let mut action_context = dummy_context(&mut join_value_init);
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+
+    lifecycle.initialize(&mut action_context, meta, &agent);
+
+    let lane_id1 = agent.join_value1.id();
+    let lane_id2 = agent.join_value1.id();
+
+    assert_eq!(join_value_init.len(), 2);
+    assert!(join_value_init.contains_key(&lane_id1));
+    assert!(join_value_init.contains_key(&lane_id2));
 }

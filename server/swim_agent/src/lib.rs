@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ pub mod event_handler;
 mod event_queue;
 pub mod item;
 pub mod lanes;
+mod lifecycle_fn;
 mod map_storage;
 pub mod meta;
 pub mod stores;

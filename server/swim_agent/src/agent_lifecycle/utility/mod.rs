@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,22 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::any::Any;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::{collections::HashMap, marker::PhantomData};
 
 use futures::{Future, FutureExt};
+use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
 use swim_model::address::Address;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::agent_model::downlink::hosted::{MapDownlinkHandle, ValueDownlinkHandle};
-use crate::agent_model::downlink::{OpenMapDownlinkAction, OpenValueDownlinkAction};
-use crate::config::{MapDownlinkConfig, ValueDownlinkConfig};
+use crate::agent_model::downlink::{
+    OpenEventDownlinkAction, OpenMapDownlinkAction, OpenValueDownlinkAction,
+};
+use crate::config::{MapDownlinkConfig, SimpleDownlinkConfig};
+use crate::downlink_lifecycle::event::EventDownlinkLifecycle;
 use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
-use crate::event_handler::{EventHandler, Suspend, UnitHandler};
+use crate::event_handler::{EventHandler, GetParameter, Suspend, UnitHandler};
 use crate::lanes::command::{CommandLane, DoCommand};
+use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
 use crate::lanes::map::MapLaneGetMap;
 use crate::stores::map::{
     MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate,
@@ -42,12 +48,17 @@ use crate::{
     },
 };
 
+pub use self::downlink_builder::event::{
+    StatefulEventDownlinkBuilder, StatelessEventDownlinkBuilder,
+};
 pub use self::downlink_builder::map::{StatefulMapDownlinkBuilder, StatelessMapDownlinkBuilder};
 pub use self::downlink_builder::value::{
     StatefulValueDownlinkBuilder, StatelessValueDownlinkBuilder,
 };
+pub use self::join_value_builder::{StatefulJoinValueLaneBuilder, StatelessJoinValueLaneBuilder};
 
 mod downlink_builder;
+mod join_value_builder;
 
 /// A utility class to aid in the creation of event handlers for an agent. This has no data
 /// and is used to provide easy access to the agent type parameter to avoid the need for
@@ -94,6 +105,16 @@ impl<Agent: 'static> HandlerContext<Agent> {
         &self,
     ) -> impl HandlerAction<Agent, Completion = RouteUri> + Send + 'static {
         GetAgentUri::default()
+    }
+
+    /// Get the value of a parameter extracted from the route URI of the agent instance.
+    /// #Arguments
+    /// * `name` - The name of the parameter.
+    pub fn get_parameter<'a>(
+        &self,
+        name: &'a str,
+    ) -> impl HandlerAction<Agent, Completion = Option<String>> + Send + 'a {
+        GetParameter::new(name)
     }
 
     /// Create an event handler that will get the value of a value lane of the agent.
@@ -372,7 +393,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         node: &str,
         lane: &str,
         lifecycle: LC,
-        config: ValueDownlinkConfig,
+        config: SimpleDownlinkConfig,
     ) -> impl HandlerAction<Agent, Completion = ValueDownlinkHandle<T>> + Send + 'static
     where
         T: Form + Send + Sync + 'static,
@@ -380,6 +401,30 @@ impl<Agent: 'static> HandlerContext<Agent> {
         T::Rec: Send,
     {
         OpenValueDownlinkAction::new(Address::text(host, node, lane), lifecycle, config)
+    }
+
+    /// Open an event downlink to a lane on another agent.
+    ///
+    /// #Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `lifecycle` - Lifecycle events for the downlink.
+    /// * `config` - Configuration parameters for the downlink.
+    pub fn open_event_downlink<T, LC>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        lifecycle: LC,
+        config: SimpleDownlinkConfig,
+    ) -> impl EventHandler<Agent> + Send + 'static
+    where
+        T: Form + Send + Sync + 'static,
+        LC: EventDownlinkLifecycle<T, Agent> + Send + 'static,
+        T::Rec: Send,
+    {
+        OpenEventDownlinkAction::new(Address::text(host, node, lane), lifecycle, config)
     }
 
     /// Open a map downlink to a lane on another agent.
@@ -408,6 +453,26 @@ impl<Agent: 'static> HandlerContext<Agent> {
         OpenMapDownlinkAction::new(Address::text(host, node, lane), lifecycle, config)
     }
 
+    /// Create a builder to construct a request to open an event downlink.
+    /// #Arguments
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane` - The lane to downlink from.
+    /// * `config` - Configuration parameters for the downlink.
+    pub fn event_downlink_builder<T>(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        config: SimpleDownlinkConfig,
+    ) -> StatelessEventDownlinkBuilder<Agent, T>
+    where
+        T: RecognizerReadable + Send + Sync + 'static,
+        T::Rec: Send,
+    {
+        StatelessEventDownlinkBuilder::new(Address::text(host, node, lane), config)
+    }
+
     /// Create a builder to construct a request to open a value downlink.
     /// #Arguments
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
@@ -419,7 +484,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         host: Option<&str>,
         node: &str,
         lane: &str,
-        config: ValueDownlinkConfig,
+        config: SimpleDownlinkConfig,
     ) -> StatelessValueDownlinkBuilder<Agent, T>
     where
         T: Form + Send + Sync + 'static,
@@ -448,5 +513,56 @@ impl<Agent: 'static> HandlerContext<Agent> {
         V::Rec: Send,
     {
         StatelessMapDownlinkBuilder::new(Address::text(host, node, lane), config)
+    }
+
+    /// Add a downlink to a Join Value lane. All values received on the downlink will be set into the map
+    /// state of the lane, using the provided key.
+    ///
+    /// #Arguments
+    /// * `lane` - Projection to the lane.
+    /// * `key - The key for the downlink.
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane_uri` - The lane to downlink from.
+    pub fn add_downlink<K, V>(
+        &self,
+        lane: fn(&Agent) -> &JoinValueLane<K, V>,
+        key: K,
+        host: Option<&str>,
+        node: &str,
+        lane_uri: &str,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        K: Any + Clone + Eq + Hash + Send + 'static,
+        V: Form + Send + 'static,
+        V::Rec: Send,
+    {
+        let address = Address::text(host, node, lane_uri);
+        JoinValueAddDownlink::new(lane, key, address)
+    }
+}
+
+pub struct JoinValueContext<Agent, K, V> {
+    _type: PhantomData<fn(&Agent, K, V)>,
+}
+
+impl<Agent, K, V> Default for JoinValueContext<Agent, K, V> {
+    fn default() -> Self {
+        Self {
+            _type: Default::default(),
+        }
+    }
+}
+
+impl<Agent, K, V> JoinValueContext<Agent, K, V>
+where
+    Agent: 'static,
+    K: Any + Clone + Eq + Hash + Send + 'static,
+    V: Form + Send + 'static,
+    V::Rec: Send,
+{
+    /// Creates a builder to construct a lifecycle for the downlinks of a [`JoinValueLane`].
+    pub fn builder(&self) -> StatelessJoinValueLaneBuilder<Agent, K, V> {
+        StatelessJoinValueLaneBuilder::default()
     }
 }

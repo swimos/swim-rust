@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -129,6 +129,8 @@ impl PlaneBuilder {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use futures::future::BoxFuture;
     use swim_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
     use swim_utilities::routing::{route_pattern::RoutePattern, route_uri::RouteUri};
@@ -143,6 +145,7 @@ mod tests {
         fn run(
             &self,
             _route: RouteUri,
+            _route_params: HashMap<String, String>,
             _config: AgentConfig,
             _context: Box<dyn AgentContext + Send>,
         ) -> BoxFuture<'static, AgentInitResult> {

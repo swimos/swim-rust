@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ pub use runtime::{start_runtime, RawHandle};
 pub use swim_api::downlink::DownlinkKind;
 pub use swim_api::error::DownlinkTaskError;
 use swim_utilities::non_zero_usize;
-pub use transport::{Transport, TransportRequest};
 
 #[cfg(test)]
 mod tests;

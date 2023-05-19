@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,7 +43,9 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::agent_lifecycle::item_event::ItemEvent;
-use crate::event_handler::{ActionContext, BoxEventHandler, HandlerFuture, WriteStream};
+use crate::event_handler::{
+    ActionContext, BoxEventHandler, BoxJoinValueInit, HandlerFuture, WriteStream,
+};
 use crate::{
     agent_lifecycle::AgentLifecycle,
     event_handler::{EventHandler, EventHandlerError, HandlerAction, StepResult},
@@ -63,8 +65,8 @@ use bitflags::bitflags;
 use self::downlink::handlers::BoxDownlinkChannel;
 use self::init::{run_item_initializer, InitializedItem};
 pub use init::{
-    ItemInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,
-    ValueStoreInitializer,
+    ItemInitializer, JoinValueInitializer, MapLaneInitializer, MapStoreInitializer,
+    ValueLaneInitializer, ValueStoreInitializer,
 };
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
@@ -252,11 +254,12 @@ where
     fn run(
         &self,
         route: RouteUri,
+        route_params: HashMap<String, String>,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
         self.clone()
-            .initialize_agent(route, config, context)
+            .initialize_agent(route, route_params, config, context)
             .boxed()
     }
 }
@@ -286,6 +289,7 @@ enum TaskEvent<ItemModel> {
 }
 
 struct HostedDownlink<Context> {
+    failed: bool,
     channel: BoxDownlinkChannel<Context>,
     write_stream: Option<BoxStream<'static, Result<(), std::io::Error>>>,
 }
@@ -296,6 +300,7 @@ impl<Context> HostedDownlink<Context> {
         write_stream: BoxStream<'static, Result<(), std::io::Error>>,
     ) -> Self {
         HostedDownlink {
+            failed: false,
             channel,
             write_stream: Some(write_stream),
         }
@@ -307,15 +312,20 @@ enum HostedDownlinkEvent {
     WriterFailed(std::io::Error),
     Written,
     WriterTerminated,
-    HandlerReady,
+    HandlerReady { failed: bool },
 }
 
 impl<Context> HostedDownlink<Context> {
     async fn wait_on_downlink(mut self) -> Option<(Self, HostedDownlinkEvent)> {
         let HostedDownlink {
+            failed,
             channel,
             write_stream,
         } = &mut self;
+
+        if *failed {
+            return None;
+        }
 
         let next = if let Some(out) = write_stream.as_mut() {
             tokio::select! {
@@ -327,10 +337,12 @@ impl<Context> HostedDownlink<Context> {
         };
 
         match next {
-            Either::Left(Some(Ok(_))) => Some((self, HostedDownlinkEvent::HandlerReady)),
-            Either::Left(Some(Err(e))) => {
-                error!(error = %e, "A downlink input channel failed.");
-                None
+            Either::Left(Some(Ok(_))) => {
+                Some((self, HostedDownlinkEvent::HandlerReady { failed: false }))
+            }
+            Either::Left(Some(Err(_))) => {
+                *failed = true;
+                Some((self, HostedDownlinkEvent::HandlerReady { failed: true }))
             }
             Either::Right(Some(Ok(_))) => Some((self, HostedDownlinkEvent::Written)),
             Either::Right(Some(Err(e))) => {
@@ -344,6 +356,10 @@ impl<Context> HostedDownlink<Context> {
             _ => None,
         }
     }
+
+    fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+        self.channel.next_event(context)
+    }
 }
 
 impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle>
@@ -356,11 +372,13 @@ where
     ///
     /// #Arguments
     /// * `route` - The node URI for the agent instance.
+    /// * `route_params` - Parameters extracted from the route URI.
     /// * `config` - Agent specific configuration parameters.
     /// * `context` - Context through which to communicate with the runtime.
     async fn initialize_agent(
         self,
         route: RouteUri,
+        route_params: HashMap<String, String>,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> AgentInitResult
@@ -373,7 +391,7 @@ where
             lifecycle,
         } = self;
 
-        let meta = AgentMetadata::new(&route, &config);
+        let meta = AgentMetadata::new(&route, &route_params, &config);
 
         let mut value_like_lane_io = HashMap::new();
         let mut map_lane_io = HashMap::new();
@@ -386,6 +404,7 @@ where
 
         let suspended = FuturesUnordered::new();
         let downlink_channels = RefCell::new(vec![]);
+        let mut join_value_init = HashMap::new();
 
         let item_model = item_model_fac.create();
 
@@ -485,11 +504,27 @@ where
             }
         }
 
+        lifecycle.initialize(
+            &mut ActionContext::new(
+                &suspended,
+                &*context,
+                &downlink_channels,
+                &mut join_value_init,
+            ),
+            meta,
+            &item_model,
+        );
+
         // Run the agent's `on_start` event handler.
         let on_start_handler = lifecycle.on_start();
 
         if let Err(e) = run_handler(
-            ActionContext::new(&suspended, &*context, &downlink_channels),
+            &mut ActionContext::new(
+                &suspended,
+                &*context,
+                &downlink_channels,
+                &mut join_value_init,
+            ),
             meta,
             &item_model,
             &lifecycle,
@@ -503,6 +538,7 @@ where
             item_model,
             lifecycle,
             route,
+            route_params,
             config,
             item_ids,
             value_like_lane_io,
@@ -511,6 +547,7 @@ where
             map_store_io,
             suspended,
             downlink_channels: downlink_channels.into_inner(),
+            join_value_init,
         };
         Ok(agent_task.run_agent(context).boxed())
     }
@@ -668,6 +705,7 @@ struct AgentTask<ItemModel, Lifecycle> {
     item_model: ItemModel,
     lifecycle: Lifecycle,
     route: RouteUri,
+    route_params: HashMap<String, String>,
     config: AgentConfig,
     item_ids: HashMap<u64, Text>,
     value_like_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
@@ -675,6 +713,7 @@ struct AgentTask<ItemModel, Lifecycle> {
     map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
     map_store_io: HashMap<Text, ByteWriter>,
     suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
+    join_value_init: HashMap<u64, BoxJoinValueInit<'static, ItemModel>>,
     downlink_channels: Vec<(BoxDownlinkChannel<ItemModel>, WriteStream)>,
 }
 
@@ -696,6 +735,7 @@ where
             item_model,
             lifecycle,
             route,
+            route_params,
             config,
             item_ids,
             value_like_lane_io,
@@ -703,9 +743,10 @@ where
             map_lane_io,
             map_store_io,
             mut suspended,
+            mut join_value_init,
             downlink_channels,
         } = self;
-        let meta = AgentMetadata::new(&route, &config);
+        let meta = AgentMetadata::new(&route, &route_params, &config);
 
         let mut item_ids_rev = HashMap::new();
         for (id, name) in &item_ids {
@@ -808,7 +849,12 @@ where
                 }
                 TaskEvent::SuspendedComplete { handler } => {
                     if let Err(e) = run_handler(
-                        ActionContext::new(&suspended, &*context, &add_downlink),
+                        &mut ActionContext::new(
+                            &suspended,
+                            &*context,
+                            &add_downlink,
+                            &mut join_value_init,
+                        ),
                         meta,
                         &item_model,
                         &lifecycle,
@@ -830,10 +876,15 @@ where
                                 info!("A downlink hosted by the agent stopped writing output.");
                                 downlinks.push(downlink.wait_on_downlink());
                             }
-                            HostedDownlinkEvent::HandlerReady => {
-                                if let Some(handler) = downlink.channel.next_event(&item_model) {
+                            HostedDownlinkEvent::HandlerReady { failed } => {
+                                if let Some(handler) = downlink.next_event(&item_model) {
                                     if let Err(e) = run_handler(
-                                        ActionContext::new(&suspended, &*context, &add_downlink),
+                                        &mut ActionContext::new(
+                                            &suspended,
+                                            &*context,
+                                            &add_downlink,
+                                            &mut join_value_init,
+                                        ),
                                         meta,
                                         &item_model,
                                         &lifecycle,
@@ -844,7 +895,9 @@ where
                                         break Err(AgentTaskError::UserCodeError(Box::new(e)));
                                     }
                                 }
-                                downlinks.push(downlink.wait_on_downlink());
+                                if !failed {
+                                    downlinks.push(downlink.wait_on_downlink());
+                                }
                             }
                             _ => {}
                         }
@@ -857,7 +910,12 @@ where
                             if let Some(handler) = item_model.on_value_command(name.as_str(), body)
                             {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context, &add_downlink),
+                                    &mut ActionContext::new(
+                                        &suspended,
+                                        &*context,
+                                        &add_downlink,
+                                        &mut join_value_init,
+                                    ),
                                     meta,
                                     &item_model,
                                     &lifecycle,
@@ -872,7 +930,12 @@ where
                         LaneRequest::Sync(remote_id) => {
                             if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context, &add_downlink),
+                                    &mut ActionContext::new(
+                                        &suspended,
+                                        &*context,
+                                        &add_downlink,
+                                        &mut join_value_init,
+                                    ),
                                     meta,
                                     &item_model,
                                     &lifecycle,
@@ -893,7 +956,12 @@ where
                         LaneRequest::Command(body) => {
                             if let Some(handler) = item_model.on_map_command(name.as_str(), body) {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context, &add_downlink),
+                                    &mut ActionContext::new(
+                                        &suspended,
+                                        &*context,
+                                        &add_downlink,
+                                        &mut join_value_init,
+                                    ),
                                     meta,
                                     &item_model,
                                     &lifecycle,
@@ -908,7 +976,12 @@ where
                         LaneRequest::Sync(remote_id) => {
                             if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
                                 if let Err(e) = run_handler(
-                                    ActionContext::new(&suspended, &*context, &add_downlink),
+                                    &mut ActionContext::new(
+                                        &suspended,
+                                        &*context,
+                                        &add_downlink,
+                                        &mut join_value_init,
+                                    ),
                                     meta,
                                     &item_model,
                                     &lifecycle,
@@ -956,7 +1029,7 @@ where
             ))
         };
         if let Err(e) = run_handler(
-            ActionContext::new(&suspended, &*context, &discard),
+            &mut ActionContext::new(&suspended, &*context, &discard, &mut join_value_init),
             meta,
             &item_model,
             &lifecycle,
@@ -1016,7 +1089,7 @@ impl IdCollector for HashSet<u64> {
 /// an item) an the item names (which are used by the lifecycle to identify the items).
 /// * `collector` - Collects the IDs of lanes with state changes.
 fn run_handler<Context, Lifecycle, Handler, Collector>(
-    action_context: ActionContext<Context>,
+    action_context: &mut ActionContext<Context>,
     meta: AgentMetadata,
     context: &Context,
     lifecycle: &Lifecycle,

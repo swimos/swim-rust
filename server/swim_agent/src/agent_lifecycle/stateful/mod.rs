@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,10 +15,11 @@
 use static_assertions::assert_impl_all;
 use swim_api::handlers::{FnHandler, NoHandler};
 
-use crate::agent_lifecycle::AgentLifecycle;
+use crate::{agent_lifecycle::AgentLifecycle, event_handler::ActionContext, meta::AgentMetadata};
 
 use super::{
     item_event::{ItemEvent, ItemEventShared},
+    on_init::{OnInit, OnInitShared},
     on_start::{OnStart, OnStartShared},
     on_stop::{OnStop, OnStopShared},
     utility::HandlerContext,
@@ -37,24 +38,27 @@ use super::{
 pub struct StatefulAgentLifecycle<
     Context,
     State,
+    FInit = NoHandler,
     FStart = NoHandler,
     FStop = NoHandler,
     ItemEv = NoHandler,
 > {
     state: State,
     handler_context: HandlerContext<Context>,
+    on_init: FInit,
     on_start: FStart,
     on_stop: FStop,
     item_event: ItemEv,
 }
 
-impl<Context, State: Clone, FStart: Clone, FStop: Clone, ItemEv: Clone> Clone
-    for StatefulAgentLifecycle<Context, State, FStart, FStop, ItemEv>
+impl<Context, State: Clone, FInit: Clone, FStart: Clone, FStop: Clone, ItemEv: Clone> Clone
+    for StatefulAgentLifecycle<Context, State, FInit, FStart, FStop, ItemEv>
 {
     fn clone(&self) -> Self {
         Self {
             state: self.state.clone(),
             handler_context: self.handler_context,
+            on_init: self.on_init.clone(),
             on_start: self.on_start.clone(),
             on_stop: self.on_stop.clone(),
             item_event: self.item_event.clone(),
@@ -69,6 +73,7 @@ impl<Context, State> StatefulAgentLifecycle<Context, State> {
         StatefulAgentLifecycle {
             state,
             handler_context: HandlerContext::default(),
+            on_init: NoHandler::default(),
             on_start: NoHandler::default(),
             on_stop: NoHandler::default(),
             item_event: NoHandler::default(),
@@ -76,10 +81,31 @@ impl<Context, State> StatefulAgentLifecycle<Context, State> {
     }
 }
 
-impl<FStart, FStop, ItemEv, Context, State> OnStart<Context>
-    for StatefulAgentLifecycle<Context, State, FStart, FStop, ItemEv>
+impl<FInit, FStart, FStop, ItemEv, Context, State> OnInit<Context>
+    for StatefulAgentLifecycle<Context, State, FInit, FStart, FStop, ItemEv>
 where
     State: Send,
+    FInit: OnInitShared<Context, State>,
+    FStart: Send,
+    FStop: Send,
+    ItemEv: Send,
+{
+    fn initialize(
+        &self,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) {
+        let StatefulAgentLifecycle { state, on_init, .. } = self;
+        on_init.initialize(state, action_context, meta, context)
+    }
+}
+
+impl<FInit, FStart, FStop, ItemEv, Context, State> OnStart<Context>
+    for StatefulAgentLifecycle<Context, State, FInit, FStart, FStop, ItemEv>
+where
+    State: Send,
+    FInit: Send,
     FStart: OnStartShared<Context, State>,
     FStop: Send,
     ItemEv: Send,
@@ -97,10 +123,11 @@ where
     }
 }
 
-impl<FStart, FStop, ItemEv, Context, State> OnStop<Context>
-    for StatefulAgentLifecycle<Context, State, FStart, FStop, ItemEv>
+impl<FInit, FStart, FStop, ItemEv, Context, State> OnStop<Context>
+    for StatefulAgentLifecycle<Context, State, FInit, FStart, FStop, ItemEv>
 where
     State: Send,
+    FInit: Send,
     FStop: OnStopShared<Context, State>,
     FStart: Send,
     ItemEv: Send,
@@ -120,9 +147,10 @@ where
     }
 }
 
-impl<FStart, FStop, ItemEv, Context, State> ItemEvent<Context>
-    for StatefulAgentLifecycle<Context, State, FStart, FStop, ItemEv>
+impl<FInit, FStart, FStop, ItemEv, Context, State> ItemEvent<Context>
+    for StatefulAgentLifecycle<Context, State, FInit, FStart, FStop, ItemEv>
 where
+    FInit: Send,
     State: Send,
     FStart: Send,
     FStop: Send,
@@ -147,20 +175,21 @@ where
     }
 }
 
-impl<Context, State, FStart, FStop, ItemEv>
-    StatefulAgentLifecycle<Context, State, FStart, FStop, ItemEv>
+impl<Context, State, FInit, FStart, FStop, ItemEv>
+    StatefulAgentLifecycle<Context, State, FInit, FStart, FStop, ItemEv>
 {
     /// Replace the `on_start` handler with another defined using a closure.
-    pub fn on_start<F>(
+    pub fn on_init<H>(
         self,
-        f: F,
-    ) -> StatefulAgentLifecycle<Context, State, FnHandler<F>, FStop, ItemEv>
+        handler: H,
+    ) -> StatefulAgentLifecycle<Context, State, H, FStart, FStop, ItemEv>
     where
-        FnHandler<F>: OnStartShared<Context, State>,
+        H: OnInitShared<Context, State>,
     {
         let StatefulAgentLifecycle {
             handler_context,
             state,
+            on_start,
             on_stop,
             item_event,
             ..
@@ -168,6 +197,33 @@ impl<Context, State, FStart, FStop, ItemEv>
         StatefulAgentLifecycle {
             handler_context,
             state,
+            on_init: handler,
+            on_start,
+            on_stop,
+            item_event,
+        }
+    }
+
+    /// Replace the `on_start` handler with another defined using a closure.
+    pub fn on_start<F>(
+        self,
+        f: F,
+    ) -> StatefulAgentLifecycle<Context, State, FInit, FnHandler<F>, FStop, ItemEv>
+    where
+        FnHandler<F>: OnStartShared<Context, State>,
+    {
+        let StatefulAgentLifecycle {
+            handler_context,
+            state,
+            on_init,
+            on_stop,
+            item_event,
+            ..
+        } = self;
+        StatefulAgentLifecycle {
+            handler_context,
+            state,
+            on_init,
             on_start: FnHandler(f),
             on_stop,
             item_event,
@@ -178,13 +234,14 @@ impl<Context, State, FStart, FStop, ItemEv>
     pub fn on_stop<F>(
         self,
         f: F,
-    ) -> StatefulAgentLifecycle<Context, State, FStart, FnHandler<F>, ItemEv>
+    ) -> StatefulAgentLifecycle<Context, State, FInit, FStart, FnHandler<F>, ItemEv>
     where
         FnHandler<F>: OnStopShared<Context, State>,
     {
         let StatefulAgentLifecycle {
             handler_context,
             state,
+            on_init,
             on_start,
             item_event,
             ..
@@ -192,6 +249,7 @@ impl<Context, State, FStart, FStop, ItemEv>
         StatefulAgentLifecycle {
             handler_context,
             state,
+            on_init,
             on_start,
             on_stop: FnHandler(f),
             item_event,
@@ -202,13 +260,14 @@ impl<Context, State, FStart, FStop, ItemEv>
     pub fn on_lane_event<H>(
         self,
         handler: H,
-    ) -> StatefulAgentLifecycle<Context, State, FStart, FStop, H>
+    ) -> StatefulAgentLifecycle<Context, State, FInit, FStart, FStop, H>
     where
         H: ItemEventShared<Context, State>,
     {
         let StatefulAgentLifecycle {
             handler_context,
             state,
+            on_init,
             on_start,
             on_stop,
             ..
@@ -216,6 +275,7 @@ impl<Context, State, FStart, FStop, ItemEv>
         StatefulAgentLifecycle {
             handler_context,
             state,
+            on_init,
             on_start,
             on_stop,
             item_event: handler,

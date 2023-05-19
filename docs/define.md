@@ -24,6 +24,7 @@ The derive macro for `AgentLaneModel` can be applied to any struct type where al
 * Value lanes: `swim::agent::lanes::ValueLane`.
 * Command lanes: `swim::agent::lanes::CommandLane`.
 * Map Lanes: `swim::agent::lanes::MapLane`.
+* Join Value Lanes: `swim::agent::lanes::JoinValueLane`.
 
 The supported store types are:
 
@@ -46,7 +47,7 @@ struct ExampleAgent {
 
 As mentioned above, all of the type parameters used in the lane types must be `Send` (which is clearly true for `i32`, `String`, and `u64`). However, to use the derive macro there is a further restriction.
 
-For the macro to be able to generate the implementation, it needs to know how to serialize and deserialize the types use in the lane. This is encoded by the `swim::form::Form` trait which is covered in the following section. Additionally, for a map lane (`MapLane<K, V>`) the key type `K` must additionally satisfy:
+For the macro to be able to generate the implementation, it needs to know how to serialize and deserialize the types use in the lane. This is encoded by the `swim::form::Form` trait which is covered in the following section. Additionally, for a map-like item (`MapLane<K, V>`, `MapStore<K, V>` or `JoinValueLane<K, V>`) the key type `K` must additionally satisfy:
 
 ```rust
 K: Eq + Hash + Ord + Clone

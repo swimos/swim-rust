@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    downlink_lifecycle::{LiftShared, WithHandlerContext, WithHandlerContextBorrow},
     event_handler::{EventHandler, UnitHandler, UpdateBorrowFn, UpdateFn},
+    lifecycle_fn::{LiftShared, WithHandlerContext, WithHandlerContextBorrow},
 };
 
 /// Lifecycle event for the `on_set` event of a downlink, from an agent.
@@ -46,7 +46,7 @@ pub trait OnDownlinkSetShared<T, Context, Shared>: Send {
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `previous` - The previous value.
-    /// * `value` - The new value.
+    /// * `new_value` - The new value.
     fn on_set<'a>(
         &'a self,
         shared: &'a Shared,
@@ -157,7 +157,7 @@ where
     }
 }
 
-impl<Context, T, F, H> OnDownlinkSet<T, Context> for WithHandlerContext<Context, F>
+impl<Context, T, F, H> OnDownlinkSet<T, Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>, Option<T>, &T) -> H + Send,
     H: EventHandler<Context> + 'static,
@@ -167,15 +167,12 @@ where
         Self: 'a;
 
     fn on_set<'a>(&'a self, previous: Option<T>, new_value: &T) -> Self::OnSetHandler<'a> {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context, previous, new_value)
+        let WithHandlerContext { inner } = self;
+        inner(HandlerContext::default(), previous, new_value)
     }
 }
 
-impl<Context, T, B, F, H> OnDownlinkSet<T, Context> for WithHandlerContextBorrow<Context, F, B>
+impl<Context, T, B, F, H> OnDownlinkSet<T, Context> for WithHandlerContextBorrow<F, B>
 where
     B: ?Sized,
     T: Borrow<B>,
@@ -187,12 +184,8 @@ where
         Self: 'a;
 
     fn on_set<'a>(&'a self, previous: Option<T>, new_value: &T) -> Self::OnSetHandler<'a> {
-        let WithHandlerContextBorrow {
-            inner,
-            handler_context,
-            ..
-        } = self;
-        inner(*handler_context, previous, new_value.borrow())
+        let WithHandlerContextBorrow { inner, .. } = self;
+        inner(HandlerContext::default(), previous, new_value.borrow())
     }
 }
 

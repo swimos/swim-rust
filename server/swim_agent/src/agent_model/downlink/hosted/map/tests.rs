@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,11 +36,12 @@ use crate::{
         map::{
             on_clear::OnDownlinkClear, on_remove::OnDownlinkRemove, on_update::OnDownlinkUpdate,
         },
+        on_failed::OnFailed,
         on_linked::OnLinked,
         on_synced::OnSynced,
         on_unlinked::OnUnlinked,
     },
-    event_handler::{BoxEventHandler, EventHandlerExt, SideEffect},
+    event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
 };
 
 use super::{DownlinkChannel, HostedMapDownlinkChannel, MapDlState};
@@ -55,6 +56,7 @@ enum Event {
     Removed(i32, Text, HashMap<i32, Text>),
     Cleared(HashMap<i32, Text>),
     Unlinked,
+    Failed,
 }
 
 impl Event {
@@ -124,6 +126,19 @@ impl OnUnlinked<FakeAgent> for FakeLifecycle {
     fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         SideEffect::from(move || {
             self.events.lock().push(Event::Unlinked);
+        })
+        .boxed()
+    }
+}
+
+impl OnFailed<FakeAgent> for FakeLifecycle {
+    type OnFailedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    where
+        Self: 'a;
+
+    fn on_failed(&self) -> Self::OnFailedHandler<'_> {
+        SideEffect::from(move || {
+            self.events.lock().push(Event::Failed);
         })
         .boxed()
     }
@@ -291,6 +306,7 @@ async fn terminate_on_error() {
     let TestContext {
         mut channel,
         mut sender,
+        events,
         ..
     } = make_hosted_input(MapDownlinkConfig::default());
 
@@ -299,8 +315,11 @@ async fn terminate_on_error() {
     assert!(sender.sender.get_mut().write_u8(100).await.is_ok()); //Invalid message kind tag.
 
     assert!(matches!(channel.await_ready().await, Some(Err(_))));
-    assert!(channel.next_event(&agent).is_none());
-    assert!(channel.await_ready().await.is_none());
+    let handler = channel
+        .next_event(&agent)
+        .expect("Expected failure response.");
+    run_handler(handler, &agent);
+    assert_eq!(take_events(&events), vec![Event::Failed]);
 }
 
 fn take_events(events: &Events) -> Vec<Event> {

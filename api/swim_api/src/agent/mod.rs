@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::{
+    collections::HashMap,
     fmt::{Display, Formatter},
     num::NonZeroUsize,
 };
@@ -165,11 +166,13 @@ pub trait Agent {
     /// then yield another future that will actually run the agent.
     /// #Arguments
     /// * `route` - The node URI of this agent instance.
+    /// * `route_params` - Parameters extracted from the route URI.
     /// * `config` - Configuration parameters for the agent.
     /// * `context` - Context through which the agent can interact with the runtime.
     fn run(
         &self,
         route: RouteUri,
+        route_params: HashMap<String, String>,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult>;
@@ -183,10 +186,11 @@ impl Agent for BoxAgent {
     fn run(
         &self,
         route: RouteUri,
+        route_params: HashMap<String, String>,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
-        (**self).run(route, config, context)
+        (**self).run(route, route_params, config, context)
     }
 }
 
@@ -197,9 +201,10 @@ where
     fn run(
         &self,
         route: RouteUri,
+        route_params: HashMap<String, String>,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
-        (*self).run(route, config, context)
+        (*self).run(route, route_params, config, context)
     }
 }

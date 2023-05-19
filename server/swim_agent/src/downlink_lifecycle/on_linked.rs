@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ use crate::{
     event_handler::{EventHandler, HandlerFn0, UnitHandler},
 };
 
-use super::{LiftShared, WithHandlerContext};
+use crate::lifecycle_fn::{LiftShared, WithHandlerContext};
 
 /// Lifecycle event for the `on_linked` event of a downlink, from an agent.
 pub trait OnLinked<Context>: Send {
@@ -107,7 +107,7 @@ where
     }
 }
 
-impl<Context, F, H> OnLinked<Context> for WithHandlerContext<Context, F>
+impl<Context, F, H> OnLinked<Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>) -> H + Send,
     H: EventHandler<Context> + 'static,
@@ -117,11 +117,8 @@ where
         Self: 'a;
 
     fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context)
+        let WithHandlerContext { inner } = self;
+        inner(Default::default())
     }
 }
 

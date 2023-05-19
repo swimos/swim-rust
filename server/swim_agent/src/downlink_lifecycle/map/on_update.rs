@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ use swim_api::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    downlink_lifecycle::{LiftShared, WithHandlerContext, WithHandlerContextBorrow},
     event_handler::{EventHandler, MapUpdateBorrowFn, MapUpdateFn, UnitHandler},
+    lifecycle_fn::{LiftShared, WithHandlerContext, WithHandlerContextBorrow},
 };
 
 /// Lifecycle event for the `on_update` event of a downlink, from an agent.
@@ -146,7 +146,7 @@ where
     }
 }
 
-impl<Context, K, V, F, H> OnDownlinkUpdate<K, V, Context> for WithHandlerContext<Context, F>
+impl<Context, K, V, F, H> OnDownlinkUpdate<K, V, Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>, K, &HashMap<K, V>, Option<V>, &V) -> H + Send,
     H: EventHandler<Context> + 'static,
@@ -162,16 +162,12 @@ where
         previous: Option<V>,
         new_value: &V,
     ) -> Self::OnUpdateHandler<'a> {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context, key, map, previous, new_value)
+        let WithHandlerContext { inner } = self;
+        inner(Default::default(), key, map, previous, new_value)
     }
 }
 
-impl<Context, K, V, B, F, H> OnDownlinkUpdate<K, V, Context>
-    for WithHandlerContextBorrow<Context, F, B>
+impl<Context, K, V, B, F, H> OnDownlinkUpdate<K, V, Context> for WithHandlerContextBorrow<F, B>
 where
     B: ?Sized,
     V: Borrow<B>,
@@ -189,12 +185,8 @@ where
         previous: Option<V>,
         new_value: &V,
     ) -> Self::OnUpdateHandler<'a> {
-        let WithHandlerContextBorrow {
-            inner,
-            handler_context,
-            ..
-        } = self;
-        inner(*handler_context, key, map, previous, new_value.borrow())
+        let WithHandlerContextBorrow { inner, .. } = self;
+        inner(Default::default(), key, map, previous, new_value.borrow())
     }
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -195,7 +195,7 @@ impl<C, T: Clone> HandlerAction<C> for ValueLaneGet<C, T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -216,7 +216,7 @@ impl<C, T> HandlerAction<C> for ValueLaneSet<C, T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
@@ -239,7 +239,7 @@ impl<C, T> HandlerAction<C> for ValueLaneSync<C, T> {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<C>,
+        _action_context: &mut ActionContext<C>,
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {

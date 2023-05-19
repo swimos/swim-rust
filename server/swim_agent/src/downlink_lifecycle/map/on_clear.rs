@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    downlink_lifecycle::{LiftShared, WithHandlerContext},
     event_handler::{EventHandler, TakeFn, UnitHandler},
+    lifecycle_fn::{LiftShared, WithHandlerContext},
 };
 
 /// Lifecycle event for the `on_clear` event of a downlink, from an agent.
@@ -114,7 +114,7 @@ where
     }
 }
 
-impl<Context, K, V, F, H> OnDownlinkClear<K, V, Context> for WithHandlerContext<Context, F>
+impl<Context, K, V, F, H> OnDownlinkClear<K, V, Context> for WithHandlerContext<F>
 where
     F: Fn(HandlerContext<Context>, HashMap<K, V>) -> H + Send,
     H: EventHandler<Context> + 'static,
@@ -124,11 +124,8 @@ where
         Self: 'a;
 
     fn on_clear(&self, map: HashMap<K, V>) -> Self::OnClearHandler<'_> {
-        let WithHandlerContext {
-            inner,
-            handler_context,
-        } = self;
-        inner(*handler_context, map)
+        let WithHandlerContext { inner } = self;
+        inner(Default::default(), map)
     }
 }
 

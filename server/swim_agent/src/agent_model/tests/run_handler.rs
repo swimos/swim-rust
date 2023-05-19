@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -116,7 +116,7 @@ impl HandlerAction<TestAgent> for Handler {
 
     fn step(
         &mut self,
-        _action_context: ActionContext<TestAgent>,
+        _action_context: &mut ActionContext<TestAgent>,
         _meta: AgentMetadata,
         context: &TestAgent,
     ) -> StepResult<Self::Completion> {
@@ -197,13 +197,17 @@ fn make_uri() -> RouteUri {
     RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
-    AgentMetadata::new(uri, &CONFIG)
+fn make_meta<'a>(
+    uri: &'a RouteUri,
+    route_params: &'a HashMap<String, String>,
+) -> AgentMetadata<'a> {
+    AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
 fn run_test_handler(agent: &TestAgent, lifecycle: TestLifecycle, start_with: Lane) -> HashSet<u64> {
     let uri = make_uri();
-    let meta = make_meta(&uri);
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
     let mut lanes = HashMap::new();
     lanes.insert(Lane::A.id(), Text::new(Lane::A.name()));
     lanes.insert(Lane::B.id(), Text::new(Lane::B.name()));
@@ -213,7 +217,7 @@ fn run_test_handler(agent: &TestAgent, lifecycle: TestLifecycle, start_with: Lan
 
     if let Some(handler) = lifecycle.item_event(agent, start_with.name()) {
         let result = run_handler(
-            dummy_context(),
+            &mut dummy_context(&mut HashMap::new()),
             meta,
             agent,
             &lifecycle,
