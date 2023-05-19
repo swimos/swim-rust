@@ -17,6 +17,8 @@ swim_api = { path = "../api/swim_api" }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
 tracing-futures = { workspace = true }
+either = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 swim_recon = { path = "../api/formats/swim_recon", features = ["async_parser"] }

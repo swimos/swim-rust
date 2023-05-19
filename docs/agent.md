@@ -7,7 +7,7 @@ This guide will tell you how to define your own Swim agents using the Rust API. 
 * Lanes
 * Downlinks
 
-If you don't know what any of these are, you should consult a more general guide first.
+If you don't know what any of these are, you should consult a more [general guide](https://www.swimos.org) first.
 
 Contents
 --------

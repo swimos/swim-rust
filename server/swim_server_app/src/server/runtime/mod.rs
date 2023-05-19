@@ -25,9 +25,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use swim_api::agent::{Agent, BoxAgent};
+use swim_api::error::introspection::IntrospectionStopped;
 use swim_api::error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError};
 use swim_api::store::PlanePersistence;
-use swim_introspection::error::IntrospectionStopped;
 use swim_introspection::route::{lane_pattern, node_pattern};
 use swim_introspection::{init_introspection, IntrospectionResolver};
 use swim_introspection::{IntrospectionConfig, LaneMetaAgent, NodeMetaAgent};
@@ -654,7 +654,7 @@ where
         stop,
         websocket,
         attach_rx,
-        find_tx,
+        Some(find_tx),
         config.remote.registration_buffer_size,
     );
 

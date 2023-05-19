@@ -4,7 +4,7 @@ jobs:
     strategy:
       matrix:
         Linux:
-          vmImage: ubuntu-18.04
+          vmImage: ubuntu-22.04
 
         ${{ if parameters.cross }}:
           MacOS:
