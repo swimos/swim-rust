@@ -137,10 +137,17 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 /// 4. [`crate::agent::lanes::JoinValueLane`]
 ///
 /// For [`crate::agent::lanes::ValueLane`] and [`crate::agent::lanes::CommandLane`], the type parameter
-/// must implement that [`crate::form::Form`] trait (used for serialization and deserialization). For
+/// must implement the [`crate::form::Form`] trait (used for serialization and deserialization). For
 /// [`crate::agent::lanes::MapLane`] and [`crate::agent::lanes::JoinValueLane`], both parameters must
-/// implement [`crate::form::Form`] and additionally, the key type `K` must satisfy
-/// `K: Hash + Eq + Ord + Clone + Form`.
+/// implement [`crate::form::Form`] and additionally, the key type `K` must additionally satisfy
+/// `K: Hash + Eq + Ord + Clone`.
+///
+/// The supported store types are:
+///
+/// 1. [`crate::agent::stores::ValueStore`]
+/// 2. [`crate::agent::stores::MapStore`]
+///
+/// These have exactly the same restrictions on their type parameters as the corresponding lane types.
 ///
 /// The supported store types are:
 ///

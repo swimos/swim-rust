@@ -52,7 +52,7 @@ const LANES_LANE: &str = "lanes";
 
 /// A meta agent providing information on the lanes of an agent and aggregate statistics on
 /// the uplinks for all of its lanes. The meta agent extracts the target node URI from its own
-/// node URI and then attempts to resolve the introspection handl during it's initialization
+/// node URI and then attempts to resolve the introspection handle during it's initialization
 /// phase. If the node cannot be resolved, the meta-agent will fail to start with an appropriate
 /// error.
 pub struct NodeMetaAgent {

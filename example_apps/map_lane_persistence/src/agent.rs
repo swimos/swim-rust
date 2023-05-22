@@ -87,4 +87,3 @@ impl ExampleLifecycle {
         context.stop()
     }
 }
-

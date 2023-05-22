@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{fmt::{Display, Formatter}, collections::HashMap};
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter},
+};
 
 use swim::server::ServerHandle;
 use tokio::select;
@@ -51,7 +54,7 @@ impl<'a, K: Display, V: Display> Display for FormatMap<'a, K, V> {
         let mut it = self.0.iter();
         if let Some((k, v)) = it.next() {
             write!(f, " ({}, {})", k, v)?;
-            while let Some((k, v)) = it.next() {
+            for (k, v) in it {
                 write!(f, ", ({}, {})", k, v)?;
             }
             write!(f, " ")?;

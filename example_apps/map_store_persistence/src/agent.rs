@@ -52,7 +52,9 @@ impl ExampleLifecycle {
             context.effect(move || {
                 println!(
                     "Starting agent at: {}. value = {}, temporary = {}",
-                    uri, format_map(&m1), format_map(&m2)
+                    uri,
+                    format_map(&m1),
+                    format_map(&m2)
                 );
             })
         })
@@ -72,7 +74,9 @@ impl ExampleLifecycle {
             context.effect(move || {
                 println!(
                     "Stopping agent at: {}. value = {}, temporary = {}",
-                    uri, format_map(&m1), format_map(&m2)
+                    uri,
+                    format_map(&m1),
+                    format_map(&m2)
                 );
             })
         })
@@ -86,8 +90,12 @@ impl ExampleLifecycle {
     ) -> impl EventHandler<ExampleAgent> {
         match cmd {
             Instruction::Wake => UnitHandler::default().boxed(),
-            Instruction::SetValue { key, value } => context.update_store(ExampleAgent::VALUE, key.clone(), *value).boxed(),
-            Instruction::SetTemp { key, value } => context.update_store(ExampleAgent::TEMPORARY, key.clone(), *value).boxed(),
+            Instruction::SetValue { key, value } => context
+                .update_store(ExampleAgent::VALUE, key.clone(), *value)
+                .boxed(),
+            Instruction::SetTemp { key, value } => context
+                .update_store(ExampleAgent::TEMPORARY, key.clone(), *value)
+                .boxed(),
             Instruction::Stop => context.stop().boxed(),
         }
     }
