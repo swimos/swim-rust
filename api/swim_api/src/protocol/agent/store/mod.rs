@@ -130,17 +130,13 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 enum StoreInitMessageDecoderState {
+    #[default]
     ReadingHeader,
     ReadingBody,
 }
 
-impl Default for StoreInitMessageDecoderState {
-    fn default() -> Self {
-        StoreInitMessageDecoderState::ReadingHeader
-    }
-}
 #[derive(Debug, Default)]
 pub struct StoreInitMessageDecoder<D> {
     state: StoreInitMessageDecoderState,
@@ -273,16 +269,11 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 enum StoreResponseDecoderState {
+    #[default]
     Header,
     Message,
-}
-
-impl Default for StoreResponseDecoderState {
-    fn default() -> Self {
-        StoreResponseDecoderState::Header
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]

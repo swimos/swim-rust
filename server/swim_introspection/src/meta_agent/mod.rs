@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{pin::Pin, time::Duration};
+use std::{
+    pin::{pin, Pin},
+    time::Duration,
+};
 
-use futures::{pin_mut, stream::unfold, SinkExt, Stream, StreamExt};
+use futures::{stream::unfold, SinkExt, Stream, StreamExt};
 use swim_api::{
     error::FrameIoError,
     meta::uplink::WarpUplinkPulse,
@@ -27,8 +30,10 @@ use swim_form::structural::write::StructuralWritable;
 use swim_runtime::agent::reporting::UplinkReportReader;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
+    routing::route_uri::RouteUri,
     trigger,
 };
+use thiserror::Error;
 use tokio::time::{Instant, Sleep};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
@@ -62,8 +67,7 @@ where
     PulseType: StructuralWritable,
     F: Fn(WarpUplinkPulse) -> PulseType,
 {
-    let sleep = tokio::time::sleep(pulse_interval);
-    pin_mut!(sleep);
+    let sleep = pin!(tokio::time::sleep(pulse_interval));
     let sleep_str = sleep_stream(pulse_interval, sleep);
 
     run_pulse_lane_inner(
@@ -112,7 +116,7 @@ where
         return Ok(());
     }
 
-    pin_mut!(pulses);
+    let mut pulses = pin!(pulses);
 
     loop {
         let result = tokio::select! {
@@ -151,6 +155,22 @@ where
                 }
             }
             _ => {}
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("Invalid introspection URI: {route}. Missing parameter: {missing}")]
+struct MetaRouteError {
+    route: RouteUri,
+    missing: String,
+}
+
+impl MetaRouteError {
+    pub fn new(route: RouteUri, missing: &str) -> Self {
+        MetaRouteError {
+            route,
+            missing: missing.to_string(),
         }
     }
 }

@@ -109,13 +109,17 @@ mod test_support {
         RouteUri::try_from(NODE_URI).expect("Bad URI.")
     }
 
-    fn make_meta(uri: &RouteUri) -> AgentMetadata<'_> {
-        AgentMetadata::new(uri, &CONFIG)
+    fn make_meta<'a>(
+        uri: &'a RouteUri,
+        route_params: &'a HashMap<String, String>,
+    ) -> AgentMetadata<'a> {
+        AgentMetadata::new(uri, route_params, &CONFIG)
     }
 
     pub fn run_handler<FakeAgent>(mut handler: BoxEventHandler<'_, FakeAgent>, agent: &FakeAgent) {
         let uri = make_uri();
-        let meta = make_meta(&uri);
+        let route_params = HashMap::new();
+        let meta = make_meta(&uri, &route_params);
         let no_spawn = NoSpawn;
         let no_runtime = NoAgentRuntime;
         let mut join_value_init = HashMap::new();

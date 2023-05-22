@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
+
 use swim_api::agent::AgentConfig;
 use swim_utilities::routing::route_uri::RouteUri;
 
@@ -20,20 +22,31 @@ use swim_utilities::routing::route_uri::RouteUri;
 pub struct AgentMetadata<'a> {
     // The URI of the instance.
     path: &'a RouteUri,
+    // Parameters extracted from the route URI.
+    route_params: &'a HashMap<String, String>,
     // Specific configuration for the instance.
     configuration: &'a AgentConfig,
 }
 
 impl<'a> AgentMetadata<'a> {
-    pub fn new(path: &'a RouteUri, configuration: &'a AgentConfig) -> Self {
+    pub fn new(
+        path: &'a RouteUri,
+        route_params: &'a HashMap<String, String>,
+        configuration: &'a AgentConfig,
+    ) -> Self {
         AgentMetadata {
             path,
+            route_params,
             configuration,
         }
     }
 
     pub fn agent_uri(&self) -> &'a RouteUri {
         self.path
+    }
+
+    pub fn get_param(&self, name: &str) -> Option<&'a str> {
+        self.route_params.get(name).map(String::as_str)
     }
 
     pub fn agent_configuration(&self) -> &'a AgentConfig {

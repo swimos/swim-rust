@@ -12,17 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::{
-    pin_mut,
-    task::{waker, ArcWake},
-};
-use std::sync::atomic::Ordering;
+use futures::task::{waker, ArcWake};
 use std::{
     cell::Cell,
     num::NonZeroUsize,
     sync::{atomic::AtomicBool, Arc},
     task::{Context, Poll},
 };
+use std::{pin::pin, sync::atomic::Ordering};
 use swim_num::non_zero_usize;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
@@ -97,7 +94,7 @@ fn writer_consumes_budget() {
 
     super::set_budget(3);
 
-    pin_mut!(tx);
+    let mut tx = pin!(tx);
 
     let bytes = vec![0, 1, 2, 3];
 
@@ -124,8 +121,8 @@ fn reader_consumes_budget() {
     let mut cx = Context::from_waker(&waker);
     let (tx, rx) = byte_channel(BUFFER_SIZE);
 
-    pin_mut!(tx);
-    pin_mut!(rx);
+    let tx = pin!(tx);
+    let mut rx = pin!(rx);
 
     let bytes: Vec<u8> = (0..16).collect();
 

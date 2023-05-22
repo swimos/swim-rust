@@ -1,4 +1,4 @@
-use std::{io::ErrorKind, sync::Arc, time::Duration};
+use std::{collections::HashMap, io::ErrorKind, sync::Arc, time::Duration};
 
 // Copyright 2015-2023 Swim Inc.
 //
@@ -130,7 +130,7 @@ async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) 
     let model = AgentModel::<TestAgent, TestLifecycle>::new(lane_model_fac, lifecycle);
 
     let task = model
-        .initialize_agent(make_uri(), CONFIG, context.clone())
+        .initialize_agent(make_uri(), HashMap::new(), CONFIG, context.clone())
         .await
         .expect("Initialization failed.");
 
@@ -163,7 +163,7 @@ async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) 
 #[tokio::test]
 async fn run_agent_init_task() {
     with_timeout(async {
-        let context = Box::new(TestAgentContext::default());
+        let context = Box::<TestAgentContext>::default();
         let (
             _,
             TestContext {
@@ -191,7 +191,7 @@ async fn run_agent_init_task() {
 #[tokio::test]
 async fn stops_if_all_lanes_stop() {
     with_timeout(async {
-        let context = Box::new(TestAgentContext::default());
+        let context = Box::<TestAgentContext>::default();
         let (
             task,
             TestContext {
@@ -242,7 +242,7 @@ async fn stops_if_all_lanes_stop() {
 #[tokio::test]
 async fn command_to_value_lane() {
     with_timeout(async {
-        let context = Box::new(TestAgentContext::default());
+        let context = Box::<TestAgentContext>::default();
         let (
             task,
             TestContext {
@@ -307,7 +307,7 @@ const SYNC_ID: Uuid = Uuid::from_u128(393883);
 #[tokio::test]
 async fn sync_with_lane() {
     with_timeout(async {
-        let context = Box::new(TestAgentContext::default());
+        let context = Box::<TestAgentContext>::default();
         let (
             task,
             TestContext {
@@ -364,7 +364,7 @@ async fn sync_with_lane() {
 #[tokio::test]
 async fn command_to_map_lane() {
     with_timeout(async {
-        let context = Box::new(TestAgentContext::default());
+        let context = Box::<TestAgentContext>::default();
         let (
             task,
             TestContext {
@@ -437,7 +437,7 @@ async fn command_to_map_lane() {
 #[tokio::test]
 async fn suspend_future() {
     with_timeout(async {
-        let context = Box::new(TestAgentContext::default());
+        let context = Box::<TestAgentContext>::default();
         let (
             task,
             TestContext {

@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, collections::HashMap, num::NonZeroUsize, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, num::NonZeroUsize, pin::pin, sync::Arc};
 
 use bytes::BytesMut;
-use futures::{future::join3, pin_mut, SinkExt, StreamExt};
+use futures::{future::join3, SinkExt, StreamExt};
 use parking_lot::Mutex;
 use swim_api::protocol::{
     downlink::{DownlinkNotification, DownlinkNotificationEncoder},
@@ -688,8 +688,7 @@ const CHANNEL_SIZE: usize = 8;
 async fn map_downlink_writer() {
     let (op_tx, op_rx) = mpsc::channel::<MapOperation<i32, Text>>(CHANNEL_SIZE);
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
-    let stream = map_dl_write_stream(tx, op_rx);
-    pin_mut!(stream);
+    let mut stream = pin!(map_dl_write_stream(tx, op_rx));
 
     let receiver = FramedRead::new(rx, MapOperationDecoder::<i32, Text>::default());
 

@@ -26,7 +26,7 @@ use swim_model::Text;
 use uuid::Uuid;
 
 use crate::agent_model::downlink::OpenEventDownlinkAction;
-use crate::event_handler::{EventHandler, Modification};
+use crate::event_handler::{EventHandler, EventHandlerError, Modification};
 use crate::{
     agent_model::WriteResult,
     event_handler::{ActionContext, HandlerAction, StepResult},
@@ -335,6 +335,7 @@ where
     }
 }
 
+#[derive(Default)]
 enum OpenDownlinkState<C, K, V> {
     Init {
         projection: fn(&C) -> &JoinValueLane<K, V>,
@@ -344,13 +345,8 @@ enum OpenDownlinkState<C, K, V> {
     Running {
         handler: Box<dyn EventHandler<C> + Send + 'static>,
     },
+    #[default]
     Done,
-}
-
-impl<C, K, V> Default for OpenDownlinkState<C, K, V> {
-    fn default() -> Self {
-        OpenDownlinkState::Done
-    }
 }
 
 pub struct JoinValueAddDownlink<C, K, V> {
@@ -385,7 +381,9 @@ where
                     {
                         match init.try_create_action(Box::new(key), TypeId::of::<V>(), address) {
                             Ok(boxed) => boxed,
-                            Err(err) => break StepResult::Fail(err.into()),
+                            Err(err) => {
+                                break StepResult::Fail(EventHandlerError::BadJoinLifecycle(err))
+                            }
                         }
                     } else {
                         let action = AddDownlinkAction::new(

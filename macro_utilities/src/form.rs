@@ -124,7 +124,7 @@ impl<'a> FormField<'a> {
 
 /// Enumeration of ways in which fields can be serialized in Recon documents. Unannotated fields
 /// are assumed to be annotated as `Item::Slot`.
-#[derive(PartialEq, Debug, Eq, Hash, Copy, Clone)]
+#[derive(PartialEq, Debug, Eq, Hash, Copy, Clone, Default)]
 pub enum FieldKind {
     /// The field should be written as a slot in the tag attribute.
     Header,
@@ -132,6 +132,7 @@ pub enum FieldKind {
     Attr,
     /// The field should be written as an item in the main body (or the header if another field is
     /// marked as `FieldKind::Body`
+    #[default]
     Item,
     /// The field should be used to form the entire body of the record, all other fields that are
     /// marked as slots will be promoted to headers. At most one field may be marked with this.
@@ -144,10 +145,4 @@ pub enum FieldKind {
     /// [`Default`].
     Skip,
     Tagged,
-}
-
-impl Default for FieldKind {
-    fn default() -> Self {
-        FieldKind::Item
-    }
 }

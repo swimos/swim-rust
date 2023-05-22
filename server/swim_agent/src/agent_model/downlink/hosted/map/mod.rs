@@ -15,11 +15,11 @@
 use std::{
     cell::RefCell,
     collections::{BTreeSet, HashMap},
+    pin::pin,
 };
 
 use futures::{
     future::{select, BoxFuture, Either},
-    pin_mut,
     stream::unfold,
     Future, FutureExt, SinkExt, Stream, StreamExt,
 };
@@ -509,11 +509,9 @@ where
                 return None;
             };
             trace!("Writing a value to a value downlink.");
-            let write_fut = writer.send(first);
-            pin_mut!(write_fut);
+            let mut write_fut = pin!(writer.send(first));
             let result = loop {
-                let recv = rx.recv();
-                pin_mut!(recv);
+                let recv = pin!(rx.recv());
                 match select(write_fut.as_mut(), recv).await {
                     Either::Left((Ok(_), _)) => break Some(Ok(())),
                     Either::Left((Err(e), _)) => {

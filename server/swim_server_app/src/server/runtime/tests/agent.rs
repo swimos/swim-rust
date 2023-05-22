@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::{collections::HashMap, pin::pin};
+
 use bytes::BytesMut;
-use futures::{future::BoxFuture, pin_mut, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
+use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::AgentTaskError,
@@ -55,14 +57,14 @@ pub enum AgentEvent {
 pub struct TestAgent {
     reporter: mpsc::UnboundedSender<i32>,
     events: mpsc::UnboundedSender<AgentEvent>,
-    check_meta: fn(RouteUri, AgentConfig),
+    check_meta: fn(RouteUri, HashMap<String, String>, AgentConfig),
 }
 
 impl TestAgent {
     pub fn new(
         reporter: mpsc::UnboundedSender<i32>, //Reports each time the state changes.
         events: mpsc::UnboundedSender<AgentEvent>, //Reports when the agent is started or stopped.
-        check_meta: fn(RouteUri, AgentConfig), //Check to perform on the agent metadata on startup.
+        check_meta: fn(RouteUri, HashMap<String, String>, AgentConfig), //Check to perform on the agent metadata on startup.
     ) -> Self {
         TestAgent {
             reporter,
@@ -76,10 +78,11 @@ impl Agent for TestAgent {
     fn run(
         &self,
         route: RouteUri,
+        route_params: HashMap<String, String>,
         config: AgentConfig,
         context: Box<dyn AgentContext + Send>,
     ) -> BoxFuture<'static, AgentInitResult> {
-        (self.check_meta)(route, config);
+        (self.check_meta)(route, route_params, config);
         let events = self.events.clone();
         let reporter = self.reporter.clone();
         async move {
@@ -96,8 +99,7 @@ impl Agent for TestAgent {
 }
 
 pub async fn run_lane_initializer(tx: &mut ByteWriter, rx: &mut ByteReader) {
-    let stream = init_stream(rx);
-    pin_mut!(stream);
+    let mut stream = pin!(init_stream(rx));
     if stream.next().await.is_some() {
         panic!("Unexpected initial value.")
     } else {

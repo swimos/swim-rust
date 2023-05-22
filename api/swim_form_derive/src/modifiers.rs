@@ -107,7 +107,7 @@ where
             Ok(_) => {
                 let err = syn::Error::new_spanned(
                     attribute,
-                    &format!("Invalid attribute. Expected #[{}(...)]", path),
+                    format!("Invalid attribute. Expected #[{}(...)]", path),
                 );
                 Validation::Validated(state, err.into())
             }

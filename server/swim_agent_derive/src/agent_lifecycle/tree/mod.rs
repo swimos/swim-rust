@@ -22,7 +22,7 @@ mod tests;
 /// #Type parameters.
 /// * `K` - The type of the labels.
 /// * `T` - The type of the data at each branch node of the tree.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Default)]
 pub enum BinTree<K, T> {
     Branch {
         key: K,
@@ -30,13 +30,8 @@ pub enum BinTree<K, T> {
         left: Box<Self>,
         right: Box<Self>,
     },
+    #[default]
     Leaf,
-}
-
-impl<K, T> Default for BinTree<K, T> {
-    fn default() -> Self {
-        BinTree::Leaf
-    }
 }
 
 impl<K, T> BinTree<K, T> {
