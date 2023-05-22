@@ -568,7 +568,7 @@ where
                     let body_len_and_tag = header.get_u64();
                     let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
                     if src.remaining() < HEADER_INIT_LEN + node_len + lane_len {
-                        src.reserve(node_len + lane_len as usize);
+                        src.reserve(node_len + lane_len);
                         break Ok(None);
                     }
                     src.advance(HEADER_INIT_LEN);
@@ -730,7 +730,7 @@ where
                     let body_len_and_tag = header.get_u64();
                     let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
                     if src.remaining() < HEADER_INIT_LEN + node_len + lane_len {
-                        src.reserve(node_len + lane_len as usize);
+                        src.reserve(node_len + lane_len);
                         break Ok(None);
                     }
                     src.advance(HEADER_INIT_LEN);

@@ -92,8 +92,9 @@ enum FinalAttrStage<'a> {
 /// A single parse result can produce several events. This enumeration allows
 /// an iterator to consume them in turn. Note that in the cases with multiple
 /// events, the events are stored as a stack so are in reverse order.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 enum ParseEvents<'a> {
+    #[default]
     NoEvent,
     SingleEvent(ReadEvent<'a>),
     TwoEvents(ReadEvent<'a>, ReadEvent<'a>),

@@ -11,7 +11,7 @@ trust_dns = ["swim_runtime/trust_dns"]
 
 [dependencies]
 futures = { workspace = true }
-ratchet = { package = "ratchet_rs", workspace = true, features = ["deflate", "split"] }
+ratchet = { workspace = true, features = ["deflate", "split"] }
 swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger", "text"] }
 swim_runtime = { path = "../../runtime/swim_runtime" }
 swim_tls = { path = "../../runtime/swim_tls" }

@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, pin::pin};
 
 use bytes::BytesMut;
-use futures::{future::BoxFuture, pin_mut, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
+use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::AgentTaskError,
@@ -99,8 +99,7 @@ impl Agent for TestAgent {
 }
 
 pub async fn run_lane_initializer(tx: &mut ByteWriter, rx: &mut ByteReader) {
-    let stream = init_stream(rx);
-    pin_mut!(stream);
+    let mut stream = pin!(init_stream(rx));
     if stream.next().await.is_some() {
         panic!("Unexpected initial value.")
     } else {

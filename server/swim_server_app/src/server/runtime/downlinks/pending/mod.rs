@@ -106,7 +106,7 @@ impl PendingDownlinks {
     pub fn open_client_failed(&mut self, host: &Text) -> impl Iterator<Item = DownlinkRequest> {
         self.awaiting_remote
             .remove(host)
-            .map(|map| map.into_iter().map(|(_, v)| v).into_iter().flatten())
+            .map(|map| map.into_values().flatten())
             .into_iter()
             .flatten()
     }

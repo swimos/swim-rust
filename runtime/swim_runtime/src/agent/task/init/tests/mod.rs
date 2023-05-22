@@ -156,7 +156,7 @@ async fn run_initializer_success() {
             None,
             tx_in,
             rx_out,
-            Box::new(DummyInit::default()),
+            Box::<DummyInit>::default(),
         );
 
         let test_task = async {
@@ -228,7 +228,7 @@ async fn run_initializer_bad_response() {
             None,
             tx_in,
             rx_out,
-            Box::new(DummyInit::default()),
+            Box::<DummyInit>::default(),
         );
 
         let test_task = async {
@@ -273,7 +273,7 @@ async fn run_initializer_timeout() {
             None,
             tx_in,
             rx_out,
-            Box::new(DummyInit::default()),
+            Box::<DummyInit>::default(),
         );
 
         let test_task = async {

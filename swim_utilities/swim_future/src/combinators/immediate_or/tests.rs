@@ -71,13 +71,14 @@ impl<F: Future + Unpin> Future for PanicFuse<F> {
 
 mod or_join {
 
+    use std::pin::pin;
     use std::sync::Arc;
     use std::task::{Context, Poll};
 
     use super::{immediate_or_join, FakeWaker, PanicFuse};
     use futures::future::ready;
     use futures::task::waker;
-    use futures::{pin_mut, Future};
+    use futures::Future;
 
     #[tokio::test]
     async fn future_completes_immediately() {
@@ -97,8 +98,7 @@ mod or_join {
         let (tx2, rx2) = swim_trigger::trigger();
         tx2.trigger();
 
-        let fut = immediate_or_join(PanicFuse::new(rx1), PanicFuse::new(rx2));
-        pin_mut!(fut);
+        let mut fut = pin!(immediate_or_join(PanicFuse::new(rx1), PanicFuse::new(rx2)));
 
         assert!(fut.as_mut().poll(&mut context).is_pending());
 
@@ -123,8 +123,7 @@ mod or_join {
         let (tx2, rx2) = swim_trigger::trigger();
         tx2.trigger();
 
-        let fut = immediate_or_join(PanicFuse::new(rx1), PanicFuse::new(rx2));
-        pin_mut!(fut);
+        let mut fut = pin!(immediate_or_join(PanicFuse::new(rx1), PanicFuse::new(rx2)));
 
         assert!(fut.as_mut().poll(&mut context).is_pending());
         assert!(fut.as_mut().poll(&mut context).is_pending());
@@ -149,8 +148,7 @@ mod or_join {
         let (tx1, rx1) = swim_trigger::trigger();
         let (tx2, rx2) = swim_trigger::trigger();
 
-        let fut = immediate_or_join(PanicFuse::new(rx1), PanicFuse::new(rx2));
-        pin_mut!(fut);
+        let mut fut = pin!(immediate_or_join(PanicFuse::new(rx1), PanicFuse::new(rx2)));
 
         assert!(fut.as_mut().poll(&mut context).is_pending());
 
@@ -179,8 +177,7 @@ mod or_join {
         let (tx1, rx1) = swim_trigger::trigger();
         let (tx2, rx2) = swim_trigger::trigger();
 
-        let fut = immediate_or_join(PanicFuse::new(rx1), PanicFuse::new(rx2));
-        pin_mut!(fut);
+        let mut fut = pin!(immediate_or_join(PanicFuse::new(rx1), PanicFuse::new(rx2)));
 
         assert!(fut.as_mut().poll(&mut context).is_pending());
 
@@ -209,8 +206,7 @@ mod or_join {
         let (tx1, rx1) = swim_trigger::trigger();
         let (tx2, rx2) = swim_trigger::trigger();
 
-        let fut = immediate_or_join(PanicFuse::new(rx1), PanicFuse::new(rx2));
-        pin_mut!(fut);
+        let mut fut = pin!(immediate_or_join(PanicFuse::new(rx1), PanicFuse::new(rx2)));
 
         assert!(fut.as_mut().poll(&mut context).is_pending());
 
@@ -235,8 +231,7 @@ mod or_join {
         let (tx1, rx1) = swim_trigger::trigger();
         let (tx2, rx2) = swim_trigger::trigger();
 
-        let fut = immediate_or_join(PanicFuse::new(rx1), PanicFuse::new(rx2));
-        pin_mut!(fut);
+        let mut fut = pin!(immediate_or_join(PanicFuse::new(rx1), PanicFuse::new(rx2)));
 
         assert!(fut.as_mut().poll(&mut context).is_pending());
         assert!(fut.as_mut().poll(&mut context).is_pending());
@@ -263,8 +258,7 @@ mod or_join {
         let (tx1, rx1) = swim_trigger::trigger();
         let (tx2, rx2) = swim_trigger::trigger();
 
-        let fut = immediate_or_join(PanicFuse::new(rx1), PanicFuse::new(rx2));
-        pin_mut!(fut);
+        let mut fut = pin!(immediate_or_join(PanicFuse::new(rx1), PanicFuse::new(rx2)));
 
         tx1.trigger();
         tx2.trigger();
@@ -277,13 +271,14 @@ mod or_join {
 
 mod or_start {
 
+    use std::pin::pin;
     use std::sync::Arc;
     use std::task::{Context, Poll};
 
     use super::{immediate_or_start, FakeWaker, PanicFuse, SecondaryResult};
     use futures::future::ready;
     use futures::task::waker;
-    use futures::{pin_mut, Future};
+    use futures::Future;
 
     #[tokio::test]
     async fn second_never_starts() {
@@ -303,8 +298,7 @@ mod or_start {
         let (tx2, rx2) = swim_trigger::trigger();
         tx2.trigger();
 
-        let fut = immediate_or_start(PanicFuse::new(rx1), PanicFuse::new(rx2));
-        pin_mut!(fut);
+        let mut fut = pin!(immediate_or_start(PanicFuse::new(rx1), PanicFuse::new(rx2)));
 
         assert!(fut.as_mut().poll(&mut context).is_pending());
 
@@ -329,8 +323,7 @@ mod or_start {
         let (tx2, rx2) = swim_trigger::trigger();
         tx2.trigger();
 
-        let fut = immediate_or_start(PanicFuse::new(rx1), PanicFuse::new(rx2));
-        pin_mut!(fut);
+        let mut fut = pin!(immediate_or_start(PanicFuse::new(rx1), PanicFuse::new(rx2)));
 
         assert!(fut.as_mut().poll(&mut context).is_pending());
         assert!(fut.as_mut().poll(&mut context).is_pending());
@@ -355,8 +348,7 @@ mod or_start {
         let (tx1, rx1) = swim_trigger::trigger();
         let (_tx2, rx2) = swim_trigger::trigger();
 
-        let fut = immediate_or_start(PanicFuse::new(rx1), PanicFuse::new(rx2));
-        pin_mut!(fut);
+        let mut fut = pin!(immediate_or_start(PanicFuse::new(rx1), PanicFuse::new(rx2)));
 
         assert!(fut.as_mut().poll(&mut context).is_pending());
 
@@ -380,8 +372,7 @@ mod or_start {
         let (tx1, rx1) = swim_trigger::trigger();
         let (tx2, rx2) = swim_trigger::trigger();
 
-        let fut = immediate_or_start(PanicFuse::new(rx1), PanicFuse::new(rx2));
-        pin_mut!(fut);
+        let mut fut = pin!(immediate_or_start(PanicFuse::new(rx1), PanicFuse::new(rx2)));
 
         assert!(fut.as_mut().poll(&mut context).is_pending());
 
@@ -410,8 +401,7 @@ mod or_start {
         let (tx1, rx1) = swim_trigger::trigger();
         let (tx2, rx2) = swim_trigger::trigger();
 
-        let fut = immediate_or_start(PanicFuse::new(rx1), PanicFuse::new(rx2));
-        pin_mut!(fut);
+        let mut fut = pin!(immediate_or_start(PanicFuse::new(rx1), PanicFuse::new(rx2)));
 
         assert!(fut.as_mut().poll(&mut context).is_pending());
 
@@ -436,8 +426,7 @@ mod or_start {
         let (tx1, rx1) = swim_trigger::trigger();
         let (tx2, rx2) = swim_trigger::trigger();
 
-        let fut = immediate_or_start(PanicFuse::new(rx1), PanicFuse::new(rx2));
-        pin_mut!(fut);
+        let mut fut = pin!(immediate_or_start(PanicFuse::new(rx1), PanicFuse::new(rx2)));
 
         assert!(fut.as_mut().poll(&mut context).is_pending());
         assert!(fut.as_mut().poll(&mut context).is_pending());
@@ -464,8 +453,7 @@ mod or_start {
         let (tx1, rx1) = swim_trigger::trigger();
         let (tx2, rx2) = swim_trigger::trigger();
 
-        let fut = immediate_or_start(PanicFuse::new(rx1), PanicFuse::new(rx2));
-        pin_mut!(fut);
+        let mut fut = pin!(immediate_or_start(PanicFuse::new(rx1), PanicFuse::new(rx2)));
 
         tx1.trigger();
         tx2.trigger();
