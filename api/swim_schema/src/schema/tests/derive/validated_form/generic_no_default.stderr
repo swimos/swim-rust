@@ -20,7 +20,7 @@ note: required by a bound in `as_value`
   --> $WORKSPACE/api/swim_form/src/lib.rs
    |
    | pub trait Form: StructuralReadable + StructuralWritable {
-   |                                      ^^^^^^^^^^^^^^^^^^ required by this bound in `as_value`
+   |                                      ^^^^^^^^^^^^^^^^^^ required by this bound in `Form::as_value`
 
 error[E0277]: the trait bound `S<Invalid>: RecognizerReadable` is not satisfied
   --> src/schema/tests/derive/validated_form/generic_no_default.rs:30:29
@@ -45,4 +45,4 @@ note: required by a bound in `as_value`
   --> $WORKSPACE/api/swim_form/src/lib.rs
    |
    | pub trait Form: StructuralReadable + StructuralWritable {
-   |                 ^^^^^^^^^^^^^^^^^^ required by this bound in `as_value`
+   |                 ^^^^^^^^^^^^^^^^^^ required by this bound in `Form::as_value`
