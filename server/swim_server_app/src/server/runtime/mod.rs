@@ -519,10 +519,10 @@ where
                     } = reason;
                     match &reason {
                         DisconnectionReason::DuplicateRegistration(_) => {
-                            error!(conected_id = %connected_id, agent_id = %agent_id, "Multiple connections attempted between a remote and an agent.");
+                            error!(connected_id = %connected_id, agent_id = %agent_id, "Multiple connections attempted between a remote and an agent.");
                         }
                         _ => {
-                            info!(conected_id = %connected_id, agent_id = %agent_id, reason = %reason, "A connection between and agent and a remote stopped.");
+                            info!(connected_id = %connected_id, agent_id = %agent_id, reason = %reason, "A connection between an agent and a remote stopped.");
                         }
                     }
                 }
@@ -905,7 +905,7 @@ impl Routes {
         A: Agent + Send + 'static,
     {
         let Routes(routes) = self;
-        routes.push(Route::new(route_pattern, Box::new(agent), true));
+        routes.push(Route::new(route_pattern, Box::new(agent), false));
     }
 
     fn find_route<'a>(&'a self, node: &RouteUri) -> Option<(&'a Route, HashMap<String, String>)> {

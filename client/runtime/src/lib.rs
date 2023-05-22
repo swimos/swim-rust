@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,17 +21,17 @@ mod pending;
 mod runtime;
 mod transport;
 
-pub use error::{DownlinkErrorKind, DownlinkRuntimeError, TimeoutElapsed};
-pub use models::RemotePath;
+pub use crate::error::{DownlinkErrorKind, DownlinkRuntimeError, TimeoutElapsed};
+pub use crate::models::RemotePath;
+pub use crate::runtime::{start_runtime, RawHandle};
+pub use crate::transport::{Transport, TransportRequest};
 #[cfg(feature = "deflate")]
 use ratchet::deflate::DeflateConfig;
-pub use runtime::{start_runtime, RawHandle};
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 pub use swim_api::downlink::DownlinkKind;
 pub use swim_api::error::DownlinkTaskError;
 use swim_utilities::non_zero_usize;
-pub use transport::{Transport, TransportRequest};
 
 const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
 
