@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2021 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,17 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::MsgPackInterpreter;
+use crate::{read_from_msg_pack, MsgPackReadError};
+use bytes::{BufMut, BytesMut};
 use std::collections::HashMap;
 use std::fmt::Debug;
-
 use swim_form::Form;
 use swim_model::{Attr, Item, Value};
 
-use crate::MsgPackInterpreter;
-use crate::{read_from_msg_pack, MsgPackReadError};
-
 fn validate<T: Form + PartialEq + Debug>(value: &T) {
-    let mut bytes = value.write_with(MsgPackInterpreter).expect("Write failure");
+    let mut buffer = BytesMut::new();
+    let mut writer = (&mut buffer).writer();
+
+    let interp = MsgPackInterpreter::new(&mut writer);
+    value.write_with(interp).expect("Write failure");
+
+    let mut bytes = buffer.split().freeze();
     let restored: Result<T, MsgPackReadError> = read_from_msg_pack(&mut bytes);
 
     assert!(restored.is_ok());
@@ -187,28 +192,6 @@ fn msgpack_nested_attribute() {
 }
 
 #[test]
-fn delegate_primitive() {
-    #[derive(Form, PartialEq, Debug)]
-    #[form_root(::swim_form)]
-    struct Prop {
-        #[form(attr)]
-        a: i32,
-        #[form(header)]
-        b: String,
-        #[form(body)]
-        c: i32,
-    }
-
-    let value = Prop {
-        a: 1,
-        b: "2".to_string(),
-        c: 3,
-    };
-
-    validate(&value);
-}
-
-#[test]
 fn delegate_struct() {
     #[derive(Form, PartialEq, Debug)]
     #[form_root(::swim_form)]
@@ -258,4 +241,86 @@ fn delegate_struct() {
     };
 
     validate(&value);
+}
+
+#[test]
+fn delegate_vec() {
+    #[derive(Form, PartialEq, Debug)]
+    #[form_root(::swim_form)]
+    struct Prop {
+        #[form(attr)]
+        a: i32,
+        #[form(header)]
+        b: String,
+        #[form(body)]
+        c: Vec<Delegate>,
+    }
+
+    #[derive(Form, PartialEq, Debug)]
+    #[form_root(::swim_form)]
+    struct Delegate {
+        #[form(attr)]
+        a: i32,
+        #[form(header)]
+        b: String,
+        #[form(body)]
+        c: i32,
+    }
+
+    let value = Prop {
+        a: 1,
+        b: "2".to_string(),
+        c: vec![
+            Delegate {
+                a: 3,
+                b: "4".to_string(),
+                c: 5,
+            },
+            Delegate {
+                a: 6,
+                b: "7".to_string(),
+                c: 8,
+            },
+            Delegate {
+                a: 9,
+                b: "10".to_string(),
+                c: 11,
+            },
+        ],
+    };
+
+    validate(&value);
+}
+
+#[test]
+fn delegate_eor() {
+    #[derive(Form, PartialEq, Debug)]
+    #[form_root(::swim_form)]
+    struct Delegate<T> {
+        #[form(attr)]
+        a: i32,
+        #[form(header)]
+        b: String,
+        #[form(body)]
+        c: T,
+    }
+
+    validate(&Delegate::<i64> {
+        a: 1,
+        b: "2".to_string(),
+        c: i64::MAX,
+    });
+    validate(&Delegate::<String> {
+        a: 1,
+        b: "2".to_string(),
+        c: "3".to_string(),
+    });
+    validate(&Delegate::<Value> {
+        a: 1,
+        b: "2".to_string(),
+        c: Value::Record(
+            vec![Attr::of("attr")],
+            vec![Item::slot("a", 1), Item::ValueItem(Value::Extant)],
+        ),
+    });
 }
