@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ use std::{fmt::Debug, time::Duration};
 pub use swim_api::downlink::DownlinkKind;
 pub use swim_api::error::DownlinkTaskError;
 use swim_utilities::non_zero_usize;
-pub use transport::{Transport, TransportRequest};
+pub use transport::Transport;
 
 const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
 const DEFAULT_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);

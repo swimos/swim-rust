@@ -17,7 +17,7 @@ error[E0599]: the method `as_value` exists for struct `S<Valid, Invalid>`, but i
            which is required by `S<Valid, Invalid>: Form`
            `S<Valid, Invalid>: StructuralWritable`
            which is required by `S<Valid, Invalid>: Form`
-note: the following traits must be implemented
+note: the traits `StructuralReadable` and `StructuralWritable` must be implemented
   --> src/structural/read/mod.rs
    |
    | pub trait StructuralReadable: RecognizerReadable {
