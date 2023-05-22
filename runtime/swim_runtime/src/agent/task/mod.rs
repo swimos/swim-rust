@@ -48,6 +48,14 @@ use futures::{
     stream::SelectAll,
     Stream, StreamExt,
 };
+use tokio::sync::{mpsc, oneshot};
+use tokio::time::{sleep, timeout, Instant, Sleep};
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::codec::FramedRead;
+use tracing::{debug, error, info, info_span, trace, warn, Instrument};
+use uuid::Uuid;
+
+pub use init::AgentInitTask;
 use swim_api::agent::{LaneConfig, StoreConfig};
 use swim_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
 use swim_api::meta::lane::LaneKind;
@@ -59,13 +67,6 @@ use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::trigger::{self, promise};
-use tokio::sync::{mpsc, oneshot};
-use tokio::time::{sleep, timeout, Instant, Sleep};
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::codec::FramedRead;
-use uuid::Uuid;
-
-use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
 mod ad_hoc;
 mod init;
@@ -78,7 +79,7 @@ mod timeout_coord;
 mod write_fut;
 
 pub use ad_hoc::AdHocTaskConfig;
-pub use init::{AgentInitTask, InitTaskConfig};
+pub use init::InitTaskConfig;
 
 #[cfg(test)]
 mod fake_store;
@@ -1727,6 +1728,7 @@ where
 
     loop {
         let next = streams.select_next().await;
+        trace!(event = ?next, "Processing write task event");
         match next {
             WriteTaskEvent::Message(reg) => match state
                 .handle_task_message(reg, &initialization, &store)
