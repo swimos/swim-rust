@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::error::StoreError;
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 
 use bytes::BytesMut;
 use futures::{
@@ -22,7 +22,7 @@ use futures::{
 };
 
 /// Kinds of stores that can be persisted in the state of an agent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StoreKind {
     /// A store containing a single value.
     Value,
@@ -47,7 +47,7 @@ pub trait NodePersistence {
         Self: 'a;
 
     /// The store assigns IDs of this type to each named state in the store.
-    type LaneId: Copy + Unpin + Send + Sync + Eq + 'static;
+    type LaneId: Debug + Copy + Unpin + Send + Sync + Eq + 'static;
 
     /// Get the ID associated with the specified name.
     fn id_for(&self, name: &str) -> Result<Self::LaneId, StoreError>;
