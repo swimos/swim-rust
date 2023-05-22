@@ -391,7 +391,6 @@ where
     S: Into<T>,
     F2: FnOnce(&mut Rec, T) -> Option<Result<U, ReadError>>,
 {
-    println!("Compose feed eor");
     if input.remaining() < std::mem::size_of::<S>() {
         Err(MsgPackReadError::Incomplete)
     } else {
