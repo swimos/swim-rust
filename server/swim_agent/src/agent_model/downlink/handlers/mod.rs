@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use futures::future::BoxFuture;
-use swim_api::downlink::DownlinkKind;
+use swim_api::{downlink::DownlinkKind, error::FrameIoError};
+use thiserror::Error;
 
 use crate::event_handler::BoxEventHandler;
 
@@ -41,12 +42,41 @@ pub trait DownlinkChannel<Context> {
     fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>>;
 }
 
+pub enum DownlinkChannelEvent {
+    HandlerReady,
+    WriteCompleted,
+    WriteStreamTerminated,
+}
+
+#[derive(Debug, Error)]
+pub enum DownlinkChannelError {
+    #[error("Reading from the downlink input failed.")]
+    ReadFailed,
+    #[error("Writing to the downlink output failed: {0}")]
+    WriteFailed(#[from] std::io::Error),
+}
+
+pub trait DownlinkChannel2<Context> {
+    /// Get the kind of the downlink.
+    fn kind(&self) -> DownlinkKind;
+
+    /// Await the next channel event. If this returns [`None`], the downlink has terminated. If an
+    /// error is returned, the downlink has failed and should not longer be waited on.
+    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<DownlinkChannelEvent, DownlinkChannelError>>>;
+
+    /// After a call to `await_ready` that does not return [`None`] this may return an event handler to
+    /// be executed by the agent task. At any other time, it will return [`None`].
+    fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>>;
+}
+
 #[derive(Clone, Copy, Default, Debug)]
 pub struct DownlinkFailed;
 
 /// A downlink channel that can be used by dynamic dispatch. As the agent task cannot know about the
 /// specific type of any opened downlinks, it views them through this interface.
 pub type BoxDownlinkChannel<Context> = Box<dyn DownlinkChannel<Context> + Send>;
+
+pub type BoxDownlinkChannel2<Context> = Box<dyn DownlinkChannel2<Context> + Send>;
 
 pub trait DownlinkChannelExt<Context>: DownlinkChannel<Context> {
     /// Box a downlink channel for use through dynamic dispatch.

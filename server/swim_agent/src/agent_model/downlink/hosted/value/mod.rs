@@ -13,11 +13,15 @@
 // limitations under the License.
 
 use bytes::BytesMut;
-use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
+use futures::{
+    future::{BoxFuture, OptionFuture, Either},
+    stream::unfold,
+    FutureExt, SinkExt, Stream, StreamExt,
+};
 use std::{
     cell::RefCell,
     fmt::Write,
-    sync::{atomic::AtomicU8, Arc},
+    sync::{atomic::AtomicU8, Arc}, pin::pin,
 };
 use swim_api::{
     downlink::DownlinkKind,
@@ -27,7 +31,10 @@ use swim_api::{
         WithLengthBytesCodec,
     },
 };
-use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
+use swim_form::{
+    structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
+    Form,
+};
 use swim_model::{address::Address, Text};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
@@ -39,7 +46,10 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::handlers::{DownlinkChannel, DownlinkFailed},
+    agent_model::downlink::handlers::{
+        BoxDownlinkChannel, BoxDownlinkChannel2, DownlinkChannel, DownlinkChannel2,
+        DownlinkChannelError, DownlinkChannelEvent, DownlinkFailed,
+    },
     config::SimpleDownlinkConfig,
     downlink_lifecycle::value::ValueDownlinkLifecycle,
     event_handler::{BoxEventHandler, HandlerActionExt},
@@ -53,7 +63,7 @@ mod tests;
 /// Operations that need to be supported by the state store of a value downlink. The intention
 /// of this trait is to abstract over a self contained store a store contained within the field
 /// of an agent. In both cases, the store itself will a [`RefCell`] containing an optional value.
-trait ValueDlState<T, Context> {
+trait ValueDlState<T, Context>: Send {
     fn take_current(&self, context: &Context) -> Option<T>;
 
     fn replace(&self, context: &Context, value: T);
@@ -64,7 +74,7 @@ trait ValueDlState<T, Context> {
     fn clear(&self, context: &Context);
 }
 
-impl<T, Context> ValueDlState<T, Context> for RefCell<Option<T>> {
+impl<T: Send, Context> ValueDlState<T, Context> for RefCell<Option<T>> {
     fn take_current(&self, _context: &Context) -> Option<T> {
         self.replace(None)
     }
@@ -93,6 +103,247 @@ pub struct HostedValueDownlinkChannel<T: RecognizerReadable, LC, State> {
     config: SimpleDownlinkConfig,
     dl_state: DlStateTracker,
     stop_rx: Option<trigger::Receiver>,
+}
+
+pub struct HostedValueDownlinkFactory<T, LC, State> {
+    address: Address<Text>,
+    state: State,
+    lifecycle: LC,
+    config: SimpleDownlinkConfig,
+    dl_state: Arc<AtomicU8>,
+    stop_rx: trigger::Receiver,
+    watch_rx: circular_buffer::Receiver<T>,
+}
+
+impl<T, LC, State> HostedValueDownlinkFactory<T, LC, State>
+where
+    T: Form + Send + 'static,
+    T::Rec: Send,
+{
+    pub fn new(
+        address: Address<Text>,
+        lifecycle: LC,
+        state: State,
+        config: SimpleDownlinkConfig,
+        stop_rx: trigger::Receiver,
+        watch_rx: circular_buffer::Receiver<T>,
+    ) -> Self {
+        HostedValueDownlinkFactory {
+            address,
+            state,
+            lifecycle,
+            config,
+            dl_state: Default::default(),
+            stop_rx,
+            watch_rx,
+        }
+    }
+
+    fn create<Context>(self, io: (ByteWriter, ByteReader)) -> BoxDownlinkChannel2<Context>
+    where
+        State: ValueDlState<T, Context> + Send + 'static,
+        LC: ValueDownlinkLifecycle<T, Context> + 'static,
+    {
+        let HostedValueDownlinkFactory {
+            address,
+            state,
+            lifecycle,
+            config,
+            dl_state,
+            stop_rx,
+            watch_rx,
+        } = self;
+        let (sender, receiver) = io;
+        let write_stream = value_dl_write_stream(sender, watch_rx).boxed();
+        let chan = HostedValueDownlink2 {
+            address,
+            receiver: Some(FramedRead::new(receiver, Default::default())),
+            write_stream: Some(write_stream),
+            state,
+            next: None,
+            lifecycle,
+            config,
+            dl_state: DlStateTracker::new(dl_state),
+            stop_rx: Some(stop_rx),
+        };
+        Box::new(chan)
+    }
+}
+
+pub struct HostedValueDownlink2<T: RecognizerReadable, LC, State, Writes> {
+    address: Address<Text>,
+    receiver: Option<FramedRead<ByteReader, ValueNotificationDecoder<T>>>,
+    write_stream: Option<Writes>,
+    state: State,
+    next: Option<Result<DownlinkNotification<T>, FrameIoError>>,
+    lifecycle: LC,
+    config: SimpleDownlinkConfig,
+    dl_state: DlStateTracker,
+    stop_rx: Option<trigger::Receiver>,
+}
+
+impl<T, LC, State, Writes> HostedValueDownlink2<T, LC, State, Writes>
+where
+    T: RecognizerReadable + Send + 'static,
+    T::Rec: Send,
+    Writes: Stream<Item = Result<(), std::io::Error>> + Send + Unpin + 'static,
+{
+    async fn select_next(&mut self) -> Option<Result<DownlinkChannelEvent, DownlinkChannelError>> {
+        let HostedValueDownlink2 {
+            address,
+            receiver,
+            next,
+            stop_rx,
+            write_stream,
+            ..
+        } = self;
+        let select_next = pin!(async {
+            tokio::select! {
+                maybe_result = OptionFuture::from(receiver.as_mut().map(|rx| rx.next())), if receiver.is_some() => {
+                    match maybe_result.flatten() {
+                        r@Some(Ok(_)) => {
+                            *next = r;
+                            Some(Ok(DownlinkChannelEvent::HandlerReady))
+                        }
+                        r@Some(Err(_)) => {
+                            *next = r;
+                            *receiver = None;
+                            error!(address = %address, "Downlink input channel failed.");
+                            Some(Err(DownlinkChannelError::ReadFailed))
+                        }
+                        _ => {
+                            *receiver = None;
+                            None
+                        }
+                    }
+                },
+                maybe_result = OptionFuture::from(write_stream.as_mut().map(|str| str.next())), if write_stream.is_some() => {
+                    match maybe_result.flatten() {
+                        Some(Ok(_)) => Some(Ok(DownlinkChannelEvent::WriteCompleted)),
+                        Some(Err(e)) => Some(Err(DownlinkChannelError::WriteFailed(e))),
+                        _ => {
+                            *write_stream = None;
+                            Some(Ok(DownlinkChannelEvent::WriteStreamTerminated))
+                        }
+                    }
+                }
+                else => {
+                    info!(address = %address, "Downlink terminated normally.");
+                    None
+                },
+            }
+        });
+        if let Some(stop_signal) = stop_rx.as_mut() {
+            match futures::future::select(stop_signal, select_next).await {
+                Either::Left((triggered_result, select_next)) => {
+                    *stop_rx = None;
+                    if triggered_result.is_ok() {
+                        *receiver = None;
+                        *write_stream = None;
+                        *next = Some(Ok(DownlinkNotification::Unlinked));
+                        Some(Ok(DownlinkChannelEvent::HandlerReady))
+                    } else {
+                        select_next.await
+                    }
+                },
+                Either::Right((result, _)) => result,
+            }
+        } else {
+            select_next.await
+        }
+    }
+}
+
+impl<T, LC, Context, State, Writes> DownlinkChannel2<Context>
+    for HostedValueDownlink2<T, LC, State, Writes>
+where
+    State: ValueDlState<T, Context>,
+    T: RecognizerReadable + Send + 'static,
+    T::Rec: Send,
+    LC: ValueDownlinkLifecycle<T, Context> + 'static,
+    Writes: Stream<Item = Result<(), std::io::Error>> + Send + Unpin + 'static,
+{
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Value
+    }
+
+    fn await_ready(
+        &mut self,
+    ) -> BoxFuture<'_, Option<Result<DownlinkChannelEvent, DownlinkChannelError>>> {
+        self.select_next().boxed()
+    }
+
+    fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+        let HostedValueDownlink2 {
+            address,
+            receiver,
+            state,
+            next,
+            lifecycle,
+            dl_state,
+            config:
+                SimpleDownlinkConfig {
+                    events_when_not_synced,
+                    terminate_on_unlinked,
+                },
+            ..
+        } = self;
+        if let Some(notification) = next.take() {
+            match notification {
+                Ok(DownlinkNotification::Linked) => {
+                    debug!(address = %address, "Downlink linked.");
+                    if dl_state.get() == DlState::Unlinked {
+                        dl_state.set(DlState::Linked);
+                    }
+                    Some(lifecycle.on_linked().boxed())
+                }
+                Ok(DownlinkNotification::Synced) => state.with(context, |maybe_value| {
+                    debug!(address = %address, "Downlink synced.");
+                    dl_state.set(DlState::Synced);
+                    maybe_value.map(|value| lifecycle.on_synced(value).boxed())
+                }),
+                Ok(DownlinkNotification::Event { body }) => {
+                    trace!(address = %address, "Event received for downlink.");
+                    let prev = state.take_current(context);
+                    let handler = if dl_state.get() == DlState::Synced || *events_when_not_synced {
+                        let handler = lifecycle
+                            .on_event(&body)
+                            .followed_by(lifecycle.on_set(prev, &body))
+                            .boxed();
+                        Some(handler)
+                    } else {
+                        None
+                    };
+                    state.replace(context, body);
+                    handler
+                }
+                Ok(DownlinkNotification::Unlinked) => {
+                    debug!(address = %address, "Downlink unlinked.");
+                    state.clear(context);
+                    if *terminate_on_unlinked {
+                        *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
+                    }
+                    Some(lifecycle.on_unlinked().boxed())
+                }
+                Err(_) => {
+                    debug!(address = %address, "Downlink failed.");
+                    state.clear(context);
+                    if *terminate_on_unlinked {
+                        *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
+                    }
+                    Some(lifecycle.on_failed().boxed())
+                }
+            }
+        } else {
+            None
+        }
+    }
 }
 
 impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> {
