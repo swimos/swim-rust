@@ -14,14 +14,15 @@
 
 use bytes::BytesMut;
 use futures::{
-    future::{BoxFuture, OptionFuture, Either},
+    future::{BoxFuture, Either, OptionFuture},
     stream::unfold,
     FutureExt, SinkExt, Stream, StreamExt,
 };
 use std::{
     cell::RefCell,
     fmt::Write,
-    sync::{atomic::AtomicU8, Arc}, pin::pin,
+    pin::pin,
+    sync::{atomic::AtomicU8, Arc},
 };
 use swim_api::{
     downlink::DownlinkKind,
@@ -47,8 +48,8 @@ use tracing::{debug, error, info, trace};
 
 use crate::{
     agent_model::downlink::handlers::{
-        BoxDownlinkChannel, BoxDownlinkChannel2, DownlinkChannel, DownlinkChannel2,
-        DownlinkChannelError, DownlinkChannelEvent, DownlinkFailed,
+        BoxDownlinkChannel2, DownlinkChannel, DownlinkChannel2, DownlinkChannelError,
+        DownlinkChannelEvent, DownlinkFailed,
     },
     config::SimpleDownlinkConfig,
     downlink_lifecycle::value::ValueDownlinkLifecycle,
@@ -245,7 +246,7 @@ where
                     } else {
                         select_next.await
                     }
-                },
+                }
                 Either::Right((result, _)) => result,
             }
         } else {

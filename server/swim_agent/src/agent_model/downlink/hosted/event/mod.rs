@@ -27,7 +27,10 @@ use tokio_util::codec::FramedRead;
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::handlers::{DownlinkChannel, DownlinkFailed},
+    agent_model::downlink::handlers::{
+        DownlinkChannel, DownlinkChannel2, DownlinkChannelError, DownlinkChannelEvent,
+        DownlinkFailed,
+    },
     config::SimpleDownlinkConfig,
     downlink_lifecycle::event::EventDownlinkLifecycle,
     event_handler::{BoxEventHandler, HandlerActionExt},
@@ -48,6 +51,7 @@ pub struct HostedEventDownlinkChannel<T: RecognizerReadable, LC> {
     config: SimpleDownlinkConfig,
     dl_state: DlStateTracker,
     stop_rx: Option<trigger::Receiver>,
+    write_terminated: bool,
 }
 
 impl<T: RecognizerReadable, LC> HostedEventDownlinkChannel<T, LC> {
@@ -67,6 +71,156 @@ impl<T: RecognizerReadable, LC> HostedEventDownlinkChannel<T, LC> {
             config,
             dl_state: DlStateTracker::new(state),
             stop_rx: Some(stop_rx),
+            write_terminated: false,
+        }
+    }
+}
+
+impl<T, LC> HostedEventDownlinkChannel<T, LC>
+where
+    T: RecognizerReadable + Send + 'static,
+    T::Rec: Send,
+{
+    async fn select_next(&mut self) -> Option<Result<DownlinkChannelEvent, DownlinkChannelError>> {
+        let HostedEventDownlinkChannel {
+            address,
+            receiver,
+            next,
+            stop_rx,
+            write_terminated,
+            ..
+        } = self;
+        if !*write_terminated {
+            *write_terminated = true;
+            return Some(Ok(DownlinkChannelEvent::WriteStreamTerminated));
+        }
+        if let Some(rx) = receiver {
+            if let Some(stop_signal) = stop_rx.as_mut() {
+                tokio::select! {
+                    biased;
+                    triggered_result = stop_signal => {
+                        *stop_rx = None;
+                        if triggered_result.is_ok() {
+                            *receiver = None;
+                            *next = Some(Ok(DownlinkNotification::Unlinked));
+                            Some(Ok(DownlinkChannelEvent::HandlerReady))
+                        } else {
+                            handle_read(rx.next().await, address, next, receiver)
+                        }
+                    }
+                    result = rx.next() => handle_read(result, address, next, receiver),
+                }
+            } else {
+                handle_read(rx.next().await, address, next, receiver)
+            }
+        } else {
+            info!(address = %address, "Downlink terminated normally.");
+            None
+        }
+    }
+}
+
+fn handle_read<T: RecognizerReadable>(
+    maybe_result: Option<Result<DownlinkNotification<T>, FrameIoError>>,
+    address: &Address<Text>,
+    next: &mut Option<Result<DownlinkNotification<T>, FrameIoError>>,
+    receiver: &mut Option<FramedRead<ByteReader, ValueNotificationDecoder<T>>>,
+) -> Option<Result<DownlinkChannelEvent, DownlinkChannelError>> {
+    match maybe_result {
+        r @ Some(Ok(_)) => {
+            *next = r;
+            Some(Ok(DownlinkChannelEvent::HandlerReady))
+        }
+        r @ Some(Err(_)) => {
+            *next = r;
+            *receiver = None;
+            error!(address = %address, "Downlink input channel failed.");
+            Some(Err(DownlinkChannelError::ReadFailed))
+        }
+        _ => {
+            *receiver = None;
+            None
+        }
+    }
+}
+
+impl<T, LC, Context> DownlinkChannel2<Context> for HostedEventDownlinkChannel<T, LC>
+where
+    T: RecognizerReadable + Send + 'static,
+    T::Rec: Send,
+    LC: EventDownlinkLifecycle<T, Context> + 'static,
+{
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Event
+    }
+
+    fn await_ready(
+        &mut self,
+    ) -> BoxFuture<'_, Option<Result<DownlinkChannelEvent, DownlinkChannelError>>> {
+        self.select_next().boxed()
+    }
+
+    fn next_event(&mut self, _context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+        let HostedEventDownlinkChannel {
+            address,
+            receiver,
+            next,
+            lifecycle,
+            dl_state,
+            config:
+                SimpleDownlinkConfig {
+                    events_when_not_synced,
+                    terminate_on_unlinked,
+                },
+            ..
+        } = self;
+        if let Some(notification) = next.take() {
+            match notification {
+                Ok(DownlinkNotification::Linked) => {
+                    debug!(address = %address, "Downlink linked.");
+                    if dl_state.get() == DlState::Unlinked {
+                        dl_state.set(DlState::Linked);
+                    }
+                    Some(lifecycle.on_linked().boxed())
+                }
+                Ok(DownlinkNotification::Synced) => {
+                    debug!(address = %address, "Downlink synced.");
+                    dl_state.set(DlState::Synced);
+                    Some(lifecycle.on_synced(&()).boxed())
+                }
+                Ok(DownlinkNotification::Event { body }) => {
+                    trace!(address = %address, "Event received for downlink.");
+                    let handler = if dl_state.get() == DlState::Synced || *events_when_not_synced {
+                        let handler = lifecycle.on_event(body).boxed();
+                        Some(handler)
+                    } else {
+                        None
+                    };
+                    handler
+                }
+                Ok(DownlinkNotification::Unlinked) => {
+                    debug!(address = %address, "Downlink unlinked.");
+                    if *terminate_on_unlinked {
+                        *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
+                    }
+                    Some(lifecycle.on_unlinked().boxed())
+                }
+                Err(_) => {
+                    debug!(address = %address, "Downlink failed.");
+                    if *terminate_on_unlinked {
+                        *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
+                    }
+                    Some(lifecycle.on_failed().boxed())
+                }
+            }
+        } else {
+            None
         }
     }
 }
