@@ -20,7 +20,7 @@ use std::{
 };
 
 use futures::{
-    future::{select, BoxFuture, Either},
+    future::{select, BoxFuture, Either, OptionFuture},
     stream::unfold,
     FutureExt, SinkExt, Stream, StreamExt,
 };
@@ -33,7 +33,7 @@ use swim_api::{
         map::{MapMessage, MapOperation, MapOperationEncoder},
     },
 };
-use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
+use swim_form::{structural::{read::recognizer::RecognizerReadable, write::StructuralWritable}, Form};
 use swim_model::{address::Address, Text};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
@@ -44,7 +44,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::handlers::{DownlinkChannel, DownlinkFailed},
+    agent_model::downlink::handlers::{DownlinkChannel, DownlinkFailed, DownlinkChannelEvent, DownlinkChannelError, DownlinkChannel2, BoxDownlinkChannel2},
     config::MapDownlinkConfig,
     downlink_lifecycle::map::MapDownlinkLifecycle,
     event_handler::{BoxEventHandler, HandlerActionExt, Sequentially},
@@ -77,7 +77,7 @@ impl<K, V> Default for MapDlState<K, V> {
 /// Operations that need to be supported by the state store of a map downlink. The intention
 /// of this trait is to abstract over a self contained store a store contained within the field
 /// of an agent. In both cases, the store itself will a [`RefCell`] containing a [`MapDlState`].
-trait MapDlStateOps<K, V, Context> {
+trait MapDlStateOps<K, V, Context>: Send {
     fn clear(&self, context: &Context) -> HashMap<K, V>;
 
     // Perform an operation in a context with access to the state.
@@ -220,7 +220,11 @@ trait MapDlStateOps<K, V, Context> {
     }
 }
 
-impl<K, V, Context> MapDlStateOps<K, V, Context> for RefCell<MapDlState<K, V>> {
+impl<K, V, Context> MapDlStateOps<K, V, Context> for RefCell<MapDlState<K, V>>
+where
+    K: Send,
+    V: Send,
+{
     fn clear(&self, _context: &Context) -> HashMap<K, V> {
         self.replace(MapDlState::default()).map
     }
@@ -235,7 +239,7 @@ impl<K, V, Context> MapDlStateOps<K, V, Context> for RefCell<MapDlState<K, V>> {
 
 impl<K, V, Context, F> MapDlStateOps<K, V, Context> for F
 where
-    F: for<'a> Fn(&'a Context) -> &'a RefCell<MapDlState<K, V>>,
+    F: for<'a> Fn(&'a Context) -> &'a RefCell<MapDlState<K, V>> + Send,
 {
     fn clear(&self, context: &Context) -> HashMap<K, V> {
         self(context).replace(MapDlState::default()).map
@@ -246,6 +250,73 @@ where
         G: FnOnce(&mut MapDlState<K, V>) -> T,
     {
         f(&mut *self(context).borrow_mut())
+    }
+}
+
+pub struct HostedMapDownlinkFactory<K, V, LC, State> {
+    address: Address<Text>,
+    state: State,
+    lifecycle: LC,
+    config: MapDownlinkConfig,
+    dl_state: Arc<AtomicU8>,
+    stop_rx: trigger::Receiver,
+    op_rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
+}
+
+impl<K, V, LC, State> HostedMapDownlinkFactory<K, V, LC, State>
+where
+    K: Hash + Eq + Ord + Clone + Form + Send + 'static,
+    V: Form + Send + 'static,
+    K::Rec: Send,
+    V::Rec: Send,
+{
+    pub fn new(
+        address: Address<Text>,
+        lifecycle: LC,
+        state: State,
+        config: MapDownlinkConfig,
+        stop_rx: trigger::Receiver,
+        op_rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
+    ) -> Self {
+        HostedMapDownlinkFactory {
+            address,
+            state,
+            lifecycle,
+            config,
+            dl_state: Default::default(),
+            stop_rx,
+            op_rx,
+        }
+    }
+
+    fn create<Context>(self, io: (ByteWriter, ByteReader)) -> BoxDownlinkChannel2<Context>
+    where
+        State: MapDlStateOps<K, V, Context> + 'static,
+        LC: MapDownlinkLifecycle<K, V, Context> + 'static,
+    {
+        let HostedMapDownlinkFactory {
+            address,
+            state,
+            lifecycle,
+            config,
+            dl_state,
+            stop_rx,
+            op_rx,
+        } = self;
+        let (sender, receiver) = io;
+        let write_stream = map_dl_write_stream(sender, op_rx).boxed();
+        let chan = HostedMapDownlink2 {
+            address,
+            receiver: Some(FramedRead::new(receiver, Default::default())),
+            write_stream: Some(write_stream),
+            state,
+            next: None,
+            lifecycle,
+            config,
+            dl_state: DlStateTracker::new(dl_state),
+            stop_rx: Some(stop_rx),
+        };
+        Box::new(chan)
     }
 }
 
@@ -260,6 +331,215 @@ pub struct HostedMapDownlinkChannel<K: RecognizerReadable, V: RecognizerReadable
     config: MapDownlinkConfig,
     dl_state: DlStateTracker,
     stop_rx: Option<trigger::Receiver>,
+}
+
+pub struct HostedMapDownlink2<K: RecognizerReadable, V: RecognizerReadable, LC, State, Writes> {
+    address: Address<Text>,
+    receiver: Option<FramedRead<ByteReader, MapNotificationDecoder<K, V>>>,
+    write_stream: Option<Writes>,
+    state: State,
+    next: Option<Result<DownlinkNotification<MapMessage<K, V>>, FrameIoError>>,
+    lifecycle: LC,
+    config: MapDownlinkConfig,
+    dl_state: DlStateTracker,
+    stop_rx: Option<trigger::Receiver>,
+}
+
+impl<K, V, LC, State, Writes> HostedMapDownlink2<K, V, LC, State, Writes>
+where
+    K: Hash + Eq + Ord + Clone + RecognizerReadable + Send + 'static,
+    V: RecognizerReadable + Send + 'static,
+    K::Rec: Send,
+    V::Rec: Send,
+    Writes: Stream<Item = Result<(), std::io::Error>> + Send + Unpin + 'static,
+{
+    async fn select_next(&mut self) -> Option<Result<DownlinkChannelEvent, DownlinkChannelError>> {
+        let HostedMapDownlink2 {
+            address,
+            receiver,
+            next,
+            stop_rx,
+            write_stream,
+            ..
+        } = self;
+        let select_next = pin!(async {
+            tokio::select! {
+                maybe_result = OptionFuture::from(receiver.as_mut().map(|rx| rx.next())), if receiver.is_some() => {
+                    match maybe_result.flatten() {
+                        r@Some(Ok(_)) => {
+                            *next = r;
+                            Some(Ok(DownlinkChannelEvent::HandlerReady))
+                        }
+                        r@Some(Err(_)) => {
+                            *next = r;
+                            *receiver = None;
+                            error!(address = %address, "Downlink input channel failed.");
+                            Some(Err(DownlinkChannelError::ReadFailed))
+                        }
+                        _ => {
+                            *receiver = None;
+                            None
+                        }
+                    }
+                },
+                maybe_result = OptionFuture::from(write_stream.as_mut().map(|str| str.next())), if write_stream.is_some() => {
+                    match maybe_result.flatten() {
+                        Some(Ok(_)) => Some(Ok(DownlinkChannelEvent::WriteCompleted)),
+                        Some(Err(e)) => Some(Err(DownlinkChannelError::WriteFailed(e))),
+                        _ => {
+                            *write_stream = None;
+                            Some(Ok(DownlinkChannelEvent::WriteStreamTerminated))
+                        }
+                    }
+                }
+                else => {
+                    info!(address = %address, "Downlink terminated normally.");
+                    None
+                },
+            }
+        });
+        if let Some(stop_signal) = stop_rx.as_mut() {
+            match futures::future::select(stop_signal, select_next).await {
+                Either::Left((triggered_result, select_next)) => {
+                    *stop_rx = None;
+                    if triggered_result.is_ok() {
+                        *receiver = None;
+                        *write_stream = None;
+                        *next = Some(Ok(DownlinkNotification::Unlinked));
+                        Some(Ok(DownlinkChannelEvent::HandlerReady))
+                    } else {
+                        select_next.await
+                    }
+                }
+                Either::Right((result, _)) => result,
+            }
+        } else {
+            select_next.await
+        }
+    }
+}
+
+impl<K, V, LC, Context, State, Writes> DownlinkChannel2<Context>
+    for HostedMapDownlink2<K, V, LC, State, Writes>
+where
+    State: MapDlStateOps<K, V, Context>,
+    K: Hash + Eq + Ord + Clone + RecognizerReadable + Send + 'static,
+    V: RecognizerReadable + Send + 'static,
+    K::Rec: Send,
+    V::Rec: Send,
+    LC: MapDownlinkLifecycle<K, V, Context> + 'static,
+    Writes: Stream<Item = Result<(), std::io::Error>> + Send + Unpin + 'static,
+{
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Map
+    }
+
+    fn await_ready(
+        &mut self,
+    ) -> BoxFuture<'_, Option<Result<DownlinkChannelEvent, DownlinkChannelError>>> {
+        self.select_next().boxed()
+    }
+
+    fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+        let HostedMapDownlink2 {
+            address,
+            receiver,
+            state,
+            next,
+            lifecycle,
+            dl_state,
+            config:
+                MapDownlinkConfig {
+                    events_when_not_synced,
+                    terminate_on_unlinked,
+                    ..
+                },
+            ..
+        } = self;
+        if let Some(notification) = next.take() {
+            match notification {
+                Ok(DownlinkNotification::Linked) => {
+                    debug!(address = %address, "Downlink linked.");
+                    if dl_state.get() == DlState::Unlinked {
+                        dl_state.set(DlState::Linked);
+                    }
+                    Some(lifecycle.on_linked().boxed())
+                }
+                Ok(DownlinkNotification::Synced) => {
+                    debug!(address = %address, "Downlink synced.");
+                    dl_state.set(DlState::Synced);
+                    Some(state.with(context, |map| lifecycle.on_synced(&map.map).boxed()))
+                }
+                Ok(DownlinkNotification::Event { body }) => {
+                    let maybe_lifecycle =
+                        if dl_state.get() == DlState::Synced || *events_when_not_synced {
+                            Some(&*lifecycle)
+                        } else {
+                            None
+                        };
+                    trace!(address = %address, "Event received for downlink.");
+
+                    match body {
+                        MapMessage::Update { key, value } => {
+                            trace!("Updating an entry.");
+                            state.update(context, key, value, maybe_lifecycle)
+                        }
+                        MapMessage::Remove { key } => {
+                            trace!("Removing an entry.");
+                            state.remove(context, key, maybe_lifecycle)
+                        }
+                        MapMessage::Clear => {
+                            trace!("Clearing the map.");
+                            let old_map = state.clear(context);
+                            maybe_lifecycle.map(|lifecycle| lifecycle.on_clear(old_map).boxed())
+                        }
+                        MapMessage::Take(n) => {
+                            trace!("Retaining the first {} items.", n);
+                            state.take(
+                                context,
+                                n.try_into()
+                                    .expect("number to take does not fit into usize"),
+                                maybe_lifecycle,
+                            )
+                        }
+                        MapMessage::Drop(n) => {
+                            trace!("Dropping the first {} items.", n);
+                            state.drop(
+                                context,
+                                n.try_into()
+                                    .expect("number to drop does not fit into usize"),
+                                maybe_lifecycle,
+                            )
+                        }
+                    }
+                }
+                Ok(DownlinkNotification::Unlinked) => {
+                    debug!(address = %address, "Downlink unlinked.");
+                    if *terminate_on_unlinked {
+                        *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
+                    }
+                    state.clear(context);
+                    Some(lifecycle.on_unlinked().boxed())
+                }
+                Err(_) => {
+                    debug!(address = %address, "Downlink failed.");
+                    if *terminate_on_unlinked {
+                        *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
+                    }
+                    state.clear(context);
+                    Some(lifecycle.on_failed().boxed())
+                }
+            }
+        } else {
+            None
+        }
+    }
 }
 
 impl<K: RecognizerReadable, V: RecognizerReadable, LC, State>
@@ -544,8 +824,8 @@ pub fn map_dl_write_stream<K, V>(
     rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
 ) -> impl Stream<Item = Result<(), std::io::Error>> + Send + 'static
 where
-    K: Clone + Eq + Hash + StructuralWritable + Send + Sync + 'static,
-    V: StructuralWritable + Send + Sync + 'static,
+    K: Clone + Eq + Hash + StructuralWritable + Send + 'static,
+    V: StructuralWritable + Send + 'static,
 {
     let state = WriteStreamState::<K, V>::new(writer, rx);
 
