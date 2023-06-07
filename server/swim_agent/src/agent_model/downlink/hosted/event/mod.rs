@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::{atomic::AtomicU8, Arc};
+use std::{
+    marker::PhantomData,
+    sync::{atomic::AtomicU8, Arc},
+};
 
 use futures::{future::BoxFuture, FutureExt, StreamExt};
 use swim_api::{
@@ -20,7 +23,7 @@ use swim_api::{
     error::FrameIoError,
     protocol::downlink::{DownlinkNotification, ValueNotificationDecoder},
 };
-use swim_form::structural::read::recognizer::RecognizerReadable;
+use swim_form::structural::read::{recognizer::RecognizerReadable, StructuralReadable};
 use swim_model::{address::Address, Text};
 use swim_utilities::{io::byte_channel::ByteReader, trigger};
 use tokio_util::codec::FramedRead;
@@ -28,8 +31,8 @@ use tracing::{debug, error, info, trace};
 
 use crate::{
     agent_model::downlink::handlers::{
-        DownlinkChannel, DownlinkChannel2, DownlinkChannelError, DownlinkChannelEvent,
-        DownlinkFailed,
+        BoxDownlinkChannel2, DownlinkChannel, DownlinkChannel2, DownlinkChannelError,
+        DownlinkChannelEvent, DownlinkFailed,
     },
     config::SimpleDownlinkConfig,
     downlink_lifecycle::event::EventDownlinkLifecycle,
@@ -40,6 +43,67 @@ use super::{DlState, DlStateObserver, DlStateTracker};
 
 #[cfg(test)]
 mod tests;
+
+pub struct HostedEventDownlinkFactory<T, LC, State> {
+    address: Address<Text>,
+    state: State,
+    lifecycle: LC,
+    config: SimpleDownlinkConfig,
+    dl_state: Arc<AtomicU8>,
+    stop_rx: trigger::Receiver,
+    _type: PhantomData<fn() -> T>,
+}
+
+impl<T, LC, State> HostedEventDownlinkFactory<T, LC, State>
+where
+    T: StructuralReadable + Send + 'static,
+    T::Rec: Send,
+{
+    pub fn new(
+        address: Address<Text>,
+        lifecycle: LC,
+        state: State,
+        config: SimpleDownlinkConfig,
+        stop_rx: trigger::Receiver,
+    ) -> Self {
+        HostedEventDownlinkFactory {
+            address,
+            state,
+            lifecycle,
+            config,
+            dl_state: Default::default(),
+            stop_rx,
+            _type: PhantomData,
+        }
+    }
+
+    fn create<Context>(self, receiver: ByteReader) -> BoxDownlinkChannel2<Context>
+    where
+        LC: EventDownlinkLifecycle<T, Context> + 'static,
+    {
+        let HostedEventDownlinkFactory {
+            address,
+            state,
+            lifecycle,
+            config,
+            dl_state,
+            stop_rx,
+            ..
+        } = self;
+
+        let chan = HostedEventDownlinkChannel {
+            address,
+            receiver: Some(FramedRead::new(receiver, Default::default())),
+            next: None,
+            lifecycle,
+            config,
+            dl_state: DlStateTracker::new(dl_state),
+            stop_rx: Some(stop_rx),
+            write_terminated: false,
+        };
+        Box::new(chan)
+    }
+}
 
 /// An implementation of [`DownlinkChannel`] to allow an event downlink to be driven by an agent
 /// task.

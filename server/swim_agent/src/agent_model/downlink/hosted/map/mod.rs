@@ -33,7 +33,10 @@ use swim_api::{
         map::{MapMessage, MapOperation, MapOperationEncoder},
     },
 };
-use swim_form::{structural::{read::recognizer::RecognizerReadable, write::StructuralWritable}, Form};
+use swim_form::{
+    structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
+    Form,
+};
 use swim_model::{address::Address, Text};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
@@ -44,7 +47,10 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::handlers::{DownlinkChannel, DownlinkFailed, DownlinkChannelEvent, DownlinkChannelError, DownlinkChannel2, BoxDownlinkChannel2},
+    agent_model::downlink::handlers::{
+        BoxDownlinkChannel2, DownlinkChannel, DownlinkChannel2, DownlinkChannelError,
+        DownlinkChannelEvent, DownlinkFailed,
+    },
     config::MapDownlinkConfig,
     downlink_lifecycle::map::MapDownlinkLifecycle,
     event_handler::{BoxEventHandler, HandlerActionExt, Sequentially},
