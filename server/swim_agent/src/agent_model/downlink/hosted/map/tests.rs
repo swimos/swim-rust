@@ -23,14 +23,14 @@ use swim_api::protocol::{
 };
 use swim_model::{address::Address, Text};
 use swim_utilities::{
-    io::byte_channel::{self, ByteWriter},
+    io::byte_channel::{self, ByteWriter, ByteReader},
     non_zero_usize, trigger,
 };
 use tokio::{io::AsyncWriteExt, sync::mpsc};
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 
 use crate::{
-    agent_model::downlink::{hosted::map_dl_write_stream, MapDownlinkHandle},
+    agent_model::downlink::{MapDownlinkHandle, hosted::map::map_dl_write_stream, handlers::BoxDownlinkChannel},
     config::MapDownlinkConfig,
     downlink_lifecycle::{
         map::{
@@ -44,7 +44,7 @@ use crate::{
     event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
 };
 
-use super::{DownlinkChannel, HostedMapDownlinkChannel, MapDlState};
+use super::{MapDlState, HostedMapDownlinkFactory};
 
 struct FakeAgent;
 
@@ -259,9 +259,11 @@ impl Writer {
 }
 
 struct TestContext {
-    channel: HostedMapDownlinkChannel<i32, Text, FakeLifecycle, State>,
+    channel: BoxDownlinkChannel<FakeAgent>,
     events: Events,
     sender: Writer,
+    output_tx: mpsc::UnboundedSender<MapOperation<i32, Text>>,
+    out_rx: ByteReader,
     stop_tx: Option<trigger::Sender>,
 }
 
@@ -274,24 +276,23 @@ fn make_hosted_input(config: MapDownlinkConfig) -> TestContext {
         events: events.clone(),
     };
 
-    let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (in_tx, in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (out_tx, out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
     let (stop_tx, stop_rx) = trigger::trigger();
 
     let address = Address::text(None, NODE, LANE);
 
-    let chan = HostedMapDownlinkChannel::new(
-        address,
-        rx,
-        lc,
-        State::default(),
-        config,
-        stop_rx,
-        Default::default(),
-    );
+    let (write_tx, write_rx) = mpsc::unbounded_channel();
+
+    let fac = HostedMapDownlinkFactory::new(address, lc, State::default(), config, stop_rx, write_rx);
+
+    let chan = fac.create(out_tx, in_rx);
     TestContext {
         channel: chan,
         events,
-        sender: Writer::new(tx),
+        output_tx: write_tx,
+        out_rx,
+        sender: Writer::new(in_tx),
         stop_tx: Some(stop_tx),
     }
 }
@@ -384,6 +385,8 @@ async fn run_with_expectations(
         events,
         sender,
         stop_tx,
+        output_tx: _output_tx,
+        out_rx: _out_rx,
     } = context;
 
     *stop_tx = None;

@@ -22,7 +22,7 @@ use swim_api::protocol::downlink::{
 use swim_model::{address::Address, Text};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
-    io::byte_channel::{self, ByteWriter},
+    io::byte_channel::{self, ByteWriter, ByteReader},
     non_zero_usize,
     sync::circular_buffer,
     trigger,
@@ -30,11 +30,10 @@ use swim_utilities::{
 use tokio::{io::AsyncWriteExt, task::yield_now};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use super::{HostedValueDownlinkChannel, SimpleDownlinkConfig};
+use super::{SimpleDownlinkConfig, HostedValueDownlinkFactory};
 use crate::{
     agent_model::downlink::{
-        handlers::DownlinkChannel,
-        hosted::{value_dl_write_stream, ValueDownlinkHandle},
+        hosted::{ValueDownlinkHandle, value::value_dl_write_stream}, handlers::BoxDownlinkChannel,
     },
     downlink_lifecycle::{
         on_failed::OnFailed,
@@ -154,11 +153,14 @@ type Events = Arc<Mutex<Vec<Event>>>;
 type State = RefCell<Option<i32>>;
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
+const OUT_CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
 
 struct TestContext {
-    channel: HostedValueDownlinkChannel<i32, FakeLifecycle, State>,
+    channel: BoxDownlinkChannel<FakeAgent>,
     events: Events,
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
+    write_tx: circular_buffer::Sender<i32>,
+    out_rx: ByteReader,
     stop_tx: Option<trigger::Sender>,
 }
 
@@ -168,24 +170,22 @@ fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
         inner: inner.clone(),
     };
 
-    let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (in_tx, in_rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (out_tx, out_rx) = byte_channel::byte_channel(BUFFER_SIZE);
 
     let address = Address::new(None, Text::new("/node"), Text::new("lane"));
     let (stop_tx, stop_rx) = trigger::trigger();
 
-    let chan = HostedValueDownlinkChannel::new(
-        address,
-        rx,
-        lc,
-        State::default(),
-        config,
-        stop_rx,
-        Default::default(),
-    );
+    let (write_tx, write_rx) = circular_buffer::channel(OUT_CHAN_SIZE);
+    let fac = HostedValueDownlinkFactory::new(address, lc, State::default(), config, stop_rx, write_rx);
+    let chan = fac.create(out_tx, in_rx);
+
     TestContext {
         channel: chan,
         events: inner,
-        sender: FramedWrite::new(tx, Default::default()),
+        sender: FramedWrite::new(in_tx, Default::default()),
+        write_tx,
+        out_rx,
         stop_tx: Some(stop_tx),
     }
 }
@@ -287,6 +287,8 @@ async fn run_with_expectations(
         events,
         sender,
         stop_tx,
+        write_tx: _write_tx,
+        out_rx: _out_rx,
     } = context;
 
     *stop_tx = None;

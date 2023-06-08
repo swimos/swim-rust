@@ -71,36 +71,36 @@ use self::register_downlink::RegisterHostedDownlink;
 pub type WriteStream = BoxStream<'static, Result<(), std::io::Error>>;
 
 pub trait DownlinkSpawner<Context> {
+    
     fn spawn_downlink(
         &self,
-        dl_channel: BoxDownlinkChannel<Context>,
-        dl_writer: WriteStream,
+        dl_channel: BoxDownlinkChannel<Context>
     ) -> Result<(), DownlinkRuntimeError>;
 }
 
 impl<Context> DownlinkSpawner<Context>
-    for RefCell<Vec<(BoxDownlinkChannel<Context>, WriteStream)>>
+    for RefCell<Vec<BoxDownlinkChannel<Context>>>
 {
+    
     fn spawn_downlink(
         &self,
-        dl_channel: BoxDownlinkChannel<Context>,
-        dl_writer: WriteStream,
+        dl_channel: BoxDownlinkChannel<Context>
     ) -> Result<(), DownlinkRuntimeError> {
-        self.borrow_mut().push((dl_channel, dl_writer));
+        self.borrow_mut().push(dl_channel);
         Ok(())
     }
 }
 
 impl<F, Context> DownlinkSpawner<Context> for F
 where
-    F: Fn(BoxDownlinkChannel<Context>, WriteStream) -> Result<(), DownlinkRuntimeError>,
+    F: Fn(BoxDownlinkChannel<Context>) -> Result<(), DownlinkRuntimeError>,
 {
+    
     fn spawn_downlink(
         &self,
-        dl_channel: BoxDownlinkChannel<Context>,
-        dl_writer: WriteStream,
+        dl_channel: BoxDownlinkChannel<Context>
     ) -> Result<(), DownlinkRuntimeError> {
-        (*self)(dl_channel, dl_writer)
+        (*self)(dl_channel)
     }
 }
 
@@ -119,12 +119,12 @@ impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
 }
 
 impl<'a, Context> DownlinkSpawner<Context> for ActionContext<'a, Context> {
+
     fn spawn_downlink(
         &self,
-        dl_channel: BoxDownlinkChannel<Context>,
-        dl_writer: BoxStream<'static, Result<(), std::io::Error>>,
+        dl_channel: BoxDownlinkChannel<Context>
     ) -> Result<(), DownlinkRuntimeError> {
-        self.downlink.spawn_downlink(dl_channel, dl_writer)
+        self.downlink.spawn_downlink(dl_channel)
     }
 }
 
@@ -160,18 +160,16 @@ impl<'a, Context> ActionContext<'a, Context> {
         self.join_value_init.insert(lane_id, factory);
     }
 
-    pub(crate) fn start_downlink<S, F, G, OnDone, H>(
+    pub(crate) fn start_downlink<S, F, OnDone, H>(
         &self,
         path: Address<S>,
         kind: DownlinkKind,
         make_channel: F,
-        make_write_stream: G,
         on_done: OnDone,
     ) where
         Context: 'static,
         S: AsRef<str>,
-        F: FnOnce(ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
-        G: FnOnce(ByteWriter) -> WriteStream + Send + 'static,
+        F: FnOnce(ByteWriter, ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
         OnDone: FnOnce(Result<(), DownlinkRuntimeError>) -> H + Send + 'static,
         H: EventHandler<Context> + Send + 'static,
     {
@@ -185,10 +183,9 @@ impl<'a, Context> ActionContext<'a, Context> {
         let fut = external
             .map(move |result| match result {
                 Ok((writer, reader)) => {
-                    let channel = make_channel(reader);
-                    let write_stream = make_write_stream(writer);
+                    let channel = make_channel(writer, reader);
                     HandlerActionExt::and_then(
-                        RegisterHostedDownlink::new(channel, write_stream),
+                        RegisterHostedDownlink::new(channel),
                         on_done,
                     )
                     .boxed()

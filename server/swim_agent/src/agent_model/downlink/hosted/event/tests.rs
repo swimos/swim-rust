@@ -26,9 +26,9 @@ use swim_utilities::{
 use tokio::io::AsyncWriteExt;
 use tokio_util::codec::FramedWrite;
 
-use super::{HostedEventDownlinkChannel, SimpleDownlinkConfig};
+use super::{SimpleDownlinkConfig, HostedEventDownlinkFactory};
 use crate::{
-    agent_model::downlink::handlers::DownlinkChannel,
+    agent_model::downlink::handlers::BoxDownlinkChannel,
     downlink_lifecycle::{
         event::on_event::OnConsumeEvent, on_failed::OnFailed, on_linked::OnLinked,
         on_synced::OnSynced, on_unlinked::OnUnlinked,
@@ -127,7 +127,7 @@ type Events = Arc<Mutex<Vec<Event>>>;
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 struct TestContext {
-    channel: HostedEventDownlinkChannel<i32, FakeLifecycle>,
+    channel: BoxDownlinkChannel<FakeAgent>,
     events: Events,
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
     stop_tx: Option<trigger::Sender>,
@@ -144,8 +144,9 @@ fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
 
     let address = Address::new(None, Text::new("/node"), Text::new("lane"));
 
-    let chan =
-        HostedEventDownlinkChannel::new(address, rx, lc, config, stop_rx, Default::default());
+    let fac = HostedEventDownlinkFactory::new(address, lc, config, stop_rx);
+
+    let chan = fac.create(rx);
     TestContext {
         channel: chan,
         events: inner,

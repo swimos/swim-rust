@@ -21,9 +21,9 @@ use std::sync::{
     Arc, Weak,
 };
 
-pub use event::{EventDownlinkHandle, HostedEventDownlinkChannel};
-pub use map::{map_dl_write_stream, HostedMapDownlinkChannel, MapDlState, MapDownlinkHandle};
-pub use value::{value_dl_write_stream, HostedValueDownlinkChannel, ValueDownlinkHandle};
+pub use event::{EventDownlinkHandle, HostedEventDownlinkFactory};
+pub use map::{HostedMapDownlinkFactory, MapDlState, MapDownlinkHandle};
+pub use value::{HostedValueDownlinkFactory, ValueDownlinkHandle};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DlState {
@@ -127,7 +127,6 @@ mod test_support {
         agent_model::downlink::handlers::BoxDownlinkChannel,
         event_handler::{
             ActionContext, BoxEventHandler, DownlinkSpawner, HandlerFuture, Spawner, StepResult,
-            WriteStream,
         },
         meta::AgentMetadata,
     };
@@ -141,10 +140,10 @@ mod test_support {
     }
 
     impl<FakeAgent> DownlinkSpawner<FakeAgent> for NoSpawn {
+        
         fn spawn_downlink(
             &self,
             _dl_channel: BoxDownlinkChannel<FakeAgent>,
-            _dl_writer: WriteStream,
         ) -> Result<(), DownlinkRuntimeError> {
             panic!("Unexpected downlink.");
         }

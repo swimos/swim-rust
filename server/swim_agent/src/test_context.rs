@@ -29,7 +29,7 @@ use crate::{
     agent_model::downlink::handlers::BoxDownlinkChannel,
     event_handler::{
         ActionContext, BoxJoinValueInit, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner,
-        StepResult, WriteStream,
+        StepResult,
     },
     meta::AgentMetadata,
 };
@@ -39,7 +39,6 @@ pub struct DummyAgentContext;
 
 pub fn no_downlink<Context>(
     _dl: BoxDownlinkChannel<Context>,
-    _write_stream: WriteStream,
 ) -> Result<(), DownlinkRuntimeError> {
     panic!("Launching downlinks no supported.");
 }

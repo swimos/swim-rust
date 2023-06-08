@@ -46,8 +46,7 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::{
-        downlink::hosted::{value_dl_write_stream, HostedValueDownlinkChannel},
-        HostedDownlinkEvent,
+        HostedDownlinkEvent, downlink::hosted::HostedValueDownlinkFactory,
     },
     config::SimpleDownlinkConfig,
     downlink_lifecycle::{
@@ -72,7 +71,7 @@ use self::{
 };
 
 use super::{
-    downlink::handlers::{DownlinkChannel, DownlinkChannelExt, DownlinkFailed},
+    downlink::handlers::{DownlinkChannel, DownlinkChannelEvent, DownlinkChannelError},
     AgentModel, HostedDownlink, ItemModelFactory,
 };
 
@@ -615,18 +614,46 @@ async fn trigger_ad_hoc_command() {
 }
 
 struct TestDownlinkChannel {
-    rx: mpsc::UnboundedReceiver<Result<(), DownlinkFailed>>,
+    rx: mpsc::UnboundedReceiver<Result<DownlinkChannelEvent, DownlinkChannelError>>,
     ready: bool,
+    writes: Option<WriteStream>,
 }
 
 struct TestDlAgent;
 
 impl DownlinkChannel<TestDlAgent> for TestDownlinkChannel {
-    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), DownlinkFailed>>> {
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Event
+    }
+
+    fn await_ready(
+        &mut self,
+    ) -> BoxFuture<'_, Option<Result<DownlinkChannelEvent, DownlinkChannelError>>> {
+        let TestDownlinkChannel { rx, ready, writes } = self;
         async move {
-            let result = self.rx.recv().await;
-            self.ready = true;
-            result
+            if let Some(w) = writes.as_mut() {
+                tokio::select! {
+                    biased;
+                    result = rx.recv() => {
+                        *ready = true;
+                        result
+                    },
+                    write_result = w.next() => {
+                        match write_result {
+                            Some(Ok(_)) => Some(Ok(DownlinkChannelEvent::WriteCompleted)),
+                            Some(Err(err)) => Some(Err(DownlinkChannelError::WriteFailed(err))),
+                            _ => {
+                                *writes = None;
+                                Some(Ok(DownlinkChannelEvent::WriteStreamTerminated))
+                            }
+                        }
+                    }
+                }
+            } else {
+                let result = rx.recv().await;
+                *ready = true;
+                result
+            }
         }
         .boxed()
     }
@@ -639,10 +666,6 @@ impl DownlinkChannel<TestDlAgent> for TestDownlinkChannel {
             None
         }
     }
-
-    fn kind(&self) -> DownlinkKind {
-        DownlinkKind::Event
-    }
 }
 
 fn make_dl_out(rx: mpsc::UnboundedReceiver<Result<(), std::io::Error>>) -> WriteStream {
@@ -650,15 +673,17 @@ fn make_dl_out(rx: mpsc::UnboundedReceiver<Result<(), std::io::Error>>) -> Write
 }
 
 fn make_test_hosted_downlink(
-    in_rx: mpsc::UnboundedReceiver<Result<(), DownlinkFailed>>,
+    in_rx: mpsc::UnboundedReceiver<Result<DownlinkChannelEvent, DownlinkChannelError>>,
     out_rx: mpsc::UnboundedReceiver<Result<(), std::io::Error>>,
 ) -> HostedDownlink<TestDlAgent> {
+
     let channel = TestDownlinkChannel {
         rx: in_rx,
         ready: false,
+        writes: Some(make_dl_out(out_rx)),
     };
 
-    HostedDownlink::new(channel.boxed(), make_dl_out(out_rx))
+    HostedDownlink::new(Box::new(channel))
 }
 
 #[tokio::test]
@@ -669,7 +694,7 @@ async fn hosted_downlink_incoming() {
     let (_out_tx, out_rx) = mpsc::unbounded_channel();
     let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
-    assert!(in_tx.send(Ok(())).is_ok());
+    assert!(in_tx.send(Ok(DownlinkChannelEvent::HandlerReady)).is_ok());
     let (mut hosted, event) = hosted
         .wait_on_downlink()
         .await
@@ -689,7 +714,7 @@ async fn hosted_downlink_incoming_error() {
     let (_out_tx, out_rx) = mpsc::unbounded_channel();
     let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
-    assert!(in_tx.send(Err(DownlinkFailed)).is_ok());
+    assert!(in_tx.send(Err(DownlinkChannelError::ReadFailed)).is_ok());
     let (mut hosted, event) = hosted
         .wait_on_downlink()
         .await
@@ -738,7 +763,7 @@ async fn hosted_downlink_write_terminated() {
     assert!(matches!(event, HostedDownlinkEvent::WriterTerminated));
     assert!(hosted.channel.next_event(&agent).is_none());
 
-    assert!(in_tx.send(Ok(())).is_ok());
+    assert!(in_tx.send(Ok(DownlinkChannelEvent::HandlerReady)).is_ok());
     let (mut hosted, event) = hosted
         .wait_on_downlink()
         .await
@@ -775,7 +800,7 @@ async fn hosted_downlink_write_failed() {
     }
     assert!(hosted.channel.next_event(&agent).is_none());
 
-    assert!(in_tx.send(Ok(())).is_ok());
+    assert!(in_tx.send(Ok(DownlinkChannelEvent::HandlerReady)).is_ok());
     let (mut hosted, event) = hosted
         .wait_on_downlink()
         .await
@@ -805,7 +830,7 @@ async fn hosted_downlink_in_out_interleaved() {
     let (out_tx, out_rx) = mpsc::unbounded_channel();
     let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
-    assert!(in_tx.send(Ok(())).is_ok());
+    assert!(in_tx.send(Ok(DownlinkChannelEvent::HandlerReady)).is_ok());
     let (mut hosted, event) = hosted
         .wait_on_downlink()
         .await
@@ -824,7 +849,7 @@ async fn hosted_downlink_in_out_interleaved() {
     assert!(matches!(event, HostedDownlinkEvent::Written));
     assert!(hosted.channel.next_event(&agent).is_none());
 
-    assert!(in_tx.send(Ok(())).is_ok());
+    assert!(in_tx.send(Ok(DownlinkChannelEvent::HandlerReady)).is_ok());
     let (mut hosted, event) = hosted
         .wait_on_downlink()
         .await
@@ -957,20 +982,16 @@ async fn run_value_downlink() {
     let state: RefCell<Option<i32>> = Default::default();
 
     let lc = TestState::default();
-    let channel = HostedValueDownlinkChannel::<i32, _, _>::new(
+    let fac = HostedValueDownlinkFactory::<i32, _, _>::new(
         Address::text(None, "/node", "lane"),
-        in_rx,
         lc.clone(),
         state,
         config,
         stop_rx,
-        Default::default(),
-    );
-
-    let write_stream = value_dl_write_stream(out_tx, write_rx);
-
+        write_rx);
+    
     let dl: HostedDownlink<FakeAgent> =
-        HostedDownlink::new(Box::new(channel), write_stream.boxed());
+        HostedDownlink::new(fac.create(out_tx, in_rx));
 
     let mut in_writer = FramedWrite::new(in_tx, DownlinkNotificationEncoder::default());
     let mut out_reader = FramedRead::new(out_rx, WithLengthBytesCodec::default());

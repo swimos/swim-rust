@@ -154,7 +154,7 @@ async fn successfully_create_action() {
 
     let downlinks = context.take_downlinks();
     match downlinks.as_slice() {
-        [(downlink, _)] => {
+        [downlink] => {
             assert_eq!(downlink.kind(), DownlinkKind::Event);
         }
         _ => panic!("Incorrect number of downlinks."),

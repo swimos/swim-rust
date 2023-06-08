@@ -20,7 +20,6 @@ use std::sync::Arc;
 
 use bytes::BytesMut;
 use futures::future::{Fuse, OptionFuture};
-use futures::stream::BoxStream;
 use futures::{
     future::{BoxFuture, Either, FusedFuture},
     stream::{FuturesUnordered, SelectAll},
@@ -47,7 +46,7 @@ use uuid::Uuid;
 
 use crate::agent_lifecycle::item_event::ItemEvent;
 use crate::event_handler::{
-    ActionContext, BoxEventHandler, BoxJoinValueInit, HandlerFuture, WriteStream,
+    ActionContext, BoxEventHandler, BoxJoinValueInit, HandlerFuture,
 };
 use crate::{
     agent_lifecycle::AgentLifecycle,
@@ -65,7 +64,7 @@ use io::{ItemWriter, LaneReader};
 
 use bitflags::bitflags;
 
-use self::downlink::handlers::BoxDownlinkChannel;
+use self::downlink::handlers::{BoxDownlinkChannel, DownlinkChannelEvent, DownlinkChannelError};
 use self::init::{run_item_initializer, InitializedItem};
 pub use init::{
     ItemInitializer, JoinValueInitializer, MapLaneInitializer, MapStoreInitializer,
@@ -349,18 +348,15 @@ enum TaskEvent<ItemModel> {
 struct HostedDownlink<Context> {
     channel: BoxDownlinkChannel<Context>,
     failed: bool,
-    write_stream: Option<BoxStream<'static, Result<(), std::io::Error>>>,
 }
 
 impl<Context> HostedDownlink<Context> {
     fn new(
         channel: BoxDownlinkChannel<Context>,
-        write_stream: BoxStream<'static, Result<(), std::io::Error>>,
     ) -> Self {
         HostedDownlink {
             channel,
             failed: false,
-            write_stream: Some(write_stream),
         }
     }
 }
@@ -377,7 +373,6 @@ impl<Context> HostedDownlink<Context> {
     async fn wait_on_downlink(mut self) -> Option<(Self, HostedDownlinkEvent)> {
         let HostedDownlink {
             channel,
-            write_stream,
             failed,
         } = &mut self;
 
@@ -385,33 +380,16 @@ impl<Context> HostedDownlink<Context> {
             return None;
         }
 
-        let next = if let Some(out) = write_stream.as_mut() {
-            tokio::select! {
-                handler_ready = channel.await_ready() => Either::Left(handler_ready),
-                maybe_result = out.next() => Either::Right(maybe_result),
-            }
-        } else {
-            Either::Left(channel.await_ready().await)
-        };
-
-        match next {
-            Either::Left(Some(Ok(_))) => {
-                Some((self, HostedDownlinkEvent::HandlerReady { failed: false }))
-            }
-            Either::Left(Some(Err(_))) => {
+        match channel.await_ready().await {
+            Some(Ok(DownlinkChannelEvent::HandlerReady)) => Some((self, HostedDownlinkEvent::HandlerReady { failed: false })),
+            Some(Ok(DownlinkChannelEvent::WriteCompleted)) => Some((self, HostedDownlinkEvent::Written)),
+            Some(Ok(DownlinkChannelEvent::WriteStreamTerminated)) => Some((self, HostedDownlinkEvent::WriterTerminated)),
+            Some(Err(DownlinkChannelError::ReadFailed)) => {
                 *failed = true;
                 Some((self, HostedDownlinkEvent::HandlerReady { failed: true }))
-            }
-            Either::Right(Some(Ok(_))) => Some((self, HostedDownlinkEvent::Written)),
-            Either::Right(Some(Err(e))) => {
-                *write_stream = None;
-                Some((self, HostedDownlinkEvent::WriterFailed(e)))
-            }
-            Either::Right(_) => {
-                *write_stream = None;
-                Some((self, HostedDownlinkEvent::WriterTerminated))
-            }
-            _ => None,
+            },
+            Some(Err(DownlinkChannelError::WriteFailed(err))) => Some((self, HostedDownlinkEvent::WriterFailed(err))),
+            None => None,
         }
     }
 }
@@ -782,7 +760,7 @@ struct AgentTask<ItemModel, Lifecycle> {
     suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
     join_value_init: HashMap<u64, BoxJoinValueInit<'static, ItemModel>>,
     ad_hoc_buffer: BytesMut,
-    downlink_channels: Vec<(BoxDownlinkChannel<ItemModel>, WriteStream)>,
+    downlink_channels: Vec<BoxDownlinkChannel<ItemModel>>,
 }
 
 impl<ItemModel, Lifecycle> AgentTask<ItemModel, Lifecycle>
@@ -838,8 +816,8 @@ where
         let mut cmd_send_fut = pin!(OptionFuture::from(None));
 
         // Start waiting on downlinks from the init phase.
-        for (channel, write_stream) in downlink_channels {
-            let dl = HostedDownlink::new(channel, write_stream);
+        for channel in downlink_channels {
+            let dl = HostedDownlink::new(channel);
             downlinks.push(dl.wait_on_downlink());
         }
 
@@ -921,8 +899,8 @@ where
                     }
                 }
             };
-            let add_downlink = |channel, write_stream| {
-                let dl = HostedDownlink::new(channel, write_stream);
+            let add_downlink = |channel| {
+                let dl = HostedDownlink::new(channel);
                 downlinks.push(dl.wait_on_downlink());
                 Ok(())
             };
@@ -1201,7 +1179,7 @@ where
         }?;
         // Try to run the `on_stop` handler before we stop.
         let on_stop_handler = lifecycle.on_stop();
-        let discard = |_, _| {
+        let discard = |_| {
             Err(DownlinkRuntimeError::RuntimeError(
                 AgentRuntimeError::Stopping,
             ))

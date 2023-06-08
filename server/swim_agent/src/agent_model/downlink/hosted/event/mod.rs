@@ -31,8 +31,8 @@ use tracing::{debug, error, info, trace};
 
 use crate::{
     agent_model::downlink::handlers::{
-        BoxDownlinkChannel2, DownlinkChannel, DownlinkChannel2, DownlinkChannelError,
-        DownlinkChannelEvent, DownlinkFailed,
+        BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError,
+        DownlinkChannelEvent,
     },
     config::SimpleDownlinkConfig,
     downlink_lifecycle::event::EventDownlinkLifecycle,
@@ -44,9 +44,8 @@ use super::{DlState, DlStateObserver, DlStateTracker};
 #[cfg(test)]
 mod tests;
 
-pub struct HostedEventDownlinkFactory<T, LC, State> {
+pub struct HostedEventDownlinkFactory<T, LC> {
     address: Address<Text>,
-    state: State,
     lifecycle: LC,
     config: SimpleDownlinkConfig,
     dl_state: Arc<AtomicU8>,
@@ -54,7 +53,7 @@ pub struct HostedEventDownlinkFactory<T, LC, State> {
     _type: PhantomData<fn() -> T>,
 }
 
-impl<T, LC, State> HostedEventDownlinkFactory<T, LC, State>
+impl<T, LC> HostedEventDownlinkFactory<T, LC>
 where
     T: StructuralReadable + Send + 'static,
     T::Rec: Send,
@@ -62,13 +61,11 @@ where
     pub fn new(
         address: Address<Text>,
         lifecycle: LC,
-        state: State,
         config: SimpleDownlinkConfig,
         stop_rx: trigger::Receiver,
     ) -> Self {
         HostedEventDownlinkFactory {
             address,
-            state,
             lifecycle,
             config,
             dl_state: Default::default(),
@@ -77,13 +74,12 @@ where
         }
     }
 
-    fn create<Context>(self, receiver: ByteReader) -> BoxDownlinkChannel2<Context>
+    pub fn create<Context>(self, receiver: ByteReader) -> BoxDownlinkChannel<Context>
     where
         LC: EventDownlinkLifecycle<T, Context> + 'static,
     {
         let HostedEventDownlinkFactory {
             address,
-            state,
             lifecycle,
             config,
             dl_state,
@@ -91,7 +87,7 @@ where
             ..
         } = self;
 
-        let chan = HostedEventDownlinkChannel {
+        let chan = HostedEventDownlink {
             address,
             receiver: Some(FramedRead::new(receiver, Default::default())),
             next: None,
@@ -103,11 +99,15 @@ where
         };
         Box::new(chan)
     }
+
+    pub fn dl_state(&self) -> &Arc<AtomicU8> {
+        &self.dl_state
+    }
 }
 
 /// An implementation of [`DownlinkChannel`] to allow an event downlink to be driven by an agent
 /// task.
-pub struct HostedEventDownlinkChannel<T: RecognizerReadable, LC> {
+pub struct HostedEventDownlink<T: RecognizerReadable, LC> {
     address: Address<Text>,
     receiver: Option<FramedRead<ByteReader, ValueNotificationDecoder<T>>>,
     next: Option<Result<DownlinkNotification<T>, FrameIoError>>,
@@ -118,35 +118,13 @@ pub struct HostedEventDownlinkChannel<T: RecognizerReadable, LC> {
     write_terminated: bool,
 }
 
-impl<T: RecognizerReadable, LC> HostedEventDownlinkChannel<T, LC> {
-    pub fn new(
-        address: Address<Text>,
-        receiver: ByteReader,
-        lifecycle: LC,
-        config: SimpleDownlinkConfig,
-        stop_rx: trigger::Receiver,
-        state: Arc<AtomicU8>,
-    ) -> Self {
-        HostedEventDownlinkChannel {
-            address,
-            receiver: Some(FramedRead::new(receiver, Default::default())),
-            next: None,
-            lifecycle,
-            config,
-            dl_state: DlStateTracker::new(state),
-            stop_rx: Some(stop_rx),
-            write_terminated: false,
-        }
-    }
-}
-
-impl<T, LC> HostedEventDownlinkChannel<T, LC>
+impl<T, LC> HostedEventDownlink<T, LC>
 where
     T: RecognizerReadable + Send + 'static,
     T::Rec: Send,
 {
     async fn select_next(&mut self) -> Option<Result<DownlinkChannelEvent, DownlinkChannelError>> {
-        let HostedEventDownlinkChannel {
+        let HostedEventDownlink {
             address,
             receiver,
             next,
@@ -208,7 +186,7 @@ fn handle_read<T: RecognizerReadable>(
     }
 }
 
-impl<T, LC, Context> DownlinkChannel2<Context> for HostedEventDownlinkChannel<T, LC>
+impl<T, LC, Context> DownlinkChannel<Context> for HostedEventDownlink<T, LC>
 where
     T: RecognizerReadable + Send + 'static,
     T::Rec: Send,
@@ -225,7 +203,7 @@ where
     }
 
     fn next_event(&mut self, _context: &Context) -> Option<BoxEventHandler<'_, Context>> {
-        let HostedEventDownlinkChannel {
+        let HostedEventDownlink {
             address,
             receiver,
             next,
@@ -286,132 +264,6 @@ where
         } else {
             None
         }
-    }
-}
-
-impl<T, LC, Context> DownlinkChannel<Context> for HostedEventDownlinkChannel<T, LC>
-where
-    T: RecognizerReadable + Send + 'static,
-    T::Rec: Send,
-    LC: EventDownlinkLifecycle<T, Context> + 'static,
-{
-    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), DownlinkFailed>>> {
-        let HostedEventDownlinkChannel {
-            address,
-            receiver,
-            next,
-            stop_rx,
-            ..
-        } = self;
-        async move {
-            let result = if let Some(rx) = receiver {
-                if let Some(stop_signal) = stop_rx.as_mut() {
-                    tokio::select! {
-                        biased;
-                        triggered_result = stop_signal => {
-                            *stop_rx = None;
-                            if triggered_result.is_ok() {
-                                *receiver = None;
-                                Some(Ok(DownlinkNotification::Unlinked))
-                            } else {
-                                rx.next().await
-                            }
-                        }
-                        result = rx.next() => result,
-                    }
-                } else {
-                    rx.next().await
-                }
-            } else {
-                return None;
-            };
-            match result {
-                Some(Ok(notification)) => {
-                    *next = Some(Ok(notification));
-                    Some(Ok(()))
-                }
-                Some(Err(e)) => {
-                    error!(address = %address, "Downlink input channel failed.");
-                    *receiver = None;
-                    *next = Some(Err(e));
-                    Some(Err(DownlinkFailed))
-                }
-                _ => {
-                    info!(address = %address, "Downlink terminated normally.");
-                    *receiver = None;
-                    None
-                }
-            }
-        }
-        .boxed()
-    }
-
-    fn next_event(&mut self, _context: &Context) -> Option<BoxEventHandler<'_, Context>> {
-        let HostedEventDownlinkChannel {
-            address,
-            receiver,
-            next,
-            lifecycle,
-            dl_state,
-            config:
-                SimpleDownlinkConfig {
-                    events_when_not_synced,
-                    terminate_on_unlinked,
-                },
-            ..
-        } = self;
-        if let Some(notification) = next.take() {
-            match notification {
-                Ok(DownlinkNotification::Linked) => {
-                    debug!(address = %address, "Downlink linked.");
-                    if dl_state.get() == DlState::Unlinked {
-                        dl_state.set(DlState::Linked);
-                    }
-                    Some(lifecycle.on_linked().boxed())
-                }
-                Ok(DownlinkNotification::Synced) => {
-                    debug!(address = %address, "Downlink synced.");
-                    dl_state.set(DlState::Synced);
-                    Some(lifecycle.on_synced(&()).boxed())
-                }
-                Ok(DownlinkNotification::Event { body }) => {
-                    trace!(address = %address, "Event received for downlink.");
-                    let handler = if dl_state.get() == DlState::Synced || *events_when_not_synced {
-                        let handler = lifecycle.on_event(body).boxed();
-                        Some(handler)
-                    } else {
-                        None
-                    };
-                    handler
-                }
-                Ok(DownlinkNotification::Unlinked) => {
-                    debug!(address = %address, "Downlink unlinked.");
-                    if *terminate_on_unlinked {
-                        *receiver = None;
-                        dl_state.set(DlState::Stopped);
-                    } else {
-                        dl_state.set(DlState::Unlinked);
-                    }
-                    Some(lifecycle.on_unlinked().boxed())
-                }
-                Err(_) => {
-                    debug!(address = %address, "Downlink failed.");
-                    if *terminate_on_unlinked {
-                        *receiver = None;
-                        dl_state.set(DlState::Stopped);
-                    } else {
-                        dl_state.set(DlState::Unlinked);
-                    }
-                    Some(lifecycle.on_failed().boxed())
-                }
-            }
-        } else {
-            None
-        }
-    }
-
-    fn kind(&self) -> DownlinkKind {
-        DownlinkKind::Event
     }
 }
 
