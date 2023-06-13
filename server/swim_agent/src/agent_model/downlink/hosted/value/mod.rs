@@ -12,32 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::BytesMut;
 use futures::{
     future::{BoxFuture, Either, OptionFuture},
-    stream::unfold,
-    FutureExt, SinkExt, Stream, StreamExt,
+    ready, FutureExt, Sink, Stream, StreamExt,
 };
+use pin_project::pin_project;
 use std::{
     cell::RefCell,
-    fmt::Write,
-    pin::pin,
+    pin::{pin, Pin},
     sync::{atomic::AtomicU8, Arc},
+    task::{Context, Poll},
 };
+use swim_api::protocol::WithLenReconEncoder;
 use swim_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},
-    protocol::{
-        downlink::{DownlinkNotification, ValueNotificationDecoder},
-        WithLengthBytesCodec,
-    },
+    protocol::downlink::{DownlinkNotification, ValueNotificationDecoder},
 };
 use swim_form::{
     structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
     Form,
 };
 use swim_model::{address::Address, Text};
-use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     sync::circular_buffer,
@@ -48,15 +44,14 @@ use tracing::{debug, error, info, trace};
 
 use crate::{
     agent_model::downlink::handlers::{
-        BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError,
-        DownlinkChannelEvent,
+        BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
     },
     config::SimpleDownlinkConfig,
     downlink_lifecycle::value::ValueDownlinkLifecycle,
     event_handler::{BoxEventHandler, HandlerActionExt},
 };
 
-use super::{DlState, DlStateObserver, DlStateTracker};
+use super::{DlState, DlStateObserver, DlStateTracker, OutputWriter, RestartableOutput};
 
 #[cfg(test)]
 mod tests;
@@ -64,31 +59,31 @@ mod tests;
 /// Operations that need to be supported by the state store of a value downlink. The intention
 /// of this trait is to abstract over a self contained store a store contained within the field
 /// of an agent. In both cases, the store itself will a [`RefCell`] containing an optional value.
-pub trait ValueDlState<T, Context>: Send {
-    fn take_current(&self, context: &Context) -> Option<T>;
+pub trait ValueDlState<T>: Send {
+    fn take_current(&self) -> Option<T>;
 
-    fn replace(&self, context: &Context, value: T);
+    fn replace(&self, value: T);
 
     // Perform an operation in a context with access to the state.
-    fn with<R, Op: FnOnce(Option<&T>) -> R>(&self, context: &Context, op: Op) -> R;
+    fn with<R, Op: FnOnce(Option<&T>) -> R>(&self, op: Op) -> R;
 
-    fn clear(&self, context: &Context);
+    fn clear(&self);
 }
 
-impl<T: Send, Context> ValueDlState<T, Context> for RefCell<Option<T>> {
-    fn take_current(&self, _context: &Context) -> Option<T> {
+impl<T: Send> ValueDlState<T> for RefCell<Option<T>> {
+    fn take_current(&self) -> Option<T> {
         self.replace(None)
     }
 
-    fn replace(&self, _context: &Context, value: T) {
+    fn replace(&self, value: T) {
         self.replace(Some(value));
     }
 
-    fn with<R, Op: FnOnce(Option<&T>) -> R>(&self, _context: &Context, op: Op) -> R {
+    fn with<R, Op: FnOnce(Option<&T>) -> R>(&self, op: Op) -> R {
         op(self.borrow().as_ref())
     }
 
-    fn clear(&self, _context: &Context) {
+    fn clear(&self) {
         self.replace(None);
     }
 }
@@ -127,9 +122,14 @@ where
         }
     }
 
-    pub fn create<Context>(self, sender: ByteWriter, receiver: ByteReader) -> BoxDownlinkChannel<Context>
+    pub fn create<Context>(
+        self,
+        context: &Context,
+        sender: ByteWriter,
+        receiver: ByteReader,
+    ) -> BoxDownlinkChannel<Context>
     where
-        State: ValueDlState<T, Context> + Send + 'static,
+        State: ValueDlState<T> + Send + 'static,
         LC: ValueDownlinkLifecycle<T, Context> + 'static,
     {
         let HostedValueDownlinkFactory {
@@ -141,11 +141,10 @@ where
             stop_rx,
             watch_rx,
         } = self;
-        let write_stream = value_dl_write_stream(sender, watch_rx).boxed();
-        let chan = HostedValueDownlink {
+        let mut chan = HostedValueDownlink {
             address,
-            receiver: Some(FramedRead::new(receiver, Default::default())),
-            write_stream: Some(write_stream),
+            receiver: None,
+            write_stream: Writes::Inactive(watch_rx),
             state,
             next: None,
             lifecycle,
@@ -153,6 +152,7 @@ where
             dl_state: DlStateTracker::new(dl_state),
             stop_rx: Some(stop_rx),
         };
+        chan.connect(context, sender, receiver);
         Box::new(chan)
     }
 
@@ -161,10 +161,12 @@ where
     }
 }
 
-pub struct HostedValueDownlink<T: RecognizerReadable, LC, State, Writes> {
+type Writes<T> = OutputWriter<ValueWriteStream<T>>;
+
+pub struct HostedValueDownlink<T: RecognizerReadable, LC, State> {
     address: Address<Text>,
     receiver: Option<FramedRead<ByteReader, ValueNotificationDecoder<T>>>,
-    write_stream: Option<Writes>,
+    write_stream: Writes<T>,
     state: State,
     next: Option<Result<DownlinkNotification<T>, FrameIoError>>,
     lifecycle: LC,
@@ -173,11 +175,10 @@ pub struct HostedValueDownlink<T: RecognizerReadable, LC, State, Writes> {
     stop_rx: Option<trigger::Receiver>,
 }
 
-impl<T, LC, State, Writes> HostedValueDownlink<T, LC, State, Writes>
+impl<T, LC, State> HostedValueDownlink<T, LC, State>
 where
-    T: RecognizerReadable + Send + 'static,
+    T: Form + Send + 'static,
     T::Rec: Send,
-    Writes: Stream<Item = Result<(), std::io::Error>> + Send + Unpin + 'static,
 {
     async fn select_next(&mut self) -> Option<Result<DownlinkChannelEvent, DownlinkChannelError>> {
         let HostedValueDownlink {
@@ -208,12 +209,15 @@ where
                         }
                     }
                 },
-                maybe_result = OptionFuture::from(write_stream.as_mut().map(|str| str.next())), if write_stream.is_some() => {
+                maybe_result = OptionFuture::from(write_stream.as_mut().map(|str| str.next())), if write_stream.is_active() => {
                     match maybe_result.flatten() {
                         Some(Ok(_)) => Some(Ok(DownlinkChannelEvent::WriteCompleted)),
-                        Some(Err(e)) => Some(Err(DownlinkChannelError::WriteFailed(e))),
+                        Some(Err(e)) => {
+                            write_stream.fail();
+                            Some(Err(DownlinkChannelError::WriteFailed(e)))
+                        },
                         _ => {
-                            *write_stream = None;
+                            *write_stream = Writes::Stopped;
                             Some(Ok(DownlinkChannelEvent::WriteStreamTerminated))
                         }
                     }
@@ -230,7 +234,7 @@ where
                     *stop_rx = None;
                     if triggered_result.is_ok() {
                         *receiver = None;
-                        *write_stream = None;
+                        *write_stream = OutputWriter::Stopped;
                         *next = Some(Ok(DownlinkNotification::Unlinked));
                         Some(Ok(DownlinkChannelEvent::HandlerReady))
                     } else {
@@ -245,14 +249,12 @@ where
     }
 }
 
-impl<T, LC, Context, State, Writes> DownlinkChannel<Context>
-    for HostedValueDownlink<T, LC, State, Writes>
+impl<T, LC, Context, State> DownlinkChannel<Context> for HostedValueDownlink<T, LC, State>
 where
-    State: ValueDlState<T, Context>,
-    T: RecognizerReadable + Send + 'static,
+    State: ValueDlState<T>,
+    T: Form + Send + 'static,
     T::Rec: Send,
     LC: ValueDownlinkLifecycle<T, Context> + 'static,
-    Writes: Stream<Item = Result<(), std::io::Error>> + Send + Unpin + 'static,
 {
     fn kind(&self) -> DownlinkKind {
         DownlinkKind::Value
@@ -264,7 +266,7 @@ where
         self.select_next().boxed()
     }
 
-    fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+    fn next_event(&mut self, _context: &Context) -> Option<BoxEventHandler<'_, Context>> {
         let HostedValueDownlink {
             address,
             receiver,
@@ -288,14 +290,14 @@ where
                     }
                     Some(lifecycle.on_linked().boxed())
                 }
-                Ok(DownlinkNotification::Synced) => state.with(context, |maybe_value| {
+                Ok(DownlinkNotification::Synced) => state.with(|maybe_value| {
                     debug!(address = %address, "Downlink synced.");
                     dl_state.set(DlState::Synced);
                     maybe_value.map(|value| lifecycle.on_synced(value).boxed())
                 }),
                 Ok(DownlinkNotification::Event { body }) => {
                     trace!(address = %address, "Event received for downlink.");
-                    let prev = state.take_current(context);
+                    let prev = state.take_current();
                     let handler = if dl_state.get() == DlState::Synced || *events_when_not_synced {
                         let handler = lifecycle
                             .on_event(&body)
@@ -305,12 +307,12 @@ where
                     } else {
                         None
                     };
-                    state.replace(context, body);
+                    state.replace(body);
                     handler
                 }
                 Ok(DownlinkNotification::Unlinked) => {
                     debug!(address = %address, "Downlink unlinked.");
-                    state.clear(context);
+                    state.clear();
                     if *terminate_on_unlinked {
                         *receiver = None;
                         dl_state.set(DlState::Stopped);
@@ -321,7 +323,7 @@ where
                 }
                 Err(_) => {
                     debug!(address = %address, "Downlink failed.");
-                    state.clear(context);
+                    state.clear();
                     if *terminate_on_unlinked {
                         *receiver = None;
                         dl_state.set(DlState::Stopped);
@@ -334,6 +336,26 @@ where
         } else {
             None
         }
+    }
+
+    fn connect(&mut self, _context: &Context, output: ByteWriter, input: ByteReader) {
+        let HostedValueDownlink {
+            receiver,
+            write_stream,
+            state,
+            next,
+            dl_state,
+            ..
+        } = self;
+        *receiver = Some(FramedRead::new(input, Default::default()));
+        write_stream.restart(output);
+        state.clear();
+        *next = None;
+        dl_state.set(DlState::Unlinked);
+    }
+
+    fn can_restart(&self) -> bool {
+        !self.config.terminate_on_unlinked && self.stop_rx.is_some()
     }
 }
 
@@ -400,30 +422,97 @@ where
     }
 }
 
-/// Task to write the values sent by a [`ValueDownlinkHandle`] to an outgoing channel.
-pub fn value_dl_write_stream<T>(
-    writer: ByteWriter,
+#[derive(Default)]
+enum ValueWriteStreamState<T> {
+    #[default]
+    WaitingForValue,
+    WaitingToSend(T),
+    Stopping,
+    Stopped,
+}
+
+#[pin_project]
+pub struct ValueWriteStream<T> {
+    #[pin]
+    write: FramedWrite<ByteWriter, WithLenReconEncoder>,
+    #[pin]
     watch_rx: circular_buffer::Receiver<T>,
-) -> impl Stream<Item = Result<(), std::io::Error>> + Send + 'static
+    state: ValueWriteStreamState<T>,
+}
+
+impl<T> ValueWriteStream<T> {
+    pub fn new(writer: ByteWriter, watch_rx: circular_buffer::Receiver<T>) -> Self {
+        ValueWriteStream {
+            write: FramedWrite::new(writer, Default::default()),
+            watch_rx,
+            state: Default::default(),
+        }
+    }
+
+    pub fn into_watch_rx(self) -> circular_buffer::Receiver<T> {
+        self.watch_rx
+    }
+}
+
+impl<T> Stream for ValueWriteStream<T>
 where
     T: StructuralWritable + Send + 'static,
 {
-    let buffer = BytesMut::new();
+    type Item = Result<(), std::io::Error>;
 
-    let writer = FramedWrite::new(writer, WithLengthBytesCodec::default());
-
-    unfold((writer, watch_rx, buffer), |state| async move {
-        let (mut writer, mut rx, mut buffer) = state;
-
-        if let Ok(value) = rx.recv().await {
-            buffer.clear();
-            write!(&mut buffer, "{}", print_recon_compact(&value))
-                .expect("Writing to Recon should be infallible.");
-            trace!(content = ?buffer.as_ref(), "Writing a value to a value downlink.");
-            let result = writer.send(buffer.as_ref()).await;
-            Some((result, (writer, rx, buffer)))
-        } else {
-            None
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut projected = self.project();
+        loop {
+            match projected.state {
+                ValueWriteStreamState::WaitingForValue => {
+                    match projected.watch_rx.as_mut().poll_next(cx) {
+                        Poll::Ready(Some(value)) => {
+                            *projected.state = ValueWriteStreamState::WaitingToSend(value);
+                        }
+                        Poll::Ready(_) => {
+                            *projected.state = ValueWriteStreamState::Stopping;
+                        }
+                        Poll::Pending => {
+                            let result =
+                                ready!(Sink::<&T>::poll_flush(projected.write.as_mut(), cx));
+                            if result.is_err() {
+                                *projected.state = ValueWriteStreamState::Stopped;
+                            }
+                            result?;
+                            return Poll::Pending;
+                        }
+                    }
+                }
+                ValueWriteStreamState::WaitingToSend(value) => {
+                    if let Err(e) = ready!(Sink::<&T>::poll_ready(projected.write.as_mut(), cx)) {
+                        *projected.state = ValueWriteStreamState::Stopped;
+                        return Poll::Ready(Some(Err(e)));
+                    }
+                    let result = projected.write.as_mut().start_send(&value);
+                    *projected.state = ValueWriteStreamState::WaitingForValue;
+                    return Poll::Ready(Some(result));
+                }
+                ValueWriteStreamState::Stopping => {
+                    let result = ready!(Sink::<&T>::poll_close(projected.write.as_mut(), cx));
+                    *projected.state = ValueWriteStreamState::Stopped;
+                    result?;
+                }
+                ValueWriteStreamState::Stopped => {
+                    return Poll::Ready(None);
+                }
+            }
         }
-    })
+    }
+}
+
+impl<T> RestartableOutput for ValueWriteStream<T> {
+    type Source = circular_buffer::Receiver<T>;
+
+    fn fail(self) -> Self::Source {
+        self.into_watch_rx()
+    }
+
+    fn restart(writer: ByteWriter, source: Self::Source) -> Self {
+        ValueWriteStream::new(writer, source)
+    }
 }

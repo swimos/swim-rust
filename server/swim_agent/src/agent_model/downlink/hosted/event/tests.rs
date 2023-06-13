@@ -26,7 +26,7 @@ use swim_utilities::{
 use tokio::io::AsyncWriteExt;
 use tokio_util::codec::FramedWrite;
 
-use super::{SimpleDownlinkConfig, HostedEventDownlinkFactory};
+use super::{HostedEventDownlinkFactory, SimpleDownlinkConfig};
 use crate::{
     agent_model::downlink::handlers::BoxDownlinkChannel,
     downlink_lifecycle::{

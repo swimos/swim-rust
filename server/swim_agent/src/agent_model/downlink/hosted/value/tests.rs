@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, num::NonZeroUsize, pin::pin, sync::Arc};
+use std::{cell::RefCell, num::NonZeroUsize, sync::Arc};
 
 use futures::{future::join3, SinkExt, StreamExt};
 use parking_lot::Mutex;
@@ -22,7 +22,7 @@ use swim_api::protocol::downlink::{
 use swim_model::{address::Address, Text};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
-    io::byte_channel::{self, ByteWriter, ByteReader},
+    io::byte_channel::{self, ByteReader, ByteWriter},
     non_zero_usize,
     sync::circular_buffer,
     trigger,
@@ -30,10 +30,11 @@ use swim_utilities::{
 use tokio::{io::AsyncWriteExt, task::yield_now};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use super::{SimpleDownlinkConfig, HostedValueDownlinkFactory};
+use super::{HostedValueDownlinkFactory, SimpleDownlinkConfig};
 use crate::{
     agent_model::downlink::{
-        hosted::{ValueDownlinkHandle, value::value_dl_write_stream}, handlers::BoxDownlinkChannel,
+        handlers::BoxDownlinkChannel,
+        hosted::{value::ValueWriteStream, ValueDownlinkHandle},
     },
     downlink_lifecycle::{
         on_failed::OnFailed,
@@ -164,7 +165,7 @@ struct TestContext {
     stop_tx: Option<trigger::Sender>,
 }
 
-fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
+fn make_hosted_input(context: &FakeAgent, config: SimpleDownlinkConfig) -> TestContext {
     let inner: Events = Default::default();
     let lc = FakeLifecycle {
         inner: inner.clone(),
@@ -177,8 +178,9 @@ fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
     let (stop_tx, stop_rx) = trigger::trigger();
 
     let (write_tx, write_rx) = circular_buffer::channel(OUT_CHAN_SIZE);
-    let fac = HostedValueDownlinkFactory::new(address, lc, State::default(), config, stop_rx, write_rx);
-    let chan = fac.create(out_tx, in_rx);
+    let fac =
+        HostedValueDownlinkFactory::new(address, lc, State::default(), config, stop_rx, write_rx);
+    let chan = fac.create(context, out_tx, in_rx);
 
     TestContext {
         channel: chan,
@@ -192,13 +194,13 @@ fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
 
 #[tokio::test]
 async fn shutdown_when_input_stops() {
+    let agent = FakeAgent;
+
     let TestContext {
         mut channel,
         sender,
         ..
-    } = make_hosted_input(SimpleDownlinkConfig::default());
-
-    let agent = FakeAgent;
+    } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     assert!(channel.next_event(&agent).is_none());
 
@@ -211,15 +213,15 @@ async fn shutdown_when_input_stops() {
 
 #[tokio::test]
 async fn shutdown_on_stop_trigger() {
+    let agent = FakeAgent;
+
     let TestContext {
         mut channel,
         sender: _sender,
         stop_tx,
         events,
         ..
-    } = make_hosted_input(SimpleDownlinkConfig::default());
-
-    let agent = FakeAgent;
+    } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     assert!(channel.next_event(&agent).is_none());
 
@@ -238,14 +240,13 @@ async fn shutdown_on_stop_trigger() {
 
 #[tokio::test]
 async fn terminate_on_error() {
+    let agent = FakeAgent;
     let TestContext {
         mut channel,
         mut sender,
         events,
         ..
-    } = make_hosted_input(SimpleDownlinkConfig::default());
-
-    let agent = FakeAgent;
+    } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     assert!(sender.get_mut().write_u8(100).await.is_ok()); //Invalid message kind tag.
 
@@ -310,9 +311,8 @@ async fn run_with_expectations(
 
 #[tokio::test]
 async fn emit_linked_handler() {
-    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
-
     let agent = FakeAgent;
+    let mut context = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     run_with_expectations(
         &mut context,
@@ -324,9 +324,8 @@ async fn emit_linked_handler() {
 
 #[tokio::test]
 async fn emit_synced_handler() {
-    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
-
     let agent = FakeAgent;
+    let mut context = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     run_with_expectations(
         &mut context,
@@ -342,9 +341,8 @@ async fn emit_synced_handler() {
 
 #[tokio::test]
 async fn emit_event_handlers() {
-    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
-
     let agent = FakeAgent;
+    let mut context = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     run_with_expectations(
         &mut context,
@@ -364,13 +362,13 @@ async fn emit_event_handlers() {
 
 #[tokio::test]
 async fn emit_events_before_synced() {
+    let agent = FakeAgent;
+
     let config = SimpleDownlinkConfig {
         events_when_not_synced: true,
         terminate_on_unlinked: true,
     };
-    let mut context = make_hosted_input(config);
-
-    let agent = FakeAgent;
+    let mut context = make_hosted_input(&agent, config);
 
     run_with_expectations(
         &mut context,
@@ -389,9 +387,8 @@ async fn emit_events_before_synced() {
 
 #[tokio::test]
 async fn emit_unlinked_handler() {
-    let mut context = make_hosted_input(SimpleDownlinkConfig::default());
-
     let agent = FakeAgent;
+    let mut context = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     run_with_expectations(
         &mut context,
@@ -417,9 +414,9 @@ async fn revive_unlinked_downlink() {
         terminate_on_unlinked: false,
     };
 
-    let mut context = make_hosted_input(config);
-
     let agent = FakeAgent;
+
+    let mut context = make_hosted_input(&agent, config);
 
     run_with_expectations(
         &mut context,
@@ -459,7 +456,7 @@ async fn value_downlink_writer() {
     let (set_tx, set_rx) = circular_buffer::watch_channel::<i32>();
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
     let (stop_tx, _stop_rx) = trigger::trigger();
-    let mut stream = pin!(value_dl_write_stream(tx, set_rx));
+    let mut stream = ValueWriteStream::new(tx, set_rx);
 
     let mut receiver = FramedRead::new(rx, DownlinkOperationDecoder);
 

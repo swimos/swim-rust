@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, collections::HashMap, num::NonZeroUsize, pin::pin, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, num::NonZeroUsize, sync::Arc};
 
 use bytes::BytesMut;
 use futures::{future::join3, SinkExt, StreamExt};
@@ -23,14 +23,14 @@ use swim_api::protocol::{
 };
 use swim_model::{address::Address, Text};
 use swim_utilities::{
-    io::byte_channel::{self, ByteWriter, ByteReader},
+    io::byte_channel::{self, ByteReader, ByteWriter},
     non_zero_usize, trigger,
 };
 use tokio::{io::AsyncWriteExt, sync::mpsc};
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 
 use crate::{
-    agent_model::downlink::{MapDownlinkHandle, hosted::map::map_dl_write_stream, handlers::BoxDownlinkChannel},
+    agent_model::downlink::{handlers::BoxDownlinkChannel, MapDownlinkHandle},
     config::MapDownlinkConfig,
     downlink_lifecycle::{
         map::{
@@ -44,7 +44,7 @@ use crate::{
     event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
 };
 
-use super::{MapDlState, HostedMapDownlinkFactory};
+use super::{HostedMapDownlinkFactory, MapDlState, MapWriteStream};
 
 struct FakeAgent;
 
@@ -270,7 +270,7 @@ struct TestContext {
 const NODE: &str = "/node";
 const LANE: &str = "lane";
 
-fn make_hosted_input(config: MapDownlinkConfig) -> TestContext {
+fn make_hosted_input(agent: &FakeAgent, config: MapDownlinkConfig) -> TestContext {
     let events: Events = Default::default();
     let lc = FakeLifecycle {
         events: events.clone(),
@@ -284,9 +284,10 @@ fn make_hosted_input(config: MapDownlinkConfig) -> TestContext {
 
     let (write_tx, write_rx) = mpsc::unbounded_channel();
 
-    let fac = HostedMapDownlinkFactory::new(address, lc, State::default(), config, stop_rx, write_rx);
+    let fac =
+        HostedMapDownlinkFactory::new(address, lc, State::default(), config, stop_rx, write_rx);
 
-    let chan = fac.create(out_tx, in_rx);
+    let chan = fac.create(agent, out_tx, in_rx);
     TestContext {
         channel: chan,
         events,
@@ -299,13 +300,12 @@ fn make_hosted_input(config: MapDownlinkConfig) -> TestContext {
 
 #[tokio::test]
 async fn shutdown_when_input_stops() {
+    let agent = FakeAgent;
     let TestContext {
         mut channel,
         sender,
         ..
-    } = make_hosted_input(MapDownlinkConfig::default());
-
-    let agent = FakeAgent;
+    } = make_hosted_input(&agent, MapDownlinkConfig::default());
 
     assert!(channel.next_event(&agent).is_none());
 
@@ -318,15 +318,15 @@ async fn shutdown_when_input_stops() {
 
 #[tokio::test]
 async fn shutdown_on_stop_trigger() {
+    let agent = FakeAgent;
+
     let TestContext {
         mut channel,
         sender: _sender,
         stop_tx,
         events,
         ..
-    } = make_hosted_input(MapDownlinkConfig::default());
-
-    let agent = FakeAgent;
+    } = make_hosted_input(&agent, MapDownlinkConfig::default());
 
     assert!(channel.next_event(&agent).is_none());
 
@@ -345,14 +345,14 @@ async fn shutdown_on_stop_trigger() {
 
 #[tokio::test]
 async fn terminate_on_error() {
+    let agent = FakeAgent;
+
     let TestContext {
         mut channel,
         mut sender,
         events,
         ..
-    } = make_hosted_input(MapDownlinkConfig::default());
-
-    let agent = FakeAgent;
+    } = make_hosted_input(&agent, MapDownlinkConfig::default());
 
     assert!(sender.sender.get_mut().write_u8(100).await.is_ok()); //Invalid message kind tag.
 
@@ -408,9 +408,9 @@ async fn run_with_expectations(
 
 #[tokio::test]
 async fn emit_linked_handler() {
-    let mut context = make_hosted_input(MapDownlinkConfig::default());
-
     let agent = FakeAgent;
+
+    let mut context = make_hosted_input(&agent, MapDownlinkConfig::default());
 
     run_with_expectations(
         &mut context,
@@ -455,9 +455,9 @@ fn drp(n: u64) -> DownlinkNotification<MapMessage<i32, Text>> {
 
 #[tokio::test]
 async fn emit_synced_handler() {
-    let mut context = make_hosted_input(MapDownlinkConfig::default());
-
     let agent = FakeAgent;
+
+    let mut context = make_hosted_input(&agent, MapDownlinkConfig::default());
 
     run_with_expectations(
         &mut context,
@@ -478,9 +478,8 @@ async fn emit_synced_handler() {
 
 #[tokio::test]
 async fn emit_event_handlers() {
-    let mut context = make_hosted_input(MapDownlinkConfig::default());
-
     let agent = FakeAgent;
+    let mut context = make_hosted_input(&agent, MapDownlinkConfig::default());
 
     run_with_expectations(
         &mut context,
@@ -518,9 +517,8 @@ async fn emit_events_before_synced() {
         events_when_not_synced: true,
         ..Default::default()
     };
-    let mut context = make_hosted_input(config);
-
     let agent = FakeAgent;
+    let mut context = make_hosted_input(&agent, config);
 
     run_with_expectations(
         &mut context,
@@ -546,9 +544,8 @@ async fn emit_events_before_synced() {
 
 #[tokio::test]
 async fn emit_unlinked_handler() {
-    let mut context = make_hosted_input(MapDownlinkConfig::default());
-
     let agent = FakeAgent;
+    let mut context = make_hosted_input(&agent, MapDownlinkConfig::default());
 
     run_with_expectations(
         &mut context,
@@ -569,9 +566,9 @@ async fn emit_unlinked_handler() {
 
 #[tokio::test]
 async fn emit_take_handlers() {
-    let mut context = make_hosted_input(MapDownlinkConfig::default());
-
     let agent = FakeAgent;
+
+    let mut context = make_hosted_input(&agent, MapDownlinkConfig::default());
 
     run_with_expectations(
         &mut context,
@@ -608,9 +605,9 @@ async fn emit_take_handlers() {
 
 #[tokio::test]
 async fn emit_drop_handlers() {
-    let mut context = make_hosted_input(MapDownlinkConfig::default());
-
     let agent = FakeAgent;
+
+    let mut context = make_hosted_input(&agent, MapDownlinkConfig::default());
 
     run_with_expectations(
         &mut context,
@@ -646,9 +643,8 @@ async fn emit_drop_handlers() {
 
 #[tokio::test]
 async fn emit_drop_all_handlers() {
-    let mut context = make_hosted_input(MapDownlinkConfig::default());
-
     let agent = FakeAgent;
+    let mut context = make_hosted_input(&agent, MapDownlinkConfig::default());
 
     run_with_expectations(
         &mut context,
@@ -692,9 +688,8 @@ async fn revive_unlinked_downlink() {
         ..Default::default()
     };
 
-    let mut context = make_hosted_input(config);
-
     let agent = FakeAgent;
+    let mut context = make_hosted_input(&agent, config);
 
     run_with_expectations(
         &mut context,
@@ -734,7 +729,7 @@ async fn map_downlink_writer() {
     let (op_tx, op_rx) = mpsc::unbounded_channel::<MapOperation<i32, Text>>();
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
     let (stop_tx, _stop_rx) = trigger::trigger();
-    let mut stream = pin!(map_dl_write_stream(tx, op_rx));
+    let mut stream = MapWriteStream::new(tx, op_rx);
 
     let receiver = FramedRead::new(rx, MapOperationDecoder::<i32, Text>::default());
 

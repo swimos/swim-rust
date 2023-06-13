@@ -45,9 +45,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::agent_lifecycle::item_event::ItemEvent;
-use crate::event_handler::{
-    ActionContext, BoxEventHandler, BoxJoinValueInit, HandlerFuture,
-};
+use crate::event_handler::{ActionContext, BoxEventHandler, BoxJoinValueInit, HandlerFuture};
 use crate::{
     agent_lifecycle::AgentLifecycle,
     event_handler::{EventHandler, EventHandlerError, HandlerAction, StepResult},
@@ -64,7 +62,7 @@ use io::{ItemWriter, LaneReader};
 
 use bitflags::bitflags;
 
-use self::downlink::handlers::{BoxDownlinkChannel, DownlinkChannelEvent, DownlinkChannelError};
+use self::downlink::handlers::{BoxDownlinkChannel, DownlinkChannelError, DownlinkChannelEvent};
 use self::init::{run_item_initializer, InitializedItem};
 pub use init::{
     ItemInitializer, JoinValueInitializer, MapLaneInitializer, MapStoreInitializer,
@@ -351,9 +349,7 @@ struct HostedDownlink<Context> {
 }
 
 impl<Context> HostedDownlink<Context> {
-    fn new(
-        channel: BoxDownlinkChannel<Context>,
-    ) -> Self {
+    fn new(channel: BoxDownlinkChannel<Context>) -> Self {
         HostedDownlink {
             channel,
             failed: false,
@@ -371,24 +367,29 @@ enum HostedDownlinkEvent {
 
 impl<Context> HostedDownlink<Context> {
     async fn wait_on_downlink(mut self) -> Option<(Self, HostedDownlinkEvent)> {
-        let HostedDownlink {
-            channel,
-            failed,
-        } = &mut self;
+        let HostedDownlink { channel, failed } = &mut self;
 
         if *failed {
             return None;
         }
 
         match channel.await_ready().await {
-            Some(Ok(DownlinkChannelEvent::HandlerReady)) => Some((self, HostedDownlinkEvent::HandlerReady { failed: false })),
-            Some(Ok(DownlinkChannelEvent::WriteCompleted)) => Some((self, HostedDownlinkEvent::Written)),
-            Some(Ok(DownlinkChannelEvent::WriteStreamTerminated)) => Some((self, HostedDownlinkEvent::WriterTerminated)),
+            Some(Ok(DownlinkChannelEvent::HandlerReady)) => {
+                Some((self, HostedDownlinkEvent::HandlerReady { failed: false }))
+            }
+            Some(Ok(DownlinkChannelEvent::WriteCompleted)) => {
+                Some((self, HostedDownlinkEvent::Written))
+            }
+            Some(Ok(DownlinkChannelEvent::WriteStreamTerminated)) => {
+                Some((self, HostedDownlinkEvent::WriterTerminated))
+            }
             Some(Err(DownlinkChannelError::ReadFailed)) => {
                 *failed = true;
                 Some((self, HostedDownlinkEvent::HandlerReady { failed: true }))
-            },
-            Some(Err(DownlinkChannelError::WriteFailed(err))) => Some((self, HostedDownlinkEvent::WriterFailed(err))),
+            }
+            Some(Err(DownlinkChannelError::WriteFailed(err))) => {
+                Some((self, HostedDownlinkEvent::WriterFailed(err)))
+            }
             None => None,
         }
     }

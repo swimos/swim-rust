@@ -276,10 +276,9 @@ impl<Agent> TestDownlinkContext<Agent> {
 }
 
 impl<Agent> DownlinkSpawner<Agent> for TestDownlinkContext<Agent> {
-    
     fn spawn_downlink(
         &self,
-        dl_channel: BoxDownlinkChannel<Agent>
+        dl_channel: BoxDownlinkChannel<Agent>,
     ) -> Result<(), DownlinkRuntimeError> {
         self.push_dl(dl_channel);
         Ok(())

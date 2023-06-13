@@ -23,6 +23,7 @@ use std::sync::{
 
 pub use event::{EventDownlinkHandle, HostedEventDownlinkFactory};
 pub use map::{HostedMapDownlinkFactory, MapDlState, MapDownlinkHandle};
+use swim_utilities::io::byte_channel::ByteWriter;
 pub use value::{HostedValueDownlinkFactory, ValueDownlinkHandle};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -140,7 +141,6 @@ mod test_support {
     }
 
     impl<FakeAgent> DownlinkSpawner<FakeAgent> for NoSpawn {
-        
         fn spawn_downlink(
             &self,
             _dl_channel: BoxDownlinkChannel<FakeAgent>,
@@ -227,5 +227,52 @@ mod test_support {
                 }
             }
         }
+    }
+}
+
+enum OutputWriter<W: RestartableOutput> {
+    Active(W),
+    Inactive(W::Source),
+    Stopped,
+}
+
+trait RestartableOutput {
+    type Source;
+
+    fn fail(self) -> Self::Source;
+
+    fn restart(writer: ByteWriter, source: Self::Source) -> Self;
+}
+
+impl<W: RestartableOutput> OutputWriter<W> {
+    fn as_mut(&mut self) -> Option<&mut W> {
+        match self {
+            OutputWriter::Active(w) => Some(w),
+            _ => None,
+        }
+    }
+
+    fn is_active(&self) -> bool {
+        matches!(self, OutputWriter::Active(_))
+    }
+
+    fn fail(&mut self) {
+        *self = match std::mem::replace(self, OutputWriter::Stopped) {
+            OutputWriter::Active(w) => OutputWriter::Inactive(w.fail()),
+            OutputWriter::Inactive(i) => OutputWriter::Inactive(i),
+            OutputWriter::Stopped => OutputWriter::Stopped,
+        };
+    }
+
+    fn restart(&mut self, writer: ByteWriter) {
+        *self = match std::mem::replace(self, OutputWriter::Stopped) {
+            OutputWriter::Active(w) => {
+                OutputWriter::Active(<W as RestartableOutput>::restart(writer, w.fail()))
+            }
+            OutputWriter::Inactive(i) => {
+                OutputWriter::Active(<W as RestartableOutput>::restart(writer, i))
+            }
+            OutputWriter::Stopped => OutputWriter::Stopped,
+        };
     }
 }

@@ -25,14 +25,16 @@ use swim_api::{
 };
 use swim_form::structural::read::{recognizer::RecognizerReadable, StructuralReadable};
 use swim_model::{address::Address, Text};
-use swim_utilities::{io::byte_channel::ByteReader, trigger};
+use swim_utilities::{
+    io::byte_channel::{ByteReader, ByteWriter},
+    trigger,
+};
 use tokio_util::codec::FramedRead;
 use tracing::{debug, error, info, trace};
 
 use crate::{
     agent_model::downlink::handlers::{
-        BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError,
-        DownlinkChannelEvent,
+        BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
     },
     config::SimpleDownlinkConfig,
     downlink_lifecycle::event::EventDownlinkLifecycle,
@@ -264,6 +266,24 @@ where
         } else {
             None
         }
+    }
+
+    fn connect(&mut self, _context: &Context, _output: ByteWriter, input: ByteReader) {
+        let HostedEventDownlink {
+            receiver,
+            next,
+            dl_state,
+            write_terminated,
+            ..
+        } = self;
+        *next = None;
+        dl_state.set(DlState::Unlinked);
+        *write_terminated = false;
+        *receiver = Some(FramedRead::new(input, Default::default()));
+    }
+
+    fn can_restart(&self) -> bool {
+        !self.config.terminate_on_unlinked && self.stop_rx.is_some()
     }
 }
 

@@ -37,9 +37,7 @@ use crate::{
 struct NoSpawn;
 pub struct DummyAgentContext;
 
-pub fn no_downlink<Context>(
-    _dl: BoxDownlinkChannel<Context>,
-) -> Result<(), DownlinkRuntimeError> {
+pub fn no_downlink<Context>(_dl: BoxDownlinkChannel<Context>) -> Result<(), DownlinkRuntimeError> {
     panic!("Launching downlinks no supported.");
 }
 

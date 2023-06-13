@@ -41,8 +41,7 @@ impl<Context> HandlerAction<Context> for RegisterHostedDownlink<Context> {
         _context: &Context,
     ) -> StepResult<Self::Completion> {
         let RegisterHostedDownlink { inner } = self;
-        if let Some(channel) = inner.take()
-        {
+        if let Some(channel) = inner.take() {
             StepResult::done(action_context.spawn_downlink(channel))
         } else {
             StepResult::after_done()

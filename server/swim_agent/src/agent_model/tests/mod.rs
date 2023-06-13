@@ -33,7 +33,7 @@ use swim_api::{
 use swim_form::structural::read::recognizer::{primitive::TextRecognizer, RecognizerReadable};
 use swim_model::{address::Address, BytesStr, Text};
 use swim_utilities::{
-    io::byte_channel::{byte_channel, ByteReader},
+    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
     routing::route_uri::RouteUri,
     sync::circular_buffer,
@@ -45,9 +45,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
 use crate::{
-    agent_model::{
-        HostedDownlinkEvent, downlink::hosted::HostedValueDownlinkFactory,
-    },
+    agent_model::{downlink::hosted::HostedValueDownlinkFactory, HostedDownlinkEvent},
     config::SimpleDownlinkConfig,
     downlink_lifecycle::{
         on_failed::OnFailed,
@@ -71,7 +69,7 @@ use self::{
 };
 
 use super::{
-    downlink::handlers::{DownlinkChannel, DownlinkChannelEvent, DownlinkChannelError},
+    downlink::handlers::{DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent},
     AgentModel, HostedDownlink, ItemModelFactory,
 };
 
@@ -666,6 +664,14 @@ impl DownlinkChannel<TestDlAgent> for TestDownlinkChannel {
             None
         }
     }
+
+    fn connect(&mut self, _context: &TestDlAgent, _output: ByteWriter, _input: ByteReader) {
+        panic!("Unexpected reconnection.");
+    }
+
+    fn can_restart(&self) -> bool {
+        false
+    }
 }
 
 fn make_dl_out(rx: mpsc::UnboundedReceiver<Result<(), std::io::Error>>) -> WriteStream {
@@ -676,7 +682,6 @@ fn make_test_hosted_downlink(
     in_rx: mpsc::UnboundedReceiver<Result<DownlinkChannelEvent, DownlinkChannelError>>,
     out_rx: mpsc::UnboundedReceiver<Result<(), std::io::Error>>,
 ) -> HostedDownlink<TestDlAgent> {
-
     let channel = TestDownlinkChannel {
         rx: in_rx,
         ready: false,
@@ -988,10 +993,10 @@ async fn run_value_downlink() {
         state,
         config,
         stop_rx,
-        write_rx);
-    
-    let dl: HostedDownlink<FakeAgent> =
-        HostedDownlink::new(fac.create(out_tx, in_rx));
+        write_rx,
+    );
+    let agent = FakeAgent;
+    let dl: HostedDownlink<FakeAgent> = HostedDownlink::new(fac.create(&agent, out_tx, in_rx));
 
     let mut in_writer = FramedWrite::new(in_tx, DownlinkNotificationEncoder::default());
     let mut out_reader = FramedRead::new(out_rx, WithLengthBytesCodec::default());

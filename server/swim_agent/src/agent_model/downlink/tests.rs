@@ -87,10 +87,9 @@ impl Spawner<TestAgent> for TestSpawner {
 }
 
 impl DownlinkSpawner<TestAgent> for TestSpawner {
-    
     fn spawn_downlink(
         &self,
-        dl_channel: BoxDownlinkChannel<TestAgent>
+        dl_channel: BoxDownlinkChannel<TestAgent>,
     ) -> Result<(), DownlinkRuntimeError> {
         let mut guard = self.inner.lock();
         assert!(guard.downlink.is_none());

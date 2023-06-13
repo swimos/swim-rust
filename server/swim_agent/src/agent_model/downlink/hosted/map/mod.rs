@@ -15,15 +15,16 @@
 use std::{
     cell::RefCell,
     collections::{BTreeSet, HashMap},
-    pin::pin,
+    pin::{pin, Pin},
     sync::{atomic::AtomicU8, Arc},
+    task::{Context, Poll},
 };
 
 use futures::{
-    future::{select, BoxFuture, Either, OptionFuture},
-    stream::unfold,
-    FutureExt, SinkExt, Stream, StreamExt,
+    future::{BoxFuture, Either, OptionFuture},
+    ready, FutureExt, Sink, Stream, StreamExt,
 };
+use pin_project::pin_project;
 use std::hash::Hash;
 use swim_api::{
     downlink::DownlinkKind,
@@ -48,8 +49,7 @@ use tracing::{debug, error, info, trace};
 
 use crate::{
     agent_model::downlink::handlers::{
-        BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError,
-        DownlinkChannelEvent,
+        BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
     },
     config::MapDownlinkConfig,
     downlink_lifecycle::map::MapDownlinkLifecycle,
@@ -57,7 +57,7 @@ use crate::{
     event_queue::EventQueue,
 };
 
-use super::{DlState, DlStateObserver, DlStateTracker};
+use super::{DlState, DlStateObserver, DlStateTracker, OutputWriter, RestartableOutput};
 
 #[cfg(test)]
 mod tests;
@@ -295,7 +295,12 @@ where
         }
     }
 
-    pub fn create<Context>(self, sender: ByteWriter, receiver: ByteReader) -> BoxDownlinkChannel<Context>
+    pub fn create<Context>(
+        self,
+        context: &Context,
+        sender: ByteWriter,
+        receiver: ByteReader,
+    ) -> BoxDownlinkChannel<Context>
     where
         State: MapDlStateOps<K, V, Context> + 'static,
         LC: MapDownlinkLifecycle<K, V, Context> + 'static,
@@ -309,11 +314,10 @@ where
             stop_rx,
             op_rx,
         } = self;
-        let write_stream = map_dl_write_stream(sender, op_rx).boxed();
-        let chan = HostedMapDownlink {
+        let mut chan = HostedMapDownlink {
             address,
-            receiver: Some(FramedRead::new(receiver, Default::default())),
-            write_stream: Some(write_stream),
+            receiver: None,
+            write_stream: Writes::Inactive(op_rx),
             state,
             next: None,
             lifecycle,
@@ -321,6 +325,7 @@ where
             dl_state: DlStateTracker::new(dl_state),
             stop_rx: Some(stop_rx),
         };
+        chan.connect(context, sender, receiver);
         Box::new(chan)
     }
 
@@ -329,12 +334,14 @@ where
     }
 }
 
+type Writes<K, V> = OutputWriter<MapWriteStream<K, V>>;
+
 /// An implementation of [`DownlinkChannel`] to allow a map downlink to be driven by an agent
 /// task.
-pub struct HostedMapDownlink<K: RecognizerReadable, V: RecognizerReadable, LC, State, Writes> {
+pub struct HostedMapDownlink<K: RecognizerReadable, V: RecognizerReadable, LC, State> {
     address: Address<Text>,
     receiver: Option<FramedRead<ByteReader, MapNotificationDecoder<K, V>>>,
-    write_stream: Option<Writes>,
+    write_stream: Writes<K, V>,
     state: State,
     next: Option<Result<DownlinkNotification<MapMessage<K, V>>, FrameIoError>>,
     lifecycle: LC,
@@ -343,13 +350,12 @@ pub struct HostedMapDownlink<K: RecognizerReadable, V: RecognizerReadable, LC, S
     stop_rx: Option<trigger::Receiver>,
 }
 
-impl<K, V, LC, State, Writes> HostedMapDownlink<K, V, LC, State, Writes>
+impl<K, V, LC, State> HostedMapDownlink<K, V, LC, State>
 where
-    K: Hash + Eq + Ord + Clone + RecognizerReadable + Send + 'static,
-    V: RecognizerReadable + Send + 'static,
+    K: Hash + Eq + Ord + Clone + Form + Send + 'static,
+    V: Form + Send + 'static,
     K::Rec: Send,
     V::Rec: Send,
-    Writes: Stream<Item = Result<(), std::io::Error>> + Send + Unpin + 'static,
 {
     async fn select_next(&mut self) -> Option<Result<DownlinkChannelEvent, DownlinkChannelError>> {
         let HostedMapDownlink {
@@ -380,12 +386,15 @@ where
                         }
                     }
                 },
-                maybe_result = OptionFuture::from(write_stream.as_mut().map(|str| str.next())), if write_stream.is_some() => {
+                maybe_result = OptionFuture::from(write_stream.as_mut().map(|str| str.next())), if write_stream.is_active() => {
                     match maybe_result.flatten() {
                         Some(Ok(_)) => Some(Ok(DownlinkChannelEvent::WriteCompleted)),
-                        Some(Err(e)) => Some(Err(DownlinkChannelError::WriteFailed(e))),
+                        Some(Err(e)) => {
+                            write_stream.fail();
+                            Some(Err(DownlinkChannelError::WriteFailed(e)))
+                        },
                         _ => {
-                            *write_stream = None;
+                            *write_stream = Writes::Stopped;
                             Some(Ok(DownlinkChannelEvent::WriteStreamTerminated))
                         }
                     }
@@ -402,7 +411,7 @@ where
                     *stop_rx = None;
                     if triggered_result.is_ok() {
                         *receiver = None;
-                        *write_stream = None;
+                        *write_stream = Writes::Stopped;
                         *next = Some(Ok(DownlinkNotification::Unlinked));
                         Some(Ok(DownlinkChannelEvent::HandlerReady))
                     } else {
@@ -417,16 +426,14 @@ where
     }
 }
 
-impl<K, V, LC, Context, State, Writes> DownlinkChannel<Context>
-    for HostedMapDownlink<K, V, LC, State, Writes>
+impl<K, V, LC, Context, State> DownlinkChannel<Context> for HostedMapDownlink<K, V, LC, State>
 where
     State: MapDlStateOps<K, V, Context>,
-    K: Hash + Eq + Ord + Clone + RecognizerReadable + Send + 'static,
-    V: RecognizerReadable + Send + 'static,
+    K: Hash + Eq + Ord + Clone + Form + Send + 'static,
+    V: Form + Send + 'static,
     K::Rec: Send,
     V::Rec: Send,
     LC: MapDownlinkLifecycle<K, V, Context> + 'static,
-    Writes: Stream<Item = Result<(), std::io::Error>> + Send + Unpin + 'static,
 {
     fn kind(&self) -> DownlinkKind {
         DownlinkKind::Map
@@ -538,6 +545,26 @@ where
             None
         }
     }
+
+    fn connect(&mut self, context: &Context, output: ByteWriter, input: ByteReader) {
+        let HostedMapDownlink {
+            receiver,
+            write_stream,
+            state,
+            next,
+            dl_state,
+            ..
+        } = self;
+        *receiver = Some(FramedRead::new(input, Default::default()));
+        write_stream.restart(output);
+        state.clear(context);
+        *next = None;
+        dl_state.set(DlState::Unlinked);
+    }
+
+    fn can_restart(&self) -> bool {
+        !self.config.terminate_on_unlinked && self.stop_rx.is_some()
+    }
 }
 
 /// A handle which can be used to modify the state of a map lane through a downlink.
@@ -607,68 +634,136 @@ where
     }
 }
 
-/// The internal state of the [`unfold`] operation used to describe the map downlink writer.
-struct WriteStreamState<K, V> {
-    rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
-    write: Option<FramedWrite<ByteWriter, MapOperationEncoder>>,
-    queue: EventQueue<K, V>,
+#[derive(Default)]
+enum MapWriteStreamState {
+    #[default]
+    Active,
+    Stopping,
+    Stopped,
 }
 
-impl<K, V> WriteStreamState<K, V> {
-    fn new(writer: ByteWriter, rx: mpsc::UnboundedReceiver<MapOperation<K, V>>) -> Self {
-        WriteStreamState {
-            rx,
-            write: Some(FramedWrite::new(writer, Default::default())),
+#[pin_project]
+pub struct MapWriteStream<K, V> {
+    #[pin]
+    write: FramedWrite<ByteWriter, MapOperationEncoder>,
+    #[pin]
+    op_rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
+    queue: EventQueue<K, V>,
+    state: MapWriteStreamState,
+}
+
+impl<K, V> MapWriteStream<K, V> {
+    pub fn new(writer: ByteWriter, op_rx: mpsc::UnboundedReceiver<MapOperation<K, V>>) -> Self {
+        MapWriteStream {
+            write: FramedWrite::new(writer, Default::default()),
+            op_rx,
             queue: Default::default(),
+            state: Default::default(),
         }
     }
 }
 
-/// Task to write the values sent by a map downlink handle to an outgoing channel.
-pub fn map_dl_write_stream<K, V>(
-    writer: ByteWriter,
-    rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
-) -> impl Stream<Item = Result<(), std::io::Error>> + Send + 'static
+impl<K, V> Stream for MapWriteStream<K, V>
 where
     K: Clone + Eq + Hash + StructuralWritable + Send + 'static,
     V: StructuralWritable + Send + 'static,
 {
-    let state = WriteStreamState::<K, V>::new(writer, rx);
+    type Item = Result<(), std::io::Error>;
 
-    unfold(state, |mut state| async move {
-        let WriteStreamState { rx, write, queue } = &mut state;
-        if let Some(writer) = write {
-            let first = if let Some(op) = queue.pop() {
-                op
-            } else if let Some(op) = rx.recv().await {
-                op
-            } else {
-                *write = None;
-                return None;
-            };
-            trace!("Writing a value to a value downlink.");
-            let mut write_fut = pin!(writer.send(first));
-            let result = loop {
-                let recv = pin!(rx.recv());
-                match select(write_fut.as_mut(), recv).await {
-                    Either::Left((Ok(_), _)) => break Some(Ok(())),
-                    Either::Left((Err(e), _)) => {
-                        *write = None;
-                        break Some(Err(e));
-                    }
-                    Either::Right((Some(op), _)) => {
-                        trace!("Pushing an event into the queue as the writer is busy.");
-                        queue.push(op);
-                    }
-                    _ => {
-                        *write = None;
-                        break None;
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut projected = self.project();
+        loop {
+            match projected.state {
+                MapWriteStreamState::Active => {
+                    let received = match projected.op_rx.as_mut().poll_recv(cx) {
+                        Poll::Ready(Some(op)) => {
+                            projected.queue.push(op);
+                            true
+                        }
+                        Poll::Ready(None) => {
+                            *projected.state = MapWriteStreamState::Stopping;
+                            continue;
+                        }
+                        Poll::Pending => {
+                            if projected.queue.is_empty() {
+                                let result = ready!(Sink::<MapOperation<K, V>>::poll_flush(
+                                    projected.write.as_mut(),
+                                    cx
+                                ));
+                                break if result.is_err() {
+                                    *projected.state = MapWriteStreamState::Stopped;
+                                    Poll::Ready(Some(result))
+                                } else {
+                                    Poll::Pending
+                                };
+                            }
+                            false
+                        }
+                    };
+                    break match Sink::<MapOperation<K, V>>::poll_ready(projected.write.as_mut(), cx)
+                    {
+                        Poll::Ready(Ok(_)) => {
+                            let op = projected.queue.pop().expect("Queue should be non-empty.");
+                            let result = projected.write.start_send(op);
+                            if result.is_err() {
+                                *projected.state = MapWriteStreamState::Stopped;
+                            }
+                            Poll::Ready(Some(result))
+                        }
+                        Poll::Ready(Err(e)) => {
+                            *projected.state = MapWriteStreamState::Stopped;
+                            Poll::Ready(Some(Err(e)))
+                        }
+                        Poll::Pending if received => {
+                            cx.waker().wake_by_ref();
+                            Poll::Pending
+                        }
+                        _ => Poll::Pending,
+                    };
+                }
+                MapWriteStreamState::Stopping => {
+                    if projected.queue.is_empty() {
+                        if let Err(e) = ready!(Sink::<MapOperation<K, V>>::poll_close(
+                            projected.write.as_mut(),
+                            cx
+                        )) {
+                            break Poll::Ready(Some(Err(e)));
+                        }
+                        *projected.state = MapWriteStreamState::Stopped;
+                    } else {
+                        break match ready!(Sink::<MapOperation<K, V>>::poll_ready(
+                            projected.write.as_mut(),
+                            cx
+                        )) {
+                            Ok(_) => {
+                                let op = projected.queue.pop().expect("Queue should be non-empty.");
+                                let result = projected.write.start_send(op);
+                                if result.is_err() {
+                                    *projected.state = MapWriteStreamState::Stopped;
+                                }
+                                Poll::Ready(Some(result))
+                            }
+                            Err(e) => {
+                                *projected.state = MapWriteStreamState::Stopped;
+                                Poll::Ready(Some(Err(e)))
+                            }
+                        };
                     }
                 }
-            };
-            result.map(move |r| (r, state))
-        } else {
-            None
+                MapWriteStreamState::Stopped => break Poll::Ready(None),
+            }
         }
-    })
+    }
+}
+
+impl<K, V> RestartableOutput for MapWriteStream<K, V> {
+    type Source = mpsc::UnboundedReceiver<MapOperation<K, V>>;
+
+    fn fail(self) -> Self::Source {
+        self.op_rx
+    }
+
+    fn restart(writer: ByteWriter, source: Self::Source) -> Self {
+        MapWriteStream::new(writer, source)
+    }
 }

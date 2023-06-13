@@ -37,9 +37,8 @@ use crate::{
 };
 
 use self::hosted::{
-    EventDownlinkHandle,
-    MapDlState, MapDownlinkHandle,
-    ValueDownlinkHandle, HostedValueDownlinkFactory, HostedEventDownlinkFactory, HostedMapDownlinkFactory,
+    EventDownlinkHandle, HostedEventDownlinkFactory, HostedMapDownlinkFactory,
+    HostedValueDownlinkFactory, MapDlState, MapDownlinkHandle, ValueDownlinkHandle,
 };
 
 struct Inner<LC> {
@@ -128,15 +127,21 @@ where
             let (stop_tx, stop_rx) = trigger::trigger();
 
             let config = *config;
-            
+
             let fac = HostedValueDownlinkFactory::new(
-                path.clone(), lifecycle, state, config, stop_rx, rx);
+                path.clone(),
+                lifecycle,
+                state,
+                config,
+                stop_rx,
+                rx,
+            );
             let handle = ValueDownlinkHandle::new(path.clone(), tx, stop_tx, fac.dl_state());
-            
+
             action_context.start_downlink(
                 path,
                 DownlinkKind::Value,
-                move |writer, reader| fac.create(writer, reader),
+                move |con, writer, reader| fac.create(con, writer, reader),
                 |result| {
                     if let Err(err) = result {
                         error!(error = %err, "Registering value downlink failed.");
@@ -171,14 +176,14 @@ where
         if let Some(Inner { address, lifecycle }) = inner.take() {
             let config = *config;
             let (stop_tx, stop_rx) = trigger::trigger();
-            
+
             let fac = HostedEventDownlinkFactory::new(address.clone(), lifecycle, config, stop_rx);
             let handle = EventDownlinkHandle::new(address.clone(), stop_tx, fac.dl_state());
-            
+
             action_context.start_downlink(
                 address,
                 DownlinkKind::Event,
-                move |_writer, receiver| fac.create(receiver),
+                move |_con, _writer, receiver| fac.create(receiver),
                 |result| {
                     if let Err(err) = result {
                         error!(error = %err, "Registering event downlink failed.");
@@ -216,13 +221,20 @@ where
             let (tx, rx) = mpsc::unbounded_channel::<MapOperation<K, V>>();
             let (stop_tx, stop_rx) = trigger::trigger();
             let config = *config;
-            let fac = HostedMapDownlinkFactory::new(address.clone(), lifecycle, state, config, stop_rx, rx);
+            let fac = HostedMapDownlinkFactory::new(
+                address.clone(),
+                lifecycle,
+                state,
+                config,
+                stop_rx,
+                rx,
+            );
             let handle = MapDownlinkHandle::new(address.clone(), tx, stop_tx, fac.dl_state());
 
             action_context.start_downlink(
                 address,
                 DownlinkKind::Map,
-                move |writer, reader| fac.create(writer, reader),
+                move |con, writer, reader| fac.create(con, writer, reader),
                 |result| {
                     if let Err(err) = result {
                         error!(error = %err, "Registering map downlink failed.");
