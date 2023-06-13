@@ -104,6 +104,10 @@ const AD_HOC_HOST: &str = "localhost:8080";
 const AD_HOC_NODE: &str = "/node";
 const AD_HOC_LANE: &str = "lane";
 
+const REMOTE_HOST: &str = "remote:8080";
+const REMOTE_NODE: &str = "/node";
+const REMOTE_LANE: &str = "lane";
+
 //Event values cause the mock command lane to suspend a future.
 const SUSPEND_VALUE: i32 = 456;
 //Odd values cause the mock command lane to send an ad ho command.
@@ -612,6 +616,7 @@ async fn trigger_ad_hoc_command() {
 }
 
 struct TestDownlinkChannel {
+    address: Address<Text>,
     rx: mpsc::UnboundedReceiver<Result<DownlinkChannelEvent, DownlinkChannelError>>,
     ready: bool,
     writes: Option<WriteStream>,
@@ -624,10 +629,16 @@ impl DownlinkChannel<TestDlAgent> for TestDownlinkChannel {
         DownlinkKind::Event
     }
 
+    fn address(&self) -> &Address<Text> {
+        &self.address
+    }
+
     fn await_ready(
         &mut self,
     ) -> BoxFuture<'_, Option<Result<DownlinkChannelEvent, DownlinkChannelError>>> {
-        let TestDownlinkChannel { rx, ready, writes } = self;
+        let TestDownlinkChannel {
+            rx, ready, writes, ..
+        } = self;
         async move {
             if let Some(w) = writes.as_mut() {
                 tokio::select! {
@@ -682,7 +693,9 @@ fn make_test_hosted_downlink(
     in_rx: mpsc::UnboundedReceiver<Result<DownlinkChannelEvent, DownlinkChannelError>>,
     out_rx: mpsc::UnboundedReceiver<Result<(), std::io::Error>>,
 ) -> HostedDownlink<TestDlAgent> {
+    let address = Address::text(Some(REMOTE_HOST), REMOTE_NODE, REMOTE_LANE);
     let channel = TestDownlinkChannel {
+        address,
         rx: in_rx,
         ready: false,
         writes: Some(make_dl_out(out_rx)),

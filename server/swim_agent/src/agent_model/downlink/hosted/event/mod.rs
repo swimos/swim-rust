@@ -285,6 +285,10 @@ where
     fn can_restart(&self) -> bool {
         !self.config.terminate_on_unlinked && self.stop_rx.is_some()
     }
+
+    fn address(&self) -> &Address<Text> {
+        &self.address
+    }
 }
 
 /// A handle which can be used to stop an event downlink.

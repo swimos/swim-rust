@@ -37,7 +37,9 @@ use swim_api::{
     error::{AgentInitError, AgentTaskError, FrameIoError},
     protocol::{agent::LaneRequest, map::MapMessage},
 };
+use swim_model::address::Address;
 use swim_model::Text;
+use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::routing::route_uri::RouteUri;
 use tokio::io::AsyncWriteExt;
@@ -362,7 +364,14 @@ enum HostedDownlinkEvent {
     WriterFailed(std::io::Error),
     Written,
     WriterTerminated,
-    HandlerReady { failed: bool },
+    HandlerReady {
+        failed: bool,
+    },
+    ReconnectSucceeded(ReconnectDownlink),
+    ReconnectFailed {
+        error: DownlinkRuntimeError,
+        retry: RetryStrategy,
+    },
 }
 
 impl<Context> HostedDownlink<Context> {
@@ -392,6 +401,60 @@ impl<Context> HostedDownlink<Context> {
             }
             None => None,
         }
+    }
+
+    async fn reconnect(
+        mut self,
+        agent_context: &dyn AgentContext,
+        mut retry: RetryStrategy,
+        first_attempt: bool,
+    ) -> Option<(Self, HostedDownlinkEvent)> {
+        if self.channel.can_restart() {
+            let HostedDownlink { channel, .. } = &mut self;
+            let Address { host, node, lane } = channel.address().borrow_parts();
+            let open_task = agent_context.open_downlink(host, node, lane, channel.kind());
+            let delay = if first_attempt {
+                None
+            } else {
+                match retry.next() {
+                    Some(delay) => delay,
+                    None => return None,
+                }
+            };
+            if let Some(t) = delay {
+                tokio::time::sleep(t).await;
+            }
+            let result = match open_task.await {
+                Ok((writer, reader)) => {
+                    HostedDownlinkEvent::ReconnectSucceeded(ReconnectDownlink::new(writer, reader))
+                }
+                Err(error) => HostedDownlinkEvent::ReconnectFailed { error, retry },
+            };
+            Some((self, result))
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ReconnectDownlink {
+    writer: ByteWriter,
+    reader: ByteReader,
+}
+
+impl ReconnectDownlink {
+    fn new(writer: ByteWriter, reader: ByteReader) -> Self {
+        ReconnectDownlink { writer, reader }
+    }
+}
+
+impl ReconnectDownlink {
+    fn connect<Context>(self, downlink: &mut HostedDownlink<Context>, context: &Context) {
+        let ReconnectDownlink { writer, reader } = self;
+        let HostedDownlink { channel, failed } = downlink;
+        channel.connect(context, writer, reader);
+        *failed = false;
     }
 }
 
@@ -985,6 +1048,8 @@ where
                                     downlinks.push(downlink.wait_on_downlink());
                                 }
                             }
+                            HostedDownlinkEvent::ReconnectSucceeded(_) => todo!(),
+                            HostedDownlinkEvent::ReconnectFailed { .. } => todo!(),
                         }
                     }
                 }

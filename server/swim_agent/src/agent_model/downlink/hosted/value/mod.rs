@@ -260,6 +260,10 @@ where
         DownlinkKind::Value
     }
 
+    fn address(&self) -> &Address<Text> {
+        &self.address
+    }
+
     fn await_ready(
         &mut self,
     ) -> BoxFuture<'_, Option<Result<DownlinkChannelEvent, DownlinkChannelError>>> {

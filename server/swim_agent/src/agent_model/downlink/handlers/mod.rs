@@ -14,6 +14,7 @@
 
 use futures::future::BoxFuture;
 use swim_api::downlink::DownlinkKind;
+use swim_model::{address::Address, Text};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use thiserror::Error;
 
@@ -48,6 +49,8 @@ pub trait DownlinkChannel<Context> {
     fn connect(&mut self, context: &Context, output: ByteWriter, input: ByteReader);
 
     fn can_restart(&self) -> bool;
+
+    fn address(&self) -> &Address<Text>;
 
     /// Get the kind of the downlink.
     fn kind(&self) -> DownlinkKind;
