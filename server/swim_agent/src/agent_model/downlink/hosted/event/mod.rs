@@ -132,6 +132,7 @@ where
             next,
             stop_rx,
             write_terminated,
+            dl_state,
             ..
         } = self;
         if !*write_terminated {
@@ -146,16 +147,20 @@ where
                         *stop_rx = None;
                         if triggered_result.is_ok() {
                             *receiver = None;
-                            *next = Some(Ok(DownlinkNotification::Unlinked));
-                            Some(Ok(DownlinkChannelEvent::HandlerReady))
+                            if dl_state.get().is_linked() {
+                                *next = Some(Ok(DownlinkNotification::Unlinked));
+                                Some(Ok(DownlinkChannelEvent::HandlerReady))
+                            } else {
+                                None
+                            }
                         } else {
-                            handle_read(rx.next().await, address, next, receiver)
+                            handle_read(rx.next().await, address, next, receiver, dl_state)
                         }
                     }
-                    result = rx.next() => handle_read(result, address, next, receiver),
+                    result = rx.next() => handle_read(result, address, next, receiver, dl_state),
                 }
             } else {
-                handle_read(rx.next().await, address, next, receiver)
+                handle_read(rx.next().await, address, next, receiver, dl_state)
             }
         } else {
             info!(address = %address, "Downlink terminated normally.");
@@ -169,6 +174,7 @@ fn handle_read<T: RecognizerReadable>(
     address: &Address<Text>,
     next: &mut Option<Result<DownlinkNotification<T>, FrameIoError>>,
     receiver: &mut Option<FramedRead<ByteReader, ValueNotificationDecoder<T>>>,
+    dl_state: &DlStateTracker,
 ) -> Option<Result<DownlinkChannelEvent, DownlinkChannelError>> {
     match maybe_result {
         r @ Some(Ok(_)) => {
@@ -183,7 +189,12 @@ fn handle_read<T: RecognizerReadable>(
         }
         _ => {
             *receiver = None;
-            None
+            if dl_state.get().is_linked() {
+                *next = Some(Ok(DownlinkNotification::Unlinked));
+                Some(Ok(DownlinkChannelEvent::HandlerReady))
+            } else {
+                None
+            }
         }
     }
 }

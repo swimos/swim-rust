@@ -34,6 +34,12 @@ enum DlState {
     Stopped,
 }
 
+impl DlState {
+    fn is_linked(&self) -> bool {
+        matches!(self, DlState::Linked | DlState::Synced)
+    }
+}
+
 const UNLINKED: u8 = 0;
 const LINKED: u8 = 1;
 const SYNCED: u8 = 2;

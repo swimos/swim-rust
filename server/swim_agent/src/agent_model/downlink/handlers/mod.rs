@@ -20,6 +20,7 @@ use thiserror::Error;
 
 use crate::event_handler::BoxEventHandler;
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum DownlinkChannelEvent {
     HandlerReady,
     WriteCompleted,
