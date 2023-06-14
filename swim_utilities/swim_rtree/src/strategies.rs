@@ -96,7 +96,7 @@ where
 
     let mut max_preference_diff = (first_preference - second_preference).abs();
 
-    let mut group = select_group::<L, B>(
+    let mut group = select_group::<B>(
         first_mbb,
         second_mbb,
         first_group_size,
@@ -124,7 +124,7 @@ where
             max_preference_diff = preference_diff;
             item_idx = idx;
 
-            group = select_group::<L, B>(
+            group = select_group::<B>(
                 first_mbb,
                 second_mbb,
                 first_group_size,
