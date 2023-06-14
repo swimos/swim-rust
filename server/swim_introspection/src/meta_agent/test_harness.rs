@@ -28,6 +28,7 @@ use swim_api::{
 };
 use swim_runtime::agent::UplinkReporterRegistration;
 use swim_utilities::{
+    future::retryable::RetryStrategy,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
     routing::route_uri::RouteUri,
@@ -62,6 +63,7 @@ where
 
     let config = AgentConfig {
         default_lane_config: Some(lane_config),
+        keep_linked_retry: RetryStrategy::none(),
     };
 
     let agent_task = async move {

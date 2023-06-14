@@ -20,6 +20,7 @@ use std::{
 
 use futures::future::BoxFuture;
 use swim_utilities::{
+    future::retryable::RetryStrategy,
     io::byte_channel::{ByteReader, ByteWriter},
     non_zero_usize,
     routing::route_uri::RouteUri,
@@ -142,12 +143,14 @@ pub trait AgentContext: Sync {
 #[derive(Debug, Clone, Copy)]
 pub struct AgentConfig {
     pub default_lane_config: Option<LaneConfig>,
+    pub keep_linked_retry: RetryStrategy,
 }
 
 impl AgentConfig {
     //TODO: Remove this once const impls are stable.
     pub const DEFAULT: AgentConfig = AgentConfig {
         default_lane_config: Some(LaneConfig::DEFAULT),
+        keep_linked_retry: RetryStrategy::none(),
     };
 }
 

@@ -27,6 +27,7 @@ use futures::{
 };
 use futures::{Future, FutureExt};
 use swim_api::agent::LaneConfig;
+use swim_api::downlink::DownlinkKind;
 use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swim_api::meta::lane::LaneKind;
 use swim_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
@@ -43,7 +44,7 @@ use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::routing::route_uri::RouteUri;
 use tokio::io::AsyncWriteExt;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::agent_lifecycle::item_event::ItemEvent;
@@ -356,6 +357,14 @@ impl<Context> HostedDownlink<Context> {
             channel,
             failed: false,
         }
+    }
+
+    fn address(&self) -> &Address<Text> {
+        self.channel.address()
+    }
+
+    fn kind(&self) -> DownlinkKind {
+        self.channel.kind()
     }
 }
 
@@ -882,7 +891,7 @@ where
         // Start waiting on downlinks from the init phase.
         for channel in downlink_channels {
             let dl = HostedDownlink::new(channel);
-            downlinks.push(dl.wait_on_downlink());
+            downlinks.push(Either::Left(dl.wait_on_downlink()));
         }
 
         // Set up readers and writes for each lane.
@@ -965,7 +974,7 @@ where
             };
             let add_downlink = |channel| {
                 let dl = HostedDownlink::new(channel);
-                downlinks.push(dl.wait_on_downlink());
+                downlinks.push(Either::Left(dl.wait_on_downlink()));
                 Ok(())
             };
             match task_event {
@@ -1005,15 +1014,20 @@ where
                     if let Some((mut downlink, event)) = downlink_event {
                         match event {
                             HostedDownlinkEvent::Written => {
-                                downlinks.push(downlink.wait_on_downlink())
+                                downlinks.push(Either::Left(downlink.wait_on_downlink()))
                             }
                             HostedDownlinkEvent::WriterFailed(err) => {
                                 error!(error = %err, "A downlink hosted by the agent failed.");
-                                downlinks.push(downlink.wait_on_downlink());
+                                debug!(address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink.");
+                                downlinks.push(Either::Right(downlink.reconnect(
+                                    &*context,
+                                    config.keep_linked_retry,
+                                    true,
+                                )));
                             }
                             HostedDownlinkEvent::WriterTerminated => {
                                 info!("A downlink hosted by the agent stopped writing output.");
-                                downlinks.push(downlink.wait_on_downlink());
+                                downlinks.push(Either::Left(downlink.wait_on_downlink()));
                             }
                             HostedDownlinkEvent::HandlerReady { failed } => {
                                 if let Some(handler) = downlink.channel.next_event(&item_model) {
@@ -1044,12 +1058,28 @@ where
                                         ),
                                     }
                                 }
-                                if !failed {
-                                    downlinks.push(downlink.wait_on_downlink());
+                                if failed {
+                                    error!("Reading from a downlink failed.");
+                                    debug!(address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink.");
+                                    downlinks.push(Either::Right(downlink.reconnect(
+                                        &*context,
+                                        config.keep_linked_retry,
+                                        true,
+                                    )));
+                                } else {
+                                    downlinks.push(Either::Left(downlink.wait_on_downlink()));
                                 }
                             }
-                            HostedDownlinkEvent::ReconnectSucceeded(_) => todo!(),
-                            HostedDownlinkEvent::ReconnectFailed { .. } => todo!(),
+                            HostedDownlinkEvent::ReconnectSucceeded(reconnect) => {
+                                reconnect.connect(&mut downlink, &item_model);
+                                downlinks.push(Either::Left(downlink.wait_on_downlink()));
+                            }
+                            HostedDownlinkEvent::ReconnectFailed { error, retry } => {
+                                error!(error = %error, address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink failed.");
+                                downlinks.push(Either::Right(
+                                    downlink.reconnect(&*context, retry, false),
+                                ));
+                            }
                         }
                     }
                 }
