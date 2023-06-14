@@ -290,7 +290,7 @@ where
     }
 }
 
-fn select_group<L, B>(
+fn select_group<B>(
     first_mbb: &Rect<B::Point>,
     second_mbb: &Rect<B::Point>,
     first_group_size: usize,
