@@ -438,22 +438,30 @@ impl<T> Default for ValueWriteStreamState<T> {
     }
 }
 
+type ReconWriter = FramedWrite<ByteWriter, WithLenReconEncoder>;
+
 #[pin_project]
-pub struct ValueWriteStream<T> {
+pub struct ValueWriteStream<T, S = ReconWriter> {
     #[pin]
-    write: FramedWrite<ByteWriter, WithLenReconEncoder>,
+    write: S,
     #[pin]
     watch_rx: circular_buffer::Receiver<T>,
     state: ValueWriteStreamState<T>,
 }
 
-impl<T> ValueWriteStream<T> {
-    pub fn new(writer: ByteWriter, watch_rx: circular_buffer::Receiver<T>) -> Self {
+impl<T, S> ValueWriteStream<T, S> {
+    fn with_sink(write: S, watch_rx: circular_buffer::Receiver<T>) -> Self {
         ValueWriteStream {
-            write: FramedWrite::new(writer, Default::default()),
+            write,
             watch_rx,
             state: Default::default(),
         }
+    }
+}
+
+impl<T> ValueWriteStream<T> {
+    pub fn new(writer: ByteWriter, watch_rx: circular_buffer::Receiver<T>) -> Self {
+        Self::with_sink(FramedWrite::new(writer, Default::default()), watch_rx)
     }
 
     pub fn into_watch_rx(self) -> circular_buffer::Receiver<T> {
@@ -461,9 +469,10 @@ impl<T> ValueWriteStream<T> {
     }
 }
 
-impl<T> Stream for ValueWriteStream<T>
+impl<T, S> Stream for ValueWriteStream<T, S>
 where
     T: StructuralWritable + Send + 'static,
+    S: Sink<T, Error = std::io::Error>,
 {
     type Item = Result<(), std::io::Error>;
 
@@ -482,17 +491,10 @@ where
                             *projected.state = ValueWriteStreamState::Stopping(pending.take());
                             continue;
                         }
-                        Poll::Pending => {
-                            let result =
-                                ready!(Sink::<&T>::poll_flush(projected.write.as_mut(), cx));
-                            if let Err(e) = result {
-                                *projected.state = ValueWriteStreamState::Stopped;
-                                break Poll::Ready(Some(Err(e)));
-                            }
-                        }
+                        Poll::Pending => {}
                     }
                     if let Some(value) = pending.take() {
-                        match Sink::<&T>::poll_ready(projected.write.as_mut(), cx) {
+                        match Sink::<T>::poll_ready(projected.write.as_mut(), cx) {
                             Poll::Ready(Ok(_)) => {
                                 let result = projected.write.as_mut().start_send(value);
                                 if result.is_err() {
@@ -508,32 +510,44 @@ where
                                 if received {
                                     cx.waker().wake_by_ref();
                                 }
+                                *projected.state = ValueWriteStreamState::Active(Some(value));
                                 break Poll::Pending;
                             }
                         }
                     } else {
-                        break Poll::Pending;
-                    }
-                }
-                ValueWriteStreamState::Stopping(Some(value)) => {
-                    match ready!(Sink::<&T>::poll_ready(projected.write.as_mut(), cx)) {
-                        Ok(_) => {
-                            let result = projected.write.as_mut().start_send(value);
-                            if result.is_err() {
-                                *projected.state = ValueWriteStreamState::Stopped;
-                            }
-                            break Poll::Ready(Some(result));
-                        }
-                        Err(e) => {
+                        let result = ready!(Sink::<T>::poll_flush(projected.write.as_mut(), cx));
+                        break if let Err(e) = result {
                             *projected.state = ValueWriteStreamState::Stopped;
-                            break Poll::Ready(Some(Err(e)));
-                        }
+                            Poll::Ready(Some(Err(e)))
+                        } else {
+                            Poll::Pending
+                        };
                     }
                 }
-                ValueWriteStreamState::Stopping(_) => {
-                    let result = ready!(Sink::<&T>::poll_close(projected.write.as_mut(), cx));
-                    *projected.state = ValueWriteStreamState::Stopped;
-                    result?;
+                ValueWriteStreamState::Stopping(pending) => {
+                    if let Some(value) = pending.take() {
+                        match Sink::<T>::poll_ready(projected.write.as_mut(), cx) {
+                            Poll::Ready(Ok(_)) => {
+                                let result = projected.write.as_mut().start_send(value);
+                                if result.is_err() {
+                                    *projected.state = ValueWriteStreamState::Stopped;
+                                }
+                                break Poll::Ready(Some(result));
+                            }
+                            Poll::Ready(Err(e)) => {
+                                *projected.state = ValueWriteStreamState::Stopped;
+                                break Poll::Ready(Some(Err(e)));
+                            }
+                            Poll::Pending => {
+                                *projected.state = ValueWriteStreamState::Stopping(Some(value));
+                                break Poll::Pending;
+                            }
+                        }
+                    } else {
+                        let result = ready!(Sink::<T>::poll_close(projected.write.as_mut(), cx));
+                        *projected.state = ValueWriteStreamState::Stopped;
+                        result?;
+                    }
                 }
                 ValueWriteStreamState::Stopped => {
                     return Poll::Ready(None);

@@ -12,9 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, num::NonZeroUsize, sync::Arc};
+use std::{
+    cell::RefCell,
+    num::NonZeroUsize,
+    ops::Deref,
+    pin::{pin, Pin},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    task::{Context, Poll, Waker},
+};
 
-use futures::{future::join3, SinkExt, StreamExt};
+use futures::{
+    future::join3,
+    task::{waker, ArcWake},
+    Sink, SinkExt, Stream, StreamExt,
+};
 use parking_lot::Mutex;
 use swim_api::protocol::downlink::{
     DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation, DownlinkOperationDecoder,
@@ -492,4 +506,493 @@ async fn value_downlink_writer() {
 
     let (_, _, r) = join3(driver, read, tokio::spawn(write)).await;
     assert!(r.is_ok());
+}
+
+#[derive(Debug, Default)]
+struct TestWaker {
+    woken: AtomicBool,
+}
+
+impl TestWaker {
+    fn reset(&self) {
+        self.woken.store(false, Ordering::SeqCst)
+    }
+
+    fn was_woken(&self) -> bool {
+        let r = self.woken.load(Ordering::SeqCst);
+        self.reset();
+        r
+    }
+}
+
+impl ArcWake for TestWaker {
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        arc_self.woken.store(true, Ordering::SeqCst);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SinkState {
+    HasCapacity,
+    Full,
+    Closed,
+    FailOnReady,
+    FailOnSend,
+    FailOnFlush,
+    FailOnClose,
+}
+
+#[derive(Debug)]
+struct TestSinkInner {
+    state: SinkState,
+    will_flush: bool,
+    will_close: bool,
+    values: Vec<i32>,
+    ready: bool,
+    flushed: bool,
+}
+
+impl TestSinkInner {
+    fn full() -> Self {
+        Self::with_state(SinkState::Full)
+    }
+
+    fn with_state(state: SinkState) -> Self {
+        TestSinkInner {
+            state,
+            will_flush: true,
+            will_close: true,
+            values: Default::default(),
+            ready: false,
+            flushed: false,
+        }
+    }
+}
+
+struct TestSink {
+    inner: Arc<Mutex<TestSinkInner>>,
+}
+
+impl Default for TestSinkInner {
+    fn default() -> Self {
+        Self {
+            state: SinkState::HasCapacity,
+            will_flush: true,
+            will_close: true,
+            values: Default::default(),
+            ready: false,
+            flushed: false,
+        }
+    }
+}
+
+impl Sink<i32> for TestSink {
+    type Error = std::io::Error;
+
+    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let mut guard = self.get_mut().inner.lock();
+        let TestSinkInner { state, ready, .. } = &mut *guard;
+        match state {
+            SinkState::Full => Poll::Pending,
+            SinkState::FailOnReady | SinkState::Closed => {
+                Poll::Ready(Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe)))
+            }
+            _ => {
+                *ready = true;
+                Poll::Ready(Ok(()))
+            }
+        }
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: i32) -> Result<(), Self::Error> {
+        let mut guard = self.get_mut().inner.lock();
+        let TestSinkInner {
+            state,
+            ready,
+            values,
+            ..
+        } = &mut *guard;
+        assert!(*ready);
+        *ready = false;
+        if matches!(state, SinkState::FailOnSend | SinkState::Closed) {
+            Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+        } else {
+            values.push(item);
+            Ok(())
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let mut guard = self.get_mut().inner.lock();
+        let TestSinkInner {
+            state,
+            will_flush,
+            flushed,
+            ..
+        } = &mut *guard;
+        if matches!(state, SinkState::FailOnFlush | SinkState::Closed) {
+            Poll::Ready(Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe)))
+        } else {
+            if *will_flush {
+                *flushed = true;
+                Poll::Ready(Ok(()))
+            } else {
+                Poll::Pending
+            }
+        }
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        let mut guard = self.get_mut().inner.lock();
+        let TestSinkInner {
+            state, will_close, ..
+        } = &mut *guard;
+        if matches!(state, SinkState::FailOnClose | SinkState::Closed) {
+            Poll::Ready(Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe)))
+        } else {
+            if *will_close {
+                *state = SinkState::Closed;
+                Poll::Ready(Ok(()))
+            } else {
+                Poll::Pending
+            }
+        }
+    }
+}
+
+struct WriteStreamContext {
+    set_tx: Option<circular_buffer::Sender<i32>>,
+    sink: Arc<Mutex<TestSinkInner>>,
+    wake_state: Arc<TestWaker>,
+    waker: Waker,
+}
+
+impl WriteStreamContext {
+    fn future_context(&self) -> Context<'_> {
+        Context::from_waker(&self.waker)
+    }
+
+    fn sink_data(&self) -> impl Deref<Target = TestSinkInner> + '_ {
+        self.sink.lock()
+    }
+
+    fn free_capacity(&mut self) {
+        self.sink.lock().state = SinkState::HasCapacity;
+    }
+
+    fn send(&mut self, n: i32) {
+        self.set_tx
+            .as_mut()
+            .expect("Sender closed.")
+            .try_send(n)
+            .expect("Channel dropped.");
+    }
+
+    fn drop_sender(&mut self) {
+        self.set_tx = None;
+    }
+}
+
+fn init_write_test(
+    sink: Option<TestSinkInner>,
+) -> (WriteStreamContext, ValueWriteStream<i32, TestSink>) {
+    let (set_tx, set_rx) = circular_buffer::channel::<i32>(non_zero_usize!(2));
+
+    let inner = Arc::new(Mutex::new(sink.unwrap_or_default()));
+    let sink = TestSink {
+        inner: inner.clone(),
+    };
+
+    let stream = ValueWriteStream::with_sink(sink, set_rx);
+
+    let state = Arc::new(TestWaker::default());
+    let context = WriteStreamContext {
+        set_tx: Some(set_tx),
+        sink: inner,
+        wake_state: state.clone(),
+        waker: waker(state),
+    };
+
+    (context, stream)
+}
+
+#[test]
+fn writer_no_data() {
+    let (context, stream) = init_write_test(None);
+    let stream = pin!(stream);
+
+    assert!(stream.poll_next(&mut context.future_context()).is_pending());
+    assert!(!context.wake_state.was_woken());
+    assert!(context.sink_data().flushed);
+}
+
+#[test]
+fn writer_data_available_with_capacity() {
+    let (mut context, stream) = init_write_test(None);
+    let mut stream = pin!(stream);
+
+    let values = [1, 2, 3];
+
+    let mut expected = vec![];
+    for n in values {
+        context.send(n);
+        expected.push(n);
+
+        let poll = stream.as_mut().poll_next(&mut context.future_context());
+        assert!(matches!(poll, Poll::Ready(Some(Ok(())))));
+        assert!(!context.wake_state.was_woken());
+        let TestSinkInner {
+            state,
+            values,
+            ready,
+            flushed,
+            ..
+        } = &*context.sink_data();
+        assert_eq!(*state, SinkState::HasCapacity);
+        assert!(!*ready);
+        assert!(!*flushed);
+        assert_eq!(values, &expected);
+    }
+}
+
+#[test]
+fn writer_data_available_no_capacity() {
+    let (mut context, stream) = init_write_test(Some(TestSinkInner::full()));
+    let mut stream = pin!(stream);
+
+    context.send(1);
+
+    assert!(stream
+        .as_mut()
+        .poll_next(&mut context.future_context())
+        .is_pending());
+
+    //Woken so we can potentially consume more.
+    assert!(context.wake_state.was_woken());
+
+    {
+        let TestSinkInner {
+            state,
+            values,
+            ready,
+            flushed,
+            ..
+        } = &*context.sink_data();
+        assert_eq!(*state, SinkState::Full);
+        assert!(!*ready);
+        assert!(!*flushed);
+        assert!(values.is_empty());
+    }
+    //Free up capacity and try again.
+    context.free_capacity();
+    let poll = stream.poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(Some(Ok(_)))));
+
+    let TestSinkInner {
+        state,
+        values,
+        ready,
+        flushed,
+        ..
+    } = &*context.sink_data();
+    assert_eq!(*state, SinkState::HasCapacity);
+    assert!(!*ready);
+    assert!(!*flushed);
+    assert_eq!(values, &[1]);
+}
+
+#[test]
+fn writer_stop_no_data() {
+    let (mut context, stream) = init_write_test(None);
+    let stream = pin!(stream);
+
+    context.drop_sender();
+    let poll = stream.poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(None)));
+
+    let TestSinkInner {
+        state,
+        values,
+        ready,
+        flushed,
+        ..
+    } = &*context.sink_data();
+    assert_eq!(*state, SinkState::Closed);
+    assert!(!*ready);
+    assert!(!*flushed);
+    assert!(values.is_empty());
+}
+
+#[test]
+fn writer_stop_data_available() {
+    let (mut context, stream) = init_write_test(None);
+    let mut stream = pin!(stream);
+
+    context.send(5);
+    context.send(3);
+    context.drop_sender();
+
+    let poll = stream.as_mut().poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(Some(Ok(_)))));
+
+    {
+        let TestSinkInner {
+            state,
+            values,
+            ready,
+            flushed,
+            ..
+        } = &*context.sink_data();
+        assert_eq!(*state, SinkState::HasCapacity);
+        assert!(!*ready);
+        assert!(!*flushed);
+        assert_eq!(values, &[5]);
+    }
+
+    let poll = stream.as_mut().poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(Some(Ok(_)))));
+
+    {
+        let TestSinkInner {
+            state,
+            values,
+            ready,
+            flushed,
+            ..
+        } = &*context.sink_data();
+        assert_eq!(*state, SinkState::HasCapacity);
+        assert!(!*ready);
+        assert!(!*flushed);
+        assert_eq!(values, &[5, 3]);
+    }
+
+    let poll = stream.poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(None)));
+
+    let TestSinkInner {
+        state,
+        values,
+        ready,
+        flushed,
+        ..
+    } = &*context.sink_data();
+    assert_eq!(*state, SinkState::Closed);
+    assert!(!*ready);
+    assert!(!*flushed);
+    assert_eq!(values, &[5, 3]);
+}
+
+#[test]
+fn writer_stop_data_pending() {
+    let (mut context, stream) = init_write_test(Some(TestSinkInner::full()));
+    let mut stream = pin!(stream);
+
+    context.send(5);
+
+    let poll = stream.as_mut().poll_next(&mut context.future_context());
+    assert!(poll.is_pending());
+
+    {
+        let TestSinkInner {
+            state,
+            values,
+            ready,
+            flushed,
+            ..
+        } = &*context.sink_data();
+        assert_eq!(*state, SinkState::Full);
+        assert!(!*ready);
+        assert!(!*flushed);
+        assert!(values.is_empty());
+    }
+
+    context.free_capacity();
+    context.drop_sender();
+
+    let poll = stream.as_mut().poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(Some(Ok(_)))));
+
+    {
+        let TestSinkInner {
+            state,
+            values,
+            ready,
+            flushed,
+            ..
+        } = &*context.sink_data();
+        assert_eq!(*state, SinkState::HasCapacity);
+        assert!(!*ready);
+        assert!(!*flushed);
+        assert_eq!(values, &[5]);
+    }
+
+    let poll = stream.poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(None)));
+
+    let TestSinkInner {
+        state,
+        values,
+        ready,
+        flushed,
+        ..
+    } = &*context.sink_data();
+    assert_eq!(*state, SinkState::Closed);
+    assert!(!*ready);
+    assert!(!*flushed);
+    assert_eq!(values, &[5]);
+}
+
+#[test]
+fn writer_fail_on_ready() {
+    let (mut context, stream) =
+        init_write_test(Some(TestSinkInner::with_state(SinkState::FailOnReady)));
+    let mut stream = pin!(stream);
+    context.send(56);
+
+    let poll = stream.as_mut().poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(Some(Err(_)))));
+
+    let poll = stream.as_mut().poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(None)));
+}
+
+#[test]
+fn writer_fail_on_send() {
+    let (mut context, stream) =
+        init_write_test(Some(TestSinkInner::with_state(SinkState::FailOnSend)));
+    let mut stream = pin!(stream);
+    context.send(56);
+
+    let poll = stream.as_mut().poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(Some(Err(_)))));
+
+    let poll = stream.as_mut().poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(None)));
+}
+
+#[test]
+fn writer_fail_on_flush() {
+    let (context, stream) =
+        init_write_test(Some(TestSinkInner::with_state(SinkState::FailOnFlush)));
+    let mut stream = pin!(stream);
+
+    let poll = stream.as_mut().poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(Some(Err(_)))));
+
+    let poll = stream.as_mut().poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(None)));
+}
+
+#[test]
+fn writer_fail_on_close() {
+    let (mut context, stream) =
+        init_write_test(Some(TestSinkInner::with_state(SinkState::FailOnClose)));
+    let mut stream = pin!(stream);
+
+    context.drop_sender();
+    let poll = stream.as_mut().poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(Some(Err(_)))));
+
+    let poll = stream.as_mut().poll_next(&mut context.future_context());
+    assert!(matches!(poll, Poll::Ready(None)));
 }
