@@ -187,24 +187,29 @@ where
             next,
             stop_rx,
             write_stream,
+            dl_state,
             ..
         } = self;
         let select_next = pin!(async {
             tokio::select! {
-                maybe_result = OptionFuture::from(receiver.as_mut().map(|rx| rx.next())), if receiver.is_some() => {
-                    match maybe_result.flatten() {
-                        r@Some(Ok(_)) => {
+                maybe_result = OptionFuture::from(receiver.as_mut().map(|rx| rx.next())) => {
+                    match maybe_result {
+                        Some(r@Some(Ok(_))) => {
                             *next = r;
                             Some(Ok(DownlinkChannelEvent::HandlerReady))
                         }
-                        r@Some(Err(_)) => {
+                        Some(r@Some(Err(_))) => {
                             *next = r;
                             *receiver = None;
                             error!(address = %address, "Downlink input channel failed.");
                             Some(Err(DownlinkChannelError::ReadFailed))
                         }
-                        _ => {
+                        Some(None) => {
+                            info!(address = %address, "Downlink terminated normally.");
                             *receiver = None;
+                            None
+                        }
+                        _ => {
                             None
                         }
                     }
@@ -222,10 +227,6 @@ where
                         }
                     }
                 }
-                else => {
-                    info!(address = %address, "Downlink terminated normally.");
-                    None
-                },
             }
         });
         if let Some(stop_signal) = stop_rx.as_mut() {
@@ -235,8 +236,12 @@ where
                     if triggered_result.is_ok() {
                         *receiver = None;
                         *write_stream = OutputWriter::Stopped;
-                        *next = Some(Ok(DownlinkNotification::Unlinked));
-                        Some(Ok(DownlinkChannelEvent::HandlerReady))
+                        if dl_state.get().is_linked() {
+                            *next = Some(Ok(DownlinkNotification::Unlinked));
+                            Some(Ok(DownlinkChannelEvent::HandlerReady))
+                        } else {
+                            None
+                        }
                     } else {
                         select_next.await
                     }

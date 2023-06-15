@@ -292,35 +292,80 @@ fn to_bytes(not: DownlinkNotification<i32>) -> DownlinkNotification<Vec<u8>> {
 
 use super::super::test_support::run_handler;
 
+enum Instruction {
+    Incoming {
+        notification: DownlinkNotification<i32>,
+        expected: Option<Vec<Event>>,
+    },
+    Outgoing(i32),
+    DropOutgoing,
+}
+
+fn incoming(notification: DownlinkNotification<i32>, expected: Option<Vec<Event>>) -> Instruction {
+    Instruction::Incoming {
+        notification,
+        expected,
+    }
+}
+
 async fn run_with_expectations(
     context: &mut TestContext,
     agent: &FakeAgent,
-    notifications: Vec<(DownlinkNotification<i32>, Option<Vec<Event>>)>,
+    instructions: Vec<Instruction>,
 ) {
     let TestContext {
         channel,
         events,
         sender,
-        stop_tx,
-        write_tx: _write_tx,
-        out_rx: _out_rx,
+        ..
     } = context;
 
-    *stop_tx = None;
-    for (not, expected) in notifications {
-        let bytes_not = to_bytes(not);
-        assert!(sender.send(bytes_not).await.is_ok());
-        assert!(matches!(channel.await_ready().await, Some(Ok(_))));
-        let next = channel.next_event(agent);
-        if let Some(expected) = expected {
-            let handler = next.expect("Expected handler.");
-            run_handler(handler, agent);
+    for instruction in instructions {
+        match instruction {
+            Instruction::Incoming {
+                notification: not,
+                expected,
+            } => {
+                let bytes_not = to_bytes(not);
+                assert!(sender.send(bytes_not).await.is_ok());
+                assert!(matches!(channel.await_ready().await, Some(Ok(_))));
+                let next = channel.next_event(agent);
+                if let Some(expected) = expected {
+                    let handler = next.expect("Expected handler.");
+                    run_handler(handler, agent);
 
-            assert_eq!(take_events(events), expected);
-        } else {
-            assert!(next.is_none());
+                    assert_eq!(take_events(events), expected);
+                } else {
+                    assert!(next.is_none());
+                }
+            }
+            Instruction::Outgoing(_) => todo!(),
+            Instruction::DropOutgoing => todo!(),
         }
     }
+}
+
+async fn clean_shutdown(context: &mut TestContext, agent: &FakeAgent, expect_unlinked: bool) {
+    let TestContext {
+        channel,
+        events,
+        stop_tx,
+        ..
+    } = context;
+
+    if let Some(stop) = stop_tx.take() {
+        stop.trigger();
+    }
+
+    if expect_unlinked {
+        assert!(matches!(channel.await_ready().await, Some(Ok(_))));
+        let next = channel.next_event(&agent);
+        let handler = next.expect("Expected handler.");
+        run_handler(handler, &agent);
+        assert_eq!(take_events(events), vec![Event::Unlinked]);
+    }
+
+    assert!(matches!(channel.await_ready().await, None));
 }
 
 #[tokio::test]
@@ -331,9 +376,14 @@ async fn emit_linked_handler() {
     run_with_expectations(
         &mut context,
         &agent,
-        vec![(DownlinkNotification::Linked, Some(vec![Event::Linked]))],
+        vec![incoming(
+            DownlinkNotification::Linked,
+            Some(vec![Event::Linked]),
+        )],
     )
     .await;
+
+    clean_shutdown(&mut context, &agent, true).await;
 }
 
 #[tokio::test]
@@ -345,12 +395,14 @@ async fn emit_synced_handler() {
         &mut context,
         &agent,
         vec![
-            (DownlinkNotification::Linked, Some(vec![Event::Linked])),
-            (DownlinkNotification::Event { body: 13 }, None),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced(13)])),
+            incoming(DownlinkNotification::Linked, Some(vec![Event::Linked])),
+            incoming(DownlinkNotification::Event { body: 13 }, None),
+            incoming(DownlinkNotification::Synced, Some(vec![Event::Synced(13)])),
         ],
     )
     .await;
+
+    clean_shutdown(&mut context, &agent, true).await;
 }
 
 #[tokio::test]
@@ -362,16 +414,18 @@ async fn emit_event_handlers() {
         &mut context,
         &agent,
         vec![
-            (DownlinkNotification::Linked, Some(vec![Event::Linked])),
-            (DownlinkNotification::Event { body: 13 }, None),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced(13)])),
-            (
+            incoming(DownlinkNotification::Linked, Some(vec![Event::Linked])),
+            incoming(DownlinkNotification::Event { body: 13 }, None),
+            incoming(DownlinkNotification::Synced, Some(vec![Event::Synced(13)])),
+            incoming(
                 DownlinkNotification::Event { body: 15 },
                 Some(vec![Event::Event(15), Event::Set(Some(13), 15)]),
             ),
         ],
     )
     .await;
+
+    clean_shutdown(&mut context, &agent, true).await;
 }
 
 #[tokio::test]
@@ -388,15 +442,17 @@ async fn emit_events_before_synced() {
         &mut context,
         &agent,
         vec![
-            (DownlinkNotification::Linked, Some(vec![Event::Linked])),
-            (
+            incoming(DownlinkNotification::Linked, Some(vec![Event::Linked])),
+            incoming(
                 DownlinkNotification::Event { body: 13 },
                 Some(vec![Event::Event(13), Event::Set(None, 13)]),
             ),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced(13)])),
+            incoming(DownlinkNotification::Synced, Some(vec![Event::Synced(13)])),
         ],
     )
     .await;
+
+    clean_shutdown(&mut context, &agent, true).await;
 }
 
 #[tokio::test]
@@ -408,17 +464,13 @@ async fn emit_unlinked_handler() {
         &mut context,
         &agent,
         vec![
-            (DownlinkNotification::Linked, Some(vec![Event::Linked])),
-            (DownlinkNotification::Unlinked, Some(vec![Event::Unlinked])),
+            incoming(DownlinkNotification::Linked, Some(vec![Event::Linked])),
+            incoming(DownlinkNotification::Unlinked, Some(vec![Event::Unlinked])),
         ],
     )
     .await;
 
-    let TestContext { channel, .. } = &mut context;
-
-    assert!(channel.await_ready().await.is_none());
-
-    assert!(channel.next_event(&agent).is_none());
+    clean_shutdown(&mut context, &agent, false).await;
 }
 
 #[tokio::test]
@@ -436,33 +488,24 @@ async fn revive_unlinked_downlink() {
         &mut context,
         &agent,
         vec![
-            (DownlinkNotification::Linked, Some(vec![Event::Linked])),
-            (
+            incoming(DownlinkNotification::Linked, Some(vec![Event::Linked])),
+            incoming(
                 DownlinkNotification::Event { body: 13 },
                 Some(vec![Event::Event(13), Event::Set(None, 13)]),
             ),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced(13)])),
-            (DownlinkNotification::Unlinked, Some(vec![Event::Unlinked])),
-            (DownlinkNotification::Linked, Some(vec![Event::Linked])),
-            (
+            incoming(DownlinkNotification::Synced, Some(vec![Event::Synced(13)])),
+            incoming(DownlinkNotification::Unlinked, Some(vec![Event::Unlinked])),
+            incoming(DownlinkNotification::Linked, Some(vec![Event::Linked])),
+            incoming(
                 DownlinkNotification::Event { body: 27 },
                 Some(vec![Event::Event(27), Event::Set(None, 27)]),
             ),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced(27)])),
+            incoming(DownlinkNotification::Synced, Some(vec![Event::Synced(27)])),
         ],
     )
     .await;
 
-    let TestContext {
-        mut channel,
-        sender,
-        ..
-    } = context;
-
-    drop(sender);
-    assert!(channel.await_ready().await.is_none());
-
-    assert!(channel.next_event(&agent).is_none());
+    clean_shutdown(&mut context, &agent, true).await;
 }
 
 #[tokio::test]
