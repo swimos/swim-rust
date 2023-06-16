@@ -22,7 +22,7 @@ use std::{
 
 use futures::{
     future::{BoxFuture, Either, OptionFuture},
-    ready, FutureExt, Sink, Stream, StreamExt,
+    ready, FutureExt, Sink, SinkExt, Stream, StreamExt,
 };
 use pin_project::pin_project;
 use std::hash::Hash;
@@ -350,6 +350,12 @@ pub struct HostedMapDownlink<K: RecognizerReadable, V: RecognizerReadable, LC, S
     stop_rx: Option<trigger::Receiver>,
 }
 
+impl<K: StructuralWritable, V: StructuralWritable> MapWriteStream<K, V> {
+    pub async fn close(&mut self) -> Result<(), std::io::Error> {
+        SinkExt::<MapOperation<K, V>>::close(&mut self.write).await
+    }
+}
+
 impl<K, V, LC, State> HostedMapDownlink<K, V, LC, State>
 where
     K: Hash + Eq + Ord + Clone + Form + Send + 'static,
@@ -364,26 +370,29 @@ where
             next,
             stop_rx,
             write_stream,
+            dl_state,
             ..
         } = self;
         let select_next = pin!(async {
             tokio::select! {
-                maybe_result = OptionFuture::from(receiver.as_mut().map(|rx| rx.next())), if receiver.is_some() => {
-                    match maybe_result.flatten() {
-                        r@Some(Ok(_)) => {
+                maybe_result = OptionFuture::from(receiver.as_mut().map(|rx| rx.next())) => {
+                    match maybe_result {
+                        Some(r@Some(Ok(_))) => {
                             *next = r;
                             Some(Ok(DownlinkChannelEvent::HandlerReady))
                         }
-                        r@Some(Err(_)) => {
+                        Some(r@Some(Err(_))) => {
                             *next = r;
                             *receiver = None;
                             error!(address = %address, "Downlink input channel failed.");
                             Some(Err(DownlinkChannelError::ReadFailed))
                         }
-                        _ => {
+                        Some(None) => {
+                            info!(address = %address, "Downlink terminated normally.");
                             *receiver = None;
                             None
                         }
+                        _ => None,
                     }
                 },
                 maybe_result = OptionFuture::from(write_stream.as_mut().map(|str| str.next())), if write_stream.is_active() => {
@@ -399,21 +408,20 @@ where
                         }
                     }
                 }
-                else => {
-                    info!(address = %address, "Downlink terminated normally.");
-                    None
-                },
             }
         });
-        if let Some(stop_signal) = stop_rx.as_mut() {
+        let result = if let Some(stop_signal) = stop_rx.as_mut() {
             match futures::future::select(stop_signal, select_next).await {
                 Either::Left((triggered_result, select_next)) => {
                     *stop_rx = None;
                     if triggered_result.is_ok() {
                         *receiver = None;
-                        *write_stream = Writes::Stopped;
-                        *next = Some(Ok(DownlinkNotification::Unlinked));
-                        Some(Ok(DownlinkChannelEvent::HandlerReady))
+                        if dl_state.get().is_linked() {
+                            *next = Some(Ok(DownlinkNotification::Unlinked));
+                            Some(Ok(DownlinkChannelEvent::HandlerReady))
+                        } else {
+                            None
+                        }
                     } else {
                         select_next.await
                     }
@@ -422,7 +430,16 @@ where
             }
         } else {
             select_next.await
+        };
+        if receiver.is_none() {
+            if let Writes::Active(w) = write_stream {
+                if let Err(error) = w.close().await {
+                    error!(error= %error, "Closing write stream failed.");
+                }
+                write_stream.make_inactive();
+            }
         }
+        result
     }
 }
 
@@ -646,10 +663,12 @@ enum MapWriteStreamState {
     Stopped,
 }
 
+type ReconWriter = FramedWrite<ByteWriter, MapOperationEncoder>;
+
 #[pin_project]
-pub struct MapWriteStream<K, V> {
+pub struct MapWriteStream<K, V, S = ReconWriter> {
     #[pin]
-    write: FramedWrite<ByteWriter, MapOperationEncoder>,
+    write: S,
     #[pin]
     op_rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
     queue: EventQueue<K, V>,
@@ -658,8 +677,14 @@ pub struct MapWriteStream<K, V> {
 
 impl<K, V> MapWriteStream<K, V> {
     pub fn new(writer: ByteWriter, op_rx: mpsc::UnboundedReceiver<MapOperation<K, V>>) -> Self {
+        Self::with_sink(FramedWrite::new(writer, Default::default()), op_rx)
+    }
+}
+
+impl<K, V, S> MapWriteStream<K, V, S> {
+    pub fn with_sink(sink: S, op_rx: mpsc::UnboundedReceiver<MapOperation<K, V>>) -> Self {
         MapWriteStream {
-            write: FramedWrite::new(writer, Default::default()),
+            write: sink,
             op_rx,
             queue: Default::default(),
             state: Default::default(),
@@ -667,10 +692,11 @@ impl<K, V> MapWriteStream<K, V> {
     }
 }
 
-impl<K, V> Stream for MapWriteStream<K, V>
+impl<K, V, S> Stream for MapWriteStream<K, V, S>
 where
     K: Clone + Eq + Hash + StructuralWritable + Send + 'static,
     V: StructuralWritable + Send + 'static,
+    S: Sink<MapOperation<K, V>, Error = std::io::Error>,
 {
     type Item = Result<(), std::io::Error>;
 
@@ -727,13 +753,14 @@ where
                 }
                 MapWriteStreamState::Stopping => {
                     if projected.queue.is_empty() {
-                        if let Err(e) = ready!(Sink::<MapOperation<K, V>>::poll_close(
+                        let result = ready!(Sink::<MapOperation<K, V>>::poll_close(
                             projected.write.as_mut(),
                             cx
-                        )) {
+                        ));
+                        *projected.state = MapWriteStreamState::Stopped;
+                        if let Err(e) = result {
                             break Poll::Ready(Some(Err(e)));
                         }
-                        *projected.state = MapWriteStreamState::Stopped;
                     } else {
                         break match ready!(Sink::<MapOperation<K, V>>::poll_ready(
                             projected.write.as_mut(),
