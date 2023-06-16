@@ -156,12 +156,12 @@ fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
 }
 
 async fn expect_write_stopped(channel: &mut BoxDownlinkChannel<FakeAgent>, agent: &FakeAgent) {
-    assert!(channel.next_event(&agent).is_none());
+    assert!(channel.next_event(agent).is_none());
     assert!(matches!(
         channel.await_ready().await,
         Some(Ok(DownlinkChannelEvent::WriteStreamTerminated))
     ));
-    assert!(channel.next_event(&agent).is_none());
+    assert!(channel.next_event(agent).is_none());
 }
 
 async fn clean_shutdown(mut context: TestContext, agent: FakeAgent, expect_unlink: bool) {
@@ -191,18 +191,18 @@ async fn expect_unlink_shutdown(
         Some(Ok(DownlinkChannelEvent::HandlerReady))
     ));
     let handler = channel
-        .next_event(&agent)
+        .next_event(agent)
         .expect("Expected unlinked handler.");
     run_handler(handler, agent);
     assert_eq!(take_events(events), vec![Event::Unlinked]);
 
     assert!(channel.await_ready().await.is_none());
-    assert!(channel.next_event(&agent).is_none());
+    assert!(channel.next_event(agent).is_none());
 }
 
 async fn expect_no_unlink_shutdown(channel: &mut BoxDownlinkChannel<FakeAgent>, agent: &FakeAgent) {
     assert!(channel.await_ready().await.is_none());
-    assert!(channel.next_event(&agent).is_none());
+    assert!(channel.next_event(agent).is_none());
 }
 
 #[tokio::test]

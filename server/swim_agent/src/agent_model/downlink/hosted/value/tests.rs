@@ -381,9 +381,9 @@ async fn clean_shutdown(context: &mut TestContext, agent: &FakeAgent, expect_unl
 
     if expect_unlinked {
         assert!(matches!(channel.await_ready().await, Some(Ok(_))));
-        let next = channel.next_event(&agent);
+        let next = channel.next_event(agent);
         let handler = next.expect("Expected handler.");
-        run_handler(handler, &agent);
+        run_handler(handler, agent);
         assert_eq!(take_events(events), vec![Event::Unlinked]);
     }
 
@@ -729,13 +729,11 @@ impl Sink<i32> for TestSink {
         } = &mut *guard;
         if matches!(state, SinkState::FailOnFlush | SinkState::Closed) {
             Poll::Ready(Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe)))
+        } else if *will_flush {
+            *flushed = true;
+            Poll::Ready(Ok(()))
         } else {
-            if *will_flush {
-                *flushed = true;
-                Poll::Ready(Ok(()))
-            } else {
-                Poll::Pending
-            }
+            Poll::Pending
         }
     }
 
@@ -746,13 +744,11 @@ impl Sink<i32> for TestSink {
         } = &mut *guard;
         if matches!(state, SinkState::FailOnClose | SinkState::Closed) {
             Poll::Ready(Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe)))
+        } else if *will_close {
+            *state = SinkState::Closed;
+            Poll::Ready(Ok(()))
         } else {
-            if *will_close {
-                *state = SinkState::Closed;
-                Poll::Ready(Ok(()))
-            } else {
-                Poll::Pending
-            }
+            Poll::Pending
         }
     }
 }
