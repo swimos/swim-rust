@@ -14,7 +14,7 @@
 
 use futures::{
     future::{BoxFuture, Either, OptionFuture},
-    ready, FutureExt, Sink, Stream, StreamExt,
+    ready, FutureExt, Sink, SinkExt, Stream, StreamExt,
 };
 use pin_project::pin_project;
 use std::{
@@ -218,7 +218,7 @@ where
                     match maybe_result.flatten() {
                         Some(Ok(_)) => Some(Ok(DownlinkChannelEvent::WriteCompleted)),
                         Some(Err(e)) => {
-                            write_stream.fail();
+                            write_stream.make_inactive();
                             Some(Err(DownlinkChannelError::WriteFailed(e)))
                         },
                         _ => {
@@ -229,13 +229,12 @@ where
                 }
             }
         });
-        if let Some(stop_signal) = stop_rx.as_mut() {
+        let result = if let Some(stop_signal) = stop_rx.as_mut() {
             match futures::future::select(stop_signal, select_next).await {
                 Either::Left((triggered_result, select_next)) => {
                     *stop_rx = None;
                     if triggered_result.is_ok() {
                         *receiver = None;
-                        *write_stream = OutputWriter::Stopped;
                         if dl_state.get().is_linked() {
                             *next = Some(Ok(DownlinkNotification::Unlinked));
                             Some(Ok(DownlinkChannelEvent::HandlerReady))
@@ -250,7 +249,16 @@ where
             }
         } else {
             select_next.await
+        };
+        if receiver.is_none() {
+            if let Writes::Active(w) = write_stream {
+                if let Err(error) = w.close().await {
+                    error!(error= %error, "Closing write stream failed.");
+                }
+                write_stream.make_inactive();
+            }
         }
+        result
     }
 }
 
@@ -437,6 +445,16 @@ enum ValueWriteStreamState<T> {
     Stopped,
 }
 
+impl<T> std::fmt::Debug for ValueWriteStreamState<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Active(_) => f.debug_tuple("Active").finish(),
+            Self::Stopping(_) => f.debug_tuple("Stopping").finish(),
+            Self::Stopped => write!(f, "Stopped"),
+        }
+    }
+}
+
 impl<T> Default for ValueWriteStreamState<T> {
     fn default() -> Self {
         ValueWriteStreamState::Active(None)
@@ -452,6 +470,16 @@ pub struct ValueWriteStream<T, S = ReconWriter> {
     #[pin]
     watch_rx: circular_buffer::Receiver<T>,
     state: ValueWriteStreamState<T>,
+}
+
+impl<T, S> std::fmt::Debug for ValueWriteStream<T, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ValueWriteStream")
+            .field("write", &"..")
+            .field("watch_rx", &"..")
+            .field("state", &self.state)
+            .finish()
+    }
 }
 
 impl<T, S> ValueWriteStream<T, S> {
@@ -471,6 +499,12 @@ impl<T> ValueWriteStream<T> {
 
     pub fn into_watch_rx(self) -> circular_buffer::Receiver<T> {
         self.watch_rx
+    }
+}
+
+impl<T: StructuralWritable> ValueWriteStream<T> {
+    pub async fn close(&mut self) -> Result<(), std::io::Error> {
+        SinkExt::<T>::close(&mut self.write).await
     }
 }
 
@@ -565,7 +599,7 @@ where
 impl<T> RestartableOutput for ValueWriteStream<T> {
     type Source = circular_buffer::Receiver<T>;
 
-    fn fail(self) -> Self::Source {
+    fn make_inactive(self) -> Self::Source {
         self.into_watch_rx()
     }
 

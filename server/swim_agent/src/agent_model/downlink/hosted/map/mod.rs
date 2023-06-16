@@ -390,7 +390,7 @@ where
                     match maybe_result.flatten() {
                         Some(Ok(_)) => Some(Ok(DownlinkChannelEvent::WriteCompleted)),
                         Some(Err(e)) => {
-                            write_stream.fail();
+                            write_stream.make_inactive();
                             Some(Err(DownlinkChannelError::WriteFailed(e)))
                         },
                         _ => {
@@ -763,7 +763,7 @@ where
 impl<K, V> RestartableOutput for MapWriteStream<K, V> {
     type Source = mpsc::UnboundedReceiver<MapOperation<K, V>>;
 
-    fn fail(self) -> Self::Source {
+    fn make_inactive(self) -> Self::Source {
         self.op_rx
     }
 

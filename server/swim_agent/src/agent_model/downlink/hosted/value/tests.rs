@@ -30,9 +30,14 @@ use futures::{
     Sink, SinkExt, Stream, StreamExt,
 };
 use parking_lot::Mutex;
-use swim_api::protocol::downlink::{
-    DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation, DownlinkOperationDecoder,
+use swim_api::protocol::{
+    downlink::{
+        DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation,
+        DownlinkOperationDecoder,
+    },
+    WithLenRecognizerDecoder,
 };
+use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::{address::Address, Text};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
@@ -47,7 +52,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use super::{HostedValueDownlinkFactory, SimpleDownlinkConfig};
 use crate::{
     agent_model::downlink::{
-        handlers::BoxDownlinkChannel,
+        handlers::{BoxDownlinkChannel, DownlinkChannelEvent},
         hosted::{value::ValueWriteStream, ValueDownlinkHandle},
     },
     downlink_lifecycle::{
@@ -174,7 +179,7 @@ struct TestContext {
     channel: BoxDownlinkChannel<FakeAgent>,
     events: Events,
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
-    write_tx: circular_buffer::Sender<i32>,
+    write_tx: Option<circular_buffer::Sender<i32>>,
     out_rx: ByteReader,
     stop_tx: Option<trigger::Sender>,
 }
@@ -200,7 +205,7 @@ fn make_hosted_input(context: &FakeAgent, config: SimpleDownlinkConfig) -> TestC
         channel: chan,
         events: inner,
         sender: FramedWrite::new(in_tx, Default::default()),
-        write_tx,
+        write_tx: Some(write_tx),
         out_rx,
         stop_tx: Some(stop_tx),
     }
@@ -317,6 +322,7 @@ async fn run_with_expectations(
         channel,
         events,
         sender,
+        write_tx,
         ..
     } = context;
 
@@ -339,8 +345,24 @@ async fn run_with_expectations(
                     assert!(next.is_none());
                 }
             }
-            Instruction::Outgoing(_) => todo!(),
-            Instruction::DropOutgoing => todo!(),
+            Instruction::Outgoing(n) => {
+                write_tx
+                    .as_mut()
+                    .expect("Output dropped.")
+                    .try_send(n)
+                    .expect("Channel dropped");
+                assert!(matches!(
+                    channel.await_ready().await,
+                    Some(Ok(DownlinkChannelEvent::WriteCompleted))
+                ));
+            }
+            Instruction::DropOutgoing => {
+                *write_tx = None;
+                assert!(matches!(
+                    channel.await_ready().await,
+                    Some(Ok(DownlinkChannelEvent::WriteStreamTerminated))
+                ));
+            }
         }
     }
 }
@@ -366,6 +388,38 @@ async fn clean_shutdown(context: &mut TestContext, agent: &FakeAgent, expect_unl
     }
 
     assert!(matches!(channel.await_ready().await, None));
+}
+
+#[tokio::test]
+async fn write_output() {
+    let agent = FakeAgent;
+    let mut context = make_hosted_input(&agent, SimpleDownlinkConfig::default());
+
+    run_with_expectations(&mut context, &agent, vec![Instruction::Outgoing(5)]).await;
+
+    clean_shutdown(&mut context, &agent, false).await;
+
+    let TestContext { out_rx, .. } = &mut context;
+
+    //Flush is not guaranteed until the next poll of channel after the write "completes"
+    //so we only check that the value was written after the fact.
+    let mut reader = FramedRead::new(
+        out_rx,
+        WithLenRecognizerDecoder::new(i32::make_recognizer()),
+    );
+
+    let output = reader.next().await;
+    assert!(matches!(output, Some(Ok(5))));
+}
+
+#[tokio::test]
+async fn write_terminated() {
+    let agent = FakeAgent;
+    let mut context = make_hosted_input(&agent, SimpleDownlinkConfig::default());
+
+    run_with_expectations(&mut context, &agent, vec![Instruction::DropOutgoing]).await;
+
+    clean_shutdown(&mut context, &agent, false).await;
 }
 
 #[tokio::test]
