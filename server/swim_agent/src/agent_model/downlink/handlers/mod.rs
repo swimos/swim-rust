@@ -47,10 +47,14 @@ pub enum DownlinkChannelError {
 ///
 /// * `Context` - The context within which the event handlers must be run (typically an agent type).
 pub trait DownlinkChannel<Context> {
+    /// Attach the downlink to it's input and output streams. This can be called multiple times
+    /// if the downlink restarts.
     fn connect(&mut self, context: &Context, output: ByteWriter, input: ByteReader);
 
+    /// Whether the downlink can be restarted.
     fn can_restart(&self) -> bool;
 
+    /// The address to which the downlink is connected.
     fn address(&self) -> &Address<Text>;
 
     /// Get the kind of the downlink.
