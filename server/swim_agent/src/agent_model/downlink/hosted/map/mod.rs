@@ -586,6 +586,18 @@ where
     fn can_restart(&self) -> bool {
         !self.config.terminate_on_unlinked && self.stop_rx.is_some()
     }
+
+    fn flush(&mut self) -> BoxFuture<'_, Result<(), std::io::Error>> {
+        async move {
+            let HostedMapDownlink { write_stream, .. } = self;
+            if let Some(w) = write_stream.as_mut() {
+                w.flush().await
+            } else {
+                Ok(())
+            }
+        }
+        .boxed()
+    }
 }
 
 /// A handle which can be used to modify the state of a map lane through a downlink.
@@ -689,6 +701,15 @@ impl<K, V, S> MapWriteStream<K, V, S> {
             queue: Default::default(),
             state: Default::default(),
         }
+    }
+}
+
+impl<K, V, S> MapWriteStream<K, V, S>
+where
+    S: Sink<MapOperation<K, V>, Error = std::io::Error> + Unpin,
+{
+    async fn flush(&mut self) -> Result<(), std::io::Error> {
+        SinkExt::<MapOperation<K, V>>::flush(&mut self.write).await
     }
 }
 

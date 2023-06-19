@@ -374,6 +374,18 @@ where
     fn can_restart(&self) -> bool {
         !self.config.terminate_on_unlinked && self.stop_rx.is_some()
     }
+
+    fn flush(&mut self) -> BoxFuture<'_, Result<(), std::io::Error>> {
+        async move {
+            let HostedValueDownlink { write_stream, .. } = self;
+            if let Some(w) = write_stream.as_mut() {
+                w.flush().await
+            } else {
+                Ok(())
+            }
+        }
+        .boxed()
+    }
 }
 
 /// A handle which can be used to set the value of a lane through a value downlink or stop the
@@ -505,6 +517,15 @@ impl<T> ValueWriteStream<T> {
 impl<T: StructuralWritable> ValueWriteStream<T> {
     pub async fn close(&mut self) -> Result<(), std::io::Error> {
         SinkExt::<T>::close(&mut self.write).await
+    }
+}
+
+impl<T, S> ValueWriteStream<T, S>
+where
+    S: Sink<T, Error = std::io::Error> + Unpin,
+{
+    async fn flush(&mut self) -> Result<(), std::io::Error> {
+        SinkExt::<T>::flush(&mut self.write).await
     }
 }
 

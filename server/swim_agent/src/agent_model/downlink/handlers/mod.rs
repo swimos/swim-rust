@@ -65,6 +65,9 @@ pub trait DownlinkChannel<Context> {
     /// After a call to `await_ready` that does not return [`None`] this may return an event handler to
     /// be executed by the agent task. At any other time, it will return [`None`].
     fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>>;
+
+    /// Flush any pending outputs.
+    fn flush(&mut self) -> BoxFuture<'_, Result<(), std::io::Error>>;
 }
 
 #[derive(Clone, Copy, Default, Debug)]

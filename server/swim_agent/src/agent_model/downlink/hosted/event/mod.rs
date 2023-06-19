@@ -17,7 +17,10 @@ use std::{
     sync::{atomic::AtomicU8, Arc},
 };
 
-use futures::{future::BoxFuture, FutureExt, StreamExt};
+use futures::{
+    future::{ready, BoxFuture},
+    FutureExt, StreamExt,
+};
 use swim_api::{
     downlink::DownlinkKind,
     error::FrameIoError,
@@ -299,6 +302,10 @@ where
 
     fn address(&self) -> &Address<Text> {
         &self.address
+    }
+
+    fn flush(&mut self) -> BoxFuture<'_, Result<(), std::io::Error>> {
+        ready(Ok(())).boxed()
     }
 }
 

@@ -412,6 +412,10 @@ impl<Context> HostedDownlink<Context> {
         }
     }
 
+    async fn flush(&mut self) -> Result<(), std::io::Error> {
+        self.channel.flush().await
+    }
+
     async fn reconnect(
         mut self,
         agent_context: &dyn AgentContext,
@@ -419,6 +423,9 @@ impl<Context> HostedDownlink<Context> {
         first_attempt: bool,
     ) -> Option<(Self, HostedDownlinkEvent)> {
         if self.channel.can_restart() {
+            if let Err(err) = self.flush().await {
+                debug!(error = %err, "Flushing downlink before restart failed.");
+            }
             let HostedDownlink { channel, .. } = &mut self;
             let Address { host, node, lane } = channel.address().borrow_parts();
             let open_task = agent_context.open_downlink(host, node, lane, channel.kind());
