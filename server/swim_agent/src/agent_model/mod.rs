@@ -327,7 +327,7 @@ enum TaskEvent<ItemModel> {
         handler: BoxEventHandler<'static, ItemModel>,
     },
     DownlinkReady {
-        downlink_event: Option<(HostedDownlink<ItemModel>, HostedDownlinkEvent)>,
+        downlink_event: (HostedDownlink<ItemModel>, HostedDownlinkEvent),
     },
     ValueRequest {
         id: u64,
@@ -376,39 +376,41 @@ enum HostedDownlinkEvent {
     HandlerReady {
         failed: bool,
     },
+    ReconnectNotPossible {
+        retries_expired: bool,
+    },
     ReconnectSucceeded(ReconnectDownlink),
     ReconnectFailed {
         error: DownlinkRuntimeError,
         retry: RetryStrategy,
     },
+    Stopped,
 }
 
 impl<Context> HostedDownlink<Context> {
-    async fn wait_on_downlink(mut self) -> Option<(Self, HostedDownlinkEvent)> {
+    async fn wait_on_downlink(mut self) -> (Self, HostedDownlinkEvent) {
         let HostedDownlink { channel, failed } = &mut self;
 
         if *failed {
-            return None;
+            return (self, HostedDownlinkEvent::Stopped);
         }
 
         match channel.await_ready().await {
             Some(Ok(DownlinkChannelEvent::HandlerReady)) => {
-                Some((self, HostedDownlinkEvent::HandlerReady { failed: false }))
+                (self, HostedDownlinkEvent::HandlerReady { failed: false })
             }
-            Some(Ok(DownlinkChannelEvent::WriteCompleted)) => {
-                Some((self, HostedDownlinkEvent::Written))
-            }
+            Some(Ok(DownlinkChannelEvent::WriteCompleted)) => (self, HostedDownlinkEvent::Written),
             Some(Ok(DownlinkChannelEvent::WriteStreamTerminated)) => {
-                Some((self, HostedDownlinkEvent::WriterTerminated))
+                (self, HostedDownlinkEvent::WriterTerminated)
             }
             Some(Err(DownlinkChannelError::ReadFailed)) => {
                 *failed = true;
-                Some((self, HostedDownlinkEvent::HandlerReady { failed: true }))
+                (self, HostedDownlinkEvent::HandlerReady { failed: true })
             }
             Some(Err(DownlinkChannelError::WriteFailed(err))) => {
-                Some((self, HostedDownlinkEvent::WriterFailed(err)))
+                (self, HostedDownlinkEvent::WriterFailed(err))
             }
-            None => None,
+            None => (self, HostedDownlinkEvent::Stopped),
         }
     }
 
@@ -421,7 +423,7 @@ impl<Context> HostedDownlink<Context> {
         agent_context: &dyn AgentContext,
         mut retry: RetryStrategy,
         first_attempt: bool,
-    ) -> Option<(Self, HostedDownlinkEvent)> {
+    ) -> (Self, HostedDownlinkEvent) {
         if self.channel.can_restart() {
             if let Err(err) = self.flush().await {
                 debug!(error = %err, "Flushing downlink before restart failed.");
@@ -434,7 +436,14 @@ impl<Context> HostedDownlink<Context> {
             } else {
                 match retry.next() {
                     Some(delay) => delay,
-                    None => return None,
+                    None => {
+                        return (
+                            self,
+                            HostedDownlinkEvent::ReconnectNotPossible {
+                                retries_expired: true,
+                            },
+                        )
+                    }
                 }
             };
             if let Some(t) = delay {
@@ -446,9 +455,14 @@ impl<Context> HostedDownlink<Context> {
                 }
                 Err(error) => HostedDownlinkEvent::ReconnectFailed { error, retry },
             };
-            Some((self, result))
+            (self, result)
         } else {
-            None
+            (
+                self,
+                HostedDownlinkEvent::ReconnectNotPossible {
+                    retries_expired: false,
+                },
+            )
         }
     }
 }
@@ -1017,79 +1031,87 @@ where
                         ),
                     }
                 }
-                TaskEvent::DownlinkReady { downlink_event } => {
-                    if let Some((mut downlink, event)) = downlink_event {
-                        match event {
-                            HostedDownlinkEvent::Written => {
-                                downlinks.push(Either::Left(downlink.wait_on_downlink()))
-                            }
-                            HostedDownlinkEvent::WriterFailed(err) => {
-                                error!(error = %err, "A downlink hosted by the agent failed.");
-                                debug!(address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink.");
-                                downlinks.push(Either::Right(downlink.reconnect(
+                TaskEvent::DownlinkReady {
+                    downlink_event: (mut downlink, event),
+                } => match event {
+                    HostedDownlinkEvent::Written => {
+                        downlinks.push(Either::Left(downlink.wait_on_downlink()))
+                    }
+                    HostedDownlinkEvent::WriterFailed(err) => {
+                        error!(error = %err, "A downlink hosted by the agent failed.");
+                        debug!(address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink.");
+                        downlinks.push(Either::Right(downlink.reconnect(
+                            &*context,
+                            config.keep_linked_retry,
+                            true,
+                        )));
+                    }
+                    HostedDownlinkEvent::WriterTerminated => {
+                        info!("A downlink hosted by the agent stopped writing output.");
+                        downlinks.push(Either::Left(downlink.wait_on_downlink()));
+                    }
+                    HostedDownlinkEvent::HandlerReady { failed } => {
+                        if let Some(handler) = downlink.channel.next_event(&item_model) {
+                            match run_handler(
+                                &mut ActionContext::new(
+                                    &suspended,
                                     &*context,
-                                    config.keep_linked_retry,
-                                    true,
-                                )));
-                            }
-                            HostedDownlinkEvent::WriterTerminated => {
-                                info!("A downlink hosted by the agent stopped writing output.");
-                                downlinks.push(Either::Left(downlink.wait_on_downlink()));
-                            }
-                            HostedDownlinkEvent::HandlerReady { failed } => {
-                                if let Some(handler) = downlink.channel.next_event(&item_model) {
-                                    match run_handler(
-                                        &mut ActionContext::new(
-                                            &suspended,
-                                            &*context,
-                                            &add_downlink,
-                                            &mut join_value_init,
-                                            &mut ad_hoc_buffer,
-                                        ),
-                                        meta,
-                                        &item_model,
-                                        &lifecycle,
-                                        handler,
-                                        &item_ids,
-                                        &mut dirty_items,
-                                    ) {
-                                        Err(EventHandlerError::StopInstructed) => break Ok(()),
-                                        Err(e) => {
-                                            break Err(AgentTaskError::UserCodeError(Box::new(e)))
-                                        }
-                                        Ok(_) => check_cmds(
-                                            &mut ad_hoc_buffer,
-                                            &mut cmd_writer,
-                                            &mut cmd_send_fut,
-                                            CommandWriter::write,
-                                        ),
-                                    }
-                                }
-                                if failed {
-                                    error!("Reading from a downlink failed.");
-                                    debug!(address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink.");
-                                    downlinks.push(Either::Right(downlink.reconnect(
-                                        &*context,
-                                        config.keep_linked_retry,
-                                        true,
-                                    )));
-                                } else {
-                                    downlinks.push(Either::Left(downlink.wait_on_downlink()));
-                                }
-                            }
-                            HostedDownlinkEvent::ReconnectSucceeded(reconnect) => {
-                                reconnect.connect(&mut downlink, &item_model);
-                                downlinks.push(Either::Left(downlink.wait_on_downlink()));
-                            }
-                            HostedDownlinkEvent::ReconnectFailed { error, retry } => {
-                                error!(error = %error, address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink failed.");
-                                downlinks.push(Either::Right(
-                                    downlink.reconnect(&*context, retry, false),
-                                ));
+                                    &add_downlink,
+                                    &mut join_value_init,
+                                    &mut ad_hoc_buffer,
+                                ),
+                                meta,
+                                &item_model,
+                                &lifecycle,
+                                handler,
+                                &item_ids,
+                                &mut dirty_items,
+                            ) {
+                                Err(EventHandlerError::StopInstructed) => break Ok(()),
+                                Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
+                                Ok(_) => check_cmds(
+                                    &mut ad_hoc_buffer,
+                                    &mut cmd_writer,
+                                    &mut cmd_send_fut,
+                                    CommandWriter::write,
+                                ),
                             }
                         }
+                        if failed {
+                            error!("Reading from a downlink failed.");
+                            debug!(address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink.");
+                            downlinks.push(Either::Right(downlink.reconnect(
+                                &*context,
+                                config.keep_linked_retry,
+                                true,
+                            )));
+                        } else {
+                            downlinks.push(Either::Left(downlink.wait_on_downlink()));
+                        }
                     }
-                }
+                    HostedDownlinkEvent::ReconnectSucceeded(reconnect) => {
+                        reconnect.connect(&mut downlink, &item_model);
+                        downlinks.push(Either::Left(downlink.wait_on_downlink()));
+                    }
+                    HostedDownlinkEvent::ReconnectFailed { error, retry } => {
+                        error!(error = %error, address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink failed.");
+                        downlinks.push(Either::Right(downlink.reconnect(&*context, retry, false)));
+                    }
+                    HostedDownlinkEvent::Stopped => {
+                        downlinks.push(Either::Right(downlink.reconnect(
+                            &*context,
+                            config.keep_linked_retry,
+                            true,
+                        )));
+                    }
+                    HostedDownlinkEvent::ReconnectNotPossible { retries_expired } => {
+                        if retries_expired {
+                            error!(address = %downlink.address(), kind = ?downlink.kind(), "A downlink stopped and could not be restarted.");
+                        } else {
+                            info!(address = %downlink.address(), kind = ?downlink.kind(), "A downlink stopped and was removed.");
+                        }
+                    }
+                },
                 TaskEvent::ValueRequest { id, request } => {
                     let name = &item_ids[&id];
                     match request {

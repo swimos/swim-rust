@@ -207,7 +207,12 @@ where
                         Some(None) => {
                             info!(address = %address, "Downlink terminated normally.");
                             *receiver = None;
-                            None
+                            if dl_state.get().is_linked() {
+                                *next = Some(Ok(DownlinkNotification::Unlinked));
+                                Some(Ok(DownlinkChannelEvent::HandlerReady))
+                            } else {
+                                None
+                            }
                         }
                         _ => {
                             None
