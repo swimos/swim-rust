@@ -51,7 +51,8 @@ impl<T, Context, Shared, L> CommandLaneLifecycleShared<T, Context, Shared> for L
 /// #Type Parameters
 /// * `Context` - The context for the event handlers (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
-/// * `Cmd` - The type of the `on_command` event.
+/// * `T` - The type of the commands.
+/// * `OnCmd` - The type of the `on_command` event.
 pub struct StatefulCommandLaneLifecycle<Context, Shared, T, OnCmd = NoHandler> {
     _value_type: PhantomData<fn(Context, Shared, T)>,
     on_command: OnCmd,

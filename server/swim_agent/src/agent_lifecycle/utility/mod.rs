@@ -40,6 +40,7 @@ use crate::event_handler::{
     SendCommand, Sequentially, Stop, Suspend, UnitHandler,
 };
 use crate::lanes::command::{CommandLane, DoCommand};
+use crate::lanes::demand::{Cue, DemandLane};
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
 use crate::lanes::map::{MapLaneGetMap, MapLaneWithEntry};
 use crate::stores::map::{
@@ -480,6 +481,20 @@ impl<Agent: 'static> HandlerContext<Agent> {
         T: Send + 'static,
     {
         DoCommand::new(lane, value)
+    }
+
+    /// Create an event handler that will cue a demand lane to produce a value.
+    ///
+    /// #Arguments
+    /// * `lane` - Projection to the demand lane.
+    pub fn cue<T>(
+        &self,
+        lane: fn(&Agent) -> &DemandLane<T>,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        T: Send + 'static,
+    {
+        Cue::new(lane)
     }
 
     /// Suspend a future to be executed by the agent task. The future must result in another

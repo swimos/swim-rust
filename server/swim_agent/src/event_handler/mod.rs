@@ -315,6 +315,8 @@ pub enum EventHandlerError {
     RuntimeError(#[from] AgentRuntimeError),
     #[error("Invalid key or value type for a join lane lifecycle.")]
     BadJoinLifecycle(DowncastError),
+    #[error("The cue operation for a demand lane was undefined.")]
+    DemandCueUndefined,
     #[error("The event handler has instructed the agent to stop.")]
     StopInstructed,
 }
