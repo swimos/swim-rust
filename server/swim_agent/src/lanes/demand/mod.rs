@@ -34,6 +34,8 @@ use crate::{
 use super::LaneItem;
 
 pub mod lifecycle;
+#[cfg(test)]
+mod tests;
 
 struct DemandLaneInner<T> {
     computed_value: Option<T>,
@@ -67,6 +69,11 @@ impl<T> DemandLane<T> {
 
     pub(crate) fn cue(&self) {
         self.cued.set(true)
+    }
+
+    pub(crate) fn sync(&self, id: Uuid) {
+        let mut guard = self.inner.borrow_mut();
+        guard.sync_queue.push_back(id);
     }
 }
 
@@ -239,8 +246,7 @@ impl<Context, T> HandlerAction<Context> for DemandLaneSync<Context, T> {
         let DemandLaneSync { projection, id } = self;
         if let Some(id) = id.take() {
             let lane = projection(context);
-            let mut guard = lane.inner.borrow_mut();
-            guard.sync_queue.push_back(id);
+            lane.sync(id);
             StepResult::Complete {
                 modified_item: Some(Modification::of(lane.id)),
                 result: (),
