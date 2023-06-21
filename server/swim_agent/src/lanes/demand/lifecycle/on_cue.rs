@@ -28,7 +28,7 @@ pub trait OnCue<T, Context>: Send {
     where
         Self: 'a;
 
-    fn on_cue<'a>(&'a self) -> Self::OnCueHandler<'a>;
+    fn on_cue(&self) -> Self::OnCueHandler<'_>;
 }
 
 /// Lifecycle event for the `on_cue` event of a demand lane where the event handler
@@ -78,7 +78,7 @@ where
     where
         Self: 'a;
 
-    fn on_cue<'a>(&'a self) -> Self::OnCueHandler<'a> {
+    fn on_cue(&self) -> Self::OnCueHandler<'_> {
         CueUndefined::default()
     }
 }
@@ -111,7 +111,7 @@ where
     where
         Self: 'a;
 
-    fn on_cue<'a>(&'a self) -> Self::OnCueHandler<'a> {
+    fn on_cue(&self) -> Self::OnCueHandler<'_> {
         let FnHandler(f) = self;
         f()
     }

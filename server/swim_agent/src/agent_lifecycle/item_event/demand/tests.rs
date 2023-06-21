@@ -124,7 +124,7 @@ impl<T: Clone + Send + 'static> OnCue<T, TestAgent> for FakeLifecycle<T> {
     where
         Self: 'a;
 
-    fn on_cue<'a>(&'a self) -> Self::OnCueHandler<'a> {
+    fn on_cue(&self) -> Self::OnCueHandler<'_> {
         self.on_cue_handler()
     }
 }
