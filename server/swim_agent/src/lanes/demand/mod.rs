@@ -64,6 +64,10 @@ impl<T> DemandLane<T> {
             cued: Cell::new(false),
         }
     }
+
+    pub(crate) fn cue(&self) {
+        self.cued.set(true)
+    }
 }
 
 assert_impl_all!(DemandLane<()>: Send);
@@ -200,7 +204,7 @@ impl<Context, T> HandlerAction<Context> for Cue<Context, T> {
             StepResult::after_done()
         } else {
             let lane = projection(context);
-            lane.cued.set(true);
+            lane.cue();
             StepResult::Complete {
                 modified_item: Some(Modification::of(lane.id())),
                 result: (),
