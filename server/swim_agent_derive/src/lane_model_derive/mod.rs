@@ -330,6 +330,9 @@ impl<'a> FieldInitializer<'a> {
             ItemSpec::Command(_) => {
                 quote!(#name: #root::lanes::CommandLane::new(#ordinal))
             }
+            ItemSpec::Demand(_) => {
+                quote!(#name: #root::lanes::DemandLane::new(#ordinal))
+            }
             ItemSpec::Value(ItemKind::Lane, _) => {
                 quote!(#name: #root::lanes::ValueLane::new(#ordinal, ::core::default::Default::default()))
             }
@@ -371,7 +374,9 @@ impl<'a> HandlerType<'a> {
             LaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::DecodeAndApply<#agent_name, #k, #v>)
             }
-            LaneSpec::JoinValue(_, _) => quote!(#root::event_handler::UnitHandler),
+            LaneSpec::Demand(_) | LaneSpec::JoinValue(_, _) => {
+                quote!(#root::event_handler::UnitHandler)
+            }
         }
     }
 }
@@ -386,6 +391,9 @@ impl<'a> SyncHandlerType<'a> {
 
         match kind {
             LaneSpec::Command(_) => quote!(#root::event_handler::UnitHandler), //TODO Do this properly later.
+            LaneSpec::Demand(t) => {
+                quote!(#root::lanes::demand::DemandLaneSync<#agent_name, #t>)
+            }
             LaneSpec::Value(t) => {
                 quote!(#root::lanes::value::ValueLaneSync<#agent_name, #t>)
             }
@@ -433,7 +441,7 @@ impl<'a> LaneHandlerMatch<'a> {
             LaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v>(body, |agent: &#agent_name| &agent.#name))
             }
-            LaneSpec::JoinValue(_, _) => {
+            LaneSpec::Demand(_) | LaneSpec::JoinValue(_, _) => {
                 quote!(#root::event_handler::UnitHandler::default())
             }
         };
@@ -483,6 +491,9 @@ impl<'a> SyncHandlerMatch<'a> {
         let coprod_con = coproduct_constructor(root, handler_base, ord);
         let sync_handler_expr = match kind {
             LaneSpec::Command(_) => quote!(#root::event_handler::UnitHandler::default()),
+            LaneSpec::Demand(ty) => {
+                quote!(#root::lanes::demand::DemandLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &agent.#name, id))
+            }
             LaneSpec::Value(ty) => {
                 quote!(#root::lanes::value::ValueLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &agent.#name, id))
             }

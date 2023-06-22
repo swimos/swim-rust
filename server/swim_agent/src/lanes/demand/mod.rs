@@ -52,7 +52,7 @@ impl<T> Default for DemandLaneInner<T> {
 }
 
 /// A lane that is a stateless analogue of [`super::value::ValueLane`]. Rather than maintaining
-/// a persistent state that can be queried, a demand lane computes a value, on demand, that is that 
+/// a persistent state that can be queried, a demand lane computes a value, on demand, that is that
 /// is sent on all uplinks attached to it.
 pub struct DemandLane<T> {
     id: u64,
