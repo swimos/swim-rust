@@ -104,7 +104,7 @@ impl<'a> LaneLifecycleBuilder<'a> {
             }
             ItemLifecycle::Demand(DemandLifecycleDescriptor { on_cue, .. }) => {
                 parse_quote! {
-                    #root::lanes::demand::lifecycle::StatefulDemandLaneLifecycle::on_command(
+                    #root::lanes::demand::lifecycle::StatefulDemandLaneLifecycle::on_cue(
                         <#root::lanes::demand::lifecycle::StatefulDemandLaneLifecycle::<#agent_type, #lifecycle_type, _> as ::core::default::Default>::default(),
                         #lifecycle_type::#on_cue
                     )
