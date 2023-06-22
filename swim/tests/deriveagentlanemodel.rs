@@ -23,7 +23,7 @@ use swim::agent::reexport::bytes::BytesMut;
 use swim::agent::reexport::uuid::Uuid;
 use swim::agent::AgentLaneModel;
 use swim_agent::agent_model::ItemKind;
-use swim_agent::lanes::JoinValueLane;
+use swim_agent::lanes::{DemandLane, JoinValueLane};
 use swim_agent::stores::{MapStore, ValueStore};
 
 const SYNC_ID: Uuid = Uuid::from_u128(85883);
@@ -200,6 +200,16 @@ fn single_command_lane() {
 }
 
 #[test]
+fn single_demand_lane() {
+    #[derive(AgentLaneModel)]
+    struct SingleDemandLane {
+        lane: DemandLane<i32>,
+    }
+
+    check_agent::<SingleDemandLane>(vec![transient("lane")], vec![]);
+}
+
+#[test]
 fn two_value_lanes() {
     #[derive(AgentLaneModel)]
     struct TwoValueLanes {
@@ -261,6 +271,17 @@ fn two_command_lanes() {
 }
 
 #[test]
+fn two_demand_lanes() {
+    #[derive(AgentLaneModel)]
+    struct TwoDemandLanes {
+        first: DemandLane<i32>,
+        second: DemandLane<i32>,
+    }
+
+    check_agent::<TwoDemandLanes>(vec![transient("first"), transient("second")], vec![]);
+}
+
+#[test]
 fn mixed_lanes() {
     #[derive(AgentLaneModel)]
     struct MixedLanes {
@@ -295,10 +316,16 @@ fn multiple_lanes() {
         fourth: MapLane<i32, i32>,
         fifth: CommandLane<i32>,
         sixth: JoinValueLane<i32, i32>,
+        seventh: DemandLane<i32>,
     }
 
     check_agent::<MultipleLanes>(
-        vec![persistent("first"), persistent("third"), transient("fifth")],
+        vec![
+            persistent("first"),
+            persistent("third"),
+            transient("fifth"),
+            transient("seventh"),
+        ],
         vec![
             persistent("second"),
             persistent("fourth"),
@@ -390,6 +417,18 @@ fn command_lane_tagged_transient() {
 }
 
 #[test]
+fn demand_lane_tagged_transient() {
+    #[derive(AgentLaneModel)]
+    struct TwoDemandLanes {
+        #[transient]
+        first: DemandLane<i32>,
+        second: DemandLane<i32>,
+    }
+
+    check_agent::<TwoDemandLanes>(vec![transient("first"), transient("second")], vec![]);
+}
+
+#[test]
 fn single_join_value_lane() {
     #[derive(AgentLaneModel)]
     struct SingleJoinValueLane {
@@ -438,6 +477,7 @@ mod isolated {
             sixth: swim::agent::stores::ValueStore<i32>,
             seventh: swim::agent::stores::MapStore<i32, i32>,
             eighth: swim::agent::lanes::JoinValueLane<i32, i32>,
+            ninth: swim::agent::lanes::DemandLane<i32>,
         }
 
         check_agent_with_stores::<MultipleLanes>(
@@ -446,6 +486,7 @@ mod isolated {
                 persistent_lane("third"),
                 transient_lane("fifth"),
                 persistent_store("sixth"),
+                transient_lane("ninth"),
             ],
             vec![
                 persistent_lane("second"),
