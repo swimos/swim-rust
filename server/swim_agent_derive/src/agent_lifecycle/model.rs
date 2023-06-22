@@ -22,7 +22,7 @@ use swim_utilities::errors::{
 use syn::{
     parse_quote, AngleBracketedGenericArguments, Attribute, AttributeArgs, FnArg, GenericArgument,
     GenericParam, Ident, ImplItem, ImplItemMethod, Item, Lit, Meta, NestedMeta, Path,
-    PathArguments, PathSegment, ReturnType, Signature, Type, TypePath, TypeReference,
+    PathArguments, PathSegment, ReturnType, Signature, Type, TypePath, TypeReference, TypeImplTrait, TraitBound, TypeParamBound, Binding,
 };
 
 use super::tree::BinTree;
@@ -295,6 +295,15 @@ fn validate_method_as<'a>(
                     }
                     Validation::valid(acc)
                 }),
+            HandlerKind::Cue => Validation::join(acc, validate_cue_sig(sig))
+            .and_then(|(mut acc, t)| {
+                for target in targets {
+                    if let Err(e) = acc.add_on_cue(target, t, &sig.ident) {
+                        return Validation::Validated(acc, Errors::of(e));
+                    }
+                }
+                Validation::valid(acc)
+            }),
             HandlerKind::Event => {
                 Validation::join(acc, validate_typed_sig(sig, 1, true)).and_then(|(mut acc, t)| {
                     for target in targets {
@@ -454,6 +463,76 @@ fn extract_join_value_params<'a>(
     }
 }
 
+fn validate_cue_sig(
+    sig: &Signature,
+) -> Validation<Option<&Type>, Errors<syn::Error>> {
+    let iter = sig.inputs.iter();
+    let inputs = check_receiver(sig, iter)
+        .and_then(|mut iter| {
+            if iter.next().is_none() {
+                Validation::fail(syn::Error::new_spanned(sig, REQUIRED_CONTEXT))
+            } else {
+                Validation::valid(iter)
+            }
+        })
+        .and_then(|iter| {
+            let param_types = extract_types(iter);
+            if param_types.is_empty() {
+                Validation::valid(())
+            } else {
+                Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
+            }
+        });
+    let output = match &sig.output {
+        ReturnType::Default => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+        ReturnType::Type(_, t) => extract_cue_ret(sig, t.as_ref()),
+    };
+    inputs.join(output).map(|(_, t)| t)
+}
+
+const HANDLER_ACTION_NAME: &str = "HandlerAction";
+const EVENT_HANDLER_NAME: &str = "EventHandler";
+const COMPLETION_ASSOC_NAME: &str = "Completion";
+
+fn extract_cue_ret<'a>(sig: &'a Signature, ret_type: &'a Type) -> Validation<Option<&'a Type>, Errors<syn::Error>> {
+    match ret_type {
+        Type::ImplTrait(TypeImplTrait { bounds, .. }) => {
+            if let Some(params) = bounds.iter().find_map(|bound| {
+                match bound {
+                    TypeParamBound::Trait(TraitBound { path, ..}) => {
+                        if let Some(PathSegment { ident, arguments }) = path.segments.last() {
+                            if ident == HANDLER_ACTION_NAME || ident == EVENT_HANDLER_NAME {
+                                Some(arguments)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    },
+                    _ => None,
+                }
+            }) {
+                match params {
+                    PathArguments::AngleBracketed(AngleBracketedGenericArguments { args, .. }) => {
+                        let completion_type = args.iter().find_map(|arg| {
+                            match arg {
+                                GenericArgument::Binding(Binding { ident, ty, .. }) if ident == COMPLETION_ASSOC_NAME => Some(ty),
+                                _ => None,
+                            }
+                        });
+                        Validation::valid(completion_type)
+                    },
+                    _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+                }
+            } else {
+                Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
+            }
+        },
+        _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+    }
+}
+
 /// Check a method for use as a lane lifecycle handler. Returns the type that the lane should
 /// have.
 fn validate_typed_sig(
@@ -559,6 +638,7 @@ fn get_kind(attr: &Attribute) -> Option<Result<(HandlerKind, Vec<String>), syn::
             ON_START => Some(HandlerKind::Start),
             ON_STOP => Some(HandlerKind::Stop),
             ON_COMMAND => Some(HandlerKind::Command),
+            ON_CUE => Some(HandlerKind::Cue),
             ON_EVENT => Some(HandlerKind::Event),
             ON_SET => Some(HandlerKind::Set),
             ON_UPDATE => Some(HandlerKind::Update),
@@ -631,6 +711,7 @@ enum HandlerKind {
     Stop,
     StartAndStop, // Indicates that a single method is used for the on_start and on_stop events.
     Command,
+    Cue,
     Event,
     Set,
     Update,
@@ -662,6 +743,7 @@ impl HandlerKind {
 const ON_START: &str = "on_start";
 const ON_STOP: &str = "on_stop";
 const ON_COMMAND: &str = "on_command";
+const ON_CUE: &str = "on_cue";
 const ON_EVENT: &str = "on_event";
 const ON_SET: &str = "on_set";
 const ON_UPDATE: &str = "on_update";
@@ -850,6 +932,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                 method,
                 format!("Duplicate on_command handler for '{}'.", name),
             )),
+            Some(ItemLifecycle::Demand(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both command and demand lane event handlers.",
+                    name
+                ),
+            )),
             Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
@@ -878,6 +967,55 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
         }
     }
 
+    pub fn add_on_cue(
+        &mut self,
+        name: String,
+        handler_type: Option<&'a Type>,
+        method: &'a Ident,
+    ) -> Result<(), syn::Error> {
+        let AgentLifecycleDescriptorBuilder {
+            lane_lifecycles, ..
+        } = self;
+        match lane_lifecycles.get(&name) {
+            Some(ItemLifecycle::Command(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand and command lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Demand(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!("Duplicate on_cue handler for '{}'.", name),
+            )),
+            Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both command and value lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Map(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both command and map lane event handlers.",
+                    name
+                ),
+            )),
+            _ => {
+                lane_lifecycles.insert(
+                    name.clone(),
+                    ItemLifecycle::Demand(DemandLifecycleDescriptor::new(
+                        name,
+                        handler_type,
+                        method,
+                    )),
+                );
+                Ok(())
+            }
+        }
+    }
+
     pub fn add_on_event(
         &mut self,
         name: String,
@@ -892,6 +1030,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                 method,
                 format!(
                     "Lane '{}' has both command and value lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Demand(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand and value lane event handlers.",
                     name
                 ),
             )),
@@ -931,6 +1076,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                 method,
                 format!(
                     "Lane '{}' has both command and value lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Demand(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand and value lane event handlers.",
                     name
                 ),
             )),
@@ -974,6 +1126,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     name
                 ),
             )),
+            Some(ItemLifecycle::Demand(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand and map lane event handlers.",
+                    name
+                ),
+            )),
             Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
@@ -1010,6 +1169,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                 method,
                 format!(
                     "Lane '{}' has both command and map lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Demand(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand and map lane event handlers.",
                     name
                 ),
             )),
@@ -1052,6 +1218,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     name
                 ),
             )),
+            Some(ItemLifecycle::Demand(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand and map lane event handlers.",
+                    name
+                ),
+            )),
             Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
@@ -1078,6 +1251,7 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
 pub enum ItemLifecycle<'a> {
     Value(ValueLifecycleDescriptor<'a>),
     Command(CommandLifecycleDescriptor<'a>),
+    Demand(DemandLifecycleDescriptor<'a>),
     Map(MapLifecycleDescriptor<'a>),
 }
 
@@ -1086,6 +1260,7 @@ impl<'a> ItemLifecycle<'a> {
         let name = match self {
             ItemLifecycle::Value(ValueLifecycleDescriptor { name, .. }) => name,
             ItemLifecycle::Command(CommandLifecycleDescriptor { name, .. }) => name,
+            ItemLifecycle::Demand(DemandLifecycleDescriptor { name, .. }) => name,
             ItemLifecycle::Map(MapLifecycleDescriptor { name, .. }) => name,
         };
         name.as_str()
@@ -1108,6 +1283,11 @@ impl<'a> ItemLifecycle<'a> {
             ItemLifecycle::Command(CommandLifecycleDescriptor { .. }) => {
                 parse_quote! {
                     #root::agent_lifecycle::item_event::CommandBranch
+                }
+            }
+            ItemLifecycle::Demand(DemandLifecycleDescriptor { .. }) => {
+                parse_quote! {
+                    #root::agent_lifecycle::item_event::DemandBranch
                 }
             }
             ItemLifecycle::Map(MapLifecycleDescriptor { .. }) => {
@@ -1198,7 +1378,7 @@ impl<'a> ValueLifecycleDescriptor<'a> {
 }
 
 pub struct CommandLifecycleDescriptor<'a> {
-    pub name: String, //The nam eo the lane.
+    pub name: String, //The name of the lane.
     pub primary_lane_type: &'a Type,
     pub on_command: &'a Ident,
 }
@@ -1209,6 +1389,22 @@ impl<'a> CommandLifecycleDescriptor<'a> {
             name,
             primary_lane_type,
             on_command,
+        }
+    }
+}
+
+pub struct DemandLifecycleDescriptor<'a> {
+    pub name: String, //The name of the lane.
+    pub primary_lane_type: Option<&'a Type>,
+    pub on_cue: &'a Ident,
+}
+
+impl<'a> DemandLifecycleDescriptor<'a> {
+    pub fn new(name: String, primary_lane_type: Option<&'a Type>, on_cue: &'a Ident) -> Self {
+        DemandLifecycleDescriptor {
+            name,
+            primary_lane_type,
+            on_cue,
         }
     }
 }
