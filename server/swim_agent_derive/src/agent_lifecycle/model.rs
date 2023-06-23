@@ -20,9 +20,10 @@ use swim_utilities::errors::{
     Errors,
 };
 use syn::{
-    parse_quote, AngleBracketedGenericArguments, Attribute, AttributeArgs, FnArg, GenericArgument,
-    GenericParam, Ident, ImplItem, ImplItemMethod, Item, Lit, Meta, NestedMeta, Path,
-    PathArguments, PathSegment, ReturnType, Signature, Type, TypePath, TypeReference, TypeImplTrait, TraitBound, TypeParamBound, Binding,
+    parse_quote, AngleBracketedGenericArguments, Attribute, AttributeArgs, Binding, FnArg,
+    GenericArgument, GenericParam, Ident, ImplItem, ImplItemMethod, Item, Lit, Meta, NestedMeta,
+    Path, PathArguments, PathSegment, ReturnType, Signature, TraitBound, Type, TypeImplTrait,
+    TypeParamBound, TypePath, TypeReference,
 };
 
 use super::tree::BinTree;
@@ -295,15 +296,16 @@ fn validate_method_as<'a>(
                     }
                     Validation::valid(acc)
                 }),
-            HandlerKind::Cue => Validation::join(acc, validate_cue_sig(sig))
-            .and_then(|(mut acc, t)| {
-                for target in targets {
-                    if let Err(e) = acc.add_on_cue(target, t, &sig.ident) {
-                        return Validation::Validated(acc, Errors::of(e));
+            HandlerKind::Cue => {
+                Validation::join(acc, validate_cue_sig(sig)).and_then(|(mut acc, t)| {
+                    for target in targets {
+                        if let Err(e) = acc.add_on_cue(target, t, &sig.ident) {
+                            return Validation::Validated(acc, Errors::of(e));
+                        }
                     }
-                }
-                Validation::valid(acc)
-            }),
+                    Validation::valid(acc)
+                })
+            }
             HandlerKind::Event => {
                 Validation::join(acc, validate_typed_sig(sig, 1, true)).and_then(|(mut acc, t)| {
                     for target in targets {
@@ -463,9 +465,7 @@ fn extract_join_value_params<'a>(
     }
 }
 
-fn validate_cue_sig(
-    sig: &Signature,
-) -> Validation<Option<&Type>, Errors<syn::Error>> {
+fn validate_cue_sig(sig: &Signature) -> Validation<Option<&Type>, Errors<syn::Error>> {
     let iter = sig.inputs.iter();
     let inputs = check_receiver(sig, iter)
         .and_then(|mut iter| {
@@ -494,41 +494,46 @@ const HANDLER_ACTION_NAME: &str = "HandlerAction";
 const EVENT_HANDLER_NAME: &str = "EventHandler";
 const COMPLETION_ASSOC_NAME: &str = "Completion";
 
-fn extract_cue_ret<'a>(sig: &'a Signature, ret_type: &'a Type) -> Validation<Option<&'a Type>, Errors<syn::Error>> {
+fn extract_cue_ret<'a>(
+    sig: &'a Signature,
+    ret_type: &'a Type,
+) -> Validation<Option<&'a Type>, Errors<syn::Error>> {
     match ret_type {
         Type::ImplTrait(TypeImplTrait { bounds, .. }) => {
-            if let Some(params) = bounds.iter().find_map(|bound| {
-                match bound {
-                    TypeParamBound::Trait(TraitBound { path, ..}) => {
-                        if let Some(PathSegment { ident, arguments }) = path.segments.last() {
-                            if ident == HANDLER_ACTION_NAME || ident == EVENT_HANDLER_NAME {
-                                Some(arguments)
-                            } else {
-                                None
-                            }
+            if let Some(params) = bounds.iter().find_map(|bound| match bound {
+                TypeParamBound::Trait(TraitBound { path, .. }) => {
+                    if let Some(PathSegment { ident, arguments }) = path.segments.last() {
+                        if ident == HANDLER_ACTION_NAME || ident == EVENT_HANDLER_NAME {
+                            Some(arguments)
                         } else {
                             None
                         }
-                    },
-                    _ => None,
+                    } else {
+                        None
+                    }
                 }
+                _ => None,
             }) {
                 match params {
-                    PathArguments::AngleBracketed(AngleBracketedGenericArguments { args, .. }) => {
-                        let completion_type = args.iter().find_map(|arg| {
-                            match arg {
-                                GenericArgument::Binding(Binding { ident, ty, .. }) if ident == COMPLETION_ASSOC_NAME => Some(ty),
-                                _ => None,
+                    PathArguments::AngleBracketed(AngleBracketedGenericArguments {
+                        args, ..
+                    }) => {
+                        let completion_type = args.iter().find_map(|arg| match arg {
+                            GenericArgument::Binding(Binding { ident, ty, .. })
+                                if ident == COMPLETION_ASSOC_NAME =>
+                            {
+                                Some(ty)
                             }
+                            _ => None,
                         });
                         Validation::valid(completion_type)
-                    },
+                    }
                     _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
                 }
             } else {
                 Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
             }
-        },
+        }
         _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
     }
 }
@@ -766,6 +771,7 @@ fn assess_attr(attr: &Attribute) -> bool {
                     ON_START
                         | ON_STOP
                         | ON_COMMAND
+                        | ON_CUE
                         | ON_EVENT
                         | ON_SET
                         | ON_UPDATE

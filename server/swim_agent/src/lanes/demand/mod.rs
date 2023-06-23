@@ -133,16 +133,21 @@ where
     }
 }
 
+enum DemandInner<T, H> {
+    Pending(H),
+    Complete(Option<T>),
+}
+
 pub struct Demand<Context, T, H> {
     projection: fn(&Context) -> &DemandLane<T>,
-    compute_handler: Option<H>,
+    state: DemandInner<T, H>,
 }
 
 impl<Context, T, H> Demand<Context, T, H> {
     pub fn new(projection: fn(&Context) -> &DemandLane<T>, compute_handler: H) -> Self {
         Demand {
             projection,
-            compute_handler: Some(compute_handler),
+            state: DemandInner::Pending(compute_handler),
         }
     }
 }
@@ -159,29 +164,36 @@ where
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
-        let Demand {
-            projection,
-            compute_handler,
-        } = self;
-        if let Some(h) = compute_handler {
-            match h.step(action_context, meta, context) {
+        let Demand { projection, state } = self;
+        match state {
+            DemandInner::Pending(h) => match h.step(action_context, meta, context) {
                 StepResult::Continue { modified_item } => StepResult::Continue { modified_item },
-                StepResult::Fail(err) => StepResult::Fail(err),
+                StepResult::Fail(err) => {
+                    *state = DemandInner::Complete(None);
+                    StepResult::Fail(err)
+                }
                 StepResult::Complete {
                     modified_item,
                     result,
                 } => {
+                    *state = DemandInner::Complete(Some(result));
+                    StepResult::Continue { modified_item }
+                }
+            },
+            DemandInner::Complete(maybe_val) => {
+                if let Some(t) = std::mem::take(maybe_val) {
                     let lane = projection(context);
+
                     let mut guard = lane.inner.borrow_mut();
-                    guard.computed_value = Some(result);
+                    guard.computed_value = Some(t);
                     StepResult::Complete {
-                        modified_item,
+                        modified_item: Some(Modification::no_trigger(lane.id)),
                         result: (),
                     }
+                } else {
+                    StepResult::after_done()
                 }
             }
-        } else {
-            StepResult::after_done()
         }
     }
 }

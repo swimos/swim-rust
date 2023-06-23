@@ -18,8 +18,8 @@ use syn::{parse_quote, Path, Type};
 
 use self::{
     model::{
-        AgentLifecycleDescriptor, CommandLifecycleDescriptor, ItemLifecycle, JoinValueInit,
-        MapLifecycleDescriptor, ValueLifecycleDescriptor, DemandLifecycleDescriptor,
+        AgentLifecycleDescriptor, CommandLifecycleDescriptor, DemandLifecycleDescriptor,
+        ItemLifecycle, JoinValueInit, MapLifecycleDescriptor, ValueLifecycleDescriptor,
     },
     tree::BinTree,
 };

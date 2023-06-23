@@ -28,11 +28,14 @@ use swim::agent::{
 use swim_agent::agent_lifecycle::on_init::OnInit;
 use swim_agent::agent_lifecycle::utility::JoinValueContext;
 use swim_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
-use swim_agent::event_handler::{BoxJoinValueInit, HandlerFuture, Modification, Spawner};
+use swim_agent::event_handler::{
+    BoxJoinValueInit, HandlerAction, HandlerFuture, Modification, Spawner,
+};
 use swim_agent::item::{AgentItem, MapItem};
+use swim_agent::lanes::demand::Cue;
 use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
 use swim_agent::lanes::join_value::{AfterClosed, JoinValueLaneUpdate, LinkClosedResponse};
-use swim_agent::lanes::JoinValueLane;
+use swim_agent::lanes::{DemandLane, JoinValueLane};
 use swim_agent::meta::AgentMetadata;
 use swim_agent::reexport::bytes::BytesMut;
 use swim_agent::stores::{MapStore, ValueStore};
@@ -124,6 +127,7 @@ struct TestAgent {
     value_store: ValueStore<i32>,
     map_store: MapStore<i32, Text>,
     join_value: JoinValueLane<i32, Text>,
+    demand: DemandLane<i32>,
 }
 
 impl From<(i32, i32, HashMap<i32, Text>, i32, HashMap<i32, Text>)> for TestAgent {
@@ -144,6 +148,7 @@ impl From<(i32, i32, HashMap<i32, Text>, i32, HashMap<i32, Text>)> for TestAgent
             value_store: ValueStore::new(4, val_store_init),
             map_store: MapStore::new(5, map_store_init),
             join_value: JoinValueLane::new(6),
+            demand: DemandLane::new(7),
         }
     }
 }
@@ -167,6 +172,7 @@ enum Event {
     Value(ValueEvent<i32>),
     Command(i32),
     Map(MapEvent),
+    Cued,
 }
 
 #[derive(Clone, Default)]
@@ -202,31 +208,43 @@ fn make_meta<'a>(
 fn run_handler_mod<Agent, H: EventHandler<Agent>>(
     agent: &Agent,
     mut handler: H,
-    modified: Option<u64>,
+    modified: Option<Modification>,
 ) {
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_value_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
+    let mut seen_mod = None;
     loop {
         match handler.step(
             &mut dummy_context(&mut join_value_init, &mut ad_hoc_buffer),
             meta,
             agent,
         ) {
-            StepResult::Continue { modified_item } => {
-                assert_eq!(modified_item, modified.map(Modification::of));
-            }
+            StepResult::Continue { modified_item } => match (&seen_mod, &modified_item) {
+                (None, _) => seen_mod = modified_item,
+                (Some(m1), Some(m2)) => {
+                    assert_eq!(m1, m2);
+                }
+                _ => {}
+            },
             StepResult::Fail(e) => {
                 panic!("{}", e);
             }
             StepResult::Complete { modified_item, .. } => {
-                assert_eq!(modified_item, modified.map(Modification::of));
+                match (&seen_mod, &modified_item) {
+                    (None, _) => seen_mod = modified_item,
+                    (Some(m1), Some(m2)) => {
+                        assert_eq!(m1, m2);
+                    }
+                    _ => {}
+                }
                 break;
             }
         }
     }
+    assert_eq!(seen_mod, modified);
     assert!(join_value_init.is_empty());
     assert!(ad_hoc_buffer.is_empty());
 }
@@ -1388,7 +1406,7 @@ fn update_join_value<K, V>(
 {
     let handler = JoinValueLaneUpdate::new(projection, key, value);
     let id = projection(agent).id();
-    run_handler_mod(agent, handler, Some(id));
+    run_handler_mod(agent, handler, Some(Modification::of(id)));
 }
 
 fn remove_join_value<K, V>(
@@ -1400,7 +1418,7 @@ fn remove_join_value<K, V>(
 {
     let handler = AfterClosed::new(projection, key, LinkClosedResponse::Delete);
     let id = projection(agent).id();
-    run_handler_mod(agent, handler, Some(id));
+    run_handler_mod(agent, handler, Some(Modification::of(id)));
 }
 
 #[test]
@@ -1492,4 +1510,50 @@ fn register_two_join_value_lifecycles() {
     assert!(join_value_init.contains_key(&lane_id1));
     assert!(join_value_init.contains_key(&lane_id2));
     assert!(ad_hoc_buffer.is_empty());
+}
+
+#[test]
+fn on_cue_handler() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(LifecycleInner);
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_cue(demand)]
+        fn my_on_cue(
+            &self,
+            context: HandlerContext<TestAgent>,
+        ) -> impl HandlerAction<TestAgent, Completion = i32> + '_ {
+            context.effect(move || {
+                self.0.push(Event::Cued);
+                38
+            })
+        }
+    }
+
+    let agent = TestAgent::default();
+    let template = TestLifecycle::default();
+    let lifecycle = template.clone().into_lifecycle();
+
+    let cue_handler = Cue::new(|agent: &TestAgent| &agent.demand);
+
+    run_handler_mod(
+        &agent,
+        cue_handler,
+        Some(Modification::of(agent.demand.id())),
+    );
+
+    let handler = lifecycle
+        .item_event(&agent, "demand")
+        .expect("Expected handler for lane.");
+
+    run_handler_mod(
+        &agent,
+        handler,
+        Some(Modification::no_trigger(agent.demand.id())),
+    );
+
+    let events = template.0.take();
+
+    assert_eq!(events, vec![Event::Cued]);
 }

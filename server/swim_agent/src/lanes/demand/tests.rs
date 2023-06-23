@@ -171,10 +171,23 @@ fn demand_event_handler_no_modify() {
 
     assert!(matches!(
         result,
-        StepResult::Complete {
+        StepResult::Continue {
             modified_item: None,
-            result: ()
         }
+    ));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+
+    assert!(matches!(
+        result,
+        StepResult::Complete {
+            modified_item: Some(Modification { item_id, trigger_handler: false }),
+            result: ()
+        } if item_id == LANE_ID
     ));
 
     let guard = agent.lane.inner.borrow();
@@ -259,10 +272,23 @@ fn demand_event_handler_with_mod() {
 
     assert!(matches!(
         result,
-        StepResult::Complete {
+        StepResult::Continue {
             modified_item: None,
-            result: ()
         }
+    ));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+
+    assert!(matches!(
+        result,
+        StepResult::Complete {
+            modified_item: Some(Modification { item_id, trigger_handler: false }),
+            result: ()
+        } if item_id == LANE_ID
     ));
 
     let guard = agent.lane.inner.borrow();
