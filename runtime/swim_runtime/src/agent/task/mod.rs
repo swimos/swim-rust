@@ -629,7 +629,7 @@ fn remote_receiver(reader: ByteReader) -> RemoteReceiver {
     RemoteReceiver::new(reader, Default::default())
 }
 
-const TASK_COORD_ERR: &str = "Stopping after communcating with the write task failed.";
+const TASK_COORD_ERR: &str = "Stopping after communicating with the write task failed.";
 const STOP_VOTED: &str = "Stopping as read and write tasks have both voted to do so.";
 
 /// Events that can occur within the read task.

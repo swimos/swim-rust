@@ -56,4 +56,9 @@ impl Timestamp {
     pub fn nanos(&self) -> i64 {
         self.0.timestamp_nanos()
     }
+
+    /// Returns the number of non-leap-milliseconds since January 1, 1970 UTC.
+    pub fn millis(&self) -> i64 {
+        self.0.timestamp_millis()
+    }
 }
