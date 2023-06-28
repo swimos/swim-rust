@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use crate::TriggerError;
-use futures::pin_mut;
 use futures::task::{waker_ref, ArcWake};
 use std::future::Future;
+use std::pin::pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -78,7 +78,7 @@ fn trigger_after_pending() {
     let waker = waker_ref(&arc_waker);
     let mut context = Context::from_waker(&waker);
     let (tx, rx) = super::trigger();
-    pin_mut!(rx);
+    let mut rx = pin!(rx);
 
     assert_eq!(rx.as_mut().poll(&mut context), Poll::Pending);
 
@@ -101,7 +101,7 @@ fn drop_after_pending() {
     let waker = waker_ref(&arc_waker);
     let mut context = Context::from_waker(&waker);
     let (tx, rx) = super::trigger();
-    pin_mut!(rx);
+    let mut rx = pin!(rx);
 
     assert_eq!(rx.as_mut().poll(&mut context), Poll::Pending);
 

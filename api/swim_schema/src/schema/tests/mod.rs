@@ -3452,10 +3452,7 @@ fn compare_anything() {
     let mut cmp_schemas = all_schemas();
     cmp_schemas.remove("anything");
 
-    assert_greater_than(
-        schema,
-        cmp_schemas.into_iter().map(|(_, schema)| schema).collect(),
-    );
+    assert_greater_than(schema, cmp_schemas.into_values().collect());
 }
 
 #[test]
@@ -3464,10 +3461,7 @@ fn compare_nothing() {
     let mut cmp_schemas = all_schemas();
     cmp_schemas.remove("nothing");
 
-    assert_less_than(
-        schema,
-        cmp_schemas.into_iter().map(|(_, schema)| schema).collect(),
-    );
+    assert_less_than(schema, cmp_schemas.into_values().collect());
 }
 
 #[test]
@@ -3710,7 +3704,7 @@ fn compare_of_kind_u32() {
         )),
         StandardSchema::InRangeUint(Range::<u64>::bounded(
             Bound::inclusive(10),
-            Bound::inclusive(u64::MAX as u64),
+            Bound::inclusive(u64::MAX),
         )),
         StandardSchema::InRangeUint(Range::<u64>::lower_bounded(Bound::inclusive(10))),
         StandardSchema::InRangeBigInt(Range::<BigInt>::bounded(

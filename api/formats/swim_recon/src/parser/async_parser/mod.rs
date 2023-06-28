@@ -30,7 +30,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio_util::codec::Decoder;
 
 /// Error type for reading a configuration document.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub enum AsyncParseError {
     /// An IO error occurred reading the source data.
     Io(tokio::io::Error),
@@ -39,13 +39,8 @@ pub enum AsyncParseError {
     /// An error occurred attempting to parse the valid UTF8 input.
     Parser(ParseError),
     /// Some of the input string was not consumed by the parser.
+    #[default]
     UnconsumedInput,
-}
-
-impl Default for AsyncParseError {
-    fn default() -> Self {
-        AsyncParseError::UnconsumedInput
-    }
 }
 
 impl Display for AsyncParseError {

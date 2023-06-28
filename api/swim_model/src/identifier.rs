@@ -28,9 +28,9 @@
 ///
 /// ```
 pub fn is_identifier_start(c: char) -> bool {
-    ('A'..='Z').contains(&c)
+    c.is_ascii_uppercase()
         || c == '_'
-        || ('a'..='z').contains(&c)
+        || c.is_ascii_lowercase()
         || c == '\u{b7}'
         || ('\u{c0}'..='\u{d6}').contains(&c)
         || ('\u{d8}'..='\u{f6}').contains(&c)
@@ -62,7 +62,7 @@ pub fn is_identifier_start(c: char) -> bool {
 ///
 /// ```
 pub fn is_identifier_char(c: char) -> bool {
-    is_identifier_start(c) || c == '-' || ('0'..='9').contains(&c)
+    is_identifier_start(c) || c == '-' || c.is_ascii_digit()
 }
 
 /// Determine if a string is a valid Recon identifier.

@@ -29,9 +29,10 @@ use crate::{num, Attr, Item};
 
 /// The core Swim model type. A recursive data type that can be represented in text as a Recon
 /// document.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum Value {
     /// A defined but empty value.
+    #[default]
     Extant,
     /// A 32-bit integer wrapped as a [`Value`].
     Int32Value(i32),
@@ -570,12 +571,6 @@ impl Value {
     }
 }
 
-impl Default for Value {
-    fn default() -> Self {
-        Value::Extant
-    }
-}
-
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match self {
@@ -755,7 +750,7 @@ impl Hash for Value {
             Value::BigInt(bi) => {
                 if let Some(n) = bi.to_i128() {
                     state.write_u8(INT_HASH);
-                    state.write_i128(n as i128);
+                    state.write_i128(n);
                 } else {
                     state.write_u8(BIGINT_HASH);
                     bi.hash(state);
@@ -764,7 +759,7 @@ impl Hash for Value {
             Value::BigUint(bi) => {
                 if let Some(n) = bi.to_i128() {
                     state.write_u8(INT_HASH);
-                    state.write_i128(n as i128);
+                    state.write_i128(n);
                 } else if let Some(n) = bi.to_bigint() {
                     state.write_u8(BIGINT_HASH);
                     n.hash(state);

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, num::NonZeroUsize, sync::Arc};
+use std::{cell::RefCell, num::NonZeroUsize, pin::pin, sync::Arc};
 
-use futures::{future::join3, pin_mut, SinkExt, StreamExt};
+use futures::{future::join3, SinkExt, StreamExt};
 use parking_lot::Mutex;
 use swim_api::protocol::downlink::{
     DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation, DownlinkOperationDecoder,
@@ -415,8 +415,7 @@ async fn revive_unlinked_downlink() {
 async fn value_downlink_writer() {
     let (set_tx, set_rx) = circular_buffer::watch_channel::<i32>();
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
-    let stream = value_dl_write_stream(tx, set_rx);
-    pin_mut!(stream);
+    let mut stream = pin!(value_dl_write_stream(tx, set_rx));
 
     let mut receiver = FramedRead::new(rx, DownlinkOperationDecoder);
 

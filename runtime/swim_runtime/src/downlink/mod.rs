@@ -162,8 +162,8 @@ where
     F1: Future<Output = Result<(), E>>,
     F2: Future<Output = ()>,
 {
-    pin_mut!(read);
-    pin_mut!(write);
+    let read = pin!(read);
+    let write = pin!(write);
     let first_finished = select(read, write).await;
     kill_switch_tx.trigger();
     match first_finished {
@@ -1071,7 +1071,7 @@ async fn write_task<B: DownlinkBackpressure>(
                 // It is necessary for the write to be pinned. Rather than putting it into a heap
                 // allocation, it is instead pinned to the stack and another, inner loop is started
                 // until the write completes.
-                pin_mut!(write_fut);
+                let mut write_fut = pin!(write_fut);
                 'inner: loop {
                     let result = if registered.is_empty() {
                         task_state.remove(WriteTaskState::NEEDS_SYNC);
@@ -1152,7 +1152,7 @@ async fn write_task<B: DownlinkBackpressure>(
 }
 
 use futures::ready;
-use std::pin::Pin;
+use std::pin::{pin, Pin};
 use std::task::{Context, Poll};
 use swim_utilities::non_zero_usize;
 

@@ -646,8 +646,7 @@ fn calculate_chunk_size(node_capacity: usize, coord_count: usize, entries_count:
         unreachable!()
     };
 
-    let chunk_size = node_capacity * (vertical_chunks.pow((coord_count - 1) as f64) as usize);
-    chunk_size as usize
+    node_capacity * (vertical_chunks.pow((coord_count - 1) as f64) as usize)
 }
 
 #[derive(Debug, Clone)]
