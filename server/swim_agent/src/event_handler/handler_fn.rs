@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use crate::agent_lifecycle::utility::HandlerContext;
 
-use super::EventHandler;
+use super::{EventHandler, HandlerAction};
 
 pub trait HandlerFn0<'a, Context, Shared> {
     type Handler: EventHandler<Context> + 'a;
@@ -297,5 +297,63 @@ where
         new_value: &B,
     ) -> Self::Handler {
         self(shared, handler_context, map, key, prev_value, new_value)
+    }
+}
+
+pub trait CueFn0<'a, T, Context, Shared> {
+    type Handler: HandlerAction<Context, Completion = T> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+    ) -> Self::Handler;
+}
+
+impl<'a, T, Context, Shared, F, H> CueFn0<'a, T, Context, Shared> for F
+where
+    H: HandlerAction<Context, Completion = T> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>) -> H + 'a,
+    Shared: 'a,
+    T: 'static,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+    ) -> Self::Handler {
+        self(shared, handler_context)
+    }
+}
+
+pub trait CueFn1<'a, In, Out, Context, Shared> {
+    type Handler: HandlerAction<Context, Completion = Out> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: In,
+    ) -> Self::Handler;
+}
+
+impl<'a, In, Out, Context, Shared, F, H> CueFn1<'a, In, Out, Context, Shared> for F
+where
+    H: HandlerAction<Context, Completion = Out> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, In) -> H + 'a,
+    Shared: 'a,
+    Out: 'static,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        value: In,
+    ) -> Self::Handler {
+        self(shared, handler_context, value)
     }
 }

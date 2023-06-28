@@ -14,8 +14,10 @@
 
 pub mod command;
 pub mod demand;
+pub mod demand_map;
 pub mod join_value;
 pub mod map;
+mod queues;
 pub mod value;
 
 use bytes::BytesMut;
@@ -23,8 +25,8 @@ use bytes::BytesMut;
 use crate::{agent_model::WriteResult, item::AgentItem};
 
 pub use self::{
-    command::CommandLane, demand::DemandLane, join_value::JoinValueLane, map::MapLane,
-    value::ValueLane,
+    command::CommandLane, demand::DemandLane, demand_map::DemandMapLane, join_value::JoinValueLane,
+    map::MapLane, value::ValueLane,
 };
 
 /// Wrapper to allow projection function pointers to be exposed as event handler transforms

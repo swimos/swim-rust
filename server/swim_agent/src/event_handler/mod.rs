@@ -62,8 +62,8 @@ pub use suspend::{run_after, run_schedule, HandlerFuture, Spawner, Suspend};
 
 pub use command::SendCommand;
 pub use handler_fn::{
-    EventConsumeFn, EventFn, HandlerFn0, MapRemoveFn, MapUpdateBorrowFn, MapUpdateFn, TakeFn,
-    UpdateBorrowFn, UpdateFn,
+    CueFn0, CueFn1, EventConsumeFn, EventFn, HandlerFn0, MapRemoveFn, MapUpdateBorrowFn,
+    MapUpdateFn, TakeFn, UpdateBorrowFn, UpdateFn,
 };
 
 use self::register_downlink::RegisterHostedDownlink;

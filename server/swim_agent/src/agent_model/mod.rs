@@ -1004,9 +1004,11 @@ where
             match task_event {
                 TaskEvent::WriteComplete { writer, result } => {
                     match result {
-                        Ok(true) => { // The event handler for the item needs to be executed.
+                        Ok(true) => {
+                            // The event handler for the item needs to be executed.
                             let lane = &item_ids[&writer.lane_id()];
-                            if let Some(handler) = lifecycle.item_event(&item_model, lane.as_str()) {
+                            if let Some(handler) = lifecycle.item_event(&item_model, lane.as_str())
+                            {
                                 match run_handler(
                                     &mut ActionContext::new(
                                         &suspended,
@@ -1023,7 +1025,9 @@ where
                                     &mut dirty_items,
                                 ) {
                                     Err(EventHandlerError::StopInstructed) => break Ok(()),
-                                    Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
+                                    Err(e) => {
+                                        break Err(AgentTaskError::UserCodeError(Box::new(e)))
+                                    }
                                     Ok(_) => check_cmds(
                                         &mut ad_hoc_buffer,
                                         &mut cmd_writer,
@@ -1032,9 +1036,9 @@ where
                                     ),
                                 }
                             }
-                        },
+                        }
                         Err(_) => break Ok(()), //Failing to write indicates that the runtime has stopped so we can exit without an error.
-                        _ => {},
+                        _ => {}
                     }
                     item_writers.insert(writer.lane_id(), writer);
                 }
@@ -1367,7 +1371,10 @@ where
     }
 }
 
-async fn do_write(writer: ItemWriter, requires_event: bool) -> (ItemWriter, Result<bool, std::io::Error>) {
+async fn do_write(
+    writer: ItemWriter,
+    requires_event: bool,
+) -> (ItemWriter, Result<bool, std::io::Error>) {
     let (writer, result) = writer.write().await;
     (writer, result.map(move |_| requires_event))
 }
