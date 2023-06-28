@@ -22,7 +22,7 @@ use bitflags::bitflags;
 use bytes::BytesMut;
 use futures::future::{join, select, Either};
 use futures::stream::SelectAll;
-use futures::{pin_mut, Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
+use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
 pub use interpretation::MapInterpretation;
 pub use interpretation::NoInterpretation;
 use swim_api::protocol::downlink::{DownlinkNotification, DownlinkNotificationEncoder};
