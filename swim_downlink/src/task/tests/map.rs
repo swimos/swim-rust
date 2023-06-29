@@ -634,7 +634,6 @@ async fn rx_take_elem_downlink() {
             expect_event(&mut event_rx, TestMessage::Linked).await;
 
             let state = (0..5)
-                .into_iter()
                 .map(|i| (i, i))
                 .collect::<BTreeMap<i32, i32>>();
             expect_event(&mut event_rx, TestMessage::Synced(state)).await;
@@ -705,7 +704,6 @@ async fn handle_take_elem_downlink() {
             expect_event(&mut event_rx, TestMessage::Linked).await;
 
             let state = (0..5)
-                .into_iter()
                 .map(|i| (i, i))
                 .collect::<BTreeMap<i32, i32>>();
             expect_event(&mut event_rx, TestMessage::Synced(state)).await;
@@ -765,7 +763,6 @@ async fn rx_drop_elem_downlink() {
             expect_event(&mut event_rx, TestMessage::Linked).await;
 
             let state = (0..5)
-                .into_iter()
                 .map(|i| (i, i))
                 .collect::<BTreeMap<i32, i32>>();
             expect_event(&mut event_rx, TestMessage::Synced(state)).await;
@@ -831,7 +828,6 @@ async fn handle_drop_elem_downlink() {
             expect_event(&mut event_rx, TestMessage::Linked).await;
 
             let state = (0..5)
-                .into_iter()
                 .map(|i| (i, i))
                 .collect::<BTreeMap<i32, i32>>();
             expect_event(&mut event_rx, TestMessage::Synced(state)).await;
