@@ -14,25 +14,22 @@
 
 use std::{error::Error, time::Duration};
 
-use example_util::manage_handle;
+use agent::{ProducerAgent, ProducerLifecycle};
 use swim::{
     agent::agent_model::AgentModel,
     route::RoutePattern,
-    server::{Server, ServerBuilder},
+    server::{BoxServer, ServerBuilder},
 };
-
-use crate::agent::{EventGenerator, ExampleAgent};
 
 mod agent;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let route = RoutePattern::parse_str("/:name")?;
+pub async fn make_server() -> Result<BoxServer, Box<dyn Error>> {
+    let route = RoutePattern::parse_str("/producer/:name}")?;
 
-    let lifecycle = EventGenerator::new(Duration::from_secs(5));
-    let agent = AgentModel::new(ExampleAgent::default, lifecycle.into_lifecycle());
+    let lifecycle = ProducerLifecycle;
+    let agent = AgentModel::new(ProducerAgent::default, lifecycle.into_lifecycle());
 
-    let server = ServerBuilder::with_plane_name("Server Plane")
+    let server = ServerBuilder::with_plane_name("Producer Plane")
         .add_route(route, agent)
         .update_config(|config| {
             config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
@@ -40,13 +37,5 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    let (task, handle) = server.run();
-
-    let shutdown = manage_handle(handle);
-
-    let (_, result) = tokio::join!(shutdown, task);
-
-    result?;
-    println!("Server stopped successfully.");
-    Ok(())
+    Ok(server)
 }

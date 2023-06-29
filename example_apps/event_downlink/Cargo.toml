@@ -1,5 +1,5 @@
 [package]
-name = "basic"
+name = "event-downlink"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,3 +7,4 @@ edition = "2021"
 swim = { path = "../../swim", features = ["server", "agent"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"]}
 example-util = { path = "../example_util" }
+tracing = { workspace = true }

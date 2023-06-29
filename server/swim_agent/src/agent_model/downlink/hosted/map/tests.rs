@@ -24,7 +24,7 @@ use swim_api::protocol::{
 use swim_model::{address::Address, Text};
 use swim_utilities::{
     io::byte_channel::{self, ByteWriter},
-    non_zero_usize,
+    non_zero_usize, trigger,
 };
 use tokio::{io::AsyncWriteExt, sync::mpsc};
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
@@ -262,7 +262,11 @@ struct TestContext {
     channel: HostedMapDownlinkChannel<i32, Text, FakeLifecycle, State>,
     events: Events,
     sender: Writer,
+    stop_tx: Option<trigger::Sender>,
 }
+
+const NODE: &str = "/node";
+const LANE: &str = "lane";
 
 fn make_hosted_input(config: MapDownlinkConfig) -> TestContext {
     let events: Events = Default::default();
@@ -271,14 +275,24 @@ fn make_hosted_input(config: MapDownlinkConfig) -> TestContext {
     };
 
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (stop_tx, stop_rx) = trigger::trigger();
 
-    let address = Address::new(None, Text::new("/node"), Text::new("lane"));
+    let address = Address::text(None, NODE, LANE);
 
-    let chan = HostedMapDownlinkChannel::new(address, rx, lc, State::default(), config);
+    let chan = HostedMapDownlinkChannel::new(
+        address,
+        rx,
+        lc,
+        State::default(),
+        config,
+        stop_rx,
+        Default::default(),
+    );
     TestContext {
         channel: chan,
         events,
         sender: Writer::new(tx),
+        stop_tx: Some(stop_tx),
     }
 }
 
@@ -295,6 +309,26 @@ async fn shutdown_when_input_stops() {
     assert!(channel.next_event(&agent).is_none());
 
     drop(sender);
+
+    assert!(channel.await_ready().await.is_none());
+
+    assert!(channel.next_event(&agent).is_none());
+}
+
+#[tokio::test]
+async fn shutdown_on_stop_trigger() {
+    let TestContext {
+        mut channel,
+        sender: _sender,
+        stop_tx,
+        ..
+    } = make_hosted_input(MapDownlinkConfig::default());
+
+    let agent = FakeAgent;
+
+    assert!(channel.next_event(&agent).is_none());
+
+    stop_tx.expect("Stop trigger missing.").trigger();
 
     assert!(channel.await_ready().await.is_none());
 
@@ -342,7 +376,10 @@ async fn run_with_expectations(
         channel,
         events,
         sender,
+        stop_tx,
     } = context;
+
+    *stop_tx = None;
 
     for (not, expected) in notifications {
         assert!(sender.send(not).await.is_ok());
@@ -688,6 +725,7 @@ const CHANNEL_SIZE: usize = 8;
 async fn map_downlink_writer() {
     let (op_tx, op_rx) = mpsc::channel::<MapOperation<i32, Text>>(CHANNEL_SIZE);
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (stop_tx, _stop_rx) = trigger::trigger();
     let mut stream = pin!(map_dl_write_stream(tx, op_rx));
 
     let receiver = FramedRead::new(rx, MapOperationDecoder::<i32, Text>::default());
@@ -701,7 +739,12 @@ async fn map_downlink_writer() {
     let read = async move { receiver.collect::<Vec<_>>().await };
 
     let write = async move {
-        let handle = MapDownlinkHandle::new(op_tx);
+        let handle = MapDownlinkHandle::new(
+            Address::text(None, NODE, LANE),
+            op_tx,
+            stop_tx,
+            &Default::default(),
+        );
         for i in 'a'..='j' {
             for j in 0..3 {
                 assert!(handle.update(j, Text::from(i.to_string())).await.is_ok());

@@ -25,6 +25,7 @@ use swim_utilities::{
     io::byte_channel::{self, ByteWriter},
     non_zero_usize,
     sync::circular_buffer,
+    trigger,
 };
 use tokio::{io::AsyncWriteExt, task::yield_now};
 use tokio_util::codec::{FramedRead, FramedWrite};
@@ -158,6 +159,7 @@ struct TestContext {
     channel: HostedValueDownlinkChannel<i32, FakeLifecycle, State>,
     events: Events,
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
+    stop_tx: Option<trigger::Sender>,
 }
 
 fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
@@ -169,12 +171,22 @@ fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
 
     let address = Address::new(None, Text::new("/node"), Text::new("lane"));
+    let (stop_tx, stop_rx) = trigger::trigger();
 
-    let chan = HostedValueDownlinkChannel::new(address, rx, lc, State::default(), config);
+    let chan = HostedValueDownlinkChannel::new(
+        address,
+        rx,
+        lc,
+        State::default(),
+        config,
+        stop_rx,
+        Default::default(),
+    );
     TestContext {
         channel: chan,
         events: inner,
         sender: FramedWrite::new(tx, Default::default()),
+        stop_tx: Some(stop_tx),
     }
 }
 
@@ -191,6 +203,26 @@ async fn shutdown_when_input_stops() {
     assert!(channel.next_event(&agent).is_none());
 
     drop(sender);
+
+    assert!(channel.await_ready().await.is_none());
+
+    assert!(channel.next_event(&agent).is_none());
+}
+
+#[tokio::test]
+async fn shutdown_on_stop_trigger() {
+    let TestContext {
+        mut channel,
+        sender: _sender,
+        stop_tx,
+        ..
+    } = make_hosted_input(SimpleDownlinkConfig::default());
+
+    let agent = FakeAgent;
+
+    assert!(channel.next_event(&agent).is_none());
+
+    stop_tx.expect("Stop trigger missing.").trigger();
 
     assert!(channel.await_ready().await.is_none());
 
@@ -247,8 +279,10 @@ async fn run_with_expectations(
         channel,
         events,
         sender,
+        stop_tx,
     } = context;
 
+    *stop_tx = None;
     for (not, expected) in notifications {
         let bytes_not = to_bytes(not);
         assert!(sender.send(bytes_not).await.is_ok());
@@ -415,6 +449,7 @@ async fn revive_unlinked_downlink() {
 async fn value_downlink_writer() {
     let (set_tx, set_rx) = circular_buffer::watch_channel::<i32>();
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (stop_tx, _stop_rx) = trigger::trigger();
     let mut stream = pin!(value_dl_write_stream(tx, set_rx));
 
     let mut receiver = FramedRead::new(rx, DownlinkOperationDecoder);
@@ -440,7 +475,7 @@ async fn value_downlink_writer() {
 
     let write = async move {
         let address = Address::new(None, Text::new("/node"), Text::new("lane"));
-        let mut handle = ValueDownlinkHandle::new(address, set_tx);
+        let mut handle = ValueDownlinkHandle::new(address, set_tx, stop_tx, &Default::default());
         for i in 0..=10 {
             assert!(handle.set(i).is_ok());
             if i % 2 == 0 {

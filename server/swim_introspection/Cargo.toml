@@ -16,7 +16,6 @@ swim_api = { path = "../../api/swim_api" }
 swim_form = { path = "../../api/swim_form" }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
-tracing-futures = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
 parking_lot = { workspace = true, features = ["send_guard"] }

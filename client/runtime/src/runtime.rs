@@ -27,7 +27,6 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot, Notify};
 use tokio::task::{JoinError, JoinHandle};
 use tracing::{debug, error, info, trace};
-use url::Url;
 use uuid::Uuid;
 
 use crate::error::{DownlinkErrorKind, DownlinkRuntimeError};
@@ -277,25 +276,7 @@ async fn runtime_task<Net, Ws>(
                     downlink_config,
                 } = request;
                 let RemotePath { host, node, lane } = path;
-                let url = match host.as_str().parse::<Url>() {
-                    Ok(url) => url,
-                    Err(e) => {
-                        let address = Address::new(Some(host), node, lane);
-                        let kind = downlink.kind();
-                        info!(address = %address, kind = ?kind, "Malformed host");
-
-                        let _r = callback
-                            .send(Err(DownlinkRuntimeError::with_cause(
-                                DownlinkErrorKind::Unresolvable,
-                                e,
-                            )
-                            .shared()))
-                            .is_err();
-                        continue;
-                    }
-                };
-
-                let shp = match SchemeHostPort::try_from(&url) {
+                let shp = match host.as_str().parse::<SchemeHostPort>() {
                     Ok(shp) => shp,
                     Err(e) => {
                         let _r = callback.send(Err(DownlinkRuntimeError::with_cause(

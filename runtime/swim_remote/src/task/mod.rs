@@ -54,8 +54,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 use uuid::Uuid;
 
-use tracing::{debug, error, info, info_span, trace, warn};
-use tracing_futures::Instrument;
+use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
 use crate::error::AgentResolutionError;
 use crate::NoSuchAgent;
@@ -204,6 +203,7 @@ where
             .instrument(info_span!("Websocket outgoing task"));
 
         let (_, result) = join(reg, await_io_tasks(in_task, out_task, kill_switch_tx)).await;
+        let _cleanup = info_span!("Websocket clean-up.", id = %id);
         let close_reason = match result {
             Ok(_) => Some(CloseReason::new(
                 CloseCode::GoingAway,

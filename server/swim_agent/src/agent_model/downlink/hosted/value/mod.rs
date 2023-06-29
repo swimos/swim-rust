@@ -14,7 +14,11 @@
 
 use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
-use std::{cell::RefCell, fmt::Write};
+use std::{
+    cell::RefCell,
+    fmt::Write,
+    sync::{atomic::AtomicU8, Arc},
+};
 use swim_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},
@@ -29,6 +33,7 @@ use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     sync::circular_buffer,
+    trigger,
 };
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
@@ -40,7 +45,7 @@ use crate::{
     event_handler::{BoxEventHandler, HandlerActionExt},
 };
 
-use super::DlState;
+use super::{DlState, DlStateObserver, DlStateTracker};
 
 #[cfg(test)]
 mod tests;
@@ -86,7 +91,8 @@ pub struct HostedValueDownlinkChannel<T: RecognizerReadable, LC, State> {
     next: Option<Result<DownlinkNotification<T>, FrameIoError>>,
     lifecycle: LC,
     config: SimpleDownlinkConfig,
-    dl_state: DlState,
+    dl_state: DlStateTracker,
+    stop_rx: Option<trigger::Receiver>,
 }
 
 impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> {
@@ -96,6 +102,8 @@ impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> 
         lifecycle: LC,
         state: State,
         config: SimpleDownlinkConfig,
+        stop_rx: trigger::Receiver,
+        dl_state: Arc<AtomicU8>,
     ) -> Self {
         HostedValueDownlinkChannel {
             address,
@@ -104,7 +112,8 @@ impl<T: RecognizerReadable, LC, State> HostedValueDownlinkChannel<T, LC, State> 
             next: None,
             lifecycle,
             config,
-            dl_state: DlState::Unlinked,
+            dl_state: DlStateTracker::new(dl_state),
+            stop_rx: Some(stop_rx),
         }
     }
 }
@@ -121,29 +130,47 @@ where
             address,
             receiver,
             next,
+            stop_rx,
             ..
         } = self;
         async move {
-            if let Some(rx) = receiver {
-                match rx.next().await {
-                    Some(Ok(notification)) => {
-                        *next = Some(Ok(notification));
-                        Some(Ok(()))
+            let result = if let Some(rx) = receiver {
+                if let Some(stop_signal) = stop_rx.as_mut() {
+                    tokio::select! {
+                        biased;
+                        triggered_result = stop_signal => {
+                            *stop_rx = None;
+                            if triggered_result.is_ok() {
+                                *receiver = None;
+                                Some(Ok(DownlinkNotification::Unlinked))
+                            } else {
+                                rx.next().await
+                            }
+                        }
+                        result = rx.next() => result,
                     }
-                    Some(Err(e)) => {
-                        error!(address = %address, "Downlink input channel failed.");
-                        *receiver = None;
-                        *next = Some(Err(e));
-                        Some(Err(DownlinkFailed))
-                    }
-                    _ => {
-                        info!(address = %address, "Downlink terminated normally.");
-                        *receiver = None;
-                        None
-                    }
+                } else {
+                    rx.next().await
                 }
             } else {
-                None
+                return None;
+            };
+            match result {
+                Some(Ok(notification)) => {
+                    *next = Some(Ok(notification));
+                    Some(Ok(()))
+                }
+                Some(Err(e)) => {
+                    error!(address = %address, "Downlink input channel failed.");
+                    *receiver = None;
+                    *next = Some(Err(e));
+                    Some(Err(DownlinkFailed))
+                }
+                _ => {
+                    info!(address = %address, "Downlink terminated normally.");
+                    *receiver = None;
+                    None
+                }
             }
         }
         .boxed()
@@ -168,20 +195,20 @@ where
             match notification {
                 Ok(DownlinkNotification::Linked) => {
                     debug!(address = %address, "Downlink linked.");
-                    if *dl_state == DlState::Unlinked {
-                        *dl_state = DlState::Linked;
+                    if dl_state.get() == DlState::Unlinked {
+                        dl_state.set(DlState::Linked);
                     }
                     Some(lifecycle.on_linked().boxed())
                 }
                 Ok(DownlinkNotification::Synced) => state.with(context, |maybe_value| {
                     debug!(address = %address, "Downlink synced.");
-                    *dl_state = DlState::Synced;
+                    dl_state.set(DlState::Synced);
                     maybe_value.map(|value| lifecycle.on_synced(value).boxed())
                 }),
                 Ok(DownlinkNotification::Event { body }) => {
                     trace!(address = %address, "Event received for downlink.");
                     let prev = state.take_current(context);
-                    let handler = if *dl_state == DlState::Synced || *events_when_not_synced {
+                    let handler = if dl_state.get() == DlState::Synced || *events_when_not_synced {
                         let handler = lifecycle
                             .on_event(&body)
                             .followed_by(lifecycle.on_set(prev, &body))
@@ -198,6 +225,9 @@ where
                     state.clear(context);
                     if *terminate_on_unlinked {
                         *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
                     }
                     Some(lifecycle.on_unlinked().boxed())
                 }
@@ -206,6 +236,9 @@ where
                     state.clear(context);
                     if *terminate_on_unlinked {
                         *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
                     }
                     Some(lifecycle.on_failed().boxed())
                 }
@@ -220,15 +253,49 @@ where
     }
 }
 
-/// A handle which can be used to set the value of a lane through a value downlink.
+/// A handle which can be used to set the value of a lane through a value downlink or stop the
+/// downlink.
+#[derive(Debug)]
 pub struct ValueDownlinkHandle<T> {
     address: Address<Text>,
     inner: circular_buffer::Sender<T>,
+    stop_tx: Option<trigger::Sender>,
+    observer: DlStateObserver,
 }
 
 impl<T> ValueDownlinkHandle<T> {
-    pub fn new(address: Address<Text>, inner: circular_buffer::Sender<T>) -> Self {
-        ValueDownlinkHandle { address, inner }
+    pub fn new(
+        address: Address<Text>,
+        inner: circular_buffer::Sender<T>,
+        stop_tx: trigger::Sender,
+        state: &Arc<AtomicU8>,
+    ) -> Self {
+        ValueDownlinkHandle {
+            address,
+            inner,
+            stop_tx: Some(stop_tx),
+            observer: DlStateObserver::new(state),
+        }
+    }
+}
+
+impl<T> ValueDownlinkHandle<T> {
+    /// Instruct the downlink to stop.
+    pub fn stop(&mut self) {
+        trace!(address = %self.address, "Stopping a value downlink.");
+        if let Some(tx) = self.stop_tx.take() {
+            tx.trigger();
+        }
+    }
+
+    /// True if the downlink has stopped (regardless of whether it stopped cleanly or failed.)
+    pub fn is_stopped(&self) -> bool {
+        self.observer.get() == DlState::Stopped
+    }
+
+    /// True if the downlink is running and linked.
+    pub fn is_linked(&self) -> bool {
+        matches!(self.observer.get(), DlState::Linked | DlState::Synced)
     }
 }
 

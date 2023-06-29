@@ -18,7 +18,7 @@ swim_utilities = { path = "../../swim_utilities", features = ["byte_channel", "t
 swim_runtime = { path = "../../runtime/swim_runtime" }
 swim_remote = { path = "../../runtime/swim_remote" }
 swim_messages = { path = "../../runtime/swim_messages" }
-ratchet = { package = "ratchet_rs", version = "0.2.0" }
+ratchet = { workspace = true }
 futures = { workspace = true }
 futures-util = { workspace = true }
 bytes = { workspace = true }

@@ -12,16 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use clap::Parser;
+use swim::form::Form;
 
-#[derive(Parser, Debug)] // requires `derive` feature Just to make testing across clap features easier
-pub struct AppArgs {
-    #[arg(short, long)]
-    pub host: String,
-    #[arg(short, long)]
-    pub port: u16,
-    #[arg(long = "link-agent")]
-    pub link: bool,
-    #[arg(long = "collect-agent")]
-    pub collect: bool,
+#[derive(Debug, Clone, Copy, Form)]
+pub enum Instruction {
+    #[form(tag = "open_link")]
+    OpenLink,
+    #[form(tag = "close_link")]
+    CloseLink,
+    #[form(tag = "stop")]
+    Stop,
 }

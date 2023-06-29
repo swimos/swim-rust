@@ -14,7 +14,7 @@
 
 use std::{error::Error, time::Duration};
 
-use example_util::manage_handle;
+use example_util::{example_logging, manage_handle};
 use swim::{
     agent::agent_model::AgentModel,
     route::RoutePattern,
@@ -27,6 +27,8 @@ mod agent;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    example_logging()?;
+
     let route = RoutePattern::parse_str("/example/:name}")?;
 
     let lifecycle = ExampleLifecycle;

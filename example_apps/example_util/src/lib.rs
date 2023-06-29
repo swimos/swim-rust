@@ -15,10 +15,12 @@
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
+    net::SocketAddr,
 };
 
 use swim::server::ServerHandle;
-use tokio::select;
+use tokio::{select, sync::oneshot};
+use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
 pub async fn manage_handle(mut handle: ServerHandle) {
     let mut shutdown_hook = Box::pin(async {
@@ -62,4 +64,84 @@ impl<'a, K: Display, V: Display> Display for FormatMap<'a, K, V> {
         write!(f, "}}")?;
         Ok(())
     }
+}
+
+pub struct StartDependent {
+    pub bound: SocketAddr,
+    pub request: oneshot::Sender<ServerHandle>,
+}
+
+pub async fn manage_producer_and_consumer(
+    mut producer_handle: ServerHandle,
+    dep: oneshot::Sender<StartDependent>,
+) {
+    let mut shutdown_hook = Box::pin(async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to register interrupt handler.");
+    });
+    let get_addr = producer_handle.bound_addr();
+
+    let maybe_addr = select! {
+        _ = &mut shutdown_hook => None,
+        maybe_addr = get_addr => maybe_addr,
+    };
+
+    let maybe_consumer_handler = if let Some(addr) = maybe_addr {
+        println!("Producer bound to: {}", addr);
+        let (cb_tx, cb_rx) = oneshot::channel();
+        let msg = StartDependent {
+            bound: addr,
+            request: cb_tx,
+        };
+        if dep.send(msg).is_err() {
+            None
+        } else {
+            select! {
+                _ = &mut shutdown_hook => None,
+                consumer_result = cb_rx => consumer_result.ok(),
+            }
+        }
+    } else {
+        None
+    };
+
+    if let Some(mut consumer_handle) = maybe_consumer_handler {
+        let get_addr = consumer_handle.bound_addr();
+
+        let maybe_addr = select! {
+            _ = &mut shutdown_hook => None,
+            maybe_addr = get_addr => maybe_addr,
+        };
+
+        if let Some(addr) = maybe_addr {
+            println!("Consumer bound to: {}", addr);
+            shutdown_hook.await;
+        }
+
+        consumer_handle.stop();
+        producer_handle.stop();
+    } else {
+        println!("Server failed to start.");
+        producer_handle.stop();
+    }
+}
+
+pub fn example_logging() -> Result<(), Box<dyn std::error::Error>> {
+    let args = std::env::args().collect::<Vec<_>>();
+    if args.get(1).map(String::as_str) == Some("--enable-logging") {
+        let filter = if let Ok(filter) = EnvFilter::try_from_default_env() {
+            filter
+        } else {
+            EnvFilter::new("")
+                .add_directive("swim_server_app=trace".parse()?)
+                .add_directive("swim_runtime=trace".parse()?)
+                .add_directive("swim_agent=trace".parse()?)
+                .add_directive("swim_messages=trace".parse()?)
+                .add_directive("swim_remote=trace".parse()?)
+                .add_directive(LevelFilter::WARN.into())
+        };
+        tracing_subscriber::fmt().with_env_filter(filter).init();
+    }
+    Ok(())
 }

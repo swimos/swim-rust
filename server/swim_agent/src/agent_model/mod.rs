@@ -221,31 +221,67 @@ where
     }
 }
 
+trait LifecycleFac<ItemModel>: Send + Sync {
+    type LifecycleType: AgentLifecycle<ItemModel> + Send;
+
+    fn create(&self) -> Self::LifecycleType;
+}
+
+struct CloneableLifecycle<LC>(LC);
+
+impl<ItemModel, LC> LifecycleFac<ItemModel> for CloneableLifecycle<LC>
+where
+    LC: Send + Sync + Clone + AgentLifecycle<ItemModel>,
+{
+    type LifecycleType = LC;
+
+    fn create(&self) -> Self::LifecycleType {
+        self.0.clone()
+    }
+}
+
+struct FnLifecycleFac<F>(F);
+
+impl<ItemModel, F, LC> LifecycleFac<ItemModel> for FnLifecycleFac<F>
+where
+    F: Fn() -> LC + Send + Sync,
+    LC: Send + AgentLifecycle<ItemModel>,
+{
+    type LifecycleType = LC;
+
+    fn create(&self) -> Self::LifecycleType {
+        self.0()
+    }
+}
+
 /// The complete model for an agent consisting of an implementation of [`AgentLaneModel`] to describe the lanes
 /// of the agent and an implementation of [`AgentLifecycle`] to describe the lifecycle events that will trigger,
 /// for  example, when the agent starts or stops or when the state of a lane changes.
 pub struct AgentModel<ItemModel, Lifecycle> {
     item_model_fac: Arc<dyn ItemModelFactory<ItemModel = ItemModel>>,
-    lifecycle: Lifecycle,
+    lifecycle_fac: Arc<dyn LifecycleFac<ItemModel, LifecycleType = Lifecycle>>,
 }
 
-impl<ItemModel, Lifecycle: Clone> Clone for AgentModel<ItemModel, Lifecycle> {
+impl<ItemModel, Lifecycle> Clone for AgentModel<ItemModel, Lifecycle> {
     fn clone(&self) -> Self {
         Self {
             item_model_fac: self.item_model_fac.clone(),
-            lifecycle: self.lifecycle.clone(),
+            lifecycle_fac: self.lifecycle_fac.clone(),
         }
     }
 }
 
-impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle> {
+impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle>
+where
+    Lifecycle: Send + Sync + Clone + AgentLifecycle<ItemModel> + 'static,
+{
     pub fn new<F>(item_model_fac: F, lifecycle: Lifecycle) -> Self
     where
         F: ItemModelFactory<ItemModel = ItemModel> + Sized + 'static,
     {
         AgentModel {
             item_model_fac: Arc::new(item_model_fac),
-            lifecycle,
+            lifecycle_fac: Arc::new(CloneableLifecycle(lifecycle)),
         }
     }
 
@@ -255,7 +291,23 @@ impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle> {
     ) -> Self {
         AgentModel {
             item_model_fac,
-            lifecycle,
+            lifecycle_fac: Arc::new(CloneableLifecycle(lifecycle)),
+        }
+    }
+}
+
+impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle>
+where
+    Lifecycle: Send + AgentLifecycle<ItemModel> + 'static,
+{
+    pub fn from_fn<F, G>(item_model_fac: F, lifecycle_fn: G) -> Self
+    where
+        F: ItemModelFactory<ItemModel = ItemModel> + Sized + 'static,
+        G: Fn() -> Lifecycle + Send + Sync + 'static,
+    {
+        AgentModel {
+            item_model_fac: Arc::new(item_model_fac),
+            lifecycle_fac: Arc::new(FnLifecycleFac(lifecycle_fn)),
         }
     }
 }
@@ -263,7 +315,7 @@ impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle> {
 impl<ItemModel, Lifecycle> Agent for AgentModel<ItemModel, Lifecycle>
 where
     ItemModel: AgentSpec + Send + 'static,
-    Lifecycle: AgentLifecycle<ItemModel> + Clone + Send + 'static,
+    Lifecycle: AgentLifecycle<ItemModel> + Send + 'static,
 {
     fn run(
         &self,
@@ -403,8 +455,10 @@ where
     {
         let AgentModel {
             item_model_fac,
-            lifecycle,
+            lifecycle_fac,
         } = self;
+
+        let lifecycle = lifecycle_fac.create();
 
         let meta = AgentMetadata::new(&route, &route_params, &config);
 

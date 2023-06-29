@@ -35,8 +35,7 @@ use tokio::sync::mpsc;
 use tokio::time::{timeout, timeout_at, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
-use tracing::{error, info, info_span, trace, warn};
-use tracing_futures::Instrument;
+use tracing::{error, info, info_span, trace, warn, Instrument};
 use uuid::Uuid;
 
 use crate::downlink::failure::BadFrameResponse;

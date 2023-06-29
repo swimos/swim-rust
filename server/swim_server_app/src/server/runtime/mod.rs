@@ -53,8 +53,7 @@ use swim_utilities::uri_forest::UriForest;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinError;
-use tracing::{debug, error, info, info_span, warn};
-use tracing_futures::Instrument;
+use tracing::{debug, error, info, info_span, warn, Instrument};
 use uuid::Uuid;
 
 use crate::config::SwimServerConfig;
@@ -198,8 +197,11 @@ where
         );
         let (fut, handle) = self.run_server(server_conn);
 
-        let downlinks_task = downlinks.run();
-        let combined = join(fut, downlinks_task).map(|(r, _)| r);
+        let downlinks_task = downlinks
+            .run()
+            .instrument(info_span!("Downlink connector task."));
+        let combined =
+            join(fut.instrument(info_span!("Server task.")), downlinks_task).map(|(r, _)| r);
         (combined.boxed(), handle)
     }
 
@@ -316,6 +318,7 @@ where
         let plane_store = store.open_plane(plane.name.as_str())?;
 
         let (bound_addr, listener) = networking.bind(addr).await?;
+        info!(bound_addr = %bound_addr, "TCP listener bound.");
         let _ = addr_tx.send(bound_addr);
         let mut remote_issuer = IdIssuer::new(IdKind::Remote);
 
@@ -654,7 +657,11 @@ where
                         }
                         Err(node) => {
                             warn!(node = %node, "Requested agent does not exist.");
-                            if done.send(Err(DownlinkFailureReason::Unresolvable)).is_err() {
+                            let message = format!("Local node '{}' does not exist.", node);
+                            if done
+                                .send(Err(DownlinkFailureReason::Unresolvable(message)))
+                                .is_err()
+                            {
                                 info!(node = %node, "Downlink request dropped before it was satisfied.");
                             }
                         }
@@ -1029,17 +1036,19 @@ enum NewClientError {
 impl From<NewClientError> for DownlinkRuntimeError {
     fn from(err: NewClientError) -> Self {
         match err {
-            NewClientError::InvalidUrl(_) | NewClientError::BadWarpUrl(_) => {
-                DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::Unresolvable)
+            e @ NewClientError::InvalidUrl(_) | e @ NewClientError::BadWarpUrl(_) => {
+                DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::Unresolvable(
+                    e.to_string(),
+                ))
             }
             NewClientError::OpeningSocketFailed { .. } => {
                 DownlinkRuntimeError::DownlinkConnectionFailed(
                     DownlinkFailureReason::ConnectionFailed,
                 )
             }
-            NewClientError::WsNegotationFailed { .. } => {
+            NewClientError::WsNegotationFailed { error } => {
                 DownlinkRuntimeError::DownlinkConnectionFailed(
-                    DownlinkFailureReason::WebsocketNegotiationFailed,
+                    DownlinkFailureReason::WebsocketNegotiationFailed(error.to_string()),
                 )
             }
             NewClientError::ServerStopped => {

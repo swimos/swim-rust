@@ -16,7 +16,12 @@ mod event;
 mod map;
 mod value;
 
-pub use event::HostedEventDownlinkChannel;
+use std::sync::{
+    atomic::{AtomicU8, Ordering},
+    Arc, Weak,
+};
+
+pub use event::{EventDownlinkHandle, HostedEventDownlinkChannel};
 pub use map::{map_dl_write_stream, HostedMapDownlinkChannel, MapDlState, MapDownlinkHandle};
 pub use value::{value_dl_write_stream, HostedValueDownlinkChannel, ValueDownlinkHandle};
 
@@ -25,6 +30,79 @@ enum DlState {
     Unlinked,
     Linked,
     Synced,
+    Stopped,
+}
+
+const UNLINKED: u8 = 0;
+const LINKED: u8 = 1;
+const SYNCED: u8 = 2;
+const STOPPED: u8 = 3;
+
+impl From<DlState> for u8 {
+    fn from(value: DlState) -> Self {
+        match value {
+            DlState::Unlinked => UNLINKED,
+            DlState::Linked => LINKED,
+            DlState::Synced => SYNCED,
+            DlState::Stopped => STOPPED,
+        }
+    }
+}
+
+impl From<u8> for DlState {
+    fn from(value: u8) -> Self {
+        match value {
+            UNLINKED => DlState::Unlinked,
+            LINKED => DlState::Linked,
+            SYNCED => DlState::Synced,
+            _ => DlState::Stopped,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct DlStateTracker {
+    state: Arc<AtomicU8>,
+}
+
+impl DlStateTracker {
+    pub fn new(state: Arc<AtomicU8>) -> Self {
+        let tracker = DlStateTracker { state };
+        tracker.set(DlState::Unlinked);
+        tracker
+    }
+}
+
+#[derive(Debug)]
+struct DlStateObserver {
+    state: Weak<AtomicU8>,
+}
+
+impl DlStateObserver {
+    fn new(state: &Arc<AtomicU8>) -> Self {
+        DlStateObserver {
+            state: Arc::downgrade(state),
+        }
+    }
+}
+
+impl DlStateTracker {
+    fn set(&self, state: DlState) {
+        self.state.store(state.into(), Ordering::Release)
+    }
+
+    fn get(&self) -> DlState {
+        self.state.load(Ordering::Acquire).into()
+    }
+}
+
+impl DlStateObserver {
+    fn get(&self) -> DlState {
+        self.state
+            .upgrade()
+            .map(|s| s.load(Ordering::Acquire).into())
+            .unwrap_or(DlState::Stopped)
+    }
 }
 
 #[cfg(test)]

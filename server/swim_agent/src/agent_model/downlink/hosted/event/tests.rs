@@ -21,7 +21,7 @@ use swim_model::{address::Address, Text};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::{
     io::byte_channel::{self, ByteWriter},
-    non_zero_usize,
+    non_zero_usize, trigger,
 };
 use tokio::io::AsyncWriteExt;
 use tokio_util::codec::FramedWrite;
@@ -130,6 +130,7 @@ struct TestContext {
     channel: HostedEventDownlinkChannel<i32, FakeLifecycle>,
     events: Events,
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
+    stop_tx: Option<trigger::Sender>,
 }
 
 fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
@@ -139,14 +140,17 @@ fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
     };
 
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
+    let (stop_tx, stop_rx) = trigger::trigger();
 
     let address = Address::new(None, Text::new("/node"), Text::new("lane"));
 
-    let chan = HostedEventDownlinkChannel::new(address, rx, lc, config);
+    let chan =
+        HostedEventDownlinkChannel::new(address, rx, lc, config, stop_rx, Default::default());
     TestContext {
         channel: chan,
         events: inner,
         sender: FramedWrite::new(tx, Default::default()),
+        stop_tx: Some(stop_tx),
     }
 }
 
@@ -155,6 +159,7 @@ async fn event_dl_shutdown_when_input_stops() {
     let TestContext {
         mut channel,
         sender,
+        stop_tx: _stop_tx,
         ..
     } = make_hosted_input(SimpleDownlinkConfig::default());
 
@@ -170,11 +175,32 @@ async fn event_dl_shutdown_when_input_stops() {
 }
 
 #[tokio::test]
+async fn event_dl_shutdown_on_stop_signal() {
+    let TestContext {
+        mut channel,
+        sender: _sender,
+        stop_tx,
+        ..
+    } = make_hosted_input(SimpleDownlinkConfig::default());
+
+    let agent = FakeAgent;
+
+    assert!(channel.next_event(&agent).is_none());
+
+    stop_tx.expect("Stop trigger missing.").trigger();
+
+    assert!(channel.await_ready().await.is_none());
+
+    assert!(channel.next_event(&agent).is_none());
+}
+
+#[tokio::test]
 async fn event_dl_terminate_on_error() {
     let TestContext {
         mut channel,
         mut sender,
         events,
+        stop_tx: _stop_tx,
         ..
     } = make_hosted_input(SimpleDownlinkConfig::default());
 
@@ -219,7 +245,11 @@ async fn run_with_expectations(
         channel,
         events,
         sender,
+        stop_tx,
+        ..
     } = context;
+
+    *stop_tx = None;
 
     for (not, expected) in notifications {
         let bytes_not = to_bytes(not);
@@ -374,6 +404,7 @@ async fn event_dl_revive_unlinked_downlink() {
     let TestContext {
         mut channel,
         sender,
+        stop_tx: _stop_tx,
         ..
     } = context;
 

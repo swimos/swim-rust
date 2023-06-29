@@ -16,6 +16,7 @@ use std::{
     cell::RefCell,
     collections::{BTreeSet, HashMap},
     pin::pin,
+    sync::{atomic::AtomicU8, Arc},
 };
 
 use futures::{
@@ -34,7 +35,10 @@ use swim_api::{
 };
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_model::{address::Address, Text};
-use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swim_utilities::{
+    io::byte_channel::{ByteReader, ByteWriter},
+    trigger,
+};
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
@@ -47,7 +51,7 @@ use crate::{
     event_queue::EventQueue,
 };
 
-use super::DlState;
+use super::{DlState, DlStateObserver, DlStateTracker};
 
 #[cfg(test)]
 mod tests;
@@ -254,7 +258,8 @@ pub struct HostedMapDownlinkChannel<K: RecognizerReadable, V: RecognizerReadable
     next: Option<Result<DownlinkNotification<MapMessage<K, V>>, FrameIoError>>,
     lifecycle: LC,
     config: MapDownlinkConfig,
-    dl_state: DlState,
+    dl_state: DlStateTracker,
+    stop_rx: Option<trigger::Receiver>,
 }
 
 impl<K: RecognizerReadable, V: RecognizerReadable, LC, State>
@@ -266,6 +271,8 @@ impl<K: RecognizerReadable, V: RecognizerReadable, LC, State>
         lifecycle: LC,
         state: State,
         config: MapDownlinkConfig,
+        stop_rx: trigger::Receiver,
+        dl_state: Arc<AtomicU8>,
     ) -> Self {
         HostedMapDownlinkChannel {
             address,
@@ -274,7 +281,8 @@ impl<K: RecognizerReadable, V: RecognizerReadable, LC, State>
             next: None,
             lifecycle,
             config,
-            dl_state: DlState::Unlinked,
+            dl_state: DlStateTracker::new(dl_state),
+            stop_rx: Some(stop_rx),
         }
     }
 }
@@ -294,29 +302,47 @@ where
             address,
             receiver,
             next,
+            stop_rx,
             ..
         } = self;
         async move {
-            if let Some(rx) = receiver {
-                match rx.next().await {
-                    Some(Ok(notification)) => {
-                        *next = Some(Ok(notification));
-                        Some(Ok(()))
+            let result = if let Some(rx) = receiver {
+                if let Some(stop_signal) = stop_rx.as_mut() {
+                    tokio::select! {
+                        biased;
+                        triggered_result = stop_signal => {
+                            *stop_rx = None;
+                            if triggered_result.is_ok() {
+                                *receiver = None;
+                                Some(Ok(DownlinkNotification::Unlinked))
+                            } else {
+                                rx.next().await
+                            }
+                        }
+                        result = rx.next() => result,
                     }
-                    Some(Err(e)) => {
-                        error!(address = %address, "Downlink input channel failed.");
-                        *next = Some(Err(e));
-                        *receiver = None;
-                        Some(Err(DownlinkFailed))
-                    }
-                    _ => {
-                        info!(address = %address, "Downlink terminated normally.");
-                        *receiver = None;
-                        None
-                    }
+                } else {
+                    rx.next().await
                 }
             } else {
-                None
+                return None;
+            };
+            match result {
+                Some(Ok(notification)) => {
+                    *next = Some(Ok(notification));
+                    Some(Ok(()))
+                }
+                Some(Err(e)) => {
+                    error!(address = %address, "Downlink input channel failed.");
+                    *next = Some(Err(e));
+                    *receiver = None;
+                    Some(Err(DownlinkFailed))
+                }
+                _ => {
+                    info!(address = %address, "Downlink terminated normally.");
+                    *receiver = None;
+                    None
+                }
             }
         }
         .boxed()
@@ -342,23 +368,23 @@ where
             match notification {
                 Ok(DownlinkNotification::Linked) => {
                     debug!(address = %address, "Downlink linked.");
-                    if *dl_state == DlState::Unlinked {
-                        *dl_state = DlState::Linked;
+                    if dl_state.get() == DlState::Unlinked {
+                        dl_state.set(DlState::Linked);
                     }
                     Some(lifecycle.on_linked().boxed())
                 }
                 Ok(DownlinkNotification::Synced) => {
                     debug!(address = %address, "Downlink synced.");
-                    *dl_state = DlState::Synced;
+                    dl_state.set(DlState::Synced);
                     Some(state.with(context, |map| lifecycle.on_synced(&map.map).boxed()))
                 }
                 Ok(DownlinkNotification::Event { body }) => {
-                    let maybe_lifecycle = if *dl_state == DlState::Synced || *events_when_not_synced
-                    {
-                        Some(&*lifecycle)
-                    } else {
-                        None
-                    };
+                    let maybe_lifecycle =
+                        if dl_state.get() == DlState::Synced || *events_when_not_synced {
+                            Some(&*lifecycle)
+                        } else {
+                            None
+                        };
                     trace!(address = %address, "Event received for downlink.");
 
                     match body {
@@ -397,18 +423,22 @@ where
                 }
                 Ok(DownlinkNotification::Unlinked) => {
                     debug!(address = %address, "Downlink unlinked.");
-                    *dl_state = DlState::Unlinked;
                     if *terminate_on_unlinked {
                         *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
                     }
                     state.clear(context);
                     Some(lifecycle.on_unlinked().boxed())
                 }
                 Err(_) => {
                     debug!(address = %address, "Downlink failed.");
-                    *dl_state = DlState::Unlinked;
                     if *terminate_on_unlinked {
                         *receiver = None;
+                        dl_state.set(DlState::Stopped);
+                    } else {
+                        dl_state.set(DlState::Unlinked);
                     }
                     state.clear(context);
                     Some(lifecycle.on_failed().boxed())
@@ -425,13 +455,45 @@ where
 }
 
 /// A handle which can be used to modify the state of a map lane through a downlink.
+#[derive(Debug)]
 pub struct MapDownlinkHandle<K, V> {
+    address: Address<Text>,
     sender: mpsc::Sender<MapOperation<K, V>>,
+    stop_tx: Option<trigger::Sender>,
+    observer: DlStateObserver,
 }
 
 impl<K, V> MapDownlinkHandle<K, V> {
-    pub fn new(sender: mpsc::Sender<MapOperation<K, V>>) -> Self {
-        MapDownlinkHandle { sender }
+    pub fn new(
+        address: Address<Text>,
+        sender: mpsc::Sender<MapOperation<K, V>>,
+        stop_tx: trigger::Sender,
+        state: &Arc<AtomicU8>,
+    ) -> Self {
+        MapDownlinkHandle {
+            address,
+            sender,
+            stop_tx: Some(stop_tx),
+            observer: DlStateObserver::new(state),
+        }
+    }
+
+    /// Instruct the downlink to stop.
+    pub fn stop(&mut self) {
+        trace!(address = %self.address, "Stopping a map downlink.");
+        if let Some(tx) = self.stop_tx.take() {
+            tx.trigger();
+        }
+    }
+
+    /// True if the downlink has stopped (regardless of whether it stopped cleanly or failed.)
+    pub fn is_stopped(&self) -> bool {
+        self.observer.get() == DlState::Stopped
+    }
+
+    /// True if the downlink is running and linked.
+    pub fn is_linked(&self) -> bool {
+        matches!(self.observer.get(), DlState::Linked | DlState::Synced)
     }
 }
 
@@ -445,6 +507,7 @@ where
         key: K,
         value: V,
     ) -> impl Future<Output = Result<(), AgentRuntimeError>> + 'static {
+        trace!(address = %self.address, "Updating an entry on a map downlink.");
         let tx = self.sender.clone();
         async move {
             tx.send(MapOperation::Update { key, value }).await?;
@@ -453,6 +516,7 @@ where
     }
 
     pub fn remove(&self, key: K) -> impl Future<Output = Result<(), AgentRuntimeError>> + 'static {
+        trace!(address = %self.address, "Removing an entry on a map downlink.");
         let tx = self.sender.clone();
         async move {
             tx.send(MapOperation::Remove { key }).await?;
@@ -461,6 +525,7 @@ where
     }
 
     pub fn clear(&self) -> impl Future<Output = Result<(), AgentRuntimeError>> + 'static {
+        trace!(address = %self.address, "Clearing a map downlink.");
         let tx = self.sender.clone();
         async move {
             tx.send(MapOperation::Clear).await?;

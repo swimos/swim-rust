@@ -40,24 +40,28 @@ const EXTRA_PARAM: &str = "Unexpected attribute parameter.";
 const BAD_PARAM: &str =
     "The parameter to the lifecycle attribute should be a path to an agent type.";
 const ROOT: &str = "agent_root";
+const NO_CLONE: &str = "no_clone";
 
 /// Parameters passed to the lifecycle macro.
 pub struct LifecycleArgs {
     agent_type: Path,        //Path to the agent type that the lifecycle is for.
+    no_clone: bool,          //Whether the lifecycle type is not cloneable.
     root_path: Option<Path>, //Root path where the swim_agent crate is mounted in the module tree.
 }
 
 impl LifecycleArgs {
-    fn new(agent_type: Path) -> Self {
+    fn new(agent_type: Path, no_clone: bool) -> Self {
         LifecycleArgs {
             agent_type,
+            no_clone,
             root_path: None,
         }
     }
 
-    fn with_root(agent_type: Path, root_path: Path) -> Self {
+    fn with_root(agent_type: Path, no_clone: bool, root_path: Path) -> Self {
         LifecycleArgs {
             agent_type,
+            no_clone,
             root_path: Some(root_path),
         }
     }
@@ -78,16 +82,39 @@ pub fn validate_attr_args(
     match args.as_slice() {
         [] => Validation::fail(syn::Error::new_spanned(item, NO_AGENT)),
         [NestedMeta::Meta(Meta::Path(agent))] => {
-            Validation::valid(LifecycleArgs::new(agent.clone()))
+            Validation::valid(LifecycleArgs::new(agent.clone(), false))
+        }
+        [NestedMeta::Meta(Meta::Path(agent)), NestedMeta::Meta(Meta::Path(tag))]
+            if tag.is_ident(NO_CLONE) =>
+        {
+            Validation::valid(LifecycleArgs::new(agent.clone(), true))
         }
         [NestedMeta::Meta(Meta::Path(agent)), second @ NestedMeta::Meta(Meta::List(lst))]
             if lst.path.is_ident(ROOT) =>
         {
             match lst.nested.first() {
                 Some(NestedMeta::Meta(Meta::Path(root_path))) if lst.nested.len() == 1 => {
-                    Validation::valid(LifecycleArgs::with_root(agent.clone(), root_path.clone()))
+                    Validation::valid(LifecycleArgs::with_root(
+                        agent.clone(),
+                        false,
+                        root_path.clone(),
+                    ))
                 }
                 _ => Validation::fail(syn::Error::new_spanned(second, EXTRA_PARAM)),
+            }
+        }
+        [NestedMeta::Meta(Meta::Path(agent)), NestedMeta::Meta(Meta::Path(tag)), third @ NestedMeta::Meta(Meta::List(lst))]
+            if tag.is_ident(NO_CLONE) && lst.path.is_ident(ROOT) =>
+        {
+            match lst.nested.first() {
+                Some(NestedMeta::Meta(Meta::Path(root_path))) if lst.nested.len() == 1 => {
+                    Validation::valid(LifecycleArgs::with_root(
+                        agent.clone(),
+                        true,
+                        root_path.clone(),
+                    ))
+                }
+                _ => Validation::fail(syn::Error::new_spanned(third, EXTRA_PARAM)),
             }
         }
         [single] => Validation::fail(syn::Error::new_spanned(single, BAD_PARAM)),
@@ -138,6 +165,7 @@ pub fn validate_with_attrs(
 ) -> Validation<AgentLifecycleDescriptor<'_>, Errors<syn::Error>> {
     let LifecycleArgs {
         agent_type,
+        no_clone,
         root_path,
     } = lifecycle_args;
     let root = root_path.unwrap_or(default_route);
@@ -145,7 +173,7 @@ pub fn validate_with_attrs(
         if !block.generics.params.is_empty() {
             return Validation::fail(syn::Error::new_spanned(block, NO_GENERICS));
         }
-        let init = AgentLifecycleDescriptorBuilder::new(root, agent_type, &block.self_ty);
+        let init = AgentLifecycleDescriptorBuilder::new(root, agent_type, no_clone, &block.self_ty);
         block
             .items
             .iter()
@@ -688,6 +716,7 @@ impl<'a> JoinValueInit<'a> {
 pub struct AgentLifecycleDescriptor<'a> {
     pub root: Path,               //The root module path.
     pub agent_type: Path,         //The agent this is a lifecycle of.
+    pub no_clone: bool,           //Whether the lifecycle is not cloneable.
     pub lifecycle_type: &'a Type, //The type of the lifecycle (taken from the impl block).
     pub init_blocks: Vec<JoinValueInit<'a>>,
     pub on_start: Option<&'a Ident>, //A handler attached to the on_start event.
@@ -699,6 +728,7 @@ pub struct AgentLifecycleDescriptor<'a> {
 pub struct AgentLifecycleDescriptorBuilder<'a> {
     pub root: Path,
     pub agent_type: Path,
+    pub no_clone: bool,
     pub lifecycle_type: &'a Type,
     pub on_start: Option<&'a Ident>,
     pub on_stop: Option<&'a Ident>,
@@ -706,10 +736,11 @@ pub struct AgentLifecycleDescriptorBuilder<'a> {
 }
 
 impl<'a> AgentLifecycleDescriptorBuilder<'a> {
-    pub fn new(root: Path, agent_type: Path, lifecycle_type: &'a Type) -> Self {
+    pub fn new(root: Path, agent_type: Path, no_clone: bool, lifecycle_type: &'a Type) -> Self {
         AgentLifecycleDescriptorBuilder {
             root,
             agent_type,
+            no_clone,
             lifecycle_type,
             on_start: None,
             on_stop: None,
@@ -721,6 +752,7 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
         let AgentLifecycleDescriptorBuilder {
             root,
             agent_type,
+            no_clone,
             lifecycle_type,
             on_start,
             on_stop,
@@ -742,6 +774,7 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
         AgentLifecycleDescriptor {
             root,
             agent_type,
+            no_clone,
             lifecycle_type,
             init_blocks,
             on_start,

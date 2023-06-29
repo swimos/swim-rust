@@ -26,7 +26,7 @@ use swim_api::{
     meta::lane::LaneKind,
     store::{NodePersistence, StoreKind},
 };
-use swim_model::{address::Address, Text};
+use swim_model::{address::RelativeAddress, Text};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     non_zero_usize,
@@ -45,7 +45,7 @@ use std::{
     time::Duration,
 };
 
-use crate::downlink::DownlinkOptions;
+use crate::{downlink::DownlinkOptions, net::SchemeHostPort};
 
 use self::{
     reporting::{UplinkReportReader, UplinkReporter},
@@ -60,24 +60,29 @@ mod task;
 mod tests;
 
 use task::AgentRuntimeRequest;
-use tracing::error;
+use tracing::{error, info_span, Instrument};
 
 #[derive(Debug)]
 pub struct DownlinkRequest {
-    pub key: (Address<Text>, DownlinkKind),
+    pub remote: Option<SchemeHostPort>,
+    pub address: RelativeAddress<Text>,
+    pub kind: DownlinkKind,
     pub options: DownlinkOptions,
     pub promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 }
 
 impl DownlinkRequest {
     pub fn new(
-        path: Address<Text>,
+        remote: Option<SchemeHostPort>,
+        address: RelativeAddress<Text>,
         kind: DownlinkKind,
         options: DownlinkOptions,
         promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
     ) -> Self {
         DownlinkRequest {
-            key: (path, kind),
+            remote,
+            address,
+            kind,
             options,
             promise,
         }
@@ -125,17 +130,26 @@ impl AgentContext for AgentRuntimeContext {
         lane: &str,
         kind: DownlinkKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
-        let host = host.map(Text::new);
+        let remote_result = host.map(|h| h.parse::<SchemeHostPort>()).transpose();
         let node = Text::new(node);
         let lane = Text::new(lane);
         let sender = self.tx.clone();
         async move {
             let (tx, rx) = oneshot::channel();
+            let remote = match remote_result {
+                Ok(r) => r,
+                Err(e) => {
+                    return Err(DownlinkRuntimeError::DownlinkConnectionFailed(
+                        swim_api::error::DownlinkFailureReason::Unresolvable(e.to_string()),
+                    ))
+                }
+            };
             sender
                 .send(AgentRuntimeRequest::OpenDownlink(DownlinkRequest::new(
-                    Address::new(host, node, lane),
+                    remote,
+                    RelativeAddress::new(node, lane),
                     kind,
-                    DownlinkOptions::empty(),
+                    DownlinkOptions::DEFAULT,
                     tx,
                 )))
                 .await?;
@@ -519,13 +533,17 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             runtime_config,
             reporting,
         } = self;
-        let node_uri = route.to_string().into();
+        let node_uri: Text = route.to_string().into();
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
         let (init_tx, init_rx) = trigger::trigger();
 
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
-        let agent_init = agent.run(route, route_params, agent_config, context);
+        let agent_init = agent
+            .run(route, route_params, agent_config, context)
+            .instrument(
+                info_span!("Agent initialization task.", id = %identity, route = %node_uri),
+            );
 
         async move {
             let store = store_fut.await?;
@@ -548,19 +566,23 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 join(runtime_init_task.run(), agent_init_task).await;
 
             let (initial_state, store_per) = initial_state_result?;
-            let agent_task = agent_task_result?;
+            let agent_task = agent_task_result?.instrument(
+                info_span!("Agent implementation task.", id = %identity, route = %node_uri),
+            );
 
             let runtime_task = AgentRuntimeTask::with_store(
-                NodeDescriptor::new(identity, node_uri),
+                NodeDescriptor::new(identity, node_uri.clone()),
                 initial_state,
                 attachment_rx,
                 downlink_tx,
                 stopping,
                 runtime_config,
                 store_per,
-            );
+            )
+            .run()
+            .instrument(info_span!("Agent runtime task.", id = %identity, route = %node_uri));
 
-            let (runtime_result, agent_result) = join(runtime_task.run(), agent_task).await;
+            let (runtime_result, agent_result) = join(runtime_task, agent_task).await;
             runtime_result?;
             agent_result?;
             Ok(())

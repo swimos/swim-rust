@@ -17,7 +17,6 @@ tokio-util = { workspace = true, features = ["codec"] }
 swim_api = { path = "../../api/swim_api" }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
-tracing-futures = { workspace = true }
 frunk = "0.4"
 uuid = { workspace = true }
 thiserror = { workspace = true }

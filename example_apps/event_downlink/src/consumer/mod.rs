@@ -14,26 +14,24 @@
 
 use std::{error::Error, time::Duration};
 
-use example_util::manage_handle;
 use swim::{
     agent::agent_model::AgentModel,
     route::RoutePattern,
-    server::{Server, ServerBuilder},
+    server::{BoxServer, ServerBuilder},
 };
 
-use crate::agent::{ExampleAgent, ExampleLifecycle};
+use self::agent::{ConsumerAgent, ConsumerLifecycle};
 
 mod agent;
-mod downlink;
+mod model;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let route = RoutePattern::parse_str("/example")?;
+pub async fn make_server(producer_port: u16) -> Result<BoxServer, Box<dyn Error>> {
+    let route = RoutePattern::parse_str("/consumer/:name}")?;
 
-    let lifecycle = ExampleLifecycle;
-    let agent = AgentModel::new(ExampleAgent::default, lifecycle.into_lifecycle());
+    let lifecycle_fn = move || ConsumerLifecycle::new(producer_port).into_lifecycle();
+    let agent = AgentModel::from_fn(ConsumerAgent::default, lifecycle_fn);
 
-    let server = ServerBuilder::with_plane_name("Example Plane")
+    let server = ServerBuilder::with_plane_name("Consumer Plane")
         .add_route(route, agent)
         .update_config(|config| {
             config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
@@ -41,13 +39,5 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    let (task, handle) = server.run();
-
-    let shutdown = manage_handle(handle);
-
-    let (_, result) = tokio::join!(shutdown, task);
-
-    result?;
-    println!("Server stopped successfully.");
-    Ok(())
+    Ok(server)
 }

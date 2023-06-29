@@ -19,8 +19,7 @@ use futures::{Sink, SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
-use tracing::{info_span, trace};
-use tracing_futures::Instrument;
+use tracing::{info_span, trace, Instrument};
 
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;

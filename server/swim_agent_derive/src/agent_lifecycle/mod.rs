@@ -187,6 +187,7 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
                 AgentLifecycleDescriptor {
                     ref root,
                     ref agent_type,
+                    no_clone,
                     lifecycle_type,
                     on_start,
                     on_stop,
@@ -221,19 +222,33 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
             };
         }
 
-        tokens.append_all(quote! {
+        if no_clone {
+            tokens.append_all(quote! {
 
-            impl #lifecycle_type {
-                pub fn into_lifecycle(self) -> impl #root::agent_lifecycle::AgentLifecycle<#agent_type> + ::core::clone::Clone + ::core::marker::Send + 'static {
-                    let lane_lifecycle = #lane_lifecycle_tree;
-                    #root::agent_lifecycle::stateful::StatefulAgentLifecycle::on_lane_event(
-                        #lifecycle_builder,
-                        lane_lifecycle
-                    )
+                impl #lifecycle_type {
+                    pub fn into_lifecycle(self) -> impl #root::agent_lifecycle::AgentLifecycle<#agent_type> + ::core::marker::Send + 'static {
+                        let lane_lifecycle = #lane_lifecycle_tree;
+                        #root::agent_lifecycle::stateful::StatefulAgentLifecycle::on_lane_event(
+                            #lifecycle_builder,
+                            lane_lifecycle
+                        )
+                    }
                 }
-            }
+            });
+        } else {
+            tokens.append_all(quote! {
 
-        });
+                impl #lifecycle_type {
+                    pub fn into_lifecycle(self) -> impl #root::agent_lifecycle::AgentLifecycle<#agent_type> + ::core::clone::Clone + ::core::marker::Send + 'static {
+                        let lane_lifecycle = #lane_lifecycle_tree;
+                        #root::agent_lifecycle::stateful::StatefulAgentLifecycle::on_lane_event(
+                            #lifecycle_builder,
+                            lane_lifecycle
+                        )
+                    }
+                }
+            });
+        }
     }
 }
 

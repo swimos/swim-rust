@@ -829,7 +829,7 @@ async fn downlink_to_local_nonexistent() {
                 .expect("Request not satisfied.")
                 .expect_err("Local downlink succeeded.");
 
-            assert!(matches!(error, DownlinkFailureReason::Unresolvable));
+            assert!(matches!(error, DownlinkFailureReason::Unresolvable(_)));
             test_context.handle.stop();
             assert!(downlink_connector.stop_handle().await.is_ok());
             downlink_connector.stopped();

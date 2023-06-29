@@ -216,6 +216,14 @@ pub mod agent_model {
     };
     pub use swim_api::meta::lane::LaneKind;
     pub use swim_api::store::StoreKind;
+
+    pub mod downlink {
+        pub mod hosted {
+            pub use swim_agent::agent_model::downlink::hosted::{
+                EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle,
+            };
+        }
+    }
 }
 
 pub mod item {
@@ -252,6 +260,10 @@ pub mod lanes {
             pub use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
         }
     }
+}
+
+pub mod state {
+    pub use swim_agent::state::{History, State};
 }
 
 pub mod stores {

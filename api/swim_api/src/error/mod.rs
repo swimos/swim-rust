@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::error::Error;
-use std::{fmt::Display, io};
+use std::io;
 
 use swim_form::structural::read::ReadError;
 use swim_model::Text;
@@ -71,38 +71,18 @@ pub enum DownlinkTaskError {
     Custom(Box<dyn Error + Send + Sync + 'static>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum DownlinkFailureReason {
-    Unresolvable,
+    #[error("The lane was unresolvable: {0}")]
+    Unresolvable(String),
+    #[error("Connection to the remote host failed.")]
     ConnectionFailed,
-    WebsocketNegotiationFailed,
+    #[error("Could not negotiate a websocket connection: {0}")]
+    WebsocketNegotiationFailed(String),
+    #[error("The remote client stopped while the downlink was starting.")]
     RemoteStopped,
+    #[error("The downlink runtime task stopped during attachment.")]
     DownlinkStopped,
-}
-
-impl Error for DownlinkFailureReason {}
-
-impl Display for DownlinkFailureReason {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DownlinkFailureReason::Unresolvable => write!(f, "The lane was unresolvable."),
-            DownlinkFailureReason::ConnectionFailed => {
-                write!(f, "Connection to the remote host failed.")
-            }
-            DownlinkFailureReason::WebsocketNegotiationFailed => {
-                write!(f, "Could not negotiate a websocket connection.")
-            }
-            DownlinkFailureReason::RemoteStopped => {
-                write!(
-                    f,
-                    "The remote client stopped while the downlink was starting."
-                )
-            }
-            DownlinkFailureReason::DownlinkStopped => {
-                write!(f, "The downlink runtime task stopped during attachment.")
-            }
-        }
-    }
 }
 
 /// Error type for operations that communicate with the agent runtime.
@@ -115,7 +95,7 @@ pub enum AgentRuntimeError {
 }
 
 /// Error type for the operation of spawning a new downlink on the runtime.
-#[derive(Error, Debug, Clone, Copy)]
+#[derive(Error, Debug, Clone)]
 pub enum DownlinkRuntimeError {
     #[error(transparent)]
     RuntimeError(#[from] AgentRuntimeError),
