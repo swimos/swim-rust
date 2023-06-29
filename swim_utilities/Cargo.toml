@@ -6,7 +6,7 @@ edition = "2021"
 
 [features]
 default = []
-all = ["future", "errors", "sync", "collections", "time", "text", "rtree", "buf_channel", "algebra", "multi_reader"]
+all = ["future", "errors", "sync", "collections", "time", "text", "rtree", "buf_channel", "algebra", "multi_reader", "uri_forest"]
 algebra = ["swim_algebra"]
 buf_channel = ["byte_channel"]
 multi_reader = ["swim_multi_reader"]
@@ -19,6 +19,7 @@ sync = ["future", "trigger", "swim_sync"]
 text = ["swim_route", "swim_format"]
 time = ["swim_time"]
 trigger = ["swim_trigger"]
+uri_forest = ["swim_uri_forest"]
 
 [dependencies]
 byte_channel = { path = "./byte_channel", optional = true }
@@ -34,3 +35,5 @@ swim_route = { path = "./swim_route", optional = true }
 swim_rtree = { path = "./swim_rtree", optional = true }
 swim_sync = { path = "./swim_sync", optional = true }
 swim_time = { path = "./swim_time", optional = true }
+swim_uri_forest = { path = "./swim_uri_forest", optional = true }
+

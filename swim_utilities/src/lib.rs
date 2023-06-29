@@ -65,4 +65,7 @@ pub mod sync {
 #[cfg(feature = "test-util")]
 pub use swim_test_util as test_util;
 
+#[cfg(feature = "uri_forest")]
+pub use swim_uri_forest as uri_forest;
+
 pub use swim_num::non_zero_usize;
