@@ -27,7 +27,6 @@ use swim_form::structural::write::StructuralWritable;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
-pub mod lifecycle;
 use crate::{
     agent_model::WriteResult,
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
@@ -41,12 +40,18 @@ use super::{
     queues::{Action, ToWrite, WriteQueues},
     LaneItem,
 };
+
+pub mod lifecycle;
+#[cfg(test)]
+mod tests;
+
 struct DemandMapLaneInner<K, V> {
     queues: WriteQueues<K>,
     pending: Option<Pending<K, V>>,
     sync_requests: HashSet<Uuid>,
 }
 
+#[derive(Debug)]
 enum Pending<K, V> {
     Event(K, Option<V>),
     SyncEvent(Uuid, K, Option<V>),
@@ -103,6 +108,15 @@ where
 pub struct DemandMapLane<K, V> {
     id: u64,
     inner: RefCell<DemandMapLaneInner<K, V>>,
+}
+
+impl<K, V> DemandMapLane<K, V> {
+    pub fn new(lane_id: u64) -> Self {
+        DemandMapLane {
+            id: lane_id,
+            inner: Default::default(),
+        }
+    }
 }
 
 impl<K, V> AgentItem for DemandMapLane<K, V> {
