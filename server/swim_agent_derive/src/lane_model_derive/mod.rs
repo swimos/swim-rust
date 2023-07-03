@@ -294,7 +294,7 @@ impl<'a> OrdinalLaneModel<'a> {
     pub fn map_like(&self) -> bool {
         matches!(
             &self.model.kind,
-            LaneSpec::Map(_, _) | LaneSpec::JoinValue(_, _)
+            LaneSpec::Map(_, _) | LaneSpec::DemandMap(_, _) | LaneSpec::JoinValue(_, _)
         )
     }
 }
@@ -311,7 +311,7 @@ impl<'a> OrdinalItemModel<'a> {
     fn map_like(&self) -> bool {
         matches!(
             &self.model.kind,
-            ItemSpec::Map(_, _, _) | ItemSpec::JoinValue(_, _)
+            ItemSpec::Map(_, _, _) | ItemSpec::JoinValue(_, _) | ItemSpec::DemandMap(_, _)
         )
     }
 }
@@ -332,6 +332,9 @@ impl<'a> FieldInitializer<'a> {
             }
             ItemSpec::Demand(_) => {
                 quote!(#name: #root::lanes::DemandLane::new(#ordinal))
+            }
+            ItemSpec::DemandMap(_, _) => {
+                quote!(#name: #root::lanes::DemandMapLane::new(#ordinal))
             }
             ItemSpec::Value(ItemKind::Lane, _) => {
                 quote!(#name: #root::lanes::ValueLane::new(#ordinal, ::core::default::Default::default()))
@@ -374,7 +377,7 @@ impl<'a> HandlerType<'a> {
             LaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::DecodeAndApply<#agent_name, #k, #v>)
             }
-            LaneSpec::Demand(_) | LaneSpec::JoinValue(_, _) => {
+            LaneSpec::Demand(_) | LaneSpec::DemandMap(_, _) | LaneSpec::JoinValue(_, _) => {
                 quote!(#root::event_handler::UnitHandler)
             }
         }
@@ -393,6 +396,9 @@ impl<'a> SyncHandlerType<'a> {
             LaneSpec::Command(_) => quote!(#root::event_handler::UnitHandler), //TODO Do this properly later.
             LaneSpec::Demand(t) => {
                 quote!(#root::lanes::demand::DemandLaneSync<#agent_name, #t>)
+            }
+            LaneSpec::DemandMap(k, v) => {
+                quote!(#root::lanes::demand_map::DemandMapLaneSync<#agent_name, #k, #v>)
             }
             LaneSpec::Value(t) => {
                 quote!(#root::lanes::value::ValueLaneSync<#agent_name, #t>)
@@ -441,7 +447,7 @@ impl<'a> LaneHandlerMatch<'a> {
             LaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v>(body, |agent: &#agent_name| &agent.#name))
             }
-            LaneSpec::Demand(_) | LaneSpec::JoinValue(_, _) => {
+            LaneSpec::Demand(_) | LaneSpec::DemandMap(_, _) | LaneSpec::JoinValue(_, _) => {
                 quote!(#root::event_handler::UnitHandler::default())
             }
         };
@@ -493,6 +499,9 @@ impl<'a> SyncHandlerMatch<'a> {
             LaneSpec::Command(_) => quote!(#root::event_handler::UnitHandler::default()),
             LaneSpec::Demand(ty) => {
                 quote!(#root::lanes::demand::DemandLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &agent.#name, id))
+            }
+            LaneSpec::DemandMap(k, v) => {
+                quote!(#root::lanes::demand_map::DemandMapLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
             }
             LaneSpec::Value(ty) => {
                 quote!(#root::lanes::value::ValueLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &agent.#name, id))
