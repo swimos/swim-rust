@@ -34,7 +34,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use self::lifecycle::DemandMapLaneLifecycle;
+use self::lifecycle::{DemandMapLaneLifecycle, DemandMapLaneLifecycleShared};
 
 use super::{
     queues::{Action, ToWrite, WriteQueues},
@@ -116,6 +116,12 @@ impl<K, V> DemandMapLane<K, V> {
             id: lane_id,
             inner: Default::default(),
         }
+    }
+
+    pub(crate) fn sync(&self, sync_id: Uuid) {
+        let mut guard = self.inner.borrow_mut();
+        let DemandMapLaneInner { sync_requests, .. } = &mut *guard;
+        sync_requests.insert(sync_id);
     }
 }
 
@@ -221,15 +227,59 @@ impl<Context, K, V> HandlerAction<Context> for DemandMapLaneSync<Context, K, V> 
         } = self;
         if let Some(sync_id) = sync_id.take() {
             let lane = projection(context);
-            let mut guard = lane.inner.borrow_mut();
-            let DemandMapLaneInner { sync_requests, .. } = &mut *guard;
-            sync_requests.insert(sync_id);
+            lane.sync(sync_id);
             StepResult::Complete {
                 modified_item: Some(Modification::of(lane.id)),
                 result: (),
             }
         } else {
             StepResult::after_done()
+        }
+    }
+}
+
+fn demand_map_handler_inner<Context, K, V, F, Keys, G, OnCueKey>(
+    context: &Context,
+    projection: fn(&Context) -> &DemandMapLane<K, V>,
+    keys: F,
+    on_cue_key: G,
+) -> DemandMap<Context, K, V, Keys, OnCueKey>
+where
+    K: Clone + Eq + Hash,
+    F: FnOnce() -> Keys,
+    G: FnOnce(K) -> OnCueKey,
+{
+    let lane = projection(context);
+    let mut guard = lane.inner.borrow_mut();
+    let DemandMapLaneInner {
+        queues,
+        sync_requests,
+        pending,
+    } = &mut *guard;
+    if pending.is_some() {
+        DemandMap::no_handler(projection)
+    } else if !sync_requests.is_empty() {
+        DemandMap::keys(projection, keys())
+    } else {
+        loop {
+            match queues.pop() {
+                Some(ToWrite::Event(Action::Update { key, .. })) => {
+                    break DemandMap::cue_key(projection, key.clone(), on_cue_key(key), None);
+                }
+                Some(ToWrite::Event(Action::Remove { key })) => {
+                    *pending = Some(Pending::Event(key, None));
+                    break DemandMap::complete(projection);
+                }
+                Some(ToWrite::SyncEvent(id, key)) => {
+                    break DemandMap::cue_key(projection, key.clone(), on_cue_key(key), Some(id));
+                }
+                Some(ToWrite::Synced(id)) => {
+                    *pending = Some(Pending::Synced(id));
+                    break DemandMap::complete(projection);
+                }
+                None => break DemandMap::no_handler(projection),
+                _ => {}
+            }
         }
     }
 }
@@ -243,49 +293,30 @@ where
     K: Clone + Eq + Hash,
     LC: DemandMapLaneLifecycle<K, V, Context>,
 {
-    let lane = projection(context);
-    let mut guard = lane.inner.borrow_mut();
-    let DemandMapLaneInner {
-        queues,
-        sync_requests,
-        pending,
-    } = &mut *guard;
-    if pending.is_some() {
-        DemandMap::no_handler(projection)
-    } else if !sync_requests.is_empty() {
-        DemandMap::keys(projection, lifecycle.keys())
-    } else {
-        loop {
-            match queues.pop() {
-                Some(ToWrite::Event(Action::Update { key, .. })) => {
-                    break DemandMap::cue_key(
-                        projection,
-                        key.clone(),
-                        lifecycle.on_cue_key(key),
-                        None,
-                    );
-                }
-                Some(ToWrite::Event(Action::Remove { key })) => {
-                    *pending = Some(Pending::Event(key, None));
-                    break DemandMap::complete(projection);
-                }
-                Some(ToWrite::SyncEvent(id, key)) => {
-                    break DemandMap::cue_key(
-                        projection,
-                        key.clone(),
-                        lifecycle.on_cue_key(key),
-                        Some(id),
-                    );
-                }
-                Some(ToWrite::Synced(id)) => {
-                    *pending = Some(Pending::Synced(id));
-                    break DemandMap::complete(projection);
-                }
-                None => break DemandMap::no_handler(projection),
-                _ => {}
-            }
-        }
-    }
+    demand_map_handler_inner(
+        context,
+        projection,
+        || lifecycle.keys(),
+        |key| lifecycle.on_cue_key(key),
+    )
+}
+
+pub fn demand_map_handler_shared<'a, Context, Shared, K, V, LC>(
+    context: &Context,
+    shared: &'a Shared,
+    projection: fn(&Context) -> &DemandMapLane<K, V>,
+    lifecycle: &'a LC,
+) -> DemandMap<Context, K, V, LC::KeysHandler<'a>, LC::OnCueKeyHandler<'a>>
+where
+    K: Clone + Eq + Hash,
+    LC: DemandMapLaneLifecycleShared<K, V, Context, Shared>,
+{
+    demand_map_handler_inner(
+        context,
+        projection,
+        || lifecycle.keys(shared, Default::default()),
+        |key| lifecycle.on_cue_key(shared, Default::default(), key),
+    )
 }
 
 enum DemandMapInner<K, Keys, OnCueK> {
