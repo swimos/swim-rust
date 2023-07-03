@@ -224,7 +224,7 @@ where
         let OpenMapDownlinkAction { inner, config, .. } = self;
         if let Some(Inner { address, lifecycle }) = inner.take() {
             let state: RefCell<MapDlState<K, V>> = Default::default();
-            let (tx, rx) = mpsc::channel::<MapOperation<K, V>>(config.channel_size.get());
+            let (tx, rx) = mpsc::unbounded_channel::<MapOperation<K, V>>();
             let (stop_tx, stop_rx) = trigger::trigger();
             let config = *config;
             let addr_cpy = address.clone();

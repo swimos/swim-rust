@@ -719,11 +719,9 @@ async fn revive_unlinked_downlink() {
     assert!(channel.next_event(&agent).is_none());
 }
 
-const CHANNEL_SIZE: usize = 8;
-
 #[tokio::test]
 async fn map_downlink_writer() {
-    let (op_tx, op_rx) = mpsc::channel::<MapOperation<i32, Text>>(CHANNEL_SIZE);
+    let (op_tx, op_rx) = mpsc::unbounded_channel::<MapOperation<i32, Text>>();
     let (tx, rx) = byte_channel::byte_channel(BUFFER_SIZE);
     let (stop_tx, _stop_rx) = trigger::trigger();
     let mut stream = pin!(map_dl_write_stream(tx, op_rx));
@@ -747,10 +745,10 @@ async fn map_downlink_writer() {
         );
         for i in 'a'..='j' {
             for j in 0..3 {
-                assert!(handle.update(j, Text::from(i.to_string())).await.is_ok());
+                assert!(handle.update(j, Text::from(i.to_string())).is_ok());
             }
         }
-        assert!(handle.remove(2).await.is_ok());
+        assert!(handle.remove(2).is_ok());
     };
 
     let (_, received, r) = join3(driver, read, tokio::spawn(write)).await;
