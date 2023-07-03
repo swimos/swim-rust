@@ -23,7 +23,7 @@ use swim::agent::reexport::bytes::BytesMut;
 use swim::agent::reexport::uuid::Uuid;
 use swim::agent::AgentLaneModel;
 use swim_agent::agent_model::ItemKind;
-use swim_agent::lanes::{DemandLane, JoinValueLane, DemandMapLane};
+use swim_agent::lanes::{DemandLane, DemandMapLane, JoinValueLane};
 use swim_agent::stores::{MapStore, ValueStore};
 
 const SYNC_ID: Uuid = Uuid::from_u128(85883);
