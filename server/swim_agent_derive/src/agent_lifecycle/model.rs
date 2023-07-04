@@ -306,6 +306,26 @@ fn validate_method_as<'a>(
                     Validation::valid(acc)
                 })
             }
+            HandlerKind::Keys => {
+                Validation::join(acc, validate_keys_sig(sig)).and_then(|(mut acc, k)| {
+                    for target in targets {
+                        if let Err(e) = acc.add_demand_map_keys(target, k, &sig.ident) {
+                            return Validation::Validated(acc, Errors::of(e));
+                        }
+                    }
+                    Validation::valid(acc)
+                })
+            }
+            HandlerKind::CueKey => {
+                Validation::join(acc, validate_cue_key_sig(sig)).and_then(|(mut acc, (k, v))| {
+                    for target in targets {
+                        if let Err(e) = acc.add_on_cue_key(target, k, v, &sig.ident) {
+                            return Validation::Validated(acc, Errors::of(e));
+                        }
+                    }
+                    Validation::valid(acc)
+                })
+            }
             HandlerKind::Event => {
                 Validation::join(acc, validate_typed_sig(sig, 1, true)).and_then(|(mut acc, t)| {
                     for target in targets {
@@ -490,6 +510,63 @@ fn validate_cue_sig(sig: &Signature) -> Validation<Option<&Type>, Errors<syn::Er
     inputs.join(output).map(|(_, t)| t)
 }
 
+fn validate_keys_sig<'a>(sig: &'a Signature) -> Validation<&'a Type, Errors<syn::Error>> {
+    let iter = sig.inputs.iter();
+    let inputs = check_receiver(sig, iter)
+        .and_then(|mut iter| {
+            if iter.next().is_none() {
+                Validation::fail(syn::Error::new_spanned(sig, REQUIRED_CONTEXT))
+            } else {
+                Validation::valid(iter)
+            }
+        })
+        .and_then(|iter| {
+            let param_types = extract_types(iter);
+            if param_types.is_empty() {
+                Validation::valid(())
+            } else {
+                Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
+            }
+        });
+    let output = match &sig.output {
+        ReturnType::Default => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+        ReturnType::Type(_, t) => extract_hash_set_type_param(sig, t.as_ref()),
+    };
+    inputs.join(output).map(|(_, t)| t)
+}
+
+fn validate_cue_key_sig<'a>(
+    sig: &'a Signature,
+) -> Validation<(&'a Type, &'a Type), Errors<syn::Error>> {
+    let iter = sig.inputs.iter();
+    let inputs = check_receiver(sig, iter)
+        .and_then(|mut iter| {
+            if iter.next().is_none() {
+                Validation::fail(syn::Error::new_spanned(sig, REQUIRED_CONTEXT))
+            } else {
+                Validation::valid(iter)
+            }
+        })
+        .and_then(|iter| {
+            let param_types = extract_types(iter);
+            match param_types.first() {
+                Some(key_type) if param_types.len() == 1 => Validation::valid(*key_type),
+                _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+            }
+        });
+    let output = match &sig.output {
+        ReturnType::Default => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+        ReturnType::Type(_, t) => extract_cue_ret(sig, t.as_ref()).and_then(|maybe_val| {
+            if let Some(t) = maybe_val {
+                extract_option_type_param(sig, t)
+            } else {
+                Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
+            }
+        }),
+    };
+    inputs.join(output)
+}
+
 const HANDLER_ACTION_NAME: &str = "HandlerAction";
 const EVENT_HANDLER_NAME: &str = "EventHandler";
 const COMPLETION_ASSOC_NAME: &str = "Completion";
@@ -585,6 +662,8 @@ fn peel_ref_type<'a>(
 }
 
 const HASH_MAP: &str = "HashMap";
+const OPTION: &str = "Option";
+const HASH_SET: &str = "HashSet";
 
 fn hash_map_type_params<'a>(
     sig: &Signature,
@@ -601,6 +680,46 @@ fn hash_map_type_params<'a>(
                     (GenericArgument::Type(key_type), GenericArgument::Type(value_type)) => {
                         Validation::valid((key_type, value_type))
                     }
+                    _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+                }
+            }
+            _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+        },
+        _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+    }
+}
+
+fn extract_option_type_param<'a>(
+    sig: &Signature,
+    parameterized: &'a Type,
+) -> Validation<&'a Type, Errors<syn::Error>> {
+    extract_single_type_param(sig, parameterized, OPTION, false)
+}
+
+fn extract_hash_set_type_param<'a>(
+    sig: &Signature,
+    parameterized: &'a Type,
+) -> Validation<&'a Type, Errors<syn::Error>> {
+    extract_single_type_param(sig, parameterized, HASH_SET, true)
+}
+
+fn extract_single_type_param<'a>(
+    sig: &Signature,
+    parameterized: &'a Type,
+    expected_name: &str,
+    allow_extra: bool,
+) -> Validation<&'a Type, Errors<syn::Error>> {
+    match parameterized {
+        Type::Path(TypePath { qself: None, path }) => match path.segments.last() {
+            Some(PathSegment {
+                ident,
+                arguments:
+                    PathArguments::AngleBracketed(AngleBracketedGenericArguments { args, .. }),
+            }) if ident == expected_name
+                && (args.len() == 1 || (allow_extra && args.len() == 2)) =>
+            {
+                match &args[0] {
+                    GenericArgument::Type(param_type) => Validation::valid(param_type),
                     _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
                 }
             }
@@ -644,6 +763,8 @@ fn get_kind(attr: &Attribute) -> Option<Result<(HandlerKind, Vec<String>), syn::
             ON_STOP => Some(HandlerKind::Stop),
             ON_COMMAND => Some(HandlerKind::Command),
             ON_CUE => Some(HandlerKind::Cue),
+            KEYS => Some(HandlerKind::Keys),
+            ON_CUE_KEY => Some(HandlerKind::CueKey),
             ON_EVENT => Some(HandlerKind::Event),
             ON_SET => Some(HandlerKind::Set),
             ON_UPDATE => Some(HandlerKind::Update),
@@ -717,6 +838,8 @@ enum HandlerKind {
     StartAndStop, // Indicates that a single method is used for the on_start and on_stop events.
     Command,
     Cue,
+    Keys,
+    CueKey,
     Event,
     Set,
     Update,
@@ -749,6 +872,8 @@ const ON_START: &str = "on_start";
 const ON_STOP: &str = "on_stop";
 const ON_COMMAND: &str = "on_command";
 const ON_CUE: &str = "on_cue";
+const KEYS: &str = "keys";
+const ON_CUE_KEY: &str = "on_cue_key";
 const ON_EVENT: &str = "on_event";
 const ON_SET: &str = "on_set";
 const ON_UPDATE: &str = "on_update";
@@ -945,6 +1070,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     name
                 ),
             )),
+            Some(ItemLifecycle::DemandMap(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both command and demand-map lane event handlers.",
+                    name
+                ),
+            )),
             Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
@@ -994,17 +1126,24 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                 method,
                 format!("Duplicate on_cue handler for '{}'.", name),
             )),
+            Some(ItemLifecycle::DemandMap(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand and demand-map lane event handlers.",
+                    name
+                ),
+            )),
             Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
-                    "Lane '{}' has both command and value lane event handlers.",
+                    "Lane '{}' has both demand and value lane event handlers.",
                     name
                 ),
             )),
             Some(ItemLifecycle::Map(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
-                    "Lane '{}' has both command and map lane event handlers.",
+                    "Lane '{}' has both demand and map lane event handlers.",
                     name
                 ),
             )),
@@ -1043,6 +1182,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                 method,
                 format!(
                     "Lane '{}' has both demand and value lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::DemandMap(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and value lane event handlers.",
                     name
                 ),
             )),
@@ -1089,6 +1235,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                 method,
                 format!(
                     "Lane '{}' has both demand and value lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::DemandMap(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and value lane event handlers.",
                     name
                 ),
             )),
@@ -1139,6 +1292,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     name
                 ),
             )),
+            Some(ItemLifecycle::DemandMap(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and map lane event handlers.",
+                    name
+                ),
+            )),
             Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
@@ -1182,6 +1342,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                 method,
                 format!(
                     "Lane '{}' has both demand and map lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::DemandMap(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and map lane event handlers.",
                     name
                 ),
             )),
@@ -1231,6 +1398,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     name
                 ),
             )),
+            Some(ItemLifecycle::DemandMap(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and map lane event handlers.",
+                    name
+                ),
+            )),
             Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
                 method,
                 format!(
@@ -1251,6 +1425,111 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             }
         }
     }
+
+    pub fn add_demand_map_keys(
+        &mut self,
+        name: String,
+        key_type: &'a Type,
+        method: &'a Ident,
+    ) -> Result<(), syn::Error> {
+        let AgentLifecycleDescriptorBuilder {
+            lane_lifecycles, ..
+        } = self;
+        match lane_lifecycles.get_mut(&name) {
+            Some(ItemLifecycle::Command(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and command lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Demand(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and demand lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::DemandMap(desc)) => desc.add_keys(key_type, method),
+            Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and value lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Map(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and map lane event handlers.",
+                    name
+                ),
+            )),
+            _ => {
+                lane_lifecycles.insert(
+                    name.clone(),
+                    ItemLifecycle::DemandMap(DemandMapLifecycleDescriptor::new_keys(
+                        name, key_type, method,
+                    )),
+                );
+                Ok(())
+            }
+        }
+    }
+
+    pub fn add_on_cue_key(
+        &mut self,
+        name: String,
+        key_type: &'a Type,
+        value_type: &'a Type,
+        method: &'a Ident,
+    ) -> Result<(), syn::Error> {
+        let AgentLifecycleDescriptorBuilder {
+            lane_lifecycles, ..
+        } = self;
+        match lane_lifecycles.get_mut(&name) {
+            Some(ItemLifecycle::Command(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and command lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Demand(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and demand lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::DemandMap(desc)) => {
+                desc.add_on_cue_key(key_type, value_type, method)
+            }
+            Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and value lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Map(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and map lane event handlers.",
+                    name
+                ),
+            )),
+            _ => {
+                lane_lifecycles.insert(
+                    name.clone(),
+                    ItemLifecycle::DemandMap(DemandMapLifecycleDescriptor::new_on_cue_key(
+                        name, key_type, value_type, method,
+                    )),
+                );
+                Ok(())
+            }
+        }
+    }
 }
 
 /// Lifecycle attached to a single item.
@@ -1258,6 +1537,7 @@ pub enum ItemLifecycle<'a> {
     Value(ValueLifecycleDescriptor<'a>),
     Command(CommandLifecycleDescriptor<'a>),
     Demand(DemandLifecycleDescriptor<'a>),
+    DemandMap(DemandMapLifecycleDescriptor<'a>),
     Map(MapLifecycleDescriptor<'a>),
 }
 
@@ -1267,6 +1547,7 @@ impl<'a> ItemLifecycle<'a> {
             ItemLifecycle::Value(ValueLifecycleDescriptor { name, .. }) => name,
             ItemLifecycle::Command(CommandLifecycleDescriptor { name, .. }) => name,
             ItemLifecycle::Demand(DemandLifecycleDescriptor { name, .. }) => name,
+            ItemLifecycle::DemandMap(DemandMapLifecycleDescriptor { name, .. }) => name,
             ItemLifecycle::Map(MapLifecycleDescriptor { name, .. }) => name,
         };
         name.as_str()
@@ -1281,22 +1562,27 @@ impl<'a> ItemLifecycle<'a> {
     /// the agent lifecycle.
     pub fn branch_type(&self, root: &syn::Path) -> Path {
         match self {
-            ItemLifecycle::Value(ValueLifecycleDescriptor { .. }) => {
+            ItemLifecycle::Value(_) => {
                 parse_quote! {
                     #root::agent_lifecycle::item_event::ValueLikeBranch
                 }
             }
-            ItemLifecycle::Command(CommandLifecycleDescriptor { .. }) => {
+            ItemLifecycle::Command(_) => {
                 parse_quote! {
                     #root::agent_lifecycle::item_event::CommandBranch
                 }
             }
-            ItemLifecycle::Demand(DemandLifecycleDescriptor { .. }) => {
+            ItemLifecycle::Demand(_) => {
                 parse_quote! {
                     #root::agent_lifecycle::item_event::DemandBranch
                 }
             }
-            ItemLifecycle::Map(MapLifecycleDescriptor { .. }) => {
+            ItemLifecycle::DemandMap(_) => {
+                parse_quote! {
+                    #root::agent_lifecycle::item_event::DemandMapBranch
+                }
+            }
+            ItemLifecycle::Map(_) => {
                 parse_quote! {
                     #root::agent_lifecycle::item_event::MapLikeBranch
                 }
@@ -1594,6 +1880,95 @@ impl<'a> MapLifecycleDescriptor<'a> {
             if map_type != *primary_lane_type {
                 alternative_lane_types.insert(map_type);
             }
+            Ok(())
+        }
+    }
+}
+
+pub struct DemandMapLifecycleDescriptor<'a> {
+    name: String,
+    key_type: &'a Type,
+    value_type: Option<&'a Type>,
+    alternative_key_types: HashSet<&'a Type>,
+    pub keys: Option<&'a Ident>,
+    pub on_cue_key: Option<&'a Ident>,
+}
+
+impl<'a> DemandMapLifecycleDescriptor<'a> {
+    pub fn new_keys(name: String, key_type: &'a Type, method: &'a Ident) -> Self {
+        DemandMapLifecycleDescriptor {
+            name,
+            key_type,
+            value_type: None,
+            keys: Some(method),
+            on_cue_key: None,
+            alternative_key_types: HashSet::new(),
+        }
+    }
+
+    pub fn new_on_cue_key(
+        name: String,
+        key_type: &'a Type,
+        value_type: &'a Type,
+        method: &'a Ident,
+    ) -> Self {
+        DemandMapLifecycleDescriptor {
+            name,
+            key_type,
+            value_type: Some(value_type),
+            keys: None,
+            on_cue_key: Some(method),
+            alternative_key_types: HashSet::new(),
+        }
+    }
+
+    pub fn add_keys(&mut self, key_t: &'a Type, method: &'a Ident) -> Result<(), syn::Error> {
+        let DemandMapLifecycleDescriptor {
+            name,
+            key_type,
+            keys,
+            alternative_key_types,
+            ..
+        } = self;
+        if keys.is_some() {
+            Err(syn::Error::new_spanned(
+                method,
+                format!("Duplicate keys handler for '{}'.", name),
+            ))
+        } else {
+            if key_type != &key_t {
+                alternative_key_types.insert(key_t);
+            }
+            *keys = Some(method);
+            Ok(())
+        }
+    }
+
+    pub fn add_on_cue_key(
+        &mut self,
+        key_t: &'a Type,
+        value_t: &'a Type,
+        method: &'a Ident,
+    ) -> Result<(), syn::Error> {
+        let DemandMapLifecycleDescriptor {
+            name,
+            key_type,
+            value_type,
+            on_cue_key,
+            alternative_key_types,
+            ..
+        } = self;
+        if on_cue_key.is_some() {
+            Err(syn::Error::new_spanned(
+                method,
+                format!("Duplicate on_cue_key handler for '{}'.", name),
+            ))
+        } else {
+            if key_type != &key_t {
+                alternative_key_types.insert(key_t);
+            }
+            *value_type = Some(value_t);
+            *on_cue_key = Some(method);
             Ok(())
         }
     }
