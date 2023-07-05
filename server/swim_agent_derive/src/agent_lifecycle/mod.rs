@@ -124,7 +124,7 @@ impl<'a> LaneLifecycleBuilder<'a> {
                 }
                 if let Some(handler) = on_cue_key {
                     builder = parse_quote! {
-                        #root::lanes::demand_map::lifecycle::StatefulDemandMapLaneLifecycle::keys(#builder, #lifecycle_type::#handler)
+                        #root::lanes::demand_map::lifecycle::StatefulDemandMapLaneLifecycle::on_cue_key(#builder, #lifecycle_type::#handler)
                     };
                 }
                 builder

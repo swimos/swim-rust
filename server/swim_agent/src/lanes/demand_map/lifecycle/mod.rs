@@ -18,6 +18,8 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::agent_lifecycle::utility::HandlerContext;
 
+use static_assertions::assert_impl_all;
+
 use self::{
     keys::{Keys, KeysShared},
     on_cue_key::{OnCueKey, OnCueKeyShared},
@@ -81,6 +83,8 @@ pub struct StatefulDemandMapLaneLifecycle<
     keys: Keys,
     on_cue_key: OnCueKey,
 }
+
+assert_impl_all!(StatefulDemandMapLaneLifecycle<(), (), i32, i32>: DemandMapLaneLifecycleShared<i32, i32, (), ()>);
 
 impl<Context, Shared, K, V, Keys: Clone, OnCueKey: Clone> Clone
     for StatefulDemandMapLaneLifecycle<Context, Shared, K, V, Keys, OnCueKey>
