@@ -27,6 +27,7 @@ members = [
     "example_apps/event_downlink",
     "example_apps/value_downlink",
     "example_apps/map_downlink",
+    "example_apps/local_downlink",
 ]
 
 exclude = [
