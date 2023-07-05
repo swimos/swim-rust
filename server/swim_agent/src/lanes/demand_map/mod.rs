@@ -45,6 +45,65 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
+/// A lane that is a stateless analogue of [`super::map::MapLane`]. Rather than maintaining
+/// a persistent state that can be queried, a demand lane computes a value from a key, on demand,
+/// that is sent on all uplinks attached to it.
+///
+/// A demand lane can be cued to produce a value by executing an instance of [`CueKey`] (which can be
+/// constructed using the [`crate::agent_lifecycle::utility::HandlerContext`]).
+#[derive(Debug)]
+pub struct DemandMapLane<K, V> {
+    id: u64,
+    inner: RefCell<DemandMapLaneInner<K, V>>,
+}
+
+impl<K, V> DemandMapLane<K, V> {
+    /// Create a demand-map lane with the specified ID (this needs to be unique within an agent).
+    pub fn new(lane_id: u64) -> Self {
+        DemandMapLane {
+            id: lane_id,
+            inner: Default::default(),
+        }
+    }
+
+    pub(crate) fn sync(&self, sync_id: Uuid) {
+        let mut guard = self.inner.borrow_mut();
+        let DemandMapLaneInner { sync_requests, .. } = &mut *guard;
+        sync_requests.insert(sync_id);
+    }
+}
+
+impl<K, V> AgentItem for DemandMapLane<K, V> {
+    fn id(&self) -> u64 {
+        self.id
+    }
+}
+
+const INFALLIBLE_SER: &str = "Serializing lane responses to recon should be infallible.";
+
+impl<K, V> LaneItem for DemandMapLane<K, V>
+where
+    K: StructuralWritable + Eq + Clone + Hash,
+    V: StructuralWritable,
+{
+    fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
+        let DemandMapLane { inner, .. } = self;
+        let mut guard = inner.borrow_mut();
+
+        let mut encoder = MapLaneResponseEncoder::default();
+        if let Some(message) = guard.pop() {
+            encoder.encode(message, buffer).expect(INFALLIBLE_SER);
+            if guard.is_empty() {
+                WriteResult::Done
+            } else {
+                WriteResult::RequiresEvent
+            }
+        } else {
+            WriteResult::NoData
+        }
+    }
+}
+
 #[derive(Debug)]
 struct DemandMapLaneInner<K, V> {
     queues: WriteQueues<K>,
@@ -106,73 +165,21 @@ where
     }
 }
 
-#[derive(Debug)]
-pub struct DemandMapLane<K, V> {
-    id: u64,
-    inner: RefCell<DemandMapLaneInner<K, V>>,
-}
-
-impl<K, V> DemandMapLane<K, V> {
-    pub fn new(lane_id: u64) -> Self {
-        DemandMapLane {
-            id: lane_id,
-            inner: Default::default(),
-        }
-    }
-
-    pub(crate) fn sync(&self, sync_id: Uuid) {
-        let mut guard = self.inner.borrow_mut();
-        let DemandMapLaneInner { sync_requests, .. } = &mut *guard;
-        sync_requests.insert(sync_id);
-    }
-}
-
-impl<K, V> AgentItem for DemandMapLane<K, V> {
-    fn id(&self) -> u64 {
-        self.id
-    }
-}
-
-const INFALLIBLE_SER: &str = "Serializing lane responses to recon should be infallible.";
-
-impl<K, V> LaneItem for DemandMapLane<K, V>
-where
-    K: StructuralWritable + Eq + Clone + Hash,
-    V: StructuralWritable,
-{
-    fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
-        let DemandMapLane { inner, .. } = self;
-        let mut guard = inner.borrow_mut();
-
-        let mut encoder = MapLaneResponseEncoder::default();
-        if let Some(message) = guard.pop() {
-            encoder.encode(message, buffer).expect(INFALLIBLE_SER);
-            if guard.is_empty() {
-                WriteResult::Done
-            } else {
-                WriteResult::RequiresEvent
-            }
-        } else {
-            WriteResult::NoData
-        }
-    }
-}
-
-pub struct DemandMapLaneCueKey<Context, K, V> {
+pub struct CueKey<Context, K, V> {
     projection: fn(&Context) -> &DemandMapLane<K, V>,
     key: Option<K>,
 }
 
-impl<Context, K, V> DemandMapLaneCueKey<Context, K, V> {
+impl<Context, K, V> CueKey<Context, K, V> {
     pub fn new(projection: fn(&Context) -> &DemandMapLane<K, V>, key: K) -> Self {
-        DemandMapLaneCueKey {
+        CueKey {
             projection,
             key: Some(key),
         }
     }
 }
 
-impl<Context, K, V> HandlerAction<Context> for DemandMapLaneCueKey<Context, K, V>
+impl<Context, K, V> HandlerAction<Context> for CueKey<Context, K, V>
 where
     K: Eq + Clone + Hash,
 {
@@ -184,7 +191,7 @@ where
         _meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
-        let DemandMapLaneCueKey { projection, key } = self;
+        let CueKey { projection, key } = self;
         if let Some(key) = key.take() {
             let lane = projection(context);
             let mut guard = lane.inner.borrow_mut();

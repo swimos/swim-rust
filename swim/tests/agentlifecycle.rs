@@ -28,14 +28,14 @@ use swim::agent::{
 };
 use swim_agent::agent_lifecycle::on_init::OnInit;
 use swim_agent::agent_lifecycle::utility::JoinValueContext;
-use swim_agent::agent_model::WriteResult;
 use swim_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
+use swim_agent::agent_model::WriteResult;
 use swim_agent::event_handler::{
     BoxJoinValueInit, HandlerAction, HandlerFuture, Modification, Spawner,
 };
 use swim_agent::item::{AgentItem, MapItem};
 use swim_agent::lanes::demand::Cue;
-use swim_agent::lanes::demand_map::{DemandMapLaneCueKey, DemandMapLaneSync};
+use swim_agent::lanes::demand_map::{CueKey, DemandMapLaneSync};
 use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
 use swim_agent::lanes::join_value::{AfterClosed, JoinValueLaneUpdate, LinkClosedResponse};
 use swim_agent::lanes::{DemandLane, DemandMapLane, JoinValueLane, LaneItem};
@@ -1639,7 +1639,7 @@ fn on_cue_key_handler() {
     let template = TestLifecycle::default();
     let lifecycle = template.clone().into_lifecycle();
 
-    let cue_key_handler = DemandMapLaneCueKey::new(|agent: &TestAgent| &agent.demand_map, 3);
+    let cue_key_handler = CueKey::new(|agent: &TestAgent| &agent.demand_map, 3);
 
     run_handler_mod(
         &agent,
@@ -1669,7 +1669,6 @@ fn both_demand_map_handlers() {
 
     #[lifecycle(TestAgent, agent_root(::swim_agent))]
     impl TestLifecycle {
-        
         #[keys(demand_map)]
         fn my_keys(
             &self,
@@ -1700,7 +1699,7 @@ fn both_demand_map_handlers() {
     let lifecycle = template.clone().into_lifecycle();
 
     let sync_handler = DemandMapLaneSync::new(|agent: &TestAgent| &agent.demand_map, SYNC_ID);
-    let cue_key_handler = DemandMapLaneCueKey::new(|agent: &TestAgent| &agent.demand_map, 3);
+    let cue_key_handler = CueKey::new(|agent: &TestAgent| &agent.demand_map, 3);
     let mut buffer = BytesMut::new();
 
     run_handler_mod(
@@ -1718,8 +1717,11 @@ fn both_demand_map_handlers() {
         handler,
         Some(Modification::no_trigger(agent.demand_map.id())),
     );
-   
-    assert_eq!(agent.demand_map.write_to_buffer(&mut buffer), WriteResult::Done);
+
+    assert_eq!(
+        agent.demand_map.write_to_buffer(&mut buffer),
+        WriteResult::Done
+    );
 
     run_handler_mod(
         &agent,

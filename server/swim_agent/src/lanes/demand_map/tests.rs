@@ -35,7 +35,7 @@ use crate::{
 
 use super::{
     lifecycle::{keys::Keys, on_cue_key::OnCueKey, DemandMapLaneLifecycle},
-    DemandMapLane, DemandMapLaneCueKey,
+    CueKey, DemandMapLane,
 };
 use uuid::Uuid;
 
@@ -262,7 +262,7 @@ impl OnCueKey<i32, i32, FakeAgent> for TestLifecycle {
 fn cue_present_key() {
     let agent = FakeAgent::default();
     let lifecycle = TestLifecycle::default();
-    let cue = DemandMapLaneCueKey::new(FakeAgent::LANE, 2);
+    let cue = CueKey::new(FakeAgent::LANE, 2);
 
     let responses = run_demand_map(&agent, &lifecycle, cue);
     assert_eq!(
@@ -278,7 +278,7 @@ fn cue_present_key() {
 fn cue_absent_key() {
     let agent = FakeAgent::default();
     let lifecycle = TestLifecycle::default();
-    let cue = DemandMapLaneCueKey::new(FakeAgent::LANE, 60);
+    let cue = CueKey::new(FakeAgent::LANE, 60);
 
     let responses = run_demand_map(&agent, &lifecycle, cue);
     assert_eq!(
@@ -293,8 +293,8 @@ fn cue_absent_key() {
 fn cue_two_keys() {
     let agent = FakeAgent::default();
     let lifecycle = TestLifecycle::default();
-    let cue1 = DemandMapLaneCueKey::new(FakeAgent::LANE, 2);
-    let cue2 = DemandMapLaneCueKey::new(FakeAgent::LANE, 3);
+    let cue1 = CueKey::new(FakeAgent::LANE, 2);
+    let cue2 = CueKey::new(FakeAgent::LANE, 3);
 
     let responses = run_demand_map(&agent, &lifecycle, cue1.followed_by(cue2));
     assert_eq!(
@@ -310,9 +310,9 @@ fn cue_two_keys() {
 fn cue_three_keys() {
     let agent = FakeAgent::default();
     let lifecycle = TestLifecycle::default();
-    let cue1 = DemandMapLaneCueKey::new(FakeAgent::LANE, 1);
-    let cue2 = DemandMapLaneCueKey::new(FakeAgent::LANE, 2);
-    let cue3 = DemandMapLaneCueKey::new(FakeAgent::LANE, 3);
+    let cue1 = CueKey::new(FakeAgent::LANE, 1);
+    let cue2 = CueKey::new(FakeAgent::LANE, 2);
+    let cue3 = CueKey::new(FakeAgent::LANE, 3);
 
     let responses = run_demand_map(&agent, &lifecycle, cue1.followed_by(cue2).followed_by(cue3));
     assert_eq!(
@@ -397,8 +397,8 @@ fn sync_and_cue_demand_map_lane() {
     let agent = FakeAgent::default();
     let lifecycle = TestLifecycle::default();
     let sync = DemandMapLaneSync::new(FakeAgent::LANE, SYNC_ID1);
-    let cue1 = DemandMapLaneCueKey::new(FakeAgent::LANE, 2);
-    let cue2 = DemandMapLaneCueKey::new(FakeAgent::LANE, 3);
+    let cue1 = CueKey::new(FakeAgent::LANE, 2);
+    let cue2 = CueKey::new(FakeAgent::LANE, 3);
 
     let responses = run_demand_map(&agent, &lifecycle, cue1.followed_by(sync).followed_by(cue2));
 
