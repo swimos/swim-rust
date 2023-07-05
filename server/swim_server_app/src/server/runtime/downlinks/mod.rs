@@ -120,6 +120,7 @@ where
                         if let Some(req) = maybe_request {
                             Event::Request(req)
                         } else {
+                            info!("Downlink connection task stopping.");
                             break;
                         }
                     },

@@ -18,6 +18,7 @@ use std::{
     num::NonZeroUsize,
     pin::pin,
     str::Utf8Error,
+    time::Duration,
 };
 
 use bytes::BytesMut;
@@ -100,6 +101,7 @@ pub struct RemoteTask<S, E> {
     attach_rx: mpsc::Receiver<AttachClient>,
     find_tx: Option<mpsc::Sender<FindNode>>,
     registration_buffer_size: NonZeroUsize,
+    close_timeout: Duration,
 }
 
 impl<S, E> RemoteTask<S, E> {
@@ -110,6 +112,7 @@ impl<S, E> RemoteTask<S, E> {
         attach_rx: mpsc::Receiver<AttachClient>,
         find_tx: Option<mpsc::Sender<FindNode>>,
         registration_buffer_size: NonZeroUsize,
+        close_timeout: Duration,
     ) -> Self {
         RemoteTask {
             id,
@@ -118,6 +121,7 @@ impl<S, E> RemoteTask<S, E> {
             attach_rx,
             find_tx,
             registration_buffer_size,
+            close_timeout,
         }
     }
 }
@@ -171,6 +175,8 @@ where
             attach_rx,
             find_tx,
             registration_buffer_size,
+            close_timeout,
+            ..
         } = self;
 
         let (mut tx, mut rx) = ws.split().unwrap();
@@ -225,8 +231,14 @@ where
         };
         if let Some(reason) = close_reason {
             debug!(reason = ?reason, "Closing websocket connection.");
-            if let Err(error) = tx.close(reason).await {
-                error!(error = %error, "Failed to close websocket.");
+            let close_result = tokio::time::timeout(close_timeout, async {
+                if let Err(error) = tx.close(reason).await {
+                    error!(error = %error, "Failed to close websocket.");
+                }
+            })
+            .await;
+            if close_result.is_err() {
+                warn!(id = ?id, "Closing websocket connection timed out.");
             }
         }
     }

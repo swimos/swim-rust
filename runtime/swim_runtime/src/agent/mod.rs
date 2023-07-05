@@ -231,7 +231,7 @@ pub struct AgentAttachmentRequest {
     id: Uuid,
     /// Channels over which the agent runtime task should communicate with the endpoint.
     io: Io,
-    /// A promise that will be satisified when the agent runtime task closes the remote.
+    /// A promise that will be satisfied when the agent runtime task closes the remote.
     completion: promise::Sender<DisconnectionReason>,
     /// If provided, this will be triggered when the remote has been fully registered with
     /// the agent runtime request. The completion promise will only receive a non-failed

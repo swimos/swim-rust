@@ -22,7 +22,13 @@ use swim::server::ServerHandle;
 use tokio::{select, sync::oneshot};
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
-pub async fn manage_handle(mut handle: ServerHandle) {
+pub async fn manage_handle(handle: ServerHandle) {
+    manage_handle_report(handle, None).await
+}
+pub async fn manage_handle_report(
+    mut handle: ServerHandle,
+    bound: Option<oneshot::Sender<SocketAddr>>,
+) {
     let mut shutdown_hook = Box::pin(async {
         tokio::signal::ctrl_c()
             .await
@@ -36,6 +42,9 @@ pub async fn manage_handle(mut handle: ServerHandle) {
     };
 
     if let Some(addr) = maybe_addr {
+        if let Some(tx) = bound {
+            let _ = tx.send(addr);
+        }
         println!("Bound to: {}", addr);
         shutdown_hook.await;
     }

@@ -238,7 +238,7 @@ async fn count_lanes() {
                 "/listener".into(),
                 NodeInfo::List(NodeInfoList {
                     node_uri: "/listener".to_string(),
-                    created: NOW.get().unwrap().clone(),
+                    created: NOW.get().unwrap().clone().millis(),
                     agents: vec!["listener_agent".into()],
                 }),
             ),
@@ -309,7 +309,7 @@ async fn list_lanes() {
                 "/listener".into(),
                 NodeInfoList {
                     node_uri: "/listener".to_string(),
-                    created: NOW.get().unwrap().clone(),
+                    created: NOW.get().unwrap().clone().millis(),
                     agents: vec!["listener_agent".into()],
                 },
             ),
@@ -317,7 +317,7 @@ async fn list_lanes() {
                 "/cnt/1".into(),
                 NodeInfoList {
                     node_uri: "/cnt/1".to_string(),
-                    created: NOW.get().unwrap().clone(),
+                    created: NOW.get().unwrap().clone().millis(),
                     agents: vec!["counter_1".into()],
                 },
             ),
@@ -325,7 +325,7 @@ async fn list_lanes() {
                 "/cnt/2".into(),
                 NodeInfoList {
                     node_uri: "/cnt/2".to_string(),
-                    created: NOW.get().unwrap().clone(),
+                    created: NOW.get().unwrap().clone().millis(),
                     agents: vec!["counter_2".into()],
                 },
             ),
@@ -333,7 +333,7 @@ async fn list_lanes() {
                 "/cnt/3".into(),
                 NodeInfoList {
                     node_uri: "/cnt/3".to_string(),
-                    created: NOW.get().unwrap().clone(),
+                    created: NOW.get().unwrap().clone().millis(),
                     agents: vec!["counter_3".into()],
                 },
             ),
@@ -341,7 +341,7 @@ async fn list_lanes() {
                 "/cnt/4".into(),
                 NodeInfoList {
                     node_uri: "/cnt/4".to_string(),
-                    created: NOW.get().unwrap().clone(),
+                    created: NOW.get().unwrap().clone().millis(),
                     agents: vec!["counter_4".into()],
                 },
             ),

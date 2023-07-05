@@ -1473,7 +1473,7 @@ impl WriteTaskState {
                 },
             ))
         } else {
-            trace!(response = ?response, "Discarding response.");
+            trace!(response = ?response, id, "Discarding response.");
             Either::Left(Writes::Zero)
         }
     }

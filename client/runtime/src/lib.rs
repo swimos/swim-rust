@@ -15,25 +15,28 @@
 #[cfg(test)]
 mod tests;
 
+mod commander;
 mod error;
 mod models;
 mod pending;
 mod runtime;
 mod transport;
 
-pub use crate::error::{DownlinkErrorKind, DownlinkRuntimeError, TimeoutElapsed};
-pub use crate::models::RemotePath;
-pub use crate::runtime::{start_runtime, RawHandle};
-pub use crate::transport::{Transport, TransportRequest};
+pub use commander::{CommandError, Commander};
+pub use error::{DownlinkErrorKind, DownlinkRuntimeError, TimeoutElapsed};
+pub use models::RemotePath;
 #[cfg(feature = "deflate")]
 use ratchet::deflate::DeflateConfig;
-use std::fmt::Debug;
+pub use runtime::{start_runtime, RawHandle};
 use std::num::NonZeroUsize;
+use std::{fmt::Debug, time::Duration};
 pub use swim_api::downlink::DownlinkKind;
 pub use swim_api::error::DownlinkTaskError;
 use swim_utilities::non_zero_usize;
+pub use transport::Transport;
 
 const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
+const DEFAULT_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 pub struct WebSocketConfig {
@@ -61,6 +64,7 @@ pub struct ClientConfig {
     pub remote_buffer_size: NonZeroUsize,
     pub transport_buffer_size: NonZeroUsize,
     pub registration_buffer_size: NonZeroUsize,
+    pub close_timeout: Duration,
 }
 
 impl Default for ClientConfig {
@@ -72,6 +76,7 @@ impl Default for ClientConfig {
             remote_buffer_size: non_zero_usize!(4096),
             transport_buffer_size: DEFAULT_BUFFER_SIZE,
             registration_buffer_size: DEFAULT_BUFFER_SIZE,
+            close_timeout: DEFAULT_CLOSE_TIMEOUT,
         }
     }
 }

@@ -24,6 +24,7 @@ use runtime::{
     start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, RemotePath, Transport,
     WebSocketConfig,
 };
+pub use runtime::{CommandError, Commander};
 use std::sync::Arc;
 use swim_api::downlink::DownlinkConfig;
 use swim_downlink::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
@@ -116,6 +117,7 @@ where
         remote_buffer_size,
         transport_buffer_size,
         registration_buffer_size,
+        close_timeout,
         ..
     } = config;
 
@@ -154,7 +156,7 @@ where
             start_runtime(
                 registration_buffer_size,
                 stop_rx,
-                Transport::new(networking, websockets, remote_buffer_size),
+                Transport::new(networking, websockets, remote_buffer_size, close_timeout),
                 transport_buffer_size,
             )
         }
