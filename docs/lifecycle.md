@@ -20,6 +20,7 @@ use swim::agent::{AgentLaneModel, projections};
 struct ExampleAgent {
     example_command: CommandLane<i32>,
     example_demand: DemandLane<i32>,
+    example_demand_map: DemandMapLane<String, i32>,
     example_value: ValueLane<i32>,
     example_map: MapLane<String, i32>,
     example_join_value: JoinValueLane<String, i32>,
@@ -104,6 +105,32 @@ The default `on_cue` handler will produce an error and cause the agent to fail.
 ```rust
 #[on_cue(example_demand)]
 fn my_demand_handler(&self, context: HandlerContext<ExampleAgent>) -> impl HandlerAction<ExampleAgent, Completion = i32> {
+    //...
+}
+```
+
+Demand Map lane events
+----------------------
+
+A demand map lane has two types of event that generate its contents, on demand.
+
+1. `on_cue_key`: This triggers each time a key of the map is cued to be generated. This occurs upon a manual cue operation and once for each defined key when a downlink attempts to sync with the lane.
+2. `keys`: This triggers each time a downlink attempts to sync with the lane. It generates the set of keys that are defined.
+
+The `on_cue_key` event has the following signature:
+
+```rust
+#[on_cue_key(example_demand_map)]
+fn my_demand_handler(&self, context: HandlerContext<ExampleAgent>, key: String) -> impl HandlerAction<ExampleAgent, Completion = Option<i32>> {
+    //...
+}
+```
+
+The `keys` event has the following signature:
+
+```rust
+#[keys(example_demand_map)]
+fn my_demand_keys_handler(&self, context: HandlerContext<ExampleAgent>) -> impl HandlerAction<ExampleAgent, Completion = HashSet<i32>> {
     //...
 }
 ```
