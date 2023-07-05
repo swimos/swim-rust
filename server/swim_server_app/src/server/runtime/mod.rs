@@ -15,6 +15,7 @@
 use futures::future::join;
 use futures::stream::{unfold, FuturesUnordered};
 use futures::{FutureExt, Stream, StreamExt};
+use parking_lot::RwLock;
 use ratchet::{SplittableExtension, WebSocket, WebSocketStream};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -29,8 +30,8 @@ use swim_api::agent::{Agent, BoxAgent};
 use swim_api::error::introspection::IntrospectionStopped;
 use swim_api::error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError};
 use swim_api::store::PlanePersistence;
-use swim_introspection::route::{lane_pattern, node_pattern};
-use swim_introspection::{init_introspection, IntrospectionResolver};
+use swim_introspection::route::{lane_pattern, mesh_pattern, node_pattern};
+use swim_introspection::{init_introspection, IntrospectionResolver, MetaMeshAgent};
 use swim_introspection::{IntrospectionConfig, LaneMetaAgent, NodeMetaAgent};
 use swim_model::address::RelativeAddress;
 use swim_model::Text;
@@ -48,6 +49,7 @@ use swim_runtime::ws::{RatchetError, WsConnections};
 use swim_utilities::io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
 use swim_utilities::routing::route_pattern::RoutePattern;
 use swim_utilities::trigger::{self, promise};
+use swim_utilities::uri_forest::UriForest;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinError;
@@ -821,11 +823,12 @@ impl Agents {
                         disable_introspection,
                         ..
                     } = route;
+                    let name = entry.key().clone();
 
                     let node_reporting = if *disable_introspection {
                         None
                     } else if let Some(resolver) = introspection_resolver {
-                        match resolver.register_agent(id, route_uri.clone()) {
+                        match resolver.register_agent(id, route_uri.clone(), name.clone()) {
                             Ok(reporting) => Some(reporting),
                             Err(_) => {
                                 *introspection_resolver = None;
@@ -849,7 +852,6 @@ impl Agents {
                         *config,
                         node_reporting,
                     );
-                    let name = entry.key().clone();
                     spawn_task(name, route_task);
                     let (id, tx) = entry.insert((id, attachment_tx));
                     Ok((*id, tx))
@@ -1107,9 +1109,14 @@ fn start_introspection(
     stopping: trigger::Receiver,
     routes: &mut Routes,
 ) -> IntrospectionResolver {
-    let (resolver, task) = init_introspection(stopping, config.registration_channel_size);
+    let agents = Arc::new(RwLock::new(UriForest::new()));
+    let (resolver, task) =
+        init_introspection(stopping, config.registration_channel_size, agents.clone());
+    let mesh_meta = MetaMeshAgent::new(agents);
     let node_meta = NodeMetaAgent::new(config, resolver.clone());
     let lane_meta = LaneMetaAgent::new(config, resolver.clone());
+
+    routes.append(mesh_pattern(), mesh_meta);
     routes.append(node_pattern(), node_meta);
     routes.append(lane_pattern(), lane_meta);
     tokio::spawn(task.with_budget_or_default(coop_budget));

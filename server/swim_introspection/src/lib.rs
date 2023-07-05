@@ -14,10 +14,12 @@
 
 mod config;
 mod meta_agent;
+mod meta_mesh;
 mod model;
 pub mod route;
 mod task;
 
 pub use config::IntrospectionConfig;
 pub use meta_agent::{lane::LaneMetaAgent, node::NodeMetaAgent};
+pub use meta_mesh::MetaMeshAgent;
 pub use task::{init_introspection, IntrospectionResolver};

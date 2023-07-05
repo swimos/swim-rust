@@ -20,7 +20,7 @@ use std::{
 
 use swim::server::ServerHandle;
 use tokio::{select, sync::oneshot};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
 pub async fn manage_handle(handle: ServerHandle) {
     manage_handle_report(handle, None).await
@@ -148,9 +148,7 @@ pub fn example_logging() -> Result<(), Box<dyn std::error::Error>> {
                 .add_directive("swim_agent=trace".parse()?)
                 .add_directive("swim_messages=trace".parse()?)
                 .add_directive("swim_remote=trace".parse()?)
-                .add_directive("mio=warn".parse()?)
-                .add_directive("tokio=warn".parse()?)
-                .add_directive("event_downlink=trace".parse()?)
+                .add_directive(LevelFilter::WARN.into())
         };
         tracing_subscriber::fmt().with_env_filter(filter).init();
     }
