@@ -510,7 +510,7 @@ fn validate_cue_sig(sig: &Signature) -> Validation<Option<&Type>, Errors<syn::Er
     inputs.join(output).map(|(_, t)| t)
 }
 
-fn validate_keys_sig<'a>(sig: &'a Signature) -> Validation<&'a Type, Errors<syn::Error>> {
+fn validate_keys_sig(sig: &Signature) -> Validation<&Type, Errors<syn::Error>> {
     let iter = sig.inputs.iter();
     let inputs = check_receiver(sig, iter)
         .and_then(|mut iter| {
@@ -541,9 +541,9 @@ fn validate_keys_sig<'a>(sig: &'a Signature) -> Validation<&'a Type, Errors<syn:
     inputs.join(output).map(|(_, t)| t)
 }
 
-fn validate_cue_key_sig<'a>(
-    sig: &'a Signature,
-) -> Validation<(&'a Type, &'a Type), Errors<syn::Error>> {
+fn validate_cue_key_sig(
+    sig: &Signature,
+) -> Validation<(&Type, &Type), Errors<syn::Error>> {
     let iter = sig.inputs.iter();
     let inputs = check_receiver(sig, iter)
         .and_then(|mut iter| {
