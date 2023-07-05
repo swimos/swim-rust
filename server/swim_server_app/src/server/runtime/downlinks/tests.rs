@@ -31,7 +31,7 @@ use swim_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError},
     protocol::downlink::{
-        DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
+        DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, RecNotificationDecoder,
     },
 };
 use swim_messages::protocol::{
@@ -374,7 +374,7 @@ async fn open_remote_downlink() {
 
 async fn expect_unlinked_value(io: Io) {
     let (_writer, reader) = io;
-    let mut read = FramedRead::new(reader, ValueNotificationDecoder::<i32>::default());
+    let mut read = FramedRead::new(reader, RecNotificationDecoder::<i32>::default());
     if !matches!(read.next().await, Some(Ok(DownlinkNotification::Unlinked))) {
         panic!("Did not get unlinked.");
     }
@@ -390,7 +390,7 @@ async fn verify_link_value_dl(id: Uuid, downlink: Io, socket: Io, node: &str) ->
     let mut sock_reader = FramedRead::new(socket_rx, RawRequestMessageDecoder::default());
 
     let mut dl_writer = FramedWrite::new(&mut dl_tx, DownlinkOperationEncoder);
-    let mut dl_reader = FramedRead::new(&mut dl_rx, ValueNotificationDecoder::<i32>::default());
+    let mut dl_reader = FramedRead::new(&mut dl_rx, RecNotificationDecoder::<i32>::default());
 
     let env = sock_reader
         .next()

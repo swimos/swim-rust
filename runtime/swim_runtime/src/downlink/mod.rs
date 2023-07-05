@@ -16,11 +16,15 @@ use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
+use crate::downlink::failure::BadFrameResponse;
+use backpressure::DownlinkBackpressure;
 use bitflags::bitflags;
 use bytes::BytesMut;
 use futures::future::{join, select, Either};
 use futures::stream::SelectAll;
 use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
+pub use interpretation::MapInterpretation;
+pub use interpretation::NoInterpretation;
 use swim_api::protocol::downlink::{DownlinkNotification, DownlinkNotificationEncoder};
 use swim_messages::protocol::{
     Notification, Operation, Path, RawRequestMessage, RawRequestMessageEncoder,
@@ -38,9 +42,6 @@ use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 use tracing::{error, info, info_span, trace, warn};
 use tracing_futures::Instrument;
 use uuid::Uuid;
-
-use crate::downlink::failure::BadFrameResponse;
-use backpressure::DownlinkBackpressure;
 
 mod backpressure;
 pub mod failure;
@@ -140,7 +141,7 @@ pub struct ValueDownlinkRuntime {
 }
 
 /// The runtime component for a map type downlink.
-pub struct MapDownlinkRuntime<H> {
+pub struct MapDownlinkRuntime<H, I> {
     requests: mpsc::Receiver<AttachAction>,
     input: ByteReader,
     output: ByteWriter,
@@ -149,6 +150,7 @@ pub struct MapDownlinkRuntime<H> {
     path: RelativeAddress<Text>,
     config: DownlinkRuntimeConfig,
     failure_handler: H,
+    interpretation: I,
 }
 
 async fn await_io_tasks<F1, F2, E>(
@@ -185,11 +187,14 @@ impl ValueDownlinkRuntime {
         requests: mpsc::Receiver<AttachAction>,
         io: Io,
         stopping: trigger::Receiver,
-        identity: Uuid,
-        path: RelativeAddress<Text>,
+        address: IdentifiedAddress,
         config: DownlinkRuntimeConfig,
     ) -> Self {
         let (output, input) = io;
+        let IdentifiedAddress {
+            identity,
+            address: path,
+        } = address;
         ValueDownlinkRuntime {
             requests,
             input,
@@ -252,7 +257,7 @@ impl ValueDownlinkRuntime {
     }
 }
 
-impl<H> MapDownlinkRuntime<H> {
+impl<H> MapDownlinkRuntime<H, MapInterpretation> {
     /// #Arguments
     /// * `requests` - The channel through which new consumers connect to the runtime.
     /// * `io` - Byte channels through which messages are received from and sent to the remote lane.
@@ -266,12 +271,15 @@ impl<H> MapDownlinkRuntime<H> {
         requests: mpsc::Receiver<AttachAction>,
         io: Io,
         stopping: trigger::Receiver,
-        identity: Uuid,
-        path: RelativeAddress<Text>,
+        address: IdentifiedAddress,
         config: DownlinkRuntimeConfig,
         failure_handler: H,
     ) -> Self {
         let (output, input) = io;
+        let IdentifiedAddress {
+            identity,
+            address: path,
+        } = address;
         MapDownlinkRuntime {
             requests,
             input,
@@ -281,11 +289,60 @@ impl<H> MapDownlinkRuntime<H> {
             path,
             config,
             failure_handler,
+            interpretation: MapInterpretation::default(),
         }
     }
 }
-impl<H: BadFrameStrategy<<MapInterpretation as DownlinkInterpretation>::Error>>
-    MapDownlinkRuntime<H>
+
+impl<I, H> MapDownlinkRuntime<H, I> {
+    /// #Arguments
+    /// * `requests` - The channel through which new consumers connect to the runtime.
+    /// * `io` - Byte channels through which messages are received from and sent to the remote lane.
+    /// * `stopping` - Trigger to instruct the runtime to stop.
+    /// * `identity` - The routing ID of this runtime.
+    /// * `path` - The path to the remote lane.
+    /// * `config` - Configuration parameters for the runtime.
+    /// * `failure_handler` - Handler for event frames that do no contain valid map
+    /// messages.
+    /// * `interpretation` - A transformation to apply to an incoming event body, before passing it
+    /// on to the downlink implementation.
+    pub fn with_interpretation(
+        requests: mpsc::Receiver<AttachAction>,
+        io: Io,
+        stopping: trigger::Receiver,
+        address: IdentifiedAddress,
+        config: DownlinkRuntimeConfig,
+        failure_handler: H,
+        interpretation: I,
+    ) -> Self {
+        let (output, input) = io;
+        let IdentifiedAddress {
+            identity,
+            address: path,
+        } = address;
+        MapDownlinkRuntime {
+            requests,
+            input,
+            output,
+            stopping,
+            identity,
+            path,
+            config,
+            failure_handler,
+            interpretation,
+        }
+    }
+}
+
+pub struct IdentifiedAddress {
+    pub identity: Uuid,
+    pub address: RelativeAddress<Text>,
+}
+
+impl<I, H> MapDownlinkRuntime<H, I>
+where
+    I: DownlinkInterpretation,
+    H: BadFrameStrategy<I::Error>,
 {
     pub async fn run(self) {
         let MapDownlinkRuntime {
@@ -297,6 +354,7 @@ impl<H: BadFrameStrategy<<MapInterpretation as DownlinkInterpretation>::Error>>
             path,
             config,
             failure_handler,
+            interpretation,
         } = self;
 
         let (producer_tx, producer_rx) = mpsc::channel(config.attachment_queue_size.get());
@@ -315,7 +373,7 @@ impl<H: BadFrameStrategy<<MapInterpretation as DownlinkInterpretation>::Error>>
             consumer_rx,
             stopping.clone(),
             config,
-            MapInterpretation::default(),
+            interpretation,
             failure_handler,
         )
         .instrument(info_span!("Map Downlink Runtime Read Task", %path));
@@ -1099,7 +1157,7 @@ use std::task::{Context, Poll};
 use swim_utilities::non_zero_usize;
 
 use self::failure::{BadFrameStrategy, InfallibleStrategy};
-use self::interpretation::{value_interpretation, DownlinkInterpretation, MapInterpretation};
+use self::interpretation::{value_interpretation, DownlinkInterpretation};
 use crate::backpressure::{MapBackpressure, ValueBackpressure};
 
 /// A future that flushes a sender and then returns it. This is necessary as we need

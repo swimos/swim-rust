@@ -15,6 +15,7 @@
 #[cfg(not(feature = "deflate"))]
 use ratchet::NoExtProvider;
 use ratchet::WebSocketStream;
+use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
 use futures_util::future::BoxFuture;
@@ -26,7 +27,11 @@ use runtime::{
 };
 use std::sync::Arc;
 use swim_api::downlink::DownlinkConfig;
-use swim_downlink::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
+use swim_downlink::lifecycle::{
+    BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle, MapDownlinkLifecycle,
+    ValueDownlinkLifecycle,
+};
+use swim_downlink::{ChannelError, MapDownlinkHandle, MapDownlinkModel, MapKey, MapValue};
 use swim_downlink::{DownlinkTask, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation};
 use swim_form::Form;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
@@ -42,6 +47,8 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 use tokio::sync::{mpsc, oneshot};
 pub use url::Url;
+
+pub type DownlinkOperationResult<T> = Result<T, DownlinkRuntimeError>;
 
 #[derive(Debug, Default)]
 pub struct SwimClientBuilder {
@@ -74,7 +81,7 @@ impl SwimClientBuilder {
     /// Sets the deflate extension configuration for WebSocket connections.
     #[cfg(feature = "deflate")]
     pub fn set_deflate_config(mut self, to: DeflateConfig) -> SwimClientBuilder {
-        self.config.deflate = Some(to);
+        self.config.websocket.deflate_config = Some(to);
         self
     }
 
@@ -116,6 +123,7 @@ where
         remote_buffer_size,
         transport_buffer_size,
         registration_buffer_size,
+        interpret_frame_data,
         ..
     } = config;
 
@@ -139,6 +147,7 @@ where
                 stop_rx,
                 Transport::new(networking, websockets, remote_buffer_size),
                 transport_buffer_size,
+                interpret_frame_data,
             )
         }
         #[cfg(not(feature = "deflate"))]
@@ -156,6 +165,7 @@ where
                 stop_rx,
                 Transport::new(networking, websockets, remote_buffer_size),
                 transport_buffer_size,
+                interpret_frame_data,
             )
         }
     };
@@ -211,6 +221,24 @@ impl ClientHandle {
         ValueDownlinkBuilder {
             handle: self,
             lifecycle: BasicValueDownlinkLifecycle::default(),
+            path,
+            options: DownlinkOptions::SYNC,
+            runtime_config: Default::default(),
+            downlink_config: Default::default(),
+        }
+    }
+
+    /// Returns a map downlink builder initialised with the default options.
+    ///
+    /// # Arguments
+    /// * `path` - The path of the downlink top open.
+    pub fn map_downlink<L, K, V>(
+        &self,
+        path: RemotePath,
+    ) -> MapDownlinkBuilder<'_, BasicMapDownlinkLifecycle<K, V>> {
+        MapDownlinkBuilder {
+            handle: self,
+            lifecycle: BasicMapDownlinkLifecycle::default(),
             path,
             options: DownlinkOptions::SYNC,
             runtime_config: Default::default(),
@@ -339,6 +367,138 @@ impl<T> ValueDownlinkView<T> {
     pub async fn set(&self, to: T) -> Result<(), ValueDownlinkOperationError> {
         self.tx.send(ValueDownlinkOperation::Set(to)).await?;
         Ok(())
+    }
+
+    /// Returns a receiver that completes with the result of downlink's internal task.
+    pub fn stop_notification(&self) -> promise::Receiver<Result<(), DownlinkRuntimeError>> {
+        self.stop_rx.clone()
+    }
+}
+
+/// A builder for map downlinks.
+pub struct MapDownlinkBuilder<'h, L> {
+    handle: &'h ClientHandle,
+    lifecycle: L,
+    path: RemotePath,
+    options: DownlinkOptions,
+    runtime_config: DownlinkRuntimeConfig,
+    downlink_config: DownlinkConfig,
+}
+
+impl<'h, L> MapDownlinkBuilder<'h, L> {
+    /// Sets a new lifecycle that to be used.
+    pub fn lifecycle<NL>(self, lifecycle: NL) -> MapDownlinkBuilder<'h, NL> {
+        let MapDownlinkBuilder {
+            handle,
+            path,
+            options,
+            runtime_config,
+            downlink_config,
+            ..
+        } = self;
+        MapDownlinkBuilder {
+            handle,
+            lifecycle,
+            path,
+            options,
+            runtime_config,
+            downlink_config,
+        }
+    }
+
+    /// Sets link options for the downlink.
+    pub fn options(&mut self, options: DownlinkOptions) -> &mut Self {
+        self.options = options;
+        self
+    }
+
+    /// Sets a new downlink runtime configuration.
+    pub fn runtime_config(&mut self, config: DownlinkRuntimeConfig) -> &mut Self {
+        self.runtime_config = config;
+        self
+    }
+
+    /// Sets a new downlink configuration.
+    pub fn downlink_config(&mut self, config: DownlinkConfig) -> &mut Self {
+        self.downlink_config = config;
+        self
+    }
+
+    /// Attempts to open the downlink.
+    pub async fn open<K, V>(self) -> Result<MapDownlinkView<K, V>, Arc<DownlinkRuntimeError>>
+    where
+        L: MapDownlinkLifecycle<K, V> + Sync + 'static,
+        K: MapKey,
+        V: MapValue,
+        K::Rec: Send,
+        V::Rec: Send,
+        K::BodyRec: Send,
+        V::BodyRec: Send,
+    {
+        let MapDownlinkBuilder {
+            handle,
+            lifecycle,
+            path,
+            options,
+            runtime_config,
+            downlink_config,
+        } = self;
+
+        let (tx, rx) = mpsc::channel(downlink_config.buffer_size.get());
+        let task = DownlinkTask::new(MapDownlinkModel::new(rx, lifecycle, true));
+        let stop_rx = handle
+            .inner
+            .run_downlink(path, runtime_config, downlink_config, options, task)
+            .await?;
+
+        Ok(MapDownlinkView {
+            inner: MapDownlinkHandle::new(tx),
+            stop_rx,
+        })
+    }
+}
+
+/// A view over a map downlink.
+#[derive(Debug, Clone)]
+pub struct MapDownlinkView<K, V> {
+    inner: MapDownlinkHandle<K, V>,
+    stop_rx: promise::Receiver<Result<(), DownlinkRuntimeError>>,
+}
+
+impl<K, V> MapDownlinkView<K, V> {
+    /// Returns an owned value corresponding to the key.
+    pub async fn get(&self, key: K) -> Result<Option<V>, ChannelError> {
+        self.inner.get(key).await
+    }
+
+    /// Returns a snapshot of the map downlink's current state.
+    pub async fn snapshot(&self) -> Result<BTreeMap<K, V>, ChannelError> {
+        self.inner.snapshot().await
+    }
+
+    /// Updates or inserts the key-value pair into the map.
+    pub async fn update(&self, key: K, value: V) -> Result<(), ChannelError> {
+        self.inner.update(key, value).await
+    }
+
+    /// Removes the value corresponding to the key.
+    pub async fn remove(&self, key: K) -> Result<(), ChannelError> {
+        self.inner.remove(key).await
+    }
+
+    /// Clears the map, removing all of the elements.
+    pub async fn clear(&self) -> Result<(), ChannelError> {
+        self.inner.clear().await
+    }
+
+    /// Retains the last `n` elements in the map.
+    pub async fn take(&self, n: u64) -> Result<(), ChannelError> {
+        self.inner.take(n).await
+    }
+
+    /// Retains the first `n` elements in the map.
+    pub async fn drop(&self, n: u64) -> Result<(), ChannelError> {
+        self.inner.drop(n).await
     }
 
     /// Returns a receiver that completes with the result of downlink's internal task.

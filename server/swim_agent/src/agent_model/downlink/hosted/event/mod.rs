@@ -13,10 +13,9 @@
 // limitations under the License.
 
 use futures::{future::BoxFuture, FutureExt, StreamExt};
+use swim_api::protocol::downlink::RecNotificationDecoder;
 use swim_api::{
-    downlink::DownlinkKind,
-    error::FrameIoError,
-    protocol::downlink::{DownlinkNotification, ValueNotificationDecoder},
+    downlink::DownlinkKind, error::FrameIoError, protocol::downlink::DownlinkNotification,
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::{address::Address, Text};
@@ -40,7 +39,7 @@ mod tests;
 /// task.
 pub struct HostedEventDownlinkChannel<T: RecognizerReadable, LC> {
     address: Address<Text>,
-    receiver: Option<FramedRead<ByteReader, ValueNotificationDecoder<T>>>,
+    receiver: Option<FramedRead<ByteReader, RecNotificationDecoder<T>>>,
     next: Option<Result<DownlinkNotification<T>, FrameIoError>>,
     lifecycle: LC,
     config: SimpleDownlinkConfig,

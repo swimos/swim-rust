@@ -185,6 +185,37 @@ enum RuntimeEvent {
     Shutdown,
 }
 
+impl Debug for RuntimeEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RuntimeEvent::StartDownlink(_) => {
+                write!(f, "RuntimeEvent::StartDownlink")
+            }
+            RuntimeEvent::Resolved { .. } => {
+                write!(f, "RuntimeEvent::Resolved")
+            }
+            RuntimeEvent::ConnectionResult { result, .. } => {
+                write!(f, "RuntimeEvent::ConnectionResult({})", result.is_ok())
+            }
+            RuntimeEvent::DownlinkRuntimeStarted { .. } => {
+                write!(f, "RuntimeEvent::DownlinkRuntimeStarted")
+            }
+            RuntimeEvent::DownlinkRuntimeAttached { .. } => {
+                write!(f, "RuntimeEvent::DownlinkRuntimeAttached")
+            }
+            RuntimeEvent::DownlinkTaskComplete { .. } => {
+                write!(f, "RuntimeEvent::DownlinkTaskComplete")
+            }
+            RuntimeEvent::DownlinkRuntimeComplete { .. } => {
+                write!(f, "RuntimeEvent::DownlinkRuntimeComplete")
+            }
+            RuntimeEvent::Shutdown => {
+                write!(f, "RuntimeEvent::Shutdown")
+            }
+        }
+    }
+}
+
 /// Spawns a runtime task that uses the provided transport task and returns a handle that can be
 /// used to dispatch downlink registration requests.
 pub fn start_runtime<Net, Ws>(
@@ -192,6 +223,7 @@ pub fn start_runtime<Net, Ws>(
     stop_rx: trigger::Receiver,
     transport: Transport<Net, Ws>,
     transport_buffer_size: NonZeroUsize,
+    interpret_frame_data: bool,
 ) -> (RawHandle, BoxFuture<'static, ()>)
 where
     Net: ClientConnections,
@@ -202,7 +234,14 @@ where
     let notified = Arc::new(Notify::new());
     let completed = notified.clone();
     let task = async move {
-        runtime_task(transport, transport_buffer_size, stop_rx, requests_rx).await;
+        runtime_task(
+            transport,
+            transport_buffer_size,
+            stop_rx,
+            requests_rx,
+            interpret_frame_data,
+        )
+        .await;
         completed.notify_waiters();
     };
 
@@ -220,6 +259,7 @@ async fn runtime_task<Net, Ws>(
     transport_buffer_size: NonZeroUsize,
     mut remote_stop_rx: trigger::Receiver,
     mut requests_rx: mpsc::Receiver<DownlinkRegistrationRequest>,
+    interpret_frame_data: bool,
 ) where
     Net: ClientConnections,
     Net::ClientSocket: WebSocketStream,
@@ -324,6 +364,7 @@ async fn runtime_task<Net, Ws>(
                 });
 
                 let handle_ref = &transport_handle;
+
                 pending.feed_task(
                     async move {
                         Either::Left((*task_shp.scheme(), host, handle_ref.resolve(task_shp).await))
@@ -482,7 +523,7 @@ async fn runtime_task<Net, Ws>(
                     let (runtime_stop_tx, runtime_stop_rx) = trigger::trigger();
                     let peer_key = key.clone();
                     downlinks.push(
-                        tokio::spawn(runtime.run(runtime_stop_rx))
+                        tokio::spawn(runtime.run(runtime_stop_rx, interpret_frame_data))
                             .map(move |result| RuntimeEvent::DownlinkRuntimeComplete {
                                 addr: sock,
                                 key,

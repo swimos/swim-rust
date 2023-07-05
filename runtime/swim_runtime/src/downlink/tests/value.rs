@@ -16,7 +16,7 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::time::Duration;
 
-use crate::downlink::DownlinkRuntimeConfig;
+use crate::downlink::{DownlinkRuntimeConfig, IdentifiedAddress};
 
 use super::super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
 use super::*;
@@ -24,7 +24,7 @@ use futures::future::{join3, join4};
 use futures::{SinkExt, StreamExt};
 use swim_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
 use swim_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
+    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, RecNotificationDecoder,
 };
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
@@ -87,7 +87,7 @@ async fn run_fake_downlink(
         return Err(DownlinkTaskError::FailedToStart);
     }
     let mut state = State::Unlinked;
-    let mut read = FramedRead::new(rx_in, ValueNotificationDecoder::default());
+    let mut read = FramedRead::new(rx_in, RecNotificationDecoder::default());
 
     let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);
 
@@ -201,8 +201,10 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        Uuid::from_u128(1),
-        path,
+        IdentifiedAddress {
+            identity: Uuid::from_u128(1),
+            address: path,
+        },
         config,
     )
     .run();
@@ -790,7 +792,7 @@ async fn run_simple_fake_downlink(
         return Err(DownlinkTaskError::FailedToStart);
     }
     let mut state = State::Unlinked;
-    let mut read = FramedRead::new(rx_in, ValueNotificationDecoder::default());
+    let mut read = FramedRead::new(rx_in, RecNotificationDecoder::default());
 
     let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);
 
@@ -875,8 +877,10 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        Uuid::from_u128(1),
-        path,
+        IdentifiedAddress {
+            identity: Uuid::from_u128(1),
+            address: path,
+        },
         config,
     )
     .run();

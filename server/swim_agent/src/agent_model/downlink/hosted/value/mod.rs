@@ -19,7 +19,7 @@ use swim_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},
     protocol::{
-        downlink::{DownlinkNotification, ValueNotificationDecoder},
+        downlink::{DownlinkNotification, RecNotificationDecoder},
         WithLengthBytesCodec,
     },
 };
@@ -81,7 +81,7 @@ impl<T, Context> ValueDlState<T, Context> for RefCell<Option<T>> {
 /// task.
 pub struct HostedValueDownlinkChannel<T: RecognizerReadable, LC, State> {
     address: Address<Text>,
-    receiver: Option<FramedRead<ByteReader, ValueNotificationDecoder<T>>>,
+    receiver: Option<FramedRead<ByteReader, RecNotificationDecoder<T>>>,
     state: State,
     next: Option<Result<DownlinkNotification<T>, FrameIoError>>,
     lifecycle: LC,
