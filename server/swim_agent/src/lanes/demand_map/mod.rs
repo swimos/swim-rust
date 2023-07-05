@@ -45,6 +45,7 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug)]
 struct DemandMapLaneInner<K, V> {
     queues: WriteQueues<K>,
     pending: Option<Pending<K, V>>,
@@ -105,6 +106,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct DemandMapLane<K, V> {
     id: u64,
     inner: RefCell<DemandMapLaneInner<K, V>>,

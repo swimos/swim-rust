@@ -37,6 +37,7 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug)]
 struct DemandLaneInner<T> {
     computed_value: Option<T>,
     sync_queue: VecDeque<Uuid>,
@@ -57,6 +58,7 @@ impl<T> Default for DemandLaneInner<T> {
 ///
 /// A demand lane can be cued to produce a value by executing an instance of [`Cue`] (which can be
 /// constructed using the [`crate::agent_lifecycle::utility::HandlerContext`]).
+#[derive(Debug)]
 pub struct DemandLane<T> {
     id: u64,
     inner: RefCell<DemandLaneInner<T>>,
