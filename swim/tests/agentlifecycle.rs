@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashSet;
 use std::hash::Hash;
 use std::{collections::HashMap, sync::Arc};
 
@@ -33,11 +34,13 @@ use swim_agent::event_handler::{
 };
 use swim_agent::item::{AgentItem, MapItem};
 use swim_agent::lanes::demand::Cue;
+use swim_agent::lanes::demand_map::DemandMapLaneSync;
 use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
 use swim_agent::lanes::join_value::{AfterClosed, JoinValueLaneUpdate, LinkClosedResponse};
-use swim_agent::lanes::{DemandLane, JoinValueLane};
+use swim_agent::lanes::{DemandLane, JoinValueLane, DemandMapLane};
 use swim_agent::meta::AgentMetadata;
 use swim_agent::reexport::bytes::BytesMut;
+use swim_agent::reexport::uuid::Uuid;
 use swim_agent::stores::{MapStore, ValueStore};
 use swim_api::agent::AgentConfig;
 use swim_api::downlink::DownlinkKind;
@@ -128,6 +131,7 @@ struct TestAgent {
     map_store: MapStore<i32, Text>,
     join_value: JoinValueLane<i32, Text>,
     demand: DemandLane<i32>,
+    demand_map: DemandMapLane<i32, Text>,
 }
 
 impl From<(i32, i32, HashMap<i32, Text>, i32, HashMap<i32, Text>)> for TestAgent {
@@ -149,6 +153,7 @@ impl From<(i32, i32, HashMap<i32, Text>, i32, HashMap<i32, Text>)> for TestAgent
             map_store: MapStore::new(5, map_store_init),
             join_value: JoinValueLane::new(6),
             demand: DemandLane::new(7),
+            demand_map: DemandMapLane::new(8),
         }
     }
 }
@@ -173,6 +178,8 @@ enum Event {
     Command(i32),
     Map(MapEvent),
     Cued,
+    Keys,
+    CueKey(i32),
 }
 
 #[derive(Clone, Default)]
@@ -1556,4 +1563,55 @@ fn on_cue_handler() {
     let events = template.0.take();
 
     assert_eq!(events, vec![Event::Cued]);
+}
+
+const SYNC_ID: Uuid = Uuid::from_u128(84747);
+
+#[test]
+fn keys_handler() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(LifecycleInner);
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        
+        #[keys(demand_map)]
+        fn my_keys(
+            &self,
+            context: HandlerContext<TestAgent>,
+        ) -> impl HandlerAction<TestAgent, Completion = HashSet<i32>> + '_ {
+            context.effect(move || {
+                self.0.push(Event::Keys);
+                [0, 1, 2].into_iter().collect::<HashSet<_>>()
+            })
+        }
+
+    }
+
+    let agent = TestAgent::default();
+    let template = TestLifecycle::default();
+    let lifecycle = template.clone().into_lifecycle();
+
+    let sync_handler = DemandMapLaneSync::new(|agent: &TestAgent| &agent.demand_map, SYNC_ID);
+
+    run_handler_mod(
+        &agent,
+        sync_handler,
+        Some(Modification::of(agent.demand_map.id())),
+    );
+
+    let handler = lifecycle
+        .item_event(&agent, "demand_map")
+        .expect("Expected handler for lane.");
+
+    run_handler_mod(
+        &agent,
+        handler,
+        Some(Modification::of(agent.demand_map.id())),
+    );
+
+    let events = template.0.take();
+
+    assert_eq!(events, vec![Event::Keys]);
+
 }

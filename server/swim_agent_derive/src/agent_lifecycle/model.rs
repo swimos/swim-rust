@@ -530,7 +530,15 @@ fn validate_keys_sig<'a>(sig: &'a Signature) -> Validation<&'a Type, Errors<syn:
         });
     let output = match &sig.output {
         ReturnType::Default => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
-        ReturnType::Type(_, t) => extract_hash_set_type_param(sig, t.as_ref()),
+        ReturnType::Type(_, t) => {
+            extract_cue_ret(sig, t).and_then(|maybe_ret| {
+                if let Some(ret) = maybe_ret {
+                    extract_hash_set_type_param(sig, ret)
+                } else {
+                    Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
+                }
+            })
+        },
     };
     inputs.join(output).map(|(_, t)| t)
 }
@@ -897,6 +905,8 @@ fn assess_attr(attr: &Attribute) -> bool {
                         | ON_STOP
                         | ON_COMMAND
                         | ON_CUE
+                        | KEYS
+                        | ON_CUE_KEY
                         | ON_EVENT
                         | ON_SET
                         | ON_UPDATE
