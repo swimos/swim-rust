@@ -1,0 +1,13 @@
+[package]
+name = "swim_http"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[dependencies]
+futures = { workspace = true }
+ratchet = { package = "ratchet_rs", workspace = true }
+hyper = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt"]}
