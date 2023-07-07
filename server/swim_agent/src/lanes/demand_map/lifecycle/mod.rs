@@ -62,6 +62,8 @@ impl<K, V, Context, Shared, L> DemandMapLaneLifecycleShared<K, V, Context, Share
 {
 }
 
+type LifecycleType<Context, Shared, K, V> = fn(Context, Shared, K) -> (K, V);
+
 /// A lifecycle for a demand-map lane with some shared state (shard with other lifecycles in the same agent).
 ///
 /// #Type Parameters
@@ -79,7 +81,7 @@ pub struct StatefulDemandMapLaneLifecycle<
     Keys = NoHandler,
     OnCueKey = NoHandler,
 > {
-    _value_type: PhantomData<fn(Context, Shared, K) -> (K, V)>,
+    _value_type: PhantomData<LifecycleType<Context, Shared, K, V>>,
     keys: Keys,
     on_cue_key: OnCueKey,
 }
