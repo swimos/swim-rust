@@ -12,24 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{error::Error, net::{Ipv4Addr, SocketAddr, TcpListener}, sync::Arc, pin::pin, time::Duration};
 use bytes::BytesMut;
-use hyper::{Body, Request, Response, Server, upgrade::Upgraded};
-use hyper::service::{service_fn, make_service_fn};
+use hyper::service::{make_service_fn, service_fn};
+use hyper::{upgrade::Upgraded, Body, Request, Response, Server};
+use std::{
+    error::Error,
+    net::{Ipv4Addr, SocketAddr, TcpListener},
+    pin::pin,
+    sync::Arc,
+    time::Duration,
+};
 
-use futures::{channel::oneshot, Future, future::{select, Either, join}};
-use ratchet::{NoExtProvider, WebSocket, NoExt, Message, PayloadType, CloseReason, CloseCode};
+use futures::{
+    channel::oneshot,
+    future::{join, select, Either},
+    Future,
+};
+use ratchet::{CloseCode, CloseReason, Message, NoExt, NoExtProvider, PayloadType, WebSocket};
 use thiserror::Error;
 use tokio::{net::TcpSocket, sync::Notify};
 
-async fn run_server(bound_to: oneshot::Sender<SocketAddr>, done: Arc<Notify>) -> Result<(), Box<dyn Error>> {
-    
+async fn run_server(
+    bound_to: oneshot::Sender<SocketAddr>,
+    done: Arc<Notify>,
+) -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
     let bound = listener.local_addr()?;
     let _ = bound_to.send(bound);
 
     let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(upgrade_server)) });
-    
+
     let shutdown = Arc::new(Notify::new());
     let shutdown_cpy = shutdown.clone();
 
@@ -45,9 +57,9 @@ async fn run_server(bound_to: oneshot::Sender<SocketAddr>, done: Arc<Notify>) ->
         Either::Right((_, server)) => {
             shutdown.notify_one();
             tokio::time::timeout(Duration::from_secs(2), server).await??;
-        },
+        }
     }
-   
+
     Ok(())
 }
 
@@ -58,7 +70,7 @@ async fn upgrade_server(request: Request<Body>) -> Result<Response<Body>, hyper:
             let (response, upgraded) = swim_http::upgrade(request, negotiated, None);
             tokio::spawn(run_websocket(upgraded));
             Ok(response)
-        },
+        }
         Ok(None) => Response::builder().body(Body::from("Success")),
         Err(err) => Ok(swim_http::fail_upgrade(err)),
     }
@@ -66,7 +78,8 @@ async fn upgrade_server(request: Request<Body>) -> Result<Response<Body>, hyper:
 
 async fn run_websocket<F>(upgrade_fut: F)
 where
-    F: Future<Output = Result<WebSocket<Upgraded, NoExt>, hyper::Error>> + Send {
+    F: Future<Output = Result<WebSocket<Upgraded, NoExt>, hyper::Error>> + Send,
+{
     match upgrade_fut.await {
         Ok(mut websocket) => {
             let mut read_buffer = BytesMut::new();
@@ -77,35 +90,26 @@ where
                         if let Err(err) = websocket.write(&read_buffer, PayloadType::Text).await {
                             panic!("Writing to websocket failed: {}", err);
                         }
-                    },
-                    Ok(Message::Binary) =>{
+                    }
+                    Ok(Message::Binary) => {
                         if let Err(err) = websocket.write(&read_buffer, PayloadType::Binary).await {
                             panic!("Writing to websocket failed: {}", err);
                         }
-                    },
+                    }
                     Ok(Message::Close(_)) => break,
                     Err(err) => {
                         panic!("Websocket connection failed: {}", err);
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
             }
-        },
+        }
         Err(err) => panic!("Failed to upgrade connection: {}", err),
     }
 }
 
 const FRAMES: &[&str] = &[
-    "I",
-    "am",
-    "the",
-    "very",
-    "model",
-    "of",
-    "a",
-    "modern",
-    "major",
-    "general."
+    "I", "am", "the", "very", "model", "of", "a", "modern", "major", "general.",
 ];
 
 #[derive(Debug, Error)]
@@ -118,7 +122,10 @@ enum TestError {
     UnexpectedBinaryFrame,
 }
 
-async fn run_client(addr: oneshot::Receiver<SocketAddr>, done: Arc<Notify>) -> Result<(), Box<dyn Error>> {
+async fn run_client(
+    addr: oneshot::Receiver<SocketAddr>,
+    done: Arc<Notify>,
+) -> Result<(), Box<dyn Error>> {
     let addr = if let Ok(addr) = addr.await {
         addr
     } else {
@@ -126,7 +133,9 @@ async fn run_client(addr: oneshot::Receiver<SocketAddr>, done: Arc<Notify>) -> R
     };
     let stream = TcpSocket::new_v4()?.connect(addr).await?;
     let request = format!("ws://localhost:{}", addr.port());
-    let mut websocket = ratchet::subscribe(Default::default(), stream, request).await?.into_websocket();
+    let mut websocket = ratchet::subscribe(Default::default(), stream, request)
+        .await?
+        .into_websocket();
 
     let mut read_buffer = BytesMut::new();
     for body in FRAMES {
@@ -138,14 +147,19 @@ async fn run_client(addr: oneshot::Receiver<SocketAddr>, done: Arc<Notify>) -> R
                     let received_body = std::str::from_utf8(&read_buffer)?;
                     assert_eq!(received_body, *body);
                     break;
-                },
+                }
                 Message::Binary => return Err(TestError::UnexpectedBinaryFrame.into()),
                 Message::Close(_) => return Err(TestError::ServerStoppedPrematurely.into()),
-                _ => {},
+                _ => {}
             }
         }
     }
-    websocket.close(CloseReason::new(CloseCode::GoingAway, Some("Client stopping.".to_string()))).await?;
+    websocket
+        .close(CloseReason::new(
+            CloseCode::GoingAway,
+            Some("Client stopping.".to_string()),
+        ))
+        .await?;
     done.notify_one();
 
     Ok(())

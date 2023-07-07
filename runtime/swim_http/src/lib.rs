@@ -14,4 +14,4 @@
 
 mod websocket;
 
-pub use websocket::{Negotiated, UpgradeError, negotiate_upgrade, upgrade, fail_upgrade};
+pub use websocket::{fail_upgrade, negotiate_upgrade, upgrade, Negotiated, UpgradeError};
