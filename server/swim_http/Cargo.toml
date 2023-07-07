@@ -8,6 +8,12 @@ edition = "2021"
 futures = { workspace = true }
 ratchet = { package = "ratchet_rs", workspace = true }
 hyper = { workspace = true }
+http = { workspace = true }
+httparse = "1.8"
+bytes = { workspace = true }
+sha1 = "0.10"
+base64 = { workspace = true }
+thiserror = {workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt"]}
