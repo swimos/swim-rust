@@ -62,7 +62,7 @@ where
             .flat_map(|h| h.as_bytes().split(|c| *c == b' ' || *c == b','))
             .map(trim)
             .filter_map(|b| std::str::from_utf8(b).ok())
-            .find_map(|p| protocols.get(p).map(|p| *p));
+            .find_map(|p| protocols.get(p).copied());
 
         let ext_headers = extension_headers(headers);
 
