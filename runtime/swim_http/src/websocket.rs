@@ -17,12 +17,15 @@ const WEBSOCKET_VERSION_STR: &str = "13";
 const ACCEPT_KEY: &[u8] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const FAILED_RESPONSE: &str = "Building response should bot fail.";
 
+/// Result of a successful websocket negotiation.
 pub struct Negotiated<'a, Ext> {
     pub protocol: Option<&'a str>,
     pub extension: Option<(Ext, HeaderValue)>,
     pub key: Bytes,
 }
 
+/// Attempt to negotiate a websocket upgrade on a hyper request. If [`Ok(None)`] is returned,
+/// no upgrade was requested. If an error is returned an upgrade was requested but it failed.
 pub fn negotiate_upgrade<'a, T, E>(
     request: &Request<T>,
     protocols: &'a HashSet<&str>,
@@ -74,6 +77,7 @@ where
     }
 }
 
+/// Produce a bad request response for a bad websocket upgrade request.
 pub fn fail_upgrade<ExtErr: std::error::Error>(error: UpgradeError<ExtErr>) -> Response<Body> {
     Response::builder()
         .status(http::StatusCode::BAD_REQUEST)
@@ -81,6 +85,7 @@ pub fn fail_upgrade<ExtErr: std::error::Error>(error: UpgradeError<ExtErr>) -> R
         .expect(FAILED_RESPONSE)
 }
 
+/// Upgrade a hyper request to websocket, based on a successful negotiation.
 pub fn upgrade<Ext>(
     request: Request<Body>,
     negotiated: Negotiated<'_, Ext>,
@@ -171,6 +176,7 @@ fn trim(bytes: &[u8]) -> &[u8] {
     }
 }
 
+/// Reasons that a websocket upgrade request could fail.
 #[derive(Debug, Error, Clone, Copy)]
 pub enum UpgradeError<ExtErr: std::error::Error> {
     #[error("Invalid websocket version specified.")]
