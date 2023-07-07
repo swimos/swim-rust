@@ -1,17 +1,3 @@
-// Copyright 2015-2023 Swim Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 use std::collections::HashSet;
 
 use bytes::{Bytes, BytesMut};
@@ -20,8 +6,7 @@ use http::{header::HeaderName, HeaderMap, HeaderValue, Method};
 use httparse::Header;
 use hyper::{upgrade::Upgraded, Body, Request, Response};
 use ratchet::{
-    Extension, ExtensionProvider, NegotiatedExtension, Role, WebSocket,
-    WebSocketConfig,
+    Extension, ExtensionProvider, NegotiatedExtension, Role, WebSocket, WebSocketConfig,
 };
 use sha1::{Digest, Sha1};
 use thiserror::Error;
@@ -39,8 +24,8 @@ pub struct Negotiated<'a, Ext> {
 }
 
 pub fn negotiate_upgrade<'a, T, E>(
-    request: &'a Request<T>,
-    protocols: &HashSet<&str>,
+    request: &Request<T>,
+    protocols: &'a HashSet<&str>,
     extension_provider: &E,
 ) -> Result<Option<Negotiated<'a, E::Extension>>, UpgradeError<E::Error>>
 where
@@ -74,26 +59,22 @@ where
             .flat_map(|h| h.as_bytes().split(|c| *c == b' ' || *c == b','))
             .map(trim)
             .filter_map(|b| std::str::from_utf8(b).ok())
-            .find(|p| protocols.contains(p));
+            .find_map(|p| protocols.get(p).map(|p| *p));
 
-            let ext_headers = extension_headers(headers);
+        let ext_headers = extension_headers(headers);
 
-            let extension = extension_provider
-                .negotiate_server(&ext_headers)?;
-            Ok(Some(Negotiated {
-                protocol,
-                extension,
-                key,
-            }))
-
+        let extension = extension_provider.negotiate_server(&ext_headers)?;
+        Ok(Some(Negotiated {
+            protocol,
+            extension,
+            key,
+        }))
     } else {
         Ok(None)
     }
-
 }
 
 pub fn fail_upgrade<ExtErr: std::error::Error>(error: UpgradeError<ExtErr>) -> Response<Body> {
-
     Response::builder()
         .status(http::StatusCode::BAD_REQUEST)
         .body(Body::from(error.to_string()))
@@ -150,10 +131,11 @@ where
         ))
     };
 
-    let response = builder.body(Body::from("Upgrading")).expect(FAILED_RESPONSE);
+    let response = builder
+        .body(Body::from("Upgrading"))
+        .expect(FAILED_RESPONSE);
     (response, fut)
 }
-
 
 fn extension_headers(headers: &HeaderMap) -> Vec<Header<'_>> {
     headers
@@ -204,4 +186,3 @@ impl<ExtErr: std::error::Error> From<ExtErr> for UpgradeError<ExtErr> {
         UpgradeError::ExtensionError(err)
     }
 }
-

@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 futures = { workspace = true }
 ratchet = { package = "ratchet_rs", workspace = true }
-hyper = { workspace = true }
+hyper = { workspace = true, features = ["server", "tcp", "http1"] }
 http = { workspace = true }
 httparse = "1.8"
 bytes = { workspace = true }
@@ -16,4 +16,4 @@ base64 = { workspace = true }
 thiserror = {workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt"]}
+tokio = { workspace = true, features = ["rt", "macros", "time"]}
