@@ -1,10 +1,10 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, pin::Pin, task::{Context, Poll}};
 
 use bytes::{Bytes, BytesMut};
-use futures::Future;
+use futures::{Future, FutureExt, ready};
 use http::{header::HeaderName, HeaderMap, HeaderValue, Method};
 use httparse::Header;
-use hyper::{upgrade::Upgraded, Body, Request, Response};
+use hyper::{upgrade::{Upgraded, OnUpgrade}, Body, Request, Response};
 use ratchet::{
     Extension, ExtensionProvider, NegotiatedExtension, Role, WebSocket, WebSocketConfig,
 };
@@ -92,7 +92,7 @@ pub fn upgrade<Ext>(
     config: Option<WebSocketConfig>,
 ) -> (
     Response<Body>,
-    impl Future<Output = Result<WebSocket<Upgraded, Ext>, hyper::Error>> + Send,
+    UpgradeFuture<Ext>,
 )
 where
     Ext: Extension + Send,
@@ -123,17 +123,10 @@ where
         }
         None => None,
     };
-
-    let fut = async move {
-        let upgraded = hyper::upgrade::on(request).await?;
-
-        Ok(WebSocket::from_upgraded(
-            config.unwrap_or_default(),
-            upgraded,
-            NegotiatedExtension::from(ext),
-            BytesMut::new(),
-            Role::Server,
-        ))
+    let fut = UpgradeFuture {
+        upgrade: hyper::upgrade::on(request),
+        config: config.unwrap_or_default(),
+        extension: ext,
     };
 
     let response = builder
@@ -190,5 +183,30 @@ pub enum UpgradeError<ExtErr: std::error::Error> {
 impl<ExtErr: std::error::Error> From<ExtErr> for UpgradeError<ExtErr> {
     fn from(err: ExtErr) -> Self {
         UpgradeError::ExtensionError(err)
+    }
+}
+
+pub struct UpgradeFuture<Ext> {
+    upgrade: OnUpgrade,
+    config: WebSocketConfig,
+    extension: Option<Ext>,
+}
+
+impl<Ext> Future for UpgradeFuture<Ext>
+where
+    Ext: Extension + Unpin,
+{
+    type Output = Result<WebSocket<Upgraded, Ext>, hyper::Error>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let UpgradeFuture { upgrade, config, extension } = self.get_mut();
+        let upgraded = ready!(upgrade.poll_unpin(cx))?;
+        Poll::Ready(Ok(WebSocket::from_upgraded(
+            std::mem::take(config),
+            upgraded,
+            NegotiatedExtension::from(extension.take()),
+            BytesMut::new(),
+            Role::Server,
+        )))
     }
 }

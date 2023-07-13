@@ -19,6 +19,7 @@ use swim_utilities::{routing::route_uri::RouteUri, trigger};
 
 mod builder;
 mod error;
+pub mod http;
 mod runtime;
 mod store;
 
