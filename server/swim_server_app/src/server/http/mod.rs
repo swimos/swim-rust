@@ -12,31 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//Result<(Sock, Scheme, SocketAddr), ListenerError>
-
 use std::{
     collections::HashSet,
+    marker::PhantomData,
     net::SocketAddr,
+    num::NonZeroUsize,
     pin::Pin,
     sync::Arc,
-    task::{Context, Poll}, num::NonZeroUsize,
+    task::{Context, Poll},
 };
 
+use bytes::BytesMut;
 use futures::{
     future::{ready, Ready},
+    ready,
     stream::FuturesUnordered,
-    Future, Stream, StreamExt, ready, FutureExt,
+    Future, FutureExt, Stream, StreamExt,
 };
 use hyper::{
     server::conn::http1::{self, Connection},
     service::Service,
-    upgrade::Upgraded,
+    upgrade::{Parts, Upgraded},
     Body, Request, Response,
 };
 use lazy_static::lazy_static;
 use pin_project::pin_project;
 use ratchet::{Extension, ExtensionProvider, WebSocket, WebSocketConfig};
-use swim_http::{Negotiated, UpgradeError, UpgradeFuture};
+use swim_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
 use swim_runtime::net::{Listener, ListenerError, ListenerResult, Scheme};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -51,15 +53,15 @@ lazy_static! {
     };
 }
 
-pub type WsWithAddr<Ext> = (WebSocket<Upgraded, Ext>, Scheme, SocketAddr);
-pub type ListenResult<Ext> = Result<WsWithAddr<Ext>, ListenerError>;
+pub type WsWithAddr<Ext, Sock> = (WebSocket<Sock, Ext>, Scheme, SocketAddr);
+pub type ListenResult<Ext, Sock> = Result<WsWithAddr<Ext, Sock>, ListenerError>;
 
 pub async fn hyper_http_server<Sock, L, Ext>(
     listener: L,
     extension_provider: Ext,
     config: Option<WebSocketConfig>,
     max_negotiations: NonZeroUsize,
-) -> impl Stream<Item = ListenResult<Ext::Extension>> + Send
+) -> impl Stream<Item = ListenResult<Ext::Extension, Sock>> + Send
 where
     Sock: Unpin + Send + Sync + AsyncRead + AsyncWrite + 'static,
     L: Listener<Sock> + Send,
@@ -67,33 +69,33 @@ where
     Ext::Extension: Send + Unpin,
 {
     let state = StreamState::<L::AcceptStream, Sock, Ext, _>::new(
-        listener.into_stream(), 
-        extension_provider, 
-        config, 
-        max_negotiations, 
-        mpsc::Sender::reserve_owned);
-    
+        listener.into_stream(),
+        extension_provider,
+        config,
+        max_negotiations,
+        mpsc::Sender::reserve_owned,
+    );
+
     futures::stream::unfold(state, |mut state| async move {
-        state.next().await.map(move |result| {
-            (result, state)
-        })
+        state.next().await.map(move |result| (result, state))
     })
 }
 
-enum TaskResult<Ext> {
+enum TaskResult<Ext, Sock> {
     ConnectionComplete(Result<(), hyper::Error>),
-    UpgradeComplete(Result<(WebSocket<Upgraded, Ext>, Scheme, SocketAddr), hyper::Error>),
-    Reserved(Result<OwnedPermit<UpgradeFutureWithSock<Ext>>, mpsc::error::SendError<()>>),
+    UpgradeComplete(Result<(WebSocket<Sock, Ext>, Scheme, SocketAddr), hyper::Error>),
+    Reserved(Result<OwnedPermit<UpgradeFutureWithSock<Ext, Sock>>, mpsc::error::SendError<()>>),
 }
 
 #[pin_project(project = TaskFutureProj)]
 enum TaskFuture<Sock, Ext, Fut>
 where
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send,
 {
-    Connection(Connection<Sock, UpgradeService<Ext>>),
-    Upgrade(UpgradeFutureWithSock<Ext::Extension>),
+    Connection(Connection<Sock, UpgradeService<Ext, Sock>>),
+    Upgrade(UpgradeFutureWithSock<Ext::Extension, Sock>),
     Reserve(#[pin] Fut),
 }
 
@@ -103,16 +105,23 @@ where
     Ext: ExtensionProvider,
     Ext::Extension: Send + Unpin,
     Fut: Future<
-        Output = Result<OwnedPermit<UpgradeFutureWithSock<Ext::Extension>>, mpsc::error::SendError<()>>,
+        Output = Result<
+            OwnedPermit<UpgradeFutureWithSock<Ext::Extension, Sock>>,
+            mpsc::error::SendError<()>,
+        >,
     >,
 {
-    type Output = TaskResult<Ext::Extension>;
+    type Output = TaskResult<Ext::Extension, Sock>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project() {
-            TaskFutureProj::Connection(fut) => Poll::Ready(TaskResult::ConnectionComplete(ready!(fut.poll_unpin(cx)))),
-            TaskFutureProj::Upgrade(fut) =>  Poll::Ready(TaskResult::UpgradeComplete(ready!(fut.poll_unpin(cx)))),
-            TaskFutureProj::Reserve(fut) =>  Poll::Ready(TaskResult::Reserved(ready!(fut.poll(cx)))),
+            TaskFutureProj::Connection(fut) => {
+                Poll::Ready(TaskResult::ConnectionComplete(ready!(fut.poll_unpin(cx))))
+            }
+            TaskFutureProj::Upgrade(fut) => {
+                Poll::Ready(TaskResult::UpgradeComplete(ready!(fut.poll_unpin(cx))))
+            }
+            TaskFutureProj::Reserve(fut) => Poll::Ready(TaskResult::Reserved(ready!(fut.poll(cx)))),
         }
     }
 }
@@ -156,20 +165,18 @@ impl<F> Reservable<F> {
 
     fn update_reservation<Fut>(&mut self, f: fn(mpsc::Sender<F>) -> Fut) -> Option<Fut> {
         match std::mem::replace(self, Reservable::Closed) {
-            Reservable::Reserving(tx) => {
-                match tx.clone().try_reserve_owned() {
-                    Ok(res) => {
-                        *self = Reservable::Reserved(tx, res);
-                        None
-                    },
-                    Err(mpsc::error::TrySendError::Closed(_)) => {
-                        *self = Reservable::Closed;
-                        None
-                    },
-                    Err(mpsc::error::TrySendError::Full(tx2)) => {
-                        *self = Reservable::Reserving(tx);
-                        Some(f(tx2))
-                    }
+            Reservable::Reserving(tx) => match tx.clone().try_reserve_owned() {
+                Ok(res) => {
+                    *self = Reservable::Reserved(tx, res);
+                    None
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    *self = Reservable::Closed;
+                    None
+                }
+                Err(mpsc::error::TrySendError::Full(tx2)) => {
+                    *self = Reservable::Reserving(tx);
+                    Some(f(tx2))
                 }
             },
             ow => {
@@ -182,53 +189,56 @@ impl<F> Reservable<F> {
 
 struct StreamState<L, Sock, Ext, Fut>
 where
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send,
 {
     listener_stream: L,
     connection_tasks: FuturesUnordered<TaskFuture<Sock, Ext, Fut>>,
     upgrader: Upgrader<Ext>,
-    reservable: Reservable<UpgradeFutureWithSock<Ext::Extension>>,
-    upgrade_rx: mpsc::Receiver<UpgradeFutureWithSock<Ext::Extension>>,
-    reserve_fn: fn(mpsc::Sender<UpgradeFutureWithSock<Ext::Extension>>) -> Fut,
+    reservable: Reservable<UpgradeFutureWithSock<Ext::Extension, Sock>>,
+    upgrade_rx: mpsc::Receiver<UpgradeFutureWithSock<Ext::Extension, Sock>>,
+    reserve_fn: fn(mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>) -> Fut,
 }
 
 impl<L, Sock, Ext, Fut> StreamState<L, Sock, Ext, Fut>
 where
-Ext: ExtensionProvider + Send + Sync,
-Ext::Extension: Send,
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Ext: ExtensionProvider + Send + Sync,
+    Ext::Extension: Send,
 {
     fn new(
-        listener_stream: L, 
+        listener_stream: L,
         extension_provider: Ext,
         config: Option<WebSocketConfig>,
         max_negotiations: NonZeroUsize,
-        reserve_fn: fn(mpsc::Sender<UpgradeFutureWithSock<Ext::Extension>>) -> Fut) -> Self {
-            let (upgrade_tx, upgrade_rx) = mpsc::channel(max_negotiations.get());
-            let connection_tasks = FuturesUnordered::new();
-            let (reservable, fut) = Reservable::new(upgrade_tx, reserve_fn);
-            if let Some(fut) = fut {
-                connection_tasks.push(TaskFuture::Reserve(fut));
-            };
-            StreamState { 
-                listener_stream, 
-                connection_tasks, 
-                upgrader: Upgrader::new(extension_provider, config), 
-                reservable, 
-                upgrade_rx, reserve_fn 
-            }
+        reserve_fn: fn(mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>) -> Fut,
+    ) -> Self {
+        let (upgrade_tx, upgrade_rx) = mpsc::channel(max_negotiations.get());
+        let connection_tasks = FuturesUnordered::new();
+        let (reservable, fut) = Reservable::new(upgrade_tx, reserve_fn);
+        if let Some(fut) = fut {
+            connection_tasks.push(TaskFuture::Reserve(fut));
+        };
+        StreamState {
+            listener_stream,
+            connection_tasks,
+            upgrader: Upgrader::new(extension_provider, config),
+            reservable,
+            upgrade_rx,
+            reserve_fn,
         }
-
+    }
 }
 
 enum Event<Sock, Ext> {
-    Upgrade(UpgradeFutureWithSock<Ext>),
-    TaskComplete(TaskResult<Ext>),
+    Upgrade(UpgradeFutureWithSock<Ext, Sock>),
+    TaskComplete(TaskResult<Ext, Sock>),
     Incoming(
         Sock,
         Scheme,
         SocketAddr,
-        mpsc::OwnedPermit<UpgradeFutureWithSock<Ext>>,
+        mpsc::OwnedPermit<UpgradeFutureWithSock<Ext, Sock>>,
     ),
     IncomingFailed(ListenerError),
     Continue,
@@ -242,10 +252,13 @@ where
     Ext: ExtensionProvider + Send + Sync,
     Ext::Extension: Send + Unpin,
     Fut: Future<
-        Output = Result<OwnedPermit<UpgradeFutureWithSock<Ext::Extension>>, mpsc::error::SendError<()>>,
+        Output = Result<
+            OwnedPermit<UpgradeFutureWithSock<Ext::Extension, Sock>>,
+            mpsc::error::SendError<()>,
+        >,
     >,
 {
-    async fn next(&mut self) -> Option<ListenResult<Ext::Extension>> {
+    async fn next(&mut self) -> Option<ListenResult<Ext::Extension, Sock>> {
         let StreamState {
             listener_stream,
             connection_tasks,
@@ -349,21 +362,23 @@ where
     }
 }
 
-fn perform_upgrade<'a, Ext, Err>(
+fn perform_upgrade<Ext, Sock, Err>(
     request: Request<Body>,
     config: Option<WebSocketConfig>,
-    result: Result<Option<Negotiated<'a, Ext>>, UpgradeError<Err>>,
-    reservation: Option<OwnedPermit<UpgradeFutureWithSock<Ext>>>,
+    result: Result<Option<Negotiated<'_, Ext>>, UpgradeError<Err>>,
+    reservation: Option<OwnedPermit<UpgradeFutureWithSock<Ext, Sock>>>,
     scheme: Scheme,
     addr: SocketAddr,
 ) -> Result<Response<Body>, hyper::Error>
 where
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: Extension + Send,
     Err: std::error::Error + Send,
 {
     match result {
         Ok(Some(negotiated)) => {
-            let (response, upgrade_fut) = swim_http::upgrade(request, negotiated, config);
+            let (response, upgrade_fut) =
+                swim_http::upgrade(request, negotiated, config, ReclaimSock::<Sock>::default());
             if let Some(reservation) = reservation {
                 reservation.send(UpgradeFutureWithSock::new(upgrade_fut, scheme, addr));
             }
@@ -390,12 +405,15 @@ where
         }
     }
 
-    fn make_service(
+    fn make_service<Sock>(
         &self,
         scheme: Scheme,
         addr: SocketAddr,
-        reservation: OwnedPermit<UpgradeFutureWithSock<Ext::Extension>>,
-    ) -> UpgradeService<Ext> {
+        reservation: OwnedPermit<UpgradeFutureWithSock<Ext::Extension, Sock>>,
+    ) -> UpgradeService<Ext, Sock>
+    where
+        Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    {
         let Upgrader {
             extension_provider,
             config,
@@ -410,18 +428,21 @@ where
     }
 }
 
-struct UpgradeService<Ext: ExtensionProvider> {
+struct UpgradeService<Ext: ExtensionProvider, Sock> {
     extension_provider: Arc<Ext>,
-    reservation: Option<mpsc::OwnedPermit<UpgradeFutureWithSock<Ext::Extension>>>,
+    reservation: Option<mpsc::OwnedPermit<UpgradeFutureWithSock<Ext::Extension, Sock>>>,
     config: Option<WebSocketConfig>,
     scheme: Scheme,
     addr: SocketAddr,
 }
 
-impl<Ext: ExtensionProvider> UpgradeService<Ext> {
+impl<Ext: ExtensionProvider, Sock> UpgradeService<Ext, Sock>
+where
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+{
     fn new(
         extension_provider: Arc<Ext>,
-        reservation: mpsc::OwnedPermit<UpgradeFutureWithSock<Ext::Extension>>,
+        reservation: mpsc::OwnedPermit<UpgradeFutureWithSock<Ext::Extension, Sock>>,
         config: Option<WebSocketConfig>,
         scheme: Scheme,
         addr: SocketAddr,
@@ -436,8 +457,9 @@ impl<Ext: ExtensionProvider> UpgradeService<Ext> {
     }
 }
 
-impl<Ext> Service<Request<Body>> for UpgradeService<Ext>
+impl<Ext, Sock> Service<Request<Body>> for UpgradeService<Ext, Sock>
 where
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send,
 {
@@ -472,28 +494,61 @@ where
     }
 }
 
-struct UpgradeFutureWithSock<Ext> {
-    inner: UpgradeFuture<Ext>,
+struct ReclaimSock<Sock>(PhantomData<fn(Upgraded) -> Sock>);
+
+impl<Sock> Default for ReclaimSock<Sock> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<Sock> SockUnwrap for ReclaimSock<Sock>
+where
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+{
+    type Sock = Sock;
+
+    fn unwrap_sock(&self, upgraded: Upgraded) -> (Self::Sock, BytesMut) {
+        let Parts { io, read_buf, .. } = upgraded
+            .downcast::<Sock>()
+            .expect("Hyper should not alter underlying socket type.");
+        (io, BytesMut::from(read_buf.as_ref()))
+    }
+}
+
+struct UpgradeFutureWithSock<Ext, Sock> {
+    inner: UpgradeFuture<Ext, ReclaimSock<Sock>>,
     scheme: Scheme,
     addr: SocketAddr,
 }
 
-impl<Ext> UpgradeFutureWithSock<Ext> {
-    pub fn new(inner: UpgradeFuture<Ext>,
+impl<Ext, Sock> UpgradeFutureWithSock<Ext, Sock> {
+    pub fn new(
+        inner: UpgradeFuture<Ext, ReclaimSock<Sock>>,
         scheme: Scheme,
-        addr: SocketAddr) -> Self {
-            UpgradeFutureWithSock { inner, scheme, addr }
+        addr: SocketAddr,
+    ) -> Self {
+        UpgradeFutureWithSock {
+            inner,
+            scheme,
+            addr,
         }
+    }
 }
 
-impl<Ext> Future for UpgradeFutureWithSock<Ext>
+impl<Ext, Sock> Future for UpgradeFutureWithSock<Ext, Sock>
 where
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: Extension + Unpin,
 {
-    type Output = Result<(WebSocket<Upgraded, Ext>, Scheme, SocketAddr), hyper::Error>;
+    type Output = Result<(WebSocket<Sock, Ext>, Scheme, SocketAddr), hyper::Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let UpgradeFutureWithSock { inner, scheme, addr } = self.get_mut();
+        let UpgradeFutureWithSock {
+            inner,
+            scheme,
+            addr,
+        } = self.get_mut();
         let ws = ready!(inner.poll_unpin(cx))?;
         Poll::Ready(Ok((ws, *scheme, *addr)))
     }

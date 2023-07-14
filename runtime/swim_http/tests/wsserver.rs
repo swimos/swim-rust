@@ -22,6 +22,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use swim_http::NoUnwrap;
 
 use futures::{
     channel::oneshot,
@@ -67,7 +68,7 @@ async fn upgrade_server(request: Request<Body>) -> Result<Response<Body>, hyper:
     let protocols = ["warp0"].into_iter().collect();
     match swim_http::negotiate_upgrade(&request, &protocols, &NoExtProvider) {
         Ok(Some(negotiated)) => {
-            let (response, upgraded) = swim_http::upgrade(request, negotiated, None);
+            let (response, upgraded) = swim_http::upgrade(request, negotiated, None, NoUnwrap);
             tokio::spawn(run_websocket(upgraded));
             Ok(response)
         }

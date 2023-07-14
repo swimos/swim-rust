@@ -1,15 +1,23 @@
-use std::{collections::HashSet, pin::Pin, task::{Context, Poll}};
+use std::{
+    collections::HashSet,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use bytes::{Bytes, BytesMut};
-use futures::{Future, FutureExt, ready};
+use futures::{ready, Future, FutureExt};
 use http::{header::HeaderName, HeaderMap, HeaderValue, Method};
 use httparse::Header;
-use hyper::{upgrade::{Upgraded, OnUpgrade}, Body, Request, Response};
+use hyper::{
+    upgrade::{OnUpgrade, Upgraded},
+    Body, Request, Response,
+};
 use ratchet::{
     Extension, ExtensionProvider, NegotiatedExtension, Role, WebSocket, WebSocketConfig,
 };
 use sha1::{Digest, Sha1};
 use thiserror::Error;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 const UPGRADE_STR: &str = "Upgrade";
 const WEBSOCKET_STR: &str = "websocket";
@@ -86,15 +94,14 @@ pub fn fail_upgrade<ExtErr: std::error::Error>(error: UpgradeError<ExtErr>) -> R
 }
 
 /// Upgrade a hyper request to websocket, based on a successful negotiation.
-pub fn upgrade<Ext>(
+pub fn upgrade<Ext, U>(
     request: Request<Body>,
     negotiated: Negotiated<'_, Ext>,
     config: Option<WebSocketConfig>,
-) -> (
-    Response<Body>,
-    UpgradeFuture<Ext>,
-)
+    unwrap_fn: U,
+) -> (Response<Body>, UpgradeFuture<Ext, U>)
 where
+    U: SockUnwrap,
     Ext: Extension + Send,
 {
     let Negotiated {
@@ -127,6 +134,7 @@ where
         upgrade: hyper::upgrade::on(request),
         config: config.unwrap_or_default(),
         extension: ext,
+        unwrap_fn,
     };
 
     let response = builder
@@ -186,26 +194,49 @@ impl<ExtErr: std::error::Error> From<ExtErr> for UpgradeError<ExtErr> {
     }
 }
 
-pub struct UpgradeFuture<Ext> {
+pub trait SockUnwrap {
+    type Sock: AsyncRead + AsyncWrite + Unpin + 'static;
+
+    fn unwrap_sock(&self, upgraded: Upgraded) -> (Self::Sock, BytesMut);
+}
+
+pub struct NoUnwrap;
+
+impl SockUnwrap for NoUnwrap {
+    type Sock = Upgraded;
+
+    fn unwrap_sock(&self, upgraded: Upgraded) -> (Self::Sock, BytesMut) {
+        (upgraded, BytesMut::new())
+    }
+}
+
+pub struct UpgradeFuture<Ext, U> {
     upgrade: OnUpgrade,
     config: WebSocketConfig,
     extension: Option<Ext>,
+    unwrap_fn: U,
 }
 
-impl<Ext> Future for UpgradeFuture<Ext>
+impl<Ext, U> Future for UpgradeFuture<Ext, U>
 where
     Ext: Extension + Unpin,
+    U: SockUnwrap + Unpin,
 {
-    type Output = Result<WebSocket<Upgraded, Ext>, hyper::Error>;
+    type Output = Result<WebSocket<U::Sock, Ext>, hyper::Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let UpgradeFuture { upgrade, config, extension } = self.get_mut();
-        let upgraded = ready!(upgrade.poll_unpin(cx))?;
+        let UpgradeFuture {
+            upgrade,
+            config,
+            extension,
+            unwrap_fn,
+        } = self.get_mut();
+        let (upgraded, prefix) = unwrap_fn.unwrap_sock(ready!(upgrade.poll_unpin(cx))?);
         Poll::Ready(Ok(WebSocket::from_upgraded(
             std::mem::take(config),
             upgraded,
             NegotiatedExtension::from(extension.take()),
-            BytesMut::new(),
+            prefix,
             Role::Server,
         )))
     }
