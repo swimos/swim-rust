@@ -572,7 +572,7 @@ impl WebsocketServer for HyperWebsockets {
     type WsStream<Sock, Ext> =
         BoxStream<'static, Result<(WebSocket<Sock, Ext>, SocketAddr), ListenerError>>;
 
-    fn from_listener<Sock, L, Provider>(
+    fn wrap_listener<Sock, L, Provider>(
         &self,
         listener: L,
         provider: Provider,
@@ -609,7 +609,7 @@ impl WebsocketClient for HyperWebsockets {
 
         let config = *config;
         Box::pin(async move {
-            let subprotocols = ProtocolRegistry::new(PROTOCOLS.iter().map(|s| *s))?;
+            let subprotocols = ProtocolRegistry::new(PROTOCOLS.iter().copied())?;
             let socket = ratchet::subscribe_with(config, socket, addr, provider, subprotocols)
                 .await?
                 .into_websocket();

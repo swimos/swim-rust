@@ -134,7 +134,7 @@ pub trait WebsocketServer: Send + Sync {
     /// #Arguments
     /// * `listener` - The stream of incoming connections.
     /// * `provider` - Provider of websocket extensions.
-    fn from_listener<Sock, L, Provider>(
+    fn wrap_listener<Sock, L, Provider>(
         &self,
         listener: L,
         provider: Provider,
@@ -181,7 +181,7 @@ impl WebsocketClient for RatchetClient {
     {
         let config = self.0;
         Box::pin(async move {
-            let subprotocols = ProtocolRegistry::new(PROTOCOLS.iter().map(|s| *s))?;
+            let subprotocols = ProtocolRegistry::new(PROTOCOLS.iter().copied())?;
             let socket = ratchet::subscribe_with(config, socket, addr, provider, subprotocols)
                 .await?
                 .into_websocket();

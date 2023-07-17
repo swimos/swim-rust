@@ -344,7 +344,7 @@ where
         let mut client_tasks = FuturesUnordered::new();
 
         let mut web_server = websockets
-            .from_listener(listener, ext_provider.clone())
+            .wrap_listener(listener, ext_provider.clone())
             .take_until(stop_signal);
         //let mut accept_stream = listener.into_stream().take_until(stop_signal);
 

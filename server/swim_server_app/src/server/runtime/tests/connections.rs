@@ -86,7 +86,7 @@ impl WebsocketServer for TestWs {
     type WsStream<Sock, Ext> =
         BoxStream<'static, Result<(WebSocket<Sock, Ext>, SocketAddr), ListenerError>>;
 
-    fn from_listener<Sock, L, Provider>(
+    fn wrap_listener<Sock, L, Provider>(
         &self,
         listener: L,
         _provider: Provider,
