@@ -33,7 +33,6 @@ swim_persistence = { path = "../../runtime/swim_persistence" }
 parking_lot = { workspace = true }
 rocksdb = { workspace = true, optional = true }
 hyper = { workspace = true, features = ["full", "tcp", "http1", "backports"] }
-lazy_static = "1.4.0"
 pin-project = { workspace = true }
 
 [dev-dependencies]

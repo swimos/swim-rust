@@ -1,7 +1,11 @@
 use bytes::BytesMut;
 use futures_util::future::{ready, BoxFuture};
-use futures_util::FutureExt;
-use ratchet::{Message, NegotiatedExtension, NoExt, PayloadType, Role, WebSocket, WebSocketConfig};
+use futures_util::stream::BoxStream;
+use futures_util::{FutureExt, StreamExt};
+use ratchet::{
+    ExtensionProvider, Message, NegotiatedExtension, NoExt, PayloadType, Role, WebSocket,
+    WebSocketConfig,
+};
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -14,9 +18,11 @@ use swim_model::{Text, Value};
 use swim_recon::parser::{parse_recognize, Span};
 use swim_recon::printer::print_recon;
 use swim_runtime::net::dns::{BoxDnsResolver, DnsResolver};
-use swim_runtime::net::{ClientConnections, ConnResult, ConnectionError, IoResult, Scheme};
-use swim_runtime::ws::{RatchetError, WsConnections, WsOpenFuture};
-use tokio::io::DuplexStream;
+use swim_runtime::net::{
+    ClientConnections, ConnResult, ConnectionError, IoResult, Listener, ListenerError, Scheme,
+};
+use swim_runtime::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
+use tokio::io::{AsyncRead, AsyncWrite, DuplexStream};
 
 #[derive(Debug)]
 struct Inner {
@@ -123,19 +129,23 @@ impl MockWs {
     }
 }
 
-impl WsConnections<DuplexStream> for MockWs {
-    type Ext = NoExt;
-
-    fn open_connection(
+impl WebsocketClient for MockWs {
+    fn open_connection<'a, Sock, Provider>(
         &self,
-        socket: DuplexStream,
+        socket: Sock,
+        _provider: &'a Provider,
         addr: String,
-    ) -> WsOpenFuture<DuplexStream, Self::Ext, RatchetError> {
+    ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
+    where
+        Sock: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+        Provider: ExtensionProvider + Send + Sync + 'static,
+        Provider::Extension: Send + Sync + 'static,
+    {
         let result = match self.states.get(&addr) {
             Some(WsAction::Open) => Ok(WebSocket::from_upgraded(
                 WebSocketConfig::default(),
                 socket,
-                NegotiatedExtension::from(NoExt),
+                NegotiatedExtension::from(None),
                 BytesMut::default(),
                 Role::Client,
             )),
@@ -144,12 +154,24 @@ impl WsConnections<DuplexStream> for MockWs {
         };
         ready(result).boxed()
     }
+}
 
-    fn accept_connection(
+impl WebsocketServer for MockWs {
+    type WsStream<Sock, Ext> =
+        BoxStream<'static, Result<(WebSocket<Sock, Ext>, SocketAddr), ListenerError>>;
+
+    fn from_listener<Sock, L, Provider>(
         &self,
-        _socket: DuplexStream,
-    ) -> WsOpenFuture<DuplexStream, Self::Ext, RatchetError> {
-        panic!("Unexpected accept connection invocation")
+        _listener: L,
+        _provider: Provider,
+    ) -> Self::WsStream<Sock, Provider::Extension>
+    where
+        Sock: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+        L: Listener<Sock> + Send + 'static,
+        Provider: ExtensionProvider + Send + Sync + Unpin + 'static,
+        Provider::Extension: Send + Sync + Unpin + 'static,
+    {
+        futures::stream::pending().boxed()
     }
 }
 

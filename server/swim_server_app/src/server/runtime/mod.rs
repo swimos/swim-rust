@@ -15,7 +15,7 @@
 use futures::future::{join, Either};
 use futures::stream::{unfold, FuturesUnordered};
 use futures::{FutureExt, Stream, StreamExt};
-use ratchet::{SplittableExtension, WebSocket, WebSocketStream};
+use ratchet::{ExtensionProvider, SplittableExtension, WebSocket, WebSocketStream};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
@@ -44,10 +44,8 @@ use swim_runtime::agent::{
 use swim_runtime::downlink::Io;
 use swim_utilities::routing::route_uri::RouteUri;
 
-use swim_runtime::net::{
-    BadUrl, ConnectionError, ExternalConnections, Listener, ListenerError, Scheme,
-};
-use swim_runtime::ws::{RatchetError, WsConnections};
+use swim_runtime::net::{BadUrl, ConnectionError, ExternalConnections, ListenerError, Scheme};
+use swim_runtime::ws::{RatchetError, Websockets};
 use swim_utilities::io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
 use swim_utilities::routing::route_pattern::RoutePattern;
 use swim_utilities::trigger::{self, promise};
@@ -76,26 +74,29 @@ mod tests;
 
 /// A swim server task that listens for incoming connections on a socket and runs the
 /// agents specified in a [`PlaneModel`].
-pub struct SwimServer<Net, Ws, Store> {
+pub struct SwimServer<Net, Ws, Provider, Store> {
     plane: PlaneModel,
     addr: SocketAddr,
     networking: Net,
     websockets: Ws,
+    ext_provider: Provider,
     config: SwimServerConfig,
     store: Store,
     introspection: Option<IntrospectionConfig>,
 }
 
-pub struct Transport<Net, Ws> {
+pub struct Transport<Net, Ws, Provider> {
     networking: Net,
     websockets: Ws,
+    ext_provider: Provider,
 }
 
-impl<Net, Ws> Transport<Net, Ws> {
-    pub fn new(networking: Net, websockets: Ws) -> Self {
+impl<Net, Ws, Provider> Transport<Net, Ws, Provider> {
+    pub fn new(networking: Net, websockets: Ws, ext_provider: Provider) -> Self {
         Transport {
             networking,
             websockets,
+            ext_provider,
         }
     }
 }
@@ -115,7 +116,7 @@ type ClientPromiseTx = oneshot::Sender<Result<EstablishedClient, NewClientError>
 type ClientPromiseRx = oneshot::Receiver<Result<EstablishedClient, NewClientError>>;
 
 enum ServerEvent<Sock, Ext> {
-    NewConnection(Result<(Sock, Scheme, SocketAddr), ListenerError>),
+    NewConnection(Result<(WebSocket<Sock, Ext>, SocketAddr), ListenerError>),
     FindRoute(FindNode),
     FailRoute(FindNode),
     RemoteStopped(SocketAddr, Result<(), JoinError>),
@@ -173,11 +174,13 @@ impl ClientRegistration {
     }
 }
 
-impl<Net, Ws, Store> Server for SwimServer<Net, Ws, Store>
+impl<Net, Ws, Provider, Store> Server for SwimServer<Net, Ws, Provider, Store>
 where
     Net: ExternalConnections + Clone,
     Net::Socket: WebSocketStream,
-    Ws: WsConnections<Net::Socket> + Send + Sync + 'static,
+    Ws: Websockets + Send + Sync + 'static,
+    Provider: ExtensionProvider + Send + Sync + Clone + Unpin + 'static,
+    Provider::Extension: SplittableExtension + Send + Sync + Unpin + 'static,
     Store: ServerPersistence + Send + Sync + 'static,
 {
     fn run(
@@ -233,17 +236,19 @@ enum TaskState {
     StoppingRemotes, //The server is shutting down, all agents have stopped, and the remote connections are being closed.
 }
 
-impl<Net, Ws, Store> SwimServer<Net, Ws, Store>
+impl<Net, Ws, Provider, Store> SwimServer<Net, Ws, Provider, Store>
 where
     Net: ExternalConnections,
     Net::Socket: WebSocketStream,
-    Ws: WsConnections<Net::Socket> + Send + Sync,
+    Ws: Websockets + Send + Sync,
+    Provider: ExtensionProvider + Send + Sync + Clone + Unpin + 'static,
+    Provider::Extension: SplittableExtension + Send + Sync + Unpin + 'static,
     Store: ServerPersistence + Send + Sync + 'static,
 {
     pub fn new(
         plane: PlaneModel,
         addr: SocketAddr,
-        transport: Transport<Net, Ws>,
+        transport: Transport<Net, Ws, Provider>,
         config: SwimServerConfig,
         store: Store,
         introspection: Option<IntrospectionConfig>,
@@ -251,12 +256,14 @@ where
         let Transport {
             networking,
             websockets,
+            ext_provider,
         } = transport;
         SwimServer {
             plane,
             addr,
             networking,
             websockets,
+            ext_provider,
             config,
             store,
             introspection,
@@ -276,11 +283,13 @@ fn start_req_stream(
     })
 }
 
-impl<Net, Ws, Store> SwimServer<Net, Ws, Store>
+impl<Net, Ws, Provider, Store> SwimServer<Net, Ws, Provider, Store>
 where
     Net: ExternalConnections,
-    Net::Socket: WebSocketStream,
-    Ws: WsConnections<Net::Socket> + Send + Sync,
+    Net::Socket: WebSocketStream + Send,
+    Ws: Websockets + Send + Sync,
+    Provider: ExtensionProvider + Send + Sync + Clone + Unpin + 'static,
+    Provider::Extension: SplittableExtension + Send + Sync + Unpin + 'static,
     Store: ServerPersistence + Send + Sync + 'static,
 {
     pub fn run_server(
@@ -309,6 +318,7 @@ where
             addr,
             networking,
             websockets,
+            ext_provider,
             config,
             store,
             introspection,
@@ -333,7 +343,10 @@ where
         let mut cmd_connection_tasks = FuturesUnordered::new();
         let mut client_tasks = FuturesUnordered::new();
 
-        let mut accept_stream = listener.into_stream().take_until(stop_signal);
+        let mut web_server = websockets
+            .from_listener(listener, ext_provider.clone())
+            .take_until(stop_signal);
+        //let mut accept_stream = listener.into_stream().take_until(stop_signal);
 
         let (agent_stop_tx, agent_stop_rx) = trigger::trigger();
         let mut agent_stop = Some(agent_stop_tx);
@@ -377,7 +390,7 @@ where
                         Some(result) = cmd_connection_tasks.next(), if !cmd_connection_tasks.is_empty() => ServerEvent::CmdChannelResult(result),
                         Some(event) = client_tasks.next(), if !client_tasks.is_empty() => event,
                         Some(req) = start_reqs.next() => ServerEvent::StartAgent(req),
-                        maybe_result = accept_stream.next() => {
+                        maybe_result = web_server.next() => {
                             if let Some(result) = maybe_result {
                                 ServerEvent::NewConnection(result)
                             } else {
@@ -470,27 +483,19 @@ where
             };
 
             match event {
-                ServerEvent::NewConnection(Ok((sock, _, addr))) => {
+                ServerEvent::NewConnection(Ok((websocket, sock_addr))) => {
                     info!(peer = %addr, "Accepting new client connection.");
-                    match websockets.accept_connection(sock).await {
-                        Ok(websocket) => {
-                            let sock_addr = addr;
-                            let id = remote_issuer.next_id();
-                            let (attach_tx, task) = register_remote(
-                                id,
-                                sock_addr,
-                                remote_stop_rx.clone(),
-                                &config,
-                                websocket,
-                                find_tx.clone(),
-                            );
-                            remote_channels.insert(sock_addr, attach_tx);
-                            remote_tasks.push(task);
-                        }
-                        Err(error) => {
-                            warn!(error = %error, "Negotiating incoming websocket connection failed.");
-                        }
-                    }
+                    let id = remote_issuer.next_id();
+                    let (attach_tx, task) = register_remote(
+                        id,
+                        sock_addr,
+                        remote_stop_rx.clone(),
+                        &config,
+                        websocket,
+                        find_tx.clone(),
+                    );
+                    remote_channels.insert(sock_addr, attach_tx);
+                    remote_tasks.push(task);
                 }
                 ServerEvent::NewConnection(Err(ListenerError::ListenerFailed(error))) => {
                     error!(error = %error, "Listening for new connections failed.");
@@ -610,8 +615,10 @@ where
                     } else {
                         let net = networking.clone();
                         let ws = websockets.clone();
+                        let provider = ext_provider.clone();
                         client_tasks.push(async move {
-                            let result = open_client(scheme, host, sock_addrs, net, ws).await;
+                            let result =
+                                open_client(scheme, host, sock_addrs, net, ws, provider).await;
                             ServerEvent::NewClient(result, responder)
                         });
                     }
@@ -1158,17 +1165,20 @@ impl From<NewClientError> for DownlinkRuntimeError {
     }
 }
 
-async fn open_client<Net, Ws>(
+async fn open_client<Net, Ws, Provider>(
     scheme: Scheme,
     host: Text,
     addrs: Vec<SocketAddr>,
     networking: Arc<Net>,
     websockets: Arc<Ws>,
-) -> Result<(SocketAddr, WebSocket<Net::Socket, Ws::Ext>), NewClientError>
+    provider: Provider,
+) -> Result<(SocketAddr, WebSocket<Net::Socket, Provider::Extension>), NewClientError>
 where
     Net: ExternalConnections,
     Net::Socket: WebSocketStream,
-    Ws: WsConnections<Net::Socket> + Send + Sync,
+    Ws: Websockets + Send + Sync,
+    Provider: ExtensionProvider + Send + Sync + Clone + Unpin + 'static,
+    Provider::Extension: SplittableExtension + Send + Sync + Unpin + 'static,
 {
     let mut conn_failures = vec![];
     let mut sock = None;
@@ -1191,7 +1201,7 @@ where
         });
     };
     websockets
-        .open_connection(socket, host.to_string())
+        .open_connection(socket, &provider, host.to_string())
         .await
         .map(move |ws| (addr, ws))
         .map_err(|e| NewClientError::WsNegotationFailed { error: e })

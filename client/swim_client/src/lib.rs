@@ -16,6 +16,7 @@
 use ratchet::NoExtProvider;
 use ratchet::WebSocketStream;
 use std::num::NonZeroUsize;
+use swim_runtime::ws::RatchetClient;
 
 use futures_util::future::BoxFuture;
 #[cfg(feature = "deflate")]
@@ -34,7 +35,6 @@ use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use swim_runtime::net::dns::Resolver;
 use swim_runtime::net::plain::TokioPlainTextNetworking;
 use swim_runtime::net::ClientConnections;
-use swim_runtime::ws::ext::RatchetNetworking;
 #[cfg(feature = "tls")]
 use swim_tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
 use swim_utilities::trigger;
@@ -145,18 +145,20 @@ where
         }
         #[cfg(not(feature = "deflate"))]
         {
-            let websockets = RatchetNetworking {
-                config: ratchet::WebSocketConfig {
-                    max_message_size: websocket.max_message_size,
-                },
-                provider: NoExtProvider,
-                subprotocols: Default::default(),
-            };
+            let websockets = RatchetClient::from(ratchet::WebSocketConfig {
+                max_message_size: websocket.max_message_size,
+            });
 
             start_runtime(
                 registration_buffer_size,
                 stop_rx,
-                Transport::new(networking, websockets, remote_buffer_size, close_timeout),
+                Transport::new(
+                    networking,
+                    websockets,
+                    NoExtProvider,
+                    remote_buffer_size,
+                    close_timeout,
+                ),
                 transport_buffer_size,
             )
         }

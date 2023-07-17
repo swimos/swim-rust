@@ -17,13 +17,14 @@ use futures::StreamExt;
 use futures_util::future::{BoxFuture, Either, Fuse};
 use futures_util::stream::FuturesUnordered;
 use futures_util::FutureExt;
-use ratchet::WebSocketStream;
+use ratchet::{ExtensionProvider, SplittableExtension, WebSocketStream};
 use std::borrow::Borrow;
 use std::collections::hash_map::Entry;
 use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swim_runtime::ws::WebsocketClient;
 use tokio::sync::{mpsc, oneshot, Notify};
 use tokio::task::{JoinError, JoinHandle};
 use tracing::{debug, error, info, trace};
@@ -40,7 +41,6 @@ use swim_model::Text;
 use swim_remote::AttachClient;
 use swim_runtime::downlink::{AttachAction, DownlinkOptions, DownlinkRuntimeConfig};
 use swim_runtime::net::{ClientConnections, Scheme, SchemeHostPort};
-use swim_runtime::ws::WsConnections;
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swim_utilities::trigger;
 use swim_utilities::trigger::promise;
@@ -186,16 +186,18 @@ enum RuntimeEvent {
 
 /// Spawns a runtime task that uses the provided transport task and returns a handle that can be
 /// used to dispatch downlink registration requests.
-pub fn start_runtime<Net, Ws>(
+pub fn start_runtime<Net, Ws, Provider>(
     registration_buffer_size: NonZeroUsize,
     stop_rx: trigger::Receiver,
-    transport: Transport<Net, Ws>,
+    transport: Transport<Net, Ws, Provider>,
     transport_buffer_size: NonZeroUsize,
 ) -> (RawHandle, BoxFuture<'static, ()>)
 where
     Net: ClientConnections,
     Net::ClientSocket: WebSocketStream,
-    Ws: WsConnections<Net::ClientSocket> + Send + Sync + 'static,
+    Ws: WebsocketClient + Send + Sync + 'static,
+    Provider: ExtensionProvider + Send + Sync + 'static,
+    Provider::Extension: SplittableExtension + Send + Sync,
 {
     let (requests_tx, requests_rx) = mpsc::channel(registration_buffer_size.get());
     let notified = Arc::new(Notify::new());
@@ -214,15 +216,17 @@ where
     )
 }
 
-async fn runtime_task<Net, Ws>(
-    transport: Transport<Net, Ws>,
+async fn runtime_task<Net, Ws, Provider>(
+    transport: Transport<Net, Ws, Provider>,
     transport_buffer_size: NonZeroUsize,
     mut remote_stop_rx: trigger::Receiver,
     mut requests_rx: mpsc::Receiver<DownlinkRegistrationRequest>,
 ) where
     Net: ClientConnections,
     Net::ClientSocket: WebSocketStream,
-    Ws: WsConnections<Net::ClientSocket> + Send + Sync + 'static,
+    Ws: WebsocketClient + Send + Sync + 'static,
+    Provider: ExtensionProvider + Send + Sync + 'static,
+    Provider::Extension: SplittableExtension + Send + Sync,
 {
     let (transport_tx, transport_rx) = mpsc::channel(transport_buffer_size.get());
     let transport_handle = TransportHandle::new(transport_tx);

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::{
-    collections::HashSet,
     marker::PhantomData,
     net::SocketAddr,
     num::NonZeroUsize,
@@ -26,7 +25,7 @@ use bytes::BytesMut;
 use futures::{
     future::{ready, Ready},
     ready,
-    stream::FuturesUnordered,
+    stream::{BoxStream, FuturesUnordered},
     Future, FutureExt, Stream, StreamExt,
 };
 use hyper::{
@@ -35,28 +34,22 @@ use hyper::{
     upgrade::{Parts, Upgraded},
     Body, Request, Response,
 };
-use lazy_static::lazy_static;
 use pin_project::pin_project;
-use ratchet::{Extension, ExtensionProvider, WebSocket, WebSocketConfig};
+use ratchet::{Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig};
 use swim_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
-use swim_runtime::net::{Listener, ListenerError, ListenerResult, Scheme};
+use swim_runtime::{
+    net::{Listener, ListenerError, ListenerResult, Scheme},
+    ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture, PROTOCOLS},
+};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::mpsc::{self, OwnedPermit},
 };
 
-lazy_static! {
-    static ref PROTOCOLS: HashSet<&'static str> = {
-        let mut s = HashSet::new();
-        s.insert("warp0");
-        s
-    };
-}
-
 pub type WsWithAddr<Ext, Sock> = (WebSocket<Sock, Ext>, Scheme, SocketAddr);
 pub type ListenResult<Ext, Sock> = Result<WsWithAddr<Ext, Sock>, ListenerError>;
 
-pub async fn hyper_http_server<Sock, L, Ext>(
+pub fn hyper_http_server<Sock, L, Ext>(
     listener: L,
     extension_provider: Ext,
     config: Option<WebSocketConfig>,
@@ -65,7 +58,7 @@ pub async fn hyper_http_server<Sock, L, Ext>(
 where
     Sock: Unpin + Send + Sync + AsyncRead + AsyncWrite + 'static,
     L: Listener<Sock> + Send,
-    Ext: ExtensionProvider + Clone + Send + Sync + 'static,
+    Ext: ExtensionProvider + Send + Sync + 'static,
     Ext::Extension: Send + Unpin,
 {
     let state = StreamState::<L::AcceptStream, Sock, Ext, _>::new(
@@ -551,5 +544,73 @@ where
         } = self.get_mut();
         let ws = ready!(inner.poll_unpin(cx))?;
         Poll::Ready(Ok((ws, *scheme, *addr)))
+    }
+}
+
+pub struct HyperWebsockets {
+    config: WebSocketConfig,
+    max_negotiations: NonZeroUsize,
+}
+
+impl HyperWebsockets {
+    pub fn new(config: WebSocketConfig, max_negotiations: NonZeroUsize) -> Self {
+        HyperWebsockets {
+            config,
+            max_negotiations,
+        }
+    }
+}
+
+//pub trait WebsocketServer<Sock>: Send + Sync
+//where
+//    Sock: Unpin + Send + Sync + 'static,
+
+impl WebsocketServer for HyperWebsockets {
+    type WsStream<Sock, Ext> =
+        BoxStream<'static, Result<(WebSocket<Sock, Ext>, SocketAddr), ListenerError>>;
+
+    fn from_listener<Sock, L, Provider>(
+        &self,
+        listener: L,
+        provider: Provider,
+    ) -> Self::WsStream<Sock, Provider::Extension>
+    where
+        Sock: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+        L: Listener<Sock> + Send + 'static,
+        Provider: ExtensionProvider + Send + Sync + Unpin + 'static,
+        Provider::Extension: Send + Sync + Unpin + 'static,
+    {
+        let HyperWebsockets {
+            config,
+            max_negotiations,
+        } = self;
+        hyper_http_server(listener, provider, Some(*config), *max_negotiations)
+            .map(|r| r.map(|(ws, _, addr)| (ws, addr)))
+            .boxed()
+    }
+}
+
+impl WebsocketClient for HyperWebsockets {
+    fn open_connection<'a, Sock, Provider>(
+        &self,
+        socket: Sock,
+        provider: &'a Provider,
+        addr: String,
+    ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
+    where
+        Sock: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+        Provider: ExtensionProvider + Send + Sync + 'static,
+        Provider::Extension: Send + Sync + 'static,
+    {
+        let HyperWebsockets { config, .. } = self;
+
+        let config = *config;
+        Box::pin(async move {
+            let subprotocols = ProtocolRegistry::new(PROTOCOLS.iter().map(|s| *s))?;
+            let socket = ratchet::subscribe_with(config, socket, addr, provider, subprotocols)
+                .await?
+                .into_websocket();
+            Ok(socket)
+        })
     }
 }
