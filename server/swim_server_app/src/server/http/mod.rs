@@ -547,12 +547,19 @@ where
     }
 }
 
+/// Implementation of [`WebsocketServer`] and [`WebsocketClient`] that uses [`hyper`] to upgrade
+/// HTTP connections to [`ratchet`] web-socket connections.
 pub struct HyperWebsockets {
     config: WebSocketConfig,
     max_negotiations: NonZeroUsize,
 }
 
 impl HyperWebsockets {
+    /// #Arguments
+    ///
+    /// * `config` - Ratchet websocket configuration.
+    /// * `max_negotiations` - The maximum number of concurrent connections that the server
+    /// will handle concurrently.
     pub fn new(config: WebSocketConfig, max_negotiations: NonZeroUsize) -> Self {
         HyperWebsockets {
             config,
@@ -560,10 +567,6 @@ impl HyperWebsockets {
         }
     }
 }
-
-//pub trait WebsocketServer<Sock>: Send + Sync
-//where
-//    Sock: Unpin + Send + Sync + 'static,
 
 impl WebsocketServer for HyperWebsockets {
     type WsStream<Sock, Ext> =

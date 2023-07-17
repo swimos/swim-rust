@@ -102,8 +102,14 @@ impl Debug for Protocol {
     }
 }
 
+/// Trait for adapters that will negotiate a client websocket connection over an duplex connection.
 pub trait WebsocketClient {
     /// Negotiate a new client connection.
+    ///
+    /// # Arguments
+    /// * `socket` - The connection.
+    /// * `provider` - Provider for websocket extensions.
+    /// * `addr` - The remote host.
     fn open_connection<'a, Sock, Provider>(
         &self,
         socket: Sock,
@@ -116,11 +122,18 @@ pub trait WebsocketClient {
         Provider::Extension: Send + Sync + 'static;
 }
 
+/// Trait for adapters that can negotiate websocket connections for incoming TCP connections.
 pub trait WebsocketServer: Send + Sync {
     type WsStream<Sock, Ext>: Stream<Item = Result<(WebSocket<Sock, Ext>, SocketAddr), ListenerError>>
         + Send
         + Unpin;
 
+    /// Create a stream that will negotiate websocket connections on a stream of incoming duplex connections.
+    /// This will typically be a TCP listener.
+    ///
+    /// #Arguments
+    /// * `listener` - The stream of incoming connections.
+    /// * `provider` - Provider of websocket extensions.
     fn from_listener<Sock, L, Provider>(
         &self,
         listener: L,
@@ -133,10 +146,12 @@ pub trait WebsocketServer: Send + Sync {
         Provider::Extension: Send + Sync + Unpin + 'static;
 }
 
+/// Combination trait for managing both server and client websocket connections.
 pub trait Websockets: WebsocketClient + WebsocketServer {}
 
 impl<W> Websockets for W where W: WebsocketClient + WebsocketServer {}
 
+/// Standard websocket client implementation.
 pub struct RatchetClient(WebSocketConfig);
 impl From<WebSocketConfig> for RatchetClient {
     fn from(config: WebSocketConfig) -> Self {
