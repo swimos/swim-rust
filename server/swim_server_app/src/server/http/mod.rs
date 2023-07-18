@@ -29,7 +29,7 @@ use futures::{
     Future, FutureExt, Stream, StreamExt,
 };
 use hyper::{
-    server::conn::http1::{self, Connection},
+    server::conn::http1,
     service::Service,
     upgrade::{Parts, Upgraded},
     Body, Request, Response,
@@ -46,6 +46,9 @@ use tokio::{
     sync::mpsc::{self, OwnedPermit},
 };
 
+#[cfg(test)]
+mod tests;
+
 pub type WsWithAddr<Ext, Sock> = (WebSocket<Sock, Ext>, Scheme, SocketAddr);
 pub type ListenResult<Ext, Sock> = Result<WsWithAddr<Ext, Sock>, ListenerError>;
 
@@ -61,12 +64,17 @@ where
     Ext: ExtensionProvider + Send + Sync + 'static,
     Ext::Extension: Send + Unpin,
 {
-    let state = StreamState::<L::AcceptStream, Sock, Ext, _>::new(
+    let state = StreamState::<L::AcceptStream, Sock, Ext, _, _>::new(
         listener.into_stream(),
         extension_provider,
         config,
         max_negotiations,
         mpsc::Sender::reserve_owned,
+        |sock, svc| {
+            http1::Builder::new()
+                .serve_connection(sock, svc)
+                .with_upgrades()
+        },
     );
 
     futures::stream::unfold(state, |mut state| async move {
@@ -81,22 +89,23 @@ enum TaskResult<Ext, Sock> {
 }
 
 #[pin_project(project = TaskFutureProj)]
-enum TaskFuture<Sock, Ext, Fut>
+enum TaskFuture<Sock, Ext, Con, Fut>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send,
 {
-    Connection(Connection<Sock, UpgradeService<Ext, Sock>>),
+    Connection(Con),
     Upgrade(UpgradeFutureWithSock<Ext::Extension, Sock>),
     Reserve(#[pin] Fut),
 }
 
-impl<Sock, Ext, Fut> Future for TaskFuture<Sock, Ext, Fut>
+impl<Sock, Ext, Con, Fut> Future for TaskFuture<Sock, Ext, Con, Fut>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send + Unpin,
+    Con: Future<Output = Result<(), hyper::Error>> + Unpin,
     Fut: Future<
         Output = Result<
             OwnedPermit<UpgradeFutureWithSock<Ext::Extension, Sock>>,
@@ -180,21 +189,22 @@ impl<F> Reservable<F> {
     }
 }
 
-struct StreamState<L, Sock, Ext, Fut>
+struct StreamState<L, Sock, Ext, Con, Fut>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send,
 {
     listener_stream: L,
-    connection_tasks: FuturesUnordered<TaskFuture<Sock, Ext, Fut>>,
+    connection_tasks: FuturesUnordered<TaskFuture<Sock, Ext, Con, Fut>>,
     upgrader: Upgrader<Ext>,
     reservable: Reservable<UpgradeFutureWithSock<Ext::Extension, Sock>>,
     upgrade_rx: mpsc::Receiver<UpgradeFutureWithSock<Ext::Extension, Sock>>,
     reserve_fn: fn(mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>) -> Fut,
+    connect_fn: fn(Sock, UpgradeService<Ext, Sock>) -> Con,
 }
 
-impl<L, Sock, Ext, Fut> StreamState<L, Sock, Ext, Fut>
+impl<L, Sock, Ext, Con, Fut> StreamState<L, Sock, Ext, Con, Fut>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider + Send + Sync,
@@ -206,6 +216,7 @@ where
         config: Option<WebSocketConfig>,
         max_negotiations: NonZeroUsize,
         reserve_fn: fn(mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>) -> Fut,
+        connect_fn: fn(Sock, UpgradeService<Ext, Sock>) -> Con,
     ) -> Self {
         let (upgrade_tx, upgrade_rx) = mpsc::channel(max_negotiations.get());
         let connection_tasks = FuturesUnordered::new();
@@ -220,6 +231,7 @@ where
             reservable,
             upgrade_rx,
             reserve_fn,
+            connect_fn,
         }
     }
 }
@@ -238,12 +250,13 @@ enum Event<Sock, Ext> {
     Stop,
 }
 
-impl<L, Sock, Ext, Fut> StreamState<L, Sock, Ext, Fut>
+impl<L, Sock, Ext, Con, Fut> StreamState<L, Sock, Ext, Con, Fut>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     L: Stream<Item = ListenerResult<(Sock, Scheme, SocketAddr)>> + Send + Unpin,
     Ext: ExtensionProvider + Send + Sync,
     Ext::Extension: Send + Unpin,
+    Con: Future<Output = Result<(), hyper::Error>> + Unpin,
     Fut: Future<
         Output = Result<
             OwnedPermit<UpgradeFutureWithSock<Ext::Extension, Sock>>,
@@ -259,6 +272,7 @@ where
             reservable,
             upgrade_rx,
             reserve_fn,
+            connect_fn,
         } = self;
         loop {
             if reservable.is_closed() {
@@ -342,9 +356,7 @@ where
                 }
                 Event::Incoming(sock, scheme, addr, res) => {
                     let svc = upgrader.make_service(scheme, addr, res);
-                    connection_tasks.push(TaskFuture::Connection(
-                        http1::Builder::new().serve_connection(sock, svc),
-                    ));
+                    connection_tasks.push(TaskFuture::Connection(connect_fn(sock, svc)));
                     continue;
                 }
                 Event::IncomingFailed(err) => break Some(Err(err)),
