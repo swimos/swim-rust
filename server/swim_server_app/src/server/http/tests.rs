@@ -192,14 +192,11 @@ async fn three_clients() {
 async fn many_clients() {
     let (tx, rx) = mpsc::channel(8);
     let server = run_server(rx);
-    let ids = ('A'..'Z')
-        .into_iter()
-        .map(|c| c.to_string())
-        .collect::<Vec<_>>();
+    let ids = ('A'..='Z').map(|c| c.to_string()).collect::<Vec<_>>();
     let clients = async move {
         let client_tasks = FuturesUnordered::new();
         for tag in ids.iter() {
-            client_tasks.push(client(&tx, &tag));
+            client_tasks.push(client(&tx, tag));
         }
         client_tasks.collect::<()>().await;
         drop(tx);
