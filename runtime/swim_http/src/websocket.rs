@@ -94,6 +94,13 @@ pub fn fail_upgrade<ExtErr: std::error::Error>(error: UpgradeError<ExtErr>) -> R
 }
 
 /// Upgrade a hyper request to websocket, based on a successful negotiation.
+///
+/// #Arguments
+/// * `request` - The hyper HTTP request.
+/// * `negotiated` - Negotiated parameters for the websocket connection.
+/// * `config` - Websocket configuration parameters.
+/// * `unwrap_fn` - Used to unwrap the underlying socket type from the opaque [`Upgraded`] socket
+/// provided by hyper.
 pub fn upgrade<Ext, U>(
     request: Request<Body>,
     negotiated: Negotiated<'_, Ext>,
@@ -193,13 +200,19 @@ impl<ExtErr: std::error::Error> From<ExtErr> for UpgradeError<ExtErr> {
         UpgradeError::ExtensionError(err)
     }
 }
-
+/// Trait for unwrapping the concrete type of an upgraded socket.
+/// Upon a connection upgrade, hyper returns the upgraded socket indirected through a trait object.
+/// The caller will generally know the real underlying type and this allows for that type to be
+/// restored.
 pub trait SockUnwrap {
     type Sock: AsyncRead + AsyncWrite + Unpin + 'static;
 
+    /// Unwrap the socket (returning the underlying socket and a buffer containing any bytes
+    /// that have already been read).
     fn unwrap_sock(&self, upgraded: Upgraded) -> (Self::Sock, BytesMut);
 }
 
+/// Implementation of [`SockUnwrap`] that does not unwrap the socket.
 pub struct NoUnwrap;
 
 impl SockUnwrap for NoUnwrap {
@@ -210,6 +223,8 @@ impl SockUnwrap for NoUnwrap {
     }
 }
 
+/// A future that performs a websocket upgrade, unwraps the upgraded socket and
+/// creates a ratchet websocket from form it.
 pub struct UpgradeFuture<Ext, U> {
     upgrade: OnUpgrade,
     config: WebSocketConfig,
