@@ -24,8 +24,6 @@ pub use self::{
     util::AgentExt,
 };
 
-pub use server::http::{hyper_http_server, ListenResult, WsWithAddr};
-
 pub mod introspection {
     pub use swim_introspection::IntrospectionConfig;
 }
