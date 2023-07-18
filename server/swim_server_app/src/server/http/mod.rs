@@ -52,6 +52,15 @@ mod tests;
 pub type WsWithAddr<Ext, Sock> = (WebSocket<Sock, Ext>, Scheme, SocketAddr);
 pub type ListenResult<Ext, Sock> = Result<WsWithAddr<Ext, Sock>, ListenerError>;
 
+/// Hyper based web-server that will attempt to negotiate a server websocket over
+/// every incoming connection.
+///
+/// # Arguments
+/// * `listener` - Listener providing a stream of incoming connections.
+/// * `extension_provider` - Web socket extension provider.
+/// * `config` - Web socket configuration parameters.
+/// * `max_negotiations` - Maximum number of concurrent websocket handshakes. If this many are
+/// pending, no more connections will be accepted from the listener until a space becomes free.
 pub fn hyper_http_server<Sock, L, Ext>(
     listener: L,
     extension_provider: Ext,
