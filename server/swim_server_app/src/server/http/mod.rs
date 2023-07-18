@@ -64,7 +64,7 @@ where
     Ext: ExtensionProvider + Send + Sync + 'static,
     Ext::Extension: Send + Unpin,
 {
-    let state = StreamState::<L::AcceptStream, Sock, Ext, _, _>::new(
+    let state = StreamState::<L::AcceptStream, Sock, Ext, _, _, _, _>::new(
         listener.into_stream(),
         extension_provider,
         config,
@@ -139,7 +139,7 @@ impl<F> Reservable<F> {
         matches!(self, Reservable::Closed)
     }
 
-    fn new<Fut>(tx: mpsc::Sender<F>, f: fn(mpsc::Sender<F>) -> Fut) -> (Self, Option<Fut>) {
+    fn new<Fut>(tx: mpsc::Sender<F>, f: impl Fn(mpsc::Sender<F>) -> Fut) -> (Self, Option<Fut>) {
         match tx.clone().try_reserve_owned() {
             Ok(r) => (Reservable::Reserved(tx, r), None),
             Err(mpsc::error::TrySendError::Closed(_)) => (Reservable::Closed, None),
@@ -165,7 +165,7 @@ impl<F> Reservable<F> {
         result
     }
 
-    fn update_reservation<Fut>(&mut self, f: fn(mpsc::Sender<F>) -> Fut) -> Option<Fut> {
+    fn update_reservation<Fut>(&mut self, f: impl Fn(mpsc::Sender<F>) -> Fut) -> Option<Fut> {
         match std::mem::replace(self, Reservable::Closed) {
             Reservable::Reserving(tx) => match tx.clone().try_reserve_owned() {
                 Ok(res) => {
@@ -189,7 +189,7 @@ impl<F> Reservable<F> {
     }
 }
 
-struct StreamState<L, Sock, Ext, Con, Fut>
+struct StreamState<L, Sock, Ext, Con, Fut, FR, FC>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider,
@@ -200,23 +200,28 @@ where
     upgrader: Upgrader<Ext>,
     reservable: Reservable<UpgradeFutureWithSock<Ext::Extension, Sock>>,
     upgrade_rx: mpsc::Receiver<UpgradeFutureWithSock<Ext::Extension, Sock>>,
-    reserve_fn: fn(mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>) -> Fut,
-    connect_fn: fn(Sock, UpgradeService<Ext, Sock>) -> Con,
+    reserve_fn: FR,
+    connect_fn: FC,
 }
 
-impl<L, Sock, Ext, Con, Fut> StreamState<L, Sock, Ext, Con, Fut>
+impl<L, Sock, Ext, Con, Fut, FR, FC> StreamState<L, Sock, Ext, Con, Fut, FR, FC>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider + Send + Sync,
     Ext::Extension: Send,
+    FR: Fn(mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>) -> Fut
+        + Copy
+        + Send
+        + 'static,
+    FC: Fn(Sock, UpgradeService<Ext, Sock>) -> Con + Copy + Send + 'static,
 {
     fn new(
         listener_stream: L,
         extension_provider: Ext,
         config: Option<WebSocketConfig>,
         max_negotiations: NonZeroUsize,
-        reserve_fn: fn(mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>) -> Fut,
-        connect_fn: fn(Sock, UpgradeService<Ext, Sock>) -> Con,
+        reserve_fn: FR,
+        connect_fn: FC,
     ) -> Self {
         let (upgrade_tx, upgrade_rx) = mpsc::channel(max_negotiations.get());
         let connection_tasks = FuturesUnordered::new();
@@ -250,7 +255,7 @@ enum Event<Sock, Ext> {
     Stop,
 }
 
-impl<L, Sock, Ext, Con, Fut> StreamState<L, Sock, Ext, Con, Fut>
+impl<L, Sock, Ext, Con, Fut, FR, FC> StreamState<L, Sock, Ext, Con, Fut, FR, FC>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     L: Stream<Item = ListenerResult<(Sock, Scheme, SocketAddr)>> + Send + Unpin,
@@ -263,6 +268,11 @@ where
             mpsc::error::SendError<()>,
         >,
     >,
+    FR: Fn(mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>) -> Fut
+        + Copy
+        + Send
+        + 'static,
+    FC: Fn(Sock, UpgradeService<Ext, Sock>) -> Con + Copy + Send + 'static,
 {
     async fn next(&mut self) -> Option<ListenResult<Ext::Extension, Sock>> {
         let StreamState {
