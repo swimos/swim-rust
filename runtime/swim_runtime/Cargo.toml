@@ -35,7 +35,7 @@ tokio-stream = { workspace = true, features = ["sync"] }
 uuid = { workspace = true }
 static_assertions = { workspace = true }
 trust-dns-resolver = { workspace = true, optional = true }
-lazy_static = "1.4.0"
+lazy_static = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

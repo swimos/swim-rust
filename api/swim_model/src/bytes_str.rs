@@ -22,6 +22,15 @@ use crate::Text;
 pub struct BytesStr(Bytes);
 
 impl BytesStr {
+
+    pub fn new(bytes: Bytes) -> Result<Self, Bytes> {
+        if std::str::from_utf8(bytes.as_ref()).is_ok() {
+            Ok(BytesStr(bytes))
+        } else {
+            Err(bytes)
+        }
+    }
+
     pub const fn from_static_str(content: &'static str) -> BytesStr {
         BytesStr(Bytes::from_static(content.as_bytes()))
     }
@@ -64,6 +73,12 @@ impl From<String> for BytesStr {
 impl From<&str> for BytesStr {
     fn from(string: &str) -> Self {
         BytesStr::from(string.to_string())
+    }
+}
+
+impl From<BytesStr> for Bytes {
+    fn from(value: BytesStr) -> Self {
+        value.0
     }
 }
 

@@ -20,6 +20,7 @@ pub use num_bigint as bigint;
 mod blob;
 mod bytes_str;
 pub mod identifier;
+pub mod http;
 mod item;
 #[macro_use]
 pub mod macros;

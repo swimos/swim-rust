@@ -97,3 +97,4 @@ clap = "4.1"
 crossbeam-queue = { version = "0.3" }
 crossbeam-channel = { version = "0.5" }
 hyper = "0.14"
+lazy_static = "1.4.0"
