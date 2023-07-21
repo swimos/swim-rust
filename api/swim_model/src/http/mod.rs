@@ -13,6 +13,7 @@
 // limitations under the License.
 
 mod header;
+
 mod method;
 mod request;
 mod response;
@@ -20,9 +21,9 @@ mod status_code;
 mod version;
 
 pub use http::Uri;
-pub use method::{Method, UnsupportedMethod};
-pub use version::{Version, UnsupportedVersion};
-pub use header::{HeaderName, HeaderValue, Header};
+pub use method::{Method, UnsupportedMethod, MethodDecodeError};
+pub use version::{Version, UnsupportedVersion, VersionDecodeError};
+pub use header::{HeaderName, HeaderValue, Header, HeaderNameDecodeError};
 pub use request::{HttpRequest, InvalidRequest};
 pub use response::{HttpResponse, InvalidResponse};
 pub use status_code::{StatusCode, InvalidStatusCode};

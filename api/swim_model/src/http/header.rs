@@ -14,14 +14,13 @@
 
 use std::str::FromStr;
 
-use bytes::Bytes;
+use bytes::{Buf, BufMut, Bytes, BytesMut};
+use thiserror::Error;
 
 use crate::BytesStr;
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeaderName(Name);
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeaderValue(HeaderValueInner);
@@ -39,15 +38,12 @@ pub struct Header {
 }
 
 impl HeaderName {
-
     pub fn as_str(&self) -> &str {
         self.0.str_value()
     }
-
 }
 
 impl HeaderValue {
-
     pub fn new(bytes: Bytes) -> Self {
         HeaderValue(match BytesStr::new(bytes) {
             Ok(bytes_str) => HeaderValueInner::StringHeader(bytes_str),
@@ -62,13 +58,19 @@ impl HeaderValue {
         }
     }
 
+    pub fn as_bytes(&self) -> &[u8] {
+        match &self.0 {
+            HeaderValueInner::StringHeader(s) => s.as_str().as_bytes(),
+            HeaderValueInner::BytesHeader(b) => b.as_ref(),
+        }
+    }
+
     pub fn into_bytes(self) -> Bytes {
         match self.0 {
             HeaderValueInner::StringHeader(s) => s.into(),
             HeaderValueInner::BytesHeader(b) => b,
         }
     }
-
 }
 
 impl From<String> for HeaderValue {
@@ -102,15 +104,21 @@ impl From<&[u8]> for HeaderValue {
 }
 
 impl HeaderName {
-
     pub fn new(name: BytesStr) -> Self {
-        if let Some(basic) = Name::try_from_basic(name.as_str()) {
-            HeaderName(basic)
+        if let Some(basic) = StandardHeaderName::try_from_basic(name.as_str()) {
+            HeaderName(Name::Standard(basic))
         } else {
             HeaderName(Name::Other(name))
         }
     }
 
+    pub fn standard_name(&self) -> Option<StandardHeaderName> {
+        if let Name::Standard(s) = &self.0 {
+            Some(*s)
+        } else {
+            None
+        }
+    }
 }
 
 impl From<String> for HeaderName {
@@ -121,108 +129,159 @@ impl From<String> for HeaderName {
 
 impl From<&str> for HeaderName {
     fn from(value: &str) -> Self {
-        if let Some(basic) = Name::try_from_basic(value) {
-            HeaderName(basic)
+        if let Some(basic) = StandardHeaderName::try_from_basic(value) {
+            HeaderName(Name::Standard(basic))
         } else {
             HeaderName(Name::Other(BytesStr::from(value)))
         }
     }
 }
 
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StandardHeaderName {
+    Accept = 1,
+    AcceptCharset = 2,
+    AcceptEncoding = 3,
+    AcceptLanguage = 4,
+    Allow = 5,
+    Connection = 6,
+    ContentEncoding = 7,
+    ContentLength = 8,
+    ContentType = 9,
+    Cookie = 10,
+    Expect = 11,
+    Host = 12,
+    Location = 13,
+    MaxForwards = 14,
+    Origin = 15,
+    SecWebSocketAccept = 16,
+    SecWebSocketExtensions = 17,
+    SecWebSocketKey = 18,
+    SecWebSocketProtocol = 19,
+    SecWebSocketVersion = 20,
+    Server = 21,
+    SetCookie = 22,
+    TransferEncoding = 23,
+    Upgrade = 24,
+    UserAgent = 25,
+}
+
+impl StandardHeaderName {
+    fn from_byte(b: u8) -> Option<Self> {
+        match b {
+            1 => Some(Self::Accept),
+            2 => Some(Self::AcceptCharset),
+            3 => Some(Self::AcceptEncoding),
+            4 => Some(Self::AcceptLanguage),
+            5 => Some(Self::Allow),
+            6 => Some(Self::Connection),
+            7 => Some(Self::ContentEncoding),
+            8 => Some(Self::ContentLength),
+            9 => Some(Self::ContentType),
+            10 => Some(Self::Cookie),
+            11 => Some(Self::Expect),
+            12 => Some(Self::Host),
+            13 => Some(Self::Location),
+            14 => Some(Self::MaxForwards),
+            15 => Some(Self::Origin),
+            16 => Some(Self::SecWebSocketAccept),
+            17 => Some(Self::SecWebSocketExtensions),
+            18 => Some(Self::SecWebSocketKey),
+            19 => Some(Self::SecWebSocketProtocol),
+            20 => Some(Self::SecWebSocketVersion),
+            21 => Some(Self::Server),
+            22 => Some(Self::SetCookie),
+            23 => Some(Self::TransferEncoding),
+            24 => Some(Self::Upgrade),
+            25 => Some(Self::UserAgent),
+            _ => None
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Name {
-    Accept,
-    AcceptCharset,
-    AcceptEncoding,
-    AcceptLanguage,
-    Allow,
-    Connection,
-    ContentEncoding,
-    ContentLength,
-    ContentType,
-    Cookie,
-    Expect,
-    Host,
-    Location,
-    MaxForwards,
-    Origin,
-    SecWebSocketAccept,
-    SecWebSocketExtensions,
-    SecWebSocketKey,
-    SecWebSocketProtocol,
-    SecWebSocketVersion,
-    Server,
-    SetCookie,
-    TransferEncoding,
-    Upgrade,
-    UserAgent,
+    Standard(StandardHeaderName),
     Other(BytesStr),
 }
 
-impl Name {
+impl From<StandardHeaderName> for Name {
+    fn from(value: StandardHeaderName) -> Self {
+        Name::Standard(value)
+    }
+}
 
+impl Name {
+    pub fn str_value(&self) -> &str {
+        match self {
+            Name::Standard(s) => s.str_value(),
+            Name::Other(s) => s.as_str(),
+        }
+    }
+}
+
+impl StandardHeaderName {
     fn try_from_basic(s: &str) -> Option<Self> {
         match s {
-            "accept" => Some(Name::Accept),
-            "accept-charset" => Some(Name::AcceptCharset),
-            "accept-encoding" => Some(Name::AcceptEncoding),
-            "accept-language" => Some(Name::AcceptLanguage),
-            "allow" => Some(Name::Allow),
-            "connection" => Some(Name::Connection),
-            "content-encoding" => Some(Name::ContentEncoding),
-            "content-length" => Some(Name::ContentLength),
-            "content-type" => Some(Name::ContentType),
-            "cookie" => Some(Name::Cookie),
-            "expect" => Some(Name::Expect),
-            "host" => Some(Name::Host),
-            "location" => Some(Name::Location),
-            "max-forwards" => Some(Name::MaxForwards),
-            "origin" => Some(Name::Origin),
-            "sec-websocket-accept" => Some(Name::SecWebSocketAccept),
-            "sec-websocket-extensions" => Some(Name::SecWebSocketExtensions),
-            "sec-websocket-key" => Some(Name::SecWebSocketKey),
-            "sec-websocket-protocol" => Some(Name::SecWebSocketProtocol),
-            "sec-websocket-version" => Some(Name::SecWebSocketVersion),
-            "server" => Some(Name::Server),
-            "set-cookie" => Some(Name::SetCookie),
-            "transfer-encoding" => Some(Name::TransferEncoding),
-            "upgrade" => Some(Name::Upgrade),
-            "user-agent" => Some(Name::UserAgent),
+            "accept" => Some(StandardHeaderName::Accept),
+            "accept-charset" => Some(StandardHeaderName::AcceptCharset),
+            "accept-encoding" => Some(StandardHeaderName::AcceptEncoding),
+            "accept-language" => Some(StandardHeaderName::AcceptLanguage),
+            "allow" => Some(StandardHeaderName::Allow),
+            "connection" => Some(StandardHeaderName::Connection),
+            "content-encoding" => Some(StandardHeaderName::ContentEncoding),
+            "content-length" => Some(StandardHeaderName::ContentLength),
+            "content-type" => Some(StandardHeaderName::ContentType),
+            "cookie" => Some(StandardHeaderName::Cookie),
+            "expect" => Some(StandardHeaderName::Expect),
+            "host" => Some(StandardHeaderName::Host),
+            "location" => Some(StandardHeaderName::Location),
+            "max-forwards" => Some(StandardHeaderName::MaxForwards),
+            "origin" => Some(StandardHeaderName::Origin),
+            "sec-websocket-accept" => Some(StandardHeaderName::SecWebSocketAccept),
+            "sec-websocket-extensions" => Some(StandardHeaderName::SecWebSocketExtensions),
+            "sec-websocket-key" => Some(StandardHeaderName::SecWebSocketKey),
+            "sec-websocket-protocol" => Some(StandardHeaderName::SecWebSocketProtocol),
+            "sec-websocket-version" => Some(StandardHeaderName::SecWebSocketVersion),
+            "server" => Some(StandardHeaderName::Server),
+            "set-cookie" => Some(StandardHeaderName::SetCookie),
+            "transfer-encoding" => Some(StandardHeaderName::TransferEncoding),
+            "upgrade" => Some(StandardHeaderName::Upgrade),
+            "user-agent" => Some(StandardHeaderName::UserAgent),
             _ => None,
         }
     }
 
-    fn str_value(&self) -> &str {
+    fn str_value(&self) -> &'static str {
         match self {
-            Name::Accept => "accept",
-            Name::AcceptCharset => "accept-charset",
-            Name::AcceptEncoding => "accept-encoding",
-            Name::AcceptLanguage => "accept-language",
-            Name::Allow => "allow",
-            Name::Connection => "connection",
-            Name::ContentEncoding => "content-encoding",
-            Name::ContentLength => "content-length",
-            Name::ContentType => "content-type",
-            Name::Cookie => "cookie",
-            Name::Expect => "expect",
-            Name::Host => "host",
-            Name::Location => "location",
-            Name::MaxForwards => "max-forwards",
-            Name::Origin => "origin",
-            Name::SecWebSocketAccept => "sec-websocket-accept",
-            Name::SecWebSocketExtensions => "sec-websocket-extensions",
-            Name::SecWebSocketKey => "sec-websocket-key",
-            Name::SecWebSocketProtocol => "sec-websocket-protocol",
-            Name::SecWebSocketVersion => "sec-websocket-version",
-            Name::Server => "server",
-            Name::SetCookie => "set-cookie",
-            Name::TransferEncoding => "transfer-encoding",
-            Name::Upgrade => "upgrade",
-            Name::UserAgent => "user-agent",
-            Name::Other(name) => name.as_str(),
+            StandardHeaderName::Accept => "accept",
+            StandardHeaderName::AcceptCharset => "accept-charset",
+            StandardHeaderName::AcceptEncoding => "accept-encoding",
+            StandardHeaderName::AcceptLanguage => "accept-language",
+            StandardHeaderName::Allow => "allow",
+            StandardHeaderName::Connection => "connection",
+            StandardHeaderName::ContentEncoding => "content-encoding",
+            StandardHeaderName::ContentLength => "content-length",
+            StandardHeaderName::ContentType => "content-type",
+            StandardHeaderName::Cookie => "cookie",
+            StandardHeaderName::Expect => "expect",
+            StandardHeaderName::Host => "host",
+            StandardHeaderName::Location => "location",
+            StandardHeaderName::MaxForwards => "max-forwards",
+            StandardHeaderName::Origin => "origin",
+            StandardHeaderName::SecWebSocketAccept => "sec-websocket-accept",
+            StandardHeaderName::SecWebSocketExtensions => "sec-websocket-extensions",
+            StandardHeaderName::SecWebSocketKey => "sec-websocket-key",
+            StandardHeaderName::SecWebSocketProtocol => "sec-websocket-protocol",
+            StandardHeaderName::SecWebSocketVersion => "sec-websocket-version",
+            StandardHeaderName::Server => "server",
+            StandardHeaderName::SetCookie => "set-cookie",
+            StandardHeaderName::TransferEncoding => "transfer-encoding",
+            StandardHeaderName::Upgrade => "upgrade",
+            StandardHeaderName::UserAgent => "user-agent",
         }
     }
-
 }
 
 impl From<http::HeaderValue> for HeaderValue {
@@ -251,5 +310,88 @@ impl TryFrom<HeaderName> for http::header::HeaderName {
     fn try_from(value: HeaderName) -> Result<Self, Self::Error> {
         http::header::HeaderName::from_str(value.as_str())
     }
+}
+
+#[derive(Debug, Error)]
+pub enum HeaderNameDecodeError {
+    #[error("{0} does not encode a valid standard header name.")]
+    InvalidHeaderNameCode(u8),
+    #[error("Header name contained invalid UTF8")]
+    InvalidUtf8,
+}
+
+const TAG_LEN: usize = 1;
+const NAME_LEN_SIZE: usize = 2;
+const VALUE_LEN_SIZE: usize = 4;
+
+impl Header {
+
+    pub fn encoded_len(&self) -> usize {
+        let Header { name, value } = self;
+        let value_bytes = value.as_bytes();
+        let value_len = VALUE_LEN_SIZE + value_bytes.len();
+        let name_len = match &name.0 {
+            Name::Standard(_) => TAG_LEN,
+            Name::Other(s) => TAG_LEN + NAME_LEN_SIZE + s.as_str().len(),
+        };
+        name_len + value_len
+    }
+
+    pub fn encode(&self, dst: &mut BytesMut) {
+        let Header { name, value } = self;
+        let value_bytes = value.as_bytes();
+        dst.put_u32(value_bytes.len() as u32);
+        match &name.0 {
+            Name::Standard(s) => {
+                dst.put_u8(*s as u8);
+            },
+            Name::Other(s) => {
+                dst.put_u8(0);
+                dst.put_u16(s.as_str().len() as u16);
+                dst.put(s.as_str().as_bytes());
+            },
+        }
+        dst.put(value_bytes);
+    }
+
+    pub fn decode(src: &mut BytesMut) -> Result<Option<Header>, HeaderNameDecodeError> {
+        let mut data = src.as_ref();
+        if data.remaining() < VALUE_LEN_SIZE {
+            return Ok(None);
+        }
+        let value_len = data.get_u32() as usize;
+        if data.remaining() < TAG_LEN {
+            return Ok(None);
+        }
+        let code = data.get_u8();
+        let name = if code == 0 {
+            if data.remaining() < NAME_LEN_SIZE {
+                return Ok(None);
+            }
+            let name_len = data.get_u16() as usize;
+            if data.remaining() < name_len + value_len {
+                return Ok(None);
+            }
+            src.advance(VALUE_LEN_SIZE + TAG_LEN + NAME_LEN_SIZE);
+            if let Ok(bytes_str) = BytesStr::new(src.split_to(name_len).freeze()) {
+                HeaderName(Name::Other(bytes_str))
+            } else {
+                return Err(HeaderNameDecodeError::InvalidUtf8);
+            }
+        } else {
+            if data.remaining() < value_len {
+                return Ok(None);
+            }
+            if let Some(s) = StandardHeaderName::from_byte(code) {
+                HeaderName(Name::Standard(s))
+            } else {
+                return Err(HeaderNameDecodeError::InvalidHeaderNameCode(code));
+            }
+        };
+        let value_bytes = src.split_to(value_len).freeze();
+        let value = HeaderValue::new(value_bytes);
+        Ok(Some(Header { name, value }))
+    }
+
 }
 

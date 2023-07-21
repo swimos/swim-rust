@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bytes::{BufMut, Buf, BytesMut};
 use lazy_static::lazy_static;
 use thiserror::Error;
 use std::{collections::HashMap, fmt::Formatter};
@@ -106,3 +107,48 @@ impl std::fmt::Debug for Method {
         std::fmt::Display::fmt(&self, f)
     }
 }
+
+impl Method {
+    pub const ENCODED_LENGTH: usize = 1;
+}
+
+
+impl Method {
+
+    pub fn encode(&self, dst: &mut BytesMut) {
+        let code = match &self.0 {
+            MethodInner::Get => 0u8,
+            MethodInner::Head => 1u8,
+            MethodInner::Post => 2u8,
+            MethodInner::Put => 3u8,
+            MethodInner::Delete => 4u8,
+            MethodInner::Connect => 5u8,
+            MethodInner::Options => 6u8,
+            MethodInner::Trace => 7u8,
+        };
+        dst.put_u8(code);
+    }
+
+    pub fn decode(src: &mut impl Buf) -> Result<Option<Self>, MethodDecodeError> {
+        if src.remaining() >= Self::ENCODED_LENGTH {
+            match src.get_u8() {
+                0 => Ok(Some(Method::GET)),
+                1 => Ok(Some(Method::HEAD)),
+                2 => Ok(Some(Method::POST)),
+                3 => Ok(Some(Method::PUT)),
+                4 => Ok(Some(Method::DELETE)),
+                5 => Ok(Some(Method::CONNECT)),
+                6 => Ok(Some(Method::OPTIONS)),
+                7 => Ok(Some(Method::TRACE)),
+                ow => Err(MethodDecodeError(ow)),
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+}
+
+#[derive(Debug, Error)]
+#[error("{0} does not encode a valid method.")]
+pub struct MethodDecodeError(pub u8);

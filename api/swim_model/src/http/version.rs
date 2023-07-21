@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bytes::{BufMut, Buf, BytesMut};
 use thiserror::Error;
 use lazy_static::lazy_static;
 use std::{collections::HashMap, fmt::Formatter};
@@ -112,3 +113,43 @@ impl std::fmt::Display for Version {
         }
     }
 }
+
+
+impl Version {
+    pub const ENCODED_LENGTH: usize = 1;
+}
+
+
+impl Version {
+
+    pub fn encode(&self, dst: &mut BytesMut) {
+        let code = match &self.0 {
+            VersionInner::V0_9 => 0,
+            VersionInner::V1_0 => 1,
+            VersionInner::V1_1 => 2,
+            VersionInner::V2_0 => 3,
+            VersionInner::V3_0 => 4,
+        };
+        dst.put_u8(code);
+    }
+
+    pub fn decode(src: &mut impl Buf) -> Result<Option<Self>, VersionDecodeError> {
+        if src.remaining() >= Self::ENCODED_LENGTH {
+            match src.get_u8() {
+                0 => Ok(Some(Version::HTTP_0_9)),
+                1 => Ok(Some(Version::HTTP_1_0)),
+                2 => Ok(Some(Version::HTTP_1_1)),
+                3 => Ok(Some(Version::HTTP_2_0)),
+                4 => Ok(Some(Version::HTTP_3_0)),
+                ow => Err(VersionDecodeError(ow)),
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+}
+
+#[derive(Debug, Error)]
+#[error("{0} does not encode a HTTP version.")]
+pub struct VersionDecodeError(u8);

@@ -15,5 +15,6 @@ swim_utilities = { path = "../../swim_utilities", features = ["text"] }
 num-traits = { workspace = true }
 thiserror = { workspace = true }
 lazy_static = { workspace = true }
+tokio-util = { workspace = true, features = ["codec"] }
 
 [dev-dependencies]

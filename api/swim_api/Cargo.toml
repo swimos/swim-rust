@@ -16,3 +16,4 @@ tokio = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
 static_assertions = { workspace = true }
 uuid = { workspace = true }
+http = { workspace = true }
