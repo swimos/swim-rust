@@ -15,8 +15,8 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use http::uri::InvalidUri;
 use swim_model::http::{
-    Header, HeaderNameDecodeError, HttpRequest, Method, MethodDecodeError, Uri, Version,
-    VersionDecodeError,
+    Header, HeaderNameDecodeError, HttpRequest, HttpResponse, InvalidStatusCode, Method,
+    MethodDecodeError, StatusCode, Uri, Version, VersionDecodeError,
 };
 use thiserror::Error;
 use tokio_util::codec::{Decoder, Encoder};
@@ -24,6 +24,11 @@ use tokio_util::codec::{Decoder, Encoder};
 pub struct HttpRequestMessage {
     pub request_id: u64,
     pub request: HttpRequest<Bytes>,
+}
+
+pub struct HttpResponseMessage<T> {
+    pub request_id: u64,
+    pub response: HttpResponse<T>,
 }
 
 impl HttpRequestMessage {
@@ -113,6 +118,30 @@ pub enum HttpRequestMessageDecodeError {
     IncompleteHeaders,
 }
 
+impl From<HeaderNameDecodeError> for HeadersDecodeError {
+    fn from(value: HeaderNameDecodeError) -> Self {
+        HeadersDecodeError::InvalidHeaders(value)
+    }
+}
+
+impl From<HeadersDecodeError> for HttpRequestMessageDecodeError {
+    fn from(value: HeadersDecodeError) -> Self {
+        match value {
+            HeadersDecodeError::InvalidHeaders(e) => {
+                HttpRequestMessageDecodeError::InvalidHeaders(e)
+            }
+            HeadersDecodeError::IncompleteHeaders => {
+                HttpRequestMessageDecodeError::IncompleteHeaders
+            }
+        }
+    }
+}
+
+enum HeadersDecodeError {
+    InvalidHeaders(HeaderNameDecodeError),
+    IncompleteHeaders,
+}
+
 impl Decoder for HttpRequestMessageCodec {
     type Item = HttpRequestMessage;
 
@@ -182,12 +211,215 @@ fn encode_uri(uri: &Uri, dst: &mut BytesMut) {
     }
 }
 
-fn decode_headers(src: &mut BytesMut) -> Result<Vec<Header>, HttpRequestMessageDecodeError> {
+fn decode_headers(src: &mut BytesMut) -> Result<Vec<Header>, HeadersDecodeError> {
     let mut headers = vec![];
     while !src.is_empty() {
-        let header =
-            Header::decode(src)?.ok_or(HttpRequestMessageDecodeError::IncompleteHeaders)?;
+        let header = Header::decode(src)?.ok_or(HeadersDecodeError::IncompleteHeaders)?;
         headers.push(header);
     }
     Ok(headers)
+}
+
+#[derive(Default, Debug)]
+pub struct HttpResponseMessageEncoder<Inner> {
+    inner: Inner,
+}
+
+impl<Inner> HttpResponseMessageEncoder<Inner> {
+    pub fn new(payload_encoder: Inner) -> Self {
+        HttpResponseMessageEncoder {
+            inner: payload_encoder,
+        }
+    }
+}
+
+impl<T, Inner> Encoder<HttpResponseMessage<T>> for HttpResponseMessageEncoder<Inner>
+where
+    Inner: Encoder<T>,
+{
+    type Error = Inner::Error;
+
+    fn encode(
+        &mut self,
+        item: HttpResponseMessage<T>,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
+        let HttpResponseMessage {
+            request_id,
+            response:
+                HttpResponse {
+                    status_code,
+                    version,
+                    headers,
+                    payload,
+                },
+        } = item;
+        dst.put_u64(request_id);
+        dst.put_u16(status_code.as_u16());
+        version.encode(dst);
+        let headers_total: usize = headers.iter().map(Header::encoded_len).sum();
+        dst.put_u64(headers_total as u64);
+        for header in headers {
+            header.encode(dst);
+        }
+        self.inner.encode(payload, dst)
+    }
+}
+
+const STATUS_CODE_LEN: usize = 2;
+const META_SIZE: usize = ID_LEN + STATUS_CODE_LEN + Version::ENCODED_LENGTH + HEADERS_LEN_LEN;
+
+#[derive(Default, Debug)]
+enum ResponseDecoderState {
+    #[default]
+    Metadata,
+    Headers {
+        request_id: u64,
+        status_code: StatusCode,
+        version: Version,
+        headers_total: usize,
+    },
+    Payload {
+        request_id: u64,
+        status_code: StatusCode,
+        version: Version,
+        headers: Vec<Header>,
+    },
+}
+
+#[derive(Default, Debug)]
+pub struct HttpResponseMessageDecoder<Inner> {
+    inner: Inner,
+    state: ResponseDecoderState,
+}
+
+impl<Inner> HttpResponseMessageDecoder<Inner> {
+    pub fn new(payload_decoder: Inner) -> Self {
+        HttpResponseMessageDecoder {
+            inner: payload_decoder,
+            state: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum HttpResponseMessageDecodeError<E> {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error("An error occurred decoding the payload: {0}")]
+    Payload(E),
+    #[error("The HTTP status code was invalid.")]
+    BadStatusCode(#[from] InvalidStatusCode),
+    #[error("The HTTP version was invalid.")]
+    BadVersion(#[from] VersionDecodeError),
+    #[error(transparent)]
+    InvalidHeaders(#[from] HeaderNameDecodeError),
+    #[error("Headers section of a request was incomplete.")]
+    IncompleteHeaders,
+}
+
+impl<E> From<HeadersDecodeError> for HttpResponseMessageDecodeError<E> {
+    fn from(value: HeadersDecodeError) -> Self {
+        match value {
+            HeadersDecodeError::InvalidHeaders(e) => {
+                HttpResponseMessageDecodeError::InvalidHeaders(e)
+            }
+            HeadersDecodeError::IncompleteHeaders => {
+                HttpResponseMessageDecodeError::IncompleteHeaders
+            }
+        }
+    }
+}
+
+impl<Inner> Decoder for HttpResponseMessageDecoder<Inner>
+where
+    Inner: Decoder,
+    Inner::Error: std::error::Error,
+{
+    type Item = HttpResponseMessage<Inner::Item>;
+
+    type Error = HttpResponseMessageDecodeError<Inner::Error>;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        let HttpResponseMessageDecoder { inner, state } = self;
+        loop {
+            match std::mem::take(state) {
+                ResponseDecoderState::Metadata => {
+                    if src.remaining() < META_SIZE {
+                        break Ok(None);
+                    }
+                    let request_id = src.get_u64();
+                    let status_code = match StatusCode::try_from(src.get_u16()) {
+                        Ok(status_code) => status_code,
+                        Err(e) => break Err(e.into()),
+                    };
+                    let version = match Version::decode(src) {
+                        Ok(Some(version)) => version,
+                        Err(e) => break Err(e.into()),
+                        _ => unreachable!(),
+                    };
+                    let headers_total = src.get_u64();
+                    *state = ResponseDecoderState::Headers {
+                        request_id,
+                        status_code,
+                        version,
+                        headers_total: headers_total as usize,
+                    };
+                }
+                ResponseDecoderState::Headers {
+                    request_id,
+                    status_code,
+                    version,
+                    headers_total,
+                } => {
+                    if src.remaining() < headers_total {
+                        *state = ResponseDecoderState::Headers {
+                            request_id,
+                            status_code,
+                            version,
+                            headers_total,
+                        };
+                        break Ok(None);
+                    } else {
+                        let mut headers_bytes = src.split_to(headers_total);
+                        let headers = decode_headers(&mut headers_bytes)?;
+                        *state = ResponseDecoderState::Payload {
+                            request_id,
+                            status_code,
+                            version,
+                            headers,
+                        };
+                    }
+                }
+                ResponseDecoderState::Payload {
+                    request_id,
+                    status_code,
+                    version,
+                    headers,
+                } => match inner.decode(src) {
+                    Ok(Some(payload)) => {
+                        break Ok(Some(HttpResponseMessage {
+                            request_id,
+                            response: HttpResponse {
+                                status_code,
+                                version,
+                                headers,
+                                payload,
+                            },
+                        }))
+                    }
+                    Ok(_) => {
+                        *state = ResponseDecoderState::Payload {
+                            request_id,
+                            status_code,
+                            version,
+                            headers,
+                        };
+                        break Ok(None);
+                    }
+                    Err(err) => break Err(HttpResponseMessageDecodeError::Payload(err)),
+                },
+            }
+        }
+    }
 }
