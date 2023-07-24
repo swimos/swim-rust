@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{BufMut, Buf, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 use lazy_static::lazy_static;
-use thiserror::Error;
 use std::{collections::HashMap, fmt::Formatter};
+use thiserror::Error;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Method(MethodInner);
@@ -34,7 +34,6 @@ enum MethodInner {
 }
 
 impl Method {
-
     pub const GET: Method = Method(MethodInner::Get);
     pub const HEAD: Method = Method(MethodInner::Head);
     pub const POST: Method = Method(MethodInner::Post);
@@ -43,7 +42,6 @@ impl Method {
     pub const CONNECT: Method = Method(MethodInner::Connect);
     pub const OPTIONS: Method = Method(MethodInner::Options);
     pub const TRACE: Method = Method(MethodInner::Trace);
-
 }
 
 impl From<Method> for http::Method {
@@ -79,7 +77,10 @@ impl TryFrom<http::Method> for Method {
     type Error = UnsupportedMethod;
 
     fn try_from(value: http::Method) -> Result<Self, Self::Error> {
-        METHODS.get(&value).copied().ok_or_else(|| UnsupportedMethod(value.to_string()))
+        METHODS
+            .get(&value)
+            .copied()
+            .ok_or_else(|| UnsupportedMethod(value.to_string()))
     }
 }
 
@@ -112,9 +113,7 @@ impl Method {
     pub const ENCODED_LENGTH: usize = 1;
 }
 
-
 impl Method {
-
     pub fn encode(&self, dst: &mut BytesMut) {
         let code = match &self.0 {
             MethodInner::Get => 0u8,
@@ -146,9 +145,47 @@ impl Method {
             Ok(None)
         }
     }
-
 }
 
 #[derive(Debug, Error)]
 #[error("{0} does not encode a valid method.")]
 pub struct MethodDecodeError(pub u8);
+
+#[cfg(test)]
+mod tests {
+    use bytes::{BufMut, BytesMut};
+
+    use super::Method;
+
+    fn round_trip_method(method: Method) {
+        let mut buffer = BytesMut::new();
+        method.encode(&mut buffer);
+
+        let restored = Method::decode(&mut buffer)
+            .expect("Decoding failed.")
+            .expect("Incomplete.");
+        assert_eq!(restored, method);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn method_encoding() {
+        round_trip_method(Method::GET);
+        round_trip_method(Method::POST);
+        round_trip_method(Method::PUT);
+        round_trip_method(Method::DELETE);
+        round_trip_method(Method::HEAD);
+        round_trip_method(Method::OPTIONS);
+        round_trip_method(Method::TRACE);
+        round_trip_method(Method::CONNECT);
+    }
+
+    #[test]
+    fn invalid_methods() {
+        let mut buffer = BytesMut::new();
+        assert!(matches!(Method::decode(&mut buffer), Ok(None)));
+
+        buffer.put_u8(u8::MAX);
+        assert!(matches!(Method::decode(&mut buffer), Err(_)));
+    }
+}

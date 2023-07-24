@@ -22,7 +22,6 @@ pub struct StatusCode(u16);
 pub struct InvalidStatusCode(u16);
 
 impl StatusCode {
-
     pub fn as_u16(&self) -> u16 {
         self.0
     }

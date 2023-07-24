@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{BufMut, Buf, BytesMut};
-use thiserror::Error;
+use bytes::{Buf, BufMut, BytesMut};
 use lazy_static::lazy_static;
 use std::{collections::HashMap, fmt::Formatter};
+use thiserror::Error;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Version(VersionInner);
@@ -31,7 +31,6 @@ enum VersionInner {
 }
 
 impl Version {
-
     pub const HTTP_0_9: Version = Version(VersionInner::V0_9);
     pub const HTTP_1_0: Version = Version(VersionInner::V1_0);
     pub const HTTP_1_1: Version = Version(VersionInner::V1_1);
@@ -57,7 +56,6 @@ impl Version {
             VersionInner::V3_0 => 0,
         }
     }
-
 }
 
 impl From<Version> for http::Version {
@@ -88,7 +86,10 @@ impl TryFrom<http::Version> for Version {
     type Error = UnsupportedVersion;
 
     fn try_from(value: http::Version) -> Result<Self, Self::Error> {
-        VERSIONS.get(&value).copied().ok_or_else(|| UnsupportedVersion(format!("{:?}", value)))
+        VERSIONS
+            .get(&value)
+            .copied()
+            .ok_or_else(|| UnsupportedVersion(format!("{:?}", value)))
     }
 }
 
@@ -114,14 +115,11 @@ impl std::fmt::Display for Version {
     }
 }
 
-
 impl Version {
     pub const ENCODED_LENGTH: usize = 1;
 }
 
-
 impl Version {
-
     pub fn encode(&self, dst: &mut BytesMut) {
         let code = match &self.0 {
             VersionInner::V0_9 => 0,
@@ -147,9 +145,44 @@ impl Version {
             Ok(None)
         }
     }
-
 }
 
 #[derive(Debug, Error)]
 #[error("{0} does not encode a HTTP version.")]
 pub struct VersionDecodeError(u8);
+
+#[cfg(test)]
+mod tests {
+    use bytes::{BufMut, BytesMut};
+
+    use super::Version;
+
+    fn roundtrip_version(version: Version) {
+        let mut buffer = BytesMut::new();
+        version.encode(&mut buffer);
+
+        let restored = Version::decode(&mut buffer)
+            .expect("Decoding failed.")
+            .expect("Incomplete.");
+        assert_eq!(restored, version);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn version_encoding() {
+        roundtrip_version(Version::HTTP_0_9);
+        roundtrip_version(Version::HTTP_1_0);
+        roundtrip_version(Version::HTTP_1_1);
+        roundtrip_version(Version::HTTP_2_0);
+        roundtrip_version(Version::HTTP_3_0);
+    }
+
+    #[test]
+    fn invalid_methods() {
+        let mut buffer = BytesMut::new();
+        assert!(matches!(Version::decode(&mut buffer), Ok(None)));
+
+        buffer.put_u8(u8::MAX);
+        assert!(matches!(Version::decode(&mut buffer), Err(_)));
+    }
+}

@@ -103,6 +103,46 @@ impl From<&[u8]> for HeaderValue {
     }
 }
 
+impl From<(String, String)> for Header {
+    fn from(value: (String, String)) -> Self {
+        let (k, v) = value;
+        Header {
+            name: HeaderName::from(k),
+            value: HeaderValue::from(v),
+        }
+    }
+}
+
+impl From<(StandardHeaderName, String)> for Header {
+    fn from(value: (StandardHeaderName, String)) -> Self {
+        let (k, v) = value;
+        Header {
+            name: HeaderName(Name::Standard(k)),
+            value: HeaderValue::from(v),
+        }
+    }
+}
+
+impl From<(&str, &str)> for Header {
+    fn from(value: (&str, &str)) -> Self {
+        let (k, v) = value;
+        Header {
+            name: HeaderName::from(k),
+            value: HeaderValue::from(v),
+        }
+    }
+}
+
+impl From<(StandardHeaderName, &str)> for Header {
+    fn from(value: (StandardHeaderName, &str)) -> Self {
+        let (k, v) = value;
+        Header {
+            name: HeaderName(Name::Standard(k)),
+            value: HeaderValue::from(v),
+        }
+    }
+}
+
 impl HeaderName {
     pub fn new(name: BytesStr) -> Self {
         if let Some(basic) = StandardHeaderName::try_from_basic(name.as_str()) {
@@ -118,6 +158,12 @@ impl HeaderName {
         } else {
             None
         }
+    }
+}
+
+impl From<StandardHeaderName> for HeaderName {
+    fn from(value: StandardHeaderName) -> Self {
+        HeaderName(Name::Standard(value))
     }
 }
 
@@ -195,7 +241,7 @@ impl StandardHeaderName {
             23 => Some(Self::TransferEncoding),
             24 => Some(Self::Upgrade),
             25 => Some(Self::UserAgent),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -325,7 +371,6 @@ const NAME_LEN_SIZE: usize = 2;
 const VALUE_LEN_SIZE: usize = 4;
 
 impl Header {
-
     pub fn encoded_len(&self) -> usize {
         let Header { name, value } = self;
         let value_bytes = value.as_bytes();
@@ -344,12 +389,12 @@ impl Header {
         match &name.0 {
             Name::Standard(s) => {
                 dst.put_u8(*s as u8);
-            },
+            }
             Name::Other(s) => {
                 dst.put_u8(0);
                 dst.put_u16(s.as_str().len() as u16);
                 dst.put(s.as_str().as_bytes());
-            },
+            }
         }
         dst.put(value_bytes);
     }
@@ -382,6 +427,7 @@ impl Header {
             if data.remaining() < value_len {
                 return Ok(None);
             }
+            src.advance(VALUE_LEN_SIZE + TAG_LEN);
             if let Some(s) = StandardHeaderName::from_byte(code) {
                 HeaderName(Name::Standard(s))
             } else {
@@ -392,6 +438,35 @@ impl Header {
         let value = HeaderValue::new(value_bytes);
         Ok(Some(Header { name, value }))
     }
-
 }
 
+#[cfg(test)]
+mod tests {
+    use bytes::{Bytes, BytesMut};
+
+    use super::{Header, HeaderName, HeaderValue, StandardHeaderName};
+
+    fn roundtrip_header(header: Header) {
+        let mut buffer = BytesMut::new();
+
+        header.encode(&mut buffer);
+        assert_eq!(buffer.len(), header.encoded_len());
+
+        let restored = Header::decode(&mut buffer)
+            .expect("Decode failed.")
+            .expect("Incomplete.");
+        assert_eq!(restored, header);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn header_encoding() {
+        roundtrip_header((StandardHeaderName::Cookie, "kjhsa8h8hasd8f").into());
+        roundtrip_header(("custom_header_name", "I'm a header").into());
+        let header = Header {
+            name: HeaderName::from(StandardHeaderName::Allow),
+            value: HeaderValue::new(Bytes::from([1, 2, 3].as_slice())),
+        };
+        roundtrip_header(header);
+    }
+}

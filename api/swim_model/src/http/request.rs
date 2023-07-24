@@ -15,7 +15,11 @@
 use http::request::Parts;
 use thiserror::Error;
 
-use super::{Uri, Version, Method, Header, UnsupportedMethod, UnsupportedVersion, HeaderName, HeaderValue};
+use super::{
+    Header, HeaderName, HeaderValue, Method, UnsupportedMethod, UnsupportedVersion, Uri, Version,
+};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpRequest<T> {
     pub method: Method,
     pub version: Version,
@@ -25,52 +29,47 @@ pub struct HttpRequest<T> {
 }
 
 impl HttpRequest<()> {
-
     pub fn get(uri: Uri) -> Self {
-        HttpRequest { 
-            method: Method::GET, 
-            version: Version::default(), 
-            uri, 
-            headers: vec![], 
-            payload: () 
+        HttpRequest {
+            method: Method::GET,
+            version: Version::default(),
+            uri,
+            headers: vec![],
+            payload: (),
         }
     }
 
     pub fn delete(uri: Uri) -> Self {
-        HttpRequest { 
-            method: Method::DELETE, 
-            version: Version::default(), 
-            uri, 
-            headers: vec![], 
-            payload: () 
+        HttpRequest {
+            method: Method::DELETE,
+            version: Version::default(),
+            uri,
+            headers: vec![],
+            payload: (),
         }
     }
-    
-
 }
 
 impl<T> HttpRequest<T> {
-
     pub fn put(uri: Uri, payload: T) -> Self {
-        HttpRequest { 
-            method: Method::PUT, 
-            version: Version::default(), 
-            uri, 
-            headers: vec![], 
+        HttpRequest {
+            method: Method::PUT,
+            version: Version::default(),
+            uri,
+            headers: vec![],
             payload,
         }
     }
 
     pub fn post(uri: Uri, payload: T) -> Self {
-        HttpRequest { 
-            method: Method::POST, 
-            version: Version::default(), 
-            uri, 
-            headers: vec![], 
+        HttpRequest {
+            method: Method::POST,
+            version: Version::default(),
+            uri,
+            headers: vec![],
             payload,
         }
     }
-
 }
 
 #[derive(Debug, Error)]
@@ -78,14 +77,23 @@ pub enum InvalidRequest {
     #[error("Invalid method: {0}")]
     BadMethod(#[from] UnsupportedMethod),
     #[error("Invalid version: {0}")]
-    BadVersion(#[from] UnsupportedVersion)
+    BadVersion(#[from] UnsupportedVersion),
 }
 
 impl<T> TryFrom<http::Request<T>> for HttpRequest<T> {
     type Error = InvalidRequest;
 
     fn try_from(value: http::Request<T>) -> Result<Self, Self::Error> {
-        let (Parts { method, uri, version, headers, .. }, payload) = value.into_parts();
+        let (
+            Parts {
+                method,
+                uri,
+                version,
+                headers,
+                ..
+            },
+            payload,
+        ) = value.into_parts();
         let mut converted_headers = vec![];
         for (name, value) in &headers {
             let header = Header {

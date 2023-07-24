@@ -22,7 +22,6 @@ use crate::Text;
 pub struct BytesStr(Bytes);
 
 impl BytesStr {
-
     pub fn new(bytes: Bytes) -> Result<Self, Bytes> {
         if std::str::from_utf8(bytes.as_ref()).is_ok() {
             Ok(BytesStr(bytes))

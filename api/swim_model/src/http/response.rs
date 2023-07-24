@@ -16,7 +16,7 @@ use std::str::FromStr;
 
 use thiserror::Error;
 
-use super::{StatusCode, Version, Header, HeaderName, HeaderValue};
+use super::{Header, HeaderName, HeaderValue, StatusCode, Version};
 
 pub struct HttpResponse<T> {
     pub status_code: StatusCode,
@@ -30,15 +30,20 @@ pub enum InvalidResponse {
     #[error("Invalid header name.")]
     BadHeaderName(HeaderName),
     #[error("Invalid header value.")]
-    BadHeaderValue(HeaderValue)
+    BadHeaderValue(HeaderValue),
 }
 
 impl<T> TryFrom<HttpResponse<T>> for http::Response<T> {
     type Error = InvalidResponse;
 
     fn try_from(value: HttpResponse<T>) -> Result<Self, Self::Error> {
-        let HttpResponse { status_code, version, headers, payload } = value;
-        
+        let HttpResponse {
+            status_code,
+            version,
+            headers,
+            payload,
+        } = value;
+
         let mut response = http::Response::new(payload);
         *response.status_mut() = status_code.into();
         *response.version_mut() = version.into();
@@ -50,7 +55,11 @@ impl<T> TryFrom<HttpResponse<T>> for http::Response<T> {
             let value_bytes = value.into_bytes();
             let value = match http::HeaderValue::from_maybe_shared(value_bytes.clone()) {
                 Ok(value) => value,
-                Err(_) => return Err(InvalidResponse::BadHeaderValue(HeaderValue::new(value_bytes))),
+                Err(_) => {
+                    return Err(InvalidResponse::BadHeaderValue(HeaderValue::new(
+                        value_bytes,
+                    )))
+                }
             };
             response.headers_mut().append(name, value);
         }

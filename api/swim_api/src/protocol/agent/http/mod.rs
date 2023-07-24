@@ -21,6 +21,10 @@ use swim_model::http::{
 use thiserror::Error;
 use tokio_util::codec::{Decoder, Encoder};
 
+#[cfg(test)]
+mod tests;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpRequestMessage {
     pub request_id: u64,
     pub request: HttpRequest<Bytes>,
@@ -194,7 +198,6 @@ fn uri_len(uri: &Uri) -> usize {
 }
 
 fn decode_uri(src: &mut BytesMut, uri_len: usize) -> Result<Uri, InvalidUri> {
-    src.split_to(uri_len).freeze();
     Uri::from_maybe_shared(src.split_to(uri_len).freeze())
 }
 
