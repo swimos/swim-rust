@@ -17,7 +17,7 @@ use futures::{
     FutureExt,
 };
 use swim_api::{
-    agent::{Agent, AgentConfig, AgentContext, LaneConfig},
+    agent::{Agent, AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig},
     downlink::DownlinkKind,
     error::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
@@ -52,8 +52,8 @@ use self::{
     reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
     task::{
-        AdHocChannelRequest, AgentInitTask, AgentRuntimeTask, InitTaskConfig, LaneRuntimeSpec,
-        LinksTaskConfig, NodeDescriptor, StoreRuntimeSpec,
+        AdHocChannelRequest, AgentInitTask, AgentRuntimeTask, HttpLaneRuntimeSpec, InitTaskConfig,
+        LaneRuntimeSpec, LinksTaskConfig, NodeDescriptor, StoreRuntimeSpec,
     },
 };
 
@@ -237,6 +237,24 @@ impl AgentContext for AgentRuntimeContext {
                     kind,
                     Default::default(),
                     tx,
+                )))
+                .await?;
+            rx.await?
+        }
+        .boxed()
+    }
+
+    fn add_http_lane(
+        &self,
+        name: &str,
+    ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
+        let name = Text::new(name);
+        let sender = self.tx.clone();
+        async move {
+            let (tx, rx) = oneshot::channel();
+            sender
+                .send(AgentRuntimeRequest::AddHttpLane(HttpLaneRuntimeSpec::new(
+                    name, tx,
                 )))
                 .await?;
             rx.await?

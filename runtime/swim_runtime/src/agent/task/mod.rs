@@ -48,7 +48,7 @@ use futures::{
     stream::SelectAll,
     Stream, StreamExt,
 };
-use swim_api::agent::{LaneConfig, StoreConfig};
+use swim_api::agent::{HttpLaneRequestChannel, LaneConfig, StoreConfig};
 use swim_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
 use swim_api::meta::lane::LaneKind;
 use swim_api::store::{StoreDisabled, StoreKind};
@@ -93,6 +93,12 @@ pub struct LaneRuntimeSpec {
     pub promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
 }
 
+#[derive(Debug)]
+pub struct HttpLaneRuntimeSpec {
+    pub name: Text,
+    pub promise: oneshot::Sender<Result<HttpLaneRequestChannel, AgentRuntimeError>>,
+}
+
 impl LaneRuntimeSpec {
     pub fn new(
         name: Text,
@@ -106,6 +112,15 @@ impl LaneRuntimeSpec {
             config,
             promise,
         }
+    }
+}
+
+impl HttpLaneRuntimeSpec {
+    pub fn new(
+        name: Text,
+        promise: oneshot::Sender<Result<HttpLaneRequestChannel, AgentRuntimeError>>,
+    ) -> Self {
+        HttpLaneRuntimeSpec { name, promise }
     }
 }
 
@@ -157,6 +172,8 @@ pub enum AgentRuntimeRequest {
     AdHoc(AdHocChannelRequest),
     /// Attempt to open a new lane for the agent.
     AddLane(LaneRuntimeSpec),
+    /// Attempt to open a new lane for the agent.
+    AddHttpLane(HttpLaneRuntimeSpec),
     /// Attempt to open a new store for the agent.
     AddStore(StoreRuntimeSpec),
     /// Attempt to open a downlink to a lane on another agent.
@@ -571,6 +588,7 @@ async fn attachment_task<F>(
                         Either::Left(request) => {
                             let succeeded = match request {
                                 AgentRuntimeRequest::AddLane(req) => write_tx.send(WriteTaskMessage::Lane(req)).await.is_ok(),
+                                AgentRuntimeRequest::AddHttpLane(_) => todo!(),
                                 AgentRuntimeRequest::AddStore(req) => write_tx.send(WriteTaskMessage::Store(req)).await.is_ok(),
                                 AgentRuntimeRequest::AdHoc(request) => ext_link_tx.send(ExternalLinkRequest::AdHoc(request)).await.is_ok(),
                                 AgentRuntimeRequest::OpenDownlink(req) => ext_link_tx.send(ExternalLinkRequest::Downlink(req)).await.is_ok(),

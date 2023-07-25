@@ -522,6 +522,7 @@ where
                         break Err(AgentExecError::FailedDownlinkRequest);
                     }
                 }
+                AgentRuntimeRequest::AddHttpLane(_) => todo!(),
             },
         }
     }?;

@@ -20,7 +20,7 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swim_api::{
-    agent::{AgentContext, LaneConfig, UplinkKind},
+    agent::{AgentContext, HttpLaneRequestChannel, LaneConfig, UplinkKind},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
     meta::lane::LaneKind,
@@ -136,5 +136,12 @@ impl AgentContext for TestAgentContext {
         _kind: StoreKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), swim_api::error::OpenStoreError>> {
         ready(Err(OpenStoreError::StoresNotSupported)).boxed()
+    }
+
+    fn add_http_lane(
+        &self,
+        _name: &str,
+    ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
+        panic!("Unexpected HTTP lane registration.");
     }
 }

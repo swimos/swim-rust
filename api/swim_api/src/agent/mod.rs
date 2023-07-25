@@ -18,13 +18,16 @@ use std::{
     num::NonZeroUsize,
 };
 
+use bytes::Bytes;
 use futures::future::BoxFuture;
+use swim_model::http::{HttpRequest, HttpResponse};
 use swim_utilities::{
     future::retryable::RetryStrategy,
     io::byte_channel::{ByteReader, ByteWriter},
     non_zero_usize,
     routing::route_uri::RouteUri,
 };
+use tokio::sync::{mpsc, oneshot};
 
 use crate::{
     downlink::DownlinkKind,
@@ -96,6 +99,15 @@ impl Default for StoreConfig {
     }
 }
 
+pub type HttpLaneResponse = HttpResponse<Bytes>;
+
+pub struct HttpLaneRequest {
+    pub request: HttpRequest<Bytes>,
+    pub response_tx: oneshot::Sender<HttpLaneResponse>,
+}
+
+pub type HttpLaneRequestChannel = mpsc::Receiver<HttpLaneRequest>;
+
 /// Trait for the context that is passed to an agent to allow it to interact with the runtime.
 pub trait AgentContext: Sync {
     /// Open a channel for sending ad-hoc commands. Only one channel can be open at one time
@@ -114,6 +126,11 @@ pub trait AgentContext: Sync {
         lane_kind: LaneKind,
         config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
+
+    fn add_http_lane(
+        &self,
+        name: &str,
+    ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>>;
 
     /// Open a downlink to a lane on another agent.
     /// #Arguments
