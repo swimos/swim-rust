@@ -18,6 +18,7 @@ use thiserror::Error;
 
 use super::{Header, HeaderName, HeaderValue, StatusCode, Version};
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HttpResponse<T> {
     pub status_code: StatusCode,
     pub version: Version,

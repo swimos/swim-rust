@@ -30,6 +30,7 @@ pub struct HttpRequestMessage {
     pub request: HttpRequest<Bytes>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HttpResponseMessage<T> {
     pub request_id: u64,
     pub response: HttpResponse<T>,

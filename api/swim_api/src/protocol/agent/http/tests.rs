@@ -14,10 +14,18 @@
 
 use bytes::{Bytes, BytesMut};
 use http::Uri;
-use swim_model::http::{HttpRequest, Method, StandardHeaderName, Version};
+use swim_form::Form;
+use swim_model::http::{
+    HttpRequest, HttpResponse, Method, StandardHeaderName, StatusCode, Version,
+};
 use tokio_util::codec::{Decoder, Encoder};
 
-use super::{HttpRequestMessage, HttpRequestMessageCodec};
+use crate::protocol::{
+    agent::http::{HttpResponseMessageDecoder, HttpResponseMessageEncoder},
+    WithLenRecognizerDecoder, WithLenReconEncoder,
+};
+
+use super::{HttpRequestMessage, HttpRequestMessageCodec, HttpResponseMessage};
 
 fn round_trip_requests(msgs: Vec<HttpRequestMessage>) {
     let mut buffer = BytesMut::new();
@@ -38,6 +46,7 @@ fn round_trip_requests(msgs: Vec<HttpRequestMessage>) {
     }
 
     assert_eq!(restored, msgs);
+    assert!(buffer.is_empty());
 }
 
 #[test]
@@ -104,4 +113,89 @@ fn request_encoding_twice() {
     };
 
     round_trip_requests(vec![request1, request2]);
+}
+
+fn round_trip_responses<T>(msgs: Vec<HttpResponseMessage<T>>)
+where
+    T: Form + Clone + Eq + std::fmt::Debug,
+{
+    let mut buffer = BytesMut::new();
+    let mut encoder = HttpResponseMessageEncoder::new(WithLenReconEncoder::default());
+    let mut decoder =
+        HttpResponseMessageDecoder::new(WithLenRecognizerDecoder::new(T::make_recognizer()));
+
+    for msg in msgs.clone() {
+        assert!(encoder.encode(msg.clone(), &mut buffer).is_ok());
+    }
+
+    let mut restored = vec![];
+
+    for _ in 0..msgs.len() {
+        let restored_msg = decoder
+            .decode_eof(&mut buffer)
+            .expect("Decode failed.")
+            .expect("Message incomplete.");
+        restored.push(restored_msg);
+    }
+
+    assert_eq!(restored, msgs);
+    assert!(buffer.is_empty());
+}
+
+#[test]
+fn response_encoding() {
+    let headers = vec![
+        (StandardHeaderName::MaxForwards, "6").into(),
+        ("my_header", "some text").into(),
+    ];
+    let payload = "payload".to_string();
+
+    let response = HttpResponseMessage {
+        request_id: 84823929,
+        response: HttpResponse {
+            status_code: StatusCode::OK,
+            version: Version::HTTP_1_1,
+            headers,
+            payload,
+        },
+    };
+
+    round_trip_responses(vec![response]);
+}
+
+#[test]
+fn response_encoding_twice() {
+    let headers1 = vec![
+        (StandardHeaderName::MaxForwards, "6").into(),
+        ("my_header", "some text").into(),
+    ];
+    let headers2 = vec![
+        ("my_other_header", "some more text").into(),
+        (StandardHeaderName::Cookie, "9384747BE*").into(),
+        ("my_header", "some text").into(),
+    ];
+    let payload1 = "first".to_string();
+    let payload2 = "second".to_string();
+
+    let response1 = HttpResponseMessage {
+        request_id: 84823929,
+        response: HttpResponse {
+            status_code: StatusCode::OK,
+            version: Version::HTTP_1_1,
+            headers: headers1,
+            payload: payload1,
+        },
+    };
+
+    let response2 = HttpResponseMessage {
+        request_id: 4827273,
+        response: HttpResponse {
+            status_code: StatusCode::INTERNAL_SERVER_ERROR,
+            version: Version::HTTP_1_1,
+            headers: headers2,
+            payload: payload2,
+        },
+    };
+
+    round_trip_responses(vec![response1, response2]);
 }
