@@ -36,6 +36,8 @@ uuid = { workspace = true }
 static_assertions = { workspace = true }
 trust-dns-resolver = { workspace = true, optional = true }
 lazy_static = { workspace = true }
+nom = { workspace = true }
+percent-encoding = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

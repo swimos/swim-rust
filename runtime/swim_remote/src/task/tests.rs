@@ -41,7 +41,10 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
-use crate::{error::AgentResolutionError, task::OutgoingKind, AttachClient, FindNode, NoSuchAgent};
+use crate::{
+    error::AgentResolutionError, task::OutgoingKind, AttachClient, FindNode, NoSuchAgent,
+    NodeConnectionRequest,
+};
 
 use super::{InputError, OutgoingTaskMessage, RegisterIncoming};
 
@@ -214,7 +217,7 @@ where
         while let Some(FindNode {
             node,
             lane,
-            provider,
+            request: NodeConnectionRequest::Warp { promise: provider },
             ..
         }) = find_rx.recv().await
         {
@@ -1027,7 +1030,7 @@ where
         while let Some(FindNode {
             node,
             lane,
-            provider,
+            request: NodeConnectionRequest::Warp { promise: provider },
             ..
         }) = find_rx.recv().await
         {

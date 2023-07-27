@@ -33,7 +33,7 @@ use ratchet::{
     SplittableExtension, WebSocket, WebSocketStream,
 };
 use smallvec::SmallVec;
-use swim_api::error::DownlinkFailureReason;
+use swim_api::{agent::HttpLaneRequest, error::DownlinkFailureReason};
 use swim_messages::protocol::{
     BytesRequestMessage, BytesResponseMessage, Path, RawRequestMessageDecoder,
     RawRequestMessageEncoder, RawResponseMessageDecoder, RawResponseMessageEncoder, RequestMessage,
@@ -103,7 +103,31 @@ pub struct FindNode {
     pub source: Uuid,
     pub node: Text,
     pub lane: Text,
-    pub provider: oneshot::Sender<Result<(ByteWriter, ByteReader), AgentResolutionError>>,
+    pub request: NodeConnectionRequest,
+}
+
+pub enum NodeConnectionRequest {
+    Warp {
+        promise: oneshot::Sender<Result<(ByteWriter, ByteReader), AgentResolutionError>>,
+    },
+    Http {
+        promise: oneshot::Sender<Result<mpsc::Sender<HttpLaneRequest>, AgentResolutionError>>,
+    },
+}
+
+impl NodeConnectionRequest {
+    pub fn fail(self, err: AgentResolutionError) -> Result<(), AgentResolutionError> {
+        match self {
+            NodeConnectionRequest::Warp { promise } => match promise.send(Err(err)) {
+                Err(Err(e)) => Err(e),
+                _ => Ok(()),
+            },
+            NodeConnectionRequest::Http { promise } => match promise.send(Err(err)) {
+                Err(Err(e)) => Err(e),
+                _ => Ok(()),
+            },
+        }
+    }
 }
 
 /// A task that manages a socket connection. Incoming envelopes are routed to the appropriate
@@ -747,7 +771,7 @@ async fn connect_agent_route(
         source,
         node,
         lane,
-        provider: tx,
+        request: NodeConnectionRequest::Warp { promise: tx },
     };
     find_tx.send(find).await.map_err(|_| ())?;
     match rx.await {

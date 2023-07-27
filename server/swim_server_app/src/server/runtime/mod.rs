@@ -25,7 +25,7 @@ use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use swim_api::agent::{Agent, BoxAgent};
+use swim_api::agent::{Agent, BoxAgent, HttpLaneRequest};
 use swim_api::error::introspection::IntrospectionStopped;
 use swim_api::error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError};
 use swim_api::store::PlanePersistence;
@@ -35,7 +35,8 @@ use swim_introspection::{IntrospectionConfig, LaneMetaAgent, NodeMetaAgent};
 use swim_model::address::RelativeAddress;
 use swim_model::Text;
 use swim_remote::{
-    AgentResolutionError, AttachClient, FindNode, LinkError, NoSuchAgent, RemoteTask,
+    AgentResolutionError, AttachClient, FindNode, LinkError, NoSuchAgent, NodeConnectionRequest,
+    RemoteTask,
 };
 use swim_runtime::agent::{
     AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteTask, CombinedAgentConfig,
@@ -550,12 +551,9 @@ where
                     source,
                     node,
                     lane,
-                    provider,
+                    request,
                 }) => {
-                    if provider
-                        .send(Err(AgentResolutionError::PlaneStopping))
-                        .is_err()
-                    {
+                    if request.fail(AgentResolutionError::PlaneStopping).is_err() {
                         debug!(remote_id = %source, node = %node, lane = %lane, "Remote stopped with pending agent resolution.");
                     }
                 }
@@ -563,7 +561,7 @@ where
                     source,
                     node,
                     lane,
-                    provider,
+                    request,
                 }) => {
                     info!(source = %source, node = %node, "Attempting to connect an agent to a remote.");
                     let node_store_fut = plane_store.node_store(node.as_str());
@@ -573,23 +571,33 @@ where
                         agent_tasks_ref.push(attach_node(name, config.channel_coop_budget, task));
                     });
                     match result {
-                        Ok((agent_id, agent_tx)) => {
-                            let connect_task = attach_agent(
-                                source,
-                                agent_id,
-                                agent_tx.clone(),
-                                config.agent_runtime_buffer_size,
-                                config.attachment_timeout,
-                                provider,
-                            ).instrument(info_span!("Remote to agent connection task.", remote_id = %source, agent_id = %agent_id));
-                            connection_tasks.push(Either::Left(connect_task));
-                        }
+                        Ok(AgentChannel {
+                            id,
+                            attachment_tx,
+                            http_tx,
+                        }) => match request {
+                            NodeConnectionRequest::Warp { promise } => {
+                                let connect_task = attach_agent(
+                                        source,
+                                        *id,
+                                        attachment_tx.clone(),
+                                        config.agent_runtime_buffer_size,
+                                        config.attachment_timeout,
+                                        promise,
+                                    ).instrument(info_span!("Remote to agent connection task.", remote_id = %source, agent_id = %*id));
+                                connection_tasks.push(Either::Left(connect_task));
+                            }
+                            NodeConnectionRequest::Http { promise } => {
+                                if promise.send(Ok(http_tx.clone())).is_err() {
+                                    debug!(source = %source, "A remote stopped while a HTTP request from it was pending.");
+                                }
+                            }
+                        },
                         Err(node) => {
                             debug!(node = %node, "Requested agent does not exist.");
-                            if let Err(Err(AgentResolutionError::NotFound(NoSuchAgent {
-                                node,
-                                ..
-                            }))) = provider.send(Err(NoSuchAgent { node, lane }.into()))
+                            if let Err(AgentResolutionError::NotFound(NoSuchAgent {
+                                node, ..
+                            })) = request.fail(NoSuchAgent { node, lane }.into())
                             {
                                 debug!(source = %source, route = %node, "A remote stopped while a connection from it to an agent was pending.");
                             }
@@ -664,11 +672,13 @@ where
                         agent_tasks.push(attach_node(name, config.channel_coop_budget, task));
                     });
                     match result {
-                        Ok((agent_id, agent_tx)) => {
+                        Ok(AgentChannel {
+                            id, attachment_tx, ..
+                        }) => {
                             let task = attach_link_remote(
                                 downlink_id,
-                                agent_id,
-                                agent_tx.clone(),
+                                *id,
+                                attachment_tx.clone(),
                                 (sender, receiver),
                                 config.attachment_timeout,
                                 done,
@@ -698,11 +708,13 @@ where
                             agent_tasks.push(attach_node(name, config.channel_coop_budget, task));
                         });
                         match result {
-                            Ok((target_id, agent_tx)) => {
+                            Ok(AgentChannel {
+                                id, attachment_tx, ..
+                            }) => {
                                 let task = attach_link_local(
                                     agent_id,
-                                    target_id,
-                                    agent_tx.clone(),
+                                    *id,
+                                    attachment_tx.clone(),
                                     receiver,
                                     config.attachment_timeout,
                                     done,
@@ -795,9 +807,15 @@ where
     )
 }
 
+struct AgentChannel {
+    id: Uuid,
+    attachment_tx: mpsc::Sender<AgentAttachmentRequest>,
+    http_tx: mpsc::Sender<HttpLaneRequest>,
+}
+
 struct Agents {
     plane_issuer: IdIssuer,
-    agent_channels: HashMap<Text, (Uuid, mpsc::Sender<AgentAttachmentRequest>)>,
+    agent_channels: HashMap<Text, AgentChannel>,
     routes: Routes,
     config: CombinedAgentConfig,
     agent_stop_rx: trigger::Receiver,
@@ -828,7 +846,7 @@ impl Agents {
         &'a mut self,
         node: Text,
         spawn_task: F,
-    ) -> Result<(Uuid, &'a mut mpsc::Sender<AgentAttachmentRequest>), Text>
+    ) -> Result<&'a AgentChannel, Text>
     where
         F: for<'b> FnOnce(Text, AgentRouteTask<'b, BoxAgent>),
     {
@@ -844,8 +862,8 @@ impl Agents {
         match agent_channels.entry(node) {
             Entry::Occupied(entry) => {
                 debug!("Agent already running.");
-                let (id, tx) = entry.into_mut();
-                Ok((*id, tx))
+                let channel = entry.into_mut();
+                Ok(channel)
             }
             Entry::Vacant(entry) => {
                 debug!("Attempting to start new agent instance.");
@@ -861,6 +879,8 @@ impl Agents {
                     let id = plane_issuer.next_id();
                     let (attachment_tx, attachment_rx) =
                         mpsc::channel(config.runtime_config.attachment_queue_size.get());
+                    let (http_tx, http_rx) =
+                        mpsc::channel(config.runtime_config.agent_http_request_channel_size.get());
 
                     let Route {
                         agent,
@@ -890,6 +910,7 @@ impl Agents {
                             route_params,
                         },
                         attachment_rx,
+                        http_rx,
                         open_link_tx.clone(),
                         agent_stop_rx.clone(),
                         *config,
@@ -897,8 +918,12 @@ impl Agents {
                     );
                     let name = entry.key().clone();
                     spawn_task(name, route_task);
-                    let (id, tx) = entry.insert((id, attachment_tx));
-                    Ok((*id, tx))
+                    let channel = entry.insert(AgentChannel {
+                        id,
+                        attachment_tx,
+                        http_tx,
+                    });
+                    Ok(channel)
                 } else {
                     Err(entry.into_key())
                 }
@@ -913,7 +938,7 @@ impl Agents {
             ..
         } = self;
 
-        if let Some((id, _)) = agent_channels.remove(route) {
+        if let Some(AgentChannel { id, .. }) = agent_channels.remove(route) {
             if let Some(resolver) = introspection_resolver {
                 resolver.close_agent(id)?;
             }

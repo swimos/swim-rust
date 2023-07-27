@@ -82,6 +82,7 @@ fn make_prune_config(
 ) -> AgentRuntimeConfig {
     AgentRuntimeConfig {
         attachment_queue_size: non_zero_usize!(8),
+        agent_http_request_channel_size: non_zero_usize!(8),
         inactive_timeout,
         prune_remote_delay,
         shutdown_timeout: SHUTDOWN_TIMEOUT,
@@ -89,6 +90,7 @@ fn make_prune_config(
         ad_hoc_output_timeout: AD_HOC_TIMEOUT,
         ad_hoc_output_retry: RetryStrategy::none(),
         ad_hoc_buffer_size: non_zero_usize!(4096),
+        lane_http_request_channel_size: non_zero_usize!(8),
     }
 }
 

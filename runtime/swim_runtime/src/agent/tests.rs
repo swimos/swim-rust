@@ -130,6 +130,7 @@ async fn test_agent_failure() {
             route_params: HashMap::new(),
         };
         let (_attachment_tx, attachment_rx) = mpsc::channel(16);
+        let (_http_tx, http_rx) = mpsc::channel(16);
         let (downlink_tx, _downlink_rx) = mpsc::channel(16);
         let (_stopping_tx, stopping_rx) = trigger::trigger();
 
@@ -137,6 +138,7 @@ async fn test_agent_failure() {
             &agent,
             identity,
             attachment_rx,
+            http_rx,
             downlink_tx,
             stopping_rx,
             Default::default(),
@@ -163,6 +165,7 @@ async fn test_agent_failure_with_store() {
             route_params: HashMap::new(),
         };
         let (_attachment_tx, attachment_rx) = mpsc::channel(16);
+        let (_http_tx, http_rx) = mpsc::channel(16);
         let (downlink_tx, _downlink_rx) = mpsc::channel(16);
         let (_stopping_tx, stopping_rx) = trigger::trigger();
 
@@ -170,6 +173,7 @@ async fn test_agent_failure_with_store() {
             &agent,
             identity,
             attachment_rx,
+            http_rx,
             downlink_tx,
             stopping_rx,
             Default::default(),
@@ -198,6 +202,7 @@ async fn test_agent_init_failure() {
             route_params: HashMap::new(),
         };
         let (_attachment_tx, attachment_rx) = mpsc::channel(16);
+        let (_http_tx, http_rx) = mpsc::channel(16);
         let (downlink_tx, _downlink_rx) = mpsc::channel(16);
         let (_stopping_tx, stopping_rx) = trigger::trigger();
 
@@ -205,6 +210,7 @@ async fn test_agent_init_failure() {
             &agent,
             identity,
             attachment_rx,
+            http_rx,
             downlink_tx,
             stopping_rx,
             Default::default(),

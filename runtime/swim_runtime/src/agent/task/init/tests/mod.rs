@@ -72,6 +72,7 @@ const NO_STORE: &str = "Initialization task failed to create the store";
 const DL_CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
 const INIT_TIMEOUT: Duration = Duration::from_secs(5);
 const AD_HOC_TIMEOUT: Duration = Duration::from_secs(1);
+const HTTP_CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
 
 const INIT_CONFIG: InitTaskConfig = InitTaskConfig {
     ad_hoc_queue_size: DL_CHAN_SIZE,
@@ -81,6 +82,7 @@ const INIT_CONFIG: InitTaskConfig = InitTaskConfig {
         retry_strategy: RetryStrategy::none(),
         timeout_delay: AD_HOC_TIMEOUT,
     },
+    http_lane_channel_size: HTTP_CHAN_SIZE,
 };
 
 const TRANSIENT: LaneConfig = LaneConfig {

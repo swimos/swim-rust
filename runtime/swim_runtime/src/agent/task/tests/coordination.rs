@@ -33,7 +33,7 @@ use futures::{
 };
 use std::fmt::Debug;
 use swim_api::{
-    agent::UplinkKind,
+    agent::{HttpLaneRequest, UplinkKind},
     meta::lane::LaneKind,
     protocol::{agent::LaneRequest, map::MapMessage},
 };
@@ -314,6 +314,7 @@ impl Events {
 #[derive(Debug)]
 struct TestContext {
     att_tx: mpsc::Sender<AgentAttachmentRequest>,
+    http_tx: mpsc::Sender<HttpLaneRequest>,
     links_rx: mpsc::Receiver<LinkRequest>,
     create_tx: mpsc::UnboundedSender<CreateLane>,
     event_rx: Events,
@@ -340,6 +341,7 @@ where
     let config = make_prune_config(inactive_timeout, prune_timeout);
     let (req_tx, req_rx) = mpsc::channel(QUEUE_SIZE.get());
     let (att_tx, att_rx) = mpsc::channel(QUEUE_SIZE.get());
+    let (http_tx, http_rx) = mpsc::channel(QUEUE_SIZE.get());
     let (links_tx, links_rx) = mpsc::channel(QUEUE_SIZE.get());
     let (create_tx, create_rx) = mpsc::unbounded_channel();
     let (event_tx, event_rx) = mpsc::unbounded_channel();
@@ -387,6 +389,7 @@ where
         req_rx,
         runtime_endpoints,
         vec![],
+        vec![],
         LinksTaskState::new(links_tx.clone()),
     );
 
@@ -394,6 +397,7 @@ where
         NodeDescriptor::new(AGENT_ID, Text::new(NODE)),
         init,
         att_rx,
+        http_rx,
         stop_rx.clone(),
         config,
     );
@@ -409,6 +413,7 @@ where
 
     let context = TestContext {
         att_tx,
+        http_tx,
         links_rx,
         create_tx,
         stop_tx,
@@ -435,6 +440,7 @@ async fn immediate_shutdown() {
         |context| async move {
             let TestContext {
                 att_tx: _att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -478,6 +484,7 @@ async fn link_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -505,6 +512,7 @@ async fn set_value() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 mut event_rx,
@@ -533,6 +541,7 @@ async fn set_values() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 mut event_rx,
@@ -563,6 +572,7 @@ async fn insert_value() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 mut event_rx,
@@ -593,6 +603,7 @@ async fn unlink_when_not_linked_does_nothing() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 mut event_rx,
@@ -623,6 +634,7 @@ async fn unlink_linked_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -656,6 +668,7 @@ async fn sync_value_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -686,6 +699,7 @@ async fn sync_empty_map_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -724,6 +738,7 @@ async fn sync_nonempty_map_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -770,6 +785,7 @@ async fn sync_lane_implicit_link() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -799,6 +815,7 @@ async fn receive_messages_when_linked() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -845,6 +862,7 @@ async fn link_two_consumers() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -884,6 +902,7 @@ async fn receive_messages_when_liked_multiple_consumers() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -953,6 +972,7 @@ async fn agent_timeout() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -981,6 +1001,7 @@ async fn remote_timeout() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
