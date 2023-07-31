@@ -10,7 +10,8 @@ webpki = { workspace = true }
 webpki-roots = { workspace = true }
 tokio-rustls = { workspace = true }
 rustls-pemfile = { workspace = true }
-swim_runtime = { path = "../swim_runtime" }
+swim_api = { path = "../../api/swim_api" }
+swim_remote = { path = "../../runtime/swim_remote" }
 tokio = { workspace = true }
 thiserror = { workspace = true }
 futures = { workspace = true }

@@ -102,7 +102,7 @@ pub enum AttachClient {
 pub struct FindNode {
     pub source: Uuid,
     pub node: Text,
-    pub lane: Text,
+    pub lane: Option<Text>,
     pub request: NodeConnectionRequest,
 }
 
@@ -699,7 +699,7 @@ impl IncomingTask {
                                             command_envelope: request.envelope.is_command(),
                                             error: AgentResolutionError::NotFound(NoSuchAgent {
                                                 node: path.node.into(),
-                                                lane: path.lane.into(),
+                                                lane: Some(path.lane.into()),
                                             }),
                                         })
                                         .await
@@ -770,7 +770,7 @@ async fn connect_agent_route(
     let find = FindNode {
         source,
         node,
-        lane,
+        lane: Some(lane),
         request: NodeConnectionRequest::Warp { promise: tx },
     };
     find_tx.send(find).await.map_err(|_| ())?;

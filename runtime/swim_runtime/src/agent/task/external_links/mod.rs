@@ -22,6 +22,7 @@ use bytes::{BufMut, BytesMut};
 use futures::{stream::FuturesUnordered, Future, StreamExt};
 use swim_api::{
     error::{AgentRuntimeError, DownlinkRuntimeError},
+    net::SchemeHostPort,
     protocol::{
         agent::{AdHocCommand, AdHocCommandDecoder},
         WithLengthBytesCodec,
@@ -49,7 +50,6 @@ use uuid::Uuid;
 use crate::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
     downlink::Io,
-    net::SchemeHostPort,
 };
 
 use super::{AdHocChannelRequest, ExternalLinkRequest};

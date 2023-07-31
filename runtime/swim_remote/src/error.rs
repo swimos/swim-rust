@@ -21,7 +21,7 @@ use thiserror::Error;
 #[error("Agent '{node}' does not exist.")]
 pub struct NoSuchAgent {
     pub node: Text,
-    pub lane: Text,
+    pub lane: Option<Text>,
 }
 
 /// Error type produced when the resolution of an agent fails.

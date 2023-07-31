@@ -20,7 +20,6 @@ use crate::{
         CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest,
     },
     downlink::{DownlinkOptions, Io},
-    net::SchemeHostPort,
 };
 use bytes::Bytes;
 use futures::{
@@ -32,6 +31,7 @@ use rand::Rng;
 use swim_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError},
+    net::SchemeHostPort,
     protocol::{
         agent::{AdHocCommand, AdHocCommandEncoder},
         WithLenReconEncoder,

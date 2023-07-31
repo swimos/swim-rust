@@ -123,7 +123,12 @@ impl Encoder<NoSuchAgent> for ReconEncoder {
 
     fn encode(&mut self, item: NoSuchAgent, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let NoSuchAgent { node, lane } = item;
-        write_header(UNLINKED_HEADER, node.as_str(), lane.as_str(), dst);
+        write_header(
+            UNLINKED_HEADER,
+            node.as_str(),
+            lane.as_ref().map(|s| s.as_str()).unwrap_or(""),
+            dst,
+        );
         put_body(NODE_NOT_FOUND_TAG, dst);
         Ok(())
     }

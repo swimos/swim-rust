@@ -13,16 +13,19 @@ use std::io;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use swim_api::net::Scheme;
 use swim_form::Form;
 use swim_model::{Text, Value};
 use swim_recon::parser::{parse_recognize, Span};
 use swim_recon::printer::print_recon;
-use swim_runtime::net::dns::{BoxDnsResolver, DnsResolver};
-use swim_runtime::net::{
-    ClientConnections, ConnResult, ConnectionError, IoResult, Listener, ListenerError, Scheme,
+use swim_remote::net::dns::{BoxDnsResolver, DnsResolver};
+use swim_remote::net::{
+    ClientConnections, ConnResult, ConnectionError, IoResult, Listener, ListenerError,
 };
-use swim_runtime::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
+use swim_remote::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
+use swim_remote::FindNode;
 use tokio::io::{AsyncRead, AsyncWrite, DuplexStream};
+use tokio::sync::mpsc;
 
 #[derive(Debug)]
 struct Inner {
@@ -164,6 +167,7 @@ impl WebsocketServer for MockWs {
         &self,
         _listener: L,
         _provider: Provider,
+        _find: mpsc::Sender<FindNode>,
     ) -> Self::WsStream<Sock, Provider::Extension>
     where
         Sock: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,

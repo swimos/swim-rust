@@ -22,11 +22,13 @@ use futures::future::ready;
 use futures::stream::BoxStream;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use ratchet::{NegotiatedExtension, Role, WebSocket, WebSocketConfig};
-use swim_runtime::net::dns::{DnsFut, DnsResolver};
-use swim_runtime::net::{
-    ConnectionError, ExternalConnections, Listener, ListenerError, ListenerResult, Scheme,
+use swim_api::net::Scheme;
+use swim_remote::net::dns::{DnsFut, DnsResolver};
+use swim_remote::net::{
+    ConnectionError, ExternalConnections, Listener, ListenerError, ListenerResult,
 };
-use swim_runtime::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
+use swim_remote::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
+use swim_remote::FindNode;
 use tokio::{
     io::{self, DuplexStream},
     sync::{mpsc, oneshot},
@@ -90,6 +92,7 @@ impl WebsocketServer for TestWs {
         &self,
         listener: L,
         _provider: Provider,
+        _find: mpsc::Sender<FindNode>,
     ) -> Self::WsStream<Sock, Provider::Extension>
     where
         Sock: io::AsyncRead + io::AsyncWrite + Unpin + Send + Sync + 'static,
@@ -204,7 +207,7 @@ impl ExternalConnections for TestConnections {
         self.resolve(host, port)
     }
 
-    fn dns_resolver(&self) -> swim_runtime::net::dns::BoxDnsResolver {
+    fn dns_resolver(&self) -> swim_remote::net::dns::BoxDnsResolver {
         Box::new(self.clone())
     }
 }

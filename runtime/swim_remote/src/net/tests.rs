@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::net::Scheme;
+use swim_api::net::SchemeHostPort;
 
-use super::SchemeHostPort;
+use crate::net::Scheme;
 
 #[test]
 fn parse_insecure_warp_url() {

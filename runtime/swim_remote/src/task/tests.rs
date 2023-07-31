@@ -558,7 +558,7 @@ async fn incoming_route_not_found_env() {
             }) => {
                 assert!(!command_envelope);
                 assert_eq!(node, OTHER);
-                assert_eq!(lane, LANE);
+                assert_eq!(lane.as_ref().map(|s| s.as_str()), Some(LANE));
             }
             ow => panic!("Unexpected registration: {:?}", ow),
         }
@@ -940,7 +940,7 @@ async fn outgoing_lane_not_found() {
                 command_envelope: false,
                 error: AgentResolutionError::NotFound(NoSuchAgent {
                     node: Text::new(OTHER),
-                    lane: Text::new(LANE),
+                    lane: Some(Text::new(LANE)),
                 }),
             })
             .await

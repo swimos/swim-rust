@@ -28,6 +28,7 @@ use std::time::Duration;
 use swim_api::agent::{Agent, BoxAgent, HttpLaneRequest};
 use swim_api::error::introspection::IntrospectionStopped;
 use swim_api::error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError};
+use swim_api::net::{BadUrl, Scheme};
 use swim_api::store::PlanePersistence;
 use swim_introspection::route::{lane_pattern, node_pattern};
 use swim_introspection::{init_introspection, IntrospectionResolver};
@@ -45,8 +46,8 @@ use swim_runtime::agent::{
 use swim_runtime::downlink::Io;
 use swim_utilities::routing::route_uri::RouteUri;
 
-use swim_runtime::net::{BadUrl, ConnectionError, ExternalConnections, ListenerError, Scheme};
-use swim_runtime::ws::{RatchetError, Websockets};
+use swim_remote::net::{ConnectionError, ExternalConnections, ListenerError};
+use swim_remote::ws::{RatchetError, Websockets};
 use swim_utilities::io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
 use swim_utilities::routing::route_pattern::RoutePattern;
 use swim_utilities::trigger::{self, promise};
@@ -345,7 +346,7 @@ where
         let mut client_tasks = FuturesUnordered::new();
 
         let mut web_server = websockets
-            .wrap_listener(listener, ext_provider.clone())
+            .wrap_listener(listener, ext_provider.clone(), find_tx.clone())
             .take_until(stop_signal);
         //let mut accept_stream = listener.into_stream().take_until(stop_signal);
 
@@ -554,7 +555,7 @@ where
                     request,
                 }) => {
                     if request.fail(AgentResolutionError::PlaneStopping).is_err() {
-                        debug!(remote_id = %source, node = %node, lane = %lane, "Remote stopped with pending agent resolution.");
+                        debug!(remote_id = %source, node = %node, lane = ?lane, "Remote stopped with pending agent resolution.");
                     }
                 }
                 ServerEvent::FindRoute(FindNode {

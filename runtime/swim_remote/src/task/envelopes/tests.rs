@@ -225,7 +225,7 @@ fn encode_not_found() {
     let mut encoder = ReconEncoder;
     let message = NoSuchAgent {
         node: Text::new(NODE),
-        lane: Text::new(LANE),
+        lane: Some(Text::new(LANE)),
     };
 
     let mut buffer = BytesMut::new();

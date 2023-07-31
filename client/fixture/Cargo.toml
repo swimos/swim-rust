@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 swim_runtime = { path = "../../runtime/swim_runtime" }
 swim_remote = { path  = "../../runtime/swim_remote" }
+swim_api = { path = "../../api/swim_api" }
 ratchet = { package = "ratchet_rs", workspace = true, features = ["deflate", "split"] }
 swim_recon = { path = "../../api/formats/swim_recon" }
 swim_model = { path = "../../api/swim_model" }

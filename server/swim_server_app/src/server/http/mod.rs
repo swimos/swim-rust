@@ -36,13 +36,22 @@ use hyper::{
 };
 use pin_project::pin_project;
 use ratchet::{Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig};
+use swim_api::net::Scheme;
 use swim_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
-use swim_runtime::{
-    net::{Listener, ListenerError, ListenerResult, Scheme},
+use swim_remote::FindNode;
+use swim_remote::{
+    net::{Listener, ListenerError, ListenerResult},
     ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture, PROTOCOLS},
 };
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::mpsc,
+};
+use uuid::Uuid;
 
+use self::resolver::Resolver;
+
+mod resolver;
 #[cfg(test)]
 mod tests;
 
@@ -60,6 +69,7 @@ pub type ListenResult<Ext, Sock> = Result<WsWithAddr<Ext, Sock>, ListenerError>;
 /// pending, no more connections will be accepted from the listener until a space becomes free.
 pub fn hyper_http_server<Sock, L, Ext>(
     listener: L,
+    find: mpsc::Sender<FindNode>,
     extension_provider: Ext,
     config: Option<WebSocketConfig>,
     max_negotiations: NonZeroUsize,
@@ -70,9 +80,11 @@ where
     Ext: ExtensionProvider + Send + Sync + 'static,
     Ext::Extension: Send + Unpin,
 {
+    let resolver = Resolver::new(Uuid::from_u128(0), find);
     let state = StreamState::<L::AcceptStream, Sock, Ext, _, _>::new(
         listener.into_stream(),
         extension_provider,
+        resolver,
         config,
         max_negotiations,
         |sock, mut svc| async move {
@@ -149,6 +161,7 @@ where
     fn new(
         listener_stream: L,
         extension_provider: Ext,
+        resolver: resolver::Resolver,
         config: Option<WebSocketConfig>,
         max_negotiations: NonZeroUsize,
         connect_fn: FC,
@@ -157,7 +170,7 @@ where
         StreamState {
             listener_stream,
             connection_tasks,
-            upgrader: Upgrader::new(extension_provider, config),
+            upgrader: Upgrader::new(extension_provider, resolver, config),
             connect_fn,
             max_pending: max_negotiations.get(),
         }
@@ -275,6 +288,7 @@ where
 
 struct Upgrader<Ext: ExtensionProvider> {
     extension_provider: Arc<Ext>,
+    resolver: Arc<resolver::Resolver>,
     config: Option<WebSocketConfig>,
 }
 
@@ -282,9 +296,14 @@ impl<Ext> Upgrader<Ext>
 where
     Ext: ExtensionProvider + Send + Sync,
 {
-    fn new(extension_provider: Ext, config: Option<WebSocketConfig>) -> Self {
+    fn new(
+        extension_provider: Ext,
+        resolver: resolver::Resolver,
+        config: Option<WebSocketConfig>,
+    ) -> Self {
         Upgrader {
             extension_provider: Arc::new(extension_provider),
+            resolver: Arc::new(resolver),
             config,
         }
     }
@@ -295,14 +314,22 @@ where
     {
         let Upgrader {
             extension_provider,
+            resolver,
             config,
         } = self;
-        UpgradeService::new(extension_provider.clone(), *config, scheme, addr)
+        UpgradeService::new(
+            extension_provider.clone(),
+            resolver.clone(),
+            *config,
+            scheme,
+            addr,
+        )
     }
 }
 
 struct UpgradeService<Ext: ExtensionProvider, Sock> {
     extension_provider: Arc<Ext>,
+    resolver: Arc<resolver::Resolver>,
     upgrade_fut: Option<UpgradeFutureWithSock<Ext::Extension, Sock>>,
     config: Option<WebSocketConfig>,
     scheme: Scheme,
@@ -315,12 +342,14 @@ where
 {
     fn new(
         extension_provider: Arc<Ext>,
+        resolver: Arc<resolver::Resolver>,
         config: Option<WebSocketConfig>,
         scheme: Scheme,
         addr: SocketAddr,
     ) -> Self {
         UpgradeService {
             extension_provider,
+            resolver,
             upgrade_fut: None,
             config,
             scheme,
@@ -356,6 +385,7 @@ where
             config,
             scheme,
             addr,
+            ..
         } = self;
         let result =
             swim_http::negotiate_upgrade(&request, &PROTOCOLS, extension_provider.as_ref());
@@ -459,6 +489,7 @@ impl WebsocketServer for HyperWebsockets {
         &self,
         listener: L,
         provider: Provider,
+        find: mpsc::Sender<FindNode>,
     ) -> Self::WsStream<Sock, Provider::Extension>
     where
         Sock: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
@@ -470,7 +501,7 @@ impl WebsocketServer for HyperWebsockets {
             config,
             max_negotiations,
         } = self;
-        hyper_http_server(listener, provider, Some(*config), *max_negotiations)
+        hyper_http_server(listener, find, provider, Some(*config), *max_negotiations)
             .map(|r| r.map(|(ws, _, addr)| (ws, addr)))
             .boxed()
     }

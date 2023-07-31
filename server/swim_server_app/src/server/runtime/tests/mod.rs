@@ -27,12 +27,12 @@ use futures::{
 use ratchet::{
     Message, NegotiatedExtension, NoExt, NoExtProvider, Role, WebSocket, WebSocketConfig,
 };
+use swim_api::net::{Scheme, SchemeHostPort};
 use swim_api::store::StoreDisabled;
 use swim_form::structural::write::StructuralWritable;
 use swim_model::address::RelativeAddress;
 use swim_recon::printer::print_recon_compact;
 use swim_remote::{AttachClient, LinkError};
-use swim_runtime::net::{Scheme, SchemeHostPort};
 use swim_utilities::{
     io::byte_channel::byte_channel, non_zero_usize, routing::route_pattern::RoutePattern,
 };

@@ -10,19 +10,15 @@ trust_dns = ["trust-dns-resolver"]
 
 [dependencies]
 bitflags = { workspace = true }
-ratchet = { package = "ratchet_rs", workspace = true, features = ["deflate", "split"] }
-ratchet_fixture = { workspace = true }
 bytes = { workspace = true }
 either = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
 futures-util = { workspace = true }
 http = { workspace = true }
-pin-project = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt", "macros"] }
 tokio-util = { workspace = true, features = ["codec"] }
 swim_utilities = { path = "../../swim_utilities", features = ["sync", "errors", "future", "io"] }
-url = { workspace = true }
 swim_api = { path = "../../api/swim_api" }
 swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
@@ -35,7 +31,6 @@ tokio-stream = { workspace = true, features = ["sync"] }
 uuid = { workspace = true }
 static_assertions = { workspace = true }
 trust-dns-resolver = { workspace = true, optional = true }
-lazy_static = { workspace = true }
 nom = { workspace = true }
 percent-encoding = { workspace = true }
 

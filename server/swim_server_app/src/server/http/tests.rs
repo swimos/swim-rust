@@ -25,13 +25,15 @@ use futures::{
     StreamExt,
 };
 use ratchet::{CloseReason, Message, NoExt, NoExtProvider, WebSocket, WebSocketConfig};
-use swim_runtime::net::{Listener, ListenerResult, Scheme};
+use swim_api::net::Scheme;
+use swim_remote::net::{Listener, ListenerResult};
 use swim_utilities::non_zero_usize;
 use tokio::{io::DuplexStream, sync::mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 
 const BUFFER_SIZE: usize = 4096;
 const MAX_ACTIVE: NonZeroUsize = non_zero_usize!(2);
+const FIND_CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(8);
 
 async fn client(tx: &mpsc::Sender<DuplexStream>, tag: &str) {
     let (client, server) = tokio::io::duplex(BUFFER_SIZE);
@@ -103,9 +105,11 @@ impl Listener<DuplexStream> for TestListener {
 
 async fn run_server(rx: mpsc::Receiver<DuplexStream>) {
     let listener = TestListener { rx };
+    let (find_tx, find_rx) = mpsc::channel(FIND_CHANNEL_SIZE.get());
 
     let mut stream = pin!(super::hyper_http_server(
         listener,
+        find_tx,
         NoExtProvider,
         None,
         MAX_ACTIVE

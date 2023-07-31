@@ -22,7 +22,7 @@ use ratchet::{
     NoExtProvider, WebSocketStream,
 };
 use swim_api::{agent::Agent, error::StoreError, store::StoreDisabled};
-use swim_runtime::net::{dns::Resolver, plain::TokioPlainTextNetworking, ExternalConnections};
+use swim_remote::net::{dns::Resolver, plain::TokioPlainTextNetworking, ExternalConnections};
 use swim_tls::{RustlsNetworking, TlsConfig};
 use swim_utilities::routing::route_pattern::RoutePattern;
 

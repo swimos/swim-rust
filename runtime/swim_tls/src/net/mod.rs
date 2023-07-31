@@ -23,9 +23,10 @@ pub use client::RustlsClientNetworking;
 use futures::TryFutureExt;
 use futures::{future::BoxFuture, FutureExt};
 pub use server::{RustlsListener, RustlsServerNetworking};
-use swim_runtime::net::{
+use swim_api::net::Scheme;
+use swim_remote::net::{
     dns::{BoxDnsResolver, Resolver},
-    ClientConnections, ConnResult, IoResult, Scheme, ServerConnections,
+    ClientConnections, ConnResult, IoResult, ServerConnections,
 };
 
 use crate::{

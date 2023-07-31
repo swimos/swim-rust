@@ -26,6 +26,7 @@ use swim_api::{
         StoreError,
     },
     meta::lane::LaneKind,
+    net::SchemeHostPort,
     store::{NodePersistence, StoreKind},
 };
 use swim_model::{address::RelativeAddress, Text};
@@ -48,7 +49,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{downlink::DownlinkOptions, net::SchemeHostPort};
+use crate::downlink::DownlinkOptions;
 
 use self::{
     reporting::{UplinkReportReader, UplinkReporter},

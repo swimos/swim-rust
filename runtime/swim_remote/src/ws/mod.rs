@@ -26,8 +26,10 @@ use ratchet::{ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig};
 pub use swim_ratchet::*;
 pub use switcher::StreamSwitcher;
 use thiserror::Error;
+use tokio::sync::mpsc;
 
 use crate::net::{Listener, ListenerError};
+use crate::FindNode;
 use lazy_static::lazy_static;
 
 #[cfg(feature = "tls")]
@@ -134,10 +136,12 @@ pub trait WebsocketServer: Send + Sync {
     /// #Arguments
     /// * `listener` - The stream of incoming connections.
     /// * `provider` - Provider of websocket extensions.
+    /// * `find_nodes` - Channel used to find running agents.
     fn wrap_listener<Sock, L, Provider>(
         &self,
         listener: L,
         provider: Provider,
+        find_nodes: mpsc::Sender<FindNode>,
     ) -> Self::WsStream<Sock, Provider::Extension>
     where
         Sock: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,

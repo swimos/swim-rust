@@ -13,20 +13,16 @@
 // limitations under the License.
 
 use std::net::SocketAddr;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use futures::Stream;
-use std::convert::TryFrom;
-use std::fmt::{Display, Formatter};
 use std::io;
+use swim_api::net::Scheme;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use thiserror::Error;
-
-use url::Url;
 
 use self::dns::BoxDnsResolver;
 
@@ -35,67 +31,6 @@ pub mod plain;
 
 #[cfg(test)]
 mod tests;
-
-#[derive(Debug, PartialEq, Eq, Error)]
-pub enum BadUrl {
-    #[error("Malformed URL: {0}")]
-    BadUrl(#[from] url::ParseError),
-    #[error("{0} is not a valid Warp scheme.")]
-    BadScheme(String),
-    #[error("The URL did not contain a valid host.")]
-    NoHost,
-}
-
-/// Supported websocket schemes
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Scheme {
-    Ws,
-    Wss,
-}
-
-impl TryFrom<&str> for Scheme {
-    type Error = BadUrl;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "ws" | "swim" | "warp" => Ok(Scheme::Ws),
-            "wss" | "swims" | "warps" => Ok(Scheme::Wss),
-            _ => Err(BadUrl::BadScheme(value.to_owned())),
-        }
-    }
-}
-
-impl Scheme {
-    /// Get the default port for the schemes.
-    fn get_default_port(&self) -> u16 {
-        match self {
-            Scheme::Ws => 80,
-            Scheme::Wss => 443,
-        }
-    }
-
-    /// Return if the scheme is secure.
-    #[allow(dead_code)]
-    fn is_secure(&self) -> bool {
-        match self {
-            Scheme::Ws => false,
-            Scheme::Wss => true,
-        }
-    }
-}
-
-impl Display for Scheme {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Scheme::Ws => {
-                write!(f, "ws")
-            }
-            Scheme::Wss => {
-                write!(f, "wss")
-            }
-        }
-    }
-}
 
 pub type IoResult<T> = io::Result<T>;
 pub type ConnResult<T> = Result<T, ConnectionError>;
@@ -166,72 +101,6 @@ where
 
 pub type BoxListenerStream<Socket> =
     BoxStream<'static, ListenerResult<(Socket, Scheme, SocketAddr)>>;
-
-/// A combination of host name and port to be used as a key into the routing table.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SchemeHostPort(pub Scheme, pub String, pub u16);
-
-impl SchemeHostPort {
-    pub fn new(scheme: Scheme, host: String, port: u16) -> Self {
-        SchemeHostPort(scheme, host, port)
-    }
-
-    pub fn scheme(&self) -> &Scheme {
-        &self.0
-    }
-
-    pub fn host(&self) -> &String {
-        &self.1
-    }
-
-    pub fn port(&self) -> u16 {
-        self.2
-    }
-}
-
-impl Display for SchemeHostPort {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let SchemeHostPort(scheme, host, port) = self;
-        write!(f, "{}://{}:{}", scheme, host, port)
-    }
-}
-
-impl FromStr for SchemeHostPort {
-    type Err = BadUrl;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let url = s.parse::<Url>()?;
-        let (scheme, url) = match Scheme::try_from(url.scheme()) {
-            Ok(scheme) => (scheme, url),
-            Err(e) => {
-                let with_scheme = format!("ws://{}", s);
-                if let Ok(url2) = with_scheme.parse::<Url>() {
-                    if let Ok(scheme) = Scheme::try_from(url2.scheme()) {
-                        (scheme, url2)
-                    } else {
-                        return Err(e);
-                    }
-                } else {
-                    return Err(e);
-                }
-            }
-        };
-        match (url.host_str(), url.port()) {
-            (Some(host_str), Some(port)) => {
-                Ok(SchemeHostPort::new(scheme, host_str.to_owned(), port))
-            }
-            (Some(host_str), _) => {
-                let default_port = scheme.get_default_port();
-                Ok(SchemeHostPort::new(
-                    scheme,
-                    host_str.to_owned(),
-                    default_port,
-                ))
-            }
-            _ => Err(BadUrl::NoHost),
-        }
-    }
-}
 
 /// Provides all networking functionality required for a Warp client (DNS resolution and opening sockets).
 pub trait ClientConnections: Clone + Send + Sync + 'static {
