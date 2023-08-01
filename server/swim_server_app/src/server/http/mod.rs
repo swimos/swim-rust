@@ -294,7 +294,7 @@ where
 
 struct Upgrader<Ext: ExtensionProvider> {
     extension_provider: Arc<Ext>,
-    resolver: Arc<resolver::Resolver>,
+    resolver: resolver::Resolver,
     config: Option<WebSocketConfig>,
     request_timeout: Duration,
 }
@@ -311,7 +311,7 @@ where
     ) -> Self {
         Upgrader {
             extension_provider: Arc::new(extension_provider),
-            resolver: Arc::new(resolver),
+            resolver,
             config,
             request_timeout,
         }
@@ -340,7 +340,7 @@ where
 
 struct UpgradeService<Ext: ExtensionProvider, Sock> {
     extension_provider: Arc<Ext>,
-    resolver: Arc<resolver::Resolver>,
+    resolver: resolver::Resolver,
     upgrade_fut: Option<UpgradeFutureWithSock<Ext::Extension, Sock>>,
     config: Option<WebSocketConfig>,
     scheme: Scheme,
@@ -354,7 +354,7 @@ where
 {
     fn new(
         extension_provider: Arc<Ext>,
-        resolver: Arc<resolver::Resolver>,
+        resolver: resolver::Resolver,
         config: Option<WebSocketConfig>,
         scheme: Scheme,
         addr: SocketAddr,
@@ -601,7 +601,7 @@ pub enum HttpRequestError {
 async fn serve_request(
     request: Request<Body>,
     timeout: Duration,
-    resolver: Arc<Resolver>,
+    resolver: Resolver,
 ) -> Result<Response<Body>, HttpRequestError> {
     let http_request = match HttpRequest::try_from(request) {
         Ok(req) => req,

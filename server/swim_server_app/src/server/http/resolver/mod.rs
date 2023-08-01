@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    sync::Arc,
+};
 
 use parking_lot::RwLock;
 use swim_api::agent::HttpLaneRequest;
@@ -27,9 +30,10 @@ enum ResolverEntry {
     Channel(mpsc::Sender<HttpLaneRequest>),
 }
 
+#[derive(Clone)]
 pub struct Resolver {
     source: Uuid,
-    resolved: RwLock<HashMap<Text, ResolverEntry>>,
+    resolved: Arc<RwLock<HashMap<Text, ResolverEntry>>>,
     find: mpsc::Sender<FindNode>,
 }
 
