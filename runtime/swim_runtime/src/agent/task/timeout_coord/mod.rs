@@ -28,10 +28,7 @@ use static_assertions::{assert_impl_all, assert_not_impl_any};
 #[cfg(test)]
 mod tests;
 
-const INIT: u8 = 0b00;
-const FIRST: u8 = 0b01;
-const SECOND: u8 = 0b10;
-const UNANIMITY: u8 = 0b11;
+const INIT: u8 = 0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VoteResult {
@@ -43,6 +40,7 @@ pub enum VoteResult {
 struct Inner {
     flags: AtomicU8,
     waker: AtomicWaker,
+    unanimity: u8,
 }
 
 /// Allows for a party to the coordination to vote for the process to stop or to attempt
@@ -72,25 +70,75 @@ assert_not_impl_any!(Receiver: Clone);
 /// only one sender has voted to stop, it may rescind its vote. Rescinding a vote will only be
 /// respected if unanimity was not reached.
 pub fn timeout_coordinator() -> (Voter, Voter, Receiver) {
+    let ([sender1, sender2], receiver) = multi_party_coordinator::<2>();
+    (sender1, sender2, receiver)
+}
+
+pub trait NumParties {
+    fn all() -> u8;
+}
+
+impl NumParties for [Voter; 2] {
+    fn all() -> u8 {
+        (1 << 2) - 1
+    }
+}
+impl NumParties for [Voter; 3] {
+    fn all() -> u8 {
+        (1 << 3) - 1
+    }
+}
+impl NumParties for [Voter; 4] {
+    fn all() -> u8 {
+        (1 << 4) - 1
+    }
+}
+impl NumParties for [Voter; 5] {
+    fn all() -> u8 {
+        (1 << 5) - 1
+    }
+}
+impl NumParties for [Voter; 6] {
+    fn all() -> u8 {
+        (1 << 6) - 1
+    }
+}
+impl NumParties for [Voter; 7] {
+    fn all() -> u8 {
+        (1 << 7) - 1
+    }
+}
+impl NumParties for [Voter; 8] {
+    fn all() -> u8 {
+        u8::MAX
+    }
+}
+
+pub fn multi_party_coordinator<const N: usize>() -> ([Voter; N], Receiver)
+where
+    [Voter; N]: NumParties,
+{
+    let all: u8 = <[Voter; N] as NumParties>::all();
     let inner = Arc::new(Inner {
         flags: AtomicU8::new(INIT),
         waker: Default::default(),
+        unanimity: all,
     });
-    let sender1 = Voter {
-        flag: FIRST,
-        inverse: SECOND,
-        voted: Cell::new(false),
-        inner: inner.clone(),
-    };
-    let sender2 = Voter {
-        flag: SECOND,
-        inverse: FIRST,
-        voted: Cell::new(false),
-        inner: inner.clone(),
-    };
+    let senders = std::array::from_fn::<Voter, N, _>(|i| {
+        let flag: u8 = 1 << i;
+        let inverse: u8 = all ^ flag;
+        Voter {
+            flag,
+            inverse,
+            voted: Cell::new(false),
+            inner: inner.clone(),
+        }
+    });
     let receiver = Receiver { inner };
-    (sender1, sender2, receiver)
+    (senders, receiver)
 }
+
+const TWO_VOTERS_LIM: u8 = 3;
 
 impl Voter {
     /// Vote for the process to stop. Returns whether unanimity has been reached. This can
@@ -102,7 +150,7 @@ impl Voter {
             voted,
             inner,
         } = self;
-        let Inner { flags, waker } = &**inner;
+        let Inner { flags, waker, .. } = &**inner;
         let before = flags.fetch_or(*flag, Ordering::Release);
         voted.set(true);
         if before == *inverse {
@@ -120,15 +168,41 @@ impl Voter {
     /// Returns whether unanimity had already been reached before this operation was attempted.
     pub fn rescind(&self) -> VoteResult {
         let Voter {
-            flag, voted, inner, ..
+            flag,
+            inverse,
+            voted,
+            inner,
+            ..
         } = self;
         let Inner { flags, .. } = &**inner;
-        if voted.get()
-            && flags
-                .compare_exchange(*flag, INIT, Ordering::Relaxed, Ordering::Relaxed)
-                .is_err()
-        {
-            VoteResult::Unanimous
+        if voted.get() {
+            if *inverse < TWO_VOTERS_LIM {
+                if flags
+                    .compare_exchange(*flag, INIT, Ordering::Relaxed, Ordering::Relaxed)
+                    .is_err()
+                {
+                    VoteResult::Unanimous
+                } else {
+                    VoteResult::UnanimityPending
+                }
+            } else {
+                loop {
+                    let current = flags.load(Ordering::Relaxed);
+                    if current == inverse | flag {
+                        break VoteResult::Unanimous;
+                    } else if flags
+                        .compare_exchange(
+                            current,
+                            current & !flag,
+                            Ordering::Relaxed,
+                            Ordering::Relaxed,
+                        )
+                        .is_ok()
+                    {
+                        break VoteResult::UnanimityPending;
+                    }
+                }
+            }
         } else {
             VoteResult::UnanimityPending
         }
@@ -148,12 +222,16 @@ impl Future for Receiver {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let Inner { flags, waker } = &*self.get_mut().inner;
-        if flags.load(Ordering::Relaxed) == UNANIMITY {
+        let Inner {
+            flags,
+            waker,
+            unanimity,
+        } = &*self.get_mut().inner;
+        if flags.load(Ordering::Relaxed) == *unanimity {
             Poll::Ready(())
         } else {
             waker.register(cx.waker());
-            if flags.load(Ordering::Acquire) == UNANIMITY {
+            if flags.load(Ordering::Acquire) == *unanimity {
                 Poll::Ready(())
             } else {
                 Poll::Pending

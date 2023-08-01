@@ -167,3 +167,180 @@ async fn dropping_both_is_unanimity() {
     })
     .await;
 }
+
+#[tokio::test]
+async fn complete_immediately_three() {
+    with_timeout(async {
+        let ([tx1, tx2, tx3], rx) = super::multi_party_coordinator::<3>();
+        assert_eq!(tx1.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx2.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx3.vote(), VoteResult::Unanimous);
+
+        rx.await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn complete_async_three() {
+    let ([tx1, tx2, tx3], rx) = super::multi_party_coordinator::<3>();
+
+    let notify = Arc::new(Notify::new());
+
+    let wait_task = NotifyOnBlocked::new(rx, notify.clone());
+
+    let vote_task = async move {
+        notify.notified().await;
+        assert_eq!(tx1.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx2.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx3.vote(), VoteResult::Unanimous);
+    };
+
+    with_timeout(join(wait_task, vote_task)).await;
+}
+
+#[tokio::test]
+async fn complete_async2_three() {
+    let ([tx1, tx2, tx3], rx) = super::multi_party_coordinator::<3>();
+
+    let notify = Arc::new(Notify::new());
+
+    let wait_task = NotifyOnBlocked::new(rx, notify.clone());
+
+    let vote_task = async move {
+        notify.notified().await;
+        assert_eq!(tx2.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx1.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx3.vote(), VoteResult::Unanimous);
+    };
+
+    with_timeout(join(wait_task, vote_task)).await;
+}
+
+#[tokio::test]
+async fn complete_async3_three() {
+    let ([tx1, tx2, tx3], rx) = super::multi_party_coordinator::<3>();
+
+    let notify = Arc::new(Notify::new());
+
+    let wait_task = NotifyOnBlocked::new(rx, notify.clone());
+
+    let vote_task = async move {
+        notify.notified().await;
+        assert_eq!(tx2.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx3.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx1.vote(), VoteResult::Unanimous);
+    };
+
+    with_timeout(join(wait_task, vote_task)).await;
+}
+
+#[tokio::test]
+async fn complete_async4_three() {
+    let ([tx1, tx2, tx3], rx) = super::multi_party_coordinator::<3>();
+
+    let notify = Arc::new(Notify::new());
+
+    let wait_task = NotifyOnBlocked::new(rx, notify.clone());
+
+    let vote_task = async move {
+        notify.notified().await;
+        assert_eq!(tx3.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx2.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx1.vote(), VoteResult::Unanimous);
+    };
+
+    with_timeout(join(wait_task, vote_task)).await;
+}
+
+#[tokio::test]
+async fn complete_async_wait_between_votes_three() {
+    let ([tx1, tx2, tx3], rx) = super::multi_party_coordinator::<3>();
+
+    let notify1 = Arc::new(Notify::new());
+    let notify1_cpy = notify1.clone();
+    let notify2 = Arc::new(Notify::new());
+    let notify2_cpy = notify2.clone();
+
+    let wait_task = async move {
+        notify1.notified().await;
+        NotifyOnBlocked::new(rx, notify2).await;
+    };
+
+    let vote_task = async move {
+        assert_eq!(tx1.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx2.vote(), VoteResult::UnanimityPending);
+        notify1_cpy.notify_one();
+        notify2_cpy.notified().await;
+        assert_eq!(tx3.vote(), VoteResult::Unanimous);
+    };
+
+    with_timeout(join(wait_task, vote_task)).await;
+}
+
+#[tokio::test]
+async fn rescind_vote_three() {
+    let ([tx1, tx2, tx3], rx) = super::multi_party_coordinator::<3>();
+
+    let notify1 = Arc::new(Notify::new());
+    let notify1_cpy = notify1.clone();
+    let notify2 = Arc::new(Notify::new());
+    let notify2_cpy = notify2.clone();
+
+    let wait_task = async move {
+        notify1.notified().await;
+        NotifyOnBlocked::new(rx, notify2).await;
+    };
+
+    let vote_task = async move {
+        assert_eq!(tx1.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx3.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx1.rescind(), VoteResult::UnanimityPending);
+        assert_eq!(tx2.vote(), VoteResult::UnanimityPending);
+        notify1_cpy.notify_one();
+        notify2_cpy.notified().await;
+        assert_eq!(tx1.vote(), VoteResult::Unanimous);
+    };
+
+    with_timeout(join(wait_task, vote_task)).await;
+}
+
+#[tokio::test]
+async fn cannot_rescind_after_unanimity_three() {
+    with_timeout(async {
+        let ([tx1, tx2, tx3], rx) = super::multi_party_coordinator::<3>();
+        assert_eq!(tx1.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx2.vote(), VoteResult::UnanimityPending);
+        assert_eq!(tx3.vote(), VoteResult::Unanimous);
+        assert_eq!(tx1.rescind(), VoteResult::Unanimous);
+
+        rx.await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn drop_causes_vote_three() {
+    with_timeout(async {
+        let ([tx1, tx2, tx3], rx) = super::multi_party_coordinator::<3>();
+        assert_eq!(tx2.vote(), VoteResult::UnanimityPending);
+        drop(tx1);
+        assert_eq!(tx3.vote(), VoteResult::Unanimous);
+
+        rx.await;
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn dropping_all_is_unanimity_three() {
+    with_timeout(async {
+        let ([tx1, tx2, tx3], rx) = super::multi_party_coordinator::<3>();
+        drop(tx1);
+        drop(tx2);
+        drop(tx3);
+
+        rx.await;
+    })
+    .await;
+}
