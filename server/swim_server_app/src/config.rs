@@ -44,6 +44,8 @@ pub struct SwimServerConfig {
     pub websockets: WebSocketConfig,
     /// Maximum number of concurrent HTTP requests to serve.
     pub max_http_requests: NonZeroUsize,
+    /// HTTP request timeout.
+    pub http_request_timeout: Duration,
     /// Parameters for the downlink runtime component.
     pub downlink_runtime: DownlinkRuntimeConfig,
     /// Budget for byte stream futures (causes streams with constantly available data to periodically yield).
@@ -62,6 +64,7 @@ pub struct RemoteConnectionsConfig {
 const DEFAULT_CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(16);
 const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_MAX_HTTP: NonZeroUsize = non_zero_usize!(1024);
 
@@ -87,6 +90,7 @@ impl Default for SwimServerConfig {
             attachment_timeout: DEFAULT_TIMEOUT,
             websockets: Default::default(),
             max_http_requests: DEFAULT_MAX_HTTP,
+            http_request_timeout: DEFAULT_HTTP_TIMEOUT,
             downlink_runtime: DownlinkRuntimeConfig {
                 empty_timeout: DEFAULT_TIMEOUT,
                 attachment_queue_size: DEFAULT_CHANNEL_SIZE,

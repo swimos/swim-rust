@@ -19,33 +19,37 @@ use std::{
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
+    time::Duration,
 };
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use futures::{
-    future::{ready, Ready},
+    future::BoxFuture,
     ready,
     stream::{BoxStream, FuturesUnordered},
     Future, FutureExt, Stream, StreamExt,
 };
 use hyper::{
+    body::to_bytes,
     server::conn::http1,
     service::Service,
     upgrade::{Parts, Upgraded},
-    Body, Request, Response,
+    Body, Request, Response, StatusCode,
 };
 use pin_project::pin_project;
 use ratchet::{Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig};
-use swim_api::net::Scheme;
+use swim_api::{agent::HttpLaneRequest, net::Scheme};
 use swim_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
-use swim_remote::FindNode;
+use swim_model::http::HttpRequest;
 use swim_remote::{
     net::{Listener, ListenerError, ListenerResult},
     ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture, PROTOCOLS},
 };
+use swim_remote::{AgentResolutionError, FindNode, NoSuchAgent};
+use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::mpsc,
+    sync::{mpsc, oneshot},
 };
 use uuid::Uuid;
 
@@ -73,6 +77,7 @@ pub fn hyper_http_server<Sock, L, Ext>(
     extension_provider: Ext,
     config: Option<WebSocketConfig>,
     max_negotiations: NonZeroUsize,
+    request_timeout: Duration,
 ) -> impl Stream<Item = ListenResult<Ext::Extension, Sock>> + Send
 where
     Sock: Unpin + Send + Sync + AsyncRead + AsyncWrite + 'static,
@@ -87,6 +92,7 @@ where
         resolver,
         config,
         max_negotiations,
+        request_timeout,
         |sock, mut svc| async move {
             let result = http1::Builder::new()
                 .serve_connection(sock, &mut svc)
@@ -164,13 +170,14 @@ where
         resolver: resolver::Resolver,
         config: Option<WebSocketConfig>,
         max_negotiations: NonZeroUsize,
+        request_timeout: Duration,
         connect_fn: FC,
     ) -> Self {
         let connection_tasks = FuturesUnordered::new();
         StreamState {
             listener_stream,
             connection_tasks,
-            upgrader: Upgrader::new(extension_provider, resolver, config),
+            upgrader: Upgrader::new(extension_provider, resolver, config, request_timeout),
             connect_fn,
             max_pending: max_negotiations.get(),
         }
@@ -264,7 +271,7 @@ where
 fn perform_upgrade<Ext, Sock, Err>(
     request: Request<Body>,
     config: Option<WebSocketConfig>,
-    result: Result<Option<Negotiated<'_, Ext>>, UpgradeError<Err>>,
+    result: Result<Negotiated<'_, Ext>, UpgradeError<Err>>,
     target: &mut Option<UpgradeFutureWithSock<Ext, Sock>>,
     scheme: Scheme,
     addr: SocketAddr,
@@ -275,13 +282,12 @@ where
     Err: std::error::Error + Send,
 {
     match result {
-        Ok(Some(negotiated)) => {
+        Ok(negotiated) => {
             let (response, upgrade_fut) =
                 swim_http::upgrade(request, negotiated, config, ReclaimSock::<Sock>::default());
             *target = Some(UpgradeFutureWithSock::new(upgrade_fut, scheme, addr));
             Ok(response)
         }
-        Ok(None) => todo!(),
         Err(err) => Ok(swim_http::fail_upgrade(err)),
     }
 }
@@ -290,6 +296,7 @@ struct Upgrader<Ext: ExtensionProvider> {
     extension_provider: Arc<Ext>,
     resolver: Arc<resolver::Resolver>,
     config: Option<WebSocketConfig>,
+    request_timeout: Duration,
 }
 
 impl<Ext> Upgrader<Ext>
@@ -300,11 +307,13 @@ where
         extension_provider: Ext,
         resolver: resolver::Resolver,
         config: Option<WebSocketConfig>,
+        request_timeout: Duration,
     ) -> Self {
         Upgrader {
             extension_provider: Arc::new(extension_provider),
             resolver: Arc::new(resolver),
             config,
+            request_timeout,
         }
     }
 
@@ -316,6 +325,7 @@ where
             extension_provider,
             resolver,
             config,
+            request_timeout,
         } = self;
         UpgradeService::new(
             extension_provider.clone(),
@@ -323,6 +333,7 @@ where
             *config,
             scheme,
             addr,
+            *request_timeout,
         )
     }
 }
@@ -334,6 +345,7 @@ struct UpgradeService<Ext: ExtensionProvider, Sock> {
     config: Option<WebSocketConfig>,
     scheme: Scheme,
     addr: SocketAddr,
+    request_timeout: Duration,
 }
 
 impl<Ext: ExtensionProvider, Sock> UpgradeService<Ext, Sock>
@@ -346,6 +358,7 @@ where
         config: Option<WebSocketConfig>,
         scheme: Scheme,
         addr: SocketAddr,
+        request_timeout: Duration,
     ) -> Self {
         UpgradeService {
             extension_provider,
@@ -354,6 +367,7 @@ where
             config,
             scheme,
             addr,
+            request_timeout,
         }
     }
 
@@ -370,9 +384,9 @@ where
 {
     type Response = Response<Body>;
 
-    type Error = hyper::Error;
+    type Error = HttpRequestError;
 
-    type Future = Ready<Result<Response<Body>, hyper::Error>>;
+    type Future = BoxFuture<'static, Result<Response<Body>, HttpRequestError>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -385,18 +399,19 @@ where
             config,
             scheme,
             addr,
-            ..
+            resolver,
+            request_timeout,
         } = self;
         let result =
-            swim_http::negotiate_upgrade(&request, &PROTOCOLS, extension_provider.as_ref());
-        ready(perform_upgrade(
-            request,
-            *config,
-            result,
-            upgrade_fut,
-            *scheme,
-            *addr,
-        ))
+            swim_http::negotiate_upgrade(&request, &PROTOCOLS, extension_provider.as_ref())
+                .transpose();
+        if let Some(result) = result {
+            let upgrade_result =
+                perform_upgrade(request, *config, result, upgrade_fut, *scheme, *addr);
+            async move { Ok(upgrade_result?) }.boxed()
+        } else {
+            serve_request(request, *request_timeout, resolver.clone()).boxed()
+        }
     }
 }
 
@@ -465,6 +480,7 @@ where
 pub struct HyperWebsockets {
     config: WebSocketConfig,
     max_negotiations: NonZeroUsize,
+    request_timeout: Duration,
 }
 
 impl HyperWebsockets {
@@ -473,10 +489,15 @@ impl HyperWebsockets {
     /// * `config` - Ratchet websocket configuration.
     /// * `max_negotiations` - The maximum number of concurrent connections that the server
     /// will handle concurrently.
-    pub fn new(config: WebSocketConfig, max_negotiations: NonZeroUsize) -> Self {
+    pub fn new(
+        config: WebSocketConfig,
+        max_negotiations: NonZeroUsize,
+        request_timeout: Duration,
+    ) -> Self {
         HyperWebsockets {
             config,
             max_negotiations,
+            request_timeout,
         }
     }
 }
@@ -500,10 +521,18 @@ impl WebsocketServer for HyperWebsockets {
         let HyperWebsockets {
             config,
             max_negotiations,
+            request_timeout,
         } = self;
-        hyper_http_server(listener, find, provider, Some(*config), *max_negotiations)
-            .map(|r| r.map(|(ws, _, addr)| (ws, addr)))
-            .boxed()
+        hyper_http_server(
+            listener,
+            find,
+            provider,
+            Some(*config),
+            *max_negotiations,
+            *request_timeout,
+        )
+        .map(|r| r.map(|(ws, _, addr)| (ws, addr)))
+        .boxed()
     }
 }
 
@@ -529,5 +558,76 @@ impl WebsocketClient for HyperWebsockets {
                 .into_websocket();
             Ok(socket)
         })
+    }
+}
+
+fn bad_request(msg: String) -> Response<Body> {
+    let mut response = Response::default();
+    *response.status_mut() = StatusCode::BAD_REQUEST;
+    *response.body_mut() = Bytes::from(msg).into();
+    response
+}
+
+fn error() -> Response<Body> {
+    let mut response = Response::default();
+    *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+    response
+}
+
+fn req_timeout() -> Response<Body> {
+    let mut response = Response::default();
+    *response.status_mut() = StatusCode::REQUEST_TIMEOUT;
+    *response.body_mut() = Bytes::from(format!("The agent failed to respond.")).into();
+    response
+}
+
+fn not_found(node: &str) -> Response<Body> {
+    let mut response = Response::default();
+    *response.status_mut() = StatusCode::NOT_FOUND;
+    *response.body_mut() = Bytes::from(format!("No agent at '{}'", node)).into();
+    response
+}
+
+#[derive(Debug, Error)]
+pub enum HttpRequestError {
+    #[error("The server is stopping.")]
+    ServerStopping,
+    #[error("The agent failed to provide a response.")]
+    RequestDropped,
+    #[error("Processing the request failed.")]
+    Hyper(#[from] hyper::Error),
+}
+
+async fn serve_request(
+    request: Request<Body>,
+    timeout: Duration,
+    resolver: Arc<Resolver>,
+) -> Result<Response<Body>, HttpRequestError> {
+    let http_request = match HttpRequest::try_from(request) {
+        Ok(req) => req,
+        Err(err) => return Ok(bad_request(err.to_string())),
+    };
+    let bytes_request = match http_request.try_transform(to_bytes).await {
+        Ok(req) => req,
+        Err(err) => return Ok(bad_request(err.to_string())),
+    };
+
+    let (response_tx, response_rx) = oneshot::channel();
+    let message = HttpLaneRequest::new(bytes_request, response_tx);
+    if let Err(err) = resolver.send(message).await {
+        match err {
+            AgentResolutionError::NotFound(NoSuchAgent { node, .. }) => {
+                return Ok(not_found(node.as_str()))
+            }
+            AgentResolutionError::PlaneStopping => return Err(HttpRequestError::ServerStopping),
+        }
+    }
+    match tokio::time::timeout(timeout, response_rx).await {
+        Ok(Ok(response)) => Ok(match Response::try_from(response) {
+            Ok(res) => res.map(|b| b.into()),
+            Err(_) => error(),
+        }),
+        Ok(Err(_)) => Err(HttpRequestError::RequestDropped),
+        Err(_) => Ok(req_timeout()),
     }
 }

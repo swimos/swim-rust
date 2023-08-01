@@ -244,8 +244,11 @@ where
         ..
     } = config;
     if let Some(deflate_config) = deflate {
-        let websockets =
-            HyperWebsockets::new(server_config.websockets, server_config.max_http_requests);
+        let websockets = HyperWebsockets::new(
+            server_config.websockets,
+            server_config.max_http_requests,
+            server_config.http_request_timeout,
+        );
         let ext_provider = DeflateExtProvider::with_config(deflate_config);
         Box::new(SwimServer::new(
             routes,
@@ -256,8 +259,11 @@ where
             introspection,
         ))
     } else {
-        let websockets =
-            HyperWebsockets::new(server_config.websockets, server_config.max_http_requests);
+        let websockets = HyperWebsockets::new(
+            server_config.websockets,
+            server_config.max_http_requests,
+            server_config.http_request_timeout,
+        );
         let ext_provider = NoExtProvider;
         Box::new(SwimServer::new(
             routes,

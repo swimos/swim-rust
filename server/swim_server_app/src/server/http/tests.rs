@@ -16,6 +16,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     num::NonZeroUsize,
     pin::pin,
+    time::Duration,
 };
 
 use bytes::BytesMut;
@@ -26,13 +27,17 @@ use futures::{
 };
 use ratchet::{CloseReason, Message, NoExt, NoExtProvider, WebSocket, WebSocketConfig};
 use swim_api::net::Scheme;
-use swim_remote::net::{Listener, ListenerResult};
+use swim_remote::{
+    net::{Listener, ListenerResult},
+    FindNode,
+};
 use swim_utilities::non_zero_usize;
 use tokio::{io::DuplexStream, sync::mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 
 const BUFFER_SIZE: usize = 4096;
 const MAX_ACTIVE: NonZeroUsize = non_zero_usize!(2);
+const REQ_TIMEOUT: Duration = Duration::from_secs(1);
 const FIND_CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(8);
 
 async fn client(tx: &mpsc::Sender<DuplexStream>, tag: &str) {
@@ -103,16 +108,16 @@ impl Listener<DuplexStream> for TestListener {
     }
 }
 
-async fn run_server(rx: mpsc::Receiver<DuplexStream>) {
+async fn run_server(rx: mpsc::Receiver<DuplexStream>, find_tx: mpsc::Sender<FindNode>) {
     let listener = TestListener { rx };
-    let (find_tx, find_rx) = mpsc::channel(FIND_CHANNEL_SIZE.get());
 
     let mut stream = pin!(super::hyper_http_server(
         listener,
         find_tx,
         NoExtProvider,
         None,
-        MAX_ACTIVE
+        MAX_ACTIVE,
+        REQ_TIMEOUT,
     ));
 
     let handles = FuturesUnordered::new();
@@ -159,7 +164,8 @@ async fn handle_connection(mut websocket: WebSocket<DuplexStream, NoExt>) {
 #[tokio::test]
 async fn single_client() {
     let (tx, rx) = mpsc::channel(8);
-    let server = run_server(rx);
+    let (find_tx, _find_rx) = mpsc::channel(FIND_CHANNEL_SIZE.get());
+    let server = run_server(rx, find_tx);
     let client = async move {
         client(&tx, "A").await;
         drop(tx);
@@ -171,7 +177,8 @@ async fn single_client() {
 #[tokio::test]
 async fn two_clients() {
     let (tx, rx) = mpsc::channel(8);
-    let server = run_server(rx);
+    let (find_tx, _find_rx) = mpsc::channel(FIND_CHANNEL_SIZE.get());
+    let server = run_server(rx, find_tx);
     let clients = async move {
         join(client(&tx, "A"), client(&tx, "B")).await;
         drop(tx);
@@ -183,7 +190,8 @@ async fn two_clients() {
 #[tokio::test]
 async fn three_clients() {
     let (tx, rx) = mpsc::channel(8);
-    let server = run_server(rx);
+    let (find_tx, _find_rx) = mpsc::channel(FIND_CHANNEL_SIZE.get());
+    let server = run_server(rx, find_tx);
     let clients = async move {
         join3(client(&tx, "A"), client(&tx, "B"), client(&tx, "C")).await;
         drop(tx);
@@ -195,7 +203,8 @@ async fn three_clients() {
 #[tokio::test]
 async fn many_clients() {
     let (tx, rx) = mpsc::channel(8);
-    let server = run_server(rx);
+    let (find_tx, _find_rx) = mpsc::channel(FIND_CHANNEL_SIZE.get());
+    let server = run_server(rx, find_tx);
     let ids = ('A'..='Z').map(|c| c.to_string()).collect::<Vec<_>>();
     let clients = async move {
         let client_tasks = FuturesUnordered::new();

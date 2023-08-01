@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::future::Future;
+
 use http::request::Parts;
 use thiserror::Error;
 
@@ -69,6 +71,27 @@ impl<T> HttpRequest<T> {
             headers: vec![],
             payload,
         }
+    }
+
+    pub async fn try_transform<F, Fut, T2, E>(self, f: F) -> Result<HttpRequest<T2>, E>
+    where
+        F: FnOnce(T) -> Fut,
+        Fut: Future<Output = Result<T2, E>>,
+    {
+        let HttpRequest {
+            method,
+            version,
+            uri,
+            headers,
+            payload,
+        } = self;
+        f(payload).await.map(move |payload| HttpRequest {
+            method,
+            version,
+            uri,
+            headers,
+            payload,
+        })
     }
 }
 

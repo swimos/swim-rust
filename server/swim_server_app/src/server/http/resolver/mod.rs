@@ -51,7 +51,6 @@ impl Resolver {
 
     pub async fn send<'a>(
         &'a self,
-        node: &str,
         mut request: HttpLaneRequest,
     ) -> Result<(), AgentResolutionError> {
         let Resolver {
@@ -60,12 +59,17 @@ impl Resolver {
             find,
         } = self;
 
+        let node = Text::new(
+            percent_encoding::percent_decode_str(request.request.uri.path())
+                .decode_utf8_lossy()
+                .as_ref(),
+        );
         let mut action = Action::Lookup;
 
         loop {
             match action {
                 Action::Lookup => {
-                    action = match resolved.read().get(node) {
+                    action = match resolved.read().get(&node) {
                         Some(ResolverEntry::Channel(tx)) => match tx.try_send(request) {
                             Ok(_) => break Ok(()),
                             Err(mpsc::error::TrySendError::Closed(req)) => {
@@ -93,7 +97,7 @@ impl Resolver {
                     }
                 },
                 Action::Resolve => {
-                    let wait_tx = match resolved.write().entry(Text::new(node)) {
+                    let wait_tx = match resolved.write().entry(node.clone()) {
                         Entry::Occupied(entry) => {
                             match entry.get() {
                                 ResolverEntry::Pending(rx) => {
@@ -123,7 +127,7 @@ impl Resolver {
                     if find
                         .send(FindNode {
                             source: *source,
-                            node: Text::new(node),
+                            node: Text::new(node.as_ref()),
                             lane: None,
                             request: NodeConnectionRequest::Http { promise: find_tx },
                         })
@@ -141,7 +145,7 @@ impl Resolver {
                         Ok(_) => {
                             resolved
                                 .write()
-                                .insert(Text::new(node), ResolverEntry::Channel(sender));
+                                .insert(Text::new(node.as_ref()), ResolverEntry::Channel(sender));
                             wait_tx.trigger();
                             return Ok(());
                         }

@@ -2020,7 +2020,7 @@ async fn http_task(
             Either::Left(HttpLaneRuntimeSpec { name, promise }) => {
                 let (tx, rx) = mpsc::channel(request_channel_size.get());
                 if promise.send(Ok(rx)).is_err() {
-                    //TODO Log error.
+                    error!(name = %name, "Request for a new HTTP lane was dropped before it was completed.");
                 }
                 endpoints.insert(name, tx);
             }
@@ -2067,6 +2067,6 @@ fn not_found(request: HttpLaneRequest) {
         payload,
     };
     if response_tx.send(not_found_response).is_err() {
-        //TODO log error.
+        error!("HTTP connection was terminated before the response cound be sent.");
     }
 }

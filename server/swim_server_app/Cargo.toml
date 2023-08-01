@@ -34,6 +34,7 @@ parking_lot = { workspace = true }
 rocksdb = { workspace = true, optional = true }
 hyper = { workspace = true, features = ["full", "tcp", "http1", "backports"] }
 pin-project = { workspace = true }
+percent-encoding = { workspace = true }
 
 [dev-dependencies]
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }

@@ -106,6 +106,18 @@ pub struct HttpLaneRequest {
     pub response_tx: oneshot::Sender<HttpLaneResponse>,
 }
 
+impl HttpLaneRequest {
+    pub fn new(
+        request: HttpRequest<Bytes>,
+        response_tx: oneshot::Sender<HttpLaneResponse>,
+    ) -> Self {
+        HttpLaneRequest {
+            request,
+            response_tx,
+        }
+    }
+}
+
 pub type HttpLaneRequestChannel = mpsc::Receiver<HttpLaneRequest>;
 
 /// Trait for the context that is passed to an agent to allow it to interact with the runtime.
