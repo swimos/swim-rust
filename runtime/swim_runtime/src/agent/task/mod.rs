@@ -15,7 +15,6 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
-use std::num::NonZeroUsize;
 use std::pin::{pin, Pin};
 use std::time::Duration;
 
@@ -472,7 +471,7 @@ where
         let (write_tx, write_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (http_tx, http_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (ext_link_tx, ext_link_rx) = mpsc::channel(config.attachment_queue_size.get());
-        let (read_vote, write_vote, vote_waiter) = timeout_coord::timeout_coordinator();
+        let (read_vote, write_vote, http_vote, vote_waiter) = timeout_coord::timeout_coordinator();
 
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
 
@@ -513,10 +512,11 @@ where
 
         let http_task = http_task(
             stopping,
-            config.lane_http_request_channel_size,
+            config,
             http_requests,
             http_lane_endpoints,
             http_rx,
+            http_vote,
         );
 
         let ext_link_config = LinksTaskConfig {
@@ -751,7 +751,9 @@ fn remote_receiver(reader: ByteReader) -> RemoteReceiver {
 }
 
 const TASK_COORD_ERR: &str = "Stopping after communicating with the write task failed.";
-const STOP_VOTED: &str = "Stopping as read and write tasks have both voted to do so.";
+const STOP_VOTED: &str = "Stopping as read, HTTP and write tasks have all voted to do so.";
+const STOP_RESCINDED: &str = "Vote to stop rescinded.";
+const ATTEMPTING_RESCIND: &str = "Attempting to rescind stop vote.";
 
 /// Events that can occur within the read task.
 enum ReadTaskEvent {
@@ -875,12 +877,12 @@ async fn read_task(
             },
             ReadTaskEvent::Envelope(msg) => {
                 if voted {
-                    trace!("Attempting to rescind stop vote.");
+                    trace!(ATTEMPTING_RESCIND);
                     if stop_vote.rescind() == VoteResult::Unanimous {
                         info!(STOP_VOTED);
                         break;
                     } else {
-                        info!("Vote to stop rescinded.");
+                        info!(STOP_RESCINDED);
                         voted = false;
                     }
                 }
@@ -1796,10 +1798,13 @@ where
                     schedule_prune,
                 } => {
                     if voted {
+                        trace!(ATTEMPTING_RESCIND);
                         if stop_voter.rescind() == VoteResult::Unanimous {
                             info!(STOP_VOTED);
                             remote_reason = DisconnectionReason::AgentTimedOut;
                             break;
+                        } else {
+                            info!(STOP_RESCINDED);
                         }
                         streams.enable_timeout();
                         voted = false;
@@ -1824,10 +1829,13 @@ where
             },
             WriteTaskEvent::Event(response) => {
                 if response.is_lane() && voted {
+                    trace!(ATTEMPTING_RESCIND);
                     if stop_voter.rescind() == VoteResult::Unanimous {
                         info!(STOP_VOTED);
                         remote_reason = DisconnectionReason::AgentTimedOut;
                         break;
+                    } else {
+                        info!(STOP_RESCINDED);
                     }
                     streams.enable_timeout();
                     voted = false;
@@ -1981,12 +1989,19 @@ where
     }
 }
 
+enum HttpTaskEvent {
+    Registration(HttpLaneRuntimeSpec),
+    Request(HttpLaneRequest),
+    Timeout,
+}
+
 async fn http_task(
     mut stopping: trigger::Receiver,
-    request_channel_size: NonZeroUsize,
+    config: AgentRuntimeConfig,
     mut requests: mpsc::Receiver<HttpLaneRequest>,
     initial_endpoints: Vec<HttpLaneEndpoint>,
     mut registrations: mpsc::Receiver<HttpLaneRuntimeSpec>,
+    stop_voter: timeout_coord::Voter,
 ) {
     let mut endpoints: HashMap<_, _> = initial_endpoints
         .into_iter()
@@ -1998,33 +2013,49 @@ async fn http_task(
         )
         .collect();
 
+    let mut voted = false;
+
     loop {
         let event = tokio::select! {
             _ = &mut stopping => break,
             maybe_reg = registrations.recv() => {
                 if let Some(reg) = maybe_reg {
-                    Either::Left(reg)
+                    HttpTaskEvent::Registration(reg)
                 } else {
                     break;
                 }
             },
-            maybe_req = requests.recv() => {
-                if let Some(req) = maybe_req {
-                    Either::Right(req)
-                } else {
-                    break;
+            result = tokio::time::timeout(config.inactive_timeout, requests.recv()) => {
+                match result {
+                    Ok(Some(req)) => HttpTaskEvent::Request(req),
+                    Err(_) => HttpTaskEvent::Timeout,
+                    _ => break,
                 }
             }
         };
         match event {
-            Either::Left(HttpLaneRuntimeSpec { name, promise }) => {
-                let (tx, rx) = mpsc::channel(request_channel_size.get());
+            HttpTaskEvent::Registration(HttpLaneRuntimeSpec { name, promise }) => {
+                let (tx, rx) = mpsc::channel(config.lane_http_request_channel_size.get());
                 if promise.send(Ok(rx)).is_err() {
                     error!(name = %name, "Request for a new HTTP lane was dropped before it was completed.");
+                } else {
+                    endpoints.insert(name, tx);
                 }
-                endpoints.insert(name, tx);
             }
-            Either::Right(request) => {
+            HttpTaskEvent::Request(request) => {
+                if voted {
+                    trace!(ATTEMPTING_RESCIND);
+                    match stop_voter.rescind() {
+                        VoteResult::Unanimous => {
+                            info!(STOP_VOTED);
+                            break;
+                        }
+                        VoteResult::UnanimityPending => {
+                            info!(STOP_RESCINDED);
+                            voted = false;
+                        }
+                    }
+                }
                 if let Some((lane_name, tx)) = uri_params::extract_lane(&request.request.uri)
                     .and_then(|lane_name| {
                         endpoints
@@ -2041,6 +2072,19 @@ async fn http_task(
                     }
                 } else {
                     not_found(request);
+                }
+            }
+            HttpTaskEvent::Timeout => {
+                if !voted {
+                    info!(
+                        "No HTTP requests received within {:?}. Voting to stop.",
+                        config.inactive_timeout
+                    );
+                    if stop_voter.vote() == VoteResult::Unanimous {
+                        info!(STOP_VOTED);
+                        break;
+                    }
+                    voted = true;
                 }
             }
         }

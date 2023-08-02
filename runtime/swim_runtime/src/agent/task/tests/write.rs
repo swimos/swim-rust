@@ -199,7 +199,8 @@ impl FakeAgent {
 struct TestContext {
     stop_sender: trigger::Sender,
     messages_tx: mpsc::Sender<WriteTaskMessage>,
-    vote2: timeout_coord::Voter,
+    read_voter: timeout_coord::Voter,
+    http_voter: timeout_coord::Voter,
     vote_rx: timeout_coord::Receiver,
     instr_tx: Instructions,
     reporters: Option<ReportReaders>,
@@ -327,7 +328,7 @@ where
 
     let (endpoints_tx, endpoints_rx) = endpoints.into_iter().map(LaneEndpoint::split).unzip();
     let (instr_tx, instr_rx) = mpsc::unbounded_channel();
-    let (vote1, vote2, vote_rx) = timeout_coord::timeout_coordinator();
+    let (vote1, vote2, vote3, vote_rx) = timeout_coord::timeout_coordinator();
     let (messages_tx, messages_rx) = mpsc::channel(QUEUE_SIZE.get());
 
     let fake_agent = FakeAgent::new(endpoints_tx, fake_stores, stop_rx.clone(), instr_rx);
@@ -347,7 +348,8 @@ where
     let context = TestContext {
         stop_sender: stop_tx,
         messages_tx,
-        vote2,
+        read_voter: vote2,
+        http_voter: vote3,
         vote_rx,
         instr_tx: Instructions::new(instr_tx),
         reporters: reporting,
@@ -369,7 +371,8 @@ async fn clean_shutdown_no_remotes() {
         let TestContext {
             stop_sender,
             messages_tx: _messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx: _instr_tx,
             ..
@@ -443,7 +446,8 @@ async fn attach_remote_no_link() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx: _instr_tx,
             ..
@@ -463,7 +467,8 @@ async fn attach_and_link_remote() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx: _instr_tx,
             ..
@@ -485,7 +490,8 @@ async fn receive_value_message_when_linked_remote() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -510,7 +516,8 @@ async fn receive_supply_message_when_linked_remote() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -535,7 +542,8 @@ async fn receive_value_messages_when_linked_remote() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -562,7 +570,8 @@ async fn receive_supply_messages_when_linked_remote() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -589,7 +598,8 @@ async fn explicitly_unlink_remote() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx: _instr_tx,
             ..
@@ -616,7 +626,8 @@ async fn broadcast_value_message_when_linked_multiple_remotes() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -655,7 +666,8 @@ async fn broadcast_supply_message_when_linked_multiple_remotes() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -694,7 +706,8 @@ async fn value_synced_message_are_targetted() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -729,7 +742,8 @@ async fn supply_synced_message_are_targetted() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -764,7 +778,8 @@ async fn broadcast_map_message_when_linked_multiple_remotes() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -803,7 +818,8 @@ async fn receive_map_messages_when_linked() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -831,7 +847,8 @@ async fn map_synced_message_are_targetted() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -868,7 +885,8 @@ async fn write_task_stops_if_no_remotes() {
         let TestContext {
             stop_sender,
             messages_tx: _messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx: _instr_tx,
             ..
@@ -885,7 +903,8 @@ async fn write_task_votes_to_stop() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2,
+            read_voter,
+            http_voter,
             vote_rx,
             instr_tx: _instr_tx,
             ..
@@ -897,8 +916,9 @@ async fn write_task_votes_to_stop() {
         link_remote(RID1, VAL_LANE, &messages_tx).await;
 
         reader.expect_linked(VAL_LANE).await;
-        //Voting on behalf of the missing read task.
-        assert_eq!(vote2.vote(), VoteResult::UnanimityPending);
+        //Voting on behalf of the missing read and HTTP tasks.
+        assert_eq!(read_voter.vote(), VoteResult::UnanimityPending);
+        assert_eq!(http_voter.vote(), VoteResult::UnanimityPending);
         vote_rx.await;
         let after = Instant::now();
         let elapsed = after.duration_since(before);
@@ -917,7 +937,8 @@ async fn write_task_rescinds_vote_to_stop() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2,
+            read_voter,
+            http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -934,7 +955,9 @@ async fn write_task_rescinds_vote_to_stop() {
         instr_tx.value_event(VAL_LANE, 747);
         reader.expect_value_like_event(VAL_LANE, 747).await;
 
-        assert_eq!(vote2.vote(), VoteResult::UnanimityPending);
+        //Voting on behalf of the missing read and HTTP tasks.
+        assert_eq!(read_voter.vote(), VoteResult::UnanimityPending);
+        assert_eq!(http_voter.vote(), VoteResult::UnanimityPending);
 
         stop_sender.trigger();
         reader.expect_clean_shutdown(vec![VAL_LANE], None).await;
@@ -950,7 +973,8 @@ async fn backpressure_relief_on_value_lanes() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -997,7 +1021,8 @@ async fn backpressure_relief_on_map_lanes() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -1048,7 +1073,8 @@ async fn backpressure_relief_on_map_lanes_with_synced() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -1124,7 +1150,8 @@ async fn value_lane_events_persisted() {
             let TestContext {
                 stop_sender,
                 messages_tx,
-                vote2: _vote2,
+                read_voter: _read_voter,
+                http_voter: _http_voter,
                 vote_rx: _vote_rx,
                 instr_tx,
                 ..
@@ -1163,7 +1190,8 @@ async fn map_lane_events_persisted() {
             let TestContext {
                 stop_sender,
                 messages_tx,
-                vote2: _vote2,
+                read_voter: _read_voter,
+                http_voter: _http_voter,
                 vote_rx: _vote_rx,
                 instr_tx,
                 ..
@@ -1204,7 +1232,8 @@ async fn supply_uplink_does_not_drop_messages() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             ..
@@ -1234,7 +1263,8 @@ async fn count_links() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx: _instr_tx,
             reporters,
@@ -1338,7 +1368,8 @@ async fn count_events() {
         let TestContext {
             stop_sender,
             messages_tx,
-            vote2: _vote2,
+            read_voter: _read_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             instr_tx,
             reporters,
@@ -1415,7 +1446,8 @@ async fn value_store_events_persisted() {
             let TestContext {
                 stop_sender,
                 messages_tx: _messages_tx,
-                vote2: _vote2,
+                read_voter: _read_voter,
+                http_voter: _http_voter,
                 vote_rx: _vote_rx,
                 instr_tx,
                 ..
@@ -1453,7 +1485,8 @@ async fn map_store_events_persisted() {
             let TestContext {
                 stop_sender,
                 messages_tx: _messages_tx,
-                vote2: _vote2,
+                read_voter: _read_voter,
+                http_voter: _http_voter,
                 vote_rx: _vote_rx,
                 instr_tx,
                 ..

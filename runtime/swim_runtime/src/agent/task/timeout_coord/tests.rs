@@ -38,7 +38,7 @@ where
 #[tokio::test]
 async fn complete_immediately() {
     with_timeout(async {
-        let (tx1, tx2, rx) = super::timeout_coordinator();
+        let ([tx1, tx2], rx) = super::multi_party_coordinator::<2>();
         assert_eq!(tx1.vote(), VoteResult::UnanimityPending);
         assert_eq!(tx2.vote(), VoteResult::Unanimous);
 
@@ -49,7 +49,7 @@ async fn complete_immediately() {
 
 #[tokio::test]
 async fn complete_async() {
-    let (tx1, tx2, rx) = super::timeout_coordinator();
+    let ([tx1, tx2], rx) = super::multi_party_coordinator::<2>();
 
     let notify = Arc::new(Notify::new());
 
@@ -66,7 +66,7 @@ async fn complete_async() {
 
 #[tokio::test]
 async fn complete_async2() {
-    let (tx1, tx2, rx) = super::timeout_coordinator();
+    let ([tx1, tx2], rx) = super::multi_party_coordinator::<2>();
 
     let notify = Arc::new(Notify::new());
 
@@ -83,7 +83,7 @@ async fn complete_async2() {
 
 #[tokio::test]
 async fn complete_async_wait_between_votes() {
-    let (tx1, tx2, rx) = super::timeout_coordinator();
+    let ([tx1, tx2], rx) = super::multi_party_coordinator::<2>();
 
     let notify1 = Arc::new(Notify::new());
     let notify1_cpy = notify1.clone();
@@ -107,7 +107,7 @@ async fn complete_async_wait_between_votes() {
 
 #[tokio::test]
 async fn rescind_vote() {
-    let (tx1, tx2, rx) = super::timeout_coordinator();
+    let ([tx1, tx2], rx) = super::multi_party_coordinator::<2>();
 
     let notify1 = Arc::new(Notify::new());
     let notify1_cpy = notify1.clone();
@@ -134,7 +134,7 @@ async fn rescind_vote() {
 #[tokio::test]
 async fn cannot_rescind_after_unanimity() {
     with_timeout(async {
-        let (tx1, tx2, rx) = super::timeout_coordinator();
+        let ([tx1, tx2], rx) = super::multi_party_coordinator::<2>();
         assert_eq!(tx1.vote(), VoteResult::UnanimityPending);
         assert_eq!(tx2.vote(), VoteResult::Unanimous);
         assert_eq!(tx1.rescind(), VoteResult::Unanimous);
@@ -147,7 +147,7 @@ async fn cannot_rescind_after_unanimity() {
 #[tokio::test]
 async fn drop_causes_vote() {
     with_timeout(async {
-        let (tx1, tx2, rx) = super::timeout_coordinator();
+        let ([tx1, tx2], rx) = super::multi_party_coordinator::<2>();
         drop(tx1);
         assert_eq!(tx2.vote(), VoteResult::Unanimous);
 
@@ -159,7 +159,7 @@ async fn drop_causes_vote() {
 #[tokio::test]
 async fn dropping_both_is_unanimity() {
     with_timeout(async {
-        let (tx1, tx2, rx) = super::timeout_coordinator();
+        let ([tx1, tx2], rx) = super::multi_party_coordinator::<2>();
         drop(tx1);
         drop(tx2);
 

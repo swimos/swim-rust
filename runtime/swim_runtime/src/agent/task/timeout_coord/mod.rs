@@ -65,13 +65,13 @@ pub struct Receiver {
 assert_impl_all!(Receiver: Send, Sync);
 assert_not_impl_any!(Receiver: Clone);
 
-/// Allows the read and write parts of the agent runtime to vote on when the runtime should stop.
-/// The [`Receiver`] future will only complete when both [`Sender`]s have voted to stop. If
-/// only one sender has voted to stop, it may rescind its vote. Rescinding a vote will only be
-/// respected if unanimity was not reached.
-pub fn timeout_coordinator() -> (Voter, Voter, Receiver) {
-    let ([sender1, sender2], receiver) = multi_party_coordinator::<2>();
-    (sender1, sender2, receiver)
+/// Allows the read, http and write parts of the agent runtime to vote on when the runtime should stop.
+/// The [`Receiver`] future will only complete when all three [`Sender`]s have voted to stop. If
+/// only one or two senders have voted to stop, they may rescind their votes. Rescinding a vote will
+/// only be respected if unanimity was not reached.
+pub fn timeout_coordinator() -> (Voter, Voter, Voter, Receiver) {
+    let ([sender1, sender2, sender3], receiver) = multi_party_coordinator::<3>();
+    (sender1, sender2, sender3, receiver)
 }
 
 pub trait NumParties {
