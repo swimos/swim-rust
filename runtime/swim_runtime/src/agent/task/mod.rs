@@ -203,6 +203,15 @@ pub struct HttpLaneEndpoint {
     request_sender: mpsc::Sender<HttpLaneRequest>,
 }
 
+impl HttpLaneEndpoint {
+    fn new(name: Text, request_sender: mpsc::Sender<HttpLaneRequest>) -> Self {
+        HttpLaneEndpoint {
+            name,
+            request_sender,
+        }
+    }
+}
+
 impl<T> LaneEndpoint<T> {
     fn new(
         name: Text,
@@ -2056,13 +2065,12 @@ async fn http_task(
                         }
                     }
                 }
-                if let Some((lane_name, tx)) = uri_params::extract_lane(&request.request.uri)
-                    .and_then(|lane_name| {
-                        endpoints
-                            .get(lane_name.as_ref())
-                            .map(move |tx| (lane_name, tx))
-                    })
-                {
+                let extracted_name = uri_params::extract_lane(&request.request.uri);
+                if let Some((lane_name, tx)) = extracted_name.and_then(|lane_name| {
+                    endpoints
+                        .get(lane_name.as_ref())
+                        .map(move |tx| (lane_name, tx))
+                }) {
                     match tx.reserve().await {
                         Ok(res) => res.send(request),
                         err => {

@@ -101,6 +101,7 @@ impl Default for StoreConfig {
 
 pub type HttpLaneResponse = HttpResponse<Bytes>;
 
+#[derive(Debug)]
 pub struct HttpLaneRequest {
     pub request: HttpRequest<Bytes>,
     pub response_tx: oneshot::Sender<HttpLaneResponse>,

@@ -26,6 +26,9 @@ use nom::{
 };
 use percent_encoding::percent_decode_str;
 
+#[cfg(test)]
+mod tests;
+
 fn hex(input: &str) -> IResult<&str, char> {
     satisfy(|c| c.is_hex_digit())(input)
 }
@@ -58,7 +61,7 @@ fn params(input: &str) -> IResult<&str, Vec<(&str, &str)>> {
     separated_list0(char('&'), param)(input)
 }
 
-const LANE: &str = "name";
+const LANE: &str = "lane";
 
 pub fn extract_lane(uri: &Uri) -> Option<Cow<'_, str>> {
     uri.query().and_then(|query| match params(query).finish() {

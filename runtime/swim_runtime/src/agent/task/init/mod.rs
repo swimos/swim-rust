@@ -534,12 +534,12 @@ where
                 AgentRuntimeRequest::AddHttpLane(HttpLaneRuntimeSpec { name, promise }) => {
                     let (tx, rx) = mpsc::channel(http_channel_size.get());
                     if promise.send(Ok(rx)).is_err() {
-                        //TODO log error.
+                        error!(
+                            "Agent failed to receive HTTP lane registration for lane named '{}'.",
+                            name
+                        );
                     }
-                    http_lane_endpoints.push(HttpLaneEndpoint {
-                        name,
-                        request_sender: tx,
-                    });
+                    http_lane_endpoints.push(HttpLaneEndpoint::new(name, tx));
                 }
             },
         }

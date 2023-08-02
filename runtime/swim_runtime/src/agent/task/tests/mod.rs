@@ -63,6 +63,7 @@ use crate::agent::{
 use super::{LaneEndpoint, RwCoordinationMessage};
 
 mod coordination;
+mod http;
 mod read;
 mod write;
 
