@@ -28,7 +28,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::agent::{
     task::{
-        timeout_coord::{self, multi_party_coordinator, Voter},
+        timeout_coord::{self, multi_party_coordinator, VoteResult, Voter},
         HttpLaneEndpoint, HttpLaneRuntimeSpec,
     },
     AgentRuntimeConfig,
@@ -56,6 +56,7 @@ impl TestContext {
 }
 
 async fn run_test_case<F, Fut>(
+    config: AgentRuntimeConfig,
     initial_endpoints: Vec<HttpLaneEndpoint>,
     test_case: F,
 ) -> Fut::Output
@@ -64,9 +65,6 @@ where
     Fut: Future,
 {
     let (stopping_tx, stopping_rx) = trigger::trigger();
-    let config = AgentRuntimeConfig {
-        ..Default::default()
-    };
     let (requests_tx, requests_rx) = mpsc::channel(CHAN_SIZE.get());
     let (lanes_tx, lanes_rx) = mpsc::channel(CHAN_SIZE.get());
 
@@ -98,7 +96,7 @@ where
 
 #[tokio::test]
 async fn explicit_stop() {
-    run_test_case(vec![], |mut context| async move {
+    run_test_case(Default::default(), vec![], |mut context| async move {
         context.stop();
         context
     })
@@ -107,7 +105,7 @@ async fn explicit_stop() {
 
 #[tokio::test]
 async fn stop_on_requests_terminated() {
-    run_test_case(vec![], |context| async move {
+    run_test_case(Default::default(), vec![], |context| async move {
         let TestContext {
             stop,
             requests_tx,
@@ -144,7 +142,7 @@ fn make_request() -> (HttpLaneRequest, oneshot::Receiver<HttpResponse<Bytes>>) {
 
 #[tokio::test]
 async fn request_for_non_existent_lane() {
-    run_test_case(vec![], |mut context| async move {
+    run_test_case(Default::default(), vec![], |mut context| async move {
         let TestContext { requests_tx, .. } = &mut context;
         let (request, response_rx) = make_request();
         requests_tx.send(request).await.expect("Channel dropped.");
@@ -203,8 +201,48 @@ async fn request_for_preregistered_lane() {
     let (lane_tx, mut lane_rx) = mpsc::channel(CHAN_SIZE.get());
     let endpoint = HttpLaneEndpoint::new(Text::new("name"), lane_tx);
 
-    run_test_case(vec![endpoint], |mut context| async move {
-        let TestContext { requests_tx, .. } = &mut context;
+    run_test_case(
+        Default::default(),
+        vec![endpoint],
+        |mut context| async move {
+            let TestContext { requests_tx, .. } = &mut context;
+            let (request, response_rx) = make_request();
+            requests_tx.send(request).await.expect("Channel dropped.");
+            let request = lane_rx.recv().await.expect("Expected request.");
+            satisfy_request(request, URI1, PAYLOAD);
+
+            let response = response_rx.await.expect("Response not sent.");
+            check_response(response, response_body(PAYLOAD.as_bytes()));
+
+            context.stop();
+            context
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn request_for_new_lane() {
+    run_test_case(Default::default(), vec![], |mut context| async move {
+        let TestContext {
+            requests_tx,
+            lanes_tx,
+            ..
+        } = &mut context;
+
+        let (reg_tx, reg_rx) = oneshot::channel();
+        lanes_tx
+            .send(HttpLaneRuntimeSpec {
+                name: Text::new("name"),
+                promise: reg_tx,
+            })
+            .await
+            .expect("Channel dropped.");
+        let mut lane_rx = reg_rx
+            .await
+            .expect("Lane registration dropped.")
+            .expect("Lane registration failed.");
+
         let (request, response_rx) = make_request();
         requests_tx.send(request).await.expect("Channel dropped.");
         let request = lane_rx.recv().await.expect("Expected request.");
@@ -212,6 +250,55 @@ async fn request_for_preregistered_lane() {
 
         let response = response_rx.await.expect("Response not sent.");
         check_response(response, response_body(PAYLOAD.as_bytes()));
+
+        context.stop();
+        context
+    })
+    .await;
+}
+
+const TEST_INACTIVE_TIMEOUT: Duration = Duration::from_millis(100);
+
+#[tokio::test]
+async fn votes_to_stop() {
+    let config = AgentRuntimeConfig {
+        inactive_timeout: TEST_INACTIVE_TIMEOUT,
+        ..Default::default()
+    };
+    run_test_case(config, vec![], |context| async move {
+        let TestContext {
+            stop,
+            requests_tx,
+            lanes_tx,
+            voter,
+            vote_receiver,
+        } = context;
+
+        assert_eq!(voter.vote(), VoteResult::UnanimityPending);
+        vote_receiver.await;
+        (stop, requests_tx, lanes_tx, voter)
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn rescinds_stop_vote_on_request() {
+    let config = AgentRuntimeConfig {
+        inactive_timeout: TEST_INACTIVE_TIMEOUT,
+        ..Default::default()
+    };
+    run_test_case(config, vec![], |mut context| async move {
+        let TestContext {
+            requests_tx, voter, ..
+        } = &mut context;
+
+        tokio::time::sleep(2 * TEST_INACTIVE_TIMEOUT).await;
+
+        let (request, response_rx) = make_request();
+        requests_tx.send(request).await.expect("Channel dropped.");
+        let response = response_rx.await.expect("Response not sent.");
+        assert_eq!(response.status_code, StatusCode::NOT_FOUND);
+        assert_eq!(voter.vote(), VoteResult::UnanimityPending);
 
         context.stop();
         context
