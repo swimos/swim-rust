@@ -98,6 +98,7 @@ fn make_prune_config(
 const VAL_LANE: &str = "value_lane";
 const SUPPLY_LANE: &str = "supply_lane";
 const MAP_LANE: &str = "map_lane";
+const HTTP_LANE: &str = "http_lane";
 const VAL_STORE: &str = "value_store";
 const MAP_STORE: &str = "map_store";
 
