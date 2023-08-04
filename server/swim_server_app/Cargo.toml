@@ -32,7 +32,7 @@ url = { workspace = true }
 swim_persistence = { path = "../../runtime/swim_persistence" }
 parking_lot = { workspace = true }
 rocksdb = { workspace = true, optional = true }
-hyper = { workspace = true, features = ["full", "tcp", "http1", "backports"] }
+hyper = { workspace = true, features = ["server", "http1", "backports", "runtime"] }
 pin-project = { workspace = true }
 percent-encoding = { workspace = true }
 
@@ -41,3 +41,4 @@ swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"
 tokio = { workspace = true, features = ["rt", "macros", "test-util"]}
 swim_form = {path = "../../api/swim_form" }
 swim_messages = { path = "../../runtime/swim_messages" }
+hyper = { workspace = true, features = ["client"] }

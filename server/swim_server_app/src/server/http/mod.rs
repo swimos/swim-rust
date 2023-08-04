@@ -46,7 +46,6 @@ use swim_remote::{
     ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture, PROTOCOLS},
 };
 use swim_remote::{AgentResolutionError, FindNode, NoSuchAgent};
-use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{mpsc, oneshot},
@@ -384,9 +383,9 @@ where
 {
     type Response = Response<Body>;
 
-    type Error = HttpRequestError;
+    type Error = hyper::Error;
 
-    type Future = BoxFuture<'static, Result<Response<Body>, HttpRequestError>>;
+    type Future = BoxFuture<'static, Result<Response<Body>, hyper::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -410,7 +409,9 @@ where
                 perform_upgrade(request, *config, result, upgrade_fut, *scheme, *addr);
             async move { Ok(upgrade_result?) }.boxed()
         } else {
-            serve_request(request, *request_timeout, resolver.clone()).boxed()
+            serve_request(request, *request_timeout, resolver.clone())
+                .map(Ok)
+                .boxed()
         }
     }
 }
@@ -568,9 +569,10 @@ fn bad_request(msg: String) -> Response<Body> {
     response
 }
 
-fn error() -> Response<Body> {
+fn error(msg: &'static str) -> Response<Body> {
     let mut response = Response::default();
     *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+    *response.body_mut() = Bytes::from_static(msg.as_bytes()).into();
     response
 }
 
@@ -588,28 +590,25 @@ fn not_found(node: &str) -> Response<Body> {
     response
 }
 
-#[derive(Debug, Error)]
-pub enum HttpRequestError {
-    #[error("The server is stopping.")]
-    ServerStopping,
-    #[error("The agent failed to provide a response.")]
-    RequestDropped,
-    #[error("Processing the request failed.")]
-    Hyper(#[from] hyper::Error),
+fn unavailable() -> Response<Body> {
+    let mut response = Response::default();
+    *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
+    *response.body_mut() = Bytes::from_static(b"The server is stopping.").into();
+    response
 }
 
 async fn serve_request(
     request: Request<Body>,
     timeout: Duration,
     resolver: Resolver,
-) -> Result<Response<Body>, HttpRequestError> {
+) -> Response<Body> {
     let http_request = match HttpRequest::try_from(request) {
         Ok(req) => req,
-        Err(err) => return Ok(bad_request(err.to_string())),
+        Err(err) => return bad_request(err.to_string()),
     };
     let bytes_request = match http_request.try_transform(to_bytes).await {
         Ok(req) => req,
-        Err(err) => return Ok(bad_request(err.to_string())),
+        Err(err) => return bad_request(err.to_string()),
     };
 
     let (response_tx, response_rx) = oneshot::channel();
@@ -617,17 +616,17 @@ async fn serve_request(
     if let Err(err) = resolver.send(message).await {
         match err {
             AgentResolutionError::NotFound(NoSuchAgent { node, .. }) => {
-                return Ok(not_found(node.as_str()))
+                return not_found(node.as_str())
             }
-            AgentResolutionError::PlaneStopping => return Err(HttpRequestError::ServerStopping),
+            AgentResolutionError::PlaneStopping => return unavailable(),
         }
     }
     match tokio::time::timeout(timeout, response_rx).await {
-        Ok(Ok(response)) => Ok(match Response::try_from(response) {
+        Ok(Ok(response)) => match Response::try_from(response) {
             Ok(res) => res.map(|b| b.into()),
-            Err(_) => error(),
-        }),
-        Ok(Err(_)) => Err(HttpRequestError::RequestDropped),
-        Err(_) => Ok(req_timeout()),
+            Err(_) => error("Invalid response."),
+        },
+        Ok(Err(_)) => error("The agent failed to provide a response."),
+        Err(_) => req_timeout(),
     }
 }

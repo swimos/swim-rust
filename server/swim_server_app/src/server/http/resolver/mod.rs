@@ -62,7 +62,6 @@ impl Resolver {
             resolved,
             find,
         } = self;
-
         let node = Text::new(
             percent_encoding::percent_decode_str(request.request.uri.path())
                 .decode_utf8_lossy()

@@ -13,23 +13,34 @@
 // limitations under the License.
 
 use std::{
+    collections::HashMap,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     num::NonZeroUsize,
     pin::pin,
     time::Duration,
 };
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use futures::{
-    future::{join, join3},
-    stream::{BoxStream, FuturesUnordered},
+    future::{join, join3, Either},
+    stream::{BoxStream, FuturesUnordered, SelectAll},
     StreamExt,
 };
+use hyper::{
+    body::to_bytes, client::conn::http1, header::HeaderValue, Body, Request, Response, Uri,
+};
 use ratchet::{CloseReason, Message, NoExt, NoExtProvider, WebSocket, WebSocketConfig};
-use swim_api::net::Scheme;
+use swim_api::{
+    agent::{HttpLaneRequest, HttpLaneResponse},
+    net::Scheme,
+};
+use swim_model::{
+    http::{StatusCode, Version},
+    Text,
+};
 use swim_remote::{
     net::{Listener, ListenerResult},
-    FindNode,
+    AgentResolutionError, FindNode, NoSuchAgent, NodeConnectionRequest,
 };
 use swim_utilities::non_zero_usize;
 use tokio::{io::DuplexStream, sync::mpsc};
@@ -38,7 +49,7 @@ use tokio_stream::wrappers::ReceiverStream;
 const BUFFER_SIZE: usize = 4096;
 const MAX_ACTIVE: NonZeroUsize = non_zero_usize!(2);
 const REQ_TIMEOUT: Duration = Duration::from_secs(1);
-const FIND_CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(8);
+const CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(8);
 
 async fn client(tx: &mpsc::Sender<DuplexStream>, tag: &str) {
     let (client, server) = tokio::io::duplex(BUFFER_SIZE);
@@ -164,7 +175,7 @@ async fn handle_connection(mut websocket: WebSocket<DuplexStream, NoExt>) {
 #[tokio::test]
 async fn single_client() {
     let (tx, rx) = mpsc::channel(8);
-    let (find_tx, _find_rx) = mpsc::channel(FIND_CHANNEL_SIZE.get());
+    let (find_tx, _find_rx) = mpsc::channel(CHANNEL_SIZE.get());
     let server = run_server(rx, find_tx);
     let client = async move {
         client(&tx, "A").await;
@@ -177,7 +188,7 @@ async fn single_client() {
 #[tokio::test]
 async fn two_clients() {
     let (tx, rx) = mpsc::channel(8);
-    let (find_tx, _find_rx) = mpsc::channel(FIND_CHANNEL_SIZE.get());
+    let (find_tx, _find_rx) = mpsc::channel(CHANNEL_SIZE.get());
     let server = run_server(rx, find_tx);
     let clients = async move {
         join(client(&tx, "A"), client(&tx, "B")).await;
@@ -190,7 +201,7 @@ async fn two_clients() {
 #[tokio::test]
 async fn three_clients() {
     let (tx, rx) = mpsc::channel(8);
-    let (find_tx, _find_rx) = mpsc::channel(FIND_CHANNEL_SIZE.get());
+    let (find_tx, _find_rx) = mpsc::channel(CHANNEL_SIZE.get());
     let server = run_server(rx, find_tx);
     let clients = async move {
         join3(client(&tx, "A"), client(&tx, "B"), client(&tx, "C")).await;
@@ -203,7 +214,7 @@ async fn three_clients() {
 #[tokio::test]
 async fn many_clients() {
     let (tx, rx) = mpsc::channel(8);
-    let (find_tx, _find_rx) = mpsc::channel(FIND_CHANNEL_SIZE.get());
+    let (find_tx, _find_rx) = mpsc::channel(CHANNEL_SIZE.get());
     let server = run_server(rx, find_tx);
     let ids = ('A'..='Z').map(|c| c.to_string()).collect::<Vec<_>>();
     let clients = async move {
@@ -216,4 +227,173 @@ async fn many_clients() {
     };
 
     join(server, clients).await;
+}
+
+#[derive(Debug, Clone, Copy)]
+enum FindResponse {
+    Ok,
+    Drop,
+    NotFound,
+    Stopping,
+}
+
+fn wrap_req(drop_request: bool) -> impl Fn(HttpLaneRequest) -> (bool, HttpLaneRequest) {
+    move |req| (drop_request, req)
+}
+
+async fn fake_plane(responses: HashMap<Text, FindResponse>, mut find_rx: mpsc::Receiver<FindNode>) {
+    let mut receivers = SelectAll::new();
+    loop {
+        let request = tokio::select! {
+            maybe_request = receivers.next(), if !receivers.is_empty() => {
+                if let Some(req) = maybe_request {
+                    Either::Left(req)
+                } else {
+                    continue;
+                }
+            }
+            maybe_find = find_rx.recv() => {
+                if let Some(find) = maybe_find {
+                    Either::Right(find)
+                } else {
+                    break;
+                }
+            }
+        };
+        match request {
+            Either::Right(FindNode {
+                node,
+                lane,
+                request,
+                ..
+            }) => match request {
+                NodeConnectionRequest::Warp { .. } => panic!("Unexpected WARP resolution request."),
+                NodeConnectionRequest::Http { promise } => match responses.get(&node).copied() {
+                    Some(FindResponse::Ok) => {
+                        let (tx, rx) = mpsc::channel(CHANNEL_SIZE.get());
+                        promise.send(Ok(tx)).expect("Request dropped.");
+                        receivers.push(ReceiverStream::new(rx).map(wrap_req(false)));
+                    }
+                    Some(FindResponse::Drop) => {
+                        let (tx, rx) = mpsc::channel(CHANNEL_SIZE.get());
+                        promise.send(Ok(tx)).expect("Request dropped.");
+                        receivers.push(ReceiverStream::new(rx).map(wrap_req(true)));
+                    }
+                    Some(FindResponse::Stopping) => {
+                        promise
+                            .send(Err(AgentResolutionError::PlaneStopping))
+                            .expect("Request dropped.");
+                    }
+                    _ => {
+                        promise
+                            .send(Err(AgentResolutionError::NotFound(NoSuchAgent {
+                                node,
+                                lane,
+                            })))
+                            .expect("Request dropped.");
+                    }
+                },
+            },
+            Either::Left((drop_request, request)) => {
+                let HttpLaneRequest { response_tx, .. } = request;
+                if drop_request {
+                    drop(response_tx);
+                } else {
+                    let response = HttpLaneResponse {
+                        status_code: StatusCode::OK,
+                        version: Version::HTTP_1_1,
+                        headers: vec![],
+                        payload: Bytes::from("Response"),
+                    };
+                    response_tx.send(response).expect("Channel dropped.");
+                }
+            }
+        }
+    }
+}
+
+fn setup_responses() -> HashMap<Text, FindResponse> {
+    [
+        (Text::new("/node"), FindResponse::Ok),
+        (Text::new("/fail"), FindResponse::Drop),
+        (Text::new("/not_found"), FindResponse::NotFound),
+        (Text::new("/stopping"), FindResponse::Stopping),
+    ]
+    .into_iter()
+    .collect()
+}
+
+async fn http_client(tx: mpsc::Sender<DuplexStream>, node: &str, lane: &str) -> Response<Body> {
+    let (client, server) = tokio::io::duplex(BUFFER_SIZE);
+    tx.send(server).await.expect("Failed to open channel.");
+    let (mut sender, connection) = http1::handshake(client)
+        .await
+        .expect("HTTP handshake failed.");
+
+    let send = async move {
+        let mut request = Request::<Body>::default();
+        let uri =
+            Uri::try_from(format!("http://example:8080/{}?lane={}", node, lane)).expect("Bad URI.");
+        *request.method_mut() = hyper::Method::GET;
+        request.headers_mut().append(
+            hyper::header::HOST,
+            HeaderValue::from_str(uri.authority().unwrap().as_str()).unwrap(),
+        );
+        *request.uri_mut() = uri;
+        sender.send_request(request).await.expect("Sending")
+    };
+    let (conn_result, response) = join(connection, send).await;
+    assert!(conn_result.is_ok());
+    response
+}
+
+#[tokio::test]
+async fn good_http_request() {
+    let (tx, rx) = mpsc::channel(8);
+    let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
+    let server = run_server(rx, find_tx);
+    let responses = setup_responses();
+    let agent = fake_plane(responses, find_rx);
+    let client = http_client(tx, "node", "name");
+    let (_, mut response, _) = join3(server, client, agent).await;
+    assert_eq!(response.status(), hyper::StatusCode::OK);
+    let body = std::mem::take(response.body_mut());
+    let body_bytes = to_bytes(body).await.expect("Failed to read body.");
+    assert_eq!(body_bytes.as_ref(), b"Response");
+}
+
+#[tokio::test]
+async fn not_found_http_request() {
+    let (tx, rx) = mpsc::channel(8);
+    let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
+    let server = run_server(rx, find_tx);
+    let responses = setup_responses();
+    let agent = fake_plane(responses, find_rx);
+    let client = http_client(tx, "not_found", "name");
+    let (_, response, _) = join3(server, client, agent).await;
+    assert_eq!(response.status(), hyper::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn server_stopping_http_request() {
+    let (tx, rx) = mpsc::channel(8);
+    let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
+    let server = run_server(rx, find_tx);
+    let responses = setup_responses();
+    let agent = fake_plane(responses, find_rx);
+    let client = http_client(tx, "stopping", "name");
+    let (_, response, _) = join3(server, client, agent).await;
+    assert_eq!(response.status(), hyper::StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[tokio::test]
+async fn dropped_http_request() {
+    let (tx, rx) = mpsc::channel(8);
+    let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
+    let server = run_server(rx, find_tx);
+    let responses = setup_responses();
+    let agent = fake_plane(responses, find_rx);
+    let client = http_client(tx, "fail", "name");
+    let (_, response, _) = join3(server, client, agent).await;
+    assert_eq!(response.status(), hyper::StatusCode::INTERNAL_SERVER_ERROR);
 }
