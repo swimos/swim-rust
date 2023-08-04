@@ -23,7 +23,6 @@ use swim_model::Text;
 use swim_remote::{AgentResolutionError, FindNode, NodeConnectionRequest};
 use swim_utilities::trigger;
 use tokio::sync::{mpsc, oneshot};
-use uuid::Uuid;
 
 enum ResolverEntry {
     Pending(trigger::Receiver),
@@ -32,7 +31,6 @@ enum ResolverEntry {
 
 #[derive(Clone)]
 pub struct Resolver {
-    source: Uuid,
     resolved: Arc<RwLock<HashMap<Text, ResolverEntry>>>,
     find: mpsc::Sender<FindNode>,
 }
@@ -45,9 +43,8 @@ enum Action {
 }
 
 impl Resolver {
-    pub fn new(source: Uuid, find: mpsc::Sender<FindNode>) -> Self {
+    pub fn new(find: mpsc::Sender<FindNode>) -> Self {
         Resolver {
-            source,
             resolved: Default::default(),
             find,
         }
@@ -57,11 +54,7 @@ impl Resolver {
         &'a self,
         mut request: HttpLaneRequest,
     ) -> Result<(), AgentResolutionError> {
-        let Resolver {
-            source,
-            resolved,
-            find,
-        } = self;
+        let Resolver { resolved, find } = self;
         let node = Text::new(
             percent_encoding::percent_decode_str(request.request.uri.path())
                 .decode_utf8_lossy()
@@ -129,7 +122,6 @@ impl Resolver {
                     let (find_tx, find_rx) = oneshot::channel();
                     if find
                         .send(FindNode {
-                            source: *source,
                             node: Text::new(node.as_ref()),
                             lane: None,
                             request: NodeConnectionRequest::Http { promise: find_tx },

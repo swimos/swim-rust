@@ -549,25 +549,27 @@ where
                     }
                 }
                 ServerEvent::FailRoute(FindNode {
-                    source,
                     node,
                     lane,
                     request,
                 }) => {
+                    let source = if let NodeConnectionRequest::Warp { source, .. } = &request {
+                        Some(*source)
+                    } else {
+                        None
+                    };
                     if request.fail(AgentResolutionError::PlaneStopping).is_err() {
-                        debug!(remote_id = %source, node = %node, lane = ?lane, "Remote stopped with pending agent resolution.");
+                        debug!(remote_id = ?source, node = %node, lane = ?lane, "Remote stopped with pending agent resolution.");
                     }
                 }
                 ServerEvent::FindRoute(FindNode {
-                    source,
                     node,
                     lane,
                     request,
                 }) => {
-                    info!(source = %source, node = %node, "Attempting to connect an agent to a remote.");
                     let node_store_fut = plane_store.node_store(node.as_str());
                     let agent_tasks_ref = &agent_tasks;
-                    let result = agents.resolve_agent(node, move |name, route_task| {
+                    let result = agents.resolve_agent(node.clone(), move |name, route_task| {
                         let task = route_task.run_agent_with_store(node_store_fut);
                         agent_tasks_ref.push(attach_node(name, config.channel_coop_budget, task));
                     });
@@ -577,7 +579,8 @@ where
                             attachment_tx,
                             http_tx,
                         }) => match request {
-                            NodeConnectionRequest::Warp { promise } => {
+                            NodeConnectionRequest::Warp { promise, source } => {
+                                info!(source = %source, node = %node, "Attempting to connect an agent to a remote.");
                                 let connect_task = attach_agent(
                                         source,
                                         *id,
@@ -589,8 +592,9 @@ where
                                 connection_tasks.push(Either::Left(connect_task));
                             }
                             NodeConnectionRequest::Http { promise } => {
+                                info!(node = %node, "Attempting to route an HTTP request to an agent.");
                                 if promise.send(Ok(http_tx.clone())).is_err() {
-                                    debug!(source = %source, "A remote stopped while a HTTP request from it was pending.");
+                                    debug!("A remote stopped while a HTTP request from it was pending.");
                                 }
                             }
                         },
@@ -600,7 +604,7 @@ where
                                 node, ..
                             })) = request.fail(NoSuchAgent { node, lane }.into())
                             {
-                                debug!(source = %source, route = %node, "A remote stopped while a connection from it to an agent was pending.");
+                                debug!(route = %node, "A remote stopped while a connection from it to an agent was pending.");
                             }
                         }
                     }

@@ -50,7 +50,6 @@ use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{mpsc, oneshot},
 };
-use uuid::Uuid;
 
 use self::resolver::Resolver;
 
@@ -84,7 +83,7 @@ where
     Ext: ExtensionProvider + Send + Sync + 'static,
     Ext::Extension: Send + Unpin,
 {
-    let resolver = Resolver::new(Uuid::from_u128(0), find);
+    let resolver = Resolver::new(find);
     let state = StreamState::<L::AcceptStream, Sock, Ext, _, _>::new(
         listener.into_stream(),
         extension_provider,

@@ -217,7 +217,10 @@ where
         while let Some(FindNode {
             node,
             lane,
-            request: NodeConnectionRequest::Warp { promise: provider },
+            request:
+                NodeConnectionRequest::Warp {
+                    promise: provider, ..
+                },
             ..
         }) = find_rx.recv().await
         {
@@ -1030,7 +1033,10 @@ where
         while let Some(FindNode {
             node,
             lane,
-            request: NodeConnectionRequest::Warp { promise: provider },
+            request:
+                NodeConnectionRequest::Warp {
+                    promise: provider, ..
+                },
             ..
         }) = find_rx.recv().await
         {

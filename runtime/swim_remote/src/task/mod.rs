@@ -100,7 +100,6 @@ pub enum AttachClient {
 
 /// Message type sent by the socket management task to find an agent node.
 pub struct FindNode {
-    pub source: Uuid,
     pub node: Text,
     pub lane: Option<Text>,
     pub request: NodeConnectionRequest,
@@ -108,6 +107,7 @@ pub struct FindNode {
 
 pub enum NodeConnectionRequest {
     Warp {
+        source: Uuid,
         promise: oneshot::Sender<Result<(ByteWriter, ByteReader), AgentResolutionError>>,
     },
     Http {
@@ -118,7 +118,7 @@ pub enum NodeConnectionRequest {
 impl NodeConnectionRequest {
     pub fn fail(self, err: AgentResolutionError) -> Result<(), AgentResolutionError> {
         match self {
-            NodeConnectionRequest::Warp { promise } => match promise.send(Err(err)) {
+            NodeConnectionRequest::Warp { promise, .. } => match promise.send(Err(err)) {
                 Err(Err(e)) => Err(e),
                 _ => Ok(()),
             },
@@ -768,10 +768,12 @@ async fn connect_agent_route(
     debug!(node = %node, "Attempting to open route to agent.");
     let (tx, rx) = oneshot::channel();
     let find = FindNode {
-        source,
         node,
         lane: Some(lane),
-        request: NodeConnectionRequest::Warp { promise: tx },
+        request: NodeConnectionRequest::Warp {
+            source,
+            promise: tx,
+        },
     };
     find_tx.send(find).await.map_err(|_| ())?;
     match rx.await {
