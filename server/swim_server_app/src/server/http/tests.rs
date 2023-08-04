@@ -48,7 +48,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 const BUFFER_SIZE: usize = 4096;
 const MAX_ACTIVE: NonZeroUsize = non_zero_usize!(2);
-const REQ_TIMEOUT: Duration = Duration::from_secs(1);
+const REQ_TIMEOUT: Duration = Duration::from_millis(100);
 const CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(8);
 
 async fn client(tx: &mpsc::Sender<DuplexStream>, tag: &str) {
@@ -235,10 +235,18 @@ enum FindResponse {
     Drop,
     NotFound,
     Stopping,
+    Timeout,
 }
 
-fn wrap_req(drop_request: bool) -> impl Fn(HttpLaneRequest) -> (bool, HttpLaneRequest) {
-    move |req| (drop_request, req)
+#[derive(Clone, Copy)]
+enum Provision {
+    Immediate,
+    Drop,
+    Delay,
+}
+
+fn wrap_req(provision: Provision) -> impl Fn(HttpLaneRequest) -> (Provision, HttpLaneRequest) {
+    move |req| (provision, req)
 }
 
 async fn fake_plane(responses: HashMap<Text, FindResponse>, mut find_rx: mpsc::Receiver<FindNode>) {
@@ -272,17 +280,22 @@ async fn fake_plane(responses: HashMap<Text, FindResponse>, mut find_rx: mpsc::R
                     Some(FindResponse::Ok) => {
                         let (tx, rx) = mpsc::channel(CHANNEL_SIZE.get());
                         promise.send(Ok(tx)).expect("Request dropped.");
-                        receivers.push(ReceiverStream::new(rx).map(wrap_req(false)));
+                        receivers.push(ReceiverStream::new(rx).map(wrap_req(Provision::Immediate)));
                     }
                     Some(FindResponse::Drop) => {
                         let (tx, rx) = mpsc::channel(CHANNEL_SIZE.get());
                         promise.send(Ok(tx)).expect("Request dropped.");
-                        receivers.push(ReceiverStream::new(rx).map(wrap_req(true)));
+                        receivers.push(ReceiverStream::new(rx).map(wrap_req(Provision::Drop)));
                     }
                     Some(FindResponse::Stopping) => {
                         promise
                             .send(Err(AgentResolutionError::PlaneStopping))
                             .expect("Request dropped.");
+                    }
+                    Some(FindResponse::Timeout) => {
+                        let (tx, rx) = mpsc::channel(CHANNEL_SIZE.get());
+                        promise.send(Ok(tx)).expect("Request dropped.");
+                        receivers.push(ReceiverStream::new(rx).map(wrap_req(Provision::Delay)));
                     }
                     _ => {
                         promise
@@ -294,18 +307,31 @@ async fn fake_plane(responses: HashMap<Text, FindResponse>, mut find_rx: mpsc::R
                     }
                 },
             },
-            Either::Left((drop_request, request)) => {
+            Either::Left((provision, request)) => {
                 let HttpLaneRequest { response_tx, .. } = request;
-                if drop_request {
-                    drop(response_tx);
-                } else {
-                    let response = HttpLaneResponse {
-                        status_code: StatusCode::OK,
-                        version: Version::HTTP_1_1,
-                        headers: vec![],
-                        payload: Bytes::from("Response"),
-                    };
-                    response_tx.send(response).expect("Channel dropped.");
+                match provision {
+                    Provision::Immediate => {
+                        let response = HttpLaneResponse {
+                            status_code: StatusCode::OK,
+                            version: Version::HTTP_1_1,
+                            headers: vec![],
+                            payload: Bytes::from("Response"),
+                        };
+                        response_tx.send(response).expect("Channel dropped.");
+                    }
+                    Provision::Drop => {
+                        drop(response_tx);
+                    }
+                    Provision::Delay => {
+                        tokio::time::sleep(2 * REQ_TIMEOUT).await;
+                        let response = HttpLaneResponse {
+                            status_code: StatusCode::OK,
+                            version: Version::HTTP_1_1,
+                            headers: vec![],
+                            payload: Bytes::from("Response"),
+                        };
+                        let _ = response_tx.send(response);
+                    }
                 }
             }
         }
@@ -318,6 +344,7 @@ fn setup_responses() -> HashMap<Text, FindResponse> {
         (Text::new("/fail"), FindResponse::Drop),
         (Text::new("/not_found"), FindResponse::NotFound),
         (Text::new("/stopping"), FindResponse::Stopping),
+        (Text::new("/timeout"), FindResponse::Timeout),
     ]
     .into_iter()
     .collect()
@@ -396,4 +423,16 @@ async fn dropped_http_request() {
     let client = http_client(tx, "fail", "name");
     let (_, response, _) = join3(server, client, agent).await;
     assert_eq!(response.status(), hyper::StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn http_request_timeout() {
+    let (tx, rx) = mpsc::channel(8);
+    let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
+    let server = run_server(rx, find_tx);
+    let responses = setup_responses();
+    let agent = fake_plane(responses, find_rx);
+    let client = http_client(tx, "timeout", "name");
+    let (_, response, _) = join3(server, client, agent).await;
+    assert_eq!(response.status(), hyper::StatusCode::REQUEST_TIMEOUT);
 }
