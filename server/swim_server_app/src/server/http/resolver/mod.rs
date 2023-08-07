@@ -14,25 +14,63 @@
 
 use std::{
     collections::{hash_map::Entry, HashMap},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
 };
 
 use parking_lot::RwLock;
 use swim_api::agent::HttpLaneRequest;
 use swim_model::Text;
 use swim_remote::{AgentResolutionError, FindNode, NodeConnectionRequest};
-use swim_utilities::trigger;
-use tokio::sync::{mpsc, oneshot};
+use swim_utilities::{time::AtomicInstant, trigger};
+use tokio::{
+    sync::{mpsc, oneshot},
+    time::Instant,
+};
 
+#[derive(Debug)]
 enum ResolverEntry {
     Pending(trigger::Receiver),
-    Channel(mpsc::Sender<HttpLaneRequest>),
+    Channel {
+        sender: mpsc::Sender<HttpLaneRequest>,
+        last_used: AtomicInstant,
+    },
 }
 
-#[derive(Clone)]
+impl ResolverEntry {
+    pub fn into_last_used(self) -> Option<std::time::Instant> {
+        match self {
+            ResolverEntry::Pending(_) => None,
+            ResolverEntry::Channel { last_used, .. } => Some(last_used.into_inner()),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Inner {
+    resolved_map: HashMap<Text, ResolverEntry>,
+    oldest: AtomicInstant,
+    oldest_defined: AtomicBool,
+}
+
+impl Default for Inner {
+    fn default() -> Self {
+        Self {
+            resolved_map: Default::default(),
+            oldest: AtomicInstant::new(std::time::Instant::now()),
+            oldest_defined: AtomicBool::new(false),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Resolver {
-    resolved: Arc<RwLock<HashMap<Text, ResolverEntry>>>,
+    resolved: Arc<RwLock<Inner>>,
     find: mpsc::Sender<FindNode>,
+    inactive_timeout: Duration,
 }
 
 enum Action {
@@ -43,10 +81,65 @@ enum Action {
 }
 
 impl Resolver {
-    pub fn new(find: mpsc::Sender<FindNode>) -> Self {
+    pub fn new(find: mpsc::Sender<FindNode>, inactive_timeout: Duration) -> Self {
         Resolver {
             resolved: Default::default(),
             find,
+            inactive_timeout,
+        }
+    }
+
+    pub fn check_access_times(&self) -> Option<std::time::Instant> {
+        let Resolver {
+            resolved,
+            inactive_timeout,
+            ..
+        } = self;
+        let guard = resolved.read();
+        let now = Instant::now().into_std();
+        if !guard.resolved_map.is_empty() {
+            let Inner {
+                oldest,
+                oldest_defined,
+                ..
+            } = &*guard;
+            if !oldest_defined.load(Ordering::Relaxed)
+                || now - oldest.load(Ordering::Relaxed) > *inactive_timeout
+            {
+                let mut guard = resolved.write();
+                let Inner {
+                    resolved_map,
+                    oldest,
+                    oldest_defined,
+                } = &mut *guard;
+                let mut new_oldest = None;
+                resolved_map.retain(|_, v| match v {
+                    ResolverEntry::Channel { last_used, .. } => {
+                        let t = last_used.load(Ordering::Relaxed);
+                        let keep = now - last_used.load(Ordering::Relaxed) < *inactive_timeout;
+                        if keep {
+                            if let Some(prev) = new_oldest {
+                                new_oldest = Some(t.min(prev));
+                            } else {
+                                new_oldest = Some(t);
+                            }
+                        }
+                        keep
+                    }
+                    _ => true,
+                });
+                if let Some(t) = new_oldest {
+                    oldest.store(t, Ordering::Relaxed);
+                    oldest_defined.store(true, Ordering::Relaxed);
+                } else {
+                    oldest_defined.store(false, Ordering::Relaxed);
+                }
+                new_oldest
+            } else {
+                Some(oldest.load(Ordering::Relaxed))
+            }
+        } else {
+            None
         }
     }
 
@@ -54,7 +147,7 @@ impl Resolver {
         &'a self,
         mut request: HttpLaneRequest,
     ) -> Result<(), AgentResolutionError> {
-        let Resolver { resolved, find } = self;
+        let Resolver { resolved, find, .. } = self;
         let node = Text::new(
             percent_encoding::percent_decode_str(request.request.uri.path())
                 .decode_utf8_lossy()
@@ -62,21 +155,27 @@ impl Resolver {
         );
         let mut action = Action::Lookup;
 
-        loop {
+        let result = loop {
             match action {
                 Action::Lookup => {
-                    action = match resolved.read().get(&node) {
-                        Some(ResolverEntry::Channel(tx)) => match tx.try_send(request) {
-                            Ok(_) => break Ok(()),
-                            Err(mpsc::error::TrySendError::Closed(req)) => {
-                                request = req;
-                                Action::Resolve
+                    action = match resolved.read().resolved_map.get(&node) {
+                        Some(ResolverEntry::Channel { sender, last_used }) => {
+                            match sender.try_send(request) {
+                                Ok(_) => {
+                                    last_used.store(Instant::now().into_std(), Ordering::Relaxed);
+                                    break Ok(());
+                                }
+                                Err(mpsc::error::TrySendError::Closed(req)) => {
+                                    request = req;
+                                    Action::Resolve
+                                }
+                                Err(mpsc::error::TrySendError::Full(req)) => {
+                                    last_used.store(Instant::now().into_std(), Ordering::Relaxed);
+                                    request = req;
+                                    Action::Send(sender.clone())
+                                }
                             }
-                            Err(mpsc::error::TrySendError::Full(req)) => {
-                                request = req;
-                                Action::Send(tx.clone())
-                            }
-                        },
+                        }
                         Some(ResolverEntry::Pending(rx)) => Action::Wait(rx.clone()),
                         None => Action::Resolve,
                     };
@@ -93,30 +192,59 @@ impl Resolver {
                     }
                 },
                 Action::Resolve => {
-                    let wait_tx = match resolved.write().entry(node.clone()) {
-                        Entry::Occupied(entry) => {
-                            match entry.get() {
-                                ResolverEntry::Pending(rx) => {
-                                    action = Action::Wait(rx.clone());
+                    let wait_tx = {
+                        let mut guard = resolved.write();
+                        let Inner {
+                            resolved_map,
+                            oldest,
+                            oldest_defined,
+                        } = &mut *guard;
+                        match resolved_map.entry(node.clone()) {
+                            Entry::Occupied(mut entry) => {
+                                match entry.get_mut() {
+                                    ResolverEntry::Pending(rx) => {
+                                        action = Action::Wait(rx.clone());
+                                    }
+                                    ResolverEntry::Channel { sender, last_used } => {
+                                        match sender.try_send(request) {
+                                            Ok(_) => {
+                                                last_used.store(
+                                                    Instant::now().into_std(),
+                                                    Ordering::Relaxed,
+                                                );
+                                                break Ok(());
+                                            }
+                                            Err(mpsc::error::TrySendError::Closed(req)) => {
+                                                request = req;
+                                                if let Some(last_used) =
+                                                    entry.remove().into_last_used()
+                                                {
+                                                    if *oldest_defined.get_mut()
+                                                        && oldest.get() == last_used
+                                                    {
+                                                        *oldest_defined.get_mut() = false;
+                                                    }
+                                                }
+                                                action = Action::Resolve;
+                                            }
+                                            Err(mpsc::error::TrySendError::Full(req)) => {
+                                                last_used.store(
+                                                    Instant::now().into_std(),
+                                                    Ordering::Relaxed,
+                                                );
+                                                request = req;
+                                                action = Action::Send(sender.clone());
+                                            }
+                                        }
+                                    }
                                 }
-                                ResolverEntry::Channel(tx) => match tx.try_send(request) {
-                                    Ok(_) => break Ok(()),
-                                    Err(mpsc::error::TrySendError::Closed(req)) => {
-                                        request = req;
-                                        action = Action::Resolve;
-                                    }
-                                    Err(mpsc::error::TrySendError::Full(req)) => {
-                                        request = req;
-                                        action = Action::Send(tx.clone());
-                                    }
-                                },
+                                continue;
                             }
-                            continue;
-                        }
-                        Entry::Vacant(entry) => {
-                            let (wait_tx, wait_rx) = trigger::trigger();
-                            entry.insert(ResolverEntry::Pending(wait_rx));
-                            wait_tx
+                            Entry::Vacant(entry) => {
+                                let (wait_tx, wait_rx) = trigger::trigger();
+                                entry.insert(ResolverEntry::Pending(wait_rx));
+                                wait_tx
+                            }
                         }
                     };
                     let (find_tx, find_rx) = oneshot::channel();
@@ -129,20 +257,35 @@ impl Resolver {
                         .await
                         .is_err()
                     {
-                        return Err(AgentResolutionError::PlaneStopping);
+                        break Err(AgentResolutionError::PlaneStopping);
                     }
                     let sender = if let Ok(result) = find_rx.await {
                         result?
                     } else {
-                        return Err(AgentResolutionError::PlaneStopping);
+                        break Err(AgentResolutionError::PlaneStopping);
                     };
                     match sender.send(request).await {
                         Ok(_) => {
-                            resolved
-                                .write()
-                                .insert(Text::new(node.as_ref()), ResolverEntry::Channel(sender));
+                            let mut guard = resolved.write();
+                            let Inner {
+                                resolved_map,
+                                oldest,
+                                oldest_defined,
+                            } = &mut *guard;
+                            let now = Instant::now().into_std();
+                            if resolved_map.is_empty() {
+                                *oldest_defined.get_mut() = true;
+                                oldest.set(now);
+                            }
+                            resolved_map.insert(
+                                Text::new(node.as_ref()),
+                                ResolverEntry::Channel {
+                                    sender,
+                                    last_used: AtomicInstant::new(now),
+                                },
+                            );
                             wait_tx.trigger();
-                            return Ok(());
+                            break Ok(());
                         }
                         Err(mpsc::error::SendError(req)) => {
                             request = req;
@@ -151,6 +294,7 @@ impl Resolver {
                     }
                 }
             }
-        }
+        };
+        result
     }
 }

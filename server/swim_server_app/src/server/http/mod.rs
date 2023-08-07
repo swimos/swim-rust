@@ -15,11 +15,10 @@
 use std::{
     marker::PhantomData,
     net::SocketAddr,
-    num::NonZeroUsize,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use bytes::{Bytes, BytesMut};
@@ -49,7 +48,10 @@ use swim_remote::{AgentResolutionError, FindNode, NoSuchAgent};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{mpsc, oneshot},
+    time::{sleep, Sleep},
 };
+
+use crate::config::HttpConfig;
 
 use self::resolver::Resolver;
 
@@ -66,16 +68,12 @@ pub type ListenResult<Ext, Sock> = Result<WsWithAddr<Ext, Sock>, ListenerError>;
 /// # Arguments
 /// * `listener` - Listener providing a stream of incoming connections.
 /// * `extension_provider` - Web socket extension provider.
-/// * `config` - Web socket configuration parameters.
-/// * `max_negotiations` - Maximum number of concurrent websocket handshakes. If this many are
-/// pending, no more connections will be accepted from the listener until a space becomes free.
+/// * `config` - HTTP server configuration parameters.
 pub fn hyper_http_server<Sock, L, Ext>(
     listener: L,
     find: mpsc::Sender<FindNode>,
     extension_provider: Ext,
-    config: Option<WebSocketConfig>,
-    max_negotiations: NonZeroUsize,
-    request_timeout: Duration,
+    config: HttpConfig,
 ) -> impl Stream<Item = ListenResult<Ext::Extension, Sock>> + Send
 where
     Sock: Unpin + Send + Sync + AsyncRead + AsyncWrite + 'static,
@@ -83,14 +81,12 @@ where
     Ext: ExtensionProvider + Send + Sync + 'static,
     Ext::Extension: Send + Unpin,
 {
-    let resolver = Resolver::new(find);
+    let resolver = Resolver::new(find, config.resolver_timeout);
     let state = StreamState::<L::AcceptStream, Sock, Ext, _, _>::new(
         listener.into_stream(),
         extension_provider,
         resolver,
         config,
-        max_negotiations,
-        request_timeout,
         |sock, mut svc| async move {
             let result = http1::Builder::new()
                 .serve_connection(sock, &mut svc)
@@ -153,6 +149,8 @@ where
     upgrader: Upgrader<Ext>,
     connect_fn: FC,
     max_pending: usize,
+    timeout: Pin<Box<Sleep>>,
+    timeout_enabled: bool,
 }
 
 impl<L, Sock, Ext, Con, FC> StreamState<L, Sock, Ext, Con, FC>
@@ -166,18 +164,23 @@ where
         listener_stream: L,
         extension_provider: Ext,
         resolver: resolver::Resolver,
-        config: Option<WebSocketConfig>,
-        max_negotiations: NonZeroUsize,
-        request_timeout: Duration,
+        config: HttpConfig,
         connect_fn: FC,
     ) -> Self {
         let connection_tasks = FuturesUnordered::new();
         StreamState {
             listener_stream,
             connection_tasks,
-            upgrader: Upgrader::new(extension_provider, resolver, config, request_timeout),
+            upgrader: Upgrader::new(
+                extension_provider,
+                resolver,
+                config.websockets,
+                config.http_request_timeout,
+            ),
             connect_fn,
-            max_pending: max_negotiations.get(),
+            max_pending: config.max_http_requests.get(),
+            timeout: Box::pin(sleep(config.resolver_timeout)),
+            timeout_enabled: false,
         }
     }
 }
@@ -186,6 +189,7 @@ enum Event<Sock, Ext> {
     TaskComplete(TaskResult<Ext, Sock>),
     Incoming(Sock, Scheme, SocketAddr),
     IncomingFailed(ListenerError),
+    Timeout,
     Continue,
     Stop,
 }
@@ -206,11 +210,14 @@ where
             upgrader,
             connect_fn,
             max_pending,
+            timeout,
+            timeout_enabled,
         } = self;
         loop {
             let event = if connection_tasks.len() < *max_pending {
                 tokio::select! {
                     biased;
+                    _ = &mut*timeout, if *timeout_enabled => Event::Timeout,
                     maybe_event = connection_tasks.next(), if !connection_tasks.is_empty() => {
                         if let Some(ev) = maybe_event {
                             Event::TaskComplete(ev)
@@ -233,10 +240,16 @@ where
                     }
                 }
             } else {
-                if let Some(ev) = connection_tasks.next().await {
-                    Event::TaskComplete(ev)
-                } else {
-                    Event::Continue
+                tokio::select! {
+                    biased;
+                    _ = &mut*timeout, if *timeout_enabled => Event::Timeout,
+                    some_ev = connection_tasks.next() => {
+                        if let Some(ev) = some_ev {
+                            Event::TaskComplete(ev)
+                        } else {
+                            Event::Continue
+                        }
+                    }
                 }
             };
             match event {
@@ -246,7 +259,15 @@ where
                 Event::TaskComplete(TaskResult::ConnectionComplete(Ok(Some(fut)))) => {
                     connection_tasks.push(TaskFuture::Upgrade(fut));
                 }
-                Event::TaskComplete(TaskResult::ConnectionComplete(Ok(_))) => continue,
+                Event::TaskComplete(TaskResult::ConnectionComplete(Ok(_))) => {
+                    if !*timeout_enabled {
+                        if let Some(t) = upgrader.resolver_cleanup() {
+                            *timeout_enabled = true;
+                            timeout.as_mut().reset(tokio::time::Instant::from_std(t));
+                        }
+                    }
+                    continue;
+                }
                 Event::TaskComplete(TaskResult::UpgradeComplete(Ok((ws, scheme, addr)))) => {
                     break Some(Ok((ws, scheme, addr)));
                 }
@@ -261,6 +282,14 @@ where
                 Event::IncomingFailed(err) => break Some(Err(err)),
                 Event::Continue => continue,
                 Event::Stop => break None,
+                Event::Timeout => {
+                    if let Some(t) = upgrader.resolver_cleanup() {
+                        *timeout_enabled = true;
+                        timeout.as_mut().reset(tokio::time::Instant::from_std(t));
+                    } else {
+                        *timeout_enabled = false;
+                    }
+                }
             }
         }
     }
@@ -268,7 +297,7 @@ where
 
 fn perform_upgrade<Ext, Sock, Err>(
     request: Request<Body>,
-    config: Option<WebSocketConfig>,
+    config: WebSocketConfig,
     result: Result<Negotiated<'_, Ext>, UpgradeError<Err>>,
     target: &mut Option<UpgradeFutureWithSock<Ext, Sock>>,
     scheme: Scheme,
@@ -281,8 +310,12 @@ where
 {
     match result {
         Ok(negotiated) => {
-            let (response, upgrade_fut) =
-                swim_http::upgrade(request, negotiated, config, ReclaimSock::<Sock>::default());
+            let (response, upgrade_fut) = swim_http::upgrade(
+                request,
+                negotiated,
+                Some(config),
+                ReclaimSock::<Sock>::default(),
+            );
             *target = Some(UpgradeFutureWithSock::new(upgrade_fut, scheme, addr));
             Ok(response)
         }
@@ -293,7 +326,7 @@ where
 struct Upgrader<Ext: ExtensionProvider> {
     extension_provider: Arc<Ext>,
     resolver: resolver::Resolver,
-    config: Option<WebSocketConfig>,
+    config: WebSocketConfig,
     request_timeout: Duration,
 }
 
@@ -304,7 +337,7 @@ where
     fn new(
         extension_provider: Ext,
         resolver: resolver::Resolver,
-        config: Option<WebSocketConfig>,
+        config: WebSocketConfig,
         request_timeout: Duration,
     ) -> Self {
         Upgrader {
@@ -313,6 +346,10 @@ where
             config,
             request_timeout,
         }
+    }
+
+    fn resolver_cleanup(&self) -> Option<Instant> {
+        self.resolver.check_access_times()
     }
 
     fn make_service<Sock>(&self, scheme: Scheme, addr: SocketAddr) -> UpgradeService<Ext, Sock>
@@ -340,7 +377,7 @@ struct UpgradeService<Ext: ExtensionProvider, Sock> {
     extension_provider: Arc<Ext>,
     resolver: resolver::Resolver,
     upgrade_fut: Option<UpgradeFutureWithSock<Ext::Extension, Sock>>,
-    config: Option<WebSocketConfig>,
+    config: WebSocketConfig,
     scheme: Scheme,
     addr: SocketAddr,
     request_timeout: Duration,
@@ -353,7 +390,7 @@ where
     fn new(
         extension_provider: Arc<Ext>,
         resolver: resolver::Resolver,
-        config: Option<WebSocketConfig>,
+        config: WebSocketConfig,
         scheme: Scheme,
         addr: SocketAddr,
         request_timeout: Duration,
@@ -478,27 +515,16 @@ where
 /// Implementation of [`WebsocketServer`] and [`WebsocketClient`] that uses [`hyper`] to upgrade
 /// HTTP connections to [`ratchet`] web-socket connections.
 pub struct HyperWebsockets {
-    config: WebSocketConfig,
-    max_negotiations: NonZeroUsize,
-    request_timeout: Duration,
+    config: HttpConfig,
 }
 
 impl HyperWebsockets {
     /// #Arguments
     ///
-    /// * `config` - Ratchet websocket configuration.
-    /// * `max_negotiations` - The maximum number of concurrent connections that the server
+    /// * `config` - HTTP server configuration.
     /// will handle concurrently.
-    pub fn new(
-        config: WebSocketConfig,
-        max_negotiations: NonZeroUsize,
-        request_timeout: Duration,
-    ) -> Self {
-        HyperWebsockets {
-            config,
-            max_negotiations,
-            request_timeout,
-        }
+    pub fn new(config: HttpConfig) -> Self {
+        HyperWebsockets { config }
     }
 }
 
@@ -518,21 +544,10 @@ impl WebsocketServer for HyperWebsockets {
         Provider: ExtensionProvider + Send + Sync + Unpin + 'static,
         Provider::Extension: Send + Sync + Unpin + 'static,
     {
-        let HyperWebsockets {
-            config,
-            max_negotiations,
-            request_timeout,
-        } = self;
-        hyper_http_server(
-            listener,
-            find,
-            provider,
-            Some(*config),
-            *max_negotiations,
-            *request_timeout,
-        )
-        .map(|r| r.map(|(ws, _, addr)| (ws, addr)))
-        .boxed()
+        let HyperWebsockets { config } = self;
+        hyper_http_server(listener, find, provider, *config)
+            .map(|r| r.map(|(ws, _, addr)| (ws, addr)))
+            .boxed()
     }
 }
 
@@ -553,9 +568,10 @@ impl WebsocketClient for HyperWebsockets {
         let config = *config;
         Box::pin(async move {
             let subprotocols = ProtocolRegistry::new(PROTOCOLS.iter().copied())?;
-            let socket = ratchet::subscribe_with(config, socket, addr, provider, subprotocols)
-                .await?
-                .into_websocket();
+            let socket =
+                ratchet::subscribe_with(config.websockets, socket, addr, provider, subprotocols)
+                    .await?
+                    .into_websocket();
             Ok(socket)
         })
     }

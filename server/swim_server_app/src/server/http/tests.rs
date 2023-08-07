@@ -46,6 +46,8 @@ use swim_utilities::non_zero_usize;
 use tokio::{io::DuplexStream, sync::mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 
+use crate::config::HttpConfig;
+
 const BUFFER_SIZE: usize = 4096;
 const MAX_ACTIVE: NonZeroUsize = non_zero_usize!(2);
 const REQ_TIMEOUT: Duration = Duration::from_millis(100);
@@ -122,13 +124,17 @@ impl Listener<DuplexStream> for TestListener {
 async fn run_server(rx: mpsc::Receiver<DuplexStream>, find_tx: mpsc::Sender<FindNode>) {
     let listener = TestListener { rx };
 
+    let config = HttpConfig {
+        max_http_requests: MAX_ACTIVE,
+        http_request_timeout: REQ_TIMEOUT,
+        ..Default::default()
+    };
+
     let mut stream = pin!(super::hyper_http_server(
         listener,
         find_tx,
         NoExtProvider,
-        None,
-        MAX_ACTIVE,
-        REQ_TIMEOUT,
+        config,
     ));
 
     let handles = FuturesUnordered::new();
