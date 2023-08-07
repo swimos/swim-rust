@@ -40,8 +40,8 @@ use swim_remote::{
     RemoteTask,
 };
 use swim_runtime::agent::{
-    AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteTask, CombinedAgentConfig,
-    DisconnectionReason, LinkRequest,
+    AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteChannels, AgentRouteTask,
+    CombinedAgentConfig, DisconnectionReason, LinkRequest,
 };
 use swim_runtime::downlink::Io;
 use swim_utilities::routing::route_uri::RouteUri;
@@ -914,9 +914,7 @@ impl Agents {
                             route: route_uri,
                             route_params,
                         },
-                        attachment_rx,
-                        http_rx,
-                        open_link_tx.clone(),
+                        AgentRouteChannels::new(attachment_rx, http_rx, open_link_tx.clone()),
                         agent_stop_rx.clone(),
                         *config,
                         node_reporting,

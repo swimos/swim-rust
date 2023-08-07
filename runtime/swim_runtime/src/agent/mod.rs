@@ -532,6 +532,31 @@ pub struct CombinedAgentConfig {
     pub agent_config: AgentConfig,
     pub runtime_config: AgentRuntimeConfig,
 }
+
+pub struct AgentRouteChannels {
+    attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+    http_rx: mpsc::Receiver<HttpLaneRequest>,
+    link_tx: mpsc::Sender<LinkRequest>,
+}
+
+impl AgentRouteChannels {
+    /// #Arguments
+    /// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
+    /// * `http_rx` - Channel for routing HTTP requests to the agent.
+    /// * `link_tx` - Channel to request external links from the runtime.
+    pub fn new(
+        attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+        http_rx: mpsc::Receiver<HttpLaneRequest>,
+        link_tx: mpsc::Sender<LinkRequest>,
+    ) -> Self {
+        AgentRouteChannels {
+            attachment_rx,
+            http_rx,
+            link_tx,
+        }
+    }
+}
+
 pub struct AgentRouteTask<'a, A> {
     agent: &'a A,
     identity: Uuid,
@@ -552,17 +577,14 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
     /// #Arguments
     /// * `agent` - The agent instance.
     /// * `identity` - Routing identify of the agent instance.
-    /// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
-    /// * `link_tx` - Channel to request external links from the runtime.
+    /// * `channels` - Channels over which the runtime communicates with the agent.
     /// * `stopping` - Instructs the agent task to stop.
     /// * `config` - Configuration parameters for the user agent task and agent runtime.
     /// * `reporting` - Uplink metrics reporters.
     pub fn new(
         agent: &'a A,
         identity: AgentRoute,
-        attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        http_rx: mpsc::Receiver<HttpLaneRequest>,
-        link_tx: mpsc::Sender<LinkRequest>,
+        channels: AgentRouteChannels,
         stopping: trigger::Receiver,
         config: CombinedAgentConfig,
         reporting: Option<NodeReporting>,
@@ -572,9 +594,9 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             identity: identity.identity,
             route: identity.route,
             route_params: identity.route_params,
-            attachment_rx,
-            http_rx,
-            link_tx,
+            attachment_rx: channels.attachment_rx,
+            http_rx: channels.http_rx,
+            link_tx: channels.link_tx,
             stopping,
             agent_config: config.agent_config,
             runtime_config: config.runtime_config,

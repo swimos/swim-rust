@@ -46,8 +46,8 @@ use crate::agent::{
     task::{
         fake_store::FakeStore,
         init::tests::{INIT_STOPPED, NO_LANE, NO_RESPONSE, NO_STORE, TRANSIENT},
-        AgentRuntimeRequest, InitialEndpoints, LaneEndpoint, LaneRuntimeSpec, StoreEndpoint,
-        StoreRuntimeSpec,
+        AgentRuntimeRequest, Endpoints, InitialEndpoints, LaneEndpoint, LaneRuntimeSpec,
+        StoreEndpoint, StoreRuntimeSpec,
     },
     AgentExecError, Io, LinkRequest,
 };
@@ -176,7 +176,10 @@ async fn init_single_value_lane_from_store() {
     let initial = initial_result.expect("No lanes were registered.");
 
     let InitialEndpoints {
-        mut lane_endpoints, ..
+        endpoints: Endpoints {
+            mut lane_endpoints, ..
+        },
+        ..
     } = initial;
 
     assert_eq!(lane_endpoints.len(), 1);
@@ -204,7 +207,10 @@ async fn init_single_trasient_value_lane_with_store() {
     let initial = initial_result.expect("No lanes were registered.");
 
     let InitialEndpoints {
-        mut lane_endpoints, ..
+        endpoints: Endpoints {
+            mut lane_endpoints, ..
+        },
+        ..
     } = initial;
 
     assert_eq!(lane_endpoints.len(), 1);
@@ -334,7 +340,10 @@ async fn init_single_map_lane_from_store() {
     let initial = initial_result.expect("No lanes were registered.");
 
     let InitialEndpoints {
-        mut lane_endpoints, ..
+        endpoints: Endpoints {
+            mut lane_endpoints, ..
+        },
+        ..
     } = initial;
 
     assert_eq!(lane_endpoints.len(), 1);
@@ -367,7 +376,10 @@ async fn init_single_transient_map_lane_with_store() {
     let initial = initial_result.expect("No lanes were registered.");
 
     let InitialEndpoints {
-        mut lane_endpoints, ..
+        endpoints: Endpoints {
+            mut lane_endpoints, ..
+        },
+        ..
     } = initial;
 
     assert_eq!(lane_endpoints.len(), 1);
@@ -558,8 +570,12 @@ async fn init_single_value_store_from_store() {
     let initial = initial_result.expect("No lanes were registered.");
 
     let InitialEndpoints {
-        lane_endpoints,
-        mut store_endpoints,
+        endpoints:
+            Endpoints {
+                lane_endpoints,
+                mut store_endpoints,
+                ..
+            },
         ..
     } = initial;
 
@@ -724,8 +740,12 @@ async fn init_single_map_store_from_store() {
     let initial = initial_result.expect("No lanes were registered.");
 
     let InitialEndpoints {
-        lane_endpoints,
-        mut store_endpoints,
+        endpoints:
+            Endpoints {
+                lane_endpoints,
+                mut store_endpoints,
+                ..
+            },
         ..
     } = initial;
 

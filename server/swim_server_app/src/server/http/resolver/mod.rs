@@ -143,10 +143,7 @@ impl Resolver {
         }
     }
 
-    pub async fn send<'a>(
-        &'a self,
-        mut request: HttpLaneRequest,
-    ) -> Result<(), AgentResolutionError> {
+    pub async fn send(&self, mut request: HttpLaneRequest) -> Result<(), AgentResolutionError> {
         let Resolver { resolved, find, .. } = self;
         let node = Text::new(
             percent_encoding::percent_decode_str(request.request.uri.path())

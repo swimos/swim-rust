@@ -101,9 +101,11 @@ where
     })
 }
 
+type WebsocketParts<Sock, Ext> = (WebSocket<Sock, Ext>, Scheme, SocketAddr);
+
 enum TaskResult<Ext, Sock> {
     ConnectionComplete(Result<Option<UpgradeFutureWithSock<Ext, Sock>>, hyper::Error>),
-    UpgradeComplete(Result<(WebSocket<Sock, Ext>, Scheme, SocketAddr), hyper::Error>),
+    UpgradeComplete(Result<Box<WebsocketParts<Sock, Ext>>, hyper::Error>),
 }
 
 #[pin_project(project = TaskFutureProj)]
@@ -131,9 +133,9 @@ where
             TaskFutureProj::Connection(fut) => {
                 Poll::Ready(TaskResult::ConnectionComplete(ready!(fut.poll(cx))))
             }
-            TaskFutureProj::Upgrade(fut) => {
-                Poll::Ready(TaskResult::UpgradeComplete(ready!(fut.poll_unpin(cx))))
-            }
+            TaskFutureProj::Upgrade(fut) => Poll::Ready(TaskResult::UpgradeComplete(
+                ready!(fut.poll_unpin(cx)).map(Box::new),
+            )),
         }
     }
 }
@@ -268,8 +270,8 @@ where
                     }
                     continue;
                 }
-                Event::TaskComplete(TaskResult::UpgradeComplete(Ok((ws, scheme, addr)))) => {
-                    break Some(Ok((ws, scheme, addr)));
+                Event::TaskComplete(TaskResult::UpgradeComplete(Ok(parts))) => {
+                    break Some(Ok(*parts));
                 }
                 Event::TaskComplete(TaskResult::UpgradeComplete(Err(err))) => {
                     break Some(Err(ListenerError::NegotiationFailed(Box::new(err))));
@@ -443,7 +445,7 @@ where
         if let Some(result) = result {
             let upgrade_result =
                 perform_upgrade(request, *config, result, upgrade_fut, *scheme, *addr);
-            async move { Ok(upgrade_result?) }.boxed()
+            async move { upgrade_result }.boxed()
         } else {
             serve_request(request, *request_timeout, resolver.clone())
                 .map(Ok)
@@ -594,7 +596,7 @@ fn error(msg: &'static str) -> Response<Body> {
 fn req_timeout() -> Response<Body> {
     let mut response = Response::default();
     *response.status_mut() = StatusCode::REQUEST_TIMEOUT;
-    *response.body_mut() = Bytes::from(format!("The agent failed to respond.")).into();
+    *response.body_mut() = Bytes::from("The agent failed to respond.".to_string()).into();
     response
 }
 

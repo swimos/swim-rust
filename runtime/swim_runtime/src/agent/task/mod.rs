@@ -313,14 +313,19 @@ impl StoreEndpoint {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct Endpoints {
+    lane_endpoints: Vec<LaneEndpoint<Io>>,
+    http_lane_endpoints: Vec<HttpLaneEndpoint>,
+    store_endpoints: Vec<StoreEndpoint>,
+}
+
 /// Result of the agent initialization task (detailing the lanes that were created during initialization).
 #[derive(Debug)]
 pub struct InitialEndpoints {
     reporting: Option<NodeReporting>,
     rx: mpsc::Receiver<AgentRuntimeRequest>,
-    lane_endpoints: Vec<LaneEndpoint<Io>>,
-    http_lane_endpoints: Vec<HttpLaneEndpoint>,
-    store_endpoints: Vec<StoreEndpoint>,
+    endpoints: Endpoints,
     ext_link_state: LinksTaskState,
 }
 
@@ -328,17 +333,13 @@ impl InitialEndpoints {
     fn new(
         reporting: Option<NodeReporting>,
         rx: mpsc::Receiver<AgentRuntimeRequest>,
-        lane_endpoints: Vec<LaneEndpoint<Io>>,
-        http_lane_endpoints: Vec<HttpLaneEndpoint>,
-        store_endpoints: Vec<StoreEndpoint>,
+        endpoints: Endpoints,
         ext_link_state: LinksTaskState,
     ) -> Self {
         InitialEndpoints {
             reporting,
             rx,
-            lane_endpoints,
-            http_lane_endpoints,
-            store_endpoints,
+            endpoints,
             ext_link_state,
         }
     }
@@ -461,9 +462,12 @@ where
                 InitialEndpoints {
                     reporting,
                     rx,
-                    lane_endpoints,
-                    http_lane_endpoints,
-                    store_endpoints,
+                    endpoints:
+                        Endpoints {
+                            lane_endpoints,
+                            http_lane_endpoints,
+                            store_endpoints,
+                        },
                     ext_link_state,
                 },
             attachment_rx,

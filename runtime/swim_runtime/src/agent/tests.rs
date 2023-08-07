@@ -30,7 +30,7 @@ use swim_utilities::{
 };
 use tokio::sync::mpsc;
 
-use crate::agent::{AgentExecError, AgentRoute};
+use crate::agent::{AgentExecError, AgentRoute, AgentRouteChannels};
 
 use super::AgentRouteTask;
 
@@ -137,9 +137,7 @@ async fn test_agent_failure() {
         let task = AgentRouteTask::new(
             &agent,
             identity,
-            attachment_rx,
-            http_rx,
-            downlink_tx,
+            AgentRouteChannels::new(attachment_rx, http_rx, downlink_tx),
             stopping_rx,
             Default::default(),
             None,
@@ -172,9 +170,7 @@ async fn test_agent_failure_with_store() {
         let task = AgentRouteTask::new(
             &agent,
             identity,
-            attachment_rx,
-            http_rx,
-            downlink_tx,
+            AgentRouteChannels::new(attachment_rx, http_rx, downlink_tx),
             stopping_rx,
             Default::default(),
             None,
@@ -209,9 +205,7 @@ async fn test_agent_init_failure() {
         let task = AgentRouteTask::new(
             &agent,
             identity,
-            attachment_rx,
-            http_rx,
-            downlink_tx,
+            AgentRouteChannels::new(attachment_rx, http_rx, downlink_tx),
             stopping_rx,
             Default::default(),
             None,

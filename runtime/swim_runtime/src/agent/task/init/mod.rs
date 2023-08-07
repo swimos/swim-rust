@@ -46,9 +46,9 @@ use crate::agent::{
 
 use super::{
     external_links::{external_links_task, LinksTaskConfig, LinksTaskState, NoReport},
-    ExternalLinkRequest, HttpLaneEndpoint, HttpLaneRuntimeSpec, InitialEndpoints, ItemEndpoint,
-    ItemInitTask, LaneEndpoint, LaneResult, LaneRuntimeSpec, StoreEndpoint, StoreResult,
-    StoreRuntimeSpec,
+    Endpoints, ExternalLinkRequest, HttpLaneEndpoint, HttpLaneRuntimeSpec, InitialEndpoints,
+    ItemEndpoint, ItemInitTask, LaneEndpoint, LaneResult, LaneRuntimeSpec, StoreEndpoint,
+    StoreResult, StoreRuntimeSpec,
 };
 
 use tracing::{error, info};
@@ -158,9 +158,7 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
         let mut request_stream = ReceiverStream::new(requests);
         let terminated = (&mut request_stream).take_until(init_complete);
 
-        let mut lane_endpoints: Vec<LaneEndpoint<Io>> = vec![];
-        let mut http_lane_endpoints: Vec<HttpLaneEndpoint> = vec![];
-        let mut store_endpoints: Vec<StoreEndpoint> = vec![];
+        let mut endpoints = Endpoints::default();
 
         let (ext_link_tx, ext_link_rx) = mpsc::channel(ad_hoc_queue_size.get());
 
@@ -181,25 +179,21 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
             ext_link_tx,
             &initialization,
             http_lane_channel_size,
-            &mut lane_endpoints,
-            &mut http_lane_endpoints,
-            &mut store_endpoints,
+            &mut endpoints,
         );
 
         let (result, ext_link_state) = join(item_init_task, ext_links_task).await;
         result?;
 
         let Initialization { reporting, .. } = initialization;
-        if lane_endpoints.is_empty() {
+        if endpoints.lane_endpoints.is_empty() {
             Err(AgentExecError::NoInitialLanes)
         } else {
             Ok((
                 InitialEndpoints::new(
                     reporting,
                     request_stream.into_inner(),
-                    lane_endpoints,
-                    http_lane_endpoints,
-                    store_endpoints,
+                    endpoints,
                     ext_link_state,
                 ),
                 store,
@@ -458,14 +452,17 @@ async fn initialize_items<Store, R>(
     ext_link_tx: mpsc::Sender<ExternalLinkRequest>,
     initialization: &Initialization,
     http_channel_size: NonZeroUsize,
-    lane_endpoints: &mut Vec<LaneEndpoint<Io>>,
-    http_lane_endpoints: &mut Vec<HttpLaneEndpoint>,
-    store_endpoints: &mut Vec<StoreEndpoint>,
+    endpoints: &mut Endpoints,
 ) -> Result<(), AgentExecError>
 where
     Store: AgentPersistence + Send + Sync,
     R: Stream<Item = AgentRuntimeRequest> + Unpin,
 {
+    let Endpoints {
+        lane_endpoints,
+        http_lane_endpoints,
+        store_endpoints,
+    } = endpoints;
     let mut initializers: FuturesUnordered<ItemInitTask<'_, Store::StoreId>> =
         FuturesUnordered::new();
     loop {

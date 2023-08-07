@@ -21,7 +21,8 @@ use crate::agent::{
     task::{
         external_links::LinksTaskState,
         tests::{RemoteReceiver, RemoteSender},
-        AgentRuntimeTask, HttpLaneEndpoint, InitialEndpoints, LaneEndpoint, NodeDescriptor,
+        AgentRuntimeTask, Endpoints, HttpLaneEndpoint, InitialEndpoints, LaneEndpoint,
+        NodeDescriptor,
     },
     AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io, LaneRuntimeSpec,
     LinkRequest,
@@ -447,13 +448,15 @@ where
     let http_endpoints = vec![HttpLaneEndpoint::new(Text::new(HTTP_LANE), tx_http)];
 
     let initial_http = vec![(Text::new(HTTP_LANE), rx_http)];
-
+    let endpoints = Endpoints {
+        lane_endpoints: runtime_endpoints,
+        http_lane_endpoints: http_endpoints,
+        store_endpoints: vec![],
+    };
     let init = InitialEndpoints::new(
         None,
         req_rx,
-        runtime_endpoints,
-        http_endpoints,
-        vec![],
+        endpoints,
         LinksTaskState::new(links_tx.clone()),
     );
 
