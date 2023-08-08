@@ -54,7 +54,6 @@ impl Default for WebSocketConfig {
     }
 }
 
-#[non_exhaustive]
 #[derive(Debug)]
 pub struct ClientConfig {
     pub websocket: WebSocketConfig,
