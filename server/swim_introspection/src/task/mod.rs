@@ -166,7 +166,7 @@ impl Agents {
 
         if let Some(name) = name_map.remove(agent_id) {
             let mut guard = meta.write();
-            (&mut *guard).remove(name.as_str());
+            (*guard).remove(name.as_str());
         }
     }
 
@@ -174,7 +174,7 @@ impl Agents {
         let Agents { name_map, meta } = self;
 
         let mut guard = meta.write();
-        (&mut *guard).insert(node_uri.as_str(), agent_meta);
+        (*guard).insert(node_uri.as_str(), agent_meta);
         name_map.insert(agent_id, node_uri);
     }
 
@@ -187,10 +187,10 @@ impl Agents {
 
         let agent = match key.into() {
             AgentKey::Uuid(key) => {
-                let key = name_map.get(&key)?;
-                (&mut *guard).get_mut(key.as_str())?
+                let key = name_map.get(key)?;
+                (*guard).get_mut(key.as_str())?
             }
-            AgentKey::Path(key) => (&mut *guard).get_mut(key.as_str())?,
+            AgentKey::Path(key) => (*guard).get_mut(key.as_str())?,
         };
 
         Some(op(agent))

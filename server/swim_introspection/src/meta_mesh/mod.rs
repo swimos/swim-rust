@@ -156,7 +156,7 @@ where
         let NodeInfoRec { list, count } = self;
         match list.feed_event(input.clone()) {
             Some(Ok(item)) => {
-                return Some(Ok(NodeInfo::List(item)));
+                Some(Ok(NodeInfo::List(item)))
             }
             Some(Err(_)) => match count.feed_event(input)? {
                 Ok(item) => Some(Ok(NodeInfo::Count(item))),

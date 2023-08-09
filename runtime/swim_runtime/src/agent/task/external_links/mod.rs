@@ -19,7 +19,7 @@ use std::{
 };
 
 use bytes::{BufMut, BytesMut};
-use futures::{future::Either, stream::FuturesUnordered, Future, StreamExt};
+use futures::{stream::FuturesUnordered, Future, StreamExt};
 use swim_api::{
     error::{AgentRuntimeError, DownlinkRuntimeError},
     protocol::{
@@ -34,7 +34,7 @@ use swim_model::{
 };
 use swim_utilities::{
     errors::Recoverable,
-    future::retryable::RetryStrategy,
+    future::{retryable::RetryStrategy, UnionFuture4},
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
 };
 use tokio::{
@@ -47,11 +47,12 @@ use tracing::{debug, error, trace};
 use uuid::Uuid;
 
 use crate::{
-    agent::{CommanderKey, CommanderRequest, LinkRequest},
+    agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
+    downlink::Io,
     net::SchemeHostPort,
 };
 
-use super::AdHocChannelRequest;
+use super::{AdHocChannelRequest, ExternalLinkRequest};
 
 #[cfg(test)]
 mod tests;
@@ -274,29 +275,34 @@ impl AdHocOutput {
 type AdHocReader = FramedRead<ByteReader, AdHocCommandDecoder<BytesStr, WithLengthBytesCodec>>;
 
 #[derive(Debug)]
-enum AdHocEvent {
-    Request(AdHocChannelRequest),
+enum LinksTaskEvent {
+    Request(ExternalLinkRequest),
     Command(AdHocCommand<BytesStr, BytesMut>),
     NewChannel(
         CommanderKey,
         Result<Result<ByteWriter, DownlinkRuntimeError>, oneshot::error::RecvError>,
     ),
+    DownlinkResult {
+        result: Result<Result<Io, DownlinkRuntimeError>, oneshot::error::RecvError>,
+        request: DownlinkRequest,
+        retry: RetryStrategy,
+    },
     WriteDone(CommanderKey, Result<AdHocSender, std::io::Error>),
     Timeout(CommanderKey),
 }
 
-/// The state of the ad-hoc command task. This is public as it must be passed between from the
+/// The state of the external links task. This is public as it must be passed between from the
 /// agent initialization task to the agent runtime task.
 #[derive(Debug)]
-pub struct AdHocTaskState {
+pub struct LinksTaskState {
     reader: Option<AdHocReader>,
     outputs: HashMap<CommanderKey, AdHocOutput>,
     link_requests: mpsc::Sender<LinkRequest>,
 }
 
-impl AdHocTaskState {
+impl LinksTaskState {
     pub fn new(link_requests: mpsc::Sender<LinkRequest>) -> Self {
-        AdHocTaskState {
+        LinksTaskState {
             reader: Default::default(),
             outputs: Default::default(),
             link_requests,
@@ -304,9 +310,9 @@ impl AdHocTaskState {
     }
 }
 
-/// Configuration parameters for the ad-hoc commands channel.
+/// Configuration parameters for the external links task.
 #[derive(Debug)]
-pub struct AdHocTaskConfig {
+pub struct LinksTaskConfig {
     /// Buffer size for the channel between the agent runtime and agent implementation.
     pub buffer_size: NonZeroUsize,
     /// Retry strategy for establishing remote connections to send commands.
@@ -326,8 +332,8 @@ impl ReportFailed for NoReport {
     fn failed(&mut self, _pending: PendingWrites) {}
 }
 
-/// A task that receives requests from the agent implementation to send ad-hoc commands
-/// and routes them to the appropriate remote or local lanes.
+/// A task that manages the external links opened by the agent, including the establishment of
+/// downlinks and sending of ad hoc commands.
 ///
 /// #Arguments
 /// * `identity` - The unique ID of this agent instance.
@@ -336,19 +342,19 @@ impl ReportFailed for NoReport {
 /// the initialization task to the runtime task.
 /// * `config` - Configuration parameters for the task.
 /// * `report_failed` - Callback to report commands that were still pending when an output channel failed.
-pub async fn ad_hoc_commands_task<F: ReportFailed>(
+pub async fn external_links_task<F: ReportFailed>(
     identity: Uuid,
-    mut open_requests: mpsc::Receiver<AdHocChannelRequest>,
-    state: AdHocTaskState,
-    config: AdHocTaskConfig,
+    mut open_requests: mpsc::Receiver<ExternalLinkRequest>,
+    state: LinksTaskState,
+    config: LinksTaskConfig,
     mut report_failed: Option<F>,
-) -> AdHocTaskState {
-    let AdHocTaskState {
+) -> LinksTaskState {
+    let LinksTaskState {
         mut reader,
         mut outputs,
         link_requests,
     } = state;
-    let AdHocTaskConfig {
+    let LinksTaskConfig {
         buffer_size,
         retry_strategy,
         timeout_delay,
@@ -361,7 +367,7 @@ pub async fn ad_hoc_commands_task<F: ReportFailed>(
                 biased;
                 maybe_req = open_requests.recv() => {
                     if let Some(request) = maybe_req {
-                        AdHocEvent::Request(request)
+                        LinksTaskEvent::Request(request)
                     } else {
                         debug!(identity = %identity, "Stopping after the request channel terminated.");
                         break;
@@ -376,7 +382,7 @@ pub async fn ad_hoc_commands_task<F: ReportFailed>(
                 },
                 maybe_msg = rx.next() => {
                     if let Some(Ok(msg)) = maybe_msg {
-                        AdHocEvent::Command(msg)
+                        LinksTaskEvent::Command(msg)
                     } else {
                         debug!(identity = %identity, "The agent dropped its ad hoc command channel.");
                         reader = None;
@@ -389,7 +395,7 @@ pub async fn ad_hoc_commands_task<F: ReportFailed>(
                 biased;
                 maybe_req = open_requests.recv() => {
                     if let Some(request) = maybe_req {
-                        AdHocEvent::Request(request)
+                        LinksTaskEvent::Request(request)
                     } else {
                         debug!(identity = %identity, "Stopping after the request channel terminated.");
                         break;
@@ -406,7 +412,9 @@ pub async fn ad_hoc_commands_task<F: ReportFailed>(
         };
 
         match event {
-            AdHocEvent::Request(AdHocChannelRequest { promise }) => {
+            LinksTaskEvent::Request(ExternalLinkRequest::AdHoc(AdHocChannelRequest {
+                promise,
+            })) => {
                 let (tx, rx) = byte_channel(buffer_size);
                 if promise.send(Ok(tx)).is_ok() {
                     debug!(identity = %identity, "Attaching a new ad hoc command channel.");
@@ -415,7 +423,15 @@ pub async fn ad_hoc_commands_task<F: ReportFailed>(
                     debug!(identity = %identity, "The agent dropped its request for an ad hoc command channel before it was completed.");
                 }
             }
-            AdHocEvent::Command(AdHocCommand {
+            LinksTaskEvent::Request(ExternalLinkRequest::Downlink(req)) => {
+                pending.push(UnionFuture4::fourth(try_open_downlink(
+                    None,
+                    req,
+                    link_requests.clone(),
+                    retry_strategy,
+                )));
+            }
+            LinksTaskEvent::Command(AdHocCommand {
                 address,
                 command,
                 overwrite_permitted,
@@ -436,30 +452,30 @@ pub async fn ad_hoc_commands_task<F: ReportFailed>(
                 if let Some(output) = outputs.get_mut(&key) {
                     output.append(addr, &command, overwrite_permitted);
                     if let Some(fut) = output.write() {
-                        pending.push(Either::Left(Either::Left(wrap_result(key, fut))));
+                        pending.push(UnionFuture4::first(wrap_result(key, fut)));
                     } else {
-                        pending.push(Either::Right(output_timeout(key, timeout_delay)))
+                        pending.push(UnionFuture4::third(output_timeout(key, timeout_delay)))
                     }
                 } else {
                     let mut output = AdHocOutput::new(identity, retry_strategy);
                     output.append(addr, &command, overwrite_permitted);
                     outputs.insert(key.clone(), output);
                     let fut = try_open_new(identity, key, link_requests.clone(), None);
-                    pending.push(Either::Left(Either::Right(fut)));
+                    pending.push(UnionFuture4::second(fut));
                 }
             }
-            AdHocEvent::NewChannel(key, Ok(Ok(channel))) => {
+            LinksTaskEvent::NewChannel(key, Ok(Ok(channel))) => {
                 if let Some(output) = outputs.get_mut(&key) {
                     debug!(identity = %identity, key = ?key, "Registered a new outgoing ad hoc command channel.");
                     output.replace_writer(AdHocSender::new(channel));
                     if let Some(fut) = output.write() {
-                        pending.push(Either::Left(Either::Left(wrap_result(key, fut))));
+                        pending.push(UnionFuture4::first(wrap_result(key, fut)));
                     } else {
-                        pending.push(Either::Right(output_timeout(key, timeout_delay)))
+                        pending.push(UnionFuture4::third(output_timeout(key, timeout_delay)))
                     }
                 }
             }
-            AdHocEvent::NewChannel(key, Ok(Err(err))) => {
+            LinksTaskEvent::NewChannel(key, Ok(Err(err))) => {
                 if matches!(err, DownlinkRuntimeError::RuntimeError(_)) {
                     debug!(identity = %identity, "Stopping after the link request channel was dropped.");
                     break;
@@ -485,32 +501,33 @@ pub async fn ad_hoc_commands_task<F: ReportFailed>(
                             RetryResult::Immediate => {
                                 error!(error = %err, "Opening a new ad hoc command channel failed. Retrying immediately.");
                                 let fut = try_open_new(identity, key, link_requests.clone(), None);
-                                pending.push(Either::Left(Either::Right(fut)));
+                                pending.push(UnionFuture4::second(fut));
                             }
                             RetryResult::Delayed(t) => {
                                 error!(error = %err, delay = ?t, "Opening a new ad hoc command channel failed. Retrying after a delay.");
                                 let fut =
                                     try_open_new(identity, key, link_requests.clone(), Some(t));
-                                pending.push(Either::Left(Either::Right(fut)));
+                                pending.push(UnionFuture4::second(fut));
                             }
                         }
                     }
                 }
             }
-            AdHocEvent::NewChannel(key, _) => {
+            LinksTaskEvent::NewChannel(key, _) => {
                 outputs.remove(&key);
-                debug!("A request for a channel was dropped.");
+                debug!("The server dropped a request to open a command channel.");
             }
-            AdHocEvent::WriteDone(key, result) => {
+            LinksTaskEvent::WriteDone(key, result) => {
                 if let Some(output) = outputs.get_mut(&key) {
                     match result {
                         Ok(writer) => {
                             trace!(identify = %identity, key = ?key, "Completed writing an ad hoc command.");
                             output.replace_writer(writer);
                             if let Some(fut) = output.write() {
-                                pending.push(Either::Left(Either::Left(wrap_result(key, fut))));
+                                pending.push(UnionFuture4::first(wrap_result(key, fut)));
                             } else {
-                                pending.push(Either::Right(output_timeout(key, timeout_delay)))
+                                pending
+                                    .push(UnionFuture4::third(output_timeout(key, timeout_delay)))
                             }
                         }
                         Err(err) => {
@@ -520,7 +537,7 @@ pub async fn ad_hoc_commands_task<F: ReportFailed>(
                     }
                 }
             }
-            AdHocEvent::Timeout(key) => {
+            LinksTaskEvent::Timeout(key) => {
                 if let Some(output) = outputs.get(&key) {
                     if output.timed_out(timeout_delay) {
                         debug!(identify = %identity, key = ?key, "Ad hoc output channel closed after a period of inactivity.");
@@ -528,21 +545,67 @@ pub async fn ad_hoc_commands_task<F: ReportFailed>(
                     }
                 }
             }
+            LinksTaskEvent::DownlinkResult {
+                result: Err(_),
+                request,
+                ..
+            } => {
+                debug!("The server dropped a request to open a downlink.");
+                if request
+                    .promise
+                    .send(Err(DownlinkRuntimeError::RuntimeError(
+                        AgentRuntimeError::Stopping,
+                    )))
+                    .is_err()
+                {
+                    debug!("A request for a downlink was dropped.");
+                }
+            }
+            LinksTaskEvent::DownlinkResult {
+                result: Ok(result),
+                request,
+                mut retry,
+            } => match result {
+                Ok(_) => {
+                    if request.promise.send(result).is_err() {
+                        debug!("A request for a downlink was dropped.");
+                    }
+                }
+                Err(DownlinkRuntimeError::RuntimeError(_)) => {
+                    debug!(identity = %identity, "Stopping after the link request channel was dropped.");
+                    break;
+                }
+                Err(e) => match retry.next() {
+                    Some(delay) if !e.is_fatal() => {
+                        pending.push(UnionFuture4::fourth(try_open_downlink(
+                            delay,
+                            request,
+                            link_requests.clone(),
+                            retry,
+                        )));
+                    }
+                    _ => {
+                        if request.promise.send(Err(e)).is_err() {
+                            debug!("A request for a downlink was dropped.");
+                        }
+                    }
+                },
+            },
         }
     }
-    AdHocTaskState {
+    LinksTaskState {
         reader,
         outputs,
         link_requests,
     }
 }
 
-async fn wrap_result<F>(key: CommanderKey, f: F) -> AdHocEvent
+async fn wrap_result<F>(key: CommanderKey, f: F) -> LinksTaskEvent
 where
     F: Future<Output = Result<AdHocSender, std::io::Error>>,
 {
     let result = f.await;
-    AdHocEvent::WriteDone(key, result)
+    LinksTaskEvent::WriteDone(key, result)
 }
 
 async fn try_open_new(
@@ -550,7 +613,7 @@ async fn try_open_new(
     key: CommanderKey,
     link_requests: mpsc::Sender<LinkRequest>,
     delay: Option<Duration>,
-) -> AdHocEvent {
+) -> LinksTaskEvent {
     if let Some(delay) = delay {
         trace!(delay = ?delay, "Waiting before next connection attempt.");
         tokio::time::sleep(delay).await;
@@ -563,9 +626,9 @@ async fn try_open_new(
         .is_ok()
     {
         let result = rx.await;
-        AdHocEvent::NewChannel(key, result)
+        LinksTaskEvent::NewChannel(key, result)
     } else {
-        AdHocEvent::NewChannel(
+        LinksTaskEvent::NewChannel(
             key,
             Ok(Err(DownlinkRuntimeError::RuntimeError(
                 AgentRuntimeError::Stopping,
@@ -574,7 +637,37 @@ async fn try_open_new(
     }
 }
 
-async fn output_timeout(key: CommanderKey, delay: Duration) -> AdHocEvent {
+async fn output_timeout(key: CommanderKey, delay: Duration) -> LinksTaskEvent {
     tokio::time::sleep(delay).await;
-    AdHocEvent::Timeout(key)
+    LinksTaskEvent::Timeout(key)
+}
+
+async fn try_open_downlink(
+    delay: Option<Duration>,
+    request: DownlinkRequest,
+    link_requests: mpsc::Sender<LinkRequest>,
+    retry: RetryStrategy,
+) -> LinksTaskEvent {
+    if let Some(delay) = delay {
+        trace!(delay = ?delay, "Waiting before next attempt to establish downlink.");
+        tokio::time::sleep(delay).await;
+    }
+    let (tx, rx) = oneshot::channel();
+    let req = request.replace_promise(tx);
+    let result = if link_requests
+        .send(LinkRequest::Downlink(req))
+        .await
+        .is_err()
+    {
+        Ok(Err(DownlinkRuntimeError::RuntimeError(
+            AgentRuntimeError::Stopping,
+        )))
+    } else {
+        rx.await
+    };
+    LinksTaskEvent::DownlinkResult {
+        result,
+        request,
+        retry,
+    }
 }

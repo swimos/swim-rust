@@ -180,13 +180,10 @@ impl<'l, D> Iterator for UriPartIterator<'l, D> {
                     op_stack.pop_front();
                     ret
                 } else {
-                    let ret = match node.data.as_ref() {
-                        Some(data) => Some(UriPart::Leaf {
+                    let ret = node.data.as_ref().map(|data| UriPart::Leaf {
                             path: make_uri(),
                             data,
-                        }),
-                        None => None,
-                    };
+                        });
                     dfs(node, visit, uri_stack, op_stack);
                     ret
                 };

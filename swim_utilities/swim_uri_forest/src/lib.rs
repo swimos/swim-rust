@@ -163,10 +163,10 @@ impl<D> UriForest<D> {
                         }
                         current_node.data.as_ref()
                     }
-                    None => return None,
+                    None => None,
                 }
             }
-            None => return None,
+            None => None,
         }
     }
 
@@ -197,10 +197,10 @@ impl<D> UriForest<D> {
                         }
                         current_node.data.as_mut()
                     }
-                    None => return None,
+                    None => None,
                 }
             }
-            None => return None,
+            None => None,
         }
     }
 
@@ -382,12 +382,10 @@ fn traverse_insert<'l, D, I>(
                         // the segment, update the data
                         descendant.update_data(node_data);
                     }
-                } else {
-                    if segment_iter.peek().is_none() {
-                        // There aren't any more segments in the URI and the descendant node matches
-                        // the segment, update the data
-                        descendant.update_data(node_data);
-                    }
+                } else if segment_iter.peek().is_none() {
+                    // There aren't any more segments in the URI and the descendant node matches
+                    // the segment, update the data
+                    descendant.update_data(node_data);
                 }
             }
             None => {

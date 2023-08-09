@@ -52,8 +52,8 @@ use self::{
     reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
     task::{
-        AdHocChannelRequest, AdHocTaskConfig, AgentInitTask, AgentRuntimeTask, InitTaskConfig,
-        LaneRuntimeSpec, NodeDescriptor, StoreRuntimeSpec,
+        AdHocChannelRequest, AgentInitTask, AgentRuntimeTask, InitTaskConfig, LaneRuntimeSpec,
+        LinksTaskConfig, NodeDescriptor, StoreRuntimeSpec,
     },
 };
 
@@ -106,6 +106,21 @@ pub struct DownlinkRequest {
     pub kind: DownlinkKind,
     pub options: DownlinkOptions,
     pub promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
+}
+
+impl DownlinkRequest {
+    pub fn replace_promise(
+        &self,
+        replacement: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
+    ) -> Self {
+        DownlinkRequest {
+            remote: self.remote.clone(),
+            address: self.address.clone(),
+            kind: self.kind,
+            options: self.options,
+            promise: replacement,
+        }
+    }
 }
 
 impl DownlinkRequest {
@@ -554,7 +569,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
         let (init_tx, init_rx) = trigger::trigger();
 
-        let ad_hoc_config = AdHocTaskConfig {
+        let ad_hoc_config = LinksTaskConfig {
             buffer_size: runtime_config.ad_hoc_buffer_size,
             retry_strategy: runtime_config.ad_hoc_output_retry,
             timeout_delay: runtime_config.ad_hoc_output_timeout,
@@ -563,12 +578,12 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let runtime_init_task = AgentInitTask::new(
             identity,
             runtime_rx,
-            link_tx.clone(),
+            link_tx,
             init_rx,
             InitTaskConfig {
                 ad_hoc_queue_size: runtime_config.attachment_queue_size,
                 item_init_timeout: runtime_config.item_init_timeout,
-                ad_hoc: ad_hoc_config,
+                external_links: ad_hoc_config,
             },
             reporting,
         );
@@ -593,7 +608,6 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 NodeDescriptor::new(identity, node_uri),
                 initial_state,
                 attachment_rx,
-                link_tx,
                 stopping,
                 runtime_config,
             );
@@ -637,7 +651,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 info_span!("Agent initialization task.", id = %identity, route = %node_uri),
             );
 
-        let ad_hoc_config = AdHocTaskConfig {
+        let ad_hoc_config = LinksTaskConfig {
             buffer_size: runtime_config.ad_hoc_buffer_size,
             retry_strategy: runtime_config.ad_hoc_output_retry,
             timeout_delay: runtime_config.ad_hoc_output_timeout,
@@ -653,7 +667,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 InitTaskConfig {
                     ad_hoc_queue_size: runtime_config.attachment_queue_size,
                     item_init_timeout: runtime_config.item_init_timeout,
-                    ad_hoc: ad_hoc_config,
+                    external_links: ad_hoc_config,
                 },
                 reporting,
                 StorePersistence(store),
@@ -677,7 +691,6 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 NodeDescriptor::new(identity, node_uri.clone()),
                 initial_state,
                 attachment_rx,
-                link_tx,
                 stopping,
                 runtime_config,
                 store_per,

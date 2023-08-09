@@ -43,7 +43,7 @@ use uuid::Uuid;
 use crate::agent::{
     reporting::UplinkReporter,
     store::{AgentPersistence, InitFut, Initializer, StoreInitError},
-    task::{AdHocTaskConfig, InitialEndpoints, LaneEndpoint},
+    task::{InitialEndpoints, LaneEndpoint, LinksTaskConfig},
     AgentExecError, AgentRuntimeRequest, Io, LinkRequest, NodeReporting,
     UplinkReporterRegistration,
 };
@@ -76,7 +76,7 @@ const AD_HOC_TIMEOUT: Duration = Duration::from_secs(1);
 const INIT_CONFIG: InitTaskConfig = InitTaskConfig {
     ad_hoc_queue_size: DL_CHAN_SIZE,
     item_init_timeout: INIT_TIMEOUT,
-    ad_hoc: AdHocTaskConfig {
+    external_links: LinksTaskConfig {
         buffer_size: BUFFER_SIZE,
         retry_strategy: RetryStrategy::none(),
         timeout_delay: AD_HOC_TIMEOUT,

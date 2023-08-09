@@ -76,6 +76,10 @@ impl AgentContext for MockAgentContext {
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
         panic!("Unexpected add store invocation")
     }
+
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+        panic!("Unexpected ad hoc commands invocation")
+    }
 }
 
 struct LaneChannel<D>
@@ -187,7 +191,7 @@ fn push_uri(forest: &mut UriForest<AgentMeta>, reporter: &UplinkReporter, path: 
         path,
         AgentMeta {
             name: name.into(),
-            created: NOW.get().unwrap().clone(),
+            created: *NOW.get().unwrap(),
             updater: AgentIntrospectionUpdater::new(reporter.reader()),
         },
     );
