@@ -19,14 +19,19 @@ use swim_form::Form;
 #[form_root(::swim_form)]
 pub struct WarpUplinkPulse {
     /// Uplink open count - close count.
+    #[form(name = "linkCount")]
     pub link_count: u64,
     /// The rate at which events are being produced.
+    #[form(name = "eventRate")]
     pub event_rate: u64,
     /// The total number of events that have occurred.
+    #[form(name = "eventCount")]
     pub event_count: u64,
     /// The rate at which command messages are being produced.
+    #[form(name = "commandRate")]
     pub command_rate: u64,
     /// The total number of command messages that have occurred.
+    #[form(name = "commandCount")]
     pub command_count: u64,
 }
 
