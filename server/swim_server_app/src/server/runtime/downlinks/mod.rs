@@ -24,18 +24,19 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     net::SocketAddr,
     num::NonZeroUsize,
+    sync::Arc,
 };
 
 use futures::{stream::FuturesUnordered, Future, FutureExt, StreamExt};
 pub use pending::{DlKey, PendingDownlinks};
 use swim_api::{
     downlink::DownlinkKind,
-    error::{DownlinkFailureReason, DownlinkRuntimeError},
+    error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError},
 };
 use swim_model::{address::RelativeAddress, Text};
-use swim_remote::AttachClient;
+use swim_remote::{AttachClient, LinkError};
 use swim_runtime::{
-    agent::DownlinkRequest,
+    agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
     downlink::{
         failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy},
         AttachAction, DownlinkRuntimeConfig, Io, MapDownlinkRuntime, ValueDownlinkRuntime,
@@ -52,18 +53,22 @@ use tokio::{
 };
 use uuid::Uuid;
 
+use crate::server::runtime::downlinks::pending::Waiting;
+
 use super::{
     ids::{IdIssuer, IdKind},
     ClientRegistration, EstablishedClient, NewClientError,
 };
 
-/// A task that manages downlink runtime tasks for the server. This taks has the following
+/// A task that manages downlink runtime tasks for the server. This task has the following
 /// responsibilities:
 /// * Accept requests for new downlink connections.
-/// * Perform a DNS lookup for remote downlinks.
+/// * Accept requests for one way links for sending ad hoc commands.
+/// * Perform a DNS lookup for remote endpoints.
 /// * Attach new clients to existing running downlink runtime tasks where appropriate.
 /// * Register a new socket with the main server task for new remotes.
 /// * Spawn new downlink runtime tasks and keep track of their results.
+/// * Establish direct connections between agents and remote sockets (or other local lanes) for sending ad hoc commands.
 pub struct DownlinkConnectionTask<Dns> {
     connector: DownlinksConnector,
     coop_budget: Option<NonZeroUsize>,
@@ -106,7 +111,7 @@ where
                 dns,
             } = self;
 
-            let mut downlink_channels: HashMap<SocketAddr, ClientHandle> = HashMap::new();
+            let mut clients: HashMap<SocketAddr, ClientHandle> = HashMap::new();
 
             let mut local_handle = ClientHandle::new(connector.local_handle());
 
@@ -128,7 +133,40 @@ where
                 };
 
                 match event {
-                    Event::Request(request) => {
+                    Event::Request(LinkRequest::Commander(request)) => {
+                        let CommanderRequest { key, .. } = &request;
+                        match key {
+                            CommanderKey::Remote(shp) => {
+                                debug!(remote = %shp, "Handling request for remote command channel.");
+                                let host_str: Text = shp.to_string().into();
+                                let SchemeHostPort(scheme, host_name, port) = shp.clone();
+                                if pending.push_remote_cmd(host_str.clone(), request) {
+                                    tasks.push(
+                                        dns.resolve(host_name, port)
+                                            .map(move |result| Event::Resolved {
+                                                scheme,
+                                                host: host_str,
+                                                result,
+                                            })
+                                            .boxed(),
+                                    );
+                                }
+                            }
+                            CommanderKey::Local(path) => {
+                                let path = path.clone();
+                                tasks.push(
+                                    attach_cmd_request_local(
+                                        request,
+                                        path,
+                                        local_handle.client_tx.clone(),
+                                        config.remote_buffer_size,
+                                    )
+                                    .boxed(),
+                                )
+                            }
+                        }
+                    }
+                    Event::Request(LinkRequest::Downlink(request)) => {
                         let DownlinkRequest {
                             remote,
                             address,
@@ -139,16 +177,17 @@ where
                             debug!(remote = %shp, node = %address.node, lane = %address.lane, kind = ?kind, "Handling request for downlink to remote lane.");
                             let host_str: Text = shp.to_string().into();
                             let SchemeHostPort(scheme, host_name, port) = shp;
-                            pending.push_remote(host_str.clone(), request);
-                            tasks.push(
-                                dns.resolve(host_name, port)
-                                    .map(move |result| Event::Resolved {
-                                        scheme,
-                                        host: host_str,
-                                        result,
-                                    })
-                                    .boxed(),
-                            );
+                            if pending.push_remote(host_str.clone(), request) {
+                                tasks.push(
+                                    dns.resolve(host_name, port)
+                                        .map(move |result| Event::Resolved {
+                                            scheme,
+                                            host: host_str,
+                                            result,
+                                        })
+                                        .boxed(),
+                                );
+                            }
                         } else {
                             let key = (address.clone(), *kind);
                             if let Some(attach_tx) = local_handle.get(&key) {
@@ -184,11 +223,15 @@ where
                         result: Ok(sock_addrs),
                     } => {
                         debug!(scheme = %scheme, host = %host, resolved = ?sock_addrs, "Downlink DNS resolution completed.");
-                        if let Some((addr, handle)) = sock_addrs.iter().find_map(|addr| {
-                            downlink_channels.get(addr).map(move |inner| (addr, inner))
-                        }) {
+                        if let Some((addr, handle)) = sock_addrs
+                            .iter()
+                            .find_map(|addr| clients.get(addr).map(move |inner| (addr, inner)))
+                        {
                             debug!(scheme = %scheme, host = %host, socket_address = %addr, "Using already connected socket.");
-                            let waiting_map = pending.take_socket_ready(&host);
+                            let Waiting {
+                                dl_requests: waiting_map,
+                                cmd_requests,
+                            } = pending.take_socket_ready(&host);
                             for (key, requests) in waiting_map {
                                 let (lane_addr, kind) = &key;
                                 if let Some(attach_tx) = handle.get(&key) {
@@ -219,25 +262,28 @@ where
                                     );
                                 }
                             }
+                            for cmd_req in cmd_requests {
+                                tasks.push(
+                                    attach_cmd_request(
+                                        *addr,
+                                        scheme,
+                                        host.clone(),
+                                        cmd_req,
+                                        handle.client_tx.clone(),
+                                        config.remote_buffer_size,
+                                    )
+                                    .boxed(),
+                                )
+                            }
                         } else {
                             debug!(scheme = %scheme, host = %host, resolved = ?sock_addrs, "Requesting new client connection for downlink runtime.");
                             let addr_vec = sock_addrs.into_iter().collect();
-                            let (registration, rx) =
-                                ClientRegistration::new(scheme, host.clone(), addr_vec);
-                            if connector.register(registration).await.is_err() {
+                            if let Some(task) = new_client(&connector, addr_vec, scheme, host).await
+                            {
+                                tasks.push(task.boxed());
+                            } else {
                                 break;
                             }
-                            tasks.push(
-                                rx.map(move |result| {
-                                    let result = match result {
-                                        Ok(Ok(client)) => Ok(client),
-                                        Ok(Err(e)) => Err(e),
-                                        Err(_) => Err(NewClientError::ServerStopped),
-                                    };
-                                    Event::NewClientResult { host, result }
-                                })
-                                .boxed(),
-                            );
                         }
                     }
                     Event::Resolved {
@@ -246,24 +292,40 @@ where
                         ..
                     } => {
                         error!(host = %host, error = %e, "DNS resolution failed.");
-                        for request in pending.open_client_failed(&host) {
-                            let DownlinkRequest { promise, .. } = request;
-                            if promise
-                                .send(Err(DownlinkRuntimeError::DownlinkConnectionFailed(
-                                    DownlinkFailureReason::Unresolvable(e.to_string()),
-                                )))
-                                .is_err()
-                            {
-                                info!("Request for client connection dropped before it failed to resolve.");
+                        let (dl_requests, cmd_requests) = pending.open_client_failed(&host);
+                        let error = DownlinkRuntimeError::DownlinkConnectionFailed(
+                            DownlinkFailureReason::UnresolvableRemote(Arc::new(e)),
+                        );
+                        for DownlinkRequest {
+                            remote,
+                            address,
+                            kind,
+                            promise,
+                            ..
+                        } in dl_requests
+                        {
+                            if promise.send(Err(error.clone())).is_err() {
+                                debug!(error = %error, remote = ?remote, address = %address, kind = ?kind, "Request for downlink dropped before it failed to resolve.");
+                            }
+                        }
+                        for CommanderRequest {
+                            agent_id,
+                            key,
+                            promise,
+                        } in cmd_requests
+                        {
+                            if promise.send(Err(error.clone())).is_err() {
+                                debug!(error = %error, agent_id = %agent_id, key = ?key, "Request for client connection dropped before it failed to resolve.");
                             }
                         }
                     }
                     Event::NewClientResult {
+                        scheme,
                         host,
                         result: Ok(EstablishedClient { tx, sock_addr }),
                     } => {
                         debug!(addr = %sock_addr, host = %host, "New client connection opened.");
-                        let handle = match downlink_channels.entry(sock_addr) {
+                        let handle = match clients.entry(sock_addr) {
                             Entry::Occupied(entry) => {
                                 let handle = entry.into_mut();
                                 handle.client_tx = tx;
@@ -272,29 +334,46 @@ where
                             }
                             Entry::Vacant(entry) => entry.insert(ClientHandle::new(tx)),
                         };
-                        for key in pending.socket_ready(host, sock_addr).into_iter().flatten() {
-                            let (addr, kind) = &key;
-                            debug!(address = %addr, kind = ?kind, "Starting downlink runtime.");
-                            let identity = id_issuer.next_id();
-                            tasks.push(
-                                start_downlink_runtime(
-                                    identity,
-                                    Some(sock_addr),
-                                    key.clone(),
-                                    handle.client_tx.clone(),
-                                    config,
-                                )
-                                .boxed(),
-                            );
+                        if let Some((dl_reqs, cmd_reqs)) = pending.socket_ready(&host, sock_addr) {
+                            for key in dl_reqs {
+                                let (addr, kind) = &key;
+                                debug!(address = %addr, kind = ?kind, "Starting downlink runtime.");
+                                let identity = id_issuer.next_id();
+                                tasks.push(
+                                    start_downlink_runtime(
+                                        identity,
+                                        Some(sock_addr),
+                                        key.clone(),
+                                        handle.client_tx.clone(),
+                                        config,
+                                    )
+                                    .boxed(),
+                                );
+                            }
+                            for request in cmd_reqs {
+                                tasks.push(
+                                    attach_cmd_request(
+                                        sock_addr,
+                                        scheme,
+                                        host.clone(),
+                                        request,
+                                        handle.client_tx.clone(),
+                                        config.remote_buffer_size,
+                                    )
+                                    .boxed(),
+                                );
+                            }
                         }
                     }
                     Event::NewClientResult {
                         host,
                         result: Err(e),
+                        ..
                     } => {
                         error!(host = %host, error = %e, "Opening a new client connection failed.");
                         let err: DownlinkRuntimeError = e.into();
-                        for request in pending.open_client_failed(&host) {
+                        let (dl_requests, cmd_requests) = pending.open_client_failed(&host);
+                        for request in dl_requests {
                             let DownlinkRequest {
                                 promise,
                                 remote,
@@ -306,6 +385,16 @@ where
                                 info!(remote = ?remote, address = %address, kind = ?kind, "Request for a downlink dropped before it failed to complete.");
                             }
                         }
+                        for CommanderRequest {
+                            agent_id,
+                            key,
+                            promise,
+                        } in cmd_requests
+                        {
+                            if promise.send(Err(err.clone())).is_err() {
+                                debug!(error = %err, agent_id = %agent_id, key = ?key, "Request for client connection dropped before it failed to complete.");
+                            }
+                        }
                     }
                     Event::RuntimeAttachmentResult {
                         remote_address,
@@ -314,7 +403,7 @@ where
                     } => {
                         let (lane_addr, kind) = &key;
                         let handle = if let Some(addr) = remote_address {
-                            downlink_channels.get_mut(&addr)
+                            clients.get_mut(&addr)
                         } else {
                             Some(&mut local_handle)
                         };
@@ -363,7 +452,7 @@ where
                                     )))
                                     .is_err()
                                 {
-                                    info!(remote = ?remote, address = %address, kind = ?kind, "Request for a downlink dropped before it failed to complete.");
+                                    debug!(remote = ?remote, address = %address, kind = ?kind, "Request for a downlink dropped before it failed to complete.");
                                 }
                             }
                         }
@@ -402,7 +491,7 @@ where
                     } => {
                         debug!(remote = ?remote, address = %address, kind = ?kind, "Attaching to downlink runtime completed successfully.");
                         if promise.send(result).is_err() {
-                            info!(remote = ?remote, address = %address, kind = ?kind, "A request for a downlink was dropped before it was satisfied.");
+                            debug!(remote = ?remote, address = %address, kind = ?kind, "A request for a downlink was dropped before it was satisfied.");
                         }
                     }
                     Event::RuntimeTerminated {
@@ -411,7 +500,7 @@ where
                         result,
                     } => {
                         if let Some(addr) = socket_addr {
-                            if let Entry::Occupied(mut entry) = downlink_channels.entry(addr) {
+                            if let Entry::Occupied(mut entry) = clients.entry(addr) {
                                 let handle = entry.get_mut();
                                 if handle.remove(&key) {
                                     entry.remove();
@@ -426,6 +515,56 @@ where
                         } else {
                             debug!(socket_addr = ?socket_addr, address = %address, kind = ?kind, "A downlink runtime terminated normally.");
                         }
+                    }
+                    Event::CommanderAttached {
+                        request:
+                            CommanderRequest {
+                                agent_id,
+                                key,
+                                promise,
+                            },
+                        result,
+                    } => {
+                        debug!(agent_id = %agent_id, key = ?key, "Completing command channel request.");
+                        if promise.send(result).is_err() {
+                            debug!(agent_id = %agent_id, key = ?key, "A request for a command channel was dropped before it was satisfied.");
+                        }
+                    }
+                    Event::ClientStopped {
+                        socket_addr,
+                        scheme,
+                        host,
+                        request,
+                    } => {
+                        clients.remove(&socket_addr);
+                        if pending.push_remote_cmd(host.clone(), request) {
+                            if let Some(task) =
+                                new_client(&connector, vec![socket_addr], scheme, host).await
+                            {
+                                tasks.push(task.boxed());
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    Event::LocalAttachFailed { request } => {
+                        let CommanderRequest {
+                            agent_id,
+                            key,
+                            promise,
+                        } = request;
+                        if promise
+                            .send(Err(DownlinkRuntimeError::RuntimeError(
+                                AgentRuntimeError::Stopping,
+                            )))
+                            .is_err()
+                        {
+                            debug!(agent_id = %agent_id, key = ?key, "Request for client connection dropped before it failed to complete.");
+                        }
+                        info!(agent_id = %agent_id,
+                            "Local agent attachment channel stopped indicating server is stopping."
+                        );
+                        break;
                     }
                 }
             }
@@ -455,7 +594,7 @@ where
 
 enum Event {
     // A request has been received for a new downlink.
-    Request(DownlinkRequest),
+    Request(LinkRequest),
     // A DNS resolution has completed.
     Resolved {
         scheme: Scheme,
@@ -464,6 +603,7 @@ enum Event {
     },
     // A request to the main server task to open a new socket has completed.
     NewClientResult {
+        scheme: Scheme,
         host: Text,
         result: Result<EstablishedClient, NewClientError>,
     },
@@ -486,6 +626,19 @@ enum Event {
         kind: DownlinkKind,
         promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
         result: Result<Io, DownlinkRuntimeError>,
+    },
+    CommanderAttached {
+        request: CommanderRequest,
+        result: Result<ByteWriter, DownlinkRuntimeError>,
+    },
+    ClientStopped {
+        socket_addr: SocketAddr,
+        scheme: Scheme,
+        host: Text,
+        request: CommanderRequest,
+    },
+    LocalAttachFailed {
+        request: CommanderRequest,
     },
 }
 
@@ -536,7 +689,7 @@ async fn attach_to_runtime(
         .await
         .map(move |_| (out_tx, in_rx))
         .map_err(|_| {
-            DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::ConnectionFailed)
+            DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::DownlinkStopped)
         });
     Event::Attached {
         remote,
@@ -574,9 +727,11 @@ async fn start_downlink_runtime(
         };
     }
     let err = match done_rx.await {
-        Ok(Err(e)) => Some(e),
-        Err(_) => Some(DownlinkFailureReason::RemoteStopped),
-        _ => None,
+        Ok(Ok(_)) => None,
+        Ok(Err(LinkError::NoEndpoint(addr))) => {
+            Some(DownlinkFailureReason::UnresolvableLocal(addr))
+        }
+        _ => Some(DownlinkFailureReason::RemoteStopped),
     };
     if let Some(err) = err {
         return Event::RuntimeAttachmentResult {
@@ -665,5 +820,108 @@ impl DownlinkRuntime {
                 }
             }
         }
+    }
+}
+
+async fn attach_cmd_request(
+    addr: SocketAddr,
+    scheme: Scheme,
+    host: Text,
+    request: CommanderRequest,
+    client_tx: mpsc::Sender<AttachClient>,
+    remote_buffer_size: NonZeroUsize,
+) -> Event {
+    let (tx, rx) = byte_channel(remote_buffer_size);
+    let (done_tx, done_rx) = oneshot::channel();
+    if client_tx
+        .send(AttachClient::OneWay {
+            agent_id: request.agent_id,
+            path: None,
+            receiver: rx,
+            done: done_tx,
+        })
+        .await
+        .is_err()
+    {
+        return Event::ClientStopped {
+            socket_addr: addr,
+            scheme,
+            host,
+            request,
+        };
+    };
+    match done_rx.await {
+        Ok(Ok(_)) => Event::CommanderAttached {
+            request,
+            result: Ok(tx),
+        },
+        Ok(Err(e)) => Event::CommanderAttached {
+            request,
+            result: Err(DownlinkRuntimeError::DownlinkConnectionFailed(e.into())),
+        },
+        Err(_) => Event::ClientStopped {
+            socket_addr: addr,
+            scheme,
+            host,
+            request,
+        },
+    }
+}
+
+async fn attach_cmd_request_local(
+    request: CommanderRequest,
+    path: RelativeAddress<Text>,
+    client_tx: mpsc::Sender<AttachClient>,
+    remote_buffer_size: NonZeroUsize,
+) -> Event {
+    let (tx, rx) = byte_channel(remote_buffer_size);
+    let (done_tx, done_rx) = oneshot::channel();
+    if client_tx
+        .send(AttachClient::OneWay {
+            agent_id: request.agent_id,
+            path: Some(path),
+            receiver: rx,
+            done: done_tx,
+        })
+        .await
+        .is_err()
+    {
+        return Event::LocalAttachFailed { request };
+    };
+    match done_rx.await {
+        Ok(Ok(_)) => Event::CommanderAttached {
+            request,
+            result: Ok(tx),
+        },
+        Ok(Err(e)) => Event::CommanderAttached {
+            request,
+            result: Err(DownlinkRuntimeError::DownlinkConnectionFailed(e.into())),
+        },
+        Err(_) => Event::LocalAttachFailed { request },
+    }
+}
+
+async fn new_client(
+    connector: &DownlinksConnector,
+    addr_vec: Vec<SocketAddr>,
+    scheme: Scheme,
+    host: Text,
+) -> Option<impl Future<Output = Event> + 'static> {
+    let (registration, rx) = ClientRegistration::new(scheme, host.clone(), addr_vec);
+    if connector.register(registration).await.is_err() {
+        None
+    } else {
+        Some(rx.map(move |result| {
+            let result = match result {
+                Ok(Ok(client)) => Ok(client),
+                Ok(Err(e)) => Err(e),
+                Err(_) => Err(NewClientError::ServerStopped),
+            };
+            Event::NewClientResult {
+                scheme,
+                host,
+                result,
+            }
+        }))
     }
 }

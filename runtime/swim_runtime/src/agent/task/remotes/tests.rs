@@ -16,11 +16,8 @@ use std::{num::NonZeroUsize, time::Duration};
 
 use bytes::{Bytes, BytesMut};
 use futures::StreamExt;
-use swim_messages::{
-    bytes_str::BytesStr,
-    protocol::{BytesResponseMessage, Path, RawResponseMessageDecoder},
-};
-use swim_model::Text;
+use swim_messages::protocol::{BytesResponseMessage, Path, RawResponseMessageDecoder};
+use swim_model::{BytesStr, Text};
 use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader},
     non_zero_usize,

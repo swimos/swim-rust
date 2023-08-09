@@ -20,6 +20,7 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use futures::{Future, FutureExt};
 use swim_form::structural::read::recognizer::RecognizerReadable;
+use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
 use swim_model::address::Address;
 use swim_utilities::routing::route_uri::RouteUri;
@@ -36,7 +37,7 @@ use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
 use crate::event_handler::{
     run_after, run_schedule, ConstHandler, EventHandler, GetParameter, HandlerActionExt,
-    Sequentially, Stop, Suspend, UnitHandler,
+    SendCommand, Sequentially, Stop, Suspend, UnitHandler,
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
@@ -109,6 +110,28 @@ impl<Agent: 'static> HandlerContext<Agent> {
         F: FnOnce() -> T,
     {
         SideEffect::from(f)
+    }
+
+    /// Send a command to a lane (either on a remote host or locally to an agent on the same plane).
+    ///
+    /// #Arguments
+    /// * `host` - The target remote host or [`None`] for an agent in the same plane.
+    /// * `node` - The target node hosting the lane.
+    /// * `lane` - The name of the target lane.
+    /// * `command` - The value to send.
+    pub fn send_command<'a, S, T>(
+        &self,
+        host: Option<S>,
+        node: S,
+        lane: S,
+        command: T,
+    ) -> impl EventHandler<Agent> + 'a
+    where
+        S: AsRef<str> + 'a,
+        T: StructuralWritable + 'a,
+    {
+        let addr = Address::new(host, node, lane);
+        SendCommand::new(addr, command, true)
     }
 
     /// Create an event handler that will fetch the metadata of the agent instance.

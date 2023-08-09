@@ -109,6 +109,7 @@ impl DlStateObserver {
 mod test_support {
     use std::collections::HashMap;
 
+    use bytes::BytesMut;
     use futures::future::BoxFuture;
     use swim_api::{
         agent::{AgentConfig, AgentContext, LaneConfig},
@@ -152,6 +153,10 @@ mod test_support {
     struct NoAgentRuntime;
 
     impl AgentContext for NoAgentRuntime {
+        fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+            panic!("Unexpected runtime interaction.");
+        }
+
         fn add_lane(
             &self,
             _name: &str,
@@ -201,8 +206,14 @@ mod test_support {
         let no_spawn = NoSpawn;
         let no_runtime = NoAgentRuntime;
         let mut join_value_init = HashMap::new();
-        let mut context =
-            ActionContext::new(&no_spawn, &no_runtime, &no_spawn, &mut join_value_init);
+        let mut ad_hoc_buffer = BytesMut::new();
+        let mut context = ActionContext::new(
+            &no_spawn,
+            &no_runtime,
+            &no_spawn,
+            &mut join_value_init,
+            &mut ad_hoc_buffer,
+        );
         loop {
             match handler.step(&mut context, meta, agent) {
                 StepResult::Continue { modified_item } => {

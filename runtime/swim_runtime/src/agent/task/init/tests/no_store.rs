@@ -38,21 +38,21 @@ use crate::agent::{
         init::tests::{run_test_with_reporting, AGENT_ID, TRANSIENT},
         AgentRuntimeRequest, InitialEndpoints, LaneEndpoint, LaneRuntimeSpec, StoreRuntimeSpec,
     },
-    AgentExecError, DownlinkRequest, Io,
+    AgentExecError, Io, LinkRequest,
 };
 
 struct NoLanesInit;
 
 struct NoLanesInitTask {
     _requests: mpsc::Sender<AgentRuntimeRequest>,
-    _dl_requests: mpsc::Receiver<DownlinkRequest>,
+    _dl_requests: mpsc::Receiver<LinkRequest>,
     init_complete: trigger::Sender,
 }
 
 impl NoLanesInitTask {
     fn new(
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        dl_requests: mpsc::Receiver<DownlinkRequest>,
+        dl_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> Self {
         NoLanesInitTask {
@@ -74,10 +74,10 @@ impl TestInit for NoLanesInit {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        link_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output> {
-        let task = NoLanesInitTask::new(requests, downlink_requests, init_complete);
+        let task = NoLanesInitTask::new(requests, link_requests, init_complete);
         task.run().boxed()
     }
 }
@@ -126,7 +126,7 @@ async fn no_store_init_map(input: &mut ByteReader, output: &mut ByteWriter) {
 
 struct SingleLaneInitTask {
     requests: mpsc::Sender<AgentRuntimeRequest>,
-    _dl_requests: mpsc::Receiver<DownlinkRequest>,
+    _dl_requests: mpsc::Receiver<LinkRequest>,
     init_complete: trigger::Sender,
     config: LaneConfig,
 }
@@ -134,7 +134,7 @@ struct SingleLaneInitTask {
 impl SingleLaneInitTask {
     fn new(
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        dl_requests: mpsc::Receiver<DownlinkRequest>,
+        dl_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
         config: LaneConfig,
     ) -> Self {
@@ -182,10 +182,10 @@ impl TestInit for SingleLaneInit {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        link_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output> {
-        let task = SingleLaneInitTask::new(requests, downlink_requests, init_complete, self.config);
+        let task = SingleLaneInitTask::new(requests, link_requests, init_complete, self.config);
         task.run().boxed()
     }
 }
@@ -268,7 +268,7 @@ struct TwoLanesInit {
 
 struct TwoLanesInitTask {
     requests: mpsc::Sender<AgentRuntimeRequest>,
-    _dl_requests: mpsc::Receiver<DownlinkRequest>,
+    _dl_requests: mpsc::Receiver<LinkRequest>,
     init_complete: trigger::Sender,
     config: LaneConfig,
 }
@@ -282,7 +282,7 @@ struct TwoLanes {
 impl TwoLanesInitTask {
     fn new(
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        dl_requests: mpsc::Receiver<DownlinkRequest>,
+        dl_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
         config: LaneConfig,
     ) -> Self {
@@ -347,7 +347,7 @@ impl TestInit for TwoLanesInit {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        dl_requests: mpsc::Receiver<DownlinkRequest>,
+        dl_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output> {
         let task = TwoLanesInitTask::new(requests, dl_requests, init_complete, self.config);
@@ -416,12 +416,12 @@ impl TestInit for StoresInit {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        link_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output> {
         StoresInitTask::new(
             requests,
-            downlink_requests,
+            link_requests,
             init_complete,
             self.store_config,
             self.lane_config,
@@ -433,7 +433,7 @@ impl TestInit for StoresInit {
 
 struct StoresInitTask {
     requests: mpsc::Sender<AgentRuntimeRequest>,
-    _dl_requests: mpsc::Receiver<DownlinkRequest>,
+    _dl_requests: mpsc::Receiver<LinkRequest>,
     init_complete: trigger::Sender,
     store_config: StoreConfig,
     lane_config: LaneConfig,
@@ -442,7 +442,7 @@ struct StoresInitTask {
 impl StoresInitTask {
     fn new(
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        _dl_requests: mpsc::Receiver<DownlinkRequest>,
+        _dl_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
         store_config: StoreConfig,
         lane_config: LaneConfig,

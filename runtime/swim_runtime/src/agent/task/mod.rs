@@ -18,8 +18,30 @@ use std::future::Future;
 use std::pin::{pin, Pin};
 use std::time::Duration;
 
+use crate::agent::store::StoreInitError;
+use crate::agent::task::links::TriggerUnlink;
+use crate::agent::task::sender::LaneSendError;
+use crate::agent::task::timeout_coord::VoteResult;
+use crate::agent::task::write_fut::SpecialAction;
+use crate::error::InvalidKey;
+
+use self::ad_hoc::{AdHocTaskState, NoReport};
+use self::init::Initialization;
+use self::links::Links;
+use self::prune::PruneRemotes;
+use self::receiver::{Failed, ItemResponse, LaneData, ResponseData, ResponseReceiver, StoreData};
+use self::remotes::{RemoteSender, RemoteTracker, UplinkResponse};
+use self::sender::LaneSender;
+use self::write_fut::{WriteResult, WriteTask};
+
+use super::reporting::UplinkReporter;
+use super::store::{AgentItemInitError, AgentPersistence};
+use super::{
+    AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io,
+    LinkRequest, NodeReporting,
+};
 use bytes::{Bytes, BytesMut};
-use futures::future::BoxFuture;
+use futures::future::{join3, BoxFuture};
 use futures::stream::FuturesUnordered;
 use futures::{
     future::{join, select, Either},
@@ -35,40 +57,18 @@ use uuid::Uuid;
 
 pub use init::AgentInitTask;
 use swim_api::agent::{LaneConfig, StoreConfig};
-use swim_api::error::{OpenStoreError, StoreError};
+use swim_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
 use swim_api::meta::lane::LaneKind;
 use swim_api::store::{StoreDisabled, StoreKind};
 use swim_api::{agent::UplinkKind, error::AgentRuntimeError};
-use swim_messages::bytes_str::BytesStr;
 use swim_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
-use swim_model::Text;
+use swim_model::{BytesStr, Text};
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::trigger::{self, promise};
 
-use crate::agent::store::StoreInitError;
-use crate::agent::task::links::TriggerUnlink;
-use crate::agent::task::sender::LaneSendError;
-use crate::agent::task::timeout_coord::VoteResult;
-use crate::agent::task::write_fut::SpecialAction;
-use crate::error::InvalidKey;
-
-use super::reporting::UplinkReporter;
-use super::store::{AgentItemInitError, AgentPersistence};
-use super::{
-    AgentAttachmentRequest, AgentRuntimeConfig, DisconnectionReason, DownlinkRequest, Io,
-    NodeReporting,
-};
-
-use self::init::Initialization;
-use self::links::Links;
-use self::prune::PruneRemotes;
-use self::receiver::{Failed, ItemResponse, LaneData, ResponseData, ResponseReceiver, StoreData};
-use self::remotes::{RemoteSender, RemoteTracker, UplinkResponse};
-use self::sender::LaneSender;
-use self::write_fut::{WriteResult, WriteTask};
-
+mod ad_hoc;
 mod init;
 mod links;
 mod prune;
@@ -77,6 +77,9 @@ mod remotes;
 mod sender;
 mod timeout_coord;
 mod write_fut;
+
+pub use ad_hoc::AdHocTaskConfig;
+pub use init::InitTaskConfig;
 
 #[cfg(test)]
 mod fake_store;
@@ -131,9 +134,22 @@ impl StoreRuntimeSpec {
     }
 }
 
+#[derive(Debug)]
+pub struct AdHocChannelRequest {
+    pub promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
+}
+
+impl AdHocChannelRequest {
+    pub fn new(promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>) -> Self {
+        AdHocChannelRequest { promise }
+    }
+}
+
 /// Type for requests that can be sent to the agent runtime task by an agent implementation.
 #[derive(Debug)]
 pub enum AgentRuntimeRequest {
+    /// Attempt to open a channel for ad-hoc commands.
+    AdHoc(AdHocChannelRequest),
     /// Attempt to open a new lane for the agent.
     AddLane(LaneRuntimeSpec),
     /// Attempt to open a new store for the agent.
@@ -265,6 +281,7 @@ pub struct InitialEndpoints {
     rx: mpsc::Receiver<AgentRuntimeRequest>,
     lane_endpoints: Vec<LaneEndpoint<Io>>,
     store_endpoints: Vec<StoreEndpoint>,
+    ad_hoc_state: AdHocTaskState,
 }
 
 impl InitialEndpoints {
@@ -273,12 +290,14 @@ impl InitialEndpoints {
         rx: mpsc::Receiver<AgentRuntimeRequest>,
         lane_endpoints: Vec<LaneEndpoint<Io>>,
         store_endpoints: Vec<StoreEndpoint>,
+        ad_hoc_state: AdHocTaskState,
     ) -> Self {
         InitialEndpoints {
             reporting,
             rx,
             lane_endpoints,
             store_endpoints,
+            ad_hoc_state,
         }
     }
 }
@@ -305,7 +324,7 @@ pub struct AgentRuntimeTask<Store = StoreDisabled> {
     node: NodeDescriptor,
     init: InitialEndpoints,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-    downlink_requests: mpsc::Sender<DownlinkRequest>,
+    link_requests: mpsc::Sender<LinkRequest>,
     stopping: trigger::Receiver,
     config: AgentRuntimeConfig,
     store: Store,
@@ -334,14 +353,14 @@ impl AgentRuntimeTask {
     /// * `node` - The routing ID and node URI of this agent instance.
     /// * `init` - The initial lane and store endpoints for this agent.
     /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
-    /// * `downlink_requests` - Channel for requests to open downlink runtimes for the agent.
+    /// * `link_requests` - Channel for requests to open external links for the agent.
     /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
     /// * `config` - Configuration parameters for the agent runtime.
     pub fn new(
         node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        downlink_requests: mpsc::Sender<DownlinkRequest>,
+        link_requests: mpsc::Sender<LinkRequest>,
         stopping: trigger::Receiver,
         config: AgentRuntimeConfig,
     ) -> Self {
@@ -349,7 +368,7 @@ impl AgentRuntimeTask {
             node,
             init,
             attachment_rx,
-            downlink_requests,
+            link_requests,
             stopping,
             config,
             store: StoreDisabled::default(),
@@ -366,7 +385,7 @@ where
     /// * `node` - The routing ID and node URI of this agent instance.
     /// * `init` - The initial lane and store endpoints for this agent.
     /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
-    /// * `downlink_requests` - Channel for requests to open downlink runtimes for the agent.
+    /// * `link_requests` - Channel for requests to open external links for the agent.
     /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
     /// * `config` - Configuration parameters for the agent runtime.
     /// * `store` - Persistence store for the agent.
@@ -374,7 +393,7 @@ where
         node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        downlink_requests: mpsc::Sender<DownlinkRequest>,
+        link_requests: mpsc::Sender<LinkRequest>,
         stopping: trigger::Receiver,
         config: AgentRuntimeConfig,
         store: Store,
@@ -383,7 +402,7 @@ where
             node,
             init,
             attachment_rx,
-            downlink_requests,
+            link_requests,
             stopping,
             config,
             store,
@@ -404,9 +423,10 @@ where
                     rx,
                     lane_endpoints,
                     store_endpoints,
+                    ad_hoc_state,
                 },
             attachment_rx,
-            downlink_requests,
+            link_requests,
             stopping,
             config,
             store,
@@ -417,20 +437,24 @@ where
 
         let (read_tx, read_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (write_tx, write_rx) = mpsc::channel(config.attachment_queue_size.get());
+        let (ad_hoc_tx, ad_hoc_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (read_vote, write_vote, vote_waiter) = timeout_coord::timeout_coordinator();
 
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
 
         let combined_stop = select(select(stopping.clone(), kill_switch_rx), vote_waiter);
+
         let att = attachment_task(
             rx,
             attachment_rx,
-            downlink_requests,
+            link_requests.clone(),
             read_tx.clone(),
             write_tx.clone(),
+            ad_hoc_tx,
             combined_stop,
         )
         .instrument(info_span!("Agent Runtime Attachment Task", %identity, %node_uri));
+
         let read = read_task(
             config,
             write_endpoints,
@@ -441,6 +465,7 @@ where
             reporting.as_ref().map(NodeReporting::aggregate),
         )
         .instrument(info_span!("Agent Runtime Read Task", %identity, %node_uri));
+
         let write = write_task(
             WriteTaskConfiguration::new(identity, node_uri.clone(), config),
             WriteTaskEndpoints::new(read_endpoints, store_endpoints),
@@ -452,8 +477,23 @@ where
         )
         .instrument(info_span!("Agent Runtime Write Task", %identity, %node_uri));
 
+        let ad_hoc_config = AdHocTaskConfig {
+            buffer_size: config.ad_hoc_buffer_size,
+            retry_strategy: config.ad_hoc_output_retry,
+            timeout_delay: config.ad_hoc_output_timeout,
+        };
+
+        let ad_hoc = ad_hoc::ad_hoc_commands_task::<NoReport>(
+            identity,
+            ad_hoc_rx,
+            ad_hoc_state,
+            ad_hoc_config,
+            None,
+        )
+        .instrument(info_span!("Agent Ad Hoc Command Task", %identity, %node_uri));
+
         let io = await_io_tasks(read, write, kill_switch_tx);
-        let (_, result) = join(att, io).await;
+        let (_, _, result) = join3(att, ad_hoc, io).await;
         result
     }
 }
@@ -503,18 +543,20 @@ impl WriteTaskMessage {
 /// #Arguments
 /// * `runtime` - Requests from the agent.
 /// * `attachment` - External requests to attach new remotes.
-/// * `downlink_requests` - Requests to open downlink runtimes for the agent.
+/// * `link_requests` - Requests to open external connections for the agent.
 /// * `read_tx` - Channel to communicate with the read task.
 /// * `write_tx` - Channel to communicate with the write task.
+/// * `ad_hoc_tx` - Channel to communicate with the ad-hoc commands
 /// * `combined_stop` - The task will stop when this future completes. This should combined the overall
 /// shutdown-signal with latch that ensures this task will stop if the read/write tasks stop (to avoid
 /// deadlocks).
 async fn attachment_task<F>(
     mut runtime: mpsc::Receiver<AgentRuntimeRequest>,
     mut attachment: mpsc::Receiver<AgentAttachmentRequest>,
-    downlink_requests: mpsc::Sender<DownlinkRequest>,
+    link_requests: mpsc::Sender<LinkRequest>,
     read_tx: mpsc::Sender<ReadTaskMessage>,
     write_tx: mpsc::Sender<WriteTaskMessage>,
+    ad_hoc_tx: mpsc::Sender<AdHocChannelRequest>,
     mut combined_stop: F,
 ) where
     F: Future + Unpin,
@@ -536,16 +578,21 @@ async fn attachment_task<F>(
                             let succeeded = match request {
                                 AgentRuntimeRequest::AddLane(req) => write_tx.send(WriteTaskMessage::Lane(req)).await.is_ok(),
                                 AgentRuntimeRequest::AddStore(req) => write_tx.send(WriteTaskMessage::Store(req)).await.is_ok(),
-                                AgentRuntimeRequest::OpenDownlink(req) => downlink_requests.send(req).await.is_ok(),
+                                AgentRuntimeRequest::AdHoc(request) => ad_hoc_tx.send(request).await.is_ok(),
+                                AgentRuntimeRequest::OpenDownlink(req) => link_requests.send(LinkRequest::Downlink(req)).await.is_ok(),
                             };
                             if !succeeded {
                                 break;
                             }
                         }
                         Either::Right(request) => {
-                            if !handle_att_request(request, &read_tx, &write_tx, |read_rx, write_rx, on_attached| {
+                            if !handle_att_request(request, &read_tx, &write_tx, |read_rx, maybe_write_rx, on_attached| {
                                 attachments.push(async move {
-                                    if matches!(join(read_rx, write_rx).await, (Ok(_), Ok(_))) {
+                                    if let Some(write_rx) = maybe_write_rx {
+                                        if matches!(join(read_rx, write_rx).await, (Ok(_), Ok(_))) {
+                                            on_attached.trigger();
+                                        }
+                                    } else if read_rx.await.is_ok() {
                                         on_attached.trigger();
                                     }
                                 })
@@ -575,51 +622,83 @@ async fn handle_att_request<F>(
     add_att: F,
 ) -> bool
 where
-    F: FnOnce(trigger::Receiver, trigger::Receiver, trigger::Sender),
+    F: FnOnce(trigger::Receiver, Option<trigger::Receiver>, trigger::Sender),
 {
-    let AgentAttachmentRequest {
-        id,
-        io: (tx, rx),
-        completion,
-        on_attached,
-    } = request;
-    info!(
-        "Attaching a new remote endpoint with ID {id} to the agent.",
-        id = id
-    );
-    let read_permit = match read_tx.reserve().await {
-        Err(_) => {
-            warn!("Read task stopped while attempting to attach a remote endpoint.");
-            return false;
+    match request {
+        AgentAttachmentRequest::TwoWay {
+            id,
+            io: (tx, rx),
+            completion,
+            on_attached,
+        } => {
+            info!(
+                "Attaching a new remote endpoint with ID {id} to the agent.",
+                id = id
+            );
+            let read_permit = match read_tx.reserve().await {
+                Err(_) => {
+                    warn!("Read task stopped while attempting to attach a remote endpoint.");
+                    return false;
+                }
+                Ok(permit) => permit,
+            };
+            let write_permit = match write_tx.reserve().await {
+                Err(_) => {
+                    warn!("Write task stopped while attempting to attach a remote endpoint.");
+                    return false;
+                }
+                Ok(permit) => permit,
+            };
+            let (read_on_attached, write_on_attached) = if let Some(on_attached) = on_attached {
+                let (read_tx, read_rx) = trigger::trigger();
+                let (write_tx, write_rx) = trigger::trigger();
+                add_att(read_rx, Some(write_rx), on_attached);
+                (Some(read_tx), Some(write_tx))
+            } else {
+                (None, None)
+            };
+            read_permit.send(ReadTaskMessage::Remote {
+                reader: rx,
+                on_attached: read_on_attached,
+            });
+            write_permit.send(WriteTaskMessage::Remote {
+                id,
+                writer: tx,
+                completion,
+                on_attached: write_on_attached,
+            });
+            true
         }
-        Ok(permit) => permit,
-    };
-    let write_permit = match write_tx.reserve().await {
-        Err(_) => {
-            warn!("Write task stopped while attempting to attach a remote endpoint.");
-            return false;
+        AgentAttachmentRequest::OneWay {
+            io: rx,
+            id,
+            on_attached,
+        } => {
+            info!(
+                "Attaching a new command channel from ID {id} to the agent.",
+                id = id
+            );
+            let read_permit = match read_tx.reserve().await {
+                Err(_) => {
+                    warn!("Read task stopped while attempting to attach a command channel.");
+                    return false;
+                }
+                Ok(permit) => permit,
+            };
+            let read_on_attached = if let Some(on_attached) = on_attached {
+                let (read_tx, read_rx) = trigger::trigger();
+                add_att(read_rx, None, on_attached);
+                Some(read_tx)
+            } else {
+                None
+            };
+            read_permit.send(ReadTaskMessage::Remote {
+                reader: rx,
+                on_attached: read_on_attached,
+            });
+            true
         }
-        Ok(permit) => permit,
-    };
-    let (read_on_attached, write_on_attached) = if let Some(on_attached) = on_attached {
-        let (read_tx, read_rx) = trigger::trigger();
-        let (write_tx, write_rx) = trigger::trigger();
-        add_att(read_rx, write_rx, on_attached);
-        (Some(read_tx), Some(write_tx))
-    } else {
-        (None, None)
-    };
-    read_permit.send(ReadTaskMessage::Remote {
-        reader: rx,
-        on_attached: read_on_attached,
-    });
-    write_permit.send(WriteTaskMessage::Remote {
-        id,
-        writer: tx,
-        completion,
-        on_attached: write_on_attached,
-    });
-    true
+    }
 }
 
 type RemoteReceiver = FramedRead<ByteReader, RawRequestMessageDecoder>;
@@ -1602,7 +1681,7 @@ where
         runtime_config,
     } = configuration;
 
-    let initialization = Initialization::new(reporting, runtime_config.lane_init_timeout);
+    let initialization = Initialization::new(reporting, runtime_config.item_init_timeout);
 
     let mut timeout_delay = pin!(sleep(runtime_config.inactive_timeout));
     let remote_prune_delay = pin!(sleep(Duration::default()));

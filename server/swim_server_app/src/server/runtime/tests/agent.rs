@@ -92,7 +92,7 @@ impl Agent for TestAgent {
                 run_lane_initializer(&mut tx, &mut rx).await;
             }
 
-            Ok(run_agent(tx, rx, events, reporter).boxed())
+            Ok(run_agent(tx, rx, events, reporter, context).boxed())
         }
         .boxed()
     }
@@ -137,6 +137,7 @@ async fn run_agent(
     rx: ByteReader,
     events: mpsc::UnboundedSender<AgentEvent>,
     reporter: mpsc::UnboundedSender<i32>,
+    context: Box<dyn AgentContext + Send>,
 ) -> Result<(), AgentTaskError> {
     events.send(AgentEvent::Started).expect("Channel stopped.");
     let decoder =
@@ -179,6 +180,7 @@ async fn run_agent(
     drop(input);
     drop(output);
     drop(reporter);
+    drop(context);
     events.send(AgentEvent::Stopped).expect("Channel stopped.");
     Ok(())
 }

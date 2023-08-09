@@ -27,8 +27,12 @@ use swim_api::{
     agent::AgentContext,
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError},
+    protocol::{
+        agent::{AdHocCommand, AdHocCommandEncoder},
+        WithLenReconEncoder,
+    },
 };
-use swim_form::structural::read::recognizer::RecognizerReadable;
+use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_model::{address::Address, Text};
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swim_utilities::{
@@ -37,7 +41,7 @@ use swim_utilities::{
     routing::route_uri::RouteUri,
 };
 use thiserror::Error;
-use tokio_util::codec::Decoder;
+use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{
     agent_model::downlink::{
@@ -47,6 +51,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
+mod command;
 mod handler_fn;
 mod register_downlink;
 mod suspend;
@@ -55,6 +60,7 @@ mod tests;
 
 pub use suspend::{run_after, run_schedule, HandlerFuture, Spawner, Suspend};
 
+pub use command::SendCommand;
 pub use handler_fn::{
     EventConsumeFn, EventFn, HandlerFn0, MapRemoveFn, MapUpdateBorrowFn, MapUpdateFn, TakeFn,
     UpdateBorrowFn, UpdateFn,
@@ -103,6 +109,7 @@ pub struct ActionContext<'a, Context> {
     agent_context: &'a dyn AgentContext,
     downlink: &'a dyn DownlinkSpawner<Context>,
     join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
+    ad_hoc_buffer: &'a mut BytesMut,
 }
 
 impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
@@ -127,12 +134,14 @@ impl<'a, Context> ActionContext<'a, Context> {
         agent_context: &'a dyn AgentContext,
         downlink: &'a dyn DownlinkSpawner<Context>,
         join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
+        ad_hoc_buffer: &'a mut BytesMut,
     ) -> Self {
         ActionContext {
             spawner,
             agent_context,
             downlink,
             join_value_init,
+            ad_hoc_buffer,
         }
     }
 
@@ -188,6 +197,23 @@ impl<'a, Context> ActionContext<'a, Context> {
             })
             .boxed();
         self.spawn_suspend(fut);
+    }
+
+    pub(crate) fn send_command<S, T>(
+        &mut self,
+        address: Address<S>,
+        command: T,
+        overwrite_permitted: bool,
+    ) where
+        S: AsRef<str>,
+        T: StructuralWritable,
+    {
+        let ActionContext { ad_hoc_buffer, .. } = self;
+        let mut encoder = AdHocCommandEncoder::new(WithLenReconEncoder::default());
+        let cmd = AdHocCommand::new(address, command, overwrite_permitted);
+        encoder
+            .encode(cmd, ad_hoc_buffer)
+            .expect("Encoding should be infallible.")
     }
 }
 

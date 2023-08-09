@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::bytes_str::BytesStr;
 use crate::protocol::{
     AgentMessageDecoder, BytesResponseMessage, ClientMessageDecoder, MessageDecodeError, Path,
     RawRequestMessage, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,
@@ -29,7 +28,7 @@ use std::num::NonZeroUsize;
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
-use swim_model::Text;
+use swim_model::{BytesStr, Text};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::io::byte_channel;
 use swim_utilities::non_zero_usize;

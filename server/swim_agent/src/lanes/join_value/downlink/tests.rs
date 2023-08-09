@@ -14,6 +14,7 @@
 
 use std::{cell::RefCell, collections::HashMap};
 
+use bytes::BytesMut;
 use swim_api::agent::AgentConfig;
 use swim_model::{address::Address, Text};
 use swim_utilities::routing::route_uri::RouteUri;
@@ -228,7 +229,11 @@ where
 {
     let mut modifications = vec![];
     loop {
-        match handler.step(&mut dummy_context(&mut HashMap::new()), meta, agent) {
+        match handler.step(
+            &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+            meta,
+            agent,
+        ) {
             StepResult::Continue {
                 modified_item: Some(modified),
             } => modifications.push(modified),

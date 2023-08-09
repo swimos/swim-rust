@@ -6,6 +6,7 @@ edition = "2021"
 
 [dependencies]
 chrono = { workspace = true }
+bytes = { workspace = true }
 either = { workspace = true }
 num-bigint = { workspace = true }
 base64 = { workspace = true }

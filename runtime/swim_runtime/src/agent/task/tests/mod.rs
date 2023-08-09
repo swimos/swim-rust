@@ -36,19 +36,17 @@ use swim_api::{
     },
 };
 use swim_form::structural::read::recognizer::primitive::I32Recognizer;
-use swim_messages::{
-    bytes_str::BytesStr,
-    protocol::{
-        Notification, Path, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,
-        ResponseMessage,
-    },
+use swim_messages::protocol::{
+    Notification, Path, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,
+    ResponseMessage,
 };
-use swim_model::Text;
+use swim_model::{BytesStr, Text};
 use swim_recon::{
     parser::{parse_recognize, Span},
     printer::print_recon_compact,
 };
 use swim_utilities::{
+    future::retryable::RetryStrategy,
     io::byte_channel::{ByteReader, ByteWriter},
     non_zero_usize,
     trigger::promise,
@@ -72,6 +70,7 @@ const QUEUE_SIZE: NonZeroUsize = non_zero_usize!(8);
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const INIT_TIMEOUT: Duration = Duration::from_secs(1);
+const AD_HOC_TIMEOUT: Duration = Duration::from_secs(1);
 
 fn make_config(inactive_timeout: Duration) -> AgentRuntimeConfig {
     make_prune_config(inactive_timeout, inactive_timeout)
@@ -86,7 +85,10 @@ fn make_prune_config(
         inactive_timeout,
         prune_remote_delay,
         shutdown_timeout: SHUTDOWN_TIMEOUT,
-        lane_init_timeout: INIT_TIMEOUT,
+        item_init_timeout: INIT_TIMEOUT,
+        ad_hoc_output_timeout: AD_HOC_TIMEOUT,
+        ad_hoc_output_retry: RetryStrategy::none(),
+        ad_hoc_buffer_size: non_zero_usize!(4096),
     }
 }
 

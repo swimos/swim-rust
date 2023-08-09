@@ -21,15 +21,13 @@ use swim_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swim_form::structural::read::ReadError;
 use swim_form::structural::write::StructuralWritable;
 use swim_model::address::RelativeAddress;
-use swim_model::Text;
+use swim_model::{BytesStr, Text};
 use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swim_recon::printer::print_recon_compact;
 use thiserror::Error;
 use tokio::io::AsyncRead;
 use tokio_util::codec::{Decoder, Encoder, FramedRead};
 use uuid::Uuid;
-
-use crate::bytes_str::BytesStr;
 
 #[cfg(test)]
 mod tests;

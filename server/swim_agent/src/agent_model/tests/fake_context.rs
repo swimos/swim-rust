@@ -30,6 +30,7 @@ use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
 };
+use tokio::sync::oneshot;
 
 use super::{CMD_LANE, MAP_LANE, VAL_LANE};
 
@@ -39,12 +40,24 @@ pub struct TestAgentContext {
 }
 
 impl TestAgentContext {
+    pub fn new(promise: oneshot::Sender<ByteReader>) -> Self {
+        TestAgentContext {
+            inner: Arc::new(Mutex::new(Inner {
+                ad_hoc_consumer: Some(promise),
+                ..Default::default()
+            })),
+        }
+    }
+}
+
+impl TestAgentContext {
     pub fn take_lane_io(&self) -> (Option<Io>, Option<Io>, Option<Io>) {
         let mut guard = self.inner.lock();
         let Inner {
             value_lane_io,
             map_lane_io,
             cmd_lane_io,
+            ..
         } = &mut *guard;
         (value_lane_io.take(), map_lane_io.take(), cmd_lane_io.take())
     }
@@ -57,11 +70,24 @@ struct Inner {
     value_lane_io: Option<Io>,
     map_lane_io: Option<Io>,
     cmd_lane_io: Option<Io>,
+    ad_hoc_consumer: Option<oneshot::Sender<ByteReader>>,
+    ad_hoc_rx: Option<ByteReader>,
 }
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 impl AgentContext for TestAgentContext {
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+        let mut guard = self.inner.lock();
+        let (tx, rx) = byte_channel(BUFFER_SIZE);
+        if let Some(sender) = guard.ad_hoc_consumer.take() {
+            sender.send(rx).expect("Registering ad hoc channel failed.");
+        } else {
+            guard.ad_hoc_rx = Some(rx);
+        }
+        ready(Ok(tx)).boxed()
+    }
+
     fn add_lane(
         &self,
         name: &str,
@@ -101,7 +127,7 @@ impl AgentContext for TestAgentContext {
         _lane: &str,
         _kind: DownlinkKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
-        panic!("Opening downlinks from agents not yet supported.")
+        panic!("Unexpected downlink request.")
     }
 
     fn add_store(

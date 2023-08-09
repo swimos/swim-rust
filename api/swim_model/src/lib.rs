@@ -18,6 +18,7 @@ pub mod address;
 mod attr;
 pub use num_bigint as bigint;
 mod blob;
+mod bytes_str;
 pub mod identifier;
 mod item;
 #[macro_use]
@@ -31,6 +32,7 @@ mod value;
 
 pub use attr::Attr;
 pub use blob::Blob;
+pub use bytes_str::{BytesStr, TryFromUtf8Bytes};
 pub use item::Item;
 pub use text::Text;
 pub use value::{ReconstructFromValue, ToValue, Value, ValueKind};

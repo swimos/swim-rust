@@ -15,16 +15,18 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use std::pin::{pin, Pin};
 use std::sync::Arc;
 
 use bytes::BytesMut;
+use futures::future::{Fuse, OptionFuture};
 use futures::stream::BoxStream;
-use futures::FutureExt;
 use futures::{
-    future::{BoxFuture, Either},
+    future::{BoxFuture, Either, FusedFuture},
     stream::{FuturesUnordered, SelectAll},
     StreamExt,
 };
+use futures::{Future, FutureExt};
 use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swim_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
 use swim_api::protocol::WithLengthBytesCodec;
@@ -37,6 +39,7 @@ use swim_api::{
 use swim_model::Text;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::routing::route_uri::RouteUri;
+use tokio::io::AsyncWriteExt;
 use tracing::{error, info};
 use uuid::Uuid;
 
@@ -353,11 +356,14 @@ enum TaskEvent<ItemModel> {
         id: u64,
         error: FrameIoError,
     },
+    CommandSendComplete {
+        result: Result<CommandWriter, std::io::Error>,
+    },
 }
 
 struct HostedDownlink<Context> {
-    failed: bool,
     channel: BoxDownlinkChannel<Context>,
+    failed: bool,
     write_stream: Option<BoxStream<'static, Result<(), std::io::Error>>>,
 }
 
@@ -367,8 +373,8 @@ impl<Context> HostedDownlink<Context> {
         write_stream: BoxStream<'static, Result<(), std::io::Error>>,
     ) -> Self {
         HostedDownlink {
-            failed: false,
             channel,
+            failed: false,
             write_stream: Some(write_stream),
         }
     }
@@ -385,9 +391,9 @@ enum HostedDownlinkEvent {
 impl<Context> HostedDownlink<Context> {
     async fn wait_on_downlink(mut self) -> Option<(Self, HostedDownlinkEvent)> {
         let HostedDownlink {
-            failed,
             channel,
             write_stream,
+            failed,
         } = &mut self;
 
         if *failed {
@@ -471,6 +477,7 @@ where
         let suspended = FuturesUnordered::new();
         let downlink_channels = RefCell::new(vec![]);
         let mut join_value_init = HashMap::new();
+        let mut ad_hoc_buffer = BytesMut::new();
 
         let item_model = item_model_fac.create();
 
@@ -567,6 +574,7 @@ where
                 &*context,
                 &downlink_channels,
                 &mut join_value_init,
+                &mut ad_hoc_buffer,
             ),
             meta,
             &item_model,
@@ -581,6 +589,7 @@ where
                 &*context,
                 &downlink_channels,
                 &mut join_value_init,
+                &mut ad_hoc_buffer,
             ),
             meta,
             &item_model,
@@ -604,6 +613,7 @@ where
             store_io,
             suspended,
             downlink_channels: downlink_channels.into_inner(),
+            ad_hoc_buffer,
             join_value_init,
         };
         Ok(agent_task.run_agent(context).boxed())
@@ -764,6 +774,7 @@ struct AgentTask<ItemModel, Lifecycle> {
     store_io: HashMap<Text, ByteWriter>,
     suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
     join_value_init: HashMap<u64, BoxJoinValueInit<'static, ItemModel>>,
+    ad_hoc_buffer: BytesMut,
     downlink_channels: Vec<(BoxDownlinkChannel<ItemModel>, WriteStream)>,
 }
 
@@ -792,6 +803,7 @@ where
             store_io,
             mut suspended,
             mut join_value_init,
+            mut ad_hoc_buffer,
             downlink_channels,
         } = self;
         let meta = AgentMetadata::new(&route, &route_params, &config);
@@ -805,6 +817,16 @@ where
         let mut item_writers = HashMap::new();
         let mut pending_writes = FuturesUnordered::new();
         let mut downlinks = FuturesUnordered::new();
+
+        let mut cmd_writer = if let Ok(cmd_tx) = context.ad_hoc_commands().await {
+            Some(CommandWriter::new(cmd_tx))
+        } else {
+            return Err(AgentTaskError::OutputFailed(std::io::Error::from(
+                std::io::ErrorKind::BrokenPipe,
+            )));
+        };
+
+        let mut cmd_send_fut = pin!(OptionFuture::from(None));
 
         // Start waiting on downlinks from the init phase.
         for (channel, write_stream) in downlink_channels {
@@ -860,6 +882,13 @@ where
             };
             let task_event: TaskEvent<ItemModel> = tokio::select! {
                 biased;
+                maybe_cmd_result = &mut cmd_send_fut, if !cmd_send_fut.is_terminated() => {
+                    if let Some(result) = maybe_cmd_result {
+                        TaskEvent::CommandSendComplete { result }
+                    } else {
+                        continue;
+                    }
+                },
                 write_done = pending_writes.next(), if !pending_writes.is_empty() => {
                     if let Some((writer, result)) = write_done {
                         TaskEvent::WriteComplete {
@@ -896,6 +925,7 @@ where
                             &*context,
                             &add_downlink,
                             &mut join_value_init,
+                            &mut ad_hoc_buffer,
                         ),
                         meta,
                         &item_model,
@@ -906,7 +936,12 @@ where
                     ) {
                         Err(EventHandlerError::StopInstructed) => break Ok(()),
                         Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
-                        Ok(_) => {}
+                        Ok(_) => check_cmds(
+                            &mut ad_hoc_buffer,
+                            &mut cmd_writer,
+                            &mut cmd_send_fut,
+                            CommandWriter::write,
+                        ),
                     }
                 }
                 TaskEvent::DownlinkReady { downlink_event } => {
@@ -931,6 +966,7 @@ where
                                             &*context,
                                             &add_downlink,
                                             &mut join_value_init,
+                                            &mut ad_hoc_buffer,
                                         ),
                                         meta,
                                         &item_model,
@@ -943,7 +979,12 @@ where
                                         Err(e) => {
                                             break Err(AgentTaskError::UserCodeError(Box::new(e)))
                                         }
-                                        Ok(_) => {}
+                                        Ok(_) => check_cmds(
+                                            &mut ad_hoc_buffer,
+                                            &mut cmd_writer,
+                                            &mut cmd_send_fut,
+                                            CommandWriter::write,
+                                        ),
                                     }
                                 }
                                 if !failed {
@@ -965,6 +1006,7 @@ where
                                         &*context,
                                         &add_downlink,
                                         &mut join_value_init,
+                                        &mut ad_hoc_buffer,
                                     ),
                                     meta,
                                     &item_model,
@@ -987,7 +1029,12 @@ where
                                             "Incoming frame was rejected by the item."
                                         );
                                     }
-                                    _ => {}
+                                    _ => check_cmds(
+                                        &mut ad_hoc_buffer,
+                                        &mut cmd_writer,
+                                        &mut cmd_send_fut,
+                                        CommandWriter::write,
+                                    ),
                                 }
                             }
                         }
@@ -999,6 +1046,7 @@ where
                                         &*context,
                                         &add_downlink,
                                         &mut join_value_init,
+                                        &mut ad_hoc_buffer,
                                     ),
                                     meta,
                                     &item_model,
@@ -1011,7 +1059,12 @@ where
                                     Err(e) => {
                                         break Err(AgentTaskError::UserCodeError(Box::new(e)))
                                     }
-                                    Ok(_) => {}
+                                    Ok(_) => check_cmds(
+                                        &mut ad_hoc_buffer,
+                                        &mut cmd_writer,
+                                        &mut cmd_send_fut,
+                                        CommandWriter::write,
+                                    ),
                                 }
                             }
                         }
@@ -1029,6 +1082,7 @@ where
                                         &*context,
                                         &add_downlink,
                                         &mut join_value_init,
+                                        &mut ad_hoc_buffer,
                                     ),
                                     meta,
                                     &item_model,
@@ -1051,7 +1105,12 @@ where
                                             "Incoming frame was rejected by the item."
                                         );
                                     }
-                                    _ => {}
+                                    _ => check_cmds(
+                                        &mut ad_hoc_buffer,
+                                        &mut cmd_writer,
+                                        &mut cmd_send_fut,
+                                        CommandWriter::write,
+                                    ),
                                 }
                             }
                         }
@@ -1063,6 +1122,7 @@ where
                                         &*context,
                                         &add_downlink,
                                         &mut join_value_init,
+                                        &mut ad_hoc_buffer,
                                     ),
                                     meta,
                                     &item_model,
@@ -1075,7 +1135,12 @@ where
                                     Err(e) => {
                                         break Err(AgentTaskError::UserCodeError(Box::new(e)))
                                     }
-                                    Ok(_) => {}
+                                    Ok(_) => check_cmds(
+                                        &mut ad_hoc_buffer,
+                                        &mut cmd_writer,
+                                        &mut cmd_send_fut,
+                                        CommandWriter::write,
+                                    ),
                                 }
                             }
                         }
@@ -1085,6 +1150,18 @@ where
                 TaskEvent::RequestError { id, error } => {
                     let lane = item_ids[&id].clone();
                     break Err(AgentTaskError::BadFrame { lane, error });
+                }
+                TaskEvent::CommandSendComplete { result: Ok(writer) } => {
+                    cmd_send_fut.set(None.into());
+                    if !ad_hoc_buffer.is_empty() {
+                        let fut = writer.write(&mut ad_hoc_buffer);
+                        cmd_send_fut.set(Some(fut.fuse()).into());
+                    } else {
+                        cmd_writer = Some(writer);
+                    }
+                }
+                TaskEvent::CommandSendComplete { result: Err(err) } => {
+                    break Err(AgentTaskError::OutputFailed(err));
                 }
             }
             // Attempt to write to the outgoing buffers for any items with data.
@@ -1115,7 +1192,13 @@ where
             ))
         };
         match run_handler(
-            &mut ActionContext::new(&suspended, &*context, &discard, &mut join_value_init),
+            &mut ActionContext::new(
+                &suspended,
+                &*context,
+                &discard,
+                &mut join_value_init,
+                &mut ad_hoc_buffer,
+            ),
             meta,
             &item_model,
             &lifecycle,
@@ -1237,6 +1320,52 @@ where
                 }
                 break Ok(());
             }
+        }
+    }
+}
+
+struct CommandWriter {
+    tx: ByteWriter,
+    buffer: BytesMut,
+}
+
+impl CommandWriter {
+    fn new(tx: ByteWriter) -> Self {
+        CommandWriter {
+            tx,
+            buffer: BytesMut::new(),
+        }
+    }
+
+    fn write(
+        mut self,
+        content: &mut BytesMut,
+    ) -> impl Future<Output = Result<Self, std::io::Error>> + 'static {
+        self.buffer.clear();
+        std::mem::swap(&mut self.buffer, content);
+        async move {
+            let CommandWriter { tx, buffer } = &mut self;
+            tx.write_all(buffer).await?;
+            Ok(self)
+        }
+    }
+}
+
+/// Check of an event handler wrote into the ad-hoc commands buffer and schedule a
+/// write to the command channel.
+#[inline]
+fn check_cmds<Fut>(
+    ad_hoc_buffer: &mut BytesMut,
+    cmd_writer: &mut Option<CommandWriter>,
+    cmd_send_fut: &mut Pin<&mut OptionFuture<Fuse<Fut>>>,
+    write: fn(CommandWriter, &mut BytesMut) -> Fut,
+) where
+    Fut: Future,
+{
+    if !ad_hoc_buffer.is_empty() {
+        if let Some(writer) = cmd_writer.take() {
+            let fut = write(writer, ad_hoc_buffer);
+            cmd_send_fut.set(Some(fut.fuse()).into());
         }
     }
 }

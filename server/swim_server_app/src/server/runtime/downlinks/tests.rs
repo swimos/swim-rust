@@ -29,7 +29,7 @@ use futures::{
 use parking_lot::Mutex;
 use swim_api::{
     downlink::DownlinkKind,
-    error::{DownlinkFailureReason, DownlinkRuntimeError},
+    error::DownlinkRuntimeError,
     protocol::downlink::{
         DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
     },
@@ -38,14 +38,17 @@ use swim_messages::protocol::{
     Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder,
 };
 use swim_model::{address::RelativeAddress, Text};
-use swim_remote::AttachClient;
+use swim_remote::{AttachClient, LinkError};
 use swim_runtime::{
-    agent::DownlinkRequest,
+    agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
     downlink::{DownlinkOptions, DownlinkRuntimeConfig, Io},
-    net::dns::{DnsFut, DnsResolver},
+    net::{
+        dns::{DnsFut, DnsResolver},
+        SchemeHostPort,
+    },
 };
 use swim_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
+    io::byte_channel::{are_connected, ByteReader, ByteWriter},
     non_zero_usize, trigger,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -70,6 +73,7 @@ const HOST: &str = "example.swim";
 const URL: &str = "warp://example.swim:40000";
 const BAD_URL: &str = "warp://other.swim:40000";
 const PORT: u16 = 40000;
+const AGENT_ID: Uuid = Uuid::from_u128(5);
 
 impl DnsResolver for FakeDns {
     type ResolveFuture = DnsFut;
@@ -119,10 +123,19 @@ const CONFIG: DownlinkRuntimeConfig = DownlinkRuntimeConfig {
     downlink_buffer_size: DEFAULT_BUFFER,
 };
 
-struct Endpoint {
-    local: bool,
-    address: RelativeAddress<Text>,
-    io: (ByteWriter, ByteReader),
+enum Endpoint {
+    TwoWay {
+        local: bool,
+        address: RelativeAddress<Text>,
+        io: Io,
+    },
+    OneWayLocal {
+        address: RelativeAddress<Text>,
+        reader: ByteReader,
+    },
+    OneWayRemote {
+        reader: ByteReader,
+    },
 }
 
 struct FakeServerTask {
@@ -151,21 +164,62 @@ struct Endpoints {
     inner: Arc<Mutex<HashMap<Uuid, Endpoint>>>,
 }
 
+fn check_hosts(actual: &str, expected: &str) {
+    let actual = actual.parse::<SchemeHostPort>().expect("Invalid host.");
+    let expected = expected.parse::<SchemeHostPort>().expect("Invalid host.");
+    assert_eq!(actual, expected);
+}
+
 impl Endpoints {
-    fn take_endpoint(&self, local: bool, node: &str) -> (Uuid, Io) {
+    fn take_two_way_endpoint(&self, loc: bool, node: &str) -> (Uuid, Io) {
         let mut guard = self.inner.lock();
 
-        let key = guard.iter().find_map(|(k, v)| {
-            if v.local == local && v.address.node == node {
-                Some(*k)
-            } else {
-                None
+        let key = guard.iter().find_map(|(k, v)| match v {
+            Endpoint::TwoWay { local, address, .. } => {
+                if *local == loc && address.node == node {
+                    Some(*k)
+                } else {
+                    None
+                }
             }
+            _ => None,
         });
         let (id, endpoint) = key
             .and_then(|k| guard.remove(&k).map(|ep| (k, ep)))
             .expect("No such endpoint.");
-        (id, endpoint.io)
+        (
+            id,
+            match endpoint {
+                Endpoint::TwoWay { io, .. } => io,
+                _ => unreachable!(),
+            },
+        )
+    }
+
+    fn take_one_way_endpoint(&self, loc: bool, node: &str) -> (Uuid, ByteReader) {
+        let mut guard = self.inner.lock();
+
+        let key = guard.iter().find_map(|(k, v)| match v {
+            Endpoint::OneWayLocal { address, .. } if loc => {
+                if address.node == node {
+                    Some(*k)
+                } else {
+                    None
+                }
+            }
+            Endpoint::OneWayRemote { .. } if !loc => Some(*k),
+            _ => None,
+        });
+        let (id, endpoint) = key
+            .and_then(|k| guard.remove(&k).map(|ep| (k, ep)))
+            .expect("No such endpoint.");
+        (
+            id,
+            match endpoint {
+                Endpoint::OneWayLocal { reader, .. } | Endpoint::OneWayRemote { reader } => reader,
+                _ => unreachable!(),
+            },
+        )
     }
 }
 
@@ -213,7 +267,7 @@ impl FakeServerTask {
                     responder,
                     ..
                 }))) => {
-                    assert_eq!(host, URL);
+                    check_hosts(host.as_str(), URL);
                     let result = if sock_addrs.iter().any(|a| a == &addr) {
                         Ok(EstablishedClient {
                             tx: attach_tx.clone(),
@@ -225,7 +279,29 @@ impl FakeServerTask {
                     assert!(responder.send(result).is_ok());
                 }
                 Some(Either::Left(DlTaskRequest::Local(local))) => match local {
-                    AttachClient::OneWay { .. } => panic!("Not supported."),
+                    AttachClient::OneWay {
+                        agent_id,
+                        path,
+                        receiver,
+                        done,
+                    } => {
+                        let mut guard = endpoints.lock();
+                        assert!(!guard.contains_key(&agent_id));
+                        let path = path.expect("Path missing.");
+                        let result = if path.node == LOCAL_NODE && path.lane == LANE {
+                            guard.insert(
+                                agent_id,
+                                Endpoint::OneWayLocal {
+                                    address: path,
+                                    reader: receiver,
+                                },
+                            );
+                            Ok(())
+                        } else {
+                            Err(LinkError::NoEndpoint(path))
+                        };
+                        assert!(done.send(result).is_ok());
+                    }
                     AttachClient::AttachDownlink {
                         downlink_id,
                         path,
@@ -238,7 +314,7 @@ impl FakeServerTask {
                         let result = if path.node == LOCAL_NODE && path.lane == LANE {
                             guard.insert(
                                 downlink_id,
-                                Endpoint {
+                                Endpoint::TwoWay {
                                     local: true,
                                     address: path,
                                     io: (sender, receiver),
@@ -246,15 +322,25 @@ impl FakeServerTask {
                             );
                             Ok(())
                         } else {
-                            Err(DownlinkFailureReason::Unresolvable(
-                                "Bad remote.".to_string(),
-                            ))
+                            Err(LinkError::NoEndpoint(path))
                         };
                         assert!(done.send(result).is_ok());
                     }
                 },
                 Some(Either::Right(req)) => match req {
-                    AttachClient::OneWay { .. } => panic!("Not supported."),
+                    AttachClient::OneWay {
+                        agent_id,
+                        path,
+                        receiver,
+                        done,
+                        ..
+                    } => {
+                        let mut guard = endpoints.lock();
+                        assert!(!guard.contains_key(&agent_id));
+                        assert!(path.is_none());
+                        guard.insert(agent_id, Endpoint::OneWayRemote { reader: receiver });
+                        assert!(done.send(Ok(())).is_ok());
+                    }
                     AttachClient::AttachDownlink {
                         downlink_id,
                         path,
@@ -268,7 +354,7 @@ impl FakeServerTask {
                         assert!(!guard.contains_key(&downlink_id));
                         guard.insert(
                             downlink_id,
-                            Endpoint {
+                            Endpoint::TwoWay {
                                 local: false,
                                 address: path,
                                 io: (sender, receiver),
@@ -353,7 +439,7 @@ async fn open_remote_downlink() {
     run_downlinks_test(CONFIG, |context| async move {
         let TestContext { connector } = context;
 
-        let requests = connector.dl_requests();
+        let requests = connector.link_requests();
         let (stop_server, server_task) = FakeServerTask::new(PORT, connector);
 
         let endpoints = server_task.endpoints();
@@ -362,14 +448,14 @@ async fn open_remote_downlink() {
         let request = request_remote(DownlinkKind::Value, connected_tx);
 
         let test = async move {
-            assert!(requests.send(request).await.is_ok());
+            assert!(requests.send(LinkRequest::Downlink(request)).await.is_ok());
 
             let mut io = connected_rx
                 .await
                 .expect("Stopped prematurely.")
                 .expect("Connection failed.");
 
-            let (dl_id, rem_io) = endpoints.take_endpoint(false, REM_NODE);
+            let (dl_id, rem_io) = endpoints.take_two_way_endpoint(false, REM_NODE);
 
             io = verify_link_value_dl(dl_id, io, rem_io, REM_NODE).await;
 
@@ -392,6 +478,11 @@ async fn expect_unlinked_value(io: Io) {
 }
 
 const REMOTE_ID: Uuid = Uuid::from_u128(1);
+
+fn verify_command_link(cmd_tx: ByteWriter, socket_rx: ByteReader) -> ByteWriter {
+    assert!(are_connected(&cmd_tx, &socket_rx));
+    cmd_tx
+}
 
 async fn verify_link_value_dl(id: Uuid, downlink: Io, socket: Io, node: &str) -> Io {
     let (socket_tx, socket_rx) = socket;
@@ -477,7 +568,7 @@ async fn open_local_downlink() {
     run_downlinks_test(CONFIG, |context| async move {
         let TestContext { connector } = context;
 
-        let requests = connector.dl_requests();
+        let requests = connector.link_requests();
         let (stop_server, server_task) = FakeServerTask::new(PORT, connector);
 
         let endpoints = server_task.endpoints();
@@ -486,14 +577,14 @@ async fn open_local_downlink() {
         let request = request_local(DownlinkKind::Value, connected_tx);
 
         let test = async move {
-            assert!(requests.send(request).await.is_ok());
+            assert!(requests.send(LinkRequest::Downlink(request)).await.is_ok());
 
             let mut io = connected_rx
                 .await
                 .expect("Stopped prematurely.")
                 .expect("Connection failed.");
 
-            let (dl_id, local_io) = endpoints.take_endpoint(true, LOCAL_NODE);
+            let (dl_id, local_io) = endpoints.take_two_way_endpoint(true, LOCAL_NODE);
 
             io = verify_link_value_dl(dl_id, io, local_io, LOCAL_NODE).await;
 
@@ -512,14 +603,14 @@ async fn open_unresolvable_remote_downlink() {
     run_downlinks_test(CONFIG, |context| async move {
         let TestContext { connector } = context;
 
-        let requests = connector.dl_requests();
+        let requests = connector.link_requests();
         let (stop_server, server_task) = FakeServerTask::new(PORT, connector);
 
         let (connected_tx, connected_rx) = oneshot::channel();
         let request = request_bad_remote(DownlinkKind::Value, connected_tx);
 
         let test = async move {
-            assert!(requests.send(request).await.is_ok());
+            assert!(requests.send(LinkRequest::Downlink(request)).await.is_ok());
 
             let error = connected_rx
                 .await
@@ -544,14 +635,14 @@ async fn open_unresolvable_local_downlink() {
     run_downlinks_test(CONFIG, |context| async move {
         let TestContext { connector } = context;
 
-        let requests = connector.dl_requests();
+        let requests = connector.link_requests();
         let (stop_server, server_task) = FakeServerTask::new(PORT, connector);
 
         let (connected_tx, connected_rx) = oneshot::channel();
         let request = request_bad_local(DownlinkKind::Value, connected_tx);
 
         let test = async move {
-            assert!(requests.send(request).await.is_ok());
+            assert!(requests.send(LinkRequest::Downlink(request)).await.is_ok());
 
             let error = connected_rx
                 .await
@@ -562,6 +653,47 @@ async fn open_unresolvable_local_downlink() {
                 error,
                 DownlinkRuntimeError::DownlinkConnectionFailed(_)
             ));
+
+            assert!(stop_server.trigger());
+        };
+
+        join(server_task.run(), test).await
+    })
+    .await;
+}
+
+fn request_remote_cmd(
+    promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
+) -> CommanderRequest {
+    let key = CommanderKey::Remote(URL.parse().unwrap());
+    CommanderRequest::new(AGENT_ID, key, promise)
+}
+
+#[tokio::test]
+async fn open_remote_command_channel() {
+    run_downlinks_test(CONFIG, |context| async move {
+        let TestContext { connector } = context;
+
+        let requests = connector.link_requests();
+        let (stop_server, server_task) = FakeServerTask::new(PORT, connector);
+
+        let endpoints = server_task.endpoints();
+
+        let (connected_tx, connected_rx) = oneshot::channel();
+        let request = request_remote_cmd(connected_tx);
+
+        let test = async move {
+            assert!(requests.send(LinkRequest::Commander(request)).await.is_ok());
+
+            let writer = connected_rx
+                .await
+                .expect("Stopped prematurely.")
+                .expect("Connection failed.");
+
+            let (id, reader) = endpoints.take_one_way_endpoint(false, REM_NODE);
+            assert_eq!(id, AGENT_ID);
+
+            verify_command_link(writer, reader);
 
             assert!(stop_server.trigger());
         };
