@@ -12,18 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod header;
+use swim_model::http::{Header, Uri};
 
-mod method;
-mod request;
-mod response;
-mod status_code;
-mod version;
+pub mod on_delete;
+pub mod on_get;
+pub mod on_post;
+pub mod on_put;
 
-pub use header::{Header, HeaderName, HeaderNameDecodeError, HeaderValue, StandardHeaderName};
-pub use http::Uri;
-pub use method::{Method, MethodDecodeError, UnsupportedMethod, SupportedMethod};
-pub use request::{HttpRequest, InvalidRequest};
-pub use response::{HttpResponse, InvalidResponse};
-pub use status_code::{InvalidStatusCode, StatusCode};
-pub use version::{UnsupportedVersion, Version, VersionDecodeError};
+pub struct HttpRequestContext {
+    uri: Uri,
+    headers: Vec<Header>,
+}
+
+impl HttpRequestContext {
+    pub(crate) fn new(uri: Uri, headers: Vec<Header>) -> Self {
+        HttpRequestContext { uri, headers }
+    }
+
+    pub fn uri(&self) -> &Uri {
+        &self.uri
+    }
+
+    pub fn headers(&self) -> &[Header] {
+        self.headers.as_slice()
+    }
+}

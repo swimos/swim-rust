@@ -63,7 +63,7 @@ pub use suspend::{run_after, run_schedule, HandlerFuture, Spawner, Suspend};
 pub use command::SendCommand;
 pub use handler_fn::{
     CueFn0, CueFn1, EventConsumeFn, EventFn, HandlerFn0, MapRemoveFn, MapUpdateBorrowFn,
-    MapUpdateFn, TakeFn, UpdateBorrowFn, UpdateFn,
+    MapUpdateFn, TakeFn, UpdateBorrowFn, UpdateFn, GetFn0, RequestFn0
 };
 
 use self::register_downlink::RegisterHostedDownlink;
@@ -311,12 +311,16 @@ pub enum EventHandlerError {
     BadCommand(AsyncParseError),
     #[error("An incoming message was incomplete.")]
     IncompleteCommand,
+    #[error("Invalid HTTP request: {0}")]
+    InvalidHttpRequest(Box<dyn std::error::Error + Send>),
     #[error("An error occurred in the agent runtime.")]
     RuntimeError(#[from] AgentRuntimeError),
     #[error("Invalid key or value type for a join lane lifecycle.")]
     BadJoinLifecycle(DowncastError),
     #[error("The cue operation for a demand lane was undefined.")]
     DemandCueUndefined,
+    #[error("No GET handler was defined for an HTTP lane.")]
+    HttpGetUndefined,
     #[error("The event handler has instructed the agent to stop.")]
     StopInstructed,
 }

@@ -145,11 +145,30 @@ impl Method {
             Ok(None)
         }
     }
+
+    pub fn supported_method(&self) -> Option<SupportedMethod> {
+        match self.0 {
+            MethodInner::Get => Some(SupportedMethod::Get),
+            MethodInner::Post => Some(SupportedMethod::Post),
+            MethodInner::Put => Some(SupportedMethod::Put),
+            MethodInner::Delete => Some(SupportedMethod::Delete),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Error)]
 #[error("{0} does not encode a valid method.")]
 pub struct MethodDecodeError(pub u8);
+
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SupportedMethod {
+    #[default]
+    Get,
+    Post,
+    Put,
+    Delete,
+}
 
 #[cfg(test)]
 mod tests {

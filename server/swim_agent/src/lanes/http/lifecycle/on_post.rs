@@ -12,18 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod header;
+use crate::event_handler::EventHandler;
 
-mod method;
-mod request;
-mod response;
-mod status_code;
-mod version;
+use super::HttpRequestContext;
 
-pub use header::{Header, HeaderName, HeaderNameDecodeError, HeaderValue, StandardHeaderName};
-pub use http::Uri;
-pub use method::{Method, MethodDecodeError, UnsupportedMethod, SupportedMethod};
-pub use request::{HttpRequest, InvalidRequest};
-pub use response::{HttpResponse, InvalidResponse};
-pub use status_code::{InvalidStatusCode, StatusCode};
-pub use version::{UnsupportedVersion, Version, VersionDecodeError};
+pub trait OnPost<T, Context>: Send {
+    
+    type OnPostHandler<'a>: EventHandler<Context> + 'a
+    where
+        Self: 'a;
+
+    /// #Arguments
+    /// * `value` - The value posted to the lane.
+    /// * `http_context` - Metadata associated with the HTTP request.
+    fn on_post<'a>(&'a self, value: T, http_context: HttpRequestContext) -> Self::OnPostHandler<'a>;
+}

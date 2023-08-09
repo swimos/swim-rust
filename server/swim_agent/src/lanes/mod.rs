@@ -15,6 +15,7 @@
 pub mod command;
 pub mod demand;
 pub mod demand_map;
+pub mod http;
 pub mod join_value;
 pub mod map;
 mod queues;
