@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{Buf, BufMut};
+use bytes::{Buf, BufMut, BytesMut};
 use swim_model::{address::Address, BytesStr, Text, TryFromUtf8Bytes};
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -30,7 +30,6 @@ pub struct AdHocCommand<S, T> {
 }
 
 impl<S, T> AdHocCommand<S, T> {
-
     /// #Arguments
     /// * `address` - The target lane for the the command.
     /// * `command` - The body of the command message.
@@ -189,23 +188,14 @@ where
                     }
                     let host = if has_host {
                         src.advance(MAX_REQUIRED);
-                        match S::try_from_utf8_bytes(src.split_to(host_len).freeze()) {
-                            Ok(host) => Some(host),
-                            Err(_) => break Err(bad_utf8()),
-                        }
+                        Some(try_extract_utf8(src, host_len)?)
                     } else {
                         src.advance(MIN_REQUIRED);
                         None
                     };
 
-                    let node = match S::try_from_utf8_bytes(src.split_to(node_len).freeze()) {
-                        Ok(node) => node,
-                        Err(_) => break Err(bad_utf8()),
-                    };
-                    let lane = match S::try_from_utf8_bytes(src.split_to(lane_len).freeze()) {
-                        Ok(lane) => lane,
-                        Err(_) => break Err(bad_utf8()),
-                    };
+                    let node = try_extract_utf8(src, node_len)?;
+                    let lane = try_extract_utf8(src, lane_len)?;
                     *state = DecoderState::ReadingBody(
                         Address::new(host, node, lane),
                         overwrite_permitted,
@@ -228,9 +218,14 @@ where
     }
 }
 
-fn bad_utf8() -> FrameIoError {
-    FrameIoError::BadFrame(crate::error::InvalidFrame::InvalidHeader {
-        problem: Text::new("Ad-hoc message header contained invalid UTF8."),
+fn try_extract_utf8<S: TryFromUtf8Bytes>(
+    src: &mut BytesMut,
+    len: usize,
+) -> Result<S, FrameIoError> {
+    S::try_from_utf8_bytes(src.split_to(len).freeze()).map_err(|_| {
+        FrameIoError::BadFrame(crate::error::InvalidFrame::InvalidHeader {
+            problem: Text::new("Ad-hoc message header contained invalid UTF8."),
+        })
     })
 }
 
