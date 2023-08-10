@@ -18,7 +18,7 @@ swim_api = { path = "../../api/swim_api" }
 swim_model = { path = "../../api/swim_model" }
 swim_form = { path = "../../api/swim_form" }
 swim_runtime = { path = "../../runtime/swim_runtime" }
-ratchet = { package = "ratchet_rs", workspace = true }
+ratchet = { workspace = true }
 url = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 futures = { workspace = true }

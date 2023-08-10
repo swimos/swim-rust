@@ -12,19 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::sync::Arc;
 use std::{collections::HashMap, num::NonZeroUsize};
 
 use futures::StreamExt;
 use futures::{stream::select, Future};
+use parking_lot::RwLock;
 use swim_api::error::introspection::{
     IntrospectionStopped, LaneIntrospectionError, NodeIntrospectionError,
 };
 use swim_api::meta::lane::LaneKind;
+use swim_model::time::Timestamp;
 use swim_model::Text;
 use swim_runtime::agent::{
     reporting::{UplinkReportReader, UplinkReporter},
     NodeReporting, UplinkReporterRegistration,
 };
+use swim_utilities::uri_forest::UriForest;
 use swim_utilities::{routing::route_uri::RouteUri, trigger};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
@@ -39,6 +43,7 @@ pub enum IntrospectionMessage {
     AddAgent {
         agent_id: Uuid,
         node_uri: Text,
+        name: Text,
         aggregate_reader: UplinkReportReader,
     },
     // Register a lane for an already existing agent instance.
@@ -94,40 +99,131 @@ impl From<UplinkReporterRegistration> for IntrospectionMessage {
 pub fn init_introspection(
     stopping: trigger::Receiver,
     channel_size: NonZeroUsize,
+    agents: Arc<RwLock<UriForest<AgentMeta>>>,
 ) -> (
     IntrospectionResolver,
     impl Future<Output = ()> + Send + 'static,
 ) {
     let (msg_tx, msg_rx) = mpsc::unbounded_channel();
     let (reg_tx, reg_rx) = mpsc::channel(channel_size.get());
-    let task = introspection_task(stopping, msg_rx, reg_rx);
+    let task = introspection_task(stopping, msg_rx, reg_rx, agents);
     let resolver = IntrospectionResolver::new(msg_tx, reg_tx);
     (resolver, task)
+}
+
+#[derive(Debug)]
+pub struct AgentMeta {
+    pub name: Text,
+    pub created: Timestamp,
+    pub updater: AgentIntrospectionUpdater,
+}
+
+impl AgentMeta {
+    fn new(name: Text, updater: AgentIntrospectionUpdater) -> AgentMeta {
+        AgentMeta {
+            name,
+            created: Timestamp::now(),
+            updater,
+        }
+    }
+}
+
+#[derive(Default, Debug)]
+struct Agents {
+    name_map: HashMap<Uuid, Text>,
+    meta: Arc<RwLock<UriForest<AgentMeta>>>,
+}
+
+impl Agents {
+    fn new(meta: Arc<RwLock<UriForest<AgentMeta>>>) -> Agents {
+        Agents {
+            name_map: Default::default(),
+            meta,
+        }
+    }
+}
+
+enum AgentKey<'l> {
+    Uuid(&'l Uuid),
+    Path(&'l Text),
+}
+
+impl<'l> From<&'l Uuid> for AgentKey<'l> {
+    fn from(value: &'l Uuid) -> Self {
+        AgentKey::Uuid(value)
+    }
+}
+
+impl<'l> From<&'l Text> for AgentKey<'l> {
+    fn from(value: &'l Text) -> Self {
+        AgentKey::Path(value)
+    }
+}
+
+impl Agents {
+    fn remove(&mut self, agent_id: &Uuid) {
+        let Agents { name_map, meta } = self;
+
+        if let Some(name) = name_map.remove(agent_id) {
+            let mut guard = meta.write();
+            (*guard).remove(name.as_str());
+        }
+    }
+
+    fn insert(&mut self, agent_id: Uuid, node_uri: Text, agent_meta: AgentMeta) {
+        let Agents { name_map, meta } = self;
+
+        let mut guard = meta.write();
+        (*guard).insert(node_uri.as_str(), agent_meta);
+        name_map.insert(agent_id, node_uri);
+    }
+
+    fn with_agent<'l, F, O>(&self, key: impl Into<AgentKey<'l>>, op: F) -> Option<O>
+    where
+        F: FnOnce(&mut AgentMeta) -> O,
+    {
+        let Agents { name_map, meta } = self;
+        let mut guard = meta.write();
+
+        let agent = match key.into() {
+            AgentKey::Uuid(key) => {
+                let key = name_map.get(key)?;
+                (*guard).get_mut(key.as_str())?
+            }
+            AgentKey::Path(key) => (*guard).get_mut(key.as_str())?,
+        };
+
+        Some(op(agent))
+    }
 }
 
 pub async fn introspection_task(
     stopping: trigger::Receiver,
     messages: mpsc::UnboundedReceiver<IntrospectionMessage>,
     registrations: mpsc::Receiver<UplinkReporterRegistration>,
+    agents: Arc<RwLock<UriForest<AgentMeta>>>,
 ) {
     let msg_stream = UnboundedReceiverStream::new(messages);
     let reg_stream = ReceiverStream::new(registrations).map(IntrospectionMessage::from);
 
     let mut stream = select(msg_stream, reg_stream).take_until(stopping);
-
-    let mut name_map: HashMap<Uuid, Text> = HashMap::new();
-    let mut agents: HashMap<Text, AgentIntrospectionUpdater> = HashMap::new();
+    let mut agents = Agents::new(agents);
 
     while let Some(message) = stream.next().await {
         match message {
             IntrospectionMessage::AddAgent {
                 agent_id,
                 node_uri,
+                name,
                 aggregate_reader,
             } => {
-                name_map.insert(agent_id, node_uri.clone());
-                let updater = AgentIntrospectionUpdater::new(aggregate_reader);
-                agents.insert(node_uri, updater);
+                if !is_meta_node(&node_uri) {
+                    agents.insert(
+                        agent_id,
+                        node_uri,
+                        AgentMeta::new(name, AgentIntrospectionUpdater::new(aggregate_reader)),
+                    );
+                }
             }
             IntrospectionMessage::AddLane {
                 agent_id,
@@ -135,22 +231,16 @@ pub async fn introspection_task(
                 kind,
                 reader,
             } => {
-                if let Some(updater) = name_map.get(&agent_id).and_then(|name| agents.get(name)) {
-                    updater.add_lane(lane_name, kind, reader);
-                }
+                agents.with_agent(&agent_id, |agent| {
+                    agent.updater.add_lane(lane_name, kind, reader)
+                });
             }
-            IntrospectionMessage::AgentClosed { agent_id } => {
-                name_map
-                    .remove(&agent_id)
-                    .and_then(|name| agents.remove(&name));
-            }
+            IntrospectionMessage::AgentClosed { agent_id } => agents.remove(&agent_id),
             IntrospectionMessage::IntrospectAgent {
                 node_uri,
                 responder,
             } => {
-                let handle = agents
-                    .get(&node_uri)
-                    .map(AgentIntrospectionUpdater::make_handle);
+                let handle = agents.with_agent(&node_uri, |agent| agent.updater.make_handle());
                 if responder.send(handle).is_err() {
                     info!(node_uri = %node_uri, "A request for node introspection was dropped before it was fulfilled.");
                 }
@@ -162,9 +252,8 @@ pub async fn introspection_task(
             } => {
                 let node_uri_cpy = node_uri.clone();
                 let lane_name_cpy = lane_name.clone();
-                let result = if let Some(mut handle) = agents
-                    .get(&node_uri)
-                    .map(AgentIntrospectionUpdater::make_handle)
+                let result = if let Some(mut handle) =
+                    agents.with_agent(&node_uri, |agent| agent.updater.make_handle())
                 {
                     if let Some(mut snapshot) = handle.new_snapshot() {
                         if let Some(lane) = snapshot.lanes.remove(&lane_name) {
@@ -187,6 +276,16 @@ pub async fn introspection_task(
             }
         }
     }
+}
+
+fn is_meta_node(node_uri: &Text) -> bool {
+    let mut node_uri = node_uri.as_str();
+
+    while node_uri.starts_with('/') {
+        node_uri = &node_uri[1..];
+    }
+
+    node_uri.starts_with("swim:meta:node") || node_uri.starts_with("swim:meta:mesh")
 }
 
 /// Provides convenience methods for interaction with the introspection task.
@@ -212,10 +311,12 @@ impl IntrospectionResolver {
     /// #Arguments
     /// * `agent_id` - The unique ID of the agent.
     /// * `route_uri` - The node URI of the agent.
+    /// * `name` - The name of the agent; usually the struct name.
     pub fn register_agent(
         &self,
         agent_id: Uuid,
         node_uri: RouteUri,
+        name: Text,
     ) -> Result<NodeReporting, IntrospectionStopped> {
         let node_uri = Text::new(node_uri.as_str());
         let IntrospectionResolver {
@@ -226,6 +327,7 @@ impl IntrospectionResolver {
         let message = IntrospectionMessage::AddAgent {
             agent_id,
             node_uri,
+            name,
             aggregate_reader: reporter.reader(),
         };
         if queries.send(message).is_ok() {
