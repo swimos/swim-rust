@@ -16,13 +16,13 @@ use std::marker::PhantomData;
 
 use swim_api::handlers::{NoHandler, FnHandler};
 
-use crate::{event_handler::{HandlerAction, ActionContext, StepResult, EventHandlerError, GetFn0}, agent_lifecycle::utility::HandlerContext, meta::AgentMetadata};
+use crate::{event_handler::{HandlerAction, ActionContext, StepResult, EventHandlerError, GetFn}, agent_lifecycle::utility::HandlerContext, meta::AgentMetadata, lanes::http::Response};
 
 use super::HttpRequestContext;
 
 pub trait OnGet<T, Context>: Send {
     
-    type OnGetHandler<'a>: HandlerAction<Context, Completion = T> + 'a
+    type OnGetHandler<'a>: HandlerAction<Context, Completion = Response<T>> + 'a
     where
         Self: 'a;
 
@@ -32,7 +32,7 @@ pub trait OnGet<T, Context>: Send {
 }
 
 pub trait OnGetShared<T, Context, Shared>: Send {
-    type OnGetHandler<'a>: HandlerAction<Context, Completion = T> + 'a
+    type OnGetHandler<'a>: HandlerAction<Context, Completion = Response<T>> + 'a
     where
         Self: 'a,
         Shared: 'a;
@@ -59,7 +59,7 @@ impl<T> Default for GetUndefined<T> {
 }
 
 impl<T, Context> HandlerAction<Context> for GetUndefined<T> {
-    type Completion = T;
+    type Completion = Response<T>;
 
     fn step(
         &mut self,
@@ -106,7 +106,7 @@ where
 impl<T, Context, F, H> OnGet<T, Context> for FnHandler<F>
 where
     F: Fn() -> H + Send,
-    H: HandlerAction<Context, Completion = T> + 'static,
+    H: HandlerAction<Context, Completion = Response<T>> + 'static,
     T: 'static,
 {
     type OnGetHandler<'a> = H
@@ -122,9 +122,9 @@ where
 impl<T, Context, Shared, F> OnGetShared<T, Context, Shared> for FnHandler<F>
 where
     T: 'static,
-    F: for<'a> GetFn0<'a, T, Context, Shared> + Send,
+    F: for<'a> GetFn<'a, T, Context, Shared> + Send,
 {
-    type OnGetHandler<'a> = <F as GetFn0<'a, T, Context, Shared>>::Handler
+    type OnGetHandler<'a> = <F as GetFn<'a, T, Context, Shared>>::Handler
     where
         Self: 'a,
         Shared: 'a;

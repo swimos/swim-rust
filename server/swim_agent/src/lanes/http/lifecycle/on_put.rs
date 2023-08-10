@@ -12,18 +12,104 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::event_handler::EventHandler;
+use swim_api::handlers::{FnHandler, NoHandler};
 
-use super::HttpRequestContext;
+use crate::{event_handler::{RequestFn1, HandlerAction}, agent_lifecycle::utility::HandlerContext, lanes::http::UnitResponse};
+
+use super::{HttpRequestContext, UnsupportedHandler};
 
 pub trait OnPut<T, Context>: Send {
     
-    type OnPutHandler<'a>: EventHandler<Context> + 'a
+    type OnPutHandler<'a>: HandlerAction<Context, Completion = UnitResponse> + 'a
     where
         Self: 'a;
 
     /// #Arguments
-    /// * `value` - The value put to the lane.
     /// * `http_context` - Metadata associated with the HTTP request.
-    fn on_put<'a>(&'a self, value: T, http_context: HttpRequestContext) -> Self::OnPutHandler<'a>;
+    /// * `value` - The value put to the lane.
+    fn on_put<'a>(&'a self, http_context: HttpRequestContext, value: T) -> Self::OnPutHandler<'a>;
+}
+
+pub trait OnPutShared<T, Context, Shared>: Send {
+    
+    type OnPutHandler<'a>: HandlerAction<Context, Completion = UnitResponse> + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    /// #Arguments
+    /// * `shared` - The shared state.
+    /// * `handler_context` - Utility for constructing event handlers.
+    /// * `http_context` - Metadata associated with the HTTP request.
+    /// * `value` - The body of the put request.
+    fn on_put<'a>(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        http_context: HttpRequestContext,
+        value: T
+    ) -> Self::OnPutHandler<'a>;
+}
+
+impl<T, Context> OnPut<T, Context> for NoHandler {
+    type OnPutHandler<'a> = UnsupportedHandler
+    where
+        Self: 'a;
+
+    fn on_put<'a>(&'a self, _http_context: HttpRequestContext, _value: T) -> Self::OnPutHandler<'a> {
+        UnsupportedHandler::default()
+    }
+}
+
+impl<T, Context, Shared> OnPutShared<T, Context, Shared> for NoHandler {
+    type OnPutHandler<'a> = UnsupportedHandler
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_put<'a>(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+        _http_context: HttpRequestContext,
+        _value: T
+    ) -> Self::OnPutHandler<'a> {
+        UnsupportedHandler::default()
+    }
+}
+
+impl<T, Context, F, H> OnPut<T, Context> for FnHandler<F>
+where
+    F: Fn(HttpRequestContext, T) -> H + Send,
+    H: HandlerAction<Context, Completion = UnitResponse> + 'static,
+{
+    type OnPutHandler<'a> = H
+    where
+        Self: 'a;
+
+    fn on_put<'a>(&'a self, http_context: HttpRequestContext, value: T) -> Self::OnPutHandler<'a> {
+        let FnHandler(f) = self;
+        f(http_context, value)
+    }
+}
+
+impl<T, Context, Shared, F> OnPutShared<T, Context, Shared> for FnHandler<F>
+where
+    F: for<'a> RequestFn1<'a, T, Context, Shared> + Send,
+{
+    type OnPutHandler<'a> = <F as RequestFn1<'a, T, Context, Shared>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_put<'a>(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        http_context: HttpRequestContext,
+        value: T
+    ) -> Self::OnPutHandler<'a> {
+        let FnHandler(f) = self;
+        f.make_handler(shared, handler_context, http_context, value)
+    }
 }

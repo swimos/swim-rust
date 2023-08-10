@@ -33,6 +33,8 @@ use self::model::{MethodAndPayload, Request};
 pub mod lifecycle;
 mod model;
 
+pub use model::{Response, UnitResponse};
+
 pub struct HttpLane<Get, Post, Put = Post> {
     id: u64,
     _type: PhantomData<fn(Post, Put) -> Get>,

@@ -14,13 +14,13 @@
 
 use swim_api::handlers::{NoHandler, FnHandler};
 
-use crate::{event_handler::{EventHandler, UnitHandler, RequestFn0}, agent_lifecycle::utility::HandlerContext};
+use crate::{event_handler::{RequestFn0, HandlerAction}, agent_lifecycle::utility::HandlerContext, lanes::http::model::UnitResponse};
 
-use super::HttpRequestContext;
+use super::{HttpRequestContext, UnsupportedHandler};
 
 pub trait OnDelete<Context>: Send {
     
-    type OnDeleteHandler<'a>: EventHandler<Context> + 'a
+    type OnDeleteHandler<'a>: HandlerAction<Context, Completion = UnitResponse> + 'a
     where
         Self: 'a;
 
@@ -31,12 +31,12 @@ pub trait OnDelete<Context>: Send {
 
 pub trait OnDeleteShared<Context, Shared>: Send {
     
-    type OnDeleteHandler<'a>: EventHandler<Context> + 'a
+    type OnDeleteHandler<'a>: HandlerAction<Context, Completion = UnitResponse> + 'a
     where
         Self: 'a,
         Shared: 'a;
 
-     /// #Arguments
+    /// #Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `http_context` - Metadata associated with the HTTP request.
@@ -49,17 +49,17 @@ pub trait OnDeleteShared<Context, Shared>: Send {
 }
 
 impl<Context> OnDelete<Context> for NoHandler {
-    type OnDeleteHandler<'a> = UnitHandler
+    type OnDeleteHandler<'a> = UnsupportedHandler
     where
         Self: 'a;
 
     fn on_delete<'a>(&'a self, _http_context: HttpRequestContext) -> Self::OnDeleteHandler<'a> {
-        UnitHandler::default()
+        UnsupportedHandler::default()
     }
 }
 
 impl<Context, Shared> OnDeleteShared<Context, Shared> for NoHandler {
-    type OnDeleteHandler<'a> = UnitHandler
+    type OnDeleteHandler<'a> = UnsupportedHandler
     where
         Self: 'a,
         Shared: 'a;
@@ -70,14 +70,14 @@ impl<Context, Shared> OnDeleteShared<Context, Shared> for NoHandler {
         _handler_context: HandlerContext<Context>,
         _http_context: HttpRequestContext,
     ) -> Self::OnDeleteHandler<'a> {
-        UnitHandler::default()
+        UnsupportedHandler::default()
     }
 }
 
 impl<Context, F, H> OnDelete<Context> for FnHandler<F>
 where
     F: Fn(HttpRequestContext) -> H + Send,
-    H: EventHandler<Context> + 'static,
+    H: HandlerAction<Context, Completion = UnitResponse> + 'static,
 {
     type OnDeleteHandler<'a> = H
     where

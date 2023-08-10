@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_model::http::{Uri, Header, Method};
+use swim_model::http::{Uri, Header, Method, StatusCode, HttpResponse, Version};
 
 pub enum MethodAndPayload<PostT, PutT = PostT> {
     Get,
@@ -38,4 +38,52 @@ impl<PostT, PutT> Request<PostT, PutT> {
         }
     }
 
+}
+
+pub struct Response<T> {
+    status_code: StatusCode,
+    payload: T,
+    headers: Vec<Header>,
+}
+
+pub type UnitResponse = Response<()>;
+
+impl<T: Default> Default for Response<T> {
+    fn default() -> Self {
+        Self { 
+            status_code: StatusCode::OK, 
+            payload: Default::default(), 
+            headers: vec![] 
+        }
+    }
+}
+
+impl<T> From<T> for Response<T> {
+    fn from(value: T) -> Self {
+        Response {
+            status_code: StatusCode::OK,
+            payload: value,
+            headers: vec![]
+        }
+    }
+}
+
+impl Response<()> {
+
+    pub fn not_supported() -> Self {
+        Response { status_code: StatusCode::METHOD_NOT_ALLOWED, payload: (), headers: vec![] }
+    }
+
+}
+
+impl<T> From<Response<T>> for HttpResponse<T> {
+    fn from(value: Response<T>) -> Self {
+        let Response { status_code, payload, headers } = value;
+        HttpResponse {
+            status_code,
+            version: Version::HTTP_1_1,
+            headers,
+            payload,
+        }
+    }
 }
