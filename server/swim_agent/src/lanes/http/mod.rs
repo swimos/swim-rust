@@ -14,7 +14,7 @@
 
 use std::{cell::RefCell, marker::PhantomData};
 
-use bytes::{Bytes, BytesMut, BufMut};
+use bytes::{BufMut, Bytes, BytesMut};
 use swim_api::agent::{HttpLaneRequest, HttpLaneResponse};
 use swim_form::structural::read::StructuralReadable;
 use swim_model::http::{HttpRequest, SupportedMethod};
@@ -23,7 +23,7 @@ use tokio::sync::oneshot;
 use tokio_util::codec::Decoder;
 
 use crate::{
-    event_handler::{ActionContext, HandlerAction, Modification, StepResult, EventHandlerError},
+    event_handler::{ActionContext, EventHandlerError, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
     AgentItem,
 };
@@ -48,6 +48,10 @@ impl<Get, Post, Put> HttpLane<Get, Post, Put> {
             _type: Default::default(),
             request: Default::default(),
         }
+    }
+
+    pub(crate) fn take_request(&self) -> Option<RequestAndChannel<Post, Put>> {
+        self.request.borrow_mut().take()
     }
 }
 
@@ -128,7 +132,9 @@ where
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
-        let DecodeRequest { request, buffer, .. } = self;
+        let DecodeRequest {
+            request, buffer, ..
+        } = self;
         if let Some(HttpLaneRequest {
             request,
             response_tx,
@@ -143,17 +149,14 @@ where
             } = request;
             let method_and_payload = match method.supported_method() {
                 Some(SupportedMethod::Get) => MethodAndPayload::Get,
-                Some(SupportedMethod::Post) => {
-                    match decode_payload::<Post>(buffer, payload) {
-                        Ok(body) => MethodAndPayload::Post(body),
-                        Err(err) => return StepResult::Fail(err),
-                    }
+                Some(SupportedMethod::Head) => MethodAndPayload::Head,
+                Some(SupportedMethod::Post) => match decode_payload::<Post>(buffer, payload) {
+                    Ok(body) => MethodAndPayload::Post(body),
+                    Err(err) => return StepResult::Fail(err),
                 },
-                Some(SupportedMethod::Put) => {
-                    match decode_payload::<Put>(buffer, payload) {
-                        Ok(body) => MethodAndPayload::Put(body),
-                        Err(err) => return StepResult::Fail(err),
-                    }
+                Some(SupportedMethod::Put) => match decode_payload::<Put>(buffer, payload) {
+                    Ok(body) => MethodAndPayload::Put(body),
+                    Err(err) => return StepResult::Fail(err),
                 },
                 Some(SupportedMethod::Delete) => MethodAndPayload::Delete,
                 None => todo!(),
@@ -182,7 +185,7 @@ where
     buffer.clear();
     buffer.put(payload);
     let mut decoder = RecognizerDecoder::new(T::make_recognizer());
-    
+
     match decoder.decode_eof(buffer) {
         Ok(Some(value)) => Ok(value),
         Ok(_) => todo!(),

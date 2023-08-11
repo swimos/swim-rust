@@ -12,10 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bytes::{Bytes, BytesMut};
+use std::fmt::Write;
 use std::marker::PhantomData;
-
+use swim_api::agent::HttpLaneResponse;
 use swim_api::handlers::{FnHandler, NoHandler};
-use swim_model::http::{Header, Uri};
+use swim_form::structural::write::StructuralWritable;
+use swim_model::http::{Header, HttpResponse, Uri};
+use swim_recon::printer::print_recon_compact;
+use tokio::sync::oneshot;
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
@@ -27,10 +32,13 @@ use self::{
     on_delete::{OnDelete, OnDeleteShared},
     on_get::{OnGet, OnGetShared},
     on_post::{OnPost, OnPostShared},
-    on_put::OnPutShared,
+    on_put::{OnPut, OnPutShared},
 };
 
-use super::model::Response;
+use super::{
+    model::{MethodAndPayload, Request, Response},
+    RequestAndChannel,
+};
 
 pub mod on_delete;
 pub mod on_get;
@@ -38,12 +46,30 @@ pub mod on_post;
 pub mod on_put;
 
 pub trait HttpLaneLifecycle<Get, Post, Put, Context>:
-    OnGet<Get, Context> + OnPost<Post, Context> + OnPost<Put, Context> + OnDelete<Context>
+    OnGet<Get, Context> + OnPost<Post, Context> + OnPut<Put, Context> + OnDelete<Context>
 {
 }
 
 impl<Context, Get, Post, Put, LC> HttpLaneLifecycle<Get, Post, Put, Context> for LC where
-    LC: OnGet<Get, Context> + OnPost<Post, Context> + OnPost<Put, Context> + OnDelete<Context>
+    LC: OnGet<Get, Context> + OnPost<Post, Context> + OnPut<Put, Context> + OnDelete<Context>
+{
+}
+
+pub trait HttpLaneLifecycleShared<Get, Post, Put, Context, Shared>:
+    OnGetShared<Get, Context, Shared>
+    + OnPostShared<Post, Context, Shared>
+    + OnPutShared<Put, Context, Shared>
+    + OnDeleteShared<Context, Shared>
+{
+}
+
+impl<Context, Shared, Get, Post, Put, LC> HttpLaneLifecycleShared<Get, Post, Put, Context, Shared>
+    for LC
+where
+    LC: OnGetShared<Get, Context, Shared>
+        + OnPostShared<Post, Context, Shared>
+        + OnPutShared<Put, Context, Shared>
+        + OnDeleteShared<Context, Shared>,
 {
 }
 
@@ -246,9 +272,10 @@ where
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         http_context: HttpRequestContext,
-        value: Post
+        value: Post,
     ) -> Self::OnPostHandler<'a> {
-        self.on_post.on_post(shared, handler_context, http_context, value)
+        self.on_post
+            .on_post(shared, handler_context, http_context, value)
     }
 }
 
@@ -270,9 +297,10 @@ where
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         http_context: HttpRequestContext,
-        value: Put
+        value: Put,
     ) -> Self::OnPutHandler<'a> {
-        self.on_put.on_put(shared, handler_context, http_context, value)
+        self.on_put
+            .on_put(shared, handler_context, http_context, value)
     }
 }
 
@@ -295,6 +323,286 @@ where
         handler_context: HandlerContext<Context>,
         http_context: HttpRequestContext,
     ) -> Self::OnDeleteHandler<'a> {
-        self.on_delete.on_delete(shared, handler_context, http_context)
+        self.on_delete
+            .on_delete(shared, handler_context, http_context)
+    }
+}
+
+enum HttpLifecycleHandlerInner<'a, Context, Get, Post, Put, LC>
+where
+    LC: HttpLaneLifecycle<Get, Post, Put, Context> + 'a,
+{
+    Get(<LC as OnGet<Get, Context>>::OnGetHandler<'a>),
+    Head(<LC as OnGet<Get, Context>>::OnGetHandler<'a>),
+    Post(<LC as OnPost<Post, Context>>::OnPostHandler<'a>),
+    Put(<LC as OnPut<Put, Context>>::OnPutHandler<'a>),
+    Delete(<LC as OnDelete<Context>>::OnDeleteHandler<'a>),
+}
+
+pub struct HttpLifecycleHandler<'a, Context, Get, Post, Put, LC>
+where
+    LC: HttpLaneLifecycle<Get, Post, Put, Context> + 'a,
+{
+    inner: HttpLifecycleHandlerInner<'a, Context, Get, Post, Put, LC>,
+    response_tx: Option<oneshot::Sender<HttpLaneResponse>>,
+}
+
+impl<'a, Context, Get, Post, Put, LC> HttpLifecycleHandler<'a, Context, Get, Post, Put, LC>
+where
+    LC: HttpLaneLifecycle<Get, Post, Put, Context>,
+{
+    pub fn new(req: RequestAndChannel<Post, Put>, lifecycle: &'a LC) -> Self {
+        let RequestAndChannel {
+            request:
+                Request {
+                    method_and_payload,
+                    uri,
+                    headers,
+                },
+            response_tx,
+        } = req;
+        let http_context = HttpRequestContext::new(uri, headers);
+        let inner = match method_and_payload {
+            MethodAndPayload::Get => HttpLifecycleHandlerInner::Get(lifecycle.on_get(http_context)),
+            MethodAndPayload::Head => {
+                HttpLifecycleHandlerInner::Head(lifecycle.on_get(http_context))
+            }
+            MethodAndPayload::Post(body) => {
+                HttpLifecycleHandlerInner::Post(lifecycle.on_post(http_context, body))
+            }
+            MethodAndPayload::Put(body) => {
+                HttpLifecycleHandlerInner::Put(lifecycle.on_put(http_context, body))
+            }
+            MethodAndPayload::Delete => {
+                HttpLifecycleHandlerInner::Delete(lifecycle.on_delete(http_context))
+            }
+        };
+        HttpLifecycleHandler {
+            inner,
+            response_tx: Some(response_tx),
+        }
+    }
+}
+
+macro_rules! step {
+    ($step_result:expr, $response_tx:expr, $to_bytes:expr) => {
+        match $step_result {
+            StepResult::Continue { modified_item } => return StepResult::Continue { modified_item },
+            StepResult::Fail(err) => {
+                $response_tx.take();
+                return StepResult::Fail(err);
+            }
+            StepResult::Complete {
+                modified_item,
+                result,
+            } => {
+                let response = $to_bytes(HttpResponse::from(result));
+                (modified_item, response)
+            }
+        }
+    };
+}
+
+impl<'a, Context, Get, Post, Put, LC> HandlerAction<Context>
+    for HttpLifecycleHandler<'a, Context, Get, Post, Put, LC>
+where
+    Get: StructuralWritable,
+    LC: HttpLaneLifecycle<Get, Post, Put, Context>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let HttpLifecycleHandler { inner, response_tx } = self;
+        if response_tx.is_none() {
+            return StepResult::after_done();
+        }
+        let (modified_item, response) = match inner {
+            HttpLifecycleHandlerInner::Get(h) => step!(
+                h.step(action_context, meta, context),
+                response_tx,
+                response_to_bytes
+            ),
+            HttpLifecycleHandlerInner::Head(h) => step!(
+                h.step(action_context, meta, context),
+                response_tx,
+                discard_to_bytes
+            ),
+            HttpLifecycleHandlerInner::Post(h) => step!(
+                h.step(action_context, meta, context),
+                response_tx,
+                empty_response_to_bytes
+            ),
+            HttpLifecycleHandlerInner::Put(h) => step!(
+                h.step(action_context, meta, context),
+                response_tx,
+                empty_response_to_bytes
+            ),
+            HttpLifecycleHandlerInner::Delete(h) => step!(
+                h.step(action_context, meta, context),
+                response_tx,
+                empty_response_to_bytes
+            ),
+        };
+        if let Some(tx) = response_tx.take() {
+            if tx.send(response).is_err() {
+                todo!()
+            } else {
+                StepResult::Complete {
+                    modified_item,
+                    result: (),
+                }
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+fn response_to_bytes<T: StructuralWritable>(response: HttpResponse<T>) -> HttpLaneResponse {
+    response.map(|value| {
+        let mut buffer = BytesMut::new();
+        write!(buffer, "{}", print_recon_compact(&value))
+            .expect("Writing to recon should be infallible.");
+        buffer.freeze()
+    })
+}
+
+fn empty_response_to_bytes(response: HttpResponse<()>) -> HttpLaneResponse {
+    response.map(|_| Bytes::new())
+}
+
+fn discard_to_bytes<T>(response: HttpResponse<T>) -> HttpLaneResponse {
+    empty_response_to_bytes(response.map(|_| ()))
+}
+
+enum HttpLifecycleHandlerSharedInner<'a, Context, Shared, Get, Post, Put, LC>
+where
+    Shared: 'a,
+    LC: HttpLaneLifecycleShared<Get, Post, Put, Context, Shared> + 'a,
+{
+    Get(<LC as OnGetShared<Get, Context, Shared>>::OnGetHandler<'a>),
+    Head(<LC as OnGetShared<Get, Context, Shared>>::OnGetHandler<'a>),
+    Post(<LC as OnPostShared<Post, Context, Shared>>::OnPostHandler<'a>),
+    Put(<LC as OnPutShared<Put, Context, Shared>>::OnPutHandler<'a>),
+    Delete(<LC as OnDeleteShared<Context, Shared>>::OnDeleteHandler<'a>),
+}
+
+pub struct HttpLifecycleHandlerShared<'a, Context, Shared, Get, Post, Put, LC>
+where
+    LC: HttpLaneLifecycleShared<Get, Post, Put, Context, Shared> + 'a,
+{
+    inner: HttpLifecycleHandlerSharedInner<'a, Context, Shared, Get, Post, Put, LC>,
+    response_tx: Option<oneshot::Sender<HttpLaneResponse>>,
+}
+
+impl<'a, Context, Shared, Get, Post, Put, LC>
+    HttpLifecycleHandlerShared<'a, Context, Shared, Get, Post, Put, LC>
+where
+    Shared: 'a,
+    LC: HttpLaneLifecycleShared<Get, Post, Put, Context, Shared>,
+{
+    pub fn new(req: RequestAndChannel<Post, Put>, shared: &'a Shared, lifecycle: &'a LC) -> Self {
+        let RequestAndChannel {
+            request:
+                Request {
+                    method_and_payload,
+                    uri,
+                    headers,
+                },
+            response_tx,
+        } = req;
+        let http_context = HttpRequestContext::new(uri, headers);
+        let handler_context = HandlerContext::default();
+        let inner =
+            match method_and_payload {
+                MethodAndPayload::Get => HttpLifecycleHandlerSharedInner::Get(lifecycle.on_get(
+                    shared,
+                    handler_context,
+                    http_context,
+                )),
+                MethodAndPayload::Head => HttpLifecycleHandlerSharedInner::Head(lifecycle.on_get(
+                    shared,
+                    handler_context,
+                    http_context,
+                )),
+                MethodAndPayload::Post(body) => HttpLifecycleHandlerSharedInner::Post(
+                    lifecycle.on_post(shared, handler_context, http_context, body),
+                ),
+                MethodAndPayload::Put(body) => HttpLifecycleHandlerSharedInner::Put(
+                    lifecycle.on_put(shared, handler_context, http_context, body),
+                ),
+                MethodAndPayload::Delete => HttpLifecycleHandlerSharedInner::Delete(
+                    lifecycle.on_delete(shared, handler_context, http_context),
+                ),
+            };
+        HttpLifecycleHandlerShared {
+            inner,
+            response_tx: Some(response_tx),
+        }
+    }
+}
+
+impl<'a, Context, Shared, Get, Post, Put, LC> HandlerAction<Context>
+    for HttpLifecycleHandlerShared<'a, Context, Shared, Get, Post, Put, LC>
+where
+    Get: StructuralWritable,
+    LC: HttpLaneLifecycleShared<Get, Post, Put, Context, Shared>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let HttpLifecycleHandlerShared { inner, response_tx } = self;
+        if response_tx.is_none() {
+            return StepResult::after_done();
+        }
+        let (modified_item, response) = match inner {
+            HttpLifecycleHandlerSharedInner::Get(h) => step!(
+                h.step(action_context, meta, context),
+                response_tx,
+                response_to_bytes
+            ),
+            HttpLifecycleHandlerSharedInner::Head(h) => step!(
+                h.step(action_context, meta, context),
+                response_tx,
+                discard_to_bytes
+            ),
+            HttpLifecycleHandlerSharedInner::Post(h) => step!(
+                h.step(action_context, meta, context),
+                response_tx,
+                empty_response_to_bytes
+            ),
+            HttpLifecycleHandlerSharedInner::Put(h) => step!(
+                h.step(action_context, meta, context),
+                response_tx,
+                empty_response_to_bytes
+            ),
+            HttpLifecycleHandlerSharedInner::Delete(h) => step!(
+                h.step(action_context, meta, context),
+                response_tx,
+                empty_response_to_bytes
+            ),
+        };
+        if let Some(tx) = response_tx.take() {
+            if tx.send(response).is_err() {
+                todo!()
+            } else {
+                StepResult::Complete {
+                    modified_item,
+                    result: (),
+                }
+            }
+        } else {
+            StepResult::after_done()
+        }
     }
 }

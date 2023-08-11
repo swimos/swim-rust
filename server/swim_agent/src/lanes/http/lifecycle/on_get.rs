@@ -14,14 +14,18 @@
 
 use std::marker::PhantomData;
 
-use swim_api::handlers::{NoHandler, FnHandler};
+use swim_api::handlers::{FnHandler, NoHandler};
 
-use crate::{event_handler::{HandlerAction, ActionContext, StepResult, EventHandlerError, GetFn}, agent_lifecycle::utility::HandlerContext, meta::AgentMetadata, lanes::http::Response};
+use crate::{
+    agent_lifecycle::utility::HandlerContext,
+    event_handler::{ActionContext, EventHandlerError, GetFn, HandlerAction, StepResult},
+    lanes::http::Response,
+    meta::AgentMetadata,
+};
 
 use super::HttpRequestContext;
 
 pub trait OnGet<T, Context>: Send {
-    
     type OnGetHandler<'a>: HandlerAction<Context, Completion = Response<T>> + 'a
     where
         Self: 'a;
@@ -50,7 +54,7 @@ pub trait OnGetShared<T, Context, Shared>: Send {
 }
 
 #[derive(Debug)]
-pub struct GetUndefined<T>(PhantomData<fn()->T>);
+pub struct GetUndefined<T>(PhantomData<fn() -> T>);
 
 impl<T> Default for GetUndefined<T> {
     fn default() -> Self {
@@ -133,7 +137,7 @@ where
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        http_context: HttpRequestContext
+        http_context: HttpRequestContext,
     ) -> Self::OnGetHandler<'a> {
         let FnHandler(f) = self;
         f.make_handler(shared, handler_context, http_context)

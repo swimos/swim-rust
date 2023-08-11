@@ -22,7 +22,7 @@ mod version;
 
 pub use header::{Header, HeaderName, HeaderNameDecodeError, HeaderValue, StandardHeaderName};
 pub use http::Uri;
-pub use method::{Method, MethodDecodeError, UnsupportedMethod, SupportedMethod};
+pub use method::{Method, MethodDecodeError, SupportedMethod, UnsupportedMethod};
 pub use request::{HttpRequest, InvalidRequest};
 pub use response::{HttpResponse, InvalidResponse};
 pub use status_code::{InvalidStatusCode, StatusCode};

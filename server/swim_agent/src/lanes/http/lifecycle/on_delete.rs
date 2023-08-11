@@ -12,14 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_api::handlers::{NoHandler, FnHandler};
+use swim_api::handlers::{FnHandler, NoHandler};
 
-use crate::{event_handler::{RequestFn0, HandlerAction}, agent_lifecycle::utility::HandlerContext, lanes::http::model::UnitResponse};
+use crate::{
+    agent_lifecycle::utility::HandlerContext,
+    event_handler::{HandlerAction, RequestFn0},
+    lanes::http::model::UnitResponse,
+};
 
 use super::{HttpRequestContext, UnsupportedHandler};
 
 pub trait OnDelete<Context>: Send {
-    
     type OnDeleteHandler<'a>: HandlerAction<Context, Completion = UnitResponse> + 'a
     where
         Self: 'a;
@@ -30,7 +33,6 @@ pub trait OnDelete<Context>: Send {
 }
 
 pub trait OnDeleteShared<Context, Shared>: Send {
-    
     type OnDeleteHandler<'a>: HandlerAction<Context, Completion = UnitResponse> + 'a
     where
         Self: 'a,

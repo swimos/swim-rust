@@ -149,6 +149,7 @@ impl Method {
     pub fn supported_method(&self) -> Option<SupportedMethod> {
         match self.0 {
             MethodInner::Get => Some(SupportedMethod::Get),
+            MethodInner::Head => Some(SupportedMethod::Head),
             MethodInner::Post => Some(SupportedMethod::Post),
             MethodInner::Put => Some(SupportedMethod::Put),
             MethodInner::Delete => Some(SupportedMethod::Delete),
@@ -165,6 +166,7 @@ pub struct MethodDecodeError(pub u8);
 pub enum SupportedMethod {
     #[default]
     Get,
+    Head,
     Post,
     Put,
     Delete,

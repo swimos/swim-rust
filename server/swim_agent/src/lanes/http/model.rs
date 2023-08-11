@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_model::http::{Uri, Header, Method, StatusCode, HttpResponse, Version};
+use swim_model::http::{Header, HttpResponse, Method, StatusCode, Uri, Version};
 
 pub enum MethodAndPayload<PostT, PutT = PostT> {
     Get,
+    Head,
     Post(PostT),
     Put(PutT),
     Delete,
@@ -28,16 +29,15 @@ pub struct Request<PostT, PutT = PostT> {
 }
 
 impl<PostT, PutT> Request<PostT, PutT> {
-
     pub fn method(&self) -> Method {
         match self.method_and_payload {
             MethodAndPayload::Get => Method::GET,
+            MethodAndPayload::Head => Method::HEAD,
             MethodAndPayload::Post(_) => Method::POST,
             MethodAndPayload::Put(_) => Method::PUT,
             MethodAndPayload::Delete => Method::DELETE,
         }
     }
-
 }
 
 pub struct Response<T> {
@@ -50,10 +50,10 @@ pub type UnitResponse = Response<()>;
 
 impl<T: Default> Default for Response<T> {
     fn default() -> Self {
-        Self { 
-            status_code: StatusCode::OK, 
-            payload: Default::default(), 
-            headers: vec![] 
+        Self {
+            status_code: StatusCode::OK,
+            payload: Default::default(),
+            headers: vec![],
         }
     }
 }
@@ -63,22 +63,28 @@ impl<T> From<T> for Response<T> {
         Response {
             status_code: StatusCode::OK,
             payload: value,
-            headers: vec![]
+            headers: vec![],
         }
     }
 }
 
 impl Response<()> {
-
     pub fn not_supported() -> Self {
-        Response { status_code: StatusCode::METHOD_NOT_ALLOWED, payload: (), headers: vec![] }
+        Response {
+            status_code: StatusCode::METHOD_NOT_ALLOWED,
+            payload: (),
+            headers: vec![],
+        }
     }
-
 }
 
 impl<T> From<Response<T>> for HttpResponse<T> {
     fn from(value: Response<T>) -> Self {
-        let Response { status_code, payload, headers } = value;
+        let Response {
+            status_code,
+            payload,
+            headers,
+        } = value;
         HttpResponse {
             status_code,
             version: Version::HTTP_1_1,

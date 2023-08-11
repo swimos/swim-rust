@@ -14,7 +14,10 @@
 
 use std::collections::HashMap;
 
-use crate::{agent_lifecycle::utility::HandlerContext, lanes::http::{lifecycle::HttpRequestContext, UnitResponse, Response}};
+use crate::{
+    agent_lifecycle::utility::HandlerContext,
+    lanes::http::{lifecycle::HttpRequestContext, Response, UnitResponse},
+};
 
 use super::{EventHandler, HandlerAction};
 
@@ -395,7 +398,7 @@ pub trait RequestFn0<'a, Context, Shared> {
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        http_context: HttpRequestContext
+        http_context: HttpRequestContext,
     ) -> Self::Handler;
 }
 
@@ -411,7 +414,7 @@ where
         &'a self,
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
-        http_context: HttpRequestContext
+        http_context: HttpRequestContext,
     ) -> Self::Handler {
         self(shared, handler_context, http_context)
     }
@@ -443,7 +446,7 @@ where
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         http_context: HttpRequestContext,
-        value: T
+        value: T,
     ) -> Self::Handler {
         self(shared, handler_context, http_context, value)
     }

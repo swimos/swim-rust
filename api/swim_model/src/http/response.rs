@@ -67,3 +67,23 @@ impl<T> TryFrom<HttpResponse<T>> for http::Response<T> {
         Ok(response)
     }
 }
+
+impl<T> HttpResponse<T> {
+    pub fn map<F, U>(self, f: F) -> HttpResponse<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        let HttpResponse {
+            status_code,
+            version,
+            headers,
+            payload,
+        } = self;
+        HttpResponse {
+            status_code,
+            version,
+            headers,
+            payload: f(payload),
+        }
+    }
+}

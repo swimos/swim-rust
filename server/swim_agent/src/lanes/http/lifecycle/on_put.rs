@@ -14,12 +14,15 @@
 
 use swim_api::handlers::{FnHandler, NoHandler};
 
-use crate::{event_handler::{RequestFn1, HandlerAction}, agent_lifecycle::utility::HandlerContext, lanes::http::UnitResponse};
+use crate::{
+    agent_lifecycle::utility::HandlerContext,
+    event_handler::{HandlerAction, RequestFn1},
+    lanes::http::UnitResponse,
+};
 
 use super::{HttpRequestContext, UnsupportedHandler};
 
 pub trait OnPut<T, Context>: Send {
-    
     type OnPutHandler<'a>: HandlerAction<Context, Completion = UnitResponse> + 'a
     where
         Self: 'a;
@@ -31,7 +34,6 @@ pub trait OnPut<T, Context>: Send {
 }
 
 pub trait OnPutShared<T, Context, Shared>: Send {
-    
     type OnPutHandler<'a>: HandlerAction<Context, Completion = UnitResponse> + 'a
     where
         Self: 'a,
@@ -47,7 +49,7 @@ pub trait OnPutShared<T, Context, Shared>: Send {
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         http_context: HttpRequestContext,
-        value: T
+        value: T,
     ) -> Self::OnPutHandler<'a>;
 }
 
@@ -56,7 +58,11 @@ impl<T, Context> OnPut<T, Context> for NoHandler {
     where
         Self: 'a;
 
-    fn on_put<'a>(&'a self, _http_context: HttpRequestContext, _value: T) -> Self::OnPutHandler<'a> {
+    fn on_put<'a>(
+        &'a self,
+        _http_context: HttpRequestContext,
+        _value: T,
+    ) -> Self::OnPutHandler<'a> {
         UnsupportedHandler::default()
     }
 }
@@ -72,7 +78,7 @@ impl<T, Context, Shared> OnPutShared<T, Context, Shared> for NoHandler {
         _shared: &'a Shared,
         _handler_context: HandlerContext<Context>,
         _http_context: HttpRequestContext,
-        _value: T
+        _value: T,
     ) -> Self::OnPutHandler<'a> {
         UnsupportedHandler::default()
     }
@@ -107,7 +113,7 @@ where
         shared: &'a Shared,
         handler_context: HandlerContext<Context>,
         http_context: HttpRequestContext,
-        value: T
+        value: T,
     ) -> Self::OnPutHandler<'a> {
         let FnHandler(f) = self;
         f.make_handler(shared, handler_context, http_context, value)
