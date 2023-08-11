@@ -99,6 +99,8 @@ impl AgentSpec for TestAgent {
 
     type OnSyncHandler = TestHandler;
 
+    type HttpRequestHandler = TestHandler;
+
     fn value_like_item_specs() -> HashMap<&'static str, crate::agent_model::ItemSpec> {
         let mut lanes = HashMap::new();
         lanes.insert(

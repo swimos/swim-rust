@@ -26,7 +26,7 @@ use futures::{
     StreamExt,
 };
 use futures::{Future, FutureExt};
-use swim_api::agent::LaneConfig;
+use swim_api::agent::{LaneConfig, HttpLaneRequest};
 use swim_api::downlink::DownlinkKind;
 use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swim_api::meta::lane::LaneKind;
@@ -129,11 +129,17 @@ pub trait AgentSpec: Sized + Send {
     /// The type of handler to run when a request is received to sync with a lane.
     type OnSyncHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
+    type HttpRequestHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
+
     /// The names and flags of all value like items (value lanes and stores, command lanes, etc) in the agent.
     fn value_like_item_specs() -> HashMap<&'static str, ItemSpec>;
 
     /// The names and flags of all map like items in the agent.
     fn map_like_item_specs() -> HashMap<&'static str, ItemSpec>;
+
+    fn http_lane_names() -> HashSet<&'static str> {
+        HashSet::new()
+    }
 
     /// Mapping from item identifiers to lane names for all items in the agent.
     fn item_ids() -> HashMap<u64, Text>;
@@ -188,6 +194,10 @@ pub trait AgentSpec: Sized + Send {
     /// * `lane` - The name of the lane.
     /// * `id` - The ID of the remote that requested the sync.
     fn on_sync(&self, lane: &str, id: Uuid) -> Option<Self::OnSyncHandler>;
+
+    fn on_http_request(&self, _lane: &str, _request: HttpLaneRequest) -> Option<Self::HttpRequestHandler> {
+        None
+    }
 
     /// Attempt to write pending data from a lane into the outgoing buffer. The result will
     /// indicate if data was written and if the lane has more data to write. There will be
