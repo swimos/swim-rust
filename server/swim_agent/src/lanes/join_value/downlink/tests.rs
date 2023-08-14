@@ -27,7 +27,7 @@ use crate::{
     },
     event_handler::{
         BoxEventHandler, BoxHandlerAction, EventHandler, HandlerActionExt, Modification,
-        SideEffect, StepResult,
+        ModificationFlags, SideEffect, StepResult,
     },
     lanes::{
         join_value::{
@@ -305,13 +305,9 @@ fn run_on_event() {
     let on_event = downlink_lifecycle.on_event("a".to_string());
     let modifications = run_handler(on_event, meta, &agent);
 
-    if let [Modification {
-        item_id,
-        trigger_handler,
-    }] = modifications.as_slice()
-    {
+    if let [Modification { item_id, flags }] = modifications.as_slice() {
         assert_eq!(*item_id, ID);
-        assert!(*trigger_handler);
+        assert_eq!(*flags, ModificationFlags::all());
     } else {
         panic!("Modifications incorrect: {:?}", modifications);
     }
@@ -372,13 +368,9 @@ fn run_on_unlinked_delete() {
     let on_unlinked = downlink_lifecycle.on_unlinked();
     let modifications = run_handler(on_unlinked, meta, &agent);
 
-    if let [Modification {
-        item_id,
-        trigger_handler,
-    }] = modifications.as_slice()
-    {
+    if let [Modification { item_id, flags }] = modifications.as_slice() {
         assert_eq!(*item_id, ID);
-        assert!(*trigger_handler);
+        assert_eq!(*flags, ModificationFlags::all());
     } else {
         panic!("Modifications incorrect: {:?}", modifications);
     }
@@ -446,13 +438,9 @@ fn run_on_failed_delete() {
     let on_failed = downlink_lifecycle.on_failed();
     let modifications = run_handler(on_failed, meta, &agent);
 
-    if let [Modification {
-        item_id,
-        trigger_handler,
-    }] = modifications.as_slice()
-    {
+    if let [Modification { item_id, flags }] = modifications.as_slice() {
         assert_eq!(*item_id, ID);
-        assert!(*trigger_handler);
+        assert_eq!(*flags, ModificationFlags::all());
     } else {
         panic!("Modifications incorrect: {:?}", modifications);
     }

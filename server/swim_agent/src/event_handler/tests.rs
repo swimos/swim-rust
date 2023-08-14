@@ -20,7 +20,8 @@ use swim_api::agent::AgentConfig;
 use swim_recon::parser::AsyncParseError;
 use swim_utilities::routing::route_uri::RouteUri;
 
-use crate::event_handler::GetParameter;
+use crate::event_handler::check_step::{check_is_complete, check_is_continue};
+use crate::event_handler::{GetParameter, ModificationFlags};
 
 use crate::{
     event_handler::{
@@ -601,15 +602,7 @@ fn and_then_handler_with_lane_write() {
         meta,
         &DUMMY,
     );
-    assert!(matches!(
-        result,
-        StepResult::Continue {
-            modified_item: Some(Modification {
-                item_id: 7,
-                trigger_handler: true
-            })
-        }
-    ));
+    check_is_continue(result, 7, ModificationFlags::all());
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
@@ -642,36 +635,20 @@ fn followed_by_handler_with_lane_write() {
     let meta = make_meta(&uri, &route_params);
 
     let mut handler = FakeLaneWriter::new(7).followed_by(FakeLaneWriter::new(8));
-    let result = handler.step(
-        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
-        meta,
-        &DUMMY,
-    );
-    assert!(matches!(
-        result,
-        StepResult::Continue {
-            modified_item: Some(Modification {
-                item_id: 7,
-                trigger_handler: true
-            })
-        }
-    ));
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
         meta,
         &DUMMY,
     );
-    assert!(matches!(
-        result,
-        StepResult::Complete {
-            modified_item: Some(Modification {
-                item_id: 8,
-                trigger_handler: true
-            }),
-            ..
-        }
-    ));
+    check_is_continue(result, 7, ModificationFlags::all());
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
+    check_is_complete(result, 8, &(), ModificationFlags::all());
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
@@ -743,15 +720,9 @@ fn sequentially_handler() {
         meta,
         &agent,
     );
-    assert!(matches!(
-        result,
-        StepResult::Continue {
-            modified_item: Some(Modification {
-                item_id: 0,
-                trigger_handler: true
-            })
-        }
-    ));
+
+    check_is_continue(result, 0, ModificationFlags::all());
+
     assert_eq!(values.borrow().as_slice(), &[1]);
 
     let result = handler.step(

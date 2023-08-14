@@ -18,8 +18,9 @@ use std::{
 };
 
 use bytes::BytesMut;
-use futures::{future::Either, ready, SinkExt, Stream, StreamExt};
+use futures::{ready, SinkExt, Stream, StreamExt};
 use swim_api::{
+    agent::HttpLaneRequest,
     error::FrameIoError,
     protocol::{
         agent::{LaneRequest, LaneRequestDecoder},
@@ -28,6 +29,7 @@ use swim_api::{
     },
 };
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use tokio::sync::mpsc;
 use tokio_util::codec::{BytesCodec, FramedRead, FramedWrite};
 
 type ValueLaneReader = FramedRead<ByteReader, LaneRequestDecoder<WithLengthBytesCodec>>;
@@ -41,24 +43,37 @@ pub struct ItemWriter {
     pub buffer: BytesMut,
 }
 
-/// Used internally by the agent model for readig from lanes.
+enum LaneReaderInner {
+    Value(ValueLaneReader),
+    Map(MapLaneReader),
+    Http(mpsc::Receiver<HttpLaneRequest>),
+}
+
+/// Used internally by the agent model for reading from lanes.
 pub struct LaneReader {
     id: u64,
-    inner: Either<ValueLaneReader, MapLaneReader>,
+    inner: LaneReaderInner,
 }
 
 impl LaneReader {
     pub fn value(id: u64, reader: ByteReader) -> Self {
         LaneReader {
             id,
-            inner: Either::Left(FramedRead::new(reader, Default::default())),
+            inner: LaneReaderInner::Value(FramedRead::new(reader, Default::default())),
         }
     }
 
     pub fn map(id: u64, reader: ByteReader) -> Self {
         LaneReader {
             id,
-            inner: Either::Right(FramedRead::new(reader, Default::default())),
+            inner: LaneReaderInner::Map(FramedRead::new(reader, Default::default())),
+        }
+    }
+
+    pub fn http(id: u64, rx: mpsc::Receiver<HttpLaneRequest>) -> Self {
+        LaneReader {
+            id,
+            inner: LaneReaderInner::Http(rx),
         }
     }
 }
@@ -84,25 +99,29 @@ impl ItemWriter {
     }
 }
 
+pub enum LaneReadEvent {
+    Value(LaneRequest<BytesMut>),
+    Map(LaneRequest<MapMessage<BytesMut, BytesMut>>),
+    Http(HttpLaneRequest),
+}
+
 impl Stream for LaneReader {
-    type Item = (
-        u64,
-        Result<
-            Either<LaneRequest<BytesMut>, LaneRequest<MapMessage<BytesMut, BytesMut>>>,
-            FrameIoError,
-        >,
-    );
+    type Item = (u64, Result<LaneReadEvent, FrameIoError>);
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let LaneReader { id, inner } = self.get_mut();
         match inner {
-            Either::Left(reader) => {
+            LaneReaderInner::Value(reader) => {
                 let result = ready!(reader.poll_next_unpin(cx));
-                Poll::Ready(result.map(|r| (*id, r.map(Either::Left))))
+                Poll::Ready(result.map(|r| (*id, r.map(LaneReadEvent::Value))))
             }
-            Either::Right(reader) => {
+            LaneReaderInner::Map(reader) => {
                 let result = ready!(reader.poll_next_unpin(cx));
-                Poll::Ready(result.map(|r| (*id, r.map(Either::Right))))
+                Poll::Ready(result.map(|r| (*id, r.map(LaneReadEvent::Map))))
+            }
+            LaneReaderInner::Http(rx) => {
+                let result = ready!(rx.poll_recv(cx));
+                Poll::Ready(result.map(|r| (*id, Ok(LaneReadEvent::Http(r)))))
             }
         }
     }

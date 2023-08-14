@@ -27,7 +27,9 @@ use tokio_util::codec::Decoder;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{ConstHandler, EventHandler, HandlerActionExt, Modification, StepResult},
+    event_handler::{
+        ConstHandler, EventHandler, HandlerActionExt, Modification, ModificationFlags, StepResult,
+    },
     lanes::{demand_map::DemandMapLaneSync, LaneItem},
     meta::AgentMetadata,
     test_context::dummy_context,
@@ -143,28 +145,19 @@ where
 }
 
 #[derive(Clone, Copy)]
-enum HandlerResult {
-    NoMod,
-    WriteOnly,
-    Both,
-}
+struct HandlerResult(ModificationFlags);
 
 impl HandlerResult {
     fn run_handler(&self) -> bool {
-        matches!(self, HandlerResult::Both)
+        self.0.contains(ModificationFlags::TRIGGER_HANDLER)
     }
 
     fn write_required(&self) -> bool {
-        matches!(self, HandlerResult::WriteOnly | HandlerResult::Both)
+        self.0.contains(ModificationFlags::DIRTY)
     }
 
     fn and(self, other: Self) -> Self {
-        match (self, other) {
-            (HandlerResult::NoMod, r) => r,
-            (r, HandlerResult::NoMod) => r,
-            (HandlerResult::WriteOnly, HandlerResult::WriteOnly) => HandlerResult::WriteOnly,
-            _ => HandlerResult::Both,
-        }
+        HandlerResult(self.0.union(other.0))
     }
 }
 
@@ -187,17 +180,13 @@ where
     let mut join_value_init = Default::default();
     let mut ad_hoc = Default::default();
     let action_context = &mut dummy_context(&mut join_value_init, &mut ad_hoc);
-    let mut result = HandlerResult::NoMod;
+    let mut result = HandlerResult(ModificationFlags::empty());
     loop {
         match handler.step(action_context, meta, agent) {
             StepResult::Continue { modified_item } => {
-                if let Some(Modification {
-                    item_id,
-                    trigger_handler,
-                }) = modified_item
-                {
+                if let Some(Modification { item_id, flags }) = modified_item {
                     assert_eq!(item_id, LANE_ID);
-                    if trigger_handler {
+                    if flags.contains(ModificationFlags::TRIGGER_HANDLER) {
                         let sub_handler =
                             super::demand_map_handler(agent, FakeAgent::LANE, lifecycle);
                         result =
@@ -208,18 +197,11 @@ where
             StepResult::Fail(err) => panic!("Failed: {:?}", err),
             StepResult::Complete { modified_item, .. } => {
                 result = result.and(match modified_item {
-                    Some(Modification {
-                        item_id,
-                        trigger_handler,
-                    }) => {
+                    Some(Modification { item_id, flags }) => {
                         assert_eq!(item_id, LANE_ID);
-                        if trigger_handler {
-                            HandlerResult::Both
-                        } else {
-                            HandlerResult::WriteOnly
-                        }
+                        HandlerResult(flags)
                     }
-                    None => HandlerResult::NoMod,
+                    None => HandlerResult(ModificationFlags::empty()),
                 });
                 break result;
             }

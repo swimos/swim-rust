@@ -161,13 +161,9 @@ where
             Ordering::Less => left.item_event(context, item_name).map(Either::Left),
             Ordering::Equal => {
                 let lane = projection(context);
-                if let Some(request) = lane.take_request() {
-                    Some(Either::Right(Either::Left(HttpLifecycleHandler::new(
-                        request, lifecycle,
-                    ))))
-                } else {
-                    None
-                }
+                lane.take_request().map(|request| {
+                    Either::Right(Either::Left(HttpLifecycleHandler::new(request, lifecycle)))
+                })
             }
             Ordering::Greater => right
                 .item_event(context, item_name)
@@ -209,13 +205,11 @@ where
                 .map(Either::Left),
             Ordering::Equal => {
                 let lane = projection(context);
-                if let Some(request) = lane.take_request() {
-                    Some(Either::Right(Either::Left(
-                        HttpLifecycleHandlerShared::new(request, shared, lifecycle),
+                lane.take_request().map(|request| {
+                    Either::Right(Either::Left(HttpLifecycleHandlerShared::new(
+                        request, shared, lifecycle,
                     )))
-                } else {
-                    None
-                }
+                })
             }
             Ordering::Greater => right
                 .item_event(shared, handler_context, context, item_name)

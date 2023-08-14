@@ -16,14 +16,15 @@ use std::{cell::RefCell, marker::PhantomData};
 
 use bytes::{BufMut, Bytes, BytesMut};
 use swim_api::agent::{HttpLaneRequest, HttpLaneResponse};
-use swim_form::structural::read::StructuralReadable;
-use swim_model::http::{HttpRequest, SupportedMethod};
-use swim_recon::parser::RecognizerDecoder;
+use swim_form::structural::read::{recognizer::RecognizerReadable, StructuralReadable};
+use swim_model::http::{HttpRequest, StatusCode, SupportedMethod, Version};
+use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use tokio::sync::oneshot;
 use tokio_util::codec::Decoder;
+use tracing::debug;
 
 use crate::{
-    event_handler::{ActionContext, EventHandlerError, HandlerAction, Modification, StepResult},
+    event_handler::{ActionContext, HandlerAction, StepResult},
     meta::AgentMetadata,
     AgentItem,
 };
@@ -66,28 +67,32 @@ pub struct RequestAndChannel<Post, Put> {
     response_tx: oneshot::Sender<HttpLaneResponse>,
 }
 
-pub struct HttpLaneAccept<Context, Get, Post, Put> {
+pub struct HttpLaneAccept<'a, Context, Get, Post, Put> {
     projection: fn(&Context) -> &HttpLane<Get, Post, Put>,
-    request: Option<RequestAndChannel<Post, Put>>,
+    request: Option<HttpLaneRequest>,
+    buffer: &'a mut BytesMut,
 }
 
-impl<Context, Get, Post, Put> HttpLaneAccept<Context, Get, Post, Put> {
+impl<'a, Context, Get, Post, Put> HttpLaneAccept<'a, Context, Get, Post, Put> {
     pub fn new(
         projection: fn(&Context) -> &HttpLane<Get, Post, Put>,
-        request: Request<Post, Put>,
-        response_tx: oneshot::Sender<HttpLaneResponse>,
+        request: HttpLaneRequest,
+        buffer: &'a mut BytesMut,
     ) -> Self {
         HttpLaneAccept {
             projection,
-            request: Some(RequestAndChannel {
-                request,
-                response_tx,
-            }),
+            request: Some(request),
+            buffer,
         }
     }
 }
 
-impl<Context, Get, Post, Put> HandlerAction<Context> for HttpLaneAccept<Context, Get, Post, Put> {
+impl<'a, Context, Get, Post, Put> HandlerAction<Context>
+    for HttpLaneAccept<'a, Context, Get, Post, Put>
+where
+    Post: RecognizerReadable,
+    Put: RecognizerReadable,
+{
     type Completion = ();
 
     fn step(
@@ -99,41 +104,7 @@ impl<Context, Get, Post, Put> HandlerAction<Context> for HttpLaneAccept<Context,
         let HttpLaneAccept {
             projection,
             request,
-        } = self;
-        if let Some(request) = request.take() {
-            let lane = projection(context);
-            lane.request.replace(Some(request));
-            StepResult::Complete {
-                modified_item: Some(Modification::of(lane.id)),
-                result: (),
-            }
-        } else {
-            StepResult::after_done()
-        }
-    }
-}
-
-pub struct DecodeRequest<'a, Post, Put> {
-    _target_type: PhantomData<fn() -> MethodAndPayload<Post, Put>>,
-    request: Option<HttpLaneRequest>,
-    buffer: &'a mut BytesMut,
-}
-
-impl<'a, Context, Post, Put> HandlerAction<Context> for DecodeRequest<'a, Post, Put>
-where
-    Post: StructuralReadable,
-    Put: StructuralReadable,
-{
-    type Completion = RequestAndChannel<Post, Put>;
-
-    fn step(
-        &mut self,
-        _action_context: &mut ActionContext<Context>,
-        _meta: AgentMetadata,
-        _context: &Context,
-    ) -> StepResult<Self::Completion> {
-        let DecodeRequest {
-            request, buffer, ..
+            buffer,
         } = self;
         if let Some(HttpLaneRequest {
             request,
@@ -151,24 +122,36 @@ where
                 Some(SupportedMethod::Get) => MethodAndPayload::Get,
                 Some(SupportedMethod::Head) => MethodAndPayload::Head,
                 Some(SupportedMethod::Post) => match decode_payload::<Post>(buffer, payload) {
-                    Ok(body) => MethodAndPayload::Post(body),
-                    Err(err) => return StepResult::Fail(err),
+                    Ok(Some(body)) => MethodAndPayload::Post(body),
+                    _ => {
+                        bad_request(response_tx, StatusCode::BAD_REQUEST);
+                        return StepResult::done(());
+                    }
                 },
                 Some(SupportedMethod::Put) => match decode_payload::<Put>(buffer, payload) {
-                    Ok(body) => MethodAndPayload::Put(body),
-                    Err(err) => return StepResult::Fail(err),
+                    Ok(Some(body)) => MethodAndPayload::Put(body),
+                    _ => {
+                        bad_request(response_tx, StatusCode::BAD_REQUEST);
+                        return StepResult::done(());
+                    }
                 },
                 Some(SupportedMethod::Delete) => MethodAndPayload::Delete,
-                None => todo!(),
+                None => {
+                    bad_request(response_tx, StatusCode::METHOD_NOT_ALLOWED);
+                    return StepResult::done(());
+                }
             };
-            StepResult::done(RequestAndChannel {
+            let request_and_chan = RequestAndChannel {
                 request: Request {
                     method_and_payload,
                     uri,
                     headers,
                 },
                 response_tx,
-            })
+            };
+            let lane = projection(context);
+            lane.request.replace(Some(request_and_chan));
+            StepResult::done(())
         } else {
             StepResult::after_done()
         }
@@ -178,17 +161,24 @@ where
 fn decode_payload<T: StructuralReadable>(
     buffer: &mut BytesMut,
     payload: Bytes,
-) -> Result<T, EventHandlerError>
+) -> Result<Option<T>, AsyncParseError>
 where
     T: StructuralReadable,
 {
     buffer.clear();
     buffer.put(payload);
     let mut decoder = RecognizerDecoder::new(T::make_recognizer());
+    decoder.decode_eof(buffer)
+}
 
-    match decoder.decode_eof(buffer) {
-        Ok(Some(value)) => Ok(value),
-        Ok(_) => todo!(),
-        Err(e) => Err(EventHandlerError::InvalidHttpRequest(Box::new(e))),
+fn bad_request(tx: oneshot::Sender<HttpLaneResponse>, status_code: StatusCode) {
+    let response = HttpLaneResponse {
+        status_code,
+        version: Version::HTTP_1_1,
+        headers: vec![],
+        payload: Bytes::new(),
+    };
+    if tx.send(response).is_err() {
+        debug!("HTTP request was dropped before it was fulfilled.");
     }
 }

@@ -18,7 +18,7 @@ use std::hash::Hash;
 use std::pin::{pin, Pin};
 use std::sync::Arc;
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use futures::future::{Fuse, OptionFuture};
 use futures::{
     future::{BoxFuture, Either, FusedFuture},
@@ -26,7 +26,7 @@ use futures::{
     StreamExt,
 };
 use futures::{Future, FutureExt};
-use swim_api::agent::{LaneConfig, HttpLaneRequest};
+use swim_api::agent::{HttpLaneRequest, HttpLaneResponse, LaneConfig};
 use swim_api::downlink::DownlinkKind;
 use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swim_api::meta::lane::LaneKind;
@@ -39,16 +39,21 @@ use swim_api::{
     protocol::{agent::LaneRequest, map::MapMessage},
 };
 use swim_model::address::Address;
+use swim_model::http::{StatusCode, Version};
 use swim_model::Text;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::routing::route_uri::RouteUri;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::mpsc;
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::agent_lifecycle::item_event::ItemEvent;
-use crate::event_handler::{ActionContext, BoxEventHandler, BoxJoinValueInit, HandlerFuture};
+use crate::agent_model::io::LaneReadEvent;
+use crate::event_handler::{
+    ActionContext, BoxEventHandler, BoxJoinValueInit, HandlerFuture, ModificationFlags,
+};
 use crate::{
     agent_lifecycle::AgentLifecycle,
     event_handler::{EventHandler, EventHandlerError, HandlerAction, StepResult},
@@ -195,8 +200,12 @@ pub trait AgentSpec: Sized + Send {
     /// * `id` - The ID of the remote that requested the sync.
     fn on_sync(&self, lane: &str, id: Uuid) -> Option<Self::OnSyncHandler>;
 
-    fn on_http_request(&self, _lane: &str, _request: HttpLaneRequest) -> Option<Self::HttpRequestHandler> {
-        None
+    fn on_http_request(
+        &self,
+        _lane: &str,
+        request: HttpLaneRequest,
+    ) -> Result<Self::HttpRequestHandler, HttpLaneRequest> {
+        Err(request)
     }
 
     /// Attempt to write pending data from a lane into the outgoing buffer. The result will
@@ -349,6 +358,10 @@ enum TaskEvent<ItemModel> {
     MapRequest {
         id: u64,
         request: LaneRequest<MapMessage<BytesMut, BytesMut>>,
+    },
+    HttpRequest {
+        id: u64,
+        request: HttpLaneRequest,
     },
     RequestError {
         id: u64,
@@ -538,9 +551,11 @@ where
         let mut map_lane_io = HashMap::new();
         let mut value_like_store_io = HashMap::new();
         let mut map_store_io = HashMap::new();
+        let mut http_lane_rxs = HashMap::new();
 
         let val_lane_specs = ItemModel::value_like_item_specs();
         let map_lane_specs = ItemModel::map_like_item_specs();
+        let http_lane_names = ItemModel::http_lane_names();
         let item_ids = <ItemModel as AgentSpec>::item_ids();
 
         let suspended = FuturesUnordered::new();
@@ -622,6 +637,11 @@ where
                 }
             }
 
+            for name in http_lane_names {
+                let channel = context.add_http_lane(name).await?;
+                http_lane_rxs.insert(Text::new(name), channel);
+            }
+
             while let Some(result) = lane_init_tasks.next().await {
                 let InitializedItem {
                     item_kind,
@@ -696,6 +716,7 @@ where
             value_like_store_io,
             map_lane_io,
             map_store_io,
+            http_lane_rxs,
             suspended,
             downlink_channels: downlink_channels.into_inner(),
             ad_hoc_buffer,
@@ -864,6 +885,7 @@ struct AgentTask<ItemModel, Lifecycle> {
     value_like_store_io: HashMap<Text, ByteWriter>,
     map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
     map_store_io: HashMap<Text, ByteWriter>,
+    http_lane_rxs: HashMap<Text, mpsc::Receiver<HttpLaneRequest>>,
     suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
     join_value_init: HashMap<u64, BoxJoinValueInit<'static, ItemModel>>,
     ad_hoc_buffer: BytesMut,
@@ -895,6 +917,7 @@ where
             value_like_store_io,
             map_lane_io,
             map_store_io,
+            http_lane_rxs,
             mut suspended,
             mut join_value_init,
             mut ad_hoc_buffer,
@@ -928,7 +951,7 @@ where
             downlinks.push(Either::Left(dl.wait_on_downlink()));
         }
 
-        // Set up readers and writes for each lane.
+        // Set up readers and writers for each lane.
         for (name, (tx, rx)) in value_like_lane_io {
             let id = item_ids_rev[&name];
             lane_readers.push(LaneReader::value(id, rx));
@@ -951,6 +974,11 @@ where
             item_writers.insert(id, ItemWriter::new(id, tx));
         }
 
+        for (name, rx) in http_lane_rxs {
+            let id = item_ids_rev[&name];
+            lane_readers.push(LaneReader::http(id, rx));
+        }
+
         // This set keeps track of which items have data to be written (according to executed event handlers).
         let mut dirty_items: HashSet<u64> = HashSet::new();
 
@@ -966,10 +994,13 @@ where
                     maybe_req = lane_readers.next() => {
                         maybe_req.map(|req| {
                             match req {
-                                (id, Ok(Either::Left(request))) => TaskEvent::ValueRequest{
+                                (id, Ok(LaneReadEvent::Value(request))) => TaskEvent::ValueRequest{
                                     id, request
                                 },
-                                (id, Ok(Either::Right(request))) => TaskEvent::MapRequest{
+                                (id, Ok(LaneReadEvent::Map(request))) => TaskEvent::MapRequest{
+                                    id, request
+                                },
+                                (id, Ok(LaneReadEvent::Http(request))) => TaskEvent::HttpRequest {
                                     id, request
                                 },
                                 (id, Err(error)) => TaskEvent::RequestError {
@@ -1312,6 +1343,38 @@ where
                         LaneRequest::InitComplete => {}
                     }
                 }
+                TaskEvent::HttpRequest { id, request } => {
+                    let name = &item_ids[&id];
+                    match item_model.on_http_request(name.as_str(), request) {
+                        Ok(handler) => {
+                            match run_handler(
+                                &mut ActionContext::new(
+                                    &suspended,
+                                    &*context,
+                                    &add_downlink,
+                                    &mut join_value_init,
+                                    &mut ad_hoc_buffer,
+                                ),
+                                meta,
+                                &item_model,
+                                &lifecycle,
+                                handler,
+                                &item_ids,
+                                &mut dirty_items,
+                            ) {
+                                Err(EventHandlerError::StopInstructed) => break Ok(()),
+                                Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
+                                Ok(_) => check_cmds(
+                                    &mut ad_hoc_buffer,
+                                    &mut cmd_writer,
+                                    &mut cmd_send_fut,
+                                    CommandWriter::write,
+                                ),
+                            }
+                        }
+                        Err(request) => not_found(name.as_str(), request),
+                    }
+                }
                 TaskEvent::RequestError { id, error } => {
                     let lane = item_ids[&id].clone();
                     break Err(AgentTaskError::BadFrame { lane, error });
@@ -1378,6 +1441,22 @@ where
             Ok(_) | Err(EventHandlerError::StopInstructed) => Ok(()),
             Err(e) => Err(AgentTaskError::UserCodeError(Box::new(e))),
         }
+    }
+}
+
+fn not_found(lane_name: &str, request: HttpLaneRequest) {
+    let HttpLaneRequest { response_tx, .. } = request;
+    let response = HttpLaneResponse {
+        status_code: StatusCode::NOT_FOUND,
+        version: Version::HTTP_1_1,
+        headers: vec![],
+        payload: Bytes::from(format!(
+            "This agent does not have an HTTP lane called `{}`",
+            lane_name
+        )),
+    };
+    if response_tx.send(response).is_err() {
+        debug!("HTTP request dropped before it was fulfilled.");
     }
 }
 
@@ -1455,8 +1534,13 @@ where
                         .get(&modification.item_id)
                         .map(|name| (modification, name))
                 }) {
-                    collector.add_id(modification.item_id);
-                    if modification.trigger_handler {
+                    if modification.flags.contains(ModificationFlags::DIRTY) {
+                        collector.add_id(modification.item_id);
+                    }
+                    if modification
+                        .flags
+                        .contains(ModificationFlags::TRIGGER_HANDLER)
+                    {
                         if let Some(consequence) = lifecycle.item_event(context, lane.as_str()) {
                             run_handler(
                                 action_context,
@@ -1480,8 +1564,13 @@ where
                         .get(&modification.item_id)
                         .map(|name| (modification, name))
                 }) {
-                    collector.add_id(modification.item_id);
-                    if modification.trigger_handler {
+                    if modification.flags.contains(ModificationFlags::DIRTY) {
+                        collector.add_id(modification.item_id);
+                    }
+                    if modification
+                        .flags
+                        .contains(ModificationFlags::TRIGGER_HANDLER)
+                    {
                         if let Some(consequence) = lifecycle.item_event(context, lane.as_str()) {
                             run_handler(
                                 action_context,

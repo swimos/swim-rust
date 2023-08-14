@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_model::http::{Header, HttpResponse, Method, StatusCode, Uri, Version};
+use swim_model::http::{Header, HttpResponse, StatusCode, Uri, Version};
 
 pub enum MethodAndPayload<PostT, PutT = PostT> {
     Get,
@@ -26,18 +26,6 @@ pub struct Request<PostT, PutT = PostT> {
     pub method_and_payload: MethodAndPayload<PostT, PutT>,
     pub uri: Uri,
     pub headers: Vec<Header>,
-}
-
-impl<PostT, PutT> Request<PostT, PutT> {
-    pub fn method(&self) -> Method {
-        match self.method_and_payload {
-            MethodAndPayload::Get => Method::GET,
-            MethodAndPayload::Head => Method::HEAD,
-            MethodAndPayload::Post(_) => Method::POST,
-            MethodAndPayload::Put(_) => Method::PUT,
-            MethodAndPayload::Delete => Method::DELETE,
-        }
-    }
 }
 
 pub struct Response<T> {

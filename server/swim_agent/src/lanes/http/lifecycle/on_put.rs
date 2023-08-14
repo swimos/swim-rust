@@ -30,7 +30,7 @@ pub trait OnPut<T, Context>: Send {
     /// #Arguments
     /// * `http_context` - Metadata associated with the HTTP request.
     /// * `value` - The value put to the lane.
-    fn on_put<'a>(&'a self, http_context: HttpRequestContext, value: T) -> Self::OnPutHandler<'a>;
+    fn on_put(&self, http_context: HttpRequestContext, value: T) -> Self::OnPutHandler<'_>;
 }
 
 pub trait OnPutShared<T, Context, Shared>: Send {
@@ -58,11 +58,7 @@ impl<T, Context> OnPut<T, Context> for NoHandler {
     where
         Self: 'a;
 
-    fn on_put<'a>(
-        &'a self,
-        _http_context: HttpRequestContext,
-        _value: T,
-    ) -> Self::OnPutHandler<'a> {
+    fn on_put(&self, _http_context: HttpRequestContext, _value: T) -> Self::OnPutHandler<'_> {
         UnsupportedHandler::default()
     }
 }
@@ -93,7 +89,7 @@ where
     where
         Self: 'a;
 
-    fn on_put<'a>(&'a self, http_context: HttpRequestContext, value: T) -> Self::OnPutHandler<'a> {
+    fn on_put(&self, http_context: HttpRequestContext, value: T) -> Self::OnPutHandler<'_> {
         let FnHandler(f) = self;
         f(http_context, value)
     }

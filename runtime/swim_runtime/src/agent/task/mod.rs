@@ -2114,7 +2114,7 @@ fn not_found(request: HttpLaneRequest) {
             lane_name
         ))
     } else {
-        Bytes::from("No lane name was specified.")
+        Bytes::from_static(b"No lane name was specified.")
     };
     let not_found_response = HttpResponse {
         status_code: StatusCode::NOT_FOUND,

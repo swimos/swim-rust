@@ -51,6 +51,10 @@ use crate::{
     meta::AgentMetadata,
 };
 
+use bitflags::bitflags;
+
+#[cfg(test)]
+pub mod check_step;
 mod command;
 mod handler_fn;
 mod register_downlink;
@@ -311,8 +315,6 @@ pub enum EventHandlerError {
     BadCommand(AsyncParseError),
     #[error("An incoming message was incomplete.")]
     IncompleteCommand,
-    #[error("Invalid HTTP request: {0}")]
-    InvalidHttpRequest(Box<dyn std::error::Error + Send>),
     #[error("An error occurred in the agent runtime.")]
     RuntimeError(#[from] AgentRuntimeError),
     #[error("Invalid key or value type for a join lane lifecycle.")]
@@ -325,6 +327,17 @@ pub enum EventHandlerError {
     StopInstructed,
 }
 
+bitflags! {
+
+    pub struct ModificationFlags: u8 {
+        /// The lane has data to write.
+        const DIRTY = 0b01;
+        /// The lane's event handler should be triggered.
+        const TRIGGER_HANDLER = 0b10;
+    }
+
+}
+
 /// When a handler completes or suspends it can indicate that is has modified the
 /// state of an item.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -332,21 +345,28 @@ pub struct Modification {
     /// The ID of the item.
     pub item_id: u64,
     /// If this is true, lifecycle event handlers on the lane should be executed.
-    pub trigger_handler: bool,
+    pub flags: ModificationFlags,
 }
 
 impl Modification {
     pub fn of(item_id: u64) -> Self {
         Modification {
             item_id,
-            trigger_handler: true,
+            flags: ModificationFlags::all(),
         }
     }
 
     pub fn no_trigger(item_id: u64) -> Self {
         Modification {
             item_id,
-            trigger_handler: false,
+            flags: ModificationFlags::complement(ModificationFlags::TRIGGER_HANDLER),
+        }
+    }
+
+    pub fn trigger_only(item_id: u64) -> Self {
+        Modification {
+            item_id,
+            flags: ModificationFlags::TRIGGER_HANDLER,
         }
     }
 }

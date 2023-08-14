@@ -18,10 +18,11 @@ use std::marker::PhantomData;
 use swim_api::agent::HttpLaneResponse;
 use swim_api::handlers::{FnHandler, NoHandler};
 use swim_form::structural::write::StructuralWritable;
-use swim_model::http::{Header, HttpResponse, Uri};
+use swim_model::http::{Header, HttpResponse, StatusCode, Uri, Version};
 use swim_recon::printer::print_recon_compact;
 use tokio::sync::oneshot;
 
+use crate::event_handler::EventHandlerError;
 use crate::{
     agent_lifecycle::utility::HandlerContext,
     event_handler::{ActionContext, HandlerAction, StepResult},
@@ -108,6 +109,9 @@ impl<Context> HandlerAction<Context> for UnsupportedHandler {
     }
 }
 
+type SharedHttpLifecycleType<Context, Shared, Get, Post, Put> =
+    fn(Context, Shared, Get) -> (Post, Put);
+
 pub struct StatefulHttpLaneLifecycle<
     Context,
     Shared,
@@ -119,7 +123,7 @@ pub struct StatefulHttpLaneLifecycle<
     FPut = NoHandler,
     FDel = NoHandler,
 > {
-    _type: PhantomData<fn(Context, Shared, Get) -> (Post, Put)>,
+    _type: PhantomData<SharedHttpLifecycleType<Context, Shared, Get, Post, Put>>,
     on_get: FGet,
     on_post: FPost,
     on_put: FPut,
@@ -136,7 +140,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            _type: self._type.clone(),
+            _type: self._type,
             on_get: self.on_get.clone(),
             on_post: self.on_post.clone(),
             on_put: self.on_put.clone(),
@@ -385,9 +389,14 @@ where
 }
 
 macro_rules! step {
-    ($step_result:expr, $response_tx:expr, $to_bytes:expr) => {
+    ($step_result:expr, $response_tx:expr, $to_bytes:expr) => (step!($step_result, $response_tx, $to_bytes,));
+    ($step_result:expr, $response_tx:expr, $to_bytes:expr, $($err_pat:pat => $err_expr: expr)?) => {
         match $step_result {
             StepResult::Continue { modified_item } => return StepResult::Continue { modified_item },
+            $(StepResult::Fail($err_pat) => $err_expr,)?
+            //StepResult::Fail(EventHandlerError::HttpGetUndefined) => {
+            //    (None, not_supported())
+            //},
             StepResult::Fail(err) => {
                 $response_tx.take();
                 return StepResult::Fail(err);
@@ -425,12 +434,14 @@ where
             HttpLifecycleHandlerInner::Get(h) => step!(
                 h.step(action_context, meta, context),
                 response_tx,
-                response_to_bytes
+                response_to_bytes,
+                EventHandlerError::HttpGetUndefined => (None, not_supported())
             ),
             HttpLifecycleHandlerInner::Head(h) => step!(
                 h.step(action_context, meta, context),
                 response_tx,
-                discard_to_bytes
+                discard_to_bytes,
+                EventHandlerError::HttpGetUndefined => (None, not_supported())
             ),
             HttpLifecycleHandlerInner::Post(h) => step!(
                 h.step(action_context, meta, context),
@@ -460,6 +471,15 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+}
+
+fn not_supported() -> HttpLaneResponse {
+    HttpLaneResponse {
+        status_code: StatusCode::METHOD_NOT_ALLOWED,
+        version: Version::HTTP_1_1,
+        headers: vec![],
+        payload: Bytes::new(),
     }
 }
 
@@ -569,12 +589,14 @@ where
             HttpLifecycleHandlerSharedInner::Get(h) => step!(
                 h.step(action_context, meta, context),
                 response_tx,
-                response_to_bytes
+                response_to_bytes,
+                EventHandlerError::HttpGetUndefined => (None, not_supported())
             ),
             HttpLifecycleHandlerSharedInner::Head(h) => step!(
                 h.step(action_context, meta, context),
                 response_tx,
-                discard_to_bytes
+                discard_to_bytes,
+                EventHandlerError::HttpGetUndefined => (None, not_supported())
             ),
             HttpLifecycleHandlerSharedInner::Post(h) => step!(
                 h.step(action_context, meta, context),

@@ -29,7 +29,7 @@ pub trait OnDelete<Context>: Send {
 
     /// #Arguments
     /// * `http_context` - Metadata associated with the HTTP request.
-    fn on_delete<'a>(&'a self, http_context: HttpRequestContext) -> Self::OnDeleteHandler<'a>;
+    fn on_delete(&self, http_context: HttpRequestContext) -> Self::OnDeleteHandler<'_>;
 }
 
 pub trait OnDeleteShared<Context, Shared>: Send {
@@ -55,7 +55,7 @@ impl<Context> OnDelete<Context> for NoHandler {
     where
         Self: 'a;
 
-    fn on_delete<'a>(&'a self, _http_context: HttpRequestContext) -> Self::OnDeleteHandler<'a> {
+    fn on_delete(&self, _http_context: HttpRequestContext) -> Self::OnDeleteHandler<'_> {
         UnsupportedHandler::default()
     }
 }
@@ -85,7 +85,7 @@ where
     where
         Self: 'a;
 
-    fn on_delete<'a>(&'a self, http_context: HttpRequestContext) -> Self::OnDeleteHandler<'a> {
+    fn on_delete(&self, http_context: HttpRequestContext) -> Self::OnDeleteHandler<'_> {
         let FnHandler(f) = self;
         f(http_context)
     }

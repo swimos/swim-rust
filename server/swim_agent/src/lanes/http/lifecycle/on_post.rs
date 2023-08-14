@@ -30,8 +30,7 @@ pub trait OnPost<T, Context>: Send {
     /// #Arguments
     /// * `http_context` - Metadata associated with the HTTP request.
     /// * `value` - The value posted to the lane.
-    fn on_post<'a>(&'a self, http_context: HttpRequestContext, value: T)
-        -> Self::OnPostHandler<'a>;
+    fn on_post(&self, http_context: HttpRequestContext, value: T) -> Self::OnPostHandler<'_>;
 }
 
 pub trait OnPostShared<T, Context, Shared>: Send {
@@ -59,11 +58,7 @@ impl<T, Context> OnPost<T, Context> for NoHandler {
     where
         Self: 'a;
 
-    fn on_post<'a>(
-        &'a self,
-        _http_context: HttpRequestContext,
-        _value: T,
-    ) -> Self::OnPostHandler<'a> {
+    fn on_post(&self, _http_context: HttpRequestContext, _value: T) -> Self::OnPostHandler<'_> {
         UnsupportedHandler::default()
     }
 }
@@ -94,11 +89,7 @@ where
     where
         Self: 'a;
 
-    fn on_post<'a>(
-        &'a self,
-        http_context: HttpRequestContext,
-        value: T,
-    ) -> Self::OnPostHandler<'a> {
+    fn on_post(&self, http_context: HttpRequestContext, value: T) -> Self::OnPostHandler<'_> {
         let FnHandler(f) = self;
         f(http_context, value)
     }
