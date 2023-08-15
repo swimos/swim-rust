@@ -88,18 +88,12 @@ struct SingleLaneInit {
 }
 
 async fn no_store_init_value(input: &mut ByteReader, output: &mut ByteWriter) {
-    let mut framed_in = FramedRead::new(
-        input,
-        LaneRequestDecoder::new(WithLengthBytesCodec),
-    );
+    let mut framed_in = FramedRead::new(input, LaneRequestDecoder::new(WithLengthBytesCodec));
     match framed_in.next().await {
         Some(Ok(LaneRequest::InitComplete)) => {}
         ow => panic!("Unexpected event: {:?}", ow),
     }
-    let mut framed_out = FramedWrite::new(
-        output,
-        LaneResponseEncoder::new(WithLengthBytesCodec),
-    );
+    let mut framed_out = FramedWrite::new(output, LaneResponseEncoder::new(WithLengthBytesCodec));
     framed_out
         .send(LaneResponse::<&[u8]>::Initialized)
         .await
@@ -115,10 +109,7 @@ async fn no_store_init_map(input: &mut ByteReader, output: &mut ByteWriter) {
         Some(Ok(LaneRequest::InitComplete)) => {}
         ow => panic!("Unexpected event: {:?}", ow),
     }
-    let mut framed_out = FramedWrite::new(
-        output,
-        LaneResponseEncoder::new(RawMapOperationEncoder),
-    );
+    let mut framed_out = FramedWrite::new(output, LaneResponseEncoder::new(RawMapOperationEncoder));
     framed_out
         .send(LaneResponse::<RawMapOperation>::Initialized)
         .await

@@ -14,13 +14,10 @@
 
 use std::{cell::RefCell, marker::PhantomData};
 
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::Bytes;
 use swim_api::agent::{HttpLaneRequest, HttpLaneResponse};
-use swim_form::structural::read::{recognizer::RecognizerReadable, StructuralReadable};
 use swim_model::http::{HttpRequest, StatusCode, SupportedMethod, Version};
-use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use tokio::sync::oneshot;
-use tokio_util::codec::Decoder;
 use tracing::debug;
 
 use crate::{
@@ -29,8 +26,13 @@ use crate::{
     AgentItem,
 };
 
-use self::model::{MethodAndPayload, Request};
+use self::{
+    codec::HttpLaneCodec,
+    content_type::recon,
+    model::{MethodAndPayload, Request},
+};
 
+mod codec;
 mod content_type;
 pub mod lifecycle;
 mod model;
@@ -68,31 +70,30 @@ pub struct RequestAndChannel<Post, Put> {
     response_tx: oneshot::Sender<HttpLaneResponse>,
 }
 
-pub struct HttpLaneAccept<'a, Context, Get, Post, Put> {
+pub struct HttpLaneAccept<Context, Get, Post, Put, Codec> {
     projection: fn(&Context) -> &HttpLane<Get, Post, Put>,
     request: Option<HttpLaneRequest>,
-    buffer: &'a mut BytesMut,
+    codec: Codec,
 }
 
-impl<'a, Context, Get, Post, Put> HttpLaneAccept<'a, Context, Get, Post, Put> {
+impl<Context, Get, Post, Put, Codec> HttpLaneAccept<Context, Get, Post, Put, Codec> {
     pub fn new(
         projection: fn(&Context) -> &HttpLane<Get, Post, Put>,
         request: HttpLaneRequest,
-        buffer: &'a mut BytesMut,
+        codec: Codec,
     ) -> Self {
         HttpLaneAccept {
             projection,
             request: Some(request),
-            buffer,
+            codec,
         }
     }
 }
 
-impl<'a, Context, Get, Post, Put> HandlerAction<Context>
-    for HttpLaneAccept<'a, Context, Get, Post, Put>
+impl<Context, Get, Post, Put, Codec> HandlerAction<Context>
+    for HttpLaneAccept<Context, Get, Post, Put, Codec>
 where
-    Post: RecognizerReadable,
-    Put: RecognizerReadable,
+    Codec: HttpLaneCodec<Post> + HttpLaneCodec<Put>,
 {
     type Completion = ();
 
@@ -105,7 +106,7 @@ where
         let HttpLaneAccept {
             projection,
             request,
-            buffer,
+            codec,
         } = self;
         if let Some(HttpLaneRequest {
             request,
@@ -122,18 +123,15 @@ where
             let method_and_payload = match method.supported_method() {
                 Some(SupportedMethod::Get) => MethodAndPayload::Get,
                 Some(SupportedMethod::Head) => MethodAndPayload::Head,
-                Some(SupportedMethod::Post) => {
-                    match decode_payload::<Post>(buffer, payload.as_ref()) {
-                        Ok(Some(body)) => MethodAndPayload::Post(body),
-                        _ => {
-                            bad_request(response_tx, StatusCode::BAD_REQUEST);
-                            return StepResult::done(());
-                        }
+                Some(SupportedMethod::Post) => match codec.decode(recon(), payload.as_ref()) {
+                    Ok(body) => MethodAndPayload::Post(body),
+                    _ => {
+                        bad_request(response_tx, StatusCode::BAD_REQUEST);
+                        return StepResult::done(());
                     }
-                }
-                Some(SupportedMethod::Put) => match decode_payload::<Put>(buffer, payload.as_ref())
-                {
-                    Ok(Some(body)) => MethodAndPayload::Put(body),
+                },
+                Some(SupportedMethod::Put) => match codec.decode(recon(), payload.as_ref()) {
+                    Ok(body) => MethodAndPayload::Put(body),
                     _ => {
                         bad_request(response_tx, StatusCode::BAD_REQUEST);
                         return StepResult::done(());
@@ -160,19 +158,6 @@ where
             StepResult::after_done()
         }
     }
-}
-
-fn decode_payload<T: StructuralReadable>(
-    buffer: &mut BytesMut,
-    payload: &[u8],
-) -> Result<Option<T>, AsyncParseError>
-where
-    T: StructuralReadable,
-{
-    buffer.clear();
-    buffer.put(payload);
-    let mut decoder = RecognizerDecoder::new(T::make_recognizer());
-    decoder.decode_eof(buffer)
 }
 
 fn bad_request(tx: oneshot::Sender<HttpLaneResponse>, status_code: StatusCode) {

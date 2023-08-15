@@ -134,9 +134,7 @@ pub trait AgentSpec: Sized + Send {
     /// The type of handler to run when a request is received to sync with a lane.
     type OnSyncHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
-    type HttpRequestHandler<'a>: HandlerAction<Self, Completion = ()> + Send + 'static
-    where
-        Self: 'a;
+    type HttpRequestHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
     /// The names and flags of all value like items (value lanes and stores, command lanes, etc) in the agent.
     fn value_like_item_specs() -> HashMap<&'static str, ItemSpec>;
@@ -202,12 +200,11 @@ pub trait AgentSpec: Sized + Send {
     /// * `id` - The ID of the remote that requested the sync.
     fn on_sync(&self, lane: &str, id: Uuid) -> Option<Self::OnSyncHandler>;
 
-    fn on_http_request<'a>(
+    fn on_http_request(
         &self,
         _lane: &str,
         request: HttpLaneRequest,
-        _decode_buffer: &'a mut BytesMut,
-    ) -> Result<Self::HttpRequestHandler<'a>, HttpLaneRequest> {
+    ) -> Result<Self::HttpRequestHandler, HttpLaneRequest> {
         Err(request)
     }
 
@@ -937,7 +934,6 @@ where
         let mut item_writers = HashMap::new();
         let mut pending_writes = FuturesUnordered::new();
         let mut downlinks = FuturesUnordered::new();
-        let mut http_decode_buffer = BytesMut::new();
 
         let mut cmd_writer = if let Ok(cmd_tx) = context.ad_hoc_commands().await {
             Some(CommandWriter::new(cmd_tx))
@@ -1349,12 +1345,7 @@ where
                 }
                 TaskEvent::HttpRequest { id, request } => {
                     let name = &item_ids[&id];
-                    http_decode_buffer.clear();
-                    match item_model.on_http_request(
-                        name.as_str(),
-                        request,
-                        &mut http_decode_buffer,
-                    ) {
+                    match item_model.on_http_request(name.as_str(), request) {
                         Ok(handler) => {
                             match run_handler(
                                 &mut ActionContext::new(

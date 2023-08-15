@@ -82,14 +82,9 @@ async fn init_value_lane() {
     );
 
     let runtime_task = async move {
-        let mut writer = FramedWrite::new(
-            &mut in_tx,
-            LaneRequestEncoder::new(WithLenReconEncoder),
-        );
-        let mut reader = FramedRead::new(
-            &mut out_rx,
-            LaneResponseDecoder::new(WithLengthBytesCodec),
-        );
+        let mut writer = FramedWrite::new(&mut in_tx, LaneRequestEncoder::new(WithLenReconEncoder));
+        let mut reader =
+            FramedRead::new(&mut out_rx, LaneResponseDecoder::new(WithLengthBytesCodec));
 
         writer
             .send(LaneRequest::Command(46))
@@ -207,14 +202,9 @@ async fn init_value_lane_no_data() {
     );
 
     let runtime_task = async move {
-        let mut writer = FramedWrite::new(
-            &mut in_tx,
-            LaneRequestEncoder::new(WithLenReconEncoder),
-        );
-        let mut reader = FramedRead::new(
-            &mut out_rx,
-            LaneResponseDecoder::new(WithLengthBytesCodec),
-        );
+        let mut writer = FramedWrite::new(&mut in_tx, LaneRequestEncoder::new(WithLenReconEncoder));
+        let mut reader =
+            FramedRead::new(&mut out_rx, LaneResponseDecoder::new(WithLengthBytesCodec));
 
         writer
             .send(LaneRequest::<i32>::InitComplete)

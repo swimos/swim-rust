@@ -207,10 +207,7 @@ async fn value_initializer() {
     let init_task = init.initialize(&mut tx);
 
     let recv_task = async {
-        let mut framed = FramedRead::new(
-            &mut rx,
-            LaneRequestDecoder::new(WithLengthBytesCodec),
-        );
+        let mut framed = FramedRead::new(&mut rx, LaneRequestDecoder::new(WithLengthBytesCodec));
         match framed.next().await {
             Some(Ok(LaneRequest::Command(body))) => {
                 assert_eq!(body.as_ref(), &data);
