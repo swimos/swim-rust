@@ -121,14 +121,14 @@ where
             let method_and_payload = match method.supported_method() {
                 Some(SupportedMethod::Get) => MethodAndPayload::Get,
                 Some(SupportedMethod::Head) => MethodAndPayload::Head,
-                Some(SupportedMethod::Post) => match decode_payload::<Post>(buffer, payload) {
+                Some(SupportedMethod::Post) => match decode_payload::<Post>(buffer, payload.as_ref()) {
                     Ok(Some(body)) => MethodAndPayload::Post(body),
                     _ => {
                         bad_request(response_tx, StatusCode::BAD_REQUEST);
                         return StepResult::done(());
                     }
                 },
-                Some(SupportedMethod::Put) => match decode_payload::<Put>(buffer, payload) {
+                Some(SupportedMethod::Put) => match decode_payload::<Put>(buffer, payload.as_ref()) {
                     Ok(Some(body)) => MethodAndPayload::Put(body),
                     _ => {
                         bad_request(response_tx, StatusCode::BAD_REQUEST);
@@ -160,7 +160,7 @@ where
 
 fn decode_payload<T: StructuralReadable>(
     buffer: &mut BytesMut,
-    payload: Bytes,
+    payload: &[u8],
 ) -> Result<Option<T>, AsyncParseError>
 where
     T: StructuralReadable,

@@ -177,7 +177,9 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
                 type OnSyncHandler = #sync_handler;
 
-                type HttpRequestHandler = #root::event_handler::UnitHandler;
+                type HttpRequestHandler<'a> = #root::event_handler::UnitHandler
+                where
+                    Self: 'a;
 
                 fn value_like_item_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
                     let mut lanes = ::std::collections::HashMap::new();
