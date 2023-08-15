@@ -1454,7 +1454,7 @@ fn register_join_value_lifecycle() {
     }
 
     let agent = TestAgent::default();
-    let template = TestLifecycle::default();
+    let template = TestLifecycle;
 
     let lifecycle = template.into_lifecycle();
 
@@ -1506,7 +1506,7 @@ fn register_two_join_value_lifecycles() {
     }
 
     let agent = TwoJoinValueAgent::default();
-    let template = TestLifecycle::default();
+    let template = TestLifecycle;
 
     let lifecycle = template.into_lifecycle();
 

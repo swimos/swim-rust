@@ -120,7 +120,7 @@ where
     T: Form + Clone + Eq + std::fmt::Debug,
 {
     let mut buffer = BytesMut::new();
-    let mut encoder = HttpResponseMessageEncoder::new(WithLenReconEncoder::default());
+    let mut encoder = HttpResponseMessageEncoder::new(WithLenReconEncoder);
     let mut decoder =
         HttpResponseMessageDecoder::new(WithLenRecognizerDecoder::new(T::make_recognizer()));
 

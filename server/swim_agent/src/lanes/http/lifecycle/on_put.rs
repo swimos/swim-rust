@@ -59,7 +59,7 @@ impl<T, Context> OnPut<T, Context> for NoHandler {
         Self: 'a;
 
     fn on_put(&self, _http_context: HttpRequestContext, _value: T) -> Self::OnPutHandler<'_> {
-        UnsupportedHandler::default()
+        UnsupportedHandler
     }
 }
 
@@ -76,7 +76,7 @@ impl<T, Context, Shared> OnPutShared<T, Context, Shared> for NoHandler {
         _http_context: HttpRequestContext,
         _value: T,
     ) -> Self::OnPutHandler<'a> {
-        UnsupportedHandler::default()
+        UnsupportedHandler
     }
 }
 

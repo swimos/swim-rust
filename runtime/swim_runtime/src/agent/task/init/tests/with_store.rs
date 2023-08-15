@@ -112,7 +112,7 @@ async fn with_store_init_value(input: &mut ByteReader, output: &mut ByteWriter, 
     }
     let mut framed_out = FramedWrite::new(
         output,
-        LaneResponseEncoder::new(WithLengthBytesCodec::default()),
+        LaneResponseEncoder::new(WithLengthBytesCodec),
     );
     framed_out
         .send(LaneResponse::<&[u8]>::Initialized)

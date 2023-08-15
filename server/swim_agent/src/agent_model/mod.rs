@@ -800,7 +800,7 @@ where
                 name,
                 UplinkKind::Value,
                 io,
-                WithLengthBytesCodec::default(),
+                WithLengthBytesCodec,
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -821,7 +821,7 @@ where
                 name,
                 UplinkKind::Value,
                 io,
-                WithLengthBytesCodec::default(),
+                WithLengthBytesCodec,
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -848,7 +848,7 @@ where
                 name,
                 UplinkKind::Map,
                 io,
-                MapMessageDecoder::new(RawMapOperationDecoder::default()),
+                MapMessageDecoder::new(RawMapOperationDecoder),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -869,7 +869,7 @@ where
                 name,
                 UplinkKind::Map,
                 io,
-                MapMessageDecoder::new(RawMapOperationDecoder::default()),
+                MapMessageDecoder::new(RawMapOperationDecoder),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -1350,7 +1350,11 @@ where
                 TaskEvent::HttpRequest { id, request } => {
                     let name = &item_ids[&id];
                     http_decode_buffer.clear();
-                    match item_model.on_http_request(name.as_str(), request, &mut http_decode_buffer) {
+                    match item_model.on_http_request(
+                        name.as_str(),
+                        request,
+                        &mut http_decode_buffer,
+                    ) {
                         Ok(handler) => {
                             match run_handler(
                                 &mut ActionContext::new(

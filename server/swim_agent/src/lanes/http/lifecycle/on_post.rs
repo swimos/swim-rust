@@ -59,7 +59,7 @@ impl<T, Context> OnPost<T, Context> for NoHandler {
         Self: 'a;
 
     fn on_post(&self, _http_context: HttpRequestContext, _value: T) -> Self::OnPostHandler<'_> {
-        UnsupportedHandler::default()
+        UnsupportedHandler
     }
 }
 
@@ -76,7 +76,7 @@ impl<T, Context, Shared> OnPostShared<T, Context, Shared> for NoHandler {
         _http_context: HttpRequestContext,
         _value: T,
     ) -> Self::OnPostHandler<'a> {
-        UnsupportedHandler::default()
+        UnsupportedHandler
     }
 }
 

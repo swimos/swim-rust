@@ -73,10 +73,10 @@ impl<Context, State> StatefulAgentLifecycle<Context, State> {
         StatefulAgentLifecycle {
             state,
             handler_context: HandlerContext::default(),
-            on_init: NoHandler::default(),
-            on_start: NoHandler::default(),
-            on_stop: NoHandler::default(),
-            item_event: NoHandler::default(),
+            on_init: NoHandler,
+            on_start: NoHandler,
+            on_stop: NoHandler,
+            item_event: NoHandler,
         }
     }
 }

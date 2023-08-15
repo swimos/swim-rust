@@ -95,7 +95,7 @@ async fn expect_message(
     rx: &mut ByteReader,
     expected: BytesResponseMessage,
 ) -> (RemoteSender, BytesMut) {
-    let mut read = FramedRead::new(rx, RawResponseMessageDecoder::default());
+    let mut read = FramedRead::new(rx, RawResponseMessageDecoder);
     let (writer, buffer, result) = task.into_future().await;
     assert!(result.is_ok());
     match read.next().await {

@@ -209,7 +209,7 @@ async fn value_initializer() {
     let recv_task = async {
         let mut framed = FramedRead::new(
             &mut rx,
-            LaneRequestDecoder::new(WithLengthBytesCodec::default()),
+            LaneRequestDecoder::new(WithLengthBytesCodec),
         );
         match framed.next().await {
             Some(Ok(LaneRequest::Command(body))) => {
@@ -243,7 +243,7 @@ async fn map_initializer_empty() {
     let recv_task = async {
         let mut framed = FramedRead::new(
             &mut rx,
-            LaneRequestDecoder::new(MapMessageDecoder::new(RawMapOperationDecoder::default())),
+            LaneRequestDecoder::new(MapMessageDecoder::new(RawMapOperationDecoder)),
         );
         assert!(matches!(
             framed.next().await,
@@ -274,7 +274,7 @@ async fn map_initializer_with_entries() {
     let recv_task = async {
         let mut framed = FramedRead::new(
             &mut rx,
-            LaneRequestDecoder::new(MapMessageDecoder::new(RawMapOperationDecoder::default())),
+            LaneRequestDecoder::new(MapMessageDecoder::new(RawMapOperationDecoder)),
         );
         let mut received = HashMap::new();
         loop {

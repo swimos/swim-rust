@@ -202,7 +202,7 @@ impl<'a, Context> ActionContext<'a, Context> {
         T: StructuralWritable,
     {
         let ActionContext { ad_hoc_buffer, .. } = self;
-        let mut encoder = AdHocCommandEncoder::new(WithLenReconEncoder::default());
+        let mut encoder = AdHocCommandEncoder::new(WithLenReconEncoder);
         let cmd = AdHocCommand::new(address, command, overwrite_permitted);
         encoder
             .encode(cmd, ad_hoc_buffer)

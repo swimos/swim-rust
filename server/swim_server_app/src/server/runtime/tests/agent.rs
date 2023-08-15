@@ -105,7 +105,7 @@ pub async fn run_lane_initializer(tx: &mut ByteWriter, rx: &mut ByteReader) {
     } else {
         let mut writer = FramedWrite::new(
             tx,
-            LaneResponseEncoder::new(WithLengthBytesCodec::default()),
+            LaneResponseEncoder::new(WithLengthBytesCodec),
         );
         writer
             .send(LaneResponse::<BytesMut>::Initialized)
@@ -117,7 +117,7 @@ pub async fn run_lane_initializer(tx: &mut ByteWriter, rx: &mut ByteReader) {
 fn init_stream(reader: &mut ByteReader) -> impl Stream<Item = BytesMut> + '_ {
     let framed = FramedRead::new(
         reader,
-        LaneRequestDecoder::new(WithLengthBytesCodec::default()),
+        LaneRequestDecoder::new(WithLengthBytesCodec),
     );
     unfold(Some(framed), |maybe_framed| async move {
         if let Some(mut framed) = maybe_framed {

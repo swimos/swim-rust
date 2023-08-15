@@ -107,9 +107,9 @@ where
 {
     let (tx, rx) = pulse_io;
 
-    let mut input = FramedRead::new(rx, LaneRequestDecoder::new(WithLengthBytesCodec::default()))
+    let mut input = FramedRead::new(rx, LaneRequestDecoder::new(WithLengthBytesCodec))
         .take_until(shutdown_rx);
-    let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(WithLenReconEncoder::default()));
+    let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(WithLenReconEncoder));
 
     let mut previous = Instant::now();
     if report_reader.snapshot().is_none() {

@@ -171,9 +171,9 @@ async fn run_lanes_descriptor_lane(
 ) -> Result<(), FrameIoError> {
     let (tx, rx) = lanes_io;
 
-    let mut input = FramedRead::new(rx, LaneRequestDecoder::new(WithLengthBytesCodec::default()))
+    let mut input = FramedRead::new(rx, LaneRequestDecoder::new(WithLengthBytesCodec))
         .take_until(shutdown_rx);
-    let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(MapOperationEncoder::default()));
+    let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(MapOperationEncoder));
 
     let mut snapshot = if let Some(s) = handle.new_snapshot() {
         s

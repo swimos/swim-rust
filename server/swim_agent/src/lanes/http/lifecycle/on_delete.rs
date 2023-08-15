@@ -56,7 +56,7 @@ impl<Context> OnDelete<Context> for NoHandler {
         Self: 'a;
 
     fn on_delete(&self, _http_context: HttpRequestContext) -> Self::OnDeleteHandler<'_> {
-        UnsupportedHandler::default()
+        UnsupportedHandler
     }
 }
 
@@ -72,7 +72,7 @@ impl<Context, Shared> OnDeleteShared<Context, Shared> for NoHandler {
         _handler_context: HandlerContext<Context>,
         _http_context: HttpRequestContext,
     ) -> Self::OnDeleteHandler<'a> {
-        UnsupportedHandler::default()
+        UnsupportedHandler
     }
 }
 

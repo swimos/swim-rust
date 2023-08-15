@@ -384,7 +384,7 @@ struct DownlinkSender {
 impl DownlinkSender {
     fn new(writer: ByteWriter, options: DownlinkOptions) -> Self {
         DownlinkSender {
-            sender: FramedWrite::new(writer, DownlinkNotificationEncoder::default()),
+            sender: FramedWrite::new(writer, DownlinkNotificationEncoder),
             options,
         }
     }

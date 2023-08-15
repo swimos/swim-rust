@@ -228,7 +228,7 @@ fn encode_sync_complete_map_lane_response() {
 }
 
 fn expected_operation(op: MapOperation<i32, Example>) -> Bytes {
-    let mut encoder = MapOperationEncoder::default();
+    let mut encoder = MapOperationEncoder;
     let mut buffer = BytesMut::new();
     assert!(encoder.encode(op, &mut buffer).is_ok());
     buffer.freeze()

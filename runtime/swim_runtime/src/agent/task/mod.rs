@@ -413,7 +413,7 @@ impl AgentRuntimeTask {
             http_requests,
             stopping,
             config,
-            store: StoreDisabled::default(),
+            store: StoreDisabled,
         }
     }
 }

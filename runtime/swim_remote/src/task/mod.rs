@@ -467,7 +467,7 @@ impl OutgoingTask {
     {
         let OutgoingTask { clients, agents } = self;
         let mut buffer = BytesMut::new();
-        let mut recon_encoder = ReconEncoder::default();
+        let mut recon_encoder = ReconEncoder;
 
         loop {
             let event = tokio::select! {
