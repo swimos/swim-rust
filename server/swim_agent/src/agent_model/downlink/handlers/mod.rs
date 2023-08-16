@@ -20,10 +20,19 @@ use thiserror::Error;
 
 use crate::event_handler::BoxEventHandler;
 
+/// Indication that the downlink task has completed some unit of work.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DownlinkChannelEvent {
+    /// An change has occurred to the state of the downlink (either an event or a change to
+    /// the linked/synced/unlinked state). This indicates that the consumer should attempt
+    /// to call `next_event` to consume the generated event handler. These two steps are
+    /// necessarily separate to avoid holding a borrow across an await point so that the task
+    /// remains [`Send`].
     HandlerReady,
+    /// Indicates that the downlink has written a message to its output.
     WriteCompleted,
+    /// Indicates that the write half of the downlink has terminated (this will happen immediately
+    /// for downlinks that never send anything.)
     WriteStreamTerminated,
 }
 

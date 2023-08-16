@@ -138,6 +138,9 @@ where
             dl_state,
             ..
         } = self;
+        // Most downlinks can send values to their remote lanes. Event downlink are an exception to this.
+        // As the interface for downlinks includes and write half by default we indicate that we will never
+        // send any values but flagging the output as terminated immediately.
         if !*write_terminated {
             *write_terminated = true;
             return Some(Ok(DownlinkChannelEvent::WriteStreamTerminated));
