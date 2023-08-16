@@ -27,7 +27,6 @@ use crate::{
 };
 
 use self::{
-    codec::HttpLaneCodec,
     content_type::recon,
     model::{MethodAndPayload, Request},
 };
@@ -35,31 +34,53 @@ use self::{
 mod codec;
 mod content_type;
 pub mod lifecycle;
+mod headers;
 mod model;
 
 pub use model::{Response, UnitResponse};
+pub use codec::{HttpLaneCodec, HttpLaneCodecSupport, CodecError, DefaultCodec};
 
-pub struct HttpLane<Get, Post, Put = Post> {
+pub struct HttpLane<Get, Post, Put = Post, Codec = DefaultCodec> {
     id: u64,
     _type: PhantomData<fn(Post, Put) -> Get>,
     request: RefCell<Option<RequestAndChannel<Post, Put>>>,
+    codec: Codec,
 }
 
-impl<Get, Post, Put> HttpLane<Get, Post, Put> {
+impl<Get, Post, Put, Codec> HttpLane<Get, Post, Put, Codec>
+where
+    Codec: Default,
+{
     pub fn new(id: u64) -> Self {
         HttpLane {
             id,
             _type: Default::default(),
             request: Default::default(),
+            codec: Default::default(),
         }
     }
+
+}
+
+impl<Get, Post, Put, Codec> HttpLane<Get, Post, Put, Codec> {
 
     pub(crate) fn take_request(&self) -> Option<RequestAndChannel<Post, Put>> {
         self.request.borrow_mut().take()
     }
+
 }
 
-impl<Get, Post, Put> AgentItem for HttpLane<Get, Post, Put> {
+impl<Get, Post, Put, Codec> HttpLane<Get, Post, Put, Codec>
+where
+    Codec: Clone, {
+
+    pub fn codec(&self) -> Codec {
+        self.codec.clone()
+    }
+
+}
+
+impl<Get, Post, Put, Codec> AgentItem for HttpLane<Get, Post, Put, Codec> {
     fn id(&self) -> u64 {
         self.id
     }
@@ -71,21 +92,18 @@ pub struct RequestAndChannel<Post, Put> {
 }
 
 pub struct HttpLaneAccept<Context, Get, Post, Put, Codec> {
-    projection: fn(&Context) -> &HttpLane<Get, Post, Put>,
+    projection: fn(&Context) -> &HttpLane<Get, Post, Put, Codec>,
     request: Option<HttpLaneRequest>,
-    codec: Codec,
 }
 
 impl<Context, Get, Post, Put, Codec> HttpLaneAccept<Context, Get, Post, Put, Codec> {
     pub fn new(
-        projection: fn(&Context) -> &HttpLane<Get, Post, Put>,
+        projection: fn(&Context) -> &HttpLane<Get, Post, Put, Codec>,
         request: HttpLaneRequest,
-        codec: Codec,
     ) -> Self {
         HttpLaneAccept {
             projection,
             request: Some(request),
-            codec,
         }
     }
 }
@@ -106,13 +124,13 @@ where
         let HttpLaneAccept {
             projection,
             request,
-            codec,
         } = self;
         if let Some(HttpLaneRequest {
             request,
             response_tx,
         }) = request.take()
         {
+            let lane = projection(context);
             let HttpRequest {
                 method,
                 uri,
@@ -123,14 +141,14 @@ where
             let method_and_payload = match method.supported_method() {
                 Some(SupportedMethod::Get) => MethodAndPayload::Get,
                 Some(SupportedMethod::Head) => MethodAndPayload::Head,
-                Some(SupportedMethod::Post) => match codec.decode(recon(), payload.as_ref()) {
+                Some(SupportedMethod::Post) => match lane.codec.decode(recon(), payload.as_ref()) {
                     Ok(body) => MethodAndPayload::Post(body),
                     _ => {
                         bad_request(response_tx, StatusCode::BAD_REQUEST);
                         return StepResult::done(());
                     }
                 },
-                Some(SupportedMethod::Put) => match codec.decode(recon(), payload.as_ref()) {
+                Some(SupportedMethod::Put) => match lane.codec.decode(recon(), payload.as_ref()) {
                     Ok(body) => MethodAndPayload::Put(body),
                     _ => {
                         bad_request(response_tx, StatusCode::BAD_REQUEST);
@@ -151,7 +169,6 @@ where
                 },
                 response_tx,
             };
-            let lane = projection(context);
             lane.request.replace(Some(request_and_chan));
             StepResult::done(())
         } else {

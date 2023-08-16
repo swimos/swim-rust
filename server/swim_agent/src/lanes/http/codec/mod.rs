@@ -20,7 +20,7 @@ use swim_form::Form;
 use swim_recon::{parser::parse_into, printer::print_recon_compact};
 use thiserror::Error;
 
-use super::content_type::recon;
+use super::content_type::{recon, RECON_SUBTYPE};
 
 #[derive(Debug, Error)]
 pub enum CodecError {
@@ -30,11 +30,13 @@ pub enum CodecError {
     EncodingError(Box<dyn std::error::Error + Send>),
 }
 
-pub trait HttpLaneCodecSupport {
+pub trait HttpLaneCodecSupport: Default + Debug + Clone {
     fn supports(&self, content_type: &Mime) -> bool;
+
+    fn select_codec<'a>(&self, accepts: &'a [Mime]) -> Option<&'a Mime>;
 }
 
-pub trait HttpLaneCodec<T>: HttpLaneCodecSupport + Default + Debug {
+pub trait HttpLaneCodec<T>: HttpLaneCodecSupport {
     fn encode(
         &self,
         content_type: &Mime,
@@ -52,6 +54,19 @@ impl HttpLaneCodecSupport for Recon {
     fn supports(&self, content_type: &Mime) -> bool {
         content_type == recon()
     }
+
+    fn select_codec<'a>(&self, accepts: &'a [Mime]) -> Option<&'a Mime> {
+        if accepts.is_empty() || accepts.iter().find(|mime| accepts_recon(*mime)).is_some() {
+            Some(recon())
+        } else {
+            None
+        }
+    }
+}
+
+fn accepts_recon(mime: &Mime) -> bool {
+    (mime.type_() == mime::APPLICATION || mime.type_() == mime::STAR)
+        && (mime.subtype() == RECON_SUBTYPE || mime.subtype() == mime::STAR)
 }
 
 impl<T: Form> HttpLaneCodec<T> for Recon {
@@ -85,6 +100,10 @@ impl HttpLaneCodecSupport for HNil {
     fn supports(&self, _content_type: &Mime) -> bool {
         false
     }
+
+    fn select_codec<'a>(&self, _accepts: &'a [Mime]) -> Option<&'a Mime> {
+        None
+    }
 }
 
 impl<Head, Tail> HttpLaneCodecSupport for HCons<Head, Tail>
@@ -95,6 +114,11 @@ where
     fn supports(&self, content_type: &Mime) -> bool {
         let HCons { head, tail } = self;
         head.supports(content_type) || tail.supports(content_type)
+    }
+
+    fn select_codec<'a>(&self, accepts: &'a [Mime]) -> Option<&'a Mime> {
+        let HCons { head, tail } = self;
+        head.select_codec(accepts).or_else(|| tail.select_codec(accepts))
     }
 }
 
@@ -139,5 +163,40 @@ where
         } else {
             tail.decode(content_type, buffer)
         }
+    }
+}
+
+type DefaultCodecInner = Recon;
+
+#[derive(Default, Debug, Clone, Copy)]
+pub struct DefaultCodec {
+    inner: DefaultCodecInner,
+}
+
+impl HttpLaneCodecSupport for DefaultCodec {
+    fn supports(&self, content_type: &Mime) -> bool {
+        self.inner.supports(content_type)
+    }
+
+    fn select_codec<'a>(&self, accepts: &'a [Mime]) -> Option<&'a Mime> {
+        self.inner.select_codec(accepts)
+    }
+}
+
+impl<T> HttpLaneCodec<T> for DefaultCodec
+where
+    DefaultCodecInner: HttpLaneCodec<T>,
+{
+    fn encode(
+        &self,
+        content_type: &Mime,
+        value: &T,
+        buffer: &mut BytesMut,
+    ) -> Result<(), CodecError> {
+        self.inner.encode(content_type, value, buffer)
+    }
+
+    fn decode(&self, content_type: &Mime, buffer: &[u8]) -> Result<T, CodecError> {
+        self.inner.decode(content_type, buffer)
     }
 }

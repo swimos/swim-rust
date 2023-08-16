@@ -15,47 +15,46 @@
 use std::{cmp::Ordering, fmt::Debug};
 
 use futures::future::Either;
-use swim_form::structural::write::StructuralWritable;
 
-use crate::lanes::http::{
+use crate::{lanes::http::{
     lifecycle::{
         HttpLaneLifecycle, HttpLaneLifecycleShared, HttpLifecycleHandler,
         HttpLifecycleHandlerShared,
     },
-    HttpLane,
-};
+    HttpLane, HttpLaneCodec,
+}, agent_lifecycle::utility::HandlerContext};
 
 use super::{HLeaf, HTree, ItemEvent, ItemEventShared};
 
-pub type HttpLeaf<Context, Get, Post, Put, LC> =
-    HttpBranch<Context, Get, Post, Put, LC, HLeaf, HLeaf>;
+pub type HttpLeaf<Context, Get, Post, Put, Codec, LC> =
+    HttpBranch<Context, Get, Post, Put, Codec, LC, HLeaf, HLeaf>;
 
-type HttpBranchHandler<'a, Context, Get, Post, Put, LC, L, R> = Either<
+type HttpBranchHandler<'a, Context, Get, Post, Put, Codec, LC, L, R> = Either<
     <L as ItemEvent<Context>>::ItemEventHandler<'a>,
     Either<
-        HttpLifecycleHandler<'a, Context, Get, Post, Put, LC>,
+        HttpLifecycleHandler<'a, Context, Get, Post, Put, Codec, LC>,
         <R as ItemEvent<Context>>::ItemEventHandler<'a>,
     >,
 >;
 
-type HttpBranchHandlerShared<'a, Context, Shared, Get, Post, Put, LC, L, R> = Either<
+type HttpBranchHandlerShared<'a, Context, Shared, Get, Post, Put, Codec, LC, L, R> = Either<
     <L as ItemEventShared<Context, Shared>>::ItemEventHandler<'a>,
     Either<
-        HttpLifecycleHandlerShared<'a, Context, Shared, Get, Post, Put, LC>,
+        HttpLifecycleHandlerShared<'a, Context, Shared, Get, Post, Put, Codec, LC>,
         <R as ItemEventShared<Context, Shared>>::ItemEventHandler<'a>,
     >,
 >;
 
 /// HTTP lane lifecycle as a branch node of an [`HTree`].
-pub struct HttpBranch<Context, Get, Post, Put, LC, L, R> {
+pub struct HttpBranch<Context, Get, Post, Put, Codec, LC, L, R> {
     label: &'static str,
-    projection: fn(&Context) -> &HttpLane<Get, Post, Put>,
+    projection: fn(&Context) -> &HttpLane<Get, Post, Put, Codec>,
     lifecycle: LC,
     left: L,
     right: R,
 }
 
-impl<Context, Get, Post, Put, LC, L, R> Clone for HttpBranch<Context, Get, Post, Put, LC, L, R>
+impl<Context, Get, Post, Put, Codec, LC, L, R> Clone for HttpBranch<Context, Get, Post, Put, Codec, LC, L, R>
 where
     LC: Clone,
     L: Clone,
@@ -72,13 +71,13 @@ where
     }
 }
 
-impl<Context, Get, Post, Put, LC, L, R> HTree for HttpBranch<Context, Get, Post, Put, LC, L, R> {
+impl<Context, Get, Post, Put, Codec, LC, L, R> HTree for HttpBranch<Context, Get, Post, Put, Codec, LC, L, R> {
     fn label(&self) -> Option<&'static str> {
         Some(self.label)
     }
 }
 
-impl<Context, Get, Post, Put, LC, L, R> Debug for HttpBranch<Context, Get, Post, Put, LC, L, R>
+impl<Context, Get, Post, Put, Codec, LC, L, R> Debug for HttpBranch<Context, Get, Post, Put, Codec, LC, L, R>
 where
     LC: Debug,
     L: Debug,
@@ -95,24 +94,24 @@ where
     }
 }
 
-impl<Context, Get, Post, Put, LC> HttpBranch<Context, Get, Post, Put, LC, HLeaf, HLeaf> {
+impl<Context, Get, Post, Put, Codec, LC> HttpBranch<Context, Get, Post, Put, Codec, LC, HLeaf, HLeaf> {
     pub fn leaf(
         label: &'static str,
-        projection: fn(&Context) -> &HttpLane<Get, Post, Put>,
+        projection: fn(&Context) -> &HttpLane<Get, Post, Put, Codec>,
         lifecycle: LC,
     ) -> Self {
         HttpBranch::new(label, projection, lifecycle, HLeaf, HLeaf)
     }
 }
 
-impl<Context, Get, Post, Put, LC, L, R> HttpBranch<Context, Get, Post, Put, LC, L, R>
+impl<Context, Get, Post, Put, Codec, LC, L, R> HttpBranch<Context, Get, Post, Put, Codec, LC, L, R>
 where
     L: HTree,
     R: HTree,
 {
     pub fn new(
         label: &'static str,
-        projection: fn(&Context) -> &HttpLane<Get, Post, Put>,
+        projection: fn(&Context) -> &HttpLane<Get, Post, Put, Codec>,
         lifecycle: LC,
         left: L,
         right: R,
@@ -133,15 +132,15 @@ where
     }
 }
 
-impl<Context, Get, Post, Put, LC, L, R> ItemEvent<Context>
-    for HttpBranch<Context, Get, Post, Put, LC, L, R>
+impl<Context, Get, Post, Put, Codec, LC, L, R> ItemEvent<Context>
+    for HttpBranch<Context, Get, Post, Put, Codec, LC, L, R>
 where
-    Get: StructuralWritable,
+    Codec: HttpLaneCodec<Get>,
     LC: HttpLaneLifecycle<Get, Post, Put, Context>,
     L: HTree + ItemEvent<Context>,
     R: HTree + ItemEvent<Context>,
 {
-    type ItemEventHandler<'a> = HttpBranchHandler<'a, Context, Get, Post, Put, LC, L, R>
+    type ItemEventHandler<'a> = HttpBranchHandler<'a, Context, Get, Post, Put, Codec, LC, L, R>
     where
         Self: 'a;
 
@@ -162,7 +161,7 @@ where
             Ordering::Equal => {
                 let lane = projection(context);
                 lane.take_request().map(|request| {
-                    Either::Right(Either::Left(HttpLifecycleHandler::new(request, lifecycle)))
+                    Either::Right(Either::Left(HttpLifecycleHandler::new(request, lane.codec(), lifecycle)))
                 })
             }
             Ordering::Greater => right
@@ -172,15 +171,15 @@ where
     }
 }
 
-impl<Context, Shared, Get, Post, Put, LC, L, R> ItemEventShared<Context, Shared>
-    for HttpBranch<Context, Get, Post, Put, LC, L, R>
+impl<Context, Shared, Get, Post, Put, Codec, LC, L, R> ItemEventShared<Context, Shared>
+    for HttpBranch<Context, Get, Post, Put, Codec, LC, L, R>
 where
-    Get: StructuralWritable,
     LC: HttpLaneLifecycleShared<Get, Post, Put, Context, Shared>,
+    Codec: HttpLaneCodec<Get>,
     L: HTree + ItemEventShared<Context, Shared>,
     R: HTree + ItemEventShared<Context, Shared>,
 {
-    type ItemEventHandler<'a> = HttpBranchHandlerShared<'a, Context, Shared, Get, Post, Put, LC, L, R>
+    type ItemEventHandler<'a> = HttpBranchHandlerShared<'a, Context, Shared, Get, Post, Put, Codec, LC, L, R>
     where
         Self: 'a,
         Shared: 'a;
@@ -188,7 +187,7 @@ where
     fn item_event<'a>(
         &'a self,
         shared: &'a Shared,
-        handler_context: crate::agent_lifecycle::utility::HandlerContext<Context>,
+        handler_context: HandlerContext<Context>,
         context: &Context,
         item_name: &str,
     ) -> Option<Self::ItemEventHandler<'a>> {
@@ -207,7 +206,7 @@ where
                 let lane = projection(context);
                 lane.take_request().map(|request| {
                     Either::Right(Either::Left(HttpLifecycleHandlerShared::new(
-                        request, shared, lifecycle,
+                        request, shared, lane.codec(), lifecycle,
                     )))
                 })
             }

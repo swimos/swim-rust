@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::str::FromStr;
+use std::{str::FromStr, hash::{Hash, Hasher}, cmp::Ordering};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use thiserror::Error;
 
 use crate::BytesStr;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HeaderName(Name);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -263,6 +263,33 @@ impl Name {
         match self {
             Name::Standard(s) => s.str_value(),
             Name::Other(s) => s.as_str(),
+        }
+    }
+}
+
+impl PartialOrd for Name {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.str_value().partial_cmp(other.str_value())
+    }
+}
+
+impl Ord for Name {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.str_value().cmp(other.str_value())
+    }
+}
+
+impl Hash for Name {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.str_value().hash(state)
+    }
+}
+
+impl PartialEq<StandardHeaderName> for HeaderName {
+    fn eq(&self, other: &StandardHeaderName) -> bool {
+        match &self.0 {
+            Name::Standard(h) => h == other,
+            Name::Other(_) => false,
         }
     }
 }

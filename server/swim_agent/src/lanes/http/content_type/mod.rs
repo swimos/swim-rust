@@ -18,6 +18,8 @@ use mime::Mime;
 
 static RECON: OnceLock<Mime> = OnceLock::new();
 
+pub const RECON_SUBTYPE: &str = "x-recon";
+
 pub fn recon() -> &'static Mime {
     RECON.get_or_init(|| Mime::from_str("application/x-recon").unwrap())
 }

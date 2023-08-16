@@ -13,13 +13,11 @@
 // limitations under the License.
 
 use bytes::{Bytes, BytesMut};
-use std::fmt::Write;
+use mime::Mime;
 use std::marker::PhantomData;
 use swim_api::agent::HttpLaneResponse;
 use swim_api::handlers::{FnHandler, NoHandler};
-use swim_form::structural::write::StructuralWritable;
 use swim_model::http::{Header, HttpResponse, StatusCode, Uri, Version};
-use swim_recon::printer::print_recon_compact;
 use tokio::sync::oneshot;
 
 use crate::event_handler::EventHandlerError;
@@ -36,6 +34,8 @@ use self::{
     on_put::{OnPut, OnPutShared},
 };
 
+use super::headers::{content_type_header, Headers};
+use super::HttpLaneCodec;
 use super::{
     model::{MethodAndPayload, Request, Response},
     RequestAndChannel,
@@ -336,26 +336,38 @@ enum HttpLifecycleHandlerInner<'a, Context, Get, Post, Put, LC>
 where
     LC: HttpLaneLifecycle<Get, Post, Put, Context> + 'a,
 {
-    Get(<LC as OnGet<Get, Context>>::OnGetHandler<'a>),
-    Head(<LC as OnGet<Get, Context>>::OnGetHandler<'a>),
+    Get(Option<Mime>, <LC as OnGet<Get, Context>>::OnGetHandler<'a>),
+    Head(Option<Mime>, <LC as OnGet<Get, Context>>::OnGetHandler<'a>),
     Post(<LC as OnPost<Post, Context>>::OnPostHandler<'a>),
     Put(<LC as OnPut<Put, Context>>::OnPutHandler<'a>),
     Delete(<LC as OnDelete<Context>>::OnDeleteHandler<'a>),
 }
 
-pub struct HttpLifecycleHandler<'a, Context, Get, Post, Put, LC>
+pub struct HttpLifecycleHandler<'a, Context, Get, Post, Put, Codec, LC>
 where
     LC: HttpLaneLifecycle<Get, Post, Put, Context> + 'a,
+    Codec: HttpLaneCodec<Get>,
 {
     inner: HttpLifecycleHandlerInner<'a, Context, Get, Post, Put, LC>,
     response_tx: Option<oneshot::Sender<HttpLaneResponse>>,
+    codec: Codec,
 }
 
-impl<'a, Context, Get, Post, Put, LC> HttpLifecycleHandler<'a, Context, Get, Post, Put, LC>
+fn extract_accepts(headers: &[Header]) -> Vec<Mime> {
+    let header_reader = Headers::new(headers);
+    header_reader
+        .accept()
+        .filter_map(|r| r.ok())
+        .collect::<Vec<_>>()
+}
+
+impl<'a, Context, Get, Post, Put, Codec, LC>
+    HttpLifecycleHandler<'a, Context, Get, Post, Put, Codec, LC>
 where
     LC: HttpLaneLifecycle<Get, Post, Put, Context>,
+    Codec: HttpLaneCodec<Get>,
 {
-    pub fn new(req: RequestAndChannel<Post, Put>, lifecycle: &'a LC) -> Self {
+    pub fn new(req: RequestAndChannel<Post, Put>, codec: Codec, lifecycle: &'a LC) -> Self {
         let RequestAndChannel {
             request:
                 Request {
@@ -367,9 +379,20 @@ where
         } = req;
         let http_context = HttpRequestContext::new(uri, headers);
         let inner = match method_and_payload {
-            MethodAndPayload::Get => HttpLifecycleHandlerInner::Get(lifecycle.on_get(http_context)),
+            MethodAndPayload::Get => {
+                let accepts = extract_accepts(http_context.headers.as_slice());
+
+                HttpLifecycleHandlerInner::Get(
+                    codec.select_codec(&accepts).cloned(),
+                    lifecycle.on_get(http_context),
+                )
+            }
             MethodAndPayload::Head => {
-                HttpLifecycleHandlerInner::Head(lifecycle.on_get(http_context))
+                let accepts = extract_accepts(http_context.headers.as_slice());
+                HttpLifecycleHandlerInner::Head(
+                    codec.select_codec(&accepts).cloned(),
+                    lifecycle.on_get(http_context),
+                )
             }
             MethodAndPayload::Post(body) => {
                 HttpLifecycleHandlerInner::Post(lifecycle.on_post(http_context, body))
@@ -384,6 +407,7 @@ where
         HttpLifecycleHandler {
             inner,
             response_tx: Some(response_tx),
+            codec,
         }
     }
 }
@@ -394,9 +418,6 @@ macro_rules! step {
         match $step_result {
             StepResult::Continue { modified_item } => return StepResult::Continue { modified_item },
             $(StepResult::Fail($err_pat) => $err_expr,)?
-            //StepResult::Fail(EventHandlerError::HttpGetUndefined) => {
-            //    (None, not_supported())
-            //},
             StepResult::Fail(err) => {
                 $response_tx.take();
                 return StepResult::Fail(err);
@@ -412,10 +433,10 @@ macro_rules! step {
     };
 }
 
-impl<'a, Context, Get, Post, Put, LC> HandlerAction<Context>
-    for HttpLifecycleHandler<'a, Context, Get, Post, Put, LC>
+impl<'a, Context, Get, Post, Put, Codec, LC> HandlerAction<Context>
+    for HttpLifecycleHandler<'a, Context, Get, Post, Put, Codec, LC>
 where
-    Get: StructuralWritable,
+    Codec: HttpLaneCodec<Get>,
     LC: HttpLaneLifecycle<Get, Post, Put, Context>,
 {
     type Completion = ();
@@ -426,23 +447,38 @@ where
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
-        let HttpLifecycleHandler { inner, response_tx } = self;
+        let HttpLifecycleHandler {
+            inner,
+            response_tx,
+            codec,
+        } = self;
         if response_tx.is_none() {
             return StepResult::after_done();
         }
+
         let (modified_item, response) = match inner {
-            HttpLifecycleHandlerInner::Get(h) => step!(
+            HttpLifecycleHandlerInner::Get(content_type, h) => {
+                let encode_to_bytes = |response: HttpResponse<Get>| {
+                    response_to_bytes(codec, content_type.as_ref(), response)
+                };
+
+                step!(
+                    h.step(action_context, meta, context),
+                    response_tx,
+                    encode_to_bytes,
+                    EventHandlerError::HttpGetUndefined => (None, not_supported())
+                )
+            }
+            HttpLifecycleHandlerInner::Head(content_type, h) => {
+                let head_to_bytes = |response: HttpResponse<Get>| {
+                    discard_to_bytes(content_type.as_ref(), response)
+                };
+                step!(
                 h.step(action_context, meta, context),
                 response_tx,
-                response_to_bytes,
+                head_to_bytes,
                 EventHandlerError::HttpGetUndefined => (None, not_supported())
-            ),
-            HttpLifecycleHandlerInner::Head(h) => step!(
-                h.step(action_context, meta, context),
-                response_tx,
-                discard_to_bytes,
-                EventHandlerError::HttpGetUndefined => (None, not_supported())
-            ),
+            )},
             HttpLifecycleHandlerInner::Post(h) => step!(
                 h.step(action_context, meta, context),
                 response_tx,
@@ -483,21 +519,72 @@ fn not_supported() -> HttpLaneResponse {
     }
 }
 
-fn response_to_bytes<T: StructuralWritable>(response: HttpResponse<T>) -> HttpLaneResponse {
-    response.map(|value| {
+fn response_to_bytes<T, Codec>(
+    codec: &Codec,
+    content_type: Option<&Mime>,
+    response: HttpResponse<T>,
+) -> HttpLaneResponse
+where
+    Codec: HttpLaneCodec<T>,
+{
+    if let Some(content_type) = content_type {
+        let HttpResponse {
+            status_code,
+            version,
+            mut headers,
+            payload,
+        } = response;
         let mut buffer = BytesMut::new();
-        write!(buffer, "{}", print_recon_compact(&value))
-            .expect("Writing to recon should be infallible.");
-        buffer.freeze()
-    })
+        if codec.encode(content_type, &payload, &mut buffer).is_ok() {
+            let payload = buffer.freeze();
+            headers.push(content_type_header(content_type));
+            HttpResponse {
+                status_code,
+                version,
+                headers,
+                payload,
+            }
+        } else {
+            server_error()
+        }
+    } else {
+        bad_content_type()
+    }
+}
+
+fn server_error() -> HttpLaneResponse {
+    HttpLaneResponse {
+        status_code: StatusCode::INTERNAL_SERVER_ERROR,
+        version: Version::HTTP_1_1,
+        headers: vec![],
+        payload: Bytes::new(),
+    }
+}
+
+fn bad_content_type() -> HttpLaneResponse {
+    HttpLaneResponse {
+        status_code: StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        version: Version::HTTP_1_1,
+        headers: vec![],
+        payload: Bytes::new(),
+    }
 }
 
 fn empty_response_to_bytes(response: HttpResponse<()>) -> HttpLaneResponse {
     response.map(|_| Bytes::new())
 }
 
-fn discard_to_bytes<T>(response: HttpResponse<T>) -> HttpLaneResponse {
-    empty_response_to_bytes(response.map(|_| ()))
+fn discard_to_bytes<T>(
+    content_type: Option<&Mime>,
+    response: HttpResponse<T>,
+) -> HttpLaneResponse {
+    if let Some(content_type) = content_type {
+        let mut response = empty_response_to_bytes(response.map(|_| ()));
+        response.headers.push(content_type_header(content_type));
+        response
+    } else {
+        bad_content_type()
+    }
 }
 
 enum HttpLifecycleHandlerSharedInner<'a, Context, Shared, Get, Post, Put, LC>
@@ -505,28 +592,41 @@ where
     Shared: 'a,
     LC: HttpLaneLifecycleShared<Get, Post, Put, Context, Shared> + 'a,
 {
-    Get(<LC as OnGetShared<Get, Context, Shared>>::OnGetHandler<'a>),
-    Head(<LC as OnGetShared<Get, Context, Shared>>::OnGetHandler<'a>),
+    Get(
+        Option<Mime>,
+        <LC as OnGetShared<Get, Context, Shared>>::OnGetHandler<'a>,
+    ),
+    Head(
+        Option<Mime>,
+        <LC as OnGetShared<Get, Context, Shared>>::OnGetHandler<'a>,
+    ),
     Post(<LC as OnPostShared<Post, Context, Shared>>::OnPostHandler<'a>),
     Put(<LC as OnPutShared<Put, Context, Shared>>::OnPutHandler<'a>),
     Delete(<LC as OnDeleteShared<Context, Shared>>::OnDeleteHandler<'a>),
 }
 
-pub struct HttpLifecycleHandlerShared<'a, Context, Shared, Get, Post, Put, LC>
+pub struct HttpLifecycleHandlerShared<'a, Context, Shared, Get, Post, Put, Codec, LC>
 where
     LC: HttpLaneLifecycleShared<Get, Post, Put, Context, Shared> + 'a,
 {
     inner: HttpLifecycleHandlerSharedInner<'a, Context, Shared, Get, Post, Put, LC>,
     response_tx: Option<oneshot::Sender<HttpLaneResponse>>,
+    codec: Codec,
 }
 
-impl<'a, Context, Shared, Get, Post, Put, LC>
-    HttpLifecycleHandlerShared<'a, Context, Shared, Get, Post, Put, LC>
+impl<'a, Context, Shared, Get, Post, Put, Codec, LC>
+    HttpLifecycleHandlerShared<'a, Context, Shared, Get, Post, Put, Codec, LC>
 where
     Shared: 'a,
     LC: HttpLaneLifecycleShared<Get, Post, Put, Context, Shared>,
+    Codec: HttpLaneCodec<Get>,
 {
-    pub fn new(req: RequestAndChannel<Post, Put>, shared: &'a Shared, lifecycle: &'a LC) -> Self {
+    pub fn new(
+        req: RequestAndChannel<Post, Put>,
+        shared: &'a Shared,
+        codec: Codec,
+        lifecycle: &'a LC,
+    ) -> Self {
         let RequestAndChannel {
             request:
                 Request {
@@ -540,16 +640,22 @@ where
         let handler_context = HandlerContext::default();
         let inner =
             match method_and_payload {
-                MethodAndPayload::Get => HttpLifecycleHandlerSharedInner::Get(lifecycle.on_get(
-                    shared,
-                    handler_context,
-                    http_context,
-                )),
-                MethodAndPayload::Head => HttpLifecycleHandlerSharedInner::Head(lifecycle.on_get(
-                    shared,
-                    handler_context,
-                    http_context,
-                )),
+                MethodAndPayload::Get => {
+                    let accepts = extract_accepts(http_context.headers.as_slice());
+
+                    HttpLifecycleHandlerSharedInner::Get(
+                        codec.select_codec(&accepts).cloned(),
+                        lifecycle.on_get(shared, handler_context, http_context),
+                    )
+                }
+                MethodAndPayload::Head => {
+                    let accepts = extract_accepts(http_context.headers.as_slice());
+
+                    HttpLifecycleHandlerSharedInner::Head(
+                        codec.select_codec(&accepts).cloned(),
+                        lifecycle.on_get(shared, handler_context, http_context),
+                    )
+                }
                 MethodAndPayload::Post(body) => HttpLifecycleHandlerSharedInner::Post(
                     lifecycle.on_post(shared, handler_context, http_context, body),
                 ),
@@ -563,14 +669,15 @@ where
         HttpLifecycleHandlerShared {
             inner,
             response_tx: Some(response_tx),
+            codec,
         }
     }
 }
 
-impl<'a, Context, Shared, Get, Post, Put, LC> HandlerAction<Context>
-    for HttpLifecycleHandlerShared<'a, Context, Shared, Get, Post, Put, LC>
+impl<'a, Context, Shared, Get, Post, Put, Codec, LC> HandlerAction<Context>
+    for HttpLifecycleHandlerShared<'a, Context, Shared, Get, Post, Put, Codec, LC>
 where
-    Get: StructuralWritable,
+    Codec: HttpLaneCodec<Get>,
     LC: HttpLaneLifecycleShared<Get, Post, Put, Context, Shared>,
 {
     type Completion = ();
@@ -581,23 +688,37 @@ where
         meta: AgentMetadata,
         context: &Context,
     ) -> StepResult<Self::Completion> {
-        let HttpLifecycleHandlerShared { inner, response_tx } = self;
+        let HttpLifecycleHandlerShared {
+            inner,
+            response_tx,
+            codec,
+        } = self;
         if response_tx.is_none() {
             return StepResult::after_done();
         }
         let (modified_item, response) = match inner {
-            HttpLifecycleHandlerSharedInner::Get(h) => step!(
-                h.step(action_context, meta, context),
-                response_tx,
-                response_to_bytes,
-                EventHandlerError::HttpGetUndefined => (None, not_supported())
-            ),
-            HttpLifecycleHandlerSharedInner::Head(h) => step!(
-                h.step(action_context, meta, context),
-                response_tx,
-                discard_to_bytes,
-                EventHandlerError::HttpGetUndefined => (None, not_supported())
-            ),
+            HttpLifecycleHandlerSharedInner::Get(content_type, h) => {
+                let encode_to_bytes = |response: HttpResponse<Get>| {
+                    response_to_bytes(codec, content_type.as_ref(), response)
+                };
+                step!(
+                    h.step(action_context, meta, context),
+                    response_tx,
+                    encode_to_bytes,
+                    EventHandlerError::HttpGetUndefined => (None, not_supported())
+                )
+            }
+            HttpLifecycleHandlerSharedInner::Head(content_type, h) => {
+                let head_to_bytes = |response: HttpResponse<Get>| {
+                    discard_to_bytes(content_type.as_ref(), response)
+                };
+                step!(
+                    h.step(action_context, meta, context),
+                    response_tx,
+                    head_to_bytes,
+                    EventHandlerError::HttpGetUndefined => (None, not_supported())
+                )
+            }
             HttpLifecycleHandlerSharedInner::Post(h) => step!(
                 h.step(action_context, meta, context),
                 response_tx,
