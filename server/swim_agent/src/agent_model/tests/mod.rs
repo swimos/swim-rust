@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, io::ErrorKind, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, io::ErrorKind, sync::Arc, time::Duration};
 
 // Copyright 2015-2023 Swim Inc.
 //
@@ -16,14 +16,15 @@ use std::{cell::RefCell, collections::HashMap, io::ErrorKind, sync::Arc};
 
 use bytes::BytesMut;
 use futures::{
-    future::{join, BoxFuture},
+    future::{join, ready, BoxFuture},
     Future, FutureExt, SinkExt, StreamExt,
 };
 use parking_lot::Mutex;
-use std::time::Duration;
 use swim_api::{
-    agent::{AgentConfig, AgentTask},
+    agent::{AgentConfig, AgentContext, AgentTask},
     downlink::DownlinkKind,
+    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    meta::lane::LaneKind,
     protocol::{
         agent::{AdHocCommand, AdHocCommandDecoder},
         downlink::{DownlinkNotification, DownlinkNotificationEncoder},
@@ -34,7 +35,8 @@ use swim_api::{
 use swim_form::structural::read::recognizer::{primitive::TextRecognizer, RecognizerReadable};
 use swim_model::{address::Address, BytesStr, Text};
 use swim_utilities::{
-    io::byte_channel::{byte_channel, ByteReader},
+    future::retryable::RetryStrategy,
+    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
     routing::route_uri::RouteUri,
     sync::circular_buffer,
@@ -46,10 +48,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
 use crate::{
-    agent_model::{
-        downlink::hosted::{value_dl_write_stream, HostedValueDownlinkChannel},
-        HostedDownlinkEvent,
-    },
+    agent_model::{downlink::hosted::HostedValueDownlinkFactory, HostedDownlinkEvent},
     config::SimpleDownlinkConfig,
     downlink_lifecycle::{
         on_failed::OnFailed,
@@ -73,7 +72,7 @@ use self::{
 };
 
 use super::{
-    downlink::handlers::{DownlinkChannel, DownlinkChannelExt, DownlinkFailed},
+    downlink::handlers::{DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent},
     AgentModel, HostedDownlink, ItemModelFactory,
 };
 
@@ -118,6 +117,10 @@ const SYNC_VALUE: i32 = -1;
 const AD_HOC_HOST: &str = "localhost:8080";
 const AD_HOC_NODE: &str = "/node";
 const AD_HOC_LANE: &str = "lane";
+
+const REMOTE_HOST: &str = "remote:8080";
+const REMOTE_NODE: &str = "/node";
+const REMOTE_LANE: &str = "lane";
 
 //Event values cause the mock command lane to suspend a future.
 const SUSPEND_VALUE: i32 = 456;
@@ -645,24 +648,52 @@ async fn trigger_ad_hoc_command() {
 }
 
 struct TestDownlinkChannel {
-    rx: Option<mpsc::UnboundedReceiver<Result<(), DownlinkFailed>>>,
+    address: Address<Text>,
+    rx: mpsc::UnboundedReceiver<Result<DownlinkChannelEvent, DownlinkChannelError>>,
     ready: bool,
+    writes: Option<WriteStream>,
 }
 
 struct TestDlAgent;
 
 impl DownlinkChannel<TestDlAgent> for TestDownlinkChannel {
-    fn await_ready(&mut self) -> BoxFuture<'_, Option<Result<(), DownlinkFailed>>> {
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Event
+    }
+
+    fn address(&self) -> &Address<Text> {
+        &self.address
+    }
+
+    fn await_ready(
+        &mut self,
+    ) -> BoxFuture<'_, Option<Result<DownlinkChannelEvent, DownlinkChannelError>>> {
+        let TestDownlinkChannel {
+            rx, ready, writes, ..
+        } = self;
         async move {
-            if let Some(rx) = self.rx.as_mut() {
-                let result = rx.recv().await;
-                self.ready = true;
-                if !matches!(&result, Some(Ok(_))) {
-                    self.rx = None;
+            if let Some(w) = writes.as_mut() {
+                tokio::select! {
+                    biased;
+                    result = rx.recv() => {
+                        *ready = true;
+                        result
+                    },
+                    write_result = w.next() => {
+                        match write_result {
+                            Some(Ok(_)) => Some(Ok(DownlinkChannelEvent::WriteCompleted)),
+                            Some(Err(err)) => Some(Err(DownlinkChannelError::WriteFailed(err))),
+                            _ => {
+                                *writes = None;
+                                Some(Ok(DownlinkChannelEvent::WriteStreamTerminated))
+                            }
+                        }
+                    }
                 }
-                result
             } else {
-                panic!("Used after finished.");
+                let result = rx.recv().await;
+                *ready = true;
+                result
             }
         }
         .boxed()
@@ -677,8 +708,16 @@ impl DownlinkChannel<TestDlAgent> for TestDownlinkChannel {
         }
     }
 
-    fn kind(&self) -> DownlinkKind {
-        DownlinkKind::Event
+    fn connect(&mut self, _context: &TestDlAgent, _output: ByteWriter, _input: ByteReader) {
+        panic!("Unexpected reconnection.");
+    }
+
+    fn can_restart(&self) -> bool {
+        false
+    }
+
+    fn flush(&mut self) -> BoxFuture<'_, Result<(), std::io::Error>> {
+        ready(Ok(())).boxed()
     }
 }
 
@@ -687,15 +726,18 @@ fn make_dl_out(rx: mpsc::UnboundedReceiver<Result<(), std::io::Error>>) -> Write
 }
 
 fn make_test_hosted_downlink(
-    in_rx: mpsc::UnboundedReceiver<Result<(), DownlinkFailed>>,
+    in_rx: mpsc::UnboundedReceiver<Result<DownlinkChannelEvent, DownlinkChannelError>>,
     out_rx: mpsc::UnboundedReceiver<Result<(), std::io::Error>>,
 ) -> HostedDownlink<TestDlAgent> {
+    let address = Address::text(Some(REMOTE_HOST), REMOTE_NODE, REMOTE_LANE);
     let channel = TestDownlinkChannel {
-        rx: Some(in_rx),
+        address,
+        rx: in_rx,
         ready: false,
+        writes: Some(make_dl_out(out_rx)),
     };
 
-    HostedDownlink::new(channel.boxed(), make_dl_out(out_rx))
+    HostedDownlink::new(Box::new(channel))
 }
 
 #[tokio::test]
@@ -707,18 +749,15 @@ async fn hosted_downlink_incoming() {
         let (_out_tx, out_rx) = mpsc::unbounded_channel();
         let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
-        assert!(in_tx.send(Ok(())).is_ok());
-        let (mut hosted, event) = hosted
-            .wait_on_downlink()
-            .await
-            .expect("Closed prematurely.");
+        assert!(in_tx.send(Ok(DownlinkChannelEvent::HandlerReady)).is_ok());
+        let (mut hosted, event) = hosted.wait_on_downlink().await;
         assert!(matches!(
             event,
             HostedDownlinkEvent::HandlerReady { failed: false }
         ));
         assert!(hosted.next_event(&agent).is_some());
     })
-    .await
+    .await;
 }
 
 #[tokio::test]
@@ -730,20 +769,22 @@ async fn hosted_downlink_incoming_error() {
         let (_out_tx, out_rx) = mpsc::unbounded_channel();
         let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
-        assert!(in_tx.send(Err(DownlinkFailed)).is_ok());
-        let (mut hosted, event) = hosted
-            .wait_on_downlink()
-            .await
-            .expect("Closed prematurely.");
+        assert!(in_tx.send(Err(DownlinkChannelError::ReadFailed)).is_ok());
+        let (mut hosted, event) = hosted.wait_on_downlink().await;
 
         assert!(matches!(
             event,
             HostedDownlinkEvent::HandlerReady { failed: true }
         ));
+
         assert!(hosted.next_event(&agent).is_some());
-        assert!(hosted.wait_on_downlink().await.is_none());
+
+        assert!(matches!(
+            hosted.wait_on_downlink().await,
+            (_, HostedDownlinkEvent::Stopped)
+        ));
     })
-    .await
+    .await;
 }
 
 #[tokio::test]
@@ -756,14 +797,11 @@ async fn hosted_downlink_outgoing() {
         let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
         assert!(out_tx.send(Ok(())).is_ok());
-        let (mut hosted, event) = hosted
-            .wait_on_downlink()
-            .await
-            .expect("Closed prematurely.");
+        let (mut hosted, event) = hosted.wait_on_downlink().await;
         assert!(matches!(event, HostedDownlinkEvent::Written));
         assert!(hosted.next_event(&agent).is_none());
     })
-    .await
+    .await;
 }
 
 #[tokio::test]
@@ -776,25 +814,19 @@ async fn hosted_downlink_write_terminated() {
         let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
         drop(out_tx);
-        let (mut hosted, event) = hosted
-            .wait_on_downlink()
-            .await
-            .expect("Closed prematurely.");
+        let (mut hosted, event) = hosted.wait_on_downlink().await;
         assert!(matches!(event, HostedDownlinkEvent::WriterTerminated));
         assert!(hosted.next_event(&agent).is_none());
 
-        assert!(in_tx.send(Ok(())).is_ok());
-        let (mut hosted, event) = hosted
-            .wait_on_downlink()
-            .await
-            .expect("Closed prematurely.");
+        assert!(in_tx.send(Ok(DownlinkChannelEvent::HandlerReady)).is_ok());
+        let (mut hosted, event) = hosted.wait_on_downlink().await;
         assert!(matches!(
             event,
             HostedDownlinkEvent::HandlerReady { failed: false }
         ));
         assert!(hosted.next_event(&agent).is_some());
     })
-    .await
+    .await;
 }
 
 #[tokio::test]
@@ -809,10 +841,7 @@ async fn hosted_downlink_write_failed() {
         let err = std::io::Error::from(ErrorKind::BrokenPipe);
 
         assert!(out_tx.send(Err(err)).is_ok());
-        let (mut hosted, event) = hosted
-            .wait_on_downlink()
-            .await
-            .expect("Closed prematurely.");
+        let (mut hosted, event) = hosted.wait_on_downlink().await;
         match event {
             HostedDownlinkEvent::WriterFailed(err) => {
                 assert_eq!(err.kind(), ErrorKind::BrokenPipe);
@@ -823,18 +852,15 @@ async fn hosted_downlink_write_failed() {
         }
         assert!(hosted.next_event(&agent).is_none());
 
-        assert!(in_tx.send(Ok(())).is_ok());
-        let (mut hosted, event) = hosted
-            .wait_on_downlink()
-            .await
-            .expect("Closed prematurely.");
+        assert!(in_tx.send(Ok(DownlinkChannelEvent::HandlerReady)).is_ok());
+        let (mut hosted, event) = hosted.wait_on_downlink().await;
         assert!(matches!(
             event,
             HostedDownlinkEvent::HandlerReady { failed: false }
         ));
         assert!(hosted.next_event(&agent).is_some());
     })
-    .await
+    .await;
 }
 
 #[tokio::test]
@@ -845,9 +871,12 @@ async fn hosted_downlink_incoming_terminated() {
         let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
         drop(in_tx);
-        assert!(hosted.wait_on_downlink().await.is_none());
+        assert!(matches!(
+            hosted.wait_on_downlink().await,
+            (_, HostedDownlinkEvent::Stopped)
+        ));
     })
-    .await
+    .await;
 }
 
 #[tokio::test]
@@ -858,35 +887,26 @@ async fn hosted_downlink_in_out_interleaved() {
     let (out_tx, out_rx) = mpsc::unbounded_channel();
     let hosted = make_test_hosted_downlink(in_rx, out_rx);
 
-    assert!(in_tx.send(Ok(())).is_ok());
-    let (mut hosted, event) = hosted
-        .wait_on_downlink()
-        .await
-        .expect("Closed prematurely.");
+    assert!(in_tx.send(Ok(DownlinkChannelEvent::HandlerReady)).is_ok());
+    let (mut hosted, event) = hosted.wait_on_downlink().await;
     assert!(matches!(
         event,
         HostedDownlinkEvent::HandlerReady { failed: false }
     ));
-    assert!(hosted.channel.next_event(&agent).is_some());
+    assert!(hosted.next_event(&agent).is_some());
 
     assert!(out_tx.send(Ok(())).is_ok());
-    let (mut hosted, event) = hosted
-        .wait_on_downlink()
-        .await
-        .expect("Closed prematurely.");
+    let (mut hosted, event) = hosted.wait_on_downlink().await;
     assert!(matches!(event, HostedDownlinkEvent::Written));
-    assert!(hosted.channel.next_event(&agent).is_none());
+    assert!(hosted.next_event(&agent).is_none());
 
-    assert!(in_tx.send(Ok(())).is_ok());
-    let (mut hosted, event) = hosted
-        .wait_on_downlink()
-        .await
-        .expect("Closed prematurely.");
+    assert!(in_tx.send(Ok(DownlinkChannelEvent::HandlerReady)).is_ok());
+    let (mut hosted, event) = hosted.wait_on_downlink().await;
     assert!(matches!(
         event,
         HostedDownlinkEvent::HandlerReady { failed: false }
     ));
-    assert!(hosted.channel.next_event(&agent).is_some());
+    assert!(hosted.next_event(&agent).is_some());
 }
 
 #[derive(Debug, PartialEq, Eq, Default)]
@@ -995,89 +1015,240 @@ impl OnDownlinkSet<i32, FakeAgent> for TestState {
     }
 }
 
+const TEST_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[tokio::test]
 async fn run_value_downlink() {
-    let (in_tx, in_rx) = byte_channel(non_zero_usize!(1024));
-    let (out_tx, out_rx) = byte_channel(non_zero_usize!(1024));
-    let (_stop_tx, stop_rx) = trigger();
+    let test_case = async {
+        let (in_tx, in_rx) = byte_channel(non_zero_usize!(1024));
+        let (out_tx, out_rx) = byte_channel(non_zero_usize!(1024));
+        let (_stop_tx, stop_rx) = trigger();
 
-    let (mut write_tx, write_rx) = circular_buffer::channel::<i32>(non_zero_usize!(8));
+        let (mut write_tx, write_rx) = circular_buffer::channel::<i32>(non_zero_usize!(8));
 
-    let config = SimpleDownlinkConfig {
-        events_when_not_synced: false,
-        terminate_on_unlinked: true,
+        let config = SimpleDownlinkConfig {
+            events_when_not_synced: false,
+            terminate_on_unlinked: true,
+        };
+        let state: RefCell<Option<i32>> = Default::default();
+
+        let lc = TestState::default();
+        let fac = HostedValueDownlinkFactory::<i32, _, _>::new(
+            Address::text(None, "/node", "lane"),
+            lc.clone(),
+            state,
+            config,
+            stop_rx,
+            write_rx,
+        );
+        let agent = FakeAgent;
+        let dl: HostedDownlink<FakeAgent> = HostedDownlink::new(fac.create(&agent, out_tx, in_rx));
+
+        let mut in_writer = FramedWrite::new(in_tx, DownlinkNotificationEncoder::default());
+        let mut out_reader = FramedRead::new(out_rx, WithLengthBytesCodec::default());
+
+        in_writer
+            .send(DownlinkNotification::<&[u8]>::Linked)
+            .await
+            .unwrap();
+        in_writer
+            .send(DownlinkNotification::Event { body: b"1" })
+            .await
+            .unwrap();
+        in_writer
+            .send(DownlinkNotification::<&[u8]>::Synced)
+            .await
+            .unwrap();
+        in_writer
+            .send(DownlinkNotification::Event { body: b"2" })
+            .await
+            .unwrap();
+
+        let dl = expect_event(dl, true).await;
+        lc.check(DlState::Linked, None);
+        let dl = expect_event(dl, false).await;
+        let dl = expect_event(dl, true).await;
+        lc.check(DlState::Synced, Some(1));
+        let dl = expect_event(dl, true).await;
+        lc.check(DlState::Synced, Some(2));
+
+        write_tx.try_send(3).unwrap();
+        let (mut dl, event) = dl.wait_on_downlink().await;
+        assert!(matches!(event, HostedDownlinkEvent::Written));
+        dl.flush().await.expect("Flushing output failed.");
+        let value = out_reader.next().await.unwrap().unwrap();
+        assert_eq!(value.as_ref(), b"3");
+
+        in_writer
+            .send(DownlinkNotification::Event { body: b"3" })
+            .await
+            .unwrap();
+        expect_event(dl, true).await;
+        lc.check(DlState::Synced, Some(3));
     };
-    let state: RefCell<Option<i32>> = Default::default();
-
-    let lc = TestState::default();
-    let channel = HostedValueDownlinkChannel::<i32, _, _>::new(
-        Address::text(None, "/node", "lane"),
-        in_rx,
-        lc.clone(),
-        state,
-        config,
-        stop_rx,
-        Default::default(),
-    );
-
-    let write_stream = value_dl_write_stream(out_tx, write_rx);
-
-    let dl: HostedDownlink<FakeAgent> =
-        HostedDownlink::new(Box::new(channel), write_stream.boxed());
-
-    let mut in_writer = FramedWrite::new(in_tx, DownlinkNotificationEncoder::default());
-    let mut out_reader = FramedRead::new(out_rx, WithLengthBytesCodec::default());
-
-    in_writer
-        .send(DownlinkNotification::<&[u8]>::Linked)
+    tokio::time::timeout(TEST_TIMEOUT, test_case)
         .await
-        .unwrap();
-    in_writer
-        .send(DownlinkNotification::Event { body: b"1" })
-        .await
-        .unwrap();
-    in_writer
-        .send(DownlinkNotification::<&[u8]>::Synced)
-        .await
-        .unwrap();
-    in_writer
-        .send(DownlinkNotification::Event { body: b"2" })
-        .await
-        .unwrap();
+        .expect("Test timed out;")
+}
 
-    let dl = expect_event(dl, true).await;
-    lc.check(DlState::Linked, None);
-    let dl = expect_event(dl, false).await;
-    let dl = expect_event(dl, true).await;
-    lc.check(DlState::Synced, Some(1));
-    let dl = expect_event(dl, true).await;
-    lc.check(DlState::Synced, Some(2));
+struct DlTestContext {
+    expected_address: Address<Text>,
+    expected_kind: DownlinkKind,
+    io: Mutex<Option<(ByteWriter, ByteReader)>>,
+}
 
-    write_tx.try_send(3).unwrap();
-    let (dl, event) = dl.wait_on_downlink().await.unwrap();
-    assert!(matches!(event, HostedDownlinkEvent::Written,));
-    let value = out_reader.next().await.unwrap().unwrap();
-    assert_eq!(value.as_ref(), b"3");
+impl DlTestContext {
+    fn new(
+        expected_address: Address<Text>,
+        expected_kind: DownlinkKind,
+        io: (ByteWriter, ByteReader),
+    ) -> Self {
+        DlTestContext {
+            expected_address,
+            expected_kind,
+            io: Mutex::new(Some(io)),
+        }
+    }
+}
 
-    in_writer
-        .send(DownlinkNotification::Event { body: b"3" })
+impl AgentContext for DlTestContext {
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+        panic!("Unexpected call.");
+    }
+
+    fn add_lane(
+        &self,
+        _name: &str,
+        _lane_kind: LaneKind,
+        _config: swim_api::agent::LaneConfig,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
+        panic!("Unexpected call.");
+    }
+
+    fn open_downlink(
+        &self,
+        host: Option<&str>,
+        node: &str,
+        lane: &str,
+        kind: DownlinkKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
+        let DlTestContext {
+            expected_address,
+            expected_kind,
+            io,
+        } = self;
+        let addr = Address::new(host, node, lane);
+        assert_eq!(addr, expected_address.borrow_parts());
+        assert_eq!(kind, *expected_kind);
+        let io = io.lock().take().expect("Called twice.");
+        ready(Ok(io)).boxed()
+    }
+
+    fn add_store(
+        &self,
+        _name: &str,
+        _kind: swim_api::store::StoreKind,
+    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
+        panic!("Unexpected call.");
+    }
+}
+
+#[tokio::test]
+async fn reconnect_value_downlink() {
+    let test_case = async {
+        let (in_tx, in_rx) = byte_channel(non_zero_usize!(1024));
+        let (out_tx, out_rx) = byte_channel(non_zero_usize!(1024));
+        let (_stop_tx, stop_rx) = trigger();
+
+        let (mut write_tx, write_rx) = circular_buffer::channel::<i32>(non_zero_usize!(8));
+
+        let config = SimpleDownlinkConfig {
+            events_when_not_synced: false,
+            terminate_on_unlinked: false,
+        };
+        let state: RefCell<Option<i32>> = Default::default();
+
+        let lc = TestState::default();
+        let addr = Address::text(None, "/node", "lane");
+        let fac = HostedValueDownlinkFactory::<i32, _, _>::new(
+            addr.clone(),
+            lc.clone(),
+            state,
+            config,
+            stop_rx,
+            write_rx,
+        );
+        let agent = FakeAgent;
+        let dl: HostedDownlink<FakeAgent> = HostedDownlink::new(fac.create(&agent, out_tx, in_rx));
+
+        let mut in_writer = FramedWrite::new(in_tx, DownlinkNotificationEncoder::default());
+
+        in_writer
+            .send(DownlinkNotification::<&[u8]>::Linked)
+            .await
+            .unwrap();
+
+        let dl = expect_event(dl, true).await;
+        lc.check(DlState::Linked, None);
+
+        //Cause the downlink to stop.
+        drop(in_writer);
+
+        let dl = expect_event(dl, true).await;
+        lc.check(DlState::Unlinked, None);
+        let (dl, event) = dl.wait_on_downlink().await;
+        assert!(matches!(event, HostedDownlinkEvent::Stopped));
+
+        drop(out_rx);
+
+        let (in_tx2, in_rx2) = byte_channel(non_zero_usize!(1024));
+        let (out_tx2, out_rx2) = byte_channel(non_zero_usize!(1024));
+
+        let con = DlTestContext::new(addr.clone(), DownlinkKind::Value, (out_tx2, in_rx2));
+
+        let (mut dl, event) = dl.reconnect(&con, RetryStrategy::none(), true).await;
+
+        match event {
+            HostedDownlinkEvent::ReconnectSucceeded(rec) => {
+                rec.connect(&mut dl, &FakeAgent);
+            }
+            ow => panic!("Unexpected event: {:?}", ow),
+        }
+
+        let mut in_writer = FramedWrite::new(in_tx2, DownlinkNotificationEncoder::default());
+        let mut out_reader = FramedRead::new(out_rx2, WithLengthBytesCodec::default());
+
+        in_writer
+            .send(DownlinkNotification::<&[u8]>::Linked)
+            .await
+            .unwrap();
+
+        let dl = expect_event(dl, true).await;
+        lc.check(DlState::Linked, None);
+
+        write_tx.try_send(3).unwrap();
+        let (mut dl, event) = dl.wait_on_downlink().await;
+        assert!(matches!(event, HostedDownlinkEvent::Written));
+        dl.flush().await.expect("Flushing output failed.");
+        let value = out_reader.next().await.unwrap().unwrap();
+        assert_eq!(value.as_ref(), b"3");
+    };
+    tokio::time::timeout(TEST_TIMEOUT, test_case)
         .await
-        .unwrap();
-    expect_event(dl, true).await;
-    lc.check(DlState::Synced, Some(3));
+        .expect("Test timed out;")
 }
 
 async fn expect_event(
     dl: HostedDownlink<FakeAgent>,
     expect_handler: bool,
 ) -> HostedDownlink<FakeAgent> {
-    let (mut dl, event) = dl.wait_on_downlink().await.unwrap();
+    let (mut dl, event) = dl.wait_on_downlink().await;
     assert!(matches!(
         event,
         HostedDownlinkEvent::HandlerReady { failed: false }
     ));
     {
-        let maybe_handler = dl.channel.next_event(&FakeAgent);
+        let maybe_handler = dl.next_event(&FakeAgent);
         if expect_handler {
             let handler = maybe_handler.expect("Expected handler.");
             run_handler(handler);

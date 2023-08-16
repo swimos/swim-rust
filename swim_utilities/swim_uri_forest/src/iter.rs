@@ -181,9 +181,9 @@ impl<'l, D> Iterator for UriPartIterator<'l, D> {
                     ret
                 } else {
                     let ret = node.data.as_ref().map(|data| UriPart::Leaf {
-                            path: make_uri(),
-                            data,
-                        });
+                        path: make_uri(),
+                        data,
+                    });
                     dfs(node, visit, uri_stack, op_stack);
                     ret
                 };

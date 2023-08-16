@@ -19,7 +19,6 @@ mod tests;
 
 use std::{cell::RefCell, marker::PhantomData};
 
-use futures::{stream, StreamExt};
 use std::hash::Hash;
 use swim_api::{downlink::DownlinkKind, protocol::map::MapOperation};
 use swim_form::{structural::read::recognizer::RecognizerReadable, Form};
@@ -29,7 +28,6 @@ use tokio::sync::mpsc;
 use tracing::error;
 
 use crate::{
-    agent_model::downlink::handlers::DownlinkChannelExt,
     config::{MapDownlinkConfig, SimpleDownlinkConfig},
     downlink_lifecycle::{
         event::EventDownlinkLifecycle, map::MapDownlinkLifecycle, value::ValueDownlinkLifecycle,
@@ -39,9 +37,8 @@ use crate::{
 };
 
 use self::hosted::{
-    map_dl_write_stream, value_dl_write_stream, EventDownlinkHandle, HostedEventDownlinkChannel,
-    HostedMapDownlinkChannel, HostedValueDownlinkChannel, MapDlState, MapDownlinkHandle,
-    ValueDownlinkHandle,
+    EventDownlinkHandle, HostedEventDownlinkFactory, HostedMapDownlinkFactory,
+    HostedValueDownlinkFactory, MapDlState, MapDownlinkHandle, ValueDownlinkHandle,
 };
 
 struct Inner<LC> {
@@ -130,19 +127,21 @@ where
             let (stop_tx, stop_rx) = trigger::trigger();
 
             let config = *config;
-            let path_cpy = path.clone();
-            let dl_state = Default::default();
-            let handle = ValueDownlinkHandle::new(path.clone(), tx, stop_tx, &dl_state);
+
+            let fac = HostedValueDownlinkFactory::new(
+                path.clone(),
+                lifecycle,
+                state,
+                config,
+                stop_rx,
+                rx,
+            );
+            let handle = ValueDownlinkHandle::new(path.clone(), tx, stop_tx, fac.dl_state());
+
             action_context.start_downlink(
                 path,
                 DownlinkKind::Value,
-                move |reader| {
-                    HostedValueDownlinkChannel::new(
-                        path_cpy, reader, lifecycle, state, config, stop_rx, dl_state,
-                    )
-                    .boxed()
-                },
-                move |writer| value_dl_write_stream(writer, rx).boxed(),
+                move |con, writer, reader| fac.create(con, writer, reader),
                 |result| {
                     if let Err(err) = result {
                         error!(error = %err, "Registering value downlink failed.");
@@ -176,20 +175,15 @@ where
         let OpenEventDownlinkAction { inner, config, .. } = self;
         if let Some(Inner { address, lifecycle }) = inner.take() {
             let config = *config;
-            let addr_cpy = address.clone();
             let (stop_tx, stop_rx) = trigger::trigger();
-            let dl_state = Default::default();
-            let handle = EventDownlinkHandle::new(address, stop_tx, &dl_state);
+
+            let fac = HostedEventDownlinkFactory::new(address.clone(), lifecycle, config, stop_rx);
+            let handle = EventDownlinkHandle::new(address.clone(), stop_tx, fac.dl_state());
+
             action_context.start_downlink(
-                addr_cpy.clone(),
+                address,
                 DownlinkKind::Event,
-                move |reader| {
-                    HostedEventDownlinkChannel::new(
-                        addr_cpy, reader, lifecycle, config, stop_rx, dl_state,
-                    )
-                    .boxed()
-                },
-                move |_writer| stream::empty().boxed(),
+                move |_con, _writer, receiver| fac.create(receiver),
                 |result| {
                     if let Err(err) = result {
                         error!(error = %err, "Registering event downlink failed.");
@@ -227,20 +221,20 @@ where
             let (tx, rx) = mpsc::unbounded_channel::<MapOperation<K, V>>();
             let (stop_tx, stop_rx) = trigger::trigger();
             let config = *config;
-            let addr_cpy = address.clone();
-            let dl_state = Default::default();
-            let handle = MapDownlinkHandle::new(address, tx, stop_tx, &dl_state);
+            let fac = HostedMapDownlinkFactory::new(
+                address.clone(),
+                lifecycle,
+                state,
+                config,
+                stop_rx,
+                rx,
+            );
+            let handle = MapDownlinkHandle::new(address.clone(), tx, stop_tx, fac.dl_state());
 
             action_context.start_downlink(
-                addr_cpy.clone(),
+                address,
                 DownlinkKind::Map,
-                move |reader| {
-                    HostedMapDownlinkChannel::new(
-                        addr_cpy, reader, lifecycle, state, config, stop_rx, dl_state,
-                    )
-                    .boxed()
-                },
-                move |writer| map_dl_write_stream(writer, rx).boxed(),
+                move |con, writer, reader| fac.create(con, writer, reader),
                 |result| {
                     if let Err(err) = result {
                         error!(error = %err, "Registering map downlink failed.");

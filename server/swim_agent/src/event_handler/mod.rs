@@ -74,33 +74,28 @@ pub trait DownlinkSpawner<Context> {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
-        dl_writer: WriteStream,
     ) -> Result<(), DownlinkRuntimeError>;
 }
 
-impl<Context> DownlinkSpawner<Context>
-    for RefCell<Vec<(BoxDownlinkChannel<Context>, WriteStream)>>
-{
+impl<Context> DownlinkSpawner<Context> for RefCell<Vec<BoxDownlinkChannel<Context>>> {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
-        dl_writer: WriteStream,
     ) -> Result<(), DownlinkRuntimeError> {
-        self.borrow_mut().push((dl_channel, dl_writer));
+        self.borrow_mut().push(dl_channel);
         Ok(())
     }
 }
 
 impl<F, Context> DownlinkSpawner<Context> for F
 where
-    F: Fn(BoxDownlinkChannel<Context>, WriteStream) -> Result<(), DownlinkRuntimeError>,
+    F: Fn(BoxDownlinkChannel<Context>) -> Result<(), DownlinkRuntimeError>,
 {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
-        dl_writer: WriteStream,
     ) -> Result<(), DownlinkRuntimeError> {
-        (*self)(dl_channel, dl_writer)
+        (*self)(dl_channel)
     }
 }
 
@@ -122,9 +117,8 @@ impl<'a, Context> DownlinkSpawner<Context> for ActionContext<'a, Context> {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
-        dl_writer: BoxStream<'static, Result<(), std::io::Error>>,
     ) -> Result<(), DownlinkRuntimeError> {
-        self.downlink.spawn_downlink(dl_channel, dl_writer)
+        self.downlink.spawn_downlink(dl_channel)
     }
 }
 
@@ -160,18 +154,16 @@ impl<'a, Context> ActionContext<'a, Context> {
         self.join_value_init.insert(lane_id, factory);
     }
 
-    pub(crate) fn start_downlink<S, F, G, OnDone, H>(
+    pub(crate) fn start_downlink<S, F, OnDone, H>(
         &self,
         path: Address<S>,
         kind: DownlinkKind,
         make_channel: F,
-        make_write_stream: G,
         on_done: OnDone,
     ) where
         Context: 'static,
         S: AsRef<str>,
-        F: FnOnce(ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
-        G: FnOnce(ByteWriter) -> WriteStream + Send + 'static,
+        F: FnOnce(&Context, ByteWriter, ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
         OnDone: FnOnce(Result<(), DownlinkRuntimeError>) -> H + Send + 'static,
         H: EventHandler<Context> + Send + 'static,
     {
@@ -185,13 +177,10 @@ impl<'a, Context> ActionContext<'a, Context> {
         let fut = external
             .map(move |result| match result {
                 Ok((writer, reader)) => {
-                    let channel = make_channel(reader);
-                    let write_stream = make_write_stream(writer);
-                    HandlerActionExt::and_then(
-                        RegisterHostedDownlink::new(channel, write_stream),
-                        on_done,
-                    )
-                    .boxed()
+                    let con = ConstructDownlink {
+                        inner: Some((writer, reader, make_channel)),
+                    };
+                    Box::new(con.and_then(RegisterHostedDownlink::new).and_then(on_done))
                 }
                 Err(e) => on_done(Err(e)).boxed(),
             })
@@ -214,6 +203,30 @@ impl<'a, Context> ActionContext<'a, Context> {
         encoder
             .encode(cmd, ad_hoc_buffer)
             .expect("Encoding should be infallible.")
+    }
+}
+
+struct ConstructDownlink<F> {
+    inner: Option<(ByteWriter, ByteReader, F)>,
+}
+
+impl<Context, F> HandlerAction<Context> for ConstructDownlink<F>
+where
+    F: FnOnce(&Context, ByteWriter, ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
+{
+    type Completion = BoxDownlinkChannel<Context>;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        if let Some((writer, reader, f)) = self.inner.take() {
+            StepResult::done(f(context, writer, reader))
+        } else {
+            StepResult::after_done()
+        }
     }
 }
 

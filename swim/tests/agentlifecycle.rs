@@ -28,9 +28,7 @@ use swim::agent::{
 use swim_agent::agent_lifecycle::on_init::OnInit;
 use swim_agent::agent_lifecycle::utility::JoinValueContext;
 use swim_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
-use swim_agent::event_handler::{
-    BoxJoinValueInit, HandlerFuture, Modification, Spawner, WriteStream,
-};
+use swim_agent::event_handler::{BoxJoinValueInit, HandlerFuture, Modification, Spawner};
 use swim_agent::item::{AgentItem, MapItem};
 use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
 use swim_agent::lanes::join_value::{AfterClosed, JoinValueLaneUpdate, LinkClosedResponse};
@@ -60,10 +58,7 @@ pub struct DummyAgentContext;
 
 const NO_SPAWN: NoSpawn = NoSpawn;
 const NO_AGENT: DummyAgentContext = DummyAgentContext;
-pub fn no_downlink<Context>(
-    _dl: BoxDownlinkChannel<Context>,
-    _write_stream: WriteStream,
-) -> Result<(), DownlinkRuntimeError> {
+pub fn no_downlink<Context>(_dl: BoxDownlinkChannel<Context>) -> Result<(), DownlinkRuntimeError> {
     panic!("Launching downlinks no supported.");
 }
 

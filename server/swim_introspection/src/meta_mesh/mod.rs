@@ -155,9 +155,7 @@ where
     fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
         let NodeInfoRec { list, count } = self;
         match list.feed_event(input.clone()) {
-            Some(Ok(item)) => {
-                Some(Ok(NodeInfo::List(item)))
-            }
+            Some(Ok(item)) => Some(Ok(NodeInfo::List(item))),
             Some(Err(_)) => match count.feed_event(input)? {
                 Ok(item) => Some(Ok(NodeInfo::Count(item))),
                 Err(e) => Some(Err(e)),

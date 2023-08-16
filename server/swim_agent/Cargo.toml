@@ -22,6 +22,7 @@ uuid = { workspace = true }
 thiserror = { workspace = true }
 static_assertions = { workspace = true }
 bitflags = { workspace = true }
+pin-project = { workspace = true}
 
 [dev-dependencies]
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use futures::future::FusedFuture;
 use parking_lot::Mutex;
 use slab::Slab;
 use std::error::Error;
@@ -136,5 +137,25 @@ impl Future for Receiver {
             1 => Poll::Ready(Ok(())),
             _ => Poll::Ready(Err(TriggerError)),
         }
+    }
+}
+
+impl Receiver {
+    pub fn check_state(&self) -> Option<Result<(), TriggerError>> {
+        let Receiver { inner, .. } = self;
+        let flag = inner.flag.load(Ordering::Acquire);
+        match flag {
+            0 => None,
+            1 => Some(Ok(())),
+            _ => Some(Err(TriggerError)),
+        }
+    }
+}
+
+impl FusedFuture for Receiver {
+    fn is_terminated(&self) -> bool {
+        let Receiver { inner, .. } = self;
+        let flag = inner.flag.load(Ordering::Acquire);
+        flag != 0
     }
 }

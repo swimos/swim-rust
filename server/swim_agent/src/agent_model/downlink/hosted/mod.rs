@@ -21,9 +21,10 @@ use std::sync::{
     Arc, Weak,
 };
 
-pub use event::{EventDownlinkHandle, HostedEventDownlinkChannel};
-pub use map::{map_dl_write_stream, HostedMapDownlinkChannel, MapDlState, MapDownlinkHandle};
-pub use value::{value_dl_write_stream, HostedValueDownlinkChannel, ValueDownlinkHandle};
+pub use event::{EventDownlinkHandle, HostedEventDownlinkFactory};
+pub use map::{HostedMapDownlinkFactory, MapDlState, MapDownlinkHandle};
+use swim_utilities::io::byte_channel::ByteWriter;
+pub use value::{HostedValueDownlinkFactory, ValueDownlinkHandle};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DlState {
@@ -31,6 +32,12 @@ enum DlState {
     Linked,
     Synced,
     Stopped,
+}
+
+impl DlState {
+    fn is_linked(&self) -> bool {
+        matches!(self, DlState::Linked | DlState::Synced)
+    }
 }
 
 const UNLINKED: u8 = 0;
@@ -127,7 +134,6 @@ mod test_support {
         agent_model::downlink::handlers::BoxDownlinkChannel,
         event_handler::{
             ActionContext, BoxEventHandler, DownlinkSpawner, HandlerFuture, Spawner, StepResult,
-            WriteStream,
         },
         meta::AgentMetadata,
     };
@@ -144,7 +150,6 @@ mod test_support {
         fn spawn_downlink(
             &self,
             _dl_channel: BoxDownlinkChannel<FakeAgent>,
-            _dl_writer: WriteStream,
         ) -> Result<(), DownlinkRuntimeError> {
             panic!("Unexpected downlink.");
         }
@@ -228,5 +233,62 @@ mod test_support {
                 }
             }
         }
+    }
+}
+
+enum OutputWriter<W: RestartableOutput> {
+    Active(W),
+    Inactive(W::Source),
+    Stopped,
+}
+
+impl<W: RestartableOutput + std::fmt::Debug> std::fmt::Debug for OutputWriter<W> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Active(arg0) => f.debug_tuple("Active").field(arg0).finish(),
+            Self::Inactive(_) => f.debug_tuple("Inactive").field(&"..").finish(),
+            Self::Stopped => write!(f, "Stopped"),
+        }
+    }
+}
+
+trait RestartableOutput {
+    type Source;
+
+    fn make_inactive(self) -> Self::Source;
+
+    fn restart(writer: ByteWriter, source: Self::Source) -> Self;
+}
+
+impl<W: RestartableOutput> OutputWriter<W> {
+    fn as_mut(&mut self) -> Option<&mut W> {
+        match self {
+            OutputWriter::Active(w) => Some(w),
+            _ => None,
+        }
+    }
+
+    fn is_active(&self) -> bool {
+        matches!(self, OutputWriter::Active(_))
+    }
+
+    fn make_inactive(&mut self) {
+        *self = match std::mem::replace(self, OutputWriter::Stopped) {
+            OutputWriter::Active(w) => OutputWriter::Inactive(w.make_inactive()),
+            OutputWriter::Inactive(i) => OutputWriter::Inactive(i),
+            OutputWriter::Stopped => OutputWriter::Stopped,
+        };
+    }
+
+    fn restart(&mut self, writer: ByteWriter) {
+        *self = match std::mem::replace(self, OutputWriter::Stopped) {
+            OutputWriter::Active(w) => {
+                OutputWriter::Active(<W as RestartableOutput>::restart(writer, w.make_inactive()))
+            }
+            OutputWriter::Inactive(i) => {
+                OutputWriter::Active(<W as RestartableOutput>::restart(writer, i))
+            }
+            OutputWriter::Stopped => OutputWriter::Stopped,
+        };
     }
 }

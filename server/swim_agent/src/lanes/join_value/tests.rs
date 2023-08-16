@@ -43,7 +43,7 @@ use crate::{
     agent_model::downlink::handlers::BoxDownlinkChannel,
     event_handler::{
         ActionContext, BoxJoinValueInit, DownlinkSpawner, EventHandlerError, HandlerAction,
-        Modification, StepResult, WriteStream,
+        Modification, StepResult,
     },
     item::{AgentItem, MapItem},
     lanes::join_value::{
@@ -231,7 +231,7 @@ fn join_value_lane_get_map_event_handler() {
 
 struct Inner<Agent> {
     downlink_channels: HashMap<Address<Text>, (ByteWriter, ByteReader)>,
-    downlinks: Vec<(BoxDownlinkChannel<Agent>, WriteStream)>,
+    downlinks: Vec<BoxDownlinkChannel<Agent>>,
 }
 
 impl<Agent> Default for Inner<Agent> {
@@ -256,8 +256,8 @@ impl<Agent> Default for TestDownlinkContext<Agent> {
 }
 
 impl<Agent> TestDownlinkContext<Agent> {
-    pub fn push_dl(&self, dl_channel: BoxDownlinkChannel<Agent>, dl_writer: WriteStream) {
-        self.inner.lock().downlinks.push((dl_channel, dl_writer));
+    pub fn push_dl(&self, dl_channel: BoxDownlinkChannel<Agent>) {
+        self.inner.lock().downlinks.push(dl_channel);
     }
 
     pub fn push_channels(&self, key: Address<Text>, io: (ByteWriter, ByteReader)) {
@@ -269,7 +269,7 @@ impl<Agent> TestDownlinkContext<Agent> {
         std::mem::take(&mut guard.downlink_channels)
     }
 
-    pub fn take_downlinks(&self) -> Vec<(BoxDownlinkChannel<Agent>, WriteStream)> {
+    pub fn take_downlinks(&self) -> Vec<BoxDownlinkChannel<Agent>> {
         let mut guard = self.inner.lock();
         std::mem::take(&mut guard.downlinks)
     }
@@ -279,9 +279,8 @@ impl<Agent> DownlinkSpawner<Agent> for TestDownlinkContext<Agent> {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Agent>,
-        dl_writer: WriteStream,
     ) -> Result<(), DownlinkRuntimeError> {
-        self.push_dl(dl_channel, dl_writer);
+        self.push_dl(dl_channel);
         Ok(())
     }
 }
@@ -378,7 +377,7 @@ async fn join_value_lane_add_downlinks_event_handler() {
     assert_eq!(downlink_channels.len(), 1);
     assert!(downlink_channels.contains_key(&address));
     match downlinks.as_slice() {
-        [(channel, _)] => {
+        [channel] => {
             assert_eq!(channel.kind(), DownlinkKind::Event);
         }
         _ => panic!("Expected a single downlink."),
