@@ -56,7 +56,7 @@ impl HttpLaneCodecSupport for Recon {
     }
 
     fn select_codec<'a>(&self, accepts: &'a [Mime]) -> Option<&'a Mime> {
-        if accepts.is_empty() || accepts.iter().find(|mime| accepts_recon(*mime)).is_some() {
+        if accepts.is_empty() || accepts.iter().any(|mime| accepts_recon(mime)) {
             Some(recon())
         } else {
             None
@@ -118,7 +118,8 @@ where
 
     fn select_codec<'a>(&self, accepts: &'a [Mime]) -> Option<&'a Mime> {
         let HCons { head, tail } = self;
-        head.select_codec(accepts).or_else(|| tail.select_codec(accepts))
+        head.select_codec(accepts)
+            .or_else(|| tail.select_codec(accepts))
     }
 }
 

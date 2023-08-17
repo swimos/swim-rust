@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, marker::PhantomData};
+use std::{borrow::Cow, cell::RefCell, marker::PhantomData};
 
 use bytes::Bytes;
 use swim_api::agent::{HttpLaneRequest, HttpLaneResponse};
-use swim_model::http::{HttpRequest, StatusCode, SupportedMethod, Version};
+use swim_model::http::{Header, HttpRequest, StatusCode, SupportedMethod, Version};
 use tokio::sync::oneshot;
 use tracing::debug;
 
@@ -28,17 +28,18 @@ use crate::{
 
 use self::{
     content_type::recon,
+    headers::Headers,
     model::{MethodAndPayload, Request},
 };
 
 mod codec;
 mod content_type;
-pub mod lifecycle;
 mod headers;
+pub mod lifecycle;
 mod model;
 
+pub use codec::{CodecError, DefaultCodec, HttpLaneCodec, HttpLaneCodecSupport};
 pub use model::{Response, UnitResponse};
-pub use codec::{HttpLaneCodec, HttpLaneCodecSupport, CodecError, DefaultCodec};
 
 pub struct HttpLane<Get, Post, Put = Post, Codec = DefaultCodec> {
     id: u64,
@@ -59,25 +60,21 @@ where
             codec: Default::default(),
         }
     }
-
 }
 
 impl<Get, Post, Put, Codec> HttpLane<Get, Post, Put, Codec> {
-
     pub(crate) fn take_request(&self) -> Option<RequestAndChannel<Post, Put>> {
         self.request.borrow_mut().take()
     }
-
 }
 
 impl<Get, Post, Put, Codec> HttpLane<Get, Post, Put, Codec>
 where
-    Codec: Clone, {
-
+    Codec: Clone,
+{
     pub fn codec(&self) -> Codec {
         self.codec.clone()
     }
-
 }
 
 impl<Get, Post, Put, Codec> AgentItem for HttpLane<Get, Post, Put, Codec> {
@@ -107,6 +104,8 @@ impl<Context, Get, Post, Put, Codec> HttpLaneAccept<Context, Get, Post, Put, Cod
         }
     }
 }
+
+const REQ_DROPPED: &str = "HTTP request was dropped before it was fulfilled.";
 
 impl<Context, Get, Post, Put, Codec> HandlerAction<Context>
     for HttpLaneAccept<Context, Get, Post, Put, Codec>
@@ -141,23 +140,34 @@ where
             let method_and_payload = match method.supported_method() {
                 Some(SupportedMethod::Get) => MethodAndPayload::Get,
                 Some(SupportedMethod::Head) => MethodAndPayload::Head,
-                Some(SupportedMethod::Post) => match lane.codec.decode(recon(), payload.as_ref()) {
-                    Ok(body) => MethodAndPayload::Post(body),
-                    _ => {
-                        bad_request(response_tx, StatusCode::BAD_REQUEST);
-                        return StepResult::done(());
+                Some(SupportedMethod::Post) => {
+                    match try_decode_payload(&headers, &lane.codec, payload.as_ref()) {
+                        Ok(body) => MethodAndPayload::Post(body),
+                        Err(response) => {
+                            if response_tx.send(response).is_err() {
+                                debug!(REQ_DROPPED);
+                            }
+                            return StepResult::done(());
+                        }
                     }
-                },
-                Some(SupportedMethod::Put) => match lane.codec.decode(recon(), payload.as_ref()) {
-                    Ok(body) => MethodAndPayload::Put(body),
-                    _ => {
-                        bad_request(response_tx, StatusCode::BAD_REQUEST);
-                        return StepResult::done(());
+                }
+                Some(SupportedMethod::Put) => {
+                    match try_decode_payload(&headers, &lane.codec, payload.as_ref()) {
+                        Ok(body) => MethodAndPayload::Put(body),
+                        Err(response) => {
+                            if response_tx.send(response).is_err() {
+                                debug!(REQ_DROPPED);
+                            }
+                            return StepResult::done(());
+                        }
                     }
-                },
+                }
                 Some(SupportedMethod::Delete) => MethodAndPayload::Delete,
                 None => {
-                    bad_request(response_tx, StatusCode::METHOD_NOT_ALLOWED);
+                    let response = bad_request(StatusCode::METHOD_NOT_ALLOWED, None);
+                    if response_tx.send(response).is_err() {
+                        debug!(REQ_DROPPED);
+                    }
                     return StepResult::done(());
                 }
             };
@@ -177,14 +187,41 @@ where
     }
 }
 
-fn bad_request(tx: oneshot::Sender<HttpLaneResponse>, status_code: StatusCode) {
-    let response = HttpLaneResponse {
+fn bad_request(status_code: StatusCode, message: Option<String>) -> HttpLaneResponse {
+    let payload = message.map(Bytes::from).unwrap_or_default();
+    HttpLaneResponse {
         status_code,
         version: Version::HTTP_1_1,
         headers: vec![],
-        payload: Bytes::new(),
+        payload,
+    }
+}
+
+fn try_decode_payload<T, Codec>(
+    headers: &[Header],
+    codec: &Codec,
+    payload: &[u8],
+) -> Result<T, HttpLaneResponse>
+where
+    Codec: HttpLaneCodec<T>,
+{
+    let headers = Headers::new(headers);
+    let content_type = match headers.content_type() {
+        Ok(Some(mime)) => Cow::Owned(mime),
+        Ok(_) => Cow::Borrowed(recon()),
+        Err(_) => {
+            return Err(bad_request(
+                StatusCode::BAD_REQUEST,
+                Some("Invalid content type header.".into()),
+            ))
+        }
     };
-    if tx.send(response).is_err() {
-        debug!("HTTP request was dropped before it was fulfilled.");
+    match codec.decode(content_type.as_ref(), payload) {
+        Ok(body) => Ok(body),
+        Err(CodecError::UnsupportedContentType(ct)) => Err(bad_request(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            Some(format!("Unsupported content type: {}", ct)),
+        )),
+        _ => Err(bad_request(StatusCode::INTERNAL_SERVER_ERROR, None)),
     }
 }

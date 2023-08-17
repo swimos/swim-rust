@@ -470,15 +470,15 @@ where
                 )
             }
             HttpLifecycleHandlerInner::Head(content_type, h) => {
-                let head_to_bytes = |response: HttpResponse<Get>| {
-                    discard_to_bytes(content_type.as_ref(), response)
-                };
+                let head_to_bytes =
+                    |response: HttpResponse<Get>| discard_to_bytes(content_type.as_ref(), response);
                 step!(
-                h.step(action_context, meta, context),
-                response_tx,
-                head_to_bytes,
-                EventHandlerError::HttpGetUndefined => (None, not_supported())
-            )},
+                    h.step(action_context, meta, context),
+                    response_tx,
+                    head_to_bytes,
+                    EventHandlerError::HttpGetUndefined => (None, not_supported())
+                )
+            }
             HttpLifecycleHandlerInner::Post(h) => step!(
                 h.step(action_context, meta, context),
                 response_tx,
@@ -574,10 +574,7 @@ fn empty_response_to_bytes(response: HttpResponse<()>) -> HttpLaneResponse {
     response.map(|_| Bytes::new())
 }
 
-fn discard_to_bytes<T>(
-    content_type: Option<&Mime>,
-    response: HttpResponse<T>,
-) -> HttpLaneResponse {
+fn discard_to_bytes<T>(content_type: Option<&Mime>, response: HttpResponse<T>) -> HttpLaneResponse {
     if let Some(content_type) = content_type {
         let mut response = empty_response_to_bytes(response.map(|_| ()));
         response.headers.push(content_type_header(content_type));
@@ -709,9 +706,8 @@ where
                 )
             }
             HttpLifecycleHandlerSharedInner::Head(content_type, h) => {
-                let head_to_bytes = |response: HttpResponse<Get>| {
-                    discard_to_bytes(content_type.as_ref(), response)
-                };
+                let head_to_bytes =
+                    |response: HttpResponse<Get>| discard_to_bytes(content_type.as_ref(), response);
                 step!(
                     h.step(action_context, meta, context),
                     response_tx,

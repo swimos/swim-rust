@@ -16,13 +16,16 @@ use std::{cmp::Ordering, fmt::Debug};
 
 use futures::future::Either;
 
-use crate::{lanes::http::{
-    lifecycle::{
-        HttpLaneLifecycle, HttpLaneLifecycleShared, HttpLifecycleHandler,
-        HttpLifecycleHandlerShared,
+use crate::{
+    agent_lifecycle::utility::HandlerContext,
+    lanes::http::{
+        lifecycle::{
+            HttpLaneLifecycle, HttpLaneLifecycleShared, HttpLifecycleHandler,
+            HttpLifecycleHandlerShared,
+        },
+        HttpLane, HttpLaneCodec,
     },
-    HttpLane, HttpLaneCodec,
-}, agent_lifecycle::utility::HandlerContext};
+};
 
 use super::{HLeaf, HTree, ItemEvent, ItemEventShared};
 
@@ -54,7 +57,8 @@ pub struct HttpBranch<Context, Get, Post, Put, Codec, LC, L, R> {
     right: R,
 }
 
-impl<Context, Get, Post, Put, Codec, LC, L, R> Clone for HttpBranch<Context, Get, Post, Put, Codec, LC, L, R>
+impl<Context, Get, Post, Put, Codec, LC, L, R> Clone
+    for HttpBranch<Context, Get, Post, Put, Codec, LC, L, R>
 where
     LC: Clone,
     L: Clone,
@@ -71,13 +75,16 @@ where
     }
 }
 
-impl<Context, Get, Post, Put, Codec, LC, L, R> HTree for HttpBranch<Context, Get, Post, Put, Codec, LC, L, R> {
+impl<Context, Get, Post, Put, Codec, LC, L, R> HTree
+    for HttpBranch<Context, Get, Post, Put, Codec, LC, L, R>
+{
     fn label(&self) -> Option<&'static str> {
         Some(self.label)
     }
 }
 
-impl<Context, Get, Post, Put, Codec, LC, L, R> Debug for HttpBranch<Context, Get, Post, Put, Codec, LC, L, R>
+impl<Context, Get, Post, Put, Codec, LC, L, R> Debug
+    for HttpBranch<Context, Get, Post, Put, Codec, LC, L, R>
 where
     LC: Debug,
     L: Debug,
@@ -94,7 +101,9 @@ where
     }
 }
 
-impl<Context, Get, Post, Put, Codec, LC> HttpBranch<Context, Get, Post, Put, Codec, LC, HLeaf, HLeaf> {
+impl<Context, Get, Post, Put, Codec, LC>
+    HttpBranch<Context, Get, Post, Put, Codec, LC, HLeaf, HLeaf>
+{
     pub fn leaf(
         label: &'static str,
         projection: fn(&Context) -> &HttpLane<Get, Post, Put, Codec>,
@@ -161,7 +170,11 @@ where
             Ordering::Equal => {
                 let lane = projection(context);
                 lane.take_request().map(|request| {
-                    Either::Right(Either::Left(HttpLifecycleHandler::new(request, lane.codec(), lifecycle)))
+                    Either::Right(Either::Left(HttpLifecycleHandler::new(
+                        request,
+                        lane.codec(),
+                        lifecycle,
+                    )))
                 })
             }
             Ordering::Greater => right
@@ -206,7 +219,10 @@ where
                 let lane = projection(context);
                 lane.take_request().map(|request| {
                     Either::Right(Either::Left(HttpLifecycleHandlerShared::new(
-                        request, shared, lane.codec(), lifecycle,
+                        request,
+                        shared,
+                        lane.codec(),
+                        lifecycle,
                     )))
                 })
             }

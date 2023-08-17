@@ -18,25 +18,24 @@ use mime::Mime;
 use swim_model::http::{Header, HeaderValue, StandardHeaderName};
 
 pub struct Headers<'a> {
-    headers: &'a[Header],
+    headers: &'a [Header],
 }
 
 impl<'a> Headers<'a> {
-
-    pub fn new(headers: &'a[Header]) -> Self {
+    pub fn new(headers: &'a [Header]) -> Self {
         Headers { headers }
     }
-
-
 }
 
 pub struct InvalidHeader;
 
 impl<'a> Headers<'a> {
-
     pub fn content_type(&self) -> Result<Option<Mime>, InvalidHeader> {
         let Headers { headers } = self;
-        if let Some(header) = headers.iter().find(|Header { name, .. }| name == &StandardHeaderName::ContentType) {
+        if let Some(header) = headers
+            .iter()
+            .find(|Header { name, .. }| name == &StandardHeaderName::ContentType)
+        {
             if let Some(value) = header.value.as_str() {
                 match Mime::from_str(value) {
                     Ok(mime) => Ok(Some(mime)),
@@ -52,13 +51,12 @@ impl<'a> Headers<'a> {
 
     pub fn accept(&self) -> impl Iterator<Item = Result<Mime, InvalidHeader>> + '_ {
         let Headers { headers } = self;
-        headers.iter().filter(|Header { name, .. }| name == &StandardHeaderName::Accept)
-            .map(|Header { value, ..} | value)
+        headers
+            .iter()
+            .filter(|Header { name, .. }| name == &StandardHeaderName::Accept)
+            .map(|Header { value, .. }| value)
             .flat_map(extract_accept)
     }
-
-
-   
 }
 
 #[derive(Default)]
@@ -66,33 +64,29 @@ enum AcceptState<'a, I> {
     Init(&'a HeaderValue),
     ConsumingPart(I),
     #[default]
-    Done
+    Done,
 }
 
 fn extract_accept(value: &HeaderValue) -> impl Iterator<Item = Result<Mime, InvalidHeader>> + '_ {
     let mut state = AcceptState::Init(value);
-    std::iter::from_fn(move || {
-        loop {
-            match std::mem::take(&mut state) {
-                AcceptState::Init(value) => {
-                    if let Some(value_str) = value.as_str() {
-                        let it = value_str.split(';').map(|s| s.trim());
-                        state = AcceptState::ConsumingPart(it);
-                    } else {
-                        state = AcceptState::Done;
-                        break Some(Err(InvalidHeader));
-                    }
-                },
-                AcceptState::ConsumingPart(mut it) => {
-                    match it.next() {
-                        Some(part) if !part.is_empty() => {
-                            break Some(Mime::from_str(part).map_err(|_| InvalidHeader));
-                        }
-                        _ => break None,
-                    }
-                },
-                AcceptState::Done => break None,
+    std::iter::from_fn(move || loop {
+        match std::mem::take(&mut state) {
+            AcceptState::Init(value) => {
+                if let Some(value_str) = value.as_str() {
+                    let it = value_str.split(';').map(|s| s.trim());
+                    state = AcceptState::ConsumingPart(it);
+                } else {
+                    state = AcceptState::Done;
+                    break Some(Err(InvalidHeader));
+                }
             }
+            AcceptState::ConsumingPart(mut it) => match it.next() {
+                Some(part) if !part.is_empty() => {
+                    break Some(Mime::from_str(part).map_err(|_| InvalidHeader));
+                }
+                _ => break None,
+            },
+            AcceptState::Done => break None,
         }
     })
 }
@@ -100,6 +94,6 @@ fn extract_accept(value: &HeaderValue) -> impl Iterator<Item = Result<Mime, Inva
 pub fn content_type_header(mime: &Mime) -> Header {
     Header {
         name: StandardHeaderName::ContentType.into(),
-        value: HeaderValue::from(mime.as_ref())
+        value: HeaderValue::from(mime.as_ref()),
     }
 }

@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{str::FromStr, hash::{Hash, Hasher}, cmp::Ordering};
+use std::{
+    cmp::Ordering,
+    hash::{Hash, Hasher},
+    str::FromStr,
+};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use thiserror::Error;
