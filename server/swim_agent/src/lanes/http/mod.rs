@@ -48,6 +48,8 @@ pub struct HttpLane<Get, Post, Put = Post, Codec = DefaultCodec> {
     codec: Codec,
 }
 
+pub type SimpleHttpLane<T, Codec = DefaultCodec> = HttpLane<T, T, T, Codec>;
+
 impl<Get, Post, Put, Codec> HttpLane<Get, Post, Put, Codec>
 where
     Codec: Default,
