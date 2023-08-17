@@ -15,12 +15,19 @@
 use bytes::BytesMut;
 use frunk::{prelude::HList, HCons, HNil};
 use mime::Mime;
-use std::fmt::{Debug, Write};
+use std::fmt::Debug;
+use swim_api::protocol::write_recon;
 use swim_form::Form;
-use swim_recon::{parser::parse_into, printer::print_recon_compact};
+use swim_recon::parser::parse_into;
 use thiserror::Error;
 
 use super::content_type::{recon, RECON_SUBTYPE};
+
+#[cfg(feature = "json")]
+mod json;
+
+#[cfg(feature = "json")]
+pub use json::Json;
 
 #[derive(Debug, Error)]
 pub enum CodecError {
@@ -79,8 +86,7 @@ impl<T: Form> HttpLaneCodec<T> for Recon {
         if !self.supports(content_type) {
             return Err(CodecError::UnsupportedContentType(content_type.clone()));
         }
-        write!(buffer, "{}", print_recon_compact(value))
-            .expect("Encoding to Recon should be infallible.");
+        write_recon(buffer, value);
         Ok(())
     }
 
@@ -167,7 +173,11 @@ where
     }
 }
 
+#[cfg(not(feature = "json"))]
 type DefaultCodecInner = Recon;
+
+#[cfg(feature = "json")]
+type DefaultCodecInner = HCons<Recon, HCons<Json, HNil>>;
 
 #[derive(Default, Debug, Clone, Copy)]
 pub struct DefaultCodec {

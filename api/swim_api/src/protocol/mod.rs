@@ -91,7 +91,7 @@ fn write_recon_with_len<T: StructuralWritable>(dst: &mut BytesMut, body: &T) {
     rewound.put_u64(body_len as u64);
 }
 
-fn write_recon<T: StructuralWritable>(dst: &mut BytesMut, body: &T) -> usize {
+pub fn write_recon<T: StructuralWritable>(dst: &mut BytesMut, body: &T) -> usize {
     let body_offset = write_recon_body(dst, body);
     dst.remaining() - body_offset
 }
