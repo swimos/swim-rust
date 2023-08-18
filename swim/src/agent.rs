@@ -198,7 +198,7 @@ pub mod config {
     pub use swim_agent::config::{MapDownlinkConfig, SimpleDownlinkConfig};
 }
 pub mod model {
-    pub use swim_agent::model::{MapMessage, Text};
+    pub use swim_agent::model::{HttpLaneRequest, MapMessage, Text};
 }
 
 pub mod agent_model {

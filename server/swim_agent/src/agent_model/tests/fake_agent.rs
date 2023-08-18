@@ -14,13 +14,16 @@
 
 use std::{
     cell::RefCell,
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
 };
 
 use bytes::BytesMut;
-use swim_api::protocol::{
-    agent::{LaneResponse, MapLaneResponse, MapLaneResponseEncoder, ValueLaneResponseEncoder},
-    map::{MapMessage, MapOperation},
+use swim_api::{
+    agent::HttpLaneRequest,
+    protocol::{
+        agent::{LaneResponse, MapLaneResponse, MapLaneResponseEncoder, ValueLaneResponseEncoder},
+        map::{MapMessage, MapOperation},
+    },
 };
 use swim_model::Text;
 use tokio::sync::mpsc;
@@ -245,6 +248,18 @@ impl AgentSpec for TestAgent {
         Self: 'static,
     {
         None
+    }
+
+    fn http_lane_names() -> HashSet<&'static str> {
+        HashSet::new()
+    }
+
+    fn on_http_request(
+        &self,
+        _lane: &str,
+        request: HttpLaneRequest,
+    ) -> Result<Self::HttpRequestHandler, HttpLaneRequest> {
+        Err(request)
     }
 }
 

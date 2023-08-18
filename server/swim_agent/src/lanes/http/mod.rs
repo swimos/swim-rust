@@ -90,7 +90,7 @@ pub struct RequestAndChannel<Post, Put> {
     response_tx: oneshot::Sender<HttpLaneResponse>,
 }
 
-pub struct HttpLaneAccept<Context, Get, Post, Put, Codec> {
+pub struct HttpLaneAccept<Context, Get, Post, Put, Codec = DefaultCodec> {
     projection: fn(&Context) -> &HttpLane<Get, Post, Put, Codec>,
     request: Option<HttpLaneRequest>,
 }

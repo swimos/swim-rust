@@ -31,6 +31,7 @@ mod test_context;
 pub use agent_model::AgentSpec;
 
 pub mod model {
+    pub use swim_api::agent::HttpLaneRequest;
     pub use swim_api::protocol::map::{MapMessage, MapOperation};
     pub use swim_model::Text;
 }

@@ -134,6 +134,7 @@ pub trait AgentSpec: Sized + Send {
     /// The type of handler to run when a request is received to sync with a lane.
     type OnSyncHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
+    /// The type of the handler to run when an HTTP request is received for a lane.
     type HttpRequestHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
     /// The names and flags of all value like items (value lanes and stores, command lanes, etc) in the agent.
@@ -142,9 +143,8 @@ pub trait AgentSpec: Sized + Send {
     /// The names and flags of all map like items in the agent.
     fn map_like_item_specs() -> HashMap<&'static str, ItemSpec>;
 
-    fn http_lane_names() -> HashSet<&'static str> {
-        HashSet::new()
-    }
+    /// The names of all HTTP lanes in the agent.
+    fn http_lane_names() -> HashSet<&'static str>;
 
     /// Mapping from item identifiers to lane names for all items in the agent.
     fn item_ids() -> HashMap<u64, Text>;
@@ -200,13 +200,18 @@ pub trait AgentSpec: Sized + Send {
     /// * `id` - The ID of the remote that requested the sync.
     fn on_sync(&self, lane: &str, id: Uuid) -> Option<Self::OnSyncHandler>;
 
+    /// Create a handler that will update the state of the agent when an HTTP request is
+    /// made to a lane. If not HTTP lane exists with the specified name the request will
+    /// be returned as an error (so that the caller can handle it will a 404 response).
+    ///
+    /// #Arguments
+    /// * `lane` - The name of the lane.
+    /// * `request` - The HTTP request.
     fn on_http_request(
         &self,
-        _lane: &str,
+        lane: &str,
         request: HttpLaneRequest,
-    ) -> Result<Self::HttpRequestHandler, HttpLaneRequest> {
-        Err(request)
-    }
+    ) -> Result<Self::HttpRequestHandler, HttpLaneRequest>;
 
     /// Attempt to write pending data from a lane into the outgoing buffer. The result will
     /// indicate if data was written and if the lane has more data to write. There will be
