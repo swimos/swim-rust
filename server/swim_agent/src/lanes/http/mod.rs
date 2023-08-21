@@ -37,7 +37,9 @@ mod headers;
 pub mod lifecycle;
 mod model;
 
-pub use codec::{CodecError, DefaultCodec, HttpLaneCodec, HttpLaneCodecSupport};
+#[cfg(feature = "json")]
+pub use codec::Json;
+pub use codec::{CodecError, DefaultCodec, HttpLaneCodec, HttpLaneCodecSupport, Recon};
 pub use model::{Response, UnitResponse};
 
 pub struct HttpLane<Get, Post, Put = Post, Codec = DefaultCodec> {

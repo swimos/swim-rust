@@ -33,6 +33,7 @@ const NO_GENERICS: &str = "Generic lifecycles are not yet supported.";
 const INCONSISTENT_HANDLERS: &str = "Method marked with inconsistent handler attributes.";
 const MANDATORY_SELF: &str = "The receiver of an event handler must be &self.";
 const REQUIRED_CONTEXT: &str = "A HandlerContext parameter is required.";
+const REQUIRED_HTTP_CONTEXT: &str = "An HttpContext parameter is required.";
 const BAD_SIGNATURE: &str =
     "The handler does not have the correct signature for the annotated handler kind.";
 const BAD_PARAMS: &str = "Invalid parameters to method handler annotation.";
@@ -391,6 +392,46 @@ fn validate_method_as<'a>(
                     }
                     Validation::valid(acc)
                 }),
+            HandlerKind::Get => {
+                Validation::join(acc, validate_get_or_delete_sig(sig)).and_then(|(mut acc, t)| {
+                    for target in targets {
+                        if let Err(e) = acc.add_on_get(target, t, &sig.ident) {
+                            return Validation::Validated(acc, Errors::of(e));
+                        }
+                    }
+                    Validation::valid(acc)
+                })
+            }
+            HandlerKind::Post => {
+                Validation::join(acc, validate_post_or_put_sig(sig)).and_then(|(mut acc, t)| {
+                    for target in targets {
+                        if let Err(e) = acc.add_on_post(target, t, &sig.ident) {
+                            return Validation::Validated(acc, Errors::of(e));
+                        }
+                    }
+                    Validation::valid(acc)
+                })
+            }
+            HandlerKind::Put => {
+                Validation::join(acc, validate_post_or_put_sig(sig)).and_then(|(mut acc, t)| {
+                    for target in targets {
+                        if let Err(e) = acc.add_on_put(target, t, &sig.ident) {
+                            return Validation::Validated(acc, Errors::of(e));
+                        }
+                    }
+                    Validation::valid(acc)
+                })
+            }
+            HandlerKind::Delete => {
+                Validation::join(acc, validate_get_or_delete_sig(sig)).and_then(|(mut acc, _)| {
+                    for target in targets {
+                        if let Err(e) = acc.add_on_delete(target, &sig.ident) {
+                            return Validation::Validated(acc, Errors::of(e));
+                        }
+                    }
+                    Validation::valid(acc)
+                })
+            }
         }
     }
 }
@@ -505,7 +546,7 @@ fn validate_cue_sig(sig: &Signature) -> Validation<Option<&Type>, Errors<syn::Er
         });
     let output = match &sig.output {
         ReturnType::Default => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
-        ReturnType::Type(_, t) => extract_cue_ret(sig, t.as_ref()),
+        ReturnType::Type(_, t) => extract_handler_ret(sig, t.as_ref()),
     };
     inputs.join(output).map(|(_, t)| t)
 }
@@ -530,7 +571,7 @@ fn validate_keys_sig(sig: &Signature) -> Validation<&Type, Errors<syn::Error>> {
         });
     let output = match &sig.output {
         ReturnType::Default => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
-        ReturnType::Type(_, t) => extract_cue_ret(sig, t).and_then(|maybe_ret| {
+        ReturnType::Type(_, t) => extract_handler_ret(sig, t).and_then(|maybe_ret| {
             if let Some(ret) = maybe_ret {
                 extract_hash_set_type_param(sig, ret)
             } else {
@@ -560,7 +601,7 @@ fn validate_cue_key_sig(sig: &Signature) -> Validation<(&Type, &Type), Errors<sy
         });
     let output = match &sig.output {
         ReturnType::Default => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
-        ReturnType::Type(_, t) => extract_cue_ret(sig, t.as_ref()).and_then(|maybe_val| {
+        ReturnType::Type(_, t) => extract_handler_ret(sig, t.as_ref()).and_then(|maybe_val| {
             if let Some(t) = maybe_val {
                 extract_option_type_param(sig, t)
             } else {
@@ -575,7 +616,7 @@ const HANDLER_ACTION_NAME: &str = "HandlerAction";
 const EVENT_HANDLER_NAME: &str = "EventHandler";
 const COMPLETION_ASSOC_NAME: &str = "Completion";
 
-fn extract_cue_ret<'a>(
+fn extract_handler_ret<'a>(
     sig: &'a Signature,
     ret_type: &'a Type,
 ) -> Validation<Option<&'a Type>, Errors<syn::Error>> {
@@ -617,6 +658,73 @@ fn extract_cue_ret<'a>(
         }
         _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
     }
+}
+
+fn validate_get_or_delete_sig(sig: &Signature) -> Validation<&Type, Errors<syn::Error>> {
+    let iter = sig.inputs.iter();
+    let inputs = check_receiver(sig, iter)
+        .and_then(|mut iter| {
+            if iter.next().is_none() {
+                Validation::fail(syn::Error::new_spanned(sig, REQUIRED_CONTEXT))
+            } else if iter.next().is_none() {
+                Validation::fail(syn::Error::new_spanned(sig, REQUIRED_HTTP_CONTEXT))
+            } else {
+                Validation::valid(iter)
+            }
+        })
+        .and_then(|iter| {
+            let param_types = extract_types(iter);
+            if param_types.is_empty() {
+                Validation::valid(())
+            } else {
+                Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
+            }
+        });
+    let output = match &sig.output {
+        ReturnType::Default => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+        ReturnType::Type(_, t) => extract_handler_ret(sig, t.as_ref()),
+    }
+    .and_then(|t| {
+        if let Some(parameterized) = t {
+            extract_single_type_param(sig, parameterized, RESPONSE, false)
+        } else {
+            Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
+        }
+    });
+    inputs.join(output).map(|(_, t)| t)
+}
+
+fn validate_post_or_put_sig(sig: &Signature) -> Validation<&Type, Errors<syn::Error>> {
+    let iter = sig.inputs.iter();
+    let inputs = check_receiver(sig, iter)
+        .and_then(|mut iter| {
+            if iter.next().is_none() {
+                Validation::fail(syn::Error::new_spanned(sig, REQUIRED_CONTEXT))
+            } else if iter.next().is_none() {
+                Validation::fail(syn::Error::new_spanned(sig, REQUIRED_HTTP_CONTEXT))
+            } else {
+                Validation::valid(iter)
+            }
+        })
+        .and_then(|iter| {
+            let param_types = extract_types(iter);
+            match param_types.as_slice() {
+                [value_type] => Validation::valid(*value_type),
+                _ => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+            }
+        });
+    let output = match &sig.output {
+        ReturnType::Default => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
+        ReturnType::Type(_, t) => extract_handler_ret(sig, t.as_ref()),
+    }
+    .and_then(|t| {
+        if let Some(parameterized) = t {
+            extract_single_type_param(sig, parameterized, RESPONSE, false)
+        } else {
+            Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
+        }
+    });
+    inputs.join(output).map(|(t, _)| t)
 }
 
 /// Check a method for use as a lane lifecycle handler. Returns the type that the lane should
@@ -668,6 +776,7 @@ fn peel_ref_type<'a>(
 const HASH_MAP: &str = "HashMap";
 const OPTION: &str = "Option";
 const HASH_SET: &str = "HashSet";
+const RESPONSE: &str = "Response";
 
 fn hash_map_type_params<'a>(
     sig: &Signature,
@@ -775,6 +884,10 @@ fn get_kind(attr: &Attribute) -> Option<Result<(HandlerKind, Vec<String>), syn::
             ON_REMOVE => Some(HandlerKind::Remove),
             ON_CLEAR => Some(HandlerKind::Clear),
             JOIN_VALUE => Some(HandlerKind::JoinValue),
+            ON_GET => Some(HandlerKind::Get),
+            ON_POST => Some(HandlerKind::Post),
+            ON_PUT => Some(HandlerKind::Put),
+            ON_DELETE => Some(HandlerKind::Delete),
             _ => None,
         };
         kind.map(|k| match &k {
@@ -850,6 +963,10 @@ enum HandlerKind {
     Remove,
     Clear,
     JoinValue,
+    Get,
+    Post,
+    Put,
+    Delete,
 }
 
 impl HandlerKind {
@@ -884,6 +1001,10 @@ const ON_UPDATE: &str = "on_update";
 const ON_REMOVE: &str = "on_remove";
 const ON_CLEAR: &str = "on_clear";
 const JOIN_VALUE: &str = "join_value_lifecycle";
+const ON_GET: &str = "on_get";
+const ON_POST: &str = "on_post";
+const ON_PUT: &str = "on_put";
+const ON_DELETE: &str = "on_delete";
 
 /// Check if an attribute is an event handler attribute. This simple checks the name and not
 /// the contents.
@@ -909,6 +1030,10 @@ fn assess_attr(attr: &Attribute) -> bool {
                         | ON_REMOVE
                         | ON_CLEAR
                         | JOIN_VALUE
+                        | ON_GET
+                        | ON_POST
+                        | ON_PUT
+                        | ON_DELETE
                 )
             }
             _ => false,
@@ -1097,6 +1222,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     name
                 ),
             )),
+            Some(ItemLifecycle::Http(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both command and HTTP lane event handlers.",
+                    name
+                ),
+            )),
             _ => {
                 lane_lifecycles.insert(
                     name.clone(),
@@ -1153,6 +1285,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     name
                 ),
             )),
+            Some(ItemLifecycle::Http(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand and HTTP lane event handlers.",
+                    name
+                ),
+            )),
             _ => {
                 lane_lifecycles.insert(
                     name.clone(),
@@ -1203,6 +1342,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                 method,
                 format!(
                     "Lane '{}' has both value and map lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Http(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both value and HTTP lane event handlers.",
                     name
                 ),
             )),
@@ -1259,6 +1405,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     name
                 ),
             )),
+            Some(ItemLifecycle::Http(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both value and HTTP lane event handlers.",
+                    name
+                ),
+            )),
             _ => {
                 lane_lifecycles.insert(
                     name.clone(),
@@ -1311,6 +1464,10 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     "Lane '{}' has both value and map lane event handlers.",
                     name
                 ),
+            )),
+            Some(ItemLifecycle::Http(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!("Lane '{}' has both map and HTTP lane event handlers.", name),
             )),
             Some(ItemLifecycle::Map(desc)) => desc.add_on_update(key_type, value_type, method),
             _ => {
@@ -1365,6 +1522,10 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     name
                 ),
             )),
+            Some(ItemLifecycle::Http(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!("Lane '{}' has both map and HTTP lane event handlers.", name),
+            )),
             Some(ItemLifecycle::Map(desc)) => desc.add_on_remove(key_type, value_type, method),
             _ => {
                 let map_type = (key_type, value_type);
@@ -1418,6 +1579,10 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     name
                 ),
             )),
+            Some(ItemLifecycle::Http(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!("Lane '{}' has both map and HTTP lane event handlers.", name),
+            )),
             Some(ItemLifecycle::Map(desc)) => desc.add_on_clear(key_type, value_type, method),
             _ => {
                 let map_type = (key_type, value_type);
@@ -1468,6 +1633,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                 method,
                 format!(
                     "Lane '{}' has both demand-map and map lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Http(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and HTTP lane event handlers.",
                     name
                 ),
             )),
@@ -1525,6 +1697,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                     name
                 ),
             )),
+            Some(ItemLifecycle::Http(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both demand-map and HTTP lane event handlers.",
+                    name
+                ),
+            )),
             _ => {
                 lane_lifecycles.insert(
                     name.clone(),
@@ -1532,6 +1711,215 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                         name, key_type, value_type, method,
                     )),
                 );
+                Ok(())
+            }
+        }
+    }
+
+    pub fn add_on_get(
+        &mut self,
+        name: String,
+        get_type: &'a Type,
+        method: &'a Ident,
+    ) -> Result<(), syn::Error> {
+        let AgentLifecycleDescriptorBuilder {
+            lane_lifecycles, ..
+        } = self;
+        match lane_lifecycles.get_mut(&name) {
+            Some(ItemLifecycle::Command(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and command lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Demand(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and demand lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::DemandMap(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and demand-map lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and value lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Map(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!("Lane '{}' has both HTTP and map lane event handlers.", name),
+            )),
+            Some(ItemLifecycle::Http(http_lifecycle)) => {
+                http_lifecycle.add_on_get(get_type, method)
+            }
+            _ => {
+                let mut lifecycle = HttpLifecycleDescriptor::new(name.clone());
+                lifecycle.add_on_get(get_type, method)?;
+                lane_lifecycles.insert(name, ItemLifecycle::Http(lifecycle));
+                Ok(())
+            }
+        }
+    }
+
+    pub fn add_on_post(
+        &mut self,
+        name: String,
+        post_type: &'a Type,
+        method: &'a Ident,
+    ) -> Result<(), syn::Error> {
+        let AgentLifecycleDescriptorBuilder {
+            lane_lifecycles, ..
+        } = self;
+        match lane_lifecycles.get_mut(&name) {
+            Some(ItemLifecycle::Command(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and command lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Demand(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and demand lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::DemandMap(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and demand-map lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and value lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Map(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!("Lane '{}' has both HTTP and map lane event handlers.", name),
+            )),
+            Some(ItemLifecycle::Http(http_lifecycle)) => {
+                http_lifecycle.add_on_post(post_type, method)
+            }
+            _ => {
+                let mut lifecycle = HttpLifecycleDescriptor::new(name.clone());
+                lifecycle.add_on_post(post_type, method)?;
+                lane_lifecycles.insert(name, ItemLifecycle::Http(lifecycle));
+                Ok(())
+            }
+        }
+    }
+
+    pub fn add_on_put(
+        &mut self,
+        name: String,
+        put_type: &'a Type,
+        method: &'a Ident,
+    ) -> Result<(), syn::Error> {
+        let AgentLifecycleDescriptorBuilder {
+            lane_lifecycles, ..
+        } = self;
+        match lane_lifecycles.get_mut(&name) {
+            Some(ItemLifecycle::Command(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and command lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Demand(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and demand lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::DemandMap(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and demand-map lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and value lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Map(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!("Lane '{}' has both HTTP and map lane event handlers.", name),
+            )),
+            Some(ItemLifecycle::Http(http_lifecycle)) => {
+                http_lifecycle.add_on_put(put_type, method)
+            }
+            _ => {
+                let mut lifecycle = HttpLifecycleDescriptor::new(name.clone());
+                lifecycle.add_on_put(put_type, method)?;
+                lane_lifecycles.insert(name, ItemLifecycle::Http(lifecycle));
+                Ok(())
+            }
+        }
+    }
+
+    pub fn add_on_delete(&mut self, name: String, method: &'a Ident) -> Result<(), syn::Error> {
+        let AgentLifecycleDescriptorBuilder {
+            lane_lifecycles, ..
+        } = self;
+        match lane_lifecycles.get_mut(&name) {
+            Some(ItemLifecycle::Command(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and command lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Demand(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and demand lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::DemandMap(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and demand-map lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Value(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!(
+                    "Lane '{}' has both HTTP and value lane event handlers.",
+                    name
+                ),
+            )),
+            Some(ItemLifecycle::Map(_)) => Err(syn::Error::new_spanned(
+                method,
+                format!("Lane '{}' has both HTTP and map lane event handlers.", name),
+            )),
+            Some(ItemLifecycle::Http(http_lifecycle)) => http_lifecycle.add_on_delete(method),
+            _ => {
+                let mut lifecycle = HttpLifecycleDescriptor::new(name.clone());
+                lifecycle.add_on_delete(method)?;
+                lane_lifecycles.insert(name, ItemLifecycle::Http(lifecycle));
                 Ok(())
             }
         }
@@ -1544,6 +1932,7 @@ pub enum ItemLifecycle<'a> {
     Command(CommandLifecycleDescriptor<'a>),
     Demand(DemandLifecycleDescriptor<'a>),
     DemandMap(DemandMapLifecycleDescriptor<'a>),
+    Http(HttpLifecycleDescriptor<'a>),
     Map(MapLifecycleDescriptor<'a>),
 }
 
@@ -1555,6 +1944,7 @@ impl<'a> ItemLifecycle<'a> {
             ItemLifecycle::Demand(DemandLifecycleDescriptor { name, .. }) => name,
             ItemLifecycle::DemandMap(DemandMapLifecycleDescriptor { name, .. }) => name,
             ItemLifecycle::Map(MapLifecycleDescriptor { name, .. }) => name,
+            ItemLifecycle::Http(HttpLifecycleDescriptor { name, .. }) => name,
         };
         name.as_str()
     }
@@ -1586,6 +1976,11 @@ impl<'a> ItemLifecycle<'a> {
             ItemLifecycle::DemandMap(_) => {
                 parse_quote! {
                     #root::agent_lifecycle::item_event::DemandMapBranch
+                }
+            }
+            ItemLifecycle::Http(_) => {
+                parse_quote! {
+                    #root::agent_lifecycle::item_event::HttpBranch
                 }
             }
             ItemLifecycle::Map(_) => {
@@ -1715,6 +2110,116 @@ pub struct MapLifecycleDescriptor<'a> {
     pub on_remove: Option<&'a Ident>,
     pub on_clear: Option<&'a Ident>,
     pub join_lifecycle: Option<&'a Ident>,
+}
+
+pub struct HttpLifecycleDescriptor<'a> {
+    name: String, //The name of the lane.
+    get_type: Option<&'a Type>,
+    post_type: Option<&'a Type>,
+    put_type: Option<&'a Type>,
+    pub on_get: Option<&'a Ident>,
+    pub on_post: Option<&'a Ident>,
+    pub on_put: Option<&'a Ident>,
+    pub on_delete: Option<&'a Ident>,
+}
+
+impl<'a> HttpLifecycleDescriptor<'a> {
+    pub fn new(name: String) -> HttpLifecycleDescriptor<'a> {
+        HttpLifecycleDescriptor {
+            name,
+            get_type: None,
+            post_type: None,
+            put_type: None,
+            on_get: None,
+            on_post: None,
+            on_put: None,
+            on_delete: None,
+        }
+    }
+
+    pub fn add_on_get(
+        &mut self,
+        handler_type: &'a Type,
+        method: &'a Ident,
+    ) -> Result<(), syn::Error> {
+        let HttpLifecycleDescriptor {
+            name,
+            get_type,
+            on_get,
+            ..
+        } = self;
+        if on_get.is_some() {
+            Err(syn::Error::new_spanned(
+                method,
+                format!("Duplicate on_get handler for '{}'.", name),
+            ))
+        } else {
+            *get_type = Some(handler_type);
+            *on_get = Some(method);
+            Ok(())
+        }
+    }
+
+    pub fn add_on_post(
+        &mut self,
+        handler_type: &'a Type,
+        method: &'a Ident,
+    ) -> Result<(), syn::Error> {
+        let HttpLifecycleDescriptor {
+            name,
+            post_type,
+            on_post,
+            ..
+        } = self;
+        if on_post.is_some() {
+            Err(syn::Error::new_spanned(
+                method,
+                format!("Duplicate on_post handler for '{}'.", name),
+            ))
+        } else {
+            *post_type = Some(handler_type);
+            *on_post = Some(method);
+            Ok(())
+        }
+    }
+
+    pub fn add_on_put(
+        &mut self,
+        handler_type: &'a Type,
+        method: &'a Ident,
+    ) -> Result<(), syn::Error> {
+        let HttpLifecycleDescriptor {
+            name,
+            put_type,
+            on_put,
+            ..
+        } = self;
+        if on_put.is_some() {
+            Err(syn::Error::new_spanned(
+                method,
+                format!("Duplicate on_put handler for '{}'.", name),
+            ))
+        } else {
+            *put_type = Some(handler_type);
+            *on_put = Some(method);
+            Ok(())
+        }
+    }
+
+    pub fn add_on_delete(&mut self, method: &'a Ident) -> Result<(), syn::Error> {
+        let HttpLifecycleDescriptor {
+            name, on_delete, ..
+        } = self;
+        if on_delete.is_some() {
+            Err(syn::Error::new_spanned(
+                method,
+                format!("Duplicate on_delete handler for '{}'.", name),
+            ))
+        } else {
+            *on_delete = Some(method);
+            Ok(())
+        }
+    }
 }
 
 impl<'a> MapLifecycleDescriptor<'a> {

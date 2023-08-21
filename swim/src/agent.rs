@@ -269,6 +269,20 @@ pub mod lanes {
             pub use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
         }
     }
+
+    pub mod http {
+        pub use swim_agent::lanes::http::{
+            CodecError, DefaultCodec, HttpLane, HttpLaneAccept, HttpLaneCodec,
+            HttpLaneCodecSupport, Recon, Response, SimpleHttpLane, UnitResponse,
+        };
+
+        #[cfg(feature = "json")]
+        pub use swim_agent::lanes::http::Json;
+
+        pub mod lifecycle {
+            pub use swim_agent::lanes::http::lifecycle::StatefulHttpLaneLifecycle;
+        }
+    }
 }
 
 pub mod state {
