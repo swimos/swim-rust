@@ -28,7 +28,7 @@ impl HttpLaneCodecSupport for Json {
     }
 
     fn select_codec<'a>(&self, accepts: &'a [mime::Mime]) -> Option<&'a mime::Mime> {
-        if accepts.is_empty() || accepts.iter().any(|mime| accepts_json(mime)) {
+        if accepts.is_empty() || accepts.iter().any(accepts_json) {
             Some(&mime::APPLICATION_JSON)
         } else {
             None
