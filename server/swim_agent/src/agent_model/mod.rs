@@ -1450,7 +1450,7 @@ where
 }
 
 fn not_found(lane_name: &str, request: HttpLaneRequest) {
-    let HttpLaneRequest { response_tx, .. } = request;
+    let (_, response_tx) = request.into_parts();
     let response = HttpLaneResponse {
         status_code: StatusCode::NOT_FOUND,
         version: Version::HTTP_1_1,

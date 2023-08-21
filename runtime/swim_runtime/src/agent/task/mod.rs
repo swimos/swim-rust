@@ -2104,10 +2104,7 @@ async fn http_task(
 }
 
 fn not_found(request: HttpLaneRequest) {
-    let HttpLaneRequest {
-        request,
-        response_tx,
-    } = request;
+    let (request, response_tx) = request.into_parts();
     let payload = if let Some(lane_name) = uri_params::extract_lane(&request.uri) {
         Bytes::from(format!(
             "This agent does not have an HTTP lane called `{}`",

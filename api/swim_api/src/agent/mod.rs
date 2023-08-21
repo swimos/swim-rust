@@ -16,10 +16,12 @@ use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
     num::NonZeroUsize,
+    pin::Pin,
+    task::{Context, Poll},
 };
 
 use bytes::Bytes;
-use futures::future::BoxFuture;
+use futures::{future::BoxFuture, ready, Future, FutureExt};
 use swim_model::http::{HttpRequest, HttpResponse};
 use swim_utilities::{
     future::retryable::RetryStrategy,
@@ -102,20 +104,49 @@ impl Default for StoreConfig {
 pub type HttpLaneResponse = HttpResponse<Bytes>;
 
 #[derive(Debug)]
+pub struct HttpResponseSender(oneshot::Sender<HttpLaneResponse>);
+
+impl HttpResponseSender {
+    pub fn send(self, response: HttpLaneResponse) -> Result<(), HttpLaneResponse> {
+        self.0.send(response)
+    }
+}
+
+impl Future for HttpResponseReceiver {
+    type Output = Result<HttpLaneResponse, ()>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Poll::Ready(ready!(self.as_mut().0.poll_unpin(cx)).map_err(|_| ()))
+    }
+}
+
+#[derive(Debug)]
+pub struct HttpResponseReceiver(oneshot::Receiver<HttpLaneResponse>);
+
+#[derive(Debug)]
 pub struct HttpLaneRequest {
     pub request: HttpRequest<Bytes>,
-    pub response_tx: oneshot::Sender<HttpLaneResponse>,
+    response_tx: HttpResponseSender,
 }
 
 impl HttpLaneRequest {
-    pub fn new(
-        request: HttpRequest<Bytes>,
-        response_tx: oneshot::Sender<HttpLaneResponse>,
-    ) -> Self {
-        HttpLaneRequest {
+    pub fn new(request: HttpRequest<Bytes>) -> (Self, HttpResponseReceiver) {
+        let (tx, rx) = oneshot::channel();
+        (
+            HttpLaneRequest {
+                request,
+                response_tx: HttpResponseSender(tx),
+            },
+            HttpResponseReceiver(rx),
+        )
+    }
+
+    pub fn into_parts(self) -> (HttpRequest<Bytes>, HttpResponseSender) {
+        let HttpLaneRequest {
             request,
             response_tx,
-        }
+        } = self;
+        (request, response_tx)
     }
 }
 

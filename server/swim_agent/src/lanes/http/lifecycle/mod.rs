@@ -15,10 +15,9 @@
 use bytes::{Bytes, BytesMut};
 use mime::Mime;
 use std::marker::PhantomData;
-use swim_api::agent::HttpLaneResponse;
+use swim_api::agent::{HttpLaneResponse, HttpResponseSender};
 use swim_api::handlers::{FnHandler, NoHandler};
 use swim_model::http::{Header, HttpResponse, StatusCode, Uri, Version};
-use tokio::sync::oneshot;
 
 use crate::event_handler::EventHandlerError;
 use crate::{
@@ -349,7 +348,7 @@ where
     Codec: HttpLaneCodec<Get>,
 {
     inner: HttpLifecycleHandlerInner<'a, Context, Get, Post, Put, LC>,
-    response_tx: Option<oneshot::Sender<HttpLaneResponse>>,
+    response_tx: Option<HttpResponseSender>,
     codec: Codec,
 }
 
@@ -607,7 +606,7 @@ where
     LC: HttpLaneLifecycleShared<Get, Post, Put, Context, Shared> + 'a,
 {
     inner: HttpLifecycleHandlerSharedInner<'a, Context, Shared, Get, Post, Put, LC>,
-    response_tx: Option<oneshot::Sender<HttpLaneResponse>>,
+    response_tx: Option<HttpResponseSender>,
     codec: Codec,
 }
 

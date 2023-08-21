@@ -18,7 +18,7 @@ use bytes::Bytes;
 use futures::future::join;
 use futures::Future;
 use http::Uri;
-use swim_api::agent::HttpLaneRequest;
+use swim_api::agent::{HttpLaneRequest, HttpResponseReceiver};
 use swim_model::{
     http::{HttpRequest, HttpResponse, Method, StatusCode, Version},
     Text,
@@ -122,7 +122,7 @@ async fn stop_on_requests_terminated() {
 const URI1: &str = "http://example:8080/path/to_agent?lane=name";
 const PAYLOAD: &str = "body";
 
-fn make_request() -> (HttpLaneRequest, oneshot::Receiver<HttpResponse<Bytes>>) {
+fn make_request() -> (HttpLaneRequest, HttpResponseReceiver) {
     let request = HttpRequest {
         method: Method::GET,
         version: Version::HTTP_1_1,
@@ -130,14 +130,8 @@ fn make_request() -> (HttpLaneRequest, oneshot::Receiver<HttpResponse<Bytes>>) {
         headers: vec![],
         payload: Bytes::from(PAYLOAD),
     };
-    let (response_tx, response_rx) = oneshot::channel();
-    (
-        HttpLaneRequest {
-            request,
-            response_tx,
-        },
-        response_rx,
-    )
+    let (request, response_rx) = HttpLaneRequest::new(request);
+    (request, response_rx)
 }
 
 #[tokio::test]
@@ -162,16 +156,15 @@ fn response_body(body: &[u8]) -> Bytes {
 }
 
 fn satisfy_request(request: HttpLaneRequest, expected_uri: &'static str, expected_body: &str) {
-    let HttpLaneRequest {
-        request:
-            HttpRequest {
-                method,
-                uri,
-                payload,
-                ..
-            },
+    let (
+        HttpRequest {
+            method,
+            uri,
+            payload,
+            ..
+        },
         response_tx,
-    } = request;
+    ) = request.into_parts();
     assert_eq!(method, Method::GET);
     assert_eq!(payload.as_ref(), expected_body.as_bytes());
     assert_eq!(uri, Uri::from_static(expected_uri));

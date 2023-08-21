@@ -93,6 +93,26 @@ impl<T> HttpRequest<T> {
             payload,
         })
     }
+
+    pub fn map<F, U>(self, f: F) -> HttpRequest<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        let HttpRequest {
+            method,
+            version,
+            uri,
+            headers,
+            payload,
+        } = self;
+        HttpRequest {
+            method,
+            version,
+            uri,
+            headers,
+            payload: f(payload),
+        }
+    }
 }
 
 #[derive(Debug, Error)]

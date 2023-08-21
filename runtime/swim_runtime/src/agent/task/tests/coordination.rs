@@ -261,7 +261,8 @@ impl FakeAgent {
                     }
                 },
                 maybe_req = http_lanes.next(), if !http_lanes.is_empty() => {
-                    if let Some((name, HttpLaneRequest { request, response_tx })) = maybe_req {
+                    if let Some((name, request)) = maybe_req {
+                        let (request, response_tx) = request.into_parts();
                         assert!(event_tx.send(Event::HttpRequest { name, request: request.clone() }).is_ok());
                         let response = HttpResponse {
                             status_code: StatusCode::OK,
@@ -1102,17 +1103,13 @@ async fn http_request() {
                 stop_tx,
             } = context;
 
-            let (response_tx, response_rx) = oneshot::channel();
-            let request = HttpLaneRequest::new(
-                HttpRequest {
-                    method: Method::GET,
-                    version: Version::HTTP_1_1,
-                    uri: Uri::from_static(HTTP_URI),
-                    headers: vec![],
-                    payload: Bytes::from("Request"),
-                },
-                response_tx,
-            );
+            let (request, response_rx) = HttpLaneRequest::new(HttpRequest {
+                method: Method::GET,
+                version: Version::HTTP_1_1,
+                uri: Uri::from_static(HTTP_URI),
+                headers: vec![],
+                payload: Bytes::from("Request"),
+            });
             http_tx.send(request).await.expect("Channel dropped.");
             event_rx.await_http_request().await;
             let response = response_rx.await.expect("Request dropped.");

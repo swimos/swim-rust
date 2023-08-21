@@ -15,9 +15,8 @@
 use std::{borrow::Cow, cell::RefCell, marker::PhantomData};
 
 use bytes::Bytes;
-use swim_api::agent::{HttpLaneRequest, HttpLaneResponse};
+use swim_api::agent::{HttpLaneRequest, HttpLaneResponse, HttpResponseSender};
 use swim_model::http::{Header, HttpRequest, StatusCode, SupportedMethod, Version};
-use tokio::sync::oneshot;
 use tracing::debug;
 
 use crate::{
@@ -87,7 +86,7 @@ impl<Get, Post, Put, Codec> AgentItem for HttpLane<Get, Post, Put, Codec> {
 
 pub struct RequestAndChannel<Post, Put> {
     request: Request<Post, Put>,
-    response_tx: oneshot::Sender<HttpLaneResponse>,
+    response_tx: HttpResponseSender,
 }
 
 pub struct HttpLaneAccept<Context, Get, Post, Put, Codec = DefaultCodec> {
@@ -126,11 +125,7 @@ where
             projection,
             request,
         } = self;
-        if let Some(HttpLaneRequest {
-            request,
-            response_tx,
-        }) = request.take()
-        {
+        if let Some((request, response_tx)) = request.take().map(HttpLaneRequest::into_parts) {
             let lane = projection(context);
             let HttpRequest {
                 method,

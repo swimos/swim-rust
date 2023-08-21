@@ -47,7 +47,7 @@ use swim_remote::{
 use swim_remote::{AgentResolutionError, FindNode, NoSuchAgent};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{mpsc, oneshot},
+    sync::mpsc,
     time::{sleep, Sleep},
 };
 
@@ -628,8 +628,7 @@ async fn serve_request(
         Err(err) => return bad_request(err.to_string()),
     };
 
-    let (response_tx, response_rx) = oneshot::channel();
-    let message = HttpLaneRequest::new(bytes_request, response_tx);
+    let (message, response_rx) = HttpLaneRequest::new(bytes_request);
     if let Err(err) = resolver.send(message).await {
         match err {
             AgentResolutionError::NotFound(NoSuchAgent { node, .. }) => {

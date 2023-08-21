@@ -24,7 +24,10 @@ use swim::agent::reexport::uuid::Uuid;
 use swim::agent::AgentLaneModel;
 use swim_agent::agent_model::ItemKind;
 use swim_agent::lanes::{DemandLane, DemandMapLane, JoinValueLane};
+use swim_agent::reexport::bytes::Bytes;
 use swim_agent::stores::{MapStore, ValueStore};
+use swim_api::agent::HttpLaneRequest;
+use swim_model::http::{HttpRequest, Uri};
 
 const SYNC_ID: Uuid = Uuid::from_u128(85883);
 
@@ -58,6 +61,16 @@ fn check_agent_with_stores<A>(
 ) where
     A: AgentLaneModel + Default,
 {
+    check_agent_with_stores_and_http::<A>(val_items, map_items, vec![])
+}
+
+fn check_agent_with_stores_and_http<A>(
+    val_items: Vec<(ItemKind, &'static str, bool)>,
+    map_items: Vec<(ItemKind, &'static str, bool)>,
+    http_lanes: Vec<&'static str>,
+) where
+    A: AgentLaneModel + Default,
+{
     let agent = A::default();
 
     let mut val_expected = HashMap::new();
@@ -81,11 +94,14 @@ fn check_agent_with_stores<A>(
         map_expected.insert(*name, spec);
     }
 
+    let http_expected = http_lanes.iter().copied().collect::<HashSet<_>>();
+
     assert_eq!(A::value_like_item_specs(), val_expected);
     assert_eq!(A::map_like_item_specs(), map_expected);
+    assert_eq!(A::http_lane_names(), http_expected);
 
     let id_map = A::item_ids();
-    let expected_len = val_expected.len() + map_expected.len();
+    let expected_len = val_expected.len() + map_expected.len() + http_expected.len();
     assert_eq!(id_map.len(), expected_len);
 
     let mut keys = HashSet::new();
@@ -100,6 +116,7 @@ fn check_agent_with_stores<A>(
     let mut expected_names = HashSet::new();
     expected_names.extend(val_expected.keys().map(|s| Text::new(s)));
     expected_names.extend(map_expected.keys().map(|s| Text::new(s)));
+    expected_names.extend(http_expected.iter().map(|s| Text::new(s)));
 
     assert_eq!(keys, expected_keys);
     assert_eq!(names, expected_names);
@@ -125,10 +142,22 @@ fn check_agent_with_stores<A>(
             kind == ItemKind::Lane
         );
     }
+
+    for lane in http_lanes {
+        let uri = format!("http://example/node?lane={}", lane)
+            .parse::<Uri>()
+            .unwrap();
+        let request_inner = HttpRequest::get(uri).map(|_| Bytes::new());
+        let (request, _response_rx) = HttpLaneRequest::new(request_inner);
+        assert!(agent.on_http_request(lane, request).is_ok());
+    }
 }
 
-fn check_agent<A>(val_lanes: Vec<(&'static str, bool)>, map_lanes: Vec<(&'static str, bool)>)
-where
+fn check_agent_with_http<A>(
+    val_lanes: Vec<(&'static str, bool)>,
+    map_lanes: Vec<(&'static str, bool)>,
+    http_lanes: Vec<&'static str>,
+) where
     A: AgentLaneModel + Default,
 {
     let val_items = val_lanes
@@ -140,7 +169,14 @@ where
         .map(|(name, transient)| (ItemKind::Lane, name, transient))
         .collect();
 
-    check_agent_with_stores::<A>(val_items, map_items)
+    check_agent_with_stores_and_http::<A>(val_items, map_items, http_lanes)
+}
+
+fn check_agent<A>(val_lanes: Vec<(&'static str, bool)>, map_lanes: Vec<(&'static str, bool)>)
+where
+    A: AgentLaneModel + Default,
+{
+    check_agent_with_http::<A>(val_lanes, map_lanes, vec![])
 }
 
 fn get_i32_buffer(n: i32) -> BytesMut {
