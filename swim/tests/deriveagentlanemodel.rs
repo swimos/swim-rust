@@ -23,7 +23,8 @@ use swim::agent::reexport::bytes::BytesMut;
 use swim::agent::reexport::uuid::Uuid;
 use swim::agent::AgentLaneModel;
 use swim_agent::agent_model::ItemKind;
-use swim_agent::lanes::{DemandLane, DemandMapLane, JoinValueLane};
+use swim_agent::lanes::http::Recon;
+use swim_agent::lanes::{DemandLane, DemandMapLane, HttpLane, JoinValueLane, SimpleHttpLane};
 use swim_agent::reexport::bytes::Bytes;
 use swim_agent::stores::{MapStore, ValueStore};
 use swim_api::agent::HttpLaneRequest;
@@ -375,9 +376,10 @@ fn multiple_lanes() {
         sixth: JoinValueLane<i32, i32>,
         seventh: DemandLane<i32>,
         eighth: DemandMapLane<i32, i32>,
+        ninth: SimpleHttpLane<i32>,
     }
 
-    check_agent::<MultipleLanes>(
+    check_agent_with_http::<MultipleLanes>(
         vec![
             persistent("first"),
             persistent("third"),
@@ -390,6 +392,7 @@ fn multiple_lanes() {
             persistent("sixth"),
             transient("eighth"),
         ],
+        vec!["ninth"],
     );
 }
 
@@ -532,9 +535,83 @@ fn join_value_lane_tagged_transient() {
     check_agent::<TwoJoinValueLanes>(vec![], vec![persistent("first"), transient("second")]);
 }
 
+#[test]
+fn single_simple_http_lane() {
+    #[derive(AgentLaneModel)]
+    struct SingleSimpleHttpLane {
+        lane: SimpleHttpLane<i32>,
+    }
+
+    check_agent_with_http::<SingleSimpleHttpLane>(vec![], vec![], vec!["lane"]);
+}
+
+#[test]
+fn single_simple_http_lane_explicit_codec() {
+    #[derive(AgentLaneModel)]
+    struct SingleSimpleHttpLane {
+        lane: SimpleHttpLane<i32, Recon>,
+    }
+
+    check_agent_with_http::<SingleSimpleHttpLane>(vec![], vec![], vec!["lane"]);
+}
+
+#[test]
+fn two_simple_http_lanes() {
+    #[derive(AgentLaneModel)]
+    struct TwoSimpleHttpLanes {
+        first: SimpleHttpLane<i32>,
+        second: SimpleHttpLane<i32, Recon>,
+    }
+
+    check_agent_with_http::<TwoSimpleHttpLanes>(vec![], vec![], vec!["first", "second"]);
+}
+
+#[test]
+fn get_and_post_http_lane() {
+    #[derive(AgentLaneModel)]
+    struct GetAndPostHttpLane {
+        lane: HttpLane<i32, String>,
+    }
+
+    check_agent_with_http::<GetAndPostHttpLane>(vec![], vec![], vec!["lane"]);
+}
+
+#[test]
+fn get_post_and_put_http_lane() {
+    #[derive(AgentLaneModel)]
+    struct GetPostAndPutHttpLane {
+        lane: HttpLane<i32, String, i32>,
+    }
+
+    check_agent_with_http::<GetPostAndPutHttpLane>(vec![], vec![], vec!["lane"]);
+}
+
+#[test]
+fn general_http_lane_explicit_codec() {
+    #[derive(AgentLaneModel)]
+    struct GeneralHttpLane {
+        lane: HttpLane<i32, String, i32, Recon>,
+    }
+
+    check_agent_with_http::<GeneralHttpLane>(vec![], vec![], vec!["lane"]);
+}
+
+#[test]
+fn two_general_http_lanes() {
+    #[derive(AgentLaneModel)]
+    struct TwoGeneralHttpLanes {
+        first: HttpLane<i32, i32>,
+        second: HttpLane<i32, String, i32>,
+    }
+
+    check_agent_with_http::<TwoGeneralHttpLanes>(vec![], vec![], vec!["first", "second"]);
+}
+
 mod isolated {
 
-    use super::{check_agent_with_stores, persistent_lane, persistent_store, transient_lane};
+    use super::{
+        check_agent_with_stores_and_http, persistent_lane, persistent_store, transient_lane,
+    };
 
     #[test]
     fn multiple_items_qualified() {
@@ -550,9 +627,11 @@ mod isolated {
             eighth: swim::agent::lanes::JoinValueLane<i32, i32>,
             ninth: swim::agent::lanes::DemandLane<i32>,
             tenth: swim::agent::lanes::DemandMapLane<i32, i32>,
+            eleventh: swim::agent::lanes::SimpleHttpLane<i32>,
+            twelfth: swim::agent::lanes::HttpLane<i32, i32>,
         }
 
-        check_agent_with_stores::<MultipleLanes>(
+        check_agent_with_stores_and_http::<MultipleLanes>(
             vec![
                 persistent_lane("first"),
                 persistent_lane("third"),
@@ -568,6 +647,7 @@ mod isolated {
                 transient_lane("tenth"),
                 transient_lane("tenth"),
             ],
+            vec!["eleventh", "twelfth"],
         );
     }
 }

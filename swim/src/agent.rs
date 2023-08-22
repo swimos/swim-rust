@@ -223,7 +223,8 @@ pub mod item {
 
 pub mod lanes {
     pub use swim_agent::lanes::{
-        CommandLane, DemandLane, DemandMapLane, JoinValueLane, LaneItem, MapLane, ValueLane,
+        CommandLane, DemandLane, DemandMapLane, HttpLane, JoinValueLane, LaneItem, MapLane,
+        SimpleHttpLane, ValueLane,
     };
 
     pub mod command {
@@ -272,8 +273,8 @@ pub mod lanes {
 
     pub mod http {
         pub use swim_agent::lanes::http::{
-            CodecError, DefaultCodec, HttpLane, HttpLaneAccept, HttpLaneCodec,
-            HttpLaneCodecSupport, Recon, Response, SimpleHttpLane, UnitResponse,
+            CodecError, DefaultCodec, HttpLaneAccept, HttpLaneCodec, HttpLaneCodecSupport, Recon,
+            Response, UnitResponse,
         };
 
         #[cfg(feature = "json")]

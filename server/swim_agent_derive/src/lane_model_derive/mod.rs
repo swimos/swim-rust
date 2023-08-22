@@ -59,10 +59,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
         let no_handler: syn::Type = parse_quote!(#root::event_handler::UnitHandler);
 
-        let (map_item_models, value_item_models) = item_models
-            .iter()
-            .copied()
-            .partition::<Vec<_>, _>(OrdinalItemModel::map_like);
+        let (value_item_models, map_item_models) = partition_models(item_models.iter().copied(), OrdinalItemModel::category);
 
         let warp_lane_models = OrdinalWarpLaneModel::from_item_models(&item_models);
 
@@ -167,6 +164,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
         let write_match_blocks = item_models
             .iter()
+            .filter(|m| m.category() != ItemCategory::Http)
             .copied()
             .map(|model| WriteToBufferMatch(model.model))
             .map(|wmatch| wmatch.into_tokens(root));
@@ -370,6 +368,13 @@ impl<'a> OrdinalHttpLaneModel<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ItemCategory {
+    ValueLike,
+    MapLike,
+    Http
+}
+
 impl<'a> OrdinalItemModel<'a> {
     fn new(agent_name: &'a Ident, ordinal: u64, model: ItemModel<'a>) -> Self {
         OrdinalItemModel {
@@ -379,11 +384,12 @@ impl<'a> OrdinalItemModel<'a> {
         }
     }
 
-    fn map_like(&self) -> bool {
-        matches!(
-            &self.model.kind,
-            ItemSpec::Map(_, _, _) | ItemSpec::JoinValue(_, _) | ItemSpec::DemandMap(_, _)
-        )
+    fn category(&self) -> ItemCategory {
+        match &self.model.kind {
+            ItemSpec::Map(_, _, _) | ItemSpec::JoinValue(_, _) | ItemSpec::DemandMap(_, _) => ItemCategory::MapLike,
+            ItemSpec::Http(_) => ItemCategory::Http,
+            _ => ItemCategory::ValueLike
+        }
     }
 }
 
@@ -796,4 +802,19 @@ impl<'a> NameInsert<'a> {
 fn ident_to_literal(name: &Ident) -> proc_macro2::Literal {
     let name_str = name.to_string();
     proc_macro2::Literal::string(name_str.as_str())
+}
+
+fn partition_models<T, F>(it: impl Iterator<Item = T>, f: F) -> (Vec<T>, Vec<T>)
+where
+    F: Fn(&T) -> ItemCategory,
+{
+    it.fold((vec![], vec![]), |mut acc, item| {
+        let (value_like, map_like) = &mut acc;
+        match f(&item) {
+            ItemCategory::ValueLike => value_like.push(item),
+            ItemCategory::MapLike => map_like.push(item),
+            ItemCategory::Http => {},
+        }
+        acc
+    })
 }
