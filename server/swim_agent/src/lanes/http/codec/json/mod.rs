@@ -18,6 +18,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{CodecError, HttpLaneCodec, HttpLaneCodecSupport};
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Json;
 
