@@ -29,6 +29,9 @@ mod json;
 #[cfg(feature = "json")]
 pub use json::Json;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Error)]
 pub enum CodecError {
     #[error("The codec does not support the content type: {0}")]

@@ -36,6 +36,8 @@ mod content_type;
 mod headers;
 pub mod lifecycle;
 mod model;
+#[cfg(test)]
+mod tests;
 
 #[cfg(feature = "json")]
 pub use codec::Json;

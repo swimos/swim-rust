@@ -12,27 +12,3 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{str::FromStr, sync::OnceLock};
-
-use mime::Mime;
-
-static RECON: OnceLock<Mime> = OnceLock::new();
-
-pub const RECON_SUBTYPE: &str = "x-recon";
-
-pub fn recon() -> &'static Mime {
-    RECON.get_or_init(|| Mime::from_str("application/x-recon").unwrap())
-}
-
-#[cfg(test)]
-mod tests {
-
-    #[test]
-    fn validate_recon_content_type() {
-        let mime = super::recon();
-        assert_eq!(mime.type_(), mime::APPLICATION);
-        assert_eq!(mime.subtype(), "x-recon");
-        assert_eq!(mime.params().count(), 0);
-    }
-
-}
