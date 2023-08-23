@@ -20,7 +20,7 @@ use swim_model::http::{Header, HttpRequest, StatusCode, SupportedMethod, Version
 use tracing::debug;
 
 use crate::{
-    event_handler::{ActionContext, HandlerAction, StepResult},
+    event_handler::{ActionContext, HandlerAction, StepResult, Modification},
     meta::AgentMetadata,
     AgentItem,
 };
@@ -181,7 +181,7 @@ where
                 response_tx,
             };
             lane.request.replace(Some(request_and_chan));
-            StepResult::done(())
+            StepResult::Complete { modified_item: Some(Modification::trigger_only(lane.id)), result: () }
         } else {
             StepResult::after_done()
         }
@@ -223,6 +223,6 @@ where
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
             Some(format!("Unsupported content type: {}", ct)),
         )),
-        _ => Err(bad_request(StatusCode::INTERNAL_SERVER_ERROR, None)),
+        _ => Err(bad_request(StatusCode::BAD_REQUEST, Some("Invalid payload.".into()))),
     }
 }

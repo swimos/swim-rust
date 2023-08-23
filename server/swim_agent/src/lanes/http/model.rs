@@ -14,6 +14,7 @@
 
 use swim_model::http::{Header, HttpResponse, StatusCode, Uri, Version};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MethodAndPayload<PostT, PutT = PostT> {
     Get,
     Head,
