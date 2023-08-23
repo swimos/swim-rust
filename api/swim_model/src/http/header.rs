@@ -41,6 +41,17 @@ pub struct Header {
     pub value: HeaderValue,
 }
 
+impl Header {
+
+    pub fn new<N, V>(name: N, value: V) -> Self
+    where
+        N: Into<HeaderName>,
+        V: Into<HeaderValue>, {
+        Header { name: name.into(), value: value.into() }
+    }
+
+}
+
 impl HeaderName {
     pub fn as_str(&self) -> &str {
         self.0.str_value()

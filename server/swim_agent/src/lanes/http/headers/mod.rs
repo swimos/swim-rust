@@ -17,6 +17,9 @@ use std::str::FromStr;
 use mime::Mime;
 use swim_model::http::{Header, HeaderValue, StandardHeaderName};
 
+#[cfg(test)]
+mod tests;
+
 pub struct Headers<'a> {
     headers: &'a [Header],
 }
@@ -27,6 +30,7 @@ impl<'a> Headers<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct InvalidHeader;
 
 impl<'a> Headers<'a> {
@@ -73,7 +77,7 @@ fn extract_accept(value: &HeaderValue) -> impl Iterator<Item = Result<Mime, Inva
         match std::mem::take(&mut state) {
             AcceptState::Init(value) => {
                 if let Some(value_str) = value.as_str() {
-                    let it = value_str.split(';').map(|s| s.trim());
+                    let it = value_str.split(';').map(|s| s.trim()).filter(|s| !s.is_empty());
                     state = AcceptState::ConsumingPart(it);
                 } else {
                     state = AcceptState::Done;
@@ -81,7 +85,8 @@ fn extract_accept(value: &HeaderValue) -> impl Iterator<Item = Result<Mime, Inva
                 }
             }
             AcceptState::ConsumingPart(mut it) => match it.next() {
-                Some(part) if !part.is_empty() => {
+                Some(part) => {
+                    state = AcceptState::ConsumingPart(it);
                     break Some(Mime::from_str(part).map_err(|_| InvalidHeader));
                 }
                 _ => break None,
