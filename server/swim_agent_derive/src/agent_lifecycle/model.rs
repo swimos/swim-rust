@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{BTreeMap, HashSet};
+use std::{collections::{BTreeMap, HashSet}, borrow::Cow};
 
 use proc_macro2::Span;
 use swim_utilities::errors::{
@@ -395,7 +395,7 @@ fn validate_method_as<'a>(
             HandlerKind::Get => {
                 Validation::join(acc, validate_get_or_delete_sig(sig)).and_then(|(mut acc, t)| {
                     for target in targets {
-                        if let Err(e) = acc.add_on_get(target, t, &sig.ident) {
+                        if let Err(e) = acc.add_on_get(target, t.clone(), &sig.ident) {
                             return Validation::Validated(acc, Errors::of(e));
                         }
                     }
@@ -660,7 +660,7 @@ fn extract_handler_ret<'a>(
     }
 }
 
-fn validate_get_or_delete_sig(sig: &Signature) -> Validation<&Type, Errors<syn::Error>> {
+fn validate_get_or_delete_sig(sig: &Signature) -> Validation<Cow<'_, Type>, Errors<syn::Error>> {
     let iter = sig.inputs.iter();
     let inputs = check_receiver(sig, iter)
         .and_then(|mut iter| {
@@ -684,14 +684,32 @@ fn validate_get_or_delete_sig(sig: &Signature) -> Validation<&Type, Errors<syn::
         ReturnType::Default => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
         ReturnType::Type(_, t) => extract_handler_ret(sig, t.as_ref()),
     }
-    .and_then(|t| {
-        if let Some(parameterized) = t {
-            extract_single_type_param(sig, parameterized, RESPONSE, false)
+    .and_then(|maybe_t| {
+        if let Some(t) = maybe_t {
+            if is_unit_response(t) {
+                Validation::valid(Cow::Owned(parse_quote!(())))
+            } else {
+                extract_single_type_param(sig, t, RESPONSE, false).map(|t| Cow::Borrowed(t))
+            }
         } else {
             Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
         }
     });
     inputs.join(output).map(|(_, t)| t)
+}
+
+fn is_unit_response(t: &Type) -> bool {
+    match t {
+        Type::Path(TypePath { qself: None, path }) => {
+            match path.segments.last() {
+                Some(PathSegment { ident, arguments }) if arguments.is_empty() => {
+                    ident == UNIT_RESPONSE
+                }
+                _ => false,
+            }
+        }
+        _ => false,
+    }
 }
 
 fn validate_post_or_put_sig(sig: &Signature) -> Validation<&Type, Errors<syn::Error>> {
@@ -717,9 +735,13 @@ fn validate_post_or_put_sig(sig: &Signature) -> Validation<&Type, Errors<syn::Er
         ReturnType::Default => Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE)),
         ReturnType::Type(_, t) => extract_handler_ret(sig, t.as_ref()),
     }
-    .and_then(|t| {
-        if let Some(parameterized) = t {
-            extract_single_type_param(sig, parameterized, RESPONSE, false)
+    .and_then(|maybe_t| {
+        if let Some(t) = maybe_t {
+            if is_unit_response(t) {
+                Validation::valid(Cow::Owned(parse_quote!(())))
+            } else {
+                extract_single_type_param(sig, t, RESPONSE, false).map(|t| Cow::Borrowed(t))
+            }
         } else {
             Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
         }
@@ -777,6 +799,7 @@ const HASH_MAP: &str = "HashMap";
 const OPTION: &str = "Option";
 const HASH_SET: &str = "HashSet";
 const RESPONSE: &str = "Response";
+const UNIT_RESPONSE: &str = "UnitResponse";
 
 fn hash_map_type_params<'a>(
     sig: &Signature,
@@ -1719,7 +1742,7 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
     pub fn add_on_get(
         &mut self,
         name: String,
-        get_type: &'a Type,
+        get_type: Cow<'a, Type>,
         method: &'a Ident,
     ) -> Result<(), syn::Error> {
         let AgentLifecycleDescriptorBuilder {
@@ -2114,7 +2137,7 @@ pub struct MapLifecycleDescriptor<'a> {
 
 pub struct HttpLifecycleDescriptor<'a> {
     name: String, //The name of the lane.
-    get_type: Option<&'a Type>,
+    get_type: Option<Cow<'a, Type>>,
     post_type: Option<&'a Type>,
     put_type: Option<&'a Type>,
     pub on_get: Option<&'a Ident>,
@@ -2139,7 +2162,7 @@ impl<'a> HttpLifecycleDescriptor<'a> {
 
     pub fn add_on_get(
         &mut self,
-        handler_type: &'a Type,
+        handler_type: Cow<'a, Type>,
         method: &'a Ident,
     ) -> Result<(), syn::Error> {
         let HttpLifecycleDescriptor {
