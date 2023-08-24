@@ -44,6 +44,8 @@ pub mod on_delete;
 pub mod on_get;
 pub mod on_post;
 pub mod on_put;
+#[cfg(test)]
+mod tests;
 
 pub trait HttpLaneLifecycle<Get, Post, Put, Context>:
     OnGet<Get, Context> + OnPost<Post, Context> + OnPut<Put, Context> + OnDelete<Context>

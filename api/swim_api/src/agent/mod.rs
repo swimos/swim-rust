@@ -120,6 +120,11 @@ impl Future for HttpResponseReceiver {
     }
 }
 
+pub fn response_channel() -> (HttpResponseSender, HttpResponseReceiver) {
+    let (tx, rx) = oneshot::channel();
+    (HttpResponseSender(tx), HttpResponseReceiver(rx))
+}
+
 #[derive(Debug)]
 pub struct HttpResponseReceiver(oneshot::Receiver<HttpLaneResponse>);
 
@@ -131,13 +136,13 @@ pub struct HttpLaneRequest {
 
 impl HttpLaneRequest {
     pub fn new(request: HttpRequest<Bytes>) -> (Self, HttpResponseReceiver) {
-        let (tx, rx) = oneshot::channel();
+        let (tx, rx) = response_channel();
         (
             HttpLaneRequest {
                 request,
-                response_tx: HttpResponseSender(tx),
+                response_tx: tx,
             },
-            HttpResponseReceiver(rx),
+            rx,
         )
     }
 
