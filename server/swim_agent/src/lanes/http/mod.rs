@@ -28,7 +28,6 @@ use crate::{
 use self::{
     content_type::recon,
     headers::Headers,
-    model::{MethodAndPayload, Request},
 };
 
 mod codec;
@@ -43,6 +42,7 @@ mod tests;
 pub use codec::Json;
 pub use codec::{CodecError, DefaultCodec, HttpLaneCodec, HttpLaneCodecSupport, Recon};
 pub use model::{Response, UnitResponse};
+pub(crate) use model::{Request, MethodAndPayload};
 
 pub struct HttpLane<Get, Post, Put = Post, Codec = DefaultCodec> {
     id: u64,
@@ -71,6 +71,10 @@ impl<Get, Post, Put, Codec> HttpLane<Get, Post, Put, Codec> {
     pub(crate) fn take_request(&self) -> Option<RequestAndChannel<Post, Put>> {
         self.request.borrow_mut().take()
     }
+
+    pub(crate) fn replace(&self, request: RequestAndChannel<Post, Put>) {
+        self.request.replace(Some(request));
+    }
 }
 
 impl<Get, Post, Put, Codec> HttpLane<Get, Post, Put, Codec>
@@ -93,6 +97,14 @@ pub struct RequestAndChannel<Post, Put> {
     response_tx: HttpResponseSender,
 }
 
+impl<Post, Put> RequestAndChannel<Post, Put> {
+
+    pub fn new( request: Request<Post, Put>,
+        response_tx: HttpResponseSender) -> Self {
+            RequestAndChannel { request, response_tx }
+        }
+
+}
 pub struct HttpLaneAccept<Context, Get, Post, Put, Codec = DefaultCodec> {
     projection: fn(&Context) -> &HttpLane<Get, Post, Put, Codec>,
     request: Option<HttpLaneRequest>,
@@ -172,15 +184,15 @@ where
                     return StepResult::done(());
                 }
             };
-            let request_and_chan = RequestAndChannel {
-                request: Request {
+            let request_and_chan = RequestAndChannel::new(
+                Request {
                     method_and_payload,
                     uri,
                     headers,
                 },
-                response_tx,
-            };
-            lane.request.replace(Some(request_and_chan));
+                response_tx
+            );
+            lane.replace(request_and_chan);
             StepResult::Complete { modified_item: Some(Modification::trigger_only(lane.id)), result: () }
         } else {
             StepResult::after_done()

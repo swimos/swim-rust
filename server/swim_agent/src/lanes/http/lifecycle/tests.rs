@@ -228,7 +228,7 @@ async fn run_get_handler() {
         headers: request_headers(),
     };
     let (tx, rx) = response_channel();
-    let req = RequestAndChannel { request, response_tx: tx };
+    let req = RequestAndChannel::new(request, tx);
     let agent = TestAgent;
     let shared = TestLifecycleState::default();
     let lifecycle = TestLifecycle;
@@ -260,7 +260,7 @@ async fn run_head_handler() {
         headers: request_headers(),
     };
     let (tx, rx) = response_channel();
-    let req = RequestAndChannel { request, response_tx: tx };
+    let req = RequestAndChannel::new(request, tx);
     let agent = TestAgent;
     let shared = TestLifecycleState::default();
     let lifecycle = TestLifecycle;
@@ -290,7 +290,7 @@ async fn run_post_handler() {
         headers: request_headers(),
     };
     let (tx, rx) = response_channel();
-    let req = RequestAndChannel { request, response_tx: tx };
+    let req = RequestAndChannel::new(request, tx);
     let agent = TestAgent;
     let shared = TestLifecycleState::default();
     let lifecycle = TestLifecycle;
@@ -320,7 +320,7 @@ async fn run_put_handler() {
         headers: request_headers(),
     };
     let (tx, rx) = response_channel();
-    let req = RequestAndChannel { request, response_tx: tx };
+    let req = RequestAndChannel::new(request, tx);
     let agent = TestAgent;
     let shared = TestLifecycleState::default();
     let lifecycle = TestLifecycle;
@@ -350,7 +350,7 @@ async fn run_delete_handler() {
         headers: request_headers(),
     };
     let (tx, rx) = response_channel();
-    let req = RequestAndChannel { request, response_tx: tx };
+    let req = RequestAndChannel::new(request, tx);
     let agent = TestAgent;
     let shared = TestLifecycleState::default();
     let lifecycle = TestLifecycle;
@@ -380,7 +380,7 @@ async fn run_unsatisfiable_get_handler() {
         headers: bad_request_headers(),
     };
     let (tx, rx) = response_channel();
-    let req = RequestAndChannel { request, response_tx: tx };
+    let req = RequestAndChannel::new(request, tx);
     let agent = TestAgent;
     let shared = TestLifecycleState::default();
     let lifecycle = TestLifecycle;
@@ -405,7 +405,7 @@ async fn get_method_unsupported_handler() {
         headers: bad_request_headers(),
     };
     let (tx, rx) = response_channel();
-    let req = RequestAndChannel { request, response_tx: tx };
+    let req = RequestAndChannel::new(request, tx);
 
     let agent = TestAgent;
 
@@ -429,7 +429,7 @@ async fn post_method_unsupported_handler() {
         headers: bad_request_headers(),
     };
     let (tx, rx) = response_channel();
-    let req = RequestAndChannel { request, response_tx: tx };
+    let req = RequestAndChannel::new(request, tx);
 
     let agent = TestAgent;
 
@@ -453,7 +453,7 @@ async fn put_method_unsupported_handler() {
         headers: bad_request_headers(),
     };
     let (tx, rx) = response_channel();
-    let req = RequestAndChannel { request, response_tx: tx };
+    let req = RequestAndChannel::new(request, tx);
 
     let agent = TestAgent;
 
@@ -477,7 +477,7 @@ async fn delete_method_unsupported_handler() {
         headers: bad_request_headers(),
     };
     let (tx, rx) = response_channel();
-    let req = RequestAndChannel { request, response_tx: tx };
+    let req = RequestAndChannel::new(request, tx);
 
     let agent = TestAgent;
 

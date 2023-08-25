@@ -29,6 +29,9 @@ use crate::{
 
 use super::{HLeaf, HTree, ItemEvent, ItemEventShared};
 
+#[cfg(test)]
+mod tests;
+
 pub type HttpLeaf<Context, Get, Post, Put, Codec, LC> =
     HttpBranch<Context, Get, Post, Put, Codec, LC, HLeaf, HLeaf>;
 
