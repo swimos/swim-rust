@@ -128,6 +128,14 @@ pub fn response_channel() -> (HttpResponseSender, HttpResponseReceiver) {
 #[derive(Debug)]
 pub struct HttpResponseReceiver(oneshot::Receiver<HttpLaneResponse>);
 
+impl HttpResponseReceiver {
+
+    pub fn try_recv(&mut self) -> Result<HttpLaneResponse, ()> {
+        self.0.try_recv().map_err(|_| ())
+    }
+
+}
+
 #[derive(Debug)]
 pub struct HttpLaneRequest {
     pub request: HttpRequest<Bytes>,

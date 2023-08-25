@@ -75,6 +75,7 @@ where
 {
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpRequestContext {
     uri: Uri,
     headers: Vec<Header>,

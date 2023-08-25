@@ -36,18 +36,23 @@ use swim_agent::event_handler::{
 use swim_agent::item::{AgentItem, MapItem};
 use swim_agent::lanes::demand::Cue;
 use swim_agent::lanes::demand_map::{CueKey, DemandMapLaneSync};
+use swim_agent::lanes::http::lifecycle::HttpRequestContext;
+use swim_agent::lanes::http::{HttpLaneAccept, Recon, Response};
 use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
 use swim_agent::lanes::join_value::{AfterClosed, JoinValueLaneUpdate, LinkClosedResponse};
-use swim_agent::lanes::{DemandLane, DemandMapLane, JoinValueLane, LaneItem};
+use swim_agent::lanes::{DemandLane, DemandMapLane, JoinValueLane, LaneItem, SimpleHttpLane};
 use swim_agent::meta::AgentMetadata;
 use swim_agent::reexport::bytes::BytesMut;
 use swim_agent::reexport::uuid::Uuid;
 use swim_agent::stores::{MapStore, ValueStore};
-use swim_api::agent::AgentConfig;
+use swim_api::agent::{AgentConfig, HttpLaneRequest, HttpResponseReceiver};
 use swim_api::downlink::DownlinkKind;
 use swim_api::error::{DownlinkRuntimeError, OpenStoreError};
 use swim_api::meta::lane::LaneKind;
 use swim_api::store::StoreKind;
+use swim_model::http::{
+    Header, HttpRequest, HttpResponse, Method, StandardHeaderName, StatusCode, Version,
+};
 use swim_model::Text;
 use swim_utilities::routing::route_uri::RouteUri;
 
@@ -141,6 +146,7 @@ struct TestAgent {
     join_value: JoinValueLane<i32, Text>,
     demand: DemandLane<i32>,
     demand_map: DemandMapLane<i32, Text>,
+    http: SimpleHttpLane<i32, Recon>,
 }
 
 impl From<(i32, i32, HashMap<i32, Text>, i32, HashMap<i32, Text>)> for TestAgent {
@@ -163,6 +169,7 @@ impl From<(i32, i32, HashMap<i32, Text>, i32, HashMap<i32, Text>)> for TestAgent
             join_value: JoinValueLane::new(6),
             demand: DemandLane::new(7),
             demand_map: DemandMapLane::new(8),
+            http: SimpleHttpLane::new(9),
         }
     }
 }
@@ -189,6 +196,10 @@ enum Event {
     Cued,
     Keys,
     CueKey(i32),
+    HttpGet(HttpRequestContext),
+    HttpPost(HttpRequestContext, i32),
+    HttpPut(HttpRequestContext, i32),
+    HttpDelete(HttpRequestContext),
 }
 
 #[derive(Clone, Default)]
@@ -1750,4 +1761,77 @@ fn both_demand_map_handlers() {
     let events = template.0.take();
 
     assert_eq!(events, vec![Event::CueKey(3), Event::Keys]);
+}
+
+const HTTP_URI: &str = "http://example/node?lane=http";
+const RECON: &str = "application/x-recon";
+
+fn get_request() -> (HttpLaneRequest, HttpResponseReceiver) {
+    let headers = vec![Header::new(StandardHeaderName::Accept, RECON)];
+    HttpLaneRequest::new(HttpRequest {
+        method: Method::GET,
+        version: Version::HTTP_1_1,
+        uri: HTTP_URI.parse().unwrap(),
+        headers,
+        payload: Default::default(),
+    })
+}
+
+#[test]
+fn on_get_handler() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(LifecycleInner);
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_get(http)]
+        fn my_on_get(
+            &self,
+            context: HandlerContext<TestAgent>,
+            http_context: HttpRequestContext,
+        ) -> impl HandlerAction<TestAgent, Completion = Response<i32>> + '_ {
+            context.effect(move || {
+                self.0.push(Event::HttpGet(http_context));
+                Response::from(27)
+            })
+        }
+    }
+
+    let agent = TestAgent::default();
+    let template = TestLifecycle::default();
+    let lifecycle = template.clone().into_lifecycle();
+
+    let (request, mut rx) = get_request();
+    let get_handler = HttpLaneAccept::new(|agent: &TestAgent| &agent.http, request);
+
+    run_handler_mod(
+        &agent,
+        get_handler,
+        Some(Modification::trigger_only(agent.http.id())),
+    );
+
+    let handler = lifecycle
+        .item_event(&agent, "http")
+        .expect("Expected handler for lane.");
+
+    run_handler_mod(&agent, handler, None);
+
+    let HttpResponse {
+        status_code,
+        payload,
+        ..
+    } = rx.try_recv().expect("No response provided.");
+    assert_eq!(status_code, StatusCode::OK);
+    assert_eq!(payload.as_ref(), b"27");
+
+    let events = template.0.take();
+
+    match events.as_slice() {
+        [Event::HttpGet(context)] => {
+            let expected_headers = vec![Header::new(StandardHeaderName::Accept, RECON)];
+            assert_eq!(context.uri().to_string(), HTTP_URI);
+            assert_eq!(context.headers(), &expected_headers);
+        }
+        ow => panic!("Events not as expected: {:?}", ow),
+    }
 }
