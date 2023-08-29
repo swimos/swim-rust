@@ -24,7 +24,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::{fake_agent::TestAgent, AD_HOC_HOST, AD_HOC_LANE, AD_HOC_NODE, CMD_LANE};
+use super::{fake_agent::TestAgent, AD_HOC_HOST, AD_HOC_LANE, AD_HOC_NODE, CMD_LANE, HTTP_LANE};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum LifecycleEvent {
@@ -116,25 +116,31 @@ impl HandlerAction<TestAgent> for LifecycleHandler {
         let LifecycleHandler { sender, event } = self;
         if let Some(event) = event.take() {
             if let LifecycleEvent::Lane(name) = &event {
-                if name == CMD_LANE {
-                    let n = context.take_cmd();
-                    if n % 2 == 0 {
-                        let tx = sender.clone();
-                        let fut = async move {
-                            tx.send(LifecycleEvent::RanSuspended(n))
-                                .expect("Channel closed.");
-                            let h = SideEffect::from(move || {
-                                tx.send(LifecycleEvent::RanSuspendedConsequence)
+                match name.as_str() {
+                    CMD_LANE => {
+                        let n = context.take_cmd();
+                        if n % 2 == 0 {
+                            let tx = sender.clone();
+                            let fut = async move {
+                                tx.send(LifecycleEvent::RanSuspended(n))
                                     .expect("Channel closed.");
-                            });
-                            let boxed: BoxEventHandler<TestAgent> = Box::new(h);
-                            boxed
-                        };
-                        action_context.spawn_suspend(fut.boxed());
-                    } else {
-                        let address = Address::new(Some(AD_HOC_HOST), AD_HOC_NODE, AD_HOC_LANE);
-                        action_context.send_command(address, "content", true);
+                                let h = SideEffect::from(move || {
+                                    tx.send(LifecycleEvent::RanSuspendedConsequence)
+                                        .expect("Channel closed.");
+                                });
+                                let boxed: BoxEventHandler<TestAgent> = Box::new(h);
+                                boxed
+                            };
+                            action_context.spawn_suspend(fut.boxed());
+                        } else {
+                            let address = Address::new(Some(AD_HOC_HOST), AD_HOC_NODE, AD_HOC_LANE);
+                            action_context.send_command(address, "content", true);
+                        }
                     }
+                    HTTP_LANE => {
+                        context.satisfy_http_requests();
+                    }
+                    _ => {}
                 }
             }
             sender.send(event).expect("Report failed.");
