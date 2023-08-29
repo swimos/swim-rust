@@ -37,7 +37,7 @@ use swim_agent::item::{AgentItem, MapItem};
 use swim_agent::lanes::demand::Cue;
 use swim_agent::lanes::demand_map::{CueKey, DemandMapLaneSync};
 use swim_agent::lanes::http::lifecycle::HttpRequestContext;
-use swim_agent::lanes::http::{HttpLaneAccept, Recon, Response};
+use swim_agent::lanes::http::{HttpLaneAccept, Recon, Response, UnitResponse};
 use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
 use swim_agent::lanes::join_value::{AfterClosed, JoinValueLaneUpdate, LinkClosedResponse};
 use swim_agent::lanes::{DemandLane, DemandMapLane, JoinValueLane, LaneItem, SimpleHttpLane};
@@ -54,6 +54,7 @@ use swim_model::http::{
     Header, HttpRequest, HttpResponse, Method, StandardHeaderName, StatusCode, Version,
 };
 use swim_model::Text;
+use swim_recon::printer::print_recon_compact;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use futures::future::BoxFuture;
@@ -1777,6 +1778,41 @@ fn get_request() -> (HttpLaneRequest, HttpResponseReceiver) {
     })
 }
 
+fn post_request(n: i32) -> (HttpLaneRequest, HttpResponseReceiver) {
+    let headers = vec![Header::new(StandardHeaderName::ContentType, RECON)];
+    let body = format!("{}", print_recon_compact(&n));
+    HttpLaneRequest::new(HttpRequest {
+        method: Method::POST,
+        version: Version::HTTP_1_1,
+        uri: HTTP_URI.parse().unwrap(),
+        headers,
+        payload: body.into(),
+    })
+}
+
+fn put_request(n: i32) -> (HttpLaneRequest, HttpResponseReceiver) {
+    let headers = vec![Header::new(StandardHeaderName::ContentType, RECON)];
+    let body = format!("{}", print_recon_compact(&n));
+    HttpLaneRequest::new(HttpRequest {
+        method: Method::PUT,
+        version: Version::HTTP_1_1,
+        uri: HTTP_URI.parse().unwrap(),
+        headers,
+        payload: body.into(),
+    })
+}
+
+fn delete_request() -> (HttpLaneRequest, HttpResponseReceiver) {
+    let headers = vec![];
+    HttpLaneRequest::new(HttpRequest {
+        method: Method::DELETE,
+        version: Version::HTTP_1_1,
+        uri: HTTP_URI.parse().unwrap(),
+        headers,
+        payload: Default::default(),
+    })
+}
+
 #[test]
 fn on_get_handler() {
     #[derive(Default, Clone)]
@@ -1831,6 +1867,186 @@ fn on_get_handler() {
             let expected_headers = vec![Header::new(StandardHeaderName::Accept, RECON)];
             assert_eq!(context.uri().to_string(), HTTP_URI);
             assert_eq!(context.headers(), &expected_headers);
+        }
+        ow => panic!("Events not as expected: {:?}", ow),
+    }
+}
+
+#[test]
+fn on_post_handler() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(LifecycleInner);
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_post(http)]
+        fn my_on_post(
+            &self,
+            context: HandlerContext<TestAgent>,
+            http_context: HttpRequestContext,
+            value: i32,
+        ) -> impl HandlerAction<TestAgent, Completion = UnitResponse> + '_ {
+            context.effect(move || {
+                self.0.push(Event::HttpPost(http_context, value));
+                UnitResponse::default()
+            })
+        }
+    }
+
+    let agent = TestAgent::default();
+    let template = TestLifecycle::default();
+    let lifecycle = template.clone().into_lifecycle();
+
+    let (request, mut rx) = post_request(987);
+    let post_handler = HttpLaneAccept::new(|agent: &TestAgent| &agent.http, request);
+
+    run_handler_mod(
+        &agent,
+        post_handler,
+        Some(Modification::trigger_only(agent.http.id())),
+    );
+
+    let handler = lifecycle
+        .item_event(&agent, "http")
+        .expect("Expected handler for lane.");
+
+    run_handler_mod(&agent, handler, None);
+
+    let HttpResponse {
+        status_code,
+        payload,
+        ..
+    } = rx.try_recv().expect("No response provided.");
+    assert_eq!(status_code, StatusCode::OK);
+    assert!(payload.is_empty());
+
+    let events = template.0.take();
+
+    match events.as_slice() {
+        [Event::HttpPost(context, value)] => {
+            assert_eq!(*value, 987);
+            let expected_headers = vec![Header::new(StandardHeaderName::ContentType, RECON)];
+            assert_eq!(context.uri().to_string(), HTTP_URI);
+            assert_eq!(context.headers(), &expected_headers);
+        }
+        ow => panic!("Events not as expected: {:?}", ow),
+    }
+}
+
+#[test]
+fn on_put_handler() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(LifecycleInner);
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_put(http)]
+        fn my_on_put(
+            &self,
+            context: HandlerContext<TestAgent>,
+            http_context: HttpRequestContext,
+            value: i32,
+        ) -> impl HandlerAction<TestAgent, Completion = UnitResponse> + '_ {
+            context.effect(move || {
+                self.0.push(Event::HttpPut(http_context, value));
+                UnitResponse::default()
+            })
+        }
+    }
+
+    let agent = TestAgent::default();
+    let template = TestLifecycle::default();
+    let lifecycle = template.clone().into_lifecycle();
+
+    let (request, mut rx) = put_request(546);
+    let put_handler = HttpLaneAccept::new(|agent: &TestAgent| &agent.http, request);
+
+    run_handler_mod(
+        &agent,
+        put_handler,
+        Some(Modification::trigger_only(agent.http.id())),
+    );
+
+    let handler = lifecycle
+        .item_event(&agent, "http")
+        .expect("Expected handler for lane.");
+
+    run_handler_mod(&agent, handler, None);
+
+    let HttpResponse {
+        status_code,
+        payload,
+        ..
+    } = rx.try_recv().expect("No response provided.");
+    assert_eq!(status_code, StatusCode::OK);
+    assert!(payload.is_empty());
+
+    let events = template.0.take();
+
+    match events.as_slice() {
+        [Event::HttpPut(context, value)] => {
+            assert_eq!(*value, 546);
+            let expected_headers = vec![Header::new(StandardHeaderName::ContentType, RECON)];
+            assert_eq!(context.uri().to_string(), HTTP_URI);
+            assert_eq!(context.headers(), &expected_headers);
+        }
+        ow => panic!("Events not as expected: {:?}", ow),
+    }
+}
+
+#[test]
+fn on_delete_handler() {
+    #[derive(Default, Clone)]
+    struct TestLifecycle(LifecycleInner);
+
+    #[lifecycle(TestAgent, agent_root(::swim_agent))]
+    impl TestLifecycle {
+        #[on_delete(http)]
+        fn my_on_delete(
+            &self,
+            context: HandlerContext<TestAgent>,
+            http_context: HttpRequestContext,
+        ) -> impl HandlerAction<TestAgent, Completion = UnitResponse> + '_ {
+            context.effect(move || {
+                self.0.push(Event::HttpDelete(http_context));
+                UnitResponse::default()
+            })
+        }
+    }
+
+    let agent = TestAgent::default();
+    let template = TestLifecycle::default();
+    let lifecycle = template.clone().into_lifecycle();
+
+    let (request, mut rx) = delete_request();
+    let put_handler = HttpLaneAccept::new(|agent: &TestAgent| &agent.http, request);
+
+    run_handler_mod(
+        &agent,
+        put_handler,
+        Some(Modification::trigger_only(agent.http.id())),
+    );
+
+    let handler = lifecycle
+        .item_event(&agent, "http")
+        .expect("Expected handler for lane.");
+
+    run_handler_mod(&agent, handler, None);
+
+    let HttpResponse {
+        status_code,
+        payload,
+        ..
+    } = rx.try_recv().expect("No response provided.");
+    assert_eq!(status_code, StatusCode::OK);
+    assert!(payload.is_empty());
+
+    let events = template.0.take();
+
+    match events.as_slice() {
+        [Event::HttpDelete(context)] => {
+            assert_eq!(context.uri().to_string(), HTTP_URI);
+            assert!(context.headers().is_empty());
         }
         ow => panic!("Events not as expected: {:?}", ow),
     }
