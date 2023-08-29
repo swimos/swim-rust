@@ -33,7 +33,7 @@ use swim_api::{
     },
 };
 use swim_form::structural::read::recognizer::{primitive::TextRecognizer, RecognizerReadable};
-use swim_model::{address::Address, BytesStr, Text, http::HttpRequest};
+use swim_model::{address::Address, BytesStr, Text, http::{HttpRequest, Method, Version, StatusCode}};
 use swim_utilities::{
     future::retryable::RetryStrategy,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
@@ -99,6 +99,7 @@ const VAL_LANE: &str = "first";
 const MAP_LANE: &str = "second";
 const CMD_LANE: &str = "third";
 const HTTP_LANE: &str = "fourth";
+const HTTP_LANE_URI: &str =  "http://example/node?lane=fourth";
 
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
@@ -332,6 +333,78 @@ async fn command_to_value_lane() {
     };
 
     let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
+    assert!(result.is_ok());
+
+    let events = lc_event_rx.collect::<Vec<_>>().await;
+
+    //Check that the `on_stop` event fired.
+    assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+
+    let lane_events = test_event_rx.collect::<Vec<_>>().await;
+    assert!(lane_events.is_empty());
+}
+
+#[tokio::test]
+async fn request_to_http_lane() {
+    let context = Box::<TestAgentContext>::default();
+    let (
+        task,
+        TestContext {
+            test_event_rx,
+            mut http_request_rx,
+            mut lc_event_rx,
+            val_lane_io,
+            map_lane_io,
+            cmd_lane_io,
+            http_lane_tx,
+        },
+    ) = init_agent(context).await;
+
+    let test_case = async move {
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected init event."),
+            LifecycleEvent::Init
+        );
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected start event."),
+            LifecycleEvent::Start
+        );
+
+        let req = HttpRequest {
+            method: Method::GET,
+            version: Version::HTTP_1_1,
+            uri: HTTP_LANE_URI.parse().unwrap(),
+            headers: vec![],
+            payload: Bytes::new(),
+        };
+        let (lane_request, response_rx) = HttpLaneRequest::new(req.clone());
+        
+        http_lane_tx.send(lane_request).await.expect("HTTP lane stopped.");
+
+        // The agent should receive the request...
+        assert_eq!(
+            http_request_rx.next().await.expect("Expected HTTP request."),
+            req
+        );
+
+        //... ,trigger the lane event...
+        assert_eq!(
+            lc_event_rx.next().await.expect("Expected HTTP lane event."),
+            LifecycleEvent::Lane(Text::new(HTTP_LANE))
+        );
+
+        //... and then satisfy the request.
+        let response = response_rx.await.expect("Request not satisfied.");
+        assert_eq!(response.status_code, StatusCode::OK);
+
+        drop(val_lane_io);
+        drop(map_lane_io);
+        drop(cmd_lane_io);
+        drop(http_lane_tx);
+        (test_event_rx, lc_event_rx)
+    };
+
+    let (result, (test_event_rx, lc_event_rx)) = tokio::time::timeout(TEST_TIMEOUT, join(task, test_case)).await.expect("Timed out");
     assert!(result.is_ok());
 
     let events = lc_event_rx.collect::<Vec<_>>().await;

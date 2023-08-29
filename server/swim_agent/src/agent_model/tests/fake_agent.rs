@@ -361,7 +361,7 @@ impl HandlerAction<TestAgent> for TestHttpHandler {
             let req_cpy = request.request.clone();
             context.stage_http_request(request);
             context.http_sender.send(req_cpy).expect("Receiver dropped.");
-            StepResult::Complete { modified_item: Some(Modification::no_trigger(HTTP_ID)), result: () }
+            StepResult::Complete { modified_item: Some(Modification::trigger_only(HTTP_ID)), result: () }
         } else {
             StepResult::after_done()
         }
