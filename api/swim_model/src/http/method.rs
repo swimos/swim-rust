@@ -17,6 +17,7 @@ use lazy_static::lazy_static;
 use std::{collections::HashMap, fmt::Formatter};
 use thiserror::Error;
 
+/// Model describing the method of an HTTP request.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Method(MethodInner);
 
@@ -146,6 +147,7 @@ impl Method {
         }
     }
 
+    /// Determine if this method can be supported by a Swim server.
     pub fn supported_method(&self) -> Option<SupportedMethod> {
         match self.0 {
             MethodInner::Get => Some(SupportedMethod::Get),
@@ -162,6 +164,7 @@ impl Method {
 #[error("{0} does not encode a valid method.")]
 pub struct MethodDecodeError(pub u8);
 
+/// Enumeration of the HTTP methods that a Swim server can support,
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SupportedMethod {
     #[default]

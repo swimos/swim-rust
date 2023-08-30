@@ -14,6 +14,8 @@
 
 use thiserror::Error;
 
+/// Model for HTTP status codes. The representation is a u16 but only instances representing
+/// valid status codes can be constructed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 pub struct StatusCode(u16);
 
@@ -22,6 +24,7 @@ pub struct StatusCode(u16);
 pub struct InvalidStatusCode(u16);
 
 impl StatusCode {
+    
     pub fn as_u16(&self) -> u16 {
         self.0
     }

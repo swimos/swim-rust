@@ -18,6 +18,7 @@ use thiserror::Error;
 
 use super::{Header, HeaderName, HeaderValue, StatusCode, Version};
 
+/// Model for an HTTP response where the value of the payload can be typed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HttpResponse<T> {
     pub status_code: StatusCode,

@@ -43,6 +43,23 @@ pub use codec::{CodecError, DefaultCodec, HttpLaneCodec, HttpLaneCodecSupport, R
 pub use model::{Response, UnitResponse};
 pub(crate) use model::{Request, MethodAndPayload};
 
+/// An HTTP lane allows an agent to expose and HTTP endpoint over the HTTP server exposed by the server
+/// hosting the agent. If an agent is hosted with the node URI '/node' on a host 'host', listening on port
+/// 8080, a lane named 'http_lane' can be addressed at the URI: 'https://host:8080/node?lane=http_lane'.
+/// 
+/// An HTTP lane can respond to GET, POST, PUT, DELETE and HEAD requests which are defined by attaching 
+/// lifecycle events to the agent.
+/// 
+/// For simple cases where the 'Get', 'Post' and 'Put' types are the same, [`SimpleHttpLane`] can be used
+/// as a shorthand for this lane type.
+/// 
+/// #Type Arguments
+/// `Get` - The type of the values that the lane will produce in response to a GET request.
+/// `Post` - The type of the values that the lane will accept as the body of a POST request.
+/// `Put` - The type of the values that the lane will accept as the body of a PUT request.
+/// `Codec` - The codec that the lane wil use for the bodies of POST and PUT requests and the responses
+/// to GET requests. The [`DefaultCodec`] supports Recon and JSON (if the 'json' features is enabled
+/// for the crate).
 pub struct HttpLane<Get, Post, Put = Post, Codec = DefaultCodec> {
     id: u64,
     _type: PhantomData<fn(Post, Put) -> Get>,
@@ -50,6 +67,7 @@ pub struct HttpLane<Get, Post, Put = Post, Codec = DefaultCodec> {
     codec: Codec,
 }
 
+/// A shorthand for [`HttpLane`]s where the Get, Post and Put parameters are all the same.
 pub type SimpleHttpLane<T, Codec = DefaultCodec> = HttpLane<T, T, T, Codec>;
 
 impl<Get, Post, Put, Codec> HttpLane<Get, Post, Put, Codec>
@@ -81,6 +99,8 @@ impl<Get, Post, Put, Codec> HttpLane<Get, Post, Put, Codec>
 where
     Codec: Clone,
 {
+
+    /// Get a copy of the codec used by the lane.
     pub fn codec(&self) -> Codec {
         self.codec.clone()
     }

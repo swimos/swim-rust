@@ -23,9 +23,13 @@ use thiserror::Error;
 
 use crate::BytesStr;
 
+/// Model for the name of an HTTP header. The representation of this type will either be an enumeration
+/// of the standard header names or a general ASCII string for custom headers.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HeaderName(Name);
 
+/// Model for the value of an HTTP header. The representation of this type is an array of bytes that
+/// may, or may not, be a valid UTF8 string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeaderValue(HeaderValueInner);
 
@@ -35,6 +39,7 @@ enum HeaderValueInner {
     BytesHeader(Bytes),
 }
 
+/// Mode of an HTTP header, used by [`super::HttpRequest`] and [`super::HttpResponse`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Header {
     pub name: HeaderName,
@@ -43,6 +48,7 @@ pub struct Header {
 
 impl Header {
 
+    /// Create a header from anything that can be converted into header names and header values.
     pub fn new<N, V>(name: N, value: V) -> Self
     where
         N: Into<HeaderName>,
@@ -198,6 +204,7 @@ impl From<&str> for HeaderName {
     }
 }
 
+/// An enumeration of standard header names.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StandardHeaderName {

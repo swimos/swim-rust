@@ -21,6 +21,7 @@ use super::{
     Header, HeaderName, HeaderValue, Method, UnsupportedMethod, UnsupportedVersion, Uri, Version,
 };
 
+/// Model for an HTTP request where the value of the payload can be typed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpRequest<T> {
     pub method: Method,
@@ -31,6 +32,8 @@ pub struct HttpRequest<T> {
 }
 
 impl HttpRequest<()> {
+
+    /// Create a minimal GET requests (with no headers).
     pub fn get(uri: Uri) -> Self {
         HttpRequest {
             method: Method::GET,
@@ -40,7 +43,8 @@ impl HttpRequest<()> {
             payload: (),
         }
     }
-
+    
+    /// Create a minimal DELETE requests (with no headers).
     pub fn delete(uri: Uri) -> Self {
         HttpRequest {
             method: Method::DELETE,
@@ -53,6 +57,8 @@ impl HttpRequest<()> {
 }
 
 impl<T> HttpRequest<T> {
+
+    /// Create a minimal PUT requests (with no headers).
     pub fn put(uri: Uri, payload: T) -> Self {
         HttpRequest {
             method: Method::PUT,
@@ -63,6 +69,7 @@ impl<T> HttpRequest<T> {
         }
     }
 
+    /// Create a minimal POST requests (with no headers).
     pub fn post(uri: Uri, payload: T) -> Self {
         HttpRequest {
             method: Method::POST,
@@ -73,6 +80,7 @@ impl<T> HttpRequest<T> {
         }
     }
 
+    /// Transform the payload of the HTTP request with a fallible closure.
     pub async fn try_transform<F, Fut, T2, E>(self, f: F) -> Result<HttpRequest<T2>, E>
     where
         F: FnOnce(T) -> Fut,
@@ -94,6 +102,7 @@ impl<T> HttpRequest<T> {
         })
     }
 
+    /// Transform the payload of the HTTP request with a closure.
     pub fn map<F, U>(self, f: F) -> HttpRequest<U>
     where
         F: FnOnce(T) -> U,

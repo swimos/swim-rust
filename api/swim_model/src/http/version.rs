@@ -17,6 +17,7 @@ use lazy_static::lazy_static;
 use std::{collections::HashMap, fmt::Formatter};
 use thiserror::Error;
 
+/// An HTTP version number. (At this time, Swim only supports HTTP 1.1).
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Version(VersionInner);
 
