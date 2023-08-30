@@ -21,6 +21,7 @@ use super::{CodecError, HttpLaneCodec, HttpLaneCodecSupport};
 #[cfg(test)]
 mod tests;
 
+/// Codec supporting JSON payloads (using [`serde_json`]).
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Json;
 

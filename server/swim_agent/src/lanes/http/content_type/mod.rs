@@ -20,6 +20,7 @@ static RECON: OnceLock<Mime> = OnceLock::new();
 
 pub const RECON_SUBTYPE: &str = "x-recon";
 
+/// The content type for Recon.
 pub fn recon() -> &'static Mime {
     RECON.get_or_init(|| Mime::from_str("application/x-recon").unwrap())
 }

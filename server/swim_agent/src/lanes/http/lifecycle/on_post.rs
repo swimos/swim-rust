@@ -22,6 +22,7 @@ use crate::{
 
 use super::{HttpRequestContext, UnsupportedHandler};
 
+/// Event handler to be called each time a POST request is called for an HTTP lane.
 pub trait OnPost<T, Context>: Send {
     type OnPostHandler<'a>: HandlerAction<Context, Completion = UnitResponse> + 'a
     where
@@ -33,6 +34,8 @@ pub trait OnPost<T, Context>: Send {
     fn on_post(&self, http_context: HttpRequestContext, value: T) -> Self::OnPostHandler<'_>;
 }
 
+/// Event handler to be called each time a POST request is called for an HTTP lane.
+/// The event handler has access to some shared state (shared with other event handlers in the same agent).
 pub trait OnPostShared<T, Context, Shared>: Send {
     type OnPostHandler<'a>: HandlerAction<Context, Completion = UnitResponse> + 'a
     where

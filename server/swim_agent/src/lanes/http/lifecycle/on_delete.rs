@@ -22,6 +22,7 @@ use crate::{
 
 use super::{HttpRequestContext, UnsupportedHandler};
 
+/// Event handler to be called each time a DELETE request is called for an HTTP lane.
 pub trait OnDelete<Context>: Send {
     type OnDeleteHandler<'a>: HandlerAction<Context, Completion = UnitResponse> + 'a
     where
@@ -32,6 +33,8 @@ pub trait OnDelete<Context>: Send {
     fn on_delete(&self, http_context: HttpRequestContext) -> Self::OnDeleteHandler<'_>;
 }
 
+/// Event handler to be called each time a DELETE request is called for an HTTP lane.
+/// The event handler has access to some shared state (shared with other event handlers in the same agent).
 pub trait OnDeleteShared<Context, Shared>: Send {
     type OnDeleteHandler<'a>: HandlerAction<Context, Completion = UnitResponse> + 'a
     where

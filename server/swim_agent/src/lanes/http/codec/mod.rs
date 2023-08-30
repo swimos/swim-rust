@@ -41,12 +41,23 @@ pub enum CodecError {
 }
 
 pub trait HttpLaneCodecSupport: Default + Debug + Clone {
+    
+    /// Indicates whether the codec can serialize to an deserialize from the provided content type.
     fn supports(&self, content_type: &Mime) -> bool;
 
+    /// Selects a content type based on the types that the client can accept.
     fn select_codec<'a>(&self, accepts: &'a [Mime]) -> Option<&'a Mime>;
 }
 
+/// Codec for encoding and decoding the payloads of HTTP requests/responses.
 pub trait HttpLaneCodec<T>: HttpLaneCodecSupport {
+
+    /// Attempt to encode the payload for an HTTP response/request.
+    /// 
+    /// #Arguments
+    /// * `content_type` - The content type to use.
+    /// * `value` - The payload to encode.
+    /// * `buffer` - Buffer into which to encode the payload.
     fn encode(
         &self,
         content_type: &Mime,
@@ -54,9 +65,15 @@ pub trait HttpLaneCodec<T>: HttpLaneCodecSupport {
         buffer: &mut BytesMut,
     ) -> Result<(), CodecError>;
 
+    /// Attempt to decode a payload from an HTTP request/response.
+    ///
+    /// #Arguments
+    /// * `content_type` - The content type inferred from the headers.
+    /// * `buffer` - The raw payload bytes.
     fn decode(&self, content_type: &Mime, buffer: &[u8]) -> Result<T, CodecError>;
 }
 
+/// Codec for the Recon format.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct Recon;
 
@@ -182,6 +199,8 @@ type DefaultCodecInner = Recon;
 #[cfg(feature = "json")]
 type DefaultCodecInner = HList!(Recon, Json);
 
+/// The default codec used by HTTP lanes. The formats supported depend on what features are enabled
+/// for the crate. Recon is always supported.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct DefaultCodec {
     inner: DefaultCodecInner,

@@ -22,6 +22,7 @@ use crate::{
 
 use super::{HttpRequestContext, UnsupportedHandler};
 
+/// Event handler to be called each time a PUT request is called for an HTTP lane.
 pub trait OnPut<T, Context>: Send {
     type OnPutHandler<'a>: HandlerAction<Context, Completion = UnitResponse> + 'a
     where
@@ -33,6 +34,8 @@ pub trait OnPut<T, Context>: Send {
     fn on_put(&self, http_context: HttpRequestContext, value: T) -> Self::OnPutHandler<'_>;
 }
 
+/// Event handler to be called each time a PUT request is called for an HTTP lane.
+/// The event handler has access to some shared state (shared with other event handlers in the same agent).
 pub trait OnPutShared<T, Context, Shared>: Send {
     type OnPutHandler<'a>: HandlerAction<Context, Completion = UnitResponse> + 'a
     where

@@ -20,6 +20,7 @@ use swim_model::http::{Header, HeaderValue, StandardHeaderName};
 #[cfg(test)]
 mod tests;
 
+/// Utility to read header values from a [`swim_model::http::HttpRequest`].
 pub struct Headers<'a> {
     headers: &'a [Header],
 }
@@ -34,6 +35,8 @@ impl<'a> Headers<'a> {
 pub struct InvalidHeader;
 
 impl<'a> Headers<'a> {
+
+    /// Get the content type specified for a request, if present.
     pub fn content_type(&self) -> Result<Option<Mime>, InvalidHeader> {
         let Headers { headers } = self;
         if let Some(header) = headers
@@ -53,6 +56,9 @@ impl<'a> Headers<'a> {
         }
     }
 
+    /// Get an iterator over content types from all accept headers. The iterator will
+    /// produce an error for an invalid header value/content type but will not terminate
+    /// until all accept headers have been exhausted.
     pub fn accept(&self) -> impl Iterator<Item = Result<Mime, InvalidHeader>> + '_ {
         let Headers { headers } = self;
         headers
@@ -96,6 +102,7 @@ fn extract_accept(value: &HeaderValue) -> impl Iterator<Item = Result<Mime, Inva
     })
 }
 
+/// Create a content-type header for a [`swim_model::http::HttpResponse`].
 pub fn content_type_header(mime: &Mime) -> Header {
     Header {
         name: StandardHeaderName::ContentType.into(),

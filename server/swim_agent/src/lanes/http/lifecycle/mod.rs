@@ -47,6 +47,13 @@ pub mod on_put;
 #[cfg(test)]
 mod tests;
 
+/// Trait for the lifecycle of an HTTP lane.
+///
+/// #Type Parameters
+/// * `Get` - The type of the payloads of responses to GET requests to the lane.
+/// * `Post` - The type of the payloads of incoming POST requests.
+/// * `Put` - The type of the payloads of incoming PUT requests.
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait HttpLaneLifecycle<Get, Post, Put, Context>:
     OnGet<Get, Context> + OnPost<Post, Context> + OnPut<Put, Context> + OnDelete<Context>
 {
@@ -57,6 +64,15 @@ impl<Context, Get, Post, Put, LC> HttpLaneLifecycle<Get, Post, Put, Context> for
 {
 }
 
+/// Trait for the lifecycle of an HTTP lane where the lifecycle has access to some shared state (shared
+/// with all other lifecycles in the agent).
+///
+/// #Type Parameters
+/// * `Get` - The type of the payloads of responses to GET requests to the lane.
+/// * `Post` - The type of the payloads of incoming POST requests.
+/// * `Put` - The type of the payloads of incoming PUT requests.
+/// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
+/// * `Shared` - The shared state to which the lifecycle has access.
 pub trait HttpLaneLifecycleShared<Get, Post, Put, Context, Shared>:
     OnGetShared<Get, Context, Shared>
     + OnPostShared<Post, Context, Shared>
@@ -75,6 +91,7 @@ where
 {
 }
 
+/// A context that is passed to all event handlers on an HTTP lane.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpRequestContext {
     uri: Uri,
@@ -86,10 +103,12 @@ impl HttpRequestContext {
         HttpRequestContext { uri, headers }
     }
 
+    /// The URI from the request that generated this event.
     pub fn uri(&self) -> &Uri {
         &self.uri
     }
 
+    /// The HTTP headers from the request that generated this event.
     pub fn headers(&self) -> &[Header] {
         self.headers.as_slice()
     }
@@ -114,6 +133,18 @@ impl<Context> HandlerAction<Context> for UnsupportedHandler {
 type SharedHttpLifecycleType<Context, Shared, Get, Post, Put> =
     fn(Context, Shared, Get) -> (Post, Put);
 
+/// A lifecycle for an HTTP lane with some shared state (shard with other lifecycles in the same agent).
+///
+/// #Type Parameters
+/// * `Context` - The context for the event handlers (providing access to the agent lanes).
+/// * `Shared` - The shared state to which the lifecycle has access.
+/// * `Get` - The type of the payloads of responses to GET requests to the lane.
+/// * `Post` - The type of the payloads of incoming POST requests.
+/// * `Put` - The type of the payloads of incoming PUT requests.
+/// * `FGet` - The 'on_get' event handler.
+/// * `FPost` - The 'on_post' event handler.
+/// * `FPut` - The 'on_put' event handler.
+/// * `FDel` - The 'on_delete' event handler.
 pub struct StatefulHttpLaneLifecycle<
     Context,
     Shared,
@@ -173,6 +204,7 @@ where
 impl<Context, Shared, Get, Post, Put, FGet, FPost, FPut, FDel>
     StatefulHttpLaneLifecycle<Context, Shared, Get, Post, Put, FGet, FPost, FPut, FDel>
 {
+    /// Replace the `on_get` handler with another derived from a closure.
     pub fn on_get<F>(
         self,
         f: F,
@@ -189,6 +221,7 @@ impl<Context, Shared, Get, Post, Put, FGet, FPost, FPut, FDel>
         }
     }
 
+    /// Replace the `on_post` handler with another derived from a closure.
     pub fn on_post<F>(
         self,
         f: F,
@@ -205,6 +238,7 @@ impl<Context, Shared, Get, Post, Put, FGet, FPost, FPut, FDel>
         }
     }
 
+    /// Replace the `on_put` handler with another derived from a closure.
     pub fn on_put<F>(
         self,
         f: F,
@@ -221,6 +255,7 @@ impl<Context, Shared, Get, Post, Put, FGet, FPost, FPut, FDel>
         }
     }
 
+    /// Replace the `on_delete` handler with another derived from a closure.
     pub fn on_delete<F>(
         self,
         f: F,
