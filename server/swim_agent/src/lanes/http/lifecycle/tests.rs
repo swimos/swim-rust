@@ -15,21 +15,35 @@
 use bytes::BytesMut;
 use parking_lot::Mutex;
 use swim_api::agent::{response_channel, AgentConfig};
-use swim_model::http::{Header, HttpResponse, StatusCode, StandardHeaderName};
+use swim_model::http::{Header, HttpResponse, StandardHeaderName, StatusCode};
 use swim_recon::printer::print_recon_compact;
 use swim_utilities::routing::route_uri::RouteUri;
 
-use crate::{agent_lifecycle::utility::HandlerContext, event_handler::{HandlerAction, ActionContext, StepResult}, lanes::http::{Response, UnitResponse, RequestAndChannel, model::{Request, MethodAndPayload}, Recon, headers::Headers, content_type::recon}, meta::AgentMetadata, test_context::dummy_context};
+use crate::{
+    agent_lifecycle::utility::HandlerContext,
+    event_handler::{ActionContext, HandlerAction, StepResult},
+    lanes::http::{
+        content_type::recon,
+        headers::Headers,
+        model::{MethodAndPayload, Request},
+        Recon, RequestAndChannel, Response, UnitResponse,
+    },
+    meta::AgentMetadata,
+    test_context::dummy_context,
+};
 
-use super::{on_get::OnGetShared, HttpRequestContext, on_post::OnPostShared, on_put::OnPutShared, on_delete::OnDeleteShared, HttpLifecycleHandlerShared, StatefulHttpLaneLifecycle};
-use std::{sync::Arc, collections::HashMap};
+use super::{
+    on_delete::OnDeleteShared, on_get::OnGetShared, on_post::OnPostShared, on_put::OnPutShared,
+    HttpLifecycleHandlerShared, HttpRequestContext, StatefulHttpLaneLifecycle,
+};
+use std::{collections::HashMap, sync::Arc};
 
 #[derive(Debug, PartialEq, Eq)]
 enum Event {
     Get,
     Post(i32),
     Put(i32),
-    Delete
+    Delete,
 }
 
 struct TestAgent;
@@ -41,7 +55,7 @@ struct TestLifecycleState {
     events: Arc<Mutex<Vec<Event>>>,
 }
 
-struct TestGetHandler<Get>{
+struct TestGetHandler<Get> {
     value: Option<Get>,
     events: Arc<Mutex<Vec<Event>>>,
 }
@@ -53,7 +67,6 @@ struct TestOtherHandler {
 const GET_VALUE: i32 = 56;
 
 impl OnGetShared<i32, TestAgent, TestLifecycleState> for TestLifecycle {
-    
     type OnGetHandler<'a> = TestGetHandler<i32>
     where
         Self: 'a,
@@ -175,14 +188,15 @@ const URI: &str = "http://example/node?lane=name";
 fn request_headers() -> Vec<Header> {
     vec![
         Header::new(StandardHeaderName::ContentType, recon().to_string()),
-        Header::new(StandardHeaderName::Accept, recon().to_string())
+        Header::new(StandardHeaderName::Accept, recon().to_string()),
     ]
 }
 
 fn bad_request_headers() -> Vec<Header> {
-    vec![
-        Header::new(StandardHeaderName::Accept, mime::APPLICATION_JSON.to_string())
-    ]
+    vec![Header::new(
+        StandardHeaderName::Accept,
+        mime::APPLICATION_JSON.to_string(),
+    )]
 }
 
 const NODE_URI: &str = "/node";
@@ -192,9 +206,7 @@ fn make_uri() -> RouteUri {
     RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn run_handler<H>(
-    agent: &TestAgent, 
-    mut handler: H) -> H::Completion
+fn run_handler<H>(agent: &TestAgent, mut handler: H) -> H::Completion
 where
     H: HandlerAction<TestAgent>,
 {
@@ -206,13 +218,14 @@ where
     let meta = AgentMetadata::new(&route_uri, &route_params, &CONFIG);
     loop {
         match handler.step(&mut action_context, meta, agent) {
-            StepResult::Continue {
-                modified_item,
-            } => {
+            StepResult::Continue { modified_item } => {
                 assert!(modified_item.is_none())
             }
             StepResult::Fail(err) => panic!("Failed: {}", err),
-            StepResult::Complete { modified_item, result } => {
+            StepResult::Complete {
+                modified_item,
+                result,
+            } => {
                 assert!(modified_item.is_none());
                 break result;
             }
@@ -237,12 +250,20 @@ async fn run_get_handler() {
 
     run_handler(&agent, handler);
 
-    let HttpResponse { status_code, headers, payload, .. } = rx.await.expect("No response provided.");
+    let HttpResponse {
+        status_code,
+        headers,
+        payload,
+        ..
+    } = rx.await.expect("No response provided.");
 
     assert_eq!(status_code, StatusCode::OK);
 
     let headers = Headers::new(&headers);
-    let ct = headers.content_type().expect("Invalid content type.").expect("No content type.");
+    let ct = headers
+        .content_type()
+        .expect("Invalid content type.")
+        .expect("No content type.");
     assert_eq!(&ct, recon());
 
     let expected_content = format!("{}", print_recon_compact(&GET_VALUE));
@@ -269,12 +290,20 @@ async fn run_head_handler() {
 
     run_handler(&agent, handler);
 
-    let HttpResponse { status_code, headers, payload, .. } = rx.await.expect("No response provided.");
+    let HttpResponse {
+        status_code,
+        headers,
+        payload,
+        ..
+    } = rx.await.expect("No response provided.");
 
     assert_eq!(status_code, StatusCode::OK);
 
     let headers = Headers::new(&headers);
-    let ct = headers.content_type().expect("Invalid content type.").expect("No content type.");
+    let ct = headers
+        .content_type()
+        .expect("Invalid content type.")
+        .expect("No content type.");
     assert_eq!(&ct, recon());
 
     assert!(payload.is_empty());
@@ -299,7 +328,12 @@ async fn run_post_handler() {
 
     run_handler(&agent, handler);
 
-    let HttpResponse { status_code, headers, payload, .. } = rx.await.expect("No response provided.");
+    let HttpResponse {
+        status_code,
+        headers,
+        payload,
+        ..
+    } = rx.await.expect("No response provided.");
 
     assert_eq!(status_code, StatusCode::OK);
 
@@ -307,7 +341,7 @@ async fn run_post_handler() {
     assert!(matches!(headers.content_type(), Ok(None)));
 
     assert!(payload.is_empty());
-    
+
     let events = std::mem::take(&mut *shared.events.lock());
     assert_eq!(events, vec![Event::Post(69)]);
 }
@@ -329,7 +363,12 @@ async fn run_put_handler() {
 
     run_handler(&agent, handler);
 
-    let HttpResponse { status_code, headers, payload, .. } = rx.await.expect("No response provided.");
+    let HttpResponse {
+        status_code,
+        headers,
+        payload,
+        ..
+    } = rx.await.expect("No response provided.");
 
     assert_eq!(status_code, StatusCode::OK);
 
@@ -337,7 +376,7 @@ async fn run_put_handler() {
     assert!(matches!(headers.content_type(), Ok(None)));
 
     assert!(payload.is_empty());
-    
+
     let events = std::mem::take(&mut *shared.events.lock());
     assert_eq!(events, vec![Event::Put(848)]);
 }
@@ -359,7 +398,12 @@ async fn run_delete_handler() {
 
     run_handler(&agent, handler);
 
-    let HttpResponse { status_code, headers, payload, .. } = rx.await.expect("No response provided.");
+    let HttpResponse {
+        status_code,
+        headers,
+        payload,
+        ..
+    } = rx.await.expect("No response provided.");
 
     assert_eq!(status_code, StatusCode::OK);
 
@@ -367,7 +411,7 @@ async fn run_delete_handler() {
     assert!(matches!(headers.content_type(), Ok(None)));
 
     assert!(payload.is_empty());
-    
+
     let events = std::mem::take(&mut *shared.events.lock());
     assert_eq!(events, vec![Event::Delete]);
 }
@@ -418,7 +462,6 @@ async fn get_method_unsupported_handler() {
     let HttpResponse { status_code, .. } = rx.await.expect("No response provided.");
 
     assert_eq!(status_code, StatusCode::METHOD_NOT_ALLOWED);
-
 }
 
 #[tokio::test]
@@ -442,7 +485,6 @@ async fn post_method_unsupported_handler() {
     let HttpResponse { status_code, .. } = rx.await.expect("No response provided.");
 
     assert_eq!(status_code, StatusCode::METHOD_NOT_ALLOWED);
-
 }
 
 #[tokio::test]
@@ -466,7 +508,6 @@ async fn put_method_unsupported_handler() {
     let HttpResponse { status_code, .. } = rx.await.expect("No response provided.");
 
     assert_eq!(status_code, StatusCode::METHOD_NOT_ALLOWED);
-
 }
 
 #[tokio::test]
@@ -490,5 +531,4 @@ async fn delete_method_unsupported_handler() {
     let HttpResponse { status_code, .. } = rx.await.expect("No response provided.");
 
     assert_eq!(status_code, StatusCode::METHOD_NOT_ALLOWED);
-
 }

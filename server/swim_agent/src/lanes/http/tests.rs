@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use bytes::{Bytes, BytesMut};
 use mime::Mime;
 use swim_api::agent::{AgentConfig, HttpLaneRequest, HttpResponseReceiver};
-use swim_model::http::{Header, HttpRequest, Method, StandardHeaderName, Version, StatusCode};
+use swim_model::http::{Header, HttpRequest, Method, StandardHeaderName, StatusCode, Version};
 use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::event_handler::{EventHandler, Modification, ModificationFlags, StepResult};
@@ -86,7 +86,11 @@ fn make_accept_handler(
     HttpResponseReceiver,
     Vec<Header>,
 ) {
-    make_raw_handler(method, None, body.map(|n| Bytes::from(n.to_string())).unwrap_or_default())
+    make_raw_handler(
+        method,
+        None,
+        body.map(|n| Bytes::from(n.to_string())).unwrap_or_default(),
+    )
 }
 
 #[test]
@@ -172,7 +176,8 @@ fn accept_delete_request() {
 #[tokio::test]
 async fn reject_post_request_bad_payload() {
     let agent = FakeAgent::default();
-    let (handler, rx, ..) = make_raw_handler(Method::POST, None, Bytes::from(b"invalid".as_slice()));
+    let (handler, rx, ..) =
+        make_raw_handler(Method::POST, None, Bytes::from(b"invalid".as_slice()));
     run_handler(&agent, handler, false);
     assert!(agent.lane.take_request().is_none());
 
@@ -184,7 +189,11 @@ async fn reject_post_request_bad_payload() {
 #[tokio::test]
 async fn reject_post_request_unsupported_content_type() {
     let agent = FakeAgent::default();
-    let (handler, rx, ..) = make_raw_handler(Method::POST, Some(&mime::APPLICATION_JSON), Bytes::from(b"7".as_slice()));
+    let (handler, rx, ..) = make_raw_handler(
+        Method::POST,
+        Some(&mime::APPLICATION_JSON),
+        Bytes::from(b"7".as_slice()),
+    );
     run_handler(&agent, handler, false);
     assert!(agent.lane.take_request().is_none());
 
@@ -200,10 +209,7 @@ fn make_uri() -> RouteUri {
     RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-fn run_handler<H>(
-    agent: &FakeAgent, 
-    mut handler: H,
-    should_succeed: bool)
+fn run_handler<H>(agent: &FakeAgent, mut handler: H, should_succeed: bool)
 where
     H: EventHandler<FakeAgent>,
 {

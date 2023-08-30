@@ -47,15 +47,17 @@ pub struct Header {
 }
 
 impl Header {
-
     /// Create a header from anything that can be converted into header names and header values.
     pub fn new<N, V>(name: N, value: V) -> Self
     where
         N: Into<HeaderName>,
-        V: Into<HeaderValue>, {
-        Header { name: name.into(), value: value.into() }
+        V: Into<HeaderValue>,
+    {
+        Header {
+            name: name.into(),
+            value: value.into(),
+        }
     }
-
 }
 
 impl HeaderName {

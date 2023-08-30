@@ -14,7 +14,7 @@
 
 use std::fmt::Debug;
 
-use bytes::{BytesMut, BufMut, Buf};
+use bytes::{Buf, BufMut, BytesMut};
 use frunk::{hlist, HNil};
 use mime::Mime;
 use swim_form::Form;
@@ -22,7 +22,7 @@ use thiserror::Error;
 
 use crate::lanes::http::{content_type::recon, CodecError};
 
-use super::{Recon, HttpLaneCodec, HttpLaneCodecSupport};
+use super::{HttpLaneCodec, HttpLaneCodecSupport, Recon};
 
 #[test]
 fn recon_supports() {
@@ -50,7 +50,10 @@ fn recon_select() {
 fn unsupported_encoding() {
     let recon_codec = Recon;
     let mut buffer = BytesMut::new();
-    assert!(matches!(recon_codec.encode(&mime::APPLICATION_JSON, &3, &mut buffer), Err(CodecError::UnsupportedContentType(_))));
+    assert!(matches!(
+        recon_codec.encode(&mime::APPLICATION_JSON, &3, &mut buffer),
+        Err(CodecError::UnsupportedContentType(_))
+    ));
 }
 
 #[test]
@@ -67,10 +70,11 @@ where
     let mut buffer = BytesMut::new();
     assert!(recon_codec.encode(recon(), value, &mut buffer).is_ok());
 
-    let restored: T = recon_codec.decode(recon(), buffer.as_ref()).expect("Decode failed.");
+    let restored: T = recon_codec
+        .decode(recon(), buffer.as_ref())
+        .expect("Decode failed.");
     assert_eq!(&restored, value);
 }
-
 
 fn test_ct1() -> mime::Mime {
     "example/a".parse().unwrap()
@@ -199,8 +203,14 @@ fn hnil_codec() {
     assert!(!codec.supports(&ct2));
 
     let mut buffer = BytesMut::new();
-    assert!(matches!(codec.encode(&ct1, &1, &mut buffer), Err(CodecError::UnsupportedContentType(_))));
-    assert!(matches!(codec.encode(&ct2, &1, &mut buffer), Err(CodecError::UnsupportedContentType(_))));
+    assert!(matches!(
+        codec.encode(&ct1, &1, &mut buffer),
+        Err(CodecError::UnsupportedContentType(_))
+    ));
+    assert!(matches!(
+        codec.encode(&ct2, &1, &mut buffer),
+        Err(CodecError::UnsupportedContentType(_))
+    ));
 }
 
 #[test]
@@ -221,14 +231,14 @@ fn hcons_codec_encoding() {
     let codec = hlist![CodecA::default(), CodecB::default()];
 
     let mut buffer = BytesMut::new();
-    
+
     assert!(codec.encode(&ct1, &5, &mut buffer).is_ok());
     let bytes = buffer.as_ref();
     assert_eq!(bytes.len(), 5);
     assert_eq!(bytes[0], 0);
     let restored = codec.decode(&ct1, bytes).expect("Decode failed.");
     assert_eq!(restored, 5);
-    
+
     buffer.clear();
 
     assert!(codec.encode(&ct2, &7, &mut buffer).is_ok());

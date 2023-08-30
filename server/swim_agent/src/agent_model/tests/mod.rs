@@ -14,7 +14,7 @@ use std::{cell::RefCell, collections::HashMap, io::ErrorKind, sync::Arc, time::D
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{BytesMut, Bytes};
+use bytes::{Bytes, BytesMut};
 use futures::{
     future::{join, ready, BoxFuture},
     FutureExt, SinkExt, StreamExt,
@@ -33,7 +33,11 @@ use swim_api::{
     },
 };
 use swim_form::structural::read::recognizer::{primitive::TextRecognizer, RecognizerReadable};
-use swim_model::{address::Address, BytesStr, Text, http::{HttpRequest, Method, Version, StatusCode}};
+use swim_model::{
+    address::Address,
+    http::{HttpRequest, Method, StatusCode, Version},
+    BytesStr, Text,
+};
 use swim_utilities::{
     future::retryable::RetryStrategy,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
@@ -99,7 +103,7 @@ const VAL_LANE: &str = "first";
 const MAP_LANE: &str = "second";
 const CMD_LANE: &str = "third";
 const HTTP_LANE: &str = "fourth";
-const HTTP_LANE_URI: &str =  "http://example/node?lane=fourth";
+const HTTP_LANE_URI: &str = "http://example/node?lane=fourth";
 
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
@@ -378,12 +382,18 @@ async fn request_to_http_lane() {
             payload: Bytes::new(),
         };
         let (lane_request, response_rx) = HttpLaneRequest::new(req.clone());
-        
-        http_lane_tx.send(lane_request).await.expect("HTTP lane stopped.");
+
+        http_lane_tx
+            .send(lane_request)
+            .await
+            .expect("HTTP lane stopped.");
 
         // The agent should receive the request...
         assert_eq!(
-            http_request_rx.next().await.expect("Expected HTTP request."),
+            http_request_rx
+                .next()
+                .await
+                .expect("Expected HTTP request."),
             req
         );
 
@@ -404,7 +414,10 @@ async fn request_to_http_lane() {
         (test_event_rx, lc_event_rx)
     };
 
-    let (result, (test_event_rx, lc_event_rx)) = tokio::time::timeout(TEST_TIMEOUT, join(task, test_case)).await.expect("Timed out");
+    let (result, (test_event_rx, lc_event_rx)) =
+        tokio::time::timeout(TEST_TIMEOUT, join(task, test_case))
+            .await
+            .expect("Timed out");
     assert!(result.is_ok());
 
     let events = lc_event_rx.collect::<Vec<_>>().await;

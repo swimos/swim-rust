@@ -2014,7 +2014,7 @@ enum HttpTaskEvent {
 }
 
 /// A task that routes incoming HTTP requests to the HTTP lanes of the agent.
-/// 
+///
 /// #Arguments
 /// * `stopping` - A signal that the agent is stopping and this task should stop immediately.
 /// * `config` - Configuration parameters for the agent runtime.

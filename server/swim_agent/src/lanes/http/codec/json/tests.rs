@@ -16,9 +16,9 @@ use std::fmt::Debug;
 
 use bytes::BytesMut;
 use mime::Mime;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::lanes::http::{content_type::recon, HttpLaneCodecSupport, CodecError, HttpLaneCodec};
+use crate::lanes::http::{content_type::recon, CodecError, HttpLaneCodec, HttpLaneCodecSupport};
 
 use super::Json;
 
@@ -38,9 +38,18 @@ fn json_select() {
 
     let json_codec = Json;
     assert_eq!(json_codec.select_codec(&[]), Some(&mime::APPLICATION_JSON));
-    assert_eq!(json_codec.select_codec(&[json]), Some(&mime::APPLICATION_JSON));
-    assert_eq!(json_codec.select_codec(&[app_star]), Some(&mime::APPLICATION_JSON));
-    assert_eq!(json_codec.select_codec(&[any]), Some(&mime::APPLICATION_JSON));
+    assert_eq!(
+        json_codec.select_codec(&[json]),
+        Some(&mime::APPLICATION_JSON)
+    );
+    assert_eq!(
+        json_codec.select_codec(&[app_star]),
+        Some(&mime::APPLICATION_JSON)
+    );
+    assert_eq!(
+        json_codec.select_codec(&[any]),
+        Some(&mime::APPLICATION_JSON)
+    );
     assert_eq!(json_codec.select_codec(&[recon_ct]), None);
 }
 
@@ -48,7 +57,10 @@ fn json_select() {
 fn unsupported_encoding() {
     let json_codec = Json;
     let mut buffer = BytesMut::new();
-    assert!(matches!(json_codec.encode(recon(), &3, &mut buffer), Err(CodecError::UnsupportedContentType(_))));
+    assert!(matches!(
+        json_codec.encode(recon(), &3, &mut buffer),
+        Err(CodecError::UnsupportedContentType(_))
+    ));
 }
 
 #[test]
@@ -63,8 +75,12 @@ where
 {
     let json_codec = Json;
     let mut buffer = BytesMut::new();
-    assert!(json_codec.encode(&mime::APPLICATION_JSON, value, &mut buffer).is_ok());
+    assert!(json_codec
+        .encode(&mime::APPLICATION_JSON, value, &mut buffer)
+        .is_ok());
 
-    let restored: T = json_codec.decode(&mime::APPLICATION_JSON, buffer.as_ref()).expect("Decode failed.");
+    let restored: T = json_codec
+        .decode(&mime::APPLICATION_JSON, buffer.as_ref())
+        .expect("Decode failed.");
     assert_eq!(&restored, value);
 }

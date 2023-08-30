@@ -129,11 +129,9 @@ pub fn response_channel() -> (HttpResponseSender, HttpResponseReceiver) {
 pub struct HttpResponseReceiver(oneshot::Receiver<HttpLaneResponse>);
 
 impl HttpResponseReceiver {
-
     pub fn try_recv(&mut self) -> Result<HttpLaneResponse, ()> {
         self.0.try_recv().map_err(|_| ())
     }
-
 }
 
 #[derive(Debug)]

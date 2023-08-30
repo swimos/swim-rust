@@ -35,5 +35,4 @@ mod tests {
         assert_eq!(mime.subtype(), "x-recon");
         assert_eq!(mime.params().count(), 0);
     }
-
 }

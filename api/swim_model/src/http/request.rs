@@ -32,7 +32,6 @@ pub struct HttpRequest<T> {
 }
 
 impl HttpRequest<()> {
-
     /// Create a minimal GET requests (with no headers).
     pub fn get(uri: Uri) -> Self {
         HttpRequest {
@@ -43,7 +42,7 @@ impl HttpRequest<()> {
             payload: (),
         }
     }
-    
+
     /// Create a minimal DELETE requests (with no headers).
     pub fn delete(uri: Uri) -> Self {
         HttpRequest {
@@ -57,7 +56,6 @@ impl HttpRequest<()> {
 }
 
 impl<T> HttpRequest<T> {
-
     /// Create a minimal PUT requests (with no headers).
     pub fn put(uri: Uri, payload: T) -> Self {
         HttpRequest {

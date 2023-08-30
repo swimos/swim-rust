@@ -36,7 +36,6 @@ pub trait OnGet<T, Context>: Send {
     fn on_get(&self, http_context: HttpRequestContext) -> Self::OnGetHandler<'_>;
 }
 
-
 /// Event handler to be called each time a GET request is called for an HTTP lane.
 /// The event handler has access to some shared state (shared with other event handlers in the same agent).
 pub trait OnGetShared<T, Context, Shared>: Send {

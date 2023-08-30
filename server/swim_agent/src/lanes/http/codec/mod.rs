@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use bytes::BytesMut;
-use frunk::{prelude::HList, HCons, HNil, HList};
+use frunk::{prelude::HList, HCons, HList, HNil};
 use mime::Mime;
 use std::fmt::Debug;
 use swim_api::protocol::write_recon;
@@ -41,7 +41,6 @@ pub enum CodecError {
 }
 
 pub trait HttpLaneCodecSupport: Default + Debug + Clone {
-    
     /// Indicates whether the codec can serialize to an deserialize from the provided content type.
     fn supports(&self, content_type: &Mime) -> bool;
 
@@ -51,9 +50,8 @@ pub trait HttpLaneCodecSupport: Default + Debug + Clone {
 
 /// Codec for encoding and decoding the payloads of HTTP requests/responses.
 pub trait HttpLaneCodec<T>: HttpLaneCodecSupport {
-
     /// Attempt to encode the payload for an HTTP response/request.
-    /// 
+    ///
     /// #Arguments
     /// * `content_type` - The content type to use.
     /// * `value` - The payload to encode.

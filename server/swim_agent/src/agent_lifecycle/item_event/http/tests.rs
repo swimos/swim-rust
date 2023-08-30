@@ -19,7 +19,7 @@ use swim_api::agent::{response_channel, AgentConfig};
 use swim_model::http::{HttpResponse, StatusCode, Uri};
 use swim_utilities::routing::route_uri::RouteUri;
 
-use crate::agent_lifecycle::item_event::{HttpBranch, HLeaf};
+use crate::agent_lifecycle::item_event::{HLeaf, HttpBranch};
 use crate::lanes::http::Request;
 use crate::{
     agent_lifecycle::{
@@ -348,7 +348,6 @@ async fn http_lane_left_branch() {
 
     let req2 = RequestAndChannel::new(request2, tx2);
     agent.second.replace(req2);
-   
 
     if let Some(handler) = branch.item_event(&(), Default::default(), &agent, FIRST_NAME) {
         run_handler(meta, &agent, handler);
@@ -430,7 +429,6 @@ async fn http_lane_right_branch() {
 
     let req2 = RequestAndChannel::new(request2, tx2);
     agent.second.replace(req2);
-   
 
     if let Some(handler) = branch.item_event(&(), Default::default(), &agent, FIRST_NAME) {
         run_handler(meta, &agent, handler);
@@ -528,7 +526,6 @@ async fn http_lane_two_branches() {
 
     let req3 = RequestAndChannel::new(request3, tx3);
     agent.third.replace(req3);
-   
 
     if let Some(handler) = branch.item_event(&(), Default::default(), &agent, FIRST_NAME) {
         run_handler(meta, &agent, handler);

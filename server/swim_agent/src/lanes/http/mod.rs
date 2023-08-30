@@ -20,14 +20,12 @@ use swim_model::http::{Header, HttpRequest, StatusCode, SupportedMethod, Version
 use tracing::debug;
 
 use crate::{
-    event_handler::{ActionContext, HandlerAction, StepResult, Modification},
-    meta::AgentMetadata, item::AgentItem,
+    event_handler::{ActionContext, HandlerAction, Modification, StepResult},
+    item::AgentItem,
+    meta::AgentMetadata,
 };
 
-use self::{
-    content_type::recon,
-    headers::Headers,
-};
+use self::{content_type::recon, headers::Headers};
 
 mod codec;
 mod content_type;
@@ -40,19 +38,20 @@ mod tests;
 #[cfg(feature = "json")]
 pub use codec::Json;
 pub use codec::{CodecError, DefaultCodec, HttpLaneCodec, HttpLaneCodecSupport, Recon};
+pub use lifecycle::HttpRequestContext;
+pub(crate) use model::{MethodAndPayload, Request};
 pub use model::{Response, UnitResponse};
-pub(crate) use model::{Request, MethodAndPayload};
 
 /// An HTTP lane allows an agent to expose and HTTP endpoint over the HTTP server exposed by the server
 /// hosting the agent. If an agent is hosted with the node URI '/node' on a host 'host', listening on port
 /// 8080, a lane named 'http_lane' can be addressed at the URI: 'https://host:8080/node?lane=http_lane'.
-/// 
-/// An HTTP lane can respond to GET, POST, PUT, DELETE and HEAD requests which are defined by attaching 
+///
+/// An HTTP lane can respond to GET, POST, PUT, DELETE and HEAD requests which are defined by attaching
 /// lifecycle events to the agent.
-/// 
+///
 /// For simple cases where the 'Get', 'Post' and 'Put' types are the same, [`SimpleHttpLane`] can be used
 /// as a shorthand for this lane type.
-/// 
+///
 /// #Type Arguments
 /// `Get` - The type of the values that the lane will produce in response to a GET request.
 /// `Post` - The type of the values that the lane will accept as the body of a POST request.
@@ -82,7 +81,6 @@ where
             codec: Default::default(),
         }
     }
-
 }
 
 impl<Get, Post, Put, Codec> HttpLane<Get, Post, Put, Codec> {
@@ -99,7 +97,6 @@ impl<Get, Post, Put, Codec> HttpLane<Get, Post, Put, Codec>
 where
     Codec: Clone,
 {
-
     /// Get a copy of the codec used by the lane.
     pub fn codec(&self) -> Codec {
         self.codec.clone()
@@ -118,12 +115,12 @@ pub struct RequestAndChannel<Post, Put> {
 }
 
 impl<Post, Put> RequestAndChannel<Post, Put> {
-
-    pub fn new( request: Request<Post, Put>,
-        response_tx: HttpResponseSender) -> Self {
-            RequestAndChannel { request, response_tx }
+    pub fn new(request: Request<Post, Put>, response_tx: HttpResponseSender) -> Self {
+        RequestAndChannel {
+            request,
+            response_tx,
         }
-
+    }
 }
 pub struct HttpLaneAccept<Context, Get, Post, Put, Codec = DefaultCodec> {
     projection: fn(&Context) -> &HttpLane<Get, Post, Put, Codec>,
@@ -210,10 +207,13 @@ where
                     uri,
                     headers,
                 },
-                response_tx
+                response_tx,
             );
             lane.replace(request_and_chan);
-            StepResult::Complete { modified_item: Some(Modification::trigger_only(lane.id)), result: () }
+            StepResult::Complete {
+                modified_item: Some(Modification::trigger_only(lane.id)),
+                result: (),
+            }
         } else {
             StepResult::after_done()
         }
@@ -255,6 +255,9 @@ where
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
             Some(format!("Unsupported content type: {}", ct)),
         )),
-        _ => Err(bad_request(StatusCode::BAD_REQUEST, Some("Invalid payload.".into()))),
+        _ => Err(bad_request(
+            StatusCode::BAD_REQUEST,
+            Some("Invalid payload.".into()),
+        )),
     }
 }

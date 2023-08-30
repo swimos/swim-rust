@@ -94,9 +94,10 @@ fn extract_accept() {
 
 #[test]
 fn skip_faulty_accept_entries() {
-    let headers_vec = vec![
-        Header::new(StandardHeaderName::Accept, "application/json; ///; text/plain")
-    ];
+    let headers_vec = vec![Header::new(
+        StandardHeaderName::Accept,
+        "application/json; ///; text/plain",
+    )];
 
     let headers = Headers::new(&headers_vec);
 
@@ -105,13 +106,10 @@ fn skip_faulty_accept_entries() {
         .filter_map(|r| r.ok())
         .collect::<HashSet<_>>();
 
-    let expected = [
-        &mime::APPLICATION_JSON,
-        &mime::TEXT_PLAIN,
-    ]
-    .into_iter()
-    .cloned()
-    .collect::<HashSet<_>>();
+    let expected = [&mime::APPLICATION_JSON, &mime::TEXT_PLAIN]
+        .into_iter()
+        .cloned()
+        .collect::<HashSet<_>>();
 
     assert_eq!(accept, expected);
 }

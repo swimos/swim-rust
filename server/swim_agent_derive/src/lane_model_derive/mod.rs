@@ -59,7 +59,8 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
         let no_handler: syn::Type = parse_quote!(#root::event_handler::UnitHandler);
 
-        let (value_item_models, map_item_models) = partition_models(item_models.iter().copied(), OrdinalItemModel::category);
+        let (value_item_models, map_item_models) =
+            partition_models(item_models.iter().copied(), OrdinalItemModel::category);
 
         let warp_lane_models = OrdinalWarpLaneModel::from_item_models(&item_models);
 
@@ -372,7 +373,7 @@ impl<'a> OrdinalHttpLaneModel<'a> {
 enum ItemCategory {
     ValueLike,
     MapLike,
-    Http
+    Http,
 }
 
 impl<'a> OrdinalItemModel<'a> {
@@ -386,9 +387,11 @@ impl<'a> OrdinalItemModel<'a> {
 
     fn category(&self) -> ItemCategory {
         match &self.model.kind {
-            ItemSpec::Map(_, _, _) | ItemSpec::JoinValue(_, _) | ItemSpec::DemandMap(_, _) => ItemCategory::MapLike,
+            ItemSpec::Map(_, _, _) | ItemSpec::JoinValue(_, _) | ItemSpec::DemandMap(_, _) => {
+                ItemCategory::MapLike
+            }
             ItemSpec::Http(_) => ItemCategory::Http,
-            _ => ItemCategory::ValueLike
+            _ => ItemCategory::ValueLike,
         }
     }
 }
@@ -813,7 +816,7 @@ where
         match f(&item) {
             ItemCategory::ValueLike => value_like.push(item),
             ItemCategory::MapLike => map_like.push(item),
-            ItemCategory::Http => {},
+            ItemCategory::Http => {}
         }
         acc
     })

@@ -20,7 +20,7 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swim_api::{
-    agent::{AgentContext, HttpLaneRequestChannel, LaneConfig, UplinkKind, HttpLaneRequest},
+    agent::{AgentContext, HttpLaneRequest, HttpLaneRequestChannel, LaneConfig, UplinkKind},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
     meta::lane::LaneKind,
@@ -30,9 +30,9 @@ use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
 };
-use tokio::sync::{oneshot, mpsc};
+use tokio::sync::{mpsc, oneshot};
 
-use super::{CMD_LANE, MAP_LANE, VAL_LANE, HTTP_LANE};
+use super::{CMD_LANE, HTTP_LANE, MAP_LANE, VAL_LANE};
 
 #[derive(Debug, Default, Clone)]
 pub struct TestAgentContext {

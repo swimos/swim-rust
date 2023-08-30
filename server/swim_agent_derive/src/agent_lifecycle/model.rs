@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::{BTreeMap, HashSet}, borrow::Cow};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashSet},
+};
 
 use proc_macro2::Span;
 use swim_utilities::errors::{
@@ -700,14 +703,12 @@ fn validate_get_or_delete_sig(sig: &Signature) -> Validation<Cow<'_, Type>, Erro
 
 fn is_unit_response(t: &Type) -> bool {
     match t {
-        Type::Path(TypePath { qself: None, path }) => {
-            match path.segments.last() {
-                Some(PathSegment { ident, arguments }) if arguments.is_empty() => {
-                    ident == UNIT_RESPONSE
-                }
-                _ => false,
+        Type::Path(TypePath { qself: None, path }) => match path.segments.last() {
+            Some(PathSegment { ident, arguments }) if arguments.is_empty() => {
+                ident == UNIT_RESPONSE
             }
-        }
+            _ => false,
+        },
         _ => false,
     }
 }

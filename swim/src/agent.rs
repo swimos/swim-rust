@@ -142,7 +142,7 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 /// [`crate::agent::lanes::MapLane`] and [`crate::agent::lanes::JoinValueLane`], both parameters must
 /// implement [`crate::form::Form`] and additionally, the key type `K` must satisfy
 /// `K: Hash + Eq + Ord + Clone + Form`.
-/// 
+///
 /// For [`crate::agent::lanes::HttpLane`], the constraints on the type parameters are determined by the
 /// codec that is selected for the lane (using the appropriate type parameter). By default, this is the
 /// [`crate::agent::lanes::http::DefaultCodec`]. This codec always requires that type parameters implement
@@ -280,8 +280,8 @@ pub mod lanes {
 
     pub mod http {
         pub use swim_agent::lanes::http::{
-            CodecError, DefaultCodec, HttpLaneAccept, HttpLaneCodec, HttpLaneCodecSupport, Recon,
-            Response, UnitResponse,
+            CodecError, DefaultCodec, HttpLaneAccept, HttpLaneCodec, HttpLaneCodecSupport,
+            HttpRequestContext, Recon, Response, UnitResponse,
         };
 
         #[cfg(feature = "json")]

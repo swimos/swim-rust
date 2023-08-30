@@ -35,7 +35,6 @@ impl<'a> Headers<'a> {
 pub struct InvalidHeader;
 
 impl<'a> Headers<'a> {
-
     /// Get the content type specified for a request, if present.
     pub fn content_type(&self) -> Result<Option<Mime>, InvalidHeader> {
         let Headers { headers } = self;
@@ -83,7 +82,10 @@ fn extract_accept(value: &HeaderValue) -> impl Iterator<Item = Result<Mime, Inva
         match std::mem::take(&mut state) {
             AcceptState::Init(value) => {
                 if let Some(value_str) = value.as_str() {
-                    let it = value_str.split(';').map(|s| s.trim()).filter(|s| !s.is_empty());
+                    let it = value_str
+                        .split(';')
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty());
                     state = AcceptState::ConsumingPart(it);
                 } else {
                     state = AcceptState::Done;

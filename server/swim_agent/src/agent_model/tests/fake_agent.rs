@@ -17,7 +17,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
 };
 
-use bytes::{BytesMut, Bytes};
+use bytes::{Bytes, BytesMut};
 use swim_api::{
     agent::HttpLaneRequest,
     protocol::{
@@ -25,7 +25,10 @@ use swim_api::{
         map::{MapMessage, MapOperation},
     },
 };
-use swim_model::{Text, http::{HttpRequest, SupportedMethod, HttpResponse, StatusCode, Version}};
+use swim_model::{
+    http::{HttpRequest, HttpResponse, StatusCode, SupportedMethod, Version},
+    Text,
+};
 use tokio::sync::mpsc;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
@@ -36,7 +39,9 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::{TestEvent, CMD_ID, CMD_LANE, MAP_ID, MAP_LANE, SYNC_VALUE, VAL_ID, VAL_LANE, HTTP_LANE, HTTP_ID};
+use super::{
+    TestEvent, CMD_ID, CMD_LANE, HTTP_ID, HTTP_LANE, MAP_ID, MAP_LANE, SYNC_VALUE, VAL_ID, VAL_LANE,
+};
 
 #[derive(Debug)]
 pub struct TestAgent {
@@ -107,11 +112,11 @@ impl TestAgent {
                 None => panic!("Unsupported method."),
                 _ => Bytes::new(),
             };
-            let response = HttpResponse { 
-                status_code: StatusCode::OK, 
-                version: Version::HTTP_1_1, 
-                headers: vec![], 
-                payload 
+            let response = HttpResponse {
+                status_code: StatusCode::OK,
+                version: Version::HTTP_1_1,
+                headers: vec![],
+                payload,
             };
             tx.send(response).expect("Request dropped.");
         }
@@ -164,10 +169,15 @@ impl AgentSpec for TestAgent {
     }
 
     fn item_ids() -> HashMap<u64, Text> {
-        [(VAL_ID, VAL_LANE), (MAP_ID, MAP_LANE), (CMD_ID, CMD_LANE), (HTTP_ID, HTTP_LANE)]
-            .into_iter()
-            .map(|(k, v)| (k, Text::new(v)))
-            .collect()
+        [
+            (VAL_ID, VAL_LANE),
+            (MAP_ID, MAP_LANE),
+            (CMD_ID, CMD_LANE),
+            (HTTP_ID, HTTP_LANE),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k, Text::new(v)))
+        .collect()
     }
 
     fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler> {
@@ -299,7 +309,9 @@ impl AgentSpec for TestAgent {
         request: HttpLaneRequest,
     ) -> Result<Self::HttpRequestHandler, HttpLaneRequest> {
         if lane == HTTP_LANE {
-            Ok(TestHttpHandler { request: Some(request) })
+            Ok(TestHttpHandler {
+                request: Some(request),
+            })
         } else {
             Err(request)
         }
@@ -360,8 +372,14 @@ impl HandlerAction<TestAgent> for TestHttpHandler {
         if let Some(request) = request.take() {
             let req_cpy = request.request.clone();
             context.stage_http_request(request);
-            context.http_sender.send(req_cpy).expect("Receiver dropped.");
-            StepResult::Complete { modified_item: Some(Modification::trigger_only(HTTP_ID)), result: () }
+            context
+                .http_sender
+                .send(req_cpy)
+                .expect("Receiver dropped.");
+            StepResult::Complete {
+                modified_item: Some(Modification::trigger_only(HTTP_ID)),
+                result: (),
+            }
         } else {
             StepResult::after_done()
         }
