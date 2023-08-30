@@ -104,6 +104,7 @@ impl Default for StoreConfig {
 
 pub type HttpLaneResponse = HttpResponse<Bytes>;
 
+/// Send half of a single use channel for providing an HTTP response.
 #[derive(Debug)]
 pub struct HttpResponseSender(oneshot::Sender<HttpLaneResponse>);
 
@@ -126,6 +127,7 @@ pub fn response_channel() -> (HttpResponseSender, HttpResponseReceiver) {
     (HttpResponseSender(tx), HttpResponseReceiver(rx))
 }
 
+/// Receive half of a single use channel for providing an HTTP response.
 #[derive(Debug)]
 pub struct HttpResponseReceiver(oneshot::Receiver<HttpLaneResponse>);
 
@@ -139,6 +141,9 @@ impl HttpResponseReceiver {
     }
 }
 
+/// The type of messages sent from the Swim agent runtime to an agent implementation. It includes the
+/// request that was received by the server and a single use channel for the agent implementation to
+/// provide the response.
 #[derive(Debug)]
 pub struct HttpLaneRequest {
     pub request: HttpRequest<Bytes>,
@@ -146,6 +151,8 @@ pub struct HttpLaneRequest {
 }
 
 impl HttpLaneRequest {
+    /// Create a new instance from an HTTP request and provide the receiver that can be
+    /// used to wait for the response.
     pub fn new(request: HttpRequest<Bytes>) -> (Self, HttpResponseReceiver) {
         let (tx, rx) = response_channel();
         (
@@ -157,6 +164,7 @@ impl HttpLaneRequest {
         )
     }
 
+    /// Split this message into the original request and the channel for sending the response.
     pub fn into_parts(self) -> (HttpRequest<Bytes>, HttpResponseSender) {
         let HttpLaneRequest {
             request,
