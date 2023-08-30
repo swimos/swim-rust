@@ -29,6 +29,7 @@ use swim_utilities::{
     non_zero_usize,
     routing::route_uri::RouteUri,
 };
+use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
@@ -128,9 +129,13 @@ pub fn response_channel() -> (HttpResponseSender, HttpResponseReceiver) {
 #[derive(Debug)]
 pub struct HttpResponseReceiver(oneshot::Receiver<HttpLaneResponse>);
 
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq, Default)]
+#[error("An HTTP request was dropped before a response was sent.")]
+pub struct ReceiveResponseError;
+
 impl HttpResponseReceiver {
-    pub fn try_recv(&mut self) -> Result<HttpLaneResponse, ()> {
-        self.0.try_recv().map_err(|_| ())
+    pub fn try_recv(&mut self) -> Result<HttpLaneResponse, ReceiveResponseError> {
+        self.0.try_recv().map_err(|_| ReceiveResponseError)
     }
 }
 

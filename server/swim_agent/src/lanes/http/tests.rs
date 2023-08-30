@@ -64,7 +64,7 @@ fn make_raw_handler(
     };
     let headers = vec![content_type_header(ct), accept, extra];
     let request = HttpRequest {
-        method: method,
+        method,
         version: Version::HTTP_1_1,
         uri: URI.parse().unwrap(),
         headers: headers.clone(),

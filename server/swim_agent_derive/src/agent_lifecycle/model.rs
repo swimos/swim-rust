@@ -692,7 +692,7 @@ fn validate_get_or_delete_sig(sig: &Signature) -> Validation<Cow<'_, Type>, Erro
             if is_unit_response(t) {
                 Validation::valid(Cow::Owned(parse_quote!(())))
             } else {
-                extract_single_type_param(sig, t, RESPONSE, false).map(|t| Cow::Borrowed(t))
+                extract_single_type_param(sig, t, RESPONSE, false).map(Cow::Borrowed)
             }
         } else {
             Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
@@ -741,7 +741,7 @@ fn validate_post_or_put_sig(sig: &Signature) -> Validation<&Type, Errors<syn::Er
             if is_unit_response(t) {
                 Validation::valid(Cow::Owned(parse_quote!(())))
             } else {
-                extract_single_type_param(sig, t, RESPONSE, false).map(|t| Cow::Borrowed(t))
+                extract_single_type_param(sig, t, RESPONSE, false).map(Cow::Borrowed)
             }
         } else {
             Validation::fail(syn::Error::new_spanned(sig, BAD_SIGNATURE))
