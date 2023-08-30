@@ -61,7 +61,7 @@ pub use model::{Response, UnitResponse};
 /// for the crate).
 pub struct HttpLane<Get, Post, Put = Post, Codec = DefaultCodec> {
     id: u64,
-    _type: PhantomData<fn(Post, Put) -> Get>,
+    _type: PhantomData<fn() -> Get>,
     request: RefCell<Option<RequestAndChannel<Post, Put>>>,
     codec: Codec,
 }
