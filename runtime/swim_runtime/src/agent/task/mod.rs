@@ -396,6 +396,7 @@ impl AgentRuntimeTask {
     /// * `node` - The routing ID and node URI of this agent instance.
     /// * `init` - The initial lane and store endpoints for this agent.
     /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
+    /// * `http_requests` - Channel to accept HTTP requests targetted at agent lanes.
     /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
     /// * `config` - Configuration parameters for the agent runtime.
     pub fn new(
@@ -427,6 +428,7 @@ where
     /// * `node` - The routing ID and node URI of this agent instance.
     /// * `init` - The initial lane and store endpoints for this agent.
     /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
+    /// * `http_requests` - Channel to accept HTTP requests targetted at agent lanes.
     /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
     /// * `config` - Configuration parameters for the agent runtime.
     /// * `store` - Persistence store for the agent.
@@ -1717,7 +1719,6 @@ impl WriteTaskEndpoints {
 /// * `stop_voter` - Votes to stop if this task becomes inactive (unanimity with the write task is required).
 /// * `reporting` - Introspection reporting context for the agent (if introspection is enabled).
 /// * `store` - Persistence for the state of the lanes.
-///
 async fn write_task<Msg, Store>(
     configuration: WriteTaskConfiguration,
     initial_endpoints: WriteTaskEndpoints,
@@ -2002,12 +2003,25 @@ where
     }
 }
 
+/// Events that can occur in the HTTP task.
 enum HttpTaskEvent {
+    /// Request to register a new HTTP lane.
     Registration(HttpLaneRuntimeSpec),
+    /// An incoming HTTP request to be routed to a lane.
     Request(HttpLaneRequest),
+    /// Time-out after new requests received.
     Timeout,
 }
 
+/// A task that routes incoming HTTP requests to the HTTP lanes of the agent.
+/// 
+/// #Arguments
+/// * `stopping` - A signal that the agent is stopping and this task should stop immediately.
+/// * `config` - Configuration parameters for the agent runtime.
+/// * `requests` - Incoming HTTP requests.
+/// * `initial_endpoints` - HTTP lanes that were registered during agent initialization.
+/// * `registrations` - Requests to register new HTTP lanes.
+/// * `stop_voter` - Used by this task to vote for the agent to stop after a period of inactivity.
 async fn http_task(
     mut stopping: trigger::Receiver,
     config: AgentRuntimeConfig,
@@ -2103,6 +2117,7 @@ async fn http_task(
     }
 }
 
+/// Send a 404 if the target lane for an HTTP request does not exist.
 fn not_found(request: HttpLaneRequest) {
     let (request, response_tx) = request.into_parts();
     let payload = if let Some(lane_name) = uri_params::extract_lane(&request.uri) {
