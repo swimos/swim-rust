@@ -135,12 +135,18 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 /// 2. [`crate::agent::lanes::CommandLane`]
 /// 3. [`crate::agent::lanes::MapLane`]
 /// 4. [`crate::agent::lanes::JoinValueLane`]
+/// 5. [`crate::agent::lanes::HttpLane`] (or [`crate::agent::lanes::SimpleHttpLane`])
 ///
 /// For [`crate::agent::lanes::ValueLane`] and [`crate::agent::lanes::CommandLane`], the type parameter
 /// must implement that [`crate::form::Form`] trait (used for serialization and deserialization). For
 /// [`crate::agent::lanes::MapLane`] and [`crate::agent::lanes::JoinValueLane`], both parameters must
 /// implement [`crate::form::Form`] and additionally, the key type `K` must satisfy
 /// `K: Hash + Eq + Ord + Clone + Form`.
+/// 
+/// For [`crate::agent::lanes::HttpLane`], the constraints on the type parameters are determined by the
+/// codec that is selected for the lane (using the appropriate type parameter). By default, this is the
+/// [`crate::agent::lanes::http::DefaultCodec`]. This codec always requires that type parameters implement
+/// [`crate::form::Form`] and, if the 'json' feature is active, that the they are Serde serializable.
 ///
 /// The supported store types are:
 ///
@@ -153,7 +159,7 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 ///
 /// ```no_run
 /// use swim::agent::AgentLaneModel;
-/// use swim::agent::lanes::{ValueLane, CommandLane, MapLane, JoinValueLane};
+/// use swim::agent::lanes::{ValueLane, CommandLane, MapLane, JoinValueLane, SimpleHttpLane};
 /// use swim::agent::stores::{ValueStore, MapStore};
 ///
 /// #[derive(AgentLaneModel)]
@@ -164,6 +170,7 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 ///     value_store: ValueStore<i32>,
 ///     map_store: MapStore<String, i64>,
 ///     join_value: JoinValueLane<String, i64>,
+///     http_lane: SimpleHttpLane<String>,
 /// }
 /// ```
 ///
