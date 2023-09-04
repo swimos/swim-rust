@@ -111,3 +111,13 @@ pub fn content_type_header(mime: &Mime) -> Header {
         value: HeaderValue::from(mime.as_ref()),
     }
 }
+
+///Add a content-length header to a [`swim_model::http::HttpResponse`].
+pub fn add_content_len_header<B: AsRef<[u8]>>(request: &mut swim_model::http::HttpResponse<B>) {
+    let len = request.payload.as_ref().len();
+    let header = Header {
+        name: StandardHeaderName::ContentLength.into(),
+        value: HeaderValue::from(len.to_string()),
+    };
+    request.headers.push(header);
+}

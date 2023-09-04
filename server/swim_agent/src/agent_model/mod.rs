@@ -39,7 +39,7 @@ use swim_api::{
     protocol::{agent::LaneRequest, map::MapMessage},
 };
 use swim_model::address::Address;
-use swim_model::http::{StatusCode, Version};
+use swim_model::http::{Header, StandardHeaderName, StatusCode, Version};
 use swim_model::Text;
 use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
@@ -1451,14 +1451,16 @@ where
 
 fn not_found(lane_name: &str, request: HttpLaneRequest) {
     let (_, response_tx) = request.into_parts();
+    let payload = Bytes::from(format!(
+        "This agent does not have an HTTP lane called `{}`",
+        lane_name
+    ));
+    let content_len = Header::new(StandardHeaderName::ContentLength, payload.len().to_string());
     let response = HttpLaneResponse {
         status_code: StatusCode::NOT_FOUND,
         version: Version::HTTP_1_1,
-        headers: vec![],
-        payload: Bytes::from(format!(
-            "This agent does not have an HTTP lane called `{}`",
-            lane_name
-        )),
+        headers: vec![content_len],
+        payload,
     };
     if response_tx.send(response).is_err() {
         debug!("HTTP request dropped before it was fulfilled.");

@@ -33,7 +33,7 @@ use self::{
     on_put::{OnPut, OnPutShared},
 };
 
-use super::headers::{content_type_header, Headers};
+use super::headers::{add_content_len_header, content_type_header, Headers};
 use super::HttpLaneCodec;
 use super::{
     model::{MethodAndPayload, Request, Response},
@@ -507,8 +507,9 @@ where
                 )
             }
             HttpLifecycleHandlerInner::Head(content_type, h) => {
-                let head_to_bytes =
-                    |response: HttpResponse<Get>| discard_to_bytes(content_type.as_ref(), response);
+                let head_to_bytes = |response: HttpResponse<Get>| {
+                    discard_to_bytes(codec, content_type.as_ref(), response)
+                };
                 step!(
                     h.step(action_context, meta, context),
                     response_tx,
@@ -564,7 +565,7 @@ fn response_to_bytes<T, Codec>(
 where
     Codec: HttpLaneCodec<T>,
 {
-    if let Some(content_type) = content_type {
+    let mut response = if let Some(content_type) = content_type {
         let HttpResponse {
             status_code,
             version,
@@ -586,7 +587,9 @@ where
         }
     } else {
         bad_content_type()
-    }
+    };
+    add_content_len_header(&mut response);
+    response
 }
 
 fn server_error() -> HttpLaneResponse {
@@ -611,14 +614,15 @@ fn empty_response_to_bytes(response: HttpResponse<()>) -> HttpLaneResponse {
     response.map(|_| Bytes::new())
 }
 
-fn discard_to_bytes<T>(content_type: Option<&Mime>, response: HttpResponse<T>) -> HttpLaneResponse {
-    if let Some(content_type) = content_type {
-        let mut response = empty_response_to_bytes(response.map(|_| ()));
-        response.headers.push(content_type_header(content_type));
-        response
-    } else {
-        bad_content_type()
-    }
+fn discard_to_bytes<T, Codec>(
+    codec: &Codec,
+    content_type: Option<&Mime>,
+    response: HttpResponse<T>,
+) -> HttpLaneResponse
+where
+    Codec: HttpLaneCodec<T>,
+{
+    response_to_bytes(codec, content_type, response).map(|_| Bytes::new())
 }
 
 enum HttpLifecycleHandlerSharedInner<'a, Context, Shared, Get, Post, Put, LC>
@@ -743,8 +747,9 @@ where
                 )
             }
             HttpLifecycleHandlerSharedInner::Head(content_type, h) => {
-                let head_to_bytes =
-                    |response: HttpResponse<Get>| discard_to_bytes(content_type.as_ref(), response);
+                let head_to_bytes = |response: HttpResponse<Get>| {
+                    discard_to_bytes(codec, content_type.as_ref(), response)
+                };
                 step!(
                     h.step(action_context, meta, context),
                     response_tx,

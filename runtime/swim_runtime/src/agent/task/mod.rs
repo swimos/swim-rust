@@ -54,7 +54,7 @@ use swim_api::meta::lane::LaneKind;
 use swim_api::store::{StoreDisabled, StoreKind};
 use swim_api::{agent::UplinkKind, error::AgentRuntimeError};
 use swim_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
-use swim_model::http::{HttpResponse, StatusCode, Version};
+use swim_model::http::{Header, HttpResponse, StandardHeaderName, StatusCode, Version};
 use swim_model::{BytesStr, Text};
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError};
@@ -2128,10 +2128,11 @@ fn not_found(request: HttpLaneRequest) {
     } else {
         Bytes::from_static(b"No lane name was specified.")
     };
+    let content_len = Header::new(StandardHeaderName::ContentLength, payload.len().to_string());
     let not_found_response = HttpResponse {
         status_code: StatusCode::NOT_FOUND,
         version: Version::HTTP_1_1,
-        headers: vec![],
+        headers: vec![content_len],
         payload,
     };
     if response_tx.send(not_found_response).is_err() {

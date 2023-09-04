@@ -30,6 +30,7 @@ use futures::{
 };
 use hyper::{
     body::to_bytes,
+    header::CONTENT_LENGTH,
     server::conn::http1,
     service::Service,
     upgrade::{Parts, Upgraded},
@@ -581,36 +582,56 @@ impl WebsocketClient for HyperWebsockets {
 
 fn bad_request(msg: String) -> Response<Body> {
     let mut response = Response::default();
+    let payload = Bytes::from(msg);
     *response.status_mut() = StatusCode::BAD_REQUEST;
-    *response.body_mut() = Bytes::from(msg).into();
+    response
+        .headers_mut()
+        .append(CONTENT_LENGTH, payload.len().into());
+    *response.body_mut() = payload.into();
     response
 }
 
 fn error(msg: &'static str) -> Response<Body> {
     let mut response = Response::default();
+    let payload = Bytes::from_static(msg.as_bytes());
     *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-    *response.body_mut() = Bytes::from_static(msg.as_bytes()).into();
+    response
+        .headers_mut()
+        .append(CONTENT_LENGTH, payload.len().into());
+    *response.body_mut() = payload.into();
     response
 }
 
 fn req_timeout() -> Response<Body> {
     let mut response = Response::default();
+    let payload = Bytes::from("The agent failed to respond.".to_string());
     *response.status_mut() = StatusCode::REQUEST_TIMEOUT;
-    *response.body_mut() = Bytes::from("The agent failed to respond.".to_string()).into();
+    response
+        .headers_mut()
+        .append(CONTENT_LENGTH, payload.len().into());
+    *response.body_mut() = payload.into();
     response
 }
 
 fn not_found(node: &str) -> Response<Body> {
     let mut response = Response::default();
+    let payload = Bytes::from(format!("No agent at '{}'", node));
     *response.status_mut() = StatusCode::NOT_FOUND;
-    *response.body_mut() = Bytes::from(format!("No agent at '{}'", node)).into();
+    response
+        .headers_mut()
+        .append(CONTENT_LENGTH, payload.len().into());
+    *response.body_mut() = payload.into();
     response
 }
 
 fn unavailable() -> Response<Body> {
     let mut response = Response::default();
+    let payload = Bytes::from_static(b"The server is stopping.");
     *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
-    *response.body_mut() = Bytes::from_static(b"The server is stopping.").into();
+    response
+        .headers_mut()
+        .append(CONTENT_LENGTH, payload.len().into());
+    *response.body_mut() = payload.into();
     response
 }
 
