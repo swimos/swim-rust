@@ -21,10 +21,9 @@ use futures::{
     future::{ready, BoxFuture},
     FutureExt, StreamExt,
 };
+use swim_api::protocol::downlink::ValueNotificationDecoder;
 use swim_api::{
-    downlink::DownlinkKind,
-    error::FrameIoError,
-    protocol::downlink::{DownlinkNotification, ValueNotificationDecoder},
+    downlink::DownlinkKind, error::FrameIoError, protocol::downlink::DownlinkNotification,
 };
 use swim_form::structural::read::{recognizer::RecognizerReadable, StructuralReadable};
 use swim_model::{address::Address, Text};
@@ -49,7 +48,7 @@ use super::{DlState, DlStateObserver, DlStateTracker};
 #[cfg(test)]
 mod tests;
 
-pub struct HostedEventDownlinkFactory<T, LC> {
+pub struct HostedEventDownlinkFactory<T: RecognizerReadable, LC> {
     address: Address<Text>,
     lifecycle: LC,
     config: SimpleDownlinkConfig,

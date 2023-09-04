@@ -16,7 +16,7 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::time::Duration;
 
-use crate::downlink::DownlinkRuntimeConfig;
+use crate::downlink::{DownlinkRuntimeConfig, IdentifiedAddress};
 
 use super::super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
 use super::*;
@@ -201,8 +201,10 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        Uuid::from_u128(1),
-        path,
+        IdentifiedAddress {
+            identity: Uuid::from_u128(1),
+            address: path,
+        },
         config,
     )
     .run();
@@ -875,8 +877,10 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        Uuid::from_u128(1),
-        path,
+        IdentifiedAddress {
+            identity: Uuid::from_u128(1),
+            address: path,
+        },
         config,
     )
     .run();

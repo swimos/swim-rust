@@ -88,7 +88,7 @@ impl<T: Send> ValueDlState<T> for RefCell<Option<T>> {
     }
 }
 
-pub struct HostedValueDownlinkFactory<T, LC, State> {
+pub struct HostedValueDownlinkFactory<T: RecognizerReadable, LC, State> {
     address: Address<Text>,
     state: State,
     lifecycle: LC,
