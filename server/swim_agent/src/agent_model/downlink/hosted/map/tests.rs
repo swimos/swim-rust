@@ -344,7 +344,12 @@ async fn shutdown_when_input_stops() {
     let agent = FakeAgent;
     let mut context = make_hosted_input(&agent, MapDownlinkConfig::default());
     let TestContext {
-        channel, sender, ..
+        channel,
+        sender,
+        events: _events,
+        output_tx: _output_tx,
+        out_rx: _out_rx,
+        stop_tx: _stop_tx,
     } = &mut context;
 
     assert!(channel.next_event(&agent).is_none());

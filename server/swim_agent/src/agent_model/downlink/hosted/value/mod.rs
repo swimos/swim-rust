@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use futures::{
-    future::{BoxFuture, Either, OptionFuture},
+    future::{BoxFuture, OptionFuture},
     ready, FutureExt, Sink, SinkExt, Stream, StreamExt,
 };
 use pin_project::pin_project;
@@ -190,7 +190,7 @@ where
             dl_state,
             ..
         } = self;
-        let select_next = pin!(async {
+        let mut select_next = pin!(async {
             tokio::select! {
                 maybe_result = OptionFuture::from(receiver.as_mut().map(|rx| rx.next())) => {
                     match maybe_result {
@@ -235,8 +235,9 @@ where
             }
         });
         let result = if let Some(stop_signal) = stop_rx.as_mut() {
-            match futures::future::select(stop_signal, select_next).await {
-                Either::Left((triggered_result, select_next)) => {
+            tokio::select! {
+                biased;
+                triggered_result = stop_signal => {
                     *stop_rx = None;
                     if triggered_result.is_ok() {
                         *receiver = None;
@@ -250,7 +251,9 @@ where
                         select_next.await
                     }
                 }
-                Either::Right((result, _)) => result,
+                result = &mut select_next => {
+                    result
+                }
             }
         } else {
             select_next.await

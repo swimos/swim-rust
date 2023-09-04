@@ -218,14 +218,20 @@ async fn shutdown_when_input_stops() {
     let TestContext {
         mut channel,
         sender,
-        ..
+        out_rx: _out_rx,
+        events: _events,
+        write_tx: _write_tx,
+        stop_tx: _stop_tx,
     } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     assert!(channel.next_event(&agent).is_none());
 
     drop(sender);
 
-    assert!(channel.await_ready().await.is_none());
+    let r = channel.await_ready().await;
+    println!("{:?}", r);
+
+    assert!(r.is_none());
 
     assert!(channel.next_event(&agent).is_none());
 }
@@ -237,9 +243,10 @@ async fn shutdown_on_stop_trigger() {
     let TestContext {
         mut channel,
         sender: _sender,
-        stop_tx,
+        out_rx: _out_rx,
         events,
-        ..
+        write_tx: _write_tx,
+        stop_tx,
     } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     assert!(channel.next_event(&agent).is_none());
@@ -258,8 +265,10 @@ async fn terminate_on_error() {
     let TestContext {
         mut channel,
         mut sender,
+        out_rx: _out_rx,
         events,
-        ..
+        write_tx: _write_tx,
+        stop_tx: _stop_tx,
     } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     assert!(sender.get_mut().write_u8(100).await.is_ok()); //Invalid message kind tag.
