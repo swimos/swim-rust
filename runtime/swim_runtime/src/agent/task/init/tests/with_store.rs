@@ -49,7 +49,7 @@ use crate::agent::{
         AgentRuntimeRequest, InitialEndpoints, LaneEndpoint, LaneRuntimeSpec, StoreEndpoint,
         StoreRuntimeSpec,
     },
-    AgentExecError, DownlinkRequest, Io,
+    AgentExecError, Io, LinkRequest,
 };
 
 use super::{check_connected, run_test, TestInit, PERSISTENT};
@@ -62,12 +62,12 @@ impl TestInit for NoLanes {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        link_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output> {
         async move {
             let _requests = requests;
-            let _downlink_requests = downlink_requests;
+            let _link_requests = link_requests;
             init_complete.trigger();
         }
         .boxed()
@@ -110,10 +110,7 @@ async fn with_store_init_value(input: &mut ByteReader, output: &mut ByteWriter, 
         Some(Ok(LaneRequest::InitComplete)) => {}
         ow => panic!("Unexpected event: {:?}", ow),
     }
-    let mut framed_out = FramedWrite::new(
-        output,
-        LaneResponseEncoder::new(WithLengthBytesCodec::default()),
-    );
+    let mut framed_out = FramedWrite::new(output, LaneResponseEncoder::new(WithLengthBytesCodec));
     framed_out
         .send(LaneResponse::<&[u8]>::Initialized)
         .await
@@ -126,12 +123,12 @@ impl TestInit for SingleValueLane {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        link_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output> {
         async move {
             let SingleValueLane { config, expected } = self;
-            let _downlink_requests = downlink_requests;
+            let _link_requests = link_requests;
             let (promise_tx, promise_rx) = oneshot::channel();
             requests
                 .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
@@ -252,12 +249,12 @@ impl TestInit for SingleMapLane {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        link_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output> {
         async move {
             let SingleMapLane { config, expected } = self;
-            let _downlink_requests = downlink_requests;
+            let _link_requests = link_requests;
             let (promise_tx, promise_rx) = oneshot::channel();
             requests
                 .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
@@ -424,12 +421,12 @@ impl TestInit for ValueStoreInit {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        link_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output> {
         ValueStoreInitTask::new(
             requests,
-            downlink_requests,
+            link_requests,
             init_complete,
             self.store_config,
             self.lane_config,
@@ -468,7 +465,7 @@ async fn with_store_init_value_store(
 
 struct ValueStoreInitTask {
     requests: mpsc::Sender<AgentRuntimeRequest>,
-    _dl_requests: mpsc::Receiver<DownlinkRequest>,
+    _dl_requests: mpsc::Receiver<LinkRequest>,
     init_complete: trigger::Sender,
     store_config: StoreConfig,
     lane_config: LaneConfig,
@@ -478,7 +475,7 @@ struct ValueStoreInitTask {
 impl ValueStoreInitTask {
     fn new(
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        _dl_requests: mpsc::Receiver<DownlinkRequest>,
+        _dl_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
         store_config: StoreConfig,
         lane_config: LaneConfig,
@@ -584,12 +581,12 @@ impl TestInit for MapStoreInit {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        link_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output> {
         MapStoreInitTask::new(
             requests,
-            downlink_requests,
+            link_requests,
             init_complete,
             self.store_config,
             self.lane_config,
@@ -628,7 +625,7 @@ async fn with_store_init_map_store(
 
 struct MapStoreInitTask {
     requests: mpsc::Sender<AgentRuntimeRequest>,
-    _dl_requests: mpsc::Receiver<DownlinkRequest>,
+    _dl_requests: mpsc::Receiver<LinkRequest>,
     init_complete: trigger::Sender,
     store_config: StoreConfig,
     lane_config: LaneConfig,
@@ -638,7 +635,7 @@ struct MapStoreInitTask {
 impl MapStoreInitTask {
     fn new(
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        _dl_requests: mpsc::Receiver<DownlinkRequest>,
+        _dl_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
         store_config: StoreConfig,
         lane_config: LaneConfig,

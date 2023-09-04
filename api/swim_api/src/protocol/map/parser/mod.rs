@@ -15,7 +15,9 @@
 use std::num::ParseIntError;
 
 use bytes::Bytes;
-use swim_recon::parser::{try_extract_header, HeaderPeeler, MessageExtractError, Span};
+use swim_recon::parser::{
+    try_extract_header, try_extract_header_str, HeaderPeeler, MessageExtractError, Span,
+};
 
 use super::{MapMessage, MapOperation};
 
@@ -47,7 +49,7 @@ impl<'a> From<Span<'a>> for Chunk {
     }
 }
 
-/// Implementaton of [`HeaderPeeler`] that recognizes the header attribute of a warp map message.
+/// Implementation of [`HeaderPeeler`] that recognizes the header attribute of a warp map message.
 /// Rather than parsing the header, this recognizer simply keeps track of the kind of the message
 /// and where any key or value is located within the message so these can be extracted as
 /// substrings by the caller.
@@ -185,8 +187,36 @@ fn make_raw(bytes: &Bytes, peeled: MapMessage<Chunk, usize>) -> MapMessage<Bytes
     }
 }
 
-/// Attempt to interpet the header tag of a warp map message.
+fn make_str(message: &str, peeled: MapMessage<Chunk, usize>) -> MapMessage<&str, &str> {
+    match peeled {
+        MapMessage::Update { key, value } => {
+            let Chunk { offset, len } = key;
+            let key_str = &message[offset..(offset + len)];
+            let value_str = &message[value..];
+            MapMessage::Update {
+                key: key_str,
+                value: value_str,
+            }
+        }
+        MapMessage::Remove { key } => {
+            let Chunk { offset, len } = key;
+            let key_str = &message[offset..(offset + len)];
+            MapMessage::Remove { key: key_str }
+        }
+        MapMessage::Clear => MapMessage::Clear,
+        MapMessage::Take(n) => MapMessage::Take(n),
+        MapMessage::Drop(n) => MapMessage::Drop(n),
+    }
+}
+
+/// Attempt to interpret the header tag of a warp map message.
 pub fn extract_header(bytes: &Bytes) -> Result<MapMessage<Bytes, Bytes>, MessageExtractError> {
     let offsets = try_extract_header(bytes, MapMessagePeeler::default())?;
     Ok(make_raw(bytes, offsets))
+}
+
+/// Attempt to interpret the header tag of a warp map message in a UTF8 string.
+pub fn extract_header_str(message: &str) -> Result<MapMessage<&str, &str>, MessageExtractError> {
+    let offsets = try_extract_header_str(message, MapMessagePeeler::default())?;
+    Ok(make_str(message, offsets))
 }

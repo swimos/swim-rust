@@ -28,8 +28,7 @@ use swim_model::Text;
 
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 
-use tracing::info_span;
-use tracing_futures::Instrument;
+use tracing::{info_span, Instrument};
 
 use crate::model::MapDownlinkModel;
 use crate::{EventDownlinkModel, ValueDownlinkModel};

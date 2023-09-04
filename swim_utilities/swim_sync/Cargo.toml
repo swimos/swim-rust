@@ -5,7 +5,7 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-crossbeam-queue = { version = "0.3" }
+crossbeam-queue = { workspace = true }
 futures = { workspace = true }
 parking_lot = { workspace = true }
 swim_future = { path = "../swim_future" }

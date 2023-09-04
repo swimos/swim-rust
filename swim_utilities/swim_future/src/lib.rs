@@ -14,8 +14,10 @@
 
 mod combinators;
 pub mod retryable;
+mod union;
 
 pub use combinators::{
     immediate_or_join, immediate_or_start, race, race3, try_last, Either3, ImmediateOrJoin,
     ImmediateOrStart, NotifyOnBlocked, Race2, Race3, SecondaryResult, StopAfterError,
 };
+pub use union::{UnionFuture3, UnionFuture4};

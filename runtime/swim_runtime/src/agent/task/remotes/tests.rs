@@ -16,11 +16,8 @@ use std::{num::NonZeroUsize, time::Duration};
 
 use bytes::{Bytes, BytesMut};
 use futures::StreamExt;
-use swim_messages::{
-    bytes_str::BytesStr,
-    protocol::{BytesResponseMessage, Path, RawResponseMessageDecoder},
-};
-use swim_model::Text;
+use swim_messages::protocol::{BytesResponseMessage, Path, RawResponseMessageDecoder};
+use swim_model::{BytesStr, Text};
 use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader},
     non_zero_usize,
@@ -98,7 +95,7 @@ async fn expect_message(
     rx: &mut ByteReader,
     expected: BytesResponseMessage,
 ) -> (RemoteSender, BytesMut) {
-    let mut read = FramedRead::new(rx, RawResponseMessageDecoder::default());
+    let mut read = FramedRead::new(rx, RawResponseMessageDecoder);
     let (writer, buffer, result) = task.into_future().await;
     assert!(result.is_ok());
     match read.next().await {

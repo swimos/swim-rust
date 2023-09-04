@@ -20,6 +20,7 @@ use std::{
 
 use futures::future::BoxFuture;
 use swim_utilities::{
+    future::retryable::RetryStrategy,
     io::byte_channel::{ByteReader, ByteWriter},
     non_zero_usize,
     routing::route_uri::RouteUri,
@@ -72,13 +73,18 @@ pub struct StoreConfig {
 
 const DEFAULT_BUFFER: NonZeroUsize = non_zero_usize!(4096);
 
+impl LaneConfig {
+    //TODO: Remove this once const impls are stable.
+    const DEFAULT: LaneConfig = LaneConfig {
+        input_buffer_size: DEFAULT_BUFFER,
+        output_buffer_size: DEFAULT_BUFFER,
+        transient: false,
+    };
+}
+
 impl Default for LaneConfig {
     fn default() -> Self {
-        Self {
-            input_buffer_size: DEFAULT_BUFFER,
-            output_buffer_size: DEFAULT_BUFFER,
-            transient: false,
-        }
+        LaneConfig::DEFAULT
     }
 }
 
@@ -92,6 +98,10 @@ impl Default for StoreConfig {
 
 /// Trait for the context that is passed to an agent to allow it to interact with the runtime.
 pub trait AgentContext: Sync {
+    /// Open a channel for sending ad-hoc commands. Only one channel can be open at one time
+    /// and requesting a second will result in the first being closed.
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>>;
+
     /// Add a new lane endpoint to the runtime for this agent.
     /// #Arguments
     /// * `name` - The name of the lane.
@@ -133,16 +143,14 @@ pub trait AgentContext: Sync {
 #[derive(Debug, Clone, Copy)]
 pub struct AgentConfig {
     pub default_lane_config: Option<LaneConfig>,
+    pub keep_linked_retry: RetryStrategy,
 }
 
 impl AgentConfig {
     //TODO: Remove this once const impls are stable.
     pub const DEFAULT: AgentConfig = AgentConfig {
-        default_lane_config: Some(LaneConfig {
-            input_buffer_size: DEFAULT_BUFFER,
-            output_buffer_size: DEFAULT_BUFFER,
-            transient: true,
-        }),
+        default_lane_config: Some(LaneConfig::DEFAULT),
+        keep_linked_retry: RetryStrategy::none(),
     };
 }
 
@@ -168,7 +176,8 @@ pub trait Agent {
     /// * `route` - The node URI of this agent instance.
     /// * `route_params` - Parameters extracted from the route URI.
     /// * `config` - Configuration parameters for the agent.
-    /// * `context` - Context through which the agent can interact with the runtime.
+    /// * `context` - Context through which the agent can interact with the runtime. If this is
+    /// dropped, then the agent will be terminated.
     fn run(
         &self,
         route: RouteUri,

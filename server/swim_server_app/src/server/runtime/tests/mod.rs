@@ -25,11 +25,11 @@ use futures::{
     Future,
 };
 use ratchet::{Message, NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
-use swim_api::{error::DownlinkFailureReason, store::StoreDisabled};
+use swim_api::store::StoreDisabled;
 use swim_form::structural::write::StructuralWritable;
 use swim_model::address::RelativeAddress;
 use swim_recon::printer::print_recon_compact;
-use swim_remote::AttachClient;
+use swim_remote::{AttachClient, LinkError};
 use swim_runtime::net::{Scheme, SchemeHostPort};
 use swim_utilities::{
     io::byte_channel::byte_channel, non_zero_usize, routing::route_pattern::RoutePattern,
@@ -61,7 +61,7 @@ use self::{
 
 use super::{
     downlinks::{downlink_task_connector, DownlinksConnector},
-    SwimServer,
+    SwimServer, Transport,
 };
 use agent::{TestMessage, LANE};
 
@@ -129,8 +129,7 @@ where
     let server = SwimServer::new(
         plane,
         addr,
-        networking,
-        websockets,
+        Transport::new(networking, websockets),
         config,
         StoreDisabled,
         None,
@@ -594,7 +593,7 @@ async fn explicit_unlink_from_agent_lane() {
         client.expect_event(NODE, LANE, "0").await;
 
         client.unlink(NODE, LANE).await;
-        client.expect_unlinked(NODE, LANE, "Link closed.").await;
+        client.expect_unlinked(NODE, LANE, "\"Link closed.\"").await;
 
         client.command(NODE, LANE, TestMessage::Event).await;
 
@@ -830,7 +829,7 @@ async fn downlink_to_local_nonexistent() {
                 .expect("Request not satisfied.")
                 .expect_err("Local downlink succeeded.");
 
-            assert!(matches!(error, DownlinkFailureReason::Unresolvable));
+            assert!(matches!(error, LinkError::NoEndpoint(_)));
             test_context.handle.stop();
             assert!(downlink_connector.stop_handle().await.is_ok());
             downlink_connector.stopped();

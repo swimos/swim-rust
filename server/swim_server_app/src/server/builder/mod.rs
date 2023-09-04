@@ -37,7 +37,7 @@ use crate::{
 };
 
 use super::{
-    runtime::SwimServer,
+    runtime::{SwimServer, Transport},
     store::{in_memory::InMemoryPersistence, ServerPersistence},
     BoxServer, Server,
 };
@@ -170,76 +170,59 @@ impl ServerBuilder {
             routes.check_meta_collisions()?;
         }
         let resolver = Arc::new(Resolver::new().await);
+        let config = AppConfig {
+            server: config,
+            store: store_options,
+            deflate,
+            introspection,
+        };
         if let Some(tls_conf) = tls_config {
             let networking = RustlsNetworking::try_from_config(resolver, tls_conf)?;
-            Ok(BoxServer(with_store(
-                bind_to,
-                routes,
-                networking,
-                config,
-                deflate,
-                store_options,
-                introspection,
-            )?))
+            Ok(BoxServer(with_store(bind_to, routes, networking, config)?))
         } else {
             let networking = TokioPlainTextNetworking::new(resolver);
-            Ok(BoxServer(with_store(
-                bind_to,
-                routes,
-                networking,
-                config,
-                deflate,
-                store_options,
-                introspection,
-            )?))
+            Ok(BoxServer(with_store(bind_to, routes, networking, config)?))
         }
     }
+}
+
+struct AppConfig {
+    server: SwimServerConfig,
+    store: StoreConfig,
+    deflate: Option<DeflateConfig>,
+    introspection: Option<IntrospectionConfig>,
 }
 
 fn with_store<N>(
     bind_to: SocketAddr,
     routes: PlaneModel,
     networking: N,
-    config: SwimServerConfig,
-    deflate: Option<DeflateConfig>,
-    store_config: StoreConfig,
-    introspection: Option<IntrospectionConfig>,
+    mut config: AppConfig,
 ) -> Result<Box<dyn Server>, StoreError>
 where
     N: ExternalConnections,
     N::Socket: WebSocketStream,
 {
+    let store_config = std::mem::take(&mut config.store);
     match store_config {
         #[cfg(feature = "rocks_store")]
         StoreConfig::RockStore { path, options } => {
             let store = super::store::rocks::create_rocks_store(path, options)?;
-            Ok(with_websockets(
-                bind_to,
-                routes,
-                networking,
-                config,
-                deflate,
-                store,
-                introspection,
-            ))
+            Ok(with_websockets(bind_to, routes, networking, config, store))
         }
         StoreConfig::InMemory => Ok(with_websockets(
             bind_to,
             routes,
             networking,
             config,
-            deflate,
             InMemoryPersistence::default(),
-            introspection,
         )),
         _ => Ok(with_websockets(
             bind_to,
             routes,
             networking,
             config,
-            deflate,
             StoreDisabled,
-            introspection,
         )),
     }
 }
@@ -248,44 +231,46 @@ fn with_websockets<N, Store>(
     bind_to: SocketAddr,
     routes: PlaneModel,
     networking: N,
-    config: SwimServerConfig,
-    deflate: Option<DeflateConfig>,
+    config: AppConfig,
     store: Store,
-    introspection: Option<IntrospectionConfig>,
 ) -> Box<dyn Server>
 where
     N: ExternalConnections,
     N::Socket: WebSocketStream,
     Store: ServerPersistence + Send + Sync + 'static,
 {
+    let AppConfig {
+        server: server_config,
+        deflate,
+        introspection,
+        ..
+    } = config;
     let subprotocols = ProtocolRegistry::new(vec!["warp0"]).unwrap();
     if let Some(deflate_config) = deflate {
         let websockets = RatchetNetworking {
-            config: config.websockets,
+            config: server_config.websockets,
             provider: DeflateExtProvider::with_config(deflate_config),
             subprotocols,
         };
         Box::new(SwimServer::new(
             routes,
             bind_to,
-            networking,
-            websockets,
-            config,
+            Transport::new(networking, websockets),
+            server_config,
             store,
             introspection,
         ))
     } else {
         let websockets = RatchetNetworking {
-            config: config.websockets,
+            config: server_config.websockets,
             provider: NoExtProvider,
             subprotocols,
         };
         Box::new(SwimServer::new(
             routes,
             bind_to,
-            networking,
-            websockets,
-            config,
+            Transport::new(networking, websockets),
+            server_config,
             store,
             introspection,
         ))

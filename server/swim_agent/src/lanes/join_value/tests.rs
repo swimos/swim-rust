@@ -22,6 +22,7 @@ use std::{
     },
 };
 
+use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt};
 use parking_lot::Mutex;
 use swim_api::{
@@ -42,7 +43,7 @@ use crate::{
     agent_model::downlink::handlers::BoxDownlinkChannel,
     event_handler::{
         ActionContext, BoxJoinValueInit, DownlinkSpawner, EventHandlerError, HandlerAction,
-        Modification, StepResult, WriteStream,
+        Modification, StepResult,
     },
     item::{AgentItem, MapItem},
     lanes::join_value::{
@@ -172,15 +173,27 @@ fn join_value_lane_get_event_handler() {
 
     let mut handler = JoinValueLaneGet::new(TestAgent::LANE, K1);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(Some(V1.to_string())));
 
     let mut handler = JoinValueLaneGet::new(TestAgent::LANE, ABSENT);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(None));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -198,10 +211,18 @@ fn join_value_lane_get_map_event_handler() {
 
     let expected = init();
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(expected));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -210,7 +231,7 @@ fn join_value_lane_get_map_event_handler() {
 
 struct Inner<Agent> {
     downlink_channels: HashMap<Address<Text>, (ByteWriter, ByteReader)>,
-    downlinks: Vec<(BoxDownlinkChannel<Agent>, WriteStream)>,
+    downlinks: Vec<BoxDownlinkChannel<Agent>>,
 }
 
 impl<Agent> Default for Inner<Agent> {
@@ -235,8 +256,8 @@ impl<Agent> Default for TestDownlinkContext<Agent> {
 }
 
 impl<Agent> TestDownlinkContext<Agent> {
-    pub fn push_dl(&self, dl_channel: BoxDownlinkChannel<Agent>, dl_writer: WriteStream) {
-        self.inner.lock().downlinks.push((dl_channel, dl_writer));
+    pub fn push_dl(&self, dl_channel: BoxDownlinkChannel<Agent>) {
+        self.inner.lock().downlinks.push(dl_channel);
     }
 
     pub fn push_channels(&self, key: Address<Text>, io: (ByteWriter, ByteReader)) {
@@ -248,7 +269,7 @@ impl<Agent> TestDownlinkContext<Agent> {
         std::mem::take(&mut guard.downlink_channels)
     }
 
-    pub fn take_downlinks(&self) -> Vec<(BoxDownlinkChannel<Agent>, WriteStream)> {
+    pub fn take_downlinks(&self) -> Vec<BoxDownlinkChannel<Agent>> {
         let mut guard = self.inner.lock();
         std::mem::take(&mut guard.downlinks)
     }
@@ -258,14 +279,17 @@ impl<Agent> DownlinkSpawner<Agent> for TestDownlinkContext<Agent> {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Agent>,
-        dl_writer: WriteStream,
     ) -> Result<(), DownlinkRuntimeError> {
-        self.push_dl(dl_channel, dl_writer);
+        self.push_dl(dl_channel);
         Ok(())
     }
 }
 
 impl<Agent> AgentContext for TestDownlinkContext<Agent> {
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+        panic!("Unexpected request for ad hoc channel.");
+    }
+
     fn add_lane(
         &self,
         _name: &str,
@@ -290,7 +314,7 @@ impl<Agent> AgentContext for TestDownlinkContext<Agent> {
         lane: &str,
         kind: DownlinkKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
-        assert_eq!(kind, DownlinkKind::Value);
+        assert_eq!(kind, DownlinkKind::Event);
         let key = Address::text(host, node, lane);
         let (in_tx, in_rx) = byte_channel(BUFFER_SIZE);
         let (out_tx, out_rx) = byte_channel(BUFFER_SIZE);
@@ -321,8 +345,10 @@ async fn join_value_lane_add_downlinks_event_handler() {
     let context = TestDownlinkContext::default();
     let spawner = FuturesUnordered::new();
     let mut inits = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
 
-    let mut action_context = ActionContext::new(&spawner, &context, &context, &mut inits);
+    let mut action_context =
+        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
     let result = handler.step(&mut action_context, meta, &agent);
     check_result(result, false, false, Some(()));
 
@@ -332,7 +358,16 @@ async fn join_value_lane_add_downlinks_event_handler() {
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     ));
 
-    run_event_handlers(&context, &context, &agent, meta, &mut inits, spawner).await;
+    run_event_handlers(
+        &context,
+        &context,
+        &agent,
+        meta,
+        &mut inits,
+        &mut ad_hoc_buffer,
+        spawner,
+    )
+    .await;
 
     let guard = context.inner.lock();
     let Inner {
@@ -342,7 +377,7 @@ async fn join_value_lane_add_downlinks_event_handler() {
     assert_eq!(downlink_channels.len(), 1);
     assert!(downlink_channels.contains_key(&address));
     match downlinks.as_slice() {
-        [(channel, _)] => {
+        [channel] => {
             assert_eq!(channel.kind(), DownlinkKind::Event);
         }
         _ => panic!("Expected a single downlink."),
@@ -378,15 +413,26 @@ async fn open_downlink_from_registered() {
 
     let context = TestDownlinkContext::default();
     let mut inits = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
 
     let count = Arc::new(AtomicUsize::new(0));
 
     let spawner = FuturesUnordered::new();
-    let mut action_context = ActionContext::new(&spawner, &context, &context, &mut inits);
+    let mut action_context =
+        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
     register_lifecycle(&mut action_context, &agent, count.clone());
     assert!(spawner.is_empty());
 
-    run_with_futures(&context, &context, &agent, meta, &mut inits, handler).await;
+    run_with_futures(
+        &context,
+        &context,
+        &agent,
+        meta,
+        &mut inits,
+        &mut ad_hoc_buffer,
+        handler,
+    )
+    .await;
 
     assert_eq!(count.load(Ordering::Relaxed), 1);
 }

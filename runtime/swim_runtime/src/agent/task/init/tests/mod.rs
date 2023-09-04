@@ -32,6 +32,7 @@ use swim_api::{
 };
 use swim_model::Text;
 use swim_utilities::{
+    future::retryable::RetryStrategy,
     io::byte_channel::{self, byte_channel, ByteWriter},
     non_zero_usize, trigger,
 };
@@ -42,10 +43,12 @@ use uuid::Uuid;
 use crate::agent::{
     reporting::UplinkReporter,
     store::{AgentPersistence, InitFut, Initializer, StoreInitError},
-    task::{InitialEndpoints, LaneEndpoint},
-    AgentExecError, AgentRuntimeRequest, DownlinkRequest, Io, NodeReporting,
+    task::{InitialEndpoints, LaneEndpoint, LinksTaskConfig},
+    AgentExecError, AgentRuntimeRequest, Io, LinkRequest, NodeReporting,
     UplinkReporterRegistration,
 };
+
+use super::InitTaskConfig;
 
 mod no_store;
 mod with_store;
@@ -56,7 +59,7 @@ trait TestInit {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        link_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output>;
 }
@@ -66,8 +69,19 @@ const NO_RESPONSE: &str = "Initialization task did not provide a response.";
 const NO_LANE: &str = "Initialization task failed to create the lane";
 const NO_STORE: &str = "Initialization task failed to create the store";
 
-const DL_CHAN_SIZE: usize = 8;
+const DL_CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
 const INIT_TIMEOUT: Duration = Duration::from_secs(5);
+const AD_HOC_TIMEOUT: Duration = Duration::from_secs(1);
+
+const INIT_CONFIG: InitTaskConfig = InitTaskConfig {
+    ad_hoc_queue_size: DL_CHAN_SIZE,
+    item_init_timeout: INIT_TIMEOUT,
+    external_links: LinksTaskConfig {
+        buffer_size: BUFFER_SIZE,
+        retry_strategy: RetryStrategy::none(),
+        timeout_delay: AD_HOC_TIMEOUT,
+    },
+};
 
 const TRANSIENT: LaneConfig = LaneConfig {
     input_buffer_size: BUFFER_SIZE,
@@ -95,10 +109,17 @@ where
 {
     let (req_tx, req_rx) = mpsc::channel(8);
     let (done_tx, done_rx) = trigger::trigger();
-    let (dl_tx, dl_rx) = mpsc::channel(DL_CHAN_SIZE);
+    let (dl_tx, dl_rx) = mpsc::channel(DL_CHAN_SIZE.get());
 
-    let runtime =
-        super::AgentInitTask::with_store(req_rx, dl_tx, done_rx, INIT_TIMEOUT, None, store);
+    let runtime = super::AgentInitTask::with_store(
+        AGENT_ID,
+        req_rx,
+        dl_tx,
+        done_rx,
+        INIT_CONFIG,
+        None,
+        store,
+    );
     let test = init.run_test(req_tx, dl_rx, done_tx);
 
     tokio::time::timeout(TEST_TIMEOUT, join(runtime.run().map_ok(|(ep, _)| ep), test))
@@ -128,10 +149,8 @@ impl<'a> Initializer<'a> for DummyInit {
             if let Some(err) = self.error {
                 Err(err)
             } else {
-                let mut framed = FramedWrite::new(
-                    writer,
-                    LaneRequestEncoder::new(WithLengthBytesCodec::default()),
-                );
+                let mut framed =
+                    FramedWrite::new(writer, LaneRequestEncoder::new(WithLengthBytesCodec));
                 framed.send(LaneRequest::<&[u8]>::InitComplete).await?;
                 Ok(())
             }
@@ -160,14 +179,10 @@ async fn run_initializer_success() {
         );
 
         let test_task = async {
-            let mut framed_read = FramedRead::new(
-                rx_in,
-                LaneRequestDecoder::new(WithLengthBytesCodec::default()),
-            );
-            let mut framed_write = FramedWrite::new(
-                tx_out,
-                LaneResponseEncoder::new(WithLengthBytesCodec::default()),
-            );
+            let mut framed_read =
+                FramedRead::new(rx_in, LaneRequestDecoder::new(WithLengthBytesCodec));
+            let mut framed_write =
+                FramedWrite::new(tx_out, LaneResponseEncoder::new(WithLengthBytesCodec));
 
             assert!(matches!(
                 framed_read.next().await,
@@ -232,14 +247,10 @@ async fn run_initializer_bad_response() {
         );
 
         let test_task = async {
-            let mut framed_read = FramedRead::new(
-                rx_in,
-                LaneRequestDecoder::new(WithLengthBytesCodec::default()),
-            );
-            let mut framed_write = FramedWrite::new(
-                tx_out,
-                LaneResponseEncoder::new(WithLengthBytesCodec::default()),
-            );
+            let mut framed_read =
+                FramedRead::new(rx_in, LaneRequestDecoder::new(WithLengthBytesCodec));
+            let mut framed_write =
+                FramedWrite::new(tx_out, LaneResponseEncoder::new(WithLengthBytesCodec));
 
             assert!(matches!(
                 framed_read.next().await,
@@ -277,10 +288,8 @@ async fn run_initializer_timeout() {
         );
 
         let test_task = async {
-            let mut framed_read = FramedRead::new(
-                rx_in,
-                LaneRequestDecoder::new(WithLengthBytesCodec::default()),
-            );
+            let mut framed_read =
+                FramedRead::new(rx_in, LaneRequestDecoder::new(WithLengthBytesCodec));
 
             assert!(matches!(
                 framed_read.next().await,
@@ -335,19 +344,20 @@ async fn run_test_with_reporting<T: TestInit>(
 ) {
     let (req_tx, req_rx) = mpsc::channel(8);
     let (done_tx, done_rx) = trigger::trigger();
-    let (dl_tx, dl_rx) = mpsc::channel(DL_CHAN_SIZE);
+    let (dl_tx, dl_rx) = mpsc::channel(DL_CHAN_SIZE.get());
 
     let aggregate_reporter = UplinkReporter::default();
     let (reg_tx, reg_rx) = mpsc::channel(8);
     let reporting = NodeReporting::new(AGENT_ID, aggregate_reporter, reg_tx);
 
     let runtime = super::AgentInitTask::with_store(
+        AGENT_ID,
         req_rx,
         dl_tx,
         done_rx,
-        INIT_TIMEOUT,
+        INIT_CONFIG,
         Some(reporting),
-        StoreDisabled::default(),
+        StoreDisabled,
     );
     let test = init.run_test(req_tx, dl_rx, done_tx);
     let reporting_task = provide_reporting(reg_rx, expected);

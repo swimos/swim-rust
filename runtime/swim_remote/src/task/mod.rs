@@ -18,6 +18,7 @@ use std::{
     num::NonZeroUsize,
     pin::pin,
     str::Utf8Error,
+    time::Duration,
 };
 
 use bytes::BytesMut;
@@ -33,29 +34,26 @@ use ratchet::{
 };
 use smallvec::SmallVec;
 use swim_api::error::DownlinkFailureReason;
-use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
-use swim_messages::{
-    bytes_str::BytesStr,
-    protocol::{
-        BytesRequestMessage, BytesResponseMessage, Path, RawRequestMessageDecoder,
-        RawRequestMessageEncoder, RawResponseMessageDecoder, RawResponseMessageEncoder,
-        RequestMessage, ResponseMessage,
-    },
+use swim_messages::protocol::{
+    BytesRequestMessage, BytesResponseMessage, Path, RawRequestMessageDecoder,
+    RawRequestMessageEncoder, RawResponseMessageDecoder, RawResponseMessageEncoder, RequestMessage,
+    ResponseMessage,
 };
-use swim_model::{address::RelativeAddress, Text};
+use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
+use swim_model::{address::RelativeAddress, BytesStr, Text};
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     multi_reader::MultiReader,
     trigger,
 };
+use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 use uuid::Uuid;
 
-use tracing::{debug, error, info, info_span, trace, warn};
-use tracing_futures::Instrument;
+use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
 use crate::error::AgentResolutionError;
 use crate::NoSuchAgent;
@@ -66,13 +64,29 @@ mod envelopes;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug, Error)]
+pub enum LinkError {
+    #[error("No endpoint with address: {0}")]
+    NoEndpoint(RelativeAddress<Text>),
+}
+
+impl From<LinkError> for DownlinkFailureReason {
+    fn from(err: LinkError) -> Self {
+        match err {
+            LinkError::NoEndpoint(addr) => DownlinkFailureReason::UnresolvableLocal(addr),
+        }
+    }
+}
+
 /// Message to attach a new client to a socket.
 #[derive(Debug)]
 pub enum AttachClient {
     /// Attach a send only client.
     OneWay {
+        agent_id: Uuid,
+        path: Option<RelativeAddress<Text>>,
         receiver: ByteReader,
-        done: trigger::Sender,
+        done: oneshot::Sender<Result<(), LinkError>>,
     },
     /// Attach a two way (downlink) client.
     AttachDownlink {
@@ -80,7 +94,7 @@ pub enum AttachClient {
         path: RelativeAddress<Text>,
         sender: ByteWriter,
         receiver: ByteReader,
-        done: oneshot::Sender<Result<(), DownlinkFailureReason>>,
+        done: oneshot::Sender<Result<(), LinkError>>,
     },
 }
 
@@ -101,6 +115,7 @@ pub struct RemoteTask<S, E> {
     attach_rx: mpsc::Receiver<AttachClient>,
     find_tx: Option<mpsc::Sender<FindNode>>,
     registration_buffer_size: NonZeroUsize,
+    close_timeout: Duration,
 }
 
 impl<S, E> RemoteTask<S, E> {
@@ -111,6 +126,7 @@ impl<S, E> RemoteTask<S, E> {
         attach_rx: mpsc::Receiver<AttachClient>,
         find_tx: Option<mpsc::Sender<FindNode>>,
         registration_buffer_size: NonZeroUsize,
+        close_timeout: Duration,
     ) -> Self {
         RemoteTask {
             id,
@@ -119,6 +135,7 @@ impl<S, E> RemoteTask<S, E> {
             attach_rx,
             find_tx,
             registration_buffer_size,
+            close_timeout,
         }
     }
 }
@@ -172,6 +189,8 @@ where
             attach_rx,
             find_tx,
             registration_buffer_size,
+            close_timeout,
+            ..
         } = self;
 
         let (mut tx, mut rx) = ws.split().unwrap();
@@ -196,14 +215,15 @@ where
                 find_tx,
                 outgoing_tx,
             )
-            .instrument(info_span!("Websocket incoming task.", id = %id));
+            .instrument(info_span!("Websocket incoming task", id = %id));
 
         let mut outgoing = OutgoingTask::default();
         let out_task = outgoing
             .run(stop_signal, &mut tx, outgoing_rx)
-            .instrument(info_span!("Websocket outgoing task."));
+            .instrument(info_span!("Websocket outgoing task"));
 
         let (_, result) = join(reg, await_io_tasks(in_task, out_task, kill_switch_tx)).await;
+        let _cleanup = info_span!("Websocket clean-up.", id = %id);
         let close_reason = match result {
             Ok(_) => Some(CloseReason::new(
                 CloseCode::GoingAway,
@@ -225,8 +245,14 @@ where
         };
         if let Some(reason) = close_reason {
             debug!(reason = ?reason, "Closing websocket connection.");
-            if let Err(error) = tx.close(reason).await {
-                error!(error = %error, "Failed to close websocket.");
+            let close_result = tokio::time::timeout(close_timeout, async {
+                if let Err(error) = tx.close(reason).await {
+                    error!(error = %error, "Failed to close websocket.");
+                }
+            })
+            .await;
+            if close_result.is_err() {
+                warn!(id = ?id, "Closing websocket connection timed out.");
             }
         }
     }
@@ -295,9 +321,10 @@ enum OutgoingTaskMessage {
     RegisterOutgoing {
         kind: OutgoingKind,
         receiver: ByteReader,
-        done: trigger::Sender,
+        done: oneshot::Sender<Result<(), LinkError>>,
     },
     NotFound {
+        command_envelope: bool,
         error: AgentResolutionError,
     },
 }
@@ -318,7 +345,7 @@ async fn registration_task<F>(
     loop {
         let request = tokio::select! {
             done = trackers.next(), if !trackers.is_empty() => {
-                let done: Option<Option<oneshot::Sender<Result<(), DownlinkFailureReason>>>> = done;
+                let done: Option<Option<oneshot::Sender<_>>> = done;
                 if let Some(Some(done)) = done {
                     if done.send(Ok(())).is_err() {
                         info!("Downlink request dropped before it was satisfied.");
@@ -348,7 +375,7 @@ async fn registration_task<F>(
                     join(incoming_tx.reserve(), outgoing_tx.reserve()).await
                 {
                     let (in_done_tx, in_done_rx) = trigger::trigger();
-                    let (out_done_tx, out_done_rx) = trigger::trigger();
+                    let (out_done_tx, out_done_rx) = oneshot::channel();
                     in_res.send(RegisterIncoming {
                         path,
                         sender,
@@ -372,7 +399,7 @@ async fn registration_task<F>(
                     break;
                 }
             }
-            AttachClient::OneWay { receiver, done } => {
+            AttachClient::OneWay { receiver, done, .. } => {
                 debug!("Attaching send only client.");
                 if outgoing_tx
                     .send(OutgoingTaskMessage::RegisterOutgoing {
@@ -416,7 +443,7 @@ impl OutgoingTask {
     {
         let OutgoingTask { clients, agents } = self;
         let mut buffer = BytesMut::new();
-        let mut recon_encoder = ReconEncoder::default();
+        let mut recon_encoder = ReconEncoder;
 
         loop {
             let event = tokio::select! {
@@ -456,31 +483,39 @@ impl OutgoingTask {
                     done,
                 }) => {
                     debug!(kind = ?kind, "Registering new outgoing chanel.");
-                    match kind {
-                        OutgoingKind::Client => {
-                            clients.add(RequestReader::new(receiver, Default::default()));
+                    if done.send(Ok(())).is_ok() {
+                        match kind {
+                            OutgoingKind::Client => {
+                                clients.add(RequestReader::new(receiver, Default::default()));
+                            }
+                            OutgoingKind::Server => {
+                                agents.add(ResponseReader::new(receiver, Default::default()));
+                            }
                         }
-                        OutgoingKind::Server => {
-                            agents.add(ResponseReader::new(receiver, Default::default()));
-                        }
+                    } else {
+                        info!("Request for attachment dropped before it completed.");
                     }
-                    done.trigger();
                 }
                 OutgoingEvent::Message(OutgoingTaskMessage::NotFound {
                     error: AgentResolutionError::NotFound(error),
+                    command_envelope,
                 }) => {
-                    debug!(lane = ?error, "Sending node/lane not found envelope.");
-                    buffer.clear();
-                    recon_encoder
-                        .encode(error, &mut buffer)
-                        .expect("Encoding a frame should be infallible.");
-                    if let Err(error) = output.write(&buffer, PayloadType::Text).await {
-                        error!(error = %error, "Writing to the websocket connection failed.");
-                        break;
+                    if !command_envelope {
+                        debug!(lane = ?error, "Sending node/lane not found envelope.");
+                        buffer.clear();
+                        recon_encoder
+                            .encode(error, &mut buffer)
+                            .expect("Encoding a frame should be infallible.");
+                        debug_assert!(!buffer.is_empty());
+                        if let Err(error) = output.write(&buffer, PayloadType::Text).await {
+                            error!(error = %error, "Writing to the websocket connection failed.");
+                            break;
+                        }
                     }
                 }
                 OutgoingEvent::Message(OutgoingTaskMessage::NotFound {
                     error: AgentResolutionError::PlaneStopping,
+                    ..
                 }) => {
                     info!("Omitting unlinked message as the plane is stopping.");
                 }
@@ -490,6 +525,7 @@ impl OutgoingTask {
                     recon_encoder
                         .encode(req, &mut buffer)
                         .expect("Encoding a frame should be infallible.");
+                    debug_assert!(!buffer.is_empty());
                     if let Err(error) = output.write(&buffer, PayloadType::Text).await {
                         error!(error = %error, "Writing to the websocket connection failed.");
                         break;
@@ -501,6 +537,7 @@ impl OutgoingTask {
                     recon_encoder
                         .encode(res, &mut buffer)
                         .expect("Encoding a frame should be infallible.");
+                    debug_assert!(!buffer.is_empty());
                     if let Err(error) = output.write(&buffer, PayloadType::Text).await {
                         error!(error = %error, "Writing to the websocket connection failed.");
                         break;
@@ -609,6 +646,7 @@ impl IncomingTask {
                                             *id,
                                             Text::new(node),
                                             Text::new(request.path.lane.as_ref()),
+                                            request.envelope.is_command(),
                                             find_tx,
                                             &outgoing_tx,
                                         )
@@ -623,7 +661,9 @@ impl IncomingTask {
                                                     agent_routes.remove(node);
                                                 }
                                             }
-                                            Err(_) => break Ok(()),
+                                            Err(_) => {
+                                                break Ok(());
+                                            }
                                             _ => {}
                                         }
                                     }
@@ -632,6 +672,7 @@ impl IncomingTask {
                                     let RequestMessage { path, .. } = request;
                                     if outgoing_tx
                                         .send(OutgoingTaskMessage::NotFound {
+                                            command_envelope: request.envelope.is_command(),
                                             error: AgentResolutionError::NotFound(NoSuchAgent {
                                                 node: path.node.into(),
                                                 lane: path.lane.into(),
@@ -696,6 +737,7 @@ async fn connect_agent_route(
     source: Uuid,
     node: Text,
     lane: Text,
+    command_envelope: bool,
     find_tx: &mpsc::Sender<FindNode>,
     outgoing_tx: &mpsc::Sender<OutgoingTaskMessage>,
 ) -> Result<Option<RequestWriter>, ()> {
@@ -710,7 +752,7 @@ async fn connect_agent_route(
     find_tx.send(find).await.map_err(|_| ())?;
     match rx.await {
         Ok(Ok((writer, reader))) => {
-            let (done_tx, done_rx) = trigger::trigger();
+            let (done_tx, done_rx) = oneshot::channel();
             if outgoing_tx
                 .send(OutgoingTaskMessage::RegisterOutgoing {
                     kind: OutgoingKind::Server,
@@ -730,7 +772,10 @@ async fn connect_agent_route(
             }
         }
         Ok(Err(error)) => outgoing_tx
-            .send(OutgoingTaskMessage::NotFound { error })
+            .send(OutgoingTaskMessage::NotFound {
+                error,
+                command_envelope,
+            })
             .await
             .map(move |_| None)
             .map_err(|_| ()),

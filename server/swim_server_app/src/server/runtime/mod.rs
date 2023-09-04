@@ -12,15 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::future::join;
-use futures::stream::FuturesUnordered;
-use futures::{FutureExt, StreamExt};
+use futures::future::{join, Either};
+use futures::stream::{unfold, FuturesUnordered};
+use futures::{FutureExt, Stream, StreamExt};
+use parking_lot::RwLock;
 use ratchet::{SplittableExtension, WebSocket, WebSocketStream};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
+use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,16 +30,19 @@ use swim_api::agent::{Agent, BoxAgent};
 use swim_api::error::introspection::IntrospectionStopped;
 use swim_api::error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError};
 use swim_api::store::PlanePersistence;
-use swim_introspection::route::{lane_pattern, node_pattern};
-use swim_introspection::{init_introspection, IntrospectionResolver};
+use swim_introspection::route::{lane_pattern, mesh_pattern, node_pattern};
+use swim_introspection::{init_introspection, IntrospectionResolver, MetaMeshAgent};
 use swim_introspection::{IntrospectionConfig, LaneMetaAgent, NodeMetaAgent};
 use swim_model::address::RelativeAddress;
 use swim_model::Text;
-use swim_remote::{AgentResolutionError, AttachClient, FindNode, NoSuchAgent, RemoteTask};
+use swim_remote::{
+    AgentResolutionError, AttachClient, FindNode, LinkError, NoSuchAgent, RemoteTask,
+};
 use swim_runtime::agent::{
     AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteTask, CombinedAgentConfig,
-    DisconnectionReason, DownlinkRequest,
+    DisconnectionReason, LinkRequest,
 };
+use swim_runtime::downlink::Io;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use swim_runtime::net::{
@@ -47,11 +52,11 @@ use swim_runtime::ws::{RatchetError, WsConnections};
 use swim_utilities::io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
 use swim_utilities::routing::route_pattern::RoutePattern;
 use swim_utilities::trigger::{self, promise};
+use swim_utilities::uri_forest::UriForest;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinError;
-use tracing::{debug, error, info, info_span, warn};
-use tracing_futures::Instrument;
+use tracing::{debug, error, info, info_span, warn, Instrument};
 use uuid::Uuid;
 
 use crate::config::SwimServerConfig;
@@ -62,6 +67,7 @@ use crate::server::ServerHandle;
 use self::downlinks::{DownlinkConnectionTask, ServerConnector};
 use self::ids::{IdIssuer, IdKind};
 
+use super::error::UnresolvableRoute;
 use super::store::ServerPersistence;
 use super::{Server, ServerError};
 
@@ -82,6 +88,31 @@ pub struct SwimServer<Net, Ws, Store> {
     introspection: Option<IntrospectionConfig>,
 }
 
+pub struct Transport<Net, Ws> {
+    networking: Net,
+    websockets: Ws,
+}
+
+impl<Net, Ws> Transport<Net, Ws> {
+    pub fn new(networking: Net, websockets: Ws) -> Self {
+        Transport {
+            networking,
+            websockets,
+        }
+    }
+}
+
+pub struct StartAgentRequest {
+    route: RouteUri,
+    response: oneshot::Sender<Result<(), UnresolvableRoute>>,
+}
+
+impl StartAgentRequest {
+    pub fn new(route: RouteUri, response: oneshot::Sender<Result<(), UnresolvableRoute>>) -> Self {
+        StartAgentRequest { route, response }
+    }
+}
+
 type ClientPromiseTx = oneshot::Sender<Result<EstablishedClient, NewClientError>>;
 type ClientPromiseRx = oneshot::Receiver<Result<EstablishedClient, NewClientError>>;
 
@@ -92,12 +123,14 @@ enum ServerEvent<Sock, Ext> {
     RemoteStopped(SocketAddr, Result<(), JoinError>),
     AgentStopped(Text, Result<Result<(), AgentExecError>, JoinError>),
     ConnectionStopped(ConnectionTerminated),
+    CmdChannelResult(Result<(), CmdLinkTimeout>),
     RemoteClientRequest(ClientRegistration),
     NewClient(
         Result<(SocketAddr, WebSocket<Sock, Ext>), NewClientError>,
         ClientPromiseTx,
     ),
     LocalClient(AttachClient),
+    StartAgent(StartAgentRequest),
 }
 
 /// Response type, sent by the server, after receiving a [`ClientRegistration`].
@@ -168,8 +201,11 @@ where
         );
         let (fut, handle) = self.run_server(server_conn);
 
-        let downlinks_task = downlinks.run();
-        let combined = join(fut, downlinks_task).map(|(r, _)| r);
+        let downlinks_task = downlinks
+            .run()
+            .instrument(info_span!("Downlink connector task."));
+        let combined =
+            join(fut.instrument(info_span!("Server task.")), downlinks_task).map(|(r, _)| r);
         (combined.boxed(), handle)
     }
 
@@ -209,12 +245,15 @@ where
     pub fn new(
         plane: PlaneModel,
         addr: SocketAddr,
-        networking: Net,
-        websockets: Ws,
+        transport: Transport<Net, Ws>,
         config: SwimServerConfig,
         store: Store,
         introspection: Option<IntrospectionConfig>,
     ) -> Self {
+        let Transport {
+            networking,
+            websockets,
+        } = transport;
         SwimServer {
             plane,
             addr,
@@ -225,6 +264,18 @@ where
             introspection,
         }
     }
+}
+
+fn start_req_stream(
+    maybe_rx: Option<mpsc::Receiver<StartAgentRequest>>,
+) -> impl Stream<Item = StartAgentRequest> + Send {
+    unfold(maybe_rx, |state| async move {
+        if let Some(mut rx) = state {
+            rx.recv().await.map(move |req| (req, Some(rx)))
+        } else {
+            None
+        }
+    })
 }
 
 impl<Net, Ws, Store> SwimServer<Net, Ws, Store>
@@ -243,14 +294,16 @@ where
     ) {
         let (tx, rx) = trigger::trigger();
         let (addr_tx, addr_rx) = oneshot::channel();
-        let fut = self.run_inner(rx, addr_tx, server_conn);
-        (fut, ServerHandle::new(tx, addr_rx))
+        let (req_tx, req_rx) = mpsc::channel(8);
+        let fut = self.run_inner(rx, addr_tx, Some(req_rx), server_conn);
+        (fut, ServerHandle::new(tx, addr_rx, req_tx))
     }
 
     async fn run_inner(
         self,
         stop_signal: trigger::Receiver,
         addr_tx: oneshot::Sender<SocketAddr>,
+        start_requests_rx: Option<mpsc::Receiver<StartAgentRequest>>,
         mut server_conn: ServerConnector,
     ) -> Result<(), ServerError> {
         let SwimServer {
@@ -269,6 +322,7 @@ where
         let plane_store = store.open_plane(plane.name.as_str())?;
 
         let (bound_addr, listener) = networking.bind(addr).await?;
+        info!(bound_addr = %bound_addr, "TCP listener bound.");
         let _ = addr_tx.send(bound_addr);
         let mut remote_issuer = IdIssuer::new(IdKind::Remote);
 
@@ -278,7 +332,7 @@ where
         let mut remote_tasks = FuturesUnordered::new();
         let mut agent_tasks = FuturesUnordered::new();
         let mut connection_tasks = FuturesUnordered::new();
-        let mut dl_connection_tasks = FuturesUnordered::new();
+        let mut cmd_connection_tasks = FuturesUnordered::new();
         let mut client_tasks = FuturesUnordered::new();
 
         let mut accept_stream = listener.into_stream().take_until(stop_signal);
@@ -289,6 +343,8 @@ where
         let mut remote_stop = Some(remote_stop_tx);
 
         let mut routes = plane.routes.into_iter().collect();
+
+        let mut start_reqs = pin!(start_req_stream(start_requests_rx));
 
         let introspection_resolver = introspection.map(|intro_config| {
             start_introspection(
@@ -306,7 +362,7 @@ where
                 runtime_config: config.agent_runtime,
             },
             agent_stop_rx,
-            server_conn.dl_requests(),
+            server_conn.link_requests(),
             introspection_resolver,
         );
 
@@ -320,12 +376,14 @@ where
                         Some((addr, result)) = remote_tasks.next(), if !remote_tasks.is_empty() => ServerEvent::RemoteStopped(addr, result),
                         Some((id, result)) = agent_tasks.next(), if !agent_tasks.is_empty() => ServerEvent::AgentStopped(id, result),
                         Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
-                        Some(reason) = dl_connection_tasks.next(), if !dl_connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
+                        Some(result) = cmd_connection_tasks.next(), if !cmd_connection_tasks.is_empty() => ServerEvent::CmdChannelResult(result),
                         Some(event) = client_tasks.next(), if !client_tasks.is_empty() => event,
+                        Some(req) = start_reqs.next() => ServerEvent::StartAgent(req),
                         maybe_result = accept_stream.next() => {
                             if let Some(result) = maybe_result {
                                 ServerEvent::NewConnection(result)
                             } else {
+                                info!("Server task moving to stopping downlinks.");
                                 server_conn.stop();
                                 state = TaskState::StoppingDownlinks;
                                 continue;
@@ -342,6 +400,7 @@ where
                                     if let Some(stop) = agent_stop.take() {
                                         stop.trigger();
                                     }
+                                    info!("Server task moving to stopping agents.");
                                     state = TaskState::StoppingAgents;
                                     continue;
                                 }
@@ -358,6 +417,7 @@ where
                                 if let Some(stop) = agent_stop.take() {
                                     stop.trigger();
                                 }
+                                info!("Server task moving to stopping agents.");
                                 state = TaskState::StoppingAgents;
                             }
                             continue;
@@ -365,7 +425,7 @@ where
                         Some((id, result)) = remote_tasks.next(), if !remote_tasks.is_empty() => ServerEvent::RemoteStopped(id, result),
                         Some((id, result)) = agent_tasks.next(), if !agent_tasks.is_empty() => ServerEvent::AgentStopped(id, result),
                         Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
-                        Some(reason) = dl_connection_tasks.next(), if !dl_connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
+                        Some(result) = cmd_connection_tasks.next(), if !cmd_connection_tasks.is_empty() => ServerEvent::CmdChannelResult(result),
                         Some(find_route) = find_rx.recv() => ServerEvent::FindRoute(find_route),
                         else => continue,
                     }
@@ -381,11 +441,13 @@ where
                                 if let Some(stop) = remote_stop.take() {
                                     stop.trigger();
                                 }
+                                info!("Server task moving to stopping remotes.");
                                 state = TaskState::StoppingRemotes;
                                 continue;
                             }
                         },
                         Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
+                        Some(result) = cmd_connection_tasks.next(), if !cmd_connection_tasks.is_empty() => ServerEvent::CmdChannelResult(result),
                         Some(find_route) = find_rx.recv() => ServerEvent::FailRoute(find_route),
                         else => continue,
                     }
@@ -397,11 +459,12 @@ where
                             if let Some((id, result)) = maybe_result {
                                 ServerEvent::RemoteStopped(id, result)
                             } else {
+                                info!("Server task is stopped.");
                                 break;
                             }
                         },
                         Some(reason) = connection_tasks.next(), if !connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
-                        Some(reason) = dl_connection_tasks.next(), if !dl_connection_tasks.is_empty() => ServerEvent::ConnectionStopped(reason),
+                        Some(result) = cmd_connection_tasks.next(), if !cmd_connection_tasks.is_empty() => ServerEvent::CmdChannelResult(result),
                         Some(find_route) = find_rx.recv() => ServerEvent::FailRoute(find_route),
                         else => continue,
                     }
@@ -468,11 +531,16 @@ where
                     } = reason;
                     match &reason {
                         DisconnectionReason::DuplicateRegistration(_) => {
-                            error!(conected_id = %connected_id, agent_id = %agent_id, "Multiple connections attempted between a remote and an agent.");
+                            error!(connected_id = %connected_id, agent_id = %agent_id, "Multiple connections attempted between a remote and an agent.");
                         }
                         _ => {
-                            info!(conected_id = %connected_id, agent_id = %agent_id, reason = %reason, "A connection between and agent and a remote stopped.");
+                            info!(connected_id = %connected_id, agent_id = %agent_id, reason = %reason, "A connection between an agent and a remote stopped.");
                         }
+                    }
+                }
+                ServerEvent::CmdChannelResult(result) => {
+                    if let Err(err) = result {
+                        error!(error = ?err, "Connecting a local command channel failed.");
                     }
                 }
                 ServerEvent::FailRoute(FindNode {
@@ -511,7 +579,7 @@ where
                                 config.attachment_timeout,
                                 provider,
                             ).instrument(info_span!("Remote to agent connection task.", remote_id = %source, agent_id = %agent_id));
-                            connection_tasks.push(connect_task);
+                            connection_tasks.push(Either::Left(connect_task));
                         }
                         Err(node) => {
                             debug!(node = %node, "Requested agent does not exist.");
@@ -583,16 +651,16 @@ where
                     receiver,
                     done,
                 }) => {
-                    let RelativeAddress { node, .. } = path;
+                    let RelativeAddress { node, .. } = &path;
                     info!(source = %downlink_id, node = %node, "Attempting to connect a downlink to an agent.");
                     let node_store_fut = plane_store.node_store(node.as_str());
-                    let result = agents.resolve_agent(node, |name, route_task| {
+                    let result = agents.resolve_agent(node.clone(), |name, route_task| {
                         let task = route_task.run_agent_with_store(node_store_fut);
                         agent_tasks.push(attach_node(name, config.channel_coop_budget, task));
                     });
                     match result {
                         Ok((agent_id, agent_tx)) => {
-                            let task = attach_downlink(
+                            let task = attach_link_remote(
                                 downlink_id,
                                 agent_id,
                                 agent_tx.clone(),
@@ -600,18 +668,69 @@ where
                                 config.attachment_timeout,
                                 done,
                             );
-                            dl_connection_tasks.push(task);
+                            connection_tasks.push(Either::Right(task));
                         }
                         Err(node) => {
                             warn!(node = %node, "Requested agent does not exist.");
-                            if done.send(Err(DownlinkFailureReason::Unresolvable)).is_err() {
+                            if done.send(Err(LinkError::NoEndpoint(path))).is_err() {
                                 info!(node = %node, "Downlink request dropped before it was satisfied.");
                             }
                         }
                     }
                 }
-                ServerEvent::LocalClient(_) => {
-                    todo!("Intra-plane commands not yet supported.")
+                ServerEvent::LocalClient(AttachClient::OneWay {
+                    agent_id,
+                    path,
+                    receiver,
+                    done,
+                }) => {
+                    if let Some(path) = path {
+                        let RelativeAddress { node, .. } = &path;
+                        info!(source = %agent_id, node = %node, "Attempting to connect a downlink to an agent.");
+                        let node_store_fut = plane_store.node_store(node.as_str());
+                        let result = agents.resolve_agent(node.clone(), |name, route_task| {
+                            let task = route_task.run_agent_with_store(node_store_fut);
+                            agent_tasks.push(attach_node(name, config.channel_coop_budget, task));
+                        });
+                        match result {
+                            Ok((target_id, agent_tx)) => {
+                                let task = attach_link_local(
+                                    agent_id,
+                                    target_id,
+                                    agent_tx.clone(),
+                                    receiver,
+                                    config.attachment_timeout,
+                                    done,
+                                );
+                                cmd_connection_tasks.push(task);
+                            }
+                            Err(node) => {
+                                warn!(node = %node, "Requested agent does not exist.");
+                                if done.send(Err(LinkError::NoEndpoint(path))).is_err() {
+                                    info!(node = %node, "Command channel request dropped before it was satisfied.");
+                                }
+                            }
+                        }
+                        todo!("Intra-plane commands not yet supported.")
+                    }
+                }
+                ServerEvent::StartAgent(StartAgentRequest { route, response }) => {
+                    info!(route = %route, "Attempting to start an agent instance.");
+                    let node = Text::new(route.as_str());
+                    let node_store_fut = plane_store.node_store(node.as_str());
+                    let agent_tasks_ref = &agent_tasks;
+                    let result = agents.resolve_agent(node, move |name, route_task| {
+                        let task = route_task.run_agent_with_store(node_store_fut);
+                        agent_tasks_ref.push(attach_node(name, config.channel_coop_budget, task));
+                    });
+                    let resp_result = if result.is_ok() {
+                        Ok(())
+                    } else {
+                        Err(UnresolvableRoute::new(route))
+                    };
+                    if response.send(resp_result).is_err() {
+                        info!("Agent start request dropped before it was satisfied.");
+                    }
                 }
             }
         }
@@ -656,6 +775,7 @@ where
         attach_rx,
         Some(find_tx),
         config.remote.registration_buffer_size,
+        config.remote.close_timeout,
     );
 
     (
@@ -676,7 +796,7 @@ struct Agents {
     routes: Routes,
     config: CombinedAgentConfig,
     agent_stop_rx: trigger::Receiver,
-    open_dl_tx: mpsc::Sender<DownlinkRequest>,
+    open_link_tx: mpsc::Sender<LinkRequest>,
     introspection_resolver: Option<IntrospectionResolver>,
 }
 
@@ -685,7 +805,7 @@ impl Agents {
         routes: Routes,
         config: CombinedAgentConfig,
         agent_stop_rx: trigger::Receiver,
-        open_dl_tx: mpsc::Sender<DownlinkRequest>,
+        open_link_tx: mpsc::Sender<LinkRequest>,
         introspection_resolver: Option<IntrospectionResolver>,
     ) -> Self {
         Agents {
@@ -694,7 +814,7 @@ impl Agents {
             routes,
             config,
             agent_stop_rx,
-            open_dl_tx,
+            open_link_tx,
             introspection_resolver,
         }
     }
@@ -713,7 +833,7 @@ impl Agents {
             routes,
             config,
             agent_stop_rx,
-            open_dl_tx,
+            open_link_tx,
             introspection_resolver,
         } = self;
         match agent_channels.entry(node) {
@@ -742,11 +862,12 @@ impl Agents {
                         disable_introspection,
                         ..
                     } = route;
+                    let name = entry.key().clone();
 
                     let node_reporting = if *disable_introspection {
                         None
                     } else if let Some(resolver) = introspection_resolver {
-                        match resolver.register_agent(id, route_uri.clone()) {
+                        match resolver.register_agent(id, route_uri.clone(), name.clone()) {
                             Ok(reporting) => Some(reporting),
                             Err(_) => {
                                 *introspection_resolver = None;
@@ -765,12 +886,11 @@ impl Agents {
                             route_params,
                         },
                         attachment_rx,
-                        open_dl_tx.clone(),
+                        open_link_tx.clone(),
                         agent_stop_rx.clone(),
                         *config,
                         node_reporting,
                     );
-                    let name = entry.key().clone();
                     spawn_task(name, route_task);
                     let (id, tx) = entry.insert((id, attachment_tx));
                     Ok((*id, tx))
@@ -832,7 +952,7 @@ impl Routes {
         A: Agent + Send + 'static,
     {
         let Routes(routes) = self;
-        routes.push(Route::new(route_pattern, Box::new(agent), true));
+        routes.push(Route::new(route_pattern, Box::new(agent), false));
     }
 
     fn find_route<'a>(&'a self, node: &RouteUri) -> Option<(&'a Route, HashMap<String, String>)> {
@@ -902,13 +1022,13 @@ async fn attach_agent(
     }
 }
 
-async fn attach_downlink(
+async fn attach_link_remote(
     downlink_id: Uuid,
     agent_id: Uuid,
     tx: mpsc::Sender<AgentAttachmentRequest>,
-    io: (ByteWriter, ByteReader),
+    io: Io,
     connect_timeout: Duration,
-    done: oneshot::Sender<Result<(), DownlinkFailureReason>>,
+    done: oneshot::Sender<Result<(), LinkError>>,
 ) -> ConnectionTerminated {
     let (disconnect_tx, disconnect_rx) = promise::promise();
     let (connected_tx, connected_rx) = trigger::trigger();
@@ -938,6 +1058,46 @@ async fn attach_downlink(
     }
 }
 
+#[derive(Debug, Clone, Copy, Error)]
+#[error("Connecting command channel from {source_agent} to {target_agent} timed out.")]
+struct CmdLinkTimeout {
+    source_agent: Uuid,
+    target_agent: Uuid,
+}
+
+async fn attach_link_local(
+    source_agent_id: Uuid,
+    agent_id: Uuid,
+    tx: mpsc::Sender<AgentAttachmentRequest>,
+    io: ByteReader,
+    connect_timeout: Duration,
+    done: oneshot::Sender<Result<(), LinkError>>,
+) -> Result<(), CmdLinkTimeout> {
+    let (connected_tx, connected_rx) = trigger::trigger();
+    let req = AgentAttachmentRequest::commander(source_agent_id, io, connected_tx);
+    match tokio::time::timeout(connect_timeout, async move {
+        tx.send(req).await.is_ok() && connected_rx.await.is_ok()
+    })
+    .await
+    {
+        Ok(_) => {
+            if done.send(Ok(())).is_err() {
+                debug!("Downlink request dropped before satisfied.");
+                Err(CmdLinkTimeout {
+                    source_agent: source_agent_id,
+                    target_agent: agent_id,
+                })
+            } else {
+                Ok(())
+            }
+        }
+        _ => Err(CmdLinkTimeout {
+            source_agent: source_agent_id,
+            target_agent: agent_id,
+        }),
+    }
+}
+
 #[derive(Debug, Error)]
 enum NewClientError {
     #[error("Invalid host URL.")]
@@ -962,16 +1122,35 @@ impl From<NewClientError> for DownlinkRuntimeError {
     fn from(err: NewClientError) -> Self {
         match err {
             NewClientError::InvalidUrl(_) | NewClientError::BadWarpUrl(_) => {
-                DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::Unresolvable)
+                DownlinkRuntimeError::DownlinkConnectionFailed(DownlinkFailureReason::InvalidUrl)
             }
-            NewClientError::OpeningSocketFailed { .. } => {
-                DownlinkRuntimeError::DownlinkConnectionFailed(
-                    DownlinkFailureReason::ConnectionFailed,
-                )
+            NewClientError::OpeningSocketFailed { mut errors } => {
+                let err = errors.pop().map(|(_, e)| e).unwrap_or_else(|| {
+                    let e = std::io::Error::from(std::io::ErrorKind::Other);
+                    ConnectionError::ConnectionFailed(e)
+                });
+                let reason = match err {
+                    ConnectionError::ConnectionFailed(err) => {
+                        DownlinkFailureReason::ConnectionFailed(Arc::new(err))
+                    }
+                    ConnectionError::NegotiationFailed(err) => {
+                        DownlinkFailureReason::TlsConnectionFailed {
+                            error: err.into(),
+                            recoverable: true,
+                        }
+                    }
+                    ConnectionError::BadParameter(err) => {
+                        DownlinkFailureReason::TlsConnectionFailed {
+                            error: err.into(),
+                            recoverable: false,
+                        }
+                    }
+                };
+                DownlinkRuntimeError::DownlinkConnectionFailed(reason)
             }
-            NewClientError::WsNegotationFailed { .. } => {
+            NewClientError::WsNegotationFailed { error } => {
                 DownlinkRuntimeError::DownlinkConnectionFailed(
-                    DownlinkFailureReason::WebsocketNegotiationFailed,
+                    DownlinkFailureReason::WebsocketNegotiationFailed(error.to_string()),
                 )
             }
             NewClientError::ServerStopped => {
@@ -1026,9 +1205,14 @@ fn start_introspection(
     stopping: trigger::Receiver,
     routes: &mut Routes,
 ) -> IntrospectionResolver {
-    let (resolver, task) = init_introspection(stopping, config.registration_channel_size);
+    let agents = Arc::new(RwLock::new(UriForest::new()));
+    let (resolver, task) =
+        init_introspection(stopping, config.registration_channel_size, agents.clone());
+    let mesh_meta = MetaMeshAgent::new(agents);
     let node_meta = NodeMetaAgent::new(config, resolver.clone());
     let lane_meta = LaneMetaAgent::new(config, resolver.clone());
+
+    routes.append(mesh_pattern(), mesh_meta);
     routes.append(node_pattern(), node_meta);
     routes.append(lane_pattern(), lane_meta);
     tokio::spawn(task.with_budget_or_default(coop_budget));

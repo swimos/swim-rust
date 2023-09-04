@@ -1,0 +1,10 @@
+[package]
+name = "tutorial-app-generator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tutorial-app-model = { path = "../model" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"]}
+rand = { workspace = true }
+client = { path = "../../../client/swim_client" }

@@ -24,7 +24,6 @@ swim_model = {path = "../../api/swim_model" }
 swim_api = { path = "../../api/swim_api" }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
-tracing-futures = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
 rand = { workspace = true }

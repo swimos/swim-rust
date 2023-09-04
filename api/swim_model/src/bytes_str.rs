@@ -16,6 +16,8 @@ use std::fmt::{Debug, Display, Formatter};
 
 use bytes::Bytes;
 
+use crate::Text;
+
 #[derive(Default, PartialEq, Eq, Clone)]
 pub struct BytesStr(Bytes);
 
@@ -80,5 +82,27 @@ impl PartialEq<str> for BytesStr {
 impl PartialEq<String> for BytesStr {
     fn eq(&self, other: &String) -> bool {
         self.as_ref() == other
+    }
+}
+
+pub trait TryFromUtf8Bytes: Sized {
+    fn try_from_utf8_bytes(bytes: Bytes) -> Result<Self, std::str::Utf8Error>;
+}
+
+impl TryFromUtf8Bytes for BytesStr {
+    fn try_from_utf8_bytes(bytes: Bytes) -> Result<Self, std::str::Utf8Error> {
+        BytesStr::try_from(bytes)
+    }
+}
+
+impl TryFromUtf8Bytes for String {
+    fn try_from_utf8_bytes(bytes: Bytes) -> Result<Self, std::str::Utf8Error> {
+        Ok(std::str::from_utf8(bytes.as_ref())?.to_string())
+    }
+}
+
+impl TryFromUtf8Bytes for Text {
+    fn try_from_utf8_bytes(bytes: Bytes) -> Result<Self, std::str::Utf8Error> {
+        Ok(Text::new(std::str::from_utf8(bytes.as_ref())?))
     }
 }

@@ -18,15 +18,14 @@ use crate::model::lifecycle::EventDownlinkLifecycle;
 use futures::StreamExt;
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
-use swim_api::protocol::downlink::{DownlinkNotification, RecNotificationDecoder};
+use swim_api::protocol::downlink::{DownlinkNotification, ValueNotificationDecoder};
 use swim_form::Form;
 use swim_model::address::Address;
 use swim_model::Text;
 use swim_recon::printer::print_recon;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio_util::codec::FramedRead;
-use tracing::{info_span, trace};
-use tracing_futures::Instrument;
+use tracing::{info_span, trace, Instrument};
 
 use crate::EventDownlinkModel;
 
@@ -85,7 +84,7 @@ where
         ..
     } = config;
     let mut state = State::Unlinked;
-    let mut framed_read = FramedRead::new(input, RecNotificationDecoder::default());
+    let mut framed_read = FramedRead::new(input, ValueNotificationDecoder::default());
 
     while let Some(result) = framed_read.next().await {
         match result? {

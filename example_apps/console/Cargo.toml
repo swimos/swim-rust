@@ -1,0 +1,28 @@
+[package]
+name = "console"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+swim_utilities = { path = "../../swim_utilities", features = ["trigger"] }
+swim_api = { path = "../../api/swim_api" }
+swim_model = { path = "../../api/swim_model" }
+swim_form = { path = "../../api/swim_form" }
+swim_recon = { path = "../../api/formats/swim_recon" }
+swim_messages = { path = "../../runtime/swim_messages" }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time"]}
+parking_lot = { workspace = true }
+crossbeam-channel = { workspace = true }
+ratchet = { workspace = true, features = ["deflate", "split"] }
+bytes = { workspace = true }
+console-views = { path = "console_views" }
+http = { workspace = true }
+rand = { workspace = true }
+duration-str = "0.5"
+
+[target.'cfg(windows)'.dependencies]
+cursive = { version = "0.20", default-features = false, features = ["crossterm-backend"] }
+
+[target.'cfg(unix)'.dependencies]
+cursive = { version = "0.20", default-features = false, features = ["termion-backend"] }

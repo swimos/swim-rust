@@ -15,7 +15,7 @@
 use std::num::NonZeroUsize;
 
 use swim_remote::AttachClient;
-use swim_runtime::agent::DownlinkRequest;
+use swim_runtime::agent::LinkRequest;
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
 
@@ -31,7 +31,7 @@ pub enum DlTaskRequest {
 
 /// Server end of the compound channel between the server and downlink tasks.
 pub struct ServerConnector {
-    dl_req_tx: mpsc::Sender<DownlinkRequest>,
+    link_req_tx: mpsc::Sender<LinkRequest>,
     client_reg_rx: mpsc::Receiver<ClientRegistration>,
     local_rx: mpsc::Receiver<AttachClient>,
     stop_downlinks: Option<trigger::Sender>,
@@ -62,9 +62,9 @@ impl ServerConnector {
         }
     }
 
-    /// Create a channel for requesting new downlinks to be passed to agent tasks.
-    pub fn dl_requests(&self) -> mpsc::Sender<DownlinkRequest> {
-        self.dl_req_tx.clone()
+    /// Create a channel for requesting new links to be passed to agent tasks.
+    pub fn link_requests(&self) -> mpsc::Sender<LinkRequest> {
+        self.link_req_tx.clone()
     }
 
     /// Instruct the downlinks task to stop.
@@ -77,7 +77,7 @@ impl ServerConnector {
 
 /// Downlink task end of the compound channel between the server and downlinks tasks.
 pub struct DownlinksConnector {
-    dl_req_rx: mpsc::Receiver<DownlinkRequest>,
+    link_req_rx: mpsc::Receiver<LinkRequest>,
     client_reg_tx: mpsc::Sender<ClientRegistration>,
     local_tx: mpsc::Sender<AttachClient>,
     stopped: bool,
@@ -88,12 +88,12 @@ pub struct DownlinksConnector {
 pub struct Failed;
 
 impl DownlinksConnector {
-    /// Wait for the next requeset for a new downlink.
-    pub async fn next_request(&mut self) -> Option<DownlinkRequest> {
+    /// Wait for the next request for an external link.
+    pub async fn next_request(&mut self) -> Option<LinkRequest> {
         let DownlinksConnector {
             stopped,
             stop_downlinks,
-            dl_req_rx,
+            link_req_rx,
             ..
         } = self;
         if !*stopped {
@@ -102,7 +102,7 @@ impl DownlinksConnector {
                     *stopped = true;
                     None
                 }
-                maybe_req = dl_req_rx.recv() => maybe_req,
+                maybe_req = link_req_rx.recv() => maybe_req,
             }
         } else {
             None
@@ -136,14 +136,14 @@ pub fn downlink_task_connector(
     client_request_channel_size: NonZeroUsize,
     open_downlink_channel_size: NonZeroUsize,
 ) -> (ServerConnector, DownlinksConnector) {
-    let (dl_req_tx, dl_req_rx) = mpsc::channel(open_downlink_channel_size.get());
+    let (link_req_tx, link_req_rx) = mpsc::channel(open_downlink_channel_size.get());
     let (client_reg_tx, client_reg_rx) = mpsc::channel(client_request_channel_size.get());
     let (local_tx, local_rx) = mpsc::channel(client_request_channel_size.get());
     let (stop_downlinks_tx, stop_downlinks_rx) = trigger::trigger();
     let (downlinks_stopped_tx, downlinks_stopped_rx) = trigger::trigger();
 
     let server_end = ServerConnector {
-        dl_req_tx,
+        link_req_tx,
         client_reg_rx,
         local_rx,
         stop_downlinks: Some(stop_downlinks_tx),
@@ -151,7 +151,7 @@ pub fn downlink_task_connector(
     };
 
     let downlinks_end = DownlinksConnector {
-        dl_req_rx,
+        link_req_rx,
         client_reg_tx,
         local_tx,
         stopped: false,

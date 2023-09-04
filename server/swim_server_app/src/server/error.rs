@@ -12,9 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::io;
-
-use swim_api::error::StoreError;
+use swim_utilities::routing::route_uri::RouteUri;
 use thiserror::Error;
 
+#[derive(Debug, Error)]
+pub enum UnresolvableRoute {
+    #[error("No agent at route: {uri}")]
+    NoRoute { uri: RouteUri },
+    #[error("Server is stopped or stopping.")]
+    Stopped,
+}
 
+impl UnresolvableRoute {
+    pub fn new(uri: RouteUri) -> Self {
+        UnresolvableRoute::NoRoute { uri }
+    }
+}

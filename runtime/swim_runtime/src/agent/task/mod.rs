@@ -25,6 +25,7 @@ use crate::agent::task::timeout_coord::VoteResult;
 use crate::agent::task::write_fut::SpecialAction;
 use crate::error::InvalidKey;
 
+use self::external_links::{LinksTaskState, NoReport};
 use self::init::Initialization;
 use self::links::Links;
 use self::prune::PruneRemotes;
@@ -40,34 +41,33 @@ use super::{
     NodeReporting,
 };
 use bytes::{Bytes, BytesMut};
-use futures::future::BoxFuture;
+use futures::future::{join3, BoxFuture};
 use futures::stream::FuturesUnordered;
 use futures::{
-    future::{join, select as fselect, Either},
-    stream::{select as sselect, SelectAll},
+    future::{join, select, Either},
+    stream::SelectAll,
     Stream, StreamExt,
 };
-use swim_api::agent::{LaneConfig, StoreConfig};
-use swim_api::error::{OpenStoreError, StoreError};
-use swim_api::meta::lane::LaneKind;
-use swim_api::store::{StoreDisabled, StoreKind};
-use swim_api::{agent::UplinkKind, error::AgentRuntimeError};
-use swim_messages::bytes_str::BytesStr;
-use swim_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
-use swim_model::Text;
-use swim_recon::parser::MessageExtractError;
-use swim_utilities::future::{immediate_or_join, StopAfterError};
-use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
-use swim_utilities::trigger::{self, promise};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{sleep, timeout, Instant, Sleep};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::FramedRead;
+use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 use uuid::Uuid;
 
-use tracing::{debug, error, info, info_span, trace, warn};
-use tracing_futures::Instrument;
+use swim_api::agent::{LaneConfig, StoreConfig};
+use swim_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
+use swim_api::meta::lane::LaneKind;
+use swim_api::store::{StoreDisabled, StoreKind};
+use swim_api::{agent::UplinkKind, error::AgentRuntimeError};
+use swim_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
+use swim_model::{BytesStr, Text};
+use swim_recon::parser::MessageExtractError;
+use swim_utilities::future::{immediate_or_join, StopAfterError};
+use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swim_utilities::trigger::{self, promise};
 
+mod external_links;
 mod init;
 mod links;
 mod prune;
@@ -77,8 +77,8 @@ mod sender;
 mod timeout_coord;
 mod write_fut;
 
-pub use init::AgentInitTask;
-
+pub use external_links::LinksTaskConfig;
+pub use init::{AgentInitTask, InitTaskConfig};
 #[cfg(test)]
 mod fake_store;
 #[cfg(test)]
@@ -132,9 +132,28 @@ impl StoreRuntimeSpec {
     }
 }
 
+#[derive(Debug)]
+pub struct AdHocChannelRequest {
+    pub promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
+}
+
+impl AdHocChannelRequest {
+    pub fn new(promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>) -> Self {
+        AdHocChannelRequest { promise }
+    }
+}
+
+#[derive(Debug)]
+pub enum ExternalLinkRequest {
+    AdHoc(AdHocChannelRequest),
+    Downlink(DownlinkRequest),
+}
+
 /// Type for requests that can be sent to the agent runtime task by an agent implementation.
 #[derive(Debug)]
 pub enum AgentRuntimeRequest {
+    /// Attempt to open a channel for ad-hoc commands.
+    AdHoc(AdHocChannelRequest),
     /// Attempt to open a new lane for the agent.
     AddLane(LaneRuntimeSpec),
     /// Attempt to open a new store for the agent.
@@ -266,6 +285,7 @@ pub struct InitialEndpoints {
     rx: mpsc::Receiver<AgentRuntimeRequest>,
     lane_endpoints: Vec<LaneEndpoint<Io>>,
     store_endpoints: Vec<StoreEndpoint>,
+    ext_link_state: LinksTaskState,
 }
 
 impl InitialEndpoints {
@@ -274,12 +294,14 @@ impl InitialEndpoints {
         rx: mpsc::Receiver<AgentRuntimeRequest>,
         lane_endpoints: Vec<LaneEndpoint<Io>>,
         store_endpoints: Vec<StoreEndpoint>,
+        ext_link_state: LinksTaskState,
     ) -> Self {
         InitialEndpoints {
             reporting,
             rx,
             lane_endpoints,
             store_endpoints,
+            ext_link_state,
         }
     }
 }
@@ -306,7 +328,6 @@ pub struct AgentRuntimeTask<Store = StoreDisabled> {
     node: NodeDescriptor,
     init: InitialEndpoints,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-    downlink_requests: mpsc::Sender<DownlinkRequest>,
     stopping: trigger::Receiver,
     config: AgentRuntimeConfig,
     store: Store,
@@ -314,7 +335,7 @@ pub struct AgentRuntimeTask<Store = StoreDisabled> {
 
 /// Message type used by the read and write tasks to communicate with each other.
 #[derive(Debug, Clone)]
-enum RwCoorindationMessage {
+enum RwCoordinationMessage {
     /// An envelope was received for an unknown lane (and so the write task should issue an appropriate error response).
     UnknownLane { origin: Uuid, path: Path<Text> },
     /// An envelope that was invalid for the subprotocol used by the specified lane was received.
@@ -335,14 +356,12 @@ impl AgentRuntimeTask {
     /// * `node` - The routing ID and node URI of this agent instance.
     /// * `init` - The initial lane and store endpoints for this agent.
     /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
-    /// * `downlink_requests` - Channel for requests to open downlink runtimes for the agent.
     /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
     /// * `config` - Configuration parameters for the agent runtime.
     pub fn new(
         node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        downlink_requests: mpsc::Sender<DownlinkRequest>,
         stopping: trigger::Receiver,
         config: AgentRuntimeConfig,
     ) -> Self {
@@ -350,10 +369,9 @@ impl AgentRuntimeTask {
             node,
             init,
             attachment_rx,
-            downlink_requests,
             stopping,
             config,
-            store: StoreDisabled::default(),
+            store: StoreDisabled,
         }
     }
 }
@@ -367,7 +385,6 @@ where
     /// * `node` - The routing ID and node URI of this agent instance.
     /// * `init` - The initial lane and store endpoints for this agent.
     /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
-    /// * `downlink_requests` - Channel for requests to open downlink runtimes for the agent.
     /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
     /// * `config` - Configuration parameters for the agent runtime.
     /// * `store` - Persistence store for the agent.
@@ -375,7 +392,6 @@ where
         node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        downlink_requests: mpsc::Sender<DownlinkRequest>,
         stopping: trigger::Receiver,
         config: AgentRuntimeConfig,
         store: Store,
@@ -384,7 +400,6 @@ where
             node,
             init,
             attachment_rx,
-            downlink_requests,
             stopping,
             config,
             store,
@@ -405,9 +420,9 @@ where
                     rx,
                     lane_endpoints,
                     store_endpoints,
+                    ext_link_state,
                 },
             attachment_rx,
-            downlink_requests,
             stopping,
             config,
             store,
@@ -418,20 +433,23 @@ where
 
         let (read_tx, read_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (write_tx, write_rx) = mpsc::channel(config.attachment_queue_size.get());
+        let (ext_link_tx, ext_link_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (read_vote, write_vote, vote_waiter) = timeout_coord::timeout_coordinator();
 
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
 
-        let combined_stop = fselect(fselect(stopping.clone(), kill_switch_rx), vote_waiter);
+        let combined_stop = select(select(stopping.clone(), kill_switch_rx), vote_waiter);
+
         let att = attachment_task(
             rx,
             attachment_rx,
-            downlink_requests,
             read_tx.clone(),
             write_tx.clone(),
+            ext_link_tx,
             combined_stop,
         )
         .instrument(info_span!("Agent Runtime Attachment Task", %identity, %node_uri));
+
         let read = read_task(
             config,
             write_endpoints,
@@ -442,6 +460,7 @@ where
             reporting.as_ref().map(NodeReporting::aggregate),
         )
         .instrument(info_span!("Agent Runtime Read Task", %identity, %node_uri));
+
         let write = write_task(
             WriteTaskConfiguration::new(identity, node_uri.clone(), config),
             WriteTaskEndpoints::new(read_endpoints, store_endpoints),
@@ -453,8 +472,23 @@ where
         )
         .instrument(info_span!("Agent Runtime Write Task", %identity, %node_uri));
 
+        let ext_link_config = LinksTaskConfig {
+            buffer_size: config.ad_hoc_buffer_size,
+            retry_strategy: config.ad_hoc_output_retry,
+            timeout_delay: config.ad_hoc_output_timeout,
+        };
+
+        let ext_links = external_links::external_links_task::<NoReport>(
+            identity,
+            ext_link_rx,
+            ext_link_state,
+            ext_link_config,
+            None,
+        )
+        .instrument(info_span!("Agent Ad Hoc Command Task", %identity, %node_uri));
+
         let io = await_io_tasks(read, write, kill_switch_tx);
-        let (_, result) = join(att, io).await;
+        let (_, _, result) = join3(att, ext_links, io).await;
         result
     }
 }
@@ -468,6 +502,8 @@ enum ReadTaskMessage {
         reader: ByteReader,
         on_attached: Option<trigger::Sender>,
     },
+    /// Instruct the read task to stop cleanly.
+    Stop,
 }
 
 /// Control messages consumed by the write task.
@@ -485,7 +521,9 @@ enum WriteTaskMessage {
         on_attached: Option<trigger::Sender>,
     },
     /// A coordination message send by the read task.
-    Coord(RwCoorindationMessage),
+    Coord(RwCoordinationMessage),
+    /// Instruct the write task to stop cleanly.
+    Stop,
 }
 
 impl WriteTaskMessage {
@@ -500,51 +538,54 @@ impl WriteTaskMessage {
 /// #Arguments
 /// * `runtime` - Requests from the agent.
 /// * `attachment` - External requests to attach new remotes.
-/// * `downlink_requests` - Requests to open downlink runtimes for the agent.
 /// * `read_tx` - Channel to communicate with the read task.
 /// * `write_tx` - Channel to communicate with the write task.
+/// * `ext_link_tx` - Channel to communicate with the external links task.
 /// * `combined_stop` - The task will stop when this future completes. This should combined the overall
 /// shutdown-signal with latch that ensures this task will stop if the read/write tasks stop (to avoid
 /// deadlocks).
 async fn attachment_task<F>(
-    runtime: mpsc::Receiver<AgentRuntimeRequest>,
-    attachment: mpsc::Receiver<AgentAttachmentRequest>,
-    downlink_requests: mpsc::Sender<DownlinkRequest>,
+    mut runtime: mpsc::Receiver<AgentRuntimeRequest>,
+    mut attachment: mpsc::Receiver<AgentAttachmentRequest>,
     read_tx: mpsc::Sender<ReadTaskMessage>,
     write_tx: mpsc::Sender<WriteTaskMessage>,
-    combined_stop: F,
+    ext_link_tx: mpsc::Sender<ExternalLinkRequest>,
+    mut combined_stop: F,
 ) where
     F: Future + Unpin,
 {
-    let mut stream = sselect(
-        ReceiverStream::new(runtime).map(Either::Left),
-        ReceiverStream::new(attachment).map(Either::Right),
-    )
-    .take_until(combined_stop);
-
     let mut attachments = FuturesUnordered::new();
 
     loop {
         tokio::select! {
             biased;
+            _ = &mut combined_stop => break,
             _ = attachments.next(), if !attachments.is_empty() => {},
-            maybe_event = stream.next() => {
+            maybe_event = async { tokio::select! {
+                maybe_runtime = runtime.recv() => maybe_runtime.map(Either::Left),
+                maybe_att = attachment.recv() => maybe_att.map(Either::Right),
+            }} => {
                 if let Some(event) = maybe_event {
                     match event {
                         Either::Left(request) => {
                             let succeeded = match request {
                                 AgentRuntimeRequest::AddLane(req) => write_tx.send(WriteTaskMessage::Lane(req)).await.is_ok(),
                                 AgentRuntimeRequest::AddStore(req) => write_tx.send(WriteTaskMessage::Store(req)).await.is_ok(),
-                                AgentRuntimeRequest::OpenDownlink(req) => downlink_requests.send(req).await.is_ok(),
+                                AgentRuntimeRequest::AdHoc(request) => ext_link_tx.send(ExternalLinkRequest::AdHoc(request)).await.is_ok(),
+                                AgentRuntimeRequest::OpenDownlink(req) => ext_link_tx.send(ExternalLinkRequest::Downlink(req)).await.is_ok(),
                             };
                             if !succeeded {
                                 break;
                             }
                         }
                         Either::Right(request) => {
-                            if !handle_att_request(request, &read_tx, &write_tx, |read_rx, write_rx, on_attached| {
+                            if !handle_att_request(request, &read_tx, &write_tx, |read_rx, maybe_write_rx, on_attached| {
                                 attachments.push(async move {
-                                    if matches!(join(read_rx, write_rx).await, (Ok(_), Ok(_))) {
+                                    if let Some(write_rx) = maybe_write_rx {
+                                        if matches!(join(read_rx, write_rx).await, (Ok(_), Ok(_))) {
+                                            on_attached.trigger();
+                                        }
+                                    } else if read_rx.await.is_ok() {
                                         on_attached.trigger();
                                     }
                                 })
@@ -559,6 +600,11 @@ async fn attachment_task<F>(
             }
         }
     }
+    let _ = join(
+        read_tx.send(ReadTaskMessage::Stop),
+        write_tx.send(WriteTaskMessage::Stop),
+    )
+    .await;
 }
 
 #[inline]
@@ -569,51 +615,83 @@ async fn handle_att_request<F>(
     add_att: F,
 ) -> bool
 where
-    F: FnOnce(trigger::Receiver, trigger::Receiver, trigger::Sender),
+    F: FnOnce(trigger::Receiver, Option<trigger::Receiver>, trigger::Sender),
 {
-    let AgentAttachmentRequest {
-        id,
-        io: (tx, rx),
-        completion,
-        on_attached,
-    } = request;
-    info!(
-        "Attaching a new remote endpoint with ID {id} to the agent.",
-        id = id
-    );
-    let read_permit = match read_tx.reserve().await {
-        Err(_) => {
-            warn!("Read task stopped while attempting to attach a remote endpoint.");
-            return false;
+    match request {
+        AgentAttachmentRequest::TwoWay {
+            id,
+            io: (tx, rx),
+            completion,
+            on_attached,
+        } => {
+            info!(
+                "Attaching a new remote endpoint with ID {id} to the agent.",
+                id = id
+            );
+            let read_permit = match read_tx.reserve().await {
+                Err(_) => {
+                    warn!("Read task stopped while attempting to attach a remote endpoint.");
+                    return false;
+                }
+                Ok(permit) => permit,
+            };
+            let write_permit = match write_tx.reserve().await {
+                Err(_) => {
+                    warn!("Write task stopped while attempting to attach a remote endpoint.");
+                    return false;
+                }
+                Ok(permit) => permit,
+            };
+            let (read_on_attached, write_on_attached) = if let Some(on_attached) = on_attached {
+                let (read_tx, read_rx) = trigger::trigger();
+                let (write_tx, write_rx) = trigger::trigger();
+                add_att(read_rx, Some(write_rx), on_attached);
+                (Some(read_tx), Some(write_tx))
+            } else {
+                (None, None)
+            };
+            read_permit.send(ReadTaskMessage::Remote {
+                reader: rx,
+                on_attached: read_on_attached,
+            });
+            write_permit.send(WriteTaskMessage::Remote {
+                id,
+                writer: tx,
+                completion,
+                on_attached: write_on_attached,
+            });
+            true
         }
-        Ok(permit) => permit,
-    };
-    let write_permit = match write_tx.reserve().await {
-        Err(_) => {
-            warn!("Write task stopped while attempting to attach a remote endpoint.");
-            return false;
+        AgentAttachmentRequest::OneWay {
+            io: rx,
+            id,
+            on_attached,
+        } => {
+            info!(
+                "Attaching a new command channel from ID {id} to the agent.",
+                id = id
+            );
+            let read_permit = match read_tx.reserve().await {
+                Err(_) => {
+                    warn!("Read task stopped while attempting to attach a command channel.");
+                    return false;
+                }
+                Ok(permit) => permit,
+            };
+            let read_on_attached = if let Some(on_attached) = on_attached {
+                let (read_tx, read_rx) = trigger::trigger();
+                add_att(read_rx, None, on_attached);
+                Some(read_tx)
+            } else {
+                None
+            };
+            read_permit.send(ReadTaskMessage::Remote {
+                reader: rx,
+                on_attached: read_on_attached,
+            });
+            true
         }
-        Ok(permit) => permit,
-    };
-    let (read_on_attached, write_on_attached) = if let Some(on_attached) = on_attached {
-        let (read_tx, read_rx) = trigger::trigger();
-        let (write_tx, write_rx) = trigger::trigger();
-        add_att(read_rx, write_rx, on_attached);
-        (Some(read_tx), Some(write_tx))
-    } else {
-        (None, None)
-    };
-    read_permit.send(ReadTaskMessage::Remote {
-        reader: rx,
-        on_attached: read_on_attached,
-    });
-    write_permit.send(WriteTaskMessage::Remote {
-        id,
-        writer: tx,
-        completion,
-        on_attached: write_on_attached,
-    });
-    true
+    }
 }
 
 type RemoteReceiver = FramedRead<ByteReader, RawRequestMessageDecoder>;
@@ -622,7 +700,7 @@ fn remote_receiver(reader: ByteReader) -> RemoteReceiver {
     RemoteReceiver::new(reader, Default::default())
 }
 
-const TASK_COORD_ERR: &str = "Stopping after communcating with the write task failed.";
+const TASK_COORD_ERR: &str = "Stopping after communicating with the write task failed.";
 const STOP_VOTED: &str = "Stopping as read and write tasks have both voted to do so.";
 
 /// Events that can occur within the read task.
@@ -701,7 +779,7 @@ async fn read_task(
         } else {
             let select_next = timeout(
                 config.inactive_timeout,
-                fselect(reg_stream.next(), remotes.next()),
+                select(reg_stream.next(), remotes.next()),
             );
             let (result, _) = immediate_or_join(select_next, flush).await;
             match result {
@@ -743,6 +821,7 @@ async fn read_task(
                         on_attached.trigger();
                     }
                 }
+                ReadTaskMessage::Stop => break,
             },
             ReadTaskEvent::Envelope(msg) => {
                 if voted {
@@ -781,7 +860,7 @@ async fn read_task(
                                     origin, lane
                                 );
                                 if write_tx
-                                    .send(WriteTaskMessage::Coord(RwCoorindationMessage::Link {
+                                    .send(WriteTaskMessage::Coord(RwCoordinationMessage::Link {
                                         origin,
                                         lane: Text::new(lane.as_str()),
                                     }))
@@ -823,7 +902,7 @@ async fn read_task(
                                         error!(error = ?error, "Received invalid envelope from {} for lane '{}'", origin, lane);
                                         if write_tx
                                             .send(WriteTaskMessage::Coord(
-                                                RwCoorindationMessage::BadEnvelope {
+                                                RwCoordinationMessage::BadEnvelope {
                                                     origin,
                                                     lane: Text::new(lane.as_str()),
                                                     error,
@@ -848,7 +927,7 @@ async fn read_task(
                                     origin, lane
                                 );
                                 if write_tx
-                                    .send(WriteTaskMessage::Coord(RwCoorindationMessage::Unlink {
+                                    .send(WriteTaskMessage::Coord(RwCoordinationMessage::Unlink {
                                         origin,
                                         lane: Text::new(lane.as_str()),
                                     }))
@@ -864,13 +943,18 @@ async fn read_task(
                 } else {
                     info!("Received envelope for non-existent lane '{}'.", path.lane);
                     let flush = flush_lane(&mut lanes, &mut needs_flush);
-                    let send_err = write_tx.send(WriteTaskMessage::Coord(
-                        RwCoorindationMessage::UnknownLane {
-                            origin,
-                            path: Path::text(path.node.as_str(), path.lane.as_str()),
-                        },
-                    ));
-                    let (_, result) = join(flush, send_err).await;
+                    let result = if envelope.is_command() {
+                        flush.await;
+                        Ok(())
+                    } else {
+                        let send_err = write_tx.send(WriteTaskMessage::Coord(
+                            RwCoordinationMessage::UnknownLane {
+                                origin,
+                                path: Path::text(path.node.as_str(), path.lane.as_str()),
+                            },
+                        ));
+                        join(flush, send_err).await.1
+                    };
                     if result.is_err() {
                         error!(TASK_COORD_ERR);
                         break;
@@ -1188,6 +1272,7 @@ enum TaskMessageResult<I> {
     StoreInitFailure(AgentItemInitError),
     /// No effect.
     Nothing,
+    Stop,
 }
 
 impl<I> From<Option<WriteTask>> for TaskMessageResult<I> {
@@ -1341,7 +1426,7 @@ impl WriteTaskState {
                 }
                 TaskMessageResult::AddPruneTimeout(id)
             }
-            WriteTaskMessage::Coord(RwCoorindationMessage::Link { origin, lane }) => {
+            WriteTaskMessage::Coord(RwCoordinationMessage::Link { origin, lane }) => {
                 info!("Attempting to set up link from '{}' to {}.", lane, origin);
                 match remote_tracker.lane_registry().id_for(lane.as_str()) {
                     Some(id) if remote_tracker.has_remote(origin) => {
@@ -1364,7 +1449,7 @@ impl WriteTaskState {
                     }
                 }
             }
-            WriteTaskMessage::Coord(RwCoorindationMessage::Unlink { origin, lane }) => {
+            WriteTaskMessage::Coord(RwCoordinationMessage::Unlink { origin, lane }) => {
                 info!(
                     "Attempting to close any link from '{}' to {}.",
                     lane, origin
@@ -1372,7 +1457,7 @@ impl WriteTaskState {
                 if let Some(lane_id) = remote_tracker.lane_registry().id_for(lane.as_str()) {
                     if links.is_linked(origin, lane_id) {
                         let schedule_prune = links.remove(lane_id, origin).into_option();
-                        let message = Text::new("Link closed.");
+                        let message = Text::new("\"Link closed.\"");
                         let maybe_write = remote_tracker
                             .push_special(SpecialAction::unlinked(lane_id, message), &origin);
                         if let Some(write) = maybe_write {
@@ -1394,7 +1479,7 @@ impl WriteTaskState {
                     TaskMessageResult::Nothing
                 }
             }
-            WriteTaskMessage::Coord(RwCoorindationMessage::UnknownLane { origin, path }) => {
+            WriteTaskMessage::Coord(RwCoordinationMessage::UnknownLane { origin, path }) => {
                 info!(
                     "Received envelope for non-existent lane '{}' from {}.",
                     path.lane, origin
@@ -1403,7 +1488,7 @@ impl WriteTaskState {
                     .push_special(SpecialAction::lane_not_found(path.lane), &origin)
                     .into()
             }
-            WriteTaskMessage::Coord(RwCoorindationMessage::BadEnvelope {
+            WriteTaskMessage::Coord(RwCoordinationMessage::BadEnvelope {
                 origin,
                 lane,
                 error,
@@ -1411,6 +1496,7 @@ impl WriteTaskState {
                 info!(error = ?error, "Received in invalid envelope for lane '{}' from {}.", lane, origin);
                 TaskMessageResult::Nothing
             }
+            WriteTaskMessage::Stop => TaskMessageResult::Stop,
         }
     }
 
@@ -1459,7 +1545,7 @@ impl WriteTaskState {
                 },
             ))
         } else {
-            trace!(response = ?response, "Discarding response.");
+            trace!(response = ?response, id, "Discarding response.");
             Either::Left(Writes::Zero)
         }
     }
@@ -1588,7 +1674,7 @@ where
         runtime_config,
     } = configuration;
 
-    let initialization = Initialization::new(reporting, runtime_config.lane_init_timeout);
+    let initialization = Initialization::new(reporting, runtime_config.item_init_timeout);
 
     let mut timeout_delay = pin!(sleep(runtime_config.inactive_timeout));
     let remote_prune_delay = pin!(sleep(Duration::default()));
@@ -1635,6 +1721,7 @@ where
 
     loop {
         let next = streams.select_next().await;
+        trace!(event = ?next, "Processing write task event");
         match next {
             WriteTaskEvent::Message(reg) => match state
                 .handle_task_message(reg, &initialization, &store)
@@ -1684,6 +1771,7 @@ where
                     }
                 }
                 TaskMessageResult::Nothing => {}
+                TaskMessageResult::Stop => break,
             },
             WriteTaskEvent::Event(response) => {
                 if response.is_lane() && voted {
@@ -1800,7 +1888,7 @@ where
 {
     let read = pin!(read);
     let write = pin!(write);
-    let first_finished = fselect(read, write).await;
+    let first_finished = select(read, write).await;
     kill_switch_tx.trigger();
     match first_finished {
         Either::Left((_, write_fut)) => write_fut.await,

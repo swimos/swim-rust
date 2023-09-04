@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
@@ -32,8 +33,13 @@ use self::dns::BoxDnsResolver;
 pub mod dns;
 pub mod plain;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, PartialEq, Eq, Error)]
 pub enum BadUrl {
+    #[error("Malformed URL: {0}")]
+    BadUrl(#[from] url::ParseError),
     #[error("{0} is not a valid Warp scheme.")]
     BadScheme(String),
     #[error("The URL did not contain a valid host.")]
@@ -106,10 +112,10 @@ pub enum ConnectionError {
     ),
     /// A connection could not be negotiated (for example, a TLS handshake failed).
     #[error("Negotiating a new connection failed: {0}")]
-    NegotiationFailed(#[source] Box<dyn std::error::Error + Send>),
+    NegotiationFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
     /// A connection parameter was invalid (for example, requesting a secure connection when TLS is not enabled).
     #[error("Negotiating a new connection failed: {0}")]
-    BadParameter(#[source] Box<dyn std::error::Error + Send>),
+    BadParameter(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 /// Errors that can be generated when listening for incoming connections. Particularly, this
@@ -190,11 +196,26 @@ impl Display for SchemeHostPort {
     }
 }
 
-impl<'a> TryFrom<&'a Url> for SchemeHostPort {
-    type Error = BadUrl;
+impl FromStr for SchemeHostPort {
+    type Err = BadUrl;
 
-    fn try_from(url: &'a Url) -> Result<Self, Self::Error> {
-        let scheme = Scheme::try_from(url.scheme())?;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let url = s.parse::<Url>()?;
+        let (scheme, url) = match Scheme::try_from(url.scheme()) {
+            Ok(scheme) => (scheme, url),
+            Err(e) => {
+                let with_scheme = format!("ws://{}", s);
+                if let Ok(url2) = with_scheme.parse::<Url>() {
+                    if let Ok(scheme) = Scheme::try_from(url2.scheme()) {
+                        (scheme, url2)
+                    } else {
+                        return Err(e);
+                    }
+                } else {
+                    return Err(e);
+                }
+            }
+        };
         match (url.host_str(), url.port()) {
             (Some(host_str), Some(port)) => {
                 Ok(SchemeHostPort::new(scheme, host_str.to_owned(), port))

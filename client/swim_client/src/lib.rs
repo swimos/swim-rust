@@ -25,14 +25,17 @@ use runtime::{
     start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, RemotePath, Transport,
     WebSocketConfig,
 };
+pub use runtime::{CommandError, Commander};
 use std::sync::Arc;
 use swim_api::downlink::DownlinkConfig;
 use swim_downlink::lifecycle::{
     BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle, MapDownlinkLifecycle,
     ValueDownlinkLifecycle,
 };
-use swim_downlink::{ChannelError, MapDownlinkHandle, MapDownlinkModel, MapKey, MapValue};
-use swim_downlink::{DownlinkTask, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation};
+use swim_downlink::{
+    ChannelError, DownlinkTask, MapDownlinkHandle, MapDownlinkModel, MapKey, MapValue,
+    NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation,
+};
 use swim_form::Form;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use swim_runtime::net::dns::Resolver;
@@ -123,6 +126,7 @@ where
         remote_buffer_size,
         transport_buffer_size,
         registration_buffer_size,
+        close_timeout,
         interpret_frame_data,
         ..
     } = config;
@@ -145,7 +149,7 @@ where
             start_runtime(
                 registration_buffer_size,
                 stop_rx,
-                Transport::new(networking, websockets, remote_buffer_size),
+                Transport::new(networking, websockets, remote_buffer_size, close_timeout),
                 transport_buffer_size,
                 interpret_frame_data,
             )
@@ -163,7 +167,7 @@ where
             start_runtime(
                 registration_buffer_size,
                 stop_rx,
-                Transport::new(networking, websockets, remote_buffer_size),
+                Transport::new(networking, websockets, remote_buffer_size, close_timeout),
                 transport_buffer_size,
                 interpret_frame_data,
             )

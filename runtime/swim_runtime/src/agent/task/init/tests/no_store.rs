@@ -38,21 +38,21 @@ use crate::agent::{
         init::tests::{run_test_with_reporting, AGENT_ID, TRANSIENT},
         AgentRuntimeRequest, InitialEndpoints, LaneEndpoint, LaneRuntimeSpec, StoreRuntimeSpec,
     },
-    AgentExecError, DownlinkRequest, Io,
+    AgentExecError, Io, LinkRequest,
 };
 
 struct NoLanesInit;
 
 struct NoLanesInitTask {
     _requests: mpsc::Sender<AgentRuntimeRequest>,
-    _dl_requests: mpsc::Receiver<DownlinkRequest>,
+    _dl_requests: mpsc::Receiver<LinkRequest>,
     init_complete: trigger::Sender,
 }
 
 impl NoLanesInitTask {
     fn new(
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        dl_requests: mpsc::Receiver<DownlinkRequest>,
+        dl_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> Self {
         NoLanesInitTask {
@@ -74,10 +74,10 @@ impl TestInit for NoLanesInit {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        link_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output> {
-        let task = NoLanesInitTask::new(requests, downlink_requests, init_complete);
+        let task = NoLanesInitTask::new(requests, link_requests, init_complete);
         task.run().boxed()
     }
 }
@@ -87,18 +87,12 @@ struct SingleLaneInit {
 }
 
 async fn no_store_init_value(input: &mut ByteReader, output: &mut ByteWriter) {
-    let mut framed_in = FramedRead::new(
-        input,
-        LaneRequestDecoder::new(WithLengthBytesCodec::default()),
-    );
+    let mut framed_in = FramedRead::new(input, LaneRequestDecoder::new(WithLengthBytesCodec));
     match framed_in.next().await {
         Some(Ok(LaneRequest::InitComplete)) => {}
         ow => panic!("Unexpected event: {:?}", ow),
     }
-    let mut framed_out = FramedWrite::new(
-        output,
-        LaneResponseEncoder::new(WithLengthBytesCodec::default()),
-    );
+    let mut framed_out = FramedWrite::new(output, LaneResponseEncoder::new(WithLengthBytesCodec));
     framed_out
         .send(LaneResponse::<&[u8]>::Initialized)
         .await
@@ -108,16 +102,13 @@ async fn no_store_init_value(input: &mut ByteReader, output: &mut ByteWriter) {
 async fn no_store_init_map(input: &mut ByteReader, output: &mut ByteWriter) {
     let mut framed_in = FramedRead::new(
         input,
-        LaneRequestDecoder::new(MapMessageDecoder::new(RawMapOperationDecoder::default())),
+        LaneRequestDecoder::new(MapMessageDecoder::new(RawMapOperationDecoder)),
     );
     match framed_in.next().await {
         Some(Ok(LaneRequest::InitComplete)) => {}
         ow => panic!("Unexpected event: {:?}", ow),
     }
-    let mut framed_out = FramedWrite::new(
-        output,
-        LaneResponseEncoder::new(RawMapOperationEncoder::default()),
-    );
+    let mut framed_out = FramedWrite::new(output, LaneResponseEncoder::new(RawMapOperationEncoder));
     framed_out
         .send(LaneResponse::<RawMapOperation>::Initialized)
         .await
@@ -126,7 +117,7 @@ async fn no_store_init_map(input: &mut ByteReader, output: &mut ByteWriter) {
 
 struct SingleLaneInitTask {
     requests: mpsc::Sender<AgentRuntimeRequest>,
-    _dl_requests: mpsc::Receiver<DownlinkRequest>,
+    _dl_requests: mpsc::Receiver<LinkRequest>,
     init_complete: trigger::Sender,
     config: LaneConfig,
 }
@@ -134,7 +125,7 @@ struct SingleLaneInitTask {
 impl SingleLaneInitTask {
     fn new(
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        dl_requests: mpsc::Receiver<DownlinkRequest>,
+        dl_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
         config: LaneConfig,
     ) -> Self {
@@ -182,17 +173,17 @@ impl TestInit for SingleLaneInit {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        link_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output> {
-        let task = SingleLaneInitTask::new(requests, downlink_requests, init_complete, self.config);
+        let task = SingleLaneInitTask::new(requests, link_requests, init_complete, self.config);
         task.run().boxed()
     }
 }
 
 #[tokio::test]
 async fn no_lanes() {
-    let (result, _) = run_test(NoLanesInit, StoreDisabled::default()).await;
+    let (result, _) = run_test(NoLanesInit, StoreDisabled).await;
     assert!(matches!(result, Err(AgentExecError::NoInitialLanes)));
 }
 
@@ -200,7 +191,7 @@ async fn no_lanes() {
 async fn single_lane() {
     for config in CONFIGS {
         let init = SingleLaneInit { config: *config };
-        let (initial_result, mut agent_io) = run_test(init, StoreDisabled::default()).await;
+        let (initial_result, mut agent_io) = run_test(init, StoreDisabled).await;
         let initial = initial_result.expect("No lanes were registered.");
 
         let InitialEndpoints {
@@ -268,7 +259,7 @@ struct TwoLanesInit {
 
 struct TwoLanesInitTask {
     requests: mpsc::Sender<AgentRuntimeRequest>,
-    _dl_requests: mpsc::Receiver<DownlinkRequest>,
+    _dl_requests: mpsc::Receiver<LinkRequest>,
     init_complete: trigger::Sender,
     config: LaneConfig,
 }
@@ -282,7 +273,7 @@ struct TwoLanes {
 impl TwoLanesInitTask {
     fn new(
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        dl_requests: mpsc::Receiver<DownlinkRequest>,
+        dl_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
         config: LaneConfig,
     ) -> Self {
@@ -347,7 +338,7 @@ impl TestInit for TwoLanesInit {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        dl_requests: mpsc::Receiver<DownlinkRequest>,
+        dl_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output> {
         let task = TwoLanesInitTask::new(requests, dl_requests, init_complete, self.config);
@@ -359,7 +350,7 @@ impl TestInit for TwoLanesInit {
 async fn two_lanes() {
     for config in CONFIGS {
         let init = TwoLanesInit { config: *config };
-        let (initial_result, agent_lanes) = run_test(init, StoreDisabled::default()).await;
+        let (initial_result, agent_lanes) = run_test(init, StoreDisabled).await;
         let initial = initial_result.expect("No lanes were registered.");
 
         let InitialEndpoints {
@@ -416,12 +407,12 @@ impl TestInit for StoresInit {
     fn run_test(
         self,
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        downlink_requests: mpsc::Receiver<DownlinkRequest>,
+        link_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
     ) -> BoxFuture<'static, Self::Output> {
         StoresInitTask::new(
             requests,
-            downlink_requests,
+            link_requests,
             init_complete,
             self.store_config,
             self.lane_config,
@@ -433,7 +424,7 @@ impl TestInit for StoresInit {
 
 struct StoresInitTask {
     requests: mpsc::Sender<AgentRuntimeRequest>,
-    _dl_requests: mpsc::Receiver<DownlinkRequest>,
+    _dl_requests: mpsc::Receiver<LinkRequest>,
     init_complete: trigger::Sender,
     store_config: StoreConfig,
     lane_config: LaneConfig,
@@ -442,7 +433,7 @@ struct StoresInitTask {
 impl StoresInitTask {
     fn new(
         requests: mpsc::Sender<AgentRuntimeRequest>,
-        _dl_requests: mpsc::Receiver<DownlinkRequest>,
+        _dl_requests: mpsc::Receiver<LinkRequest>,
         init_complete: trigger::Sender,
         store_config: StoreConfig,
         lane_config: LaneConfig,
@@ -525,7 +516,7 @@ async fn stores_not_supported() {
         lane_config: TRANSIENT,
         store_config: Default::default(),
     };
-    let (initial_result, _lane_io) = run_test(init, StoreDisabled::default()).await;
+    let (initial_result, _lane_io) = run_test(init, StoreDisabled).await;
     let initial = initial_result.expect("No lanes were registered.");
 
     let InitialEndpoints {

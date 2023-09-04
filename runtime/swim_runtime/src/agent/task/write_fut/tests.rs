@@ -17,11 +17,8 @@ use std::num::NonZeroUsize;
 use bytes::{BufMut, BytesMut};
 use futures::StreamExt;
 use swim_api::protocol::map::RawMapOperationMut;
-use swim_messages::{
-    bytes_str::BytesStr,
-    protocol::{Notification, Path, RawResponseMessageDecoder, ResponseMessage},
-};
-use swim_model::Text;
+use swim_messages::protocol::{Notification, Path, RawResponseMessageDecoder, ResponseMessage};
+use swim_model::{BytesStr, Text};
 use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader},
     non_zero_usize,

@@ -34,10 +34,11 @@ use crate::{
     event_handler::{
         EventHandlerError, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
     },
+    item::MapItem,
     lanes::{
         map::{
-            MapLane, MapLaneClear, MapLaneGet, MapLaneGetMap, MapLaneRemove, MapLaneSync,
-            MapLaneUpdate,
+            MapLane, MapLaneClear, MapLaneEvent, MapLaneGet, MapLaneGetMap, MapLaneRemove,
+            MapLaneSync, MapLaneUpdate, MapLaneWithEntry,
         },
         LaneItem,
     },
@@ -548,7 +549,11 @@ fn map_lane_update_event_handler() {
 
     let mut handler = MapLaneUpdate::new(TestAgent::LANE, K1, Text::new(V1));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, true, true, Some(()));
 
     agent.lane.get_map(|map| {
@@ -556,7 +561,11 @@ fn map_lane_update_event_handler() {
         assert_eq!(map.get(&K1), Some(&Text::new(V1)));
     });
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -572,7 +581,11 @@ fn map_lane_remove_event_handler() {
 
     let mut handler = MapLaneRemove::new(TestAgent::LANE, K1);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, true, true, Some(()));
 
     agent.lane.get_map(|map| {
@@ -581,7 +594,11 @@ fn map_lane_remove_event_handler() {
         assert_eq!(map.get(&K3), Some(&Text::new(V3)));
     });
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -597,14 +614,22 @@ fn map_lane_clear_event_handler() {
 
     let mut handler = MapLaneClear::new(TestAgent::LANE);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, true, true, Some(()));
 
     agent.lane.get_map(|map| {
         assert!(map.is_empty());
     });
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -620,15 +645,27 @@ fn map_lane_get_event_handler() {
 
     let mut handler = MapLaneGet::new(TestAgent::LANE, K1);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(Some(Text::new(V1))));
 
     let mut handler = MapLaneGet::new(TestAgent::LANE, ABSENT);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(None));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -646,10 +683,18 @@ fn map_lane_get_map_event_handler() {
 
     let expected = init();
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(expected));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -665,10 +710,18 @@ fn map_lane_sync_event_handler() {
 
     let mut handler = MapLaneSync::new(TestAgent::LANE, SYNC_ID1);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, true, false, Some(()));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -686,4 +739,79 @@ fn map_lane_sync_event_handler() {
         .map(|(k, v)| (k, Text::new(v)))
         .collect();
     assert_eq!(sync_map, expected);
+}
+
+#[test]
+fn map_lane_with_event_handler_update() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneWithEntry::new(TestAgent::LANE, K1, |maybe: Option<Text>| {
+        maybe.map(|v| Text::from(v.as_str().to_uppercase()))
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, true, Some(()));
+
+    agent.lane.get_map(|map| {
+        assert_eq!(map.len(), 3);
+        assert_eq!(map.get(&K1), Some(&Text::from(V1.to_uppercase())));
+        assert_eq!(map.get(&K2), Some(&Text::new(V2)));
+        assert_eq!(map.get(&K3), Some(&Text::new(V3)));
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    let event = agent.lane.read_with_prev(|event, _| event);
+    assert_eq!(event, Some(MapLaneEvent::Update(K1, Some(Text::new(V1)))));
+}
+
+#[test]
+fn map_lane_with_event_handler_remove() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneWithEntry::new(TestAgent::LANE, K1, |_: Option<Text>| None);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, true, Some(()));
+
+    agent.lane.get_map(|map| {
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get(&K2), Some(&Text::new(V2)));
+        assert_eq!(map.get(&K3), Some(&Text::new(V3)));
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    let event = agent.lane.read_with_prev(|event, _| event);
+    assert_eq!(event, Some(MapLaneEvent::Remove(K1, Text::new(V1))));
 }

@@ -21,6 +21,7 @@ use swim_recon::parser::AsyncParseError;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::event_handler::GetParameter;
+
 use crate::{
     event_handler::{
         ConstHandler, EventHandlerError, GetAgentUri, HandlerActionExt, Sequentially, SideEffects,
@@ -31,7 +32,7 @@ use crate::{
 };
 
 use super::{
-    ActionContext, Decode, HandlerAction, HandlerFuture, Modification, SideEffect, Spawner,
+    join, ActionContext, Decode, HandlerAction, HandlerFuture, Modification, SideEffect, Spawner,
     StepResult,
 };
 
@@ -69,7 +70,11 @@ fn side_effect_handler() {
 
     let mut n = 0;
     let mut handler = SideEffect::from(|| n += 1);
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -78,7 +83,11 @@ fn side_effect_handler() {
         }
     ));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -106,7 +115,11 @@ fn side_effects_handler() {
     let mut handler = SideEffects::from(it);
 
     for i in values {
-        let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+        let result = handler.step(
+            &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+            meta,
+            &DUMMY,
+        );
         assert!(matches!(
             result,
             StepResult::Continue {
@@ -119,7 +132,11 @@ fn side_effects_handler() {
         assert_eq!(*guard, expected);
     }
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     if let StepResult::Complete {
         modified_item: None,
         result,
@@ -130,7 +147,11 @@ fn side_effects_handler() {
         panic!("Expected completion.");
     }
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -144,7 +165,11 @@ fn constant_handler() {
     let meta = make_meta(&uri, &route_params);
 
     let mut handler = ConstHandler::from(5);
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -153,7 +178,11 @@ fn constant_handler() {
         }
     ));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -167,7 +196,11 @@ fn get_agent_uri() {
     let meta = make_meta(&uri, &route_params);
 
     let mut handler = GetAgentUri::default();
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     if let StepResult::Complete {
         modified_item: None,
         result,
@@ -178,7 +211,11 @@ fn get_agent_uri() {
         panic!("Expected completion.");
     }
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -193,7 +230,11 @@ fn get_parameter() {
     let meta = make_meta(&uri, &route_params);
 
     let mut absent = GetParameter::new("other");
-    let result = absent.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = absent.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     if let StepResult::Complete {
         modified_item: None,
         result,
@@ -204,7 +245,11 @@ fn get_parameter() {
         panic!("Expected completion.");
     }
 
-    let result = absent.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = absent.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -212,7 +257,11 @@ fn get_parameter() {
 
     let mut present = GetParameter::new("key");
 
-    let result = present.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = present.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     if let StepResult::Complete {
         modified_item: None,
         result,
@@ -223,7 +272,11 @@ fn get_parameter() {
         panic!("Expected completion.");
     }
 
-    let result = present.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = present.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -240,7 +293,11 @@ fn map_handler() {
             uri.to_string()
         });
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     match result {
         StepResult::Complete {
             modified_item: None,
@@ -251,7 +308,11 @@ fn map_handler() {
         _ => panic!("Unexpected result"),
     }
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -273,7 +334,11 @@ fn and_then_handler() {
             })
         });
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Continue {
@@ -281,7 +346,11 @@ fn and_then_handler() {
         }
     ));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -290,7 +359,11 @@ fn and_then_handler() {
         }
     ));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -316,7 +389,11 @@ fn and_then_contextual_handler() {
         },
     );
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Continue {
@@ -324,7 +401,11 @@ fn and_then_contextual_handler() {
         }
     ));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -333,7 +414,11 @@ fn and_then_contextual_handler() {
         }
     ));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -362,7 +447,11 @@ fn followed_by_handler() {
 
     let mut handler = HandlerActionExt::<DummyAgent>::followed_by(first, second);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Continue {
@@ -375,7 +464,11 @@ fn followed_by_handler() {
         assert_eq!(*guard, Some(1));
     }
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -389,7 +482,11 @@ fn followed_by_handler() {
         assert_eq!(*guard, Some(2));
     }
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -407,7 +504,11 @@ fn decoding_handler_success() {
 
     let mut handler = Decode::<i32>::new(buffer);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -416,7 +517,11 @@ fn decoding_handler_success() {
         }
     ));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -434,13 +539,21 @@ fn decoding_handler_failure() {
 
     let mut handler = Decode::<i32>::new(buffer);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::BadCommand(_))
     ));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -483,7 +596,11 @@ fn and_then_handler_with_lane_write() {
     let meta = make_meta(&uri, &route_params);
 
     let mut handler = FakeLaneWriter::new(7).and_then(|_| ConstHandler::from(34));
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Continue {
@@ -494,7 +611,11 @@ fn and_then_handler_with_lane_write() {
         }
     ));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -503,7 +624,11 @@ fn and_then_handler_with_lane_write() {
         }
     ));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -517,7 +642,11 @@ fn followed_by_handler_with_lane_write() {
     let meta = make_meta(&uri, &route_params);
 
     let mut handler = FakeLaneWriter::new(7).followed_by(FakeLaneWriter::new(8));
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Continue {
@@ -528,7 +657,11 @@ fn followed_by_handler_with_lane_write() {
         }
     ));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -540,7 +673,11 @@ fn followed_by_handler_with_lane_write() {
         }
     ));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &DUMMY);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &DUMMY,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -588,7 +725,11 @@ fn sequentially_handler() {
         lane: ValueLane::new(0, 0),
     };
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Continue {
@@ -597,7 +738,11 @@ fn sequentially_handler() {
     ));
     assert_eq!(values.borrow().as_slice(), &[1]);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Continue {
@@ -609,7 +754,11 @@ fn sequentially_handler() {
     ));
     assert_eq!(values.borrow().as_slice(), &[1]);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Complete {
@@ -619,9 +768,236 @@ fn sequentially_handler() {
     ));
     assert_eq!(values.borrow().as_slice(), &[1, 2]);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     ));
+}
+
+#[test]
+fn join_handler() {
+    let first = ConstHandler::from(2);
+    let second = ConstHandler::from("Hello".to_string());
+
+    let mut both = join::<(), _, _>(first, second);
+
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+
+    loop {
+        match both.step(
+            &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+            meta,
+            &(),
+        ) {
+            StepResult::Continue { modified_item } => assert!(modified_item.is_none()),
+            StepResult::Fail(err) => panic!("{}", err),
+            StepResult::Complete {
+                modified_item,
+                result,
+            } => {
+                assert!(modified_item.is_none());
+                assert_eq!(result, (2, "Hello".to_string()));
+                break;
+            }
+        }
+    }
+
+    let result = both.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &(),
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn join_handler_modify() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+
+    struct TestAgent {
+        lane1: ValueLane<i32>,
+        lane2: ValueLane<i32>,
+    }
+
+    let first = ValueLaneSet::new(|agent: &TestAgent| &agent.lane1, 2);
+    let second = ValueLaneSet::new(|agent: &TestAgent| &agent.lane2, 3);
+    let mut both = join::<TestAgent, _, _>(first, second);
+
+    let mut modifications = vec![];
+
+    let agent = TestAgent {
+        lane1: ValueLane::new(0, 0),
+        lane2: ValueLane::new(1, 0),
+    };
+
+    loop {
+        match both.step(
+            &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+            meta,
+            &agent,
+        ) {
+            StepResult::Continue { modified_item } => {
+                if let Some(modification) = modified_item {
+                    modifications.push(modification);
+                }
+            }
+            StepResult::Fail(err) => panic!("{}", err),
+            StepResult::Complete {
+                modified_item,
+                result,
+            } => {
+                if let Some(modification) = modified_item {
+                    modifications.push(modification);
+                }
+                assert_eq!(result, ((), ()));
+                break;
+            }
+        }
+    }
+
+    assert_eq!(
+        modifications,
+        vec![Modification::of(0), Modification::of(1)]
+    );
+
+    let result = both.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    agent.lane1.read(|v| assert_eq!(*v, 2));
+    agent.lane2.read(|v| assert_eq!(*v, 3));
+}
+
+#[test]
+fn join3_handler() {
+    let first = ConstHandler::from(2);
+    let second = ConstHandler::from("Hello".to_string());
+    let third = ConstHandler::from(true);
+
+    let mut both = super::join3::<(), _, _, _>(first, second, third);
+
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+
+    loop {
+        match both.step(
+            &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+            meta,
+            &(),
+        ) {
+            StepResult::Continue { modified_item } => assert!(modified_item.is_none()),
+            StepResult::Fail(err) => panic!("{}", err),
+            StepResult::Complete {
+                modified_item,
+                result,
+            } => {
+                assert!(modified_item.is_none());
+                assert_eq!(result, (2, "Hello".to_string(), true));
+                break;
+            }
+        }
+    }
+
+    let result = both.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &(),
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn join3_handler_modify() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+
+    struct TestAgent {
+        lane1: ValueLane<i32>,
+        lane2: ValueLane<i32>,
+        lane3: ValueLane<i32>,
+    }
+
+    let first = ValueLaneSet::new(|agent: &TestAgent| &agent.lane1, 2);
+    let second = ValueLaneSet::new(|agent: &TestAgent| &agent.lane2, 3);
+    let third = ValueLaneSet::new(|agent: &TestAgent| &agent.lane3, 4);
+    let mut both = super::join3::<TestAgent, _, _, _>(first, second, third);
+
+    let mut modifications = vec![];
+
+    let agent = TestAgent {
+        lane1: ValueLane::new(0, 0),
+        lane2: ValueLane::new(1, 0),
+        lane3: ValueLane::new(2, 0),
+    };
+
+    loop {
+        match both.step(
+            &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+            meta,
+            &agent,
+        ) {
+            StepResult::Continue { modified_item } => {
+                if let Some(modification) = modified_item {
+                    modifications.push(modification);
+                }
+            }
+            StepResult::Fail(err) => panic!("{}", err),
+            StepResult::Complete {
+                modified_item,
+                result,
+            } => {
+                if let Some(modification) = modified_item {
+                    modifications.push(modification);
+                }
+                assert_eq!(result, ((), (), ()));
+                break;
+            }
+        }
+    }
+
+    assert_eq!(
+        modifications,
+        vec![
+            Modification::of(0),
+            Modification::of(1),
+            Modification::of(2)
+        ]
+    );
+
+    let result = both.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    agent.lane1.read(|v| assert_eq!(*v, 2));
+    agent.lane2.read(|v| assert_eq!(*v, 3));
+    agent.lane3.read(|v| assert_eq!(*v, 4));
 }

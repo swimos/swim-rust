@@ -128,7 +128,7 @@ fn decode_store_initialized() {
 
 #[test]
 fn encode_store_response() {
-    let mut encoder = StoreResponseEncoder::new(WithLengthBytesCodec::default());
+    let mut encoder = StoreResponseEncoder::new(WithLengthBytesCodec);
     let mut buffer = BytesMut::new();
     let content = b"body";
     let response = StoreResponse::new(content);
@@ -143,7 +143,7 @@ fn encode_store_response() {
 
 #[test]
 fn decode_store_response() {
-    let mut decoder = StoreResponseDecoder::new(WithLengthBytesCodec::default());
+    let mut decoder = StoreResponseDecoder::new(WithLengthBytesCodec);
     let mut buffer = BytesMut::new();
     let content = b"body";
 

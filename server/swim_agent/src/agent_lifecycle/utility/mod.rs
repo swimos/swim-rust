@@ -20,11 +20,14 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use futures::{Future, FutureExt};
 use swim_form::structural::read::recognizer::RecognizerReadable;
+use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
 use swim_model::address::Address;
 use swim_utilities::routing::route_uri::RouteUri;
 
-use crate::agent_model::downlink::hosted::{MapDownlinkHandle, ValueDownlinkHandle};
+use crate::agent_model::downlink::hosted::{
+    EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle,
+};
 use crate::agent_model::downlink::{
     OpenEventDownlinkAction, OpenMapDownlinkAction, OpenValueDownlinkAction,
 };
@@ -33,13 +36,14 @@ use crate::downlink_lifecycle::event::EventDownlinkLifecycle;
 use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
 use crate::event_handler::{
-    run_after, run_schedule, EventHandler, GetParameter, Suspend, UnitHandler,
+    run_after, run_schedule, ConstHandler, EventHandler, GetParameter, HandlerActionExt,
+    SendCommand, Sequentially, Stop, Suspend, UnitHandler,
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
-use crate::lanes::map::MapLaneGetMap;
+use crate::lanes::map::{MapLaneGetMap, MapLaneWithEntry};
 use crate::stores::map::{
-    MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate,
+    MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate, MapStoreWithEntry,
 };
 use crate::stores::value::{ValueStore, ValueStoreGet, ValueStoreSet};
 use crate::stores::MapStore;
@@ -86,21 +90,46 @@ impl<Agent> Default for HandlerContext<Agent> {
 
 impl<Agent> Clone for HandlerContext<Agent> {
     fn clone(&self) -> Self {
-        Self {
-            _agent_type: self._agent_type,
-        }
+        *self
     }
 }
 
 impl<Agent> Copy for HandlerContext<Agent> {}
 
 impl<Agent: 'static> HandlerContext<Agent> {
+    /// Create an event handler that resolves to a specific value.
+    pub fn value<T>(&self, val: T) -> impl HandlerAction<Agent, Completion = T> {
+        ConstHandler::from(val)
+    }
+
     /// Create an event handler that executes a side effect.
     pub fn effect<F, T>(&self, f: F) -> impl HandlerAction<Agent, Completion = T>
     where
         F: FnOnce() -> T,
     {
         SideEffect::from(f)
+    }
+
+    /// Send a command to a lane (either on a remote host or locally to an agent on the same plane).
+    ///
+    /// #Arguments
+    /// * `host` - The target remote host or [`None`] for an agent in the same plane.
+    /// * `node` - The target node hosting the lane.
+    /// * `lane` - The name of the target lane.
+    /// * `command` - The value to send.
+    pub fn send_command<'a, S, T>(
+        &self,
+        host: Option<S>,
+        node: S,
+        lane: S,
+        command: T,
+    ) -> impl EventHandler<Agent> + 'a
+    where
+        S: AsRef<str> + 'a,
+        T: StructuralWritable + 'a,
+    {
+        let addr = Address::new(host, node, lane);
+        SendCommand::new(addr, command, true)
     }
 
     /// Create an event handler that will fetch the metadata of the agent instance.
@@ -218,6 +247,46 @@ impl<Agent: 'static> HandlerContext<Agent> {
         MapStoreUpdate::new(store, key, value)
     }
 
+    /// Create an event handler that will transform the value in an entry of a map lane of the agent.
+    ///
+    /// #Arguments
+    /// * `lane` - Projection to the map lane.
+    /// * `key - The key to update.
+    /// * `f` - A function to apple to the entry in the map.
+    pub fn with_entry<K, V, F>(
+        &self,
+        lane: fn(&Agent) -> &MapLane<K, V>,
+        key: K,
+        f: F,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send
+    where
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Clone,
+        F: FnOnce(Option<V>) -> Option<V> + Send,
+    {
+        MapLaneWithEntry::new(lane, key, f)
+    }
+
+    /// Create an event handler that will transform the value in an entry of a map store of the agent.
+    ///
+    /// #Arguments
+    /// * `store` - Projection to the map store.
+    /// * `key - The key to update.
+    /// * `f` - A function to apple to the entry in the map.
+    pub fn with_entry_store<K, V, F>(
+        &self,
+        store: fn(&Agent) -> &MapStore<K, V>,
+        key: K,
+        f: F,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send
+    where
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Clone,
+        F: FnOnce(Option<V>) -> Option<V> + Send,
+    {
+        MapStoreWithEntry::new(store, key, f)
+    }
+
     /// Create an event handler that will remove an entry from a map lane of the agent.
     ///
     /// #Arguments
@@ -280,6 +349,53 @@ impl<Agent: 'static> HandlerContext<Agent> {
         V: Send + 'static,
     {
         MapStoreClear::new(store)
+    }
+
+    /// Create an event handler that replaces the entire contents of a map lane.
+    ///
+    /// #Arguments
+    /// * `lane` - Projection to the map lane.
+    /// * `entries` - The new entries for the lane.
+    pub fn replace_map<K, V, I>(
+        &self,
+        lane: fn(&Agent) -> &MapLane<K, V>,
+        entries: I,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Send + 'static,
+        I: IntoIterator<Item = (K, V)>,
+        I::IntoIter: Send + 'static,
+    {
+        let context = *self;
+        let insertions = entries
+            .into_iter()
+            .map(move |(k, v)| context.update(lane, k, v));
+        self.clear(lane).followed_by(Sequentially::new(insertions))
+    }
+
+    /// Create an event handler that replaces the entire contents of a map store.
+    ///
+    /// #Arguments
+    /// * `store` - Projection to the map store.
+    /// * `entries` - The new entries for the store.
+    pub fn replace_map_store<K, V, I>(
+        &self,
+        store: fn(&Agent) -> &MapStore<K, V>,
+        entries: I,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Send + 'static,
+        I: IntoIterator<Item = (K, V)>,
+        I::IntoIter: Send + 'static,
+    {
+        let context = *self;
+        let insertions = entries
+            .into_iter()
+            .map(move |(k, v)| context.update_store(store, k, v));
+        self.clear_store(store)
+            .followed_by(Sequentially::new(insertions))
     }
 
     /// Create an event handler that will attempt to get an entry from a map lane of the agent.
@@ -474,7 +590,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         lane: &str,
         lifecycle: LC,
         config: SimpleDownlinkConfig,
-    ) -> impl EventHandler<Agent> + Send + 'static
+    ) -> impl HandlerAction<Agent, Completion = EventDownlinkHandle> + Send + 'static
     where
         T: Form + Send + Sync + 'static,
         LC: EventDownlinkLifecycle<T, Agent> + Send + 'static,
@@ -595,6 +711,14 @@ impl<Agent: 'static> HandlerContext<Agent> {
     {
         let address = Address::text(host, node, lane_uri);
         JoinValueAddDownlink::new(lane, key, address)
+    }
+
+    /// Causes the agent to stop. If this is encountered during the `on_start` event of an agent it will
+    /// fail to start at all. Otherwise, execution of the event handler will terminate and the agent will
+    /// begin to shutdown. The 'on_stop' handler will still be run. If a stop is requested in
+    /// the 'on_stop' handler, the agent will stop immediately.
+    pub fn stop(&self) -> impl EventHandler<Agent> + Send + 'static {
+        HandlerActionExt::<Agent>::discard(Stop)
     }
 }
 

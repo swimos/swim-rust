@@ -23,15 +23,12 @@ use ratchet::{
     CloseCode, CloseReason, Message, NegotiatedExtension, NoExt, NoExtDecoder, Receiver, Role,
     WebSocket, WebSocketConfig,
 };
-use swim_messages::{
-    bytes_str::BytesStr,
-    protocol::{
-        path_from_static_strs, BytesRequestMessage, BytesResponseMessage, Notification, Operation,
-        Path, RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
-        RawResponseMessageEncoder, RequestMessage, ResponseMessage,
-    },
+use swim_messages::protocol::{
+    path_from_static_strs, BytesRequestMessage, BytesResponseMessage, Notification, Operation,
+    Path, RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
+    RawResponseMessageEncoder, RequestMessage, ResponseMessage,
 };
-use swim_model::{address::RelativeAddress, Text};
+use swim_model::{address::RelativeAddress, BytesStr, Text};
 use swim_utilities::{
     io::byte_channel::{self, byte_channel, ByteReader, ByteWriter},
     non_zero_usize, trigger,
@@ -50,6 +47,7 @@ use super::{InputError, OutgoingTaskMessage, RegisterIncoming};
 
 const ID: Uuid = Uuid::from_u128(1484);
 const CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 const NODE: &str = "/node";
@@ -145,7 +143,7 @@ async fn register_for_downlinks() {
             assert_eq!(kind, OutgoingKind::Client);
             assert!(byte_channel::are_connected(&tx2, &receiver));
 
-            done_out.trigger();
+            assert!(done_out.send(Ok(())).is_ok());
 
             assert!(matches!(done_rx.await, Ok(Ok(_))));
         } else {
@@ -371,7 +369,7 @@ fn make_agent_envelope(a: i32) -> BytesStr {
 }
 
 fn make_bad_agent_envelope() -> BytesStr {
-    let env = format!("@command(node:\"{}\",lane:{}) {{a:2}}", OTHER, LANE);
+    let env = format!("@link(node:\"{}\",lane:{}) {{a:2}}", OTHER, LANE);
     BytesStr::from(env)
 }
 
@@ -415,7 +413,7 @@ async fn incoming_route_valid_agent_env() {
                 done,
                 ..
             }) => {
-                done.trigger();
+                assert!(done.send(Ok(())).is_ok());
             }
             ow => panic!("Unexpected registration: {:?}", ow),
         }
@@ -451,7 +449,7 @@ async fn incoming_route_valid_agent_restart() {
                 done,
                 ..
             }) => {
-                done.trigger();
+                assert!(done.send(Ok(())).is_ok());
             }
             ow => panic!("Unexpected registration: {:?}", ow),
         }
@@ -484,7 +482,7 @@ async fn incoming_route_valid_agent_restart() {
                 done,
                 ..
             }) => {
-                done.trigger();
+                assert!(done.send(Ok(())).is_ok());
             }
             ow => panic!("Unexpected registration: {:?}", ow),
         }
@@ -517,7 +515,7 @@ async fn incoming_route_multiple_agent_env() {
                 done,
                 ..
             }) => {
-                done.trigger();
+                assert!(done.send(Ok(())).is_ok());
             }
             ow => panic!("Unexpected registration: {:?}", ow),
         }
@@ -552,8 +550,10 @@ async fn incoming_route_not_found_env() {
 
         match outgoing_rx.recv().await {
             Some(OutgoingTaskMessage::NotFound {
+                command_envelope,
                 error: AgentResolutionError::NotFound(NoSuchAgent { node, lane }),
             }) => {
+                assert!(!command_envelope);
                 assert_eq!(node, OTHER);
                 assert_eq!(lane, LANE);
             }
@@ -843,7 +843,7 @@ async fn outgoing_downlink_message() {
         } = &mut context;
 
         let (dl_tx, dl_rx) = byte_channel(BUFFER_SIZE);
-        let (done_tx, done_rx) = trigger::trigger();
+        let (done_tx, done_rx) = oneshot::channel();
 
         outgoing_tx
             .send(OutgoingTaskMessage::RegisterOutgoing {
@@ -888,7 +888,7 @@ async fn outgoing_agent_message() {
         } = &mut context;
 
         let (agent_tx, agent_rx) = byte_channel(BUFFER_SIZE);
-        let (done_tx, done_rx) = trigger::trigger();
+        let (done_tx, done_rx) = oneshot::channel();
 
         outgoing_tx
             .send(OutgoingTaskMessage::RegisterOutgoing {
@@ -934,6 +934,7 @@ async fn outgoing_lane_not_found() {
 
         outgoing_tx
             .send(OutgoingTaskMessage::NotFound {
+                command_envelope: false,
                 error: AgentResolutionError::NotFound(NoSuchAgent {
                     node: Text::new(OTHER),
                     lane: Text::new(LANE),
@@ -1009,7 +1010,15 @@ where
         client,
     };
 
-    let remote = super::RemoteTask::new(ID, stop_rx, server, attach_rx, Some(find_tx), CHAN_SIZE);
+    let remote = super::RemoteTask::new(
+        ID,
+        stop_rx,
+        server,
+        attach_rx,
+        Some(find_tx),
+        CHAN_SIZE,
+        CLOSE_TIMEOUT,
+    );
 
     let remote_task = remote.run();
 

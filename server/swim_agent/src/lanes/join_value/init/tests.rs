@@ -21,6 +21,7 @@ use std::{
     },
 };
 
+use bytes::BytesMut;
 use swim_api::{agent::AgentConfig, downlink::DownlinkKind};
 use swim_model::address::Address;
 use swim_utilities::routing::route_uri::RouteUri;
@@ -133,8 +134,18 @@ async fn successfully_create_action() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut inits = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
 
-    run_with_futures(&context, &context, &agent, meta, &mut inits, handler).await;
+    run_with_futures(
+        &context,
+        &context,
+        &agent,
+        meta,
+        &mut inits,
+        &mut ad_hoc_buffer,
+        handler,
+    )
+    .await;
     assert_eq!(count.load(Ordering::Relaxed), 1);
 
     let channels = context.take_channels();
@@ -143,7 +154,7 @@ async fn successfully_create_action() {
 
     let downlinks = context.take_downlinks();
     match downlinks.as_slice() {
-        [(downlink, _)] => {
+        [downlink] => {
             assert_eq!(downlink.kind(), DownlinkKind::Event);
         }
         _ => panic!("Incorrect number of downlinks."),

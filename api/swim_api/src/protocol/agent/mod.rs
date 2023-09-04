@@ -29,10 +29,12 @@ use super::{
     WithLenReconEncoder, WithLengthBytesCodec,
 };
 
+mod ad_hoc;
 mod store;
 #[cfg(test)]
 mod tests;
 
+pub use ad_hoc::{AdHocCommand, AdHocCommandDecoder, AdHocCommandEncoder};
 pub use store::{
     MapStoreResponse, MapStoreResponseDecoder, MapStoreResponseEncoder, StoreInitMessage,
     StoreInitMessageDecoder, StoreInitMessageEncoder, StoreInitialized, StoreInitializedCodec,

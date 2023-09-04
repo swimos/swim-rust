@@ -135,11 +135,11 @@ type MapNotDecoderInner<K, V> = DownlinkNotificationDecoder<MapMessage<K, V>, Ms
 type ValueNotDecoderInner<T> =
     DownlinkNotificationDecoder<T, RecognizerDecoder<<T as RecognizerReadable>::Rec>>;
 
-pub struct RecNotificationDecoder<T: RecognizerReadable> {
+pub struct ValueNotificationDecoder<T: RecognizerReadable> {
     inner: ValueNotDecoderInner<T>,
 }
 
-impl<T> Default for RecNotificationDecoder<T>
+impl<T> Default for ValueNotificationDecoder<T>
 where
     T: RecognizerReadable,
 {
@@ -185,7 +185,7 @@ where
     }
 }
 
-impl<T> Decoder for RecNotificationDecoder<T>
+impl<T> Decoder for ValueNotificationDecoder<T>
 where
     T: RecognizerReadable,
 {

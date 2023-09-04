@@ -23,7 +23,7 @@ use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::downlink::{
     DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, MapNotificationDecoder,
-    RecNotificationDecoder,
+    ValueNotificationDecoder,
 };
 use swim_api::protocol::map::MapMessage;
 use swim_form::structural::write::StructuralWritable;
@@ -73,7 +73,7 @@ where
             lifecycle,
             FramedWrite::new(output, DownlinkOperationEncoder),
             actions,
-            RecNotificationDecoder::default(),
+            ValueNotificationDecoder::default(),
         )
         .instrument(info_span!("Downlink IO task.", %path))
         .await

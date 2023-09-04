@@ -15,37 +15,39 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use std::pin::{pin, Pin};
 use std::sync::Arc;
 
 use bytes::BytesMut;
-use futures::stream::BoxStream;
-use futures::FutureExt;
+use futures::future::{Fuse, OptionFuture};
 use futures::{
-    future::{BoxFuture, Either},
+    future::{BoxFuture, Either, FusedFuture},
     stream::{FuturesUnordered, SelectAll},
     StreamExt,
 };
+use futures::{Future, FutureExt};
 use swim_api::agent::LaneConfig;
+use swim_api::downlink::DownlinkKind;
 use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
-use swim_api::meta::lane::LaneKind;
 use swim_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
 use swim_api::protocol::WithLengthBytesCodec;
-use swim_api::store::StoreKind;
+pub use swim_api::store::StoreKind;
 use swim_api::{
-    agent::{Agent, AgentConfig, AgentContext, AgentInitResult, UplinkKind},
+    agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::{AgentInitError, AgentTaskError, FrameIoError},
     protocol::{agent::LaneRequest, map::MapMessage},
 };
+use swim_model::address::Address;
 use swim_model::Text;
+use swim_utilities::future::retryable::RetryStrategy;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::routing::route_uri::RouteUri;
-use tracing::{error, info};
+use tokio::io::AsyncWriteExt;
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 use crate::agent_lifecycle::item_event::ItemEvent;
-use crate::event_handler::{
-    ActionContext, BoxEventHandler, BoxJoinValueInit, HandlerFuture, WriteStream,
-};
+use crate::event_handler::{ActionContext, BoxEventHandler, BoxJoinValueInit, HandlerFuture};
 use crate::{
     agent_lifecycle::AgentLifecycle,
     event_handler::{EventHandler, EventHandlerError, HandlerAction, StepResult},
@@ -62,12 +64,13 @@ use io::{ItemWriter, LaneReader};
 
 use bitflags::bitflags;
 
-use self::downlink::handlers::BoxDownlinkChannel;
+use self::downlink::handlers::{BoxDownlinkChannel, DownlinkChannelError, DownlinkChannelEvent};
 use self::init::{run_item_initializer, InitializedItem};
 pub use init::{
     ItemInitializer, JoinValueInitializer, MapLaneInitializer, MapStoreInitializer,
     ValueLaneInitializer, ValueStoreInitializer,
 };
+pub use swim_api::meta::lane::LaneKind;
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,18 +87,37 @@ pub type InitFn<Agent> = Box<dyn FnOnce(&Agent) + Send + 'static>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum ItemKind {
-    Lane,
-    Store,
+    Lane(LaneKind),
+    Store(StoreKind),
+}
+
+impl ItemKind {
+    pub fn map_like(&self) -> bool {
+        match self {
+            ItemKind::Lane(ty) => ty.map_like(),
+            ItemKind::Store(StoreKind::Map) => true,
+            ItemKind::Store(StoreKind::Value) => false,
+        }
+    }
+
+    pub fn is_lane(&self) -> bool {
+        matches!(self, ItemKind::Lane(_))
+    }
+}
+
+impl ItemKind {
+    pub const VALUE_LANE: ItemKind = ItemKind::Lane(LaneKind::Value);
+    pub const MAP_LANE: ItemKind = ItemKind::Lane(LaneKind::Map);
+    pub const VALUE_STORE: ItemKind = ItemKind::Store(StoreKind::Value);
+    pub const MAP_STORE: ItemKind = ItemKind::Store(StoreKind::Map);
 }
 
 bitflags! {
-
     #[derive(Default)]
     pub struct ItemFlags: u8 {
         /// The state of the item should not be persisted.
         const TRANSIENT = 0b01;
     }
-
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -110,6 +132,10 @@ impl ItemSpec {
     }
 }
 
+pub type MapLikeInitializer<T> =
+    Box<dyn ItemInitializer<T, MapMessage<BytesMut, BytesMut>> + Send + 'static>;
+pub type ValueLikeInitializer<T> = Box<dyn ItemInitializer<T, BytesMut> + Send + 'static>;
+
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
 /// although it will not provided any lifecycle events for the agent or its lanes.
@@ -123,11 +149,8 @@ pub trait AgentSpec: Sized + Send {
     /// The type of handler to run when a request is received to sync with a lane.
     type OnSyncHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
-    /// The names and flags of all value like items (value lanes and stores, command lanes, etc) in the agent.
-    fn value_like_item_specs() -> HashMap<&'static str, ItemSpec>;
-
-    /// The names and flags of all map like items in the agent.
-    fn map_like_item_specs() -> HashMap<&'static str, ItemSpec>;
+    /// The names and flags of all items (lanes and stores) in the agent.
+    fn item_specs() -> HashMap<&'static str, ItemSpec>;
 
     /// Mapping from item identifiers to lane names for all items in the agent.
     fn item_ids() -> HashMap<u64, Text>;
@@ -145,10 +168,7 @@ pub trait AgentSpec: Sized + Send {
     ///
     /// #Arguments
     /// * `lane` - The name of the item.
-    fn init_value_like_item(
-        &self,
-        item: &str,
-    ) -> Option<Box<dyn ItemInitializer<Self, BytesMut> + Send + 'static>>
+    fn init_value_like_item(&self, item: &str) -> Option<ValueLikeInitializer<Self>>
     where
         Self: 'static;
 
@@ -156,10 +176,7 @@ pub trait AgentSpec: Sized + Send {
     ///
     /// #Arguments
     /// * `item` - The name of the item.
-    fn init_map_like_item(
-        &self,
-        item: &str,
-    ) -> Option<Box<dyn ItemInitializer<Self, MapMessage<BytesMut, BytesMut>> + Send + 'static>>
+    fn init_map_like_item(&self, item: &str) -> Option<MapLikeInitializer<Self>>
     where
         Self: 'static;
 
@@ -207,31 +224,67 @@ where
     }
 }
 
+pub trait LifecycleFac<ItemModel>: Send + Sync {
+    type LifecycleType: AgentLifecycle<ItemModel> + Send;
+
+    fn create(&self) -> Self::LifecycleType;
+}
+
+struct CloneableLifecycle<LC>(LC);
+
+impl<ItemModel, LC> LifecycleFac<ItemModel> for CloneableLifecycle<LC>
+where
+    LC: Send + Sync + Clone + AgentLifecycle<ItemModel>,
+{
+    type LifecycleType = LC;
+
+    fn create(&self) -> Self::LifecycleType {
+        self.0.clone()
+    }
+}
+
+struct FnLifecycleFac<F>(F);
+
+impl<ItemModel, F, LC> LifecycleFac<ItemModel> for FnLifecycleFac<F>
+where
+    F: Fn() -> LC + Send + Sync,
+    LC: Send + AgentLifecycle<ItemModel>,
+{
+    type LifecycleType = LC;
+
+    fn create(&self) -> Self::LifecycleType {
+        self.0()
+    }
+}
+
 /// The complete model for an agent consisting of an implementation of [`AgentLaneModel`] to describe the lanes
 /// of the agent and an implementation of [`AgentLifecycle`] to describe the lifecycle events that will trigger,
 /// for  example, when the agent starts or stops or when the state of a lane changes.
 pub struct AgentModel<ItemModel, Lifecycle> {
     item_model_fac: Arc<dyn ItemModelFactory<ItemModel = ItemModel>>,
-    lifecycle: Lifecycle,
+    lifecycle_fac: Arc<dyn LifecycleFac<ItemModel, LifecycleType = Lifecycle>>,
 }
 
-impl<ItemModel, Lifecycle: Clone> Clone for AgentModel<ItemModel, Lifecycle> {
+impl<ItemModel, Lifecycle> Clone for AgentModel<ItemModel, Lifecycle> {
     fn clone(&self) -> Self {
         Self {
             item_model_fac: self.item_model_fac.clone(),
-            lifecycle: self.lifecycle.clone(),
+            lifecycle_fac: self.lifecycle_fac.clone(),
         }
     }
 }
 
-impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle> {
+impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle>
+where
+    Lifecycle: Send + Sync + Clone + AgentLifecycle<ItemModel> + 'static,
+{
     pub fn new<F>(item_model_fac: F, lifecycle: Lifecycle) -> Self
     where
         F: ItemModelFactory<ItemModel = ItemModel> + Sized + 'static,
     {
         AgentModel {
             item_model_fac: Arc::new(item_model_fac),
-            lifecycle,
+            lifecycle_fac: Arc::new(CloneableLifecycle(lifecycle)),
         }
     }
 
@@ -241,7 +294,23 @@ impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle> {
     ) -> Self {
         AgentModel {
             item_model_fac,
-            lifecycle,
+            lifecycle_fac: Arc::new(CloneableLifecycle(lifecycle)),
+        }
+    }
+}
+
+impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle>
+where
+    Lifecycle: Send + AgentLifecycle<ItemModel> + 'static,
+{
+    pub fn from_fn<F, G>(item_model_fac: F, lifecycle_fn: G) -> Self
+    where
+        F: ItemModelFactory<ItemModel = ItemModel> + Sized + 'static,
+        G: Fn() -> Lifecycle + Send + Sync + 'static,
+    {
+        AgentModel {
+            item_model_fac: Arc::new(item_model_fac),
+            lifecycle_fac: Arc::new(FnLifecycleFac(lifecycle_fn)),
         }
     }
 }
@@ -249,7 +318,7 @@ impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle> {
 impl<ItemModel, Lifecycle> Agent for AgentModel<ItemModel, Lifecycle>
 where
     ItemModel: AgentSpec + Send + 'static,
-    Lifecycle: AgentLifecycle<ItemModel> + Clone + Send + 'static,
+    Lifecycle: AgentLifecycle<ItemModel> + Send + 'static,
 {
     fn run(
         &self,
@@ -263,6 +332,7 @@ where
             .boxed()
     }
 }
+
 enum TaskEvent<ItemModel> {
     WriteComplete {
         writer: ItemWriter,
@@ -272,7 +342,7 @@ enum TaskEvent<ItemModel> {
         handler: BoxEventHandler<'static, ItemModel>,
     },
     DownlinkReady {
-        downlink_event: Option<(HostedDownlink<ItemModel>, HostedDownlinkEvent)>,
+        downlink_event: (HostedDownlink<ItemModel>, HostedDownlinkEvent),
     },
     ValueRequest {
         id: u64,
@@ -286,24 +356,30 @@ enum TaskEvent<ItemModel> {
         id: u64,
         error: FrameIoError,
     },
+    CommandSendComplete {
+        result: Result<CommandWriter, std::io::Error>,
+    },
 }
 
 struct HostedDownlink<Context> {
-    failed: bool,
     channel: BoxDownlinkChannel<Context>,
-    write_stream: Option<BoxStream<'static, Result<(), std::io::Error>>>,
+    failed: bool,
 }
 
 impl<Context> HostedDownlink<Context> {
-    fn new(
-        channel: BoxDownlinkChannel<Context>,
-        write_stream: BoxStream<'static, Result<(), std::io::Error>>,
-    ) -> Self {
+    fn new(channel: BoxDownlinkChannel<Context>) -> Self {
         HostedDownlink {
-            failed: false,
             channel,
-            write_stream: Some(write_stream),
+            failed: false,
         }
+    }
+
+    fn address(&self) -> &Address<Text> {
+        self.channel.address()
+    }
+
+    fn kind(&self) -> DownlinkKind {
+        self.channel.kind()
     }
 }
 
@@ -312,48 +388,96 @@ enum HostedDownlinkEvent {
     WriterFailed(std::io::Error),
     Written,
     WriterTerminated,
-    HandlerReady { failed: bool },
+    HandlerReady {
+        failed: bool,
+    },
+    ReconnectNotPossible {
+        retries_expired: bool,
+    },
+    ReconnectSucceeded(ReconnectDownlink),
+    ReconnectFailed {
+        error: DownlinkRuntimeError,
+        retry: RetryStrategy,
+    },
+    Stopped,
 }
 
 impl<Context> HostedDownlink<Context> {
-    async fn wait_on_downlink(mut self) -> Option<(Self, HostedDownlinkEvent)> {
-        let HostedDownlink {
-            failed,
-            channel,
-            write_stream,
-        } = &mut self;
+    async fn wait_on_downlink(mut self) -> (Self, HostedDownlinkEvent) {
+        let HostedDownlink { channel, failed } = &mut self;
 
         if *failed {
-            return None;
+            return (self, HostedDownlinkEvent::Stopped);
         }
 
-        let next = if let Some(out) = write_stream.as_mut() {
-            tokio::select! {
-                handler_ready = channel.await_ready() => Either::Left(handler_ready),
-                maybe_result = out.next() => Either::Right(maybe_result),
+        match channel.await_ready().await {
+            Some(Ok(DownlinkChannelEvent::HandlerReady)) => {
+                (self, HostedDownlinkEvent::HandlerReady { failed: false })
             }
-        } else {
-            Either::Left(channel.await_ready().await)
-        };
-
-        match next {
-            Either::Left(Some(Ok(_))) => {
-                Some((self, HostedDownlinkEvent::HandlerReady { failed: false }))
+            Some(Ok(DownlinkChannelEvent::WriteCompleted)) => (self, HostedDownlinkEvent::Written),
+            Some(Ok(DownlinkChannelEvent::WriteStreamTerminated)) => {
+                (self, HostedDownlinkEvent::WriterTerminated)
             }
-            Either::Left(Some(Err(_))) => {
+            Some(Err(DownlinkChannelError::ReadFailed)) => {
                 *failed = true;
-                Some((self, HostedDownlinkEvent::HandlerReady { failed: true }))
+                (self, HostedDownlinkEvent::HandlerReady { failed: true })
             }
-            Either::Right(Some(Ok(_))) => Some((self, HostedDownlinkEvent::Written)),
-            Either::Right(Some(Err(e))) => {
-                *write_stream = None;
-                Some((self, HostedDownlinkEvent::WriterFailed(e)))
+            Some(Err(DownlinkChannelError::WriteFailed(err))) => {
+                (self, HostedDownlinkEvent::WriterFailed(err))
             }
-            Either::Right(_) => {
-                *write_stream = None;
-                Some((self, HostedDownlinkEvent::WriterTerminated))
+            None => (self, HostedDownlinkEvent::Stopped),
+        }
+    }
+
+    async fn flush(&mut self) -> Result<(), std::io::Error> {
+        self.channel.flush().await
+    }
+
+    async fn reconnect(
+        mut self,
+        agent_context: &dyn AgentContext,
+        mut retry: RetryStrategy,
+        first_attempt: bool,
+    ) -> (Self, HostedDownlinkEvent) {
+        if self.channel.can_restart() {
+            if let Err(err) = self.flush().await {
+                debug!(error = %err, "Flushing downlink before restart failed.");
             }
-            _ => None,
+            let HostedDownlink { channel, .. } = &mut self;
+            let Address { host, node, lane } = channel.address().borrow_parts();
+            let open_task = agent_context.open_downlink(host, node, lane, channel.kind());
+            let delay = if first_attempt {
+                None
+            } else {
+                match retry.next() {
+                    Some(delay) => delay,
+                    None => {
+                        return (
+                            self,
+                            HostedDownlinkEvent::ReconnectNotPossible {
+                                retries_expired: true,
+                            },
+                        )
+                    }
+                }
+            };
+            if let Some(t) = delay {
+                tokio::time::sleep(t).await;
+            }
+            let result = match open_task.await {
+                Ok((writer, reader)) => {
+                    HostedDownlinkEvent::ReconnectSucceeded(ReconnectDownlink::new(writer, reader))
+                }
+                Err(error) => HostedDownlinkEvent::ReconnectFailed { error, retry },
+            };
+            (self, result)
+        } else {
+            (
+                self,
+                HostedDownlinkEvent::ReconnectNotPossible {
+                    retries_expired: false,
+                },
+            )
         }
     }
 
@@ -362,9 +486,30 @@ impl<Context> HostedDownlink<Context> {
     }
 }
 
+#[derive(Debug)]
+struct ReconnectDownlink {
+    writer: ByteWriter,
+    reader: ByteReader,
+}
+
+impl ReconnectDownlink {
+    fn new(writer: ByteWriter, reader: ByteReader) -> Self {
+        ReconnectDownlink { writer, reader }
+    }
+}
+
+impl ReconnectDownlink {
+    fn connect<Context>(self, downlink: &mut HostedDownlink<Context>, context: &Context) {
+        let ReconnectDownlink { writer, reader } = self;
+        let HostedDownlink { channel, failed } = downlink;
+        channel.connect(context, writer, reader);
+        *failed = false;
+    }
+}
+
 impl<ItemModel, Lifecycle> AgentModel<ItemModel, Lifecycle>
 where
-    ItemModel: AgentSpec + Send + 'static,
+    ItemModel: AgentSpec + 'static,
     Lifecycle: AgentLifecycle<ItemModel> + 'static,
 {
     /// Initialize the agent, performing the initial setup for all of the lanes (including triggering the
@@ -388,23 +533,23 @@ where
     {
         let AgentModel {
             item_model_fac,
-            lifecycle,
+            lifecycle_fac,
         } = self;
+
+        let lifecycle = lifecycle_fac.create();
 
         let meta = AgentMetadata::new(&route, &route_params, &config);
 
-        let mut value_like_lane_io = HashMap::new();
-        let mut map_lane_io = HashMap::new();
-        let mut value_like_store_io = HashMap::new();
-        let mut map_store_io = HashMap::new();
+        let mut lane_io = HashMap::new();
+        let mut store_io = HashMap::new();
 
-        let val_lane_specs = ItemModel::value_like_item_specs();
-        let map_lane_specs = ItemModel::map_like_item_specs();
+        let item_specs = ItemModel::item_specs();
         let item_ids = <ItemModel as AgentSpec>::item_ids();
 
         let suspended = FuturesUnordered::new();
         let downlink_channels = RefCell::new(vec![]);
         let mut join_value_init = HashMap::new();
+        let mut ad_hoc_buffer = BytesMut::new();
 
         let item_model = item_model_fac.create();
 
@@ -413,63 +558,62 @@ where
             let default_lane_config = config.default_lane_config.unwrap_or_default();
             macro_rules! with_init {
                 ($init:ident => $body:block) => {{
-                    let mut $init = InitContext::new(
-                        &mut value_like_lane_io,
-                        &mut map_lane_io,
-                        &item_model,
-                        &lane_init_tasks,
-                    );
+                    let mut $init = InitContext::new(&mut lane_io, &item_model, &lane_init_tasks);
 
                     $body
                 }};
             }
-            // Set up the lanes of the agent.
-            for (name, spec) in val_lane_specs {
-                match spec.kind {
-                    ItemKind::Lane => {
-                        let mut lane_conf = default_lane_config;
-                        if spec.flags.contains(ItemFlags::TRANSIENT) {
-                            lane_conf.transient = true;
-                        }
-                        let io = context.add_lane(name, LaneKind::Value, lane_conf).await?;
-                        with_init!(init => {
-                            init.init_value_lane(name, lane_conf, io);
-                        })
-                    }
-                    ItemKind::Store => {
-                        if let Some(io) = handle_store_error(
-                            context.add_store(name, StoreKind::Value).await,
-                            name,
-                        )? {
+
+            for (name, spec) in item_specs {
+                let ItemSpec { kind, flags } = spec;
+                match kind {
+                    ItemKind::Lane(kind) => {
+                        if kind.map_like() {
+                            let key = (Text::new(name), kind);
+                            if lane_io.contains_key(&key) {
+                                return Err(AgentInitError::DuplicateLane(key.0));
+                            }
+                            let mut lane_conf = default_lane_config;
+                            if flags.contains(ItemFlags::TRANSIENT) {
+                                lane_conf.transient = true;
+                            }
+                            let io = context.add_lane(name, kind, lane_conf).await?;
                             with_init!(init => {
-                                init.init_value_store(name, io);
+                                init.init_map_lane(name, kind,lane_conf, io);
+                            })
+                        } else {
+                            let mut lane_conf = default_lane_config;
+                            if flags.contains(ItemFlags::TRANSIENT) {
+                                lane_conf.transient = true;
+                            }
+                            let io = context.add_lane(name, kind, lane_conf).await?;
+                            with_init!(init => {
+                                init.init_value_lane(name, kind, lane_conf, io);
                             })
                         }
                     }
-                }
-            }
-            for (name, spec) in map_lane_specs {
-                match spec.kind {
-                    ItemKind::Lane => {
-                        if value_like_lane_io.contains_key(name) {
-                            return Err(AgentInitError::DuplicateLane(Text::new(name)));
+                    ItemKind::Store(StoreKind::Map) => {
+                        if !spec.flags.contains(ItemFlags::TRANSIENT) {
+                            if let Some(io) = handle_store_error(
+                                context.add_store(name, StoreKind::Map).await,
+                                name,
+                            )? {
+                                with_init!(init => {
+                                    init.init_map_store(name, io);
+                                })
+                            }
                         }
-                        let mut lane_conf = default_lane_config;
-                        if spec.flags.contains(ItemFlags::TRANSIENT) {
-                            lane_conf.transient = true;
-                        }
-                        let io = context.add_lane(name, LaneKind::Map, lane_conf).await?;
-                        with_init!(init => {
-                            init.init_map_lane(name, lane_conf, io);
-                        })
                     }
-                    ItemKind::Store => {
-                        if let Some(io) =
-                            handle_store_error(context.add_store(name, StoreKind::Map).await, name)?
-                        {
-                            with_init!(init => {
-                                init.init_map_store(name, io);
-                            })
+                    ItemKind::Store(StoreKind::Value) => {
+                        if !spec.flags.contains(ItemFlags::TRANSIENT) {
+                            if let Some(io) = handle_store_error(
+                                context.add_store(name, StoreKind::Value).await,
+                                name,
+                            )? {
+                                with_init!(init => {
+                                    init.init_value_store(name, io);
+                                })
+                            }
                         }
                     }
                 }
@@ -479,26 +623,18 @@ where
                 let InitializedItem {
                     item_kind,
                     name,
-                    kind,
                     init_fn,
                     io,
                 } = result.map_err(AgentInitError::LaneInitializationFailure)?;
                 init_fn(&item_model);
-                match (item_kind, kind) {
-                    (ItemKind::Lane, UplinkKind::Value | UplinkKind::Supply) => {
-                        value_like_lane_io.insert(Text::new(name), io);
-                    }
-                    (ItemKind::Lane, UplinkKind::Map) => {
-                        map_lane_io.insert(Text::new(name), io);
+                match item_kind {
+                    ItemKind::Lane(kind) => {
+                        lane_io.insert((Text::new(name), kind), io);
                     }
                     //The receivers for stores are no longer needed as the runtime never sends messages after initialization.
-                    (ItemKind::Store, UplinkKind::Value | UplinkKind::Supply) => {
+                    ItemKind::Store(_) => {
                         let (tx, _) = io;
-                        value_like_store_io.insert(Text::new(name), tx);
-                    }
-                    (ItemKind::Store, UplinkKind::Map) => {
-                        let (tx, _) = io;
-                        map_store_io.insert(Text::new(name), tx);
+                        store_io.insert(Text::new(name), tx);
                     }
                 };
             }
@@ -510,6 +646,7 @@ where
                 &*context,
                 &downlink_channels,
                 &mut join_value_init,
+                &mut ad_hoc_buffer,
             ),
             meta,
             &item_model,
@@ -518,12 +655,13 @@ where
         // Run the agent's `on_start` event handler.
         let on_start_handler = lifecycle.on_start();
 
-        if let Err(e) = run_handler(
+        match run_handler(
             &mut ActionContext::new(
                 &suspended,
                 &*context,
                 &downlink_channels,
                 &mut join_value_init,
+                &mut ad_hoc_buffer,
             ),
             meta,
             &item_model,
@@ -532,7 +670,9 @@ where
             &item_ids,
             &mut Discard,
         ) {
-            return Err(AgentInitError::UserCodeError(Box::new(e)));
+            Err(EventHandlerError::StopInstructed) => return Err(AgentInitError::FailedToStart),
+            Err(e) => return Err(AgentInitError::UserCodeError(Box::new(e))),
+            Ok(_) => {}
         }
         let agent_task = AgentTask {
             item_model,
@@ -541,12 +681,11 @@ where
             route_params,
             config,
             item_ids,
-            value_like_lane_io,
-            value_like_store_io,
-            map_lane_io,
-            map_store_io,
+            lane_io,
+            store_io,
             suspended,
             downlink_channels: downlink_channels.into_inner(),
+            ad_hoc_buffer,
             join_value_init,
         };
         Ok(agent_task.run_agent(context).boxed())
@@ -556,8 +695,7 @@ where
 type InitFut<'a, ItemModel> = BoxFuture<'a, Result<InitializedItem<'a, ItemModel>, FrameIoError>>;
 
 struct InitContext<'a, 'b, ItemModel> {
-    value_like_lane_io: &'a mut HashMap<Text, (ByteWriter, ByteReader)>,
-    map_like_lane_io: &'a mut HashMap<Text, (ByteWriter, ByteReader)>,
+    lane_io: &'a mut HashMap<(Text, LaneKind), (ByteWriter, ByteReader)>,
     item_model: &'a ItemModel,
     item_init_tasks: &'a FuturesUnordered<InitFut<'b, ItemModel>>,
 }
@@ -591,14 +729,12 @@ where
     ItemModel: AgentSpec + 'static,
 {
     fn new(
-        value_like_lane_io: &'a mut HashMap<Text, (ByteWriter, ByteReader)>,
-        map_like_lane_io: &'a mut HashMap<Text, (ByteWriter, ByteReader)>,
+        lane_io: &'a mut HashMap<(Text, LaneKind), (ByteWriter, ByteReader)>,
         item_model: &'a ItemModel,
         item_init_tasks: &'a FuturesUnordered<InitFut<'b, ItemModel>>,
     ) -> Self {
         InitContext {
-            value_like_lane_io,
-            map_like_lane_io,
+            lane_io,
             item_model,
             item_init_tasks,
         }
@@ -607,29 +743,24 @@ where
     fn init_value_lane(
         &mut self,
         name: &'b str,
+        kind: LaneKind,
         lane_conf: LaneConfig,
         io: (ByteWriter, ByteReader),
     ) {
         let InitContext {
-            value_like_lane_io,
+            lane_io,
             item_model,
             item_init_tasks,
             ..
         } = self;
         if lane_conf.transient {
-            value_like_lane_io.insert(Text::new(name), io);
+            lane_io.insert((Text::new(name), kind), io);
         } else if let Some(init) = item_model.init_value_like_item(name) {
-            let init_task = run_item_initializer(
-                ItemKind::Lane,
-                name,
-                UplinkKind::Value,
-                io,
-                WithLengthBytesCodec::default(),
-                init,
-            );
+            let init_task =
+                run_item_initializer(ItemKind::Lane(kind), name, io, WithLengthBytesCodec, init);
             item_init_tasks.push(init_task.boxed());
         } else {
-            value_like_lane_io.insert(Text::new(name), io);
+            lane_io.insert((Text::new(name), kind), io);
         }
     }
 
@@ -641,11 +772,10 @@ where
         } = self;
         if let Some(init) = item_model.init_value_like_item(name) {
             let init_task = run_item_initializer(
-                ItemKind::Store,
+                ItemKind::Store(StoreKind::Value),
                 name,
-                UplinkKind::Value,
                 io,
-                WithLengthBytesCodec::default(),
+                WithLengthBytesCodec,
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -655,29 +785,29 @@ where
     fn init_map_lane(
         &mut self,
         name: &'b str,
+        kind: LaneKind,
         lane_conf: LaneConfig,
         io: (ByteWriter, ByteReader),
     ) {
         let InitContext {
-            map_like_lane_io,
+            lane_io,
             item_model,
             item_init_tasks,
             ..
         } = self;
         if lane_conf.transient {
-            map_like_lane_io.insert(Text::new(name), io);
+            lane_io.insert((Text::new(name), kind), io);
         } else if let Some(init) = item_model.init_map_like_item(name) {
             let init_task = run_item_initializer(
-                ItemKind::Lane,
+                ItemKind::Lane(kind),
                 name,
-                UplinkKind::Map,
                 io,
-                MapMessageDecoder::new(RawMapOperationDecoder::default()),
+                MapMessageDecoder::new(RawMapOperationDecoder),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
         } else {
-            map_like_lane_io.insert(Text::new(name), io);
+            lane_io.insert((Text::new(name), kind), io);
         }
     }
 
@@ -689,11 +819,10 @@ where
         } = self;
         if let Some(init) = item_model.init_map_like_item(name) {
             let init_task = run_item_initializer(
-                ItemKind::Store,
+                ItemKind::Store(StoreKind::Map),
                 name,
-                UplinkKind::Map,
                 io,
-                MapMessageDecoder::new(RawMapOperationDecoder::default()),
+                MapMessageDecoder::new(RawMapOperationDecoder),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -708,13 +837,12 @@ struct AgentTask<ItemModel, Lifecycle> {
     route_params: HashMap<String, String>,
     config: AgentConfig,
     item_ids: HashMap<u64, Text>,
-    value_like_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
-    value_like_store_io: HashMap<Text, ByteWriter>,
-    map_lane_io: HashMap<Text, (ByteWriter, ByteReader)>,
-    map_store_io: HashMap<Text, ByteWriter>,
+    lane_io: HashMap<(Text, LaneKind), (ByteWriter, ByteReader)>,
+    store_io: HashMap<Text, ByteWriter>,
     suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
     join_value_init: HashMap<u64, BoxJoinValueInit<'static, ItemModel>>,
-    downlink_channels: Vec<(BoxDownlinkChannel<ItemModel>, WriteStream)>,
+    ad_hoc_buffer: BytesMut,
+    downlink_channels: Vec<BoxDownlinkChannel<ItemModel>>,
 }
 
 impl<ItemModel, Lifecycle> AgentTask<ItemModel, Lifecycle>
@@ -738,12 +866,11 @@ where
             route_params,
             config,
             item_ids,
-            value_like_lane_io,
-            value_like_store_io,
-            map_lane_io,
-            map_store_io,
+            lane_io,
+            store_io,
             mut suspended,
             mut join_value_init,
+            mut ad_hoc_buffer,
             downlink_channels,
         } = self;
         let meta = AgentMetadata::new(&route, &route_params, &config);
@@ -758,31 +885,35 @@ where
         let mut pending_writes = FuturesUnordered::new();
         let mut downlinks = FuturesUnordered::new();
 
+        let mut cmd_writer = if let Ok(cmd_tx) = context.ad_hoc_commands().await {
+            Some(CommandWriter::new(cmd_tx))
+        } else {
+            return Err(AgentTaskError::OutputFailed(std::io::Error::from(
+                std::io::ErrorKind::BrokenPipe,
+            )));
+        };
+
+        let mut cmd_send_fut = pin!(OptionFuture::from(None));
+
         // Start waiting on downlinks from the init phase.
-        for (channel, write_stream) in downlink_channels {
-            let dl = HostedDownlink::new(channel, write_stream);
-            downlinks.push(dl.wait_on_downlink());
+        for channel in downlink_channels {
+            let dl = HostedDownlink::new(channel);
+            downlinks.push(Either::Left(dl.wait_on_downlink()));
         }
 
-        // Set up readers and writes for each lane.
-        for (name, (tx, rx)) in value_like_lane_io {
-            let id = item_ids_rev[&name];
-            lane_readers.push(LaneReader::value(id, rx));
-            item_writers.insert(id, ItemWriter::new(id, tx));
+        for ((name, kind), (tx, rx)) in lane_io {
+            if kind.map_like() {
+                let id = item_ids_rev[&name];
+                lane_readers.push(LaneReader::map(id, rx));
+                item_writers.insert(id, ItemWriter::new(id, tx));
+            } else {
+                let id = item_ids_rev[&name];
+                lane_readers.push(LaneReader::value(id, rx));
+                item_writers.insert(id, ItemWriter::new(id, tx));
+            }
         }
 
-        for (name, tx) in value_like_store_io {
-            let id = item_ids_rev[&name];
-            item_writers.insert(id, ItemWriter::new(id, tx));
-        }
-
-        for (name, (tx, rx)) in map_lane_io {
-            let id = item_ids_rev[&name];
-            lane_readers.push(LaneReader::map(id, rx));
-            item_writers.insert(id, ItemWriter::new(id, tx));
-        }
-
-        for (name, tx) in map_store_io {
+        for (name, tx) in store_io {
             let id = item_ids_rev[&name];
             item_writers.insert(id, ItemWriter::new(id, tx));
         }
@@ -818,6 +949,13 @@ where
             };
             let task_event: TaskEvent<ItemModel> = tokio::select! {
                 biased;
+                maybe_cmd_result = &mut cmd_send_fut, if !cmd_send_fut.is_terminated() => {
+                    if let Some(result) = maybe_cmd_result {
+                        TaskEvent::CommandSendComplete { result }
+                    } else {
+                        continue;
+                    }
+                },
                 write_done = pending_writes.next(), if !pending_writes.is_empty() => {
                     if let Some((writer, result)) = write_done {
                         TaskEvent::WriteComplete {
@@ -835,9 +973,9 @@ where
                     }
                 }
             };
-            let add_downlink = |channel, write_stream| {
-                let dl = HostedDownlink::new(channel, write_stream);
-                downlinks.push(dl.wait_on_downlink());
+            let add_downlink = |channel| {
+                let dl = HostedDownlink::new(channel);
+                downlinks.push(Either::Left(dl.wait_on_downlink()));
                 Ok(())
             };
             match task_event {
@@ -848,12 +986,13 @@ where
                     item_writers.insert(writer.lane_id(), writer);
                 }
                 TaskEvent::SuspendedComplete { handler } => {
-                    if let Err(e) = run_handler(
+                    match run_handler(
                         &mut ActionContext::new(
                             &suspended,
                             &*context,
                             &add_downlink,
                             &mut join_value_init,
+                            &mut ad_hoc_buffer,
                         ),
                         meta,
                         &item_model,
@@ -862,59 +1001,110 @@ where
                         &item_ids,
                         &mut dirty_items,
                     ) {
-                        break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                        Err(EventHandlerError::StopInstructed) => break Ok(()),
+                        Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
+                        Ok(_) => check_cmds(
+                            &mut ad_hoc_buffer,
+                            &mut cmd_writer,
+                            &mut cmd_send_fut,
+                            CommandWriter::write,
+                        ),
                     }
                 }
-                TaskEvent::DownlinkReady { downlink_event } => {
-                    if let Some((mut downlink, event)) = downlink_event {
-                        match event {
-                            HostedDownlinkEvent::WriterFailed(err) => {
-                                error!(error = %err, "A downlink hosted by the agent failed.");
-                                downlinks.push(downlink.wait_on_downlink());
+                TaskEvent::DownlinkReady {
+                    downlink_event: (mut downlink, event),
+                } => match event {
+                    HostedDownlinkEvent::Written => {
+                        downlinks.push(Either::Left(downlink.wait_on_downlink()))
+                    }
+                    HostedDownlinkEvent::WriterFailed(err) => {
+                        error!(error = %err, "A downlink hosted by the agent failed.");
+                        debug!(address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink.");
+                        downlinks.push(Either::Right(downlink.reconnect(
+                            &*context,
+                            config.keep_linked_retry,
+                            true,
+                        )));
+                    }
+                    HostedDownlinkEvent::WriterTerminated => {
+                        info!("A downlink hosted by the agent stopped writing output.");
+                        downlinks.push(Either::Left(downlink.wait_on_downlink()));
+                    }
+                    HostedDownlinkEvent::HandlerReady { failed } => {
+                        if let Some(handler) = downlink.next_event(&item_model) {
+                            match run_handler(
+                                &mut ActionContext::new(
+                                    &suspended,
+                                    &*context,
+                                    &add_downlink,
+                                    &mut join_value_init,
+                                    &mut ad_hoc_buffer,
+                                ),
+                                meta,
+                                &item_model,
+                                &lifecycle,
+                                handler,
+                                &item_ids,
+                                &mut dirty_items,
+                            ) {
+                                Err(EventHandlerError::StopInstructed) => break Ok(()),
+                                Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
+                                Ok(_) => check_cmds(
+                                    &mut ad_hoc_buffer,
+                                    &mut cmd_writer,
+                                    &mut cmd_send_fut,
+                                    CommandWriter::write,
+                                ),
                             }
-                            HostedDownlinkEvent::WriterTerminated => {
-                                info!("A downlink hosted by the agent stopped writing output.");
-                                downlinks.push(downlink.wait_on_downlink());
-                            }
-                            HostedDownlinkEvent::HandlerReady { failed } => {
-                                if let Some(handler) = downlink.next_event(&item_model) {
-                                    if let Err(e) = run_handler(
-                                        &mut ActionContext::new(
-                                            &suspended,
-                                            &*context,
-                                            &add_downlink,
-                                            &mut join_value_init,
-                                        ),
-                                        meta,
-                                        &item_model,
-                                        &lifecycle,
-                                        handler,
-                                        &item_ids,
-                                        &mut dirty_items,
-                                    ) {
-                                        break Err(AgentTaskError::UserCodeError(Box::new(e)));
-                                    }
-                                }
-                                if !failed {
-                                    downlinks.push(downlink.wait_on_downlink());
-                                }
-                            }
-                            _ => {}
+                        }
+                        if failed {
+                            error!("Reading from a downlink failed.");
+                            debug!(address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink.");
+                            downlinks.push(Either::Right(downlink.reconnect(
+                                &*context,
+                                config.keep_linked_retry,
+                                true,
+                            )));
+                        } else {
+                            downlinks.push(Either::Left(downlink.wait_on_downlink()));
                         }
                     }
-                }
+                    HostedDownlinkEvent::ReconnectSucceeded(reconnect) => {
+                        reconnect.connect(&mut downlink, &item_model);
+                        downlinks.push(Either::Left(downlink.wait_on_downlink()));
+                    }
+                    HostedDownlinkEvent::ReconnectFailed { error, retry } => {
+                        error!(error = %error, address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink failed.");
+                        downlinks.push(Either::Right(downlink.reconnect(&*context, retry, false)));
+                    }
+                    HostedDownlinkEvent::Stopped => {
+                        downlinks.push(Either::Right(downlink.reconnect(
+                            &*context,
+                            config.keep_linked_retry,
+                            true,
+                        )));
+                    }
+                    HostedDownlinkEvent::ReconnectNotPossible { retries_expired } => {
+                        if retries_expired {
+                            error!(address = %downlink.address(), kind = ?downlink.kind(), "A downlink stopped and could not be restarted.");
+                        } else {
+                            info!(address = %downlink.address(), kind = ?downlink.kind(), "A downlink stopped and was removed.");
+                        }
+                    }
+                },
                 TaskEvent::ValueRequest { id, request } => {
                     let name = &item_ids[&id];
                     match request {
                         LaneRequest::Command(body) => {
                             if let Some(handler) = item_model.on_value_command(name.as_str(), body)
                             {
-                                if let Err(e) = run_handler(
+                                let result = run_handler(
                                     &mut ActionContext::new(
                                         &suspended,
                                         &*context,
                                         &add_downlink,
                                         &mut join_value_init,
+                                        &mut ad_hoc_buffer,
                                     ),
                                     meta,
                                     &item_model,
@@ -922,19 +1112,39 @@ where
                                     handler,
                                     &item_ids,
                                     &mut dirty_items,
-                                ) {
-                                    break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                                );
+                                match result {
+                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
+                                    Err(
+                                        e @ (EventHandlerError::RuntimeError(_)
+                                        | EventHandlerError::SteppedAfterComplete),
+                                    ) => {
+                                        break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                                    }
+                                    Err(error) => {
+                                        info!(
+                                            error = %error,
+                                            "Incoming frame was rejected by the item."
+                                        );
+                                    }
+                                    _ => check_cmds(
+                                        &mut ad_hoc_buffer,
+                                        &mut cmd_writer,
+                                        &mut cmd_send_fut,
+                                        CommandWriter::write,
+                                    ),
                                 }
                             }
                         }
                         LaneRequest::Sync(remote_id) => {
                             if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
-                                if let Err(e) = run_handler(
+                                match run_handler(
                                     &mut ActionContext::new(
                                         &suspended,
                                         &*context,
                                         &add_downlink,
                                         &mut join_value_init,
+                                        &mut ad_hoc_buffer,
                                     ),
                                     meta,
                                     &item_model,
@@ -943,7 +1153,16 @@ where
                                     &item_ids,
                                     &mut dirty_items,
                                 ) {
-                                    break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
+                                    Err(e) => {
+                                        break Err(AgentTaskError::UserCodeError(Box::new(e)))
+                                    }
+                                    Ok(_) => check_cmds(
+                                        &mut ad_hoc_buffer,
+                                        &mut cmd_writer,
+                                        &mut cmd_send_fut,
+                                        CommandWriter::write,
+                                    ),
                                 }
                             }
                         }
@@ -955,12 +1174,13 @@ where
                     match request {
                         LaneRequest::Command(body) => {
                             if let Some(handler) = item_model.on_map_command(name.as_str(), body) {
-                                if let Err(e) = run_handler(
+                                let result = run_handler(
                                     &mut ActionContext::new(
                                         &suspended,
                                         &*context,
                                         &add_downlink,
                                         &mut join_value_init,
+                                        &mut ad_hoc_buffer,
                                     ),
                                     meta,
                                     &item_model,
@@ -968,19 +1188,39 @@ where
                                     handler,
                                     &item_ids,
                                     &mut dirty_items,
-                                ) {
-                                    break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                                );
+                                match result {
+                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
+                                    Err(
+                                        e @ (EventHandlerError::RuntimeError(_)
+                                        | EventHandlerError::SteppedAfterComplete),
+                                    ) => {
+                                        break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                                    }
+                                    Err(error) => {
+                                        info!(
+                                            error = %error,
+                                            "Incoming frame was rejected by the item."
+                                        );
+                                    }
+                                    _ => check_cmds(
+                                        &mut ad_hoc_buffer,
+                                        &mut cmd_writer,
+                                        &mut cmd_send_fut,
+                                        CommandWriter::write,
+                                    ),
                                 }
                             }
                         }
                         LaneRequest::Sync(remote_id) => {
                             if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
-                                if let Err(e) = run_handler(
+                                match run_handler(
                                     &mut ActionContext::new(
                                         &suspended,
                                         &*context,
                                         &add_downlink,
                                         &mut join_value_init,
+                                        &mut ad_hoc_buffer,
                                     ),
                                     meta,
                                     &item_model,
@@ -989,7 +1229,16 @@ where
                                     &item_ids,
                                     &mut dirty_items,
                                 ) {
-                                    break Err(AgentTaskError::UserCodeError(Box::new(e)));
+                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
+                                    Err(e) => {
+                                        break Err(AgentTaskError::UserCodeError(Box::new(e)))
+                                    }
+                                    Ok(_) => check_cmds(
+                                        &mut ad_hoc_buffer,
+                                        &mut cmd_writer,
+                                        &mut cmd_send_fut,
+                                        CommandWriter::write,
+                                    ),
                                 }
                             }
                         }
@@ -999,6 +1248,18 @@ where
                 TaskEvent::RequestError { id, error } => {
                     let lane = item_ids[&id].clone();
                     break Err(AgentTaskError::BadFrame { lane, error });
+                }
+                TaskEvent::CommandSendComplete { result: Ok(writer) } => {
+                    cmd_send_fut.set(None.into());
+                    if !ad_hoc_buffer.is_empty() {
+                        let fut = writer.write(&mut ad_hoc_buffer);
+                        cmd_send_fut.set(Some(fut.fuse()).into());
+                    } else {
+                        cmd_writer = Some(writer);
+                    }
+                }
+                TaskEvent::CommandSendComplete { result: Err(err) } => {
+                    break Err(AgentTaskError::OutputFailed(err));
                 }
             }
             // Attempt to write to the outgoing buffers for any items with data.
@@ -1023,13 +1284,19 @@ where
         }?;
         // Try to run the `on_stop` handler before we stop.
         let on_stop_handler = lifecycle.on_stop();
-        let discard = |_, _| {
+        let discard = |_| {
             Err(DownlinkRuntimeError::RuntimeError(
                 AgentRuntimeError::Stopping,
             ))
         };
-        if let Err(e) = run_handler(
-            &mut ActionContext::new(&suspended, &*context, &discard, &mut join_value_init),
+        match run_handler(
+            &mut ActionContext::new(
+                &suspended,
+                &*context,
+                &discard,
+                &mut join_value_init,
+                &mut ad_hoc_buffer,
+            ),
             meta,
             &item_model,
             &lifecycle,
@@ -1037,9 +1304,8 @@ where
             &item_ids,
             &mut Discard,
         ) {
-            Err(AgentTaskError::UserCodeError(Box::new(e)))
-        } else {
-            Ok(())
+            Ok(_) | Err(EventHandlerError::StopInstructed) => Ok(()),
+            Err(e) => Err(AgentTaskError::UserCodeError(Box::new(e))),
         }
     }
 }
@@ -1152,6 +1418,52 @@ where
                 }
                 break Ok(());
             }
+        }
+    }
+}
+
+struct CommandWriter {
+    tx: ByteWriter,
+    buffer: BytesMut,
+}
+
+impl CommandWriter {
+    fn new(tx: ByteWriter) -> Self {
+        CommandWriter {
+            tx,
+            buffer: BytesMut::new(),
+        }
+    }
+
+    fn write(
+        mut self,
+        content: &mut BytesMut,
+    ) -> impl Future<Output = Result<Self, std::io::Error>> + 'static {
+        self.buffer.clear();
+        std::mem::swap(&mut self.buffer, content);
+        async move {
+            let CommandWriter { tx, buffer } = &mut self;
+            tx.write_all(buffer).await?;
+            Ok(self)
+        }
+    }
+}
+
+/// Check of an event handler wrote into the ad-hoc commands buffer and schedule a
+/// write to the command channel.
+#[inline]
+fn check_cmds<Fut>(
+    ad_hoc_buffer: &mut BytesMut,
+    cmd_writer: &mut Option<CommandWriter>,
+    cmd_send_fut: &mut Pin<&mut OptionFuture<Fuse<Fut>>>,
+    write: fn(CommandWriter, &mut BytesMut) -> Fut,
+) where
+    Fut: Future,
+{
+    if !ad_hoc_buffer.is_empty() {
+        if let Some(writer) = cmd_writer.take() {
+            let fut = write(writer, ad_hoc_buffer);
+            cmd_send_fut.set(Some(fut.fuse()).into());
         }
     }
 }

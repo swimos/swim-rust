@@ -165,6 +165,13 @@ impl RetryStrategy {
             delay: None,
         })
     }
+
+    /// Reset to the initial state.
+    pub fn reset(&mut self) {
+        if let RetryStrategy::Exponential(s) = self {
+            s.retry_no = 0;
+        }
+    }
 }
 
 impl Iterator for RetryStrategy {

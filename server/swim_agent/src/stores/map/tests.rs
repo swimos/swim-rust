@@ -31,9 +31,14 @@ use tokio_util::codec::Decoder;
 use crate::{
     agent_model::WriteResult,
     event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
+    item::MapItem,
+    lanes::map::MapLaneEvent,
     meta::AgentMetadata,
     stores::{
-        map::{MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate},
+        map::{
+            MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate,
+            MapStoreWithEntry,
+        },
         MapStore, StoreItem,
     },
     test_context::dummy_context,
@@ -366,7 +371,7 @@ impl TestAgent {
 }
 
 impl TestAgent {
-    pub const LANE: fn(&TestAgent) -> &MapStore<i32, Text> = |agent| &agent.store;
+    pub const STORE: fn(&TestAgent) -> &MapStore<i32, Text> = |agent| &agent.store;
 }
 
 fn check_result<T: Eq + Debug>(
@@ -411,9 +416,13 @@ fn map_store_update_event_handler() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::default();
 
-    let mut handler = MapStoreUpdate::new(TestAgent::LANE, K1, Text::new(V1));
+    let mut handler = MapStoreUpdate::new(TestAgent::STORE, K1, Text::new(V1));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, true, true, Some(()));
 
     agent.store.get_map(|map| {
@@ -421,7 +430,11 @@ fn map_store_update_event_handler() {
         assert_eq!(map.get(&K1), Some(&Text::new(V1)));
     });
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -435,9 +448,13 @@ fn map_store_remove_event_handler() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = MapStoreRemove::new(TestAgent::LANE, K1);
+    let mut handler = MapStoreRemove::new(TestAgent::STORE, K1);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, true, true, Some(()));
 
     agent.store.get_map(|map| {
@@ -446,7 +463,11 @@ fn map_store_remove_event_handler() {
         assert_eq!(map.get(&K3), Some(&Text::new(V3)));
     });
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -460,16 +481,24 @@ fn map_store_clear_event_handler() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = MapStoreClear::new(TestAgent::LANE);
+    let mut handler = MapStoreClear::new(TestAgent::STORE);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, true, true, Some(()));
 
     agent.store.get_map(|map| {
         assert!(map.is_empty());
     });
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -483,17 +512,29 @@ fn map_store_get_event_handler() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = MapStoreGet::new(TestAgent::LANE, K1);
+    let mut handler = MapStoreGet::new(TestAgent::STORE, K1);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(Some(Text::new(V1))));
 
-    let mut handler = MapStoreGet::new(TestAgent::LANE, ABSENT);
+    let mut handler = MapStoreGet::new(TestAgent::STORE, ABSENT);
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(None));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
@@ -507,16 +548,99 @@ fn map_store_get_map_event_handler() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = MapStoreGetMap::new(TestAgent::LANE);
+    let mut handler = MapStoreGetMap::new(TestAgent::STORE);
 
     let expected = init();
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     check_result(result, false, false, Some(expected));
 
-    let result = handler.step(&mut dummy_context(&mut HashMap::new()), meta, &agent);
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     assert!(matches!(
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     ));
+}
+
+#[test]
+fn map_store_with_event_handler_update() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapStoreWithEntry::new(TestAgent::STORE, K1, |maybe: Option<Text>| {
+        maybe.map(|v| Text::from(v.as_str().to_uppercase()))
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, true, Some(()));
+
+    agent.store.get_map(|map| {
+        assert_eq!(map.len(), 3);
+        assert_eq!(map.get(&K1), Some(&Text::from(V1.to_uppercase())));
+        assert_eq!(map.get(&K2), Some(&Text::new(V2)));
+        assert_eq!(map.get(&K3), Some(&Text::new(V3)));
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    let event = agent.store.read_with_prev(|event, _| event);
+    assert_eq!(event, Some(MapLaneEvent::Update(K1, Some(Text::new(V1)))));
+}
+
+#[test]
+fn map_lane_with_event_handler_remove() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapStoreWithEntry::new(TestAgent::STORE, K1, |_: Option<Text>| None);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, true, Some(()));
+
+    agent.store.get_map(|map| {
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get(&K2), Some(&Text::new(V2)));
+        assert_eq!(map.get(&K3), Some(&Text::new(V3)));
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    let event = agent.store.read_with_prev(|event, _| event);
+    assert_eq!(event, Some(MapLaneEvent::Remove(K1, Text::new(V1))));
 }

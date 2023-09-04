@@ -19,7 +19,7 @@ use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_model::{address::Address, Text};
 
 use crate::{
-    agent_model::downlink::OpenEventDownlinkAction,
+    agent_model::downlink::{hosted::EventDownlinkHandle, OpenEventDownlinkAction},
     config::SimpleDownlinkConfig,
     downlink_lifecycle::{
         event::{
@@ -32,7 +32,7 @@ use crate::{
         on_synced::{OnSynced, OnSyncedShared},
         on_unlinked::{OnUnlinked, OnUnlinkedShared},
     },
-    event_handler::EventHandler,
+    event_handler::HandlerAction,
     lifecycle_fn::WithHandlerContext,
 };
 
@@ -222,7 +222,9 @@ where
 {
     /// Complete the downlink and create a [`HandlerAction`] that will open the downlink when it is
     /// executed.
-    pub fn done(self) -> impl EventHandler<Context> + Send + 'static {
+    pub fn done(
+        self,
+    ) -> impl HandlerAction<Context, Completion = EventDownlinkHandle> + Send + 'static {
         let StatelessEventDownlinkBuilder {
             address,
             config,
@@ -352,7 +354,9 @@ where
 {
     /// Complete the downlink and create a [`HandlerAction`] that will open the downlink when it is
     /// executed.
-    pub fn done(self) -> impl EventHandler<Context> + Send + 'static {
+    pub fn done(
+        self,
+    ) -> impl HandlerAction<Context, Completion = EventDownlinkHandle> + Send + 'static {
         let StatefulEventDownlinkBuilder {
             address,
             config,

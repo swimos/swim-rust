@@ -19,13 +19,12 @@ use futures::{Sink, SinkExt, StreamExt};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
-use tracing::{info_span, trace};
-use tracing_futures::Instrument;
+use tracing::{info_span, trace, Instrument};
 
 use swim_api::downlink::DownlinkConfig;
 use swim_api::error::DownlinkTaskError;
 use swim_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, RecNotificationDecoder,
+    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
 };
 use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
@@ -110,7 +109,7 @@ where
 {
     let mut mode = Mode::ReadWrite;
     let mut state: State<T> = State::Unlinked;
-    let mut framed_read = FramedRead::new(input, RecNotificationDecoder::default());
+    let mut framed_read = FramedRead::new(input, ValueNotificationDecoder::default());
     let mut set_stream = ReceiverStream::new(handle_rx);
 
     let DownlinkConfig {

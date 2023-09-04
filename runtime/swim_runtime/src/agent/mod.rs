@@ -26,9 +26,11 @@ use swim_api::{
     meta::lane::LaneKind,
     store::{NodePersistence, StoreKind},
 };
-use swim_model::{address::Address, Text};
+use swim_model::{address::RelativeAddress, Text};
 use swim_utilities::{
+    future::retryable::RetryStrategy,
     io::byte_channel::{ByteReader, ByteWriter},
+    non_zero_usize,
     routing::route_uri::RouteUri,
     trigger::{self, promise},
 };
@@ -44,44 +46,102 @@ use std::{
     time::Duration,
 };
 
-use crate::downlink::DownlinkOptions;
+use crate::{downlink::DownlinkOptions, net::SchemeHostPort};
 
 use self::{
     reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
-    task::{AgentInitTask, AgentRuntimeTask, LaneRuntimeSpec, NodeDescriptor, StoreRuntimeSpec},
+    task::{
+        AdHocChannelRequest, AgentInitTask, AgentRuntimeTask, InitTaskConfig, LaneRuntimeSpec,
+        LinksTaskConfig, NodeDescriptor, StoreRuntimeSpec,
+    },
 };
 
 pub mod reporting;
 mod store;
 mod task;
+#[cfg(test)]
+mod tests;
 
 use task::AgentRuntimeRequest;
-use tracing::error;
+use tracing::{error, info_span, Instrument};
+
+#[derive(Debug)]
+pub enum LinkRequest {
+    Downlink(DownlinkRequest),
+    Commander(CommanderRequest),
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub enum CommanderKey {
+    Remote(SchemeHostPort),
+    Local(RelativeAddress<Text>),
+}
+
+#[derive(Debug)]
+pub struct CommanderRequest {
+    pub agent_id: Uuid,
+    pub key: CommanderKey,
+    pub promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
+}
+
+impl CommanderRequest {
+    pub fn new(
+        agent_id: Uuid,
+        key: CommanderKey,
+        promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
+    ) -> Self {
+        CommanderRequest {
+            agent_id,
+            key,
+            promise,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct DownlinkRequest {
-    pub key: (Address<Text>, DownlinkKind),
+    pub remote: Option<SchemeHostPort>,
+    pub address: RelativeAddress<Text>,
+    pub kind: DownlinkKind,
     pub options: DownlinkOptions,
     pub promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 }
 
 impl DownlinkRequest {
+    pub fn replace_promise(
+        &self,
+        replacement: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
+    ) -> Self {
+        DownlinkRequest {
+            remote: self.remote.clone(),
+            address: self.address.clone(),
+            kind: self.kind,
+            options: self.options,
+            promise: replacement,
+        }
+    }
+}
+
+impl DownlinkRequest {
     pub fn new(
-        path: Address<Text>,
+        remote: Option<SchemeHostPort>,
+        address: RelativeAddress<Text>,
         kind: DownlinkKind,
         options: DownlinkOptions,
         promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
     ) -> Self {
         DownlinkRequest {
-            key: (path, kind),
+            remote,
+            address,
+            kind,
             options,
             promise,
         }
     }
 }
 
-/// Implementaton of [`AgentContext`] that communicates with with another task over a channel
+/// Implementation of [`AgentContext`] that communicates with with another task over a channel
 /// to perform the supported operations.
 #[derive(Clone)]
 struct AgentRuntimeContext {
@@ -95,6 +155,18 @@ impl AgentRuntimeContext {
 }
 
 impl AgentContext for AgentRuntimeContext {
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+        let sender = self.tx.clone();
+        async move {
+            let (tx, rx) = oneshot::channel();
+            sender
+                .send(AgentRuntimeRequest::AdHoc(AdHocChannelRequest::new(tx)))
+                .await?;
+            rx.await?
+        }
+        .boxed()
+    }
+
     fn add_lane(
         &self,
         name: &str,
@@ -122,17 +194,26 @@ impl AgentContext for AgentRuntimeContext {
         lane: &str,
         kind: DownlinkKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
-        let host = host.map(Text::new);
+        let remote_result = host.map(|h| h.parse::<SchemeHostPort>()).transpose();
         let node = Text::new(node);
         let lane = Text::new(lane);
         let sender = self.tx.clone();
         async move {
             let (tx, rx) = oneshot::channel();
+            let remote = match remote_result {
+                Ok(r) => r,
+                Err(_) => {
+                    return Err(DownlinkRuntimeError::DownlinkConnectionFailed(
+                        swim_api::error::DownlinkFailureReason::InvalidUrl,
+                    ))
+                }
+            };
             sender
                 .send(AgentRuntimeRequest::OpenDownlink(DownlinkRequest::new(
-                    Address::new(host, node, lane),
+                    remote,
+                    RelativeAddress::new(node, lane),
                     kind,
-                    DownlinkOptions::empty(),
+                    DownlinkOptions::DEFAULT,
                     tx,
                 )))
                 .await?;
@@ -209,17 +290,29 @@ impl Display for DisconnectionReason {
 
 /// A request to attach a new remote connection to an agent runtime task.
 #[derive(Debug)]
-pub struct AgentAttachmentRequest {
-    /// The unique ID of the remote endpoint.
-    id: Uuid,
-    /// Channels over which the agent runtime task should communicate with the endpoint.
-    io: Io,
-    /// A promise that will be satisified when the agent runtime task closes the remote.
-    completion: promise::Sender<DisconnectionReason>,
-    /// If provided, this will be triggered when the remote has been fully registered with
-    /// the agent runtime request. The completion promise will only receive a non-failed
-    /// result after this occurs.
-    on_attached: Option<trigger::Sender>,
+pub enum AgentAttachmentRequest {
+    OneWay {
+        /// The unique ID of the remote endpoint.
+        id: Uuid,
+        /// Channels over which the agent runtime task should communicate with the endpoint.
+        io: ByteReader,
+        /// If provided, this will be triggered when the remote has been fully registered with
+        /// the agent runtime request. The completion promise will only receive a non-failed
+        /// result after this occurs.
+        on_attached: Option<trigger::Sender>,
+    },
+    TwoWay {
+        /// The unique ID of the remote endpoint.
+        id: Uuid,
+        /// Channels over which the agent runtime task should communicate with the endpoint.
+        io: Io,
+        /// If provided, this will be triggered when the remote has been fully registered with
+        /// the agent runtime request. The completion promise will only receive a non-failed
+        /// result after this occurs.
+        on_attached: Option<trigger::Sender>,
+        /// A promise that will be satisfied when the agent runtime task closes the remote.
+        completion: promise::Sender<DisconnectionReason>,
+    },
 }
 
 /// A request from an agent to register a new lane for metadata reporting.
@@ -300,8 +393,8 @@ impl NodeReporting {
 }
 
 impl AgentAttachmentRequest {
-    pub fn new(id: Uuid, io: Io, completion: promise::Sender<DisconnectionReason>) -> Self {
-        AgentAttachmentRequest {
+    pub fn downlink(id: Uuid, io: Io, completion: promise::Sender<DisconnectionReason>) -> Self {
+        AgentAttachmentRequest::TwoWay {
             id,
             io,
             completion,
@@ -316,19 +409,27 @@ impl AgentAttachmentRequest {
         completion: promise::Sender<DisconnectionReason>,
         on_attached: trigger::Sender,
     ) -> Self {
-        AgentAttachmentRequest {
+        AgentAttachmentRequest::TwoWay {
             id,
             io,
             completion,
             on_attached: Some(on_attached),
         }
     }
+
+    pub fn commander(id: Uuid, io: ByteReader, on_attached: trigger::Sender) -> Self {
+        AgentAttachmentRequest::OneWay {
+            id,
+            io,
+            on_attached: Some(on_attached),
+        }
+    }
 }
 
-/// Configuration parameters for the aget runtime task.
+/// Configuration parameters for the agent runtime task.
 #[derive(Debug, Clone, Copy)]
 pub struct AgentRuntimeConfig {
-    /// Size of the queue for hanlding requests to attach remotes to the task.
+    /// Size of the queue for handling requests to attach remotes to the task.
     pub attachment_queue_size: NonZeroUsize,
     /// If the task is idle for more than this length of time, the agent will stop.
     pub inactive_timeout: Duration,
@@ -338,8 +439,34 @@ pub struct AgentRuntimeConfig {
     /// If the clean-shutdown mechanism for the task takes longer than this, it will be
     /// terminated.
     pub shutdown_timeout: Duration,
-    /// If initializing a lane from the store takes longer than this, the agent will fail.
-    pub lane_init_timeout: Duration,
+    /// If initializing an item from the store takes longer than this, the agent will fail.
+    pub item_init_timeout: Duration,
+    /// Timeout for outgoing channels to send ad hoc commands.
+    pub ad_hoc_output_timeout: Duration,
+    /// Retry strategy for opening outgoing channels for ad hoc commands.
+    pub ad_hoc_output_retry: RetryStrategy,
+    /// The size of the buffer used by the agent to send ad hoc commands to the runtime.
+    pub ad_hoc_buffer_size: NonZeroUsize,
+}
+
+const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
+const DEFAULT_CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(16);
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_INIT_TIMEOUT: Duration = Duration::from_secs(1);
+
+impl Default for AgentRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            attachment_queue_size: DEFAULT_CHANNEL_SIZE,
+            inactive_timeout: DEFAULT_TIMEOUT,
+            prune_remote_delay: DEFAULT_TIMEOUT,
+            shutdown_timeout: DEFAULT_TIMEOUT,
+            item_init_timeout: DEFAULT_INIT_TIMEOUT,
+            ad_hoc_output_timeout: DEFAULT_TIMEOUT,
+            ad_hoc_output_retry: RetryStrategy::none(),
+            ad_hoc_buffer_size: DEFAULT_BUFFER_SIZE,
+        }
+    }
 }
 
 /// Ways in which the agent runtime task can fail.
@@ -373,7 +500,7 @@ pub struct AgentRoute {
     pub route_params: HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct CombinedAgentConfig {
     pub agent_config: AgentConfig,
     pub runtime_config: AgentRuntimeConfig,
@@ -384,7 +511,7 @@ pub struct AgentRouteTask<'a, A> {
     route: RouteUri,
     route_params: HashMap<String, String>,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-    downlink_tx: mpsc::Sender<DownlinkRequest>,
+    link_tx: mpsc::Sender<LinkRequest>,
     stopping: trigger::Receiver,
     agent_config: AgentConfig,
     runtime_config: AgentRuntimeConfig,
@@ -396,8 +523,9 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
     ///
     /// #Arguments
     /// * `agent` - The agent instance.
-    /// * `identity` - Routing identify of the agent instance..
+    /// * `identity` - Routing identify of the agent instance.
     /// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
+    /// * `link_tx` - Channel to request external links from the runtime.
     /// * `stopping` - Instructs the agent task to stop.
     /// * `config` - Configuration parameters for the user agent task and agent runtime.
     /// * `reporting` - Uplink metrics reporters.
@@ -405,7 +533,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         agent: &'a A,
         identity: AgentRoute,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        downlink_tx: mpsc::Sender<DownlinkRequest>,
+        link_tx: mpsc::Sender<LinkRequest>,
         stopping: trigger::Receiver,
         config: CombinedAgentConfig,
         reporting: Option<NodeReporting>,
@@ -416,7 +544,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             route: identity.route,
             route_params: identity.route_params,
             attachment_rx,
-            downlink_tx,
+            link_tx,
             stopping,
             agent_config: config.agent_config,
             runtime_config: config.runtime_config,
@@ -431,7 +559,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             route,
             route_params,
             attachment_rx,
-            downlink_tx,
+            link_tx,
             stopping,
             agent_config,
             runtime_config,
@@ -440,11 +568,23 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         let node_uri = route.to_string().into();
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
         let (init_tx, init_rx) = trigger::trigger();
+
+        let ad_hoc_config = LinksTaskConfig {
+            buffer_size: runtime_config.ad_hoc_buffer_size,
+            retry_strategy: runtime_config.ad_hoc_output_retry,
+            timeout_delay: runtime_config.ad_hoc_output_timeout,
+        };
+
         let runtime_init_task = AgentInitTask::new(
+            identity,
             runtime_rx,
-            downlink_tx.clone(),
+            link_tx,
             init_rx,
-            runtime_config.lane_init_timeout,
+            InitTaskConfig {
+                ad_hoc_queue_size: runtime_config.attachment_queue_size,
+                item_init_timeout: runtime_config.item_init_timeout,
+                external_links: ad_hoc_config,
+            },
             reporting,
         );
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
@@ -454,20 +594,20 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         async move {
             let agent_init_task = async move {
                 let agent_task_result = agent_init.await;
-                drop(init_tx);
+                init_tx.trigger();
                 agent_task_result
             };
 
             let (initial_state_result, agent_task_result) =
                 join(runtime_init_task.run(), agent_init_task).await;
-            let (initial_state, _) = initial_state_result?;
+
             let agent_task = agent_task_result?;
+            let (initial_state, _) = initial_state_result?;
 
             let runtime_task = AgentRuntimeTask::new(
                 NodeDescriptor::new(identity, node_uri),
                 initial_state,
                 attachment_rx,
-                downlink_tx,
                 stopping,
                 runtime_config,
             );
@@ -493,27 +633,42 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             route,
             route_params,
             attachment_rx,
-            downlink_tx,
+            link_tx,
             stopping,
             agent_config,
             runtime_config,
             reporting,
         } = self;
-        let node_uri = route.to_string().into();
+        let node_uri: Text = route.to_string().into();
         let (runtime_tx, runtime_rx) = mpsc::channel(runtime_config.attachment_queue_size.get());
         let (init_tx, init_rx) = trigger::trigger();
 
         let context = Box::new(AgentRuntimeContext::new(runtime_tx));
 
-        let agent_init = agent.run(route, route_params, agent_config, context);
+        let agent_init = agent
+            .run(route, route_params, agent_config, context)
+            .instrument(
+                info_span!("Agent initialization task.", id = %identity, route = %node_uri),
+            );
+
+        let ad_hoc_config = LinksTaskConfig {
+            buffer_size: runtime_config.ad_hoc_buffer_size,
+            retry_strategy: runtime_config.ad_hoc_output_retry,
+            timeout_delay: runtime_config.ad_hoc_output_timeout,
+        };
 
         async move {
             let store = store_fut.await?;
             let runtime_init_task = AgentInitTask::with_store(
+                identity,
                 runtime_rx,
-                downlink_tx.clone(),
+                link_tx.clone(),
                 init_rx,
-                runtime_config.lane_init_timeout,
+                InitTaskConfig {
+                    ad_hoc_queue_size: runtime_config.attachment_queue_size,
+                    item_init_timeout: runtime_config.item_init_timeout,
+                    external_links: ad_hoc_config,
+                },
                 reporting,
                 StorePersistence(store),
             );
@@ -528,57 +683,25 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 join(runtime_init_task.run(), agent_init_task).await;
 
             let (initial_state, store_per) = initial_state_result?;
-            let agent_task = agent_task_result?;
+            let agent_task = agent_task_result?.instrument(
+                info_span!("Agent implementation task.", id = %identity, route = %node_uri),
+            );
 
             let runtime_task = AgentRuntimeTask::with_store(
-                NodeDescriptor::new(identity, node_uri),
+                NodeDescriptor::new(identity, node_uri.clone()),
                 initial_state,
                 attachment_rx,
-                downlink_tx,
                 stopping,
                 runtime_config,
                 store_per,
-            );
+            )
+            .run()
+            .instrument(info_span!("Agent runtime task.", id = %identity, route = %node_uri));
 
-            let (runtime_result, agent_result) = join(runtime_task.run(), agent_task).await;
+            let (runtime_result, agent_result) = join(runtime_task, agent_task).await;
             runtime_result?;
             agent_result?;
             Ok(())
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use uuid::Uuid;
-
-    use super::DisconnectionReason;
-
-    #[test]
-    fn disconnection_reason_display() {
-        assert_eq!(
-            DisconnectionReason::AgentStoppedExternally.to_string(),
-            "Agent stopped externally."
-        );
-        assert_eq!(
-            DisconnectionReason::AgentTimedOut.to_string(),
-            "Agent stopped after a period of inactivity."
-        );
-        assert_eq!(
-            DisconnectionReason::RemoteTimedOut.to_string(),
-            "The remote was pruned due to inactivity."
-        );
-        assert_eq!(
-            DisconnectionReason::ChannelClosed.to_string(),
-            "The remote stopped listening."
-        );
-        assert_eq!(
-            DisconnectionReason::Failed.to_string(),
-            "The agent task was dropped or the connection was never established."
-        );
-        assert_eq!(
-            DisconnectionReason::DuplicateRegistration(Uuid::from_u128(84772)).to_string(),
-            "The remote registration for 00000000-0000-0000-0000-000000014b24 was replaced."
-        );
     }
 }

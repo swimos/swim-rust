@@ -26,7 +26,7 @@ mod parser;
 #[cfg(test)]
 mod tests;
 
-pub use parser::extract_header;
+pub use parser::{extract_header, extract_header_str};
 
 /// An operation that can be applied to a map lane. This type is used by map uplinks and downlinks
 /// to describe alterations to the lane.
@@ -456,11 +456,11 @@ impl<K: StructuralWritable, V: StructuralWritable> Encoder<MapOperation<K, V>>
     }
 }
 
-/// Representation of map lane messages (used to form the body of Recond messages when operating)
+/// Repreesentation of map lane messages (used to form the body of Recon messages when operating)
 /// on downlinks. This extends [`MapOperation`] with `Take` (retain the first `n` items) and `Drop`
 /// (remove teh first `n` items). We never use these internally but must support them for communicating
 /// with other implementations.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Form)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Form, Hash)]
 #[form_root(::swim_form)]
 pub enum MapMessage<K, V> {
     #[form(tag = "update")]

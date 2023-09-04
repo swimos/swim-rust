@@ -2546,12 +2546,7 @@ impl<T, Flds> HeaderVTable<T, Flds> {
 
 impl<T, Flds> Clone for HeaderVTable<T, Flds> {
     fn clone(&self) -> Self {
-        HeaderVTable {
-            select_index: self.select_index,
-            select_recog: self.select_recog,
-            on_done: self.on_done,
-            reset: self.reset,
-        }
+        *self
     }
 }
 

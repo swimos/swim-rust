@@ -14,6 +14,7 @@
 
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 
+use bytes::BytesMut;
 use futures::{
     future::{ready, BoxFuture},
     stream::FuturesUnordered,
@@ -41,7 +42,7 @@ use crate::{
     },
     event_handler::{
         ActionContext, BoxJoinValueInit, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner,
-        StepResult, WriteStream,
+        StepResult,
     },
     meta::AgentMetadata,
 };
@@ -52,7 +53,7 @@ struct TestAgent;
 
 #[derive(Default)]
 struct SpawnerInner {
-    downlink: Option<(BoxDownlinkChannel<TestAgent>, WriteStream)>,
+    downlink: Option<BoxDownlinkChannel<TestAgent>>,
 }
 
 #[derive(Default)]
@@ -89,11 +90,10 @@ impl DownlinkSpawner<TestAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<TestAgent>,
-        dl_writer: WriteStream,
     ) -> Result<(), DownlinkRuntimeError> {
         let mut guard = self.inner.lock();
         assert!(guard.downlink.is_none());
-        guard.downlink = Some((dl_channel, dl_writer));
+        guard.downlink = Some(dl_channel);
         Ok(())
     }
 }
@@ -103,6 +103,10 @@ const NODE: &str = "/node";
 const LANE: &str = "lane";
 
 impl AgentContext for TestContext {
+    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
+        panic!("Unexpected request for ad-hoc channel.");
+    }
+
     fn add_lane(
         &self,
         _name: &str,
@@ -159,11 +163,19 @@ async fn run_all_and_check(
     join_value_init: &mut HashMap<u64, BoxJoinValueInit<'static, TestAgent>>,
     agent: &TestAgent,
 ) {
+    let mut ad_hoc_buffer = BytesMut::new();
     while let Some(handler) = spawner.futures.next().await {
-        let mut action_context = ActionContext::new(&spawner, &context, &spawner, join_value_init);
+        let mut action_context = ActionContext::new(
+            &spawner,
+            &context,
+            &spawner,
+            join_value_init,
+            &mut ad_hoc_buffer,
+        );
         run_handler(handler, &mut action_context, agent, meta);
     }
     assert!(join_value_init.is_empty());
+    assert!(ad_hoc_buffer.is_empty());
     spawner
         .inner
         .lock()
@@ -204,6 +216,7 @@ async fn open_value_downlink() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_value_init = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
     let lifecycle = StatefulValueDownlinkLifecycle::<TestAgent, _, i32>::new(());
 
     let handler = OpenValueDownlinkAction::<i32, _>::new(
@@ -218,7 +231,13 @@ async fn open_value_downlink() {
     let context = TestContext::new(DownlinkKind::Value, (in_tx, out_rx));
 
     let agent = TestAgent;
-    let mut action_context = ActionContext::new(&spawner, &context, &spawner, &mut join_value_init);
+    let mut action_context = ActionContext::new(
+        &spawner,
+        &context,
+        &spawner,
+        &mut join_value_init,
+        &mut ad_hoc_buffer,
+    );
     let _handle = run_handler(handler, &mut action_context, &agent, meta);
 
     run_all_and_check(spawner, context, meta, &mut join_value_init, &agent).await;
@@ -230,6 +249,7 @@ async fn open_map_downlink() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut join_value_init = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
     let lifecycle = StatefulMapDownlinkLifecycle::<TestAgent, _, i32, Text>::new(());
 
     let handler = OpenMapDownlinkAction::<i32, Text, _>::new(
@@ -244,7 +264,13 @@ async fn open_map_downlink() {
     let context = TestContext::new(DownlinkKind::Map, (in_tx, out_rx));
 
     let agent = TestAgent;
-    let mut action_context = ActionContext::new(&spawner, &context, &spawner, &mut join_value_init);
+    let mut action_context = ActionContext::new(
+        &spawner,
+        &context,
+        &spawner,
+        &mut join_value_init,
+        &mut ad_hoc_buffer,
+    );
     let _handle = run_handler(handler, &mut action_context, &agent, meta);
 
     run_all_and_check(spawner, context, meta, &mut join_value_init, &agent).await;

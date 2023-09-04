@@ -27,16 +27,21 @@ use swim_api::{
     agent::AgentContext,
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError},
+    protocol::{
+        agent::{AdHocCommand, AdHocCommandEncoder},
+        WithLenReconEncoder,
+    },
 };
-use swim_form::structural::read::recognizer::RecognizerReadable;
+use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_model::{address::Address, Text};
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
+    never::Never,
     routing::route_uri::RouteUri,
 };
 use thiserror::Error;
-use tokio_util::codec::Decoder;
+use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{
     agent_model::downlink::{
@@ -46,6 +51,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
+mod command;
 mod handler_fn;
 mod register_downlink;
 mod suspend;
@@ -54,6 +60,7 @@ mod tests;
 
 pub use suspend::{run_after, run_schedule, HandlerFuture, Spawner, Suspend};
 
+pub use command::SendCommand;
 pub use handler_fn::{
     EventConsumeFn, EventFn, HandlerFn0, MapRemoveFn, MapUpdateBorrowFn, MapUpdateFn, TakeFn,
     UpdateBorrowFn, UpdateFn,
@@ -67,33 +74,28 @@ pub trait DownlinkSpawner<Context> {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
-        dl_writer: WriteStream,
     ) -> Result<(), DownlinkRuntimeError>;
 }
 
-impl<Context> DownlinkSpawner<Context>
-    for RefCell<Vec<(BoxDownlinkChannel<Context>, WriteStream)>>
-{
+impl<Context> DownlinkSpawner<Context> for RefCell<Vec<BoxDownlinkChannel<Context>>> {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
-        dl_writer: WriteStream,
     ) -> Result<(), DownlinkRuntimeError> {
-        self.borrow_mut().push((dl_channel, dl_writer));
+        self.borrow_mut().push(dl_channel);
         Ok(())
     }
 }
 
 impl<F, Context> DownlinkSpawner<Context> for F
 where
-    F: Fn(BoxDownlinkChannel<Context>, WriteStream) -> Result<(), DownlinkRuntimeError>,
+    F: Fn(BoxDownlinkChannel<Context>) -> Result<(), DownlinkRuntimeError>,
 {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
-        dl_writer: WriteStream,
     ) -> Result<(), DownlinkRuntimeError> {
-        (*self)(dl_channel, dl_writer)
+        (*self)(dl_channel)
     }
 }
 
@@ -102,6 +104,7 @@ pub struct ActionContext<'a, Context> {
     agent_context: &'a dyn AgentContext,
     downlink: &'a dyn DownlinkSpawner<Context>,
     join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
+    ad_hoc_buffer: &'a mut BytesMut,
 }
 
 impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
@@ -114,9 +117,8 @@ impl<'a, Context> DownlinkSpawner<Context> for ActionContext<'a, Context> {
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
-        dl_writer: BoxStream<'static, Result<(), std::io::Error>>,
     ) -> Result<(), DownlinkRuntimeError> {
-        self.downlink.spawn_downlink(dl_channel, dl_writer)
+        self.downlink.spawn_downlink(dl_channel)
     }
 }
 
@@ -126,12 +128,14 @@ impl<'a, Context> ActionContext<'a, Context> {
         agent_context: &'a dyn AgentContext,
         downlink: &'a dyn DownlinkSpawner<Context>,
         join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
+        ad_hoc_buffer: &'a mut BytesMut,
     ) -> Self {
         ActionContext {
             spawner,
             agent_context,
             downlink,
             join_value_init,
+            ad_hoc_buffer,
         }
     }
 
@@ -150,18 +154,16 @@ impl<'a, Context> ActionContext<'a, Context> {
         self.join_value_init.insert(lane_id, factory);
     }
 
-    pub(crate) fn start_downlink<S, F, G, OnDone, H>(
+    pub(crate) fn start_downlink<S, F, OnDone, H>(
         &self,
         path: Address<S>,
         kind: DownlinkKind,
         make_channel: F,
-        make_write_stream: G,
         on_done: OnDone,
     ) where
         Context: 'static,
         S: AsRef<str>,
-        F: FnOnce(ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
-        G: FnOnce(ByteWriter) -> WriteStream + Send + 'static,
+        F: FnOnce(&Context, ByteWriter, ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
         OnDone: FnOnce(Result<(), DownlinkRuntimeError>) -> H + Send + 'static,
         H: EventHandler<Context> + Send + 'static,
     {
@@ -175,18 +177,56 @@ impl<'a, Context> ActionContext<'a, Context> {
         let fut = external
             .map(move |result| match result {
                 Ok((writer, reader)) => {
-                    let channel = make_channel(reader);
-                    let write_stream = make_write_stream(writer);
-                    HandlerActionExt::and_then(
-                        RegisterHostedDownlink::new(channel, write_stream),
-                        on_done,
-                    )
-                    .boxed()
+                    let con = ConstructDownlink {
+                        inner: Some((writer, reader, make_channel)),
+                    };
+                    Box::new(con.and_then(RegisterHostedDownlink::new).and_then(on_done))
                 }
                 Err(e) => on_done(Err(e)).boxed(),
             })
             .boxed();
         self.spawn_suspend(fut);
+    }
+
+    pub(crate) fn send_command<S, T>(
+        &mut self,
+        address: Address<S>,
+        command: T,
+        overwrite_permitted: bool,
+    ) where
+        S: AsRef<str>,
+        T: StructuralWritable,
+    {
+        let ActionContext { ad_hoc_buffer, .. } = self;
+        let mut encoder = AdHocCommandEncoder::new(WithLenReconEncoder);
+        let cmd = AdHocCommand::new(address, command, overwrite_permitted);
+        encoder
+            .encode(cmd, ad_hoc_buffer)
+            .expect("Encoding should be infallible.")
+    }
+}
+
+struct ConstructDownlink<F> {
+    inner: Option<(ByteWriter, ByteReader, F)>,
+}
+
+impl<Context, F> HandlerAction<Context> for ConstructDownlink<F>
+where
+    F: FnOnce(&Context, ByteWriter, ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
+{
+    type Completion = BoxDownlinkChannel<Context>;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        if let Some((writer, reader, f)) = self.inner.take() {
+            StepResult::done(f(context, writer, reader))
+        } else {
+            StepResult::after_done()
+        }
     }
 }
 
@@ -275,6 +315,8 @@ pub enum EventHandlerError {
     RuntimeError(#[from] AgentRuntimeError),
     #[error("Invalid key or value type for a join lane lifecycle.")]
     BadJoinLifecycle(DowncastError),
+    #[error("The event handler has instructed the agent to stop.")]
+    StopInstructed,
 }
 
 /// When a handler completes or suspends it can indicate that is has modified the
@@ -438,7 +480,7 @@ where
 pub struct Map<H, F>(Option<(H, F)>);
 
 /// Type that is returned by the `and_then` method on the [`HandlerActionExt`] trait.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum AndThen<H1, H2, F> {
     First {
         first: H1,
@@ -450,7 +492,7 @@ pub enum AndThen<H1, H2, F> {
 }
 
 /// Type that is returned by the `and_then_contextual` method on the [`HandlerActionExt`] trait.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum AndThenContextual<H1, H2, F> {
     First {
         first: H1,
@@ -462,7 +504,7 @@ pub enum AndThenContextual<H1, H2, F> {
 }
 
 /// Type that is returned by the `and_then_try` method on the [`HandlerActionExt`] trait.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum AndThenTry<H1, H2, F> {
     First {
         first: H1,
@@ -474,7 +516,7 @@ pub enum AndThenTry<H1, H2, F> {
 }
 
 /// Type that is returned by the `followed_by` method on the [`HandlerActionExt`] trait.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum FollowedBy<H1, H2> {
     First {
         first: H1,
@@ -1085,7 +1127,7 @@ where
 }
 
 /// [`HandlerAction`] that runs a sequence of [`EventHandler`]s.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub enum Sequentially<I, Item> {
     Init(I),
     Running(I, Item),
@@ -1246,3 +1288,190 @@ pub trait JoinValueInitializer<Context>: Send {
 static_assertions::assert_obj_safe!(JoinValueInitializer<()>);
 
 pub type BoxJoinValueInit<'a, Context> = Box<dyn JoinValueInitializer<Context> + Send + 'a>;
+
+/// Causes the agent to stop. If this is encountered during the `on_start` event of an agent it will
+/// fail to start at all. Otherwise, execution of the event handler will terminate and the agent will
+/// begin to shutdown. The 'on_stop' handler will still be run. If a [`Stop`] is encountered in
+/// the 'on_stop' handler, the agent will stop immediately.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Stop;
+
+impl<Context> HandlerAction<Context> for Stop {
+    type Completion = Never;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        StepResult::Fail(EventHandlerError::StopInstructed)
+    }
+}
+
+enum JoinState<Context, H1: HandlerAction<Context>, H2: HandlerAction<Context>> {
+    Init(H1, H2),
+    FirstDone(H1::Completion, H2),
+    AfterDone,
+}
+
+pub struct Join<Context, H1: HandlerAction<Context>, H2: HandlerAction<Context>> {
+    state: JoinState<Context, H1, H2>,
+}
+
+/// Create a [`HandlerAction`] that runs two other actions and produces a tuple of their results.
+pub fn join<Context, H1, H2>(first: H1, second: H2) -> Join<Context, H1, H2>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+{
+    Join {
+        state: JoinState::Init(first, second),
+    }
+}
+
+impl<Context, H1, H2> HandlerAction<Context> for Join<Context, H1, H2>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+{
+    type Completion = (H1::Completion, H2::Completion);
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let Join { state } = self;
+        match std::mem::replace(state, JoinState::AfterDone) {
+            JoinState::Init(mut h1, h2) => match h1.step(action_context, meta, context) {
+                StepResult::Continue { modified_item } => {
+                    *state = JoinState::Init(h1, h2);
+                    StepResult::Continue { modified_item }
+                }
+                StepResult::Fail(err) => StepResult::Fail(err),
+                StepResult::Complete {
+                    modified_item,
+                    result,
+                } => {
+                    *state = JoinState::FirstDone(result, h2);
+                    StepResult::Continue { modified_item }
+                }
+            },
+            JoinState::FirstDone(v1, mut h2) => match h2.step(action_context, meta, context) {
+                StepResult::Continue { modified_item } => {
+                    *state = JoinState::FirstDone(v1, h2);
+                    StepResult::Continue { modified_item }
+                }
+                StepResult::Fail(err) => StepResult::Fail(err),
+                StepResult::Complete {
+                    modified_item,
+                    result,
+                } => StepResult::Complete {
+                    modified_item,
+                    result: (v1, result),
+                },
+            },
+            JoinState::AfterDone => StepResult::after_done(),
+        }
+    }
+}
+
+enum Join3State<Context, H1, H2, H3>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+    H3: HandlerAction<Context>,
+{
+    Init(H1, H2, H3),
+    FirstDone(H1::Completion, H2, H3),
+    SecondDone(H1::Completion, H2::Completion, H3),
+    AfterDone,
+}
+
+pub struct Join3<Context, H1, H2, H3>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+    H3: HandlerAction<Context>,
+{
+    state: Join3State<Context, H1, H2, H3>,
+}
+
+/// Create a [`HandlerAction`] that runs three other actions and produces a tuple of their results.
+pub fn join3<Context, H1, H2, H3>(first: H1, second: H2, third: H3) -> Join3<Context, H1, H2, H3>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+    H3: HandlerAction<Context>,
+{
+    Join3 {
+        state: Join3State::Init(first, second, third),
+    }
+}
+
+impl<Context, H1, H2, H3> HandlerAction<Context> for Join3<Context, H1, H2, H3>
+where
+    H1: HandlerAction<Context>,
+    H2: HandlerAction<Context>,
+    H3: HandlerAction<Context>,
+{
+    type Completion = (H1::Completion, H2::Completion, H3::Completion);
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let Join3 { state } = self;
+        match std::mem::replace(state, Join3State::AfterDone) {
+            Join3State::Init(mut h1, h2, h3) => match h1.step(action_context, meta, context) {
+                StepResult::Continue { modified_item } => {
+                    *state = Join3State::Init(h1, h2, h3);
+                    StepResult::Continue { modified_item }
+                }
+                StepResult::Fail(err) => StepResult::Fail(err),
+                StepResult::Complete {
+                    modified_item,
+                    result,
+                } => {
+                    *state = Join3State::FirstDone(result, h2, h3);
+                    StepResult::Continue { modified_item }
+                }
+            },
+            Join3State::FirstDone(v1, mut h2, h3) => match h2.step(action_context, meta, context) {
+                StepResult::Continue { modified_item } => {
+                    *state = Join3State::FirstDone(v1, h2, h3);
+                    StepResult::Continue { modified_item }
+                }
+                StepResult::Fail(err) => StepResult::Fail(err),
+                StepResult::Complete {
+                    modified_item,
+                    result,
+                } => {
+                    *state = Join3State::SecondDone(v1, result, h3);
+                    StepResult::Continue { modified_item }
+                }
+            },
+            Join3State::SecondDone(v1, v2, mut h3) => {
+                match h3.step(action_context, meta, context) {
+                    StepResult::Continue { modified_item } => {
+                        *state = Join3State::SecondDone(v1, v2, h3);
+                        StepResult::Continue { modified_item }
+                    }
+                    StepResult::Fail(err) => StepResult::Fail(err),
+                    StepResult::Complete {
+                        modified_item,
+                        result,
+                    } => StepResult::Complete {
+                        modified_item,
+                        result: (v1, v2, result),
+                    },
+                }
+            }
+            Join3State::AfterDone => StepResult::after_done(),
+        }
+    }
+}

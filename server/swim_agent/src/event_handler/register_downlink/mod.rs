@@ -16,25 +16,17 @@ use swim_api::error::DownlinkRuntimeError;
 
 use crate::{agent_model::downlink::handlers::BoxDownlinkChannel, meta::AgentMetadata};
 
-use super::{ActionContext, DownlinkSpawner, HandlerAction, StepResult, WriteStream};
-
-struct RegInner<Context> {
-    channel: BoxDownlinkChannel<Context>,
-    write_stream: WriteStream,
-}
+use super::{ActionContext, DownlinkSpawner, HandlerAction, StepResult};
 
 /// A [`HandlerAction`] that registers a downlink with the agent task.
 pub struct RegisterHostedDownlink<Context> {
-    inner: Option<RegInner<Context>>,
+    inner: Option<BoxDownlinkChannel<Context>>,
 }
 
 impl<Context> RegisterHostedDownlink<Context> {
-    pub fn new(channel: BoxDownlinkChannel<Context>, write_stream: WriteStream) -> Self {
+    pub fn new(channel: BoxDownlinkChannel<Context>) -> Self {
         RegisterHostedDownlink {
-            inner: Some(RegInner {
-                channel,
-                write_stream,
-            }),
+            inner: Some(channel),
         }
     }
 }
@@ -49,12 +41,8 @@ impl<Context> HandlerAction<Context> for RegisterHostedDownlink<Context> {
         _context: &Context,
     ) -> StepResult<Self::Completion> {
         let RegisterHostedDownlink { inner } = self;
-        if let Some(RegInner {
-            channel,
-            write_stream,
-        }) = inner.take()
-        {
-            StepResult::done(action_context.spawn_downlink(channel, write_stream))
+        if let Some(channel) = inner.take() {
+            StepResult::done(action_context.spawn_downlink(channel))
         } else {
             StepResult::after_done()
         }

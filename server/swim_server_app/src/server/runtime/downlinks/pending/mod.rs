@@ -18,39 +18,54 @@ use std::{
 };
 
 use swim_api::downlink::DownlinkKind;
-use swim_model::{
-    address::{Address, RelativeAddress},
-    Text,
-};
-use swim_runtime::agent::DownlinkRequest;
+use swim_model::{address::RelativeAddress, Text};
+use swim_runtime::agent::{CommanderRequest, DownlinkRequest};
 
 pub type DlKey = (RelativeAddress<Text>, DownlinkKind);
 
-fn key_of(abs_key: &(Address<Text>, DownlinkKind)) -> DlKey {
-    let (Address { node, lane, .. }, kind) = abs_key;
-    (RelativeAddress::new(node.clone(), lane.clone()), *kind)
+#[derive(Default, Debug)]
+pub struct Waiting {
+    pub dl_requests: HashMap<DlKey, Vec<DownlinkRequest>>,
+    pub cmd_requests: Vec<CommanderRequest>,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PendingDownlinks {
-    awaiting_remote: HashMap<Text, HashMap<DlKey, Vec<DownlinkRequest>>>,
+    awaiting_remote: HashMap<Text, Waiting>,
     awaiting_dl: HashMap<SocketAddr, HashMap<DlKey, Vec<DownlinkRequest>>>,
     local: HashMap<DlKey, Vec<DownlinkRequest>>,
 }
 
 impl PendingDownlinks {
-    pub fn push_remote(&mut self, remote: Text, request: DownlinkRequest) {
+    #[must_use]
+    pub fn push_remote(&mut self, remote: Text, request: DownlinkRequest) -> bool {
         let PendingDownlinks {
-            awaiting_remote: awaiting_socket,
-            ..
+            awaiting_remote, ..
         } = self;
-        let key = key_of(&request.key);
-        awaiting_socket
+        let remote_pending = awaiting_remote.contains_key(&remote);
+        let key = (request.address.clone(), request.kind);
+        awaiting_remote
             .entry(remote)
             .or_default()
+            .dl_requests
             .entry(key)
             .or_default()
             .push(request);
+        !remote_pending
+    }
+
+    #[must_use]
+    pub fn push_remote_cmd(&mut self, remote: Text, request: CommanderRequest) -> bool {
+        let PendingDownlinks {
+            awaiting_remote, ..
+        } = self;
+        let remote_pending = awaiting_remote.contains_key(&remote);
+        awaiting_remote
+            .entry(remote)
+            .or_default()
+            .cmd_requests
+            .push(request);
+        !remote_pending
     }
 
     pub fn push_for_socket(
@@ -70,11 +85,11 @@ impl PendingDownlinks {
 
     pub fn push_local(&mut self, request: DownlinkRequest) {
         let PendingDownlinks { local, .. } = self;
-        let key = key_of(&request.key);
+        let key = (request.address.clone(), request.kind);
         local.entry(key).or_default().push(request);
     }
 
-    pub fn take_socket_ready(&mut self, host: &Text) -> HashMap<DlKey, Vec<DownlinkRequest>> {
+    pub fn take_socket_ready(&mut self, host: &Text) -> Waiting {
         let PendingDownlinks {
             awaiting_remote, ..
         } = self;
@@ -83,32 +98,49 @@ impl PendingDownlinks {
 
     pub fn socket_ready(
         &mut self,
-        host: Text,
+        host: &Text,
         addr: SocketAddr,
-    ) -> Option<impl Iterator<Item = &DlKey> + '_> {
+    ) -> Option<(impl Iterator<Item = &DlKey> + '_, Vec<CommanderRequest>)> {
         let PendingDownlinks {
             awaiting_remote,
             awaiting_dl,
             ..
         } = self;
-        awaiting_remote
-            .remove(&host)
-            .map(|map| match awaiting_dl.entry(addr) {
+        awaiting_remote.remove(host).map(
+            |Waiting {
+                 dl_requests,
+                 cmd_requests,
+             }| match awaiting_dl.entry(addr) {
                 Entry::Occupied(entry) => {
                     let existing = entry.into_mut();
-                    existing.extend(map.into_iter());
-                    existing.keys()
+                    existing.extend(dl_requests);
+                    (existing.keys(), cmd_requests)
                 }
-                Entry::Vacant(entry) => entry.insert(map).keys(),
-            })
+                Entry::Vacant(entry) => (entry.insert(dl_requests).keys(), cmd_requests),
+            },
+        )
     }
 
-    pub fn open_client_failed(&mut self, host: &Text) -> impl Iterator<Item = DownlinkRequest> {
-        self.awaiting_remote
-            .remove(host)
-            .map(|map| map.into_values().flatten())
-            .into_iter()
-            .flatten()
+    pub fn open_client_failed(
+        &mut self,
+        host: &Text,
+    ) -> (impl Iterator<Item = DownlinkRequest>, Vec<CommanderRequest>) {
+        let (dl_requests, cmd_requests) = if let Some(Waiting {
+            dl_requests,
+            cmd_requests,
+        }) = self.awaiting_remote.remove(host)
+        {
+            (Some(dl_requests), cmd_requests)
+        } else {
+            (None, vec![])
+        };
+        (
+            dl_requests
+                .map(|map| map.into_values().flatten())
+                .into_iter()
+                .flatten(),
+            cmd_requests,
+        )
     }
 
     pub fn dl_ready(&mut self, addr: Option<SocketAddr>, key: &DlKey) -> Vec<DownlinkRequest> {

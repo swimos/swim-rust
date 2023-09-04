@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::error::Error;
-use std::{fmt::Display, io};
+use std::io;
+use std::{error::Error, sync::Arc};
 
 use swim_form::structural::read::ReadError;
-use swim_model::Text;
+use swim_model::{address::RelativeAddress, Text};
 use swim_recon::parser::AsyncParseError;
-use swim_utilities::{routing::route_pattern::UnapplyError, trigger::promise};
+use swim_utilities::{errors::Recoverable, routing::route_pattern::UnapplyError, trigger::promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 
@@ -71,38 +71,27 @@ pub enum DownlinkTaskError {
     Custom(Box<dyn Error + Send + Sync + 'static>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Error, Debug, Clone)]
 pub enum DownlinkFailureReason {
-    Unresolvable,
-    ConnectionFailed,
-    WebsocketNegotiationFailed,
+    #[error("The specified remote URL was not valid.")]
+    InvalidUrl,
+    #[error("The lane was unresolvable: {0}")]
+    UnresolvableRemote(Arc<std::io::Error>),
+    #[error("A local lane was not resolvable: {0}")]
+    UnresolvableLocal(RelativeAddress<Text>),
+    #[error("Connection to the remote host failed: {0}")]
+    ConnectionFailed(Arc<std::io::Error>),
+    #[error("Failed to negotiate a TLS connection: {error}")]
+    TlsConnectionFailed {
+        error: Arc<dyn std::error::Error + Send + Sync>,
+        recoverable: bool,
+    },
+    #[error("Could not negotiate a websocket connection: {0}")]
+    WebsocketNegotiationFailed(String),
+    #[error("The remote client stopped while the downlink was starting.")]
     RemoteStopped,
+    #[error("The downlink runtime task stopped during attachment.")]
     DownlinkStopped,
-}
-
-impl Error for DownlinkFailureReason {}
-
-impl Display for DownlinkFailureReason {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            DownlinkFailureReason::Unresolvable => write!(f, "The lane was unresolvable."),
-            DownlinkFailureReason::ConnectionFailed => {
-                write!(f, "Connection to the remote host failed.")
-            }
-            DownlinkFailureReason::WebsocketNegotiationFailed => {
-                write!(f, "Could not negotiate a websocket connection.")
-            }
-            DownlinkFailureReason::RemoteStopped => {
-                write!(
-                    f,
-                    "The remote client stopped while the downlink was starting."
-                )
-            }
-            DownlinkFailureReason::DownlinkStopped => {
-                write!(f, "The downlink runtime task stopped during attachment.")
-            }
-        }
-    }
 }
 
 /// Error type for operations that communicate with the agent runtime.
@@ -115,7 +104,7 @@ pub enum AgentRuntimeError {
 }
 
 /// Error type for the operation of spawning a new downlink on the runtime.
-#[derive(Error, Debug, Clone, Copy)]
+#[derive(Error, Debug, Clone)]
 pub enum DownlinkRuntimeError {
     #[error(transparent)]
     RuntimeError(#[from] AgentRuntimeError),
@@ -199,6 +188,30 @@ impl From<oneshot::error::RecvError> for DownlinkRuntimeError {
     }
 }
 
+impl Recoverable for DownlinkFailureReason {
+    fn is_fatal(&self) -> bool {
+        match self {
+            DownlinkFailureReason::InvalidUrl => true,
+            DownlinkFailureReason::UnresolvableRemote(_) => false,
+            DownlinkFailureReason::ConnectionFailed(_) => false,
+            DownlinkFailureReason::WebsocketNegotiationFailed(_) => false,
+            DownlinkFailureReason::RemoteStopped => false,
+            DownlinkFailureReason::DownlinkStopped => false,
+            DownlinkFailureReason::UnresolvableLocal(_) => true,
+            DownlinkFailureReason::TlsConnectionFailed { recoverable, .. } => !recoverable,
+        }
+    }
+}
+
+impl Recoverable for DownlinkRuntimeError {
+    fn is_fatal(&self) -> bool {
+        match self {
+            DownlinkRuntimeError::RuntimeError(_) => true,
+            DownlinkRuntimeError::DownlinkConnectionFailed(err) => err.is_fatal(),
+        }
+    }
+}
+
 /// Error type is returned by implementations of the agent interface trait.
 #[derive(Error, Debug)]
 pub enum AgentTaskError {
@@ -208,6 +221,8 @@ pub enum AgentTaskError {
     DeserializationFailed(#[from] ReadError),
     #[error("Error in use code (likely an event handler): {0}")]
     UserCodeError(Box<dyn std::error::Error + Send>),
+    #[error("The agent failed to generate a required output: {0}")]
+    OutputFailed(std::io::Error),
 }
 
 /// Error type that is returned by implementations of the agent interface trait during the initialization phase.
