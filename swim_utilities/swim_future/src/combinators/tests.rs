@@ -26,7 +26,7 @@ use tokio::time::timeout;
 
 #[test]
 fn stop_after_error() {
-    let inputs = iter(vec![Ok(0), Ok(1), Ok(2), Err("Boom!"), Ok(4), Err("Boom!")].into_iter());
+    let inputs = iter(vec![Ok(0), Ok(1), Ok(2), Err("Boom!"), Ok(4), Err("Boom!")]);
     let outputs = block_on(StopAfterError::new(inputs).collect::<Vec<_>>());
     assert_eq!(outputs, vec![Ok(0), Ok(1), Ok(2), Err("Boom!")]);
 }

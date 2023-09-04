@@ -21,10 +21,9 @@ use futures::{
     future::{ready, BoxFuture},
     FutureExt, StreamExt,
 };
+use swim_api::protocol::downlink::ValueNotificationDecoder;
 use swim_api::{
-    downlink::DownlinkKind,
-    error::FrameIoError,
-    protocol::downlink::{DownlinkNotification, ValueNotificationDecoder},
+    downlink::DownlinkKind, error::FrameIoError, protocol::downlink::DownlinkNotification,
 };
 use swim_form::structural::read::{recognizer::RecognizerReadable, StructuralReadable};
 use swim_model::{address::Address, Text};
@@ -49,7 +48,7 @@ use super::{DlState, DlStateObserver, DlStateTracker};
 #[cfg(test)]
 mod tests;
 
-pub struct HostedEventDownlinkFactory<T, LC> {
+pub struct HostedEventDownlinkFactory<T: RecognizerReadable, LC> {
     address: Address<Text>,
     lifecycle: LC,
     config: SimpleDownlinkConfig,
@@ -138,6 +137,9 @@ where
             dl_state,
             ..
         } = self;
+        // Most downlinks can send values to their remote lanes. Event downlink are an exception to this.
+        // As the interface for downlinks includes and write half by default we indicate that we will never
+        // send any values but flagging the output as terminated immediately.
         if !*write_terminated {
             *write_terminated = true;
             return Some(Ok(DownlinkChannelEvent::WriteStreamTerminated));

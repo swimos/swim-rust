@@ -46,7 +46,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use crate::downlink::{
     failure::{AlwaysAbortStrategy, BadFrameResponse, BadFrameStrategy},
     interpretation::{DownlinkInterpretation, MapInterpretation},
-    AttachAction, DownlinkOptions, DownlinkRuntimeConfig, MapDownlinkRuntime,
+    AttachAction, DownlinkOptions, DownlinkRuntimeConfig, IdentifiedAddress, MapDownlinkRuntime,
 };
 
 use super::*;
@@ -359,8 +359,10 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        Uuid::from_u128(1),
-        path,
+        IdentifiedAddress {
+            identity: Uuid::from_u128(1),
+            address: path,
+        },
         config,
         failure_strategy,
     )
@@ -1043,8 +1045,10 @@ where
         attach_rx,
         (out_tx, in_rx),
         stop_rx,
-        Uuid::from_u128(1),
-        path,
+        IdentifiedAddress {
+            identity: Uuid::from_u128(1),
+            address: path,
+        },
         config,
         AlwaysAbortStrategy,
     )

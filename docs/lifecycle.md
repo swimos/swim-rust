@@ -267,7 +267,7 @@ Interior mutability in lifecycles
 
 The reference to `self` for the agent lifecycle is always passed as `&self` and a function taking `&mut self` cannot be used for an event handler. This is as an event handler can trigger other handlers on the same lifecycle (even itself) which results in multiple borrows of the data in the lifecycle.
 
-Often, it will not be possible for a stateful lifecycle to be `Clone` (as the state may not be cloneable). In such a case, the `no_clone` option to the lifecycle macro. When registering the agent i the server, it will be necessary to provide a factory rather than a template instance.
+Often, it will not be possible for a stateful lifecycle to be `Clone` (as the state may not be cloneable). In such a case, the `no_clone` option to the lifecycle macro. When registering the agent in the server, it will be necessary to provide a factory rather than a template instance.
 
 However, due to the way in which lifecycles are executed, only one event handler will be executing at any one time. This means that it is safe to use interior mutability in a lifecycle without requiring locking. Consider the following alternative lifecycle:
 

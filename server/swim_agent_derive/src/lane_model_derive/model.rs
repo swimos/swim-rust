@@ -71,7 +71,9 @@ impl<'a> ItemSpec<'a> {
         match self {
             ItemSpec::Value(k, _) => *k,
             ItemSpec::Map(k, _, _) => *k,
-            _ => ItemKind::Lane,
+            ItemSpec::Command(_) => ItemKind::Lane,
+            ItemSpec::JoinValue(_, _) => ItemKind::Lane,
+            ItemSpec::Demand(_) => ItemKind::Lane,
         }
     }
 }

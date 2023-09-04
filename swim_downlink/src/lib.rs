@@ -12,17 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub use model::{
+    event_downlink, map_downlink, value_downlink, ChannelError, DefaultEventDownlinkModel,
+    DefaultMapDownlinkModel, DefaultValueDownlinkModel, EventDownlinkModel, MapDownlinkHandle,
+    MapDownlinkModel, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation,
+};
+pub use task::{DownlinkTask, MapKey, MapValue};
+
 mod model;
 mod task;
 
-pub use model::{
-    event_downlink, value_downlink, DefaultEventDownlinkModel, DefaultValueDownlinkModel,
-    EventDownlinkModel, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation,
-};
 pub mod lifecycle {
     pub use crate::model::lifecycle::{
-        BasicEventDownlinkLifecycle, BasicValueDownlinkLifecycle, EventDownlinkLifecycle,
-        StatefulEventDownlinkLifecycle, StatefulValueDownlinkLifecycle, ValueDownlinkLifecycle,
+        BasicEventDownlinkLifecycle, BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle,
+        EventDownlinkLifecycle, MapDownlinkLifecycle, StatefulEventDownlinkLifecycle,
+        StatefulMapDownlinkLifecycle, StatefulValueDownlinkLifecycle, ValueDownlinkLifecycle,
     };
 }
-pub use task::DownlinkTask;

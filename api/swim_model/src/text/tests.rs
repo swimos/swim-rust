@@ -550,25 +550,25 @@ fn extend_text_with_chars() {
     let chars = vec!['e', 'x', 't', 'r', 'a'];
 
     let mut empty = Text::empty();
-    empty.extend(chars.clone().into_iter());
+    empty.extend(chars.clone());
     assert_eq!(empty, "extra");
 
     let mut small = Text::new(SMALL);
-    small.extend(chars.clone().into_iter());
+    small.extend(chars.clone());
     assert_eq!(small, SMALL.to_string() + "extra");
 
     let mut borderline = Text::new(make_borderline().as_str());
-    borderline.extend(chars.clone().into_iter());
+    borderline.extend(chars.clone());
     assert_eq!(borderline, make_borderline() + "extra");
 
     let mut large = Text::new(LARGE);
-    large.extend(chars.into_iter());
+    large.extend(chars);
     assert_eq!(large, LARGE.to_string() + "extra");
 }
 
 #[test]
 fn extend_text_with_chars_by_ref() {
-    let chars = vec!['e', 'x', 't', 'r', 'a'];
+    let chars = ['e', 'x', 't', 'r', 'a'];
 
     let mut empty = Text::empty();
     empty.extend(chars.iter());
@@ -589,7 +589,7 @@ fn extend_text_with_chars_by_ref() {
 
 #[test]
 fn extend_text_with_chars_by_mut_ref() {
-    let mut chars = vec!['e', 'x', 't', 'r', 'a'];
+    let mut chars = ['e', 'x', 't', 'r', 'a'];
 
     let mut empty = Text::empty();
     empty.extend(chars.iter_mut());
@@ -614,19 +614,19 @@ fn extend_text_with_strs() {
     let expected_suffix = "the cat sat on the mat";
 
     let mut empty = Text::empty();
-    empty.extend(strs.clone().into_iter());
+    empty.extend(strs.clone());
     assert_eq!(empty, expected_suffix);
 
     let mut small = Text::new(SMALL);
-    small.extend(strs.clone().into_iter());
+    small.extend(strs.clone());
     assert_eq!(small, SMALL.to_string() + expected_suffix);
 
     let mut borderline = Text::new(make_borderline().as_str());
-    borderline.extend(strs.clone().into_iter());
+    borderline.extend(strs.clone());
     assert_eq!(borderline, make_borderline() + expected_suffix);
 
     let mut large = Text::new(LARGE);
-    large.extend(strs.clone().into_iter());
+    large.extend(strs.clone());
     assert_eq!(large, LARGE.to_string() + expected_suffix);
 }
 
@@ -643,19 +643,19 @@ fn extend_text_with_strings() {
     let expected_suffix = "the cat sat on the mat";
 
     let mut empty = Text::empty();
-    empty.extend(strs.clone().into_iter());
+    empty.extend(strs.clone());
     assert_eq!(empty, expected_suffix);
 
     let mut small = Text::new(SMALL);
-    small.extend(strs.clone().into_iter());
+    small.extend(strs.clone());
     assert_eq!(small, SMALL.to_string() + expected_suffix);
 
     let mut borderline = Text::new(make_borderline().as_str());
-    borderline.extend(strs.clone().into_iter());
+    borderline.extend(strs.clone());
     assert_eq!(borderline, make_borderline() + expected_suffix);
 
     let mut large = Text::new(LARGE);
-    large.extend(strs.into_iter());
+    large.extend(strs);
     assert_eq!(large, LARGE.to_string() + expected_suffix);
 }
 
@@ -701,19 +701,19 @@ fn extend_text_with_texts() {
     let expected_suffix = "the cat sat on the mat";
 
     let mut empty = Text::empty();
-    empty.extend(strs.clone().into_iter());
+    empty.extend(strs.clone());
     assert_eq!(empty, expected_suffix);
 
     let mut small = Text::new(SMALL);
-    small.extend(strs.clone().into_iter());
+    small.extend(strs.clone());
     assert_eq!(small, SMALL.to_string() + expected_suffix);
 
     let mut borderline = Text::new(make_borderline().as_str());
-    borderline.extend(strs.clone().into_iter());
+    borderline.extend(strs.clone());
     assert_eq!(borderline, make_borderline() + expected_suffix);
 
     let mut large = Text::new(LARGE);
-    large.extend(strs.into_iter());
+    large.extend(strs);
     assert_eq!(large, LARGE.to_string() + expected_suffix);
 }
 
@@ -748,7 +748,7 @@ fn extend_text_with_texts_by_ref() {
 
 #[test]
 fn collect_chars() {
-    let chars = vec!['e', 'x', 't', 'r', 'a'];
+    let chars = ['e', 'x', 't', 'r', 'a'];
 
     let text: Text = chars.iter().collect();
     assert_eq!(text, "extra");

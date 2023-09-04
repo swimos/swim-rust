@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, Bytes};
+use std::fmt::Debug;
 use swim_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swim_model::Text;
 use swim_recon::parser::{AsyncParseError, RecognizerDecoder};
@@ -90,6 +91,7 @@ impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEn
         Ok(())
     }
 }
+
 #[derive(Debug)]
 pub enum DownlinkNotificationDecoderState<T> {
     ReadingHeader,
@@ -113,9 +115,18 @@ impl<T> Default for DownlinkNotificationDecoderState<T> {
 }
 
 #[derive(Debug)]
-struct DownlinkNotificationDecoder<T, D> {
+pub struct DownlinkNotificationDecoder<T, D> {
     state: DownlinkNotificationDecoderState<T>,
     body_decoder: D,
+}
+
+impl<T, D> DownlinkNotificationDecoder<T, D> {
+    pub fn new(body_decoder: D) -> DownlinkNotificationDecoder<T, D> {
+        DownlinkNotificationDecoder {
+            state: Default::default(),
+            body_decoder,
+        }
+    }
 }
 
 type MsgDecoder<K, V> = MapMessageDecoder<MapOperationDecoder<K, V>>;
