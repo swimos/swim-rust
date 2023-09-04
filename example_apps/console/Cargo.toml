@@ -22,7 +22,7 @@ rand = { workspace = true }
 duration-str = "0.5"
 
 [target.'cfg(windows)'.dependencies]
-cursive = { version = "0.20" }
+cursive = { version = "0.20", default-features = false, features = ["crossterm-backend"] }
 
 [target.'cfg(unix)'.dependencies]
 cursive = { version = "0.20", default-features = false, features = ["termion-backend"] }
