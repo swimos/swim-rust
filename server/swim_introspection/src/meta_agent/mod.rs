@@ -108,9 +108,9 @@ where
 {
     let (tx, rx) = pulse_io;
 
-    let mut input = FramedRead::new(rx, LaneRequestDecoder::new(WithLengthBytesCodec::default()))
-        .take_until(shutdown_rx);
-    let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(WithLenReconEncoder::default()));
+    let mut input =
+        FramedRead::new(rx, LaneRequestDecoder::new(WithLengthBytesCodec)).take_until(shutdown_rx);
+    let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(WithLenReconEncoder));
 
     let mut previous = Instant::now();
     let mut accumulate = |report: UplinkSnapshot| {

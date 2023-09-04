@@ -895,7 +895,7 @@ pub fn make_dummy_runtime(
             );
             DummyServer::new(stop_rx, port_tx, lanes, Some(errors))
         },
-        ConsoleFactory::default(),
+        ConsoleFactory,
     )
     .run(shared_state, command_rx, updater, stop_rx)
 }

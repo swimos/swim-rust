@@ -1044,8 +1044,8 @@ async fn run_value_downlink() {
         let agent = FakeAgent;
         let dl: HostedDownlink<FakeAgent> = HostedDownlink::new(fac.create(&agent, out_tx, in_rx));
 
-        let mut in_writer = FramedWrite::new(in_tx, DownlinkNotificationEncoder::default());
-        let mut out_reader = FramedRead::new(out_rx, WithLengthBytesCodec::default());
+        let mut in_writer = FramedWrite::new(in_tx, DownlinkNotificationEncoder);
+        let mut out_reader = FramedRead::new(out_rx, WithLengthBytesCodec);
 
         in_writer
             .send(DownlinkNotification::<&[u8]>::Linked)
@@ -1181,7 +1181,7 @@ async fn reconnect_value_downlink() {
         let agent = FakeAgent;
         let dl: HostedDownlink<FakeAgent> = HostedDownlink::new(fac.create(&agent, out_tx, in_rx));
 
-        let mut in_writer = FramedWrite::new(in_tx, DownlinkNotificationEncoder::default());
+        let mut in_writer = FramedWrite::new(in_tx, DownlinkNotificationEncoder);
 
         in_writer
             .send(DownlinkNotification::<&[u8]>::Linked)
@@ -1215,8 +1215,8 @@ async fn reconnect_value_downlink() {
             ow => panic!("Unexpected event: {:?}", ow),
         }
 
-        let mut in_writer = FramedWrite::new(in_tx2, DownlinkNotificationEncoder::default());
-        let mut out_reader = FramedRead::new(out_rx2, WithLengthBytesCodec::default());
+        let mut in_writer = FramedWrite::new(in_tx2, DownlinkNotificationEncoder);
+        let mut out_reader = FramedRead::new(out_rx2, WithLengthBytesCodec);
 
         in_writer
             .send(DownlinkNotification::<&[u8]>::Linked)

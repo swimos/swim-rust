@@ -387,7 +387,7 @@ async fn clean_shutdown(context: &mut TestContext, agent: &FakeAgent, expect_unl
         assert_eq!(take_events(events), vec![Event::Unlinked]);
     }
 
-    assert!(matches!(channel.await_ready().await, None));
+    assert!(channel.await_ready().await.is_none());
 }
 
 #[tokio::test]

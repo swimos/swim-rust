@@ -371,7 +371,7 @@ impl AgentRuntimeTask {
             attachment_rx,
             stopping,
             config,
-            store: StoreDisabled::default(),
+            store: StoreDisabled,
         }
     }
 }

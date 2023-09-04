@@ -336,7 +336,7 @@ async fn clean_shutdown(context: &mut TestContext, agent: &FakeAgent, expect_unl
         assert_eq!(take_events(events), vec![Event::Unlinked]);
     }
 
-    assert!(matches!(channel.await_ready().await, None));
+    assert!(channel.await_ready().await.is_none());
 }
 
 #[tokio::test]
@@ -396,7 +396,7 @@ async fn terminate_on_error() {
     run_handler(handler, &agent);
     assert_eq!(take_events(events), vec![Event::Failed]);
 
-    assert!(matches!(channel.await_ready().await, None));
+    assert!(channel.await_ready().await.is_none());
 }
 
 fn take_events(events: &Events) -> Vec<Event> {

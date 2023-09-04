@@ -199,7 +199,7 @@ impl AdHocOutput {
         let message = RequestMessage::command(id, addr, body);
         buffer.truncate(*offset);
         let off = buffer.len();
-        let mut encoder = RawRequestMessageEncoder::default();
+        let mut encoder = RawRequestMessageEncoder;
         encoder
             .encode(message, buffer)
             .expect("Encoding should be infallible.");

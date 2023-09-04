@@ -219,22 +219,17 @@ async fn run_task(
     let (nodes_tx, nodes_rx) = nodes_io;
     let (nodes_count_tx, nodes_count_rx) = nodes_count_io;
 
-    let nodes_input = FramedRead::new(
-        nodes_rx,
-        LaneRequestDecoder::new(WithLengthBytesCodec::default()),
-    );
-    let mut nodes_output = FramedWrite::new(
-        nodes_tx,
-        LaneResponseEncoder::new(MapOperationEncoder::default()),
-    );
+    let nodes_input = FramedRead::new(nodes_rx, LaneRequestDecoder::new(WithLengthBytesCodec));
+    let mut nodes_output =
+        FramedWrite::new(nodes_tx, LaneResponseEncoder::new(MapOperationEncoder));
 
     let nodes_count_input = FramedRead::new(
         nodes_count_rx,
-        LaneRequestDecoder::new(WithLengthBytesCodec::default()),
+        LaneRequestDecoder::new(WithLengthBytesCodec),
     );
     let mut nodes_count_output = FramedWrite::new(
         nodes_count_tx,
-        LaneResponseEncoder::new(MapOperationEncoder::default()),
+        LaneResponseEncoder::new(MapOperationEncoder),
     );
 
     let mut request_stream = select(

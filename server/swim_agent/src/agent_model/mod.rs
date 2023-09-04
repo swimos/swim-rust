@@ -756,13 +756,8 @@ where
         if lane_conf.transient {
             lane_io.insert((Text::new(name), kind), io);
         } else if let Some(init) = item_model.init_value_like_item(name) {
-            let init_task = run_item_initializer(
-                ItemKind::Lane(kind),
-                name,
-                io,
-                WithLengthBytesCodec::default(),
-                init,
-            );
+            let init_task =
+                run_item_initializer(ItemKind::Lane(kind), name, io, WithLengthBytesCodec, init);
             item_init_tasks.push(init_task.boxed());
         } else {
             lane_io.insert((Text::new(name), kind), io);
@@ -780,7 +775,7 @@ where
                 ItemKind::Store(StoreKind::Value),
                 name,
                 io,
-                WithLengthBytesCodec::default(),
+                WithLengthBytesCodec,
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -807,7 +802,7 @@ where
                 ItemKind::Lane(kind),
                 name,
                 io,
-                MapMessageDecoder::new(RawMapOperationDecoder::default()),
+                MapMessageDecoder::new(RawMapOperationDecoder),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -827,7 +822,7 @@ where
                 ItemKind::Store(StoreKind::Map),
                 name,
                 io,
-                MapMessageDecoder::new(RawMapOperationDecoder::default()),
+                MapMessageDecoder::new(RawMapOperationDecoder),
                 init,
             );
             item_init_tasks.push(init_task.boxed());

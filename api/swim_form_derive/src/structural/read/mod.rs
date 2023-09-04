@@ -841,7 +841,7 @@ fn enumerate_fields<'a>(
         .iter()
         .copied()
         .map(FieldGroup::Tag)
-        .chain(header.into_iter())
+        .chain(header)
         .chain(attributes.iter().copied().map(FieldGroup::Attribute))
         .chain(body_fields.into_iter())
 }
