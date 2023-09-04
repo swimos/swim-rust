@@ -16,8 +16,13 @@ parking_lot = { workspace = true }
 crossbeam-channel = { workspace = true }
 ratchet = { workspace = true, features = ["deflate", "split"] }
 bytes = { workspace = true }
-cursive = {version = "0.20", default-features = false, features = ["termion-backend"]}
 console-views = { path = "console_views" }
 http = { workspace = true }
 rand = { workspace = true }
 duration-str = "0.5"
+
+[target.'cfg(windows)'.dependencies]
+cursive = { version = "0.20" }
+
+[target.'cfg(unix)'.dependencies]
+cursive = { version = "0.20", default-features = false, features = ["termion-backend"] }
