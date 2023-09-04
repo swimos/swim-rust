@@ -246,15 +246,10 @@ async fn shutdown_on_stop_trigger() {
 
     stop_tx.expect("Stop trigger missing.").trigger();
 
-    assert!(channel.await_ready().await.is_some());
-    let handler = channel
-        .next_event(&agent)
-        .expect("Expected unlinked handler.");
-    run_handler(handler, &agent);
-    assert_eq!(take_events(&events), vec![Event::Unlinked]);
-
     assert!(channel.await_ready().await.is_none());
     assert!(channel.next_event(&agent).is_none());
+
+    assert!(take_events(&events).is_empty());
 }
 
 #[tokio::test]
