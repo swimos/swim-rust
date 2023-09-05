@@ -138,7 +138,7 @@ pub fn strip_handler_attrs(
                 if let ImplItem::Method(method) = item {
                     let (handler_attrs, others) =
                         method.attrs.drain(0..).partition::<Vec<_>, _>(assess_attr);
-                    method.attrs.extend(others.into_iter());
+                    method.attrs.extend(others);
                     if handler_attrs.is_empty() {
                         None
                     } else {
@@ -178,7 +178,7 @@ pub fn validate_with_attrs(
         block
             .items
             .iter()
-            .zip(stripped_attrs.into_iter())
+            .zip(stripped_attrs)
             .filter_map(|item_and_attrs| match item_and_attrs {
                 (ImplItem::Method(method), Some(attrs)) => Some((method, attrs)),
                 _ => None,
@@ -222,13 +222,13 @@ fn validate_method<'a>(
                     if let Err(e) = kind.merge(method, k) {
                         Validation::Failed(Some(e))
                     } else {
-                        targets.extend(new_targets.into_iter());
+                        targets.extend(new_targets);
                         Validation::valid(Some(desc))
                     }
                 }
                 (_, Some(Ok((kind, new_targets)))) => {
                     let mut desc = HandlerDescriptor::new(kind);
-                    desc.targets.extend(new_targets.into_iter());
+                    desc.targets.extend(new_targets);
                     Validation::valid(Some(desc))
                 }
                 (acc, Some(Err(e))) => Validation::Validated(acc, Some(e)),
@@ -801,27 +801,25 @@ fn extract_targets(attr: &Attribute) -> Result<Vec<String>, syn::Error> {
         Meta::List(lst) => lst
             .nested
             .iter()
-            .fold(Ok(vec![]), |acc, nested| {
-                acc.and_then(|mut targets| match nested {
-                    NestedMeta::Meta(Meta::Path(Path {
-                        leading_colon: None,
-                        segments,
-                    })) => match segments.first() {
-                        Some(PathSegment {
-                            ident,
-                            arguments: PathArguments::None,
-                        }) if segments.len() == 1 => {
-                            targets.push(ident.to_string());
-                            Ok(targets)
-                        }
-                        _ => Err(bad_params()),
-                    },
-                    NestedMeta::Lit(Lit::Str(name)) if lst.nested.len() == 1 => {
-                        targets.push(name.value());
-                        Ok(targets)
+            .try_fold(vec![], |mut acc, nested| match nested {
+                NestedMeta::Meta(Meta::Path(Path {
+                    leading_colon: None,
+                    segments,
+                })) => match segments.first() {
+                    Some(PathSegment {
+                        ident,
+                        arguments: PathArguments::None,
+                    }) if segments.len() == 1 => {
+                        acc.push(ident.to_string());
+                        Ok(acc)
                     }
                     _ => Err(bad_params()),
-                })
+                },
+                NestedMeta::Lit(Lit::Str(name)) if lst.nested.len() == 1 => {
+                    acc.push(name.value());
+                    Ok(acc)
+                }
+                _ => Err(bad_params()),
             })
             .and_then(|targets| {
                 if targets.is_empty() {

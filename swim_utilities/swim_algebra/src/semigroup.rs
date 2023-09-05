@@ -27,7 +27,7 @@ pub trait Semigroup: Sized {
 
 impl<T> Semigroup for Vec<T> {
     fn op_in_place(&mut self, right: Self) {
-        self.extend(right.into_iter());
+        self.extend(right);
     }
 }
 

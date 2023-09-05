@@ -86,7 +86,7 @@ pub fn fields_from_ast<'t>(
 
             original.attrs.get_attributes(ctx, FORM_PATH).iter().fold(
                 &mut manifest,
-                |mut manifest, meta| {
+                |manifest, meta| {
                     match meta {
                         NestedMeta::Meta(Meta::Path(path)) if path == HEADER_PATH => {
                             manifest.has_header_fields = true;

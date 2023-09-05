@@ -52,7 +52,7 @@ const LANES_LANE: &str = "lanes";
 
 /// A meta agent providing information on the lanes of an agent and aggregate statistics on
 /// the uplinks for all of its lanes. The meta agent extracts the target node URI from its own
-/// node URI and then attempts to resolve the introspection handl during it's initialization
+/// node URI and then attempts to resolve the introspection handle during it's initialization
 /// phase. If the node cannot be resolved, the meta-agent will fail to start with an appropriate
 /// error.
 pub struct NodeMetaAgent {
@@ -115,17 +115,21 @@ async fn run_init(
     let lanes_io = context
         .add_lane(LANES_LANE, LaneKind::DemandMap, lane_config)
         .await?;
-    Ok(run_task(pulse_interval, handle, pulse_io, lanes_io).boxed())
+    Ok(run_task(context, pulse_interval, handle, pulse_io, lanes_io).boxed())
 }
 
 type Io = (ByteWriter, ByteReader);
 
 async fn run_task(
+    context: Box<dyn AgentContext + Send>,
     pulse_interval: Duration,
     handle: AgentIntrospectionHandle,
     pulse_io: Io,
     lanes_io: Io,
 ) -> Result<(), AgentTaskError> {
+    // deferred drop so the agent doesn't terminate early.
+    let _context = context;
+
     let report_reader = handle.aggregate_reader();
     let (shutdown_tx, shutdown_rx) = trigger::trigger();
     let pulse_lane = pin!(run_pulse_lane(
@@ -171,9 +175,9 @@ async fn run_lanes_descriptor_lane(
 ) -> Result<(), FrameIoError> {
     let (tx, rx) = lanes_io;
 
-    let mut input = FramedRead::new(rx, LaneRequestDecoder::new(WithLengthBytesCodec::default()))
-        .take_until(shutdown_rx);
-    let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(MapOperationEncoder::default()));
+    let mut input =
+        FramedRead::new(rx, LaneRequestDecoder::new(WithLengthBytesCodec)).take_until(shutdown_rx);
+    let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(MapOperationEncoder));
 
     let mut snapshot = if let Some(s) = handle.new_snapshot() {
         s

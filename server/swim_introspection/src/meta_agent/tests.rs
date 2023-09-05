@@ -136,7 +136,27 @@ impl LaneReceiver {
         }
     }
 
-    async fn expect_syned(&mut self) {
+    async fn expect_synced(&mut self) {
+        let response = UplinkSnapshot {
+            link_count: 0,
+            event_count: 0,
+            command_count: 0,
+        };
+        let record = self
+            .reader
+            .next()
+            .await
+            .expect("Expected a record.")
+            .expect("Bad response.");
+        match record {
+            LaneResponse::SyncEvent(id, PulseWithDuration { sec, nano, pulse }) => {
+                assert_eq!(id, SYNC_ID);
+                let dur = Duration::new(sec, nano);
+                let expected = response.make_pulse(dur);
+                assert_eq!(pulse, expected);
+            }
+            ow => panic!("Unexpected response: {:?}", ow),
+        }
         let record = self
             .reader
             .next()
@@ -176,7 +196,7 @@ async fn sync_pulse_lane() {
         } = context;
 
         sender.sync().await;
-        receiver.expect_syned().await;
+        receiver.expect_synced().await;
         shutdown_tx.trigger();
     })
     .await;

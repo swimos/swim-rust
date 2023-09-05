@@ -58,6 +58,7 @@ impl<S: AsRef<str>, L> BoundedAppend<S, L> {
             for s in styled {
                 content.append(s);
             }
+
             content.with_content(move |content| {
                 let diff = content.spans_raw().len().saturating_sub(max);
                 if diff > 0 {

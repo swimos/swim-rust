@@ -73,7 +73,7 @@ async fn test_single_message_single_stream() {
         );
 
         let message = multi_reader.next().await;
-        assert!(matches!(message, None));
+        assert!(message.is_none());
 
         assert_eq!(multi_reader.streams.len(), 0)
     };
@@ -161,7 +161,7 @@ async fn test_multiple_messages_single_stream() {
         );
 
         let message = multi_reader.next().await;
-        assert!(matches!(message, None));
+        assert!(message.is_none());
 
         assert_eq!(multi_reader.streams.len(), 0)
     };
@@ -238,7 +238,7 @@ async fn test_single_message_multiple_streams() {
         );
 
         let message = multi_reader.next().await;
-        assert!(matches!(message, None));
+        assert!(message.is_none());
 
         assert_eq!(multi_reader.streams.len(), 0)
     };
@@ -360,7 +360,7 @@ async fn test_multiple_messages_multiple_streams() {
             }
         );
         let message = multi_reader.next().await;
-        assert!(matches!(message, None));
+        assert!(message.is_none());
 
         assert_eq!(multi_reader.streams.len(), 0)
     };
@@ -483,7 +483,7 @@ async fn test_replace_stream() {
             }
         );
         let message = multi_reader.next().await;
-        assert!(matches!(message, None));
+        assert!(message.is_none());
 
         assert_eq!(multi_reader.streams.len(), 0)
     };

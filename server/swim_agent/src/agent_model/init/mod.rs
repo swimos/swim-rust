@@ -24,7 +24,7 @@ use futures::{
 use swim_api::protocol::agent::{
     StoreInitMessage, StoreInitMessageDecoder, StoreInitialized, StoreInitializedCodec,
 };
-use swim_api::{agent::UplinkKind, error::FrameIoError, protocol::map::MapMessage};
+use swim_api::{error::FrameIoError, protocol::map::MapMessage};
 use swim_form::structural::read::{recognizer::RecognizerReadable, ReadError};
 use swim_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swim_utilities::future::try_last;
@@ -84,8 +84,6 @@ pub struct InitializedItem<'a, Agent> {
     pub item_kind: ItemKind,
     // The name of the lane.
     pub name: &'a str,
-    // The uplink kind for communication with the runtime.
-    pub kind: UplinkKind,
     // Function to initialize the state of the lane in the agent.
     pub init_fn: InitFn<Agent>,
     // Channels for communication with the runtime.
@@ -96,14 +94,12 @@ impl<'a, Agent> InitializedItem<'a, Agent> {
     pub fn new(
         item_kind: ItemKind,
         name: &'a str,
-        kind: UplinkKind,
         init_fn: InitFn<Agent>,
         io: (ByteWriter, ByteReader),
     ) -> Self {
         InitializedItem {
             item_kind,
             name,
-            kind,
             init_fn,
             io,
         }
@@ -114,7 +110,6 @@ impl<'a, Agent> InitializedItem<'a, Agent> {
 ///
 /// #Arguments
 /// * `name` - The name of the lane.
-/// * `kind` - The uplink kind (determines the protocol for communication with the runtime).
 /// * `io` - Channels for communication with the runtime.
 /// * `decoder` - Decoder to interpret the command messages from the runtime, during the
 /// initialization process.
@@ -122,7 +117,6 @@ impl<'a, Agent> InitializedItem<'a, Agent> {
 pub async fn run_item_initializer<'a, Agent, D>(
     item_kind: ItemKind,
     name: &'a str,
-    kind: UplinkKind,
     io: (ByteWriter, ByteReader),
     decoder: D,
     init: Box<dyn ItemInitializer<Agent, D::Item> + Send + 'static>,
@@ -141,7 +135,7 @@ where
                 .send(StoreInitialized)
                 .await
                 .map_err(FrameIoError::Io)
-                .map(move |_| InitializedItem::new(item_kind, name, kind, init_fn, (tx, rx)))
+                .map(move |_| InitializedItem::new(item_kind, name, init_fn, (tx, rx)))
         }
     }
 }

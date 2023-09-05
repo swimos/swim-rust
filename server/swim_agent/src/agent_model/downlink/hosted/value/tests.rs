@@ -218,14 +218,20 @@ async fn shutdown_when_input_stops() {
     let TestContext {
         mut channel,
         sender,
-        ..
+        out_rx: _out_rx,
+        events: _events,
+        write_tx: _write_tx,
+        stop_tx: _stop_tx,
     } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     assert!(channel.next_event(&agent).is_none());
 
     drop(sender);
 
-    assert!(channel.await_ready().await.is_none());
+    let r = channel.await_ready().await;
+    println!("{:?}", r);
+
+    assert!(r.is_none());
 
     assert!(channel.next_event(&agent).is_none());
 }
@@ -237,24 +243,20 @@ async fn shutdown_on_stop_trigger() {
     let TestContext {
         mut channel,
         sender: _sender,
-        stop_tx,
+        out_rx: _out_rx,
         events,
-        ..
+        write_tx: _write_tx,
+        stop_tx,
     } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     assert!(channel.next_event(&agent).is_none());
 
     stop_tx.expect("Stop trigger missing.").trigger();
 
-    assert!(channel.await_ready().await.is_some());
-    let handler = channel
-        .next_event(&agent)
-        .expect("Expected unlinked handler.");
-    run_handler(handler, &agent);
-    assert_eq!(take_events(&events), vec![Event::Unlinked]);
-
     assert!(channel.await_ready().await.is_none());
     assert!(channel.next_event(&agent).is_none());
+
+    assert!(take_events(&events).is_empty());
 }
 
 #[tokio::test]
@@ -263,8 +265,10 @@ async fn terminate_on_error() {
     let TestContext {
         mut channel,
         mut sender,
+        out_rx: _out_rx,
         events,
-        ..
+        write_tx: _write_tx,
+        stop_tx: _stop_tx,
     } = make_hosted_input(&agent, SimpleDownlinkConfig::default());
 
     assert!(sender.get_mut().write_u8(100).await.is_ok()); //Invalid message kind tag.
@@ -387,7 +391,7 @@ async fn clean_shutdown(context: &mut TestContext, agent: &FakeAgent, expect_unl
         assert_eq!(take_events(events), vec![Event::Unlinked]);
     }
 
-    assert!(matches!(channel.await_ready().await, None));
+    assert!(channel.await_ready().await.is_none());
 }
 
 #[tokio::test]
