@@ -183,6 +183,6 @@ mod tests {
         assert!(matches!(Version::decode(&mut buffer), Ok(None)));
 
         buffer.put_u8(u8::MAX);
-        assert!(matches!(Version::decode(&mut buffer), Err(_)));
+        assert!(Version::decode(&mut buffer).is_err());
     }
 }
