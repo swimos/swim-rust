@@ -206,7 +206,8 @@ pub trait Agent {
     /// * `route` - The node URI of this agent instance.
     /// * `route_params` - Parameters extracted from the route URI.
     /// * `config` - Configuration parameters for the agent.
-    /// * `context` - Context through which the agent can interact with the runtime.
+    /// * `context` - Context through which the agent can interact with the runtime. If this is
+    /// dropped, then the agent will be terminated.
     fn run(
         &self,
         route: RouteUri,

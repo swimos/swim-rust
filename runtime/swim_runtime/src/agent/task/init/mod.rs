@@ -99,7 +99,7 @@ impl AgentInitTask {
             init_complete,
             config,
             reporting,
-            StoreDisabled::default(),
+            StoreDisabled,
         )
     }
 }
@@ -379,7 +379,7 @@ impl Initialization {
 }
 
 async fn wait_for_initialized(reader: &mut ByteReader) -> Result<(), StoreInitError> {
-    let mut reader = FramedRead::new(reader, StoreInitializedCodec::default());
+    let mut reader = FramedRead::new(reader, StoreInitializedCodec);
     match reader.next().await {
         Some(Ok(_)) => Ok(()),
         _ => Err(StoreInitError::NoAckFromItem),

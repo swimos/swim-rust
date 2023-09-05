@@ -2378,7 +2378,7 @@ fn compare_lower_bounded() {
 #[test]
 fn test_vec_schemas_compare() {
     let empty_vec = Vec::<i32>::new();
-    let non_empty_vec = vec![1];
+    let non_empty_vec = [1];
 
     assert_eq!(
         vec_schemas_cmp(false, false, empty_vec.is_empty(), empty_vec.is_empty()).unwrap(),

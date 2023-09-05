@@ -113,7 +113,7 @@ impl PendingDownlinks {
              }| match awaiting_dl.entry(addr) {
                 Entry::Occupied(entry) => {
                     let existing = entry.into_mut();
-                    existing.extend(dl_requests.into_iter());
+                    existing.extend(dl_requests);
                     (existing.keys(), cmd_requests)
                 }
                 Entry::Vacant(entry) => (entry.insert(dl_requests).keys(), cmd_requests),

@@ -21,6 +21,12 @@ pub const LANE_PARAM: &str = "lane_name";
 
 const NODE_PATTERN: &str = "swim:meta:node/:node_uri";
 const LANE_PATTERN: &str = "swim:meta:node/:node_uri/lane/:lane_name";
+const MESH_PATTERN: &str = "swim:meta:mesh";
+
+/// Create a route pattern for the mesh meta-agents.
+pub fn mesh_pattern() -> RoutePattern {
+    RoutePattern::parse_str(MESH_PATTERN).expect("Mesh pattern should be valid.")
+}
 
 /// Create a route pattern for the node meta-agents.
 pub fn node_pattern() -> RoutePattern {
@@ -34,9 +40,20 @@ pub fn lane_pattern() -> RoutePattern {
 
 #[cfg(test)]
 mod tests {
+    use crate::route::mesh_pattern;
     use swim_utilities::routing::route_uri::RouteUri;
 
     use super::{lane_pattern, node_pattern, LANE_PARAM, NODE_PARAM};
+
+    #[test]
+    fn recognize_mesh() {
+        let uri = "swim:meta:mesh".parse::<RouteUri>().unwrap();
+        let pattern = mesh_pattern();
+        let params = pattern.unapply_route_uri(&uri);
+        assert!(params.is_ok());
+        let map = params.unwrap();
+        assert_eq!(map.len(), 0);
+    }
 
     #[test]
     fn recognize_node() {

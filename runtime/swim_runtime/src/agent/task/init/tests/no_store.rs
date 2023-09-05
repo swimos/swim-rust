@@ -88,18 +88,12 @@ struct SingleLaneInit {
 }
 
 async fn no_store_init_value(input: &mut ByteReader, output: &mut ByteWriter) {
-    let mut framed_in = FramedRead::new(
-        input,
-        LaneRequestDecoder::new(WithLengthBytesCodec::default()),
-    );
+    let mut framed_in = FramedRead::new(input, LaneRequestDecoder::new(WithLengthBytesCodec));
     match framed_in.next().await {
         Some(Ok(LaneRequest::InitComplete)) => {}
         ow => panic!("Unexpected event: {:?}", ow),
     }
-    let mut framed_out = FramedWrite::new(
-        output,
-        LaneResponseEncoder::new(WithLengthBytesCodec::default()),
-    );
+    let mut framed_out = FramedWrite::new(output, LaneResponseEncoder::new(WithLengthBytesCodec));
     framed_out
         .send(LaneResponse::<&[u8]>::Initialized)
         .await
@@ -109,16 +103,13 @@ async fn no_store_init_value(input: &mut ByteReader, output: &mut ByteWriter) {
 async fn no_store_init_map(input: &mut ByteReader, output: &mut ByteWriter) {
     let mut framed_in = FramedRead::new(
         input,
-        LaneRequestDecoder::new(MapMessageDecoder::new(RawMapOperationDecoder::default())),
+        LaneRequestDecoder::new(MapMessageDecoder::new(RawMapOperationDecoder)),
     );
     match framed_in.next().await {
         Some(Ok(LaneRequest::InitComplete)) => {}
         ow => panic!("Unexpected event: {:?}", ow),
     }
-    let mut framed_out = FramedWrite::new(
-        output,
-        LaneResponseEncoder::new(RawMapOperationEncoder::default()),
-    );
+    let mut framed_out = FramedWrite::new(output, LaneResponseEncoder::new(RawMapOperationEncoder));
     framed_out
         .send(LaneResponse::<RawMapOperation>::Initialized)
         .await
@@ -193,7 +184,7 @@ impl TestInit for SingleLaneInit {
 
 #[tokio::test]
 async fn no_lanes() {
-    let (result, _) = run_test(NoLanesInit, StoreDisabled::default()).await;
+    let (result, _) = run_test(NoLanesInit, StoreDisabled).await;
     assert!(matches!(result, Err(AgentExecError::NoInitialLanes)));
 }
 
@@ -201,7 +192,7 @@ async fn no_lanes() {
 async fn single_lane() {
     for config in CONFIGS {
         let init = SingleLaneInit { config: *config };
-        let (initial_result, mut agent_io) = run_test(init, StoreDisabled::default()).await;
+        let (initial_result, mut agent_io) = run_test(init, StoreDisabled).await;
         let initial = initial_result.expect("No lanes were registered.");
 
         let InitialEndpoints {
@@ -368,7 +359,7 @@ impl TestInit for TwoLanesInit {
 async fn two_lanes() {
     for config in CONFIGS {
         let init = TwoLanesInit { config: *config };
-        let (initial_result, agent_lanes) = run_test(init, StoreDisabled::default()).await;
+        let (initial_result, agent_lanes) = run_test(init, StoreDisabled).await;
         let initial = initial_result.expect("No lanes were registered.");
 
         let InitialEndpoints {
@@ -538,7 +529,7 @@ async fn stores_not_supported() {
         lane_config: TRANSIENT,
         store_config: Default::default(),
     };
-    let (initial_result, _lane_io) = run_test(init, StoreDisabled::default()).await;
+    let (initial_result, _lane_io) = run_test(init, StoreDisabled).await;
     let initial = initial_result.expect("No lanes were registered.");
 
     let InitialEndpoints {

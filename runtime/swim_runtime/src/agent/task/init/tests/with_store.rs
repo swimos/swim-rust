@@ -110,10 +110,7 @@ async fn with_store_init_value(input: &mut ByteReader, output: &mut ByteWriter, 
         Some(Ok(LaneRequest::InitComplete)) => {}
         ow => panic!("Unexpected event: {:?}", ow),
     }
-    let mut framed_out = FramedWrite::new(
-        output,
-        LaneResponseEncoder::new(WithLengthBytesCodec::default()),
-    );
+    let mut framed_out = FramedWrite::new(output, LaneResponseEncoder::new(WithLengthBytesCodec));
     framed_out
         .send(LaneResponse::<&[u8]>::Initialized)
         .await

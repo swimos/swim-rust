@@ -15,19 +15,16 @@
 use std::{collections::HashMap, num::NonZeroUsize, time::Duration};
 
 use futures::{future::join, SinkExt, StreamExt};
-use swim_api::{
-    agent::UplinkKind,
-    protocol::{
-        agent::{
-            LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder, StoreInitMessage,
-            StoreInitMessageEncoder, StoreInitialized, StoreInitializedCodec,
-        },
-        map::{
-            MapMessage, MapMessageDecoder, MapMessageEncoder, MapOperationEncoder,
-            RawMapOperationDecoder,
-        },
-        WithLenReconEncoder, WithLengthBytesCodec,
+use swim_api::protocol::{
+    agent::{
+        LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder, StoreInitMessage,
+        StoreInitMessageEncoder, StoreInitialized, StoreInitializedCodec,
     },
+    map::{
+        MapMessage, MapMessageDecoder, MapMessageEncoder, MapOperationEncoder,
+        RawMapOperationDecoder,
+    },
+    WithLenReconEncoder, WithLengthBytesCodec,
 };
 use swim_model::Text;
 use swim_utilities::{io::byte_channel::byte_channel, non_zero_usize};
@@ -71,25 +68,19 @@ async fn init_value_lane() {
     let init = ValueLaneInitializer::new(VALUE_LANE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = WithLengthBytesCodec::default();
+    let decoder = WithLengthBytesCodec;
     let init_task = run_item_initializer(
-        ItemKind::Lane,
+        ItemKind::VALUE_LANE,
         "value_lane",
-        UplinkKind::Value,
         (out_tx, in_rx),
         decoder,
         Box::new(init),
     );
 
     let runtime_task = async move {
-        let mut writer = FramedWrite::new(
-            &mut in_tx,
-            LaneRequestEncoder::new(WithLenReconEncoder::default()),
-        );
-        let mut reader = FramedRead::new(
-            &mut out_rx,
-            LaneResponseDecoder::new(WithLengthBytesCodec::default()),
-        );
+        let mut writer = FramedWrite::new(&mut in_tx, LaneRequestEncoder::new(WithLenReconEncoder));
+        let mut reader =
+            FramedRead::new(&mut out_rx, LaneResponseDecoder::new(WithLengthBytesCodec));
 
         writer
             .send(LaneRequest::Command(46))
@@ -114,14 +105,12 @@ async fn init_value_lane() {
     let InitializedItem {
         item_kind,
         name,
-        kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Lane);
+    assert_eq!(item_kind, ItemKind::VALUE_LANE);
     assert_eq!(name, "value_lane");
-    assert_eq!(kind, UplinkKind::Value);
 
     let agent = TestAgent::default();
 
@@ -135,11 +124,10 @@ async fn init_value_store() {
     let init = ValueStoreInitializer::new(VALUE_STORE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = WithLengthBytesCodec::default();
+    let decoder = WithLengthBytesCodec;
     let init_task = run_item_initializer(
-        ItemKind::Store,
+        ItemKind::VALUE_STORE,
         "value_store",
-        UplinkKind::Value,
         (out_tx, in_rx),
         decoder,
         Box::new(init),
@@ -148,9 +136,9 @@ async fn init_value_store() {
     let runtime_task = async move {
         let mut writer = FramedWrite::new(
             &mut in_tx,
-            StoreInitMessageEncoder::new(WithLenReconEncoder::default()),
+            StoreInitMessageEncoder::new(WithLenReconEncoder),
         );
-        let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec::default());
+        let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec);
 
         writer
             .send(StoreInitMessage::Command(46))
@@ -175,14 +163,12 @@ async fn init_value_store() {
     let InitializedItem {
         item_kind,
         name,
-        kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Store);
+    assert_eq!(item_kind, ItemKind::VALUE_STORE);
     assert_eq!(name, "value_store");
-    assert_eq!(kind, UplinkKind::Value);
 
     let agent = TestAgent::default();
 
@@ -196,25 +182,19 @@ async fn init_value_lane_no_data() {
     let init = ValueLaneInitializer::new(VALUE_LANE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = WithLengthBytesCodec::default();
+    let decoder = WithLengthBytesCodec;
     let init_task = run_item_initializer(
-        ItemKind::Lane,
+        ItemKind::VALUE_LANE,
         "value_lane",
-        UplinkKind::Value,
         (out_tx, in_rx),
         decoder,
         Box::new(init),
     );
 
     let runtime_task = async move {
-        let mut writer = FramedWrite::new(
-            &mut in_tx,
-            LaneRequestEncoder::new(WithLenReconEncoder::default()),
-        );
-        let mut reader = FramedRead::new(
-            &mut out_rx,
-            LaneResponseDecoder::new(WithLengthBytesCodec::default()),
-        );
+        let mut writer = FramedWrite::new(&mut in_tx, LaneRequestEncoder::new(WithLenReconEncoder));
+        let mut reader =
+            FramedRead::new(&mut out_rx, LaneResponseDecoder::new(WithLengthBytesCodec));
 
         writer
             .send(LaneRequest::<i32>::InitComplete)
@@ -235,14 +215,12 @@ async fn init_value_lane_no_data() {
     let InitializedItem {
         item_kind,
         name,
-        kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Lane);
+    assert_eq!(item_kind, ItemKind::VALUE_LANE);
     assert_eq!(name, "value_lane");
-    assert_eq!(kind, UplinkKind::Value);
 
     let agent = TestAgent::default();
 
@@ -256,11 +234,10 @@ async fn init_value_store_no_data() {
     let init = ValueStoreInitializer::new(VALUE_STORE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = WithLengthBytesCodec::default();
+    let decoder = WithLengthBytesCodec;
     let init_task = run_item_initializer(
-        ItemKind::Store,
+        ItemKind::VALUE_STORE,
         "value_store",
-        UplinkKind::Value,
         (out_tx, in_rx),
         decoder,
         Box::new(init),
@@ -269,9 +246,9 @@ async fn init_value_store_no_data() {
     let runtime_task = async move {
         let mut writer = FramedWrite::new(
             &mut in_tx,
-            StoreInitMessageEncoder::new(WithLenReconEncoder::default()),
+            StoreInitMessageEncoder::new(WithLenReconEncoder),
         );
-        let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec::default());
+        let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec);
 
         writer
             .send(StoreInitMessage::<i32>::InitComplete)
@@ -292,14 +269,12 @@ async fn init_value_store_no_data() {
     let InitializedItem {
         item_kind,
         name,
-        kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Store);
+    assert_eq!(item_kind, ItemKind::VALUE_STORE);
     assert_eq!(name, "value_store");
-    assert_eq!(kind, UplinkKind::Value);
 
     let agent = TestAgent::default();
 
@@ -313,11 +288,10 @@ async fn init_map_lane() {
     let init = MapLaneInitializer::new(MAP_LANE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
+    let decoder = MapMessageDecoder::new(RawMapOperationDecoder);
     let init_task = run_item_initializer(
-        ItemKind::Lane,
+        ItemKind::MAP_LANE,
         "map_lane",
-        UplinkKind::Map,
         (out_tx, in_rx),
         decoder,
         Box::new(init),
@@ -326,11 +300,11 @@ async fn init_map_lane() {
     let runtime_task = async move {
         let mut writer = FramedWrite::new(
             &mut in_tx,
-            LaneRequestEncoder::new(MapMessageEncoder::new(MapOperationEncoder::default())),
+            LaneRequestEncoder::new(MapMessageEncoder::new(MapOperationEncoder)),
         );
         let mut reader = FramedRead::new(
             &mut out_rx,
-            LaneResponseDecoder::new(RawMapOperationDecoder::default()),
+            LaneResponseDecoder::new(RawMapOperationDecoder),
         );
 
         writer
@@ -373,14 +347,12 @@ async fn init_map_lane() {
     let InitializedItem {
         item_kind,
         name,
-        kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Lane);
+    assert_eq!(item_kind, ItemKind::MAP_LANE);
     assert_eq!(name, "map_lane");
-    assert_eq!(kind, UplinkKind::Map);
 
     let agent = TestAgent::default();
 
@@ -399,11 +371,10 @@ async fn init_map_store() {
     let init = MapStoreInitializer::new(MAP_STORE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
+    let decoder = MapMessageDecoder::new(RawMapOperationDecoder);
     let init_task = run_item_initializer(
-        ItemKind::Store,
+        ItemKind::MAP_STORE,
         "map_store",
-        UplinkKind::Map,
         (out_tx, in_rx),
         decoder,
         Box::new(init),
@@ -412,9 +383,9 @@ async fn init_map_store() {
     let runtime_task = async move {
         let mut writer = FramedWrite::new(
             &mut in_tx,
-            StoreInitMessageEncoder::new(MapMessageEncoder::new(MapOperationEncoder::default())),
+            StoreInitMessageEncoder::new(MapMessageEncoder::new(MapOperationEncoder)),
         );
-        let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec::default());
+        let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec);
 
         writer
             .send(StoreInitMessage::Command(MapMessage::Update {
@@ -456,14 +427,12 @@ async fn init_map_store() {
     let InitializedItem {
         item_kind,
         name,
-        kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Store);
+    assert_eq!(item_kind, ItemKind::MAP_STORE);
     assert_eq!(name, "map_store");
-    assert_eq!(kind, UplinkKind::Map);
 
     let agent = TestAgent::default();
 
@@ -482,11 +451,10 @@ async fn init_map_lane_no_data() {
     let init = MapLaneInitializer::new(MAP_LANE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
+    let decoder = MapMessageDecoder::new(RawMapOperationDecoder);
     let init_task = run_item_initializer(
-        ItemKind::Lane,
+        ItemKind::MAP_LANE,
         "map_lane",
-        UplinkKind::Map,
         (out_tx, in_rx),
         decoder,
         Box::new(init),
@@ -495,11 +463,11 @@ async fn init_map_lane_no_data() {
     let runtime_task = async move {
         let mut writer = FramedWrite::new(
             &mut in_tx,
-            LaneRequestEncoder::new(MapMessageEncoder::new(MapOperationEncoder::default())),
+            LaneRequestEncoder::new(MapMessageEncoder::new(MapOperationEncoder)),
         );
         let mut reader = FramedRead::new(
             &mut out_rx,
-            LaneResponseDecoder::new(RawMapOperationDecoder::default()),
+            LaneResponseDecoder::new(RawMapOperationDecoder),
         );
 
         writer
@@ -521,14 +489,12 @@ async fn init_map_lane_no_data() {
     let InitializedItem {
         item_kind,
         name,
-        kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Lane);
+    assert_eq!(item_kind, ItemKind::MAP_LANE);
     assert_eq!(name, "map_lane");
-    assert_eq!(kind, UplinkKind::Map);
 
     let agent = TestAgent::default();
 
@@ -543,11 +509,10 @@ async fn init_map_store_no_data() {
     let init = MapStoreInitializer::new(MAP_STORE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = MapMessageDecoder::new(RawMapOperationDecoder::default());
+    let decoder = MapMessageDecoder::new(RawMapOperationDecoder);
     let init_task = run_item_initializer(
-        ItemKind::Store,
+        ItemKind::MAP_STORE,
         "map_store",
-        UplinkKind::Map,
         (out_tx, in_rx),
         decoder,
         Box::new(init),
@@ -556,9 +521,9 @@ async fn init_map_store_no_data() {
     let runtime_task = async move {
         let mut writer = FramedWrite::new(
             &mut in_tx,
-            StoreInitMessageEncoder::new(MapMessageEncoder::new(MapOperationEncoder::default())),
+            StoreInitMessageEncoder::new(MapMessageEncoder::new(MapOperationEncoder)),
         );
-        let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec::default());
+        let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec);
 
         writer
             .send(StoreInitMessage::<MapMessage<Text, i32>>::InitComplete)
@@ -579,14 +544,12 @@ async fn init_map_store_no_data() {
     let InitializedItem {
         item_kind,
         name,
-        kind,
         init_fn,
         io: _io,
     } = result.expect("Initialization failed.");
 
-    assert_eq!(item_kind, ItemKind::Store);
+    assert_eq!(item_kind, ItemKind::MAP_STORE);
     assert_eq!(name, "map_store");
-    assert_eq!(kind, UplinkKind::Map);
 
     let agent = TestAgent::default();
 

@@ -151,10 +151,8 @@ impl<'a> Initializer<'a> for DummyInit {
             if let Some(err) = self.error {
                 Err(err)
             } else {
-                let mut framed = FramedWrite::new(
-                    writer,
-                    LaneRequestEncoder::new(WithLengthBytesCodec::default()),
-                );
+                let mut framed =
+                    FramedWrite::new(writer, LaneRequestEncoder::new(WithLengthBytesCodec));
                 framed.send(LaneRequest::<&[u8]>::InitComplete).await?;
                 Ok(())
             }
@@ -183,14 +181,10 @@ async fn run_initializer_success() {
         );
 
         let test_task = async {
-            let mut framed_read = FramedRead::new(
-                rx_in,
-                LaneRequestDecoder::new(WithLengthBytesCodec::default()),
-            );
-            let mut framed_write = FramedWrite::new(
-                tx_out,
-                LaneResponseEncoder::new(WithLengthBytesCodec::default()),
-            );
+            let mut framed_read =
+                FramedRead::new(rx_in, LaneRequestDecoder::new(WithLengthBytesCodec));
+            let mut framed_write =
+                FramedWrite::new(tx_out, LaneResponseEncoder::new(WithLengthBytesCodec));
 
             assert!(matches!(
                 framed_read.next().await,
@@ -255,14 +249,10 @@ async fn run_initializer_bad_response() {
         );
 
         let test_task = async {
-            let mut framed_read = FramedRead::new(
-                rx_in,
-                LaneRequestDecoder::new(WithLengthBytesCodec::default()),
-            );
-            let mut framed_write = FramedWrite::new(
-                tx_out,
-                LaneResponseEncoder::new(WithLengthBytesCodec::default()),
-            );
+            let mut framed_read =
+                FramedRead::new(rx_in, LaneRequestDecoder::new(WithLengthBytesCodec));
+            let mut framed_write =
+                FramedWrite::new(tx_out, LaneResponseEncoder::new(WithLengthBytesCodec));
 
             assert!(matches!(
                 framed_read.next().await,
@@ -300,10 +290,8 @@ async fn run_initializer_timeout() {
         );
 
         let test_task = async {
-            let mut framed_read = FramedRead::new(
-                rx_in,
-                LaneRequestDecoder::new(WithLengthBytesCodec::default()),
-            );
+            let mut framed_read =
+                FramedRead::new(rx_in, LaneRequestDecoder::new(WithLengthBytesCodec));
 
             assert!(matches!(
                 framed_read.next().await,
@@ -371,7 +359,7 @@ async fn run_test_with_reporting<T: TestInit>(
         done_rx,
         INIT_CONFIG,
         Some(reporting),
-        StoreDisabled::default(),
+        StoreDisabled,
     );
     let test = init.run_test(req_tx, dl_rx, done_tx);
     let reporting_task = provide_reporting(reg_rx, expected);
