@@ -250,53 +250,56 @@ async fn run_agent_init_task() {
 
 #[tokio::test]
 async fn stops_if_all_lanes_stop() {
-    let context = Box::<TestAgentContext>::default();
-    let (
-        task,
-        TestContext {
-            test_event_rx,
-            http_request_rx: _http_request_rx,
-            mut lc_event_rx,
-            val_lane_io,
-            map_lane_io,
-            cmd_lane_io,
-            http_lane_tx,
-        },
-    ) = init_agent(context).await;
+    with_timeout(async move {
+        let context = Box::<TestAgentContext>::default();
+        let (
+            task,
+            TestContext {
+                test_event_rx,
+                http_request_rx: _http_request_rx,
+                mut lc_event_rx,
+                val_lane_io,
+                map_lane_io,
+                cmd_lane_io,
+                http_lane_tx,
+            },
+        ) = init_agent(context).await;
 
-    let test_case = async move {
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected init event."),
-            LifecycleEvent::Init
-        );
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected start event."),
-            LifecycleEvent::Start
-        );
+        let test_case = async move {
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected init event."),
+                LifecycleEvent::Init
+            );
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected start event."),
+                LifecycleEvent::Start
+            );
 
-        let (vtx, vrx) = val_lane_io;
-        let (mtx, mrx) = map_lane_io;
-        let (ctx, crx) = cmd_lane_io;
+            let (vtx, vrx) = val_lane_io;
+            let (mtx, mrx) = map_lane_io;
+            let (ctx, crx) = cmd_lane_io;
 
-        //Dropping both lane senders should cause the agent to stop.
-        drop(vtx);
-        drop(mtx);
-        drop(ctx);
-        drop(http_lane_tx);
+            //Dropping both lane senders should cause the agent to stop.
+            drop(vtx);
+            drop(mtx);
+            drop(ctx);
+            drop(http_lane_tx);
 
-        (lc_event_rx, vrx, mrx, crx)
-    };
+            (lc_event_rx, vrx, mrx, crx)
+        };
 
-    let (result, (lc_event_rx, _vrx, _mrx, _crx)) = join(task, test_case).await;
-    assert!(result.is_ok());
+        let (result, (lc_event_rx, _vrx, _mrx, _crx)) = join(task, test_case).await;
+        assert!(result.is_ok());
 
-    let events = lc_event_rx.collect::<Vec<_>>().await;
+        let events = lc_event_rx.collect::<Vec<_>>().await;
 
-    //Check that the `on_stop` event fired.
-    assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+        //Check that the `on_stop` event fired.
+        assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
 
-    let lane_events = test_event_rx.collect::<Vec<_>>().await;
-    assert!(lane_events.is_empty());
+        let lane_events = test_event_rx.collect::<Vec<_>>().await;
+        assert!(lane_events.is_empty());
+    })
+    .await
 }
 
 #[tokio::test]
@@ -367,83 +370,86 @@ async fn command_to_value_lane() {
 
 #[tokio::test]
 async fn request_to_http_lane() {
-    let context = Box::<TestAgentContext>::default();
-    let (
-        task,
-        TestContext {
-            test_event_rx,
-            mut http_request_rx,
-            mut lc_event_rx,
-            val_lane_io,
-            map_lane_io,
-            cmd_lane_io,
-            http_lane_tx,
-        },
-    ) = init_agent(context).await;
+    with_timeout(async move {
+        let context = Box::<TestAgentContext>::default();
+        let (
+            task,
+            TestContext {
+                test_event_rx,
+                mut http_request_rx,
+                mut lc_event_rx,
+                val_lane_io,
+                map_lane_io,
+                cmd_lane_io,
+                http_lane_tx,
+            },
+        ) = init_agent(context).await;
 
-    let test_case = async move {
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected init event."),
-            LifecycleEvent::Init
-        );
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected start event."),
-            LifecycleEvent::Start
-        );
+        let test_case = async move {
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected init event."),
+                LifecycleEvent::Init
+            );
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected start event."),
+                LifecycleEvent::Start
+            );
 
-        let req = HttpRequest {
-            method: Method::GET,
-            version: Version::HTTP_1_1,
-            uri: HTTP_LANE_URI.parse().unwrap(),
-            headers: vec![],
-            payload: Bytes::new(),
-        };
-        let (lane_request, response_rx) = HttpLaneRequest::new(req.clone());
+            let req = HttpRequest {
+                method: Method::GET,
+                version: Version::HTTP_1_1,
+                uri: HTTP_LANE_URI.parse().unwrap(),
+                headers: vec![],
+                payload: Bytes::new(),
+            };
+            let (lane_request, response_rx) = HttpLaneRequest::new(req.clone());
 
-        http_lane_tx
-            .send(lane_request)
-            .await
-            .expect("HTTP lane stopped.");
-
-        // The agent should receive the request...
-        assert_eq!(
-            http_request_rx
-                .next()
+            http_lane_tx
+                .send(lane_request)
                 .await
-                .expect("Expected HTTP request."),
-            req
-        );
+                .expect("HTTP lane stopped.");
 
-        //... ,trigger the lane event...
-        assert_eq!(
-            lc_event_rx.next().await.expect("Expected HTTP lane event."),
-            LifecycleEvent::Lane(Text::new(HTTP_LANE))
-        );
+            // The agent should receive the request...
+            assert_eq!(
+                http_request_rx
+                    .next()
+                    .await
+                    .expect("Expected HTTP request."),
+                req
+            );
 
-        //... and then satisfy the request.
-        let response = response_rx.await.expect("Request not satisfied.");
-        assert_eq!(response.status_code, StatusCode::OK);
+            //... ,trigger the lane event...
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected HTTP lane event."),
+                LifecycleEvent::Lane(Text::new(HTTP_LANE))
+            );
 
-        drop(val_lane_io);
-        drop(map_lane_io);
-        drop(cmd_lane_io);
-        drop(http_lane_tx);
-        (test_event_rx, lc_event_rx)
-    };
+            //... and then satisfy the request.
+            let response = response_rx.await.expect("Request not satisfied.");
+            assert_eq!(response.status_code, StatusCode::OK);
 
-    let (result, (test_event_rx, lc_event_rx)) =
-        tokio::time::timeout(TEST_TIMEOUT, join(task, test_case))
-            .await
-            .expect("Timed out");
-    assert!(result.is_ok());
+            drop(val_lane_io);
+            drop(map_lane_io);
+            drop(cmd_lane_io);
+            drop(http_lane_tx);
+            (test_event_rx, lc_event_rx)
+        };
 
-    let events = lc_event_rx.collect::<Vec<_>>().await;
+        let (result, (test_event_rx, lc_event_rx)) =
+            tokio::time::timeout(TEST_TIMEOUT, join(task, test_case))
+                .await
+                .expect("Timed out");
+        assert!(result.is_ok());
 
-    //Check that the `on_stop` event fired.
-    assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+        let events = lc_event_rx.collect::<Vec<_>>().await;
 
-    let lane_events = test_event_rx.collect::<Vec<_>>().await;
-    assert!(lane_events.is_empty());
+        //Check that the `on_stop` event fired.
+        assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+
+        let lane_events = test_event_rx.collect::<Vec<_>>().await;
+        assert!(lane_events.is_empty());
+    })
+    .await
 }
 
 const SYNC_ID: Uuid = Uuid::from_u128(393883);

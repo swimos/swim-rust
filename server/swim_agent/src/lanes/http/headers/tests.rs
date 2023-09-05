@@ -47,7 +47,7 @@ fn absent_content_type() {
 fn invalid_content_type() {
     let header_vec = vec![Header::new(StandardHeaderName::ContentType, "////")];
     let headers = Headers::new(&header_vec);
-    assert!(matches!(headers.content_type(), Err(_)));
+    assert!(headers.content_type().is_err());
 }
 
 #[test]
