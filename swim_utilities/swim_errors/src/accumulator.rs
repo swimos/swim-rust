@@ -91,11 +91,11 @@ impl<E> Semigroup for Errors<E> {
             (ErrorsInner::Single(e1), ErrorsInner::Multiple(v)) => {
                 let mut new_vec = Vec::with_capacity(v.len() + 1);
                 new_vec.push(e1);
-                new_vec.extend(v.into_iter());
+                new_vec.extend(v);
                 ErrorsInner::Multiple(new_vec)
             }
             (ErrorsInner::Multiple(mut v1), ErrorsInner::Multiple(v2)) => {
-                v1.extend(v2.into_iter());
+                v1.extend(v2);
                 ErrorsInner::Multiple(v1)
             }
             (l, _) => l,

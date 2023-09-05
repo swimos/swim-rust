@@ -129,7 +129,7 @@ where
         self,
         _error_handler: StoreErrorHandler,
     ) -> BoxFuture<'static, Result<(), LaneStoreErrorReport>> {
-        Box::pin(async move { self.0.await })
+        Box::pin(self.0)
     }
 
     fn attach_boxed(

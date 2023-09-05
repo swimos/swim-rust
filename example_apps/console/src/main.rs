@@ -54,7 +54,7 @@ fn main() {
         Some(arg) if args.len() == 2 && arg.as_str() == "--dummy" => {
             make_dummy_runtime(shared_state, command_rx, Arc::new(updater), stop_rx)
         }
-        _ => ConsoleFactory::default().run(shared_state, command_rx, Arc::new(updater), stop_rx),
+        _ => ConsoleFactory.run(shared_state, command_rx, Arc::new(updater), stop_rx),
     };
 
     let handle = start_runtime(runtime);

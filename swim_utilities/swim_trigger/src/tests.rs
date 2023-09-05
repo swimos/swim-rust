@@ -125,7 +125,7 @@ fn drop_after_pending() {
 async fn trigger_threaded() {
     let (tx, rx) = super::trigger();
 
-    let rx_task = tokio::spawn(async move { rx.await });
+    let rx_task = tokio::spawn(rx);
 
     let tx_task = tokio::spawn(async move { tx.trigger() });
 

@@ -476,7 +476,7 @@ impl<'a> Add<&'a TaggedFieldModel<'a>> for SegregatedFields<'a> {
             }
             FieldKind::Body => {
                 if let BodyFields::StdBody(slots) = body {
-                    header.header_fields.extend(slots.into_iter());
+                    header.header_fields.extend(slots);
                     body = BodyFields::ReplacedBody(model);
                 }
             }
