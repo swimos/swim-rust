@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::future::Future;
+use std::hash::Hash;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -23,22 +25,27 @@ use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use ratchet::{Message, NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
 use tokio::io::{duplex, AsyncWriteExt};
+use tokio::spawn;
 use tokio::sync::mpsc::unbounded_channel;
-use tokio::sync::{mpsc, oneshot, Notify};
+use tokio::sync::{mpsc, oneshot, Mutex, Notify};
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
-use crate::error::{DownlinkErrorKind, DownlinkRuntimeError};
-use crate::models::RemotePath;
-use crate::runtime::{start_runtime, RawHandle};
-use crate::transport::{Transport, TransportHandle};
 use fixture::{MockClientConnections, MockWs, Server, WsAction};
 use swim_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
 use swim_api::error::DownlinkTaskError;
-use swim_downlink::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
-use swim_downlink::{DownlinkTask, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation};
+use swim_api::protocol::map::MapMessage;
+use swim_downlink::lifecycle::{
+    BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle, MapDownlinkLifecycle,
+    ValueDownlinkLifecycle,
+};
+use swim_downlink::{
+    DownlinkTask, MapDownlinkHandle, MapDownlinkModel, NotYetSyncedError, ValueDownlinkModel,
+    ValueDownlinkOperation,
+};
+use swim_form::Form;
 use swim_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
 use swim_model::address::{Address, RelativeAddress};
 use swim_model::Text;
@@ -47,8 +54,13 @@ use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use swim_runtime::net::{Scheme, SchemeHostPort};
 use swim_runtime::ws::RatchetError;
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
-use swim_utilities::non_zero_usize;
-use swim_utilities::trigger::{promise, trigger, Sender};
+use swim_utilities::trigger::{promise, trigger};
+use swim_utilities::{non_zero_usize, trigger};
+
+use crate::error::{DownlinkErrorKind, DownlinkRuntimeError};
+use crate::models::RemotePath;
+use crate::runtime::{start_runtime, RawHandle};
+use crate::transport::{Transport, TransportHandle};
 
 async fn get_value<T>(tx: mpsc::Sender<ValueDownlinkOperation<T>>) -> Result<T, NotYetSyncedError>
 where
@@ -63,11 +75,10 @@ where
 
 #[tokio::test]
 async fn transport_opens_connection_ok() {
-    let peer = SchemeHostPort::new(Scheme::Ws, "127.0.0.1".to_string(), 9001);
-    let sock: SocketAddr = "127.0.0.1:9001".parse().unwrap();
+    let peer = SchemeHostPort::new(Scheme::Ws, "127.0.0.1".to_string(), 80);
+    let sock: SocketAddr = "127.0.0.1:80".parse().unwrap();
     let (client, server) = duplex(128);
-    let ext =
-        MockClientConnections::new([(("127.0.0.1".to_string(), 9001), sock)], [(sock, client)]);
+    let ext = MockClientConnections::new([(("127.0.0.1".to_string(), 80), sock)], [(sock, client)]);
     let ws = MockWs::new([("127.0.0.1".to_string(), WsAction::Open)]);
     let transport = Transport::new(ext, ws, non_zero_usize!(128), Duration::from_secs(5));
 
@@ -92,7 +103,7 @@ async fn transport_opens_connection_ok() {
     attach
         .send(AttachClient::AttachDownlink {
             downlink_id: Uuid::nil(),
-            path: RelativeAddress::new(Text::new("node"), Text::new("lane")),
+            path: RelativeAddress::new(Text::new("node"), Text::new("value_lane")),
             sender: byte_tx1,
             receiver: byte_rx2,
             done: open_tx,
@@ -107,7 +118,7 @@ async fn transport_opens_connection_ok() {
         .encode(
             RequestMessage::<Text, String>::link(
                 Uuid::nil(),
-                RelativeAddress::new("node".into(), "lane".into()),
+                RelativeAddress::new("node".into(), "value_lane".into()),
             ),
             &mut buf,
         )
@@ -129,7 +140,7 @@ async fn transport_opens_connection_ok() {
     let message = ws_server.read(&mut buf).await.unwrap();
     assert_eq!(message, Message::Text);
     let link_message = std::str::from_utf8(buf.as_ref()).unwrap();
-    assert_eq!(link_message, "@link(node:node,lane:lane)");
+    assert_eq!(link_message, "@link(node:node,lane:value_lane)");
 
     let (opened_sock, attach_2) = handle
         .connection_for(Scheme::Ws, "127.0.0.1".to_string(), vec![sock])
@@ -141,13 +152,12 @@ async fn transport_opens_connection_ok() {
 
 #[tokio::test]
 async fn transport_opens_connection_err() {
-    let peer = SchemeHostPort::new(Scheme::Ws, "127.0.0.1".to_string(), 9001);
-    let sock: SocketAddr = "127.0.0.1:9001".parse().unwrap();
+    let peer = SchemeHostPort::new(Scheme::Ws, "127.0.0.1".to_string(), 80);
+    let sock: SocketAddr = "127.0.0.1:80".parse().unwrap();
     let (client, _server) = duplex(128);
-    let ext =
-        MockClientConnections::new([(("127.0.0.1".to_string(), 9001), sock)], [(sock, client)]);
+    let ext = MockClientConnections::new([(("127.0.0.1".to_string(), 80), sock)], [(sock, client)]);
     let ws = MockWs::new([(
-        "127.0.0.1".to_string(),
+        "ws://127.0.0.1".to_string(),
         WsAction::fail(|| RatchetError::from(ratchet::Error::new(ratchet::ErrorKind::Http))),
     )]);
     let transport = Transport::new(ext, ws, non_zero_usize!(128), Duration::from_secs(5));
@@ -168,19 +178,19 @@ async fn transport_opens_connection_err() {
     assert!(actual_err.downcast_ref::<RatchetError>().is_some());
 }
 
-struct TrackingDownlink<LC> {
+struct TrackingValueDownlink<LC> {
     spawned: Arc<Notify>,
     stopped: Arc<Notify>,
     inner: DownlinkTask<ValueDownlinkModel<i32, LC>>,
 }
 
-impl<LC> TrackingDownlink<LC> {
+impl<LC> TrackingValueDownlink<LC> {
     fn new(
         spawned: Arc<Notify>,
         stopped: Arc<Notify>,
         inner: ValueDownlinkModel<i32, LC>,
-    ) -> TrackingDownlink<LC> {
-        TrackingDownlink {
+    ) -> TrackingValueDownlink<LC> {
+        TrackingValueDownlink {
             spawned,
             stopped,
             inner: DownlinkTask::new(inner),
@@ -188,7 +198,7 @@ impl<LC> TrackingDownlink<LC> {
     }
 }
 
-impl<LC> Downlink for TrackingDownlink<LC>
+impl<LC> Downlink for TrackingValueDownlink<LC>
 where
     LC: ValueDownlinkLifecycle<i32> + 'static,
 {
@@ -203,7 +213,67 @@ where
         input: ByteReader,
         output: ByteWriter,
     ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
-        let TrackingDownlink {
+        let TrackingValueDownlink {
+            spawned,
+            stopped,
+            inner,
+        } = self;
+        let task = async move {
+            spawned.notify_one();
+            let result = inner.run(path, config, input, output).await;
+            stopped.notify_one();
+            result
+        };
+        Box::pin(task)
+    }
+
+    fn run_boxed(
+        self: Box<Self>,
+        path: Address<Text>,
+        config: DownlinkConfig,
+        input: ByteReader,
+        output: ByteWriter,
+    ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
+        (*self).run(path, config, input, output)
+    }
+}
+
+struct TrackingMapDownlink<LC> {
+    spawned: Arc<Notify>,
+    stopped: Arc<Notify>,
+    inner: DownlinkTask<MapDownlinkModel<i32, i32, LC>>,
+}
+
+impl<LC> TrackingMapDownlink<LC> {
+    fn new(
+        spawned: Arc<Notify>,
+        stopped: Arc<Notify>,
+        inner: MapDownlinkModel<i32, i32, LC>,
+    ) -> TrackingMapDownlink<LC> {
+        TrackingMapDownlink {
+            spawned,
+            stopped,
+            inner: DownlinkTask::new(inner),
+        }
+    }
+}
+
+impl<LC> Downlink for TrackingMapDownlink<LC>
+where
+    LC: MapDownlinkLifecycle<i32, i32> + 'static,
+{
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Map
+    }
+
+    fn run(
+        self,
+        path: Address<Text>,
+        config: DownlinkConfig,
+        input: ByteReader,
+        output: ByteWriter,
+    ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
+        let TrackingMapDownlink {
             spawned,
             stopped,
             inner,
@@ -229,7 +299,7 @@ where
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum TestMessage<T> {
+enum ValueTestMessage<T> {
     Linked,
     Synced(T),
     Event(T),
@@ -237,44 +307,88 @@ enum TestMessage<T> {
     Unlinked,
 }
 
-fn default_lifecycle<T>(tx: mpsc::UnboundedSender<TestMessage<T>>) -> impl ValueDownlinkLifecycle<T>
+fn value_lifecycle<T>(
+    tx: mpsc::UnboundedSender<ValueTestMessage<T>>,
+) -> impl ValueDownlinkLifecycle<T>
 where
     T: Clone + Send + Sync + 'static,
 {
     BasicValueDownlinkLifecycle::<T>::default()
         .with(tx)
         .on_linked_blocking(|tx| {
-            assert!(tx.send(TestMessage::Linked).is_ok());
+            assert!(tx.send(ValueTestMessage::Linked).is_ok());
         })
         .on_synced_blocking(|tx, v| {
-            assert!(tx.send(TestMessage::Synced(v.clone())).is_ok());
+            assert!(tx.send(ValueTestMessage::Synced(v.clone())).is_ok());
         })
         .on_event_blocking(|tx, v| {
-            assert!(tx.send(TestMessage::Event(v.clone())).is_ok());
+            assert!(tx.send(ValueTestMessage::Event(v.clone())).is_ok());
         })
         .on_set_blocking(|tx, before, after| {
             assert!(tx
-                .send(TestMessage::Set(before.cloned(), after.clone()))
+                .send(ValueTestMessage::Set(before.cloned(), after.clone()))
                 .is_ok());
         })
         .on_unlinked_blocking(|tx| {
-            assert!(tx.send(TestMessage::Unlinked).is_ok());
+            assert!(tx.send(ValueTestMessage::Unlinked).is_ok());
         })
 }
 
-struct DownlinkContext {
+#[derive(Debug, PartialEq, Eq)]
+enum MapTestMessage<K, V> {
+    Linked,
+    Synced(BTreeMap<K, V>),
+    Event(MapMessage<K, V>),
+    Unlinked,
+}
+
+fn map_lifecycle<K, V>(
+    tx: mpsc::UnboundedSender<MapTestMessage<K, V>>,
+) -> impl MapDownlinkLifecycle<K, V>
+where
+    K: Ord + Clone + Form + Send + Sync + Eq + Hash + 'static,
+    V: Clone + Form + Send + Sync + 'static,
+{
+    BasicMapDownlinkLifecycle::<K, V>::default()
+        .with(tx)
+        .on_linked_blocking(|tx| {
+            assert!(tx.send(MapTestMessage::Linked).is_ok());
+        })
+        .on_synced_blocking(|tx, map| {
+            assert!(tx.send(MapTestMessage::Synced(map.clone())).is_ok());
+        })
+        .on_update_blocking(|tx, key, _, _, new_value| {
+            let value: V = new_value.clone();
+            assert!(tx
+                .send(MapTestMessage::Event(MapMessage::Update { key, value }))
+                .is_ok());
+        })
+        .on_removed_blocking(|tx, key, _, _| {
+            assert!(tx
+                .send(MapTestMessage::Event(MapMessage::Remove { key }))
+                .is_ok());
+        })
+        .on_clear_blocking(|tx, _| {
+            assert!(tx.send(MapTestMessage::Event(MapMessage::Clear)).is_ok());
+        })
+        .on_unlink_blocking(|tx| {
+            assert!(tx.send(MapTestMessage::Unlinked).is_ok());
+        })
+}
+
+struct ValueDownlinkContext {
     handle: RawHandle,
     spawned: Arc<Notify>,
     stopped: Arc<Notify>,
     handle_tx: mpsc::Sender<ValueDownlinkOperation<i32>>,
     server: Server,
     promise: promise::Receiver<Result<(), DownlinkRuntimeError>>,
-    stop_tx: Sender,
+    stop_tx: trigger::Sender,
 }
 
 struct Fixture {
     handle: RawHandle,
-    stop_tx: Sender,
+    stop_tx: trigger::Sender,
     server: Server,
     _jh: JoinHandle<()>,
 }
@@ -292,6 +406,7 @@ fn start() -> Fixture {
         stop_rx,
         Transport::new(ext, ws, non_zero_usize!(128), Duration::from_secs(5)),
         non_zero_usize!(32),
+        true,
     );
 
     Fixture {
@@ -302,10 +417,10 @@ fn start() -> Fixture {
     }
 }
 
-async fn test_downlink<LC, F, Fut>(lifecycle: LC, test: F)
+async fn run_value_downlink<LC, F, Fut>(lifecycle: LC, test: F)
 where
     LC: ValueDownlinkLifecycle<i32> + Send + Sync + 'static,
-    F: FnOnce(DownlinkContext) -> Fut,
+    F: FnOnce(ValueDownlinkContext) -> Fut,
     Fut: Future,
 {
     let Fixture {
@@ -314,14 +429,14 @@ where
         server,
         _jh,
     } = start();
-    let TrackingContext {
+    let TrackingValueContext {
         spawned,
         stopped,
         handle_tx,
         promise,
-    } = tracking_downlink(&handle, lifecycle, DownlinkRuntimeConfig::default()).await;
+    } = tracking_value_downlink(&handle, lifecycle, DownlinkRuntimeConfig::default()).await;
 
-    let context = DownlinkContext {
+    let context = ValueDownlinkContext {
         handle,
         spawned,
         stopped,
@@ -336,7 +451,7 @@ where
 #[tokio::test]
 async fn spawns_downlink() {
     let (msg_tx, _msg_rx) = unbounded_channel();
-    test_downlink(default_lifecycle(msg_tx), |ctx| async move {
+    run_value_downlink(value_lifecycle(msg_tx), |ctx| async move {
         ctx.spawned.notified().await;
     })
     .await;
@@ -345,8 +460,8 @@ async fn spawns_downlink() {
 #[tokio::test]
 async fn stops_on_disconnect() {
     let (msg_tx, _msg_rx) = unbounded_channel();
-    test_downlink(default_lifecycle(msg_tx), |ctx| async move {
-        let DownlinkContext {
+    run_value_downlink(value_lifecycle(msg_tx), |ctx| async move {
+        let ValueDownlinkContext {
             handle: _raw,
             stop_tx: _stop_tx,
             spawned,
@@ -365,27 +480,27 @@ async fn stops_on_disconnect() {
 }
 
 #[tokio::test]
-async fn lifecycle() {
+async fn test_value_lifecycle() {
     let (msg_tx, mut msg_rx) = unbounded_channel();
-    test_downlink(default_lifecycle(msg_tx), |ctx| async move {
-        let DownlinkContext {
+    run_value_downlink(value_lifecycle(msg_tx), |ctx| async move {
+        let ValueDownlinkContext {
             handle: _raw,
             spawned,
             stopped,
             handle_tx,
-            mut server,
+            server,
             promise,
             stop_tx,
         } = ctx;
         spawned.notified().await;
 
-        let mut lane = server.lane_for("node", "lane");
+        let mut lane = Server::lane_for(Arc::new(Mutex::new(server)), "node", "value_lane");
 
         lane.await_link().await;
-        assert_eq!(msg_rx.recv().await.unwrap(), TestMessage::Linked);
+        assert_eq!(msg_rx.recv().await.unwrap(), ValueTestMessage::Linked);
 
-        lane.await_sync(7).await;
-        assert_eq!(msg_rx.recv().await.unwrap(), TestMessage::Synced(7));
+        lane.await_sync(vec![7]).await;
+        assert_eq!(msg_rx.recv().await.unwrap(), ValueTestMessage::Synced(7));
 
         assert_eq!(get_value(handle_tx.clone()).await.unwrap(), 7);
 
@@ -397,7 +512,7 @@ async fn lifecycle() {
         lane.await_command(13).await;
 
         lane.send_unlinked().await;
-        assert_eq!(msg_rx.recv().await.unwrap(), TestMessage::Unlinked);
+        assert_eq!(msg_rx.recv().await.unwrap(), ValueTestMessage::Unlinked);
 
         assert!(stop_tx.trigger());
         lane.await_closed().await;
@@ -409,11 +524,11 @@ async fn lifecycle() {
     .await;
 }
 
-async fn tracking_downlink<LC>(
+async fn tracking_value_downlink<LC>(
     handle: &RawHandle,
     lifecycle: LC,
     config: DownlinkRuntimeConfig,
-) -> TrackingContext
+) -> TrackingValueContext
 where
     LC: ValueDownlinkLifecycle<i32> + Send + Sync + 'static,
 {
@@ -422,7 +537,7 @@ where
 
     let (handle_tx, handle_rx) = mpsc::channel(128);
 
-    let downlink = TrackingDownlink::new(
+    let downlink = TrackingValueDownlink::new(
         spawned.clone(),
         stopped.clone(),
         ValueDownlinkModel::new(handle_rx, lifecycle),
@@ -430,7 +545,7 @@ where
 
     let promise = handle
         .run_downlink(
-            RemotePath::new("ws://127.0.0.1", "node", "lane"),
+            RemotePath::new("ws://127.0.0.1", "node", "value_lane"),
             config,
             Default::default(),
             DownlinkOptions::SYNC,
@@ -439,7 +554,7 @@ where
         .await
         .expect("Failed to spawn downlink open request");
 
-    TrackingContext {
+    TrackingValueContext {
         spawned,
         stopped,
         handle_tx,
@@ -447,10 +562,55 @@ where
     }
 }
 
-struct TrackingContext {
+async fn tracking_map_downlink<LC>(
+    handle: &RawHandle,
+    lifecycle: LC,
+    config: DownlinkRuntimeConfig,
+) -> TrackingMapContext
+where
+    LC: MapDownlinkLifecycle<i32, i32> + Send + Sync + 'static,
+{
+    let spawned = Arc::new(Notify::new());
+    let stopped = Arc::new(Notify::new());
+
+    let (set_tx, set_rx) = mpsc::channel(128);
+
+    let downlink = TrackingMapDownlink::new(
+        spawned.clone(),
+        stopped.clone(),
+        MapDownlinkModel::new(set_rx, lifecycle, false),
+    );
+
+    let promise = handle
+        .run_downlink(
+            RemotePath::new("ws://127.0.0.1", "node", "map_lane"),
+            config,
+            Default::default(),
+            DownlinkOptions::SYNC,
+            downlink,
+        )
+        .await
+        .expect("Failed to spawn downlink open request");
+
+    TrackingMapContext {
+        spawned,
+        stopped,
+        tx: MapDownlinkHandle::new(set_tx),
+        promise,
+    }
+}
+
+struct TrackingValueContext {
     spawned: Arc<Notify>,
     stopped: Arc<Notify>,
     handle_tx: mpsc::Sender<ValueDownlinkOperation<i32>>,
+    promise: promise::Receiver<Result<(), DownlinkRuntimeError>>,
+}
+
+struct TrackingMapContext {
+    spawned: Arc<Notify>,
+    stopped: Arc<Notify>,
+    tx: MapDownlinkHandle<i32, i32>,
     promise: promise::Receiver<Result<(), DownlinkRuntimeError>>,
 }
 
@@ -465,21 +625,24 @@ async fn failed_handshake() {
         WsAction::fail(|| RatchetError::from(ratchet::Error::new(ratchet::ErrorKind::Http))),
     )]);
 
-    let (_stop_tx, stop_rx) = trigger();
+    let (_stop_tx, stop_rx) = trigger::trigger();
+
     let (handle, task) = start_runtime(
-        non_zero_usize!(128),
+        non_zero_usize!(32),
         stop_rx,
         Transport::new(ext, ws, non_zero_usize!(128), Duration::from_secs(5)),
         non_zero_usize!(32),
+        true,
     );
-    let _jh = tokio::spawn(task);
+
+    let _task = spawn(task);
 
     let spawned = Arc::new(Notify::new());
     let stopped = Arc::new(Notify::new());
 
     let (_handle_tx, handle_rx) = mpsc::channel(128);
 
-    let downlink = TrackingDownlink::new(
+    let downlink = TrackingValueDownlink::new(
         spawned.clone(),
         stopped.clone(),
         ValueDownlinkModel::new(handle_rx, BasicValueDownlinkLifecycle::default()),
@@ -487,15 +650,117 @@ async fn failed_handshake() {
 
     let promise = handle
         .run_downlink(
-            RemotePath::new("ws://127.0.0.1", "node", "lane"),
+            RemotePath::new("ws://127.0.0.1", "node", "value_lane"),
             Default::default(),
             Default::default(),
             DownlinkOptions::SYNC,
             downlink,
         )
         .await;
+
     assert!(promise.is_err());
     let actual_err = promise.unwrap_err();
     assert!(actual_err.is(DownlinkErrorKind::WebsocketNegotiationFailed));
     assert!(actual_err.downcast_ref::<RatchetError>().is_some());
+}
+
+async fn expect_event<T>(event_rx: &mut mpsc::UnboundedReceiver<T>, expected: T)
+where
+    T: Eq + Debug,
+{
+    assert_eq!(event_rx.recv().await, Some(expected))
+}
+
+#[tokio::test]
+async fn disjoint_lanes() {
+    let Fixture {
+        handle,
+        stop_tx: _stop,
+        server,
+        _jh,
+    } = start();
+    let (value_msg_tx, mut value_msg_rx) = unbounded_channel();
+
+    let TrackingValueContext {
+        spawned: value_spawned,
+        stopped: value_stopped,
+        handle_tx: _handle,
+        promise: value_promise,
+    } = tracking_value_downlink(
+        &handle,
+        value_lifecycle(value_msg_tx),
+        DownlinkRuntimeConfig::default(),
+    )
+    .await;
+
+    let (map_msg_tx, mut map_msg_rx) = unbounded_channel();
+
+    let TrackingMapContext {
+        spawned: map_spawned,
+        stopped: map_stopped,
+        tx: _map_tx,
+        promise: map_promise,
+    } = tracking_map_downlink(
+        &handle,
+        map_lifecycle(map_msg_tx),
+        DownlinkRuntimeConfig::default(),
+    )
+    .await;
+
+    let server = Arc::new(Mutex::new(server));
+    let mut value_lane = Server::lane_for(server.clone(), "node", "value_lane");
+    let mut map_lane = Server::lane_for(server, "node", "map_lane");
+
+    {
+        value_spawned.notified().await;
+        value_lane.await_link().await;
+        expect_event(&mut value_msg_rx, ValueTestMessage::Linked).await;
+
+        value_lane.await_sync(vec![13]).await;
+        expect_event(&mut value_msg_rx, ValueTestMessage::Synced(13)).await;
+
+        value_lane.send_event(14).await;
+        expect_event(&mut value_msg_rx, ValueTestMessage::Event(14)).await;
+    }
+    {
+        map_spawned.notified().await;
+        let map_init = BTreeMap::from([(1, 1), (2, 2), (3, 3)]);
+
+        map_lane.await_link().await;
+        expect_event(&mut map_msg_rx, MapTestMessage::Linked).await;
+
+        let messages = map_init
+            .iter()
+            .map(|(key, value)| MapMessage::Update {
+                key: *key,
+                value: *value,
+            })
+            .collect::<Vec<_>>();
+
+        map_lane.await_sync(messages).await;
+        expect_event(&mut map_msg_rx, MapTestMessage::Synced(map_init)).await;
+
+        map_lane
+            .send_event(MapMessage::Update { key: 13, value: 13 })
+            .await;
+        expect_event(
+            &mut map_msg_rx,
+            MapTestMessage::Event(MapMessage::Update { key: 13, value: 13 }),
+        )
+        .await;
+    }
+
+    drop(value_lane);
+    drop(map_lane);
+
+    value_stopped.notified().await;
+    map_stopped.notified().await;
+
+    let value_result = value_promise.await;
+    assert!(value_result.is_ok());
+    assert!(value_result.unwrap().is_ok());
+
+    let map_result = map_promise.await;
+    assert!(map_result.is_ok());
+    assert!(map_result.unwrap().is_ok());
 }

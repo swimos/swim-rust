@@ -103,10 +103,7 @@ pub async fn run_lane_initializer(tx: &mut ByteWriter, rx: &mut ByteReader) {
     if stream.next().await.is_some() {
         panic!("Unexpected initial value.")
     } else {
-        let mut writer = FramedWrite::new(
-            tx,
-            LaneResponseEncoder::new(WithLengthBytesCodec::default()),
-        );
+        let mut writer = FramedWrite::new(tx, LaneResponseEncoder::new(WithLengthBytesCodec));
         writer
             .send(LaneResponse::<BytesMut>::Initialized)
             .await
@@ -115,10 +112,7 @@ pub async fn run_lane_initializer(tx: &mut ByteWriter, rx: &mut ByteReader) {
 }
 
 fn init_stream(reader: &mut ByteReader) -> impl Stream<Item = BytesMut> + '_ {
-    let framed = FramedRead::new(
-        reader,
-        LaneRequestDecoder::new(WithLengthBytesCodec::default()),
-    );
+    let framed = FramedRead::new(reader, LaneRequestDecoder::new(WithLengthBytesCodec));
     unfold(Some(framed), |maybe_framed| async move {
         if let Some(mut framed) = maybe_framed {
             match framed.next().await {

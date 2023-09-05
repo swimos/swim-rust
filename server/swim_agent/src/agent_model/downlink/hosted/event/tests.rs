@@ -211,7 +211,7 @@ async fn event_dl_shutdown_when_input_stops() {
         mut channel,
         sender,
         stop_tx: _stop_tx,
-        ..
+        events: _events,
     } = make_hosted_input(SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
@@ -229,7 +229,7 @@ async fn event_dl_shutdown_on_stop_signal() {
         mut channel,
         sender: _sender,
         stop_tx,
-        ..
+        events: _events,
     } = make_hosted_input(SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;
@@ -248,7 +248,6 @@ async fn event_dl_terminate_on_error() {
         mut sender,
         events,
         stop_tx: _stop_tx,
-        ..
     } = make_hosted_input(SimpleDownlinkConfig::default());
 
     let agent = FakeAgent;

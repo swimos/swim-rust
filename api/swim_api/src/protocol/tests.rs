@@ -54,7 +54,7 @@ fn recognizer_decode_with_len_fails_on_overrun() {
 
 #[test]
 fn encode_recon_with_length() {
-    let mut encoder = WithLenReconEncoder::default();
+    let mut encoder = WithLenReconEncoder;
     let mut buffer = BytesMut::new();
 
     assert!(encoder.encode(Text::new("hello"), &mut buffer).is_ok());
