@@ -27,9 +27,11 @@ use swim_utilities::routing::route_uri::RouteUri;
 use tokio_util::codec::Decoder;
 
 use crate::{
-    agent_lifecycle::item_event::{tests::run_handler, DemandBranch, DemandLeaf, HLeaf, ItemEvent},
+    agent_lifecycle::item_event::{
+        tests::run_handler_expect_mod, DemandBranch, DemandLeaf, HLeaf, ItemEvent,
+    },
     agent_model::WriteResult,
-    event_handler::{ActionContext, HandlerAction, StepResult},
+    event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     lanes::{
         demand::{lifecycle::on_cue::OnCue, DemandLane},
         LaneItem,
@@ -159,7 +161,12 @@ fn demand_lane_leaf() {
     assert!(leaf.item_event(&agent, "other").is_none());
 
     if let Some(handler) = leaf.item_event(&agent, FIRST_NAME) {
-        run_handler(meta, &agent, handler);
+        run_handler_expect_mod(
+            meta,
+            &agent,
+            Some(Modification::no_trigger(LANE_ID1)),
+            handler,
+        );
         let guard = lifecycle.state.lock();
         let LifecycleState { cued } = *guard;
         assert!(cued);
@@ -218,7 +225,12 @@ fn demand_lane_left_branch() {
     agent.second.cue();
 
     if let Some(handler) = branch.item_event(&agent, FIRST_NAME) {
-        run_handler(meta, &agent, handler);
+        run_handler_expect_mod(
+            meta,
+            &agent,
+            Some(Modification::no_trigger(LANE_ID1)),
+            handler,
+        );
 
         let guard = first_lifecycle.state.lock();
         let LifecycleState { cued } = *guard;
@@ -230,7 +242,12 @@ fn demand_lane_left_branch() {
     }
 
     if let Some(handler) = branch.item_event(&agent, SECOND_NAME) {
-        run_handler(meta, &agent, handler);
+        run_handler_expect_mod(
+            meta,
+            &agent,
+            Some(Modification::no_trigger(LANE_ID2)),
+            handler,
+        );
 
         let guard = second_lifecycle.state.lock();
         let LifecycleState { cued } = *guard;
@@ -270,7 +287,12 @@ fn demand_lane_right_branch() {
     agent.second.cue();
 
     if let Some(handler) = branch.item_event(&agent, FIRST_NAME) {
-        run_handler(meta, &agent, handler);
+        run_handler_expect_mod(
+            meta,
+            &agent,
+            Some(Modification::no_trigger(LANE_ID1)),
+            handler,
+        );
 
         let guard = first_lifecycle.state.lock();
         let LifecycleState { cued } = *guard;
@@ -282,7 +304,12 @@ fn demand_lane_right_branch() {
     }
 
     if let Some(handler) = branch.item_event(&agent, SECOND_NAME) {
-        run_handler(meta, &agent, handler);
+        run_handler_expect_mod(
+            meta,
+            &agent,
+            Some(Modification::no_trigger(LANE_ID2)),
+            handler,
+        );
 
         let guard = second_lifecycle.state.lock();
         let LifecycleState { cued } = *guard;
@@ -326,7 +353,12 @@ fn demand_lane_two_branches() {
     agent.third.cue();
 
     if let Some(handler) = branch.item_event(&agent, FIRST_NAME) {
-        run_handler(meta, &agent, handler);
+        run_handler_expect_mod(
+            meta,
+            &agent,
+            Some(Modification::no_trigger(LANE_ID1)),
+            handler,
+        );
 
         let guard = first_lifecycle.state.lock();
         let LifecycleState { cued } = *guard;
@@ -338,7 +370,12 @@ fn demand_lane_two_branches() {
     }
 
     if let Some(handler) = branch.item_event(&agent, SECOND_NAME) {
-        run_handler(meta, &agent, handler);
+        run_handler_expect_mod(
+            meta,
+            &agent,
+            Some(Modification::no_trigger(LANE_ID2)),
+            handler,
+        );
 
         let guard = second_lifecycle.state.lock();
         let LifecycleState { cued } = *guard;
@@ -350,7 +387,12 @@ fn demand_lane_two_branches() {
     }
 
     if let Some(handler) = branch.item_event(&agent, THIRD_NAME) {
-        run_handler(meta, &agent, handler);
+        run_handler_expect_mod(
+            meta,
+            &agent,
+            Some(Modification::no_trigger(LANE_ID3)),
+            handler,
+        );
 
         let guard = third_lifecycle.state.lock();
         let LifecycleState { cued } = *guard;
