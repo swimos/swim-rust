@@ -120,12 +120,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             no_handler
         };
 
-        let val_lane_specs = value_item_models
-            .iter()
-            .map(|model| LaneSpecInsert(model.model))
-            .map(|insert| insert.into_tokens(root));
-
-        let map_lane_specs = map_item_models
+        let item_specs = item_models
             .iter()
             .map(|model| LaneSpecInsert(model.model))
             .map(|insert| insert.into_tokens(root));
@@ -203,15 +198,9 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
                 type HttpRequestHandler = #http_handler;
 
-                fn value_like_item_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
+                fn item_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
                     let mut lanes = ::std::collections::HashMap::new();
-                    #(#val_lane_specs;)*
-                    lanes
-                }
-
-                fn map_like_item_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
-                    let mut lanes = ::std::collections::HashMap::new();
-                    #(#map_lane_specs;)*
+                    #(#item_specs;)*
                     lanes
                 }
 
@@ -778,17 +767,45 @@ struct LaneSpecInsert<'a>(ItemModel<'a>);
 impl<'a> LaneSpecInsert<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let LaneSpecInsert(model) = self;
-        let lane_name = model.literal();
-        let kind = match model.item_kind() {
-            ItemKind::Lane => quote!(#root::agent_model::ItemKind::Lane),
-            ItemKind::Store => quote!(#root::agent_model::ItemKind::Store),
+
+        let item_kind = match model.kind {
+            ItemSpec::Command(_) => {
+                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::Command))
+            }
+            ItemSpec::Value(ItemKind::Store, _) => {
+                quote!(#root::agent_model::ItemKind::Store(#root::agent_model::StoreKind::Value))
+            }
+            ItemSpec::Value(ItemKind::Lane, _) => {
+                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::Value))
+            }
+            ItemSpec::Map(ItemKind::Store, _, _) => {
+                quote!(#root::agent_model::ItemKind::Store(#root::agent_model::StoreKind::Map))
+            }
+            ItemSpec::Map(ItemKind::Lane, _, _) => {
+                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::Map))
+            }
+            ItemSpec::JoinValue(_, _) => {
+                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::JoinValue))
+            }
+            ItemSpec::Demand(_) => {
+                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::Demand))
+            }
+            ItemSpec::DemandMap(_, _) => {
+                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::DemandMap))
+            }
+            ItemSpec::Http(_) => {
+                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::Http))
+            }
         };
+
+        let lane_name = model.literal();
         let flags = if model.is_stateful() {
             quote!(#root::agent_model::ItemFlags::empty())
         } else {
             quote!(#root::agent_model::ItemFlags::TRANSIENT)
         };
-        quote!(::std::collections::HashMap::insert(&mut lanes, #lane_name, #root::agent_model::ItemSpec::new(#kind, #flags)))
+
+        quote!(::std::collections::HashMap::insert(&mut lanes, #lane_name, #root::agent_model::ItemSpec::new(#item_kind, #flags)))
     }
 }
 

@@ -343,5 +343,5 @@ fn calculate_body_kind() {
         RecordBodyKind::of_iter(mixed.iter()),
         Some(RecordBodyKind::Mixed)
     );
-    assert_eq!(RecordBodyKind::of_iter(vec![].iter()), None);
+    assert_eq!(RecordBodyKind::of_iter([].iter()), None);
 }

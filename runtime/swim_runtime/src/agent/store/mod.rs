@@ -14,6 +14,7 @@
 
 use bytes::BytesMut;
 use futures::{future::BoxFuture, FutureExt, SinkExt};
+use std::fmt::Debug;
 use swim_api::{
     error::StoreError,
     protocol::{
@@ -149,7 +150,7 @@ pub type BoxInitializer<'a> = Box<dyn Initializer<'a> + Send + 'a>;
 /// Operations required by an agent to interact with a store of the state of its lanes.
 pub trait AgentPersistence {
     /// Type of IDs assigned to the names of the items of the agent.
-    type StoreId: Copy + Unpin + Send + Sync + Eq + 'static;
+    type StoreId: Debug + Copy + Unpin + Send + Sync + Eq + 'static;
 
     /// Attempt to get the ID associated with a store name.
     fn store_id(&self, name: &str) -> Result<Self::StoreId, StoreError>;

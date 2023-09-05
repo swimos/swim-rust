@@ -7,12 +7,12 @@ use ratchet::{
     WebSocketConfig,
 };
 use std::borrow::BorrowMut;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::ops::DerefMut;
+use std::sync::Arc;
 use swim_api::net::Scheme;
 use swim_form::Form;
 use swim_model::{Text, Value};
@@ -26,6 +26,7 @@ use swim_remote::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFutu
 use swim_remote::FindNode;
 use tokio::io::{AsyncRead, AsyncWrite, DuplexStream};
 use tokio::sync::mpsc;
+use tokio::sync::Mutex;
 
 #[derive(Debug)]
 struct Inner {
@@ -72,14 +73,15 @@ impl ClientConnections for MockClientConnections {
         _host: Option<&str>,
         addr: SocketAddr,
     ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
-        let result = self
-            .inner
-            .lock()
-            .unwrap()
-            .sockets
-            .remove(&addr)
-            .ok_or_else(|| ConnectionError::ConnectionFailed(ErrorKind::NotFound.into()));
-        ready(result).boxed()
+        async move {
+            self.inner
+                .lock()
+                .await
+                .sockets
+                .remove(&addr)
+                .ok_or_else(|| ConnectionError::ConnectionFailed(ErrorKind::NotFound.into()))
+        }
+        .boxed()
     }
 
     fn dns_resolver(&self) -> BoxDnsResolver {
@@ -95,11 +97,14 @@ impl DnsResolver for MockClientConnections {
     type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
     fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {
-        let result = match self.inner.lock().unwrap().addrs.get(&(host, port)) {
-            Some(sock) => Ok(vec![*sock]),
-            None => Err(io::ErrorKind::NotFound.into()),
-        };
-        ready(result).boxed()
+        let inner = self.inner.clone();
+        async move {
+            match inner.lock().await.addrs.get(&(host, port)) {
+                Some(sock) => Ok(vec![*sock]),
+                None => Err(io::ErrorKind::NotFound.into()),
+            }
+        }
+        .boxed()
     }
 }
 
@@ -262,18 +267,19 @@ pub enum Envelope {
     },
 }
 
-pub struct Lane<'l> {
+pub struct Lane {
     node: String,
     lane: String,
-    server: RefCell<&'l mut Server>,
+    server: Arc<Mutex<Server>>,
 }
 
-impl<'l> Lane<'l> {
+impl Lane {
     pub async fn read(&mut self) -> Envelope {
         let Lane { server, .. } = self;
-        let Server { buf, transport } = server.get_mut();
+        let mut guard = server.lock().await;
+        let Server { buf, transport } = &mut guard.deref_mut();
 
-        match transport.borrow_mut().read(buf).await.unwrap() {
+        match transport.read(buf).await.unwrap() {
             Message::Text => {}
             m => panic!("Unexpected message type: {:?}", m),
         }
@@ -285,7 +291,8 @@ impl<'l> Lane<'l> {
 
     pub async fn write(&mut self, env: Envelope) {
         let Lane { server, .. } = self;
-        let Server { transport, .. } = server.get_mut();
+        let mut guard = server.lock().await;
+        let Server { transport, .. } = &mut guard.deref_mut();
 
         let response = print_recon(&env);
         transport
@@ -296,7 +303,8 @@ impl<'l> Lane<'l> {
 
     pub async fn write_bytes(&mut self, msg: &[u8]) {
         let Lane { server, .. } = self;
-        let Server { transport, .. } = server.get_mut();
+        let mut guard = server.lock().await;
+        let Server { transport, .. } = &mut guard.deref_mut();
 
         transport.write(msg, PayloadType::Text).await.unwrap();
     }
@@ -321,19 +329,23 @@ impl<'l> Lane<'l> {
         }
     }
 
-    pub async fn await_sync<V: Into<Value>>(&mut self, val: V) {
+    pub async fn await_sync<V: Form>(&mut self, val: Vec<V>) {
         match self.read().await {
             Envelope::Sync {
                 node_uri, lane_uri, ..
             } => {
                 assert_eq!(node_uri, self.node);
                 assert_eq!(lane_uri, self.lane);
-                self.write(Envelope::Event {
-                    node_uri: node_uri.clone(),
-                    lane_uri: lane_uri.clone(),
-                    body: Some(val.into()),
-                })
-                .await;
+
+                for v in val {
+                    self.write(Envelope::Event {
+                        node_uri: node_uri.clone(),
+                        lane_uri: lane_uri.clone(),
+                        body: Some(v.as_value()),
+                    })
+                    .await;
+                }
+
                 self.write(Envelope::Synced {
                     node_uri: node_uri.clone(),
                     lane_uri: lane_uri.clone(),
@@ -369,18 +381,19 @@ impl<'l> Lane<'l> {
         .await;
     }
 
-    pub async fn send_event<V: Into<Value>>(&mut self, val: V) {
+    pub async fn send_event<V: Form>(&mut self, val: V) {
         self.write(Envelope::Event {
             node_uri: self.node.clone().into(),
             lane_uri: self.lane.clone().into(),
-            body: Some(val.into()),
+            body: Some(val.as_value()),
         })
         .await;
     }
 
     pub async fn await_closed(&mut self) {
         let Lane { server, .. } = self;
-        let Server { buf, transport } = server.get_mut();
+        let mut guard = server.lock().await;
+        let Server { buf, transport } = &mut guard.deref_mut();
 
         match transport.borrow_mut().read(buf).await.unwrap() {
             Message::Close(_) => {}
@@ -395,7 +408,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn lane_for<N, L>(&mut self, node: N, lane: L) -> Lane<'_>
+    pub fn lane_for<N, L>(server: Arc<Mutex<Self>>, node: N, lane: L) -> Lane
     where
         N: ToString,
         L: ToString,
@@ -403,7 +416,7 @@ impl Server {
         Lane {
             node: node.to_string(),
             lane: lane.to_string(),
-            server: RefCell::new(self),
+            server,
         }
     }
 }

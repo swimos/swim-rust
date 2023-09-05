@@ -336,7 +336,7 @@ async fn clean_shutdown(context: &mut TestContext, agent: &FakeAgent, expect_unl
         assert_eq!(take_events(events), vec![Event::Unlinked]);
     }
 
-    assert!(matches!(channel.await_ready().await, None));
+    assert!(channel.await_ready().await.is_none());
 }
 
 #[tokio::test]
@@ -344,7 +344,12 @@ async fn shutdown_when_input_stops() {
     let agent = FakeAgent;
     let mut context = make_hosted_input(&agent, MapDownlinkConfig::default());
     let TestContext {
-        channel, sender, ..
+        channel,
+        sender,
+        events: _events,
+        output_tx: _output_tx,
+        out_rx: _out_rx,
+        stop_tx: _stop_tx,
     } = &mut context;
 
     assert!(channel.next_event(&agent).is_none());
@@ -396,7 +401,7 @@ async fn terminate_on_error() {
     run_handler(handler, &agent);
     assert_eq!(take_events(events), vec![Event::Failed]);
 
-    assert!(matches!(channel.await_ready().await, None));
+    assert!(channel.await_ready().await.is_none());
 }
 
 fn take_events(events: &Events) -> Vec<Event> {

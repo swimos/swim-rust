@@ -73,7 +73,7 @@ fn msgpack_write_err_display() {
     let string = err.to_string();
     assert_eq!(
         string,
-        format!("An error ocurred writing the content: {}", io_string)
+        format!("An error occurred writing the content: {}", io_string)
     );
 }
 

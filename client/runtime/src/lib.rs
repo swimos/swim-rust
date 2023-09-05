@@ -1,4 +1,4 @@
-// Copyright 2015-2021 Swim Inc.
+// Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,6 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Debug;
+use std::num::NonZeroUsize;
+use std::time::Duration;
+
+pub use crate::runtime::{start_runtime, RawHandle};
+pub use commander::{CommandError, Commander};
+pub use error::{DownlinkErrorKind, DownlinkRuntimeError, TimeoutElapsed};
+pub use models::RemotePath;
+#[cfg(feature = "deflate")]
+use ratchet::deflate::DeflateConfig;
+pub use swim_api::downlink::DownlinkKind;
+pub use swim_api::error::DownlinkTaskError;
+use swim_utilities::non_zero_usize;
+pub use transport::Transport;
+
 #[cfg(test)]
 mod tests;
 
@@ -21,19 +36,6 @@ mod models;
 mod pending;
 mod runtime;
 mod transport;
-
-pub use crate::runtime::{start_runtime, RawHandle};
-pub use commander::{CommandError, Commander};
-pub use error::{DownlinkErrorKind, DownlinkRuntimeError, TimeoutElapsed};
-pub use models::RemotePath;
-#[cfg(feature = "deflate")]
-use ratchet::deflate::DeflateConfig;
-use std::num::NonZeroUsize;
-use std::{fmt::Debug, time::Duration};
-pub use swim_api::downlink::DownlinkKind;
-pub use swim_api::error::DownlinkTaskError;
-use swim_utilities::non_zero_usize;
-pub use transport::{Transport, TransportRequest};
 
 const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
 const DEFAULT_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -55,28 +57,25 @@ impl Default for WebSocketConfig {
     }
 }
 
-#[non_exhaustive]
 #[derive(Debug)]
 pub struct ClientConfig {
     pub websocket: WebSocketConfig,
-    #[cfg(feature = "deflate")]
-    pub deflate: Option<DeflateConfig>,
     pub remote_buffer_size: NonZeroUsize,
     pub transport_buffer_size: NonZeroUsize,
     pub registration_buffer_size: NonZeroUsize,
     pub close_timeout: Duration,
+    pub interpret_frame_data: bool,
 }
 
 impl Default for ClientConfig {
     fn default() -> Self {
         ClientConfig {
             websocket: WebSocketConfig::default(),
-            #[cfg(feature = "deflate")]
-            deflate: None,
             remote_buffer_size: non_zero_usize!(4096),
             transport_buffer_size: DEFAULT_BUFFER_SIZE,
             registration_buffer_size: DEFAULT_BUFFER_SIZE,
             close_timeout: DEFAULT_CLOSE_TIMEOUT,
+            interpret_frame_data: true,
         }
     }
 }

@@ -27,7 +27,7 @@ use swim_api::{
     },
 };
 use swim_form::structural::write::StructuralWritable;
-use swim_runtime::agent::reporting::UplinkReportReader;
+use swim_runtime::agent::reporting::{UplinkReportReader, UplinkSnapshot};
 use swim_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     routing::route_uri::RouteUri,
@@ -37,12 +37,13 @@ use thiserror::Error;
 use tokio::time::{Instant, Sleep};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-pub mod lane;
-pub mod node;
 #[cfg(test)]
 mod test_harness;
 #[cfg(test)]
 mod tests;
+
+pub mod lane;
+pub mod node;
 
 const PULSE_LANE: &str = "pulse";
 
@@ -112,9 +113,18 @@ where
     let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(WithLenReconEncoder));
 
     let mut previous = Instant::now();
-    if report_reader.snapshot().is_none() {
-        return Ok(());
-    }
+    let mut accumulate = |report: UplinkSnapshot| {
+        let now = Instant::now();
+        let diff = now.duration_since(previous);
+        previous = now;
+        let uplink_pulse = report.make_pulse(diff);
+        wrap(diff, uplink_pulse)
+    };
+
+    let mut last_pulse = match report_reader.snapshot() {
+        Some(snapshot) => accumulate(snapshot),
+        None => return Ok(()),
+    };
 
     let mut pulses = pin!(pulses);
 
@@ -139,17 +149,17 @@ where
 
         match result.transpose()? {
             Some(LaneRequest::Sync(id)) => {
+                let synced = LaneResponse::SyncEvent(id, &last_pulse);
+                output.send(synced).await?;
+
                 let synced: LaneResponse<PulseType> = LaneResponse::Synced(id);
                 output.send(synced).await?;
             }
             None => {
                 if let Some(report) = report_reader.snapshot() {
-                    let now = Instant::now();
-                    let diff = now.duration_since(previous);
-                    previous = now;
-                    let uplink_pulse = report.make_pulse(diff);
-                    let pulse = wrap(diff, uplink_pulse);
-                    output.send(LaneResponse::StandardEvent(pulse)).await?;
+                    let pulse = accumulate(report);
+                    output.send(LaneResponse::StandardEvent(&pulse)).await?;
+                    last_pulse = pulse;
                 } else {
                     break Ok(());
                 }

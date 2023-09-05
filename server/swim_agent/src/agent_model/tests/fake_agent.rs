@@ -18,6 +18,7 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
+use swim_api::meta::lane::LaneKind;
 use swim_api::{
     agent::HttpLaneRequest,
     protocol::{
@@ -33,6 +34,7 @@ use tokio::sync::mpsc;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
+use crate::agent_model::{MapLikeInitializer, ValueLikeInitializer};
 use crate::{
     agent_model::{AgentSpec, ItemFlags, ItemKind, ItemSpec, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
@@ -146,24 +148,19 @@ impl AgentSpec for TestAgent {
 
     type HttpRequestHandler = TestHttpHandler;
 
-    fn value_like_item_specs() -> HashMap<&'static str, crate::agent_model::ItemSpec> {
+    fn item_specs() -> HashMap<&'static str, ItemSpec> {
         let mut lanes = HashMap::new();
         lanes.insert(
             VAL_LANE,
-            ItemSpec::new(ItemKind::Lane, ItemFlags::TRANSIENT),
+            ItemSpec::new(ItemKind::Lane(LaneKind::Value), ItemFlags::TRANSIENT),
         );
         lanes.insert(
             CMD_LANE,
-            ItemSpec::new(ItemKind::Lane, ItemFlags::TRANSIENT),
+            ItemSpec::new(ItemKind::Lane(LaneKind::Command), ItemFlags::TRANSIENT),
         );
-        lanes
-    }
-
-    fn map_like_item_specs() -> HashMap<&'static str, crate::agent_model::ItemSpec> {
-        let mut lanes = HashMap::new();
         lanes.insert(
             MAP_LANE,
-            ItemSpec::new(ItemKind::Lane, ItemFlags::TRANSIENT),
+            ItemSpec::new(ItemKind::Lane(LaneKind::Map), ItemFlags::TRANSIENT),
         );
         lanes
     }
@@ -196,6 +193,20 @@ impl AgentSpec for TestAgent {
             ),
             _ => None,
         }
+    }
+
+    fn init_value_like_item(&self, _item: &str) -> Option<ValueLikeInitializer<Self>>
+    where
+        Self: 'static,
+    {
+        None
+    }
+
+    fn init_map_like_item(&self, _item: &str) -> Option<MapLikeInitializer<Self>>
+    where
+        Self: 'static,
+    {
+        None
     }
 
     fn on_map_command(
@@ -269,32 +280,6 @@ impl AgentSpec for TestAgent {
             }
             _ => None,
         }
-    }
-
-    fn init_value_like_item(
-        &self,
-        _item: &str,
-    ) -> Option<Box<dyn crate::agent_model::ItemInitializer<Self, BytesMut> + Send + 'static>>
-    where
-        Self: 'static,
-    {
-        None
-    }
-
-    fn init_map_like_item(
-        &self,
-        _item: &str,
-    ) -> Option<
-        Box<
-            dyn crate::agent_model::ItemInitializer<Self, MapMessage<BytesMut, BytesMut>>
-                + Send
-                + 'static,
-        >,
-    >
-    where
-        Self: 'static,
-    {
-        None
     }
 
     fn http_lane_names() -> HashSet<&'static str> {
