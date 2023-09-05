@@ -18,7 +18,7 @@ use bytes::BytesMut;
 
 use crate::{
     agent_lifecycle::item_event::{HLeaf, ItemEvent},
-    event_handler::{HandlerAction, StepResult},
+    event_handler::{HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
     test_context::dummy_context,
 };
@@ -30,8 +30,12 @@ fn hleaf_lane_event() {
     assert!(leaf.item_event(&(), "lane").is_none());
 }
 
-pub fn run_handler<H, Agent>(meta: AgentMetadata<'_>, agent: &Agent, mut event_handler: H)
-where
+pub fn run_handler_expect_mod<H, Agent>(
+    meta: AgentMetadata<'_>,
+    agent: &Agent,
+    modification: Option<Modification>,
+    mut event_handler: H,
+) where
     H: HandlerAction<Agent, Completion = ()>,
 {
     let mut join_value_init = HashMap::new();
@@ -49,11 +53,18 @@ where
                 panic!("Event handler failed: {}", err);
             }
             StepResult::Complete { modified_item, .. } => {
-                assert!(modified_item.is_none());
+                assert_eq!(modified_item, modification);
                 break;
             }
         }
     }
     assert!(join_value_init.is_empty());
     assert!(ad_hoc_buffer.is_empty());
+}
+
+pub fn run_handler<H, Agent>(meta: AgentMetadata<'_>, agent: &Agent, event_handler: H)
+where
+    H: HandlerAction<Agent, Completion = ()>,
+{
+    run_handler_expect_mod(meta, agent, None, event_handler)
 }
