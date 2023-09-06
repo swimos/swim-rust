@@ -14,7 +14,7 @@
 
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
 };
 
 use bytes::{Bytes, BytesMut};
@@ -34,9 +34,9 @@ use tokio::sync::mpsc;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
-use crate::agent_model::{MapLikeInitializer, ValueLikeInitializer};
+use crate::agent_model::{ItemSpec, MapLikeInitializer, ValueLikeInitializer};
 use crate::{
-    agent_model::{AgentSpec, ItemFlags, ItemKind, ItemSpec, WriteResult},
+    agent_model::{AgentSpec, ItemFlags, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
 };
@@ -148,20 +148,31 @@ impl AgentSpec for TestAgent {
 
     type HttpRequestHandler = TestHttpHandler;
 
-    fn item_specs() -> HashMap<&'static str, ItemSpec> {
+    fn item_specs2() -> HashMap<&'static str, ItemSpec> {
         let mut lanes = HashMap::new();
+
         lanes.insert(
             VAL_LANE,
-            ItemSpec::new(ItemKind::Lane(LaneKind::Value), ItemFlags::TRANSIENT),
+            ItemSpec::WarpLane {
+                kind: LaneKind::Value,
+                flags: ItemFlags::TRANSIENT,
+            },
         );
         lanes.insert(
             CMD_LANE,
-            ItemSpec::new(ItemKind::Lane(LaneKind::Command), ItemFlags::TRANSIENT),
+            ItemSpec::WarpLane {
+                kind: LaneKind::Command,
+                flags: ItemFlags::TRANSIENT,
+            },
         );
         lanes.insert(
             MAP_LANE,
-            ItemSpec::new(ItemKind::Lane(LaneKind::Map), ItemFlags::TRANSIENT),
+            ItemSpec::WarpLane {
+                kind: LaneKind::Map,
+                flags: ItemFlags::TRANSIENT,
+            },
         );
+        lanes.insert(HTTP_LANE, ItemSpec::Http);
         lanes
     }
 
@@ -280,12 +291,6 @@ impl AgentSpec for TestAgent {
             }
             _ => None,
         }
-    }
-
-    fn http_lane_names() -> HashSet<&'static str> {
-        let mut names = HashSet::new();
-        names.insert(HTTP_LANE);
-        names
     }
 
     fn on_http_request(

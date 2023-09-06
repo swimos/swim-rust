@@ -15,14 +15,14 @@
 use std::collections::{HashMap, HashSet};
 
 use std::fmt::Write;
-use swim::agent::agent_model::{ItemFlags, ItemSpec};
+use swim::agent::agent_model::ItemFlags;
 use swim::agent::lanes::{CommandLane, MapLane, ValueLane};
 use swim::agent::model::MapMessage;
 use swim::agent::model::Text;
 use swim::agent::reexport::bytes::BytesMut;
 use swim::agent::reexport::uuid::Uuid;
 use swim::agent::AgentLaneModel;
-use swim_agent::agent_model::ItemKind;
+use swim_agent::agent_model::ItemSpec;
 use swim_agent::lanes::http::Recon;
 use swim_agent::lanes::{DemandLane, DemandMapLane, HttpLane, JoinValueLane, SimpleHttpLane};
 use swim_agent::reexport::bytes::Bytes;
@@ -37,51 +37,58 @@ const SYNC_ID: Uuid = Uuid::from_u128(85883);
 fn persistent_lane(name: &'static str, kind: LaneKind) -> (&'static str, ItemSpec) {
     (
         name,
-        ItemSpec::new(ItemKind::Lane(kind), ItemFlags::empty()),
+        ItemSpec::WarpLane {
+            kind,
+            flags: ItemFlags::empty(),
+        },
     )
 }
 
 fn transient_lane(name: &'static str, kind: LaneKind) -> (&'static str, ItemSpec) {
     (
         name,
-        ItemSpec::new(ItemKind::Lane(kind), ItemFlags::TRANSIENT),
+        ItemSpec::WarpLane {
+            kind,
+            flags: ItemFlags::TRANSIENT,
+        },
     )
 }
 
 fn persistent_store(name: &'static str, kind: StoreKind) -> (&'static str, ItemSpec) {
     (
         name,
-        ItemSpec::new(ItemKind::Store(kind), ItemFlags::empty()),
+        ItemSpec::Store {
+            kind,
+            flags: ItemFlags::empty(),
+        },
     )
 }
 
 fn transient_store(name: &'static str, kind: StoreKind) -> (&'static str, ItemSpec) {
     (
         name,
-        ItemSpec::new(ItemKind::Store(kind), ItemFlags::TRANSIENT),
+        ItemSpec::Store {
+            kind,
+            flags: ItemFlags::TRANSIENT,
+        },
     )
+}
+
+fn http_lane(name: &'static str) -> (&'static str, ItemSpec) {
+    (name, ItemSpec::Http)
 }
 
 fn check_agent<A>(specs: Vec<(&'static str, ItemSpec)>)
 where
     A: AgentLaneModel + Default,
 {
-    check_agent_with_http::<A>(specs, vec![])
-}
-
-fn check_agent_with_http<A>(specs: Vec<(&'static str, ItemSpec)>, http_lanes: Vec<&'static str>)
-where
-    A: AgentLaneModel + Default,
-{
     let agent = A::default();
     let expected = specs.into_iter().collect::<HashMap<_, _>>();
-    let http_expected = http_lanes.iter().copied().collect::<HashSet<_>>();
 
-    assert_eq!(A::item_specs(), expected);
-    assert_eq!(A::http_lane_names(), http_expected);
+    assert_eq!(A::item_specs2(), expected);
 
     let id_map = A::item_ids();
-    let expected_len = expected.len() + http_expected.len();
+    let expected_len = expected.len();
     assert_eq!(id_map.len(), expected_len);
 
     let mut keys = HashSet::new();
@@ -95,36 +102,36 @@ where
     let expected_keys = (0..expected_len).map(|n| n as u64).collect::<HashSet<_>>();
     let mut expected_names = HashSet::new();
     expected_names.extend(expected.keys().map(|s| Text::new(s)));
-    expected_names.extend(http_expected.iter().map(|s| Text::new(s)));
 
     assert_eq!(keys, expected_keys);
     assert_eq!(names, expected_names);
 
     for (name, spec) in expected {
-        let ItemSpec { kind, .. } = spec;
-
-        if kind.map_like() {
-            assert_eq!(
-                agent.on_map_command(name, MapMessage::Clear).is_some(),
-                kind.is_lane()
-            );
-            assert_eq!(agent.on_sync(name, SYNC_ID).is_some(), kind.is_lane());
-        } else {
-            assert_eq!(
-                agent.on_value_command(name, get_i32_buffer(4)).is_some(),
-                kind.is_lane()
-            );
-            assert_eq!(agent.on_sync(name, SYNC_ID).is_some(), kind.is_lane());
+        match spec {
+            ItemSpec::WarpLane { kind, .. } => {
+                if kind.map_like() {
+                    assert!(agent.on_map_command(name, MapMessage::Clear).is_some());
+                    assert!(agent.on_sync(name, SYNC_ID).is_some());
+                } else {
+                    assert!(agent.on_value_command(name, get_i32_buffer(4)).is_some());
+                    assert!(agent.on_sync(name, SYNC_ID).is_some());
+                }
+            }
+            ItemSpec::Store { .. } => {
+                assert!(agent.on_map_command(name, MapMessage::Clear).is_none());
+                assert!(agent.on_sync(name, SYNC_ID).is_none());
+                assert!(agent.on_value_command(name, get_i32_buffer(4)).is_none());
+                assert!(agent.on_sync(name, SYNC_ID).is_none());
+            }
+            ItemSpec::Http => {
+                let uri = format!("http://example/node?lane={}", name)
+                    .parse::<Uri>()
+                    .unwrap();
+                let request_inner = HttpRequest::get(uri).map(|_| Bytes::new());
+                let (request, _response_rx) = HttpLaneRequest::new(request_inner);
+                assert!(agent.on_http_request(name, request).is_ok());
+            }
         }
-    }
-
-    for lane in http_lanes {
-        let uri = format!("http://example/node?lane={}", lane)
-            .parse::<Uri>()
-            .unwrap();
-        let request_inner = HttpRequest::get(uri).map(|_| Bytes::new());
-        let (request, _response_rx) = HttpLaneRequest::new(request_inner);
-        assert!(agent.on_http_request(lane, request).is_ok());
     }
 }
 
@@ -345,19 +352,17 @@ fn multiple_lanes() {
         ninth: SimpleHttpLane<i32>,
     }
 
-    check_agent_with_http::<MultipleLanes>(
-        vec![
-            persistent_lane("first", LaneKind::Value),
-            persistent_lane("third", LaneKind::Value),
-            transient_lane("fifth", LaneKind::Command),
-            transient_lane("seventh", LaneKind::Demand),
-            persistent_lane("second", LaneKind::Map),
-            persistent_lane("fourth", LaneKind::Map),
-            persistent_lane("sixth", LaneKind::JoinValue),
-            transient_lane("eighth", LaneKind::DemandMap),
-        ],
-        vec!["ninth"],
-    );
+    check_agent::<MultipleLanes>(vec![
+        persistent_lane("first", LaneKind::Value),
+        persistent_lane("third", LaneKind::Value),
+        transient_lane("fifth", LaneKind::Command),
+        transient_lane("seventh", LaneKind::Demand),
+        persistent_lane("second", LaneKind::Map),
+        persistent_lane("fourth", LaneKind::Map),
+        persistent_lane("sixth", LaneKind::JoinValue),
+        transient_lane("eighth", LaneKind::DemandMap),
+        http_lane("ninth"),
+    ]);
 }
 
 #[test]
@@ -529,7 +534,7 @@ fn single_simple_http_lane() {
         lane: SimpleHttpLane<i32>,
     }
 
-    check_agent_with_http::<SingleSimpleHttpLane>(vec![], vec!["lane"]);
+    check_agent::<SingleSimpleHttpLane>(vec![http_lane("lane")]);
 }
 
 #[test]
@@ -539,7 +544,7 @@ fn single_simple_http_lane_explicit_codec() {
         lane: SimpleHttpLane<i32, Recon>,
     }
 
-    check_agent_with_http::<SingleSimpleHttpLane>(vec![], vec!["lane"]);
+    check_agent::<SingleSimpleHttpLane>(vec![http_lane("lane")]);
 }
 
 #[test]
@@ -550,7 +555,7 @@ fn two_simple_http_lanes() {
         second: SimpleHttpLane<i32, Recon>,
     }
 
-    check_agent_with_http::<TwoSimpleHttpLanes>(vec![], vec!["first", "second"]);
+    check_agent::<TwoSimpleHttpLanes>(vec![http_lane("first"), http_lane("second")]);
 }
 
 #[test]
@@ -560,7 +565,7 @@ fn get_and_post_http_lane() {
         lane: HttpLane<i32, String>,
     }
 
-    check_agent_with_http::<GetAndPostHttpLane>(vec![], vec!["lane"]);
+    check_agent::<GetAndPostHttpLane>(vec![http_lane("lane")]);
 }
 
 #[test]
@@ -570,7 +575,7 @@ fn get_post_and_put_http_lane() {
         lane: HttpLane<i32, String, i32>,
     }
 
-    check_agent_with_http::<GetPostAndPutHttpLane>(vec![], vec!["lane"]);
+    check_agent::<GetPostAndPutHttpLane>(vec![http_lane("lane")]);
 }
 
 #[test]
@@ -580,7 +585,7 @@ fn general_http_lane_explicit_codec() {
         lane: HttpLane<i32, String, i32, Recon>,
     }
 
-    check_agent_with_http::<GeneralHttpLane>(vec![], vec!["lane"]);
+    check_agent::<GeneralHttpLane>(vec![http_lane("lane")]);
 }
 
 #[test]
@@ -591,13 +596,13 @@ fn two_general_http_lanes() {
         second: HttpLane<i32, String, i32>,
     }
 
-    check_agent_with_http::<TwoGeneralHttpLanes>(vec![], vec!["first", "second"]);
+    check_agent::<TwoGeneralHttpLanes>(vec![http_lane("first"), http_lane("second")]);
 }
 
 mod isolated {
-    use crate::check_agent_with_http;
+    use crate::check_agent;
 
-    use super::{persistent_lane, persistent_store, transient_lane};
+    use super::{http_lane, persistent_lane, persistent_store, transient_lane};
     use swim_api::meta::lane::LaneKind;
     use swim_api::store::StoreKind;
 
@@ -619,21 +624,20 @@ mod isolated {
             twelfth: swim::agent::lanes::HttpLane<i32, i32>,
         }
 
-        check_agent_with_http::<MultipleLanes>(
-            vec![
-                persistent_lane("first", LaneKind::Value),
-                persistent_lane("third", LaneKind::Value),
-                transient_lane("fifth", LaneKind::Command),
-                persistent_store("sixth", StoreKind::Value),
-                persistent_lane("second", LaneKind::Map),
-                persistent_lane("fourth", LaneKind::Map),
-                persistent_store("seventh", StoreKind::Map),
-                persistent_lane("eighth", LaneKind::JoinValue),
-                transient_lane("ninth", LaneKind::Demand),
-                transient_lane("tenth", LaneKind::DemandMap),
-            ],
-            vec!["eleventh", "twelfth"],
-        );
+        check_agent::<MultipleLanes>(vec![
+            persistent_lane("first", LaneKind::Value),
+            persistent_lane("third", LaneKind::Value),
+            transient_lane("fifth", LaneKind::Command),
+            persistent_store("sixth", StoreKind::Value),
+            persistent_lane("second", LaneKind::Map),
+            persistent_lane("fourth", LaneKind::Map),
+            persistent_store("seventh", StoreKind::Map),
+            persistent_lane("eighth", LaneKind::JoinValue),
+            transient_lane("ninth", LaneKind::Demand),
+            transient_lane("tenth", LaneKind::DemandMap),
+            http_lane("eleventh"),
+            http_lane("twelfth"),
+        ]);
     }
 }
 

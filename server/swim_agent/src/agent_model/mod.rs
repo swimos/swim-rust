@@ -129,15 +129,10 @@ bitflags! {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ItemSpec {
-    pub kind: ItemKind,
-    pub flags: ItemFlags,
-}
-
-impl ItemSpec {
-    pub fn new(kind: ItemKind, flags: ItemFlags) -> Self {
-        ItemSpec { kind, flags }
-    }
+pub enum ItemSpec {
+    WarpLane { kind: LaneKind, flags: ItemFlags },
+    Store { kind: StoreKind, flags: ItemFlags },
+    Http,
 }
 
 pub type MapLikeInitializer<T> =
@@ -161,10 +156,7 @@ pub trait AgentSpec: Sized + Send {
     type HttpRequestHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
     /// The names and flags of all items (lanes and stores) in the agent.
-    fn item_specs() -> HashMap<&'static str, ItemSpec>;
-
-    /// The names of all HTTP lanes in the agent.
-    fn http_lane_names() -> HashSet<&'static str>;
+    fn item_specs2() -> HashMap<&'static str, ItemSpec>;
 
     /// Mapping from item identifiers to lane names for all items in the agent.
     fn item_ids() -> HashMap<u64, Text>;
@@ -575,8 +567,7 @@ where
         let mut store_io = HashMap::new();
         let mut http_lane_rxs = HashMap::new();
 
-        let item_specs = ItemModel::item_specs();
-        let http_lane_names = ItemModel::http_lane_names();
+        let item_specs = ItemModel::item_specs2();
         let item_ids = <ItemModel as AgentSpec>::item_ids();
 
         let suspended = FuturesUnordered::new();
@@ -598,9 +589,8 @@ where
             }
 
             for (name, spec) in item_specs {
-                let ItemSpec { kind, flags } = spec;
-                match kind {
-                    ItemKind::Lane(kind) => {
+                match spec {
+                    ItemSpec::WarpLane { kind, flags } => {
                         if kind.map_like() {
                             let key = (Text::new(name), kind);
                             if lane_io.contains_key(&key) {
@@ -625,8 +615,11 @@ where
                             })
                         }
                     }
-                    ItemKind::Store(StoreKind::Map) => {
-                        if !spec.flags.contains(ItemFlags::TRANSIENT) {
+                    ItemSpec::Store {
+                        kind: StoreKind::Map,
+                        flags,
+                    } => {
+                        if !flags.contains(ItemFlags::TRANSIENT) {
                             if let Some(io) = handle_store_error(
                                 context.add_store(name, StoreKind::Map).await,
                                 name,
@@ -637,8 +630,11 @@ where
                             }
                         }
                     }
-                    ItemKind::Store(StoreKind::Value) => {
-                        if !spec.flags.contains(ItemFlags::TRANSIENT) {
+                    ItemSpec::Store {
+                        kind: StoreKind::Value,
+                        flags,
+                    } => {
+                        if !flags.contains(ItemFlags::TRANSIENT) {
                             if let Some(io) = handle_store_error(
                                 context.add_store(name, StoreKind::Value).await,
                                 name,
@@ -649,12 +645,11 @@ where
                             }
                         }
                     }
+                    ItemSpec::Http => {
+                        let channel = context.add_http_lane(name).await?;
+                        http_lane_rxs.insert(Text::new(name), channel);
+                    }
                 }
-            }
-
-            for name in http_lane_names {
-                let channel = context.add_http_lane(name).await?;
-                http_lane_rxs.insert(Text::new(name), channel);
             }
 
             while let Some(result) = lane_init_tasks.next().await {
