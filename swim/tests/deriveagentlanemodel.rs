@@ -354,7 +354,7 @@ fn multiple_lanes() {
             persistent_lane("second", LaneKind::Map),
             persistent_lane("fourth", LaneKind::Map),
             persistent_lane("sixth", LaneKind::JoinValue),
-            transient_lane("eigth", LaneKind::DemandMap),
+            transient_lane("eighth", LaneKind::DemandMap),
         ],
         vec!["ninth"],
     );

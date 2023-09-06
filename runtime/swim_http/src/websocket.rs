@@ -225,6 +225,7 @@ impl SockUnwrap for NoUnwrap {
 
 /// A future that performs a websocket upgrade, unwraps the upgraded socket and
 /// creates a ratchet websocket from form it.
+#[derive(Debug)]
 pub struct UpgradeFuture<Ext, U> {
     upgrade: OnUpgrade,
     config: WebSocketConfig,

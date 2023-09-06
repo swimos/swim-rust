@@ -216,11 +216,12 @@ where
             timeout,
             timeout_enabled,
         } = self;
+
         loop {
             let event = if connection_tasks.len() < *max_pending {
                 tokio::select! {
                     biased;
-                    _ = &mut*timeout, if *timeout_enabled => Event::Timeout,
+                    _ = &mut *timeout, if *timeout_enabled => Event::Timeout,
                     maybe_event = connection_tasks.next(), if !connection_tasks.is_empty() => {
                         if let Some(ev) = maybe_event {
                             Event::TaskComplete(ev)
