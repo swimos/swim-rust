@@ -97,15 +97,11 @@ impl Resolver {
         } = self;
         let guard = resolved.read();
         let now = Instant::now().into_std();
-        if !guard.resolved_map.is_empty() {
-            let Inner {
-                oldest,
-                oldest_defined,
-                ..
-            } = &*guard;
-            if !oldest_defined.load(Ordering::Relaxed)
-                || now - oldest.load(Ordering::Relaxed) > *inactive_timeout
+        let oldest_ts = if !guard.resolved_map.is_empty() {
+            if !guard.oldest_defined.load(Ordering::Relaxed)
+                || now - guard.oldest.load(Ordering::Relaxed) > *inactive_timeout
             {
+                drop(guard);
                 let mut guard = resolved.write();
                 let Inner {
                     resolved_map,
@@ -136,11 +132,12 @@ impl Resolver {
                 }
                 new_oldest
             } else {
-                Some(oldest.load(Ordering::Relaxed))
+                Some(guard.oldest.load(Ordering::Relaxed))
             }
         } else {
             None
-        }
+        };
+        oldest_ts.map(|t| t + *inactive_timeout)
     }
 
     pub async fn send(&self, mut request: HttpLaneRequest) -> Result<(), AgentResolutionError> {

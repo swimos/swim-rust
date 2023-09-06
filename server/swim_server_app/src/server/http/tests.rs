@@ -24,7 +24,7 @@ use bytes::{Bytes, BytesMut};
 use futures::{
     future::{join, join3, Either},
     stream::{BoxStream, FuturesUnordered, SelectAll},
-    StreamExt,
+    Future, StreamExt,
 };
 use hyper::{
     body::to_bytes, client::conn::http1, header::HeaderValue, Body, Request, Response, Uri,
@@ -122,6 +122,7 @@ impl Listener<DuplexStream> for TestListener {
 }
 
 async fn run_server(rx: mpsc::Receiver<DuplexStream>, find_tx: mpsc::Sender<FindNode>) {
+    println!("Server start");
     let listener = TestListener { rx };
 
     let config = HttpConfig {
@@ -144,6 +145,7 @@ async fn run_server(rx: mpsc::Receiver<DuplexStream>, find_tx: mpsc::Sender<Find
     }
 
     let results: Vec<_> = handles.collect().await;
+
     for result in results {
         assert!(result.is_ok());
     }
@@ -274,6 +276,7 @@ async fn fake_plane(responses: HashMap<Text, FindResponse>, mut find_rx: mpsc::R
                 }
             }
         };
+
         match request {
             Either::Right(FindNode {
                 node,
@@ -375,70 +378,97 @@ async fn http_client(tx: mpsc::Sender<DuplexStream>, node: &str, lane: &str) -> 
         *request.uri_mut() = uri;
         sender.send_request(request).await.expect("Sending")
     };
+
     let (conn_result, response) = join(connection, send).await;
     assert!(conn_result.is_ok());
     response
 }
 
+const TEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+async fn with_timeout<F>(test_case: F) -> F::Output
+where
+    F: Future,
+{
+    tokio::time::timeout(TEST_TIMEOUT, test_case)
+        .await
+        .expect("Test timed out.")
+}
+
 #[tokio::test]
 async fn good_http_request() {
-    let (tx, rx) = mpsc::channel(8);
-    let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
-    let server = run_server(rx, find_tx);
-    let responses = setup_responses();
-    let agent = fake_plane(responses, find_rx);
-    let client = http_client(tx, "node", "name");
-    let (_, mut response, _) = join3(server, client, agent).await;
-    assert_eq!(response.status(), hyper::StatusCode::OK);
-    let body = std::mem::take(response.body_mut());
-    let body_bytes = to_bytes(body).await.expect("Failed to read body.");
-    assert_eq!(body_bytes.as_ref(), b"Response");
+    with_timeout(async move {
+        let (tx, rx) = mpsc::channel(8);
+        let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
+        let server = run_server(rx, find_tx);
+        let responses = setup_responses();
+        let agent = fake_plane(responses, find_rx);
+        let client = http_client(tx, "node", "name");
+        let (_, mut response, _) = join3(server, client, agent).await;
+        assert_eq!(response.status(), hyper::StatusCode::OK);
+        let body = std::mem::take(response.body_mut());
+        let body_bytes = to_bytes(body).await.expect("Failed to read body.");
+        assert_eq!(body_bytes.as_ref(), b"Response");
+    })
+    .await
 }
 
 #[tokio::test]
 async fn not_found_http_request() {
-    let (tx, rx) = mpsc::channel(8);
-    let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
-    let server = run_server(rx, find_tx);
-    let responses = setup_responses();
-    let agent = fake_plane(responses, find_rx);
-    let client = http_client(tx, "not_found", "name");
-    let (_, response, _) = join3(server, client, agent).await;
-    assert_eq!(response.status(), hyper::StatusCode::NOT_FOUND);
+    with_timeout(async move {
+        let (tx, rx) = mpsc::channel(8);
+        let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
+        let server = run_server(rx, find_tx);
+        let responses = setup_responses();
+        let agent = fake_plane(responses, find_rx);
+        let client = http_client(tx, "not_found", "name");
+        let (_, response, _) = join3(server, client, agent).await;
+        assert_eq!(response.status(), hyper::StatusCode::NOT_FOUND);
+    })
+    .await
 }
 
 #[tokio::test]
 async fn server_stopping_http_request() {
-    let (tx, rx) = mpsc::channel(8);
-    let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
-    let server = run_server(rx, find_tx);
-    let responses = setup_responses();
-    let agent = fake_plane(responses, find_rx);
-    let client = http_client(tx, "stopping", "name");
-    let (_, response, _) = join3(server, client, agent).await;
-    assert_eq!(response.status(), hyper::StatusCode::SERVICE_UNAVAILABLE);
+    with_timeout(async move {
+        let (tx, rx) = mpsc::channel(8);
+        let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
+        let server = run_server(rx, find_tx);
+        let responses = setup_responses();
+        let agent = fake_plane(responses, find_rx);
+        let client = http_client(tx, "stopping", "name");
+        let (_, response, _) = join3(server, client, agent).await;
+        assert_eq!(response.status(), hyper::StatusCode::SERVICE_UNAVAILABLE);
+    })
+    .await
 }
 
 #[tokio::test]
 async fn dropped_http_request() {
-    let (tx, rx) = mpsc::channel(8);
-    let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
-    let server = run_server(rx, find_tx);
-    let responses = setup_responses();
-    let agent = fake_plane(responses, find_rx);
-    let client = http_client(tx, "fail", "name");
-    let (_, response, _) = join3(server, client, agent).await;
-    assert_eq!(response.status(), hyper::StatusCode::INTERNAL_SERVER_ERROR);
+    with_timeout(async move {
+        let (tx, rx) = mpsc::channel(8);
+        let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
+        let server = run_server(rx, find_tx);
+        let responses = setup_responses();
+        let agent = fake_plane(responses, find_rx);
+        let client = http_client(tx, "fail", "name");
+        let (_, response, _) = join3(server, client, agent).await;
+        assert_eq!(response.status(), hyper::StatusCode::INTERNAL_SERVER_ERROR);
+    })
+    .await
 }
 
 #[tokio::test]
 async fn http_request_timeout() {
-    let (tx, rx) = mpsc::channel(8);
-    let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
-    let server = run_server(rx, find_tx);
-    let responses = setup_responses();
-    let agent = fake_plane(responses, find_rx);
-    let client = http_client(tx, "timeout", "name");
-    let (_, response, _) = join3(server, client, agent).await;
-    assert_eq!(response.status(), hyper::StatusCode::REQUEST_TIMEOUT);
+    with_timeout(async move {
+        let (tx, rx) = mpsc::channel(8);
+        let (find_tx, find_rx) = mpsc::channel(CHANNEL_SIZE.get());
+        let server = run_server(rx, find_tx);
+        let responses = setup_responses();
+        let agent = fake_plane(responses, find_rx);
+        let client = http_client(tx, "timeout", "name");
+        let (_, response, _) = join3(server, client, agent).await;
+        assert_eq!(response.status(), hyper::StatusCode::REQUEST_TIMEOUT);
+    })
+    .await
 }
