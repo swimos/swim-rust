@@ -144,6 +144,10 @@ impl<'a> ItemModel<'a> {
         })
     }
 
+    pub fn is_http(&self) -> bool {
+        matches!(self.kind, ItemSpec::Http(_))
+    }
+
     pub fn http(&self) -> Option<HttpLaneModel<'a>> {
         let ItemModel { name, kind, .. } = self;
         kind.http().map(move |kind| HttpLaneModel { name, kind })

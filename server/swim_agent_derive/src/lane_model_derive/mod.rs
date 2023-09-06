@@ -122,6 +122,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
         let item_specs = item_models
             .iter()
+            .filter(|model| !model.model.is_http())
             .map(|model| LaneSpecInsert(model.model))
             .map(|insert| insert.into_tokens(root));
 
