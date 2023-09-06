@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 futures = { workspace = true }
-ratchet = { package = "ratchet_rs", workspace = true }
+ratchet = { workspace = true }
 hyper = { workspace = true }
 http = { workspace = true }
 httparse = "1.8"
