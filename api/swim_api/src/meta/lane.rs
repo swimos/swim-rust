@@ -26,13 +26,10 @@ use swim_form::structural::Tag;
 use swim_form::Form;
 use swim_model::{Text, ValueKind};
 
-use crate::agent::UplinkKind;
-
 /// An enumeration representing the type of a lane.
 #[derive(Tag, Debug, PartialEq, Eq, Clone, Copy, Hash)]
 #[form_root(::swim_form)]
 pub enum LaneKind {
-    Action,
     Command,
     Demand,
     DemandMap,
@@ -59,15 +56,6 @@ impl LaneKind {
             self,
             LaneKind::Map | LaneKind::DemandMap | LaneKind::JoinMap | LaneKind::JoinValue
         )
-    }
-
-    pub fn uplink_kind(&self) -> UplinkKind {
-        match self {
-            LaneKind::Map | LaneKind::DemandMap | LaneKind::JoinMap => UplinkKind::Map,
-            LaneKind::Supply => UplinkKind::Supply,
-            LaneKind::Spatial => todo!("Spatial uplinks not supported."),
-            _ => UplinkKind::Value,
-        }
     }
 }
 
@@ -106,7 +94,6 @@ impl<'a> TryFrom<&'a str> for LaneKind {
 
     fn try_from(value: &'a str) -> Result<Self, Self::Error> {
         match value {
-            "Action" => Ok(LaneKind::Action),
             "Command" => Ok(LaneKind::Command),
             "Demand" => Ok(LaneKind::Demand),
             "DemandMap" => Ok(LaneKind::DemandMap),

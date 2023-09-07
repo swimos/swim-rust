@@ -25,6 +25,7 @@ use swim_api::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
         StoreError,
     },
+    lane::WarpLaneKind,
     meta::lane::LaneKind,
     net::SchemeHostPort,
     store::{NodePersistence, StoreKind},
@@ -173,7 +174,7 @@ impl AgentContext for AgentRuntimeContext {
     fn add_lane(
         &self,
         name: &str,
-        lane_kind: LaneKind,
+        lane_kind: WarpLaneKind,
         config: LaneConfig,
     ) -> BoxFuture<'static, Result<Io, AgentRuntimeError>> {
         let name = Text::new(name);
@@ -387,7 +388,7 @@ impl NodeReporting {
     }
 
     /// Register a new lane for reporting.
-    async fn register(&self, name: Text, kind: LaneKind) -> Option<UplinkReporter> {
+    async fn register(&self, name: Text, kind: WarpLaneKind) -> Option<UplinkReporter> {
         let NodeReporting {
             agent_id,
             lane_registrations,
@@ -395,7 +396,8 @@ impl NodeReporting {
         } = self;
         let reporter = UplinkReporter::default();
         let reader = reporter.reader();
-        let registration = UplinkReporterRegistration::new(*agent_id, name.clone(), kind, reader);
+        let registration =
+            UplinkReporterRegistration::new(*agent_id, name.clone(), kind.into(), reader);
         if lane_registrations.send(registration).await.is_err() {
             error!(
                 "Failed to register lane {} for agent {} for reporting.",

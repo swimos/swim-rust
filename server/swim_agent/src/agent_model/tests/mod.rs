@@ -24,7 +24,7 @@ use swim_api::{
     agent::{AgentConfig, AgentContext, AgentTask, HttpLaneRequest},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    meta::lane::LaneKind,
+    lane::WarpLaneKind,
     protocol::{
         agent::{AdHocCommand, AdHocCommandDecoder},
         downlink::{DownlinkNotification, DownlinkNotificationEncoder},
@@ -1236,7 +1236,7 @@ impl AgentContext for DlTestContext {
     fn add_lane(
         &self,
         _name: &str,
-        _lane_kind: LaneKind,
+        _lane_kind: WarpLaneKind,
         _config: swim_api::agent::LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Unexpected call.");

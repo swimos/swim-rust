@@ -48,7 +48,7 @@ use swim_agent::stores::{MapStore, ValueStore};
 use swim_api::agent::{AgentConfig, HttpLaneRequest, HttpResponseReceiver};
 use swim_api::downlink::DownlinkKind;
 use swim_api::error::{DownlinkRuntimeError, OpenStoreError};
-use swim_api::meta::lane::LaneKind;
+use swim_api::lane::WarpLaneKind;
 use swim_api::store::StoreKind;
 use swim_model::http::{
     Header, HttpRequest, HttpResponse, Method, StandardHeaderName, StatusCode, Version,
@@ -102,7 +102,7 @@ impl AgentContext for DummyAgentContext {
     fn add_lane(
         &self,
         _name: &str,
-        _lane_kind: LaneKind,
+        _lane_kind: WarpLaneKind,
         _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Dummy context used.");

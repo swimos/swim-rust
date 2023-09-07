@@ -37,7 +37,7 @@ use crate::{
     error::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
     },
-    meta::lane::LaneKind,
+    lane::WarpLaneKind,
     store::StoreKind,
 };
 
@@ -191,7 +191,7 @@ pub trait AgentContext: Sync {
     fn add_lane(
         &self,
         name: &str,
-        lane_kind: LaneKind,
+        lane_kind: WarpLaneKind,
         config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
 

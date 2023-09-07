@@ -23,7 +23,7 @@ use swim_api::{
     agent::{AgentContext, HttpLaneRequest, HttpLaneRequestChannel, LaneConfig, UplinkKind},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    meta::lane::LaneKind,
+    lane::WarpLaneKind,
     store::StoreKind,
 };
 use swim_utilities::{
@@ -97,7 +97,7 @@ impl AgentContext for TestAgentContext {
     fn add_lane(
         &self,
         name: &str,
-        lane_kind: LaneKind,
+        lane_kind: WarpLaneKind,
         _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         match (name, lane_kind.uplink_kind()) {

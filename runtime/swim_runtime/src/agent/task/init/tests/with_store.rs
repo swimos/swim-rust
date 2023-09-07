@@ -18,7 +18,7 @@ use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use swim_api::{
     agent::{LaneConfig, StoreConfig, UplinkKind},
     error::StoreError,
-    meta::lane::LaneKind,
+    lane::WarpLaneKind,
     protocol::{
         agent::{
             LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder, StoreInitMessage,
@@ -133,7 +133,7 @@ impl TestInit for SingleValueLane {
             requests
                 .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                     Text::new(VAL_LANE),
-                    LaneKind::Value,
+                    WarpLaneKind::Value,
                     config,
                     promise_tx,
                 )))
@@ -265,7 +265,7 @@ impl TestInit for SingleMapLane {
             requests
                 .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                     Text::new(MAP_LANE),
-                    LaneKind::Map,
+                    WarpLaneKind::Map,
                     config,
                     promise_tx,
                 )))
@@ -519,7 +519,7 @@ impl ValueStoreInitTask {
         requests
             .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                 Text::new("lane_name"),
-                LaneKind::Command,
+                WarpLaneKind::Command,
                 lane_config,
                 lane_tx,
             )))
@@ -683,7 +683,7 @@ impl MapStoreInitTask {
         requests
             .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                 Text::new("lane_name"),
-                LaneKind::Command,
+                WarpLaneKind::Command,
                 lane_config,
                 lane_tx,
             )))

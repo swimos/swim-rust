@@ -37,7 +37,7 @@ use http::Uri;
 use std::fmt::Debug;
 use swim_api::{
     agent::{HttpLaneRequest, UplinkKind},
-    meta::lane::LaneKind,
+    lane::WarpLaneKind,
     protocol::{agent::LaneRequest, map::MapMessage},
 };
 use swim_model::{
@@ -76,7 +76,7 @@ enum Event {
 
 struct CreateLane {
     name: Text,
-    kind: LaneKind,
+    kind: WarpLaneKind,
 }
 
 #[derive(Default)]

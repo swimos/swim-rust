@@ -17,6 +17,7 @@ use std::{collections::HashMap, num::NonZeroUsize};
 use futures::{future::join, Future, StreamExt};
 use swim_api::{
     agent::LaneConfig,
+    lane::WarpLaneKind,
     meta::{
         lane::{LaneInfo, LaneKind},
         uplink::NodePulse,
@@ -247,8 +248,8 @@ async fn node_meta_agent_pulse_lane() {
     let route = "swim:meta:node/%2Fnode".parse().expect("Invalid route.");
 
     let lanes = vec![
-        (PULSE_LANE.to_string(), LaneKind::Supply),
-        (LANES_LANE.to_string(), LaneKind::DemandMap),
+        (PULSE_LANE.to_string(), WarpLaneKind::Supply),
+        (LANES_LANE.to_string(), WarpLaneKind::DemandMap),
     ];
 
     let route_params = [(NODE_PARAM.to_string(), "/node".to_string())]
@@ -303,8 +304,8 @@ async fn node_meta_agent_laneinfo_lane() {
     let route = "swim:meta:node/%2Fnode".parse().expect("Invalid route.");
 
     let lanes = vec![
-        (PULSE_LANE.to_string(), LaneKind::Supply),
-        (LANES_LANE.to_string(), LaneKind::DemandMap),
+        (PULSE_LANE.to_string(), WarpLaneKind::Supply),
+        (LANES_LANE.to_string(), WarpLaneKind::DemandMap),
     ];
 
     let route_params = [(NODE_PARAM.to_string(), "/node".to_string())]

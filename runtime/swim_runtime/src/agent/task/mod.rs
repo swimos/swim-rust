@@ -50,7 +50,7 @@ use futures::{
 };
 use swim_api::agent::{HttpLaneRequest, HttpLaneRequestChannel, LaneConfig, StoreConfig};
 use swim_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
-use swim_api::meta::lane::LaneKind;
+use swim_api::lane::WarpLaneKind;
 use swim_api::store::{StoreDisabled, StoreKind};
 use swim_api::{agent::UplinkKind, error::AgentRuntimeError};
 use swim_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
@@ -88,7 +88,7 @@ mod tests;
 #[derive(Debug)]
 pub struct LaneRuntimeSpec {
     pub name: Text,
-    pub kind: LaneKind,
+    pub kind: WarpLaneKind,
     pub config: LaneConfig,
     pub promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
 }
@@ -102,7 +102,7 @@ pub struct HttpLaneRuntimeSpec {
 impl LaneRuntimeSpec {
     pub fn new(
         name: Text,
-        kind: LaneKind,
+        kind: WarpLaneKind,
         config: LaneConfig,
         promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
     ) -> Self {

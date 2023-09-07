@@ -18,7 +18,7 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
-use swim_api::meta::lane::LaneKind;
+use swim_api::lane::WarpLaneKind;
 use swim_api::{
     agent::HttpLaneRequest,
     protocol::{
@@ -154,21 +154,21 @@ impl AgentSpec for TestAgent {
         lanes.insert(
             VAL_LANE,
             ItemSpec::WarpLane {
-                kind: LaneKind::Value,
+                kind: WarpLaneKind::Value,
                 flags: ItemFlags::TRANSIENT,
             },
         );
         lanes.insert(
             CMD_LANE,
             ItemSpec::WarpLane {
-                kind: LaneKind::Command,
+                kind: WarpLaneKind::Command,
                 flags: ItemFlags::TRANSIENT,
             },
         );
         lanes.insert(
             MAP_LANE,
             ItemSpec::WarpLane {
-                kind: LaneKind::Map,
+                kind: WarpLaneKind::Map,
                 flags: ItemFlags::TRANSIENT,
             },
         );

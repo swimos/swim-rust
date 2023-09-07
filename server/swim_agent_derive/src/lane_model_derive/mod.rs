@@ -764,28 +764,28 @@ impl<'a> LaneSpecInsert<'a> {
         };
         let spec = match model.kind {
             ItemSpec::Command(_) => {
-                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::LaneKind::Command, flags: #flags })
+                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::WarpLaneKind::Command, flags: #flags })
             }
             ItemSpec::Demand(_) => {
-                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::LaneKind::Demand, flags: #flags })
+                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::WarpLaneKind::Demand, flags: #flags })
             }
             ItemSpec::DemandMap(_, _) => {
-                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::LaneKind::DemandMap, flags: #flags })
+                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::WarpLaneKind::DemandMap, flags: #flags })
             }
             ItemSpec::Value(ItemKind::Lane, _) => {
-                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::LaneKind::Value, flags: #flags })
+                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::WarpLaneKind::Value, flags: #flags })
             }
             ItemSpec::Value(ItemKind::Store, _) => {
                 quote!(#root::agent_model::ItemSpec::Store { kind: #root::agent_model::StoreKind::Value, flags: #flags })
             }
             ItemSpec::Map(ItemKind::Lane, _, _) => {
-                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::LaneKind::Map, flags: #flags })
+                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::WarpLaneKind::Map, flags: #flags })
             }
             ItemSpec::Map(ItemKind::Store, _, _) => {
                 quote!(#root::agent_model::ItemSpec::Store { kind: #root::agent_model::StoreKind::Map, flags: #flags })
             }
             ItemSpec::JoinValue(_, _) => {
-                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::LaneKind::JoinValue, flags: #flags })
+                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::WarpLaneKind::JoinValue, flags: #flags })
             }
             ItemSpec::Http(_) => quote!(#root::agent_model::ItemSpec::Http),
         };

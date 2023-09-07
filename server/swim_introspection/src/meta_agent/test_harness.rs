@@ -23,7 +23,7 @@ use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    meta::lane::LaneKind,
+    lane::WarpLaneKind,
     store::StoreKind,
 };
 use swim_runtime::agent::UplinkReporterRegistration;
@@ -40,7 +40,7 @@ use crate::task::{IntrospectionMessage, IntrospectionResolver};
 
 pub async fn introspection_agent_test<Fac, A, F, Fut>(
     lane_config: LaneConfig,
-    lanes: Vec<(String, LaneKind)>,
+    lanes: Vec<(String, WarpLaneKind)>,
     route: RouteUri,
     route_params: HashMap<String, String>,
     agent_fac: Fac,
@@ -81,7 +81,7 @@ where
 }
 
 struct FakeRuntimeLane {
-    kind: LaneKind,
+    kind: WarpLaneKind,
     expected_config: LaneConfig,
     io: Option<(ByteWriter, ByteReader)>,
 }
@@ -101,7 +101,7 @@ const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 pub fn init(
     lane_config: LaneConfig,
-    lanes: Vec<(String, LaneKind)>,
+    lanes: Vec<(String, WarpLaneKind)>,
     init_done: trigger::Receiver,
     queries_rx: mpsc::UnboundedReceiver<IntrospectionMessage>,
     reg_rx: mpsc::Receiver<UplinkReporterRegistration>,
@@ -145,7 +145,7 @@ impl AgentContext for FakeContext {
     fn add_lane(
         &self,
         name: &str,
-        lane_kind: LaneKind,
+        lane_kind: WarpLaneKind,
         config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         let inner = self.inner.clone();

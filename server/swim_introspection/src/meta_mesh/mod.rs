@@ -24,7 +24,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use swim_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
 use swim_api::error::{AgentTaskError, FrameIoError};
-use swim_api::meta::lane::LaneKind;
+use swim_api::lane::WarpLaneKind;
 use swim_api::protocol::agent::{
     LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder,
 };
@@ -76,10 +76,10 @@ async fn run_init(
     let mut lane_config = config.default_lane_config.unwrap_or_default();
     lane_config.transient = true;
     let nodes_io = context
-        .add_lane(NODES_LANE, LaneKind::DemandMap, lane_config)
+        .add_lane(NODES_LANE, WarpLaneKind::DemandMap, lane_config)
         .await?;
     let nodes_count_io = context
-        .add_lane(NODES_COUNT_LANE, LaneKind::DemandMap, lane_config)
+        .add_lane(NODES_COUNT_LANE, WarpLaneKind::DemandMap, lane_config)
         .await?;
     Ok(Box::pin(async move {
         let (_shutdown_tx, shutdown_rx) = trigger::trigger();

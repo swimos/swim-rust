@@ -75,7 +75,7 @@ pub use init::{
     ItemInitializer, JoinValueInitializer, MapLaneInitializer, MapStoreInitializer,
     ValueLaneInitializer, ValueStoreInitializer,
 };
-pub use swim_api::meta::lane::LaneKind;
+pub use swim_api::lane::WarpLaneKind;
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,7 +95,7 @@ pub type InitFn<Agent> = Box<dyn FnOnce(&Agent) + Send + 'static>;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum ItemKind {
-    Lane(LaneKind),
+    Lane(WarpLaneKind),
     Store(StoreKind),
 }
 
@@ -114,8 +114,8 @@ impl ItemKind {
 }
 
 impl ItemKind {
-    pub const VALUE_LANE: ItemKind = ItemKind::Lane(LaneKind::Value);
-    pub const MAP_LANE: ItemKind = ItemKind::Lane(LaneKind::Map);
+    pub const VALUE_LANE: ItemKind = ItemKind::Lane(WarpLaneKind::Value);
+    pub const MAP_LANE: ItemKind = ItemKind::Lane(WarpLaneKind::Map);
     pub const VALUE_STORE: ItemKind = ItemKind::Store(StoreKind::Value);
     pub const MAP_STORE: ItemKind = ItemKind::Store(StoreKind::Map);
 }
@@ -130,8 +130,14 @@ bitflags! {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ItemSpec {
-    WarpLane { kind: LaneKind, flags: ItemFlags },
-    Store { kind: StoreKind, flags: ItemFlags },
+    WarpLane {
+        kind: WarpLaneKind,
+        flags: ItemFlags,
+    },
+    Store {
+        kind: StoreKind,
+        flags: ItemFlags,
+    },
     Http,
 }
 
@@ -729,7 +735,7 @@ where
 type InitFut<'a, ItemModel> = BoxFuture<'a, Result<InitializedItem<'a, ItemModel>, FrameIoError>>;
 
 struct InitContext<'a, 'b, ItemModel> {
-    lane_io: &'a mut HashMap<(Text, LaneKind), (ByteWriter, ByteReader)>,
+    lane_io: &'a mut HashMap<(Text, WarpLaneKind), (ByteWriter, ByteReader)>,
     item_model: &'a ItemModel,
     item_init_tasks: &'a FuturesUnordered<InitFut<'b, ItemModel>>,
 }
@@ -763,7 +769,7 @@ where
     ItemModel: AgentSpec + 'static,
 {
     fn new(
-        lane_io: &'a mut HashMap<(Text, LaneKind), (ByteWriter, ByteReader)>,
+        lane_io: &'a mut HashMap<(Text, WarpLaneKind), (ByteWriter, ByteReader)>,
         item_model: &'a ItemModel,
         item_init_tasks: &'a FuturesUnordered<InitFut<'b, ItemModel>>,
     ) -> Self {
@@ -777,7 +783,7 @@ where
     fn init_value_lane(
         &mut self,
         name: &'b str,
-        kind: LaneKind,
+        kind: WarpLaneKind,
         lane_conf: LaneConfig,
         io: (ByteWriter, ByteReader),
     ) {
@@ -819,7 +825,7 @@ where
     fn init_map_lane(
         &mut self,
         name: &'b str,
-        kind: LaneKind,
+        kind: WarpLaneKind,
         lane_conf: LaneConfig,
         io: (ByteWriter, ByteReader),
     ) {
@@ -871,7 +877,7 @@ struct AgentTask<ItemModel, Lifecycle> {
     route_params: HashMap<String, String>,
     config: AgentConfig,
     item_ids: HashMap<u64, Text>,
-    lane_io: HashMap<(Text, LaneKind), (ByteWriter, ByteReader)>,
+    lane_io: HashMap<(Text, WarpLaneKind), (ByteWriter, ByteReader)>,
     store_io: HashMap<Text, ByteWriter>,
     http_lane_rxs: HashMap<Text, mpsc::Receiver<HttpLaneRequest>>,
     suspended: FuturesUnordered<HandlerFuture<ItemModel>>,

@@ -26,7 +26,7 @@ use std::sync::Arc;
 use swim_api::agent::{AgentContext, HttpLaneRequestChannel, LaneConfig};
 use swim_api::downlink::DownlinkKind;
 use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
-use swim_api::meta::lane::LaneKind;
+use swim_api::lane::WarpLaneKind;
 use swim_api::protocol::agent::{
     LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder,
 };
@@ -53,7 +53,7 @@ impl AgentContext for MockAgentContext {
     fn add_lane(
         &self,
         _name: &str,
-        _lane_kind: LaneKind,
+        _lane_kind: WarpLaneKind,
         _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Unexpected add lane invocation")
