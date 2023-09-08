@@ -1,0 +1,14 @@
+[package]
+name = "transit"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+swim = { path = "../../swim", features = ["server", "agent"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"]}
+example-util = { path = "../example_util" }
+serde = { workspace = true, features = ["derive"]}
+csv = "1.2"
+serde-xml-rs = "0.6"
+thiserror = { workspace = true }
+percent-encoding = { workspace = true }
