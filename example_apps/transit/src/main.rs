@@ -17,6 +17,7 @@ use std::{error::Error, time::Duration};
 use example_util::{example_logging, manage_handle};
 use swim::server::{Server, ServerBuilder};
 
+mod buses_api;
 mod model;
 
 #[tokio::main]

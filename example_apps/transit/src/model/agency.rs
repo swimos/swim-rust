@@ -55,7 +55,7 @@ impl Agency {
         )
     }
 
-    pub fn create_vehicle(&self, response: VehicleResponse, route_title: String) -> Vehicle {
+    pub fn create_vehicle(&self, response: VehicleResponse) -> Vehicle {
         let VehicleResponse {
             id,
             route_tag,
@@ -87,7 +87,6 @@ impl Agency {
             secs_since_report,
             heading,
             predictable,
-            route_title,
         }
     }
 }

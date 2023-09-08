@@ -66,8 +66,6 @@ pub struct Vehicle {
     pub secs_since_report: u32,
     pub heading: Heading,
     pub predictable: bool,
-    #[form(name = "routeTitle")]
-    pub route_title: String,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
