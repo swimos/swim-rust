@@ -17,7 +17,7 @@ use std::time::Duration;
 use futures::{
     future::{BoxFuture, Either},
     stream::FuturesUnordered,
-    Future, FutureExt,
+    Future, FutureExt, Stream, StreamExt,
 };
 use static_assertions::assert_obj_safe;
 
@@ -131,4 +131,18 @@ where
     } else {
         Either::Right(UnitHandler::default())
     }
+}
+
+pub fn run_schedule_async<Context, S, H>(mut schedule: S) -> impl EventHandler<Context> + Send + 'static
+where
+    Context: 'static,
+    S: Stream<Item = H> + Send + Unpin + 'static,
+    H: EventHandler<Context> + Send + 'static,
+{
+    Suspend::new(async move {
+        match schedule.next().await {
+            Some(h) => Either::Left(run_schedule_async(schedule).boxed().followed_by(h)),
+            None => Either::Right(UnitHandler::default()),
+        }
+    })
 }

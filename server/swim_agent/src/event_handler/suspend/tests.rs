@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration, pin::pin};
 
 use crate::{
     event_handler::{
@@ -234,6 +234,34 @@ async fn scheduled_handler() {
     ];
 
     let sched = super::run_schedule(handlers);
+
+    let before = Instant::now();
+    run_handler_with_futures(sched).await;
+    let after = Instant::now();
+    let delta = after.duration_since(before);
+
+    assert_eq!(delta, DELAY * 3);
+
+    let guard = events.lock();
+    assert_eq!(*guard, vec![0, 1, 2]);
+}
+
+async fn set_n_async(events: Arc<Mutex<Vec<usize>>>, n: usize) -> impl EventHandler<DummyAgent> + Send + 'static {
+    tokio::time::sleep(DELAY).await;
+    set_n(events, n)
+}
+
+#[tokio::test(start_paused = true)]
+async fn scheduled_handler_async() {
+    let events: Arc<Mutex<Vec<usize>>> = Default::default();
+    let handlers = vec![
+        set_n_async(events.clone(), 0),
+        set_n_async(events.clone(), 1),
+        set_n_async(events.clone(), 2),
+    ];
+    let stream = futures::stream::iter(handlers).flat_map(futures::stream::once);
+   
+    let sched = super::run_schedule_async(stream.boxed());
 
     let before = Instant::now();
     run_handler_with_futures(sched).await;
