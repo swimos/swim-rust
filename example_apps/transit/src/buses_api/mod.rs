@@ -12,23 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Display;
+
 use bytes::Bytes;
 use percent_encoding::NON_ALPHANUMERIC;
-use reqwest::{Client, Response};
-use serde::Deserialize;
+use reqwest::Client;
 
 use crate::model::{
     agency::Agency,
     route::{load_xml_routes, Route},
-    vehicle::{load_xml_vehicles, Vehicle},
+    vehicle::{load_xml_vehicles, VehicleResponse},
 };
 
+#[derive(Debug, Clone)]
 pub struct BusesApi {
     client: Client,
     base_uri: String,
 }
 
 pub struct BusesApiError(Box<dyn std::error::Error>);
+
+impl Display for BusesApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl<E> From<E> for BusesApiError
 where
@@ -41,7 +49,7 @@ where
 
 impl BusesApi {
     pub(crate) fn new(base_uri: String, enable_gzip: bool) -> Self {
-        let mut client = Client::builder().gzip(enable_gzip).build().unwrap();
+        let client = Client::builder().gzip(enable_gzip).build().unwrap();
 
         BusesApi { client, base_uri }
     }
@@ -58,7 +66,10 @@ impl BusesApi {
         Ok(load_xml_routes(bytes.as_ref())?)
     }
 
-    pub async fn poll_vehicles(&self, agency: &Agency) -> Result<Vec<Vehicle>, BusesApiError> {
+    pub async fn poll_vehicles(
+        &self,
+        agency: &Agency,
+    ) -> Result<Vec<VehicleResponse>, BusesApiError> {
         let BusesApi { base_uri, .. } = self;
         let Agency { id, .. } = agency;
         let uri = format!(
@@ -68,10 +79,7 @@ impl BusesApi {
         );
         let bytes = self.do_request(uri).await?;
         let responses = load_xml_vehicles(bytes.as_ref())?;
-        Ok(responses
-            .into_iter()
-            .map(|v| agency.create_vehicle(v))
-            .collect())
+        Ok(responses.into_iter().collect())
     }
 
     async fn do_request(&self, uri: String) -> Result<Bytes, BusesApiError> {

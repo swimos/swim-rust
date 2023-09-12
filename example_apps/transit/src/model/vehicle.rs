@@ -21,11 +21,8 @@ use swim::{
             read::{
                 error::ExpectedEvent,
                 event::ReadEvent,
-                recognizer::{
-                    primitive::{StringRecognizer, TextRecognizer},
-                    Recognizer, RecognizerReadable,
-                },
-                ReadError, StructuralReadable,
+                recognizer::{Recognizer, RecognizerReadable},
+                ReadError,
             },
             write::{StructuralWritable, StructuralWriter},
             Tag,
@@ -66,9 +63,10 @@ pub struct Vehicle {
     pub secs_since_report: u32,
     pub heading: Heading,
     pub predictable: bool,
+    pub route_title: String,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Form)]
 pub struct VehicleResponse {
     pub id: String,
     #[serde(rename = "routeTag")]

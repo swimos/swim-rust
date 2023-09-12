@@ -16,7 +16,10 @@ use percent_encoding::{PercentEncode, NON_ALPHANUMERIC};
 use serde::Deserialize;
 use swim::form::Form;
 
-use super::vehicle::{Vehicle, VehicleResponse};
+use super::{
+    route::Route,
+    vehicle::{Vehicle, VehicleResponse},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Form)]
 #[form(tag = "agency")]
@@ -55,7 +58,7 @@ impl Agency {
         )
     }
 
-    pub fn create_vehicle(&self, response: VehicleResponse) -> Vehicle {
+    pub fn create_vehicle(&self, route: &Route, response: VehicleResponse) -> Vehicle {
         let VehicleResponse {
             id,
             route_tag,
@@ -87,6 +90,7 @@ impl Agency {
             secs_since_report,
             heading,
             predictable,
+            route_title: route.title.clone(),
         }
     }
 }

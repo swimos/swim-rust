@@ -15,22 +15,34 @@
 use std::{error::Error, time::Duration};
 
 use example_util::{example_logging, manage_handle};
-use swim::server::{Server, ServerBuilder};
+use swim::{server::{Server, ServerBuilder}, route::RoutePattern, agent::agent_model::AgentModel};
 
+use crate::{buses_api::BusesApi, agents::{AgencyAgentLifecycle, AgencyAgent}};
+
+mod agents;
 mod buses_api;
 mod model;
+
+const POLL_DELAY: Duration = Duration::from_secs(10);
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     example_logging()?;
 
-    //let route = RoutePattern::parse_str("/example/:name}")?;
+    let api = BusesApi::default();
 
-    //let lifecycle = ExampleLifecycle;
-    //let agent = AgentModel::new(ExampleAgent::default, lifecycle.into_lifecycle());
+    let agencies = model::agency::agencies();
+    let mut builder = ServerBuilder::with_plane_name("Transit Plane");
 
-    let server = ServerBuilder::with_plane_name("Example Plane")
-        //.add_route(route, agent)
+    for agency in agencies {
+        let uri = agency.uri();
+        let route = RoutePattern::parse_str(&uri)?;
+        let lifecycle = AgencyAgentLifecycle::new(api.clone(), agency, POLL_DELAY);
+        let agent = AgentModel::new(AgencyAgent::default, lifecycle.into_lifecycle());
+        builder = builder.add_route(route, agent);
+    }
+
+    let server = builder
         .update_config(|config| {
             config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
         })

@@ -12,7 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod agency;
-pub mod bounding_box;
-pub mod route;
-pub mod vehicle;
+use swim::form::Form;
+
+#[derive(Debug, PartialEq, Form)]
+#[form(tag = "bounds")]
+pub struct BoundingBox {
+    #[form(name = "minLat")]
+    pub min_latitude: f64,
+    #[form(name = "maxLat")]
+    pub max_latitude: f64,
+    #[form(name = "minLng")]
+    pub min_longitude: f64,
+    #[form(name = "maxLng")]
+    pub max_longitude: f64,
+}
+
+impl Default for BoundingBox {
+    fn default() -> Self {
+        Self { 
+            min_latitude: -90.0, 
+            max_latitude: 90.0, 
+            min_longitude: -180.0, 
+            max_longitude: 180.0
+        }
+    }
+}

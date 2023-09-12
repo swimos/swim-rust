@@ -14,3 +14,4 @@ thiserror = { workspace = true }
 percent-encoding = { workspace = true }
 reqwest = { workspace = true, features = ["rustls-tls", "gzip"]}
 bytes = { workspace = true }
+tracing = { workspace = true }
