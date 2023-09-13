@@ -15,15 +15,28 @@
 use std::{error::Error, time::Duration};
 
 use example_util::{example_logging, manage_handle};
-use swim::{server::{Server, ServerBuilder}, route::RoutePattern, agent::agent_model::AgentModel};
+use swim::{
+    agent::agent_model::AgentModel,
+    route::RoutePattern,
+    server::{Server, ServerBuilder},
+};
+use tokio::time::Instant;
 
-use crate::{buses_api::BusesApi, agents::{AgencyAgentLifecycle, AgencyAgent}};
+use crate::{
+    agents::{
+        agency::{AgencyAgent, AgencyLifecycle},
+        vehicle::{VehicleAgent, VehicleLifecycle},
+    },
+    buses_api::BusesApi,
+};
 
 mod agents;
 mod buses_api;
 mod model;
 
 const POLL_DELAY: Duration = Duration::from_secs(10);
+const WEEK: Duration = Duration::from_secs(7 * 86400);
+const HISTORY_LEN: usize = 10;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -37,10 +50,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
     for agency in agencies {
         let uri = agency.uri();
         let route = RoutePattern::parse_str(&uri)?;
-        let lifecycle = AgencyAgentLifecycle::new(api.clone(), agency, POLL_DELAY);
+        let lifecycle = AgencyLifecycle::new(api.clone(), agency, POLL_DELAY);
         let agent = AgentModel::new(AgencyAgent::default, lifecycle.into_lifecycle());
         builder = builder.add_route(route, agent);
     }
+
+    let epoch = Instant::now() - WEEK;
+    let vehicle_route = RoutePattern::parse_str("/vehicle/:county/:state/:id")?;
+    let vehicle_lifecycle = move || VehicleLifecycle::new(epoch, HISTORY_LEN).into_lifecycle();
+    let vehicle_agent = AgentModel::from_fn(VehicleAgent::default, vehicle_lifecycle);
+    builder = builder.add_route(vehicle_route, vehicle_agent);
 
     let server = builder
         .update_config(|config| {

@@ -29,11 +29,11 @@ pub struct BoundingBox {
 
 impl Default for BoundingBox {
     fn default() -> Self {
-        Self { 
-            min_latitude: -90.0, 
-            max_latitude: 90.0, 
-            min_longitude: -180.0, 
-            max_longitude: 180.0
+        Self {
+            min_latitude: -90.0,
+            max_latitude: 90.0,
+            min_longitude: -180.0,
+            max_longitude: 180.0,
         }
     }
 }
