@@ -81,6 +81,12 @@ pub enum StructTransformPart<'a> {
     Newtype(Option<FieldSelector<'a>>),
 }
 
+#[derive(Debug, Default)]
+pub struct EnumTransform {
+    pub variant_rename: TypeLevelNameTransform,
+    pub field_rename: TypeLevelNameTransform,
+}
+
 #[derive(Debug)]
 pub enum StructTransform<'a> {
     Standard {
@@ -153,6 +159,47 @@ impl<'a> StructTransform<'a> {
 }
 
 /// Fold operation to extract a struct transform from the attributes on a type.
+pub fn acc_enum_transform(
+    mut state: EnumTransform,
+    nested_meta: syn::NestedMeta,
+) -> SynValidation<EnumTransform> {
+    let err = match &nested_meta {
+        syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == FIELDS_CONV_PATH => {
+            match type_name_transform_from_meta(FIELDS_CONV_PATH, &nested_meta) {
+                Ok(transform) => {
+                    state.field_rename = transform;
+                    None
+                }
+                Err(e) => Some(e),
+            }
+        }
+        syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == CONV_PATH => {
+            match type_name_transform_from_meta(CONV_PATH, &nested_meta) {
+                Ok(transform) => {
+                    state.variant_rename = transform;
+                    None
+                }
+                Err(e) => Some(e),
+            }
+        }
+        syn::NestedMeta::Meta(syn::Meta::List(lst)) => {
+            if let Some(name_str) = lst.path.get_ident().map(|id| id.to_string()) {
+                Some(NameTransformError::UnknownAttributeName(name_str, lst))
+            } else {
+                Some(NameTransformError::UnknownAttribute(&nested_meta))
+            }
+        }
+        _ => Some(NameTransformError::UnknownAttribute(&nested_meta)),
+    };
+    let err = match err {
+        Some(NameTransformError::UnknownAttributeName(name, _)) if name == SCHEMA_PATH => None,
+        Some(e) => Some(e.into()),
+        _ => None,
+    };
+    Validation::Validated(state, err.into())
+}
+
+/// Fold operation to extract a struct transform from the attributes on a type.
 pub fn acc_struct_transform(
     mut state: StructTransform,
     nested_meta: syn::NestedMeta,
@@ -179,7 +226,9 @@ impl<'a> TryFrom<&'a syn::NestedMeta> for StructTransformPart<'static> {
                     Err(NameTransformError::UnknownAttribute(nested_meta))
                 }
             }
-            syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == TAG_PATH => {
+            syn::NestedMeta::Meta(syn::Meta::NameValue(name))
+                if name.path == TAG_PATH || name.path == CONV_PATH =>
+            {
                 Ok(StructTransformPart::Rename(name_transform_from_meta(
                     TAG_PATH,
                     CONV_PATH,

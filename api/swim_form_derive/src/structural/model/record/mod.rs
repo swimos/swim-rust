@@ -14,7 +14,7 @@
 
 use super::field::FieldModel;
 use super::ValidateFrom;
-use crate::modifiers::StructTransform;
+use crate::modifiers::{EnumTransform, StructTransform};
 use crate::structural::model::field::{
     FieldSelector, FieldWithIndex, Manifest, SegregatedFields, TaggedFieldModel,
 };
@@ -109,6 +109,33 @@ impl<'a> StructModel<'a> {
             name,
             fields_model,
             transform,
+        }
+    }
+
+    pub fn apply(&mut self, enum_transform: &EnumTransform) {
+        let EnumTransform {
+            variant_rename,
+            field_rename: super_field_rename,
+        } = enum_transform;
+        let StructModel {
+            fields_model: FieldsModel { fields, .. },
+            transform,
+            ..
+        } = self;
+        if let StructTransform::Standard {
+            rename,
+            field_rename,
+        } = transform
+        {
+            *rename = variant_rename.resolve(std::mem::take(rename));
+            *field_rename = super_field_rename.combine(std::mem::take(field_rename));
+            for TaggedFieldModel {
+                model: FieldModel { transform, .. },
+                ..
+            } in fields
+            {
+                *transform = field_rename.resolve(std::mem::take(transform));
+            }
         }
     }
 

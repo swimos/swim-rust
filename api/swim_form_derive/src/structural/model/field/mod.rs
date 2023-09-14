@@ -14,16 +14,16 @@
 
 use crate::SynValidation;
 use macro_utilities::attr_names::{
-    ATTR_PATH, BODY_PATH, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SCHEMA_PATH,
-    SKIP_PATH, SLOT_PATH, TAG_PATH,
+    ATTR_PATH, BODY_PATH, CONV_PATH, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH,
+    SCHEMA_PATH, SKIP_PATH, SLOT_PATH, TAG_PATH,
 };
-use macro_utilities::{FieldKind, NameTransform, Symbol};
+use macro_utilities::{name_transform_from_meta, FieldKind, NameTransform, Symbol};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt};
 use std::convert::TryFrom;
 use std::ops::Add;
 use swim_utilities::errors::validation::Validation;
-use syn::{Field, Ident, Lit, Meta, NestedMeta, Type};
+use syn::{Field, Ident, Meta, NestedMeta, Type};
 
 /// Describes how to extract a field from a struct.
 #[derive(Clone, Copy, Debug)]
@@ -341,17 +341,9 @@ impl<'a> TryFrom<&'a NestedMeta> for FieldAttr {
                 Ok(FieldAttr::Other(name))
             }
             NestedMeta::Meta(Meta::NameValue(named)) => {
-                if named.path == NAME_PATH {
-                    if let Lit::Str(new_name) = &named.lit {
-                        Ok(FieldAttr::Transform(NameTransform::Rename(
-                            new_name.value(),
-                        )))
-                    } else {
-                        Err(syn::Error::new_spanned(
-                            &named.lit,
-                            "Expected a string literal",
-                        ))
-                    }
+                if named.path == NAME_PATH || named.path == CONV_PATH {
+                    let transform = name_transform_from_meta(NAME_PATH, CONV_PATH, input)?;
+                    Ok(FieldAttr::Transform(transform))
                 } else {
                     let name = named.path.get_ident().map(|id| id.to_string());
                     Ok(FieldAttr::Other(name))

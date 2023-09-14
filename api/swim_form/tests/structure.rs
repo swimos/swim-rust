@@ -210,6 +210,61 @@ fn test_rename() {
 }
 
 #[test]
+fn test_rename_by_convention() {
+    #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
+    #[form(convention = "kebab")]
+    struct MyType {
+        #[form(convention = "camel")]
+        first_field: i32,
+        second_field: i64,
+    }
+
+    let s = MyType {
+        first_field: 1,
+        second_field: 2,
+    };
+    let rec = Value::Record(
+        vec![Attr::of("my-type")],
+        vec![
+            Item::Slot(Value::text("firstField"), Value::Int32Value(1)),
+            Item::Slot(Value::text("second_field"), Value::Int64Value(2)),
+        ],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(MyType::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(MyType::try_convert(rec.clone()), Ok(s.clone()));
+    assert_eq!(s.into_value(), rec);
+}
+
+#[test]
+fn test_rename_by_field_convention() {
+    #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
+    #[form(convention = "kebab", fields_convention = "camel")]
+    struct MyType {
+        first_field: i32,
+        second_field: i64,
+    }
+
+    let s = MyType {
+        first_field: 1,
+        second_field: 2,
+    };
+    let rec = Value::Record(
+        vec![Attr::of("my-type")],
+        vec![
+            Item::Slot(Value::text("firstField"), Value::Int32Value(1)),
+            Item::Slot(Value::text("secondField"), Value::Int64Value(2)),
+        ],
+    );
+    assert_eq!(s.as_value(), rec);
+    assert_eq!(MyType::try_from_value(&rec), Ok(s.clone()));
+    assert_eq!(MyType::try_convert(rec.clone()), Ok(s.clone()));
+    assert_eq!(s.into_value(), rec);
+}
+
+#[test]
 fn body_replaces() {
     #[derive(Form, Debug, PartialEq, Clone)]
     #[form_root(::swim_form)]

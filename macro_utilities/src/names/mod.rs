@@ -64,6 +64,13 @@ impl TypeLevelNameTransform {
         matches!(self, TypeLevelNameTransform::Identity)
     }
 
+    pub fn combine(&self, child: TypeLevelNameTransform) -> Self {
+        match child {
+            TypeLevelNameTransform::Identity => *self,
+            ow => ow,
+        }
+    }
+
     pub fn resolve(&self, field: NameTransform) -> NameTransform {
         match field {
             NameTransform::Identity => match self {
