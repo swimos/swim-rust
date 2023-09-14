@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::modifiers::{NameTransform, StructTransform};
+use crate::modifiers::StructTransform;
 use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
 use crate::structural::model::ValidateFrom;
 use crate::SynValidation;
 use macro_utilities::attr_names::FORM_PATH;
+use macro_utilities::NameTransform;
 use quote::ToTokens;
 use std::collections::HashSet;
 use swim_utilities::errors::validation::{validate2, Validation, ValidationItExt};
@@ -122,7 +123,7 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
         let rename = crate::modifiers::fold_attr_meta(
             FORM_PATH,
             attributes.iter(),
-            None,
+            StructTransform::default(),
             crate::modifiers::acc_struct_transform,
         );
 
@@ -132,16 +133,14 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                 false,
                 |mut names, v| {
                     let name = match &v.transform {
-                        Some(StructTransform::Rename(NameTransform::Rename(rename))) => {
-                            rename.clone()
+                        StructTransform::Standard { rename, .. } => {
+                            rename.transform(|| v.name.to_string()).to_string()
                         }
-                        Some(StructTransform::Newtype(_)) => {
+                        StructTransform::Newtype(_) => {
                             let err = syn::Error::new_spanned(top, NEWTYPE_SPECIFIED_FOR_VARIANT);
                             return Validation::Failed(err.into());
                         }
-                        None => v.name.to_string(),
                     };
-
                     if names.contains(&name) {
                         let err = syn::Error::new_spanned(
                             top,
@@ -161,15 +160,18 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                     variants,
                 };
                 match transform {
-                    Some(StructTransform::Newtype(_)) => {
+                    StructTransform::Newtype(_) => {
                         let err = syn::Error::new_spanned(top, NEWTYPE_SPECIFIED_FOR_ENUM);
                         Validation::Validated(enum_model, err.into())
                     }
-                    Some(StructTransform::Rename(_)) => {
+                    StructTransform::Standard {
+                        rename: NameTransform::Identity,
+                        ..
+                    } => Validation::valid(enum_model),
+                    _ => {
                         let err = syn::Error::new_spanned(top, TAG_SPECIFIED_FOR_ENUM);
                         Validation::Validated(enum_model, err.into())
                     }
-                    _ => Validation::valid(enum_model),
                 }
             })
         })

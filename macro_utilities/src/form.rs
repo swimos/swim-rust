@@ -29,9 +29,11 @@ pub mod attr_names {
     pub const HEADER_BODY_PATH: Symbol = Symbol("header_body");
     pub const NAME_PATH: Symbol = Symbol("name");
     pub const TAG_PATH: Symbol = Symbol("tag");
+    pub const CONV_PATH: Symbol = Symbol("convention");
     pub const SKIP_PATH: Symbol = Symbol("skip");
     pub const SCHEMA_PATH: Symbol = Symbol("schema");
     pub const NEWTYPE_PATH: Symbol = Symbol("newtype");
+    pub const FIELDS_CONV_PATH: Symbol = Symbol("fields_convention");
 }
 
 /// An enumeration representing the contents of an input.

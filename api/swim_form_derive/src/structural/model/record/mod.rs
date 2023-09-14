@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use super::field::FieldModel;
 use super::ValidateFrom;
-use crate::modifiers::{NameTransform, StructTransform};
+use crate::modifiers::StructTransform;
 use crate::structural::model::field::{
     FieldSelector, FieldWithIndex, Manifest, SegregatedFields, TaggedFieldModel,
 };
@@ -74,6 +75,7 @@ pub enum NewtypeFieldError {
 }
 
 /// Preprocessed description of a struct type.
+#[non_exhaustive]
 pub struct StructModel<'a> {
     pub root: &'a syn::Path,
     /// The original name of the type.
@@ -81,10 +83,35 @@ pub struct StructModel<'a> {
     /// Description of the fields of the struct.
     pub fields_model: FieldsModel<'a>,
     /// Transformation to apply to the struct.
-    pub transform: Option<StructTransform<'a>>,
+    pub transform: StructTransform<'a>,
 }
 
 impl<'a> StructModel<'a> {
+    pub fn new(
+        root: &'a syn::Path,
+        name: &'a Ident,
+        mut fields_model: FieldsModel<'a>,
+        transform: StructTransform<'a>,
+    ) -> Self {
+        let FieldsModel { fields, .. } = &mut fields_model;
+        if let StructTransform::Standard { field_rename, .. } = &transform {
+            for TaggedFieldModel {
+                model: FieldModel { transform, .. },
+                ..
+            } in fields
+            {
+                *transform = field_rename.resolve(std::mem::take(transform));
+            }
+        }
+
+        StructModel {
+            root,
+            name,
+            fields_model,
+            transform,
+        }
+    }
+
     /// Get the (possible renamed) name of the type as a string literal.
     pub fn resolve_name(&self) -> ResolvedName<'_> {
         ResolvedName(self)
@@ -92,7 +119,7 @@ impl<'a> StructModel<'a> {
 
     /// Returns the field selector if a newtype transform should be applied.
     pub fn newtype_selector(&self) -> Option<FieldSelector<'a>> {
-        if let Some(StructTransform::Newtype(Some(selector))) = self.transform {
+        if let StructTransform::Newtype(Some(selector)) = self.transform {
             Some(selector)
         } else {
             None
@@ -105,10 +132,8 @@ pub struct ResolvedName<'a>(&'a StructModel<'a>);
 impl<'a> ToTokens for ResolvedName<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ResolvedName(def) = self;
-        if let Some(StructTransform::Rename(trans)) = def.transform.as_ref() {
-            match trans {
-                NameTransform::Rename(name) => proc_macro2::Literal::string(name),
-            }
+        if let StructTransform::Standard { rename, .. } = &def.transform {
+            rename.transform(|| def.name.to_string())
         } else {
             proc_macro2::Literal::string(&def.name.to_string())
         }
@@ -183,63 +208,55 @@ where
         let transform = crate::modifiers::fold_attr_meta(
             FORM_PATH,
             attributes.iter(),
-            None,
+            StructTransform::default(),
             crate::modifiers::acc_struct_transform,
         );
 
         validate2(fields_model, transform).and_then(|(model, transform)| match transform {
-            Some(StructTransform::Newtype(_)) => match model.newtype_field() {
+            StructTransform::Newtype(_) => match model.newtype_field() {
                 Ok(selector) => {
-                    let struct_model = StructModel {
+                    let struct_model = StructModel::new(
                         root,
                         name,
-                        fields_model: model,
-                        transform: Some(StructTransform::Newtype(Some(selector))),
-                    };
+                        model,
+                        StructTransform::Newtype(Some(selector)),
+                    );
                     Validation::valid(struct_model)
                 }
                 Err(NewtypeFieldError::Multiple) => {
-                    let struct_model = StructModel {
-                        root,
-                        name,
-                        fields_model: model,
-                        transform: None,
-                    };
+                    let struct_model =
+                        StructModel::new(root, name, model, StructTransform::default());
                     let err = syn::Error::new_spanned(top, NEWTYPE_MULTI_FIELD_ERR);
                     Validation::Validated(struct_model, err.into())
                 }
                 Err(NewtypeFieldError::Empty) => {
-                    let struct_model = StructModel {
-                        root,
-                        name,
-                        fields_model: model,
-                        transform: None,
-                    };
+                    let struct_model =
+                        StructModel::new(root, name, model, StructTransform::default());
                     let err = syn::Error::new_spanned(top, NEWTYPE_EMPTY_ERR);
                     Validation::Validated(struct_model, err.into())
                 }
             },
-            Some(transform @ StructTransform::Rename(_)) => {
-                let struct_model = StructModel {
+            StructTransform::Standard {
+                rename,
+                field_rename,
+            } => {
+                let is_id = rename.is_identity();
+                let struct_model = StructModel::new(
                     root,
                     name,
-                    fields_model: model,
-                    transform: Some(transform),
-                };
-
-                if struct_model.fields_model.has_tag_field() {
+                    model,
+                    StructTransform::Standard {
+                        rename,
+                        field_rename,
+                    },
+                );
+                if !is_id && struct_model.fields_model.has_tag_field() {
                     let err = syn::Error::new_spanned(top, FIELD_TAG_ERR);
                     Validation::Validated(struct_model, err.into())
                 } else {
                     Validation::valid(struct_model)
                 }
             }
-            None => Validation::valid(StructModel {
-                root,
-                name,
-                fields_model: model,
-                transform: None,
-            }),
         })
     }
 }

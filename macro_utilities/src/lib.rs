@@ -17,11 +17,16 @@
 mod form;
 mod generics;
 mod label;
+mod names;
 mod utilities;
 
 pub use form::*;
 pub use generics::*;
 pub use label::Label;
+pub use names::{
+    name_transform_from_meta, type_name_transform_from_meta, CaseConvention, InvalidCaseConvention,
+    NameTransform, NameTransformError, TypeLevelNameTransform,
+};
 pub use utilities::*;
 
 extern crate proc_macro;

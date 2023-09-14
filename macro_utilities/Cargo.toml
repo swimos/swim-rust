@@ -6,5 +6,7 @@ edition = "2021"
 
 [dependencies]
 proc-macro2 = { workspace = true }
-syn = { workspace = true, features = ["printing", "visit", "visit-mut", "parsing"] }
+syn = { workspace = true, features = ["printing", "visit", "visit-mut", "parsing", "extra-traits"] }
 quote = { workspace = true }
+convert_case = { workspace = true }
+thiserror = { workspace = true }

@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::modifiers::NameTransform;
 use crate::SynValidation;
 use macro_utilities::attr_names::{
     ATTR_PATH, BODY_PATH, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SCHEMA_PATH,
     SKIP_PATH, SLOT_PATH, TAG_PATH,
 };
-use macro_utilities::{FieldKind, Symbol};
+use macro_utilities::{FieldKind, NameTransform, Symbol};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt};
 use std::convert::TryFrom;
@@ -99,7 +98,7 @@ pub struct FieldModel<'a> {
     /// Ordinal of the field within the struct, in order of definition.
     pub ordinal: usize,
     /// Optional transformation for the name of the type for the tag attribute.
-    pub transform: Option<NameTransform>,
+    pub transform: NameTransform,
     /// The type of the field.
     pub field_ty: &'a Type,
 }
@@ -116,20 +115,11 @@ pub struct ResolvedName<'a>(&'a FieldModel<'a>);
 impl<'a> ToTokens for ResolvedName<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ResolvedName(field) = self;
-        if let Some(trans) = field.transform.as_ref() {
-            match trans {
-                NameTransform::Rename(name) => proc_macro2::Literal::string(name),
-            }
-        } else {
-            match field.selector {
-                FieldSelector::Ordinal(i) => {
-                    let string = format!("value_{}", i);
-                    proc_macro2::Literal::string(&string)
-                }
-                FieldSelector::Named(id) => proc_macro2::Literal::string(&id.to_string()),
-            }
-        }
-        .to_tokens(tokens);
+        let name_fn = || match field.selector {
+            FieldSelector::Ordinal(i) => format!("value_{}", i),
+            FieldSelector::Named(id) => id.to_string(),
+        };
+        field.transform.transform(name_fn).to_tokens(tokens);
     }
 }
 
@@ -146,7 +136,7 @@ impl<'a> TaggedFieldModel<'a> {
             &self.model,
             FieldModel {
                 selector: FieldSelector::Ordinal(_),
-                transform: None,
+                transform: NameTransform::Identity,
                 ..
             }
         )
@@ -175,7 +165,7 @@ enum FieldAttr {
 /// Validated attributes for a field.
 #[derive(Default)]
 struct FieldAttributes {
-    transform: Option<NameTransform>,
+    transform: NameTransform,
     directive: Option<FieldKind>,
 }
 
@@ -188,11 +178,11 @@ impl FieldAttributes {
         } = &mut self;
         match attr {
             FieldAttr::Transform(t) => {
-                if transform.is_some() {
+                if !transform.is_identity() {
                     let err = syn::Error::new_spanned(field, "Field renamed multiple times");
                     Validation::Validated(self, err.into())
                 } else {
-                    *transform = Some(t);
+                    *transform = t;
                     Validation::valid(self)
                 }
             }
