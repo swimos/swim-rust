@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use bitflags::bitflags;
+use macro_utilities::NameTransform;
 use std::hash::Hash;
 use swim_utilities::errors::{
     validation::{Validation, ValidationItExt},
@@ -22,8 +23,6 @@ use syn::{
     AngleBracketedGenericArguments, Attribute, Data, DataStruct, DeriveInput, Field,
     GenericArgument, Ident, PathArguments, PathSegment, Type, TypePath,
 };
-
-use super::ident_to_literal;
 
 /// Model of a struct type for the AgentLaneModel derivation macro.
 pub struct LanesModel<'a> {
@@ -127,26 +126,42 @@ bitflags! {
 }
 
 /// Description of an item (its name the the kind of the item, along with types).
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct ItemModel<'a> {
     pub name: &'a Ident,
     pub kind: ItemSpec<'a>,
     pub flags: ItemFlags,
+    pub transform: NameTransform,
 }
 
 impl<'a> ItemModel<'a> {
     pub fn lane(&self) -> Option<WarpLaneModel<'a>> {
-        let ItemModel { name, kind, flags } = self;
+        let ItemModel {
+            name,
+            kind,
+            flags,
+            transform,
+        } = self;
         kind.lane().map(move |kind| WarpLaneModel {
             name,
             kind,
             flags: *flags,
+            transform: transform.clone(),
         })
     }
 
     pub fn http(&self) -> Option<HttpLaneModel<'a>> {
-        let ItemModel { name, kind, .. } = self;
-        kind.http().map(move |kind| HttpLaneModel { name, kind })
+        let ItemModel {
+            name,
+            kind,
+            transform,
+            ..
+        } = self;
+        kind.http().map(move |kind| HttpLaneModel {
+            name,
+            kind,
+            transform: transform.clone(),
+        })
     }
 
     pub fn item_kind(&self) -> ItemKind {
@@ -155,24 +170,26 @@ impl<'a> ItemModel<'a> {
 }
 
 /// Description of an lane (its name the the kind of the lane, along with types).
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct WarpLaneModel<'a> {
     pub name: &'a Ident,
     pub kind: WarpLaneSpec<'a>,
     pub flags: ItemFlags,
+    pub transform: NameTransform,
 }
 
 /// Description of an HTTP lane (its name the the kind of the lane, along with types).
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct HttpLaneModel<'a> {
     pub name: &'a Ident,
     pub kind: HttpLaneSpec<'a>,
+    pub transform: NameTransform,
 }
 
 impl<'a> WarpLaneModel<'a> {
     /// The name of the lane as a string literal.
     pub fn literal(&self) -> proc_macro2::Literal {
-        ident_to_literal(self.name)
+        self.transform.transform(|| self.name.to_string())
     }
 }
 
@@ -181,13 +198,24 @@ impl<'a> ItemModel<'a> {
     /// * `name` - The name of the field in the struct (mapped to the name of the lane in the agent).
     /// * `kind` - The kind of the lane, along with any types.
     /// * `flags` - Modifiers applied to the lane.
-    fn new(name: &'a Ident, kind: ItemSpec<'a>, flags: ItemFlags) -> ItemModel<'a> {
-        ItemModel { name, kind, flags }
+    /// * `transform` - Transformation to apply to the name.
+    fn new(
+        name: &'a Ident,
+        kind: ItemSpec<'a>,
+        flags: ItemFlags,
+        transform: NameTransform,
+    ) -> ItemModel<'a> {
+        ItemModel {
+            name,
+            kind,
+            flags,
+            transform,
+        }
     }
 
-    /// The name of the lane as a string literal.
+    /// The name of the item as a string literal.
     pub fn literal(&self) -> proc_macro2::Literal {
-        ident_to_literal(self.name)
+        self.transform.transform(|| self.name.to_string())
     }
 
     /// Determine if the lane needs to persist its state.
@@ -199,7 +227,7 @@ impl<'a> ItemModel<'a> {
 impl<'a> HttpLaneModel<'a> {
     /// The name of the lane as a string literal.
     pub fn literal(&self) -> proc_macro2::Literal {
-        ident_to_literal(self.name)
+        self.transform.transform(|| self.name.to_string())
     }
 }
 
@@ -277,6 +305,7 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
             } else {
                 ItemFlags::empty()
             };
+            let transform = NameTransform::Identity;
             match type_name.as_str() {
                 COMMAND_LANE_NAME => {
                     let param = single_param(arguments)?;
@@ -284,6 +313,7 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
                         fld_name,
                         ItemSpec::Command(param),
                         ItemFlags::TRANSIENT, //Command lanes are always transient.
+                        transform,
                     ))
                 }
                 DEMAND_LANE_NAME => {
@@ -292,6 +322,7 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
                         fld_name,
                         ItemSpec::Demand(param),
                         ItemFlags::TRANSIENT, //Demand lanes are always transient.
+                        transform,
                     ))
                 }
                 DEMAND_MAP_LANE_NAME => {
@@ -300,6 +331,7 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
                         fld_name,
                         ItemSpec::DemandMap(param1, param2),
                         ItemFlags::TRANSIENT, //Demand map lanes are always transient.
+                        transform,
                     ))
                 }
                 VALUE_LANE_NAME => {
@@ -308,6 +340,7 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
                         fld_name,
                         ItemSpec::Value(ItemKind::Lane, param),
                         lane_flags,
+                        transform,
                     ))
                 }
                 VALUE_STORE_NAME => {
@@ -316,6 +349,7 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
                         fld_name,
                         ItemSpec::Value(ItemKind::Store, param),
                         lane_flags,
+                        transform,
                     ))
                 }
                 MAP_LANE_NAME => {
@@ -324,6 +358,7 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
                         fld_name,
                         ItemSpec::Map(ItemKind::Lane, param1, param2),
                         lane_flags,
+                        transform,
                     ))
                 }
                 MAP_STORE_NAME => {
@@ -332,6 +367,7 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
                         fld_name,
                         ItemSpec::Map(ItemKind::Store, param1, param2),
                         lane_flags,
+                        transform,
                     ))
                 }
                 JOIN_VALUE_LANE_NAME => {
@@ -340,11 +376,17 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
                         fld_name,
                         ItemSpec::JoinValue(param1, param2),
                         lane_flags,
+                        transform,
                     ))
                 }
                 name @ (HTTP_LANE_NAME | SIMPLE_HTTP_LANE_NAME) => {
                     let spec = http_params(arguments, name == SIMPLE_HTTP_LANE_NAME)?;
-                    Ok(ItemModel::new(fld_name, ItemSpec::Http(spec), lane_flags))
+                    Ok(ItemModel::new(
+                        fld_name,
+                        ItemSpec::Http(spec),
+                        lane_flags,
+                        transform,
+                    ))
                 }
                 _ => Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE)),
             }
