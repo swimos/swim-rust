@@ -13,15 +13,19 @@
 // limitations under the License.
 
 use bitflags::bitflags;
-use macro_utilities::NameTransform;
+use frunk::hlist;
+use macro_utilities::{
+    attributes::{consume_attributes, NestedMetaConsumer},
+    NameTransform, NameTransformConsumer, Transformation,
+};
 use std::hash::Hash;
 use swim_utilities::errors::{
     validation::{Validation, ValidationItExt},
     Errors,
 };
 use syn::{
-    AngleBracketedGenericArguments, Attribute, Data, DataStruct, DeriveInput, Field,
-    GenericArgument, Ident, PathArguments, PathSegment, Type, TypePath,
+    AngleBracketedGenericArguments, Data, DataStruct, DeriveInput, Field, GenericArgument, Ident,
+    PathArguments, PathSegment, Type, TypePath,
 };
 
 /// Model of a struct type for the AgentLaneModel derivation macro.
@@ -119,6 +123,7 @@ impl<'a> ItemSpec<'a> {
 
 bitflags! {
 
+    #[derive(Default)]
     pub struct ItemFlags: u8 {
         /// The state of the lane should not be persisted.
         const TRANSIENT = 0b01;
@@ -260,17 +265,12 @@ fn try_from_struct<'a>(
     definition
         .fields
         .iter()
-        .append_fold(
-            Validation::valid(vec![]),
-            false,
-            |mut lanes, field| match extract_lane_model(field) {
-                Ok(lane_model) => {
-                    lanes.push(lane_model);
-                    Validation::valid(lanes)
-                }
-                Err(e) => Validation::Validated(lanes, Some(e)),
-            },
-        )
+        .validate_fold(Validation::valid(vec![]), false, |mut lanes, field| {
+            extract_lane_model(field).map(move |lane_model| {
+                lanes.push(lane_model);
+                lanes
+            })
+        })
         .and_then_append(|lanes| {
             if lanes.is_empty() {
                 Validation::Validated(
@@ -295,130 +295,134 @@ const JOIN_VALUE_LANE_NAME: &str = "JoinValueLane";
 const HTTP_LANE_NAME: &str = "HttpLane";
 const SIMPLE_HTTP_LANE_NAME: &str = "SimpleHttpLane";
 
-fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
+const LANE_TAG: &str = "lane";
+
+fn extract_lane_model(field: &Field) -> Validation<ItemModel<'_>, Errors<syn::Error>> {
     if let (Some(fld_name), Type::Path(TypePath { qself: None, path })) = (&field.ident, &field.ty)
     {
         if let Some(PathSegment { ident, arguments }) = path.segments.last() {
             let type_name = ident.to_string();
-            let lane_flags = if has_transient_attr(&field.attrs)? {
-                ItemFlags::TRANSIENT
-            } else {
-                ItemFlags::empty()
-            };
-            let transform = NameTransform::Identity;
-            match type_name.as_str() {
-                COMMAND_LANE_NAME => {
-                    let param = single_param(arguments)?;
-                    Ok(ItemModel::new(
-                        fld_name,
-                        ItemSpec::Command(param),
-                        ItemFlags::TRANSIENT, //Command lanes are always transient.
-                        transform,
-                    ))
-                }
-                DEMAND_LANE_NAME => {
-                    let param = single_param(arguments)?;
-                    Ok(ItemModel::new(
-                        fld_name,
-                        ItemSpec::Demand(param),
-                        ItemFlags::TRANSIENT, //Demand lanes are always transient.
-                        transform,
-                    ))
-                }
-                DEMAND_MAP_LANE_NAME => {
-                    let (param1, param2) = two_params(arguments)?;
-                    Ok(ItemModel::new(
-                        fld_name,
-                        ItemSpec::DemandMap(param1, param2),
-                        ItemFlags::TRANSIENT, //Demand map lanes are always transient.
-                        transform,
-                    ))
-                }
-                VALUE_LANE_NAME => {
-                    let param = single_param(arguments)?;
-                    Ok(ItemModel::new(
-                        fld_name,
-                        ItemSpec::Value(ItemKind::Lane, param),
-                        lane_flags,
-                        transform,
-                    ))
-                }
-                VALUE_STORE_NAME => {
-                    let param = single_param(arguments)?;
-                    Ok(ItemModel::new(
-                        fld_name,
-                        ItemSpec::Value(ItemKind::Store, param),
-                        lane_flags,
-                        transform,
-                    ))
-                }
-                MAP_LANE_NAME => {
-                    let (param1, param2) = two_params(arguments)?;
-                    Ok(ItemModel::new(
-                        fld_name,
-                        ItemSpec::Map(ItemKind::Lane, param1, param2),
-                        lane_flags,
-                        transform,
-                    ))
-                }
-                MAP_STORE_NAME => {
-                    let (param1, param2) = two_params(arguments)?;
-                    Ok(ItemModel::new(
-                        fld_name,
-                        ItemSpec::Map(ItemKind::Store, param1, param2),
-                        lane_flags,
-                        transform,
-                    ))
-                }
-                JOIN_VALUE_LANE_NAME => {
-                    let (param1, param2) = two_params(arguments)?;
-                    Ok(ItemModel::new(
-                        fld_name,
-                        ItemSpec::JoinValue(param1, param2),
-                        lane_flags,
-                        transform,
-                    ))
-                }
-                name @ (HTTP_LANE_NAME | SIMPLE_HTTP_LANE_NAME) => {
-                    let spec = http_params(arguments, name == SIMPLE_HTTP_LANE_NAME)?;
-                    Ok(ItemModel::new(
-                        fld_name,
-                        ItemSpec::Http(spec),
-                        lane_flags,
-                        transform,
-                    ))
-                }
-                _ => Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE)),
-            }
+            let (item_attrs, errors) =
+                consume_attributes(LANE_TAG, &field.attrs, make_attr_consumer());
+            let modifiers = Validation::Validated(item_attrs, Errors::from(errors))
+                .and_then(|item_attrs| combine_attrs(field, item_attrs));
+
+            modifiers.and_then(
+                |ItemModifiers {
+                     transform,
+                     flags: lane_flags,
+                 }| {
+                    match type_name.as_str() {
+                        COMMAND_LANE_NAME => {
+                            match single_param(arguments) {
+                                Ok(param) => Validation::valid(ItemModel::new(
+                                    fld_name,
+                                    ItemSpec::Command(param),
+                                    ItemFlags::TRANSIENT, //Command lanes are always transient.
+                                    transform,
+                                )),
+                                Err(e) => Validation::fail(Errors::of(e)),
+                            }
+                        }
+                        DEMAND_LANE_NAME => {
+                            match single_param(arguments) {
+                                Ok(param) => Validation::valid(ItemModel::new(
+                                    fld_name,
+                                    ItemSpec::Demand(param),
+                                    ItemFlags::TRANSIENT, //Demand lanes are always transient.
+                                    transform,
+                                )),
+                                Err(e) => Validation::fail(Errors::of(e)),
+                            }
+                        }
+                        DEMAND_MAP_LANE_NAME => {
+                            match two_params(arguments) {
+                                Ok((param1, param2)) => Validation::valid(ItemModel::new(
+                                    fld_name,
+                                    ItemSpec::DemandMap(param1, param2),
+                                    ItemFlags::TRANSIENT, //Demand map lanes are always transient.
+                                    transform,
+                                )),
+                                Err(e) => Validation::fail(Errors::of(e)),
+                            }
+                        }
+                        VALUE_LANE_NAME => match single_param(arguments) {
+                            Ok(param) => Validation::valid(ItemModel::new(
+                                fld_name,
+                                ItemSpec::Value(ItemKind::Lane, param),
+                                lane_flags,
+                                transform,
+                            )),
+                            Err(e) => Validation::fail(Errors::of(e)),
+                        },
+                        VALUE_STORE_NAME => match single_param(arguments) {
+                            Ok(param) => Validation::valid(ItemModel::new(
+                                fld_name,
+                                ItemSpec::Value(ItemKind::Store, param),
+                                lane_flags,
+                                transform,
+                            )),
+                            Err(e) => Validation::fail(Errors::of(e)),
+                        },
+                        MAP_LANE_NAME => match two_params(arguments) {
+                            Ok((param1, param2)) => Validation::valid(ItemModel::new(
+                                fld_name,
+                                ItemSpec::Map(ItemKind::Lane, param1, param2),
+                                lane_flags,
+                                transform,
+                            )),
+                            Err(e) => Validation::fail(Errors::of(e)),
+                        },
+                        MAP_STORE_NAME => match two_params(arguments) {
+                            Ok((param1, param2)) => Validation::valid(ItemModel::new(
+                                fld_name,
+                                ItemSpec::Map(ItemKind::Store, param1, param2),
+                                lane_flags,
+                                transform,
+                            )),
+                            Err(e) => Validation::fail(Errors::of(e)),
+                        },
+                        JOIN_VALUE_LANE_NAME => match two_params(arguments) {
+                            Ok((param1, param2)) => Validation::valid(ItemModel::new(
+                                fld_name,
+                                ItemSpec::JoinValue(param1, param2),
+                                lane_flags,
+                                transform,
+                            )),
+                            Err(e) => Validation::fail(Errors::of(e)),
+                        },
+                        name @ (HTTP_LANE_NAME | SIMPLE_HTTP_LANE_NAME) => {
+                            match http_params(arguments, name == SIMPLE_HTTP_LANE_NAME) {
+                                Ok(spec) => Validation::valid(ItemModel::new(
+                                    fld_name,
+                                    ItemSpec::Http(spec),
+                                    lane_flags,
+                                    transform,
+                                )),
+                                Err(e) => Validation::fail(Errors::of(e)),
+                            }
+                        }
+                        _ => Validation::fail(Errors::of(syn::Error::new_spanned(
+                            &field.ty,
+                            NOT_LANE_TYPE,
+                        ))),
+                    }
+                },
+            )
         } else {
-            Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE))
+            Validation::fail(Errors::of(syn::Error::new_spanned(
+                &field.ty,
+                NOT_LANE_TYPE,
+            )))
         }
     } else if field.ident.is_none() {
-        Err(syn::Error::new_spanned(field, NO_TUPLES))
+        Validation::fail(Errors::of(syn::Error::new_spanned(&field.ty, NO_TUPLES)))
     } else {
-        Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE))
+        Validation::fail(Errors::of(syn::Error::new_spanned(
+            &field.ty,
+            NOT_LANE_TYPE,
+        )))
     }
-}
-
-fn has_transient_attr(attrs: &[Attribute]) -> Result<bool, syn::Error> {
-    let mut has_transient = false;
-    for attr in attrs {
-        let meta = attr.parse_meta()?;
-        match meta {
-            syn::Meta::Path(path) => match path.segments.first() {
-                Some(seg)
-                    if path.segments.len() == 1
-                        && seg.arguments.is_empty()
-                        && seg.ident == TRANSIENT_ATTR_NAME =>
-                {
-                    has_transient = true;
-                }
-                _ => return Err(syn::Error::new_spanned(attr, INVALID_FIELD_ATTR)),
-            },
-            _ => return Err(syn::Error::new_spanned(attr, INVALID_FIELD_ATTR)),
-        }
-    }
-    Ok(has_transient)
 }
 
 fn single_param(args: &PathArguments) -> Result<&Type, syn::Error> {
@@ -511,4 +515,72 @@ fn two_params(args: &PathArguments) -> Result<(&Type, &Type), syn::Error> {
     } else {
         Err(syn::Error::new_spanned(args, BAD_PARAMS))
     }
+}
+
+struct TransientFlagConsumer;
+
+pub enum ItemAttr {
+    Transient,
+    Transform(Transformation),
+}
+
+impl NestedMetaConsumer<ItemAttr> for TransientFlagConsumer {
+    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<ItemAttr>, syn::Error> {
+        match meta {
+            syn::NestedMeta::Meta(syn::Meta::Path(path)) => match path.segments.first() {
+                Some(seg) => {
+                    if seg.ident == TRANSIENT_ATTR_NAME {
+                        if path.segments.len() == 1 && seg.arguments.is_empty() {
+                            Ok(Some(ItemAttr::Transient))
+                        } else {
+                            Err(syn::Error::new_spanned(meta, INVALID_FIELD_ATTR))
+                        }
+                    } else {
+                        Ok(None)
+                    }
+                }
+                _ => Ok(None),
+            },
+            _ => Ok(None),
+        }
+    }
+}
+
+const RENAME_TAG: &str = "name";
+const CONV_TAG: &str = "convention";
+
+fn make_attr_consumer() -> impl NestedMetaConsumer<ItemAttr> {
+    let trans_consumer = NameTransformConsumer::new(RENAME_TAG, CONV_TAG);
+    hlist![
+        TransientFlagConsumer,
+        trans_consumer.map(ItemAttr::Transform)
+    ]
+}
+
+#[derive(Debug, Default)]
+pub struct ItemModifiers {
+    transform: NameTransform,
+    flags: ItemFlags,
+}
+
+fn combine_attrs(
+    field: &Field,
+    attrs: Vec<ItemAttr>,
+) -> Validation<ItemModifiers, Errors<syn::Error>> {
+    attrs.into_iter().validate_fold(
+        Validation::valid(ItemModifiers::default()),
+        false,
+        |mut modifiers, attr| {
+            let mut errors = Errors::empty();
+            match attr {
+                ItemAttr::Transient => modifiers.flags.insert(ItemFlags::TRANSIENT),
+                ItemAttr::Transform(t) => {
+                    if let Err(e) = modifiers.transform.try_add(field, t) {
+                        errors.push(e);
+                    }
+                }
+            }
+            Validation::valid(modifiers)
+        },
+    )
 }

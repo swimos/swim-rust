@@ -14,6 +14,7 @@
 
 #![allow(clippy::result_unit_err)]
 
+pub mod attributes;
 mod form;
 mod generics;
 mod label;
@@ -25,7 +26,8 @@ pub use generics::*;
 pub use label::Label;
 pub use names::{
     name_transform_from_meta, type_name_transform_from_meta, CaseConvention, InvalidCaseConvention,
-    NameTransform, NameTransformError, TypeLevelNameTransform,
+    NameTransform, NameTransformConsumer, NameTransformError, Transformation,
+    TypeLevelNameTransform,
 };
 pub use utilities::*;
 

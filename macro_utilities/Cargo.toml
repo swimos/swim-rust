@@ -10,3 +10,4 @@ syn = { workspace = true, features = ["printing", "visit", "visit-mut", "parsing
 quote = { workspace = true }
 convert_case = { workspace = true }
 thiserror = { workspace = true }
+frunk = { workspace = true }

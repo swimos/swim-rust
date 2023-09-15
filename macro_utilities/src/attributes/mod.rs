@@ -1,0 +1,128 @@
+// Copyright 2015-2023 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::marker::PhantomData;
+
+use frunk::{HCons, HNil};
+
+pub fn consume_attributes<'a, It, T, F>(
+    tag: &str,
+    attributes: It,
+    f: F,
+) -> (Vec<T>, Vec<syn::Error>)
+where
+    It: IntoIterator<Item = &'a syn::Attribute> + 'a,
+    F: NestedMetaConsumer<T>,
+{
+    attributes
+        .into_iter()
+        .filter_map(|a| {
+            if a.path.is_ident(tag) {
+                if let Ok(syn::Meta::List(list)) = a.parse_meta() {
+                    Some(list.nested)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .fold((vec![], vec![]), |(mut values, mut errors), nested| {
+            match f.try_consume(&nested) {
+                Ok(Some(t)) => {
+                    values.push(t);
+                }
+                Ok(_) => errors.push(syn::Error::new_spanned(
+                    nested,
+                    format!("Unrecognized attribute for '{}'.", tag),
+                )),
+                Err(e) => {
+                    errors.push(e);
+                }
+            }
+            (values, errors)
+        })
+}
+
+pub trait NestedMetaConsumer<T> {
+    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<T>, syn::Error>;
+
+    fn map<U, F>(self, f: F) -> MapConsumer<T, U, Self, F>
+    where
+        Self: Sized,
+        F: Fn(T) -> U,
+    {
+        MapConsumer {
+            inner: self,
+            f,
+            _type: PhantomData,
+        }
+    }
+}
+
+pub fn consumer<T, F>(f: F) -> FnConsumer<F>
+where
+    F: Fn(&syn::NestedMeta) -> Result<Option<T>, syn::Error>,
+{
+    FnConsumer(f)
+}
+
+pub struct FnConsumer<F>(F);
+
+impl<T, F> NestedMetaConsumer<T> for FnConsumer<F>
+where
+    F: Fn(&syn::NestedMeta) -> Result<Option<T>, syn::Error>,
+{
+    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<T>, syn::Error> {
+        self.0(meta)
+    }
+}
+
+impl<T> NestedMetaConsumer<T> for HNil {
+    fn try_consume(&self, _meta: &syn::NestedMeta) -> Result<Option<T>, syn::Error> {
+        Ok(None)
+    }
+}
+
+impl<T, Head, Tail> NestedMetaConsumer<T> for HCons<Head, Tail>
+where
+    Head: NestedMetaConsumer<T>,
+    Tail: NestedMetaConsumer<T>,
+{
+    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<T>, syn::Error> {
+        let HCons { head, tail } = self;
+        match head.try_consume(meta) {
+            Ok(Some(t)) => Ok(Some(t)),
+            Ok(None) => tail.try_consume(meta),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+pub struct MapConsumer<T, U, C, F> {
+    inner: C,
+    f: F,
+    _type: PhantomData<fn(T) -> U>,
+}
+
+impl<T, U, C, F> NestedMetaConsumer<U> for MapConsumer<T, U, C, F>
+where
+    C: NestedMetaConsumer<T>,
+    F: Fn(T) -> U,
+{
+    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<U>, syn::Error> {
+        self.inner.try_consume(meta).map(|maybe| maybe.map(&self.f))
+    }
+}

@@ -31,7 +31,7 @@ use tutorial_app_model::{Counter, HistoryItem, Message};
 pub struct UnitAgent {
     publish: CommandLane<Message>,
     history: MapLane<usize, HistoryItem>,
-    #[transient]
+    #[lane(transient)]
     histogram: MapLane<i64, Counter>,
     latest: ValueLane<Option<Message>>,
 }

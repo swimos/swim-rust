@@ -19,7 +19,7 @@ use proc_macro2::Literal;
 use quote::ToTokens;
 use thiserror::Error;
 
-use crate::Symbol;
+use crate::{attributes::NestedMetaConsumer, Symbol};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CaseConvention {
@@ -64,6 +64,25 @@ impl TypeLevelNameTransform {
         matches!(self, TypeLevelNameTransform::Identity)
     }
 
+    pub fn try_add(
+        self,
+        meta: &syn::NestedMeta,
+        trans: Transformation,
+    ) -> Result<Self, syn::Error> {
+        match (self, trans) {
+            (TypeLevelNameTransform::Identity, Transformation::Rename(_)) => Err(
+                syn::Error::new_spanned(meta, "Only renaming conventions may be applied here."),
+            ),
+            (TypeLevelNameTransform::Identity, Transformation::Convention(conv)) => {
+                Ok(TypeLevelNameTransform::Convention(conv))
+            }
+            _ => Err(syn::Error::new_spanned(
+                meta,
+                "Duplicate name transformations.",
+            )),
+        }
+    }
+
     pub fn combine(&self, child: TypeLevelNameTransform) -> Self {
         match child {
             TypeLevelNameTransform::Identity => *self,
@@ -95,6 +114,27 @@ pub enum NameTransform {
 impl NameTransform {
     pub fn is_identity(&self) -> bool {
         matches!(self, NameTransform::Identity)
+    }
+
+    pub fn try_add<T: ToTokens>(
+        &mut self,
+        meta: T,
+        trans: Transformation,
+    ) -> Result<(), syn::Error> {
+        match (&mut *self, trans) {
+            (NameTransform::Identity, Transformation::Rename(name)) => {
+                *self = NameTransform::Rename(name);
+                Ok(())
+            }
+            (NameTransform::Identity, Transformation::Convention(conv)) => {
+                *self = NameTransform::Convention(conv);
+                Ok(())
+            }
+            _ => Err(syn::Error::new_spanned(
+                meta,
+                "Duplicate name transformations.",
+            )),
+        }
     }
 
     pub fn transform<F, S>(&self, name: F) -> Literal
@@ -251,5 +291,63 @@ pub fn type_name_transform_from_meta(
             }
         }
         _ => Err(NameTransformError::UnknownAttribute(nested_meta)),
+    }
+}
+
+pub enum Transformation {
+    Rename(String),
+    Convention(CaseConvention),
+}
+
+pub struct NameTransformConsumer<'a> {
+    rename_tag: &'a str,
+    convention_tag: &'a str,
+}
+
+impl<'a> NameTransformConsumer<'a> {
+    pub fn new(rename_tag: &'a str, convention_tag: &'a str) -> Self {
+        NameTransformConsumer {
+            rename_tag,
+            convention_tag,
+        }
+    }
+}
+
+impl<'a> NestedMetaConsumer<Transformation> for NameTransformConsumer<'a> {
+    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<Transformation>, syn::Error> {
+        let NameTransformConsumer {
+            rename_tag,
+            convention_tag,
+        } = self;
+        match meta {
+            syn::NestedMeta::Meta(syn::Meta::NameValue(name)) => {
+                if name.path.is_ident(rename_tag) || name.path.is_ident(convention_tag) {
+                    match &name.lit {
+                        syn::Lit::Str(s) => {
+                            let tag = s.value();
+                            if tag.is_empty() {
+                                Err(NameTransformError::EmptyName(s).into())
+                            } else if name.path.is_ident(rename_tag) {
+                                Ok(Some(Transformation::Rename(tag)))
+                            } else {
+                                match tag.parse::<CaseConvention>() {
+                                    Ok(convention) => {
+                                        Ok(Some(Transformation::Convention(convention)))
+                                    }
+                                    Err(InvalidCaseConvention(name)) => {
+                                        Err(NameTransformError::InvalidCaseConvention(name, s)
+                                            .into())
+                                    }
+                                }
+                            }
+                        }
+                        ow => Err(NameTransformError::NonStringName(ow).into()),
+                    }
+                } else {
+                    Ok(None)
+                }
+            }
+            _ => Ok(None),
+        }
     }
 }
