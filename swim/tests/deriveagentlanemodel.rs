@@ -686,3 +686,38 @@ fn rename_lane_with_convention() {
         persistent_lane("second_lane", WarpLaneKind::Value),
     ]);
 }
+
+#[test]
+fn rename_all_lanes_with_convention() {
+    #[derive(AgentLaneModel)]
+    #[agent(convention = "camel")]
+    struct TwoValueLanes {
+        first_lane: ValueLane<i32>,
+        second_lane: ValueLane<i32>,
+        third_lane: ValueLane<i32>,
+    }
+
+    check_agent::<TwoValueLanes>(vec![
+        persistent_lane("firstLane", WarpLaneKind::Value),
+        persistent_lane("secondLane", WarpLaneKind::Value),
+        persistent_lane("thirdLane", WarpLaneKind::Value),
+    ]);
+}
+
+#[test]
+fn override_top_level_convention() {
+    #[derive(AgentLaneModel)]
+    #[agent(convention = "camel")]
+    struct TwoValueLanes {
+        first_lane: ValueLane<i32>,
+        #[lane(name = "renamed")]
+        second_lane: ValueLane<i32>,
+        third_lane: ValueLane<i32>,
+    }
+
+    check_agent::<TwoValueLanes>(vec![
+        persistent_lane("firstLane", WarpLaneKind::Value),
+        persistent_lane("renamed", WarpLaneKind::Value),
+        persistent_lane("thirdLane", WarpLaneKind::Value),
+    ]);
+}
