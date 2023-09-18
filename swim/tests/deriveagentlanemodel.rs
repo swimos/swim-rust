@@ -387,7 +387,7 @@ fn stores_and_lanes() {
 fn value_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoValueLanes {
-        #[transient]
+        #[lane(transient)]
         first: ValueLane<i32>,
         second: ValueLane<i32>,
     }
@@ -402,7 +402,7 @@ fn value_lane_tagged_transient() {
 fn value_store_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoValueStores {
-        #[transient]
+        #[lane(transient)]
         first: ValueStore<i32>,
         second: ValueStore<i32>,
     }
@@ -418,7 +418,7 @@ fn map_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoMapLanes {
         first: MapLane<i32, i32>,
-        #[transient]
+        #[lane(transient)]
         second: MapLane<i32, i32>,
     }
 
@@ -433,7 +433,7 @@ fn map_store_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoMapStores {
         first: MapStore<i32, i32>,
-        #[transient]
+        #[lane(transient)]
         second: MapStore<i32, i32>,
     }
 
@@ -447,7 +447,7 @@ fn map_store_tagged_transient() {
 fn command_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoCommandLanes {
-        #[transient]
+        #[lane(transient)]
         first: CommandLane<i32>,
         second: CommandLane<i32>,
     }
@@ -462,7 +462,7 @@ fn command_lane_tagged_transient() {
 fn demand_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoDemandLanes {
-        #[transient]
+        #[lane(transient)]
         first: DemandLane<i32>,
         second: DemandLane<i32>,
     }
@@ -477,7 +477,7 @@ fn demand_lane_tagged_transient() {
 fn demand_map_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoDemandMapLanes {
-        #[transient]
+        #[lane(transient)]
         first: DemandMapLane<i32, i32>,
         second: DemandMapLane<i32, i32>,
     }
@@ -517,7 +517,7 @@ fn join_value_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoJoinValueLanes {
         first: JoinValueLane<i32, i32>,
-        #[transient]
+        #[lane(transient)]
         second: JoinValueLane<i32, i32>,
     }
 
@@ -655,4 +655,69 @@ fn two_types_single_scope() {
 
     check_agent::<First>(vec![persistent_lane("lane", WarpLaneKind::Value)]);
     check_agent::<Second>(vec![persistent_lane("lane", WarpLaneKind::Value)]);
+}
+
+#[test]
+fn rename_lane() {
+    #[derive(AgentLaneModel)]
+    struct TwoValueLanes {
+        #[lane(name = "renamed")]
+        first: ValueLane<i32>,
+        second: ValueLane<i32>,
+    }
+
+    check_agent::<TwoValueLanes>(vec![
+        persistent_lane("renamed", WarpLaneKind::Value),
+        persistent_lane("second", WarpLaneKind::Value),
+    ]);
+}
+
+#[test]
+fn rename_lane_with_convention() {
+    #[derive(AgentLaneModel)]
+    struct TwoValueLanes {
+        #[lane(convention = "camel")]
+        first_lane: ValueLane<i32>,
+        second_lane: ValueLane<i32>,
+    }
+
+    check_agent::<TwoValueLanes>(vec![
+        persistent_lane("firstLane", WarpLaneKind::Value),
+        persistent_lane("second_lane", WarpLaneKind::Value),
+    ]);
+}
+
+#[test]
+fn rename_all_lanes_with_convention() {
+    #[derive(AgentLaneModel)]
+    #[agent(convention = "camel")]
+    struct TwoValueLanes {
+        first_lane: ValueLane<i32>,
+        second_lane: ValueLane<i32>,
+        third_lane: ValueLane<i32>,
+    }
+
+    check_agent::<TwoValueLanes>(vec![
+        persistent_lane("firstLane", WarpLaneKind::Value),
+        persistent_lane("secondLane", WarpLaneKind::Value),
+        persistent_lane("thirdLane", WarpLaneKind::Value),
+    ]);
+}
+
+#[test]
+fn override_top_level_convention() {
+    #[derive(AgentLaneModel)]
+    #[agent(convention = "camel")]
+    struct TwoValueLanes {
+        first_lane: ValueLane<i32>,
+        #[lane(name = "renamed")]
+        second_lane: ValueLane<i32>,
+        third_lane: ValueLane<i32>,
+    }
+
+    check_agent::<TwoValueLanes>(vec![
+        persistent_lane("firstLane", WarpLaneKind::Value),
+        persistent_lane("renamed", WarpLaneKind::Value),
+        persistent_lane("thirdLane", WarpLaneKind::Value),
+    ]);
 }

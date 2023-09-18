@@ -96,7 +96,7 @@ However, in some cases it maybe be desirable to disable this. Flushing the state
 ```rust
 #[derive(AgentLaneModel)]
 struct ExampleAgent {
-    #[transient]
+    #[lane(transient)]
     value_lane: ValueLane<i32>,
     map_lane: MapLane<String, u64>,
 }

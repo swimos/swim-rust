@@ -12,19 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::modifiers::NameTransform;
 use crate::SynValidation;
 use macro_utilities::attr_names::{
-    ATTR_PATH, BODY_PATH, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH, SCHEMA_PATH,
+    ATTR_PATH, BODY_PATH, CONV_NAME, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_NAME,
     SKIP_PATH, SLOT_PATH, TAG_PATH,
 };
-use macro_utilities::{FieldKind, Symbol};
+use macro_utilities::attributes::NestedMetaConsumer;
+use macro_utilities::{FieldKind, NameTransform, NameTransformConsumer, Symbol, Transformation};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt};
-use std::convert::TryFrom;
 use std::ops::Add;
 use swim_utilities::errors::validation::Validation;
-use syn::{Field, Ident, Lit, Meta, NestedMeta, Type};
+use syn::{Field, Ident, Meta, NestedMeta, Type};
 
 /// Describes how to extract a field from a struct.
 #[derive(Clone, Copy, Debug)]
@@ -99,7 +98,7 @@ pub struct FieldModel<'a> {
     /// Ordinal of the field within the struct, in order of definition.
     pub ordinal: usize,
     /// Optional transformation for the name of the type for the tag attribute.
-    pub transform: Option<NameTransform>,
+    pub transform: NameTransform,
     /// The type of the field.
     pub field_ty: &'a Type,
 }
@@ -116,20 +115,11 @@ pub struct ResolvedName<'a>(&'a FieldModel<'a>);
 impl<'a> ToTokens for ResolvedName<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ResolvedName(field) = self;
-        if let Some(trans) = field.transform.as_ref() {
-            match trans {
-                NameTransform::Rename(name) => proc_macro2::Literal::string(name),
-            }
-        } else {
-            match field.selector {
-                FieldSelector::Ordinal(i) => {
-                    let string = format!("value_{}", i);
-                    proc_macro2::Literal::string(&string)
-                }
-                FieldSelector::Named(id) => proc_macro2::Literal::string(&id.to_string()),
-            }
-        }
-        .to_tokens(tokens);
+        let name_fn = || match field.selector {
+            FieldSelector::Ordinal(i) => format!("value_{}", i),
+            FieldSelector::Named(id) => id.to_string(),
+        };
+        field.transform.transform(name_fn).to_tokens(tokens);
     }
 }
 
@@ -146,7 +136,7 @@ impl<'a> TaggedFieldModel<'a> {
             &self.model,
             FieldModel {
                 selector: FieldSelector::Ordinal(_),
-                transform: None,
+                transform: NameTransform::Identity,
                 ..
             }
         )
@@ -168,14 +158,12 @@ enum FieldAttr {
     Transform(NameTransform),
     /// Specify where the field should occur in the serialized record.
     Kind(FieldKind),
-    /// Some other form attribute.
-    Other(Option<String>),
 }
 
 /// Validated attributes for a field.
 #[derive(Default)]
 struct FieldAttributes {
-    transform: Option<NameTransform>,
+    transform: NameTransform,
     directive: Option<FieldKind>,
 }
 
@@ -188,11 +176,11 @@ impl FieldAttributes {
         } = &mut self;
         match attr {
             FieldAttr::Transform(t) => {
-                if transform.is_some() {
+                if !transform.is_identity() {
                     let err = syn::Error::new_spanned(field, "Field renamed multiple times");
                     Validation::Validated(self, err.into())
                 } else {
-                    *transform = Some(t);
+                    *transform = t;
                     Validation::valid(self)
                 }
             }
@@ -205,13 +193,6 @@ impl FieldAttributes {
                     Validation::valid(self)
                 }
             }
-            FieldAttr::Other(name) => match name {
-                Some(name) if name == SCHEMA_PATH => Validation::valid(self), //Overlap with schema attribute.
-                _ => {
-                    let err = syn::Error::new_spanned(field, "Unknown container attribute");
-                    Validation::Validated(self, err.into())
-                }
-            },
         }
     }
 }
@@ -242,12 +223,13 @@ impl Manifest {
             attrs, ident, ty, ..
         } = field;
 
+        let consumer = FieldAttrConsumer::default();
         let field_attrs = crate::modifiers::fold_attr_meta(
             FORM_PATH,
             attrs.iter(),
             FieldAttributes::default(),
-            |attrs, nested| match FieldAttr::try_from(&nested) {
-                Ok(field_attr) => {
+            |attrs, nested| match consumer.try_consume(&nested) {
+                Ok(Some(field_attr)) => {
                     let agg_err = match &field_attr {
                         FieldAttr::Kind(FieldKind::Body) => {
                             if *has_body {
@@ -291,6 +273,7 @@ impl Manifest {
                         fld_result
                     }
                 }
+                Ok(None) => Validation::valid(attrs),
                 Err(e) => Validation::Validated(attrs, e.into()),
             },
         );
@@ -336,42 +319,39 @@ const KIND_MAPPING: [(&Symbol, FieldKind); 7] = [
     (&TAG_PATH, FieldKind::Tagged),
 ];
 
-impl<'a> TryFrom<&'a NestedMeta> for FieldAttr {
-    type Error = syn::Error;
+pub struct FieldAttrConsumer {
+    rename: NameTransformConsumer<'static>,
+}
 
-    fn try_from(input: &'a NestedMeta) -> Result<Self, Self::Error> {
-        match input {
+impl Default for FieldAttrConsumer {
+    fn default() -> Self {
+        Self {
+            rename: NameTransformConsumer::new(NAME_NAME, CONV_NAME),
+        }
+    }
+}
+
+impl NestedMetaConsumer<FieldAttr> for FieldAttrConsumer {
+    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<FieldAttr>, syn::Error> {
+        match meta {
             NestedMeta::Meta(Meta::Path(path)) => {
                 for (path_name, kind) in &KIND_MAPPING {
                     if path == *path_name {
-                        return Ok(FieldAttr::Kind(*kind));
+                        return Ok(Some(FieldAttr::Kind(*kind)));
                     }
                 }
-                let name = path.get_ident().map(|id| id.to_string());
-                Ok(FieldAttr::Other(name))
+                Ok(None)
             }
-            NestedMeta::Meta(Meta::NameValue(named)) => {
-                if named.path == NAME_PATH {
-                    if let Lit::Str(new_name) = &named.lit {
-                        Ok(FieldAttr::Transform(NameTransform::Rename(
-                            new_name.value(),
-                        )))
-                    } else {
-                        Err(syn::Error::new_spanned(
-                            &named.lit,
-                            "Expected a string literal",
-                        ))
+            _ => self.rename.try_consume(meta).map(|r| {
+                r.map(|t| match t {
+                    Transformation::Rename(name) => {
+                        FieldAttr::Transform(NameTransform::Rename(name))
                     }
-                } else {
-                    let name = named.path.get_ident().map(|id| id.to_string());
-                    Ok(FieldAttr::Other(name))
-                }
-            }
-            NestedMeta::Meta(Meta::List(lst)) => {
-                let name = lst.path.get_ident().map(|id| id.to_string());
-                Ok(FieldAttr::Other(name))
-            }
-            _ => Ok(FieldAttr::Other(None)),
+                    Transformation::Convention(conv) => {
+                        FieldAttr::Transform(NameTransform::Convention(conv))
+                    }
+                })
+            }),
         }
     }
 }

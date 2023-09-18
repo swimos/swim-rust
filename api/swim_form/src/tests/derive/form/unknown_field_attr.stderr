@@ -1,6 +1,0 @@
-error: Unknown container attribute
-  --> src/tests/derive/form/unknown_field_attr.rs:21:9
-   |
-21 | /         #[form(swim)]
-22 | |         a: i32,
-   | |______________^

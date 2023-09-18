@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::modifiers::{NameTransform, StructTransform};
+use crate::modifiers::{combine_enum_trans_parts, EnumPartConsumer, StructTransform};
 use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
 use crate::structural::model::ValidateFrom;
 use crate::SynValidation;
-use macro_utilities::attr_names::FORM_PATH;
+use macro_utilities::attr_names::FORM_NAME;
+use macro_utilities::attributes::consume_attributes;
 use quote::ToTokens;
 use std::collections::HashSet;
 use swim_utilities::errors::validation::{validate2, Validation, ValidationItExt};
@@ -24,12 +25,23 @@ use swim_utilities::errors::Errors;
 use syn::{Attribute, DataEnum, Ident};
 
 /// Preprocessed description of an enum type.
+#[non_exhaustive]
 pub struct EnumModel<'a> {
     pub root: &'a syn::Path,
     /// The original name of the enum.
     pub name: &'a Ident,
     /// Preprocessed descriptions of each variant.
     pub variants: Vec<StructModel<'a>>,
+}
+
+impl<'a> EnumModel<'a> {
+    pub fn new(root: &'a syn::Path, name: &'a Ident, variants: Vec<StructModel<'a>>) -> Self {
+        EnumModel {
+            root,
+            name,
+            variants,
+        }
+    }
 }
 
 /// Fully processed description of an enum type, used to generate the output of the derive macros.
@@ -79,9 +91,6 @@ impl<'a> EnumDef<'a> {
 }
 
 const VARIANT_WITH_TAG: &str = "Enum variants cannot specify a tag field";
-const TAG_SPECIFIED_FOR_ENUM: &str =
-    "A tag name cannot be specified for an enum type, only its variants";
-const NEWTYPE_SPECIFIED_FOR_ENUM: &str = "Cannot use `newtype` annotation with enums";
 const NEWTYPE_SPECIFIED_FOR_VARIANT: &str = "Cannot use `newtype` annotation with enum variants";
 
 impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
@@ -94,6 +103,11 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
             root,
         } = input;
         let num_var = definition.variants.len();
+
+        let (parts, errs) = consume_attributes(FORM_NAME, attributes, EnumPartConsumer::default());
+        let transform = Validation::Validated(parts, Errors::from(errs))
+            .and_then(|parts| combine_enum_trans_parts(top, parts));
+
         let init = Validation::valid(Vec::with_capacity(num_var));
         let variants =
             definition
@@ -119,29 +133,21 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                     }
                 });
 
-        let rename = crate::modifiers::fold_attr_meta(
-            FORM_PATH,
-            attributes.iter(),
-            None,
-            crate::modifiers::acc_struct_transform,
-        );
-
-        validate2(variants, rename).and_then(|(variants, transform)| {
-            let names = variants.iter().validate_fold(
+        validate2(variants, transform).and_then(|(mut variants, transform)| {
+            let names = variants.iter_mut().validate_fold(
                 Validation::valid(HashSet::new()),
                 false,
                 |mut names, v| {
-                    let name = match &v.transform {
-                        Some(StructTransform::Rename(NameTransform::Rename(rename))) => {
-                            rename.clone()
+                    v.apply(&transform);
+                    let name = match &mut v.transform {
+                        StructTransform::Standard { rename, .. } => {
+                            rename.transform(|| v.name.to_string()).to_string()
                         }
-                        Some(StructTransform::Newtype(_)) => {
+                        StructTransform::Newtype(_) => {
                             let err = syn::Error::new_spanned(top, NEWTYPE_SPECIFIED_FOR_VARIANT);
                             return Validation::Failed(err.into());
                         }
-                        None => v.name.to_string(),
                     };
-
                     if names.contains(&name) {
                         let err = syn::Error::new_spanned(
                             top,
@@ -154,23 +160,10 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                     }
                 },
             );
+
             names.and_then(move |_| {
-                let enum_model = EnumModel {
-                    root,
-                    name,
-                    variants,
-                };
-                match transform {
-                    Some(StructTransform::Newtype(_)) => {
-                        let err = syn::Error::new_spanned(top, NEWTYPE_SPECIFIED_FOR_ENUM);
-                        Validation::Validated(enum_model, err.into())
-                    }
-                    Some(StructTransform::Rename(_)) => {
-                        let err = syn::Error::new_spanned(top, TAG_SPECIFIED_FOR_ENUM);
-                        Validation::Validated(enum_model, err.into())
-                    }
-                    _ => Validation::valid(enum_model),
-                }
+                let enum_model = EnumModel::new(root, name, variants);
+                Validation::valid(enum_model)
             })
         })
     }

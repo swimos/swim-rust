@@ -489,6 +489,128 @@ fn derive_struct_rename_slot() {
 }
 
 #[test]
+fn derive_struct_rename_slot_with_convention() {
+    #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
+    struct MyStruct {
+        #[form(convention = "camel")]
+        first_field: i32,
+        second_field: String,
+    }
+
+    let instance = MyStruct {
+        first_field: 2,
+        second_field: "hello".to_string(),
+    };
+
+    let value: Value = instance.structure();
+
+    assert_eq!(
+        value,
+        Value::Record(
+            vec![Attr::of("MyStruct")],
+            vec![
+                Item::slot("firstField", 2),
+                Item::slot("second_field", "hello"),
+            ]
+        )
+    );
+
+    validate(instance, 1, RecordBodyKind::MapLike, 2, 1);
+}
+
+#[test]
+fn derive_struct_rename_all_slots_with_convention() {
+    #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
+    #[form(fields_convention = "camel")]
+    struct MyStruct {
+        first_field: i32,
+        second_field: String,
+    }
+
+    let instance = MyStruct {
+        first_field: 2,
+        second_field: "hello".to_string(),
+    };
+
+    let value: Value = instance.structure();
+
+    assert_eq!(
+        value,
+        Value::Record(
+            vec![Attr::of("MyStruct")],
+            vec![
+                Item::slot("firstField", 2),
+                Item::slot("secondField", "hello"),
+            ]
+        )
+    );
+
+    validate(instance, 1, RecordBodyKind::MapLike, 2, 1);
+}
+
+#[test]
+fn derive_struct_rename_tag_and_all_slots_with_convention() {
+    #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
+    #[form(convention = "kebab", fields_convention = "camel")]
+    struct MyStruct {
+        first_field: i32,
+        second_field: String,
+    }
+
+    let instance = MyStruct {
+        first_field: 2,
+        second_field: "hello".to_string(),
+    };
+
+    let value: Value = instance.structure();
+
+    assert_eq!(
+        value,
+        Value::Record(
+            vec![Attr::of("my-struct")],
+            vec![
+                Item::slot("firstField", 2),
+                Item::slot("secondField", "hello"),
+            ]
+        )
+    );
+
+    validate(instance, 1, RecordBodyKind::MapLike, 2, 1);
+}
+
+#[test]
+fn derive_struct_override_fields_convention() {
+    #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
+    #[form(fields_convention = "camel")]
+    struct MyStruct {
+        #[form(name = "renamed")]
+        first_field: i32,
+        second_field: String,
+    }
+
+    let instance = MyStruct {
+        first_field: 2,
+        second_field: "hello".to_string(),
+    };
+
+    let value: Value = instance.structure();
+
+    assert_eq!(
+        value,
+        Value::Record(
+            vec![Attr::of("MyStruct")],
+            vec![Item::slot("renamed", 2), Item::slot("secondField", "hello"),]
+        )
+    );
+
+    validate(instance, 1, RecordBodyKind::MapLike, 2, 1);
+}
+
+#[test]
 fn derive_struct_rename_tuple_values() {
     #[derive(StructuralWritable)]
     #[form_root(::swim_form)]
@@ -530,6 +652,34 @@ fn derive_struct_rename_tag() {
         value,
         Value::Record(
             vec![Attr::of("Renamed")],
+            vec![Item::slot("first", 2), Item::slot("second", "hello"),]
+        )
+    );
+
+    validate(instance, 1, RecordBodyKind::MapLike, 2, 1);
+}
+
+#[test]
+fn derive_struct_rename_with_convention() {
+    #[derive(StructuralWritable)]
+    #[form_root(::swim_form)]
+    #[form(convention = "kebab")]
+    struct MyStruct {
+        first: i32,
+        second: String,
+    }
+
+    let instance = MyStruct {
+        first: 2,
+        second: "hello".to_string(),
+    };
+
+    let value: Value = instance.structure();
+
+    assert_eq!(
+        value,
+        Value::Record(
+            vec![Attr::of("my-struct")],
             vec![Item::slot("first", 2), Item::slot("second", "hello"),]
         )
     );

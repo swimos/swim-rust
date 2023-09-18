@@ -14,14 +14,21 @@
 
 #![allow(clippy::result_unit_err)]
 
+pub mod attributes;
 mod form;
 mod generics;
 mod label;
+mod names;
 mod utilities;
 
 pub use form::*;
 pub use generics::*;
 pub use label::Label;
+pub use names::{
+    combine_name_transform, CaseConvention, InvalidCaseConvention, NameTransform,
+    NameTransformConsumer, NameTransformError, Transformation, TypeLevelNameTransform,
+    TypeLevelNameTransformConsumer,
+};
 pub use utilities::*;
 
 extern crate proc_macro;
