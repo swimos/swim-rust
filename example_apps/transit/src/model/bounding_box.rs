@@ -17,23 +17,19 @@ use swim::form::Form;
 #[derive(Debug, PartialEq, Form)]
 #[form(tag = "bounds")]
 pub struct BoundingBox {
-    #[form(name = "minLat")]
-    pub min_latitude: f64,
-    #[form(name = "maxLat")]
-    pub max_latitude: f64,
-    #[form(name = "minLng")]
-    pub min_longitude: f64,
-    #[form(name = "maxLng")]
-    pub max_longitude: f64,
+    pub min_lat: f64,
+    pub max_lat: f64,
+    pub min_lng: f64,
+    pub max_lng: f64,
 }
 
 impl Default for BoundingBox {
     fn default() -> Self {
         Self {
-            min_latitude: -90.0,
-            max_latitude: 90.0,
-            min_longitude: -180.0,
-            max_longitude: 180.0,
+            min_lat: -90.0,
+            max_lat: 90.0,
+            min_lng: -180.0,
+            max_lng: 180.0,
         }
     }
 }

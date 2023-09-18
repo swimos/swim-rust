@@ -52,14 +52,11 @@ pub struct Vehicle {
     pub id: String,
     pub agency: String,
     pub uri: String,
-    #[form(name = "routeTag")]
     pub route_tag: String,
-    #[form(name = "dirId")]
     pub dir_id: String,
     pub latitude: f64,
     pub longitude: f64,
     pub speed: u32,
-    #[form(name = "secsSinceReport")]
     pub secs_since_report: u32,
     pub heading: Heading,
     pub predictable: bool,
