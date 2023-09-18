@@ -1,8 +1,5 @@
-error: A tag name cannot be specified for an enum type, only its variants
-  --> src/tests/derive/form/invalid_tag_placement_enum.rs:20:5
+error: Unrecognized attribute for 'form'.
+  --> src/tests/derive/form/invalid_tag_placement_enum.rs:20:12
    |
-20 | /     #[form(tag = "Enumeration")]
-21 | |     enum E {
-22 | |         A,
-23 | |     }
-   | |_____^
+20 |     #[form(tag = "Enumeration")]
+   |            ^^^^^^^^^^^^^^^^^^^

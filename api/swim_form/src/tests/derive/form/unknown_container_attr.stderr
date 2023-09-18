@@ -1,4 +1,4 @@
-error: Unknown container attribute
+error: Unrecognized attribute for 'form'.
   --> src/tests/derive/form/unknown_container_attr.rs:20:12
    |
 20 |     #[form(swim)]
