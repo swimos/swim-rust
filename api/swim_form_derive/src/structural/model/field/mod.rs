@@ -14,13 +14,13 @@
 
 use crate::SynValidation;
 use macro_utilities::attr_names::{
-    ATTR_PATH, BODY_PATH, CONV_PATH, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_PATH,
-    SCHEMA_PATH, SKIP_PATH, SLOT_PATH, TAG_PATH,
+    ATTR_PATH, BODY_PATH, CONV_NAME, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_NAME,
+    SKIP_PATH, SLOT_PATH, TAG_PATH,
 };
-use macro_utilities::{name_transform_from_meta, FieldKind, NameTransform, Symbol};
+use macro_utilities::attributes::NestedMetaConsumer;
+use macro_utilities::{FieldKind, NameTransform, NameTransformConsumer, Symbol, Transformation};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt};
-use std::convert::TryFrom;
 use std::ops::Add;
 use swim_utilities::errors::validation::Validation;
 use syn::{Field, Ident, Meta, NestedMeta, Type};
@@ -158,8 +158,6 @@ enum FieldAttr {
     Transform(NameTransform),
     /// Specify where the field should occur in the serialized record.
     Kind(FieldKind),
-    /// Some other form attribute.
-    Other(Option<String>),
 }
 
 /// Validated attributes for a field.
@@ -195,13 +193,6 @@ impl FieldAttributes {
                     Validation::valid(self)
                 }
             }
-            FieldAttr::Other(name) => match name {
-                Some(name) if name == SCHEMA_PATH => Validation::valid(self), //Overlap with schema attribute.
-                _ => {
-                    let err = syn::Error::new_spanned(field, "Unknown container attribute");
-                    Validation::Validated(self, err.into())
-                }
-            },
         }
     }
 }
@@ -232,12 +223,13 @@ impl Manifest {
             attrs, ident, ty, ..
         } = field;
 
+        let consumer = FieldAttrConsumer::default();
         let field_attrs = crate::modifiers::fold_attr_meta(
             FORM_PATH,
             attrs.iter(),
             FieldAttributes::default(),
-            |attrs, nested| match FieldAttr::try_from(&nested) {
-                Ok(field_attr) => {
+            |attrs, nested| match consumer.try_consume(&nested) {
+                Ok(Some(field_attr)) => {
                     let agg_err = match &field_attr {
                         FieldAttr::Kind(FieldKind::Body) => {
                             if *has_body {
@@ -281,6 +273,7 @@ impl Manifest {
                         fld_result
                     }
                 }
+                Ok(None) => Validation::valid(attrs),
                 Err(e) => Validation::Validated(attrs, e.into()),
             },
         );
@@ -326,34 +319,39 @@ const KIND_MAPPING: [(&Symbol, FieldKind); 7] = [
     (&TAG_PATH, FieldKind::Tagged),
 ];
 
-impl<'a> TryFrom<&'a NestedMeta> for FieldAttr {
-    type Error = syn::Error;
+pub struct FieldAttrConsumer {
+    rename: NameTransformConsumer<'static>,
+}
 
-    fn try_from(input: &'a NestedMeta) -> Result<Self, Self::Error> {
-        match input {
+impl Default for FieldAttrConsumer {
+    fn default() -> Self {
+        Self {
+            rename: NameTransformConsumer::new(NAME_NAME, CONV_NAME),
+        }
+    }
+}
+
+impl NestedMetaConsumer<FieldAttr> for FieldAttrConsumer {
+    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<FieldAttr>, syn::Error> {
+        match meta {
             NestedMeta::Meta(Meta::Path(path)) => {
                 for (path_name, kind) in &KIND_MAPPING {
                     if path == *path_name {
-                        return Ok(FieldAttr::Kind(*kind));
+                        return Ok(Some(FieldAttr::Kind(*kind)));
                     }
                 }
-                let name = path.get_ident().map(|id| id.to_string());
-                Ok(FieldAttr::Other(name))
+                Ok(None)
             }
-            NestedMeta::Meta(Meta::NameValue(named)) => {
-                if named.path == NAME_PATH || named.path == CONV_PATH {
-                    let transform = name_transform_from_meta(NAME_PATH, CONV_PATH, input)?;
-                    Ok(FieldAttr::Transform(transform))
-                } else {
-                    let name = named.path.get_ident().map(|id| id.to_string());
-                    Ok(FieldAttr::Other(name))
-                }
-            }
-            NestedMeta::Meta(Meta::List(lst)) => {
-                let name = lst.path.get_ident().map(|id| id.to_string());
-                Ok(FieldAttr::Other(name))
-            }
-            _ => Ok(FieldAttr::Other(None)),
+            _ => self.rename.try_consume(meta).map(|r| {
+                r.map(|t| match t {
+                    Transformation::Rename(name) => {
+                        FieldAttr::Transform(NameTransform::Rename(name))
+                    }
+                    Transformation::Convention(conv) => {
+                        FieldAttr::Transform(NameTransform::Convention(conv))
+                    }
+                })
+            }),
         }
     }
 }

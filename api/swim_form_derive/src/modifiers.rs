@@ -14,16 +14,15 @@
 
 use crate::structural::model::field::FieldSelector;
 use crate::SynValidation;
-use macro_utilities::attr_names::{
-    CONV_PATH, FIELDS_CONV_PATH, NEWTYPE_PATH, SCHEMA_PATH, TAG_PATH,
-};
+use macro_utilities::attr_names::{CONV_NAME, FIELDS_NAME, NEWTYPE_PATH, SCHEMA_NAME, TAG_NAME};
+use macro_utilities::attributes::{IgnoreConsumer, NestedMetaConsumer};
 use macro_utilities::{
-    name_transform_from_meta, type_name_transform_from_meta, NameTransform, NameTransformError,
-    Symbol, TypeLevelNameTransform,
+    CaseConvention, NameTransform, NameTransformConsumer, Symbol, Transformation,
+    TypeLevelNameTransform, TypeLevelNameTransformConsumer,
 };
-use std::convert::TryFrom;
+use quote::ToTokens;
 use swim_utilities::errors::validation::{Validation, ValidationItExt};
-use syn::NestedMeta;
+use swim_utilities::errors::Errors;
 
 /// Fold the attributes present on some syntactic element, accumulating errors.
 pub fn fold_attr_meta<'a, It, S, F>(path: Symbol, attrs: It, init: S, mut f: F) -> SynValidation<S>
@@ -56,7 +55,7 @@ where
 }
 
 /// Fold operation to extract a name transform from the attributes on a type or field.
-pub fn acc_rename(
+/* pub fn acc_rename(
     mut state: NameTransform,
     nested_meta: syn::NestedMeta,
 ) -> SynValidation<NameTransform> {
@@ -73,12 +72,13 @@ pub fn acc_rename(
         Err(e) => Some(e.into()),
     };
     Validation::Validated(state, err.into())
-}
+} */
 
 pub enum StructTransformPart<'a> {
-    Rename(NameTransform),
-    FieldRename(TypeLevelNameTransform),
+    Rename(Transformation),
+    FieldRename(CaseConvention),
     Newtype(Option<FieldSelector<'a>>),
+    Ignored,
 }
 
 #[derive(Debug, Default)]
@@ -105,149 +105,203 @@ impl<'a> Default for StructTransform<'a> {
     }
 }
 
-impl<'a> StructTransform<'a> {
-    fn try_add(
-        &mut self,
-        nested_meta: &NestedMeta,
-        part: StructTransformPart<'a>,
-    ) -> Result<(), syn::Error> {
-        match (&mut *self, part) {
-            (StructTransform::Standard { rename, .. }, StructTransformPart::Rename(r)) => {
-                if rename.is_identity() {
-                    *rename = r;
-                    Ok(())
-                } else {
-                    Err(syn::Error::new_spanned(
-                        nested_meta,
-                        "Duplicate `rename` tag",
-                    ))
-                }
-            }
-            (
-                StructTransform::Standard { field_rename, .. },
-                StructTransformPart::FieldRename(fr),
-            ) => {
-                if field_rename.is_identity() {
-                    *field_rename = fr;
-                    Ok(())
-                } else {
-                    Err(syn::Error::new_spanned(
-                        nested_meta,
-                        "Duplicate `fields` tag",
-                    ))
-                }
-            }
-            (
-                StructTransform::Standard {
-                    rename: NameTransform::Identity,
-                    field_rename: TypeLevelNameTransform::Identity,
-                },
-                StructTransformPart::Newtype(t),
-            ) => {
-                *self = StructTransform::Newtype(t);
-                Ok(())
-            }
-            (StructTransform::Newtype(_), StructTransformPart::Newtype(_)) => Err(
-                syn::Error::new_spanned(nested_meta, "Duplicate `newtype` tag"),
-            ),
-            _ => Err(syn::Error::new_spanned(
-                nested_meta,
-                "Cannot use both `rename` or `fields` and `newtype`",
-            )),
+pub enum EnumTransformPart {
+    Variants(CaseConvention),
+    Fields(CaseConvention),
+    Ignored,
+}
+
+pub struct EnumPartConsumer {
+    variants: TypeLevelNameTransformConsumer<'static>,
+    fields: TypeLevelNameTransformConsumer<'static>,
+    ignore: IgnoreConsumer,
+}
+
+impl Default for EnumPartConsumer {
+    fn default() -> Self {
+        Self {
+            variants: TypeLevelNameTransformConsumer::new(CONV_NAME),
+            fields: TypeLevelNameTransformConsumer::new(FIELDS_NAME),
+            ignore: IgnoreConsumer::new(SCHEMA_NAME),
         }
     }
 }
 
-/// Fold operation to extract a struct transform from the attributes on a type.
-pub fn acc_enum_transform(
-    mut state: EnumTransform,
-    nested_meta: syn::NestedMeta,
+impl NestedMetaConsumer<EnumTransformPart> for EnumPartConsumer {
+    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<EnumTransformPart>, syn::Error> {
+        match self.variants.try_consume(meta) {
+            Ok(Some(part)) => return Ok(Some(EnumTransformPart::Variants(part))),
+            Err(e) => return Err(e),
+            _ => {}
+        }
+        match self.fields.try_consume(meta) {
+            Ok(Some(part)) => return Ok(Some(EnumTransformPart::Fields(part))),
+            Err(e) => return Err(e),
+            _ => {}
+        }
+        match self.ignore.try_consume(meta) {
+            Ok(Some(_)) => Ok(Some(EnumTransformPart::Ignored)),
+            Err(e) => Err(e),
+            _ => Ok(None),
+        }
+    }
+}
+
+pub fn combine_enum_trans_parts<T: ToTokens + ?Sized>(
+    meta: &T,
+    parts: Vec<EnumTransformPart>,
 ) -> SynValidation<EnumTransform> {
-    let err = match &nested_meta {
-        syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == FIELDS_CONV_PATH => {
-            match type_name_transform_from_meta(FIELDS_CONV_PATH, &nested_meta) {
-                Ok(transform) => {
-                    state.field_rename = transform;
-                    None
+    parts.into_iter().validate_fold(
+        Validation::valid(EnumTransform::default()),
+        true,
+        |mut acc, part| {
+            let EnumTransform {
+                variant_rename,
+                field_rename,
+            } = &mut acc;
+            match part {
+                EnumTransformPart::Variants(conv) => {
+                    if variant_rename.is_identity() {
+                        *variant_rename = TypeLevelNameTransform::Convention(conv);
+                        Validation::valid(acc)
+                    } else {
+                        Validation::fail(Errors::of(syn::Error::new_spanned(
+                            meta,
+                            "Duplicate variant naming convention.",
+                        )))
+                    }
                 }
-                Err(e) => Some(e),
-            }
-        }
-        syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == CONV_PATH => {
-            match type_name_transform_from_meta(CONV_PATH, &nested_meta) {
-                Ok(transform) => {
-                    state.variant_rename = transform;
-                    None
+                EnumTransformPart::Fields(conv) => {
+                    if field_rename.is_identity() {
+                        *field_rename = TypeLevelNameTransform::Convention(conv);
+                        Validation::valid(acc)
+                    } else {
+                        Validation::fail(Errors::of(syn::Error::new_spanned(
+                            meta,
+                            "Duplicate variant naming convention.",
+                        )))
+                    }
                 }
-                Err(e) => Some(e),
+                EnumTransformPart::Ignored => Validation::valid(acc),
             }
-        }
-        syn::NestedMeta::Meta(syn::Meta::List(lst)) => {
-            if let Some(name_str) = lst.path.get_ident().map(|id| id.to_string()) {
-                Some(NameTransformError::UnknownAttributeName(name_str, lst))
-            } else {
-                Some(NameTransformError::UnknownAttribute(&nested_meta))
-            }
-        }
-        _ => Some(NameTransformError::UnknownAttribute(&nested_meta)),
-    };
-    let err = match err {
-        Some(NameTransformError::UnknownAttributeName(name, _)) if name == SCHEMA_PATH => None,
-        Some(e) => Some(e.into()),
-        _ => None,
-    };
-    Validation::Validated(state, err.into())
+        },
+    )
 }
 
-/// Fold operation to extract a struct transform from the attributes on a type.
-pub fn acc_struct_transform(
-    mut state: StructTransform,
-    nested_meta: syn::NestedMeta,
-) -> SynValidation<StructTransform> {
-    let err = match StructTransformPart::try_from(&nested_meta) {
-        Ok(part) => state.try_add(&nested_meta, part).err(),
-        Err(NameTransformError::UnknownAttributeName(name, _)) if name == SCHEMA_PATH => None, //Overlap with other macros which we can ignore.
-        Err(e) => Some(e.into()),
-    };
-    Validation::Validated(state, err.into())
+pub fn combine_struct_trans_parts<T: ToTokens + ?Sized>(
+    meta: &T,
+    parts: Vec<StructTransformPart<'static>>,
+) -> SynValidation<StructTransform<'static>> {
+    parts.into_iter().validate_fold(
+        Validation::valid(StructTransform::default()),
+        true,
+        |mut acc, part| match (&mut acc, part) {
+            (StructTransform::Standard { rename, .. }, StructTransformPart::Rename(t)) => {
+                if rename.is_identity() {
+                    *rename = t.into();
+                    Validation::valid(acc)
+                } else {
+                    Validation::fail(Errors::of(syn::Error::new_spanned(
+                        meta,
+                        "Duplicate `tag` directive",
+                    )))
+                }
+            }
+            (
+                StructTransform::Standard { field_rename, .. },
+                StructTransformPart::FieldRename(conv),
+            ) => {
+                if field_rename.is_identity() {
+                    *field_rename = TypeLevelNameTransform::Convention(conv);
+                    Validation::valid(acc)
+                } else {
+                    Validation::fail(Errors::of(syn::Error::new_spanned(
+                        meta,
+                        "Duplicate `fields_convention` directive",
+                    )))
+                }
+            }
+            (
+                StructTransform::Standard {
+                    rename,
+                    field_rename,
+                },
+                StructTransformPart::Newtype(s),
+            ) => {
+                if rename.is_identity() && field_rename.is_identity() {
+                    acc = StructTransform::Newtype(s);
+                    Validation::valid(acc)
+                } else {
+                    Validation::fail(Errors::of(syn::Error::new_spanned(
+                        meta,
+                        "'newtype' cannot be combined with renaming directives.",
+                    )))
+                }
+            }
+            (StructTransform::Newtype(_), StructTransformPart::Newtype(_)) => {
+                Validation::fail(Errors::of(syn::Error::new_spanned(
+                    meta,
+                    "'newtype' can only be applied once.",
+                )))
+            }
+            (StructTransform::Newtype(_), _) => {
+                Validation::fail(Errors::of(syn::Error::new_spanned(
+                    meta,
+                    "'newtype' cannot be combined with renaming directives.",
+                )))
+            }
+            _ => Validation::valid(acc),
+        },
+    )
 }
 
-impl<'a> TryFrom<&'a syn::NestedMeta> for StructTransformPart<'static> {
-    type Error = NameTransformError<'a>;
+pub struct StructTransformPartConsumer {
+    rename: NameTransformConsumer<'static>,
+    field_rename: TypeLevelNameTransformConsumer<'static>,
+    schema_ignore: IgnoreConsumer,
+}
 
-    fn try_from(nested_meta: &'a syn::NestedMeta) -> Result<Self, Self::Error> {
-        match nested_meta {
+impl Default for StructTransformPartConsumer {
+    fn default() -> Self {
+        Self {
+            rename: NameTransformConsumer::new(TAG_NAME, CONV_NAME),
+            field_rename: TypeLevelNameTransformConsumer::new(FIELDS_NAME),
+            schema_ignore: IgnoreConsumer::new(SCHEMA_NAME),
+        }
+    }
+}
+
+impl NestedMetaConsumer<StructTransformPart<'static>> for StructTransformPartConsumer {
+    fn try_consume(
+        &self,
+        meta: &syn::NestedMeta,
+    ) -> Result<Option<StructTransformPart<'static>>, syn::Error> {
+        match meta {
             syn::NestedMeta::Meta(syn::Meta::Path(path)) if path == NEWTYPE_PATH => {
-                if path == NEWTYPE_PATH {
-                    Ok(StructTransformPart::Newtype(None))
-                } else if let Some(name_str) = path.get_ident().map(|id| id.to_string()) {
-                    Err(NameTransformError::UnknownAttributeName(name_str, path))
-                } else {
-                    Err(NameTransformError::UnknownAttribute(nested_meta))
+                Ok(Some(StructTransformPart::Newtype(None)))
+            }
+            _ => {
+                let StructTransformPartConsumer {
+                    rename,
+                    field_rename,
+                    schema_ignore,
+                } = self;
+                match rename.try_consume(meta) {
+                    Ok(Some(trans)) => return Ok(Some(StructTransformPart::Rename(trans))),
+                    Err(e) => return Err(e),
+                    _ => {}
+                }
+                match field_rename.try_consume(meta) {
+                    Ok(Some(trans)) => return Ok(Some(StructTransformPart::FieldRename(trans))),
+                    Err(e) => return Err(e),
+                    _ => {}
+                }
+                match schema_ignore.try_consume(meta) {
+                    Ok(Some(_)) => Ok(Some(StructTransformPart::Ignored)),
+                    Err(e) => Err(e),
+                    _ => Ok(None),
                 }
             }
-            syn::NestedMeta::Meta(syn::Meta::NameValue(name))
-                if name.path == TAG_PATH || name.path == CONV_PATH =>
-            {
-                Ok(StructTransformPart::Rename(name_transform_from_meta(
-                    TAG_PATH,
-                    CONV_PATH,
-                    nested_meta,
-                )?))
-            }
-            syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == FIELDS_CONV_PATH => {
-                Ok(StructTransformPart::FieldRename(
-                    type_name_transform_from_meta(FIELDS_CONV_PATH, nested_meta)?,
-                ))
-            }
-            syn::NestedMeta::Meta(syn::Meta::List(lst)) => {
-                if let Some(name_str) = lst.path.get_ident().map(|id| id.to_string()) {
-                    Err(NameTransformError::UnknownAttributeName(name_str, lst))
-                } else {
-                    Err(NameTransformError::UnknownAttribute(nested_meta))
-                }
-            }
-            _ => Err(NameTransformError::UnknownAttribute(nested_meta)),
         }
     }
 }

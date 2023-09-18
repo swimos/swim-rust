@@ -15,6 +15,7 @@
 use std::marker::PhantomData;
 
 use frunk::{HCons, HNil};
+use syn::Meta;
 
 pub fn consume_attributes<'a, It, T, F>(
     tag: &str,
@@ -124,5 +125,26 @@ where
 {
     fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<U>, syn::Error> {
         self.inner.try_consume(meta).map(|maybe| maybe.map(&self.f))
+    }
+}
+
+pub struct IgnoreConsumer {
+    name: &'static str,
+}
+
+impl IgnoreConsumer {
+    pub fn new(name: &'static str) -> Self {
+        IgnoreConsumer { name }
+    }
+}
+
+impl NestedMetaConsumer<()> for IgnoreConsumer {
+    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<()>, syn::Error> {
+        match meta {
+            syn::NestedMeta::Meta(Meta::List(list)) if list.path.is_ident(self.name) => {
+                Ok(Some(()))
+            }
+            _ => Ok(None),
+        }
     }
 }

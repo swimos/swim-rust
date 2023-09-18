@@ -19,7 +19,7 @@ use proc_macro2::Literal;
 use quote::ToTokens;
 use thiserror::Error;
 
-use crate::{attributes::NestedMetaConsumer, Symbol};
+use crate::attributes::NestedMetaConsumer;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CaseConvention {
@@ -220,83 +220,18 @@ impl<'a> std::fmt::Debug for NameTransformError<'a> {
     }
 }
 
-pub fn name_transform_from_meta(
-    name_tag: Symbol,
-    conv_tag: Symbol,
-    nested_meta: &syn::NestedMeta,
-) -> Result<NameTransform, NameTransformError<'_>> {
-    match nested_meta {
-        syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == name_tag => {
-            match &name.lit {
-                syn::Lit::Str(s) => {
-                    let tag = s.value();
-                    if tag.is_empty() {
-                        Err(NameTransformError::EmptyName(s))
-                    } else {
-                        Ok(NameTransform::Rename(tag))
-                    }
-                }
-                ow => Err(NameTransformError::NonStringName(ow)),
-            }
-        }
-        syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == conv_tag => {
-            match &name.lit {
-                syn::Lit::Str(s) => {
-                    let conv_str = s.value();
-                    match conv_str.parse::<CaseConvention>() {
-                        Ok(convention) => Ok(NameTransform::Convention(convention)),
-                        Err(InvalidCaseConvention(name)) => {
-                            Err(NameTransformError::InvalidCaseConvention(name, s))
-                        }
-                    }
-                }
-                ow => Err(NameTransformError::NonStringName(ow)),
-            }
-        }
-        syn::NestedMeta::Meta(syn::Meta::List(lst)) => {
-            if let Some(name_str) = lst.path.get_ident().map(|id| id.to_string()) {
-                Err(NameTransformError::UnknownAttributeName(name_str, lst))
-            } else {
-                Err(NameTransformError::UnknownAttribute(nested_meta))
-            }
-        }
-        _ => Err(NameTransformError::UnknownAttribute(nested_meta)),
-    }
-}
-
-pub fn type_name_transform_from_meta(
-    conv_tag: Symbol,
-    nested_meta: &syn::NestedMeta,
-) -> Result<TypeLevelNameTransform, NameTransformError<'_>> {
-    match nested_meta {
-        syn::NestedMeta::Meta(syn::Meta::NameValue(name)) if name.path == conv_tag => {
-            match &name.lit {
-                syn::Lit::Str(s) => {
-                    let conv_str = s.value();
-                    match conv_str.parse::<CaseConvention>() {
-                        Ok(convention) => Ok(TypeLevelNameTransform::Convention(convention)),
-                        Err(InvalidCaseConvention(name)) => {
-                            Err(NameTransformError::InvalidCaseConvention(name, s))
-                        }
-                    }
-                }
-                ow => Err(NameTransformError::NonStringName(ow)),
-            }
-        }
-        syn::NestedMeta::Meta(syn::Meta::List(lst)) => {
-            if let Some(name_str) = lst.path.get_ident().map(|id| id.to_string()) {
-                Err(NameTransformError::UnknownAttributeName(name_str, lst))
-            } else {
-                Err(NameTransformError::UnknownAttribute(nested_meta))
-            }
-        }
-        _ => Err(NameTransformError::UnknownAttribute(nested_meta)),
-    }
-}
-
 pub enum Transformation {
     Rename(String),
     Convention(CaseConvention),
+}
+
+impl From<Transformation> for NameTransform {
+    fn from(value: Transformation) -> Self {
+        match value {
+            Transformation::Rename(name) => NameTransform::Rename(name),
+            Transformation::Convention(conv) => NameTransform::Convention(conv),
+        }
+    }
 }
 
 pub struct TypeLevelNameTransformConsumer<'a> {
@@ -385,4 +320,25 @@ impl<'a> NestedMetaConsumer<Transformation> for NameTransformConsumer<'a> {
             _ => Ok(None),
         }
     }
+}
+
+pub fn combine_name_transform<T: ToTokens>(
+    meta: &T,
+    transforms: Vec<Transformation>,
+) -> Result<NameTransform, syn::Error> {
+    transforms
+        .into_iter()
+        .try_fold(NameTransform::Identity, |trans, t| {
+            if trans.is_identity() {
+                match t {
+                    Transformation::Rename(name) => Ok(NameTransform::Rename(name)),
+                    Transformation::Convention(conv) => Ok(NameTransform::Convention(conv)),
+                }
+            } else {
+                Err(syn::Error::new_spanned(
+                    meta,
+                    "Duplicate renaming specifion.",
+                ))
+            }
+        })
 }

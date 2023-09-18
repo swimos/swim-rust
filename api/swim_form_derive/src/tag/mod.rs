@@ -13,12 +13,13 @@
 // limitations under the License.
 
 use crate::quote::TokenStreamExt;
-use macro_utilities::attr_names::FORM_PATH;
-use macro_utilities::NameTransform;
+use macro_utilities::attr_names::{CONV_NAME, FORM_NAME, TAG_NAME};
+use macro_utilities::attributes::consume_attributes;
+use macro_utilities::{combine_name_transform, NameTransform, NameTransformConsumer};
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::fmt::{Display, Formatter};
-use swim_utilities::errors::validation::ValidationItExt;
+use swim_utilities::errors::validation::{Validation, ValidationItExt};
 use swim_utilities::errors::Errors;
 
 /// Model for an enumeration where all variants have no fields.
@@ -154,12 +155,16 @@ pub fn build_derive_tag(
                     .variants
                     .iter()
                     .validate_collect(true, |v| {
-                        let rename = crate::modifiers::fold_attr_meta(
-                            FORM_PATH,
-                            v.attrs.iter(),
-                            NameTransform::Identity,
-                            crate::modifiers::acc_rename,
+                        let (transforms, errors) = consume_attributes(
+                            FORM_NAME,
+                            &v.attrs,
+                            NameTransformConsumer::new(TAG_NAME, CONV_NAME),
                         );
+                        let rename = Validation::Validated(transforms, Errors::from(errors))
+                            .and_then(|transforms| match combine_name_transform(v, transforms) {
+                                Ok(t) => Validation::valid(t),
+                                Err(e) => Validation::Failed(Errors::of(e)),
+                            });
                         rename.map(move |rename| (&v.ident, rename))
                     })
                     .map(|var_names| {

@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::modifiers::{EnumTransform, StructTransform};
+use crate::modifiers::{combine_enum_trans_parts, EnumPartConsumer, StructTransform};
 use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
 use crate::structural::model::ValidateFrom;
 use crate::SynValidation;
-use macro_utilities::attr_names::FORM_PATH;
+use macro_utilities::attr_names::FORM_NAME;
+use macro_utilities::attributes::consume_attributes;
 use quote::ToTokens;
 use std::collections::HashSet;
 use swim_utilities::errors::validation::{validate2, Validation, ValidationItExt};
@@ -103,12 +104,9 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
         } = input;
         let num_var = definition.variants.len();
 
-        let transform = crate::modifiers::fold_attr_meta(
-            FORM_PATH,
-            attributes.iter(),
-            EnumTransform::default(),
-            crate::modifiers::acc_enum_transform,
-        );
+        let (parts, errs) = consume_attributes(FORM_NAME, attributes, EnumPartConsumer::default());
+        let transform = Validation::Validated(parts, Errors::from(errs))
+            .and_then(|parts| combine_enum_trans_parts(top, parts));
 
         let init = Validation::valid(Vec::with_capacity(num_var));
         let variants =

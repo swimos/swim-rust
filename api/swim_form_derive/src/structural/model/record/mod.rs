@@ -14,19 +14,23 @@
 
 use super::field::FieldModel;
 use super::ValidateFrom;
-use crate::modifiers::{EnumTransform, StructTransform};
+use crate::modifiers::{
+    combine_struct_trans_parts, EnumTransform, StructTransform, StructTransformPartConsumer,
+};
 use crate::structural::model::field::{
     FieldSelector, FieldWithIndex, Manifest, SegregatedFields, TaggedFieldModel,
 };
 use crate::structural::model::StructLike;
 use crate::SynValidation;
-use macro_utilities::attr_names::FORM_PATH;
+use macro_utilities::attr_names::FORM_NAME;
+use macro_utilities::attributes::consume_attributes;
 use macro_utilities::CompoundTypeKind;
 use macro_utilities::FieldKind;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::ops::Add;
 use swim_utilities::errors::validation::{validate2, Validation, ValidationItExt};
+use swim_utilities::errors::Errors;
 use syn::{Attribute, Fields, Ident};
 
 const NEWTYPE_MULTI_FIELD_ERR: &str =
@@ -232,12 +236,13 @@ where
 
         let fields_model = FieldsModel::validate(definition.fields());
 
-        let transform = crate::modifiers::fold_attr_meta(
-            FORM_PATH,
-            attributes.iter(),
-            StructTransform::default(),
-            crate::modifiers::acc_struct_transform,
+        let (parts, errors) = consume_attributes(
+            FORM_NAME,
+            attributes,
+            StructTransformPartConsumer::default(),
         );
+        let transform = Validation::Validated(parts, Errors::from(errors))
+            .and_then(|parts| combine_struct_trans_parts(top, parts));
 
         validate2(fields_model, transform).and_then(|(model, transform)| match transform {
             StructTransform::Newtype(_) => match model.newtype_field() {
