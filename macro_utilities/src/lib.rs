@@ -27,7 +27,7 @@ pub use label::Label;
 pub use names::{
     name_transform_from_meta, type_name_transform_from_meta, CaseConvention, InvalidCaseConvention,
     NameTransform, NameTransformConsumer, NameTransformError, Transformation,
-    TypeLevelNameTransform,
+    TypeLevelNameTransform, TypeLevelNameTransformConsumer,
 };
 pub use utilities::*;
 

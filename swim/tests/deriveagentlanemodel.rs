@@ -656,3 +656,33 @@ fn two_types_single_scope() {
     check_agent::<First>(vec![persistent_lane("lane", WarpLaneKind::Value)]);
     check_agent::<Second>(vec![persistent_lane("lane", WarpLaneKind::Value)]);
 }
+
+#[test]
+fn rename_lane() {
+    #[derive(AgentLaneModel)]
+    struct TwoValueLanes {
+        #[lane(name = "renamed")]
+        first: ValueLane<i32>,
+        second: ValueLane<i32>,
+    }
+
+    check_agent::<TwoValueLanes>(vec![
+        persistent_lane("renamed", WarpLaneKind::Value),
+        persistent_lane("second", WarpLaneKind::Value),
+    ]);
+}
+
+#[test]
+fn rename_lane_with_convention() {
+    #[derive(AgentLaneModel)]
+    struct TwoValueLanes {
+        #[lane(convention = "camel")]
+        first_lane: ValueLane<i32>,
+        second_lane: ValueLane<i32>,
+    }
+
+    check_agent::<TwoValueLanes>(vec![
+        persistent_lane("firstLane", WarpLaneKind::Value),
+        persistent_lane("second_lane", WarpLaneKind::Value),
+    ]);
+}

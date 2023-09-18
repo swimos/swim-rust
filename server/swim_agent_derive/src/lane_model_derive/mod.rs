@@ -12,23 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use macro_utilities::TypeLevelNameTransform;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use syn::{parse_quote, Ident};
 
+mod attributes;
 mod model;
 
+pub use attributes::{combine_agent_attrs, make_agent_attr_consumer};
 pub use model::{validate_input, ItemModel, ItemSpec, LanesModel};
 
-use self::model::{HttpLaneModel, HttpLaneSpec, ItemKind, WarpLaneModel, WarpLaneSpec};
+use self::{
+    attributes::AgentModifiers,
+    model::{HttpLaneModel, HttpLaneSpec, ItemKind, WarpLaneModel, WarpLaneSpec},
+};
 
 pub struct DeriveAgentLaneModel<'a> {
-    root: &'a syn::Path,
+    root: syn::Path,
     model: LanesModel<'a>,
 }
 
 impl<'a> DeriveAgentLaneModel<'a> {
-    pub fn new(root: &'a syn::Path, model: LanesModel<'a>) -> Self {
+    pub fn new(modifiers: AgentModifiers, mut model: LanesModel<'a>) -> Self {
+        let AgentModifiers { transform, root } = modifiers;
+        if let Some(convention) = transform {
+            model.apply_transform(TypeLevelNameTransform::Convention(convention));
+        }
         DeriveAgentLaneModel { root, model }
     }
 }
@@ -36,7 +46,7 @@ impl<'a> DeriveAgentLaneModel<'a> {
 impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let DeriveAgentLaneModel {
-            root,
+            ref root,
             model: LanesModel {
                 agent_type,
                 ref lanes,

@@ -299,6 +299,41 @@ pub enum Transformation {
     Convention(CaseConvention),
 }
 
+pub struct TypeLevelNameTransformConsumer<'a> {
+    convention_tag: &'a str,
+}
+
+impl<'a> TypeLevelNameTransformConsumer<'a> {
+    pub fn new(convention_tag: &'a str) -> Self {
+        TypeLevelNameTransformConsumer { convention_tag }
+    }
+}
+
+impl<'a> NestedMetaConsumer<CaseConvention> for TypeLevelNameTransformConsumer<'a> {
+    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<CaseConvention>, syn::Error> {
+        let TypeLevelNameTransformConsumer { convention_tag } = self;
+        match meta {
+            syn::NestedMeta::Meta(syn::Meta::NameValue(name))
+                if name.path.is_ident(convention_tag) =>
+            {
+                match &name.lit {
+                    syn::Lit::Str(s) => {
+                        let tag = s.value();
+                        match tag.parse::<CaseConvention>() {
+                            Ok(convention) => Ok(Some(convention)),
+                            Err(InvalidCaseConvention(name)) => {
+                                Err(NameTransformError::InvalidCaseConvention(name, s).into())
+                            }
+                        }
+                    }
+                    ow => Err(NameTransformError::NonStringName(ow).into()),
+                }
+            }
+            _ => Ok(None),
+        }
+    }
+}
+
 pub struct NameTransformConsumer<'a> {
     rename_tag: &'a str,
     convention_tag: &'a str,

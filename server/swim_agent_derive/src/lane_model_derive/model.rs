@@ -13,11 +13,7 @@
 // limitations under the License.
 
 use bitflags::bitflags;
-use frunk::hlist;
-use macro_utilities::{
-    attributes::{consume_attributes, NestedMetaConsumer},
-    NameTransform, NameTransformConsumer, Transformation,
-};
+use macro_utilities::{attributes::consume_attributes, NameTransform, TypeLevelNameTransform};
 use std::hash::Hash;
 use swim_utilities::errors::{
     validation::{Validation, ValidationItExt},
@@ -27,6 +23,8 @@ use syn::{
     AngleBracketedGenericArguments, Data, DataStruct, DeriveInput, Field, GenericArgument, Ident,
     PathArguments, PathSegment, Type, TypePath,
 };
+
+use super::attributes::{combine_item_attrs, make_item_attr_consumer, ItemModifiers};
 
 /// Model of a struct type for the AgentLaneModel derivation macro.
 pub struct LanesModel<'a> {
@@ -41,6 +39,13 @@ impl<'a> LanesModel<'a> {
     /// and the lane kind with types).
     fn new(agent_type: &'a Ident, lanes: Vec<ItemModel<'a>>) -> Self {
         LanesModel { agent_type, lanes }
+    }
+
+    /// Apply a name transform to all items.
+    pub fn apply_transform(&mut self, type_transform: TypeLevelNameTransform) {
+        for ItemModel { transform, .. } in &mut self.lanes {
+            *transform = type_transform.resolve(std::mem::take(transform));
+        }
     }
 }
 
@@ -242,8 +247,6 @@ const NO_GENERICS: &str = "Generic agents are not yet supported.";
 const NOT_LANE_TYPE: &str = "Field is not of a lane type.";
 const NO_TUPLES: &str = "Tuple structs are not supported.";
 const BAD_PARAMS: &str = "Lane generic parameters are invalid.";
-const INVALID_FIELD_ATTR: &str = "Invalid field attribute. Valid attributes are: '[#transient]'.";
-const TRANSIENT_ATTR_NAME: &str = "transient";
 
 /// Extract the model of the type from the type definition, collecting any
 /// errors.
@@ -303,9 +306,9 @@ fn extract_lane_model(field: &Field) -> Validation<ItemModel<'_>, Errors<syn::Er
         if let Some(PathSegment { ident, arguments }) = path.segments.last() {
             let type_name = ident.to_string();
             let (item_attrs, errors) =
-                consume_attributes(LANE_TAG, &field.attrs, make_attr_consumer());
+                consume_attributes(LANE_TAG, &field.attrs, make_item_attr_consumer());
             let modifiers = Validation::Validated(item_attrs, Errors::from(errors))
-                .and_then(|item_attrs| combine_attrs(field, item_attrs));
+                .and_then(|item_attrs| combine_item_attrs(field, item_attrs));
 
             modifiers.and_then(
                 |ItemModifiers {
@@ -515,72 +518,4 @@ fn two_params(args: &PathArguments) -> Result<(&Type, &Type), syn::Error> {
     } else {
         Err(syn::Error::new_spanned(args, BAD_PARAMS))
     }
-}
-
-struct TransientFlagConsumer;
-
-pub enum ItemAttr {
-    Transient,
-    Transform(Transformation),
-}
-
-impl NestedMetaConsumer<ItemAttr> for TransientFlagConsumer {
-    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<ItemAttr>, syn::Error> {
-        match meta {
-            syn::NestedMeta::Meta(syn::Meta::Path(path)) => match path.segments.first() {
-                Some(seg) => {
-                    if seg.ident == TRANSIENT_ATTR_NAME {
-                        if path.segments.len() == 1 && seg.arguments.is_empty() {
-                            Ok(Some(ItemAttr::Transient))
-                        } else {
-                            Err(syn::Error::new_spanned(meta, INVALID_FIELD_ATTR))
-                        }
-                    } else {
-                        Ok(None)
-                    }
-                }
-                _ => Ok(None),
-            },
-            _ => Ok(None),
-        }
-    }
-}
-
-const RENAME_TAG: &str = "name";
-const CONV_TAG: &str = "convention";
-
-fn make_attr_consumer() -> impl NestedMetaConsumer<ItemAttr> {
-    let trans_consumer = NameTransformConsumer::new(RENAME_TAG, CONV_TAG);
-    hlist![
-        TransientFlagConsumer,
-        trans_consumer.map(ItemAttr::Transform)
-    ]
-}
-
-#[derive(Debug, Default)]
-pub struct ItemModifiers {
-    transform: NameTransform,
-    flags: ItemFlags,
-}
-
-fn combine_attrs(
-    field: &Field,
-    attrs: Vec<ItemAttr>,
-) -> Validation<ItemModifiers, Errors<syn::Error>> {
-    attrs.into_iter().validate_fold(
-        Validation::valid(ItemModifiers::default()),
-        false,
-        |mut modifiers, attr| {
-            let mut errors = Errors::empty();
-            match attr {
-                ItemAttr::Transient => modifiers.flags.insert(ItemFlags::TRANSIENT),
-                ItemAttr::Transform(t) => {
-                    if let Err(e) = modifiers.transform.try_add(field, t) {
-                        errors.push(e);
-                    }
-                }
-            }
-            Validation::valid(modifiers)
-        },
-    )
 }
