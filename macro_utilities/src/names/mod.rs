@@ -21,6 +21,7 @@ use thiserror::Error;
 
 use crate::attributes::NestedMetaConsumer;
 
+/// Case conventions supported for Swim derive macros.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CaseConvention {
     #[default]
@@ -52,6 +53,8 @@ impl FromStr for CaseConvention {
     }
 }
 
+/// Name transformation strategy that is applied to an entire type, transforming the names
+/// of all sub-items of that type.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum TypeLevelNameTransform {
     #[default]
@@ -83,6 +86,9 @@ impl TypeLevelNameTransform {
         }
     }
 
+    /// Combine together two levels of transformation (for example an enum type could have a transformation
+    /// defined for the type and one for one of its variants). The child transformation takes precedence,
+    /// where it is defined.
     pub fn combine(&self, child: TypeLevelNameTransform) -> Self {
         match child {
             TypeLevelNameTransform::Identity => *self,
@@ -90,6 +96,8 @@ impl TypeLevelNameTransform {
         }
     }
 
+    /// Resolve the name transformation defined for a single item (such as a field) against this top level
+    /// transformation. The item transformation takes precedence, where it is defined.
     pub fn resolve(&self, field: NameTransform) -> NameTransform {
         match field {
             NameTransform::Identity => match self {
@@ -103,6 +111,8 @@ impl TypeLevelNameTransform {
     }
 }
 
+/// A name transformation that is applied to a single item (such as a field). It may either
+/// specify a new name explicitly or define how it should be renamed by a convention.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum NameTransform {
     #[default]
@@ -220,6 +230,7 @@ impl<'a> std::fmt::Debug for NameTransformError<'a> {
     }
 }
 
+/// Description of name transformation strategy that can be read from an attribute applied to an item.
 pub enum Transformation {
     Rename(String),
     Convention(CaseConvention),
@@ -322,6 +333,7 @@ impl<'a> NestedMetaConsumer<Transformation> for NameTransformConsumer<'a> {
     }
 }
 
+/// Assemble an [`NameTransform`] from transformations read from the attributes on an item.
 pub fn combine_name_transform<T: ToTokens>(
     meta: &T,
     transforms: Vec<Transformation>,

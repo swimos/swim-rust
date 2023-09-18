@@ -30,12 +30,16 @@ const CONV_TAG: &str = "convention";
 const TRANSIENT_ATTR_NAME: &str = "transient";
 const ROOT_ATTR_NAME: &str = "root";
 const INVALID_FIELD_ATTR: &str = "Invalid field attribute.";
-const INVALID_AGENT_ROOT: &str = "Invalid agent root specifiier.";
+const INVALID_AGENT_ROOT: &str = "Invalid agent root specifier.";
 
+/// Attribute consumer to recognize the transient flag for agent items.
 struct TransientFlagConsumer;
 
+/// Types of modification that can be applied to an item using attributes.
 pub enum ItemAttr {
+    /// The should be transient.
     Transient,
+    /// The name of the item should be transformed.
     Transform(Transformation),
 }
 
@@ -69,12 +73,17 @@ pub fn make_item_attr_consumer() -> impl NestedMetaConsumer<ItemAttr> {
     ]
 }
 
+/// Modifications to an agent item, defined by attributes attached to it.
 #[derive(Debug, Default)]
 pub struct ItemModifiers {
+    /// Transformation to apply to the name of the item.
     pub transform: NameTransform,
+    /// Flags that are set for the item.
     pub flags: ItemFlags,
 }
 
+/// Attempt to create an [`ItemModifiers`] from the [`ItemAttr`] records extracted from the attributes
+/// attached to the associated item.
 pub fn combine_item_attrs(
     field: &Field,
     attrs: Vec<ItemAttr>,
@@ -97,8 +106,11 @@ pub fn combine_item_attrs(
     )
 }
 
+/// Types of modification that can be applied to an agent using attributes.
 pub enum AgentAttr {
+    /// Module path where the types from the `swim_agent` create can be found.
     Root(syn::Path),
+    /// Renaming convention to apply to all items of the agent.
     RenameConvention(CaseConvention),
 }
 
@@ -134,9 +146,12 @@ pub fn make_agent_attr_consumer() -> impl NestedMetaConsumer<AgentAttr> {
     ]
 }
 
+/// Modifications to an agent, defined by attributes attached to it.
 #[derive(Debug)]
 pub struct AgentModifiers {
+    /// Renaming strategy for all items of the agent.
     pub transform: Option<CaseConvention>,
+    /// Module path where the types from the `swim_agent` create can be found.
     pub root: syn::Path,
 }
 
@@ -153,6 +168,8 @@ impl Default for AgentModifiers {
     }
 }
 
+/// Attempt to create an [`AgentModifiers`] from the [`AgentAttr`] records extracted from the attributes
+/// attached to the associated definition.
 pub fn combine_agent_attrs(
     item: &syn::DeriveInput,
     attrs: Vec<AgentAttr>,

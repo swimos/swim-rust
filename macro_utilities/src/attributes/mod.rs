@@ -17,6 +17,21 @@ use std::marker::PhantomData;
 use frunk::{HCons, HNil};
 use syn::Meta;
 
+/// Process the attributes attached to some element of the processed Rust source (e.g. type,
+/// item, field, etc.) using the provided interpretation strategy.
+///
+/// The attributes are assumed to have the form:
+///
+/// `#[name(part[,part]*)]`
+///
+/// The interpreted parts will be returned in a vector along with an vector of errors for
+/// any failures.
+///
+/// #Arguments
+///
+/// * `tag` - The expected name of the attribute.
+/// * `attributes` - The attributes to process.
+/// * `f` - Consumer for the parts extracted from the attribute.
 pub fn consume_attributes<'a, It, T, F>(
     tag: &str,
     attributes: It,
@@ -57,9 +72,13 @@ where
         })
 }
 
+/// A strategy for interpreting the parts of an attribute value.
 pub trait NestedMetaConsumer<T> {
+    /// Attempt to extract a single part. This may return an interpreted part, an error
+    /// if the part is invalid or decline to process the part (by returning `Ok(None)`).
     fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<T>, syn::Error>;
 
+    /// Transform the type of the results of this consumer.
     fn map<U, F>(self, f: F) -> MapConsumer<T, U, Self, F>
     where
         Self: Sized,
@@ -70,24 +89,6 @@ pub trait NestedMetaConsumer<T> {
             f,
             _type: PhantomData,
         }
-    }
-}
-
-pub fn consumer<T, F>(f: F) -> FnConsumer<F>
-where
-    F: Fn(&syn::NestedMeta) -> Result<Option<T>, syn::Error>,
-{
-    FnConsumer(f)
-}
-
-pub struct FnConsumer<F>(F);
-
-impl<T, F> NestedMetaConsumer<T> for FnConsumer<F>
-where
-    F: Fn(&syn::NestedMeta) -> Result<Option<T>, syn::Error>,
-{
-    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<T>, syn::Error> {
-        self.0(meta)
     }
 }
 
@@ -128,6 +129,7 @@ where
     }
 }
 
+/// Explicitly ignores any parts of the form `name(...)`.
 pub struct IgnoreConsumer {
     name: &'static str,
 }

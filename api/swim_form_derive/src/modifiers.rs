@@ -54,39 +54,30 @@ where
     )
 }
 
-/// Fold operation to extract a name transform from the attributes on a type or field.
-/* pub fn acc_rename(
-    mut state: NameTransform,
-    nested_meta: syn::NestedMeta,
-) -> SynValidation<NameTransform> {
-    let err = match name_transform_from_meta(TAG_PATH, CONV_PATH, &nested_meta) {
-        Ok(rename) => {
-            if !matches!(state, NameTransform::Identity) {
-                Some(syn::Error::new_spanned(nested_meta, "Duplicate tag"))
-            } else {
-                state = rename;
-                None
-            }
-        }
-        Err(NameTransformError::UnknownAttributeName(name, _)) if name == SCHEMA_PATH => None, //Overlap with other macros which we can ignore.
-        Err(e) => Some(e.into()),
-    };
-    Validation::Validated(state, err.into())
-} */
-
+/// Components used to build a [`StructTransform`].
 pub enum StructTransformPart<'a> {
+    /// A directive to rename the struct.
     Rename(Transformation),
+    /// A directive to rename the fields of the struct according to a convention.
     FieldRename(CaseConvention),
+    /// A directive to delegate to a field of the struct.
     Newtype(Option<FieldSelector<'a>>),
+    /// Indicates an explicitly ignore attribute.
     Ignored,
 }
 
+/// Directives to alter the interpretation of a enum definition, extracted from the attributes that
+/// were attached to the it.
 #[derive(Debug, Default)]
 pub struct EnumTransform {
+    /// Directive to rename the variants of the enumeration.
     pub variant_rename: TypeLevelNameTransform,
+    /// Directive to rename the fields of the variants of the enumeration.
     pub field_rename: TypeLevelNameTransform,
 }
 
+/// Directives to alter the interpretation of a struct definition, extracted from the attributes that
+/// were attached to the it.
 #[derive(Debug)]
 pub enum StructTransform<'a> {
     Standard {
@@ -105,6 +96,7 @@ impl<'a> Default for StructTransform<'a> {
     }
 }
 
+/// Components used to build a [`EnumTransform`].
 pub enum EnumTransformPart {
     Variants(CaseConvention),
     Fields(CaseConvention),
@@ -147,6 +139,8 @@ impl NestedMetaConsumer<EnumTransformPart> for EnumPartConsumer {
     }
 }
 
+/// Attempts to create an [`EnumTransform`] for a number of [`EnumTransformPart`]s that were
+/// extracted from attributes attached to the enum.
 pub fn combine_enum_trans_parts<T: ToTokens + ?Sized>(
     meta: &T,
     parts: Vec<EnumTransformPart>,
@@ -188,6 +182,8 @@ pub fn combine_enum_trans_parts<T: ToTokens + ?Sized>(
     )
 }
 
+/// Attempts to create an [`StructTransform`] for a number of [`StructTransformPart`]s that were
+/// extracted from attributes attached to the struct.
 pub fn combine_struct_trans_parts<T: ToTokens + ?Sized>(
     meta: &T,
     parts: Vec<StructTransformPart<'static>>,
