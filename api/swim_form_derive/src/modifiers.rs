@@ -199,7 +199,7 @@ pub fn combine_struct_trans_parts<T: ToTokens + ?Sized>(
                 } else {
                     Validation::fail(Errors::of(syn::Error::new_spanned(
                         meta,
-                        "Duplicate `tag` directive",
+                        "Duplicate struct tag renaming directive",
                     )))
                 }
             }
@@ -213,7 +213,7 @@ pub fn combine_struct_trans_parts<T: ToTokens + ?Sized>(
                 } else {
                     Validation::fail(Errors::of(syn::Error::new_spanned(
                         meta,
-                        "Duplicate `fields_convention` directive",
+                        "Duplicate field renaming directive",
                     )))
                 }
             }
