@@ -58,6 +58,10 @@ impl Agency {
         )
     }
 
+    pub fn country_uri(&self) -> String {
+        format!("/country/{}", &self.country)
+    }
+
     pub fn create_vehicle(&self, route: &Route, response: VehicleResponse) -> Vehicle {
         let VehicleResponse {
             id,

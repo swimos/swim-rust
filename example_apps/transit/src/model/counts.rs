@@ -12,8 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod agency;
-pub mod bounding_box;
-pub mod counts;
-pub mod route;
-pub mod vehicle;
+use swim::form::Form;
+
+#[derive(Debug, Clone, Copy, Default, Form)]
+#[form(tag = "counts")]
+pub struct Counts {
+    pub current: usize,
+    pub max: usize,
+}

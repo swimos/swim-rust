@@ -1,7 +1,3 @@
-use swim::agent::{lanes::{ValueLane, JoinValueLane, MapLane, CommandLane}, AgentLaneModel, projections};
-
-use crate::model::{vehicle::Vehicle, agency::Agency};
-
 // Copyright 2015-2023 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,54 +11,89 @@ use crate::model::{vehicle::Vehicle, agency::Agency};
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-/*
-@SwimLane("count")
-  public ValueLane<Value> count;
-  @SwimLane("agencyCount")
-  public MapLane<Agency, Integer> agencyCount;
 
-  @SwimLane("joinAgencyCount")
-  public JoinValueLane<Agency, Integer> joinAgencyCount = this.<Agency, Integer>joinValueLane()
-      .didUpdate(this::updateCounts);
+use std::collections::HashMap;
 
-  @SwimTransient
-  @SwimLane("vehicles")
-  public MapLane<String, Vehicle> vehicles;
+use swim::agent::{
+    agent_lifecycle::utility::HandlerContext,
+    event_handler::{EventHandler, HandlerActionExt},
+    lanes::{CommandLane, JoinValueLane, ValueLane},
+    lifecycle, projections, AgentLaneModel,
+};
 
-  @SwimLane("joinAgencyVehicles")
-  public JoinMapLane<Agency, String, Vehicle> joinAgencyVehicles = this.<Agency, String, Vehicle>joinMapLane()
-      .didUpdate((String key, Vehicle newEntry, Vehicle oldEntry) -> vehicles.put(key, newEntry))
-      .didRemove((String key, Vehicle vehicle) -> vehicles.remove(key));
-
-  @SwimLane("speed")
-  public ValueLane<Float> speed;
-
-  @SwimTransient
-  @SwimLane("agencySpeed")
-  public MapLane<Agency, Float> agencySpeed;
-
-  @SwimLane("joinStateSpeed")
-  public JoinValueLane<Agency, Float> joinAgencySpeed = this.<Agency, Float>joinValueLane()
-      .didUpdate(this::updateSpeeds);
-
-  @SwimLane("addAgency")
-  public CommandLane<Agency> agencyAdd = this.<Agency>commandLane().onCommand((Agency agency) -> {
-    joinAgencyCount.downlink(agency).nodeUri(agency.getUri()).laneUri("count").open();
-    joinAgencyVehicles.downlink(agency).nodeUri(agency.getUri()).laneUri("vehicles").open();
-    joinAgencySpeed.downlink(agency).nodeUri(agency.getUri()).laneUri("speed").open();
-    context.command("/country/" + getProp("country").stringValue(), "addAgency",
-        agency.toValue().unflattened().slot("stateUri", nodeUri().toString()));
-  }); */
+use crate::model::{agency::Agency, counts::Counts};
 
 #[derive(AgentLaneModel)]
 #[projections]
 #[agent(convention = "camel")]
 pub struct StateAgent {
-    count: ValueLane<usize>,
+    #[lane(transient)]
+    count: ValueLane<Counts>,
+    #[lane(transient)]
     join_agency_count: JoinValueLane<Agency, usize>,
-    vehicles: MapLane<String, Vehicle>,
+    #[lane(transient)]
     speed: ValueLane<f64>,
+    #[lane(transient)]
     agency_speed: JoinValueLane<Agency, f64>,
+    #[lane(transient)]
     join_state_speed: JoinValueLane<Agency, f64>,
     add_agency: CommandLane<Agency>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StateLifecycle;
+
+#[lifecycle(StateAgent)]
+impl StateLifecycle {
+    #[on_start]
+    fn init(&self, context: HandlerContext<StateAgent>) -> impl EventHandler<StateAgent> {
+        context.get_agent_uri().and_then(move |uri| {
+            context.effect(move || println!("Starting State agent at: {}", uri))
+        })
+    }
+
+    #[on_command(add_agency)]
+    fn connect_agency(
+        &self,
+        context: HandlerContext<StateAgent>,
+        agency: &Agency,
+    ) -> impl EventHandler<StateAgent> {
+        let agency_uri = agency.uri();
+        let country_uri = agency.country_uri();
+        let link_count = context.add_downlink(
+            StateAgent::JOIN_AGENCY_COUNT,
+            agency.clone(),
+            None,
+            &agency_uri,
+            "count",
+        );
+        let link_speed = context.add_downlink(
+            StateAgent::JOIN_STATE_SPEED,
+            agency.clone(),
+            None,
+            &agency_uri,
+            "speed",
+        );
+        let add_to_country =
+            context.send_command(None, country_uri, "addAgency".to_string(), agency.clone());
+        link_count
+            .followed_by(link_speed)
+            .followed_by(add_to_country)
+    }
+
+    #[on_update(join_agency_count)]
+    fn update_counts(
+        &self,
+        context: HandlerContext<StateAgent>,
+        map: &HashMap<Agency, usize>,
+        _key: Agency,
+        _prev: Option<usize>,
+        _new_value: &usize,
+    ) -> impl EventHandler<StateAgent> {
+        let count_sum = map.values().fold(0usize, |acc, n| acc.saturating_add(*n));
+        context.get_value(StateAgent::COUNT).and_then(move |Counts { max, .. }| {
+            let new_max = max.max(count_sum);
+            context.set_value(StateAgent::COUNT, Counts { current: count_sum, max: new_max})
+        })
+    }
 }

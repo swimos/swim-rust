@@ -26,6 +26,7 @@ use crate::{
     agents::{
         agency::{AgencyAgent, AgencyLifecycle},
         vehicle::{VehicleAgent, VehicleLifecycle},
+        state::{StateAgent, StateLifecycle},
     },
     buses_api::BusesApi,
 };
@@ -56,10 +57,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let epoch = Instant::now() - WEEK;
-    let vehicle_route = RoutePattern::parse_str("/vehicle/:county/:state/:id")?;
+    let vehicle_route = RoutePattern::parse_str("/vehicle/:country/:state/:id")?;
     let vehicle_lifecycle = move || VehicleLifecycle::new(epoch, HISTORY_LEN).into_lifecycle();
     let vehicle_agent = AgentModel::from_fn(VehicleAgent::default, vehicle_lifecycle);
     builder = builder.add_route(vehicle_route, vehicle_agent);
+
+    let state_route = RoutePattern::parse_str("/state/:country/:state")?;
+    let state_agent = AgentModel::new(StateAgent::default, StateLifecycle.into_lifecycle());
+    builder = builder.add_route(state_route, state_agent);
 
     let server = builder
         .update_config(|config| {
