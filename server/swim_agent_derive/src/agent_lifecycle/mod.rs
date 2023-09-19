@@ -18,8 +18,8 @@ use syn::{parse_quote, Path, Type};
 
 use self::{
     model::{
-        AgentLifecycleDescriptor, CommandLifecycleDescriptor, ItemLifecycle, JoinValueInit,
-        MapLifecycleDescriptor, ValueLifecycleDescriptor,
+        AgentLifecycleDescriptor, CommandLifecycleDescriptor, DemandLifecycleDescriptor,
+        ItemLifecycle, JoinValueInit, MapLifecycleDescriptor, ValueLifecycleDescriptor,
     },
     tree::BinTree,
 };
@@ -99,6 +99,14 @@ impl<'a> LaneLifecycleBuilder<'a> {
                     #root::lanes::command::lifecycle::StatefulCommandLaneLifecycle::on_command(
                         <#root::lanes::command::lifecycle::StatefulCommandLaneLifecycle::<#agent_type, #lifecycle_type, _> as ::core::default::Default>::default(),
                         #lifecycle_type::#on_command
+                    )
+                }
+            }
+            ItemLifecycle::Demand(DemandLifecycleDescriptor { on_cue, .. }) => {
+                parse_quote! {
+                    #root::lanes::demand::lifecycle::StatefulDemandLaneLifecycle::on_cue(
+                        <#root::lanes::demand::lifecycle::StatefulDemandLaneLifecycle::<#agent_type, #lifecycle_type, _> as ::core::default::Default>::default(),
+                        #lifecycle_type::#on_cue
                     )
                 }
             }

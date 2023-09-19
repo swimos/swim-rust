@@ -231,12 +231,22 @@ pub mod item {
 }
 
 pub mod lanes {
-    pub use swim_agent::lanes::{CommandLane, JoinValueLane, LaneItem, MapLane, ValueLane};
+    pub use swim_agent::lanes::{
+        CommandLane, DemandLane, JoinValueLane, LaneItem, MapLane, ValueLane,
+    };
 
     pub mod command {
         pub use swim_agent::lanes::command::{decode_and_command, DecodeAndCommand};
         pub mod lifecycle {
             pub use swim_agent::lanes::command::lifecycle::StatefulCommandLaneLifecycle;
+        }
+    }
+
+    pub mod demand {
+        pub use swim_agent::lanes::demand::DemandLaneSync;
+
+        pub mod lifecycle {
+            pub use swim_agent::lanes::demand::lifecycle::StatefulDemandLaneLifecycle;
         }
     }
 

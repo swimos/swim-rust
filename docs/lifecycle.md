@@ -19,6 +19,7 @@ use swim::agent::{AgentLaneModel, projections};
 #[projections]
 struct ExampleAgent {
     example_command: CommandLane<i32>,
+    example_demand: DemandLane<i32>,
     example_value: ValueLane<i32>,
     example_map: MapLane<String, i32>,
     example_join_value: JoinValueLane<String, i32>,
@@ -86,6 +87,23 @@ The command lane has only one type of event that triggers any time it receives a
 ```rust
 #[on_command(example_command)]
 fn my_command_handler(&self, context: HandlerContext<ExampleAgent>, value: &i32) -> impl EventHandler<ExampleAgent> {
+    //...
+}
+```
+
+Demand lane events
+-------------------
+
+The demand lane has only one type of event that triggers when it is explicitly cued or
+an external sync request is received. In contrast to the other types of lane, this
+handler produces a value rather than consumes one. This value will then be sent on
+all connected uplinks (or just to the requester for a sync operation).
+
+The default `on_cue` handler will produce an error and cause the agent to fail.
+
+```rust
+#[on_cue(example_demand)]
+fn my_demand_handler(&self, context: HandlerContext<ExampleAgent>) -> impl HandlerAction<ExampleAgent, Completion = i32> {
     //...
 }
 ```

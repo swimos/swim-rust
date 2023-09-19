@@ -15,6 +15,7 @@ members = [
     "example_apps/example_util",
     "example_apps/console",
     "example_apps/console/console_views",
+    "example_apps/demand_lane",
     "example_apps/value_lane",
     "example_apps/map_lane",
     "example_apps/command_lane",

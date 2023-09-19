@@ -30,6 +30,7 @@ Contents
     * Attribute macro to generate agent lifecycles.
     * Agent lifecycle events.
     * `CommandLane` events.
+    * `DemandLane` events.
     * `ValueLane` events.
     * `MapLane` events.
     * `JoinValueLane` events.

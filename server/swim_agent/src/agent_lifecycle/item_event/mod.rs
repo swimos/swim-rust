@@ -21,6 +21,7 @@ use crate::event_handler::{EventHandler, UnitHandler};
 use super::utility::HandlerContext;
 
 mod command;
+mod demand;
 mod map;
 #[cfg(test)]
 mod tests;
@@ -29,6 +30,7 @@ mod value;
 pub use command::{
     CommandBranch, CommandLeaf, CommandLifecycleHandler, CommandLifecycleHandlerShared,
 };
+pub use demand::{DemandBranch, DemandLeaf, DemandLifecycleHandler, DemandLifecycleHandlerShared};
 pub use map::{
     MapBranch, MapLeaf, MapLifecycleHandler, MapLifecycleHandlerShared, MapLikeBranch,
     MapStoreBranch, MapStoreLeaf,

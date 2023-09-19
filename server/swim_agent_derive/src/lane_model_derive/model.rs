@@ -49,6 +49,7 @@ pub enum ItemKind {
 #[derive(Clone, Copy, Debug)]
 pub enum ItemSpec<'a> {
     Command(&'a Type),
+    Demand(&'a Type),
     Value(ItemKind, &'a Type),
     Map(ItemKind, &'a Type, &'a Type),
     JoinValue(&'a Type, &'a Type),
@@ -58,6 +59,7 @@ impl<'a> ItemSpec<'a> {
     pub fn lane(&self) -> Option<LaneSpec<'a>> {
         match self {
             ItemSpec::Command(t) => Some(LaneSpec::Command(t)),
+            ItemSpec::Demand(t) => Some(LaneSpec::Demand(t)),
             ItemSpec::Value(ItemKind::Lane, t) => Some(LaneSpec::Value(t)),
             ItemSpec::Map(ItemKind::Lane, k, v) => Some(LaneSpec::Map(k, v)),
             ItemSpec::JoinValue(k, v) => Some(LaneSpec::JoinValue(k, v)),
@@ -71,6 +73,7 @@ impl<'a> ItemSpec<'a> {
             ItemSpec::Map(k, _, _) => *k,
             ItemSpec::Command(_) => ItemKind::Lane,
             ItemSpec::JoinValue(_, _) => ItemKind::Lane,
+            ItemSpec::Demand(_) => ItemKind::Lane,
         }
     }
 }
@@ -79,6 +82,7 @@ impl<'a> ItemSpec<'a> {
 #[derive(Clone, Copy, Debug)]
 pub enum LaneSpec<'a> {
     Command(&'a Type),
+    Demand(&'a Type),
     Value(&'a Type),
     Map(&'a Type, &'a Type),
     JoinValue(&'a Type, &'a Type),
@@ -86,7 +90,7 @@ pub enum LaneSpec<'a> {
 
 impl<'a> ItemSpec<'a> {
     pub fn is_stateful(&self) -> bool {
-        !matches!(self, ItemSpec::Command(_))
+        !matches!(self, ItemSpec::Command(_) | ItemSpec::Demand(_))
     }
 }
 
@@ -215,6 +219,7 @@ fn try_from_struct<'a>(
 }
 
 const COMMAND_LANE_NAME: &str = "CommandLane";
+const DEMAND_LANE_NAME: &str = "DemandLane";
 const VALUE_LANE_NAME: &str = "ValueLane";
 const VALUE_STORE_NAME: &str = "ValueStore";
 const MAP_LANE_NAME: &str = "MapLane";
@@ -238,6 +243,14 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
                         fld_name,
                         ItemSpec::Command(param),
                         ItemFlags::TRANSIENT, //Command lanes are always transient.
+                    ))
+                }
+                DEMAND_LANE_NAME => {
+                    let param = single_param(arguments)?;
+                    Ok(ItemModel::new(
+                        fld_name,
+                        ItemSpec::Demand(param),
+                        ItemFlags::TRANSIENT, //Demand lanes are always transient.
                     ))
                 }
                 VALUE_LANE_NAME => {
