@@ -15,7 +15,7 @@
 use swim::form::Form;
 
 #[derive(Debug, PartialEq, Form)]
-#[form(tag = "bounds")]
+#[form(tag = "bounds", fields_convention = "camel")]
 pub struct BoundingBox {
     pub min_lat: f64,
     pub max_lat: f64,

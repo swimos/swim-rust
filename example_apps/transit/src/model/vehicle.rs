@@ -47,7 +47,7 @@ enum Entry {
 }
 
 #[derive(Debug, Clone, PartialEq, Form)]
-#[form(tag = "vehicle")]
+#[form(tag = "vehicle", fields_convention = "camel")]
 pub struct Vehicle {
     pub id: String,
     pub agency: String,
