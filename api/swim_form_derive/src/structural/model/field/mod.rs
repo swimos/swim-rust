@@ -15,7 +15,7 @@
 use crate::SynValidation;
 use macro_utilities::attr_names::{
     ATTR_PATH, BODY_PATH, CONV_NAME, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_NAME,
-    SKIP_PATH, SLOT_PATH, TAG_PATH,
+    SCHEMA_NAME, SKIP_PATH, SLOT_PATH, TAG_PATH,
 };
 use macro_utilities::attributes::NestedMetaConsumer;
 use macro_utilities::{FieldKind, NameTransform, NameTransformConsumer, Symbol, Transformation};
@@ -158,6 +158,8 @@ enum FieldAttr {
     Transform(NameTransform),
     /// Specify where the field should occur in the serialized record.
     Kind(FieldKind),
+    /// Explicitly ignored field attribute.
+    Ignored,
 }
 
 /// Validated attributes for a field.
@@ -193,6 +195,7 @@ impl FieldAttributes {
                     Validation::valid(self)
                 }
             }
+            FieldAttr::Ignored => Validation::valid(self),
         }
     }
 }
@@ -273,7 +276,10 @@ impl Manifest {
                         fld_result
                     }
                 }
-                Ok(None) => Validation::valid(attrs),
+                Ok(None) => Validation::Validated(
+                    attrs,
+                    syn::Error::new_spanned(nested, "Unknown field attribute.").into(),
+                ),
                 Err(e) => Validation::Validated(attrs, e.into()),
             },
         );
@@ -341,6 +347,9 @@ impl NestedMetaConsumer<FieldAttr> for FieldAttrConsumer {
                     }
                 }
                 Ok(None)
+            }
+            NestedMeta::Meta(Meta::List(lst)) if lst.path.is_ident(SCHEMA_NAME) => {
+                Ok(Some(FieldAttr::Ignored))
             }
             _ => self.rename.try_consume(meta).map(|r| {
                 r.map(|t| match t {
