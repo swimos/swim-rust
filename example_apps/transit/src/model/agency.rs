@@ -21,7 +21,7 @@ use super::{
     vehicle::{Vehicle, VehicleResponse},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Form)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Form, Hash)]
 #[form(tag = "agency")]
 pub struct Agency {
     #[serde(default)]
