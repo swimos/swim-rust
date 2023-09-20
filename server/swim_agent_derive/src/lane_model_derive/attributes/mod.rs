@@ -32,6 +32,8 @@ const ROOT_ATTR_NAME: &str = "root";
 const INVALID_FIELD_ATTR: &str = "Invalid field attribute.";
 const INVALID_AGENT_ROOT: &str = "Invalid agent root specifier.";
 
+struct TransientFlag;
+
 /// Attribute consumer to recognize the transient flag for agent items.
 struct TransientFlagConsumer;
 
@@ -43,14 +45,14 @@ pub enum ItemAttr {
     Transform(Transformation),
 }
 
-impl NestedMetaConsumer<ItemAttr> for TransientFlagConsumer {
-    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<ItemAttr>, syn::Error> {
+impl NestedMetaConsumer<TransientFlag> for TransientFlagConsumer {
+    fn try_consume(&self, meta: &syn::NestedMeta) -> Result<Option<TransientFlag>, syn::Error> {
         match meta {
             syn::NestedMeta::Meta(syn::Meta::Path(path)) => match path.segments.first() {
                 Some(seg) => {
                     if seg.ident == TRANSIENT_ATTR_NAME {
                         if path.segments.len() == 1 && seg.arguments.is_empty() {
-                            Ok(Some(ItemAttr::Transient))
+                            Ok(Some(TransientFlag))
                         } else {
                             Err(syn::Error::new_spanned(meta, INVALID_FIELD_ATTR))
                         }
@@ -68,7 +70,7 @@ impl NestedMetaConsumer<ItemAttr> for TransientFlagConsumer {
 pub fn make_item_attr_consumer() -> impl NestedMetaConsumer<ItemAttr> {
     let trans_consumer = NameTransformConsumer::new(RENAME_TAG, CONV_TAG);
     hlist![
-        TransientFlagConsumer,
+        TransientFlagConsumer.map(|_| ItemAttr::Transient),
         trans_consumer.map(ItemAttr::Transform)
     ]
 }
@@ -108,6 +110,8 @@ pub fn combine_item_attrs(
 
 /// Types of modification that can be applied to an agent using attributes.
 pub enum AgentAttr {
+    /// Mark all items of the agent as transient.
+    Transient,
     /// Module path where the types from the `swim_agent` create can be found.
     Root(syn::Path),
     /// Renaming convention to apply to all items of the agent.
@@ -141,6 +145,7 @@ impl NestedMetaConsumer<AgentAttr> for RootConsumer {
 pub fn make_agent_attr_consumer() -> impl NestedMetaConsumer<AgentAttr> {
     let trans_consumer = TypeLevelNameTransformConsumer::new(CONV_TAG);
     hlist![
+        TransientFlagConsumer.map(|_| AgentAttr::Transient),
         RootConsumer,
         trans_consumer.map(AgentAttr::RenameConvention)
     ]
@@ -149,6 +154,8 @@ pub fn make_agent_attr_consumer() -> impl NestedMetaConsumer<AgentAttr> {
 /// Modifications to an agent, defined by attributes attached to it.
 #[derive(Debug)]
 pub struct AgentModifiers {
+    /// Mark all items of the agent as transient.
+    pub transient: bool,
     /// Renaming strategy for all items of the agent.
     pub transform: Option<CaseConvention>,
     /// Module path where the types from the `swim_agent` create can be found.
@@ -162,6 +169,7 @@ fn default_root() -> syn::Path {
 impl Default for AgentModifiers {
     fn default() -> Self {
         Self {
+            transient: false,
             transform: None,
             root: default_root(),
         }
@@ -180,6 +188,7 @@ pub fn combine_agent_attrs(
         |mut modifiers, attr| {
             let mut errors = Errors::empty();
             match attr {
+                AgentAttr::Transient => modifiers.transient = true,
                 AgentAttr::Root(path) => modifiers.root = path,
                 AgentAttr::RenameConvention(conv) => {
                     if modifiers.transform.is_some() {

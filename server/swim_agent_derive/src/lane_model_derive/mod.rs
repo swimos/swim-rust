@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use macro_utilities::TypeLevelNameTransform;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use syn::{parse_quote, Ident};
@@ -35,10 +34,12 @@ pub struct DeriveAgentLaneModel<'a> {
 
 impl<'a> DeriveAgentLaneModel<'a> {
     pub fn new(modifiers: AgentModifiers, mut model: LanesModel<'a>) -> Self {
-        let AgentModifiers { transform, root } = modifiers;
-        if let Some(convention) = transform {
-            model.apply_transform(TypeLevelNameTransform::Convention(convention));
-        }
+        let AgentModifiers {
+            transient,
+            transform,
+            root,
+        } = modifiers;
+        model.apply_modifiers(transient, transform.into());
         DeriveAgentLaneModel { root, model }
     }
 }

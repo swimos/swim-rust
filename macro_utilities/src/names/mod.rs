@@ -62,6 +62,22 @@ pub enum TypeLevelNameTransform {
     Convention(CaseConvention),
 }
 
+impl From<CaseConvention> for TypeLevelNameTransform {
+    fn from(value: CaseConvention) -> Self {
+        TypeLevelNameTransform::Convention(value)
+    }
+}
+
+impl From<Option<CaseConvention>> for TypeLevelNameTransform {
+    fn from(value: Option<CaseConvention>) -> Self {
+        if let Some(conv) = value {
+            TypeLevelNameTransform::Convention(conv)
+        } else {
+            TypeLevelNameTransform::Identity
+        }
+    }
+}
+
 impl TypeLevelNameTransform {
     pub fn is_identity(&self) -> bool {
         matches!(self, TypeLevelNameTransform::Identity)

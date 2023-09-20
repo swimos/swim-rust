@@ -660,13 +660,13 @@ fn two_types_single_scope() {
 #[test]
 fn rename_lane() {
     #[derive(AgentLaneModel)]
-    struct TwoValueLanes {
+    struct RenameExplicit {
         #[lane(name = "renamed")]
         first: ValueLane<i32>,
         second: ValueLane<i32>,
     }
 
-    check_agent::<TwoValueLanes>(vec![
+    check_agent::<RenameExplicit>(vec![
         persistent_lane("renamed", WarpLaneKind::Value),
         persistent_lane("second", WarpLaneKind::Value),
     ]);
@@ -675,13 +675,13 @@ fn rename_lane() {
 #[test]
 fn rename_lane_with_convention() {
     #[derive(AgentLaneModel)]
-    struct TwoValueLanes {
+    struct RenameConvention {
         #[lane(convention = "camel")]
         first_lane: ValueLane<i32>,
         second_lane: ValueLane<i32>,
     }
 
-    check_agent::<TwoValueLanes>(vec![
+    check_agent::<RenameConvention>(vec![
         persistent_lane("firstLane", WarpLaneKind::Value),
         persistent_lane("second_lane", WarpLaneKind::Value),
     ]);
@@ -691,13 +691,13 @@ fn rename_lane_with_convention() {
 fn rename_all_lanes_with_convention() {
     #[derive(AgentLaneModel)]
     #[agent(convention = "camel")]
-    struct TwoValueLanes {
+    struct RenameAll {
         first_lane: ValueLane<i32>,
         second_lane: ValueLane<i32>,
         third_lane: ValueLane<i32>,
     }
 
-    check_agent::<TwoValueLanes>(vec![
+    check_agent::<RenameAll>(vec![
         persistent_lane("firstLane", WarpLaneKind::Value),
         persistent_lane("secondLane", WarpLaneKind::Value),
         persistent_lane("thirdLane", WarpLaneKind::Value),
@@ -708,16 +708,35 @@ fn rename_all_lanes_with_convention() {
 fn override_top_level_convention() {
     #[derive(AgentLaneModel)]
     #[agent(convention = "camel")]
-    struct TwoValueLanes {
+    struct OverrideRename {
         first_lane: ValueLane<i32>,
         #[lane(name = "renamed")]
         second_lane: ValueLane<i32>,
         third_lane: ValueLane<i32>,
     }
 
-    check_agent::<TwoValueLanes>(vec![
+    check_agent::<OverrideRename>(vec![
         persistent_lane("firstLane", WarpLaneKind::Value),
         persistent_lane("renamed", WarpLaneKind::Value),
         persistent_lane("thirdLane", WarpLaneKind::Value),
+    ]);
+}
+
+#[test]
+fn agent_level_transient_flag() {
+    #[derive(AgentLaneModel)]
+    #[agent(transient)]
+    struct EverythingTransient {
+        first: ValueLane<i32>,
+        second: MapLane<i32, i32>,
+        third: CommandLane<i32>,
+        fourth: ValueStore<i32>,
+    }
+
+    check_agent::<EverythingTransient>(vec![
+        transient_lane("first", WarpLaneKind::Value),
+        transient_lane("second", WarpLaneKind::Map),
+        transient_lane("third", WarpLaneKind::Command),
+        transient_store("fourth", StoreKind::Value),
     ]);
 }

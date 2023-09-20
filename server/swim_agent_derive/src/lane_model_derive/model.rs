@@ -41,10 +41,23 @@ impl<'a> LanesModel<'a> {
         LanesModel { agent_type, lanes }
     }
 
-    /// Apply a name transform to all items.
-    pub fn apply_transform(&mut self, type_transform: TypeLevelNameTransform) {
-        for ItemModel { transform, .. } in &mut self.lanes {
+    /// Apply global transformations to all lanes.
+    pub fn apply_modifiers(
+        &mut self,
+        set_transient_flag: bool,
+        type_transform: TypeLevelNameTransform,
+    ) {
+        let add_flags = if set_transient_flag {
+            ItemFlags::TRANSIENT
+        } else {
+            ItemFlags::empty()
+        };
+        for ItemModel {
+            transform, flags, ..
+        } in &mut self.lanes
+        {
             *transform = type_transform.resolve(std::mem::take(transform));
+            flags.insert(add_flags);
         }
     }
 }
