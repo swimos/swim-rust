@@ -78,7 +78,7 @@ impl BusesApi {
             percent_encoding::utf8_percent_encode(id, NON_ALPHANUMERIC)
         );
         let bytes = self.do_request(uri).await?;
-        let responses = load_xml_vehicles(bytes.as_ref())?;
+        let (responses, _last_time) = load_xml_vehicles(bytes.as_ref())?;
         Ok(responses.into_iter().collect())
     }
 

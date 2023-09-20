@@ -85,19 +85,29 @@ pub struct VehicleResponse {
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
-struct LastTime {
-    time: u64,
+pub struct LastTime {
+    pub time: u64,
 }
 
-pub fn load_xml_vehicles<R: Read>(read: R) -> Result<Vec<VehicleResponse>, serde_xml_rs::Error> {
-    serde_xml_rs::from_reader::<R, Body>(read).map(|body| {
-        body.entries
-            .into_iter()
-            .filter_map(|entry| match entry {
-                Entry::Vehicle(v) => Some(v),
-                Entry::LastTime(_) => None,
+pub fn load_xml_vehicles<R: Read>(
+    read: R,
+) -> Result<(Vec<VehicleResponse>, LastTime), serde_xml_rs::Error> {
+    serde_xml_rs::from_reader::<R, Body>(read).and_then(|body| {
+        let mut vehicles = vec![];
+        let mut last_time = None;
+        for entry in body.entries {
+            match entry {
+                Entry::Vehicle(v) => vehicles.push(v),
+                Entry::LastTime(t) => last_time = Some(t),
+            }
+        }
+        if let Some(last_time) = last_time {
+            Ok((vehicles, last_time))
+        } else {
+            Err(serde_xml_rs::Error::Custom {
+                field: "lastTime".to_string(),
             })
-            .collect()
+        }
     })
 }
 
@@ -233,7 +243,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::model::vehicle::Heading;
+    use crate::{model::vehicle::Heading, vehicle::LastTime};
 
     use super::{load_xml_vehicles, VehicleResponse};
 
@@ -288,7 +298,9 @@ mod tests {
             },
         ];
 
-        let result = load_xml_vehicles(VEHICLES_EXAMPLE).expect("Loading routes failed.");
-        assert_eq!(result, expected);
+        let (vehicles, LastTime { time }) =
+            load_xml_vehicles(VEHICLES_EXAMPLE).expect("Loading routes failed.");
+        assert_eq!(vehicles, expected);
+        assert_eq!(time, 1333098017222);
     }
 }
