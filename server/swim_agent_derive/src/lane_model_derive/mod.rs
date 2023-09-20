@@ -35,9 +35,13 @@ pub struct DeriveAgentLaneModel<'a> {
 
 impl<'a> DeriveAgentLaneModel<'a> {
     pub fn new(modifiers: AgentModifiers, mut model: LanesModel<'a>) -> Self {
-        let AgentModifiers { transform, root } = modifiers;
+        let AgentModifiers {
+            transient,
+            transform,
+            root,
+        } = modifiers;
         if let Some(convention) = transform {
-            model.apply_transform(TypeLevelNameTransform::Convention(convention));
+            model.apply_modifiers(transient, TypeLevelNameTransform::Convention(convention));
         }
         DeriveAgentLaneModel { root, model }
     }
