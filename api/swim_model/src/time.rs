@@ -52,16 +52,11 @@ impl Timestamp {
         Timestamp(Utc::now())
     }
 
-    /// Returns the number of non-leap-nanoseconds since January 1, 1970 UTC.
-    pub fn nanos(&self) -> i64 {
-        self.0.timestamp_nanos()
-    }
-
     pub fn micros(&self) -> i64 {
-        self.nanos() / 1000
+        self.0.timestamp_micros()
     }
 
     pub fn millis(&self) -> i64 {
-        self.micros() / 1000
+        self.0.timestamp_millis()
     }
 }
