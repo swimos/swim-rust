@@ -12,26 +12,40 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::io::Read;
+use std::io::BufRead;
 
-use serde::Deserialize;
+use quick_xml::DeError;
+use serde::{Deserialize, Serialize};
 use swim::form::Form;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
+#[serde(rename = "body")]
 struct Body {
-    #[serde(rename = "$value")]
-    routes: Vec<Route>,
+    #[serde(rename = "@copyright")]
+    copyright: String,
+    #[serde(default)]
+    route: Vec<Route>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Form)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Form)]
 #[form(tag = "route")]
 pub struct Route {
+    #[serde(rename = "@tag")]
     pub tag: String,
+    #[serde(rename = "@title")]
     pub title: String,
 }
 
-pub fn load_xml_routes<R: Read>(read: R) -> Result<Vec<Route>, serde_xml_rs::Error> {
-    serde_xml_rs::from_reader::<R, Body>(read).map(|body| body.routes)
+pub fn load_xml_routes<R: BufRead>(read: R) -> Result<Vec<Route>, DeError> {
+    quick_xml::de::from_reader::<R, Body>(read).map(|body| body.route)
+}
+
+pub fn produce_xml(copyright: String, routes: Vec<Route>) -> String {
+    let body = Body {
+        copyright,
+        route: routes,
+    };
+    quick_xml::se::to_string(&body).expect("Invalid routes.")
 }
 
 #[cfg(test)]
@@ -59,5 +73,25 @@ mod tests {
         ];
         let result = load_xml_routes(ROUTES_EXAMPLE).expect("Loading routes failed.");
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn produce_routes() {
+        let routes = vec![
+            Route {
+                tag: "antelope".to_string(),
+                title: "Beige Line".to_string(),
+            },
+            Route {
+                tag: "llama".to_string(),
+                title: "Chartreuse Line".to_string(),
+            },
+            Route {
+                tag: "zebra".to_string(),
+                title: "Black and White Line".to_string(),
+            },
+        ];
+        let xml = super::produce_xml("NStream 2023".to_string(), routes);
+        println!("{}", xml);
     }
 }

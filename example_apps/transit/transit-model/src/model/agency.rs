@@ -16,6 +16,8 @@ use percent_encoding::{PercentEncode, NON_ALPHANUMERIC};
 use serde::Deserialize;
 use swim::form::Form;
 
+use crate::vehicle::Heading;
+
 use super::{
     route::Route,
     vehicle::{Vehicle, VehicleResponse},
@@ -73,6 +75,9 @@ impl Agency {
             enc(&self.id),
             enc(&id)
         );
+
+        let heading = Heading::try_from(heading).unwrap_or(Heading::N);
+
         Vehicle {
             id,
             agency: self.id.clone(),

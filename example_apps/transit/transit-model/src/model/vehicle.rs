@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::io::Read;
+use std::io::BufRead;
 
-use serde::{Deserialize, Deserializer};
+use quick_xml::DeError;
+use serde::{Deserialize, Deserializer, Serialize};
 use swim::{
     form::{
         structural::{
@@ -33,17 +34,12 @@ use swim::{
 };
 use thiserror::Error;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
+#[serde(rename = "body")]
 struct Body {
-    #[serde(rename = "$value")]
-    entries: Vec<Entry>,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-enum Entry {
-    Vehicle(VehicleResponse),
-    LastTime(LastTime),
+    vehicle: Vec<VehicleResponse>,
+    #[serde(rename = "lastTime")]
+    last_time: LastTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Form)]
@@ -63,52 +59,46 @@ pub struct Vehicle {
     pub route_title: String,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Form)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Form)]
 pub struct VehicleResponse {
+    #[serde(rename = "@id")]
     pub id: String,
-    #[serde(rename = "routeTag")]
+    #[serde(rename = "@routeTag")]
     pub route_tag: String,
-    #[serde(rename = "dirTag")]
+    #[serde(rename = "@dirTag")]
     #[serde(deserialize_with = "deser_dir_id")]
     pub dir_id: String,
-    #[serde(rename = "lat")]
+    #[serde(rename = "@lat")]
     pub latitude: f64,
-    #[serde(rename = "lon")]
+    #[serde(rename = "@lon")]
     pub longitude: f64,
-    #[serde(rename = "speedKmHr")]
+    #[serde(rename = "@speedKmHr")]
     pub speed: u32,
-    #[serde(rename = "secsSinceReport")]
+    #[serde(rename = "@secsSinceReport")]
     pub secs_since_report: u32,
-    #[serde(deserialize_with = "deser_heading")]
-    pub heading: Heading,
+    #[serde(rename = "@heading")]
+    pub heading: u32,
+    #[serde(rename = "@predictable")]
     pub predictable: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct LastTime {
+    #[serde(rename = "@time")]
     pub time: u64,
 }
 
-pub fn load_xml_vehicles<R: Read>(
-    read: R,
-) -> Result<(Vec<VehicleResponse>, LastTime), serde_xml_rs::Error> {
-    serde_xml_rs::from_reader::<R, Body>(read).and_then(|body| {
-        let mut vehicles = vec![];
-        let mut last_time = None;
-        for entry in body.entries {
-            match entry {
-                Entry::Vehicle(v) => vehicles.push(v),
-                Entry::LastTime(t) => last_time = Some(t),
-            }
-        }
-        if let Some(last_time) = last_time {
-            Ok((vehicles, last_time))
-        } else {
-            Err(serde_xml_rs::Error::Custom {
-                field: "lastTime".to_string(),
-            })
-        }
-    })
+pub fn load_xml_vehicles<R: BufRead>(read: R) -> Result<(Vec<VehicleResponse>, u64), DeError> {
+    quick_xml::de::from_reader::<R, Body>(read)
+        .map(|Body { vehicle, last_time }| (vehicle, last_time.time))
+}
+
+pub fn produce_xml(vehicles: Vec<VehicleResponse>, last_time: u64) -> String {
+    let body = Body {
+        vehicle: vehicles,
+        last_time: LastTime { time: last_time },
+    };
+    quick_xml::se::to_string(&body).expect("Invalid vehicles.")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Tag)]
@@ -193,12 +183,12 @@ impl Recognizer for HeadingRecognizer {
 
 #[derive(Debug, Error)]
 #[error("{0} is not a valid heading.")]
-pub struct HeadingOutOfRange(pub u16);
+pub struct HeadingOutOfRange(pub u32);
 
-impl TryFrom<u16> for Heading {
+impl TryFrom<u32> for Heading {
     type Error = HeadingOutOfRange;
 
-    fn try_from(heading: u16) -> Result<Self, Self::Error> {
+    fn try_from(heading: u32) -> Result<Self, Self::Error> {
         if heading < 23 || heading >= 338 {
             Ok(Heading::E)
         } else if 23 <= heading && heading < 68 {
@@ -221,14 +211,6 @@ impl TryFrom<u16> for Heading {
     }
 }
 
-fn deser_heading<'de, D>(deserializer: D) -> Result<Heading, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let h: u16 = Deserialize::deserialize(deserializer)?;
-    Heading::try_from(h).map_err(serde::de::Error::custom)
-}
-
 fn deser_dir_id<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
@@ -243,7 +225,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{model::vehicle::Heading, vehicle::LastTime};
 
     use super::{load_xml_vehicles, VehicleResponse};
 
@@ -260,7 +241,7 @@ mod tests {
                 longitude: -0.2549486,
                 speed: 10,
                 secs_since_report: 12,
-                heading: Heading::NE,
+                heading: 23,
                 predictable: true,
             },
             VehicleResponse {
@@ -271,7 +252,7 @@ mod tests {
                 longitude: -0.2380486,
                 speed: 70,
                 secs_since_report: 36,
-                heading: Heading::E,
+                heading: 4,
                 predictable: true,
             },
             VehicleResponse {
@@ -282,7 +263,7 @@ mod tests {
                 longitude: -0.2469221,
                 speed: 0,
                 secs_since_report: 5,
-                heading: Heading::SE,
+                heading: 300,
                 predictable: true,
             },
             VehicleResponse {
@@ -293,14 +274,66 @@ mod tests {
                 longitude: -0.2469456,
                 speed: 22,
                 secs_since_report: 2,
-                heading: Heading::N,
+                heading: 110,
                 predictable: false,
             },
         ];
 
-        let (vehicles, LastTime { time }) =
-            load_xml_vehicles(VEHICLES_EXAMPLE).expect("Loading routes failed.");
+        let (vehicles, time) = load_xml_vehicles(VEHICLES_EXAMPLE).expect("Loading routes failed.");
+
         assert_eq!(vehicles, expected);
         assert_eq!(time, 1333098017222);
+    }
+
+    #[test]
+    fn produce_vehicle_xml() {
+        let vehicles = vec![
+            VehicleResponse {
+                id: "Citi2".to_string(),
+                route_tag: "asdf".to_string(),
+                dir_id: "bloop".to_string(),
+                latitude: 64.1511322,
+                longitude: -0.2549486,
+                speed: 10,
+                secs_since_report: 12,
+                heading: 24,
+                predictable: true,
+            },
+            VehicleResponse {
+                id: "Citi3".to_string(),
+                route_tag: "jhkl".to_string(),
+                dir_id: "sloop".to_string(),
+                latitude: 64.1603444,
+                longitude: -0.2380486,
+                speed: 70,
+                secs_since_report: 36,
+                heading: 3,
+                predictable: true,
+            },
+            VehicleResponse {
+                id: "A".to_string(),
+                route_tag: "yhdjd".to_string(),
+                dir_id: "floop".to_string(),
+                latitude: 64.1463333,
+                longitude: -0.2469221,
+                speed: 0,
+                secs_since_report: 5,
+                heading: 300,
+                predictable: true,
+            },
+            VehicleResponse {
+                id: "B".to_string(),
+                route_tag: "uuu8".to_string(),
+                dir_id: "up".to_string(),
+                latitude: 64.1467001,
+                longitude: -0.2469456,
+                speed: 22,
+                secs_since_report: 2,
+                heading: 110,
+                predictable: false,
+            },
+        ];
+        let xml = super::produce_xml(vehicles, 1333098017222);
+        print!("{}", xml);
     }
 }
