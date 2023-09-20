@@ -1,0 +1,12 @@
+[package]
+name = "transit-fixture"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"]}
+serde-xml-rs = "0.6"
+thiserror = { workspace = true }
+hyper = { workspace = true }
+tracing = { workspace = true }
+transit-model = { path = "../transit-model" }

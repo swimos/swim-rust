@@ -46,7 +46,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let api = BusesApi::default();
 
-    let agencies = model::agency::agencies();
+    let agencies = model::agencies();
     let mut builder = ServerBuilder::with_plane_name("Transit Plane");
 
     for agency in agencies {

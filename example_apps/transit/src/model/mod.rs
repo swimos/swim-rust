@@ -12,8 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod agency;
-pub mod bounding_box;
-pub mod counts;
-pub mod route;
-pub mod vehicle;
+use transit_model::agency::Agency;
+pub use transit_model::*;
+
+const AGENCIES_CSV: &[u8] = include_bytes!("agencies.csv");
+
+pub fn agencies() -> Vec<Agency> {
+    let mut reader = csv::Reader::from_reader(AGENCIES_CSV);
+    let agencies_result = reader.deserialize::<Agency>().collect::<Result<_, _>>();
+
+    let mut agencies: Vec<Agency> = agencies_result.expect("CSV data was invalid.");
+    for (i, agency) in agencies.iter_mut().enumerate() {
+        agency.index = i;
+    }
+    agencies
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn load_agencies() {
+        let agencies = super::agencies();
+        println!("{:?}", agencies);
+        assert_eq!(agencies.len(), 46);
+    }
+}

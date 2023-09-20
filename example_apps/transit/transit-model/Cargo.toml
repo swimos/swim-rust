@@ -1,0 +1,11 @@
+[package]
+name = "transit-model"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+swim = { path = "../../../swim" }
+serde = { workspace = true, features = ["derive"]}
+serde-xml-rs = "0.6"
+percent-encoding = { workspace = true }
+thiserror = { workspace = true }
