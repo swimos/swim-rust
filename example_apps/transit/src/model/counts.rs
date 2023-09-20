@@ -15,8 +15,8 @@
 use swim::form::Form;
 
 #[derive(Debug, Clone, Copy, Default, Form)]
-#[form(tag = "counts")]
-pub struct Counts {
+#[form(tag = "count")]
+pub struct Count {
     pub current: usize,
     pub max: usize,
 }

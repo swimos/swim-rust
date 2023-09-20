@@ -38,8 +38,8 @@ use crate::downlink_lifecycle::event::EventDownlinkLifecycle;
 use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
 use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
 use crate::event_handler::{
-    run_after, run_schedule, ConstHandler, EventHandler, GetParameter, HandlerActionExt,
-    SendCommand, Sequentially, Stop, Suspend, UnitHandler, run_schedule_async,
+    run_after, run_schedule, run_schedule_async, ConstHandler, EventHandler, GetParameter,
+    HandlerActionExt, SendCommand, Sequentially, Stop, Suspend, UnitHandler,
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::demand::{Cue, DemandLane};
@@ -556,7 +556,8 @@ impl<Agent: 'static> HandlerContext<Agent> {
     pub fn suspend_schedule<S, H>(&self, schedule: S) -> impl EventHandler<Agent> + Send + 'static
     where
         S: Stream<Item = H> + Send + Unpin + 'static,
-        H: EventHandler<Agent> + Send + 'static, {
+        H: EventHandler<Agent> + Send + 'static,
+    {
         run_schedule_async(schedule)
     }
 
@@ -588,19 +589,22 @@ impl<Agent: 'static> HandlerContext<Agent> {
         F: Future<Output = Option<H>> + Send + 'static,
         H: EventHandler<Agent> + Send + 'static,
     {
-        let stream = unfold((futures.into_iter(), Instant::now()), move |(mut it, next_at)| async move {
-            if let Some(f) = it.next() {
-                tokio::time::sleep_until(next_at).await;
-                let next_time = Instant::now() + delay;
-                if let Some(h) = f.await {
-                    Some((h, (it, next_time)))
+        let stream = unfold(
+            (futures.into_iter(), Instant::now()),
+            move |(mut it, next_at)| async move {
+                if let Some(f) = it.next() {
+                    tokio::time::sleep_until(next_at).await;
+                    let next_time = Instant::now() + delay;
+                    if let Some(h) = f.await {
+                        Some((h, (it, next_time)))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
-            } else {
-                None
-            }
-        });
+            },
+        );
         self.suspend_schedule(stream.boxed())
     }
 
@@ -618,7 +622,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 
     /// Schedule a sequences of futures (each resulting in an event handler) to execute with a fixed delay
-    /// between them. The delay is computed when the future starts executing so if a futures takes longer 
+    /// between them. The delay is computed when the future starts executing so if a futures takes longer
     /// than the delay to complete, the next will start immediately.
     pub fn suspend_repeatedly<H, Fut, F>(
         &self,

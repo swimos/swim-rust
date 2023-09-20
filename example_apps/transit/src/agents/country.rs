@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use swim::agent::{
     agent_lifecycle::utility::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt},
-    lanes::{CommandLane, JoinValueLane, ValueLane},
+    lanes::{CommandLane, JoinValueLane, MapLane, ValueLane},
     lifecycle, projections, AgentLaneModel,
 };
 
@@ -25,78 +25,84 @@ use crate::model::{agency::Agency, counts::Count};
 
 #[derive(AgentLaneModel)]
 #[projections]
-#[agent(convention = "camel")]
-pub struct StateAgent {
+pub struct CountryAgent {
     #[lane(transient)]
     count: ValueLane<Count>,
     #[lane(transient)]
-    join_agency_count: JoinValueLane<Agency, usize>,
+    agencies: MapLane<String, Agency>,
+    #[lane(transient)]
+    states: MapLane<String, ()>,
+    #[lane(transient)]
+    state_count: MapLane<String, usize>,
+    #[lane(transient)]
+    join_state_count: JoinValueLane<String, usize>,
     #[lane(transient)]
     speed: ValueLane<f64>,
     #[lane(transient)]
-    agency_speed: JoinValueLane<Agency, f64>,
+    state_speed: MapLane<String, f64>,
     #[lane(transient)]
-    join_agency_speed: JoinValueLane<Agency, f64>,
+    join_state_speed: JoinValueLane<String, f64>,
     add_agency: CommandLane<Agency>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub struct StateLifecycle;
+pub struct CountryLifecycle;
 
-#[lifecycle(StateAgent)]
-impl StateLifecycle {
+#[lifecycle(CountryAgent)]
+impl CountryLifecycle {
     #[on_start]
-    fn init(&self, context: HandlerContext<StateAgent>) -> impl EventHandler<StateAgent> {
+    fn init(&self, context: HandlerContext<CountryAgent>) -> impl EventHandler<CountryAgent> {
         context.get_agent_uri().and_then(move |uri| {
-            context.effect(move || println!("Starting State agent at: {}", uri))
+            context.effect(move || print!("Starting Country agent at: {}", uri))
         })
     }
 
     #[on_command(add_agency)]
     fn connect_agency(
         &self,
-        context: HandlerContext<StateAgent>,
+        context: HandlerContext<CountryAgent>,
         agency: &Agency,
-    ) -> impl EventHandler<StateAgent> {
+    ) -> impl EventHandler<CountryAgent> {
+        let insert_state = context.update(CountryAgent::STATES, agency.state.clone(), ());
         let agency_uri = agency.uri();
-        let country_uri = agency.country_uri();
-        let link_count = context.add_downlink(
-            StateAgent::JOIN_AGENCY_COUNT,
-            agency.clone(),
+        let state_uri = agency.state_uri();
+        let add_agency = context.update(CountryAgent::AGENCIES, agency_uri, agency.clone());
+        let link_counts = context.add_downlink(
+            CountryAgent::JOIN_STATE_COUNT,
+            agency.state.clone(),
             None,
-            &agency_uri,
+            &state_uri,
             "count",
         );
-        let link_speed = context.add_downlink(
-            StateAgent::JOIN_AGENCY_SPEED,
-            agency.clone(),
+        let link_speeds = context.add_downlink(
+            CountryAgent::JOIN_STATE_SPEED,
+            agency.state.clone(),
             None,
-            &agency_uri,
+            &state_uri,
             "speed",
         );
-        let add_to_country =
-            context.send_command(None, country_uri, "addAgency".to_string(), agency.clone());
-        link_count
-            .followed_by(link_speed)
-            .followed_by(add_to_country)
+        insert_state
+            .followed_by(add_agency)
+            .followed_by(link_counts)
+            .followed_by(link_speeds)
     }
 
-    #[on_update(join_agency_count)]
+    #[on_update(join_state_count)]
     fn update_counts(
         &self,
-        context: HandlerContext<StateAgent>,
-        map: &HashMap<Agency, usize>,
-        _key: Agency,
+        context: HandlerContext<CountryAgent>,
+        map: &HashMap<String, usize>,
+        _key: String,
         _prev: Option<usize>,
         _new_value: &usize,
-    ) -> impl EventHandler<StateAgent> {
+    ) -> impl EventHandler<CountryAgent> {
         let count_sum = map.values().fold(0usize, |acc, n| acc.saturating_add(*n));
         context
-            .get_value(StateAgent::COUNT)
+            .get_value(CountryAgent::COUNT)
             .and_then(move |Count { max, .. }| {
                 let new_max = max.max(count_sum);
                 context.set_value(
-                    StateAgent::COUNT,
+                    CountryAgent::COUNT,
                     Count {
                         current: count_sum,
                         max: new_max,
@@ -105,15 +111,15 @@ impl StateLifecycle {
             })
     }
 
-    #[on_update(join_agency_speed)]
+    #[on_update(join_state_speed)]
     fn update_speeds(
         &self,
-        context: HandlerContext<StateAgent>,
-        map: &HashMap<Agency, f64>,
-        _key: Agency,
+        context: HandlerContext<CountryAgent>,
+        map: &HashMap<String, f64>,
+        _key: String,
         _prev: Option<f64>,
         _new_value: &f64,
-    ) -> impl EventHandler<StateAgent> {
+    ) -> impl EventHandler<CountryAgent> {
         let avg = map
             .values()
             .copied()
@@ -123,6 +129,6 @@ impl StateLifecycle {
                 (next_mean, next_n)
             })
             .0;
-        context.set_value(StateAgent::SPEED, avg)
+        context.set_value(CountryAgent::SPEED, avg)
     }
 }

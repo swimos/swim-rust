@@ -133,7 +133,9 @@ where
     }
 }
 
-pub fn run_schedule_async<Context, S, H>(mut schedule: S) -> impl EventHandler<Context> + Send + 'static
+pub fn run_schedule_async<Context, S, H>(
+    mut schedule: S,
+) -> impl EventHandler<Context> + Send + 'static
 where
     Context: 'static,
     S: Stream<Item = H> + Send + Unpin + 'static,

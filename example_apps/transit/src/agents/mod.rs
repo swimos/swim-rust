@@ -13,5 +13,6 @@
 // limitations under the License.
 
 pub mod agency;
+pub mod country;
 pub mod state;
 pub mod vehicle;

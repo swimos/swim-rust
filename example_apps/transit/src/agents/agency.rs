@@ -232,12 +232,8 @@ impl Statistics {
 
         *min_lat = min_lat.min(vehicle.latitude).clamp(MIN_LAT, MAX_LAT);
         *max_lat = max_lat.max(vehicle.latitude).clamp(MIN_LAT, MAX_LAT);
-        *min_lng = min_lng
-            .min(vehicle.longitude)
-            .clamp(MIN_LONG, MAX_LONG);
-        *max_lng = max_lng
-            .max(vehicle.longitude)
-            .clamp(MIN_LONG, MAX_LONG);
+        *min_lng = min_lng.min(vehicle.longitude).clamp(MIN_LONG, MAX_LONG);
+        *max_lng = max_lng.max(vehicle.longitude).clamp(MIN_LONG, MAX_LONG);
         self
     }
 }

@@ -246,7 +246,10 @@ async fn scheduled_handler() {
     assert_eq!(*guard, vec![0, 1, 2]);
 }
 
-async fn set_n_async(events: Arc<Mutex<Vec<usize>>>, n: usize) -> impl EventHandler<DummyAgent> + Send + 'static {
+async fn set_n_async(
+    events: Arc<Mutex<Vec<usize>>>,
+    n: usize,
+) -> impl EventHandler<DummyAgent> + Send + 'static {
     tokio::time::sleep(DELAY).await;
     set_n(events, n)
 }
@@ -260,7 +263,7 @@ async fn scheduled_handler_async() {
         set_n_async(events.clone(), 2),
     ];
     let stream = futures::stream::iter(handlers).flat_map(futures::stream::once);
-   
+
     let sched = super::run_schedule_async(stream.boxed());
 
     let before = Instant::now();

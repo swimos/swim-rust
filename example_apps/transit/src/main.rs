@@ -25,8 +25,9 @@ use tokio::time::Instant;
 use crate::{
     agents::{
         agency::{AgencyAgent, AgencyLifecycle},
-        vehicle::{VehicleAgent, VehicleLifecycle},
+        country::{CountryAgent, CountryLifecycle},
         state::{StateAgent, StateLifecycle},
+        vehicle::{VehicleAgent, VehicleLifecycle},
     },
     buses_api::BusesApi,
 };
@@ -65,6 +66,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let state_route = RoutePattern::parse_str("/state/:country/:state")?;
     let state_agent = AgentModel::new(StateAgent::default, StateLifecycle.into_lifecycle());
     builder = builder.add_route(state_route, state_agent);
+
+    let country_route = RoutePattern::parse_str("/country/:country")?;
+    let country_agent = AgentModel::new(CountryAgent::default, CountryLifecycle.into_lifecycle());
+    builder = builder.add_route(country_route, country_agent);
 
     let server = builder
         .update_config(|config| {
