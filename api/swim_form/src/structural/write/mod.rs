@@ -914,7 +914,7 @@ impl StructuralWritable for Timestamp {
         &self,
         writer: W,
     ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        writer.write_i64(self.as_ref().timestamp_nanos())
+        writer.write_i64(self.as_ref().timestamp_micros())
     }
 
     fn write_into<W: StructuralWriter>(
