@@ -34,19 +34,14 @@ use crate::{
 
 #[derive(AgentLaneModel)]
 #[projections]
-#[agent(convention = "camel")]
+#[agent(transient, convention = "camel")]
 pub struct AgencyAgent {
-    #[lane(transient)]
     vehicles: MapLane<String, Vehicle>,
-    #[lane(transient)]
     vehicles_count: ValueLane<usize>,
-    #[lane(transient)]
     vehicles_speed: ValueLane<f64>,
     add_vehicles: CommandLane<Vec<VehicleResponse>>,
     info: DemandLane<Agency>,
-    #[lane(transient)]
     routes: MapLane<String, Route>,
-    #[lane(transient)]
     bounding_box: ValueLane<BoundingBox>,
 }
 

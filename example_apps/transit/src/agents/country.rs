@@ -25,22 +25,15 @@ use crate::model::{agency::Agency, counts::Count};
 
 #[derive(AgentLaneModel)]
 #[projections]
+#[agent(transient, convention = "camel")]
 pub struct CountryAgent {
-    #[lane(transient)]
     count: ValueLane<Count>,
-    #[lane(transient)]
     agencies: MapLane<String, Agency>,
-    #[lane(transient)]
     states: MapLane<String, ()>,
-    #[lane(transient)]
     state_count: MapLane<String, usize>,
-    #[lane(transient)]
     join_state_count: JoinValueLane<String, usize>,
-    #[lane(transient)]
     speed: ValueLane<f64>,
-    #[lane(transient)]
     state_speed: MapLane<String, f64>,
-    #[lane(transient)]
     join_state_speed: JoinValueLane<String, f64>,
     add_agency: CommandLane<Agency>,
 }

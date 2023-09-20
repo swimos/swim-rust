@@ -29,7 +29,7 @@ use crate::model::vehicle::Vehicle;
 
 #[derive(AgentLaneModel)]
 #[projections]
-#[agent(convention = "camel")]
+#[agent(transient, convention = "camel")]
 pub struct VehicleAgent {
     vehicle: ValueLane<Option<Vehicle>>,
     speeds: MapLane<u64, u32>,
