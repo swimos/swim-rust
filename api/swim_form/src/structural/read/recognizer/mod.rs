@@ -298,7 +298,7 @@ impl Recognizer for TimestampRecognizer {
         match input {
             ReadEvent::Number(NumericValue::Int(n)) => {
                 let result = check_parse_time_result(
-                    Utc.timestamp_opt(n / 1_000_000_000, (n % 1_000_000_000) as u32),
+                    Utc.timestamp_opt(n / 1_000_000, (n % 1_000_000) as u32),
                     &n,
                 )
                 .map(Timestamp::from)
@@ -308,7 +308,7 @@ impl Recognizer for TimestampRecognizer {
             }
             ReadEvent::Number(NumericValue::UInt(n)) => {
                 let result = check_parse_time_result(
-                    Utc.timestamp_opt((n / 1_000_000_000) as i64, (n % 1_000_000_000) as u32),
+                    Utc.timestamp_opt((n / 1_000_000) as i64, (n % 1_000_000) as u32),
                     &n,
                 )
                 .map(Timestamp::from)
