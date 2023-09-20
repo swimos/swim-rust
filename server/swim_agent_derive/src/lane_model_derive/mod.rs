@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use macro_utilities::TypeLevelNameTransform;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use syn::{parse_quote, Ident};
@@ -40,9 +39,7 @@ impl<'a> DeriveAgentLaneModel<'a> {
             transform,
             root,
         } = modifiers;
-        if let Some(convention) = transform {
-            model.apply_modifiers(transient, TypeLevelNameTransform::Convention(convention));
-        }
+        model.apply_modifiers(transient, transform.into());
         DeriveAgentLaneModel { root, model }
     }
 }

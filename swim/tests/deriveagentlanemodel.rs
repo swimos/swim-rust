@@ -721,3 +721,22 @@ fn override_top_level_convention() {
         persistent_lane("thirdLane", WarpLaneKind::Value),
     ]);
 }
+
+#[test]
+fn agent_level_transient_flag() {
+    #[derive(AgentLaneModel)]
+    #[agent(transient)]
+    struct EverythingTransient {
+        first: ValueLane<i32>,
+        second: MapLane<i32, i32>,
+        third: CommandLane<i32>,
+        fourth: ValueStore<i32>,
+    }
+
+    check_agent::<EverythingTransient>(vec![
+        transient_lane("first", WarpLaneKind::Value),
+        transient_lane("second", WarpLaneKind::Map),
+        transient_lane("third", WarpLaneKind::Command),
+        transient_store("fourth", StoreKind::Value),
+    ]);
+}
