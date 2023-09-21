@@ -14,9 +14,11 @@
 
 use std::io::BufRead;
 
-use quick_xml::DeError;
+use quick_xml::{se::Serializer, DeError};
 use serde::{Deserialize, Serialize};
 use swim::form::Form;
+
+use super::{XML_HEADER, XML_INDENT, XML_INDENT_CHAR};
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename = "body")]
@@ -45,7 +47,11 @@ pub fn produce_xml(copyright: String, routes: Vec<Route>) -> String {
         copyright,
         route: routes,
     };
-    quick_xml::se::to_string(&body).expect("Invalid routes.")
+    let mut out = XML_HEADER.to_string();
+    let mut ser = Serializer::new(&mut out);
+    ser.indent(XML_INDENT_CHAR, XML_INDENT);
+    body.serialize(ser).expect("Invalid routes.");
+    out
 }
 
 #[cfg(test)]
@@ -55,9 +61,8 @@ mod tests {
 
     const ROUTES_EXAMPLE: &[u8] = include_bytes!("test-data/routes.xml");
 
-    #[test]
-    fn load_routes() {
-        let expected = vec![
+    fn routes() -> Vec<Route> {
+        vec![
             Route {
                 tag: "antelope".to_string(),
                 title: "Beige Line".to_string(),
@@ -70,28 +75,20 @@ mod tests {
                 tag: "zebra".to_string(),
                 title: "Black and White Line".to_string(),
             },
-        ];
+        ]
+    }
+
+    #[test]
+    fn load_routes() {
+        let expected = routes();
         let result = load_xml_routes(ROUTES_EXAMPLE).expect("Loading routes failed.");
         assert_eq!(result, expected);
     }
 
     #[test]
     fn produce_routes() {
-        let routes = vec![
-            Route {
-                tag: "antelope".to_string(),
-                title: "Beige Line".to_string(),
-            },
-            Route {
-                tag: "llama".to_string(),
-                title: "Chartreuse Line".to_string(),
-            },
-            Route {
-                tag: "zebra".to_string(),
-                title: "Black and White Line".to_string(),
-            },
-        ];
+        let routes = routes();
         let xml = super::produce_xml("NStream 2023".to_string(), routes);
-        println!("{}", xml);
+        assert_eq!(xml.as_bytes(), ROUTES_EXAMPLE);
     }
 }

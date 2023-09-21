@@ -17,3 +17,7 @@ pub mod bounding_box;
 pub mod counts;
 pub mod route;
 pub mod vehicle;
+
+const XML_HEADER: &str = "<?xml version=\"1.0\" encoding=\"utf-8\" ?>\n";
+const XML_INDENT_CHAR: char = ' ';
+const XML_INDENT: usize = 4;

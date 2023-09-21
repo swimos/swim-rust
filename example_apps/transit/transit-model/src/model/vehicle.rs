@@ -14,7 +14,7 @@
 
 use std::io::BufRead;
 
-use quick_xml::DeError;
+use quick_xml::{se::Serializer, DeError};
 use serde::{Deserialize, Deserializer, Serialize};
 use swim::{
     form::{
@@ -34,9 +34,13 @@ use swim::{
 };
 use thiserror::Error;
 
+use super::{XML_HEADER, XML_INDENT, XML_INDENT_CHAR};
+
 #[derive(Deserialize, Serialize)]
 #[serde(rename = "body")]
 struct Body {
+    #[serde(rename = "@copyright")]
+    copyright: String,
     vehicle: Vec<VehicleResponse>,
     #[serde(rename = "lastTime")]
     last_time: LastTime,
@@ -72,14 +76,14 @@ pub struct VehicleResponse {
     pub latitude: f64,
     #[serde(rename = "@lon")]
     pub longitude: f64,
-    #[serde(rename = "@speedKmHr")]
-    pub speed: u32,
     #[serde(rename = "@secsSinceReport")]
     pub secs_since_report: u32,
-    #[serde(rename = "@heading")]
-    pub heading: u32,
     #[serde(rename = "@predictable")]
     pub predictable: bool,
+    #[serde(rename = "@heading")]
+    pub heading: u32,
+    #[serde(rename = "@speedKmHr")]
+    pub speed: u32,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -89,16 +93,24 @@ pub struct LastTime {
 }
 
 pub fn load_xml_vehicles<R: BufRead>(read: R) -> Result<(Vec<VehicleResponse>, u64), DeError> {
-    quick_xml::de::from_reader::<R, Body>(read)
-        .map(|Body { vehicle, last_time }| (vehicle, last_time.time))
+    quick_xml::de::from_reader::<R, Body>(read).map(
+        |Body {
+             vehicle, last_time, ..
+         }| (vehicle, last_time.time),
+    )
 }
 
-pub fn produce_xml(vehicles: Vec<VehicleResponse>, last_time: u64) -> String {
+pub fn produce_xml(copyright: String, vehicles: Vec<VehicleResponse>, last_time: u64) -> String {
     let body = Body {
+        copyright,
         vehicle: vehicles,
         last_time: LastTime { time: last_time },
     };
-    quick_xml::se::to_string(&body).expect("Invalid vehicles.")
+    let mut out = XML_HEADER.to_string();
+    let mut ser = Serializer::new(&mut out);
+    ser.indent(XML_INDENT_CHAR, XML_INDENT);
+    body.serialize(ser).expect("Invalid vehicles.");
+    out
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Tag)]
@@ -230,9 +242,8 @@ mod tests {
 
     const VEHICLES_EXAMPLE: &[u8] = include_bytes!("test-data/vehicles.xml");
 
-    #[test]
-    fn load_vehicles() {
-        let expected = vec![
+    fn vehicles() -> Vec<VehicleResponse> {
+        vec![
             VehicleResponse {
                 id: "Citi2".to_string(),
                 route_tag: "asdf".to_string(),
@@ -277,63 +288,25 @@ mod tests {
                 heading: 110,
                 predictable: false,
             },
-        ];
+        ]
+    }
+
+    const TIMESTAMP: u64 = 1333098017222;
+
+    #[test]
+    fn load_vehicles() {
+        let expected = vehicles();
 
         let (vehicles, time) = load_xml_vehicles(VEHICLES_EXAMPLE).expect("Loading routes failed.");
 
         assert_eq!(vehicles, expected);
-        assert_eq!(time, 1333098017222);
+        assert_eq!(time, TIMESTAMP);
     }
 
     #[test]
     fn produce_vehicle_xml() {
-        let vehicles = vec![
-            VehicleResponse {
-                id: "Citi2".to_string(),
-                route_tag: "asdf".to_string(),
-                dir_id: "bloop".to_string(),
-                latitude: 64.1511322,
-                longitude: -0.2549486,
-                speed: 10,
-                secs_since_report: 12,
-                heading: 24,
-                predictable: true,
-            },
-            VehicleResponse {
-                id: "Citi3".to_string(),
-                route_tag: "jhkl".to_string(),
-                dir_id: "sloop".to_string(),
-                latitude: 64.1603444,
-                longitude: -0.2380486,
-                speed: 70,
-                secs_since_report: 36,
-                heading: 3,
-                predictable: true,
-            },
-            VehicleResponse {
-                id: "A".to_string(),
-                route_tag: "yhdjd".to_string(),
-                dir_id: "floop".to_string(),
-                latitude: 64.1463333,
-                longitude: -0.2469221,
-                speed: 0,
-                secs_since_report: 5,
-                heading: 300,
-                predictable: true,
-            },
-            VehicleResponse {
-                id: "B".to_string(),
-                route_tag: "uuu8".to_string(),
-                dir_id: "up".to_string(),
-                latitude: 64.1467001,
-                longitude: -0.2469456,
-                speed: 22,
-                secs_since_report: 2,
-                heading: 110,
-                predictable: false,
-            },
-        ];
-        let xml = super::produce_xml(vehicles, 1333098017222);
-        print!("{}", xml);
+        let vehicles = vehicles();
+        let xml = super::produce_xml("NStream 2023".to_string(), vehicles, TIMESTAMP);
+        assert_eq!(xml.as_bytes(), VEHICLES_EXAMPLE);
     }
 }
