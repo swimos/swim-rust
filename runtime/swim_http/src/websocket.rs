@@ -136,9 +136,7 @@ where
         ))
     };
 
-    let response = builder
-        .body(Body::empty())
-        .expect(FAILED_RESPONSE);
+    let response = builder.body(Body::empty()).expect(FAILED_RESPONSE);
     (response, fut)
 }
 
