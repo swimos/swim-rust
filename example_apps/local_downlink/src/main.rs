@@ -30,7 +30,7 @@ mod consumer;
 mod producer;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     example_logging()?;
 
     let producer_route = RoutePattern::parse_str("/producer/:name}")?;

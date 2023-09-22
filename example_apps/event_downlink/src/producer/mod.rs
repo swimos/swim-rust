@@ -23,7 +23,7 @@ use swim::{
 
 mod agent;
 
-pub async fn make_server() -> Result<BoxServer, Box<dyn Error>> {
+pub async fn make_server() -> Result<BoxServer, Box<dyn Error + Send + Sync>> {
     let route = RoutePattern::parse_str("/producer/:name}")?;
 
     let lifecycle = ProducerLifecycle;

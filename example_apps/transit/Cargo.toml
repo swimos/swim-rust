@@ -3,9 +3,13 @@ name = "transit"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["mock-server"]
+mock-server = ["dep:transit-fixture"]
+
 [dependencies]
 swim = { path = "../../swim", features = ["server", "agent"] }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"]}
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"]}
 example-util = { path = "../example_util" }
 serde = { workspace = true, features = ["derive"]}
 csv = "1.2"
@@ -16,3 +20,4 @@ reqwest = { workspace = true, features = ["rustls-tls", "gzip"]}
 bytes = { workspace = true }
 tracing = { workspace = true }
 transit-model = { path = "transit-model" }
+transit-fixture = { path = "transit-fixture", optional = true }

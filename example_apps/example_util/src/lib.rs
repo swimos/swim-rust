@@ -136,7 +136,7 @@ pub async fn manage_producer_and_consumer(
     }
 }
 
-pub fn example_logging() -> Result<(), Box<dyn std::error::Error>> {
+pub fn example_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = std::env::args().collect::<Vec<_>>();
     if args.get(1).map(String::as_str) == Some("--enable-logging") {
         let filter = if let Ok(filter) = EnvFilter::try_from_default_env() {

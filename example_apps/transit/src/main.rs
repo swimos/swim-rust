@@ -14,12 +14,8 @@
 
 use std::{error::Error, time::Duration};
 
-use example_util::{example_logging, manage_handle};
-use swim::{
-    agent::agent_model::AgentModel,
-    route::RoutePattern,
-    server::{Server, ServerBuilder},
-};
+use example_util::example_logging;
+use swim::{agent::agent_model::AgentModel, route::RoutePattern, server::ServerBuilder};
 use tokio::time::Instant;
 
 use crate::{
@@ -41,10 +37,10 @@ const WEEK: Duration = Duration::from_secs(7 * 86400);
 const HISTORY_LEN: usize = 10;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     example_logging()?;
 
-    let api = BusesApi::default();
+    let api = create_api();
 
     let agencies = model::agencies();
     let mut builder = ServerBuilder::with_plane_name("Transit Plane");
@@ -78,13 +74,67 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .build()
         .await?;
 
-    let (task, handle) = server.run();
+    server_runner::run_server(server).await
+}
 
-    let shutdown = manage_handle(handle);
+#[cfg(feature = "mock-server")]
+fn create_api() -> BusesApi {
+    let port = std::env::args()
+        .next()
+        .and_then(|s| s.parse::<u16>().ok())
+        .unwrap_or(8080);
+    BusesApi::new(format!("http://127.0.0.1:{}", port), false)
+}
 
-    let (_, result) = tokio::join!(shutdown, task);
+#[cfg(not(feature = "mock-server"))]
+fn create_api() -> BusesApi {
+    BusesApi::default()
+}
 
-    result?;
-    println!("Server stopped successfully.");
-    Ok(())
+#[cfg(feature = "mock-server")]
+mod server_runner {
+    use example_util::manage_handle;
+    use std::{error::Error, sync::Arc};
+    use swim::server::{BoxServer, Server};
+    use tokio::sync::Notify;
+
+    pub async fn run_server(swim_server: BoxServer) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let (task, handle) = swim_server.run();
+
+        let trigger = Arc::new(Notify::new());
+        let mock_server = tokio::spawn(transit_fixture::run_mock_server(trigger.clone()));
+
+        let task_with_trigger = async move {
+            let result = task.await;
+            trigger.notify_one();
+            result
+        };
+
+        let shutdown = manage_handle(handle);
+
+        let (_, mock_result, result) = tokio::join!(shutdown, mock_server, task_with_trigger);
+
+        result?;
+        mock_result??;
+        println!("Server stopped successfully.");
+        Ok(())
+    }
+}
+#[cfg(not(feature = "mock-server"))]
+mod server_runner {
+    use example_util::manage_handle;
+    use std::error::Error;
+    use swim::server::{BoxServer, Server};
+
+    pub async fn run_server(swim_server: BoxServer) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let (task, handle) = swim_server.run();
+
+        let shutdown = manage_handle(handle);
+
+        let (_, result) = tokio::join!(shutdown, task);
+
+        result?;
+        println!("Server stopped successfully.");
+        Ok(())
+    }
 }
