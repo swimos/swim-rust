@@ -137,7 +137,7 @@ where
     };
 
     let response = builder
-        .body(Body::from("Upgrading"))
+        .body(Body::empty())
         .expect(FAILED_RESPONSE);
     (response, fut)
 }
