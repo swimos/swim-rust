@@ -9,7 +9,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"]}
 example-util = { path = "../example_util" }
 rand = { workspace = true }
 tutorial-app-model = { path = "./model" }
-hyper = { workspace = true, features = ["full"] }
+hyper = { workspace = true, features = ["server", "tcp", "http1"] }
 hyper-staticfile = "0.9"
 http = { workspace = true }
 futures = { workspace = true}
