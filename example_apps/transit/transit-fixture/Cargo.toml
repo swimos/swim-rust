@@ -10,3 +10,8 @@ thiserror = { workspace = true }
 hyper = { workspace = true }
 tracing = { workspace = true }
 transit-model = { path = "../transit-model" }
+rand = { workspace = true }
+axum = { version = "0.6.20", features = ["tokio", "query", "http1"]}
+bytes = { workspace = true }
+parking_lot = { workspace = true }
+chrono = { workspace = true }
