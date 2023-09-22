@@ -17,9 +17,15 @@ use std::{collections::HashMap, f64::consts::SQRT_2};
 use chrono::Utc;
 use parking_lot::RwLock;
 use rand::Rng;
-use transit_model::{route::Route, vehicle::{VehicleResponse, Vehicle, Heading}};
+use transit_model::{
+    route::Route,
+    vehicle::{Heading, Vehicle, VehicleResponse},
+};
 
-use crate::{agency::{AgencyWithRoutes, mock_agencies}, vehicles::{generate_vehicles, LOC_UNIT}};
+use crate::{
+    agency::{mock_agencies, AgencyWithRoutes},
+    vehicles::{generate_vehicles, LOC_UNIT},
+};
 
 #[derive(Debug)]
 pub struct AgenciesState {
@@ -28,7 +34,6 @@ pub struct AgenciesState {
 }
 
 impl AgenciesState {
-
     pub fn generate(update_interval: u64) -> Self {
         let agencies_lst = mock_agencies();
         let mut agencies = HashMap::new();
@@ -46,10 +51,9 @@ impl AgenciesState {
         };
         AgenciesState {
             inner: RwLock::new(inner),
-            update_interval
+            update_interval,
         }
     }
-
 }
 
 #[derive(Debug)]
@@ -60,22 +64,30 @@ struct Inner {
 }
 
 impl AgenciesState {
-
     pub fn routes_for_agency(&self, agency_id: &str) -> Option<Vec<Route>> {
         let guard = self.inner.read();
-        guard.agencies.get(agency_id).map(|AgencyWithRoutes { routes, .. }| routes.clone())
+        guard
+            .agencies
+            .get(agency_id)
+            .map(|AgencyWithRoutes { routes, .. }| routes.clone())
     }
 
     pub fn vehicles_for_agency(&self, agency_id: &str) -> Option<(Vec<VehicleResponse>, u64)> {
         let guard = self.inner.read();
         let last = guard.last;
-        guard.vehicles.get(agency_id).map(move |vehicles| (vehicles.iter().cloned().map(to_response).collect(), last))
+        guard
+            .vehicles
+            .get(agency_id)
+            .map(move |vehicles| (vehicles.iter().cloned().map(to_response).collect(), last))
     }
 
     pub fn update(&self) {
-        let AgenciesState { ref inner, update_interval } = *self;
+        let AgenciesState {
+            ref inner,
+            update_interval,
+        } = *self;
         let mut guard = inner.write();
-        let Inner { last, vehicles, ..} = &mut *guard;
+        let Inner { last, vehicles, .. } = &mut *guard;
         let now = Utc::now().timestamp_millis() as u64;
         let diff_secs = now - *last / 1000;
 
@@ -100,47 +112,74 @@ impl AgenciesState {
 }
 
 fn update(vehicle: &mut Vehicle, diff: u64) {
-    let Vehicle { latitude, longitude, speed, secs_since_report, heading, .. } = vehicle;
-    
+    let Vehicle {
+        latitude,
+        longitude,
+        speed,
+        secs_since_report,
+        heading,
+        ..
+    } = vehicle;
+
     let ang_diff = (*speed as f64 * 1000.0 * diff as f64 * LOC_UNIT) / 3600.0;
     let projected = ang_diff / SQRT_2;
     match heading {
         Heading::N => {
             *latitude += ang_diff;
-        },
+        }
         Heading::NE => {
             *latitude += projected;
             *longitude += projected;
-        },
+        }
         Heading::E => {
             *longitude += ang_diff;
-        },
+        }
         Heading::SE => {
             *latitude -= projected;
             *longitude += projected;
-        },
+        }
         Heading::S => {
             *latitude -= ang_diff;
-        },
+        }
         Heading::SW => {
             *latitude -= projected;
             *longitude -= projected;
-        },
+        }
         Heading::W => {
             *longitude -= ang_diff;
-        },
+        }
         Heading::NW => {
             *latitude += projected;
             *longitude -= projected;
-        },
+        }
     }
     *secs_since_report = 0;
-
 }
 
 fn to_response(vehicle: Vehicle) -> VehicleResponse {
-    let Vehicle { id, route_tag, dir_id, latitude, longitude, speed, secs_since_report, heading, predictable, .. } = vehicle;
-    VehicleResponse { id, route_tag, dir_id, latitude, longitude, secs_since_report, predictable, heading: to_degrees(heading), speed }
+    let Vehicle {
+        id,
+        route_tag,
+        dir_id,
+        latitude,
+        longitude,
+        speed,
+        secs_since_report,
+        heading,
+        predictable,
+        ..
+    } = vehicle;
+    VehicleResponse {
+        id,
+        route_tag,
+        dir_id,
+        latitude,
+        longitude,
+        secs_since_report,
+        predictable,
+        heading: to_degrees(heading),
+        speed,
+    }
 }
 
 fn to_degrees(heading: Heading) -> u32 {

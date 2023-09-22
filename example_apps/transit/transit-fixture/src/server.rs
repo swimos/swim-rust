@@ -14,18 +14,23 @@
 
 use std::sync::Arc;
 
-use axum::{Router, routing::get, extract::{Query, State}};
-use hyper::StatusCode;
+use axum::{
+    extract::{Query, State},
+    http::HeaderName,
+    response::IntoResponse,
+    routing::get,
+    Router,
+};
+use hyper::{header, StatusCode};
 use serde::Deserialize;
 use transit_model::{route, vehicle};
 
 use crate::state::AgenciesState;
 
-pub fn make_server_router(update_interval: u64) -> Router<Arc<AgenciesState>> {
-    let state = Arc::new(AgenciesState::generate(update_interval));
+pub fn make_server_router(state: Arc<AgenciesState>) -> Router {
     let app = Router::new()
-        .with_state(state)
-        .route("/service/publicXMLFeed", get(handle_request));
+        .route("/service/publicXMLFeed", get(handle_request))
+        .with_state(state);
     app
 }
 
@@ -43,27 +48,52 @@ enum Command {
         agency_id: String,
         #[serde(rename = "t")]
         time: i64,
-    }
+    },
 }
 
-async fn handle_request(Query(params): Query<Command>, State(state): State<Arc<AgenciesState>>) -> (StatusCode, String) {
+const XML_HEADER: (HeaderName, &'static str) = (header::CONTENT_TYPE, "application/xml");
+const PLAIN_TXT_HEADER: (HeaderName, &'static str) = (header::CONTENT_TYPE, "text/plain");
+
+async fn handle_request(
+    Query(params): Query<Command>,
+    State(state): State<Arc<AgenciesState>>,
+) -> impl IntoResponse {
     match params {
         Command::RouteList { agency_id } => {
             if let Some(routes) = state.routes_for_agency(&agency_id) {
-                (StatusCode::OK, route::produce_xml("NStream 2023".to_string(), routes))
+                (
+                    StatusCode::OK,
+                    [XML_HEADER],
+                    route::produce_xml("NStream 2023".to_string(), routes),
+                )
             } else {
-                (StatusCode::NOT_FOUND, format!("No such agency: {}", agency_id))
+                (
+                    StatusCode::NOT_FOUND,
+                    [PLAIN_TXT_HEADER],
+                    format!("No such agency: {}", agency_id),
+                )
             }
-            
-        },
+        }
         Command::VehicleLocations { agency_id, time } => {
             if time != 0 {
-                (StatusCode::BAD_REQUEST, "Predictions not supported.".to_string())
+                (
+                    StatusCode::BAD_REQUEST,
+                    [PLAIN_TXT_HEADER],
+                    "Predictions not supported.".to_string(),
+                )
             } else if let Some((vehicles, last_time)) = state.vehicles_for_agency(&agency_id) {
-                (StatusCode::OK, vehicle::produce_xml("NStream 2023".to_string(), vehicles, last_time))
+                (
+                    StatusCode::OK,
+                    [XML_HEADER],
+                    vehicle::produce_xml("NStream 2023".to_string(), vehicles, last_time),
+                )
             } else {
-                (StatusCode::NOT_FOUND, format!("No such agency: {}", agency_id))
+                (
+                    StatusCode::NOT_FOUND,
+                    [PLAIN_TXT_HEADER],
+                    format!("No such agency: {}", agency_id),
+                )
             }
-        },
+        }
     }
 }

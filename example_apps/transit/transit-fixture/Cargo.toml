@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+tokio = { workspace = true, features = ["time", "macros", "signal"]}
+swim_utilities = { path = "../../../swim_utilities", features = ["trigger"] }
 serde = { workspace = true, features = ["derive"]}
 quick-xml = { version = "0.30", features = ["serialize", "serde-types"] }
 thiserror = { workspace = true }
@@ -15,3 +17,4 @@ axum = { version = "0.6.20", features = ["tokio", "query", "http1"]}
 bytes = { workspace = true }
 parking_lot = { workspace = true }
 chrono = { workspace = true }
+futures = { workspace = true }

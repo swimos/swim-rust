@@ -21,28 +21,67 @@ pub const COUNTRY: &str = "US";
 pub fn mock_agencies() -> Vec<AgencyWithRoutes> {
     vec![
         AgencyWithRoutes {
-            agency: Agency { index: 0, id: "first".to_string(), state: STATE1.to_string(), country: COUNTRY.to_string() },
+            agency: Agency {
+                index: 0,
+                id: "first".to_string(),
+                state: STATE1.to_string(),
+                country: COUNTRY.to_string(),
+            },
             routes: vec![
-                Route { tag: "r1".to_string(), title: "Red Route".to_string() },
-                Route { tag: "r2".to_string(), title: "Green Route".to_string() },
-                Route { tag: "r3".to_string(), title: "Blue Route".to_string() },
+                Route {
+                    tag: "r1".to_string(),
+                    title: "Red Route".to_string(),
+                },
+                Route {
+                    tag: "r2".to_string(),
+                    title: "Green Route".to_string(),
+                },
+                Route {
+                    tag: "r3".to_string(),
+                    title: "Blue Route".to_string(),
+                },
             ],
         },
         AgencyWithRoutes {
-            agency: Agency { index: 1, id: "second".to_string(), state: STATE1.to_string(), country: COUNTRY.to_string() },
+            agency: Agency {
+                index: 1,
+                id: "second".to_string(),
+                state: STATE1.to_string(),
+                country: COUNTRY.to_string(),
+            },
             routes: vec![
-                Route { tag: "purple".to_string(), title: "Purple Route".to_string() },
-                Route { tag: "brown".to_string(), title: "Brown Route".to_string() },
+                Route {
+                    tag: "purple".to_string(),
+                    title: "Purple Route".to_string(),
+                },
+                Route {
+                    tag: "brown".to_string(),
+                    title: "Brown Route".to_string(),
+                },
             ],
         },
         AgencyWithRoutes {
-            agency: Agency { index: 2, id: "third".to_string(), state: STATE2.to_string(), country: COUNTRY.to_string() },
+            agency: Agency {
+                index: 2,
+                id: "third".to_string(),
+                state: STATE2.to_string(),
+                country: COUNTRY.to_string(),
+            },
             routes: vec![
-                Route { tag: "circ".to_string(), title: "Circular Route".to_string() },
-                Route { tag: "rad".to_string(), title: "Radial Route".to_string() },
-                Route { tag: "spiral".to_string(), title: "Spiral Route".to_string() },
+                Route {
+                    tag: "circ".to_string(),
+                    title: "Circular Route".to_string(),
+                },
+                Route {
+                    tag: "rad".to_string(),
+                    title: "Radial Route".to_string(),
+                },
+                Route {
+                    tag: "spiral".to_string(),
+                    title: "Spiral Route".to_string(),
+                },
             ],
-        }
+        },
     ]
 }
 

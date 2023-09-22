@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use rand::Rng;
-use transit_model::vehicle::{Vehicle, Heading};
+use transit_model::vehicle::{Heading, Vehicle};
 
 use crate::agency::AgencyWithRoutes;
 
@@ -36,7 +36,7 @@ pub fn generate_vehicles(agency: &AgencyWithRoutes) -> Vec<Vehicle> {
     let AgencyWithRoutes { agency, routes } = agency;
     let mut r = rand::thread_rng();
     let n = r.gen_range(5usize..=10);
-    
+
     let mut vehicles = vec![];
     for i in 0..n {
         let id = format!("bus_{}", i);
@@ -47,7 +47,8 @@ pub fn generate_vehicles(agency: &AgencyWithRoutes) -> Vec<Vehicle> {
             "outwards"
         } else {
             "inwards"
-        }.to_string();
+        }
+        .to_string();
 
         let speed = r.gen_range(0..=30);
         let heading = HEADINGS[r.gen_range(0..HEADINGS.len())];
