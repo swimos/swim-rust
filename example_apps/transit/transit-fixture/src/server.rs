@@ -28,10 +28,9 @@ use transit_model::{route, vehicle};
 use crate::state::AgenciesState;
 
 pub fn make_server_router(state: Arc<AgenciesState>) -> Router {
-    let app = Router::new()
+    Router::new()
         .route("/service/publicXMLFeed", get(handle_request))
-        .with_state(state);
-    app
+        .with_state(state)
 }
 
 #[derive(Deserialize)]
@@ -51,8 +50,8 @@ enum Command {
     },
 }
 
-const XML_HEADER: (HeaderName, &'static str) = (header::CONTENT_TYPE, "application/xml");
-const PLAIN_TXT_HEADER: (HeaderName, &'static str) = (header::CONTENT_TYPE, "text/plain");
+const XML_HEADER: (HeaderName, &str) = (header::CONTENT_TYPE, "application/xml");
+const PLAIN_TXT_HEADER: (HeaderName, &str) = (header::CONTENT_TYPE, "text/plain");
 
 async fn handle_request(
     Query(params): Query<Command>,

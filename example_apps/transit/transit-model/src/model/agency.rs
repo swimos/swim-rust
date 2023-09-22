@@ -33,7 +33,7 @@ pub struct Agency {
     pub country: String,
 }
 
-fn enc<'a>(s: &'a str) -> PercentEncode<'a> {
+fn enc(s: &str) -> PercentEncode<'_> {
     percent_encoding::utf8_percent_encode(s, NON_ALPHANUMERIC)
 }
 

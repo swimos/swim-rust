@@ -201,21 +201,21 @@ impl TryFrom<u32> for Heading {
     type Error = HeadingOutOfRange;
 
     fn try_from(heading: u32) -> Result<Self, Self::Error> {
-        if heading < 23 || heading >= 338 {
+        if heading < 360 && !(23..338).contains(&heading) {
             Ok(Heading::E)
-        } else if 23 <= heading && heading < 68 {
+        } else if (23..68).contains(&heading) {
             Ok(Heading::NE)
-        } else if 68 <= heading && heading < 113 {
+        } else if (68..113).contains(&heading) {
             Ok(Heading::N)
-        } else if 113 <= heading && heading < 158 {
+        } else if (113..158).contains(&heading) {
             Ok(Heading::NW)
-        } else if 158 <= heading && heading < 203 {
+        } else if (158..203).contains(&heading) {
             Ok(Heading::W)
-        } else if 203 <= heading && heading < 248 {
+        } else if (203..248).contains(&heading) {
             Ok(Heading::SW)
-        } else if 248 <= heading && heading < 293 {
+        } else if (248..293).contains(&heading) {
             Ok(Heading::S)
-        } else if 293 <= heading && heading < 338 {
+        } else if (293..338).contains(&heading) {
             Ok(Heading::SE)
         } else {
             Err(HeadingOutOfRange(heading))

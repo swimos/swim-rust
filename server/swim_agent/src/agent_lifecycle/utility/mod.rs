@@ -595,11 +595,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
                 if let Some(f) = it.next() {
                     tokio::time::sleep_until(next_at).await;
                     let next_time = Instant::now() + delay;
-                    if let Some(h) = f.await {
-                        Some((h, (it, next_time)))
-                    } else {
-                        None
-                    }
+                    f.await.map(|h| (h, (it, next_time)))
                 } else {
                     None
                 }

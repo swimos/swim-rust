@@ -135,7 +135,7 @@ impl AgencyLifecycle {
         context: HandlerContext<AgencyAgent>,
     ) -> Option<impl EventHandler<AgencyAgent> + 'static> {
         let AgencyLifecycle { api, agency, .. } = &self;
-        match api.poll_vehicles(&agency).await {
+        match api.poll_vehicles(agency).await {
             Ok(vehicles) => Some(context.command(AgencyAgent::ADD_VEHICLES, vehicles)),
             Err(err) => {
                 error!("Failed to load vehicles: {}", err);
