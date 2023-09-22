@@ -23,7 +23,7 @@ const UPGRADE_STR: &str = "Upgrade";
 const WEBSOCKET_STR: &str = "websocket";
 const WEBSOCKET_VERSION_STR: &str = "13";
 const ACCEPT_KEY: &[u8] = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-const FAILED_RESPONSE: &str = "Building response should bot fail.";
+const FAILED_RESPONSE: &str = "Building response should not fail.";
 
 /// Result of a successful websocket negotiation.
 pub struct Negotiated<'a, Ext> {
@@ -144,9 +144,7 @@ where
         unwrap_fn,
     };
 
-    let response = builder
-        .body(Body::from("Upgrading"))
-        .expect(FAILED_RESPONSE);
+    let response = builder.body(Body::empty()).expect(FAILED_RESPONSE);
     (response, fut)
 }
 
