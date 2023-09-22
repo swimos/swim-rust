@@ -31,6 +31,7 @@ Contents
     * Agent lifecycle events.
     * `CommandLane` events.
     * `DemandLane` events.
+    * `DemandMapLane` events.
     * `ValueLane` events.
     * `MapLane` events.
     * `JoinValueLane` events.

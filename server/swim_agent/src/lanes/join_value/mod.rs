@@ -55,6 +55,7 @@ pub use init::LifecycleInitializer;
 /// key. Hence it maintains a view of the state of a number of remote values as a single map. In all
 /// other respects, it behaves as a map lane having the same event handlers and having the ability
 /// to persist its state.
+#[derive(Debug)]
 pub struct JoinValueLane<K, V> {
     inner: MapLane<K, V>,
     keys: RefCell<HashMap<K, DownlinkStatus>>,

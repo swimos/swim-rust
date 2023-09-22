@@ -41,8 +41,10 @@ use crate::event_handler::{
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::demand::{Cue, DemandLane};
+use crate::lanes::demand_map::CueKey;
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
 use crate::lanes::map::{MapLaneGetMap, MapLaneWithEntry};
+use crate::lanes::DemandMapLane;
 use crate::stores::map::{
     MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate, MapStoreWithEntry,
 };
@@ -488,11 +490,28 @@ impl<Agent: 'static> HandlerContext<Agent> {
     pub fn cue<T>(
         &self,
         lane: fn(&Agent) -> &DemandLane<T>,
-    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    ) -> impl EventHandler<Agent> + Send + 'static
     where
         T: Send + 'static,
     {
         Cue::new(lane)
+    }
+
+    /// Create an event handler that will cue a key on a demand-map lane to produce a value.
+    ///
+    /// #Arguments
+    /// * `lane` - Projection to the demand-map lane.
+    /// * `key` - The key to cue.
+    pub fn cue_key<K, V>(
+        &self,
+        lane: fn(&Agent) -> &DemandMapLane<K, V>,
+        key: K,
+    ) -> impl EventHandler<Agent> + Send + 'static
+    where
+        K: Send + Eq + Clone + Hash + 'static,
+        V: 'static,
+    {
+        CueKey::new(lane, key)
     }
 
     /// Suspend a future to be executed by the agent task. The future must result in another

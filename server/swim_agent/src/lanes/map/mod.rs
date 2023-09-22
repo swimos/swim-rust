@@ -24,7 +24,6 @@ use uuid::Uuid;
 
 mod event;
 pub mod lifecycle;
-mod queues;
 
 #[cfg(test)]
 mod tests;
@@ -40,7 +39,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use self::queues::WriteQueues;
+use super::queues::WriteQueues;
 
 pub use event::MapLaneEvent;
 

@@ -19,7 +19,8 @@ use syn::{parse_quote, Path, Type};
 use self::{
     model::{
         AgentLifecycleDescriptor, CommandLifecycleDescriptor, DemandLifecycleDescriptor,
-        ItemLifecycle, JoinValueInit, MapLifecycleDescriptor, ValueLifecycleDescriptor,
+        DemandMapLifecycleDescriptor, ItemLifecycle, JoinValueInit, MapLifecycleDescriptor,
+        ValueLifecycleDescriptor,
     },
     tree::BinTree,
 };
@@ -109,6 +110,24 @@ impl<'a> LaneLifecycleBuilder<'a> {
                         #lifecycle_type::#on_cue
                     )
                 }
+            }
+            ItemLifecycle::DemandMap(DemandMapLifecycleDescriptor {
+                keys, on_cue_key, ..
+            }) => {
+                let mut builder: syn::Expr = parse_quote! {
+                    <#root::lanes::demand_map::lifecycle::StatefulDemandMapLaneLifecycle::<#agent_type, #lifecycle_type, _, _> as ::core::default::Default>::default()
+                };
+                if let Some(handler) = keys {
+                    builder = parse_quote! {
+                        #root::lanes::demand_map::lifecycle::StatefulDemandMapLaneLifecycle::keys(#builder, #lifecycle_type::#handler)
+                    };
+                }
+                if let Some(handler) = on_cue_key {
+                    builder = parse_quote! {
+                        #root::lanes::demand_map::lifecycle::StatefulDemandMapLaneLifecycle::on_cue_key(#builder, #lifecycle_type::#handler)
+                    };
+                }
+                builder
             }
             ItemLifecycle::Map(MapLifecycleDescriptor {
                 on_update,

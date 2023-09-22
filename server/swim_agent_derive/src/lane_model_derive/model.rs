@@ -50,6 +50,7 @@ pub enum ItemKind {
 pub enum ItemSpec<'a> {
     Command(&'a Type),
     Demand(&'a Type),
+    DemandMap(&'a Type, &'a Type),
     Value(ItemKind, &'a Type),
     Map(ItemKind, &'a Type, &'a Type),
     JoinValue(&'a Type, &'a Type),
@@ -60,6 +61,7 @@ impl<'a> ItemSpec<'a> {
         match self {
             ItemSpec::Command(t) => Some(LaneSpec::Command(t)),
             ItemSpec::Demand(t) => Some(LaneSpec::Demand(t)),
+            ItemSpec::DemandMap(k, v) => Some(LaneSpec::DemandMap(k, v)),
             ItemSpec::Value(ItemKind::Lane, t) => Some(LaneSpec::Value(t)),
             ItemSpec::Map(ItemKind::Lane, k, v) => Some(LaneSpec::Map(k, v)),
             ItemSpec::JoinValue(k, v) => Some(LaneSpec::JoinValue(k, v)),
@@ -74,6 +76,7 @@ impl<'a> ItemSpec<'a> {
             ItemSpec::Command(_) => ItemKind::Lane,
             ItemSpec::JoinValue(_, _) => ItemKind::Lane,
             ItemSpec::Demand(_) => ItemKind::Lane,
+            ItemSpec::DemandMap(_, _) => ItemKind::Lane,
         }
     }
 }
@@ -83,6 +86,7 @@ impl<'a> ItemSpec<'a> {
 pub enum LaneSpec<'a> {
     Command(&'a Type),
     Demand(&'a Type),
+    DemandMap(&'a Type, &'a Type),
     Value(&'a Type),
     Map(&'a Type, &'a Type),
     JoinValue(&'a Type, &'a Type),
@@ -220,6 +224,7 @@ fn try_from_struct<'a>(
 
 const COMMAND_LANE_NAME: &str = "CommandLane";
 const DEMAND_LANE_NAME: &str = "DemandLane";
+const DEMAND_MAP_LANE_NAME: &str = "DemandMapLane";
 const VALUE_LANE_NAME: &str = "ValueLane";
 const VALUE_STORE_NAME: &str = "ValueStore";
 const MAP_LANE_NAME: &str = "MapLane";
@@ -251,6 +256,14 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
                         fld_name,
                         ItemSpec::Demand(param),
                         ItemFlags::TRANSIENT, //Demand lanes are always transient.
+                    ))
+                }
+                DEMAND_MAP_LANE_NAME => {
+                    let (param1, param2) = two_params(arguments)?;
+                    Ok(ItemModel::new(
+                        fld_name,
+                        ItemSpec::DemandMap(param1, param2),
+                        ItemFlags::TRANSIENT, //Demand map lanes are always transient.
                     ))
                 }
                 VALUE_LANE_NAME => {

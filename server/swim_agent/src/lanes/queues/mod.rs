@@ -116,6 +116,7 @@ impl<K> Default for WriteQueues<K> {
 
 pub type Action<K> = MapOperation<K, ()>;
 
+#[derive(Debug)]
 pub enum ToWrite<K> {
     Event(Action<K>),
     SyncEvent(Uuid, K),

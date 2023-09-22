@@ -81,6 +81,9 @@ pub enum WriteResult {
     Done,
     // The lane has written data to the buffer and will have more to write on a subsequent call.
     DataStillAvailable,
+    // The lane has written data to the buffer and needs it's event handler to be executed for
+    // more to be available.
+    RequiresEvent,
 }
 
 pub type InitFn<Agent> = Box<dyn FnOnce(&Agent) + Send + 'static>;
@@ -336,7 +339,7 @@ where
 enum TaskEvent<ItemModel> {
     WriteComplete {
         writer: ItemWriter,
-        result: Result<(), std::io::Error>,
+        result: Result<bool, std::io::Error>,
     },
     SuspendedComplete {
         handler: BoxEventHandler<'static, ItemModel>,
@@ -980,8 +983,42 @@ where
             };
             match task_event {
                 TaskEvent::WriteComplete { writer, result } => {
-                    if result.is_err() {
-                        break Ok(()); //Failing to write indicates that the runtime has stopped so we can exit without an error.
+                    match result {
+                        Ok(true) => {
+                            // The event handler for the item needs to be executed.
+                            let lane = &item_ids[&writer.lane_id()];
+                            if let Some(handler) = lifecycle.item_event(&item_model, lane.as_str())
+                            {
+                                match run_handler(
+                                    &mut ActionContext::new(
+                                        &suspended,
+                                        &*context,
+                                        &add_downlink,
+                                        &mut join_value_init,
+                                        &mut ad_hoc_buffer,
+                                    ),
+                                    meta,
+                                    &item_model,
+                                    &lifecycle,
+                                    handler,
+                                    &item_ids,
+                                    &mut dirty_items,
+                                ) {
+                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
+                                    Err(e) => {
+                                        break Err(AgentTaskError::UserCodeError(Box::new(e)))
+                                    }
+                                    Ok(_) => check_cmds(
+                                        &mut ad_hoc_buffer,
+                                        &mut cmd_writer,
+                                        &mut cmd_send_fut,
+                                        CommandWriter::write,
+                                    ),
+                                }
+                            }
+                        }
+                        Err(_) => break Ok(()), //Failing to write indicates that the runtime has stopped so we can exit without an error.
+                        _ => {}
                     }
                     item_writers.insert(writer.lane_id(), writer);
                 }
@@ -1268,11 +1305,15 @@ where
                     let name = &item_ids[id];
                     match item_model.write_event(name.as_str(), &mut tx.buffer) {
                         Some(WriteResult::Done) => {
-                            pending_writes.push(tx.write());
+                            pending_writes.push(do_write(tx, false));
+                            false
+                        }
+                        Some(WriteResult::RequiresEvent) => {
+                            pending_writes.push(do_write(tx, true));
                             false
                         }
                         Some(WriteResult::DataStillAvailable) => {
-                            pending_writes.push(tx.write());
+                            pending_writes.push(do_write(tx, false));
                             true
                         }
                         _ => false,
@@ -1308,6 +1349,14 @@ where
             Err(e) => Err(AgentTaskError::UserCodeError(Box::new(e))),
         }
     }
+}
+
+async fn do_write(
+    writer: ItemWriter,
+    requires_event: bool,
+) -> (ItemWriter, Result<bool, std::io::Error>) {
+    let (writer, result) = writer.write().await;
+    (writer, result.map(move |_| requires_event))
 }
 
 /// As an event handler runs it indicates which lanes now have state updates that need

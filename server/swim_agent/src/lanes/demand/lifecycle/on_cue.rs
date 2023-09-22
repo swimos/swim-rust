@@ -18,7 +18,7 @@ use swim_api::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{ActionContext, EventHandlerError, HandlerAction, StepResult},
+    event_handler::{ActionContext, CueFn0, EventHandlerError, HandlerAction, StepResult},
     meta::AgentMetadata,
 };
 
@@ -134,33 +134,5 @@ where
     ) -> Self::OnCueHandler<'a> {
         let FnHandler(f) = self;
         f.make_handler(shared, handler_context)
-    }
-}
-
-pub trait CueFn0<'a, T, Context, Shared> {
-    type Handler: HandlerAction<Context, Completion = T> + 'a;
-
-    fn make_handler(
-        &'a self,
-        shared: &'a Shared,
-        handler_context: HandlerContext<Context>,
-    ) -> Self::Handler;
-}
-
-impl<'a, T, Context, Shared, F, H> CueFn0<'a, T, Context, Shared> for F
-where
-    H: HandlerAction<Context, Completion = T> + 'a,
-    F: Fn(&'a Shared, HandlerContext<Context>) -> H + 'a,
-    Shared: 'a,
-    T: 'static,
-{
-    type Handler = H;
-
-    fn make_handler(
-        &'a self,
-        shared: &'a Shared,
-        handler_context: HandlerContext<Context>,
-    ) -> Self::Handler {
-        self(shared, handler_context)
     }
 }

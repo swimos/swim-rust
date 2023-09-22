@@ -23,7 +23,7 @@ use swim::agent::reexport::bytes::BytesMut;
 use swim::agent::reexport::uuid::Uuid;
 use swim::agent::AgentLaneModel;
 use swim_agent::agent_model::ItemKind;
-use swim_agent::lanes::{DemandLane, JoinValueLane};
+use swim_agent::lanes::{DemandLane, DemandMapLane, JoinValueLane};
 use swim_agent::stores::{MapStore, ValueStore};
 use swim_api::meta::lane::LaneKind;
 use swim_api::store::StoreKind;
@@ -172,6 +172,16 @@ fn single_demand_lane() {
 }
 
 #[test]
+fn single_demand_map_lane() {
+    #[derive(AgentLaneModel)]
+    struct SingleDemandMapLane {
+        lane: DemandMapLane<i32, i32>,
+    }
+
+    check_agent::<SingleDemandMapLane>(vec![transient_lane("lane", LaneKind::DemandMap)]);
+}
+
+#[test]
 fn two_value_lanes() {
     #[derive(AgentLaneModel)]
     struct TwoValueLanes {
@@ -256,6 +266,20 @@ fn two_demand_lanes() {
 }
 
 #[test]
+fn two_demand_map_lanes() {
+    #[derive(AgentLaneModel)]
+    struct TwoDemandMapLanes {
+        first: DemandMapLane<i32, i32>,
+        second: DemandMapLane<i32, i32>,
+    }
+
+    check_agent::<TwoDemandMapLanes>(vec![
+        transient_lane("first", LaneKind::DemandMap),
+        transient_lane("second", LaneKind::DemandMap),
+    ]);
+}
+
+#[test]
 fn mixed_lanes() {
     #[derive(AgentLaneModel)]
     struct MixedLanes {
@@ -294,6 +318,7 @@ fn multiple_lanes() {
         fifth: CommandLane<i32>,
         sixth: JoinValueLane<i32, i32>,
         seventh: DemandLane<i32>,
+        eighth: DemandMapLane<i32, i32>,
     }
 
     check_agent::<MultipleLanes>(vec![
@@ -304,6 +329,7 @@ fn multiple_lanes() {
         persistent_lane("second", LaneKind::Map),
         persistent_lane("fourth", LaneKind::Map),
         persistent_lane("sixth", LaneKind::JoinValue),
+        transient_lane("eighth", LaneKind::DemandMap),
     ]);
 }
 
@@ -416,6 +442,21 @@ fn demand_lane_tagged_transient() {
 }
 
 #[test]
+fn demand_map_lane_tagged_transient() {
+    #[derive(AgentLaneModel)]
+    struct TwoDemandMapLanes {
+        #[transient]
+        first: DemandMapLane<i32, i32>,
+        second: DemandMapLane<i32, i32>,
+    }
+
+    check_agent::<TwoDemandMapLanes>(vec![
+        transient_lane("first", LaneKind::DemandMap),
+        transient_lane("second", LaneKind::DemandMap),
+    ]);
+}
+
+#[test]
 fn single_join_value_lane() {
     #[derive(AgentLaneModel)]
     struct SingleJoinValueLane {
@@ -472,6 +513,7 @@ mod isolated {
             seventh: swim::agent::stores::MapStore<i32, i32>,
             eighth: swim::agent::lanes::JoinValueLane<i32, i32>,
             ninth: swim::agent::lanes::DemandLane<i32>,
+            tenth: swim::agent::lanes::DemandMapLane<i32, i32>,
         }
 
         check_agent::<MultipleLanes>(vec![
@@ -484,6 +526,7 @@ mod isolated {
             persistent_store("seventh", StoreKind::Map),
             persistent_lane("eighth", LaneKind::JoinValue),
             transient_lane("ninth", LaneKind::Demand),
+            transient_lane("tenth", LaneKind::DemandMap),
         ]);
     }
 }

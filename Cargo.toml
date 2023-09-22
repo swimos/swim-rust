@@ -16,6 +16,7 @@ members = [
     "example_apps/console",
     "example_apps/console/console_views",
     "example_apps/demand_lane",
+    "example_apps/demand_map_lane",
     "example_apps/value_lane",
     "example_apps/map_lane",
     "example_apps/command_lane",
@@ -74,7 +75,7 @@ num-traits = "0.2"
 thiserror = "1.0"
 static_assertions = "1.1.0"
 url = "2.1.1"
-chrono = "0.4"
+chrono = "0.4.31"
 trybuild = "1.0.65"
 proc-macro2 = "1.0"
 syn = "1.0"

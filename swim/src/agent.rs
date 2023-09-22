@@ -232,7 +232,7 @@ pub mod item {
 
 pub mod lanes {
     pub use swim_agent::lanes::{
-        CommandLane, DemandLane, JoinValueLane, LaneItem, MapLane, ValueLane,
+        CommandLane, DemandLane, DemandMapLane, JoinValueLane, LaneItem, MapLane, ValueLane,
     };
 
     pub mod command {
@@ -247,6 +247,14 @@ pub mod lanes {
 
         pub mod lifecycle {
             pub use swim_agent::lanes::demand::lifecycle::StatefulDemandLaneLifecycle;
+        }
+    }
+
+    pub mod demand_map {
+        pub use swim_agent::lanes::demand_map::DemandMapLaneSync;
+
+        pub mod lifecycle {
+            pub use swim_agent::lanes::demand_map::lifecycle::StatefulDemandMapLaneLifecycle;
         }
     }
 
