@@ -19,11 +19,16 @@ use std::{net::SocketAddr, pin::Pin};
 
 use bytes::BytesMut;
 use futures::future::ready;
+use futures::stream::BoxStream;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
-use ratchet::{NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
+use ratchet::{
+    ExtensionProvider, NegotiatedExtension, Role, WebSocket, WebSocketConfig, WebSocketStream,
+};
 use swim_runtime::net::dns::{DnsFut, DnsResolver};
-use swim_runtime::net::{ConnectionError, ExternalConnections, Listener, ListenerResult, Scheme};
-use swim_runtime::ws::{RatchetError, WsConnections, WsOpenFuture};
+use swim_runtime::net::{
+    ConnectionError, ExternalConnections, Listener, ListenerError, ListenerResult, Scheme,
+};
+use swim_runtime::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
 use tokio::{
     io::{self, DuplexStream},
     sync::{mpsc, oneshot},
@@ -56,14 +61,18 @@ pub struct TestWs {
     config: WebSocketConfig,
 }
 
-impl WsConnections<DuplexStream> for TestWs {
-    type Ext = NoExt;
-
-    fn open_connection(
+impl WebsocketClient for TestWs {
+    fn open_connection<'a, Sock, Provider>(
         &self,
-        socket: DuplexStream,
+        socket: Sock,
+        _provider: &'a Provider,
         _addr: String,
-    ) -> WsOpenFuture<DuplexStream, Self::Ext, RatchetError> {
+    ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
+    where
+        Sock: WebSocketStream + Send,
+        Provider: ExtensionProvider + Send + Sync + 'static,
+        Provider::Extension: Send + Sync + 'static,
+    {
         ready(Ok(WebSocket::from_upgraded(
             self.config,
             socket,
@@ -73,19 +82,41 @@ impl WsConnections<DuplexStream> for TestWs {
         )))
         .boxed()
     }
+}
 
-    fn accept_connection(
+impl WebsocketServer for TestWs {
+    type WsStream<Sock, Ext> =
+        BoxStream<'static, Result<(WebSocket<Sock, Ext>, SocketAddr), ListenerError>>;
+
+    fn wrap_listener<Sock, L, Provider>(
         &self,
-        socket: DuplexStream,
-    ) -> WsOpenFuture<DuplexStream, Self::Ext, RatchetError> {
-        ready(Ok(WebSocket::from_upgraded(
-            self.config,
-            socket,
-            NegotiatedExtension::from(None),
-            BytesMut::new(),
-            Role::Server,
-        )))
-        .boxed()
+        listener: L,
+        _provider: Provider,
+    ) -> Self::WsStream<Sock, Provider::Extension>
+    where
+        Sock: WebSocketStream + Send + Sync,
+        L: Listener<Sock> + Send + 'static,
+        Provider: ratchet::ExtensionProvider + Send + Sync + Unpin + 'static,
+        Provider::Extension: Send + Sync + Unpin + 'static,
+    {
+        let config = self.config;
+        listener
+            .into_stream()
+            .map(move |result| {
+                result.map(|(sock, _, addr)| {
+                    (
+                        WebSocket::from_upgraded(
+                            config,
+                            sock,
+                            NegotiatedExtension::from(None),
+                            BytesMut::new(),
+                            Role::Server,
+                        ),
+                        addr,
+                    )
+                })
+            })
+            .boxed()
     }
 }
 

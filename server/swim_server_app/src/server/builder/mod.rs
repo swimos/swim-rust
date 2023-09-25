@@ -19,13 +19,10 @@ use std::{
 
 use ratchet::{
     deflate::{DeflateConfig, DeflateExtProvider},
-    NoExtProvider, ProtocolRegistry, WebSocketStream,
+    NoExtProvider, WebSocketStream,
 };
 use swim_api::{agent::Agent, error::StoreError, store::StoreDisabled};
-use swim_runtime::{
-    net::{dns::Resolver, plain::TokioPlainTextNetworking, ExternalConnections},
-    ws::ext::RatchetNetworking,
-};
+use swim_runtime::net::{dns::Resolver, plain::TokioPlainTextNetworking, ExternalConnections};
 use swim_tls::{RustlsNetworking, TlsConfig};
 use swim_utilities::routing::route_pattern::RoutePattern;
 
@@ -37,6 +34,7 @@ use crate::{
 };
 
 use super::{
+    http::HyperWebsockets,
     runtime::{SwimServer, Transport},
     store::{in_memory::InMemoryPersistence, ServerPersistence},
     BoxServer, Server,
@@ -245,31 +243,26 @@ where
         introspection,
         ..
     } = config;
-    let subprotocols = ProtocolRegistry::new(vec!["warp0"]).unwrap();
     if let Some(deflate_config) = deflate {
-        let websockets = RatchetNetworking {
-            config: server_config.websockets,
-            provider: DeflateExtProvider::with_config(deflate_config),
-            subprotocols,
-        };
+        let websockets =
+            HyperWebsockets::new(server_config.websockets, server_config.max_http_requests);
+        let ext_provider = DeflateExtProvider::with_config(deflate_config);
         Box::new(SwimServer::new(
             routes,
             bind_to,
-            Transport::new(networking, websockets),
+            Transport::new(networking, websockets, ext_provider),
             server_config,
             store,
             introspection,
         ))
     } else {
-        let websockets = RatchetNetworking {
-            config: server_config.websockets,
-            provider: NoExtProvider,
-            subprotocols,
-        };
+        let websockets =
+            HyperWebsockets::new(server_config.websockets, server_config.max_http_requests);
+        let ext_provider = NoExtProvider;
         Box::new(SwimServer::new(
             routes,
             bind_to,
-            Transport::new(networking, websockets),
+            Transport::new(networking, websockets, ext_provider),
             server_config,
             store,
             introspection,

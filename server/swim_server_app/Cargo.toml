@@ -15,6 +15,7 @@ ratchet = { workspace = true, features = ["deflate", "split"] }
 swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger", "text"] }
 swim_runtime = { path = "../../runtime/swim_runtime" }
 swim_tls = { path = "../../runtime/swim_tls" }
+swim_http = { path = "../../runtime/swim_http" }
 swim_introspection = { path = "../swim_introspection" }
 swim_remote = { path = "../../runtime/swim_remote" }
 bytes = { workspace = true }
@@ -31,6 +32,8 @@ url = { workspace = true }
 swim_persistence = { path = "../../runtime/swim_persistence" }
 parking_lot = { workspace = true }
 rocksdb = { workspace = true, optional = true }
+hyper = { workspace = true, features = ["server", "runtime", "tcp", "http1", "backports"] }
+pin-project = { workspace = true }
 
 [dev-dependencies]
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }

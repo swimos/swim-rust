@@ -24,7 +24,9 @@ use futures::{
     future::{join, join3},
     Future,
 };
-use ratchet::{Message, NegotiatedExtension, NoExt, Role, WebSocket, WebSocketConfig};
+use ratchet::{
+    Message, NegotiatedExtension, NoExt, NoExtProvider, Role, WebSocket, WebSocketConfig,
+};
 use swim_api::store::StoreDisabled;
 use swim_form::structural::write::StructuralWritable;
 use swim_model::address::RelativeAddress;
@@ -129,7 +131,7 @@ where
     let server = SwimServer::new(
         plane,
         addr,
-        Transport::new(networking, websockets),
+        Transport::new(networking, websockets, NoExtProvider),
         config,
         StoreDisabled,
         None,

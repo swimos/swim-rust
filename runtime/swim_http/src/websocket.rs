@@ -1,12 +1,20 @@
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use bytes::{Bytes, BytesMut};
-use futures::Future;
+use futures::{ready, Future, FutureExt};
 use http::{header::HeaderName, HeaderMap, HeaderValue, Method};
 use httparse::Header;
-use hyper::{upgrade::Upgraded, Body, Request, Response};
+use hyper::{
+    upgrade::{OnUpgrade, Upgraded},
+    Body, Request, Response,
+};
 use ratchet::{
     Extension, ExtensionProvider, NegotiatedExtension, Role, WebSocket, WebSocketConfig,
+    WebSocketStream,
 };
 use sha1::{Digest, Sha1};
 use thiserror::Error;
@@ -85,16 +93,22 @@ pub fn fail_upgrade<ExtErr: std::error::Error>(error: UpgradeError<ExtErr>) -> R
         .expect(FAILED_RESPONSE)
 }
 
-/// Upgrade a hyper request to websocket, based on a successful negotiation.
-pub fn upgrade<Ext>(
+/// Upgrade a hyper request to a websocket, based on a successful negotiation.
+///
+/// #Arguments
+/// * `request` - The hyper HTTP request.
+/// * `negotiated` - Negotiated parameters for the websocket connection.
+/// * `config` - Websocket configuration parameters.
+/// * `unwrap_fn` - Used to unwrap the underlying socket type from the opaque [`Upgraded`] socket
+/// provided by hyper.
+pub fn upgrade<Ext, U>(
     request: Request<Body>,
     negotiated: Negotiated<'_, Ext>,
     config: Option<WebSocketConfig>,
-) -> (
-    Response<Body>,
-    impl Future<Output = Result<WebSocket<Upgraded, Ext>, hyper::Error>> + Send,
-)
+    unwrap_fn: U,
+) -> (Response<Body>, UpgradeFuture<Ext, U>)
 where
+    U: SockUnwrap,
     Ext: Extension + Send,
 {
     let Negotiated {
@@ -123,17 +137,11 @@ where
         }
         None => None,
     };
-
-    let fut = async move {
-        let upgraded = hyper::upgrade::on(request).await?;
-
-        Ok(WebSocket::from_upgraded(
-            config.unwrap_or_default(),
-            upgraded,
-            NegotiatedExtension::from(ext),
-            BytesMut::new(),
-            Role::Server,
-        ))
+    let fut = UpgradeFuture {
+        upgrade: hyper::upgrade::on(request),
+        config: config.unwrap_or_default(),
+        extension: ext,
+        unwrap_fn,
     };
 
     let response = builder.body(Body::empty()).expect(FAILED_RESPONSE);
@@ -188,5 +196,61 @@ pub enum UpgradeError<ExtErr: std::error::Error> {
 impl<ExtErr: std::error::Error> From<ExtErr> for UpgradeError<ExtErr> {
     fn from(err: ExtErr) -> Self {
         UpgradeError::ExtensionError(err)
+    }
+}
+/// Trait for unwrapping the concrete type of an upgraded socket.
+/// Upon a connection upgrade, hyper returns the upgraded socket indirected through a trait object.
+/// The caller will generally know the real underlying type and this allows for that type to be
+/// restored.
+pub trait SockUnwrap {
+    type Sock: WebSocketStream;
+
+    /// Unwrap the socket (returning the underlying socket and a buffer containing any bytes
+    /// that have already been read).
+    fn unwrap_sock(&self, upgraded: Upgraded) -> (Self::Sock, BytesMut);
+}
+
+/// Implementation of [`SockUnwrap`] that does not unwrap the socket.
+pub struct NoUnwrap;
+
+impl SockUnwrap for NoUnwrap {
+    type Sock = Upgraded;
+
+    fn unwrap_sock(&self, upgraded: Upgraded) -> (Self::Sock, BytesMut) {
+        (upgraded, BytesMut::new())
+    }
+}
+
+/// A future that performs a websocket upgrade, unwraps the upgraded socket and
+/// creates a ratchet websocket from form it.
+pub struct UpgradeFuture<Ext, U> {
+    upgrade: OnUpgrade,
+    config: WebSocketConfig,
+    extension: Option<Ext>,
+    unwrap_fn: U,
+}
+
+impl<Ext, U> Future for UpgradeFuture<Ext, U>
+where
+    Ext: Extension + Unpin,
+    U: SockUnwrap + Unpin,
+{
+    type Output = Result<WebSocket<U::Sock, Ext>, hyper::Error>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let UpgradeFuture {
+            upgrade,
+            config,
+            extension,
+            unwrap_fn,
+        } = self.get_mut();
+        let (upgraded, prefix) = unwrap_fn.unwrap_sock(ready!(upgrade.poll_unpin(cx))?);
+        Poll::Ready(Ok(WebSocket::from_upgraded(
+            std::mem::take(config),
+            upgraded,
+            NegotiatedExtension::from(extension.take()),
+            prefix,
+            Role::Server,
+        )))
     }
 }

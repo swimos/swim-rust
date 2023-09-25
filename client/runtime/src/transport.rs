@@ -19,14 +19,14 @@ use futures::StreamExt;
 use futures_util::future::BoxFuture;
 use futures_util::stream::FuturesUnordered;
 use futures_util::FutureExt;
-use ratchet::{WebSocket, WebSocketStream};
+use ratchet::{ExtensionProvider, SplittableExtension, WebSocket, WebSocketStream};
 use std::io;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swim_remote::{AttachClient, RemoteTask};
 use swim_runtime::net::{ClientConnections, Scheme, SchemeHostPort};
-use swim_runtime::ws::WsConnections;
+use swim_runtime::ws::WebsocketClient;
 use swim_utilities::trigger;
 use tokio::select;
 use tokio::sync::{mpsc, oneshot};
@@ -122,28 +122,33 @@ impl TransportHandle {
     }
 }
 
-pub struct Transport<Net, Ws> {
+pub struct Transport<Net, Ws, Provider> {
     networking: Net,
     websockets: Ws,
+    ext_provider: Provider,
     buffer_size: NonZeroUsize,
     close_timeout: Duration,
 }
 
-impl<Net, Ws> Transport<Net, Ws>
+impl<Net, Ws, Provider> Transport<Net, Ws, Provider>
 where
     Net: ClientConnections,
     Net::ClientSocket: WebSocketStream,
-    Ws: WsConnections<Net::ClientSocket> + Sync,
+    Ws: WebsocketClient + Sync,
+    Provider: ExtensionProvider + Send + Sync + 'static,
+    Provider::Extension: SplittableExtension + Send + Sync,
 {
     pub fn new(
         networking: Net,
         websockets: Ws,
+        ext_provider: Provider,
         buffer_size: NonZeroUsize,
         close_timeout: Duration,
-    ) -> Transport<Net, Ws> {
+    ) -> Transport<Net, Ws, Provider> {
         Transport {
             networking,
             websockets,
+            ext_provider,
             buffer_size,
             close_timeout,
         }
@@ -153,6 +158,7 @@ where
         let Transport {
             networking,
             websockets,
+            ext_provider,
             buffer_size,
             close_timeout,
         } = self;
@@ -165,7 +171,7 @@ where
         debug!("Transport task started");
 
         loop {
-            let event: TransportEvent<Net::ClientSocket, Ws::Ext> = select! {
+            let event: TransportEvent<Net::ClientSocket, Provider::Extension> = select! {
                 biased;
                 // Bias towards encapsulated events in case there is a closing connection.
                 Some(Some(event)) = events.next(), if !events.is_empty() => event,
@@ -240,8 +246,12 @@ where
                     addr,
                 } => {
                     let shared_ws = &websockets;
+                    let provider = &ext_provider;
                     let handshake_fut = async move {
-                        match shared_ws.open_connection(socket, host.clone()).await {
+                        match shared_ws
+                            .open_connection(socket, provider, host.clone())
+                            .await
+                        {
                             Ok(websocket) => Some(TransportEvent::HandshakeComplete {
                                 addr,
                                 host,
