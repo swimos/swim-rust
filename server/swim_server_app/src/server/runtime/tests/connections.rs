@@ -93,7 +93,7 @@ impl WebsocketServer for TestWs {
         _provider: Provider,
     ) -> Self::WsStream<Sock, Provider::Extension>
     where
-        Sock: io::AsyncRead + io::AsyncWrite + Unpin + Send + Sync + 'static,
+        Sock: WebSocketStream + Send + Sync,
         L: Listener<Sock> + Send + 'static,
         Provider: ratchet::ExtensionProvider + Send + Sync + Unpin + 'static,
         Provider::Extension: Send + Sync + Unpin + 'static,

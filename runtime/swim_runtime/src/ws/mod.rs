@@ -19,7 +19,6 @@ use std::net::SocketAddr;
 use futures::future::BoxFuture;
 use futures::Stream;
 use swim_utilities::errors::Recoverable;
-use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 
 use ratchet::{
@@ -163,7 +162,7 @@ pub trait WebsocketServer: Send + Sync {
         provider: Provider,
     ) -> Self::WsStream<Sock, Provider::Extension>
     where
-        Sock: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+        Sock: WebSocketStream + Send + Sync,
         L: Listener<Sock> + Send + 'static,
         Provider: ExtensionProvider + Send + Sync + Unpin + 'static,
         Provider::Extension: Send + Sync + Unpin + 'static;

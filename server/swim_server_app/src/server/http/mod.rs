@@ -46,10 +46,7 @@ use swim_runtime::{
         PROTOCOLS,
     },
 };
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::mpsc::{self, OwnedPermit},
-};
+use tokio::sync::mpsc::{self, OwnedPermit};
 
 #[cfg(test)]
 mod tests;
@@ -73,7 +70,7 @@ pub fn hyper_http_server<Sock, L, Ext>(
     max_negotiations: NonZeroUsize,
 ) -> impl Stream<Item = ListenResult<Ext::Extension, Sock>> + Send
 where
-    Sock: Unpin + Send + Sync + AsyncRead + AsyncWrite + 'static,
+    Sock: WebSocketStream + Send + Sync,
     L: Listener<Sock> + Send,
     Ext: ExtensionProvider + Send + Sync + 'static,
     Ext::Extension: Send + Unpin,
@@ -614,7 +611,7 @@ impl WebsocketServer for HyperWebsockets {
         provider: Provider,
     ) -> Self::WsStream<Sock, Provider::Extension>
     where
-        Sock: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+        Sock: WebSocketStream + Send + Sync,
         L: Listener<Sock> + Send + 'static,
         Provider: ExtensionProvider + Send + Sync + Unpin + 'static,
         Provider::Extension: Send + Sync + Unpin + 'static,

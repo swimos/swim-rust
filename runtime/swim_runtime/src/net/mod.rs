@@ -19,10 +19,10 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use futures::Stream;
+use ratchet::WebSocketStream;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::io;
-use tokio::io::{AsyncRead, AsyncWrite};
 
 use thiserror::Error;
 
@@ -235,7 +235,7 @@ impl FromStr for SchemeHostPort {
 
 /// Provides all networking functionality required for a Warp client (DNS resolution and opening sockets).
 pub trait ClientConnections: Clone + Send + Sync + 'static {
-    type ClientSocket: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static;
+    type ClientSocket: WebSocketStream + Send + Sync;
     fn try_open(
         &self,
         scheme: Scheme,
@@ -273,7 +273,7 @@ where
 
 /// Provides all networking functionality required for a Warp server (listening for incoming connections).
 pub trait ServerConnections: Clone + Send + Sync + 'static {
-    type ServerSocket: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static;
+    type ServerSocket: WebSocketStream + Send + Sync;
     type ListenerType: Listener<Self::ServerSocket> + Send + Sync;
 
     fn bind(

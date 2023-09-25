@@ -24,7 +24,7 @@ use swim_runtime::net::{
 use swim_runtime::ws::{
     RatchetError, ShareableExtensionProvider, WebsocketClient, WebsocketServer, WsOpenFuture,
 };
-use tokio::io::{AsyncRead, AsyncWrite, DuplexStream};
+use tokio::io::DuplexStream;
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
@@ -172,7 +172,7 @@ impl WebsocketServer for MockWs {
         _provider: Provider,
     ) -> Self::WsStream<Sock, Provider::Extension>
     where
-        Sock: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+        Sock: WebSocketStream + Send + Sync,
         L: Listener<Sock> + Send + 'static,
         Provider: ExtensionProvider + Send + Sync + Unpin + 'static,
         Provider::Extension: Send + Sync + Unpin + 'static,
