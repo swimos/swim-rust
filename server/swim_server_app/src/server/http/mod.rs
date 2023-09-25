@@ -63,10 +63,13 @@ pub type WsWithAddr<Ext, Sock> = (WebSocket<Sock, Ext>, Scheme, SocketAddr);
 pub type ListenResult<Ext, Sock> = Result<WsWithAddr<Ext, Sock>, ListenerError>;
 
 /// Hyper based web-server that will attempt to negotiate a server websocket over
-/// every incoming connection.
+/// every incoming connection. If the connection is not a web-socket upgrade, it
+/// will attempt to forward to an HTTP lane on an agent, using the URL in the
+/// request to route the message.
 ///
 /// # Arguments
 /// * `listener` - Listener providing a stream of incoming connections.
+/// * `find` - Resolver for finding agents when attempting to route to an HTTP lane.
 /// * `extension_provider` - Web socket extension provider.
 /// * `config` - HTTP server configuration parameters.
 pub fn hyper_http_server<Sock, L, Ext>(
@@ -82,7 +85,7 @@ where
     Ext::Extension: Send + Unpin,
 {
     let resolver = Resolver::new(find, config.resolver_timeout);
-    let state = StreamState::<L::AcceptStream, Sock, Ext, _, _>::new(
+    let state = HttpServerState::<L::AcceptStream, Sock, Ext, _, _>::new(
         listener.into_stream(),
         extension_provider,
         resolver,
@@ -140,7 +143,21 @@ where
     }
 }
 
-struct StreamState<L, Sock, Ext, Con, FC>
+/// Represents the internal state of the embedded HTTP server. This is used to create an instance
+/// of [`Stream`], using [`futures::stream::unfold`], that yields negotiated web-socket connections (or
+/// errors when connections fail).
+///
+/// Only a fixed number of web-socket handshakes are permitted to be running at any one time.
+///
+/// #Type Parameters
+/// * `L` - The type of the listener for incoming connections.
+/// * `Sock` - The type of the connections produced by the listener.
+/// * `Ext` - The websocket extension provider for negotiating connections.
+/// * `Con` - The type of the future that handles an HTTP connection (this parameter exists to
+/// give a name to the return type of an async function).
+/// * `FC` - A function to produce the future to handle an HTTP connection (this parameter exists to
+/// give a name to the type of an async function).
+struct HttpServerState<L, Sock, Ext, Con, FC>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider,
@@ -155,13 +172,19 @@ where
     timeout_enabled: bool,
 }
 
-impl<L, Sock, Ext, Con, FC> StreamState<L, Sock, Ext, Con, FC>
+impl<L, Sock, Ext, Con, FC> HttpServerState<L, Sock, Ext, Con, FC>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider + Send + Sync,
     Ext::Extension: Send,
     FC: Fn(Sock, UpgradeService<Ext, Sock>) -> Con + Copy + Send + 'static,
 {
+    /// #Arguments
+    /// * `listener_stream` - A listener that produced a stream of incoming connections.
+    /// * `extension_provider` - Extension provider to use when negotiating websocket connections.
+    /// * `resolver` - Agent resolver for forwarding requests to HTTP lanes.
+    /// * `config` - Configuration parameters for HTTP server.
+    /// * `connect_fn` - Async function to handle an incoming HTTP connection.
     fn new(
         listener_stream: L,
         extension_provider: Ext,
@@ -170,7 +193,7 @@ where
         connect_fn: FC,
     ) -> Self {
         let connection_tasks = FuturesUnordered::new();
-        StreamState {
+        HttpServerState {
             listener_stream,
             connection_tasks,
             upgrader: Upgrader::new(
@@ -196,7 +219,7 @@ enum Event<Sock, Ext> {
     Stop,
 }
 
-impl<L, Sock, Ext, Con, FC> StreamState<L, Sock, Ext, Con, FC>
+impl<L, Sock, Ext, Con, FC> HttpServerState<L, Sock, Ext, Con, FC>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     L: Stream<Item = ListenerResult<(Sock, Scheme, SocketAddr)>> + Send + Unpin,
@@ -206,7 +229,7 @@ where
     FC: Fn(Sock, UpgradeService<Ext, Sock>) -> Con + Copy + Send + 'static,
 {
     async fn next(&mut self) -> Option<ListenResult<Ext::Extension, Sock>> {
-        let StreamState {
+        let HttpServerState {
             listener_stream,
             connection_tasks,
             upgrader,
@@ -218,10 +241,12 @@ where
 
         loop {
             let event = if connection_tasks.len() < *max_pending {
+                // We have capacity so we can wait for new incoming connections.
                 tokio::select! {
                     biased;
                     _ = &mut *timeout, if *timeout_enabled => Event::Timeout,
                     maybe_event = connection_tasks.next(), if !connection_tasks.is_empty() => {
+                        // An HTTP request or upgrade has completed.
                         if let Some(ev) = maybe_event {
                             Event::TaskComplete(ev)
                         } else {
@@ -237,12 +262,14 @@ where
                                 Event::IncomingFailed(err)
                             },
                             _ => {
+                                // The listener is closed so wen should stop handling connections
                                 Event::Stop
                             },
                         }
                     }
                 }
             } else {
+                // The maximum number of connections are pending so we stop listening to for new connections.
                 tokio::select! {
                     biased;
                     _ = &mut*timeout, if *timeout_enabled => Event::Timeout,
@@ -298,6 +325,7 @@ where
     }
 }
 
+/// Perform the websocket negotiation and assign the upgrade future to the target parameter.
 fn perform_upgrade<Ext, Sock, Err>(
     request: Request<Body>,
     config: WebSocketConfig,
@@ -326,6 +354,8 @@ where
     }
 }
 
+/// A factory for hyper services that perform websocket upgrades or forward the request on to
+/// an HTTP lane on an agent.
 struct Upgrader<Ext: ExtensionProvider> {
     extension_provider: Arc<Ext>,
     resolver: resolver::Resolver,
@@ -376,6 +406,8 @@ where
     }
 }
 
+/// A hyper service that will attempt to upgrade the connection to a websocket and can then
+/// be decomposed to extract the upgrade future.
 struct UpgradeService<Ext: ExtensionProvider, Sock> {
     extension_provider: Arc<Ext>,
     resolver: resolver::Resolver,
@@ -443,6 +475,8 @@ where
         let result =
             swim_http::negotiate_upgrade(&request, &PROTOCOLS, extension_provider.as_ref())
                 .transpose();
+        // If the request in a websocket upgrade, perform the upgrade, otherwise attempt to delegate
+        // the request to an HTTP lane on an agent.
         if let Some(result) = result {
             let upgrade_result =
                 perform_upgrade(request, *config, result, upgrade_fut, *scheme, *addr);
@@ -455,6 +489,8 @@ where
     }
 }
 
+/// Unwraps the opaque upgraded socket returned by hyper as the underlying socket type
+/// that we originally passed in.
 struct ReclaimSock<Sock>(PhantomData<fn(Upgraded) -> Sock>);
 
 impl<Sock> Default for ReclaimSock<Sock> {
@@ -477,6 +513,7 @@ where
     }
 }
 
+/// Associates a [`Scheme`] and [`SocketAddr`] with the future performing the websocket upgrade.
 struct UpgradeFutureWithSock<Ext, Sock> {
     inner: UpgradeFuture<Ext, ReclaimSock<Sock>>,
     scheme: Scheme,
@@ -580,6 +617,7 @@ impl WebsocketClient for HyperWebsockets {
     }
 }
 
+/// Produce a bad request response for an request that we cannot route correctly.
 fn bad_request(msg: String) -> Response<Body> {
     let mut response = Response::default();
     *response.status_mut() = StatusCode::BAD_REQUEST;
@@ -587,6 +625,7 @@ fn bad_request(msg: String) -> Response<Body> {
     response
 }
 
+/// Produce an error response if the agent sends back invalid data.
 fn error(msg: &'static str) -> Response<Body> {
     let mut response = Response::default();
     *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
@@ -594,6 +633,7 @@ fn error(msg: &'static str) -> Response<Body> {
     response
 }
 
+/// Produce a timeout response for when the agent does not respond in time.
 fn req_timeout() -> Response<Body> {
     let mut response = Response::default();
     *response.status_mut() = StatusCode::REQUEST_TIMEOUT;
@@ -601,6 +641,8 @@ fn req_timeout() -> Response<Body> {
     response
 }
 
+/// Produce a not found response for the case where an agent does not exist (the agent is responsible
+/// for sending this if the lane does not exist).
 fn not_found(node: &str) -> Response<Body> {
     let mut response = Response::default();
     *response.status_mut() = StatusCode::NOT_FOUND;
@@ -608,6 +650,7 @@ fn not_found(node: &str) -> Response<Body> {
     response
 }
 
+/// Produce a response to send if the server is already stopping.
 fn unavailable() -> Response<Body> {
     let mut response = Response::default();
     *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
@@ -615,6 +658,12 @@ fn unavailable() -> Response<Body> {
     response
 }
 
+/// Delegate an HTTP request to an HTTP lane on an agent (if it exists).
+///
+/// #Arguments
+/// * `request` - The HTTP request.
+/// * `timeout` - Timeout the request if the agent does not produce a response within this duration.
+/// * `resolver` - Resolver to find the agent to handle the request.
 async fn serve_request(
     request: Request<Body>,
     timeout: Duration,
