@@ -36,7 +36,9 @@ use hyper::{
     Body, Request, Response, StatusCode,
 };
 use pin_project::pin_project;
-use ratchet::{Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig};
+use ratchet::{
+    Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream,
+};
 use swim_api::{agent::HttpLaneRequest, net::Scheme};
 use swim_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
 use swim_model::http::HttpRequest;
@@ -599,7 +601,7 @@ impl WebsocketClient for HyperWebsockets {
         addr: String,
     ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
     where
-        Sock: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+        Sock: WebSocketStream + Send,
         Provider: ExtensionProvider + Send + Sync + 'static,
         Provider::Extension: Send + Sync + 'static,
     {

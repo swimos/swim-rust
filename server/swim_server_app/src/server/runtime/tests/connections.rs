@@ -21,7 +21,9 @@ use bytes::BytesMut;
 use futures::future::ready;
 use futures::stream::BoxStream;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
-use ratchet::{NegotiatedExtension, Role, WebSocket, WebSocketConfig};
+use ratchet::{
+    ExtensionProvider, NegotiatedExtension, Role, WebSocket, WebSocketConfig, WebSocketStream,
+};
 use swim_api::net::Scheme;
 use swim_remote::net::dns::{DnsFut, DnsResolver};
 use swim_remote::net::{
@@ -69,8 +71,8 @@ impl WebsocketClient for TestWs {
         _addr: String,
     ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
     where
-        Sock: io::AsyncRead + io::AsyncWrite + Send + Unpin + 'static,
-        Provider: ratchet::ExtensionProvider + Send + Sync + 'static,
+        Sock: WebSocketStream + Send,
+        Provider: ExtensionProvider + Send + Sync + 'static,
         Provider::Extension: Send + Sync + 'static,
     {
         ready(Ok(WebSocket::from_upgraded(
