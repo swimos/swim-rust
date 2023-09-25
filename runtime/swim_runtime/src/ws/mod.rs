@@ -22,7 +22,9 @@ use swim_utilities::errors::Recoverable;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 
-use ratchet::{ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig};
+use ratchet::{
+    Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream,
+};
 pub use swim_ratchet::*;
 pub use switcher::StreamSwitcher;
 use thiserror::Error;
@@ -102,6 +104,28 @@ impl Debug for Protocol {
     }
 }
 
+/// A ratchet extension provider that can be freely shared between tasks.
+pub trait ShareableExtensionProvider: Send + Sync + 'static {
+    type Extension: Extension + Send + Sync + 'static;
+    type Provider: ExtensionProvider<Extension = Self::Extension> + Send + Sync + 'static;
+
+    fn as_provider(&self) -> &Self::Provider;
+}
+
+impl<P> ShareableExtensionProvider for P
+where
+    P: ExtensionProvider + Send + Sync + 'static,
+    P::Extension: Extension + Send + Sync + 'static,
+{
+    type Extension = P::Extension;
+
+    type Provider = P;
+
+    fn as_provider(&self) -> &Self::Provider {
+        self
+    }
+}
+
 /// Trait for adapters that will negotiate a client websocket connection over an duplex connection.
 pub trait WebsocketClient {
     /// Negotiate a new client connection.
@@ -117,9 +141,8 @@ pub trait WebsocketClient {
         addr: String,
     ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
     where
-        Sock: AsyncRead + AsyncWrite + Send + Unpin + 'static,
-        Provider: ExtensionProvider + Send + Sync + 'static,
-        Provider::Extension: Send + Sync + 'static;
+        Sock: WebSocketStream + Send,
+        Provider: ShareableExtensionProvider;
 }
 
 /// Trait for adapters that can negotiate websocket connections for incoming TCP connections.
@@ -175,16 +198,16 @@ impl WebsocketClient for RatchetClient {
         addr: String,
     ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
     where
-        Sock: AsyncRead + AsyncWrite + Send + Unpin + 'static,
-        Provider: ExtensionProvider + Send + Sync + 'static,
-        Provider::Extension: Send + Sync + 'static,
+        Sock: WebSocketStream + Send,
+        Provider: ShareableExtensionProvider,
     {
         let config = self.0;
         Box::pin(async move {
             let subprotocols = ProtocolRegistry::new(PROTOCOLS.iter().copied())?;
-            let socket = ratchet::subscribe_with(config, socket, addr, provider, subprotocols)
-                .await?
-                .into_websocket();
+            let socket =
+                ratchet::subscribe_with(config, socket, addr, provider.as_provider(), subprotocols)
+                    .await?
+                    .into_websocket();
             Ok(socket)
         })
     }

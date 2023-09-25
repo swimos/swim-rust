@@ -14,10 +14,10 @@ use hyper::{
 };
 use ratchet::{
     Extension, ExtensionProvider, NegotiatedExtension, Role, WebSocket, WebSocketConfig,
+    WebSocketStream,
 };
 use sha1::{Digest, Sha1};
 use thiserror::Error;
-use tokio::io::{AsyncRead, AsyncWrite};
 
 const UPGRADE_STR: &str = "Upgrade";
 const WEBSOCKET_STR: &str = "websocket";
@@ -203,7 +203,7 @@ impl<ExtErr: std::error::Error> From<ExtErr> for UpgradeError<ExtErr> {
 /// The caller will generally know the real underlying type and this allows for that type to be
 /// restored.
 pub trait SockUnwrap {
-    type Sock: AsyncRead + AsyncWrite + Unpin + 'static;
+    type Sock: WebSocketStream;
 
     /// Unwrap the socket (returning the underlying socket and a buffer containing any bytes
     /// that have already been read).

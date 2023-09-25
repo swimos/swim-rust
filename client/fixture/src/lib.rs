@@ -4,7 +4,7 @@ use futures_util::stream::BoxStream;
 use futures_util::{FutureExt, StreamExt};
 use ratchet::{
     ExtensionProvider, Message, NegotiatedExtension, NoExt, PayloadType, Role, WebSocket,
-    WebSocketConfig,
+    WebSocketConfig, WebSocketStream,
 };
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
@@ -21,7 +21,9 @@ use swim_runtime::net::dns::{BoxDnsResolver, DnsResolver};
 use swim_runtime::net::{
     ClientConnections, ConnResult, ConnectionError, IoResult, Listener, ListenerError, Scheme,
 };
-use swim_runtime::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
+use swim_runtime::ws::{
+    RatchetError, ShareableExtensionProvider, WebsocketClient, WebsocketServer, WsOpenFuture,
+};
 use tokio::io::{AsyncRead, AsyncWrite, DuplexStream};
 use tokio::sync::Mutex;
 
@@ -142,9 +144,8 @@ impl WebsocketClient for MockWs {
         addr: String,
     ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
     where
-        Sock: AsyncRead + AsyncWrite + Send + Unpin + 'static,
-        Provider: ExtensionProvider + Send + Sync + 'static,
-        Provider::Extension: Send + Sync + 'static,
+        Sock: WebSocketStream + Send,
+        Provider: ShareableExtensionProvider,
     {
         let result = match self.states.get(&addr) {
             Some(WsAction::Open) => Ok(WebSocket::from_upgraded(

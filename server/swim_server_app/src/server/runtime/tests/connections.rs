@@ -21,12 +21,14 @@ use bytes::BytesMut;
 use futures::future::ready;
 use futures::stream::BoxStream;
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
-use ratchet::{NegotiatedExtension, Role, WebSocket, WebSocketConfig};
+use ratchet::{NegotiatedExtension, Role, WebSocket, WebSocketConfig, WebSocketStream};
 use swim_runtime::net::dns::{DnsFut, DnsResolver};
 use swim_runtime::net::{
     ConnectionError, ExternalConnections, Listener, ListenerError, ListenerResult, Scheme,
 };
-use swim_runtime::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
+use swim_runtime::ws::{
+    RatchetError, ShareableExtensionProvider, WebsocketClient, WebsocketServer, WsOpenFuture,
+};
 use tokio::{
     io::{self, DuplexStream},
     sync::{mpsc, oneshot},
@@ -67,9 +69,8 @@ impl WebsocketClient for TestWs {
         _addr: String,
     ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
     where
-        Sock: io::AsyncRead + io::AsyncWrite + Send + Unpin + 'static,
-        Provider: ratchet::ExtensionProvider + Send + Sync + 'static,
-        Provider::Extension: Send + Sync + 'static,
+        Sock: WebSocketStream + Send,
+        Provider: ShareableExtensionProvider,
     {
         ready(Ok(WebSocket::from_upgraded(
             self.config,

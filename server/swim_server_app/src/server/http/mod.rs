@@ -35,11 +35,16 @@ use hyper::{
     Body, Request, Response,
 };
 use pin_project::pin_project;
-use ratchet::{Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig};
+use ratchet::{
+    Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream,
+};
 use swim_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
 use swim_runtime::{
     net::{Listener, ListenerError, ListenerResult, Scheme},
-    ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture, PROTOCOLS},
+    ws::{
+        RatchetError, ShareableExtensionProvider, WebsocketClient, WebsocketServer, WsOpenFuture,
+        PROTOCOLS,
+    },
 };
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -100,7 +105,7 @@ enum TaskResult<Ext, Sock> {
 #[pin_project(project = TaskFutureProj)]
 enum TaskFuture<Sock, Ext, Con, Fut>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: WebSocketStream,
     Ext: ExtensionProvider,
     Ext::Extension: Send,
 {
@@ -111,7 +116,7 @@ where
 
 impl<Sock, Ext, Con, Fut> Future for TaskFuture<Sock, Ext, Con, Fut>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: WebSocketStream,
     Ext: ExtensionProvider,
     Ext::Extension: Send + Unpin,
     Con: Future<Output = Result<(), hyper::Error>> + Unpin,
@@ -200,7 +205,7 @@ impl<F> Reservable<F> {
 
 struct StreamState<L, Sock, Ext, Con, Fut, FR, FC>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: WebSocketStream,
     Ext: ExtensionProvider,
     Ext::Extension: Send,
 {
@@ -215,7 +220,7 @@ where
 
 impl<L, Sock, Ext, Con, Fut, FR, FC> StreamState<L, Sock, Ext, Con, Fut, FR, FC>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: WebSocketStream,
     Ext: ExtensionProvider + Send + Sync,
     Ext::Extension: Send,
     FR: Fn(mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>) -> Fut
@@ -266,7 +271,7 @@ enum Event<Sock, Ext> {
 
 impl<L, Sock, Ext, Con, Fut, FR, FC> StreamState<L, Sock, Ext, Con, Fut, FR, FC>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: WebSocketStream,
     L: Stream<Item = ListenerResult<(Sock, Scheme, SocketAddr)>> + Send + Unpin,
     Ext: ExtensionProvider + Send + Sync,
     Ext::Extension: Send + Unpin,
@@ -395,7 +400,7 @@ fn perform_upgrade<Ext, Sock, Err>(
     addr: SocketAddr,
 ) -> Result<Response<Body>, hyper::Error>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: WebSocketStream,
     Ext: Extension + Send,
     Err: std::error::Error + Send,
 {
@@ -436,7 +441,7 @@ where
         reservation: OwnedPermit<UpgradeFutureWithSock<Ext::Extension, Sock>>,
     ) -> UpgradeService<Ext, Sock>
     where
-        Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+        Sock: WebSocketStream,
     {
         let Upgrader {
             extension_provider,
@@ -462,7 +467,7 @@ struct UpgradeService<Ext: ExtensionProvider, Sock> {
 
 impl<Ext: ExtensionProvider, Sock> UpgradeService<Ext, Sock>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: WebSocketStream,
 {
     fn new(
         extension_provider: Arc<Ext>,
@@ -483,7 +488,7 @@ where
 
 impl<Ext, Sock> Service<Request<Body>> for UpgradeService<Ext, Sock>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: WebSocketStream,
     Ext: ExtensionProvider,
     Ext::Extension: Send,
 {
@@ -528,7 +533,7 @@ impl<Sock> Default for ReclaimSock<Sock> {
 
 impl<Sock> SockUnwrap for ReclaimSock<Sock>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: WebSocketStream,
 {
     type Sock = Sock;
 
@@ -562,7 +567,7 @@ impl<Ext, Sock> UpgradeFutureWithSock<Ext, Sock> {
 
 impl<Ext, Sock> Future for UpgradeFutureWithSock<Ext, Sock>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: WebSocketStream,
     Ext: Extension + Unpin,
 {
     type Output = Result<(WebSocket<Sock, Ext>, Scheme, SocketAddr), hyper::Error>;
@@ -632,18 +637,18 @@ impl WebsocketClient for HyperWebsockets {
         addr: String,
     ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
     where
-        Sock: AsyncRead + AsyncWrite + Send + Unpin + 'static,
-        Provider: ExtensionProvider + Send + Sync + 'static,
-        Provider::Extension: Send + Sync + 'static,
+        Sock: WebSocketStream + Send,
+        Provider: ShareableExtensionProvider,
     {
         let HyperWebsockets { config, .. } = self;
 
         let config = *config;
         Box::pin(async move {
             let subprotocols = ProtocolRegistry::new(PROTOCOLS.iter().copied())?;
-            let socket = ratchet::subscribe_with(config, socket, addr, provider, subprotocols)
-                .await?
-                .into_websocket();
+            let socket =
+                ratchet::subscribe_with(config, socket, addr, provider.as_provider(), subprotocols)
+                    .await?
+                    .into_websocket();
             Ok(socket)
         })
     }
