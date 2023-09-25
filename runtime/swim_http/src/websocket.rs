@@ -93,7 +93,7 @@ pub fn fail_upgrade<ExtErr: std::error::Error>(error: UpgradeError<ExtErr>) -> R
         .expect(FAILED_RESPONSE)
 }
 
-/// Upgrade a hyper request to websocket, based on a successful negotiation.
+/// Upgrade a hyper request to a websocket, based on a successful negotiation.
 ///
 /// #Arguments
 /// * `request` - The hyper HTTP request.

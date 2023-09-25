@@ -75,7 +75,7 @@ where
     Ext: ExtensionProvider + Send + Sync + 'static,
     Ext::Extension: Send + Unpin,
 {
-    let state = StreamState::<L::AcceptStream, Sock, Ext, _, _, _, _>::new(
+    let state = HttpServerState::<L::AcceptStream, Sock, Ext, _, _, _, _>::new(
         listener.into_stream(),
         extension_provider,
         config,
@@ -139,56 +139,58 @@ where
     }
 }
 
-enum Reservable<F> {
+enum ReservationTracker<F> {
     Closed,
     Reserving(mpsc::Sender<F>),
     Reserved(mpsc::Sender<F>, mpsc::OwnedPermit<F>),
 }
 
-impl<F> Reservable<F> {
+impl<F> ReservationTracker<F> {
     fn is_closed(&self) -> bool {
-        matches!(self, Reservable::Closed)
+        matches!(self, ReservationTracker::Closed)
     }
 
     fn new<Fut>(tx: mpsc::Sender<F>, f: impl Fn(mpsc::Sender<F>) -> Fut) -> (Self, Option<Fut>) {
         match tx.clone().try_reserve_owned() {
-            Ok(r) => (Reservable::Reserved(tx, r), None),
-            Err(mpsc::error::TrySendError::Closed(_)) => (Reservable::Closed, None),
-            Err(mpsc::error::TrySendError::Full(tx2)) => (Reservable::Reserving(tx), Some(f(tx2))),
+            Ok(r) => (ReservationTracker::Reserved(tx, r), None),
+            Err(mpsc::error::TrySendError::Closed(_)) => (ReservationTracker::Closed, None),
+            Err(mpsc::error::TrySendError::Full(tx2)) => {
+                (ReservationTracker::Reserving(tx), Some(f(tx2)))
+            }
         }
     }
 
     fn add_reservation(&mut self, res: mpsc::OwnedPermit<F>) {
-        *self = match std::mem::replace(self, Reservable::Closed) {
-            Reservable::Closed => Reservable::Closed,
-            Reservable::Reserving(tx) => Reservable::Reserved(tx, res),
-            Reservable::Reserved(tx, r) => Reservable::Reserved(tx, r),
+        *self = match std::mem::replace(self, ReservationTracker::Closed) {
+            ReservationTracker::Closed => ReservationTracker::Closed,
+            ReservationTracker::Reserving(tx) => ReservationTracker::Reserved(tx, res),
+            ReservationTracker::Reserved(tx, r) => ReservationTracker::Reserved(tx, r),
         };
     }
 
     fn take_reservation(&mut self) -> Option<mpsc::OwnedPermit<F>> {
-        let (replacement, result) = match std::mem::replace(self, Reservable::Closed) {
-            Reservable::Closed => (Reservable::Closed, None),
-            Reservable::Reserving(tx) => (Reservable::Reserving(tx), None),
-            Reservable::Reserved(tx, r) => (Reservable::Reserving(tx), Some(r)),
+        let (replacement, result) = match std::mem::replace(self, ReservationTracker::Closed) {
+            ReservationTracker::Closed => (ReservationTracker::Closed, None),
+            ReservationTracker::Reserving(tx) => (ReservationTracker::Reserving(tx), None),
+            ReservationTracker::Reserved(tx, r) => (ReservationTracker::Reserving(tx), Some(r)),
         };
         *self = replacement;
         result
     }
 
     fn update_reservation<Fut>(&mut self, f: impl Fn(mpsc::Sender<F>) -> Fut) -> Option<Fut> {
-        match std::mem::replace(self, Reservable::Closed) {
-            Reservable::Reserving(tx) => match tx.clone().try_reserve_owned() {
+        match std::mem::replace(self, ReservationTracker::Closed) {
+            ReservationTracker::Reserving(tx) => match tx.clone().try_reserve_owned() {
                 Ok(res) => {
-                    *self = Reservable::Reserved(tx, res);
+                    *self = ReservationTracker::Reserved(tx, res);
                     None
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => {
-                    *self = Reservable::Closed;
+                    *self = ReservationTracker::Closed;
                     None
                 }
                 Err(mpsc::error::TrySendError::Full(tx2)) => {
-                    *self = Reservable::Reserving(tx);
+                    *self = ReservationTracker::Reserving(tx);
                     Some(f(tx2))
                 }
             },
@@ -200,7 +202,28 @@ impl<F> Reservable<F> {
     }
 }
 
-struct StreamState<L, Sock, Ext, Con, Fut, FR, FC>
+/// Represents the internal state of the embedded HTTP server. This is used to create an instance
+/// of [`Stream`], using [`futures::stream::unfold`], that yields negotiated web-socket connections (or
+/// errors when connections fail).
+///
+/// Only a fixed number of web-socket handshakes are permitted to be running at any one time. This is
+/// managed used an [`tokio::sync::mpsc`] channel; new incoming sockets will only be accepted if the
+/// state holds a permit to push a new entry into this queue. When a response has been produced, the
+/// slot in the queue will be freed.
+///
+/// #Type Parameters
+/// * `L` - The type of the listener for incoming connections.
+/// * `Sock` - The type of the connections produced by the listener.
+/// * `Ext` - The websocket extension provider for negotiating connections.
+/// * `Con` - The type of the future that handles an HTTP connection (this parameter exists to
+/// give a name to the return type of an async function).
+/// * `Fut` - The type of the future to wait for a reservation on the queue to become available.
+/// (this parameter exists to give a name to the return type of an async function).
+/// * `FR` - A function to produce a future to get a reservation on the queue (this parameter
+/// exists to give a name to the type of an async function).
+/// * `FC` - A function to produce the future to handle an HTTP connection (this parameter exists to
+/// give a name to the type of an async function).
+struct HttpServerState<L, Sock, Ext, Con, Fut, FR, FC>
 where
     Sock: WebSocketStream,
     Ext: ExtensionProvider,
@@ -209,13 +232,13 @@ where
     listener_stream: L,
     connection_tasks: FuturesUnordered<TaskFuture<Sock, Ext, Con, Fut>>,
     upgrader: Upgrader<Ext>,
-    reservable: Reservable<UpgradeFutureWithSock<Ext::Extension, Sock>>,
+    reservation_tracker: ReservationTracker<UpgradeFutureWithSock<Ext::Extension, Sock>>,
     upgrade_rx: mpsc::Receiver<UpgradeFutureWithSock<Ext::Extension, Sock>>,
     reserve_fn: FR,
     connect_fn: FC,
 }
 
-impl<L, Sock, Ext, Con, Fut, FR, FC> StreamState<L, Sock, Ext, Con, Fut, FR, FC>
+impl<L, Sock, Ext, Con, Fut, FR, FC> HttpServerState<L, Sock, Ext, Con, Fut, FR, FC>
 where
     Sock: WebSocketStream,
     Ext: ExtensionProvider + Send + Sync,
@@ -226,6 +249,13 @@ where
         + 'static,
     FC: Fn(Sock, UpgradeService<Ext, Sock>) -> Con + Copy + Send + 'static,
 {
+    /// #Arguments
+    /// * `listener_stream` - A listener that produced a stream of incoming connections.
+    /// * `extension_provider` - Extension provider to use when negotiating websocket connections.
+    /// * `config` - Configuration parameters for websocket connections.
+    /// * `max_negotiations` - Maximum number of connections to be accepting at one time.
+    /// * `reserve_fn` - Async function to get a new reservation in the queue.
+    /// * `connect_fn` - Async function to handle an incoming HTTP connection.
     fn new(
         listener_stream: L,
         extension_provider: Ext,
@@ -236,15 +266,15 @@ where
     ) -> Self {
         let (upgrade_tx, upgrade_rx) = mpsc::channel(max_negotiations.get());
         let connection_tasks = FuturesUnordered::new();
-        let (reservable, fut) = Reservable::new(upgrade_tx, reserve_fn);
+        let (reservable, fut) = ReservationTracker::new(upgrade_tx, reserve_fn);
         if let Some(fut) = fut {
             connection_tasks.push(TaskFuture::Reserve(fut));
         };
-        StreamState {
+        HttpServerState {
             listener_stream,
             connection_tasks,
             upgrader: Upgrader::new(extension_provider, config),
-            reservable,
+            reservation_tracker: reservable,
             upgrade_rx,
             reserve_fn,
             connect_fn,
@@ -266,7 +296,7 @@ enum Event<Sock, Ext> {
     Stop,
 }
 
-impl<L, Sock, Ext, Con, Fut, FR, FC> StreamState<L, Sock, Ext, Con, Fut, FR, FC>
+impl<L, Sock, Ext, Con, Fut, FR, FC> HttpServerState<L, Sock, Ext, Con, Fut, FR, FC>
 where
     Sock: WebSocketStream,
     L: Stream<Item = ListenerResult<(Sock, Scheme, SocketAddr)>> + Send + Unpin,
@@ -286,24 +316,27 @@ where
     FC: Fn(Sock, UpgradeService<Ext, Sock>) -> Con + Copy + Send + 'static,
 {
     async fn next(&mut self) -> Option<ListenResult<Ext::Extension, Sock>> {
-        let StreamState {
+        let HttpServerState {
             listener_stream,
             connection_tasks,
             upgrader,
-            reservable,
+            reservation_tracker,
             upgrade_rx,
             reserve_fn,
             connect_fn,
         } = self;
         loop {
-            if reservable.is_closed() {
+            if reservation_tracker.is_closed() {
                 return None;
             }
-            let event = if let Some(res) = reservable.take_reservation() {
+            let event = if let Some(res) = reservation_tracker.take_reservation() {
+                // We have a reservation so we can wait for new incoming connections.
                 tokio::select! {
                     biased;
                     maybe_fut = upgrade_rx.recv() => {
-                        reservable.add_reservation(res);
+                        // An handshake has completed and we can now wait to receive the the upgraded channel.
+                        // We don't need the reservation we can return it.
+                        reservation_tracker.add_reservation(res);
                         if let Some(fut) = maybe_fut {
                             Event::Upgrade(fut)
                         } else {
@@ -311,7 +344,9 @@ where
                         }
                     }
                     maybe_event = connection_tasks.next(), if !connection_tasks.is_empty() => {
-                        reservable.add_reservation(res);
+                        // An HTTP request has completed (the response has been sent). We don't need
+                        // the reservation so we can return it.
+                        reservation_tracker.add_reservation(res);
                         if let Some(ev) = maybe_event {
                             Event::TaskComplete(ev)
                         } else {
@@ -319,25 +354,29 @@ where
                         }
                     }
                     maybe_incoming = listener_stream.next() => {
+                        // Either we have a new incoming connection or the listener is closed.
                         match maybe_incoming {
                             Some(Ok((sock, scheme, addr))) => {
-                                if let Some(fut) = reservable.update_reservation(*reserve_fn) {
+                                if let Some(fut) = reservation_tracker.update_reservation(*reserve_fn) {
                                     connection_tasks.push(TaskFuture::Reserve(fut));
                                 }
                                 Event::Incoming(sock, scheme, addr, res)
                             },
                             Some(Err(err)) => {
-                                reservable.add_reservation(res);
+                                reservation_tracker.add_reservation(res);
                                 Event::IncomingFailed(err)
                             },
                             _ => {
-                                *reservable = Reservable::Closed;
+                                // The listener is closed so wen should stop handling connections
+                                *reservation_tracker = ReservationTracker::Closed;
                                 Event::Stop
                             },
                         }
                     }
                 }
             } else {
+                // We don't have a reservation to start a new connection so only wait for existing tasks
+                // to complete.
                 tokio::select! {
                     biased;
                     maybe_fut = upgrade_rx.recv() => {
@@ -365,7 +404,7 @@ where
                 }
                 Event::TaskComplete(TaskResult::ConnectionComplete(Ok(_))) => continue,
                 Event::TaskComplete(TaskResult::Reserved(Ok(res))) => {
-                    reservable.add_reservation(res);
+                    reservation_tracker.add_reservation(res);
                     continue;
                 }
                 Event::TaskComplete(TaskResult::Reserved(Err(_))) => break None,
@@ -388,6 +427,8 @@ where
     }
 }
 
+/// Perform the websocket negotiation and send the resulting future back, freeing up the reservation
+/// on the queue.
 fn perform_upgrade<Ext, Sock, Err>(
     request: Request<Body>,
     config: Option<WebSocketConfig>,
@@ -415,6 +456,7 @@ where
     }
 }
 
+/// A factory for hyper services that perform websocket upgrades.
 struct Upgrader<Ext: ExtensionProvider> {
     extension_provider: Arc<Ext>,
     config: Option<WebSocketConfig>,
@@ -454,6 +496,8 @@ where
     }
 }
 
+/// A hyper service that will attempt to upgrade the connection to a websocket and pass back the
+/// websocket using a reservation on an MPSC queue.
 struct UpgradeService<Ext: ExtensionProvider, Sock> {
     extension_provider: Arc<Ext>,
     reservation: Option<mpsc::OwnedPermit<UpgradeFutureWithSock<Ext::Extension, Sock>>>,
@@ -520,6 +564,8 @@ where
     }
 }
 
+/// Unwraps the opaque upgraded socket returned by hyper as the underlying socket type
+/// that we originally passed in.
 struct ReclaimSock<Sock>(PhantomData<fn(Upgraded) -> Sock>);
 
 impl<Sock> Default for ReclaimSock<Sock> {
@@ -542,6 +588,7 @@ where
     }
 }
 
+/// Associates a [`Scheme`] and [`SocketAddr`] with the future performing the websocket upgrade.
 struct UpgradeFutureWithSock<Ext, Sock> {
     inner: UpgradeFuture<Ext, ReclaimSock<Sock>>,
     scheme: Scheme,
