@@ -41,10 +41,7 @@ use ratchet::{
 use swim_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
 use swim_runtime::{
     net::{Listener, ListenerError, ListenerResult, Scheme},
-    ws::{
-        RatchetError, ShareableExtensionProvider, WebsocketClient, WebsocketServer, WsOpenFuture,
-        PROTOCOLS,
-    },
+    ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture, PROTOCOLS},
 };
 use tokio::sync::mpsc::{self, OwnedPermit};
 
@@ -682,17 +679,17 @@ impl WebsocketClient for HyperWebsockets {
     ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
     where
         Sock: WebSocketStream + Send,
-        Provider: ShareableExtensionProvider,
+        Provider: ExtensionProvider + Send + Sync + 'static,
+        Provider::Extension: Send + Sync + 'static,
     {
         let HyperWebsockets { config, .. } = self;
 
         let config = *config;
         Box::pin(async move {
             let subprotocols = ProtocolRegistry::new(PROTOCOLS.iter().copied())?;
-            let socket =
-                ratchet::subscribe_with(config, socket, addr, provider.as_provider(), subprotocols)
-                    .await?
-                    .into_websocket();
+            let socket = ratchet::subscribe_with(config, socket, addr, provider, subprotocols)
+                .await?
+                .into_websocket();
             Ok(socket)
         })
     }

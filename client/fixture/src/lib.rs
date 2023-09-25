@@ -21,9 +21,7 @@ use swim_runtime::net::dns::{BoxDnsResolver, DnsResolver};
 use swim_runtime::net::{
     ClientConnections, ConnResult, ConnectionError, IoResult, Listener, ListenerError, Scheme,
 };
-use swim_runtime::ws::{
-    RatchetError, ShareableExtensionProvider, WebsocketClient, WebsocketServer, WsOpenFuture,
-};
+use swim_runtime::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
 use tokio::io::DuplexStream;
 use tokio::sync::Mutex;
 
@@ -145,7 +143,8 @@ impl WebsocketClient for MockWs {
     ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
     where
         Sock: WebSocketStream + Send,
-        Provider: ShareableExtensionProvider,
+        Provider: ExtensionProvider + Send + Sync + 'static,
+        Provider::Extension: Send + Sync + 'static,
     {
         let result = match self.states.get(&addr) {
             Some(WsAction::Open) => Ok(WebSocket::from_upgraded(
