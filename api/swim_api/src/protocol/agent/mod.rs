@@ -30,7 +30,6 @@ use super::{
 };
 
 mod ad_hoc;
-pub mod http;
 mod store;
 #[cfg(test)]
 mod tests;
