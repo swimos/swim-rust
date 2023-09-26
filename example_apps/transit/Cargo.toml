@@ -21,3 +21,4 @@ bytes = { workspace = true }
 tracing = { workspace = true }
 transit-model = { path = "transit-model" }
 transit-fixture = { path = "transit-fixture", optional = true }
+futures = { workspace = true }
