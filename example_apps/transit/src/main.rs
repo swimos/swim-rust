@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashSet, error::Error, time::Duration};
+use std::{collections::HashSet, error::Error, time::Duration, env::args};
 
 use example_util::{example_logging, manage_handle};
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     server_runner::run_server(agency_uris, |api: BusesApi| async move {
         let mut builder = ServerBuilder::with_plane_name("Transit Plane");
 
-        builder = create_plane(agencies, api, builder, IncludeRoutes::all())?;
+        builder = create_plane(agencies, api, builder, read_params())?;
 
         let server = builder
             .update_config(|config| {
@@ -66,6 +66,15 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         Ok(server)
     })
     .await
+}
+
+fn read_params() -> HashSet<IncludeRoutes> {
+    match args().next().as_deref() {
+        Some("none") => HashSet::new(),
+        Some("vehicles") => [IncludeRoutes::Vehicle].into_iter().collect(),
+        Some("state") => [IncludeRoutes::Vehicle, IncludeRoutes::State].into_iter().collect(),
+        _ => IncludeRoutes::all(),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
