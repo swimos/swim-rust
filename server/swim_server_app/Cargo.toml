@@ -32,7 +32,7 @@ url = { workspace = true }
 swim_persistence = { path = "../../runtime/swim_persistence" }
 parking_lot = { workspace = true }
 rocksdb = { workspace = true, optional = true }
-hyper = { workspace = true, features = ["server", "http1", "backports", "runtime"] }
+hyper = { workspace = true, features = ["server", "runtime", "tcp", "http1", "backports"] }
 pin-project = { workspace = true }
 percent-encoding = { workspace = true }
 

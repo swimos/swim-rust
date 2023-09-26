@@ -19,10 +19,9 @@ use std::net::SocketAddr;
 use futures::future::BoxFuture;
 use futures::Stream;
 use swim_utilities::errors::Recoverable;
-use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 
-use ratchet::{ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig};
+use ratchet::{ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream};
 pub use swim_ratchet::*;
 pub use switcher::StreamSwitcher;
 use thiserror::Error;
@@ -119,7 +118,7 @@ pub trait WebsocketClient {
         addr: String,
     ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
     where
-        Sock: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+        Sock: WebSocketStream + Send,
         Provider: ExtensionProvider + Send + Sync + 'static,
         Provider::Extension: Send + Sync + 'static;
 }
@@ -144,7 +143,7 @@ pub trait WebsocketServer: Send + Sync {
         find_nodes: mpsc::Sender<FindNode>,
     ) -> Self::WsStream<Sock, Provider::Extension>
     where
-        Sock: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
+        Sock: WebSocketStream + Send + Sync,
         L: Listener<Sock> + Send + 'static,
         Provider: ExtensionProvider + Send + Sync + Unpin + 'static,
         Provider::Extension: Send + Sync + Unpin + 'static;
@@ -179,7 +178,7 @@ impl WebsocketClient for RatchetClient {
         addr: String,
     ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
     where
-        Sock: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+        Sock: WebSocketStream + Send,
         Provider: ExtensionProvider + Send + Sync + 'static,
         Provider::Extension: Send + Sync + 'static,
     {

@@ -350,7 +350,6 @@ where
         let mut web_server = websockets
             .wrap_listener(listener, ext_provider.clone(), find_tx.clone())
             .take_until(stop_signal);
-        //let mut accept_stream = listener.into_stream().take_until(stop_signal);
 
         let (agent_stop_tx, agent_stop_rx) = trigger::trigger();
         let mut agent_stop = Some(agent_stop_tx);
