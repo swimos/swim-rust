@@ -4,7 +4,7 @@ use futures_util::stream::BoxStream;
 use futures_util::{FutureExt, StreamExt};
 use ratchet::{
     ExtensionProvider, Message, NegotiatedExtension, NoExt, PayloadType, Role, WebSocket,
-    WebSocketConfig,
+    WebSocketConfig, WebSocketStream,
 };
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
@@ -145,7 +145,7 @@ impl WebsocketClient for MockWs {
         addr: String,
     ) -> WsOpenFuture<'a, Sock, Provider::Extension, RatchetError>
     where
-        Sock: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+        Sock: WebSocketStream + Send,
         Provider: ExtensionProvider + Send + Sync + 'static,
         Provider::Extension: Send + Sync + 'static,
     {

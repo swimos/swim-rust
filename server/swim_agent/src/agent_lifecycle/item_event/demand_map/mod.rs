@@ -100,7 +100,7 @@ where
     R: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CommandMapBranch")
+        f.debug_struct("DemandMapBranch")
             .field("label", &self.label)
             .field("projection", &"...")
             .field("lifecycle", &self.lifecycle)
