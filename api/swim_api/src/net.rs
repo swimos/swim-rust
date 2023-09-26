@@ -24,7 +24,7 @@ use url::Url;
 pub enum BadUrl {
     #[error("Malformed URL: {0}")]
     BadUrl(#[from] url::ParseError),
-    #[error("{0} is not a valid Warp scheme.")]
+    #[error("{0} is not a valid WARP scheme.")]
     BadScheme(String),
     #[error("The URL did not contain a valid host.")]
     NoHost,
@@ -51,7 +51,7 @@ impl TryFrom<&str> for Scheme {
 
 impl Scheme {
     /// Get the default port for the schemes.
-    fn get_default_port(&self) -> u16 {
+    pub const fn get_default_port(&self) -> u16 {
         match self {
             Scheme::Ws => 80,
             Scheme::Wss => 443,
@@ -59,7 +59,7 @@ impl Scheme {
     }
 
     /// Return if the scheme is secure.
-    pub fn is_secure(&self) -> bool {
+    pub const fn is_secure(&self) -> bool {
         match self {
             Scheme::Ws => false,
             Scheme::Wss => true,

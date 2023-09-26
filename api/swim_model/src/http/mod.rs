@@ -20,10 +20,10 @@ mod response;
 mod status_code;
 mod version;
 
-pub use header::{Header, HeaderName, HeaderNameDecodeError, HeaderValue, StandardHeaderName};
+pub use header::{Header, HeaderName, HeaderValue, StandardHeaderName};
 pub use http::Uri;
-pub use method::{Method, MethodDecodeError, UnsupportedMethod};
+pub use method::{Method, UnsupportedMethod};
 pub use request::{HttpRequest, InvalidRequest};
 pub use response::{HttpResponse, InvalidResponse};
 pub use status_code::{InvalidStatusCode, StatusCode};
-pub use version::{UnsupportedVersion, Version, VersionDecodeError};
+pub use version::{UnsupportedVersion, Version};
