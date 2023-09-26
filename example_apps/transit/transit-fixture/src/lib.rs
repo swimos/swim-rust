@@ -17,7 +17,6 @@ use std::{error::Error, ops::Add, pin::pin, sync::Arc, time::Duration};
 use futures::future::join3;
 use state::AgenciesState;
 use tokio::{
-    net::TcpListener,
     sync::Notify,
     time::{sleep, Instant},
 };
@@ -45,11 +44,12 @@ async fn update_task(state: Arc<AgenciesState>, interval: Duration, stop: Arc<No
 const UPDATE_INTERVAL_SEC: u64 = 1;
 const UPDATE_STATE_INTERVAL: Duration = Duration::from_secs(3);
 
-pub async fn run_mock_server(shutdown_rx: Arc<Notify>) -> Result<(), Box<dyn Error + Send + Sync>> {
+pub async fn run_mock_server(
+    listener: std::net::TcpListener,
+    shutdown_rx: Arc<Notify>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     let state = Arc::new(AgenciesState::generate(UPDATE_INTERVAL_SEC));
     let app = server::make_server_router(state.clone());
-    let listener = TcpListener::bind("0.0.0.0:3000").await?;
-    println!("Listening on: {}", listener.local_addr()?);
 
     let update_trigger = Arc::new(Notify::new());
     let server_trigger = Arc::new(Notify::new());
@@ -64,7 +64,7 @@ pub async fn run_mock_server(shutdown_rx: Arc<Notify>) -> Result<(), Box<dyn Err
 
     let update = update_task(state, UPDATE_STATE_INTERVAL, updater_trigger_rx);
 
-    let server_task = axum::Server::from_tcp(listener.into_std()?)?
+    let server_task = axum::Server::from_tcp(listener)?
         .serve(app.into_make_service())
         .with_graceful_shutdown(server_trigger_rx.notified());
 

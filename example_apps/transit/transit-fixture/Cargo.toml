@@ -17,3 +17,6 @@ bytes = { workspace = true }
 parking_lot = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["time", "macros", "sync", "signal", "rt-multi-thread"]}

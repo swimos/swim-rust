@@ -86,23 +86,24 @@ impl AgenciesState {
             ref inner,
             update_interval,
         } = *self;
+
         let mut guard = inner.write();
         let Inner { last, vehicles, .. } = &mut *guard;
         let now = Utc::now().timestamp_millis() as u64;
-        let diff_secs = now - *last / 1000;
+        let diff_secs = (now - *last) / 1000;
 
         let num_updates = diff_secs / update_interval;
 
         let mut r = rand::thread_rng();
         for i in 0..num_updates {
-            for (_, vehicles_lst) in vehicles.iter_mut() {
+            for (_agency, vehicles_lst) in vehicles.iter_mut() {
                 let update_index = r.gen_range(0..vehicles_lst.len());
                 for (j, v) in vehicles_lst.iter_mut().enumerate() {
-                    let diff = i * update_interval;
+                    let diff = (i + 1) * update_interval;
                     if j == update_index {
                         update(v, diff);
                     } else {
-                        v.secs_since_report += diff as u32;
+                        v.secs_since_report += diff_secs as u32;
                     }
                 }
             }

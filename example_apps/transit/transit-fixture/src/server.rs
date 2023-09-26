@@ -22,7 +22,7 @@ use axum::{
     Router,
 };
 use hyper::{header, StatusCode};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use transit_model::{route, vehicle};
 
 use crate::state::AgenciesState;
@@ -45,9 +45,17 @@ enum Command {
     VehicleLocations {
         #[serde(rename = "a")]
         agency_id: String,
-        #[serde(rename = "t")]
+        #[serde(rename = "t", deserialize_with = "deser_time")]
         time: i64,
     },
+}
+
+fn deser_time<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let t: String = Deserialize::deserialize(deserializer)?;
+    t.parse().map_err(serde::de::Error::custom)
 }
 
 const XML_HEADER: (HeaderName, &str) = (header::CONTENT_TYPE, "application/xml");
