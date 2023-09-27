@@ -535,8 +535,9 @@ where
                             "Agent failed to receive HTTP lane registration for lane named '{}'.",
                             name
                         );
+                    } else {
+                        http_lane_endpoints.push(HttpLaneEndpoint::new(name, tx));
                     }
-                    http_lane_endpoints.push(HttpLaneEndpoint::new(name, tx));
                 }
             },
         }
