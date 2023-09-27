@@ -12,7 +12,7 @@ trust_dns = ["swim_runtime/trust_dns"]
 [dependencies]
 futures = { workspace = true }
 ratchet = { workspace = true, features = ["deflate", "split"] }
-swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger", "text"] }
+swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger", "text", "time"] }
 swim_runtime = { path = "../../runtime/swim_runtime" }
 swim_tls = { path = "../../runtime/swim_tls" }
 swim_http = { path = "../../runtime/swim_http" }
@@ -34,9 +34,11 @@ parking_lot = { workspace = true }
 rocksdb = { workspace = true, optional = true }
 hyper = { workspace = true, features = ["server", "runtime", "tcp", "http1", "backports"] }
 pin-project = { workspace = true }
+percent-encoding = { workspace = true }
 
 [dev-dependencies]
 swim_recon = { path = "../../api/formats/swim_recon", features = ["async_parser"] }
 tokio = { workspace = true, features = ["rt", "macros", "test-util"]}
 swim_form = {path = "../../api/swim_form" }
 swim_messages = { path = "../../runtime/swim_messages" }
+hyper = { workspace = true, features = ["client"] }

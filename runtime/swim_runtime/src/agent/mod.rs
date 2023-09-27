@@ -17,13 +17,16 @@ use futures::{
     FutureExt,
 };
 use swim_api::{
-    agent::{Agent, AgentConfig, AgentContext, LaneConfig},
+    agent::{
+        Agent, AgentConfig, AgentContext, HttpLaneRequest, HttpLaneRequestChannel, LaneConfig,
+    },
     downlink::DownlinkKind,
     error::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
         StoreError,
     },
     meta::lane::LaneKind,
+    net::SchemeHostPort,
     store::{NodePersistence, StoreKind},
 };
 use swim_model::{address::RelativeAddress, Text};
@@ -46,14 +49,14 @@ use std::{
     time::Duration,
 };
 
-use crate::{downlink::DownlinkOptions, net::SchemeHostPort};
+use crate::downlink::DownlinkOptions;
 
 use self::{
     reporting::{UplinkReportReader, UplinkReporter},
     store::{StoreInitError, StorePersistence},
     task::{
-        AdHocChannelRequest, AgentInitTask, AgentRuntimeTask, InitTaskConfig, LaneRuntimeSpec,
-        LinksTaskConfig, NodeDescriptor, StoreRuntimeSpec,
+        AdHocChannelRequest, AgentInitTask, AgentRuntimeTask, HttpLaneRuntimeSpec, InitTaskConfig,
+        LaneRuntimeSpec, LinksTaskConfig, NodeDescriptor, StoreRuntimeSpec,
     },
 };
 
@@ -243,6 +246,24 @@ impl AgentContext for AgentRuntimeContext {
         }
         .boxed()
     }
+
+    fn add_http_lane(
+        &self,
+        name: &str,
+    ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
+        let name = Text::new(name);
+        let sender = self.tx.clone();
+        async move {
+            let (tx, rx) = oneshot::channel();
+            sender
+                .send(AgentRuntimeRequest::AddHttpLane(HttpLaneRuntimeSpec::new(
+                    name, tx,
+                )))
+                .await?;
+            rx.await?
+        }
+        .boxed()
+    }
 }
 
 /// Ends of two independent channels (for example the input and output channels of an agent).
@@ -307,7 +328,7 @@ pub enum AgentAttachmentRequest {
         /// Channels over which the agent runtime task should communicate with the endpoint.
         io: Io,
         /// If provided, this will be triggered when the remote has been fully registered with
-        /// the agent runtime request. The completion promise will only receive a non-failed
+        /// the agent runtime. The completion promise will only receive a non-failed
         /// result after this occurs.
         on_attached: Option<trigger::Sender>,
         /// A promise that will be satisfied when the agent runtime task closes the remote.
@@ -431,6 +452,8 @@ impl AgentAttachmentRequest {
 pub struct AgentRuntimeConfig {
     /// Size of the queue for handling requests to attach remotes to the task.
     pub attachment_queue_size: NonZeroUsize,
+    /// The size of the channel used by the server runtime to pass HTTP requests to an agent.
+    pub agent_http_request_channel_size: NonZeroUsize,
     /// If the task is idle for more than this length of time, the agent will stop.
     pub inactive_timeout: Duration,
     /// If a remote, with no links, is idle for more than this length of time, it will be
@@ -447,6 +470,8 @@ pub struct AgentRuntimeConfig {
     pub ad_hoc_output_retry: RetryStrategy,
     /// The size of the buffer used by the agent to send ad hoc commands to the runtime.
     pub ad_hoc_buffer_size: NonZeroUsize,
+    /// The size of the channel used by the agent to pass requests to an HTTP lane.
+    pub lane_http_request_channel_size: NonZeroUsize,
 }
 
 const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
@@ -458,6 +483,7 @@ impl Default for AgentRuntimeConfig {
     fn default() -> Self {
         Self {
             attachment_queue_size: DEFAULT_CHANNEL_SIZE,
+            agent_http_request_channel_size: DEFAULT_CHANNEL_SIZE,
             inactive_timeout: DEFAULT_TIMEOUT,
             prune_remote_delay: DEFAULT_TIMEOUT,
             shutdown_timeout: DEFAULT_TIMEOUT,
@@ -465,6 +491,7 @@ impl Default for AgentRuntimeConfig {
             ad_hoc_output_timeout: DEFAULT_TIMEOUT,
             ad_hoc_output_retry: RetryStrategy::none(),
             ad_hoc_buffer_size: DEFAULT_BUFFER_SIZE,
+            lane_http_request_channel_size: DEFAULT_CHANNEL_SIZE,
         }
     }
 }
@@ -505,12 +532,38 @@ pub struct CombinedAgentConfig {
     pub agent_config: AgentConfig,
     pub runtime_config: AgentRuntimeConfig,
 }
+
+pub struct AgentRouteChannels {
+    attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+    http_rx: mpsc::Receiver<HttpLaneRequest>,
+    link_tx: mpsc::Sender<LinkRequest>,
+}
+
+impl AgentRouteChannels {
+    /// #Arguments
+    /// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
+    /// * `http_rx` - Channel for routing HTTP requests to the agent.
+    /// * `link_tx` - Channel to request external links from the runtime.
+    pub fn new(
+        attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+        http_rx: mpsc::Receiver<HttpLaneRequest>,
+        link_tx: mpsc::Sender<LinkRequest>,
+    ) -> Self {
+        AgentRouteChannels {
+            attachment_rx,
+            http_rx,
+            link_tx,
+        }
+    }
+}
+
 pub struct AgentRouteTask<'a, A> {
     agent: &'a A,
     identity: Uuid,
     route: RouteUri,
     route_params: HashMap<String, String>,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+    http_rx: mpsc::Receiver<HttpLaneRequest>,
     link_tx: mpsc::Sender<LinkRequest>,
     stopping: trigger::Receiver,
     agent_config: AgentConfig,
@@ -524,16 +577,14 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
     /// #Arguments
     /// * `agent` - The agent instance.
     /// * `identity` - Routing identify of the agent instance.
-    /// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
-    /// * `link_tx` - Channel to request external links from the runtime.
+    /// * `channels` - Channels over which the runtime communicates with the agent.
     /// * `stopping` - Instructs the agent task to stop.
     /// * `config` - Configuration parameters for the user agent task and agent runtime.
     /// * `reporting` - Uplink metrics reporters.
     pub fn new(
         agent: &'a A,
         identity: AgentRoute,
-        attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
-        link_tx: mpsc::Sender<LinkRequest>,
+        channels: AgentRouteChannels,
         stopping: trigger::Receiver,
         config: CombinedAgentConfig,
         reporting: Option<NodeReporting>,
@@ -543,8 +594,9 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             identity: identity.identity,
             route: identity.route,
             route_params: identity.route_params,
-            attachment_rx,
-            link_tx,
+            attachment_rx: channels.attachment_rx,
+            http_rx: channels.http_rx,
+            link_tx: channels.link_tx,
             stopping,
             agent_config: config.agent_config,
             runtime_config: config.runtime_config,
@@ -559,6 +611,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             route,
             route_params,
             attachment_rx,
+            http_rx,
             link_tx,
             stopping,
             agent_config,
@@ -584,6 +637,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 ad_hoc_queue_size: runtime_config.attachment_queue_size,
                 item_init_timeout: runtime_config.item_init_timeout,
                 external_links: ad_hoc_config,
+                http_lane_channel_size: runtime_config.lane_http_request_channel_size,
             },
             reporting,
         );
@@ -608,6 +662,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 NodeDescriptor::new(identity, node_uri),
                 initial_state,
                 attachment_rx,
+                http_rx,
                 stopping,
                 runtime_config,
             );
@@ -633,6 +688,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
             route,
             route_params,
             attachment_rx,
+            http_rx,
             link_tx,
             stopping,
             agent_config,
@@ -668,6 +724,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                     ad_hoc_queue_size: runtime_config.attachment_queue_size,
                     item_init_timeout: runtime_config.item_init_timeout,
                     external_links: ad_hoc_config,
+                    http_lane_channel_size: runtime_config.lane_http_request_channel_size,
                 },
                 reporting,
                 StorePersistence(store),
@@ -691,6 +748,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
                 NodeDescriptor::new(identity, node_uri.clone()),
                 initial_state,
                 attachment_rx,
+                http_rx,
                 stopping,
                 runtime_config,
                 store_per,

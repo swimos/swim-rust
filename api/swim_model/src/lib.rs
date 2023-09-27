@@ -19,6 +19,7 @@ mod attr;
 pub use num_bigint as bigint;
 mod blob;
 mod bytes_str;
+pub mod http;
 pub mod identifier;
 mod item;
 #[macro_use]

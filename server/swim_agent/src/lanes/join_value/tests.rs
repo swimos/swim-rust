@@ -26,7 +26,7 @@ use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt};
 use parking_lot::Mutex;
 use swim_api::{
-    agent::{AgentConfig, AgentContext, LaneConfig},
+    agent::{AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
     meta::lane::LaneKind,
@@ -320,6 +320,13 @@ impl<Agent> AgentContext for TestDownlinkContext<Agent> {
         let (out_tx, out_rx) = byte_channel(BUFFER_SIZE);
         self.push_channels(key, (in_tx, out_rx));
         async move { Ok((out_tx, in_rx)) }.boxed()
+    }
+
+    fn add_http_lane(
+        &self,
+        _name: &str,
+    ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
+        panic!("Unexpected new HTTP lane.");
     }
 }
 

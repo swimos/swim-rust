@@ -30,6 +30,7 @@ use parking_lot::Mutex;
 use swim_api::{
     downlink::DownlinkKind,
     error::DownlinkRuntimeError,
+    net::SchemeHostPort,
     protocol::downlink::{
         DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
     },
@@ -38,14 +39,11 @@ use swim_messages::protocol::{
     Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder,
 };
 use swim_model::{address::RelativeAddress, Text};
+use swim_remote::net::dns::{DnsFut, DnsResolver};
 use swim_remote::{AttachClient, LinkError};
 use swim_runtime::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
     downlink::{DownlinkOptions, DownlinkRuntimeConfig, Io},
-    net::{
-        dns::{DnsFut, DnsResolver},
-        SchemeHostPort,
-    },
 };
 use swim_utilities::{
     io::byte_channel::{are_connected, ByteReader, ByteWriter},

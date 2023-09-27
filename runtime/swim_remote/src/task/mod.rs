@@ -33,7 +33,7 @@ use ratchet::{
     SplittableExtension, WebSocket, WebSocketStream,
 };
 use smallvec::SmallVec;
-use swim_api::error::DownlinkFailureReason;
+use swim_api::{agent::HttpLaneRequest, error::DownlinkFailureReason};
 use swim_messages::protocol::{
     BytesRequestMessage, BytesResponseMessage, Path, RawRequestMessageDecoder,
     RawRequestMessageEncoder, RawResponseMessageDecoder, RawResponseMessageEncoder, RequestMessage,
@@ -100,10 +100,34 @@ pub enum AttachClient {
 
 /// Message type sent by the socket management task to find an agent node.
 pub struct FindNode {
-    pub source: Uuid,
     pub node: Text,
-    pub lane: Text,
-    pub provider: oneshot::Sender<Result<(ByteWriter, ByteReader), AgentResolutionError>>,
+    pub lane: Option<Text>,
+    pub request: NodeConnectionRequest,
+}
+
+pub enum NodeConnectionRequest {
+    Warp {
+        source: Uuid,
+        promise: oneshot::Sender<Result<(ByteWriter, ByteReader), AgentResolutionError>>,
+    },
+    Http {
+        promise: oneshot::Sender<Result<mpsc::Sender<HttpLaneRequest>, AgentResolutionError>>,
+    },
+}
+
+impl NodeConnectionRequest {
+    pub fn fail(self, err: AgentResolutionError) -> Result<(), AgentResolutionError> {
+        match self {
+            NodeConnectionRequest::Warp { promise, .. } => match promise.send(Err(err)) {
+                Err(Err(e)) => Err(e),
+                _ => Ok(()),
+            },
+            NodeConnectionRequest::Http { promise } => match promise.send(Err(err)) {
+                Err(Err(e)) => Err(e),
+                _ => Ok(()),
+            },
+        }
+    }
 }
 
 /// A task that manages a socket connection. Incoming envelopes are routed to the appropriate
@@ -675,7 +699,7 @@ impl IncomingTask {
                                             command_envelope: request.envelope.is_command(),
                                             error: AgentResolutionError::NotFound(NoSuchAgent {
                                                 node: path.node.into(),
-                                                lane: path.lane.into(),
+                                                lane: Some(path.lane.into()),
                                             }),
                                         })
                                         .await
@@ -744,10 +768,12 @@ async fn connect_agent_route(
     debug!(node = %node, "Attempting to open route to agent.");
     let (tx, rx) = oneshot::channel();
     let find = FindNode {
-        source,
         node,
-        lane,
-        provider: tx,
+        lane: Some(lane),
+        request: NodeConnectionRequest::Warp {
+            source,
+            promise: tx,
+        },
     };
     find_tx.send(find).await.map_err(|_| ())?;
     match rx.await {

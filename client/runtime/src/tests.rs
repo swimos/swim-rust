@@ -26,6 +26,7 @@ use futures_util::FutureExt;
 use ratchet::{
     Message, NegotiatedExtension, NoExt, NoExtProvider, Role, WebSocket, WebSocketConfig,
 };
+use swim_api::net::{Scheme, SchemeHostPort};
 use tokio::io::{duplex, AsyncWriteExt};
 use tokio::spawn;
 use tokio::sync::mpsc::unbounded_channel;
@@ -51,10 +52,9 @@ use swim_form::Form;
 use swim_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
 use swim_model::address::{Address, RelativeAddress};
 use swim_model::Text;
+use swim_remote::ws::RatchetError;
 use swim_remote::AttachClient;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
-use swim_runtime::net::{Scheme, SchemeHostPort};
-use swim_runtime::ws::RatchetError;
 use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swim_utilities::trigger::{promise, trigger};
 use swim_utilities::{non_zero_usize, trigger};

@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 http = { workspace = true }
-percent-encoding = "2.1.0"
+percent-encoding = { workspace = true }
 nom = { workspace = true }
 nom_locate = { workspace = true }
 

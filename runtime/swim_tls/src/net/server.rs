@@ -21,8 +21,9 @@ use futures::{
 };
 use rustls::KeyLogFile;
 use rustls_pemfile::Item;
-use swim_runtime::net::{
-    BoxListenerStream, ConnResult, IoResult, Listener, ListenerError, ListenerResult, Scheme,
+use swim_api::net::Scheme;
+use swim_remote::net::{
+    BoxListenerStream, ConnResult, IoResult, Listener, ListenerError, ListenerResult,
     ServerConnections,
 };
 use tokio::net::{TcpListener, TcpStream};

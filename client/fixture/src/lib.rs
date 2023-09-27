@@ -13,16 +13,19 @@ use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::ops::DerefMut;
 use std::sync::Arc;
+use swim_api::net::Scheme;
 use swim_form::Form;
 use swim_model::{Text, Value};
 use swim_recon::parser::{parse_recognize, Span};
 use swim_recon::printer::print_recon;
-use swim_runtime::net::dns::{BoxDnsResolver, DnsResolver};
-use swim_runtime::net::{
-    ClientConnections, ConnResult, ConnectionError, IoResult, Listener, ListenerError, Scheme,
+use swim_remote::net::dns::{BoxDnsResolver, DnsResolver};
+use swim_remote::net::{
+    ClientConnections, ConnResult, ConnectionError, IoResult, Listener, ListenerError,
 };
-use swim_runtime::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
-use tokio::io::DuplexStream;
+use swim_remote::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
+use swim_remote::FindNode;
+use tokio::io::{AsyncRead, AsyncWrite, DuplexStream};
+use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
@@ -169,9 +172,10 @@ impl WebsocketServer for MockWs {
         &self,
         _listener: L,
         _provider: Provider,
+        _find: mpsc::Sender<FindNode>,
     ) -> Self::WsStream<Sock, Provider::Extension>
     where
-        Sock: WebSocketStream + Send + Sync,
+        Sock: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
         L: Listener<Sock> + Send + 'static,
         Provider: ExtensionProvider + Send + Sync + Unpin + 'static,
         Provider::Extension: Send + Sync + Unpin + 'static,

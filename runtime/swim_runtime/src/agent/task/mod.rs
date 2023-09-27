@@ -41,26 +41,22 @@ use super::{
     NodeReporting,
 };
 use bytes::{Bytes, BytesMut};
-use futures::future::{join3, BoxFuture};
+use futures::future::{join4, BoxFuture};
 use futures::stream::FuturesUnordered;
 use futures::{
     future::{join, select, Either},
     stream::SelectAll,
     Stream, StreamExt,
 };
-use tokio::sync::{mpsc, oneshot};
-use tokio::time::{sleep, timeout, Instant, Sleep};
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::codec::FramedRead;
-use tracing::{debug, error, info, info_span, trace, warn, Instrument};
-use uuid::Uuid;
-
-use swim_api::agent::{LaneConfig, StoreConfig};
+use swim_api::agent::{
+    HttpLaneRequest, HttpLaneRequestChannel, HttpLaneResponse, LaneConfig, StoreConfig,
+};
 use swim_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
 use swim_api::meta::lane::LaneKind;
 use swim_api::store::{StoreDisabled, StoreKind};
 use swim_api::{agent::UplinkKind, error::AgentRuntimeError};
 use swim_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
+use swim_model::http::{HttpResponse, StatusCode, Version};
 use swim_model::{BytesStr, Text};
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError};
@@ -75,10 +71,17 @@ mod receiver;
 mod remotes;
 mod sender;
 mod timeout_coord;
+mod uri_params;
 mod write_fut;
 
 pub use external_links::LinksTaskConfig;
 pub use init::{AgentInitTask, InitTaskConfig};
+use tokio::sync::{mpsc, oneshot};
+use tokio::time::{sleep, timeout, Instant, Sleep};
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::codec::FramedRead;
+use tracing::{debug, error, info, info_span, trace, warn, Instrument};
+use uuid::Uuid;
 #[cfg(test)]
 mod fake_store;
 #[cfg(test)]
@@ -90,6 +93,12 @@ pub struct LaneRuntimeSpec {
     pub kind: LaneKind,
     pub config: LaneConfig,
     pub promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
+}
+
+#[derive(Debug)]
+pub struct HttpLaneRuntimeSpec {
+    pub name: Text,
+    pub promise: oneshot::Sender<Result<HttpLaneRequestChannel, AgentRuntimeError>>,
 }
 
 impl LaneRuntimeSpec {
@@ -105,6 +114,15 @@ impl LaneRuntimeSpec {
             config,
             promise,
         }
+    }
+}
+
+impl HttpLaneRuntimeSpec {
+    pub fn new(
+        name: Text,
+        promise: oneshot::Sender<Result<HttpLaneRequestChannel, AgentRuntimeError>>,
+    ) -> Self {
+        HttpLaneRuntimeSpec { name, promise }
     }
 }
 
@@ -156,6 +174,8 @@ pub enum AgentRuntimeRequest {
     AdHoc(AdHocChannelRequest),
     /// Attempt to open a new lane for the agent.
     AddLane(LaneRuntimeSpec),
+    /// Attempt to open a new lane for the agent.
+    AddHttpLane(HttpLaneRuntimeSpec),
     /// Attempt to open a new store for the agent.
     AddStore(StoreRuntimeSpec),
     /// Attempt to open a downlink to a lane on another agent.
@@ -175,6 +195,21 @@ pub struct LaneEndpoint<T> {
     io: T,
     /// Metadata reporter for the lane.
     reporter: Option<UplinkReporter>,
+}
+
+#[derive(Debug)]
+pub struct HttpLaneEndpoint {
+    name: Text,
+    request_sender: mpsc::Sender<HttpLaneRequest>,
+}
+
+impl HttpLaneEndpoint {
+    fn new(name: Text, request_sender: mpsc::Sender<HttpLaneRequest>) -> Self {
+        HttpLaneEndpoint {
+            name,
+            request_sender,
+        }
+    }
 }
 
 impl<T> LaneEndpoint<T> {
@@ -278,13 +313,19 @@ impl StoreEndpoint {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct Endpoints {
+    lane_endpoints: Vec<LaneEndpoint<Io>>,
+    http_lane_endpoints: Vec<HttpLaneEndpoint>,
+    store_endpoints: Vec<StoreEndpoint>,
+}
+
 /// Result of the agent initialization task (detailing the lanes that were created during initialization).
 #[derive(Debug)]
 pub struct InitialEndpoints {
     reporting: Option<NodeReporting>,
     rx: mpsc::Receiver<AgentRuntimeRequest>,
-    lane_endpoints: Vec<LaneEndpoint<Io>>,
-    store_endpoints: Vec<StoreEndpoint>,
+    endpoints: Endpoints,
     ext_link_state: LinksTaskState,
 }
 
@@ -292,15 +333,13 @@ impl InitialEndpoints {
     fn new(
         reporting: Option<NodeReporting>,
         rx: mpsc::Receiver<AgentRuntimeRequest>,
-        lane_endpoints: Vec<LaneEndpoint<Io>>,
-        store_endpoints: Vec<StoreEndpoint>,
+        endpoints: Endpoints,
         ext_link_state: LinksTaskState,
     ) -> Self {
         InitialEndpoints {
             reporting,
             rx,
-            lane_endpoints,
-            store_endpoints,
+            endpoints,
             ext_link_state,
         }
     }
@@ -328,6 +367,7 @@ pub struct AgentRuntimeTask<Store = StoreDisabled> {
     node: NodeDescriptor,
     init: InitialEndpoints,
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+    http_requests: mpsc::Receiver<HttpLaneRequest>,
     stopping: trigger::Receiver,
     config: AgentRuntimeConfig,
     store: Store,
@@ -362,6 +402,7 @@ impl AgentRuntimeTask {
         node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+        http_requests: mpsc::Receiver<HttpLaneRequest>,
         stopping: trigger::Receiver,
         config: AgentRuntimeConfig,
     ) -> Self {
@@ -369,6 +410,7 @@ impl AgentRuntimeTask {
             node,
             init,
             attachment_rx,
+            http_requests,
             stopping,
             config,
             store: StoreDisabled,
@@ -392,6 +434,7 @@ where
         node: NodeDescriptor,
         init: InitialEndpoints,
         attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
+        http_requests: mpsc::Receiver<HttpLaneRequest>,
         stopping: trigger::Receiver,
         config: AgentRuntimeConfig,
         store: Store,
@@ -400,6 +443,7 @@ where
             node,
             init,
             attachment_rx,
+            http_requests,
             stopping,
             config,
             store,
@@ -418,11 +462,16 @@ where
                 InitialEndpoints {
                     reporting,
                     rx,
-                    lane_endpoints,
-                    store_endpoints,
+                    endpoints:
+                        Endpoints {
+                            lane_endpoints,
+                            http_lane_endpoints,
+                            store_endpoints,
+                        },
                     ext_link_state,
                 },
             attachment_rx,
+            http_requests,
             stopping,
             config,
             store,
@@ -433,8 +482,9 @@ where
 
         let (read_tx, read_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (write_tx, write_rx) = mpsc::channel(config.attachment_queue_size.get());
+        let (http_tx, http_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (ext_link_tx, ext_link_rx) = mpsc::channel(config.attachment_queue_size.get());
-        let (read_vote, write_vote, vote_waiter) = timeout_coord::timeout_coordinator();
+        let (read_vote, write_vote, http_vote, vote_waiter) = timeout_coord::timeout_coordinator();
 
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
 
@@ -445,6 +495,7 @@ where
             attachment_rx,
             read_tx.clone(),
             write_tx.clone(),
+            http_tx,
             ext_link_tx,
             combined_stop,
         )
@@ -464,13 +515,22 @@ where
         let write = write_task(
             WriteTaskConfiguration::new(identity, node_uri.clone(), config),
             WriteTaskEndpoints::new(read_endpoints, store_endpoints),
-            ReceiverStream::new(write_rx).take_until(stopping),
+            ReceiverStream::new(write_rx).take_until(stopping.clone()),
             read_tx,
             write_vote,
             reporting,
             store,
         )
         .instrument(info_span!("Agent Runtime Write Task", %identity, %node_uri));
+
+        let http_task = http_task(
+            stopping,
+            config,
+            http_requests,
+            http_lane_endpoints,
+            http_rx,
+            http_vote,
+        );
 
         let ext_link_config = LinksTaskConfig {
             buffer_size: config.ad_hoc_buffer_size,
@@ -488,7 +548,7 @@ where
         .instrument(info_span!("Agent Ad Hoc Command Task", %identity, %node_uri));
 
         let io = await_io_tasks(read, write, kill_switch_tx);
-        let (_, _, result) = join3(att, ext_links, io).await;
+        let (_, _, _, result) = join4(att, ext_links, http_task, io).await;
         result
     }
 }
@@ -540,6 +600,7 @@ impl WriteTaskMessage {
 /// * `attachment` - External requests to attach new remotes.
 /// * `read_tx` - Channel to communicate with the read task.
 /// * `write_tx` - Channel to communicate with the write task.
+/// * `http_tx` - Channel to the HTTP lane task.
 /// * `ext_link_tx` - Channel to communicate with the external links task.
 /// * `combined_stop` - The task will stop when this future completes. This should combined the overall
 /// shutdown-signal with latch that ensures this task will stop if the read/write tasks stop (to avoid
@@ -549,6 +610,7 @@ async fn attachment_task<F>(
     mut attachment: mpsc::Receiver<AgentAttachmentRequest>,
     read_tx: mpsc::Sender<ReadTaskMessage>,
     write_tx: mpsc::Sender<WriteTaskMessage>,
+    http_tx: mpsc::Sender<HttpLaneRuntimeSpec>,
     ext_link_tx: mpsc::Sender<ExternalLinkRequest>,
     mut combined_stop: F,
 ) where
@@ -570,6 +632,7 @@ async fn attachment_task<F>(
                         Either::Left(request) => {
                             let succeeded = match request {
                                 AgentRuntimeRequest::AddLane(req) => write_tx.send(WriteTaskMessage::Lane(req)).await.is_ok(),
+                                AgentRuntimeRequest::AddHttpLane(req) => http_tx.send(req).await.is_ok(),
                                 AgentRuntimeRequest::AddStore(req) => write_tx.send(WriteTaskMessage::Store(req)).await.is_ok(),
                                 AgentRuntimeRequest::AdHoc(request) => ext_link_tx.send(ExternalLinkRequest::AdHoc(request)).await.is_ok(),
                                 AgentRuntimeRequest::OpenDownlink(req) => ext_link_tx.send(ExternalLinkRequest::Downlink(req)).await.is_ok(),
@@ -701,7 +764,9 @@ fn remote_receiver(reader: ByteReader) -> RemoteReceiver {
 }
 
 const TASK_COORD_ERR: &str = "Stopping after communicating with the write task failed.";
-const STOP_VOTED: &str = "Stopping as read and write tasks have both voted to do so.";
+const STOP_VOTED: &str = "Stopping as read, HTTP and write tasks have all voted to do so.";
+const STOP_RESCINDED: &str = "Vote to stop rescinded.";
+const ATTEMPTING_RESCIND: &str = "Attempting to rescind stop vote.";
 
 /// Events that can occur within the read task.
 enum ReadTaskEvent {
@@ -825,12 +890,12 @@ async fn read_task(
             },
             ReadTaskEvent::Envelope(msg) => {
                 if voted {
-                    trace!("Attempting to rescind stop vote.");
+                    trace!(ATTEMPTING_RESCIND);
                     if stop_vote.rescind() == VoteResult::Unanimous {
                         info!(STOP_VOTED);
                         break;
                     } else {
-                        info!("Vote to stop rescinded.");
+                        info!(STOP_RESCINDED);
                         voted = false;
                     }
                 }
@@ -1747,10 +1812,13 @@ where
                     schedule_prune,
                 } => {
                     if voted {
+                        trace!(ATTEMPTING_RESCIND);
                         if stop_voter.rescind() == VoteResult::Unanimous {
                             info!(STOP_VOTED);
                             remote_reason = DisconnectionReason::AgentTimedOut;
                             break;
+                        } else {
+                            info!(STOP_RESCINDED);
                         }
                         streams.enable_timeout();
                         voted = false;
@@ -1775,10 +1843,13 @@ where
             },
             WriteTaskEvent::Event(response) => {
                 if response.is_lane() && voted {
+                    trace!(ATTEMPTING_RESCIND);
                     if stop_voter.rescind() == VoteResult::Unanimous {
                         info!(STOP_VOTED);
                         remote_reason = DisconnectionReason::AgentTimedOut;
                         break;
+                    } else {
+                        info!(STOP_RESCINDED);
                     }
                     streams.enable_timeout();
                     voted = false;
@@ -1929,5 +2000,126 @@ where
         }
     } else {
         Ok(())
+    }
+}
+
+enum HttpTaskEvent {
+    Registration(HttpLaneRuntimeSpec),
+    Request(HttpLaneRequest),
+    Timeout,
+}
+
+async fn http_task(
+    mut stopping: trigger::Receiver,
+    config: AgentRuntimeConfig,
+    mut requests: mpsc::Receiver<HttpLaneRequest>,
+    initial_endpoints: Vec<HttpLaneEndpoint>,
+    mut registrations: mpsc::Receiver<HttpLaneRuntimeSpec>,
+    stop_voter: timeout_coord::Voter,
+) {
+    let mut endpoints: HashMap<_, _> = initial_endpoints
+        .into_iter()
+        .map(
+            |HttpLaneEndpoint {
+                 name,
+                 request_sender,
+             }| (name, request_sender),
+        )
+        .collect();
+
+    let mut voted = false;
+
+    loop {
+        let event = tokio::select! {
+            _ = &mut stopping => break,
+            maybe_reg = registrations.recv() => {
+                if let Some(reg) = maybe_reg {
+                    HttpTaskEvent::Registration(reg)
+                } else {
+                    break;
+                }
+            },
+            result = tokio::time::timeout(config.inactive_timeout, requests.recv()) => {
+                match result {
+                    Ok(Some(req)) => HttpTaskEvent::Request(req),
+                    Err(_) => HttpTaskEvent::Timeout,
+                    _ => break,
+                }
+            }
+        };
+        match event {
+            HttpTaskEvent::Registration(HttpLaneRuntimeSpec { name, promise }) => {
+                let (tx, rx) = mpsc::channel(config.lane_http_request_channel_size.get());
+                if promise.send(Ok(rx)).is_err() {
+                    error!(name = %name, "Request for a new HTTP lane was dropped before it was completed.");
+                } else {
+                    endpoints.insert(name, tx);
+                }
+            }
+            HttpTaskEvent::Request(request) => {
+                if voted {
+                    trace!(ATTEMPTING_RESCIND);
+                    match stop_voter.rescind() {
+                        VoteResult::Unanimous => {
+                            info!(STOP_VOTED);
+                            break;
+                        }
+                        VoteResult::UnanimityPending => {
+                            info!(STOP_RESCINDED);
+                            voted = false;
+                        }
+                    }
+                }
+                let extracted_name = uri_params::extract_lane(&request.request.uri);
+                if let Some((lane_name, tx)) = extracted_name.as_ref().and_then(|lane_name| {
+                    endpoints
+                        .get(lane_name.as_ref())
+                        .map(move |tx| (lane_name, tx))
+                }) {
+                    match tx.reserve().await {
+                        Ok(res) => res.send(request),
+                        err => {
+                            drop(err); //Surprisingly, this is needed. Binding to _ does not pass the borrow checker.
+                            endpoints.remove(lane_name.as_ref());
+                        }
+                    }
+                } else {
+                    not_found(extracted_name.as_deref(), request.response_tx);
+                }
+            }
+            HttpTaskEvent::Timeout => {
+                if !voted {
+                    info!(
+                        "No HTTP requests received within {:?}. Voting to stop.",
+                        config.inactive_timeout
+                    );
+                    if stop_voter.vote() == VoteResult::Unanimous {
+                        info!(STOP_VOTED);
+                        break;
+                    }
+                    voted = true;
+                }
+            }
+        }
+    }
+}
+
+fn not_found(lane_name: Option<&str>, response_tx: oneshot::Sender<HttpLaneResponse>) {
+    let payload = if let Some(name) = lane_name {
+        Bytes::from(format!(
+            "This agent does not have an HTTP lane called `{}`",
+            name
+        ))
+    } else {
+        Bytes::from("No lane name was specified.")
+    };
+    let not_found_response = HttpResponse {
+        status_code: StatusCode::NOT_FOUND,
+        version: Version::HTTP_1_1,
+        headers: vec![],
+        payload,
+    };
+    if response_tx.send(not_found_response).is_err() {
+        error!("HTTP connection was terminated before the response cound be sent.");
     }
 }

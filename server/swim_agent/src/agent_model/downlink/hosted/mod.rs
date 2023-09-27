@@ -119,7 +119,7 @@ mod test_support {
     use bytes::BytesMut;
     use futures::future::BoxFuture;
     use swim_api::{
-        agent::{AgentConfig, AgentContext, LaneConfig},
+        agent::{AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig},
         downlink::DownlinkKind,
         error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
         meta::lane::LaneKind,
@@ -186,6 +186,13 @@ mod test_support {
             _name: &str,
             _kind: StoreKind,
         ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
+            panic!("Unexpected runtime interaction.");
+        }
+
+        fn add_http_lane(
+            &self,
+            _name: &str,
+        ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
             panic!("Unexpected runtime interaction.");
         }
     }

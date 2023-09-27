@@ -22,7 +22,7 @@ use ratchet::{
     NoExtProvider, WebSocketStream,
 };
 use swim_api::{agent::Agent, error::StoreError, store::StoreDisabled};
-use swim_runtime::net::{dns::Resolver, plain::TokioPlainTextNetworking, ExternalConnections};
+use swim_remote::net::{dns::Resolver, plain::TokioPlainTextNetworking, ExternalConnections};
 use swim_tls::{RustlsNetworking, TlsConfig};
 use swim_utilities::routing::route_pattern::RoutePattern;
 
@@ -244,8 +244,7 @@ where
         ..
     } = config;
     if let Some(deflate_config) = deflate {
-        let websockets =
-            HyperWebsockets::new(server_config.websockets, server_config.max_http_requests);
+        let websockets = HyperWebsockets::new(server_config.http);
         let ext_provider = DeflateExtProvider::with_config(deflate_config);
         Box::new(SwimServer::new(
             routes,
@@ -256,8 +255,7 @@ where
             introspection,
         ))
     } else {
-        let websockets =
-            HyperWebsockets::new(server_config.websockets, server_config.max_http_requests);
+        let websockets = HyperWebsockets::new(server_config.http);
         let ext_provider = NoExtProvider;
         Box::new(SwimServer::new(
             routes,

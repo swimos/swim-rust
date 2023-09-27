@@ -20,7 +20,6 @@ use crate::{
         CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest,
     },
     downlink::{DownlinkOptions, Io},
-    net::SchemeHostPort,
 };
 use bytes::Bytes;
 use futures::{
@@ -32,6 +31,7 @@ use rand::Rng;
 use swim_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError},
+    net::SchemeHostPort,
     protocol::{
         agent::{AdHocCommand, AdHocCommandEncoder},
         WithLenReconEncoder,
@@ -174,9 +174,9 @@ async fn replace_channel() {
 type CommandSender = FramedWrite<ByteWriter, AdHocCommandEncoder<WithLenReconEncoder>>;
 
 const ADDRS: &[(Option<&str>, &str, &str)] = &[
-    (Some("localhost:8080"), "/node", "lane"),
-    (Some("localhost:8080"), "/node", "lane2"),
-    (Some("other:8080"), "/node", "lane"),
+    (Some("ws://localhost:8080"), "/node", "lane"),
+    (Some("ws://localhost:8080"), "/node", "lane2"),
+    (Some("ws://other:8080"), "/node", "lane"),
     (None, "/node", "lane"),
 ];
 

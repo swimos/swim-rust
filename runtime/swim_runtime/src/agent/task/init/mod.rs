@@ -46,8 +46,9 @@ use crate::agent::{
 
 use super::{
     external_links::{external_links_task, LinksTaskConfig, LinksTaskState, NoReport},
-    ExternalLinkRequest, InitialEndpoints, ItemEndpoint, ItemInitTask, LaneEndpoint, LaneResult,
-    LaneRuntimeSpec, StoreEndpoint, StoreResult, StoreRuntimeSpec,
+    Endpoints, ExternalLinkRequest, HttpLaneEndpoint, HttpLaneRuntimeSpec, InitialEndpoints,
+    ItemEndpoint, ItemInitTask, LaneEndpoint, LaneResult, LaneRuntimeSpec, StoreEndpoint,
+    StoreResult, StoreRuntimeSpec,
 };
 
 use tracing::{error, info};
@@ -72,6 +73,7 @@ pub struct InitTaskConfig {
     pub ad_hoc_queue_size: NonZeroUsize,
     pub item_init_timeout: Duration,
     pub external_links: LinksTaskConfig,
+    pub http_lane_channel_size: NonZeroUsize,
 }
 
 impl AgentInitTask {
@@ -150,13 +152,13 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
             ad_hoc_queue_size,
             item_init_timeout,
             external_links,
+            http_lane_channel_size,
         } = config;
         let initialization = Initialization::new(reporting, item_init_timeout);
         let mut request_stream = ReceiverStream::new(requests);
         let terminated = (&mut request_stream).take_until(init_complete);
 
-        let mut lane_endpoints: Vec<LaneEndpoint<Io>> = vec![];
-        let mut store_endpoints: Vec<StoreEndpoint> = vec![];
+        let mut endpoints = Endpoints::default();
 
         let (ext_link_tx, ext_link_rx) = mpsc::channel(ad_hoc_queue_size.get());
 
@@ -176,23 +178,22 @@ impl<Store: AgentPersistence + Send + Sync> AgentInitTask<Store> {
             &link_requests,
             ext_link_tx,
             &initialization,
-            &mut lane_endpoints,
-            &mut store_endpoints,
+            http_lane_channel_size,
+            &mut endpoints,
         );
 
         let (result, ext_link_state) = join(item_init_task, ext_links_task).await;
         result?;
 
         let Initialization { reporting, .. } = initialization;
-        if lane_endpoints.is_empty() {
+        if endpoints.lane_endpoints.is_empty() {
             Err(AgentExecError::NoInitialLanes)
         } else {
             Ok((
                 InitialEndpoints::new(
                     reporting,
                     request_stream.into_inner(),
-                    lane_endpoints,
-                    store_endpoints,
+                    endpoints,
                     ext_link_state,
                 ),
                 store,
@@ -450,13 +451,18 @@ async fn initialize_items<Store, R>(
     link_requests: &mpsc::Sender<LinkRequest>,
     ext_link_tx: mpsc::Sender<ExternalLinkRequest>,
     initialization: &Initialization,
-    lane_endpoints: &mut Vec<LaneEndpoint<Io>>,
-    store_endpoints: &mut Vec<StoreEndpoint>,
+    http_channel_size: NonZeroUsize,
+    endpoints: &mut Endpoints,
 ) -> Result<(), AgentExecError>
 where
     Store: AgentPersistence + Send + Sync,
     R: Stream<Item = AgentRuntimeRequest> + Unpin,
 {
+    let Endpoints {
+        lane_endpoints,
+        http_lane_endpoints,
+        store_endpoints,
+    } = endpoints;
     let mut initializers: FuturesUnordered<ItemInitTask<'_, Store::StoreId>> =
         FuturesUnordered::new();
     loop {
@@ -520,6 +526,17 @@ where
                         .is_err()
                     {
                         break Err(AgentExecError::FailedDownlinkRequest);
+                    }
+                }
+                AgentRuntimeRequest::AddHttpLane(HttpLaneRuntimeSpec { name, promise }) => {
+                    let (tx, rx) = mpsc::channel(http_channel_size.get());
+                    if promise.send(Ok(rx)).is_err() {
+                        error!(
+                            "Agent failed to receive HTTP lane registration for lane named '{}'.",
+                            name
+                        );
+                    } else {
+                        http_lane_endpoints.push(HttpLaneEndpoint::new(name, tx));
                     }
                 }
             },

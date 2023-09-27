@@ -18,7 +18,7 @@ use std::{
 };
 
 use swim_api::error::StoreError;
-use swim_runtime::net::ConnectionError;
+use swim_remote::net::ConnectionError;
 use swim_tls::TlsError;
 use thiserror::Error;
 

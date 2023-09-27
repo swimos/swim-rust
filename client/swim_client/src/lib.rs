@@ -17,7 +17,7 @@ use ratchet::NoExtProvider;
 use ratchet::WebSocketStream;
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
-use swim_runtime::ws::RatchetClient;
+use swim_remote::ws::RatchetClient;
 
 use futures_util::future::BoxFuture;
 #[cfg(feature = "deflate")]
@@ -38,10 +38,10 @@ use swim_downlink::{
     NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation,
 };
 use swim_form::Form;
+use swim_remote::net::dns::Resolver;
+use swim_remote::net::plain::TokioPlainTextNetworking;
+use swim_remote::net::ClientConnections;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
-use swim_runtime::net::dns::Resolver;
-use swim_runtime::net::plain::TokioPlainTextNetworking;
-use swim_runtime::net::ClientConnections;
 #[cfg(feature = "tls")]
 use swim_tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
 use swim_utilities::trigger;

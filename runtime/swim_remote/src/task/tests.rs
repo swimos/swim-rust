@@ -41,7 +41,10 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
-use crate::{error::AgentResolutionError, task::OutgoingKind, AttachClient, FindNode, NoSuchAgent};
+use crate::{
+    error::AgentResolutionError, task::OutgoingKind, AttachClient, FindNode, NoSuchAgent,
+    NodeConnectionRequest,
+};
 
 use super::{InputError, OutgoingTaskMessage, RegisterIncoming};
 
@@ -214,7 +217,10 @@ where
         while let Some(FindNode {
             node,
             lane,
-            provider,
+            request:
+                NodeConnectionRequest::Warp {
+                    promise: provider, ..
+                },
             ..
         }) = find_rx.recv().await
         {
@@ -555,7 +561,7 @@ async fn incoming_route_not_found_env() {
             }) => {
                 assert!(!command_envelope);
                 assert_eq!(node, OTHER);
-                assert_eq!(lane, LANE);
+                assert_eq!(lane.as_ref().map(|s| s.as_str()), Some(LANE));
             }
             ow => panic!("Unexpected registration: {:?}", ow),
         }
@@ -937,7 +943,7 @@ async fn outgoing_lane_not_found() {
                 command_envelope: false,
                 error: AgentResolutionError::NotFound(NoSuchAgent {
                     node: Text::new(OTHER),
-                    lane: Text::new(LANE),
+                    lane: Some(Text::new(LANE)),
                 }),
             })
             .await
@@ -1027,7 +1033,10 @@ where
         while let Some(FindNode {
             node,
             lane,
-            provider,
+            request:
+                NodeConnectionRequest::Warp {
+                    promise: provider, ..
+                },
             ..
         }) = find_rx.recv().await
         {

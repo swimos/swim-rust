@@ -63,6 +63,7 @@ use crate::agent::{
 use super::{LaneEndpoint, RwCoordinationMessage};
 
 mod coordination;
+mod http;
 mod read;
 mod write;
 
@@ -82,6 +83,7 @@ fn make_prune_config(
 ) -> AgentRuntimeConfig {
     AgentRuntimeConfig {
         attachment_queue_size: non_zero_usize!(8),
+        agent_http_request_channel_size: non_zero_usize!(8),
         inactive_timeout,
         prune_remote_delay,
         shutdown_timeout: SHUTDOWN_TIMEOUT,
@@ -89,12 +91,14 @@ fn make_prune_config(
         ad_hoc_output_timeout: AD_HOC_TIMEOUT,
         ad_hoc_output_retry: RetryStrategy::none(),
         ad_hoc_buffer_size: non_zero_usize!(4096),
+        lane_http_request_channel_size: non_zero_usize!(8),
     }
 }
 
 const VAL_LANE: &str = "value_lane";
 const SUPPLY_LANE: &str = "supply_lane";
 const MAP_LANE: &str = "map_lane";
+const HTTP_LANE: &str = "http_lane";
 const VAL_STORE: &str = "value_store";
 const MAP_STORE: &str = "map_store";
 

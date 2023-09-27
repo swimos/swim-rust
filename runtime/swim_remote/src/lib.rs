@@ -13,9 +13,11 @@
 // limitations under the License.
 
 mod error;
+pub mod net;
 mod task;
+pub mod ws;
 
 pub use self::{
     error::{AgentResolutionError, NoSuchAgent},
-    task::{AttachClient, FindNode, LinkError, RemoteTask},
+    task::{AttachClient, FindNode, LinkError, NodeConnectionRequest, RemoteTask},
 };

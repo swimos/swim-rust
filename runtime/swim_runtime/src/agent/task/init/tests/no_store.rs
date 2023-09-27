@@ -36,7 +36,8 @@ use super::{check_connected, run_test, TestInit, CONFIGS, INIT_STOPPED, NO_LANE,
 use crate::agent::{
     task::{
         init::tests::{run_test_with_reporting, AGENT_ID, TRANSIENT},
-        AgentRuntimeRequest, InitialEndpoints, LaneEndpoint, LaneRuntimeSpec, StoreRuntimeSpec,
+        AgentRuntimeRequest, Endpoints, InitialEndpoints, LaneEndpoint, LaneRuntimeSpec,
+        StoreRuntimeSpec,
     },
     AgentExecError, Io, LinkRequest,
 };
@@ -195,8 +196,12 @@ async fn single_lane() {
         let initial = initial_result.expect("No lanes were registered.");
 
         let InitialEndpoints {
-            mut lane_endpoints,
-            store_endpoints,
+            endpoints:
+                Endpoints {
+                    mut lane_endpoints,
+                    store_endpoints,
+                    ..
+                },
             ..
         } = initial;
 
@@ -230,8 +235,12 @@ async fn single_lane_with_reporting() {
         let initial = initial_result.expect("No lanes were registered.");
 
         let InitialEndpoints {
-            mut lane_endpoints,
-            store_endpoints,
+            endpoints:
+                Endpoints {
+                    mut lane_endpoints,
+                    store_endpoints,
+                    ..
+                },
             ..
         } = initial;
 
@@ -354,8 +363,12 @@ async fn two_lanes() {
         let initial = initial_result.expect("No lanes were registered.");
 
         let InitialEndpoints {
-            lane_endpoints,
-            store_endpoints,
+            endpoints:
+                Endpoints {
+                    lane_endpoints,
+                    store_endpoints,
+                    ..
+                },
             ..
         } = initial;
 
@@ -520,8 +533,12 @@ async fn stores_not_supported() {
     let initial = initial_result.expect("No lanes were registered.");
 
     let InitialEndpoints {
-        lane_endpoints,
-        store_endpoints,
+        endpoints:
+            Endpoints {
+                lane_endpoints,
+                store_endpoints,
+                ..
+            },
         ..
     } = initial;
 

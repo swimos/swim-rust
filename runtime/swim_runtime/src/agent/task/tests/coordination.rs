@@ -21,34 +21,41 @@ use crate::agent::{
     task::{
         external_links::LinksTaskState,
         tests::{RemoteReceiver, RemoteSender},
-        AgentRuntimeTask, InitialEndpoints, LaneEndpoint, NodeDescriptor,
+        AgentRuntimeTask, Endpoints, HttpLaneEndpoint, InitialEndpoints, LaneEndpoint,
+        NodeDescriptor,
     },
     AgentAttachmentRequest, AgentRuntimeRequest, DisconnectionReason, Io, LaneRuntimeSpec,
     LinkRequest,
 };
+use bytes::Bytes;
 use futures::{
     future::{join, join3, Either},
     stream::SelectAll,
     Future, StreamExt,
 };
+use http::Uri;
 use std::fmt::Debug;
 use swim_api::{
-    agent::UplinkKind,
+    agent::{HttpLaneRequest, UplinkKind},
     meta::lane::LaneKind,
     protocol::{agent::LaneRequest, map::MapMessage},
 };
-use swim_model::Text;
+use swim_model::{
+    http::{HttpRequest, HttpResponse, Method, StatusCode, Version},
+    Text,
+};
 use swim_utilities::{
     io::byte_channel::byte_channel,
     trigger::{self, promise},
 };
 use tokio::sync::{mpsc, oneshot};
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
 use uuid::Uuid;
 
 use super::{
     make_prune_config, LaneReader, MapLaneSender, ValueLikeLaneSender, BUFFER_SIZE,
-    DEFAULT_TIMEOUT, INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT, VAL_LANE,
+    DEFAULT_TIMEOUT, HTTP_LANE, INACTIVE_TEST_TIMEOUT, MAP_LANE, QUEUE_SIZE, TEST_TIMEOUT,
+    VAL_LANE,
 };
 
 #[derive(Debug, Clone)]
@@ -60,6 +67,10 @@ enum Event {
     MapCommand {
         name: Text,
         cmd: MapMessage<Text, i32>,
+    },
+    HttpRequest {
+        name: Text,
+        request: HttpRequest<Bytes>,
     },
 }
 
@@ -90,6 +101,7 @@ impl AgentState {
 
 struct FakeAgent {
     initial: Vec<LaneEndpoint<Io>>,
+    initial_http: Vec<(Text, mpsc::Receiver<HttpLaneRequest>)>,
     initial_state: AgentState,
     stopping: trigger::Receiver,
     request_tx: mpsc::Sender<AgentRuntimeRequest>,
@@ -100,6 +112,7 @@ struct FakeAgent {
 impl FakeAgent {
     fn new(
         initial: Vec<LaneEndpoint<Io>>,
+        initial_http: Vec<(Text, mpsc::Receiver<HttpLaneRequest>)>,
         initial_state: Option<AgentState>,
         stopping: trigger::Receiver,
         request_tx: mpsc::Sender<AgentRuntimeRequest>,
@@ -108,6 +121,7 @@ impl FakeAgent {
     ) -> Self {
         FakeAgent {
             initial,
+            initial_http,
             initial_state: initial_state.unwrap_or_default(),
             stopping,
             request_tx,
@@ -119,6 +133,7 @@ impl FakeAgent {
     async fn run(self) -> AgentState {
         let FakeAgent {
             initial,
+            initial_http,
             mut initial_state,
             stopping,
             request_tx,
@@ -129,6 +144,11 @@ impl FakeAgent {
         let mut value_lanes = HashMap::new();
         let mut map_lanes = HashMap::new();
         let mut lanes = SelectAll::new();
+        let mut http_lanes = SelectAll::new();
+
+        for (name, rx) in initial_http {
+            http_lanes.push(ReceiverStream::new(rx).map(move |req| (name.clone(), req)));
+        }
 
         for endpoint in initial {
             let LaneEndpoint {
@@ -240,6 +260,20 @@ impl FakeAgent {
                         break;
                     }
                 },
+                maybe_req = http_lanes.next(), if !http_lanes.is_empty() => {
+                    if let Some((name, HttpLaneRequest { request, response_tx })) = maybe_req {
+                        assert!(event_tx.send(Event::HttpRequest { name, request: request.clone() }).is_ok());
+                        let response = HttpResponse {
+                            status_code: StatusCode::OK,
+                            version: Version::HTTP_1_1,
+                            headers: vec![],
+                            payload: Bytes::from("Test Response")
+                        };
+                        response_tx.send(response).expect("Request dropped.");
+                    } else {
+                        break;
+                    }
+                }
                 maybe_create = create_stream.next() => {
                     if let Some(CreateLane { name, kind }) = maybe_create {
                         let (tx, rx) = oneshot::channel();
@@ -309,11 +343,36 @@ impl Events {
             _ => panic!("Agent failed."),
         }
     }
+
+    async fn await_http_request(&mut self) {
+        let Events(inner) = self;
+        let event = inner.recv().await;
+        match event {
+            Some(Event::HttpRequest {
+                name,
+                request:
+                    HttpRequest {
+                        method,
+                        uri,
+                        payload,
+                        ..
+                    },
+            }) => {
+                assert_eq!(name.as_str(), HTTP_LANE);
+                assert_eq!(method, Method::GET);
+                assert_eq!(uri, Uri::from_static(HTTP_URI));
+                assert_eq!(payload.as_ref(), b"Request");
+            }
+            Some(ow) => panic!("Unexpected event: {:?}", ow),
+            _ => panic!("Agent failed."),
+        }
+    }
 }
 
 #[derive(Debug)]
 struct TestContext {
     att_tx: mpsc::Sender<AgentAttachmentRequest>,
+    http_tx: mpsc::Sender<HttpLaneRequest>,
     links_rx: mpsc::Receiver<LinkRequest>,
     create_tx: mpsc::UnboundedSender<CreateLane>,
     event_rx: Events,
@@ -322,6 +381,7 @@ struct TestContext {
 
 const AGENT_ID: Uuid = Uuid::from_u128(1);
 const NODE: &str = "/node";
+const HTTP_URI: &str = "http://example:8080/node?lane=http_lane";
 const RID1: Uuid = Uuid::from_u128(5);
 const RID2: Uuid = Uuid::from_u128(89);
 const RID3: Uuid = Uuid::from_u128(222);
@@ -340,6 +400,7 @@ where
     let config = make_prune_config(inactive_timeout, prune_timeout);
     let (req_tx, req_rx) = mpsc::channel(QUEUE_SIZE.get());
     let (att_tx, att_rx) = mpsc::channel(QUEUE_SIZE.get());
+    let (http_tx, http_rx) = mpsc::channel(QUEUE_SIZE.get());
     let (links_tx, links_rx) = mpsc::channel(QUEUE_SIZE.get());
     let (create_tx, create_rx) = mpsc::unbounded_channel();
     let (event_tx, event_rx) = mpsc::unbounded_channel();
@@ -382,11 +443,20 @@ where
         None,
     ));
 
+    let (tx_http, rx_http) = mpsc::channel(QUEUE_SIZE.get());
+
+    let http_endpoints = vec![HttpLaneEndpoint::new(Text::new(HTTP_LANE), tx_http)];
+
+    let initial_http = vec![(Text::new(HTTP_LANE), rx_http)];
+    let endpoints = Endpoints {
+        lane_endpoints: runtime_endpoints,
+        http_lane_endpoints: http_endpoints,
+        store_endpoints: vec![],
+    };
     let init = InitialEndpoints::new(
         None,
         req_rx,
-        runtime_endpoints,
-        vec![],
+        endpoints,
         LinksTaskState::new(links_tx.clone()),
     );
 
@@ -394,12 +464,14 @@ where
         NodeDescriptor::new(AGENT_ID, Text::new(NODE)),
         init,
         att_rx,
+        http_rx,
         stop_rx.clone(),
         config,
     );
 
     let agent = FakeAgent::new(
         agent_endpoints,
+        initial_http,
         initial_state,
         stop_rx.clone(),
         req_tx,
@@ -409,6 +481,7 @@ where
 
     let context = TestContext {
         att_tx,
+        http_tx,
         links_rx,
         create_tx,
         stop_tx,
@@ -435,6 +508,7 @@ async fn immediate_shutdown() {
         |context| async move {
             let TestContext {
                 att_tx: _att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -478,6 +552,7 @@ async fn link_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -505,6 +580,7 @@ async fn set_value() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 mut event_rx,
@@ -533,6 +609,7 @@ async fn set_values() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 mut event_rx,
@@ -563,6 +640,7 @@ async fn insert_value() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 mut event_rx,
@@ -593,6 +671,7 @@ async fn unlink_when_not_linked_does_nothing() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 mut event_rx,
@@ -623,6 +702,7 @@ async fn unlink_linked_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -656,6 +736,7 @@ async fn sync_value_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -686,6 +767,7 @@ async fn sync_empty_map_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -724,6 +806,7 @@ async fn sync_nonempty_map_lane() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -770,6 +853,7 @@ async fn sync_lane_implicit_link() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -799,6 +883,7 @@ async fn receive_messages_when_linked() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -845,6 +930,7 @@ async fn link_two_consumers() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -884,6 +970,7 @@ async fn receive_messages_when_liked_multiple_consumers() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -953,6 +1040,7 @@ async fn agent_timeout() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -981,6 +1069,7 @@ async fn remote_timeout() {
         |context| async move {
             let TestContext {
                 att_tx,
+                http_tx: _http_tx,
                 links_rx: _links_rx,
                 create_tx: _create_tx,
                 event_rx: _event_rx,
@@ -991,6 +1080,44 @@ async fn remote_timeout() {
             receiver
                 .expect_clean_shutdown(vec![], Some(DisconnectionReason::RemoteTimedOut))
                 .await;
+            stop_tx.trigger();
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn http_request() {
+    run_test_case(
+        DEFAULT_TIMEOUT,
+        DEFAULT_TIMEOUT,
+        None,
+        |context| async move {
+            let TestContext {
+                att_tx: _att_tx,
+                http_tx,
+                links_rx: _links_rx,
+                create_tx: _create_tx,
+                mut event_rx,
+                stop_tx,
+            } = context;
+
+            let (response_tx, response_rx) = oneshot::channel();
+            let request = HttpLaneRequest::new(
+                HttpRequest {
+                    method: Method::GET,
+                    version: Version::HTTP_1_1,
+                    uri: Uri::from_static(HTTP_URI),
+                    headers: vec![],
+                    payload: Bytes::from("Request"),
+                },
+                response_tx,
+            );
+            http_tx.send(request).await.expect("Channel dropped.");
+            event_rx.await_http_request().await;
+            let response = response_rx.await.expect("Request dropped.");
+            assert_eq!(response.status_code, StatusCode::OK);
+
             stop_tx.trigger();
         },
     )

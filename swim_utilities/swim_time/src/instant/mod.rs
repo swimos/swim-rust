@@ -62,4 +62,24 @@ impl AtomicInstant {
         let offset = val - self.base;
         self.offset.store(offset.as_millis() as u64, order);
     }
+
+    /// Extract the contained instant.
+    pub fn into_inner(self) -> Instant {
+        let offset_millis = self.offset.into_inner();
+        let offset = Duration::from_millis(offset_millis);
+        self.base + offset
+    }
+
+    /// Get the value with exclusive access.
+    pub fn get(&mut self) -> Instant {
+        let offset_millis = *self.offset.get_mut();
+        let offset = Duration::from_millis(offset_millis);
+        self.base + offset
+    }
+
+    /// Set the value with exclusive access.
+    pub fn set(&mut self, val: Instant) {
+        let offset = val - self.base;
+        *self.offset.get_mut() = offset.as_millis() as u64;
+    }
 }

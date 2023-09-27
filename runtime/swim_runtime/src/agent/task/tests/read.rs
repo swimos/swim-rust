@@ -116,7 +116,8 @@ impl FakeAgent {
 struct TestContext {
     stop_sender: trigger::Sender,
     reg_tx: mpsc::Sender<ReadTaskMessage>,
-    vote2: timeout_coord::Voter,
+    write_voter: timeout_coord::Voter,
+    http_voter: timeout_coord::Voter,
     vote_rx: timeout_coord::Receiver,
     event_rx: mpsc::UnboundedReceiver<Event>,
     readers: Option<ReportReaders>,
@@ -176,7 +177,7 @@ where
 
     let agent = FakeAgent::new(endpoints_rx, coord_rx, stop_rx.clone(), event_tx);
 
-    let (vote1, vote2, vote_rx) = timeout_coord::timeout_coordinator();
+    let (vote1, vote2, vote3, vote_rx) = timeout_coord::timeout_coordinator();
 
     let read = read_task(
         config,
@@ -191,7 +192,8 @@ where
     let context = TestContext {
         stop_sender: stop_tx,
         reg_tx,
-        vote2,
+        write_voter: vote2,
+        http_voter: vote3,
         vote_rx,
         event_rx,
         readers: reporting,
@@ -212,7 +214,8 @@ async fn shutdown_no_remotes() {
         let TestContext {
             stop_sender,
             reg_tx: _reg_tx,
-            vote2: _vote2,
+            write_voter: _write_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             event_rx: _event_rx,
             ..
@@ -248,7 +251,8 @@ async fn attach_remote_and_link() {
         let TestContext {
             stop_sender,
             reg_tx,
-            vote2: _vote2,
+            write_voter: _write_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             mut event_rx,
             ..
@@ -275,7 +279,8 @@ async fn attach_remote_and_sync() {
         let TestContext {
             stop_sender,
             reg_tx,
-            vote2: _vote2,
+            write_voter: _write_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             mut event_rx,
             ..
@@ -302,7 +307,8 @@ async fn attach_remote_and_value_command() {
         let TestContext {
             stop_sender,
             reg_tx,
-            vote2: _vote2,
+            write_voter: _write_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             mut event_rx,
             ..
@@ -329,7 +335,8 @@ async fn attach_remote_and_map_command() {
         let TestContext {
             stop_sender,
             reg_tx,
-            vote2: _vote2,
+            write_voter: _write_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             mut event_rx,
             ..
@@ -361,14 +368,16 @@ async fn votes_to_stop() {
             let TestContext {
                 stop_sender,
                 reg_tx,
-                vote2,
+                write_voter,
+                http_voter,
                 vote_rx,
                 event_rx: _event_rx,
                 ..
             } = context;
             let _sender = attach_remote(&reg_tx).await;
-            //Voting on behalf of the missing write task.
-            assert_eq!(vote2.vote(), VoteResult::UnanimityPending);
+            //Voting on behalf of the missing write and HTTP tasks.
+            assert_eq!(write_voter.vote(), VoteResult::UnanimityPending);
+            assert_eq!(http_voter.vote(), VoteResult::UnanimityPending);
             vote_rx.await;
             stop_sender
         })
@@ -382,7 +391,8 @@ async fn rescinds_stop_vote_on_input() {
         let TestContext {
             stop_sender,
             reg_tx,
-            vote2,
+            write_voter,
+            http_voter,
             vote_rx: _vote_rx,
             mut event_rx,
             ..
@@ -393,7 +403,8 @@ async fn rescinds_stop_vote_on_input() {
 
         sender.value_command(VAL_LANE, 77).await;
         let _ = event_rx.recv().await;
-        assert_eq!(vote2.vote(), VoteResult::UnanimityPending);
+        assert_eq!(write_voter.vote(), VoteResult::UnanimityPending);
+        assert_eq!(http_voter.vote(), VoteResult::UnanimityPending);
         stop_sender
     })
     .await;
@@ -406,7 +417,8 @@ async fn attach_two_remotes_and_link() {
         let TestContext {
             stop_sender,
             reg_tx,
-            vote2: _vote2,
+            write_voter: _write_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             mut event_rx,
             ..
@@ -446,7 +458,8 @@ async fn send_on_two_remotes() {
         let TestContext {
             stop_sender,
             reg_tx,
-            vote2: _vote2,
+            write_voter: _write_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             mut event_rx,
             ..
@@ -517,7 +530,8 @@ async fn reports_command_counts() {
         let TestContext {
             stop_sender,
             reg_tx,
-            vote2: _vote2,
+            write_voter: _write_voter,
+            http_voter: _http_voter,
             vote_rx: _vote_rx,
             mut event_rx,
             readers,

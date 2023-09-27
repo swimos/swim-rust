@@ -30,7 +30,7 @@ use swim_utilities::{
 };
 use tokio::sync::mpsc;
 
-use crate::agent::{AgentExecError, AgentRoute};
+use crate::agent::{AgentExecError, AgentRoute, AgentRouteChannels};
 
 use super::AgentRouteTask;
 
@@ -130,14 +130,14 @@ async fn test_agent_failure() {
             route_params: HashMap::new(),
         };
         let (_attachment_tx, attachment_rx) = mpsc::channel(16);
+        let (_http_tx, http_rx) = mpsc::channel(16);
         let (downlink_tx, _downlink_rx) = mpsc::channel(16);
         let (_stopping_tx, stopping_rx) = trigger::trigger();
 
         let task = AgentRouteTask::new(
             &agent,
             identity,
-            attachment_rx,
-            downlink_tx,
+            AgentRouteChannels::new(attachment_rx, http_rx, downlink_tx),
             stopping_rx,
             Default::default(),
             None,
@@ -163,14 +163,14 @@ async fn test_agent_failure_with_store() {
             route_params: HashMap::new(),
         };
         let (_attachment_tx, attachment_rx) = mpsc::channel(16);
+        let (_http_tx, http_rx) = mpsc::channel(16);
         let (downlink_tx, _downlink_rx) = mpsc::channel(16);
         let (_stopping_tx, stopping_rx) = trigger::trigger();
 
         let task = AgentRouteTask::new(
             &agent,
             identity,
-            attachment_rx,
-            downlink_tx,
+            AgentRouteChannels::new(attachment_rx, http_rx, downlink_tx),
             stopping_rx,
             Default::default(),
             None,
@@ -198,14 +198,14 @@ async fn test_agent_init_failure() {
             route_params: HashMap::new(),
         };
         let (_attachment_tx, attachment_rx) = mpsc::channel(16);
+        let (_http_tx, http_rx) = mpsc::channel(16);
         let (downlink_tx, _downlink_rx) = mpsc::channel(16);
         let (_stopping_tx, stopping_rx) = trigger::trigger();
 
         let task = AgentRouteTask::new(
             &agent,
             identity,
-            attachment_rx,
-            downlink_tx,
+            AgentRouteChannels::new(attachment_rx, http_rx, downlink_tx),
             stopping_rx,
             Default::default(),
             None,

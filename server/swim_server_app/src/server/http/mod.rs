@@ -15,36 +15,49 @@
 use std::{
     marker::PhantomData,
     net::SocketAddr,
-    num::NonZeroUsize,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
+    time::{Duration, Instant},
 };
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use futures::{
-    future::{ready, Ready},
+    future::BoxFuture,
     ready,
     stream::{BoxStream, FuturesUnordered},
     Future, FutureExt, Stream, StreamExt,
 };
 use hyper::{
+    body::to_bytes,
     server::conn::http1,
     service::Service,
     upgrade::{Parts, Upgraded},
-    Body, Request, Response,
+    Body, Request, Response, StatusCode,
 };
 use pin_project::pin_project;
 use ratchet::{
     Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream,
 };
+use swim_api::{agent::HttpLaneRequest, net::Scheme};
 use swim_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
-use swim_runtime::{
-    net::{Listener, ListenerError, ListenerResult, Scheme},
+use swim_model::http::HttpRequest;
+use swim_remote::{
+    net::{Listener, ListenerError, ListenerResult},
     ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture, PROTOCOLS},
 };
-use tokio::sync::mpsc::{self, OwnedPermit};
+use swim_remote::{AgentResolutionError, FindNode, NoSuchAgent};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{mpsc, oneshot},
+    time::{sleep, Sleep},
+};
 
+use crate::config::HttpConfig;
+
+use self::resolver::Resolver;
+
+mod resolver;
 #[cfg(test)]
 mod tests;
 
@@ -52,36 +65,39 @@ pub type WsWithAddr<Ext, Sock> = (WebSocket<Sock, Ext>, Scheme, SocketAddr);
 pub type ListenResult<Ext, Sock> = Result<WsWithAddr<Ext, Sock>, ListenerError>;
 
 /// Hyper based web-server that will attempt to negotiate a server websocket over
-/// every incoming connection.
+/// every incoming connection. If the connection is not a web-socket upgrade, it
+/// will attempt to forward to an HTTP lane on an agent, using the URL in the
+/// request to route the message.
 ///
 /// # Arguments
 /// * `listener` - Listener providing a stream of incoming connections.
+/// * `find` - Resolver for finding agents when attempting to route to an HTTP lane.
 /// * `extension_provider` - Web socket extension provider.
-/// * `config` - Web socket configuration parameters.
-/// * `max_negotiations` - Maximum number of concurrent websocket handshakes. If this many are
-/// pending, no more connections will be accepted from the listener until a space becomes free.
+/// * `config` - HTTP server configuration parameters.
 pub fn hyper_http_server<Sock, L, Ext>(
     listener: L,
+    find: mpsc::Sender<FindNode>,
     extension_provider: Ext,
-    config: Option<WebSocketConfig>,
-    max_negotiations: NonZeroUsize,
+    config: HttpConfig,
 ) -> impl Stream<Item = ListenResult<Ext::Extension, Sock>> + Send
 where
-    Sock: WebSocketStream + Send + Sync,
+    Sock: Unpin + Send + Sync + AsyncRead + AsyncWrite + 'static,
     L: Listener<Sock> + Send,
     Ext: ExtensionProvider + Send + Sync + 'static,
     Ext::Extension: Send + Unpin,
 {
-    let state = HttpServerState::<L::AcceptStream, Sock, Ext, _, _, _, _>::new(
+    let resolver = Resolver::new(find, config.resolver_timeout);
+    let state = HttpServerState::<L::AcceptStream, Sock, Ext, _, _>::new(
         listener.into_stream(),
         extension_provider,
+        resolver,
         config,
-        max_negotiations,
-        mpsc::Sender::reserve_owned,
-        |sock, svc| {
-            http1::Builder::new()
-                .serve_connection(sock, svc)
+        |sock, mut svc| async move {
+            let result = http1::Builder::new()
+                .serve_connection(sock, &mut svc)
                 .with_upgrades()
+                .await;
+            result.map(move |_| svc.into_upgrade_fut())
         },
     );
 
@@ -90,111 +106,41 @@ where
     })
 }
 
+type WebsocketParts<Sock, Ext> = (WebSocket<Sock, Ext>, Scheme, SocketAddr);
+
 enum TaskResult<Ext, Sock> {
-    ConnectionComplete(Result<(), hyper::Error>),
-    UpgradeComplete(Result<(WebSocket<Sock, Ext>, Scheme, SocketAddr), hyper::Error>),
-    Reserved(Result<OwnedPermit<UpgradeFutureWithSock<Ext, Sock>>, mpsc::error::SendError<()>>),
+    ConnectionComplete(Result<Option<UpgradeFutureWithSock<Ext, Sock>>, hyper::Error>),
+    UpgradeComplete(Result<Box<WebsocketParts<Sock, Ext>>, hyper::Error>),
 }
 
 #[pin_project(project = TaskFutureProj)]
-enum TaskFuture<Sock, Ext, Con, Fut>
+enum TaskFuture<Sock, Ext, Con>
 where
-    Sock: WebSocketStream,
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send,
 {
-    Connection(Con),
+    Connection(#[pin] Con),
     Upgrade(UpgradeFutureWithSock<Ext::Extension, Sock>),
-    Reserve(#[pin] Fut),
 }
 
-impl<Sock, Ext, Con, Fut> Future for TaskFuture<Sock, Ext, Con, Fut>
+impl<Sock, Ext, Con> Future for TaskFuture<Sock, Ext, Con>
 where
-    Sock: WebSocketStream,
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send + Unpin,
-    Con: Future<Output = Result<(), hyper::Error>> + Unpin,
-    Fut: Future<
-        Output = Result<
-            OwnedPermit<UpgradeFutureWithSock<Ext::Extension, Sock>>,
-            mpsc::error::SendError<()>,
-        >,
-    >,
+    Con: Future<Output = Result<Option<UpgradeFutureWithSock<Ext::Extension, Sock>>, hyper::Error>>,
 {
     type Output = TaskResult<Ext::Extension, Sock>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.project() {
             TaskFutureProj::Connection(fut) => {
-                Poll::Ready(TaskResult::ConnectionComplete(ready!(fut.poll_unpin(cx))))
+                Poll::Ready(TaskResult::ConnectionComplete(ready!(fut.poll(cx))))
             }
-            TaskFutureProj::Upgrade(fut) => {
-                Poll::Ready(TaskResult::UpgradeComplete(ready!(fut.poll_unpin(cx))))
-            }
-            TaskFutureProj::Reserve(fut) => Poll::Ready(TaskResult::Reserved(ready!(fut.poll(cx)))),
-        }
-    }
-}
-
-enum ReservationTracker<F> {
-    Closed,
-    Reserving(mpsc::Sender<F>),
-    Reserved(mpsc::Sender<F>, mpsc::OwnedPermit<F>),
-}
-
-impl<F> ReservationTracker<F> {
-    fn is_closed(&self) -> bool {
-        matches!(self, ReservationTracker::Closed)
-    }
-
-    fn new<Fut>(tx: mpsc::Sender<F>, f: impl Fn(mpsc::Sender<F>) -> Fut) -> (Self, Option<Fut>) {
-        match tx.clone().try_reserve_owned() {
-            Ok(r) => (ReservationTracker::Reserved(tx, r), None),
-            Err(mpsc::error::TrySendError::Closed(_)) => (ReservationTracker::Closed, None),
-            Err(mpsc::error::TrySendError::Full(tx2)) => {
-                (ReservationTracker::Reserving(tx), Some(f(tx2)))
-            }
-        }
-    }
-
-    fn add_reservation(&mut self, res: mpsc::OwnedPermit<F>) {
-        *self = match std::mem::replace(self, ReservationTracker::Closed) {
-            ReservationTracker::Closed => ReservationTracker::Closed,
-            ReservationTracker::Reserving(tx) => ReservationTracker::Reserved(tx, res),
-            ReservationTracker::Reserved(tx, r) => ReservationTracker::Reserved(tx, r),
-        };
-    }
-
-    fn take_reservation(&mut self) -> Option<mpsc::OwnedPermit<F>> {
-        let (replacement, result) = match std::mem::replace(self, ReservationTracker::Closed) {
-            ReservationTracker::Closed => (ReservationTracker::Closed, None),
-            ReservationTracker::Reserving(tx) => (ReservationTracker::Reserving(tx), None),
-            ReservationTracker::Reserved(tx, r) => (ReservationTracker::Reserving(tx), Some(r)),
-        };
-        *self = replacement;
-        result
-    }
-
-    fn update_reservation<Fut>(&mut self, f: impl Fn(mpsc::Sender<F>) -> Fut) -> Option<Fut> {
-        match std::mem::replace(self, ReservationTracker::Closed) {
-            ReservationTracker::Reserving(tx) => match tx.clone().try_reserve_owned() {
-                Ok(res) => {
-                    *self = ReservationTracker::Reserved(tx, res);
-                    None
-                }
-                Err(mpsc::error::TrySendError::Closed(_)) => {
-                    *self = ReservationTracker::Closed;
-                    None
-                }
-                Err(mpsc::error::TrySendError::Full(tx2)) => {
-                    *self = ReservationTracker::Reserving(tx);
-                    Some(f(tx2))
-                }
-            },
-            ow => {
-                *self = ow;
-                None
-            }
+            TaskFutureProj::Upgrade(fut) => Poll::Ready(TaskResult::UpgradeComplete(
+                ready!(fut.poll_unpin(cx)).map(Box::new),
+            )),
         }
     }
 }
@@ -203,10 +149,7 @@ impl<F> ReservationTracker<F> {
 /// of [`Stream`], using [`futures::stream::unfold`], that yields negotiated web-socket connections (or
 /// errors when connections fail).
 ///
-/// Only a fixed number of web-socket handshakes are permitted to be running at any one time. This is
-/// managed used an [`tokio::sync::mpsc`] channel; new incoming sockets will only be accepted if the
-/// state holds a permit to push a new entry into this queue. When a response has been produced, the
-/// slot in the queue will be freed.
+/// Only a fixed number of web-socket handshakes are permitted to be running at any one time.
 ///
 /// #Type Parameters
 /// * `L` - The type of the listener for incoming connections.
@@ -214,102 +157,77 @@ impl<F> ReservationTracker<F> {
 /// * `Ext` - The websocket extension provider for negotiating connections.
 /// * `Con` - The type of the future that handles an HTTP connection (this parameter exists to
 /// give a name to the return type of an async function).
-/// * `Fut` - The type of the future to wait for a reservation on the queue to become available.
-/// (this parameter exists to give a name to the return type of an async function).
-/// * `FR` - A function to produce a future to get a reservation on the queue (this parameter
-/// exists to give a name to the type of an async function).
 /// * `FC` - A function to produce the future to handle an HTTP connection (this parameter exists to
 /// give a name to the type of an async function).
-struct HttpServerState<L, Sock, Ext, Con, Fut, FR, FC>
+struct HttpServerState<L, Sock, Ext, Con, FC>
 where
-    Sock: WebSocketStream,
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send,
 {
     listener_stream: L,
-    connection_tasks: FuturesUnordered<TaskFuture<Sock, Ext, Con, Fut>>,
+    connection_tasks: FuturesUnordered<TaskFuture<Sock, Ext, Con>>,
     upgrader: Upgrader<Ext>,
-    reservation_tracker: ReservationTracker<UpgradeFutureWithSock<Ext::Extension, Sock>>,
-    upgrade_rx: mpsc::Receiver<UpgradeFutureWithSock<Ext::Extension, Sock>>,
-    reserve_fn: FR,
     connect_fn: FC,
+    max_pending: usize,
+    timeout: Pin<Box<Sleep>>,
+    timeout_enabled: bool,
 }
 
-impl<L, Sock, Ext, Con, Fut, FR, FC> HttpServerState<L, Sock, Ext, Con, Fut, FR, FC>
+impl<L, Sock, Ext, Con, FC> HttpServerState<L, Sock, Ext, Con, FC>
 where
-    Sock: WebSocketStream,
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider + Send + Sync,
     Ext::Extension: Send,
-    FR: Fn(mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>) -> Fut
-        + Copy
-        + Send
-        + 'static,
     FC: Fn(Sock, UpgradeService<Ext, Sock>) -> Con + Copy + Send + 'static,
 {
     /// #Arguments
     /// * `listener_stream` - A listener that produced a stream of incoming connections.
     /// * `extension_provider` - Extension provider to use when negotiating websocket connections.
-    /// * `config` - Configuration parameters for websocket connections.
-    /// * `max_negotiations` - Maximum number of connections to be accepting at one time.
-    /// * `reserve_fn` - Async function to get a new reservation in the queue.
+    /// * `resolver` - Agent resolver for forwarding requests to HTTP lanes.
+    /// * `config` - Configuration parameters for HTTP server.
     /// * `connect_fn` - Async function to handle an incoming HTTP connection.
     fn new(
         listener_stream: L,
         extension_provider: Ext,
-        config: Option<WebSocketConfig>,
-        max_negotiations: NonZeroUsize,
-        reserve_fn: FR,
+        resolver: resolver::Resolver,
+        config: HttpConfig,
         connect_fn: FC,
     ) -> Self {
-        let (upgrade_tx, upgrade_rx) = mpsc::channel(max_negotiations.get());
         let connection_tasks = FuturesUnordered::new();
-        let (reservable, fut) = ReservationTracker::new(upgrade_tx, reserve_fn);
-        if let Some(fut) = fut {
-            connection_tasks.push(TaskFuture::Reserve(fut));
-        };
         HttpServerState {
             listener_stream,
             connection_tasks,
-            upgrader: Upgrader::new(extension_provider, config),
-            reservation_tracker: reservable,
-            upgrade_rx,
-            reserve_fn,
+            upgrader: Upgrader::new(
+                extension_provider,
+                resolver,
+                config.websockets,
+                config.http_request_timeout,
+            ),
             connect_fn,
+            max_pending: config.max_http_requests.get(),
+            timeout: Box::pin(sleep(config.resolver_timeout)),
+            timeout_enabled: false,
         }
     }
 }
 
 enum Event<Sock, Ext> {
-    Upgrade(UpgradeFutureWithSock<Ext, Sock>),
     TaskComplete(TaskResult<Ext, Sock>),
-    Incoming(
-        Sock,
-        Scheme,
-        SocketAddr,
-        mpsc::OwnedPermit<UpgradeFutureWithSock<Ext, Sock>>,
-    ),
+    Incoming(Sock, Scheme, SocketAddr),
     IncomingFailed(ListenerError),
+    Timeout,
     Continue,
     Stop,
 }
 
-impl<L, Sock, Ext, Con, Fut, FR, FC> HttpServerState<L, Sock, Ext, Con, Fut, FR, FC>
+impl<L, Sock, Ext, Con, FC> HttpServerState<L, Sock, Ext, Con, FC>
 where
-    Sock: WebSocketStream,
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     L: Stream<Item = ListenerResult<(Sock, Scheme, SocketAddr)>> + Send + Unpin,
     Ext: ExtensionProvider + Send + Sync,
     Ext::Extension: Send + Unpin,
-    Con: Future<Output = Result<(), hyper::Error>> + Unpin,
-    Fut: Future<
-        Output = Result<
-            OwnedPermit<UpgradeFutureWithSock<Ext::Extension, Sock>>,
-            mpsc::error::SendError<()>,
-        >,
-    >,
-    FR: Fn(mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>) -> Fut
-        + Copy
-        + Send
-        + 'static,
+    Con: Future<Output = Result<Option<UpgradeFutureWithSock<Ext::Extension, Sock>>, hyper::Error>>,
     FC: Fn(Sock, UpgradeService<Ext, Sock>) -> Con + Copy + Send + 'static,
 {
     async fn next(&mut self) -> Option<ListenResult<Ext::Extension, Sock>> {
@@ -317,33 +235,20 @@ where
             listener_stream,
             connection_tasks,
             upgrader,
-            reservation_tracker,
-            upgrade_rx,
-            reserve_fn,
             connect_fn,
+            max_pending,
+            timeout,
+            timeout_enabled,
         } = self;
+
         loop {
-            if reservation_tracker.is_closed() {
-                return None;
-            }
-            let event = if let Some(res) = reservation_tracker.take_reservation() {
-                // We have a reservation so we can wait for new incoming connections.
+            let event = if connection_tasks.len() < *max_pending {
+                // We have capacity so we can wait for new incoming connections.
                 tokio::select! {
                     biased;
-                    maybe_fut = upgrade_rx.recv() => {
-                        // An handshake has completed and we can now wait to receive the the upgraded channel.
-                        // We don't need the reservation we can return it.
-                        reservation_tracker.add_reservation(res);
-                        if let Some(fut) = maybe_fut {
-                            Event::Upgrade(fut)
-                        } else {
-                            Event::Continue
-                        }
-                    }
+                    _ = &mut *timeout, if *timeout_enabled => Event::Timeout,
                     maybe_event = connection_tasks.next(), if !connection_tasks.is_empty() => {
-                        // An HTTP request has completed (the response has been sent). We don't need
-                        // the reservation so we can return it.
-                        reservation_tracker.add_reservation(res);
+                        // An HTTP request or upgrade has completed.
                         if let Some(ev) = maybe_event {
                             Event::TaskComplete(ev)
                         } else {
@@ -351,40 +256,27 @@ where
                         }
                     }
                     maybe_incoming = listener_stream.next() => {
-                        // Either we have a new incoming connection or the listener is closed.
                         match maybe_incoming {
                             Some(Ok((sock, scheme, addr))) => {
-                                if let Some(fut) = reservation_tracker.update_reservation(*reserve_fn) {
-                                    connection_tasks.push(TaskFuture::Reserve(fut));
-                                }
-                                Event::Incoming(sock, scheme, addr, res)
+                                Event::Incoming(sock, scheme, addr)
                             },
                             Some(Err(err)) => {
-                                reservation_tracker.add_reservation(res);
                                 Event::IncomingFailed(err)
                             },
                             _ => {
                                 // The listener is closed so wen should stop handling connections
-                                *reservation_tracker = ReservationTracker::Closed;
                                 Event::Stop
                             },
                         }
                     }
                 }
             } else {
-                // We don't have a reservation to start a new connection so only wait for existing tasks
-                // to complete.
+                // The maximum number of connections are pending so we stop listening to for new connections.
                 tokio::select! {
                     biased;
-                    maybe_fut = upgrade_rx.recv() => {
-                        if let Some(fut) = maybe_fut {
-                            Event::Upgrade(fut)
-                        } else {
-                            Event::Continue
-                        }
-                    }
-                    maybe_event = connection_tasks.next(), if !connection_tasks.is_empty() => {
-                        if let Some(ev) = maybe_event {
+                    _ = &mut*timeout, if *timeout_enabled => Event::Timeout,
+                    some_ev = connection_tasks.next() => {
+                        if let Some(ev) = some_ev {
                             Event::TaskComplete(ev)
                         } else {
                             Event::Continue
@@ -393,140 +285,172 @@ where
                 }
             };
             match event {
-                Event::Upgrade(fut) => {
-                    connection_tasks.push(TaskFuture::Upgrade(fut));
-                }
                 Event::TaskComplete(TaskResult::ConnectionComplete(Err(err))) => {
                     break Some(Err(ListenerError::NegotiationFailed(Box::new(err))));
                 }
-                Event::TaskComplete(TaskResult::ConnectionComplete(Ok(_))) => continue,
-                Event::TaskComplete(TaskResult::Reserved(Ok(res))) => {
-                    reservation_tracker.add_reservation(res);
+                Event::TaskComplete(TaskResult::ConnectionComplete(Ok(Some(fut)))) => {
+                    connection_tasks.push(TaskFuture::Upgrade(fut));
+                }
+                Event::TaskComplete(TaskResult::ConnectionComplete(Ok(_))) => {
+                    if !*timeout_enabled {
+                        if let Some(t) = upgrader.resolver_cleanup() {
+                            *timeout_enabled = true;
+                            timeout.as_mut().reset(tokio::time::Instant::from_std(t));
+                        }
+                    }
                     continue;
                 }
-                Event::TaskComplete(TaskResult::Reserved(Err(_))) => break None,
-                Event::TaskComplete(TaskResult::UpgradeComplete(Ok((ws, scheme, addr)))) => {
-                    break Some(Ok((ws, scheme, addr)));
+                Event::TaskComplete(TaskResult::UpgradeComplete(Ok(parts))) => {
+                    break Some(Ok(*parts));
                 }
                 Event::TaskComplete(TaskResult::UpgradeComplete(Err(err))) => {
                     break Some(Err(ListenerError::NegotiationFailed(Box::new(err))));
                 }
-                Event::Incoming(sock, scheme, addr, res) => {
-                    let svc = upgrader.make_service(scheme, addr, res);
+                Event::Incoming(sock, scheme, addr) => {
+                    let svc = upgrader.make_service(scheme, addr);
                     connection_tasks.push(TaskFuture::Connection(connect_fn(sock, svc)));
                     continue;
                 }
                 Event::IncomingFailed(err) => break Some(Err(err)),
                 Event::Continue => continue,
                 Event::Stop => break None,
+                Event::Timeout => {
+                    if let Some(t) = upgrader.resolver_cleanup() {
+                        *timeout_enabled = true;
+                        timeout.as_mut().reset(tokio::time::Instant::from_std(t));
+                    } else {
+                        *timeout_enabled = false;
+                    }
+                }
             }
         }
     }
 }
 
-/// Perform the websocket negotiation and send the resulting future back, freeing up the reservation
-/// on the queue.
+/// Perform the websocket negotiation and assign the upgrade future to the target parameter.
 fn perform_upgrade<Ext, Sock, Err>(
     request: Request<Body>,
-    config: Option<WebSocketConfig>,
-    result: Result<Option<Negotiated<'_, Ext>>, UpgradeError<Err>>,
-    reservation: Option<OwnedPermit<UpgradeFutureWithSock<Ext, Sock>>>,
+    config: WebSocketConfig,
+    result: Result<Negotiated<'_, Ext>, UpgradeError<Err>>,
+    target: &mut Option<UpgradeFutureWithSock<Ext, Sock>>,
     scheme: Scheme,
     addr: SocketAddr,
 ) -> Result<Response<Body>, hyper::Error>
 where
-    Sock: WebSocketStream,
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: Extension + Send,
     Err: std::error::Error + Send,
 {
     match result {
-        Ok(Some(negotiated)) => {
-            let (response, upgrade_fut) =
-                swim_http::upgrade(request, negotiated, config, ReclaimSock::<Sock>::default());
-            if let Some(reservation) = reservation {
-                reservation.send(UpgradeFutureWithSock::new(upgrade_fut, scheme, addr));
-            }
+        Ok(negotiated) => {
+            let (response, upgrade_fut) = swim_http::upgrade(
+                request,
+                negotiated,
+                Some(config),
+                ReclaimSock::<Sock>::default(),
+            );
+            *target = Some(UpgradeFutureWithSock::new(upgrade_fut, scheme, addr));
             Ok(response)
         }
-        Ok(None) => todo!(),
         Err(err) => Ok(swim_http::fail_upgrade(err)),
     }
 }
 
-/// A factory for hyper services that perform websocket upgrades.
+/// A factory for hyper services that perform websocket upgrades or forward the request on to
+/// an HTTP lane on an agent.
 struct Upgrader<Ext: ExtensionProvider> {
     extension_provider: Arc<Ext>,
-    config: Option<WebSocketConfig>,
+    resolver: resolver::Resolver,
+    config: WebSocketConfig,
+    request_timeout: Duration,
 }
 
 impl<Ext> Upgrader<Ext>
 where
     Ext: ExtensionProvider + Send + Sync,
 {
-    fn new(extension_provider: Ext, config: Option<WebSocketConfig>) -> Self {
+    fn new(
+        extension_provider: Ext,
+        resolver: resolver::Resolver,
+        config: WebSocketConfig,
+        request_timeout: Duration,
+    ) -> Self {
         Upgrader {
             extension_provider: Arc::new(extension_provider),
+            resolver,
             config,
+            request_timeout,
         }
     }
 
-    fn make_service<Sock>(
-        &self,
-        scheme: Scheme,
-        addr: SocketAddr,
-        reservation: OwnedPermit<UpgradeFutureWithSock<Ext::Extension, Sock>>,
-    ) -> UpgradeService<Ext, Sock>
+    fn resolver_cleanup(&self) -> Option<Instant> {
+        self.resolver.check_access_times()
+    }
+
+    fn make_service<Sock>(&self, scheme: Scheme, addr: SocketAddr) -> UpgradeService<Ext, Sock>
     where
-        Sock: WebSocketStream,
+        Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     {
         let Upgrader {
             extension_provider,
+            resolver,
             config,
+            request_timeout,
         } = self;
         UpgradeService::new(
             extension_provider.clone(),
-            reservation,
+            resolver.clone(),
             *config,
             scheme,
             addr,
+            *request_timeout,
         )
     }
 }
 
-/// A hyper service that will attempt to upgrade the connection to a websocket and pass back the
-/// websocket using a reservation on an MPSC queue.
+/// A hyper service that will attempt to upgrade the connection to a websocket and can then
+/// be decomposed to extract the upgrade future.
 struct UpgradeService<Ext: ExtensionProvider, Sock> {
     extension_provider: Arc<Ext>,
-    reservation: Option<mpsc::OwnedPermit<UpgradeFutureWithSock<Ext::Extension, Sock>>>,
-    config: Option<WebSocketConfig>,
+    resolver: resolver::Resolver,
+    upgrade_fut: Option<UpgradeFutureWithSock<Ext::Extension, Sock>>,
+    config: WebSocketConfig,
     scheme: Scheme,
     addr: SocketAddr,
+    request_timeout: Duration,
 }
 
 impl<Ext: ExtensionProvider, Sock> UpgradeService<Ext, Sock>
 where
-    Sock: WebSocketStream,
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
 {
     fn new(
         extension_provider: Arc<Ext>,
-        reservation: mpsc::OwnedPermit<UpgradeFutureWithSock<Ext::Extension, Sock>>,
-        config: Option<WebSocketConfig>,
+        resolver: resolver::Resolver,
+        config: WebSocketConfig,
         scheme: Scheme,
         addr: SocketAddr,
+        request_timeout: Duration,
     ) -> Self {
         UpgradeService {
             extension_provider,
-            reservation: Some(reservation),
+            resolver,
+            upgrade_fut: None,
             config,
             scheme,
             addr,
+            request_timeout,
         }
+    }
+
+    fn into_upgrade_fut(self) -> Option<UpgradeFutureWithSock<Ext::Extension, Sock>> {
+        self.upgrade_fut
     }
 }
 
 impl<Ext, Sock> Service<Request<Body>> for UpgradeService<Ext, Sock>
 where
-    Sock: WebSocketStream,
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send,
 {
@@ -534,7 +458,7 @@ where
 
     type Error = hyper::Error;
 
-    type Future = Ready<Result<Response<Body>, hyper::Error>>;
+    type Future = BoxFuture<'static, Result<Response<Body>, hyper::Error>>;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
@@ -543,21 +467,27 @@ where
     fn call(&mut self, request: Request<Body>) -> Self::Future {
         let UpgradeService {
             extension_provider,
-            reservation,
+            upgrade_fut,
             config,
             scheme,
             addr,
+            resolver,
+            request_timeout,
         } = self;
         let result =
-            swim_http::negotiate_upgrade(&request, &PROTOCOLS, extension_provider.as_ref());
-        ready(perform_upgrade(
-            request,
-            *config,
-            result,
-            reservation.take(),
-            *scheme,
-            *addr,
-        ))
+            swim_http::negotiate_upgrade(&request, &PROTOCOLS, extension_provider.as_ref())
+                .transpose();
+        // If the request in a websocket upgrade, perform the upgrade, otherwise attempt to delegate
+        // the request to an HTTP lane on an agent.
+        if let Some(result) = result {
+            let upgrade_result =
+                perform_upgrade(request, *config, result, upgrade_fut, *scheme, *addr);
+            async move { upgrade_result }.boxed()
+        } else {
+            serve_request(request, *request_timeout, resolver.clone())
+                .map(Ok)
+                .boxed()
+        }
     }
 }
 
@@ -573,7 +503,7 @@ impl<Sock> Default for ReclaimSock<Sock> {
 
 impl<Sock> SockUnwrap for ReclaimSock<Sock>
 where
-    Sock: WebSocketStream,
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
 {
     type Sock = Sock;
 
@@ -608,7 +538,7 @@ impl<Ext, Sock> UpgradeFutureWithSock<Ext, Sock> {
 
 impl<Ext, Sock> Future for UpgradeFutureWithSock<Ext, Sock>
 where
-    Sock: WebSocketStream,
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     Ext: Extension + Unpin,
 {
     type Output = Result<(WebSocket<Sock, Ext>, Scheme, SocketAddr), hyper::Error>;
@@ -627,21 +557,16 @@ where
 /// Implementation of [`WebsocketServer`] and [`WebsocketClient`] that uses [`hyper`] to upgrade
 /// HTTP connections to [`ratchet`] web-socket connections.
 pub struct HyperWebsockets {
-    config: WebSocketConfig,
-    max_negotiations: NonZeroUsize,
+    config: HttpConfig,
 }
 
 impl HyperWebsockets {
     /// #Arguments
     ///
-    /// * `config` - Ratchet websocket configuration.
-    /// * `max_negotiations` - The maximum number of concurrent connections that the server
+    /// * `config` - HTTP server configuration.
     /// will handle concurrently.
-    pub fn new(config: WebSocketConfig, max_negotiations: NonZeroUsize) -> Self {
-        HyperWebsockets {
-            config,
-            max_negotiations,
-        }
+    pub fn new(config: HttpConfig) -> Self {
+        HyperWebsockets { config }
     }
 }
 
@@ -653,18 +578,16 @@ impl WebsocketServer for HyperWebsockets {
         &self,
         listener: L,
         provider: Provider,
+        find: mpsc::Sender<FindNode>,
     ) -> Self::WsStream<Sock, Provider::Extension>
     where
-        Sock: WebSocketStream + Send + Sync,
+        Sock: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static,
         L: Listener<Sock> + Send + 'static,
         Provider: ExtensionProvider + Send + Sync + Unpin + 'static,
         Provider::Extension: Send + Sync + Unpin + 'static,
     {
-        let HyperWebsockets {
-            config,
-            max_negotiations,
-        } = self;
-        hyper_http_server(listener, provider, Some(*config), *max_negotiations)
+        let HyperWebsockets { config } = self;
+        hyper_http_server(listener, find, provider, *config)
             .map(|r| r.map(|(ws, _, addr)| (ws, addr)))
             .boxed()
     }
@@ -687,10 +610,92 @@ impl WebsocketClient for HyperWebsockets {
         let config = *config;
         Box::pin(async move {
             let subprotocols = ProtocolRegistry::new(PROTOCOLS.iter().copied())?;
-            let socket = ratchet::subscribe_with(config, socket, addr, provider, subprotocols)
-                .await?
-                .into_websocket();
+            let socket =
+                ratchet::subscribe_with(config.websockets, socket, addr, provider, subprotocols)
+                    .await?
+                    .into_websocket();
             Ok(socket)
         })
+    }
+}
+
+/// Produce a bad request response for an request that we cannot route correctly.
+fn bad_request(msg: String) -> Response<Body> {
+    let mut response = Response::default();
+    *response.status_mut() = StatusCode::BAD_REQUEST;
+    *response.body_mut() = Bytes::from(msg).into();
+    response
+}
+
+/// Produce an error response if the agent sends back invalid data.
+fn error(msg: &'static str) -> Response<Body> {
+    let mut response = Response::default();
+    *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+    *response.body_mut() = Bytes::from_static(msg.as_bytes()).into();
+    response
+}
+
+/// Produce a timeout response for when the agent does not respond in time.
+fn req_timeout() -> Response<Body> {
+    let mut response = Response::default();
+    *response.status_mut() = StatusCode::REQUEST_TIMEOUT;
+    *response.body_mut() = Bytes::from("The agent failed to respond.".to_string()).into();
+    response
+}
+
+/// Produce a not found response for the case where an agent does not exist (the agent is responsible
+/// for sending this if the lane does not exist).
+fn not_found(node: &str) -> Response<Body> {
+    let mut response = Response::default();
+    *response.status_mut() = StatusCode::NOT_FOUND;
+    *response.body_mut() = Bytes::from(format!("No agent at '{}'", node)).into();
+    response
+}
+
+/// Produce a response to send if the server is already stopping.
+fn unavailable() -> Response<Body> {
+    let mut response = Response::default();
+    *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
+    *response.body_mut() = Bytes::from_static(b"The server is stopping.").into();
+    response
+}
+
+/// Delegate an HTTP request to an HTTP lane on an agent (if it exists).
+///
+/// #Arguments
+/// * `request` - The HTTP request.
+/// * `timeout` - Timeout the request if the agent does not produce a response within this duration.
+/// * `resolver` - Resolver to find the agent to handle the request.
+async fn serve_request(
+    request: Request<Body>,
+    timeout: Duration,
+    resolver: Resolver,
+) -> Response<Body> {
+    let http_request = match HttpRequest::try_from(request) {
+        Ok(req) => req,
+        Err(err) => return bad_request(err.to_string()),
+    };
+    let bytes_request = match http_request.try_transform(to_bytes).await {
+        Ok(req) => req,
+        Err(err) => return bad_request(err.to_string()),
+    };
+
+    let (response_tx, response_rx) = oneshot::channel();
+    let message = HttpLaneRequest::new(bytes_request, response_tx);
+    if let Err(err) = resolver.send(message).await {
+        match err {
+            AgentResolutionError::NotFound(NoSuchAgent { node, .. }) => {
+                return not_found(node.as_str())
+            }
+            AgentResolutionError::PlaneStopping => return unavailable(),
+        }
+    }
+    match tokio::time::timeout(timeout, response_rx).await {
+        Ok(Ok(response)) => match Response::try_from(response) {
+            Ok(res) => res.map(|b| b.into()),
+            Err(_) => error("Invalid response."),
+        },
+        Ok(Err(_)) => error("The agent failed to provide a response."),
+        Err(_) => req_timeout(),
     }
 }

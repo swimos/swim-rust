@@ -1151,6 +1151,14 @@ impl AgentContext for DlTestContext {
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
         panic!("Unexpected call.");
     }
+
+    fn add_http_lane(
+        &self,
+        _name: &str,
+    ) -> BoxFuture<'static, Result<swim_api::agent::HttpLaneRequestChannel, AgentRuntimeError>>
+    {
+        panic!("Unexpected call.");
+    }
 }
 
 #[tokio::test]

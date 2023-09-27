@@ -23,7 +23,7 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swim_api::agent::{AgentContext, LaneConfig};
+use swim_api::agent::{AgentContext, HttpLaneRequestChannel, LaneConfig};
 use swim_api::downlink::DownlinkKind;
 use swim_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swim_api::meta::lane::LaneKind;
@@ -79,6 +79,13 @@ impl AgentContext for MockAgentContext {
 
     fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
         panic!("Unexpected ad hoc commands invocation")
+    }
+
+    fn add_http_lane(
+        &self,
+        _name: &str,
+    ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
+        panic!("Unexpected add HTTP lane invocation")
     }
 }
 

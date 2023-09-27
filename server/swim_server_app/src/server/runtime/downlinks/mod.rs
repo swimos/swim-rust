@@ -29,11 +29,13 @@ use std::{
 
 use futures::{stream::FuturesUnordered, Future, FutureExt, StreamExt};
 pub use pending::{DlKey, PendingDownlinks};
+use swim_api::net::{Scheme, SchemeHostPort};
 use swim_api::{
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError},
 };
 use swim_model::{address::RelativeAddress, Text};
+use swim_remote::net::dns::DnsResolver;
 use swim_remote::{AttachClient, LinkError};
 use swim_runtime::downlink::IdentifiedAddress;
 use swim_runtime::{
@@ -42,7 +44,6 @@ use swim_runtime::{
         failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy},
         AttachAction, DownlinkRuntimeConfig, Io, MapDownlinkRuntime, ValueDownlinkRuntime,
     },
-    net::{dns::DnsResolver, Scheme, SchemeHostPort},
 };
 use swim_utilities::{
     io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter},

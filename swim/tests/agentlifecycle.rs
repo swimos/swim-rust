@@ -119,6 +119,14 @@ impl AgentContext for DummyAgentContext {
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
         panic!("Dummy context used.");
     }
+
+    fn add_http_lane(
+        &self,
+        _name: &str,
+    ) -> BoxFuture<'static, Result<swim_api::agent::HttpLaneRequestChannel, AgentRuntimeError>>
+    {
+        panic!("Dummy context used.");
+    }
 }
 
 #[derive(AgentLaneModel)]

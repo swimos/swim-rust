@@ -23,11 +23,11 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use swim_api::downlink::DownlinkConfig;
+use swim_api::net::Scheme;
 use swim_model::address::RelativeAddress;
 use swim_model::Text;
 use swim_remote::AttachClient;
 use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
-use swim_runtime::net::Scheme;
 use tokio::sync::mpsc;
 
 type PendingDns = (Scheme, Text, Result<Vec<SocketAddr>, DownlinkRuntimeError>);

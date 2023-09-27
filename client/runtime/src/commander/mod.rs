@@ -20,9 +20,9 @@ use futures::StreamExt;
 use ratchet::{
     CloseCode, CloseReason, NoExt, NoExtProvider, ProtocolRegistry, WebSocket, WebSocketConfig,
 };
+use swim_api::net::{BadUrl, SchemeHostPort};
 use swim_form::structural::write::StructuralWritable;
 use swim_recon::printer::print_recon_compact;
-use swim_runtime::net::{BadUrl, SchemeHostPort};
 use thiserror::Error;
 use tokio::net::TcpStream;
 
