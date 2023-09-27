@@ -17,17 +17,25 @@ use std::{
     str::FromStr,
 };
 
+use http::{uri::InvalidUri, Uri};
 use thiserror::Error;
-use url::Url;
 
 #[derive(Debug, PartialEq, Eq, Error)]
 pub enum BadUrl {
     #[error("Malformed URL: {0}")]
-    BadUrl(#[from] url::ParseError),
+    BadUrl(String),
+    #[error("A WARP URL must have a scheme.")]
+    MissingScheme,
     #[error("{0} is not a valid WARP scheme.")]
     BadScheme(String),
     #[error("The URL did not contain a valid host.")]
     NoHost,
+}
+
+impl From<InvalidUri> for BadUrl {
+    fn from(value: InvalidUri) -> Self {
+        BadUrl::BadUrl(value.to_string())
+    }
 }
 
 /// Supported websocket schemes
@@ -113,23 +121,15 @@ impl FromStr for SchemeHostPort {
     type Err = BadUrl;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let url = s.parse::<Url>()?;
-        let (scheme, url) = match Scheme::try_from(url.scheme()) {
-            Ok(scheme) => (scheme, url),
-            Err(e) => {
-                let with_scheme = format!("ws://{}", s);
-                if let Ok(url2) = with_scheme.parse::<Url>() {
-                    if let Ok(scheme) = Scheme::try_from(url2.scheme()) {
-                        (scheme, url2)
-                    } else {
-                        return Err(e);
-                    }
-                } else {
-                    return Err(e);
-                }
-            }
+        let uri = s.parse::<Uri>()?;
+
+        let scheme = if let Some(scheme_part) = uri.scheme_str() {
+            Scheme::try_from(scheme_part).map_err(|_| BadUrl::BadScheme(scheme_part.to_string()))?
+        } else {
+            return Err(BadUrl::MissingScheme);
         };
-        match (url.host_str(), url.port()) {
+
+        match (uri.host(), uri.port_u16()) {
             (Some(host_str), Some(port)) => {
                 Ok(SchemeHostPort::new(scheme, host_str.to_owned(), port))
             }
