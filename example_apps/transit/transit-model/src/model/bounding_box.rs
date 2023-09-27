@@ -12,15 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Display;
+
 use swim::form::Form;
 
-#[derive(Debug, PartialEq, Form)]
+#[derive(Clone, Copy, Debug, PartialEq, Form)]
 #[form(tag = "bounds", fields_convention = "camel")]
 pub struct BoundingBox {
     pub min_lat: f64,
     pub max_lat: f64,
     pub min_lng: f64,
     pub max_lng: f64,
+}
+
+impl Display for BoundingBox {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let BoundingBox {
+            min_lat,
+            max_lat,
+            min_lng,
+            max_lng,
+        } = self;
+        write!(
+            f,
+            "Bounds {{ latitude = [{}, {}), longitude = [{}, {}) }}",
+            min_lat, max_lat, min_lng, max_lng
+        )
+    }
 }
 
 impl Default for BoundingBox {

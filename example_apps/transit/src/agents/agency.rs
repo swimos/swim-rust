@@ -20,7 +20,8 @@ use swim::agent::{
     lanes::{CommandLane, DemandLane, MapLane, ValueLane},
     lifecycle, projections, AgentLaneModel,
 };
-use tracing::error;
+use tokio::time::Instant;
+use tracing::{debug, error, info};
 
 use crate::{
     buses_api::BusesApi,
@@ -31,6 +32,10 @@ use crate::{
         vehicle::{Vehicle, VehicleResponse},
     },
 };
+
+use self::statistics::Statistics;
+
+mod statistics;
 
 #[derive(AgentLaneModel)]
 #[projections]
@@ -62,15 +67,33 @@ impl AgencyLifecycle {
             let start_polling = this.start_polling(context);
             on_routes.followed_by(start_polling)
         };
-        context.suspend(get_routes_and_poll)
+        context
+            .get_agent_uri()
+            .and_then(move |uri| {
+                context.effect(move || info!(uri = %uri, "Starting agency agent."))
+            })
+            .followed_by(context.suspend(get_routes_and_poll))
+    }
+
+    #[on_stop]
+    fn stopping(
+        &self,
+        context: HandlerContext<AgencyAgent>,
+    ) -> impl EventHandler<AgencyAgent> + '_ {
+        context.get_agent_uri().and_then(move |uri| {
+            context.effect(move || info!(uri = %uri, "Stopping agency agent."))
+        })
     }
 
     #[on_cue(info)]
     fn get_agency_info(
         &self,
         context: HandlerContext<AgencyAgent>,
-    ) -> impl HandlerAction<AgencyAgent, Completion = Agency> {
-        context.value(self.agency.clone())
+    ) -> impl HandlerAction<AgencyAgent, Completion = Agency> + '_ {
+        context.effect(|| {
+            debug!("Sending the agency information, on demand.");
+            self.agency.clone()
+        })
     }
 
     #[on_command(add_vehicles)]
@@ -88,6 +111,7 @@ impl AgencyLifecycle {
             context.get_map(AgencyAgent::ROUTES),
         )
         .and_then(move |(vehicles, routes)| {
+            debug!(num_vehicles = responses.len(), "Handling a batch of new vehicle records.");
             let vehicle_map = get_vehicle_map(&self.agency, responses, &routes);
             let Statistics {
                 mean_speed,
@@ -95,6 +119,7 @@ impl AgencyLifecycle {
                 ..
             } = stats;
             process_new_vehicles(context, &vehicles, vehicle_map)
+                .followed_by(context.effect(move || debug!(mean_speed, bounding_box = %bounding_box, "Updating vehicle statistics.")))
                 .followed_by(context.set_value(AgencyAgent::VEHICLES_SPEED, mean_speed))
                 .followed_by(context.set_value(AgencyAgent::BOUNDING_BOX, bounding_box))
         })
@@ -115,8 +140,10 @@ impl AgencyLifecycle {
         context: HandlerContext<AgencyAgent>,
     ) -> impl EventHandler<AgencyAgent> + 'static {
         let AgencyLifecycle { api, agency, .. } = self;
+        debug!("Attempting to load routes.");
         match api.get_routes(&agency).await {
             Ok(routes) => {
+                debug!("Successfully loaded routes.");
                 let insert_routes = Sequentially::new(routes.into_iter().map(move |route| {
                     let tag = route.tag.clone();
                     context.update(AgencyAgent::ROUTES, tag, route)
@@ -124,7 +151,7 @@ impl AgencyLifecycle {
                 Either::Left(insert_routes)
             }
             Err(err) => {
-                error!("Failed to load routes: {}", err);
+                error!(error = %err, "Failed to load routes.");
                 Either::Right(context.stop())
             }
         }
@@ -135,8 +162,12 @@ impl AgencyLifecycle {
         context: HandlerContext<AgencyAgent>,
     ) -> Option<impl EventHandler<AgencyAgent> + 'static> {
         let AgencyLifecycle { api, agency, .. } = &self;
+        debug!(time = ?Instant::now(), "Attempting to poll vehicles.");
         match api.poll_vehicles(agency).await {
-            Ok(vehicles) => Some(context.command(AgencyAgent::ADD_VEHICLES, vehicles)),
+            Ok(vehicles) => {
+                debug!("Successfully polled vehicles.");
+                Some(context.command(AgencyAgent::ADD_VEHICLES, vehicles))
+            }
             Err(err) => {
                 error!("Failed to load vehicles: {}", err);
                 None
@@ -148,9 +179,12 @@ impl AgencyLifecycle {
         self,
         context: HandlerContext<AgencyAgent>,
     ) -> impl EventHandler<AgencyAgent> + 'static {
-        context.suspend_repeatedly(self.poll_delay, move || {
+        let suspend = context.suspend_repeatedly(self.poll_delay, move || {
             Some(self.clone().poll_vehicles(context))
-        })
+        });
+        context
+            .effect(|| debug!("Starting timer to poll for vehicles."))
+            .followed_by(suspend)
     }
 }
 
@@ -183,7 +217,6 @@ fn process_new_vehicles(
 
     let additions = new_vehicles
         .into_iter()
-        .filter(|(k, _)| !current_vehicles.contains_key(k))
         .map(move |(k, v)| {
             let to_vehicle_agent =
                 context.send_command(None, v.uri.clone(), "addVehicle".to_string(), v.clone());
@@ -193,42 +226,4 @@ fn process_new_vehicles(
         .collect::<Vec<_>>();
 
     Sequentially::new(removals).followed_by(Sequentially::new(additions))
-}
-
-#[derive(Default)]
-struct Statistics {
-    mean_speed: f64,
-    n: usize,
-    bounding_box: BoundingBox,
-}
-
-const MIN_LAT: f64 = -90.0;
-const MAX_LAT: f64 = 90.0;
-const MIN_LONG: f64 = -180.0;
-const MAX_LONG: f64 = 180.0;
-
-impl Statistics {
-    fn update(mut self, vehicle: &VehicleResponse) -> Self {
-        let Statistics {
-            mean_speed,
-            n,
-            bounding_box:
-                BoundingBox {
-                    min_lat,
-                    max_lat,
-                    min_lng,
-                    max_lng,
-                },
-        } = &mut self;
-
-        let next_n = n.checked_add(1).expect("Number of vehicles overflowed.");
-        *mean_speed = (*n as f64 * *mean_speed + vehicle.speed as f64) / (next_n as f64);
-        *n = next_n;
-
-        *min_lat = min_lat.min(vehicle.latitude).clamp(MIN_LAT, MAX_LAT);
-        *max_lat = max_lat.max(vehicle.latitude).clamp(MIN_LAT, MAX_LAT);
-        *min_lng = min_lng.min(vehicle.longitude).clamp(MIN_LONG, MAX_LONG);
-        *max_lng = max_lng.max(vehicle.longitude).clamp(MIN_LONG, MAX_LONG);
-        self
-    }
 }
