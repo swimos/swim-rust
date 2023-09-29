@@ -53,6 +53,7 @@ pub enum ItemSpec<'a> {
     DemandMap(&'a Type, &'a Type),
     Value(ItemKind, &'a Type),
     Map(ItemKind, &'a Type, &'a Type),
+    Supply(&'a Type),
     JoinValue(&'a Type, &'a Type),
 }
 
@@ -65,7 +66,9 @@ impl<'a> ItemSpec<'a> {
             ItemSpec::Value(ItemKind::Lane, t) => Some(LaneSpec::Value(t)),
             ItemSpec::Map(ItemKind::Lane, k, v) => Some(LaneSpec::Map(k, v)),
             ItemSpec::JoinValue(k, v) => Some(LaneSpec::JoinValue(k, v)),
-            _ => None,
+            ItemSpec::Supply(t) => Some(LaneSpec::Supply(t)),
+            ItemSpec::Value(ItemKind::Store, _) => None,
+            ItemSpec::Map(ItemKind::Store, _, _) => None,
         }
     }
 
@@ -77,6 +80,7 @@ impl<'a> ItemSpec<'a> {
             ItemSpec::JoinValue(_, _) => ItemKind::Lane,
             ItemSpec::Demand(_) => ItemKind::Lane,
             ItemSpec::DemandMap(_, _) => ItemKind::Lane,
+            ItemSpec::Supply(_) => ItemKind::Lane,
         }
     }
 }
@@ -88,18 +92,21 @@ pub enum LaneSpec<'a> {
     Demand(&'a Type),
     DemandMap(&'a Type, &'a Type),
     Value(&'a Type),
+    Supply(&'a Type),
     Map(&'a Type, &'a Type),
     JoinValue(&'a Type, &'a Type),
 }
 
 impl<'a> ItemSpec<'a> {
     pub fn is_stateful(&self) -> bool {
-        !matches!(self, ItemSpec::Command(_) | ItemSpec::Demand(_))
+        !matches!(
+            self,
+            ItemSpec::Command(_) | ItemSpec::Demand(_) | ItemSpec::Supply(_)
+        )
     }
 }
 
 bitflags! {
-
     pub struct ItemFlags: u8 {
         /// The state of the lane should not be persisted.
         const TRANSIENT = 0b01;
@@ -230,6 +237,7 @@ const VALUE_STORE_NAME: &str = "ValueStore";
 const MAP_LANE_NAME: &str = "MapLane";
 const MAP_STORE_NAME: &str = "MapStore";
 const JOIN_VALUE_LANE_NAME: &str = "JoinValueLane";
+const SUPPLY_LANE_NAME: &str = "SupplyLane";
 
 fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
     if let (Some(fld_name), Type::Path(TypePath { qself: None, path })) = (&field.ident, &field.ty)
@@ -304,6 +312,14 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
                         fld_name,
                         ItemSpec::JoinValue(param1, param2),
                         lane_flags,
+                    ))
+                }
+                SUPPLY_LANE_NAME => {
+                    let param = single_param(arguments)?;
+                    Ok(ItemModel::new(
+                        fld_name,
+                        ItemSpec::Supply(param),
+                        ItemFlags::TRANSIENT, //Supply lanes are always transient.
                     ))
                 }
                 _ => Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE)),

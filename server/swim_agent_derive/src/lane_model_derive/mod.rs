@@ -325,6 +325,9 @@ impl<'a> FieldInitializer<'a> {
             ItemSpec::DemandMap(_, _) => {
                 quote!(#name: #root::lanes::DemandMapLane::new(#ordinal))
             }
+            ItemSpec::Supply(_) => {
+                quote!(#name: #root::lanes::SupplyLane::new(#ordinal))
+            }
             ItemSpec::Value(ItemKind::Lane, _) => {
                 quote!(#name: #root::lanes::ValueLane::new(#ordinal, ::core::default::Default::default()))
             }
@@ -366,7 +369,10 @@ impl<'a> HandlerType<'a> {
             LaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::DecodeAndApply<#agent_name, #k, #v>)
             }
-            LaneSpec::Demand(_) | LaneSpec::DemandMap(_, _) | LaneSpec::JoinValue(_, _) => {
+            LaneSpec::Demand(_)
+            | LaneSpec::DemandMap(_, _)
+            | LaneSpec::JoinValue(_, _)
+            | LaneSpec::Supply(_) => {
                 quote!(#root::event_handler::UnitHandler)
             }
         }
@@ -397,6 +403,9 @@ impl<'a> SyncHandlerType<'a> {
             }
             LaneSpec::JoinValue(k, v) => {
                 quote!(#root::lanes::join_value::JoinValueLaneSync<#agent_name, #k, #v>)
+            }
+            LaneSpec::Supply(t) => {
+                quote!(#root::lanes::supply::SupplyLaneSync<#agent_name, #t>)
             }
         }
     }
@@ -436,7 +445,10 @@ impl<'a> LaneHandlerMatch<'a> {
             LaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v>(body, |agent: &#agent_name| &agent.#name))
             }
-            LaneSpec::Demand(_) | LaneSpec::DemandMap(_, _) | LaneSpec::JoinValue(_, _) => {
+            LaneSpec::Demand(_)
+            | LaneSpec::DemandMap(_, _)
+            | LaneSpec::JoinValue(_, _)
+            | LaneSpec::Supply(_) => {
                 quote!(#root::event_handler::UnitHandler::default())
             }
         };
@@ -500,6 +512,9 @@ impl<'a> SyncHandlerMatch<'a> {
             }
             LaneSpec::JoinValue(k, v) => {
                 quote!(#root::lanes::join_value::JoinValueLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
+            }
+            LaneSpec::Supply(ty) => {
+                quote!(#root::lanes::supply::SupplyLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &agent.#name, id))
             }
         };
         quote! {
@@ -647,6 +662,9 @@ impl<'a> LaneSpecInsert<'a> {
             }
             ItemSpec::DemandMap(_, _) => {
                 quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::DemandMap))
+            }
+            ItemSpec::Supply(_) => {
+                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::Supply))
             }
         };
 

@@ -23,6 +23,7 @@ use swim::agent::reexport::bytes::BytesMut;
 use swim::agent::reexport::uuid::Uuid;
 use swim::agent::AgentLaneModel;
 use swim_agent::agent_model::ItemKind;
+use swim_agent::lanes::supply::SupplyLane;
 use swim_agent::lanes::{DemandLane, DemandMapLane, JoinValueLane};
 use swim_agent::stores::{MapStore, ValueStore};
 use swim_api::meta::lane::LaneKind;
@@ -182,6 +183,16 @@ fn single_demand_map_lane() {
 }
 
 #[test]
+fn single_supply_lane() {
+    #[derive(AgentLaneModel)]
+    struct SingleSupplyLane {
+        lane: SupplyLane<i32>,
+    }
+
+    check_agent::<SingleSupplyLane>(vec![transient_lane("lane", LaneKind::Supply)]);
+}
+
+#[test]
 fn two_value_lanes() {
     #[derive(AgentLaneModel)]
     struct TwoValueLanes {
@@ -266,6 +277,20 @@ fn two_demand_lanes() {
 }
 
 #[test]
+fn two_supply_lanes() {
+    #[derive(AgentLaneModel)]
+    struct TwoSupplyLanes {
+        first: SupplyLane<i32>,
+        second: SupplyLane<i32>,
+    }
+
+    check_agent::<TwoSupplyLanes>(vec![
+        transient_lane("first", LaneKind::Supply),
+        transient_lane("second", LaneKind::Supply),
+    ]);
+}
+
+#[test]
 fn two_demand_map_lanes() {
     #[derive(AgentLaneModel)]
     struct TwoDemandMapLanes {
@@ -319,6 +344,7 @@ fn multiple_lanes() {
         sixth: JoinValueLane<i32, i32>,
         seventh: DemandLane<i32>,
         eighth: DemandMapLane<i32, i32>,
+        ninth: SupplyLane<i32>,
     }
 
     check_agent::<MultipleLanes>(vec![
@@ -330,6 +356,7 @@ fn multiple_lanes() {
         persistent_lane("fourth", LaneKind::Map),
         persistent_lane("sixth", LaneKind::JoinValue),
         transient_lane("eighth", LaneKind::DemandMap),
+        transient_lane("ninth", LaneKind::Supply),
     ]);
 }
 
@@ -438,6 +465,21 @@ fn demand_lane_tagged_transient() {
     check_agent::<TwoDemandLanes>(vec![
         transient_lane("first", LaneKind::Demand),
         transient_lane("second", LaneKind::Demand),
+    ]);
+}
+
+#[test]
+fn supply_lane_tagged_transient() {
+    #[derive(AgentLaneModel)]
+    struct TwoSupplyLanes {
+        #[transient]
+        first: SupplyLane<i32>,
+        second: SupplyLane<i32>,
+    }
+
+    check_agent::<TwoSupplyLanes>(vec![
+        transient_lane("first", LaneKind::Supply),
+        transient_lane("second", LaneKind::Supply),
     ]);
 }
 

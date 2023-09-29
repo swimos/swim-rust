@@ -135,6 +135,11 @@ fn my_demand_keys_handler(&self, context: HandlerContext<ExampleAgent>) -> impl 
 }
 ```
 
+Supply lane events
+-------------------
+
+Supply lanes generate no events on a lifecycle.
+
 Value lane events
 -----------------
 

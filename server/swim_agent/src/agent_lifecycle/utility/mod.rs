@@ -19,6 +19,7 @@ use std::time::Duration;
 use std::{collections::HashMap, marker::PhantomData};
 
 use futures::{Future, FutureExt};
+
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::structural::write::StructuralWritable;
 use swim_form::Form;
@@ -44,6 +45,7 @@ use crate::lanes::demand::{Cue, DemandLane};
 use crate::lanes::demand_map::CueKey;
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
 use crate::lanes::map::{MapLaneGetMap, MapLaneWithEntry};
+use crate::lanes::supply::{Supply, SupplyLane};
 use crate::lanes::DemandMapLane;
 use crate::stores::map::{
     MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate, MapStoreWithEntry,
@@ -512,6 +514,22 @@ impl<Agent: 'static> HandlerContext<Agent> {
         V: 'static,
     {
         CueKey::new(lane, key)
+    }
+
+    /// Create an event handler that will supply an event to a supply lane.
+    ///
+    /// #Arguments
+    /// * `lane` - Projection to the supply lane.
+    /// * `value` - The value to supply.
+    pub fn supply<V>(
+        &self,
+        lane: fn(&Agent) -> &SupplyLane<V>,
+        value: V,
+    ) -> impl EventHandler<Agent> + Send + 'static
+    where
+        V: Send + 'static,
+    {
+        Supply::new(lane, value)
     }
 
     /// Suspend a future to be executed by the agent task. The future must result in another
