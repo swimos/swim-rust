@@ -213,7 +213,7 @@ impl<Context, T> HandlerAction<Context> for Supply<Context, T> {
             let lane = projection(context);
             lane.push(value);
             StepResult::Complete {
-                modified_item: Some(Modification::of(lane.id())),
+                modified_item: Some(Modification::no_trigger(lane.id())),
                 result: (),
             }
         } else {
@@ -250,7 +250,7 @@ impl<Context, T> HandlerAction<Context> for SupplyLaneSync<Context, T> {
             let lane = projection(context);
             lane.sync(id);
             StepResult::Complete {
-                modified_item: Some(Modification::of(lane.id)),
+                modified_item: Some(Modification::no_trigger(lane.id)),
                 result: (),
             }
         } else {

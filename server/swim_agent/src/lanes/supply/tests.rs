@@ -88,7 +88,7 @@ fn supply_event_handler() {
         StepResult::Complete {
             modified_item: Some(Modification {
                 item_id: LANE_ID,
-                trigger_handler: true
+                trigger_handler: false
             }),
             result: ()
         }
@@ -106,7 +106,7 @@ fn supply_event_handler() {
 }
 
 #[test]
-fn demand_lane_sync_handler() {
+fn supply_lane_sync_handler() {
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
@@ -125,7 +125,7 @@ fn demand_lane_sync_handler() {
         StepResult::Complete {
             modified_item: Some(Modification {
                 item_id: LANE_ID,
-                trigger_handler: true
+                trigger_handler: false
             }),
             result: ()
         }
