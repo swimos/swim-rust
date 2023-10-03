@@ -12,23 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, fmt::Display};
+use std::collections::HashMap;
 
-use swim::{
-    agent::{
-        agent_lifecycle::utility::{HandlerContext, JoinValueContext},
-        event_handler::{EventHandler, HandlerActionExt},
-        lanes::{
-            join_value::{lifecycle::JoinValueLaneLifecycle, LinkClosedResponse},
-            CommandLane, JoinValueLane, ValueLane,
-        },
-        lifecycle, projections, AgentLaneModel,
-    },
-    form::Form,
+use swim::agent::{
+    agent_lifecycle::utility::{HandlerContext, JoinValueContext},
+    event_handler::{EventHandler, HandlerActionExt},
+    lanes::{join_value::lifecycle::JoinValueLaneLifecycle, CommandLane, JoinValueLane, ValueLane},
+    lifecycle, projections, AgentLaneModel,
 };
 use tracing::{debug, info};
 
 use crate::model::{agency::Agency, counts::Count};
+
+use super::join_value_logging_lifecycle;
 
 #[derive(AgentLaneModel)]
 #[projections]
@@ -70,7 +66,7 @@ impl StateLifecycle {
         let country_uri = agency.country_uri();
         let log_uri = context.value(agency_uri.clone()).and_then(move |uri| {
             context.effect(move || {
-                info!(uri, "Initializing agency information.");
+                info!(uri, "Initializing agency information for state.");
             })
         });
         let link_count = context.add_downlink(
@@ -100,7 +96,7 @@ impl StateLifecycle {
         &self,
         context: JoinValueContext<StateAgent, Agency, usize>,
     ) -> impl JoinValueLaneLifecycle<Agency, usize, StateAgent> + 'static {
-        join_value_logging_lifecycle(context, "Count")
+        join_value_logging_lifecycle(context, |agency| agency.id.clone(), "Count")
     }
 
     #[join_value_lifecycle(agency_speed)]
@@ -108,7 +104,7 @@ impl StateLifecycle {
         &self,
         context: JoinValueContext<StateAgent, Agency, f64>,
     ) -> impl JoinValueLaneLifecycle<Agency, f64, StateAgent> + 'static {
-        join_value_logging_lifecycle(context, "Speed")
+        join_value_logging_lifecycle(context, |agency| agency.id.clone(), "Speed")
     }
 
     #[on_update(agency_count)]
@@ -157,46 +153,4 @@ impl StateLifecycle {
         debug!(avg, "Updating state average speed.");
         context.set_value(StateAgent::SPEED, avg)
     }
-}
-
-fn join_value_logging_lifecycle<V>(
-    context: JoinValueContext<StateAgent, Agency, V>,
-    tag: &'static str,
-) -> impl JoinValueLaneLifecycle<Agency, V, StateAgent> + 'static
-where
-    V: Clone + Form + Send + Display + 'static,
-    V::Rec: Send,
-{
-    context
-        .builder()
-        .on_linked(move |context, key, _remote| {
-            let id = key.id.clone();
-            context.effect(move || {
-                debug!(id, "{} lane linked to remote.", tag);
-            })
-        })
-        .on_synced(move |context, key, _remote, value| {
-            let id = key.id.clone();
-            let value = value.cloned();
-            context.effect(move || {
-                if let Some(value) = value {
-                    debug!(id, value = %value, "{} lane synced with remote.", tag);
-                }
-            })
-        })
-        .on_unlinked(move |context, key, _remote| {
-            let id = key.id.clone();
-            context.effect(move || {
-                debug!(id, "{} lane unlinked from remote.", tag);
-                LinkClosedResponse::Delete
-            })
-        })
-        .on_failed(move |context, key, _remote| {
-            let id = key.id.clone();
-            context.effect(move || {
-                debug!(id, "{} lane link to remote failed.", tag);
-                LinkClosedResponse::Delete
-            })
-        })
-        .done()
 }
