@@ -24,6 +24,7 @@ use swim::agent::{
     lifecycle, projections, AgentLaneModel,
 };
 use tokio::time::Instant;
+use tracing::{debug, info};
 
 use crate::model::vehicle::Vehicle;
 
@@ -67,7 +68,12 @@ impl VehicleLifecycle {
                     None
                 }
             })
-            .and_then(move |to_remove: Option<u64>| to_remove.map(remove_old).discard())
+            .and_then(move |to_remove: Option<u64>| {
+                if let Some(t) = to_remove.as_ref() {
+                    debug!(timestamp = t, "Removing entries for expired timestamp.");
+                }
+                to_remove.map(remove_old).discard()
+            })
     }
 }
 
@@ -83,7 +89,14 @@ impl VehicleLifecycle {
     #[on_start]
     fn init(&self, context: HandlerContext<VehicleAgent>) -> impl EventHandler<VehicleAgent> {
         context.get_agent_uri().and_then(move |uri| {
-            context.effect(move || println!("Starting vehicle agent at: {}", uri))
+            context.effect(move || info!(uri = %uri, "Starting vehicle agent."))
+        })
+    }
+
+    #[on_stop]
+    fn stopping(&self, context: HandlerContext<VehicleAgent>) -> impl EventHandler<VehicleAgent> {
+        context.get_agent_uri().and_then(move |uri| {
+            context.effect(move || info!(uri = %uri, "Stopping vehicle agent."))
         })
     }
 
@@ -93,7 +106,13 @@ impl VehicleLifecycle {
         context: HandlerContext<VehicleAgent>,
         vehicle: &Vehicle,
     ) -> impl EventHandler<VehicleAgent> {
-        context.set_value(VehicleAgent::VEHICLE, Some(vehicle.clone()))
+        let v = vehicle.clone();
+        context
+            .effect(move || {
+                info!(id = v.id, "Initializing vehicle data.");
+                v
+            })
+            .and_then(move |v| context.set_value(VehicleAgent::VEHICLE, Some(v)))
     }
 
     #[on_set(vehicle)]
@@ -108,16 +127,19 @@ impl VehicleLifecycle {
             .map(move |vehicle| {
                 let timestamp = timestamp(self.epoch, vehicle);
                 let old_timestamp = self.last_reported_time.replace(Some(timestamp));
+                debug!(id = %vehicle.id, timestamp, old_timestamp, "Computed timestamps for vehicle update.");
 
                 let speed = vehicle.speed;
                 let update_speed = context.update(VehicleAgent::SPEEDS, timestamp, vehicle.speed);
 
+                let id = vehicle.id.clone();
                 let update_acc = old_value
                     .flatten()
                     .zip(old_timestamp)
                     .map(move |(previous, previous_ts)| {
                         let acceleration =
                             compute_acceleration(timestamp, previous_ts, speed, previous.speed);
+                        debug!(id, timestamp, old_timestamp, "Computed acceleration for vehicle update.");
                         context.update(VehicleAgent::ACCELERATIONS, timestamp, acceleration)
                     })
                     .discard();
