@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["mock-server"]
+default = []
 mock-server = ["dep:transit-fixture"]
 
 [dependencies]
@@ -22,3 +22,7 @@ tracing = { workspace = true }
 transit-model = { path = "transit-model" }
 transit-fixture = { path = "transit-fixture", optional = true }
 futures = { workspace = true }
+
+[[bin]]
+name = "fixture"
+required-features = ["mock-server"]

@@ -48,7 +48,7 @@ where
 }
 
 impl BusesApi {
-    pub(crate) fn new(base_uri: String, enable_gzip: bool) -> Self {
+    pub fn new(base_uri: String, enable_gzip: bool) -> Self {
         let client = Client::builder().gzip(enable_gzip).build().unwrap();
 
         BusesApi { client, base_uri }

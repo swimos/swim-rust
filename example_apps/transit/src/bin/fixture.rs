@@ -12,16 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{error::Error, time::Duration};
+use std::{collections::HashSet, error::Error, time::Duration};
 
 use example_util::example_logging;
 use swim::{route::RouteUri, server::ServerBuilder};
-use transit::{buses_api::BusesApi, create_plane, IncludeRoutes};
+use transit::{buses_api::BusesApi, create_plane, model, IncludeRoutes};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     example_logging()?;
-    let agencies = transit::model::agencies();
+    let params = read_params();
+    with_params(params).await
+}
+
+fn read_params() -> HashSet<IncludeRoutes> {
+    match std::env::args().next().as_deref() {
+        Some("none") => HashSet::new(),
+        Some("vehicles") => [IncludeRoutes::Vehicle].into_iter().collect(),
+        Some("state") => [IncludeRoutes::Vehicle, IncludeRoutes::State]
+            .into_iter()
+            .collect(),
+        _ => HashSet::new(),
+    }
+}
+
+async fn with_params(params: HashSet<IncludeRoutes>) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let agencies = model::agencies();
     let agency_uris = agencies
         .iter()
         .map(|a| a.uri().parse::<RouteUri>())
@@ -30,7 +46,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     server_runner::run_server(agency_uris, move |api: BusesApi| async move {
         let mut builder = ServerBuilder::with_plane_name("Transit Plane");
 
-        builder = create_plane(agencies, api, builder, IncludeRoutes::all())?;
+        builder = create_plane(agencies, api, builder, params)?;
 
         let server = builder
             .update_config(|config| {
@@ -44,12 +60,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 }
 
 mod server_runner {
-    use std::error::Error;
-    use std::future::Future;
+    use std::{error::Error, future::Future, sync::Arc};
     use swim::{
         route::RouteUri,
         server::{BoxServer, Server},
     };
+    use tokio::{net::TcpListener, sync::Notify};
 
     use transit::{buses_api::BusesApi, start_agencies_and_wait};
 
@@ -61,14 +77,33 @@ mod server_runner {
         F: FnOnce(BusesApi) -> Fut,
         Fut: Future<Output = Result<BoxServer, Box<dyn Error + Send + Sync>>>,
     {
-        let swim_server = f(BusesApi::default()).await?;
+        let listener = TcpListener::bind("0.0.0.0:0").await?;
+        let addr = listener.local_addr()?;
+        let api = BusesApi::new(format!("http://127.0.0.1:{}", addr.port()), false);
+
+        let swim_server = f(api).await?;
         let (task, handle) = swim_server.run();
+
+        println!("Listening on: {}", addr);
+
+        let trigger = Arc::new(Notify::new());
+        let mock_server = tokio::spawn(transit_fixture::run_mock_server(
+            listener.into_std()?,
+            trigger.clone(),
+        ));
+
+        let task_with_trigger = async move {
+            let result = task.await;
+            trigger.notify_one();
+            result
+        };
 
         let shutdown = start_agencies_and_wait(agency_uris, handle);
 
-        let (_, result) = tokio::join!(shutdown, task);
+        let (_, mock_result, result) = tokio::join!(shutdown, mock_server, task_with_trigger);
 
         result?;
+        mock_result??;
         println!("Server stopped successfully.");
         Ok(())
     }
