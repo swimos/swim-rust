@@ -12,14 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
-use swim::agent::{
-    agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, HandlerActionExt},
-    lanes::{CommandLane, JoinValueLane, ValueLane},
-    lifecycle, projections, AgentLaneModel,
+use swim::{
+    agent::{
+        agent_lifecycle::utility::{HandlerContext, JoinValueContext},
+        event_handler::{EventHandler, HandlerActionExt},
+        lanes::{
+            join_value::{lifecycle::JoinValueLaneLifecycle, LinkClosedResponse},
+            CommandLane, JoinValueLane, ValueLane,
+        },
+        lifecycle, projections, AgentLaneModel,
+    },
+    form::Form,
 };
+use tracing::{debug, info};
 
 use crate::model::{agency::Agency, counts::Count};
 
@@ -28,10 +35,9 @@ use crate::model::{agency::Agency, counts::Count};
 #[agent(transient, convention = "camel")]
 pub struct StateAgent {
     count: ValueLane<Count>,
-    join_agency_count: JoinValueLane<Agency, usize>,
+    agency_count: JoinValueLane<Agency, usize>,
     speed: ValueLane<f64>,
     agency_speed: JoinValueLane<Agency, f64>,
-    join_agency_speed: JoinValueLane<Agency, f64>,
     add_agency: CommandLane<Agency>,
 }
 
@@ -42,9 +48,16 @@ pub struct StateLifecycle;
 impl StateLifecycle {
     #[on_start]
     fn init(&self, context: HandlerContext<StateAgent>) -> impl EventHandler<StateAgent> {
-        context.get_agent_uri().and_then(move |uri| {
-            context.effect(move || println!("Starting State agent at: {}", uri))
-        })
+        context
+            .get_agent_uri()
+            .and_then(move |uri| context.effect(move || info!(uri = %uri, "Starting state agent.")))
+    }
+
+    #[on_stop]
+    fn stopping(&self, context: HandlerContext<StateAgent>) -> impl EventHandler<StateAgent> {
+        context
+            .get_agent_uri()
+            .and_then(move |uri| context.effect(move || info!(uri = %uri, "Stopping state agent.")))
     }
 
     #[on_command(add_agency)]
@@ -55,15 +68,20 @@ impl StateLifecycle {
     ) -> impl EventHandler<StateAgent> {
         let agency_uri = agency.uri();
         let country_uri = agency.country_uri();
+        let log_uri = context.value(agency_uri.clone()).and_then(move |uri| {
+            context.effect(move || {
+                info!(uri, "Initializing agency information.");
+            })
+        });
         let link_count = context.add_downlink(
-            StateAgent::JOIN_AGENCY_COUNT,
+            StateAgent::AGENCY_COUNT,
             agency.clone(),
             None,
             &agency_uri,
             "count",
         );
         let link_speed = context.add_downlink(
-            StateAgent::JOIN_AGENCY_SPEED,
+            StateAgent::AGENCY_SPEED,
             agency.clone(),
             None,
             &agency_uri,
@@ -71,12 +89,29 @@ impl StateLifecycle {
         );
         let add_to_country =
             context.send_command(None, country_uri, "addAgency".to_string(), agency.clone());
-        link_count
+        log_uri
+            .followed_by(link_count)
             .followed_by(link_speed)
             .followed_by(add_to_country)
     }
 
-    #[on_update(join_agency_count)]
+    #[join_value_lifecycle(agency_count)]
+    fn register_count_lifecycle(
+        &self,
+        context: JoinValueContext<StateAgent, Agency, usize>,
+    ) -> impl JoinValueLaneLifecycle<Agency, usize, StateAgent> + 'static {
+        join_value_logging_lifecycle(context, "Count")
+    }
+
+    #[join_value_lifecycle(agency_speed)]
+    fn register_speed_lifecycle(
+        &self,
+        context: JoinValueContext<StateAgent, Agency, f64>,
+    ) -> impl JoinValueLaneLifecycle<Agency, f64, StateAgent> + 'static {
+        join_value_logging_lifecycle(context, "Speed")
+    }
+
+    #[on_update(agency_count)]
     fn update_counts(
         &self,
         context: HandlerContext<StateAgent>,
@@ -90,6 +125,7 @@ impl StateLifecycle {
             .get_value(StateAgent::COUNT)
             .and_then(move |Count { max, .. }| {
                 let new_max = max.max(count_sum);
+                debug!(count_sum, new_max, "Updating state counts.");
                 context.set_value(
                     StateAgent::COUNT,
                     Count {
@@ -100,7 +136,7 @@ impl StateLifecycle {
             })
     }
 
-    #[on_update(join_agency_speed)]
+    #[on_update(agency_speed)]
     fn update_speeds(
         &self,
         context: HandlerContext<StateAgent>,
@@ -118,6 +154,49 @@ impl StateLifecycle {
                 (next_mean, next_n)
             })
             .0;
+        debug!(avg, "Updating state average speed.");
         context.set_value(StateAgent::SPEED, avg)
     }
+}
+
+fn join_value_logging_lifecycle<V>(
+    context: JoinValueContext<StateAgent, Agency, V>,
+    tag: &'static str,
+) -> impl JoinValueLaneLifecycle<Agency, V, StateAgent> + 'static
+where
+    V: Clone + Form + Send + Display + 'static,
+    V::Rec: Send,
+{
+    context
+        .builder()
+        .on_linked(move |context, key, _remote| {
+            let id = key.id.clone();
+            context.effect(move || {
+                debug!(id, "{} lane linked to remote.", tag);
+            })
+        })
+        .on_synced(move |context, key, _remote, value| {
+            let id = key.id.clone();
+            let value = value.cloned();
+            context.effect(move || {
+                if let Some(value) = value {
+                    debug!(id, value = %value, "{} lane synced with remote.", tag);
+                }
+            })
+        })
+        .on_unlinked(move |context, key, _remote| {
+            let id = key.id.clone();
+            context.effect(move || {
+                debug!(id, "{} lane unlinked from remote.", tag);
+                LinkClosedResponse::Delete
+            })
+        })
+        .on_failed(move |context, key, _remote| {
+            let id = key.id.clone();
+            context.effect(move || {
+                debug!(id, "{} lane link to remote failed.", tag);
+                LinkClosedResponse::Delete
+            })
+        })
+        .done()
 }
