@@ -17,6 +17,7 @@ use std::fmt::Display;
 use bytes::Bytes;
 use percent_encoding::NON_ALPHANUMERIC;
 use reqwest::Client;
+use tracing::{debug, error};
 
 use crate::model::{
     agency::Agency,
@@ -49,6 +50,7 @@ where
 
 impl BusesApi {
     pub fn new(base_uri: String, enable_gzip: bool) -> Self {
+        debug!(base_uri, enable_gzip, "Initializing Buses API.");
         let client = Client::builder().gzip(enable_gzip).build().unwrap();
 
         BusesApi { client, base_uri }
@@ -62,8 +64,15 @@ impl BusesApi {
             base_uri,
             percent_encoding::utf8_percent_encode(id, NON_ALPHANUMERIC)
         );
-        let bytes = self.do_request(uri).await?;
-        Ok(load_xml_routes(bytes.as_ref())?)
+        debug!(id, uri, "Requesting routes for agency.");
+        let bytes = self.do_request(uri).await.map_err(|error| {
+            error!(id, error = %error, "Failed to get routes for agency.");
+            error
+        })?;
+        Ok(load_xml_routes(bytes.as_ref()).map_err(|error| {
+            error!(id, error = %error, "Failed to get parse route XML.");
+            error
+        })?)
     }
 
     pub async fn poll_vehicles(
@@ -77,12 +86,20 @@ impl BusesApi {
             base_uri,
             percent_encoding::utf8_percent_encode(id, NON_ALPHANUMERIC)
         );
-        let bytes = self.do_request(uri).await?;
-        let (responses, _last_time) = load_xml_vehicles(bytes.as_ref())?;
+        debug!(id, uri, "Polling vehicles for agency.");
+        let bytes = self.do_request(uri).await.map_err(|error| {
+            error!(id, error = %error, "Failed to poll vehicles for agency.");
+            error
+        })?;
+        let (responses, _last_time) = load_xml_vehicles(bytes.as_ref()).map_err(|error| {
+            error!(id, error = %error, "Failed to get parse vehicle XML.");
+            error
+        })?;
         Ok(responses.into_iter().collect())
     }
 
     async fn do_request(&self, uri: String) -> Result<Bytes, BusesApiError> {
+        debug!(uri, "Making HTTP request.");
         let BusesApi { client, .. } = self;
         let request = client.get(uri).build()?;
         let response = client.execute(request).await?;
