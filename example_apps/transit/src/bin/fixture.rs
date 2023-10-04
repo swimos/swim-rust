@@ -67,6 +67,7 @@ mod server_runner {
     };
     use tokio::{net::TcpListener, sync::Notify};
 
+    use tracing::info;
     use transit::{buses_api::BusesApi, start_agencies_and_wait};
 
     pub async fn run_server<F, Fut>(
@@ -84,7 +85,7 @@ mod server_runner {
         let swim_server = f(api).await?;
         let (task, handle) = swim_server.run();
 
-        println!("Listening on: {}", addr);
+        info!(addr = %addr, "Mock service bound.");
 
         let trigger = Arc::new(Notify::new());
         let mock_server = tokio::spawn(transit_fixture::run_mock_server(

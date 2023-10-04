@@ -23,6 +23,7 @@ use axum::{
 };
 use hyper::{header, StatusCode};
 use serde::{Deserialize, Deserializer};
+use tracing::debug;
 use transit_model::{route, vehicle};
 
 use crate::state::AgenciesState;
@@ -67,6 +68,7 @@ async fn handle_request(
 ) -> impl IntoResponse {
     match params {
         Command::RouteList { agency_id } => {
+            debug!(agency_id, "Handling request for agency routes.");
             if let Some(routes) = state.routes_for_agency(&agency_id) {
                 (
                     StatusCode::OK,
@@ -82,6 +84,7 @@ async fn handle_request(
             }
         }
         Command::VehicleLocations { agency_id, time } => {
+            debug!(agency_id, "Handling request for agency vehicles.");
             if time != 0 {
                 (
                     StatusCode::BAD_REQUEST,

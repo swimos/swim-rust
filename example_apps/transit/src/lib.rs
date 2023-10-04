@@ -22,6 +22,7 @@ use swim::{
     server::{ServerBuilder, ServerHandle},
 };
 use tokio::time::Instant;
+use tracing::{debug, error, info};
 use transit_model::agency::Agency;
 
 use crate::{
@@ -67,6 +68,7 @@ pub fn create_plane(
     mut builder: ServerBuilder,
     inc: HashSet<IncludeRoutes>,
 ) -> Result<ServerBuilder, Box<dyn Error + Send + Sync>> {
+    debug!("Adding agency routes.");
     for agency in agencies {
         let uri = agency.uri();
         let route = RoutePattern::parse_str(&uri)?;
@@ -77,6 +79,7 @@ pub fn create_plane(
 
     if inc.contains(&IncludeRoutes::Vehicle) {
         let epoch = Instant::now() - WEEK;
+        debug!(epoch = ?epoch, "Adding vehicle route.");
         let vehicle_route = RoutePattern::parse_str("/vehicle/:country/:state/:id")?;
         let vehicle_lifecycle = move || VehicleLifecycle::new(epoch, HISTORY_LEN).into_lifecycle();
         let vehicle_agent = AgentModel::from_fn(VehicleAgent::default, vehicle_lifecycle);
@@ -84,12 +87,14 @@ pub fn create_plane(
     }
 
     if inc.contains(&IncludeRoutes::State) {
+        debug!("Adding state route.");
         let state_route = RoutePattern::parse_str("/state/:country/:state")?;
         let state_agent = AgentModel::new(StateAgent::default, StateLifecycle.into_lifecycle());
         builder = builder.add_route(state_route, state_agent);
     }
 
     if inc.contains(&IncludeRoutes::Country) {
+        debug!("Adding country routes.");
         let country_route = RoutePattern::parse_str("/country/:country")?;
         let country_agent =
             AgentModel::new(CountryAgent::default, CountryLifecycle.into_lifecycle());
@@ -100,6 +105,7 @@ pub fn create_plane(
 }
 
 pub async fn start_agencies_and_wait(agency_uris: Vec<RouteUri>, handle: ServerHandle) {
+    info!("Starting agency agents.");
     let stream = agency_uris
         .into_iter()
         .map(|route| handle.start_agent(route))
@@ -107,7 +113,7 @@ pub async fn start_agencies_and_wait(agency_uris: Vec<RouteUri>, handle: ServerH
         .filter_map(|r| async move { r.err() });
     let errors = stream.collect::<Vec<_>>().await;
     for error in errors {
-        println!("Failed to start agency agent: {}", error);
+        error!(error = %error, "Failed to start agency agent.");
     }
     manage_handle(handle).await
 }

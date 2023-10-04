@@ -17,6 +17,7 @@ use std::{collections::HashMap, f64::consts::SQRT_2};
 use chrono::Utc;
 use parking_lot::RwLock;
 use rand::Rng;
+use tracing::debug;
 use transit_model::{
     route::Route,
     vehicle::{Heading, Vehicle, VehicleResponse},
@@ -90,9 +91,12 @@ impl AgenciesState {
         let mut guard = inner.write();
         let Inner { last, vehicles, .. } = &mut *guard;
         let now = Utc::now().timestamp_millis() as u64;
+
         let diff_secs = (now - *last) / 1000;
 
         let num_updates = diff_secs / update_interval;
+
+        debug!(now, diff_secs, num_updates, "Updating the server state.");
 
         let mut r = rand::thread_rng();
         for i in 0..num_updates {

@@ -20,6 +20,7 @@ use tokio::{
     sync::Notify,
     time::{sleep, Instant},
 };
+use tracing::{debug, info};
 
 pub mod agency;
 pub mod server;
@@ -29,6 +30,7 @@ pub mod vehicles;
 async fn update_task(state: Arc<AgenciesState>, interval: Duration, stop: Arc<Notify>) {
     let mut sleep = pin!(sleep(interval));
     let mut notified = pin!(stop.notified());
+    info!("Starting update task.");
     state.update();
     loop {
         tokio::select! {
@@ -53,21 +55,24 @@ pub async fn run_mock_server(
 
     let update_trigger = Arc::new(Notify::new());
     let server_trigger = Arc::new(Notify::new());
-    let updater_trigger_rx = update_trigger.clone();
+    let update_trigger_rx = update_trigger.clone();
     let server_trigger_rx = server_trigger.clone();
 
     let shutdown = async move {
         shutdown_rx.notified().await;
+        debug!("Mock server stop signal received.");
         update_trigger.notify_one();
         server_trigger.notify_one();
     };
 
-    let update = update_task(state, UPDATE_STATE_INTERVAL, updater_trigger_rx);
+    let update = update_task(state, UPDATE_STATE_INTERVAL, update_trigger_rx);
 
+    info!("Starting mock web service.");
     let server_task = axum::Server::from_tcp(listener)?
         .serve(app.into_make_service())
         .with_graceful_shutdown(server_trigger_rx.notified());
 
     join3(shutdown, update, server_task).await.2?;
+    info!("Mock sever has stopped.");
     Ok(())
 }
