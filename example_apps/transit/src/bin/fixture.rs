@@ -15,14 +15,12 @@
 use std::{collections::HashSet, error::Error, time::Duration};
 
 use clap::Parser;
-use example_util::example_logging;
-use swim::{route::RouteUri, server::ServerBuilder};
+use swim::server::ServerBuilder;
 use tracing::debug;
-use transit::{buses_api::BusesApi, configure_logging, create_plane, model, IncludeRoutes};
+use transit::{buses_api::BusesApi, configure_logging, create_plane, IncludeRoutes};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    example_logging()?;
     let params = read_params()?;
     debug!(params = ?params, "Processed command line args.");
     with_params(params).await
@@ -53,16 +51,14 @@ fn read_params() -> Result<HashSet<IncludeRoutes>, Box<dyn Error + Send + Sync>>
 }
 
 async fn with_params(params: HashSet<IncludeRoutes>) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let agencies = model::agencies();
-    let agency_uris = agencies
-        .iter()
-        .map(|a| a.uri().parse::<RouteUri>())
-        .collect::<Result<Vec<_>, _>>()?;
+    let agencies = transit_fixture::agency::mock_agencies();
 
-    server_runner::run_server(agency_uris, move |api: BusesApi| async move {
+    let plane_agencies = agencies.iter().map(|a| a.agency.clone()).collect();
+
+    server_runner::run_server(agencies, move |api: BusesApi| async move {
         let mut builder = ServerBuilder::with_plane_name("Transit Plane");
 
-        builder = create_plane(agencies, api, builder, params)?;
+        builder = create_plane(plane_agencies, api, builder, params)?;
 
         let server = builder
             .update_config(|config| {
@@ -85,18 +81,26 @@ mod server_runner {
 
     use tracing::info;
     use transit::{buses_api::BusesApi, start_agencies_and_wait};
+    use transit_fixture::agency::AgencyWithRoutes;
 
     pub async fn run_server<F, Fut>(
-        agency_uris: Vec<RouteUri>,
+        agencies: Vec<AgencyWithRoutes>,
         f: F,
     ) -> Result<(), Box<dyn Error + Send + Sync>>
     where
         F: FnOnce(BusesApi) -> Fut,
         Fut: Future<Output = Result<BoxServer, Box<dyn Error + Send + Sync>>>,
     {
+        let agency_uris = agencies
+            .iter()
+            .map(|a| a.agency.uri().parse::<RouteUri>())
+            .collect::<Result<Vec<_>, _>>()?;
         let listener = TcpListener::bind("0.0.0.0:0").await?;
         let addr = listener.local_addr()?;
-        let api = BusesApi::new(format!("http://127.0.0.1:{}", addr.port()), false);
+        let api = BusesApi::new(
+            format!("http://127.0.0.1:{}/service/publicXMLFeed", addr.port()),
+            false,
+        );
 
         let swim_server = f(api).await?;
         let (task, handle) = swim_server.run();
@@ -105,6 +109,7 @@ mod server_runner {
 
         let trigger = Arc::new(Notify::new());
         let mock_server = tokio::spawn(transit_fixture::run_mock_server(
+            agencies,
             listener.into_std()?,
             trigger.clone(),
         ));

@@ -16,7 +16,8 @@ use std::fmt::Display;
 
 use bytes::Bytes;
 use percent_encoding::NON_ALPHANUMERIC;
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
+use thiserror::Error;
 use tracing::{debug, error};
 
 use crate::model::{
@@ -48,6 +49,13 @@ where
     }
 }
 
+#[derive(Debug, Error)]
+#[error("HTTP Request to {uri} returned unexpected response: {code}")]
+struct BadStatusCode {
+    uri: String,
+    code: StatusCode,
+}
+
 impl BusesApi {
     pub fn new(base_uri: String, enable_gzip: bool) -> Self {
         debug!(base_uri, enable_gzip, "Initializing Buses API.");
@@ -69,8 +77,9 @@ impl BusesApi {
             error!(id, error = %error, "Failed to get routes for agency.");
             error
         })?;
+        let as_str = std::str::from_utf8(bytes.as_ref()).unwrap_or("Bad UTF8");
         Ok(load_xml_routes(bytes.as_ref()).map_err(|error| {
-            error!(id, error = %error, "Failed to get parse route XML.");
+            error!(id, error = %error, as_str, "Failed to parse route XML.");
             error
         })?)
     }
@@ -101,8 +110,14 @@ impl BusesApi {
     async fn do_request(&self, uri: String) -> Result<Bytes, BusesApiError> {
         debug!(uri, "Making HTTP request.");
         let BusesApi { client, .. } = self;
-        let request = client.get(uri).build()?;
+        let request = client.get(&uri).build()?;
         let response = client.execute(request).await?;
+        if response.status() != StatusCode::OK {
+            return Err(BusesApiError(Box::new(BadStatusCode {
+                uri,
+                code: response.status(),
+            })));
+        }
         Ok(response.bytes().await?)
     }
 }

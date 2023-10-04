@@ -24,7 +24,7 @@ use transit_model::{
 };
 
 use crate::{
-    agency::{mock_agencies, AgencyWithRoutes},
+    agency::AgencyWithRoutes,
     vehicles::{generate_vehicles, LOC_UNIT},
 };
 
@@ -35,8 +35,7 @@ pub struct AgenciesState {
 }
 
 impl AgenciesState {
-    pub fn generate(update_interval: u64) -> Self {
-        let agencies_lst = mock_agencies();
+    pub fn generate(agencies_lst: Vec<AgencyWithRoutes>, update_interval: u64) -> Self {
         let mut agencies = HashMap::new();
         let mut vehicles = HashMap::new();
         for agency in agencies_lst {

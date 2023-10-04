@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 use futures::future::join;
 use tokio::{net::TcpListener, sync::Notify};
+use transit_fixture::agency::mock_agencies;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("0.0.0.0:0").await?;
     let addr = listener.local_addr()?;
     println!("Listening on: {}", addr);
-    let mock_server = transit_fixture::run_mock_server(listener.into_std()?, trigger.clone());
+    let mock_server = transit_fixture::run_mock_server(mock_agencies(), listener.into_std()?, trigger.clone());
 
     let shutdown = async move {
         tokio::signal::ctrl_c()

@@ -122,7 +122,7 @@ pub async fn start_agencies_and_wait(agency_uris: Vec<RouteUri>, handle: ServerH
 
 pub fn configure_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let filter = example_filter()?
-        .add_directive("transit=trace".parse()?)
+        .add_directive("transit=debug".parse()?)
         .add_directive(LevelFilter::WARN.into());
     tracing_subscriber::fmt().with_env_filter(filter).init();
     Ok(())

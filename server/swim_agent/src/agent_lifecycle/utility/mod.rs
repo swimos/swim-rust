@@ -72,6 +72,9 @@ pub use self::join_value_builder::{StatefulJoinValueLaneBuilder, StatelessJoinVa
 mod downlink_builder;
 mod join_value_builder;
 
+#[cfg(test)]
+mod tests;
+
 /// A utility class to aid in the creation of event handlers for an agent. This has no data
 /// and is used to provide easy access to the agent type parameter to avoid the need for
 /// explicit type ascriptions when creating handlers.

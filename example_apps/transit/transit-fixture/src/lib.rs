@@ -14,6 +14,7 @@
 
 use std::{error::Error, ops::Add, pin::pin, sync::Arc, time::Duration};
 
+use agency::AgencyWithRoutes;
 use futures::future::join3;
 use state::AgenciesState;
 use tokio::{
@@ -47,10 +48,11 @@ const UPDATE_INTERVAL_SEC: u64 = 1;
 const UPDATE_STATE_INTERVAL: Duration = Duration::from_secs(3);
 
 pub async fn run_mock_server(
+    agencies: Vec<AgencyWithRoutes>,
     listener: std::net::TcpListener,
     shutdown_rx: Arc<Notify>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let state = Arc::new(AgenciesState::generate(UPDATE_INTERVAL_SEC));
+    let state = Arc::new(AgenciesState::generate(agencies, UPDATE_INTERVAL_SEC));
     let app = server::make_server_router(state.clone());
 
     let update_trigger = Arc::new(Notify::new());
