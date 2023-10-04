@@ -16,12 +16,14 @@ use std::{collections::HashSet, error::Error, time::Duration};
 
 use example_util::example_logging;
 use swim::{route::RouteUri, server::ServerBuilder};
+use tracing::debug;
 use transit::{buses_api::BusesApi, create_plane, model, IncludeRoutes};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     example_logging()?;
     let params = read_params();
+    debug!(params = ?params, "Processed command line args.");
     with_params(params).await
 }
 
