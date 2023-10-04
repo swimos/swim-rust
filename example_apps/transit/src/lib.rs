@@ -14,7 +14,8 @@
 
 use std::{collections::HashSet, error::Error, time::Duration};
 
-use example_util::manage_handle;
+use clap::ValueEnum;
+use example_util::{example_filter, manage_handle};
 use futures::{stream::FuturesUnordered, StreamExt};
 use swim::{
     agent::agent_model::AgentModel,
@@ -23,6 +24,7 @@ use swim::{
 };
 use tokio::time::Instant;
 use tracing::{debug, error, info};
+use tracing_subscriber::filter::LevelFilter;
 use transit_model::agency::Agency;
 
 use crate::{
@@ -43,7 +45,7 @@ const POLL_DELAY: Duration = Duration::from_secs(10);
 const WEEK: Duration = Duration::from_secs(7 * 86400);
 const HISTORY_LEN: usize = 10;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Hash, Ord, ValueEnum)]
 pub enum IncludeRoutes {
     Vehicle,
     State,
@@ -116,4 +118,12 @@ pub async fn start_agencies_and_wait(agency_uris: Vec<RouteUri>, handle: ServerH
         error!(error = %error, "Failed to start agency agent.");
     }
     manage_handle(handle).await
+}
+
+pub fn configure_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let filter = example_filter()?
+        .add_directive("transit=trace".parse()?)
+        .add_directive(LevelFilter::WARN.into());
+    tracing_subscriber::fmt().with_env_filter(filter).init();
+    Ok(())
 }

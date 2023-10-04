@@ -14,13 +14,17 @@
 
 use std::{error::Error, time::Duration};
 
-use example_util::example_logging;
+use clap::Parser;
+
 use swim::{route::RouteUri, server::ServerBuilder};
-use transit::{buses_api::BusesApi, create_plane, IncludeRoutes};
+use transit::{buses_api::BusesApi, configure_logging, create_plane, IncludeRoutes};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    example_logging()?;
+    let params = Params::parse();
+    if params.enable_logging {
+        configure_logging()?;
+    }
     let agencies = transit::model::agencies();
     let agency_uris = agencies
         .iter()
@@ -72,4 +76,12 @@ mod server_runner {
         println!("Server stopped successfully.");
         Ok(())
     }
+}
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Params {
+    /// Switch on logging to the console.
+    #[arg(long)]
+    enable_logging: bool,
 }

@@ -14,28 +14,42 @@
 
 use std::{collections::HashSet, error::Error, time::Duration};
 
+use clap::Parser;
 use example_util::example_logging;
 use swim::{route::RouteUri, server::ServerBuilder};
 use tracing::debug;
-use transit::{buses_api::BusesApi, create_plane, model, IncludeRoutes};
+use transit::{buses_api::BusesApi, configure_logging, create_plane, model, IncludeRoutes};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     example_logging()?;
-    let params = read_params();
+    let params = read_params()?;
     debug!(params = ?params, "Processed command line args.");
     with_params(params).await
 }
 
-fn read_params() -> HashSet<IncludeRoutes> {
-    match std::env::args().next().as_deref() {
-        Some("none") => HashSet::new(),
-        Some("vehicles") => [IncludeRoutes::Vehicle].into_iter().collect(),
-        Some("state") => [IncludeRoutes::Vehicle, IncludeRoutes::State]
+fn read_params() -> Result<HashSet<IncludeRoutes>, Box<dyn Error + Send + Sync>> {
+    let Params {
+        routes,
+        enable_logging,
+    } = Params::parse();
+    if enable_logging {
+        configure_logging()?;
+    }
+    Ok(match routes {
+        Some(IncludeRoutes::Vehicle) => [IncludeRoutes::Vehicle].into_iter().collect(),
+        Some(IncludeRoutes::State) => [IncludeRoutes::Vehicle, IncludeRoutes::State]
             .into_iter()
             .collect(),
-        _ => HashSet::new(),
-    }
+        Some(IncludeRoutes::Country) => [
+            IncludeRoutes::Vehicle,
+            IncludeRoutes::State,
+            IncludeRoutes::Country,
+        ]
+        .into_iter()
+        .collect(),
+        None => HashSet::new(),
+    })
 }
 
 async fn with_params(params: HashSet<IncludeRoutes>) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -110,4 +124,16 @@ mod server_runner {
         println!("Server stopped successfully.");
         Ok(())
     }
+}
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Params {
+    /// Most general routes to include.
+    #[arg(short, long)]
+    routes: Option<IncludeRoutes>,
+
+    /// Switch on logging to the console.
+    #[arg(long)]
+    enable_logging: bool,
 }

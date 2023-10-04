@@ -22,6 +22,8 @@ tracing = { workspace = true }
 transit-model = { path = "transit-model" }
 transit-fixture = { path = "transit-fixture", optional = true }
 futures = { workspace = true }
+clap = { workspace = true, features = ["derive"]}
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [[bin]]
 name = "fixture"
