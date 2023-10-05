@@ -750,9 +750,9 @@ fn agent_level_transient_flag() {
     }
 
     check_agent::<EverythingTransient>(vec![
-        transient_lane("first", WarpLaneKind::Value),
-        transient_lane("second", WarpLaneKind::Map),
-        transient_lane("third", WarpLaneKind::Command),
-        transient_store("fourth", StoreKind::Value),
+        transient_lane(0, "first", WarpLaneKind::Value),
+        transient_lane(1, "second", WarpLaneKind::Map),
+        transient_lane(2, "third", WarpLaneKind::Command),
+        transient_store(3, "fourth", StoreKind::Value),
     ]);
 }
