@@ -734,7 +734,6 @@ where
                                 }
                             }
                         }
-                        todo!("Intra-plane commands not yet supported.")
                     }
                 }
                 ServerEvent::StartAgent(StartAgentRequest { route, response }) => {
