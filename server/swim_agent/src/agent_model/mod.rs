@@ -588,9 +588,14 @@ where
         let mut http_lane_rxs = HashMap::new();
 
         let item_specs = ItemModel::item_specs();
-        let item_ids = item_specs
+        let lifecycle_item_ids = item_specs
+            .values()
+            .map(|spec| (spec.id, Text::new(spec.lifecycle_name)))
+            .collect();
+
+        let external_item_ids = item_specs
             .iter()
-            .map(|(name, spec)| (spec.id, Text::new(name)))
+            .map(|(name, spec)| (Text::new(name), spec.id))
             .collect();
 
         let suspended = FuturesUnordered::new();
@@ -723,7 +728,7 @@ where
             &item_model,
             &lifecycle,
             on_start_handler,
-            &item_ids,
+            &lifecycle_item_ids,
             &mut Discard,
         ) {
             Err(EventHandlerError::StopInstructed) => return Err(AgentInitError::FailedToStart),
@@ -736,7 +741,8 @@ where
             route,
             route_params,
             config,
-            item_ids,
+            lifecycle_item_ids,
+            external_item_ids,
             lane_io,
             store_io,
             http_lane_rxs,
@@ -893,7 +899,8 @@ struct AgentTask<ItemModel, Lifecycle> {
     route: RouteUri,
     route_params: HashMap<String, String>,
     config: AgentConfig,
-    item_ids: HashMap<u64, Text>,
+    external_item_ids: HashMap<Text, u64>,
+    lifecycle_item_ids: HashMap<u64, Text>,
     lane_io: HashMap<(Text, WarpLaneKind), (ByteWriter, ByteReader)>,
     store_io: HashMap<Text, ByteWriter>,
     http_lane_rxs: HashMap<Text, mpsc::Receiver<HttpLaneRequest>>,
@@ -923,7 +930,8 @@ where
             route,
             route_params,
             config,
-            item_ids,
+            lifecycle_item_ids,
+            external_item_ids,
             lane_io,
             store_io,
             http_lane_rxs,
@@ -933,11 +941,6 @@ where
             downlink_channels,
         } = self;
         let meta = AgentMetadata::new(&route, &route_params, &config);
-
-        let mut item_ids_rev = HashMap::new();
-        for (id, name) in &item_ids {
-            item_ids_rev.insert(name.clone(), *id);
-        }
 
         let mut lane_readers = SelectAll::new();
         let mut item_writers = HashMap::new();
@@ -962,23 +965,23 @@ where
 
         for ((name, kind), (tx, rx)) in lane_io {
             if kind.map_like() {
-                let id = item_ids_rev[&name];
+                let id = external_item_ids[&name];
                 lane_readers.push(LaneReader::map(id, rx));
                 item_writers.insert(id, ItemWriter::new(id, tx));
             } else {
-                let id = item_ids_rev[&name];
+                let id = external_item_ids[&name];
                 lane_readers.push(LaneReader::value(id, rx));
                 item_writers.insert(id, ItemWriter::new(id, tx));
             }
         }
 
         for (name, tx) in store_io {
-            let id = item_ids_rev[&name];
+            let id = external_item_ids[&name];
             item_writers.insert(id, ItemWriter::new(id, tx));
         }
 
         for (name, rx) in http_lane_rxs {
-            let id = item_ids_rev[&name];
+            let id = external_item_ids[&name];
             lane_readers.push(LaneReader::http(id, rx));
         }
 
@@ -1050,7 +1053,7 @@ where
                     match result {
                         Ok(true) => {
                             // The event handler for the item needs to be executed.
-                            let lane = &item_ids[&writer.lane_id()];
+                            let lane = &lifecycle_item_ids[&writer.lane_id()];
                             if let Some(handler) = lifecycle.item_event(&item_model, lane.as_str())
                             {
                                 match run_handler(
@@ -1065,7 +1068,7 @@ where
                                     &item_model,
                                     &lifecycle,
                                     handler,
-                                    &item_ids,
+                                    &lifecycle_item_ids,
                                     &mut dirty_items,
                                 ) {
                                     Err(EventHandlerError::StopInstructed) => break Ok(()),
@@ -1099,7 +1102,7 @@ where
                         &item_model,
                         &lifecycle,
                         handler,
-                        &item_ids,
+                        &lifecycle_item_ids,
                         &mut dirty_items,
                     ) {
                         Err(EventHandlerError::StopInstructed) => break Ok(()),
@@ -1145,7 +1148,7 @@ where
                                 &item_model,
                                 &lifecycle,
                                 handler,
-                                &item_ids,
+                                &lifecycle_item_ids,
                                 &mut dirty_items,
                             ) {
                                 Err(EventHandlerError::StopInstructed) => break Ok(()),
@@ -1194,7 +1197,7 @@ where
                     }
                 },
                 TaskEvent::ValueRequest { id, request } => {
-                    let name = &item_ids[&id];
+                    let name = &lifecycle_item_ids[&id];
                     match request {
                         LaneRequest::Command(body) => {
                             if let Some(handler) = item_model.on_value_command(name.as_str(), body)
@@ -1211,7 +1214,7 @@ where
                                     &item_model,
                                     &lifecycle,
                                     handler,
-                                    &item_ids,
+                                    &lifecycle_item_ids,
                                     &mut dirty_items,
                                 );
                                 match result {
@@ -1251,7 +1254,7 @@ where
                                     &item_model,
                                     &lifecycle,
                                     handler,
-                                    &item_ids,
+                                    &lifecycle_item_ids,
                                     &mut dirty_items,
                                 ) {
                                     Err(EventHandlerError::StopInstructed) => break Ok(()),
@@ -1271,7 +1274,7 @@ where
                     }
                 }
                 TaskEvent::MapRequest { id, request } => {
-                    let name = &item_ids[&id];
+                    let name = &lifecycle_item_ids[&id];
                     match request {
                         LaneRequest::Command(body) => {
                             if let Some(handler) = item_model.on_map_command(name.as_str(), body) {
@@ -1287,7 +1290,7 @@ where
                                     &item_model,
                                     &lifecycle,
                                     handler,
-                                    &item_ids,
+                                    &lifecycle_item_ids,
                                     &mut dirty_items,
                                 );
                                 match result {
@@ -1327,7 +1330,7 @@ where
                                     &item_model,
                                     &lifecycle,
                                     handler,
-                                    &item_ids,
+                                    &lifecycle_item_ids,
                                     &mut dirty_items,
                                 ) {
                                     Err(EventHandlerError::StopInstructed) => break Ok(()),
@@ -1347,7 +1350,7 @@ where
                     }
                 }
                 TaskEvent::HttpRequest { id, request } => {
-                    let name = &item_ids[&id];
+                    let name = &lifecycle_item_ids[&id];
                     match item_model.on_http_request(name.as_str(), request) {
                         Ok(handler) => {
                             match run_handler(
@@ -1362,7 +1365,7 @@ where
                                 &item_model,
                                 &lifecycle,
                                 handler,
-                                &item_ids,
+                                &lifecycle_item_ids,
                                 &mut dirty_items,
                             ) {
                                 Err(EventHandlerError::StopInstructed) => break Ok(()),
@@ -1379,7 +1382,7 @@ where
                     }
                 }
                 TaskEvent::RequestError { id, error } => {
-                    let lane = item_ids[&id].clone();
+                    let lane = lifecycle_item_ids[&id].clone();
                     break Err(AgentTaskError::BadFrame { lane, error });
                 }
                 TaskEvent::CommandSendComplete { result: Ok(writer) } => {
@@ -1398,7 +1401,7 @@ where
             // Attempt to write to the outgoing buffers for any items with data.
             dirty_items.retain(|id| {
                 if let Some(mut tx) = item_writers.remove(id) {
-                    let name = &item_ids[id];
+                    let name = &lifecycle_item_ids[id];
                     match item_model.write_event(name.as_str(), &mut tx.buffer) {
                         Some(WriteResult::Done) => {
                             pending_writes.push(do_write(tx, false));
@@ -1438,7 +1441,7 @@ where
             &item_model,
             &lifecycle,
             on_stop_handler,
-            &item_ids,
+            &lifecycle_item_ids,
             &mut Discard,
         ) {
             Ok(_) | Err(EventHandlerError::StopInstructed) => Ok(()),
