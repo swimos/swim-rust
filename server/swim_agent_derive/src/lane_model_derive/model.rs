@@ -14,6 +14,7 @@
 
 use bitflags::bitflags;
 use macro_utilities::{attributes::consume_attributes, NameTransform, TypeLevelNameTransform};
+use proc_macro2::Literal;
 use std::hash::Hash;
 use swim_utilities::errors::{
     validation::{Validation, ValidationItExt},
@@ -236,9 +237,14 @@ impl<'a> ItemModel<'a> {
         }
     }
 
-    /// The name of the item as a string literal.
-    pub fn literal(&self) -> proc_macro2::Literal {
+    /// The name of the item that is exposed to the runtime, as a string literal.
+    pub fn external_literal(&self) -> proc_macro2::Literal {
         self.transform.transform(|| self.name.to_string())
+    }
+
+    /// The name of the item that is used by the lifecycle (this is always the name of the underlying field).
+    pub fn lifecycle_literal(&self) -> proc_macro2::Literal {
+        Literal::string(&self.name.to_string())
     }
 
     /// Determine if the lane needs to persist its state.

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use std::fmt::Write;
 use swim::agent::agent_model::ItemFlags;
@@ -22,7 +22,7 @@ use swim::agent::model::Text;
 use swim::agent::reexport::bytes::BytesMut;
 use swim::agent::reexport::uuid::Uuid;
 use swim::agent::AgentLaneModel;
-use swim_agent::agent_model::ItemSpec;
+use swim_agent::agent_model::{ItemDescriptor, ItemSpec};
 use swim_agent::lanes::http::Recon;
 use swim_agent::lanes::{DemandLane, DemandMapLane, HttpLane, JoinValueLane, SimpleHttpLane};
 use swim_agent::reexport::bytes::Bytes;
@@ -34,48 +34,83 @@ use swim_model::http::{HttpRequest, Uri};
 
 const SYNC_ID: Uuid = Uuid::from_u128(85883);
 
-fn persistent_lane(name: &'static str, kind: WarpLaneKind) -> (&'static str, ItemSpec) {
+fn persistent_lane(id: u64, name: &'static str, kind: WarpLaneKind) -> (&'static str, ItemSpec) {
     (
         name,
-        ItemSpec::WarpLane {
-            kind,
-            flags: ItemFlags::empty(),
-        },
+        ItemSpec::new(
+            id,
+            name,
+            ItemDescriptor::WarpLane {
+                kind,
+                flags: ItemFlags::empty(),
+            },
+        ),
     )
 }
 
-fn transient_lane(name: &'static str, kind: WarpLaneKind) -> (&'static str, ItemSpec) {
+fn persistent_lane_renamed(
+    id: u64,
+    name: &'static str,
+    lifecycle_name: &'static str,
+    kind: WarpLaneKind,
+) -> (&'static str, ItemSpec) {
     (
         name,
-        ItemSpec::WarpLane {
-            kind,
-            flags: ItemFlags::TRANSIENT,
-        },
+        ItemSpec::new(
+            id,
+            lifecycle_name,
+            ItemDescriptor::WarpLane {
+                kind,
+                flags: ItemFlags::empty(),
+            },
+        ),
     )
 }
 
-fn persistent_store(name: &'static str, kind: StoreKind) -> (&'static str, ItemSpec) {
+fn transient_lane(id: u64, name: &'static str, kind: WarpLaneKind) -> (&'static str, ItemSpec) {
     (
         name,
-        ItemSpec::Store {
-            kind,
-            flags: ItemFlags::empty(),
-        },
+        ItemSpec::new(
+            id,
+            name,
+            ItemDescriptor::WarpLane {
+                kind,
+                flags: ItemFlags::TRANSIENT,
+            },
+        ),
     )
 }
 
-fn transient_store(name: &'static str, kind: StoreKind) -> (&'static str, ItemSpec) {
+fn persistent_store(id: u64, name: &'static str, kind: StoreKind) -> (&'static str, ItemSpec) {
     (
         name,
-        ItemSpec::Store {
-            kind,
-            flags: ItemFlags::TRANSIENT,
-        },
+        ItemSpec::new(
+            id,
+            name,
+            ItemDescriptor::Store {
+                kind,
+                flags: ItemFlags::empty(),
+            },
+        ),
     )
 }
 
-fn http_lane(name: &'static str) -> (&'static str, ItemSpec) {
-    (name, ItemSpec::Http)
+fn transient_store(id: u64, name: &'static str, kind: StoreKind) -> (&'static str, ItemSpec) {
+    (
+        name,
+        ItemSpec::new(
+            id,
+            name,
+            ItemDescriptor::Store {
+                kind,
+                flags: ItemFlags::TRANSIENT,
+            },
+        ),
+    )
+}
+
+fn http_lane(id: u64, name: &'static str) -> (&'static str, ItemSpec) {
+    (name, ItemSpec::new(id, name, ItemDescriptor::Http))
 }
 
 fn check_agent<A>(specs: Vec<(&'static str, ItemSpec)>)
@@ -85,30 +120,11 @@ where
     let agent = A::default();
     let expected = specs.into_iter().collect::<HashMap<_, _>>();
 
-    assert_eq!(A::item_specs2(), expected);
+    assert_eq!(A::item_specs(), expected);
 
-    let id_map = A::item_ids();
-    let expected_len = expected.len();
-    assert_eq!(id_map.len(), expected_len);
-
-    let mut keys = HashSet::new();
-    let mut names = HashSet::new();
-
-    for (key, name) in id_map {
-        keys.insert(key);
-        names.insert(name);
-    }
-
-    let expected_keys = (0..expected_len).map(|n| n as u64).collect::<HashSet<_>>();
-    let mut expected_names = HashSet::new();
-    expected_names.extend(expected.keys().map(|s| Text::new(s)));
-
-    assert_eq!(keys, expected_keys);
-    assert_eq!(names, expected_names);
-
-    for (name, spec) in expected {
-        match spec {
-            ItemSpec::WarpLane { kind, .. } => {
+    for (name, ItemSpec { descriptor, .. }) in expected {
+        match descriptor {
+            ItemDescriptor::WarpLane { kind, .. } => {
                 if kind.map_like() {
                     assert!(agent.on_map_command(name, MapMessage::Clear).is_some());
                     assert!(agent.on_sync(name, SYNC_ID).is_some());
@@ -117,13 +133,13 @@ where
                     assert!(agent.on_sync(name, SYNC_ID).is_some());
                 }
             }
-            ItemSpec::Store { .. } => {
+            ItemDescriptor::Store { .. } => {
                 assert!(agent.on_map_command(name, MapMessage::Clear).is_none());
                 assert!(agent.on_sync(name, SYNC_ID).is_none());
                 assert!(agent.on_value_command(name, get_i32_buffer(4)).is_none());
                 assert!(agent.on_sync(name, SYNC_ID).is_none());
             }
-            ItemSpec::Http => {
+            ItemDescriptor::Http => {
                 let uri = format!("http://example/node?lane={}", name)
                     .parse::<Uri>()
                     .unwrap();
@@ -148,7 +164,7 @@ fn single_value_lane() {
         lane: ValueLane<i32>,
     }
 
-    check_agent::<SingleValueLane>(vec![persistent_lane("lane", WarpLaneKind::Value)]);
+    check_agent::<SingleValueLane>(vec![persistent_lane(0, "lane", WarpLaneKind::Value)]);
 }
 
 #[test]
@@ -158,7 +174,7 @@ fn single_value_store() {
         store: ValueStore<i32>,
     }
 
-    check_agent::<SingleValueStore>(vec![persistent_store("store", StoreKind::Value)]);
+    check_agent::<SingleValueStore>(vec![persistent_store(0, "store", StoreKind::Value)]);
 }
 
 #[test]
@@ -168,7 +184,7 @@ fn single_map_lane() {
         lane: MapLane<i32, i32>,
     }
 
-    check_agent::<SingleMapLane>(vec![persistent_lane("lane", WarpLaneKind::Map)]);
+    check_agent::<SingleMapLane>(vec![persistent_lane(0, "lane", WarpLaneKind::Map)]);
 }
 
 #[test]
@@ -178,7 +194,7 @@ fn single_map_store() {
         store: MapStore<i32, i32>,
     }
 
-    check_agent::<SingleMapStore>(vec![persistent_store("store", StoreKind::Map)]);
+    check_agent::<SingleMapStore>(vec![persistent_store(0, "store", StoreKind::Map)]);
 }
 
 #[test]
@@ -188,7 +204,7 @@ fn single_command_lane() {
         lane: CommandLane<i32>,
     }
 
-    check_agent::<SingleCommandLane>(vec![transient_lane("lane", WarpLaneKind::Command)]);
+    check_agent::<SingleCommandLane>(vec![transient_lane(0, "lane", WarpLaneKind::Command)]);
 }
 
 #[test]
@@ -198,7 +214,7 @@ fn single_demand_lane() {
         lane: DemandLane<i32>,
     }
 
-    check_agent::<SingleDemandLane>(vec![transient_lane("lane", WarpLaneKind::Demand)]);
+    check_agent::<SingleDemandLane>(vec![transient_lane(0, "lane", WarpLaneKind::Demand)]);
 }
 
 #[test]
@@ -208,7 +224,7 @@ fn single_demand_map_lane() {
         lane: DemandMapLane<i32, i32>,
     }
 
-    check_agent::<SingleDemandMapLane>(vec![transient_lane("lane", WarpLaneKind::DemandMap)]);
+    check_agent::<SingleDemandMapLane>(vec![transient_lane(0, "lane", WarpLaneKind::DemandMap)]);
 }
 
 #[test]
@@ -220,8 +236,8 @@ fn two_value_lanes() {
     }
 
     check_agent::<TwoValueLanes>(vec![
-        persistent_lane("first", WarpLaneKind::Value),
-        persistent_lane("second", WarpLaneKind::Value),
+        persistent_lane(0, "first", WarpLaneKind::Value),
+        persistent_lane(1, "second", WarpLaneKind::Value),
     ]);
 }
 
@@ -234,8 +250,8 @@ fn two_value_stores() {
     }
 
     check_agent::<TwoValueStores>(vec![
-        persistent_store("first", StoreKind::Value),
-        persistent_store("second", StoreKind::Value),
+        persistent_store(0, "first", StoreKind::Value),
+        persistent_store(1, "second", StoreKind::Value),
     ]);
 }
 
@@ -248,8 +264,8 @@ fn two_map_lanes() {
     }
 
     check_agent::<TwoMapLanes>(vec![
-        persistent_lane("first", WarpLaneKind::Map),
-        persistent_lane("second", WarpLaneKind::Map),
+        persistent_lane(0, "first", WarpLaneKind::Map),
+        persistent_lane(1, "second", WarpLaneKind::Map),
     ]);
 }
 
@@ -262,8 +278,8 @@ fn two_map_stores() {
     }
 
     check_agent::<TwoMapStores>(vec![
-        persistent_store("first", StoreKind::Map),
-        persistent_store("second", StoreKind::Map),
+        persistent_store(0, "first", StoreKind::Map),
+        persistent_store(1, "second", StoreKind::Map),
     ]);
 }
 
@@ -276,8 +292,8 @@ fn two_command_lanes() {
     }
 
     check_agent::<TwoCommandLanes>(vec![
-        transient_lane("first", WarpLaneKind::Command),
-        transient_lane("second", WarpLaneKind::Command),
+        transient_lane(0, "first", WarpLaneKind::Command),
+        transient_lane(1, "second", WarpLaneKind::Command),
     ]);
 }
 
@@ -290,8 +306,8 @@ fn two_demand_lanes() {
     }
 
     check_agent::<TwoDemandLanes>(vec![
-        transient_lane("first", WarpLaneKind::Demand),
-        transient_lane("second", WarpLaneKind::Demand),
+        transient_lane(0, "first", WarpLaneKind::Demand),
+        transient_lane(1, "second", WarpLaneKind::Demand),
     ]);
 }
 
@@ -304,8 +320,8 @@ fn two_demand_map_lanes() {
     }
 
     check_agent::<TwoDemandMapLanes>(vec![
-        transient_lane("first", WarpLaneKind::DemandMap),
-        transient_lane("second", WarpLaneKind::DemandMap),
+        transient_lane(0, "first", WarpLaneKind::DemandMap),
+        transient_lane(1, "second", WarpLaneKind::DemandMap),
     ]);
 }
 
@@ -318,8 +334,8 @@ fn mixed_lanes() {
     }
 
     check_agent::<MixedLanes>(vec![
-        persistent_lane("first", WarpLaneKind::Value),
-        persistent_lane("second", WarpLaneKind::Map),
+        persistent_lane(0, "first", WarpLaneKind::Value),
+        persistent_lane(1, "second", WarpLaneKind::Map),
     ]);
 }
 
@@ -332,8 +348,8 @@ fn mixed_stores() {
     }
 
     check_agent::<MixedStores>(vec![
-        persistent_store("first", StoreKind::Value),
-        persistent_store("second", StoreKind::Map),
+        persistent_store(0, "first", StoreKind::Value),
+        persistent_store(1, "second", StoreKind::Map),
     ]);
 }
 
@@ -353,15 +369,15 @@ fn multiple_lanes() {
     }
 
     check_agent::<MultipleLanes>(vec![
-        persistent_lane("first", WarpLaneKind::Value),
-        persistent_lane("third", WarpLaneKind::Value),
-        transient_lane("fifth", WarpLaneKind::Command),
-        transient_lane("seventh", WarpLaneKind::Demand),
-        persistent_lane("second", WarpLaneKind::Map),
-        persistent_lane("fourth", WarpLaneKind::Map),
-        persistent_lane("sixth", WarpLaneKind::JoinValue),
-        transient_lane("eighth", WarpLaneKind::DemandMap),
-        http_lane("ninth"),
+        persistent_lane(0, "first", WarpLaneKind::Value),
+        persistent_lane(2, "third", WarpLaneKind::Value),
+        transient_lane(4, "fifth", WarpLaneKind::Command),
+        transient_lane(6, "seventh", WarpLaneKind::Demand),
+        persistent_lane(1, "second", WarpLaneKind::Map),
+        persistent_lane(3, "fourth", WarpLaneKind::Map),
+        persistent_lane(5, "sixth", WarpLaneKind::JoinValue),
+        transient_lane(7, "eighth", WarpLaneKind::DemandMap),
+        http_lane(8, "ninth"),
     ]);
 }
 
@@ -376,10 +392,10 @@ fn stores_and_lanes() {
     }
 
     check_agent::<StoresAndLanes>(vec![
-        persistent_store("first", StoreKind::Value),
-        persistent_lane("second", WarpLaneKind::Value),
-        persistent_store("third", StoreKind::Map),
-        persistent_lane("fourth", WarpLaneKind::Map),
+        persistent_store(0, "first", StoreKind::Value),
+        persistent_lane(1, "second", WarpLaneKind::Value),
+        persistent_store(2, "third", StoreKind::Map),
+        persistent_lane(3, "fourth", WarpLaneKind::Map),
     ]);
 }
 
@@ -393,8 +409,8 @@ fn value_lane_tagged_transient() {
     }
 
     check_agent::<TwoValueLanes>(vec![
-        transient_lane("first", WarpLaneKind::Value),
-        persistent_lane("second", WarpLaneKind::Value),
+        transient_lane(0, "first", WarpLaneKind::Value),
+        persistent_lane(1, "second", WarpLaneKind::Value),
     ]);
 }
 
@@ -408,8 +424,8 @@ fn value_store_tagged_transient() {
     }
 
     check_agent::<TwoValueStores>(vec![
-        transient_store("first", StoreKind::Value),
-        persistent_store("second", StoreKind::Value),
+        transient_store(0, "first", StoreKind::Value),
+        persistent_store(1, "second", StoreKind::Value),
     ]);
 }
 
@@ -423,8 +439,8 @@ fn map_lane_tagged_transient() {
     }
 
     check_agent::<TwoMapLanes>(vec![
-        persistent_lane("first", WarpLaneKind::Map),
-        transient_lane("second", WarpLaneKind::Map),
+        persistent_lane(0, "first", WarpLaneKind::Map),
+        transient_lane(1, "second", WarpLaneKind::Map),
     ]);
 }
 
@@ -438,8 +454,8 @@ fn map_store_tagged_transient() {
     }
 
     check_agent::<TwoMapStores>(vec![
-        persistent_store("first", StoreKind::Map),
-        transient_store("second", StoreKind::Map),
+        persistent_store(0, "first", StoreKind::Map),
+        transient_store(1, "second", StoreKind::Map),
     ]);
 }
 
@@ -453,8 +469,8 @@ fn command_lane_tagged_transient() {
     }
 
     check_agent::<TwoCommandLanes>(vec![
-        transient_lane("first", WarpLaneKind::Command),
-        transient_lane("second", WarpLaneKind::Command),
+        transient_lane(0, "first", WarpLaneKind::Command),
+        transient_lane(1, "second", WarpLaneKind::Command),
     ]);
 }
 
@@ -468,8 +484,8 @@ fn demand_lane_tagged_transient() {
     }
 
     check_agent::<TwoDemandLanes>(vec![
-        transient_lane("first", WarpLaneKind::Demand),
-        transient_lane("second", WarpLaneKind::Demand),
+        transient_lane(0, "first", WarpLaneKind::Demand),
+        transient_lane(1, "second", WarpLaneKind::Demand),
     ]);
 }
 
@@ -483,8 +499,8 @@ fn demand_map_lane_tagged_transient() {
     }
 
     check_agent::<TwoDemandMapLanes>(vec![
-        transient_lane("first", WarpLaneKind::DemandMap),
-        transient_lane("second", WarpLaneKind::DemandMap),
+        transient_lane(0, "first", WarpLaneKind::DemandMap),
+        transient_lane(1, "second", WarpLaneKind::DemandMap),
     ]);
 }
 
@@ -495,7 +511,7 @@ fn single_join_value_lane() {
         lane: JoinValueLane<i32, i32>,
     }
 
-    check_agent::<SingleJoinValueLane>(vec![persistent_lane("lane", WarpLaneKind::JoinValue)]);
+    check_agent::<SingleJoinValueLane>(vec![persistent_lane(0, "lane", WarpLaneKind::JoinValue)]);
 }
 
 #[test]
@@ -507,8 +523,8 @@ fn two_join_value_lanes() {
     }
 
     check_agent::<TwoJoinValueLanes>(vec![
-        persistent_lane("first", WarpLaneKind::JoinValue),
-        persistent_lane("second", WarpLaneKind::JoinValue),
+        persistent_lane(0, "first", WarpLaneKind::JoinValue),
+        persistent_lane(1, "second", WarpLaneKind::JoinValue),
     ]);
 }
 
@@ -522,8 +538,8 @@ fn join_value_lane_tagged_transient() {
     }
 
     check_agent::<TwoJoinValueLanes>(vec![
-        persistent_lane("first", WarpLaneKind::JoinValue),
-        transient_lane("second", WarpLaneKind::JoinValue),
+        persistent_lane(0, "first", WarpLaneKind::JoinValue),
+        transient_lane(1, "second", WarpLaneKind::JoinValue),
     ]);
 }
 
@@ -534,7 +550,7 @@ fn single_simple_http_lane() {
         lane: SimpleHttpLane<i32>,
     }
 
-    check_agent::<SingleSimpleHttpLane>(vec![http_lane("lane")]);
+    check_agent::<SingleSimpleHttpLane>(vec![http_lane(0, "lane")]);
 }
 
 #[test]
@@ -544,7 +560,7 @@ fn single_simple_http_lane_explicit_codec() {
         lane: SimpleHttpLane<i32, Recon>,
     }
 
-    check_agent::<SingleSimpleHttpLane>(vec![http_lane("lane")]);
+    check_agent::<SingleSimpleHttpLane>(vec![http_lane(0, "lane")]);
 }
 
 #[test]
@@ -555,7 +571,7 @@ fn two_simple_http_lanes() {
         second: SimpleHttpLane<i32, Recon>,
     }
 
-    check_agent::<TwoSimpleHttpLanes>(vec![http_lane("first"), http_lane("second")]);
+    check_agent::<TwoSimpleHttpLanes>(vec![http_lane(0, "first"), http_lane(1, "second")]);
 }
 
 #[test]
@@ -565,7 +581,7 @@ fn get_and_post_http_lane() {
         lane: HttpLane<i32, String>,
     }
 
-    check_agent::<GetAndPostHttpLane>(vec![http_lane("lane")]);
+    check_agent::<GetAndPostHttpLane>(vec![http_lane(0, "lane")]);
 }
 
 #[test]
@@ -575,7 +591,7 @@ fn get_post_and_put_http_lane() {
         lane: HttpLane<i32, String, i32>,
     }
 
-    check_agent::<GetPostAndPutHttpLane>(vec![http_lane("lane")]);
+    check_agent::<GetPostAndPutHttpLane>(vec![http_lane(0, "lane")]);
 }
 
 #[test]
@@ -585,7 +601,7 @@ fn general_http_lane_explicit_codec() {
         lane: HttpLane<i32, String, i32, Recon>,
     }
 
-    check_agent::<GeneralHttpLane>(vec![http_lane("lane")]);
+    check_agent::<GeneralHttpLane>(vec![http_lane(0, "lane")]);
 }
 
 #[test]
@@ -596,7 +612,7 @@ fn two_general_http_lanes() {
         second: HttpLane<i32, String, i32>,
     }
 
-    check_agent::<TwoGeneralHttpLanes>(vec![http_lane("first"), http_lane("second")]);
+    check_agent::<TwoGeneralHttpLanes>(vec![http_lane(0, "first"), http_lane(1, "second")]);
 }
 
 mod isolated {
@@ -625,18 +641,18 @@ mod isolated {
         }
 
         check_agent::<MultipleLanes>(vec![
-            persistent_lane("first", WarpLaneKind::Value),
-            persistent_lane("third", WarpLaneKind::Value),
-            transient_lane("fifth", WarpLaneKind::Command),
-            persistent_store("sixth", StoreKind::Value),
-            persistent_lane("second", WarpLaneKind::Map),
-            persistent_lane("fourth", WarpLaneKind::Map),
-            persistent_store("seventh", StoreKind::Map),
-            persistent_lane("eighth", WarpLaneKind::JoinValue),
-            transient_lane("ninth", WarpLaneKind::Demand),
-            transient_lane("tenth", WarpLaneKind::DemandMap),
-            http_lane("eleventh"),
-            http_lane("twelfth"),
+            persistent_lane(0, "first", WarpLaneKind::Value),
+            persistent_lane(2, "third", WarpLaneKind::Value),
+            transient_lane(4, "fifth", WarpLaneKind::Command),
+            persistent_store(5, "sixth", StoreKind::Value),
+            persistent_lane(1, "second", WarpLaneKind::Map),
+            persistent_lane(3, "fourth", WarpLaneKind::Map),
+            persistent_store(6, "seventh", StoreKind::Map),
+            persistent_lane(7, "eighth", WarpLaneKind::JoinValue),
+            transient_lane(8, "ninth", WarpLaneKind::Demand),
+            transient_lane(9, "tenth", WarpLaneKind::DemandMap),
+            http_lane(10, "eleventh"),
+            http_lane(11, "twelfth"),
         ]);
     }
 }
@@ -653,8 +669,8 @@ fn two_types_single_scope() {
         lane: ValueLane<Text>,
     }
 
-    check_agent::<First>(vec![persistent_lane("lane", WarpLaneKind::Value)]);
-    check_agent::<Second>(vec![persistent_lane("lane", WarpLaneKind::Value)]);
+    check_agent::<First>(vec![persistent_lane(0, "lane", WarpLaneKind::Value)]);
+    check_agent::<Second>(vec![persistent_lane(0, "lane", WarpLaneKind::Value)]);
 }
 
 #[test]
@@ -667,8 +683,8 @@ fn rename_lane() {
     }
 
     check_agent::<RenameExplicit>(vec![
-        persistent_lane("renamed", WarpLaneKind::Value),
-        persistent_lane("second", WarpLaneKind::Value),
+        persistent_lane_renamed(0, "renamed", "first", WarpLaneKind::Value),
+        persistent_lane(1, "second", WarpLaneKind::Value),
     ]);
 }
 
@@ -682,8 +698,8 @@ fn rename_lane_with_convention() {
     }
 
     check_agent::<RenameConvention>(vec![
-        persistent_lane("firstLane", WarpLaneKind::Value),
-        persistent_lane("second_lane", WarpLaneKind::Value),
+        persistent_lane_renamed(0, "firstLane", "first_lane", WarpLaneKind::Value),
+        persistent_lane(1, "second_lane", WarpLaneKind::Value),
     ]);
 }
 
@@ -698,9 +714,9 @@ fn rename_all_lanes_with_convention() {
     }
 
     check_agent::<RenameAll>(vec![
-        persistent_lane("firstLane", WarpLaneKind::Value),
-        persistent_lane("secondLane", WarpLaneKind::Value),
-        persistent_lane("thirdLane", WarpLaneKind::Value),
+        persistent_lane_renamed(0, "firstLane", "first_lane", WarpLaneKind::Value),
+        persistent_lane_renamed(1, "secondLane", "second_lane", WarpLaneKind::Value),
+        persistent_lane_renamed(2, "thirdLane", "third_lane", WarpLaneKind::Value),
     ]);
 }
 
@@ -716,9 +732,9 @@ fn override_top_level_convention() {
     }
 
     check_agent::<OverrideRename>(vec![
-        persistent_lane("firstLane", WarpLaneKind::Value),
-        persistent_lane("renamed", WarpLaneKind::Value),
-        persistent_lane("thirdLane", WarpLaneKind::Value),
+        persistent_lane_renamed(0, "firstLane", "first_lane", WarpLaneKind::Value),
+        persistent_lane_renamed(1, "renamed", "second_lane", WarpLaneKind::Value),
+        persistent_lane_renamed(2, "thirdLane", "third_lane", WarpLaneKind::Value),
     ]);
 }
 
