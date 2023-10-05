@@ -129,7 +129,7 @@ bitflags! {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ItemSpec {
+pub enum ItemDescriptor {
     WarpLane {
         kind: WarpLaneKind,
         flags: ItemFlags,
@@ -139,6 +139,18 @@ pub enum ItemSpec {
         flags: ItemFlags,
     },
     Http,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ItemSpec {
+    pub id: u64,
+    pub descriptor: ItemDescriptor,
+}
+
+impl ItemSpec {
+    pub fn new(id: u64, descriptor: ItemDescriptor) -> Self {
+        ItemSpec { id, descriptor }
+    }
 }
 
 pub type MapLikeInitializer<T> =
@@ -162,10 +174,7 @@ pub trait AgentSpec: Sized + Send {
     type HttpRequestHandler: HandlerAction<Self, Completion = ()> + Send + 'static;
 
     /// The names and flags of all items (lanes and stores) in the agent.
-    fn item_specs2() -> HashMap<&'static str, ItemSpec>;
-
-    /// Mapping from item identifiers to lane names for all items in the agent.
-    fn item_ids() -> HashMap<u64, Text>;
+    fn item_specs() -> HashMap<&'static str, ItemSpec>;
 
     /// Create a handler that will update the state of the agent when a command is received
     /// for a value lane. There will be no handler if the lane does not exist or does not
@@ -573,8 +582,11 @@ where
         let mut store_io = HashMap::new();
         let mut http_lane_rxs = HashMap::new();
 
-        let item_specs = ItemModel::item_specs2();
-        let item_ids = <ItemModel as AgentSpec>::item_ids();
+        let item_specs = ItemModel::item_specs();
+        let item_ids = item_specs
+            .iter()
+            .map(|(name, spec)| (spec.id, Text::new(name)))
+            .collect();
 
         let suspended = FuturesUnordered::new();
         let downlink_channels = RefCell::new(vec![]);
@@ -595,8 +607,8 @@ where
             }
 
             for (name, spec) in item_specs {
-                match spec {
-                    ItemSpec::WarpLane { kind, flags } => {
+                match spec.descriptor {
+                    ItemDescriptor::WarpLane { kind, flags } => {
                         if kind.map_like() {
                             let key = (Text::new(name), kind);
                             if lane_io.contains_key(&key) {
@@ -621,7 +633,7 @@ where
                             })
                         }
                     }
-                    ItemSpec::Store {
+                    ItemDescriptor::Store {
                         kind: StoreKind::Map,
                         flags,
                     } => {
@@ -636,7 +648,7 @@ where
                             }
                         }
                     }
-                    ItemSpec::Store {
+                    ItemDescriptor::Store {
                         kind: StoreKind::Value,
                         flags,
                     } => {
@@ -651,7 +663,7 @@ where
                             }
                         }
                     }
-                    ItemSpec::Http => {
+                    ItemDescriptor::Http => {
                         let channel = context.add_http_lane(name).await?;
                         http_lane_rxs.insert(Text::new(name), channel);
                     }

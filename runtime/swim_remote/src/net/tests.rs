@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_api::net::SchemeHostPort;
+use swim_api::net::{BadUrl, SchemeHostPort};
 
 use crate::net::Scheme;
 
@@ -52,10 +52,12 @@ fn parse_secure_warp_url() {
 
 #[test]
 fn parse_unqualified_warp_url() {
-    let SchemeHostPort(scheme, host, port) = "localhost:8080"
-        .parse::<SchemeHostPort>()
-        .expect("Parse failed.");
-    assert_eq!(scheme, Scheme::Ws);
-    assert_eq!(host, "localhost");
-    assert_eq!(port, 8080);
+    let result = "localhost:8080".parse::<SchemeHostPort>();
+    assert_eq!(result, Err(BadUrl::MissingScheme));
+}
+
+#[test]
+fn parse_bad_warp_url_scheme() {
+    let result = "ftp://localhost:8080".parse::<SchemeHostPort>();
+    assert_eq!(result, Err(BadUrl::BadScheme("ftp".to_string())));
 }

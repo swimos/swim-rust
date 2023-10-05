@@ -48,7 +48,9 @@ use futures::{
     stream::SelectAll,
     Stream, StreamExt,
 };
-use swim_api::agent::{HttpLaneRequest, HttpLaneRequestChannel, LaneConfig, StoreConfig};
+use swim_api::agent::{
+    HttpLaneRequest, HttpLaneRequestChannel, HttpResponseSender, LaneConfig, StoreConfig,
+};
 use swim_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
 use swim_api::lane::WarpLaneKind;
 use swim_api::store::{StoreDisabled, StoreKind};
@@ -2083,7 +2085,7 @@ async fn http_task(
                     }
                 }
                 let extracted_name = uri_params::extract_lane(&request.request.uri);
-                if let Some((lane_name, tx)) = extracted_name.and_then(|lane_name| {
+                if let Some((lane_name, tx)) = extracted_name.as_ref().and_then(|lane_name| {
                     endpoints
                         .get(lane_name.as_ref())
                         .map(move |tx| (lane_name, tx))
@@ -2096,7 +2098,9 @@ async fn http_task(
                         }
                     }
                 } else {
-                    not_found(request);
+                    let name = extracted_name.map(|s| s.to_string());
+                    let (_, response_tx) = request.into_parts();
+                    not_found(name.as_deref(), response_tx);
                 }
             }
             HttpTaskEvent::Timeout => {
@@ -2117,12 +2121,11 @@ async fn http_task(
 }
 
 /// Send a 404 if the target lane for an HTTP request does not exist.
-fn not_found(request: HttpLaneRequest) {
-    let (request, response_tx) = request.into_parts();
-    let payload = if let Some(lane_name) = uri_params::extract_lane(&request.uri) {
+fn not_found(lane_name: Option<&str>, response_tx: HttpResponseSender) {
+    let payload = if let Some(name) = lane_name {
         Bytes::from(format!(
             "This agent does not have an HTTP lane called `{}`",
-            lane_name
+            name
         ))
     } else {
         Bytes::from_static(b"No lane name was specified.")
