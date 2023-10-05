@@ -120,15 +120,10 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             no_handler
         };
 
-        let item_specs2 = item_models
+        let item_specs = item_models
             .iter()
-            .map(|model| LaneSpecInsert(model.model))
+            .map(|model| LaneSpecInsert(model.ordinal, model.model))
             .map(|insert| insert.into_tokens(root));
-
-        let lane_ids = item_models
-            .iter()
-            .map(|model| (model.ordinal, model.model.literal()))
-            .map(|(i, lit)| quote!(::std::collections::HashMap::insert(&mut map, #i, #root::model::Text::new(#lit))));
 
         let value_match_blocks = value_lane_models
             .iter()
@@ -193,16 +188,10 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
                 type HttpRequestHandler = #http_handler;
 
-                fn item_specs2() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
+                fn item_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
                     let mut lanes = ::std::collections::HashMap::new();
-                    #(#item_specs2;)*
+                    #(#item_specs;)*
                     lanes
-                }
-
-                fn item_ids() -> ::std::collections::HashMap<u64, #root::model::Text> {
-                    let mut map = ::std::collections::HashMap::new();
-                    #(#lane_ids;)*
-                    map
                 }
 
                 fn on_value_command(&self, lane: &str, body: #root::reexport::bytes::BytesMut) -> ::core::option::Option<Self::ValCommandHandler> {
@@ -751,44 +740,45 @@ impl<'a> MapItemInitMatch<'a> {
     }
 }
 
-struct LaneSpecInsert<'a>(ItemModel<'a>);
+struct LaneSpecInsert<'a>(u64, ItemModel<'a>);
 
 impl<'a> LaneSpecInsert<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
-        let LaneSpecInsert(model) = self;
+        let LaneSpecInsert(ordinal, model) = self;
 
         let flags = if model.is_stateful() {
             quote!(#root::agent_model::ItemFlags::empty())
         } else {
             quote!(#root::agent_model::ItemFlags::TRANSIENT)
         };
-        let spec = match model.kind {
+        let descriptor = match model.kind {
             ItemSpec::Command(_) => {
-                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::WarpLaneKind::Command, flags: #flags })
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::Command, flags: #flags })
             }
             ItemSpec::Demand(_) => {
-                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::WarpLaneKind::Demand, flags: #flags })
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::Demand, flags: #flags })
             }
             ItemSpec::DemandMap(_, _) => {
-                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::WarpLaneKind::DemandMap, flags: #flags })
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::DemandMap, flags: #flags })
             }
             ItemSpec::Value(ItemKind::Lane, _) => {
-                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::WarpLaneKind::Value, flags: #flags })
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::Value, flags: #flags })
             }
             ItemSpec::Value(ItemKind::Store, _) => {
-                quote!(#root::agent_model::ItemSpec::Store { kind: #root::agent_model::StoreKind::Value, flags: #flags })
+                quote!(#root::agent_model::ItemDescriptor::Store { kind: #root::agent_model::StoreKind::Value, flags: #flags })
             }
             ItemSpec::Map(ItemKind::Lane, _, _) => {
-                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::WarpLaneKind::Map, flags: #flags })
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::Map, flags: #flags })
             }
             ItemSpec::Map(ItemKind::Store, _, _) => {
-                quote!(#root::agent_model::ItemSpec::Store { kind: #root::agent_model::StoreKind::Map, flags: #flags })
+                quote!(#root::agent_model::ItemDescriptor::Store { kind: #root::agent_model::StoreKind::Map, flags: #flags })
             }
             ItemSpec::JoinValue(_, _) => {
-                quote!(#root::agent_model::ItemSpec::WarpLane { kind: #root::agent_model::WarpLaneKind::JoinValue, flags: #flags })
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::JoinValue, flags: #flags })
             }
-            ItemSpec::Http(_) => quote!(#root::agent_model::ItemSpec::Http),
+            ItemSpec::Http(_) => quote!(#root::agent_model::ItemDescriptor::Http),
         };
+        let spec = quote!(#root::agent_model::ItemSpec::new(#ordinal, #descriptor));
         let lane_name = model.literal();
         quote!(::std::collections::HashMap::insert(&mut lanes, #lane_name, #spec))
     }

@@ -26,15 +26,12 @@ use swim_api::{
         map::{MapMessage, MapOperation},
     },
 };
-use swim_model::{
-    http::{HttpRequest, HttpResponse, StatusCode, SupportedMethod, Version},
-    Text,
-};
+use swim_model::http::{HttpRequest, HttpResponse, StatusCode, SupportedMethod, Version};
 use tokio::sync::mpsc;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
-use crate::agent_model::{ItemSpec, MapLikeInitializer, ValueLikeInitializer};
+use crate::agent_model::{ItemDescriptor, ItemSpec, MapLikeInitializer, ValueLikeInitializer};
 use crate::{
     agent_model::{AgentSpec, ItemFlags, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
@@ -148,44 +145,41 @@ impl AgentSpec for TestAgent {
 
     type HttpRequestHandler = TestHttpHandler;
 
-    fn item_specs2() -> HashMap<&'static str, ItemSpec> {
+    fn item_specs() -> HashMap<&'static str, ItemSpec> {
         let mut lanes = HashMap::new();
 
         lanes.insert(
             VAL_LANE,
-            ItemSpec::WarpLane {
-                kind: WarpLaneKind::Value,
-                flags: ItemFlags::TRANSIENT,
-            },
+            ItemSpec::new(
+                VAL_ID,
+                ItemDescriptor::WarpLane {
+                    kind: WarpLaneKind::Value,
+                    flags: ItemFlags::TRANSIENT,
+                },
+            ),
         );
         lanes.insert(
             CMD_LANE,
-            ItemSpec::WarpLane {
-                kind: WarpLaneKind::Command,
-                flags: ItemFlags::TRANSIENT,
-            },
+            ItemSpec::new(
+                CMD_ID,
+                ItemDescriptor::WarpLane {
+                    kind: WarpLaneKind::Command,
+                    flags: ItemFlags::TRANSIENT,
+                },
+            ),
         );
         lanes.insert(
             MAP_LANE,
-            ItemSpec::WarpLane {
-                kind: WarpLaneKind::Map,
-                flags: ItemFlags::TRANSIENT,
-            },
+            ItemSpec::new(
+                MAP_ID,
+                ItemDescriptor::WarpLane {
+                    kind: WarpLaneKind::Map,
+                    flags: ItemFlags::TRANSIENT,
+                },
+            ),
         );
-        lanes.insert(HTTP_LANE, ItemSpec::Http);
+        lanes.insert(HTTP_LANE, ItemSpec::new(HTTP_ID, ItemDescriptor::Http));
         lanes
-    }
-
-    fn item_ids() -> HashMap<u64, Text> {
-        [
-            (VAL_ID, VAL_LANE),
-            (MAP_ID, MAP_LANE),
-            (CMD_ID, CMD_LANE),
-            (HTTP_ID, HTTP_LANE),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k, Text::new(v)))
-        .collect()
     }
 
     fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler> {

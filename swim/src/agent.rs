@@ -217,7 +217,7 @@ pub mod model {
 
 pub mod agent_model {
     pub use swim_agent::agent_model::{
-        AgentModel, AgentSpec, ItemFlags, ItemInitializer, ItemKind, ItemSpec,
+        AgentModel, AgentSpec, ItemDescriptor, ItemFlags, ItemInitializer, ItemKind, ItemSpec,
         JoinValueInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,
         ValueStoreInitializer, WriteResult,
     };
