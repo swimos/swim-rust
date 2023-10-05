@@ -82,7 +82,7 @@ pub fn create_plane(
     if inc.contains(&IncludeRoutes::Vehicle) {
         let epoch = Instant::now() - WEEK;
         debug!(epoch = ?epoch, "Adding vehicle route.");
-        let vehicle_route = RoutePattern::parse_str("/vehicle/:country/:state/:id")?;
+        let vehicle_route = RoutePattern::parse_str("/vehicle/:country/:state/:agency/:id")?;
         let vehicle_lifecycle = move || VehicleLifecycle::new(epoch, HISTORY_LEN).into_lifecycle();
         let vehicle_agent = AgentModel::from_fn(VehicleAgent::default, vehicle_lifecycle);
         builder = builder.add_route(vehicle_route, vehicle_agent);
