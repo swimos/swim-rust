@@ -12,17 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::Display;
+
 use swim_model::Text;
 use thiserror::Error;
 
 /// Error type produced when attempting to resolve a lane on an agent that does
 /// not exist (the lane name is kept for producing the response envelope).
-#[derive(Debug, Error)]
-#[error("Agent '{node}' does not exist.")]
+#[derive(Debug)]
 pub struct NoSuchAgent {
     pub node: Text,
     pub lane: Option<Text>,
 }
+
+impl Display for NoSuchAgent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let NoSuchAgent { node, lane } = self;
+        write!(f, "Agent '{}' does not exist.", node)?;
+        if let Some(lane_name) = lane {
+            write!(f, " Requested lane was '{}'.", lane_name)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl std::error::Error for NoSuchAgent {}
 
 /// Error type produced when the resolution of an agent fails.
 #[derive(Debug, Error)]

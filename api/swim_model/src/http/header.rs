@@ -18,8 +18,7 @@ use std::{
     str::FromStr,
 };
 
-use bytes::{Buf, BufMut, Bytes, BytesMut};
-use thiserror::Error;
+use bytes::Bytes;
 
 use crate::BytesStr;
 
@@ -237,39 +236,6 @@ pub enum StandardHeaderName {
     UserAgent = 25,
 }
 
-impl StandardHeaderName {
-    fn from_byte(b: u8) -> Option<Self> {
-        match b {
-            1 => Some(Self::Accept),
-            2 => Some(Self::AcceptCharset),
-            3 => Some(Self::AcceptEncoding),
-            4 => Some(Self::AcceptLanguage),
-            5 => Some(Self::Allow),
-            6 => Some(Self::Connection),
-            7 => Some(Self::ContentEncoding),
-            8 => Some(Self::ContentLength),
-            9 => Some(Self::ContentType),
-            10 => Some(Self::Cookie),
-            11 => Some(Self::Expect),
-            12 => Some(Self::Host),
-            13 => Some(Self::Location),
-            14 => Some(Self::MaxForwards),
-            15 => Some(Self::Origin),
-            16 => Some(Self::SecWebSocketAccept),
-            17 => Some(Self::SecWebSocketExtensions),
-            18 => Some(Self::SecWebSocketKey),
-            19 => Some(Self::SecWebSocketProtocol),
-            20 => Some(Self::SecWebSocketVersion),
-            21 => Some(Self::Server),
-            22 => Some(Self::SetCookie),
-            23 => Some(Self::TransferEncoding),
-            24 => Some(Self::Upgrade),
-            25 => Some(Self::UserAgent),
-            _ => None,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Name {
     Standard(StandardHeaderName),
@@ -406,118 +372,5 @@ impl TryFrom<HeaderName> for http::header::HeaderName {
 
     fn try_from(value: HeaderName) -> Result<Self, Self::Error> {
         http::header::HeaderName::from_str(value.as_str())
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum HeaderNameDecodeError {
-    #[error("{0} does not encode a valid standard header name.")]
-    InvalidHeaderNameCode(u8),
-    #[error("Header name contained invalid UTF8")]
-    InvalidUtf8,
-}
-
-const TAG_LEN: usize = 1;
-const NAME_LEN_SIZE: usize = 2;
-const VALUE_LEN_SIZE: usize = 4;
-
-impl Header {
-    pub fn encoded_len(&self) -> usize {
-        let Header { name, value } = self;
-        let value_bytes = value.as_bytes();
-        let value_len = VALUE_LEN_SIZE + value_bytes.len();
-        let name_len = match &name.0 {
-            Name::Standard(_) => TAG_LEN,
-            Name::Other(s) => TAG_LEN + NAME_LEN_SIZE + s.as_str().len(),
-        };
-        name_len + value_len
-    }
-
-    pub fn encode(&self, dst: &mut BytesMut) {
-        let Header { name, value } = self;
-        let value_bytes = value.as_bytes();
-        dst.put_u32(value_bytes.len() as u32);
-        match &name.0 {
-            Name::Standard(s) => {
-                dst.put_u8(*s as u8);
-            }
-            Name::Other(s) => {
-                dst.put_u8(0);
-                dst.put_u16(s.as_str().len() as u16);
-                dst.put(s.as_str().as_bytes());
-            }
-        }
-        dst.put(value_bytes);
-    }
-
-    pub fn decode(src: &mut BytesMut) -> Result<Option<Header>, HeaderNameDecodeError> {
-        let mut data = src.as_ref();
-        if data.remaining() < VALUE_LEN_SIZE {
-            return Ok(None);
-        }
-        let value_len = data.get_u32() as usize;
-        if data.remaining() < TAG_LEN {
-            return Ok(None);
-        }
-        let code = data.get_u8();
-        let name = if code == 0 {
-            if data.remaining() < NAME_LEN_SIZE {
-                return Ok(None);
-            }
-            let name_len = data.get_u16() as usize;
-            if data.remaining() < name_len + value_len {
-                return Ok(None);
-            }
-            src.advance(VALUE_LEN_SIZE + TAG_LEN + NAME_LEN_SIZE);
-            if let Ok(bytes_str) = BytesStr::new(src.split_to(name_len).freeze()) {
-                HeaderName(Name::Other(bytes_str))
-            } else {
-                return Err(HeaderNameDecodeError::InvalidUtf8);
-            }
-        } else {
-            if data.remaining() < value_len {
-                return Ok(None);
-            }
-            src.advance(VALUE_LEN_SIZE + TAG_LEN);
-            if let Some(s) = StandardHeaderName::from_byte(code) {
-                HeaderName(Name::Standard(s))
-            } else {
-                return Err(HeaderNameDecodeError::InvalidHeaderNameCode(code));
-            }
-        };
-        let value_bytes = src.split_to(value_len).freeze();
-        let value = HeaderValue::new(value_bytes);
-        Ok(Some(Header { name, value }))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use bytes::{Bytes, BytesMut};
-
-    use super::{Header, HeaderName, HeaderValue, StandardHeaderName};
-
-    fn roundtrip_header(header: Header) {
-        let mut buffer = BytesMut::new();
-
-        header.encode(&mut buffer);
-        assert_eq!(buffer.len(), header.encoded_len());
-
-        let restored = Header::decode(&mut buffer)
-            .expect("Decode failed.")
-            .expect("Incomplete.");
-        assert_eq!(restored, header);
-        assert!(buffer.is_empty());
-    }
-
-    #[test]
-    fn header_encoding() {
-        roundtrip_header((StandardHeaderName::Cookie, "kjhsa8h8hasd8f").into());
-        roundtrip_header(("custom_header_name", "I'm a header").into());
-        let header = Header {
-            name: HeaderName::from(StandardHeaderName::Allow),
-            value: HeaderValue::new(Bytes::from([1, 2, 3].as_slice())),
-        };
-        roundtrip_header(header);
     }
 }
