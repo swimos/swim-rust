@@ -18,6 +18,7 @@ use std::marker::PhantomData;
 use swim_api::agent::{HttpLaneResponse, HttpResponseSender};
 use swim_api::handlers::{FnHandler, NoHandler};
 use swim_model::http::{Header, HttpResponse, StatusCode, Uri, Version};
+use tracing::debug;
 
 use crate::event_handler::EventHandlerError;
 use crate::{
@@ -534,8 +535,9 @@ where
             ),
         };
         if let Some(tx) = response_tx.take() {
-            if tx.send(response).is_err() {
-                todo!()
+            if let Err(response) = tx.send(response) {
+                debug!(response = ?response, "HTTP request terminated before the response was provided.");
+                StepResult::done(())
             } else {
                 StepResult::Complete {
                     modified_item,
@@ -774,8 +776,9 @@ where
             ),
         };
         if let Some(tx) = response_tx.take() {
-            if tx.send(response).is_err() {
-                todo!()
+            if let Err(response) = tx.send(response) {
+                debug!(response = ?response, "HTTP request terminated before the response was provided.");
+                StepResult::done(())
             } else {
                 StepResult::Complete {
                     modified_item,
