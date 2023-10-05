@@ -152,6 +152,7 @@ impl AgentSpec for TestAgent {
             VAL_LANE,
             ItemSpec::new(
                 VAL_ID,
+                VAL_LANE,
                 ItemDescriptor::WarpLane {
                     kind: WarpLaneKind::Value,
                     flags: ItemFlags::TRANSIENT,
@@ -162,6 +163,7 @@ impl AgentSpec for TestAgent {
             CMD_LANE,
             ItemSpec::new(
                 CMD_ID,
+                CMD_LANE,
                 ItemDescriptor::WarpLane {
                     kind: WarpLaneKind::Command,
                     flags: ItemFlags::TRANSIENT,
@@ -172,13 +174,17 @@ impl AgentSpec for TestAgent {
             MAP_LANE,
             ItemSpec::new(
                 MAP_ID,
+                MAP_LANE,
                 ItemDescriptor::WarpLane {
                     kind: WarpLaneKind::Map,
                     flags: ItemFlags::TRANSIENT,
                 },
             ),
         );
-        lanes.insert(HTTP_LANE, ItemSpec::new(HTTP_ID, ItemDescriptor::Http));
+        lanes.insert(
+            HTTP_LANE,
+            ItemSpec::new(HTTP_ID, HTTP_LANE, ItemDescriptor::Http),
+        );
         lanes
     }
 

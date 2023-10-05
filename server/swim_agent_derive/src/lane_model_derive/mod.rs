@@ -649,7 +649,7 @@ struct WriteToBufferMatch<'a>(ItemModel<'a>);
 impl<'a> WriteToBufferMatch<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let WriteToBufferMatch(model) = self;
-        let name_lit = model.literal();
+        let name_lit = model.external_literal();
         let ItemModel { name, kind, .. } = model;
         match kind.item_kind() {
             ItemKind::Lane => {
@@ -674,7 +674,7 @@ impl<'a> ValueItemInitMatch<'a> {
         ValueItemInitMatch {
             agent_name: item.agent_name,
             name: item.model.name,
-            name_lit: item.model.literal(),
+            name_lit: item.model.external_literal(),
             kind: item.model.item_kind(),
         }
     }
@@ -722,7 +722,7 @@ impl<'a> MapItemInitMatch<'a> {
         MapItemInitMatch {
             agent_name: item.agent_name,
             name: item.model.name,
-            name_lit: item.model.literal(),
+            name_lit: item.model.external_literal(),
             init_kind,
         }
     }
@@ -788,9 +788,11 @@ impl<'a> LaneSpecInsert<'a> {
             }
             ItemSpec::Http(_) => quote!(#root::agent_model::ItemDescriptor::Http),
         };
-        let spec = quote!(#root::agent_model::ItemSpec::new(#ordinal, #descriptor));
-        let lane_name = model.literal();
-        quote!(::std::collections::HashMap::insert(&mut lanes, #lane_name, #spec))
+        let external_lane_name = model.external_literal();
+        let lifecycle_lane_name = model.lifecycle_literal();
+        let spec =
+            quote!(#root::agent_model::ItemSpec::new(#ordinal, #lifecycle_lane_name, #descriptor));
+        quote!(::std::collections::HashMap::insert(&mut lanes, #external_lane_name, #spec))
     }
 }
 

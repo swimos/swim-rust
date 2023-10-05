@@ -39,6 +39,26 @@ fn persistent_lane(id: u64, name: &'static str, kind: WarpLaneKind) -> (&'static
         name,
         ItemSpec::new(
             id,
+            name,
+            ItemDescriptor::WarpLane {
+                kind,
+                flags: ItemFlags::empty(),
+            },
+        ),
+    )
+}
+
+fn persistent_lane_renamed(
+    id: u64,
+    name: &'static str,
+    lifecycle_name: &'static str,
+    kind: WarpLaneKind,
+) -> (&'static str, ItemSpec) {
+    (
+        name,
+        ItemSpec::new(
+            id,
+            lifecycle_name,
             ItemDescriptor::WarpLane {
                 kind,
                 flags: ItemFlags::empty(),
@@ -52,6 +72,7 @@ fn transient_lane(id: u64, name: &'static str, kind: WarpLaneKind) -> (&'static 
         name,
         ItemSpec::new(
             id,
+            name,
             ItemDescriptor::WarpLane {
                 kind,
                 flags: ItemFlags::TRANSIENT,
@@ -65,6 +86,7 @@ fn persistent_store(id: u64, name: &'static str, kind: StoreKind) -> (&'static s
         name,
         ItemSpec::new(
             id,
+            name,
             ItemDescriptor::Store {
                 kind,
                 flags: ItemFlags::empty(),
@@ -78,6 +100,7 @@ fn transient_store(id: u64, name: &'static str, kind: StoreKind) -> (&'static st
         name,
         ItemSpec::new(
             id,
+            name,
             ItemDescriptor::Store {
                 kind,
                 flags: ItemFlags::TRANSIENT,
@@ -87,7 +110,7 @@ fn transient_store(id: u64, name: &'static str, kind: StoreKind) -> (&'static st
 }
 
 fn http_lane(id: u64, name: &'static str) -> (&'static str, ItemSpec) {
-    (name, ItemSpec::new(id, ItemDescriptor::Http))
+    (name, ItemSpec::new(id, name, ItemDescriptor::Http))
 }
 
 fn check_agent<A>(specs: Vec<(&'static str, ItemSpec)>)
@@ -660,7 +683,7 @@ fn rename_lane() {
     }
 
     check_agent::<RenameExplicit>(vec![
-        persistent_lane(0, "renamed", WarpLaneKind::Value),
+        persistent_lane_renamed(0, "renamed", "first", WarpLaneKind::Value),
         persistent_lane(1, "second", WarpLaneKind::Value),
     ]);
 }
@@ -675,7 +698,7 @@ fn rename_lane_with_convention() {
     }
 
     check_agent::<RenameConvention>(vec![
-        persistent_lane(0, "firstLane", WarpLaneKind::Value),
+        persistent_lane_renamed(0, "firstLane", "first_lane", WarpLaneKind::Value),
         persistent_lane(1, "second_lane", WarpLaneKind::Value),
     ]);
 }
@@ -691,9 +714,9 @@ fn rename_all_lanes_with_convention() {
     }
 
     check_agent::<RenameAll>(vec![
-        persistent_lane(0, "firstLane", WarpLaneKind::Value),
-        persistent_lane(1, "secondLane", WarpLaneKind::Value),
-        persistent_lane(2, "thirdLane", WarpLaneKind::Value),
+        persistent_lane_renamed(0, "firstLane", "first_lane", WarpLaneKind::Value),
+        persistent_lane_renamed(1, "secondLane", "second_lane", WarpLaneKind::Value),
+        persistent_lane_renamed(2, "thirdLane", "third_lane", WarpLaneKind::Value),
     ]);
 }
 
@@ -709,8 +732,8 @@ fn override_top_level_convention() {
     }
 
     check_agent::<OverrideRename>(vec![
-        persistent_lane(0, "firstLane", WarpLaneKind::Value),
-        persistent_lane(1, "renamed", WarpLaneKind::Value),
-        persistent_lane(2, "thirdLane", WarpLaneKind::Value),
+        persistent_lane_renamed(0, "firstLane", "first_lane", WarpLaneKind::Value),
+        persistent_lane_renamed(1, "renamed", "second_lane", WarpLaneKind::Value),
+        persistent_lane_renamed(2, "thirdLane", "third_lane", WarpLaneKind::Value),
     ]);
 }

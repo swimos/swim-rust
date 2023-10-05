@@ -144,12 +144,17 @@ pub enum ItemDescriptor {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ItemSpec {
     pub id: u64,
+    pub lifecycle_name: &'static str,
     pub descriptor: ItemDescriptor,
 }
 
 impl ItemSpec {
-    pub fn new(id: u64, descriptor: ItemDescriptor) -> Self {
-        ItemSpec { id, descriptor }
+    pub fn new(id: u64, lifecycle_name: &'static str, descriptor: ItemDescriptor) -> Self {
+        ItemSpec {
+            id,
+            lifecycle_name,
+            descriptor,
+        }
     }
 }
 
