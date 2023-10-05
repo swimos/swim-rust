@@ -17,7 +17,8 @@ use std::{collections::HashSet, error::Error, time::Duration};
 use clap::Parser;
 use swim::server::ServerBuilder;
 use tracing::debug;
-use transit::{buses_api::BusesApi, configure_logging, create_plane, IncludeRoutes};
+use tracing_subscriber::{filter::LevelFilter, EnvFilter};
+use transit::{buses_api::BusesApi, create_plane, IncludeRoutes};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -141,4 +142,26 @@ struct Params {
     /// Switch on logging to the console.
     #[arg(long)]
     enable_logging: bool,
+}
+
+pub fn example_filter() -> Result<EnvFilter, Box<dyn std::error::Error + Send + Sync>> {
+    let filter = if let Ok(filter) = EnvFilter::try_from_default_env() {
+        filter
+    } else {
+        EnvFilter::new("")
+            .add_directive("swim_server_app=warn".parse()?)
+            .add_directive("swim_runtime=warn".parse()?)
+            .add_directive("swim_agent=info".parse()?)
+            .add_directive("swim_messages=warn".parse()?)
+            .add_directive("swim_remote=warn".parse()?)
+    };
+    Ok(filter)
+}
+
+pub fn configure_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let filter = example_filter()?
+        .add_directive("transit=debug".parse()?)
+        .add_directive(LevelFilter::WARN.into());
+    tracing_subscriber::fmt().with_env_filter(filter).init();
+    Ok(())
 }
