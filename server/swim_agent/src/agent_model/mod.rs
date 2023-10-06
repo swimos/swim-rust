@@ -946,6 +946,10 @@ where
         let mut item_writers = HashMap::new();
         let mut pending_writes = FuturesUnordered::new();
         let mut downlinks = FuturesUnordered::new();
+        let mut external_item_ids_rev = HashMap::new();
+        for (name, id) in external_item_ids.iter() {
+            external_item_ids_rev.insert(*id, name);
+        }
 
         let mut cmd_writer = if let Ok(cmd_tx) = context.ad_hoc_commands().await {
             Some(CommandWriter::new(cmd_tx))
@@ -1197,7 +1201,7 @@ where
                     }
                 },
                 TaskEvent::ValueRequest { id, request } => {
-                    let name = &lifecycle_item_ids[&id];
+                    let name = &external_item_ids_rev[&id];
                     match request {
                         LaneRequest::Command(body) => {
                             if let Some(handler) = item_model.on_value_command(name.as_str(), body)
@@ -1274,7 +1278,7 @@ where
                     }
                 }
                 TaskEvent::MapRequest { id, request } => {
-                    let name = &lifecycle_item_ids[&id];
+                    let name = &external_item_ids_rev[&id];
                     match request {
                         LaneRequest::Command(body) => {
                             if let Some(handler) = item_model.on_map_command(name.as_str(), body) {
@@ -1350,7 +1354,7 @@ where
                     }
                 }
                 TaskEvent::HttpRequest { id, request } => {
-                    let name = &lifecycle_item_ids[&id];
+                    let name = &external_item_ids_rev[&id];
                     match item_model.on_http_request(name.as_str(), request) {
                         Ok(handler) => {
                             match run_handler(
