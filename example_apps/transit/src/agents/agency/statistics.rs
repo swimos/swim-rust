@@ -18,7 +18,7 @@ use transit_model::{bounding_box::BoundingBox, vehicle::VehicleResponse};
 pub struct Statistics {
     pub mean_speed: f64,
     pub n: usize,
-    pub bounding_box: BoundingBox,
+    pub bounding_box: Option<BoundingBox>,
 }
 
 const MIN_LAT: f64 = -90.0;
@@ -31,23 +31,35 @@ impl Statistics {
         let Statistics {
             mean_speed,
             n,
-            bounding_box:
-                BoundingBox {
-                    min_lat,
-                    max_lat,
-                    min_lng,
-                    max_lng,
-                },
+            bounding_box,
         } = &mut self;
 
         let next_n = n.checked_add(1).expect("Number of vehicles overflowed.");
         *mean_speed = (*n as f64 * *mean_speed + vehicle.speed as f64) / (next_n as f64);
         *n = next_n;
 
-        *min_lat = min_lat.min(vehicle.latitude).clamp(MIN_LAT, MAX_LAT);
-        *max_lat = max_lat.max(vehicle.latitude).clamp(MIN_LAT, MAX_LAT);
-        *min_lng = min_lng.min(vehicle.longitude).clamp(MIN_LONG, MAX_LONG);
-        *max_lng = max_lng.max(vehicle.longitude).clamp(MIN_LONG, MAX_LONG);
+        if let Some(BoundingBox {
+            min_lat,
+            max_lat,
+            min_lng,
+            max_lng,
+        }) = bounding_box
+        {
+            *min_lat = min_lat.min(vehicle.latitude).clamp(MIN_LAT, MAX_LAT);
+            *max_lat = max_lat.max(vehicle.latitude).clamp(MIN_LAT, MAX_LAT);
+            *min_lng = min_lng.min(vehicle.longitude).clamp(MIN_LONG, MAX_LONG);
+            *max_lng = max_lng.max(vehicle.longitude).clamp(MIN_LONG, MAX_LONG);
+        } else {
+            let lat = vehicle.latitude.clamp(MIN_LAT, MAX_LAT);
+            let lng = vehicle.longitude.clamp(MIN_LONG, MAX_LONG);
+            *bounding_box = Some(BoundingBox {
+                min_lat: lat,
+                max_lat: lat,
+                min_lng: lng,
+                max_lng: lng,
+            });
+        }
+
         self
     }
 }

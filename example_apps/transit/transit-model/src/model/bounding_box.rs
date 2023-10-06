@@ -16,7 +16,7 @@ use std::fmt::Display;
 
 use swim::form::Form;
 
-#[derive(Clone, Copy, Debug, PartialEq, Form)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Form)]
 #[form(tag = "bounds", fields_convention = "camel")]
 pub struct BoundingBox {
     pub min_lat: f64,
@@ -38,16 +38,5 @@ impl Display for BoundingBox {
             "Bounds {{ latitude = [{}, {}), longitude = [{}, {}) }}",
             min_lat, max_lat, min_lng, max_lng
         )
-    }
-}
-
-impl Default for BoundingBox {
-    fn default() -> Self {
-        Self {
-            min_lat: -90.0,
-            max_lat: 90.0,
-            min_lng: -180.0,
-            max_lng: 180.0,
-        }
     }
 }

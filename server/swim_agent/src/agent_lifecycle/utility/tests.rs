@@ -21,7 +21,7 @@ use swim_api::agent::AgentConfig;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::{
-    event_handler::{ActionContext, HandlerAction, StepResult, BoxEventHandler},
+    event_handler::{ActionContext, BoxEventHandler, HandlerAction, StepResult},
     meta::AgentMetadata,
     test_context::{no_downlink, DummyAgentContext},
 };
@@ -75,18 +75,19 @@ async fn suspend_repeatedly() {
     let context: HandlerContext<Fake> = HandlerContext::default();
 
     let mut i = 0;
-    let mut handler: BoxEventHandler<'static, Fake> = Box::new(context.suspend_repeatedly(Duration::from_secs(1), move || {
-        let n = i;
-        i += 1;
-        Some(ready(if n < 10 {
-            Some(FakeHandler {
-                n,
-                inner: Some(state.clone()),
-            })
-        } else {
-            None
-        }))
-    }));
+    let mut handler: BoxEventHandler<'static, Fake> =
+        Box::new(context.suspend_repeatedly(Duration::from_secs(1), move || {
+            let n = i;
+            i += 1;
+            Some(ready(if n < 10 {
+                Some(FakeHandler {
+                    n,
+                    inner: Some(state.clone()),
+                })
+            } else {
+                None
+            }))
+        }));
 
     let uri = make_uri();
     let route_params = HashMap::new();
@@ -108,11 +109,9 @@ async fn suspend_repeatedly() {
                 meta,
                 &Fake,
             ) {
-                StepResult::Continue { .. } => {},
+                StepResult::Continue { .. } => {}
                 StepResult::Fail(err) => panic!("Failed: {}", err),
-                StepResult::Complete {
-                    ..
-                } => break,
+                StepResult::Complete { .. } => break,
             }
         }
 
@@ -127,6 +126,6 @@ async fn suspend_repeatedly() {
         }
     }
     let values = std::mem::take(&mut *state_cpy.lock());
-    let expected: Vec<i32> = (0..10).into_iter().collect();
+    let expected: Vec<i32> = (0..10).collect();
     assert_eq!(values, expected);
 }

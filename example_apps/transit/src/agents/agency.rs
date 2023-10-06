@@ -111,7 +111,10 @@ impl AgencyLifecycle {
             context.get_map(AgencyAgent::ROUTES),
         )
         .and_then(move |(vehicles, routes)| {
-            debug!(num_vehicles = responses.len(), "Handling a batch of new vehicle records.");
+            debug!(
+                num_vehicles = responses.len(),
+                "Handling a batch of new vehicle records."
+            );
             let vehicle_map = get_vehicle_map(&self.agency, responses, &routes);
             let Statistics {
                 mean_speed,
@@ -119,9 +122,19 @@ impl AgencyLifecycle {
                 ..
             } = stats;
             process_new_vehicles(context, &vehicles, vehicle_map)
-                .followed_by(context.effect(move || debug!(mean_speed, bounding_box = %bounding_box, "Updating vehicle statistics.")))
+                .followed_by(context.effect(move || {
+                    if let Some(bb) = bounding_box {
+                        debug!(mean_speed, bounding_box = %bb, "Updating vehicle statistics.");
+                    } else {
+                        debug!(mean_speed, "Updating vehicle statistics.");
+                    }
+                }))
                 .followed_by(context.set_value(AgencyAgent::VEHICLES_SPEED, mean_speed))
-                .followed_by(context.set_value(AgencyAgent::BOUNDING_BOX, bounding_box))
+                .followed_by(
+                    bounding_box
+                        .map(|bb| context.set_value(AgencyAgent::BOUNDING_BOX, bb))
+                        .discard(),
+                )
         })
     }
 }
