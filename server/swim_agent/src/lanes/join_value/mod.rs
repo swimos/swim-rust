@@ -26,6 +26,7 @@ use swim_model::Text;
 use uuid::Uuid;
 
 use crate::agent_model::downlink::OpenEventDownlinkAction;
+use crate::config::SimpleDownlinkConfig;
 use crate::event_handler::{EventHandler, EventHandlerError, Modification};
 use crate::{
     agent_model::WriteResult,
@@ -137,7 +138,14 @@ where
         lifecycle: LC,
     ) -> Self {
         let dl_lifecycle = JoinValueDownlink::new(projection, key.clone(), lane.clone(), lifecycle);
-        let inner = OpenEventDownlinkAction::new(lane, dl_lifecycle, Default::default());
+        let inner = OpenEventDownlinkAction::new(
+            lane,
+            dl_lifecycle,
+            SimpleDownlinkConfig {
+                events_when_not_synced: true,
+                terminate_on_unlinked: true,
+            },
+        );
         AddDownlinkAction {
             projection,
             key: Some(key),

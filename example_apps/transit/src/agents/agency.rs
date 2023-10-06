@@ -42,8 +42,8 @@ mod statistics;
 #[agent(transient, convention = "camel")]
 pub struct AgencyAgent {
     vehicles: MapLane<String, Vehicle>,
-    vehicles_count: ValueLane<usize>,
-    vehicles_speed: ValueLane<f64>,
+    count: ValueLane<usize>,
+    speed: ValueLane<f64>,
     add_vehicles: CommandLane<Vec<VehicleResponse>>,
     info: DemandLane<Agency>,
     routes: MapLane<String, Route>,
@@ -67,11 +67,19 @@ impl AgencyLifecycle {
             let start_polling = this.start_polling(context);
             on_routes.followed_by(start_polling)
         };
+        let state_uri = self.agency.state_uri();
+        let add_to_state = context.send_command(
+            None,
+            state_uri,
+            "addAgency".to_string(),
+            self.agency.clone(),
+        );
         context
             .get_agent_uri()
             .and_then(move |uri| {
                 context.effect(move || info!(uri = %uri, "Starting agency agent."))
             })
+            .followed_by(add_to_state)
             .followed_by(context.suspend(get_routes_and_poll))
     }
 
@@ -118,18 +126,20 @@ impl AgencyLifecycle {
             let vehicle_map = get_vehicle_map(&self.agency, responses, &routes);
             let Statistics {
                 mean_speed,
+                n,
                 bounding_box,
                 ..
             } = stats;
             process_new_vehicles(context, &vehicles, vehicle_map)
                 .followed_by(context.effect(move || {
                     if let Some(bb) = bounding_box {
-                        debug!(mean_speed, bounding_box = %bb, "Updating vehicle statistics.");
+                        debug!(num_vehicles = n, mean_speed, bounding_box = %bb, "Updating vehicle statistics.");
                     } else {
-                        debug!(mean_speed, "Updating vehicle statistics.");
+                        debug!(num_vehicles = n, mean_speed, "Updating vehicle statistics.");
                     }
                 }))
-                .followed_by(context.set_value(AgencyAgent::VEHICLES_SPEED, mean_speed))
+                .followed_by(context.set_value(AgencyAgent::COUNT, n))
+                .followed_by(context.set_value(AgencyAgent::SPEED, mean_speed))
                 .followed_by(
                     bounding_box
                         .map(|bb| context.set_value(AgencyAgent::BOUNDING_BOX, bb))

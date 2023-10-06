@@ -52,7 +52,7 @@ impl Agency {
     }
 
     pub fn state_uri(&self) -> String {
-        format!("/state/{}/{}", &self.state, &self.country)
+        format!("/state/{}/{}", &self.country, &self.state)
     }
 
     pub fn create_vehicle(&self, route: &Route, response: VehicleResponse) -> Vehicle {
