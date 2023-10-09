@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::fmt::{Display, Formatter};
+
 use swim::form::Form;
 
 #[derive(Debug, Clone, Copy, Default, Form)]
@@ -19,4 +21,10 @@ use swim::form::Form;
 pub struct Count {
     pub current: usize,
     pub max: usize,
+}
+
+impl Display for Count {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Count[current = {}, max = {}]", self.current, self.max)
+    }
 }

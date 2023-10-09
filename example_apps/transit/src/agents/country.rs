@@ -36,7 +36,7 @@ pub struct CountryAgent {
     count: ValueLane<Count>,
     agencies: MapLane<String, Agency>,
     states: MapLane<String, ()>,
-    state_count: JoinValueLane<String, usize>,
+    state_count: JoinValueLane<String, Count>,
     speed: ValueLane<f64>,
     state_speed: JoinValueLane<String, f64>,
     add_agency: CommandLane<Agency>,
@@ -101,12 +101,14 @@ impl CountryLifecycle {
     fn update_counts(
         &self,
         context: HandlerContext<CountryAgent>,
-        map: &HashMap<String, usize>,
+        map: &HashMap<String, Count>,
         _key: String,
-        _prev: Option<usize>,
-        _new_value: &usize,
+        _prev: Option<Count>,
+        _new_value: &Count,
     ) -> impl EventHandler<CountryAgent> {
-        let count_sum = map.values().fold(0usize, |acc, n| acc.saturating_add(*n));
+        let count_sum = map
+            .values()
+            .fold(0usize, |acc, c| acc.saturating_add(c.current));
         context
             .get_value(CountryAgent::COUNT)
             .and_then(move |Count { max, .. }| {
@@ -147,8 +149,8 @@ impl CountryLifecycle {
     #[join_value_lifecycle(state_count)]
     fn register_count_lifecycle(
         &self,
-        context: JoinValueContext<CountryAgent, String, usize>,
-    ) -> impl JoinValueLaneLifecycle<String, usize, CountryAgent> + 'static {
+        context: JoinValueContext<CountryAgent, String, Count>,
+    ) -> impl JoinValueLaneLifecycle<String, Count, CountryAgent> + 'static {
         join_value_logging_lifecycle(context, identity, "Count")
     }
 
