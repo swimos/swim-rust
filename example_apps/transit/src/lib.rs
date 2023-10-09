@@ -15,7 +15,7 @@
 use std::{collections::HashSet, error::Error, time::Duration};
 
 use clap::ValueEnum;
-use example_util::{example_filter, manage_handle};
+use example_util::manage_handle;
 use futures::{stream::FuturesUnordered, StreamExt};
 use swim::{
     agent::agent_model::AgentModel,
@@ -24,7 +24,7 @@ use swim::{
 };
 use tokio::time::Instant;
 use tracing::{debug, error, info};
-use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 use transit_model::agency::Agency;
 
 use crate::{
@@ -118,6 +118,20 @@ pub async fn start_agencies_and_wait(agency_uris: Vec<RouteUri>, handle: ServerH
         error!(error = %error, "Failed to start agency agent.");
     }
     manage_handle(handle).await
+}
+
+pub fn example_filter() -> Result<EnvFilter, Box<dyn std::error::Error + Send + Sync>> {
+    let filter = if let Ok(filter) = EnvFilter::try_from_default_env() {
+        filter
+    } else {
+        EnvFilter::new("")
+            .add_directive("swim_server_app=warn".parse()?)
+            .add_directive("swim_runtime=warn".parse()?)
+            .add_directive("swim_agent=info".parse()?)
+            .add_directive("swim_messages=warn".parse()?)
+            .add_directive("swim_remote=warn".parse()?)
+    };
+    Ok(filter)
 }
 
 pub fn configure_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

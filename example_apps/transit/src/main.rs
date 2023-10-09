@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{error::Error, time::Duration};
+use std::{collections::HashSet, error::Error, time::Duration};
 
 use clap::Parser;
 
@@ -21,8 +21,11 @@ use transit::{buses_api::BusesApi, configure_logging, create_plane, IncludeRoute
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let params = Params::parse();
-    if params.enable_logging {
+    let Params {
+        routes,
+        enable_logging,
+    } = Params::parse();
+    if enable_logging {
         configure_logging()?;
     }
     let agencies = transit::model::agencies();
@@ -31,10 +34,25 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .map(|a| a.uri().parse::<RouteUri>())
         .collect::<Result<Vec<_>, _>>()?;
 
+    let routes = match routes {
+        Some(IncludeRoutes::Vehicle) => [IncludeRoutes::Vehicle].into_iter().collect(),
+        Some(IncludeRoutes::State) => [IncludeRoutes::Vehicle, IncludeRoutes::State]
+            .into_iter()
+            .collect(),
+        Some(IncludeRoutes::Country) => [
+            IncludeRoutes::Vehicle,
+            IncludeRoutes::State,
+            IncludeRoutes::Country,
+        ]
+        .into_iter()
+        .collect(),
+        None => HashSet::new(),
+    };
+
     server_runner::run_server(agency_uris, move |api: BusesApi| async move {
         let mut builder = ServerBuilder::with_plane_name("Transit Plane");
 
-        builder = create_plane(agencies, api, builder, IncludeRoutes::all())?;
+        builder = create_plane(agencies, api, builder, routes)?;
 
         let server = builder
             .update_config(|config| {
@@ -81,6 +99,9 @@ mod server_runner {
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Params {
+    /// Most general routes to include.
+    #[arg(short, long)]
+    routes: Option<IncludeRoutes>,
     /// Switch on logging to the console.
     #[arg(long)]
     enable_logging: bool,
