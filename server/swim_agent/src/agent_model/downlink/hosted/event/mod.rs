@@ -186,10 +186,10 @@ fn handle_read<T: RecognizerReadable>(
             *next = r;
             Some(Ok(DownlinkChannelEvent::HandlerReady))
         }
-        r @ Some(Err(_)) => {
-            *next = r;
+        Some(Err(error)) => {
+            error!(address = %address, error = %error, "Downlink input channel failed.");
+            *next = Some(Err(error));
             *receiver = None;
-            error!(address = %address, "Downlink input channel failed.");
             Some(Err(DownlinkChannelError::ReadFailed))
         }
         _ => {

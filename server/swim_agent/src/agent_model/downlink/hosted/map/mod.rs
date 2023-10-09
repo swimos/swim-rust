@@ -381,10 +381,10 @@ where
                             *next = r;
                             Some(Ok(DownlinkChannelEvent::HandlerReady))
                         }
-                        Some(r@Some(Err(_))) => {
-                            *next = r;
+                        Some(Some(Err(error))) => {
+                            error!(address = %address,  error = %error, "Downlink input channel failed.");
+                            *next = Some(Err(error));
                             *receiver = None;
-                            error!(address = %address, "Downlink input channel failed.");
                             Some(Err(DownlinkChannelError::ReadFailed))
                         }
                         Some(None) => {
