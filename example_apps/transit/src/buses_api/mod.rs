@@ -15,10 +15,10 @@
 use std::fmt::Display;
 
 use bytes::Bytes;
-use percent_encoding::NON_ALPHANUMERIC;
 use reqwest::{Client, StatusCode};
 use thiserror::Error;
 use tracing::{debug, error};
+use transit_model::URL_ENCODE;
 
 use crate::model::{
     agency::Agency,
@@ -70,7 +70,7 @@ impl BusesApi {
         let uri = format!(
             "{}?command=routeList&a={}",
             base_uri,
-            percent_encoding::utf8_percent_encode(id, NON_ALPHANUMERIC)
+            percent_encoding::utf8_percent_encode(id, URL_ENCODE)
         );
         debug!(id, uri, "Requesting routes for agency.");
         let bytes = self.do_request(uri).await.map_err(|error| {
@@ -93,7 +93,7 @@ impl BusesApi {
         let uri = format!(
             "{}?command=vehicleLocations&a={}&t=0",
             base_uri,
-            percent_encoding::utf8_percent_encode(id, NON_ALPHANUMERIC)
+            percent_encoding::utf8_percent_encode(id, URL_ENCODE)
         );
         debug!(id, uri, "Polling vehicles for agency.");
         let bytes = self.do_request(uri).await.map_err(|error| {

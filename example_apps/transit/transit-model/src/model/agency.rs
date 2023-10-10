@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use percent_encoding::{PercentEncode, NON_ALPHANUMERIC};
+use percent_encoding::PercentEncode;
 use serde::Deserialize;
 use swim::form::Form;
 
-use crate::vehicle::Heading;
+use crate::{vehicle::Heading, URL_ENCODE};
 
 use super::{
     route::Route,
@@ -34,7 +34,7 @@ pub struct Agency {
 }
 
 fn enc(s: &str) -> PercentEncode<'_> {
-    percent_encoding::utf8_percent_encode(s, NON_ALPHANUMERIC)
+    percent_encoding::utf8_percent_encode(s, URL_ENCODE)
 }
 
 impl Agency {
@@ -48,11 +48,11 @@ impl Agency {
     }
 
     pub fn country_uri(&self) -> String {
-        format!("/country/{}", &self.country)
+        format!("/country/{}", enc(&self.country))
     }
 
     pub fn state_uri(&self) -> String {
-        format!("/state/{}/{}", &self.country, &self.state)
+        format!("/state/{}/{}", enc(&self.country), enc(&self.state))
     }
 
     pub fn create_vehicle(&self, route: &Route, response: VehicleResponse) -> Vehicle {
