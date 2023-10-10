@@ -41,6 +41,7 @@ use super::{XML_HEADER, XML_INDENT, XML_INDENT_CHAR};
 struct Body {
     #[serde(rename = "@copyright")]
     copyright: String,
+    #[serde(default)]
     vehicle: Vec<VehicleResponse>,
     #[serde(rename = "lastTime")]
     last_time: LastTime,
