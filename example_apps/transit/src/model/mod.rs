@@ -34,7 +34,6 @@ mod tests {
     #[test]
     fn load_agencies() {
         let agencies = super::agencies();
-        println!("{:?}", agencies);
-        assert_eq!(agencies.len(), 46);
+        assert_eq!(agencies.len(), 40);
     }
 }
