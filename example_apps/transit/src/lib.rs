@@ -125,11 +125,11 @@ pub fn example_filter() -> Result<EnvFilter, Box<dyn std::error::Error + Send + 
         filter
     } else {
         EnvFilter::new("")
-            .add_directive("swim_server_app=info".parse()?)
-            .add_directive("swim_runtime=info".parse()?)
-            .add_directive("swim_agent=debug".parse()?)
-            .add_directive("swim_messages=info".parse()?)
-            .add_directive("swim_remote=info".parse()?)
+            .add_directive("swim_server_app=warn".parse()?)
+            .add_directive("swim_runtime=warn".parse()?)
+            .add_directive("swim_agent=warn".parse()?)
+            .add_directive("swim_messages=warn".parse()?)
+            .add_directive("swim_remote=warn".parse()?)
     };
     Ok(filter)
 }
