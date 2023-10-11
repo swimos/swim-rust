@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashSet, error::Error, time::Duration};
+use std::{collections::HashSet, error::Error, net::SocketAddr, time::Duration};
 
 use clap::ValueEnum;
-use example_util::manage_handle;
+use example_util::manage_handle_report;
 use futures::{stream::FuturesUnordered, StreamExt};
 use swim::{
     agent::agent_model::AgentModel,
     route::{RoutePattern, RouteUri},
     server::{ServerBuilder, ServerHandle},
 };
-use tokio::time::Instant;
+use tokio::{sync::oneshot, time::Instant};
 use tracing::{debug, error, info};
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 use transit_model::agency::Agency;
@@ -40,6 +40,7 @@ use crate::{
 pub mod agents;
 pub mod buses_api;
 pub mod model;
+pub mod ui;
 
 const POLL_DELAY: Duration = Duration::from_secs(10);
 const WEEK: Duration = Duration::from_secs(7 * 86400);
@@ -106,7 +107,11 @@ pub fn create_plane(
     Ok(builder)
 }
 
-pub async fn start_agencies_and_wait(agency_uris: Vec<RouteUri>, handle: ServerHandle) {
+pub async fn start_agencies_and_wait(
+    agency_uris: Vec<RouteUri>,
+    handle: ServerHandle,
+    bound: Option<oneshot::Sender<SocketAddr>>,
+) {
     info!("Starting agency agents.");
     let stream = agency_uris
         .into_iter()
@@ -117,7 +122,7 @@ pub async fn start_agencies_and_wait(agency_uris: Vec<RouteUri>, handle: ServerH
     for error in errors {
         error!(error = %error, "Failed to start agency agent.");
     }
-    manage_handle(handle).await
+    manage_handle_report(handle, bound).await
 }
 
 pub fn example_filter() -> Result<EnvFilter, Box<dyn std::error::Error + Send + Sync>> {
@@ -136,7 +141,7 @@ pub fn example_filter() -> Result<EnvFilter, Box<dyn std::error::Error + Send + 
 
 pub fn configure_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let filter = example_filter()?
-        .add_directive("transit=debug".parse()?)
+        .add_directive("transit=warn".parse()?)
         .add_directive(LevelFilter::WARN.into());
     tracing_subscriber::fmt().with_env_filter(filter).init();
     Ok(())

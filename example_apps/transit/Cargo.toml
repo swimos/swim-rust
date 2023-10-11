@@ -9,7 +9,9 @@ mock-server = ["dep:transit-fixture"]
 
 [dependencies]
 swim = { path = "../../swim", features = ["server", "agent"] }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync"]}
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "io-util", "fs"]}
+tokio-stream = { workspace = true, features = ["io-util"]}
+tokio-util = { workspace = true, features = ["io"]}
 example-util = { path = "../example_util" }
 serde = { workspace = true, features = ["derive"]}
 csv = "1.2"
@@ -24,6 +26,7 @@ transit-fixture = { path = "transit-fixture", optional = true }
 futures = { workspace = true }
 clap = { workspace = true, features = ["derive"]}
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+axum = { version = "0.6.20", features = ["tokio", "http1"]}
 
 [[bin]]
 name = "fixture"

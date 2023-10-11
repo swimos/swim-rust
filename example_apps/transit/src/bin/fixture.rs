@@ -121,7 +121,7 @@ mod server_runner {
             result
         };
 
-        let shutdown = start_agencies_and_wait(agency_uris, handle);
+        let shutdown = start_agencies_and_wait(agency_uris, handle, None);
 
         let (_, mock_result, result) = tokio::join!(shutdown, mock_server, task_with_trigger);
 
