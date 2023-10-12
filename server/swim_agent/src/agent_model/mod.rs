@@ -1386,7 +1386,7 @@ where
                     }
                 }
                 TaskEvent::RequestError { id, error } => {
-                    let lane = lifecycle_item_ids[&id].clone();
+                    let lane = external_item_ids_rev[&id].clone();
                     break Err(AgentTaskError::BadFrame { lane, error });
                 }
                 TaskEvent::CommandSendComplete { result: Ok(writer) } => {
@@ -1405,7 +1405,7 @@ where
             // Attempt to write to the outgoing buffers for any items with data.
             dirty_items.retain(|id| {
                 if let Some(mut tx) = item_writers.remove(id) {
-                    let name = &lifecycle_item_ids[id];
+                    let name = &external_item_ids_rev[id];
                     match item_model.write_event(name.as_str(), &mut tx.buffer) {
                         Some(WriteResult::Done) => {
                             pending_writes.push(do_write(tx, false));
