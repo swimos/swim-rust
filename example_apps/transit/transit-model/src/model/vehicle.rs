@@ -44,7 +44,7 @@ struct Body {
     #[serde(default)]
     vehicle: Vec<VehicleResponse>,
     #[serde(rename = "lastTime")]
-    last_time: LastTime,
+    last_time: Option<LastTime>,
 }
 
 #[derive(Debug, Clone, PartialEq, Form)]
@@ -84,7 +84,7 @@ pub struct VehicleResponse {
     #[serde(rename = "@heading")]
     pub heading: u32,
     #[serde(rename = "@speedKmHr")]
-    pub speed: u32,
+    pub speed: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -93,11 +93,11 @@ pub struct LastTime {
     pub time: u64,
 }
 
-pub fn load_xml_vehicles<R: BufRead>(read: R) -> Result<(Vec<VehicleResponse>, u64), DeError> {
+pub fn load_xml_vehicles<R: BufRead>(read: R) -> Result<(Vec<VehicleResponse>, Option<u64>), DeError> {
     quick_xml::de::from_reader::<R, Body>(read).map(
         |Body {
              vehicle, last_time, ..
-         }| (vehicle, last_time.time),
+         }| (vehicle, last_time.map(|t| t.time)),
     )
 }
 
@@ -105,7 +105,7 @@ pub fn produce_xml(copyright: String, vehicles: Vec<VehicleResponse>, last_time:
     let body = Body {
         copyright,
         vehicle: vehicles,
-        last_time: LastTime { time: last_time },
+        last_time: Some(LastTime { time: last_time }),
     };
     let mut out = XML_HEADER.to_string();
     let mut ser = Serializer::new(&mut out);
@@ -251,7 +251,7 @@ mod tests {
                 dir_id: "bloop".to_string(),
                 latitude: 64.1511322,
                 longitude: -0.2549486,
-                speed: 10,
+                speed: Some(10),
                 secs_since_report: 12,
                 heading: 23,
                 predictable: true,
@@ -262,7 +262,7 @@ mod tests {
                 dir_id: "sloop".to_string(),
                 latitude: 64.1603444,
                 longitude: -0.2380486,
-                speed: 70,
+                speed: Some(70),
                 secs_since_report: 36,
                 heading: 4,
                 predictable: true,
@@ -273,7 +273,7 @@ mod tests {
                 dir_id: "floop".to_string(),
                 latitude: 64.1463333,
                 longitude: -0.2469221,
-                speed: 0,
+                speed: Some(0),
                 secs_since_report: 5,
                 heading: 300,
                 predictable: true,
@@ -284,7 +284,7 @@ mod tests {
                 dir_id: "up".to_string(),
                 latitude: 64.1467001,
                 longitude: -0.2469456,
-                speed: 22,
+                speed: Some(22),
                 secs_since_report: 2,
                 heading: 110,
                 predictable: false,
@@ -301,7 +301,7 @@ mod tests {
         let (vehicles, time) = load_xml_vehicles(VEHICLES_EXAMPLE).expect("Loading routes failed.");
 
         assert_eq!(vehicles, expected);
-        assert_eq!(time, TIMESTAMP);
+        assert_eq!(time, Some(TIMESTAMP));
     }
 
     #[test]

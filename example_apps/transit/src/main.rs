@@ -40,9 +40,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         include_ui,
         port,
     } = Params::parse();
-    if enable_logging {
-        configure_logging()?;
-    }
+    
+    let _logging_guard = if enable_logging {
+        Some(configure_logging()?)
+    } else {
+        None
+    };
     let agencies = transit::model::agencies();
 
     let routes = match routes {

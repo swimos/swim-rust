@@ -86,7 +86,7 @@ impl Agency {
             dir_id,
             latitude,
             longitude,
-            speed,
+            speed: speed.unwrap_or_default(),
             secs_since_report,
             heading,
             predictable,

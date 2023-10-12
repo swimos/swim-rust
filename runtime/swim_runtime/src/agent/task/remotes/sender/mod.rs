@@ -19,6 +19,7 @@ use swim_messages::protocol::{Notification, Path, ResponseMessage};
 use swim_model::Text;
 use swim_utilities::io::byte_channel::ByteWriter;
 use tokio_util::codec::FramedWrite;
+use tracing::trace;
 use uuid::Uuid;
 
 #[cfg(test)]
@@ -78,10 +79,13 @@ impl RemoteSender {
         let RemoteSender {
             sender,
             identity,
+            remote_id,
             node,
             lane,
             ..
         } = self;
+        
+        trace!(identity = %identity, remote_id = %remote_id, node = %node, lane = %lane, notification = ?notification.debug_formatter(), "Sending notification.");
 
         let message: ResponseMessage<&str, &BytesMut, &[u8]> = ResponseMessage {
             origin: *identity,

@@ -24,6 +24,7 @@ use swim::{
 };
 use tokio::{sync::oneshot, time::Instant};
 use tracing::{debug, error, info};
+use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 use transit_model::agency::Agency;
 
@@ -132,17 +133,24 @@ pub fn example_filter() -> Result<EnvFilter, Box<dyn std::error::Error + Send + 
         EnvFilter::new("")
             .add_directive("swim_server_app=warn".parse()?)
             .add_directive("swim_runtime=warn".parse()?)
-            .add_directive("swim_agent=warn".parse()?)
+            .add_directive("swim_agent=trace".parse()?)
             .add_directive("swim_messages=warn".parse()?)
             .add_directive("swim_remote=warn".parse()?)
     };
     Ok(filter)
 }
 
-pub fn configure_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub fn configure_logging() -> Result<WorkerGuard, Box<dyn std::error::Error + Send + Sync>> {
     let filter = example_filter()?
         .add_directive("transit=warn".parse()?)
         .add_directive(LevelFilter::WARN.into());
-    tracing_subscriber::fmt().with_env_filter(filter).init();
-    Ok(())
+
+    let rolling = tracing_appender::rolling::never("logs", "debug.log");
+    let (appender, guard) = tracing_appender::non_blocking(rolling);
+
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(appender)
+        .init();
+    Ok(guard)
 }

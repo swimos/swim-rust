@@ -26,6 +26,7 @@ transit-fixture = { path = "transit-fixture", optional = true }
 futures = { workspace = true }
 clap = { workspace = true, features = ["derive"]}
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing-appender = { workspace = true }
 axum = { version = "0.6.20", features = ["tokio", "http1"]}
 
 [[bin]]

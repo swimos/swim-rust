@@ -182,7 +182,7 @@ fn to_response(vehicle: Vehicle) -> VehicleResponse {
         secs_since_report,
         predictable,
         heading: to_degrees(heading),
-        speed,
+        speed: Some(speed),
     }
 }
 
