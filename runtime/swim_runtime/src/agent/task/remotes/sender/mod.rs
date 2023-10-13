@@ -84,7 +84,7 @@ impl RemoteSender {
             lane,
             ..
         } = self;
-        
+
         trace!(identity = %identity, remote_id = %remote_id, node = %node, lane = %lane, notification = ?notification.debug_formatter(), "Sending notification.");
 
         let message: ResponseMessage<&str, &BytesMut, &[u8]> = ResponseMessage {

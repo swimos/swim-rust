@@ -54,12 +54,17 @@ async fn index_html(State(UiConfig { port }): State<UiConfig>) -> impl IntoRespo
                 line
             }
         });
-        let body_result = lines.try_fold(String::new(), |mut acc, line| async move {
-            acc.push_str(&line);
-            Ok(acc)
-        }).await;
+        let body_result = lines
+            .try_fold(String::new(), |mut acc, line| async move {
+                acc.push_str(&line);
+                Ok(acc)
+            })
+            .await;
         if let Ok(body) = body_result {
-            let headers = [(header::CONTENT_TYPE, HTML.clone()), (header::CONTENT_LENGTH, HeaderValue::from(body.len()))];
+            let headers = [
+                (header::CONTENT_TYPE, HTML.clone()),
+                (header::CONTENT_LENGTH, HeaderValue::from(body.len())),
+            ];
             Ok((headers, body))
         } else {
             Err((StatusCode::NOT_FOUND, format!("File not found: {}", INDEX)))
@@ -85,10 +90,13 @@ async fn transit_js_map() -> impl IntoResponse {
 async fn load_file(path: &str) -> impl IntoResponse {
     let target = format!("ui/{}", path);
 
-    if let Ok((file, len)) = File::open(&target).and_then(|f| async move {
-        let meta = f.metadata().await?;
-        Ok((f, meta.len()))
-    }).await {
+    if let Ok((file, len)) = File::open(&target)
+        .and_then(|f| async move {
+            let meta = f.metadata().await?;
+            Ok((f, meta.len()))
+        })
+        .await
+    {
         let headers = [(header::CONTENT_LENGTH, HeaderValue::from(len))];
         Ok((headers, StreamBody::new(ReaderStream::new(file))))
     } else {

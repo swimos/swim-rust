@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         include_ui,
         port,
     } = Params::parse();
-    
+
     let _logging_guard = if enable_logging {
         Some(configure_logging()?)
     } else {

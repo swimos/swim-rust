@@ -1871,10 +1871,8 @@ where
                         remote_id
                     );
                     state.remove_remote(remote_id, DisconnectionReason::ChannelClosed);
-                } else {
-                    if let Some(write) = state.replace(writer, buffer) {
-                        streams.schedule_write(write.into_future());
-                    }
+                } else if let Some(write) = state.replace(writer, buffer) {
+                    streams.schedule_write(write.into_future());
                 }
             }
             WriteTaskEvent::LaneFailed(lane_id) => {

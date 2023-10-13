@@ -35,7 +35,8 @@ impl Statistics {
         } = &mut self;
 
         let next_n = n.checked_add(1).expect("Number of vehicles overflowed.");
-        *mean_speed = (*n as f64 * *mean_speed + vehicle.speed.unwrap_or_default() as f64) / (next_n as f64);
+        *mean_speed =
+            (*n as f64 * *mean_speed + vehicle.speed.unwrap_or_default() as f64) / (next_n as f64);
         *n = next_n;
 
         if let Some(BoundingBox {

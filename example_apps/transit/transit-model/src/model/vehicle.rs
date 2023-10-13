@@ -93,7 +93,9 @@ pub struct LastTime {
     pub time: u64,
 }
 
-pub fn load_xml_vehicles<R: BufRead>(read: R) -> Result<(Vec<VehicleResponse>, Option<u64>), DeError> {
+pub fn load_xml_vehicles<R: BufRead>(
+    read: R,
+) -> Result<(Vec<VehicleResponse>, Option<u64>), DeError> {
     quick_xml::de::from_reader::<R, Body>(read).map(
         |Body {
              vehicle, last_time, ..

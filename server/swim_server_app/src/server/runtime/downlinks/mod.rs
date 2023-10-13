@@ -18,7 +18,7 @@ mod pending;
 mod tests;
 
 pub use connector::{downlink_task_connector, DlTaskRequest, DownlinksConnector, ServerConnector};
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -155,6 +155,7 @@ where
                                 }
                             }
                             CommanderKey::Local(path) => {
+                                debug!(path = %path, "Handling request for local command channel.");
                                 let path = path.clone();
                                 tasks.push(
                                     attach_cmd_request_local(
@@ -192,10 +193,11 @@ where
                             }
                         } else {
                             let key = (address.clone(), *kind);
-                            if let Some(attach_tx) = local_handle.get(&key) {
+                            if let Some((downlink_id, attach_tx)) = local_handle.get(&key) {
                                 debug!(node = %address.node, lane = %address.lane, kind = ?kind, "Attempting to attach to downlink runtime for local lane.");
                                 tasks.push(
                                     attach_to_runtime(
+                                        *downlink_id,
                                         request,
                                         attach_tx.clone(),
                                         config.downlink_buffer_size,
@@ -236,11 +238,12 @@ where
                             } = pending.take_socket_ready(&host);
                             for (key, requests) in waiting_map {
                                 let (lane_addr, kind) = &key;
-                                if let Some(attach_tx) = handle.get(&key) {
+                                if let Some((downlink_id, attach_tx)) = handle.get(&key) {
                                     debug!(scheme = %scheme, host = %host, socket_address = %addr, lane_addr = %lane_addr, kind = ?kind, "Connecting to existing downlink runtime.");
                                     for request in requests {
                                         tasks.push(
                                             attach_to_runtime(
+                                                *downlink_id,
                                                 request,
                                                 attach_tx.clone(),
                                                 config.downlink_buffer_size,
@@ -399,6 +402,7 @@ where
                         }
                     }
                     Event::RuntimeAttachmentResult {
+                        downlink_id,
                         remote_address,
                         key,
                         result: Ok((attach_tx, runtime)),
@@ -411,7 +415,7 @@ where
                         };
                         if let Some(handle) = handle {
                             debug!(address = %lane_addr, kind = ?kind, remote = ?remote_address, "Attempting to attach to a downlink runtime.");
-                            handle.insert(key.clone(), attach_tx.clone());
+                            handle.insert(key.clone(), downlink_id, attach_tx.clone());
                             let key_cpy = key.clone();
                             tasks.push(
                                 tokio::spawn(
@@ -427,10 +431,17 @@ where
                                 .boxed(),
                             );
 
-                            for request in pending.dl_ready(remote_address, &key) {
+                            let requests = pending.dl_ready(remote_address, &key);
+
+                            if requests.is_empty() {
+                                error!(key = ?key, remote_address = ?remote_address, "No pending requests for downlink.");
+                            }
+
+                            for request in requests {
                                 trace!("Attaching to a downlink runtime.");
                                 tasks.push(
                                     attach_to_runtime(
+                                        downlink_id,
                                         request,
                                         attach_tx.clone(),
                                         config.downlink_buffer_size,
@@ -460,12 +471,13 @@ where
                         }
                     }
                     Event::RuntimeAttachmentResult {
+                        downlink_id,
                         remote_address,
                         key,
                         result: Err(err),
                     } => {
                         let (lane_addr, kind) = &key;
-                        error!(address = %lane_addr, kind = ?kind, error = %err, "A request to attach to a downlink runtime failed.");
+                        error!(address = %lane_addr, kind = ?kind, error = %err, downlink_id = %downlink_id, "A request to attach to a downlink runtime failed.");
                         for DownlinkRequest {
                             promise,
                             remote,
@@ -611,6 +623,7 @@ enum Event {
     },
     // A request to attach to a downlink runtime task has completed.
     RuntimeAttachmentResult {
+        downlink_id: Uuid,
         remote_address: Option<SocketAddr>,
         key: DlKey,
         result: Result<(mpsc::Sender<AttachAction>, DownlinkRuntime), DownlinkFailureReason>,
@@ -646,7 +659,7 @@ enum Event {
 
 struct ClientHandle {
     client_tx: mpsc::Sender<AttachClient>,
-    downlinks: HashMap<DlKey, mpsc::Sender<AttachAction>>,
+    downlinks: HashMap<DlKey, (Uuid, mpsc::Sender<AttachAction>)>,
 }
 
 impl ClientHandle {
@@ -657,21 +670,32 @@ impl ClientHandle {
         }
     }
 
-    fn insert(&mut self, key: DlKey, tx: mpsc::Sender<AttachAction>) {
-        self.downlinks.insert(key, tx);
+    fn insert(&mut self, key: DlKey, downlink_id: Uuid, tx: mpsc::Sender<AttachAction>) {
+        let ClientHandle { downlinks, .. } = self;
+        if downlinks.contains_key(&key) {
+            error!(key = ?key, "Handle already contains a downlink with that key.");
+        }
+        downlinks.insert(key, (downlink_id, tx));
     }
 
-    fn get(&self, key: &DlKey) -> Option<&mpsc::Sender<AttachAction>> {
+    fn get(&self, key: &DlKey) -> Option<&(Uuid, mpsc::Sender<AttachAction>)> {
         self.downlinks.get(key)
     }
 
     fn remove(&mut self, key: &DlKey) -> bool {
-        self.downlinks.remove(key);
-        self.downlinks.is_empty()
+        let ClientHandle { downlinks, .. } = self;
+        if !downlinks.contains_key(key) {
+            warn!(key = ?key, "Attempting to remove a downlink that isn't registered.");
+        } else {
+            debug!(key = ?key, "Removing downlink.");
+        }
+        downlinks.remove(key);
+        downlinks.is_empty()
     }
 }
 
 async fn attach_to_runtime(
+    downlink_id: Uuid,
     request: DownlinkRequest,
     attach_tx: mpsc::Sender<AttachAction>,
     buffer_size: NonZeroUsize,
@@ -686,6 +710,7 @@ async fn attach_to_runtime(
     } = request;
     let (in_tx, in_rx) = byte_channel(buffer_size);
     let (out_tx, out_rx) = byte_channel(buffer_size);
+    debug!(downlink_id = %downlink_id, "Sending attachment request to downlink runtime.");
     let result = attach_tx
         .send(AttachAction::new(out_rx, in_tx, options))
         .await
@@ -723,6 +748,7 @@ async fn start_downlink_runtime(
     };
     if remote_attach.send(request).await.is_err() {
         return Event::RuntimeAttachmentResult {
+            downlink_id: identity,
             remote_address: remote_addr,
             key: (rel_addr, kind),
             result: Err(DownlinkFailureReason::RemoteStopped),
@@ -737,6 +763,7 @@ async fn start_downlink_runtime(
     };
     if let Some(err) = err {
         return Event::RuntimeAttachmentResult {
+            downlink_id: identity,
             remote_address: remote_addr,
             key: (rel_addr, kind),
             result: Err(err),
@@ -746,6 +773,7 @@ async fn start_downlink_runtime(
     let (attachment_tx, attachment_rx) = mpsc::channel(config.attachment_queue_size.get());
     let runtime = DownlinkRuntime::new(identity, rel_addr.clone(), attachment_rx, kind, io);
     Event::RuntimeAttachmentResult {
+        downlink_id: identity,
         remote_address: remote_addr,
         key: (rel_addr, kind),
         result: Ok((attachment_tx, runtime)),

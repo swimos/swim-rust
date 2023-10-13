@@ -15,7 +15,7 @@
 use std::{error::Error, pin::pin, sync::Arc, time::Duration};
 
 use clap::Parser;
-use futures::future::{Either, select};
+use futures::future::{select, Either};
 use tokio::sync::Notify;
 use transit::ui::ui_server_router;
 

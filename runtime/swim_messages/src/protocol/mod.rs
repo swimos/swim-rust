@@ -59,8 +59,8 @@ pub enum Notification<T, U> {
 impl<T, U> Notification<T, U>
 where
     T: AsRef<[u8]>,
-    U: AsRef<[u8]>,{
-
+    U: AsRef<[u8]>,
+{
     pub fn debug_formatter(&self) -> NotificationDebugFormatter<'_, T, U> {
         NotificationDebugFormatter(self)
     }
@@ -80,21 +80,29 @@ where
             Notification::Unlinked(msg) => {
                 if let Some(msg) = msg {
                     if let Ok(msg_str) = std::str::from_utf8(msg.as_ref()) {
-                        f.debug_tuple("Unlinked").field(&format!("Str[{:}]", msg_str)).finish()
+                        f.debug_tuple("Unlinked")
+                            .field(&format!("Str[{:}]", msg_str))
+                            .finish()
                     } else {
-                        f.debug_tuple("Unlinked").field(&format!("Bytes[{:?}]", msg.as_ref())).finish()
+                        f.debug_tuple("Unlinked")
+                            .field(&format!("Bytes[{:?}]", msg.as_ref()))
+                            .finish()
                     }
                 } else {
                     f.debug_tuple("Unlinked").field(&"Absent").finish()
                 }
-            },
+            }
             Notification::Event(body) => {
                 if let Ok(body_str) = std::str::from_utf8(body.as_ref()) {
-                    f.debug_tuple("Event").field(&format!("Str[{}]", body_str)).finish()
+                    f.debug_tuple("Event")
+                        .field(&format!("Str[{}]", body_str))
+                        .finish()
                 } else {
-                    f.debug_tuple("Event").field(&format!("Bytes[{:?}]", body.as_ref())).finish()
+                    f.debug_tuple("Event")
+                        .field(&format!("Bytes[{:?}]", body.as_ref()))
+                        .finish()
                 }
-            },
+            }
         }
     }
 }
