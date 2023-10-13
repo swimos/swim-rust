@@ -485,7 +485,8 @@ where
         let (write_tx, write_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (http_tx, http_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (ext_link_tx, ext_link_rx) = mpsc::channel(config.attachment_queue_size.get());
-        let (read_vote, write_vote, http_vote, vote_waiter) = timeout_coord::timeout_coordinator();
+        let (read_vote, write_vote, http_vote, vote_waiter) =
+            timeout_coord::agent_timeout_coordinator();
 
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
 

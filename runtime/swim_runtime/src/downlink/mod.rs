@@ -17,6 +17,7 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use crate::downlink::failure::BadFrameResponse;
+use crate::timeout_coord::{VoteResult, Voter};
 use backpressure::DownlinkBackpressure;
 use bitflags::bitflags;
 use bytes::BytesMut;
@@ -219,31 +220,28 @@ impl ValueDownlinkRuntime {
         let (producer_tx, producer_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (consumer_tx, consumer_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
-        let att = attach_task(
-            requests,
-            producer_tx,
-            consumer_tx,
-            stopping.clone(),
-            kill_switch_rx,
-        )
-        .instrument(info_span!("Value Downlink Runtime Attachment Task", %path));
+        let (read_vote, write_vote, vote_rx) = crate::timeout_coord::downlink_timeout_coordinator();
+
+        let combined_stop = select(stopping, select(kill_switch_rx, vote_rx));
+        let att = attach_task(requests, producer_tx, consumer_tx, combined_stop)
+            .instrument(info_span!("Value Downlink Runtime Attachment Task", %path));
         let read = read_task(
             input,
             consumer_rx,
-            stopping.clone(),
             config,
             value_interpretation(),
             InfallibleStrategy,
+            read_vote,
         )
         .instrument(info_span!("Value Downlink Runtime Read Task", %path));
         let write = write_task(
             output,
             producer_rx,
-            stopping,
             identity,
             Path::new(path.node.clone(), path.lane.clone()),
             config,
             ValueBackpressure::default(),
+            write_vote,
         )
         .instrument(info_span!("Value Downlink Runtime Write Task", %path));
         let io = async move {
@@ -358,32 +356,29 @@ where
 
         let (producer_tx, producer_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (consumer_tx, consumer_rx) = mpsc::channel(config.attachment_queue_size.get());
+        let (read_vote, write_vote, vote_rx) = crate::timeout_coord::downlink_timeout_coordinator();
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
-        let att = attach_task(
-            requests,
-            producer_tx,
-            consumer_tx,
-            stopping.clone(),
-            kill_switch_rx,
-        )
-        .instrument(info_span!("Map Downlink Runtime Attachment Task", %path));
+
+        let combined_stop = select(stopping, select(kill_switch_rx, vote_rx));
+        let att = attach_task(requests, producer_tx, consumer_tx, combined_stop)
+            .instrument(info_span!("Map Downlink Runtime Attachment Task", %path));
         let read = read_task(
             input,
             consumer_rx,
-            stopping.clone(),
             config,
             interpretation,
             failure_handler,
+            read_vote,
         )
         .instrument(info_span!("Map Downlink Runtime Read Task", %path));
         let write = write_task(
             output,
             producer_rx,
-            stopping,
             identity,
             Path::new(path.node.clone(), path.lane.clone()),
             config,
             MapBackpressure::default(),
+            write_vote,
         )
         .instrument(info_span!("Map Downlink Runtime Write Task", %path));
         let io = async move {
@@ -400,14 +395,14 @@ where
 }
 
 /// Communicates with the read and write tasks to add new consumers.
-async fn attach_task(
+async fn attach_task<F>(
     rx: mpsc::Receiver<AttachAction>,
     producer_tx: mpsc::Sender<(ByteReader, DownlinkOptions)>,
     consumer_tx: mpsc::Sender<(ByteWriter, DownlinkOptions)>,
-    stopping: trigger::Receiver,
-    kill_switch: trigger::Receiver,
-) {
-    let combined_stop = select(stopping, kill_switch);
+    combined_stop: F,
+) where
+    F: Future + Unpin,
+{
     let mut stream = ReceiverStream::new(rx).take_until(combined_stop);
     while let Some(AttachAction {
         input,
@@ -449,16 +444,16 @@ impl DownlinkSender {
 
     async fn feed(
         &mut self,
-        mesage: DownlinkNotification<&BytesMut>,
+        message: DownlinkNotification<&BytesMut>,
     ) -> Result<(), std::io::Error> {
-        self.sender.feed(mesage).await
+        self.sender.feed(message).await
     }
 
     async fn send(
         &mut self,
-        mesage: DownlinkNotification<&BytesMut>,
+        message: DownlinkNotification<&BytesMut>,
     ) -> Result<(), std::io::Error> {
-        self.sender.send(mesage).await
+        self.sender.send(message).await
     }
 
     async fn flush(&mut self) -> Result<(), std::io::Error> {
@@ -528,10 +523,10 @@ impl<D: Decoder> Stream for DownlinkReceiver<D> {
 async fn read_task<I, H>(
     input: ByteReader,
     consumers: mpsc::Receiver<(ByteWriter, DownlinkOptions)>,
-    stopping: trigger::Receiver,
     config: DownlinkRuntimeConfig,
     mut interpretation: I,
     mut failure_handler: H,
+    stop_voter: Voter,
 ) -> Result<(), H::Report>
 where
     I: DownlinkInterpretation,
@@ -540,8 +535,9 @@ where
     let mut messages = FramedRead::new(input, RawResponseMessageDecoder);
 
     let mut flushed = true;
+    let mut voted = false;
 
-    let mut consumer_stream = ReceiverStream::new(consumers).take_until(stopping);
+    let mut consumer_stream = ReceiverStream::new(consumers);
 
     let mut state = ReadTaskState::Init;
     let mut current = BytesMut::new();
@@ -552,12 +548,19 @@ where
     let mut empty_timestamp = Some(Instant::now() + config.empty_timeout);
     let result = loop {
         let next_item = if let Some(timestamp) = empty_timestamp {
-            if let Ok(result) = timeout_at(timestamp, consumer_stream.next()).await {
+            if voted {
+                consumer_stream.next().await.map(Either::Right)
+            } else if let Ok(result) = timeout_at(timestamp, consumer_stream.next()).await {
                 result.map(Either::Right)
             } else {
-                info!("No consumers connected within the timeout period.");
-                // No consumers registered within the timeout so stop.
-                break Ok(());
+                info!("No consumers connected within the timeout period. Voting to stop.");
+                if stop_voter.vote() == VoteResult::Unanimous {
+                    // No consumers registered within the timeout and the write task has voted to stop.
+                    break Ok(());
+                } else {
+                    voted = true;
+                    consumer_stream.next().await.map(Either::Right)
+                }
             }
         } else if flushed {
             trace!("Waiting without flush.");
@@ -633,6 +636,14 @@ where
                 }
             },
             Some(Either::Right((writer, options))) => {
+                if voted {
+                    if stop_voter.rescind() == VoteResult::Unanimous {
+                        info!("Attempted to rescind stop vote but shutdown had already started.");
+                        break Ok(());
+                    } else {
+                        voted = false;
+                    }
+                }
                 let mut dl_writer = DownlinkSender::new(writer, options);
                 if matches!(state, ReadTaskState::Init) {
                     trace!("Attaching a new subscriber to be linked.");
@@ -652,7 +663,7 @@ where
                 break Ok(());
             }
             _ => {
-                trace!("Stopping after being dropped by the runtime.");
+                trace!("Instructed to stop.");
                 break Ok(());
             }
         }
@@ -850,11 +861,11 @@ async fn do_flush(
 async fn write_task<B: DownlinkBackpressure>(
     output: ByteWriter,
     producers: mpsc::Receiver<(ByteReader, DownlinkOptions)>,
-    stopping: trigger::Receiver,
     identity: Uuid,
     path: Path<Text>,
     config: DownlinkRuntimeConfig,
     mut backpressure: B,
+    stop_voter: Voter,
 ) {
     let mut message_writer = RequestSender::new(output, identity, path);
     if message_writer.send_link().await.is_err() {
@@ -867,7 +878,7 @@ async fn write_task<B: DownlinkBackpressure>(
     };
 
     let mut registered: SelectAll<DownlinkReceiver<B::Dec>> = SelectAll::new();
-    let mut reg_requests = ReceiverStream::new(producers).take_until(stopping);
+    let mut reg_requests = ReceiverStream::new(producers);
     // Consumers are given unique IDs to allow them to be removed when they fail.
     let mut id: u64 = 0;
     let mut next_id = move || {
@@ -886,6 +897,8 @@ async fn write_task<B: DownlinkBackpressure>(
         (result.map(move |_| message_writer), buffer)
     };
 
+    let mut voted = false;
+
     // The write task state machine has two states and three supplementary flags. The flags indicate the
     // following conditions:
     //
@@ -896,7 +909,7 @@ async fn write_task<B: DownlinkBackpressure>(
     //              another write needs to be scheduled. This is stored implicitly in the bakpressure
     //              implementation.
     // FLUSHED:     Indicates that all data written to the output has been flushed.
-    // NEEDS_SYNC:  While a write or flush was ocurring, a new subscriber was added that requested a SYNC
+    // NEEDS_SYNC:  While a write or flush was occurring, a new subscriber was added that requested a SYNC
     //              message to be sent and this should be sent at the next opportunity.
     //
     // The state are as follows:
@@ -933,14 +946,20 @@ async fn write_task<B: DownlinkBackpressure>(
             } => {
                 if registered.is_empty() {
                     task_state.remove(WriteTaskState::NEEDS_SYNC);
-                    let req_with_timeout = timeout(config.empty_timeout, reg_requests.next());
+                    let req_with_timeout = async {
+                        if voted {
+                            Ok(reg_requests.next().await)
+                        } else {
+                            timeout(config.empty_timeout, reg_requests.next()).await
+                        }
+                    };
                     let req_result = if task_state.contains(WriteTaskState::FLUSHED) {
                         req_with_timeout.await
                     } else {
                         let (req_result, flush_result) =
                             join(req_with_timeout, message_writer.flush()).await;
-                        if flush_result.is_err() {
-                            warn!("Flushing the output failed.");
+                        if let Err(err) = flush_result {
+                            warn!(error = %err, "Flushing the output failed.");
                             break 'outer;
                         } else {
                             task_state |= WriteTaskState::FLUSHED;
@@ -949,6 +968,14 @@ async fn write_task<B: DownlinkBackpressure>(
                     };
                     match req_result {
                         Ok(Some((reader, options))) => {
+                            if voted {
+                                if stop_voter.rescind() == VoteResult::Unanimous {
+                                    info!("Attempted to rescind vote to stop but shutdown had already started.");
+                                    break 'outer;
+                                } else {
+                                    voted = false;
+                                }
+                            }
                             trace!("Registering new subscriber.");
                             let receiver =
                                 DownlinkReceiver::new(reader, next_id(), B::make_decoder());
@@ -965,12 +992,19 @@ async fn write_task<B: DownlinkBackpressure>(
                             }
                         }
                         Err(_) => {
-                            info!("Stopping as no subscribers attached within the timeout.");
-                            break;
+                            if stop_voter.vote() == VoteResult::Unanimous {
+                                info!("Stopping as no subscribers attached within the timeout and read task voted to stop.");
+                                break 'outer;
+                            } else {
+                                state = WriteState::Idle {
+                                    message_writer,
+                                    buffer,
+                                };
+                            }
                         }
                         _ => {
-                            info!("Stopping after dropped by the runtime.");
-                            break;
+                            info!("Instructed to stop.");
+                            break 'outer;
                         }
                     }
                 } else {
@@ -1022,7 +1056,7 @@ async fn write_task<B: DownlinkBackpressure>(
                             }
                         }
                         Either::Left(_) => {
-                            info!("Stopping after dropped by the runtime.");
+                            info!("Instructed to stop.");
                             break 'outer;
                         }
                         Either::Right(Some(Ok(op))) => match flush_outcome {
@@ -1139,7 +1173,7 @@ async fn write_task<B: DownlinkBackpressure>(
                             task_state.set_needs_sync(options);
                         }
                         SuspendedResult::NewRegistration(_) => {
-                            info!("Stopping after dropped by the runtime.");
+                            info!("Instructed to stop.");
                             break 'outer;
                         }
                         _ => {}
@@ -1160,7 +1194,7 @@ use self::interpretation::{value_interpretation, DownlinkInterpretation};
 use crate::backpressure::{MapBackpressure, ValueBackpressure};
 
 /// A future that flushes a sender and then returns it. This is necessary as we need
-/// an [`Unpin`] future so an equivlanent async block would not work.
+/// an [`Unpin`] future so an equivalent async block would not work.
 struct OwningFlush {
     inner: Option<RequestSender>,
 }
@@ -1209,7 +1243,7 @@ fn discard<A1, A2, B1, B2>(either: Either<(A1, A2), (B1, B2)>) -> Either<A1, B1>
     }
 }
 
-/// This enum is for clarity only to avoid having nested [`Either`]s in matche statements
+/// This enum is for clarity only to avoid having nested [`Either`]s in match statements
 /// after nesting [`select`] calls.
 enum SuspendedResult<A, B, C> {
     SuspendedCompleted(A),
