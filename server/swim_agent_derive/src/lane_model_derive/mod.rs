@@ -20,7 +20,7 @@ mod model;
 
 pub use model::{validate_input, ItemModel, ItemSpec, LanesModel};
 
-use self::model::{ItemKind, LaneModel, LaneSpec};
+use self::model::{HttpLaneModel, HttpLaneSpec, ItemKind, WarpLaneModel, WarpLaneSpec};
 
 pub struct DeriveAgentLaneModel<'a> {
     root: &'a syn::Path,
@@ -59,17 +59,17 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
         let no_handler: syn::Type = parse_quote!(#root::event_handler::UnitHandler);
 
-        let (map_item_models, value_item_models) = item_models
+        let (value_item_models, map_item_models) =
+            partition_models(item_models.iter().copied(), OrdinalItemModel::category);
+
+        let warp_lane_models = OrdinalWarpLaneModel::from_item_models(&item_models);
+
+        let http_lane_models = OrdinalHttpLaneModel::from_item_models(&item_models);
+
+        let (map_lane_models, value_lane_models) = warp_lane_models
             .iter()
             .copied()
-            .partition::<Vec<_>, _>(OrdinalItemModel::map_like);
-
-        let lane_models = OrdinalLaneModel::from_item_models(&item_models);
-
-        let (map_lane_models, value_lane_models) = lane_models
-            .iter()
-            .copied()
-            .partition::<Vec<_>, _>(OrdinalLaneModel::map_like);
+            .partition::<Vec<_>, _>(OrdinalWarpLaneModel::map_like);
 
         let value_handler = if !value_lane_models.is_empty() {
             value_lane_models
@@ -97,8 +97,21 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
             no_handler.clone()
         };
 
-        let sync_handler = if !lane_models.is_empty() {
-            lane_models.iter().rev().fold(base, |acc, model| {
+        let http_handler = if !http_lane_models.is_empty() {
+            http_lane_models
+                .iter()
+                .rev()
+                .fold(base.clone(), |acc, model| {
+                    let handler_ty = HttpHandlerType(*model);
+                    let handler_tok = handler_ty.into_tokens(root);
+                    parse_quote!(#root::reexport::coproduct::Coproduct<#handler_tok, #acc>)
+                })
+        } else {
+            no_handler.clone()
+        };
+
+        let sync_handler = if !warp_lane_models.is_empty() {
+            warp_lane_models.iter().rev().fold(base, |acc, model| {
                 let handler_ty = SyncHandlerType(*model);
                 let handler_tok = handler_ty.into_tokens(root);
                 parse_quote!(#root::reexport::coproduct::Coproduct<#handler_tok, #acc>)
@@ -109,27 +122,27 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
         let item_specs = item_models
             .iter()
-            .map(|model| LaneSpecInsert(model.model))
+            .map(|model| LaneSpecInsert(model.ordinal, model.model))
             .map(|insert| insert.into_tokens(root));
-
-        let lane_ids = item_models
-            .iter()
-            .map(|model| (model.ordinal, model.model.literal()))
-            .map(|(i, lit)| quote!(::std::collections::HashMap::insert(&mut map, #i, #root::model::Text::new(#lit))));
 
         let value_match_blocks = value_lane_models
             .iter()
             .enumerate()
-            .map(|(i, model)| LaneHandlerMatch::new(i, *model))
+            .map(|(i, model)| WarpLaneHandlerMatch::new(i, *model))
             .map(|hmatch| hmatch.into_tokens(root));
 
         let map_match_blocks = map_lane_models
             .iter()
             .enumerate()
-            .map(|(i, model)| LaneHandlerMatch::new(i, *model))
+            .map(|(i, model)| WarpLaneHandlerMatch::new(i, *model))
             .map(|hmatch| hmatch.into_tokens(root));
 
-        let sync_match_blocks = lane_models
+        let http_match_blocks = http_lane_models
+            .iter()
+            .map(|model| HttpLaneHandlerMatch::new(*model))
+            .map(|hmatch| hmatch.into_tokens(root));
+
+        let sync_match_blocks = warp_lane_models
             .iter()
             .copied()
             .map(|model| SyncHandlerMatch::new(root, model))
@@ -137,6 +150,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
         let write_match_blocks = item_models
             .iter()
+            .filter(|m| m.category() != ItemCategory::Http)
             .copied()
             .map(|model| WriteToBufferMatch(model.model))
             .map(|wmatch| wmatch.into_tokens(root));
@@ -172,16 +186,12 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
                 type OnSyncHandler = #sync_handler;
 
+                type HttpRequestHandler = #http_handler;
+
                 fn item_specs() -> ::std::collections::HashMap<&'static str, #root::agent_model::ItemSpec> {
                     let mut lanes = ::std::collections::HashMap::new();
                     #(#item_specs;)*
                     lanes
-                }
-
-                fn item_ids() -> ::std::collections::HashMap<u64, #root::model::Text> {
-                    let mut map = ::std::collections::HashMap::new();
-                    #(#lane_ids;)*
-                    map
                 }
 
                 fn on_value_command(&self, lane: &str, body: #root::reexport::bytes::BytesMut) -> ::core::option::Option<Self::ValCommandHandler> {
@@ -206,6 +216,17 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
                     match lane {
                         #(#sync_match_blocks,)*
                         _ => ::core::option::Option::None,
+                    }
+                }
+
+                fn on_http_request(
+                    &self,
+                    lane: &str,
+                    request: #root::model::HttpLaneRequest,
+                ) -> Result<Self::HttpRequestHandler, #root::model::HttpLaneRequest> {
+                    match lane {
+                        #(#http_match_blocks,)*
+                        _ => ::core::result::Result::Err(request)
                     }
                 }
 
@@ -255,14 +276,21 @@ struct OrdinalItemModel<'a> {
 }
 
 #[derive(Clone, Copy)]
-struct OrdinalLaneModel<'a> {
+struct OrdinalWarpLaneModel<'a> {
     agent_name: &'a Ident,
     lane_ordinal: usize,
-    model: LaneModel<'a>,
+    model: WarpLaneModel<'a>,
 }
 
-impl<'a> OrdinalLaneModel<'a> {
-    pub fn from_item_models(models: &[OrdinalItemModel<'a>]) -> Vec<OrdinalLaneModel<'a>> {
+#[derive(Clone, Copy)]
+struct OrdinalHttpLaneModel<'a> {
+    agent_name: &'a Ident,
+    lane_ordinal: usize,
+    model: HttpLaneModel<'a>,
+}
+
+impl<'a> OrdinalWarpLaneModel<'a> {
+    pub fn from_item_models(models: &[OrdinalItemModel<'a>]) -> Vec<OrdinalWarpLaneModel<'a>> {
         models
             .iter()
             .copied()
@@ -272,7 +300,7 @@ impl<'a> OrdinalLaneModel<'a> {
                  }| model.lane().map(move |lane_model| (agent_name, lane_model)),
             )
             .enumerate()
-            .map(|(lane_ordinal, (agent_name, model))| OrdinalLaneModel {
+            .map(|(lane_ordinal, (agent_name, model))| OrdinalWarpLaneModel {
                 agent_name,
                 lane_ordinal,
                 model,
@@ -283,9 +311,36 @@ impl<'a> OrdinalLaneModel<'a> {
     pub fn map_like(&self) -> bool {
         matches!(
             &self.model.kind,
-            LaneSpec::Map(_, _) | LaneSpec::DemandMap(_, _) | LaneSpec::JoinValue(_, _)
+            WarpLaneSpec::Map(_, _) | WarpLaneSpec::DemandMap(_, _) | WarpLaneSpec::JoinValue(_, _)
         )
     }
+}
+
+impl<'a> OrdinalHttpLaneModel<'a> {
+    pub fn from_item_models(models: &[OrdinalItemModel<'a>]) -> Vec<OrdinalHttpLaneModel<'a>> {
+        models
+            .iter()
+            .copied()
+            .filter_map(
+                |OrdinalItemModel {
+                     agent_name, model, ..
+                 }| model.http().map(move |lane_model| (agent_name, lane_model)),
+            )
+            .enumerate()
+            .map(|(lane_ordinal, (agent_name, model))| OrdinalHttpLaneModel {
+                agent_name,
+                lane_ordinal,
+                model,
+            })
+            .collect()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ItemCategory {
+    ValueLike,
+    MapLike,
+    Http,
 }
 
 impl<'a> OrdinalItemModel<'a> {
@@ -297,11 +352,14 @@ impl<'a> OrdinalItemModel<'a> {
         }
     }
 
-    fn map_like(&self) -> bool {
-        matches!(
-            &self.model.kind,
-            ItemSpec::Map(_, _, _) | ItemSpec::JoinValue(_, _) | ItemSpec::DemandMap(_, _)
-        )
+    fn category(&self) -> ItemCategory {
+        match &self.model.kind {
+            ItemSpec::Map(_, _, _) | ItemSpec::JoinValue(_, _) | ItemSpec::DemandMap(_, _) => {
+                ItemCategory::MapLike
+            }
+            ItemSpec::Http(_) => ItemCategory::Http,
+            _ => ItemCategory::ValueLike,
+        }
     }
 }
 
@@ -340,33 +398,40 @@ impl<'a> FieldInitializer<'a> {
             ItemSpec::JoinValue(_, _) => {
                 quote!(#name: #root::lanes::JoinValueLane::new(#ordinal))
             }
+            ItemSpec::Http { .. } => {
+                quote!(#name: #root::lanes::HttpLane::new(#ordinal))
+            }
         }
     }
 }
 
-struct HandlerType<'a>(OrdinalLaneModel<'a>);
+struct HandlerType<'a>(OrdinalWarpLaneModel<'a>);
 
-struct SyncHandlerType<'a>(OrdinalLaneModel<'a>);
+struct SyncHandlerType<'a>(OrdinalWarpLaneModel<'a>);
+
+struct HttpHandlerType<'a>(OrdinalHttpLaneModel<'a>);
 
 impl<'a> HandlerType<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
-        let HandlerType(OrdinalLaneModel {
+        let HandlerType(OrdinalWarpLaneModel {
             agent_name,
-            model: LaneModel { kind, .. },
+            model: WarpLaneModel { kind, .. },
             ..
         }) = self;
 
         match kind {
-            LaneSpec::Command(t) => {
+            WarpLaneSpec::Command(t) => {
                 quote!(#root::lanes::command::DecodeAndCommand<#agent_name, #t>)
             }
-            LaneSpec::Value(t) => {
+            WarpLaneSpec::Value(t) => {
                 quote!(#root::lanes::value::DecodeAndSet<#agent_name, #t>)
             }
-            LaneSpec::Map(k, v) => {
+            WarpLaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::DecodeAndApply<#agent_name, #k, #v>)
             }
-            LaneSpec::Demand(_) | LaneSpec::DemandMap(_, _) | LaneSpec::JoinValue(_, _) => {
+            WarpLaneSpec::Demand(_)
+            | WarpLaneSpec::DemandMap(_, _)
+            | WarpLaneSpec::JoinValue(_, _) => {
                 quote!(#root::event_handler::UnitHandler)
             }
         }
@@ -375,68 +440,88 @@ impl<'a> HandlerType<'a> {
 
 impl<'a> SyncHandlerType<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
-        let SyncHandlerType(OrdinalLaneModel {
+        let SyncHandlerType(OrdinalWarpLaneModel {
             agent_name,
-            model: LaneModel { kind, .. },
+            model: WarpLaneModel { kind, .. },
             ..
         }) = self;
 
         match kind {
-            LaneSpec::Command(_) => quote!(#root::event_handler::UnitHandler), //TODO Do this properly later.
-            LaneSpec::Demand(t) => {
+            WarpLaneSpec::Command(_) => quote!(#root::event_handler::UnitHandler), //TODO Do this properly later.
+            WarpLaneSpec::Demand(t) => {
                 quote!(#root::lanes::demand::DemandLaneSync<#agent_name, #t>)
             }
-            LaneSpec::DemandMap(k, v) => {
+            WarpLaneSpec::DemandMap(k, v) => {
                 quote!(#root::lanes::demand_map::DemandMapLaneSync<#agent_name, #k, #v>)
             }
-            LaneSpec::Value(t) => {
+            WarpLaneSpec::Value(t) => {
                 quote!(#root::lanes::value::ValueLaneSync<#agent_name, #t>)
             }
-            LaneSpec::Map(k, v) => {
+            WarpLaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::MapLaneSync<#agent_name, #k, #v>)
             }
-            LaneSpec::JoinValue(k, v) => {
+            WarpLaneSpec::JoinValue(k, v) => {
                 quote!(#root::lanes::join_value::JoinValueLaneSync<#agent_name, #k, #v>)
             }
         }
     }
 }
 
-struct LaneHandlerMatch<'a> {
-    group_ordinal: usize,
-    model: OrdinalLaneModel<'a>,
+impl<'a> HttpHandlerType<'a> {
+    fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
+        let HttpHandlerType(OrdinalHttpLaneModel {
+            agent_name,
+            model: HttpLaneModel { kind, .. },
+            ..
+        }) = self;
+
+        let HttpLaneSpec {
+            get,
+            post,
+            put,
+            codec,
+        } = kind;
+        quote!(#root::lanes::http::HttpLaneAccept<#agent_name, #get, #post, #put, #codec>)
+    }
 }
 
-impl<'a> LaneHandlerMatch<'a> {
-    fn new(group_ordinal: usize, model: OrdinalLaneModel<'a>) -> Self {
-        LaneHandlerMatch {
+struct WarpLaneHandlerMatch<'a> {
+    group_ordinal: usize,
+    model: OrdinalWarpLaneModel<'a>,
+}
+
+impl<'a> WarpLaneHandlerMatch<'a> {
+    fn new(group_ordinal: usize, model: OrdinalWarpLaneModel<'a>) -> Self {
+        WarpLaneHandlerMatch {
             group_ordinal,
             model,
         }
     }
 
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
-        let LaneHandlerMatch {
+        let WarpLaneHandlerMatch {
             group_ordinal,
-            model: OrdinalLaneModel {
+            model: OrdinalWarpLaneModel {
                 agent_name, model, ..
             },
         } = self;
         let name_lit = model.literal();
-        let LaneModel { name, kind, .. } = model;
+        let WarpLaneModel { name, kind, .. } = model;
         let handler_base: syn::Expr = parse_quote!(handler);
         let coprod_con = coproduct_constructor(root, handler_base, group_ordinal);
         let lane_handler_expr = match kind {
-            LaneSpec::Command(ty) => {
+            WarpLaneSpec::Command(ty) => {
                 quote!(#root::lanes::command::decode_and_command::<#agent_name, #ty>(body, |agent: &#agent_name| &agent.#name))
             }
-            LaneSpec::Value(ty) => {
+            WarpLaneSpec::Value(ty) => {
                 quote!(#root::lanes::value::decode_and_set::<#agent_name, #ty>(body, |agent: &#agent_name| &agent.#name))
             }
-            LaneSpec::Map(k, v) => {
+            WarpLaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::decode_and_apply::<#agent_name, #k, #v>(body, |agent: &#agent_name| &agent.#name))
             }
-            LaneSpec::Demand(_) | LaneSpec::DemandMap(_, _) | LaneSpec::JoinValue(_, _) => {
+            WarpLaneSpec::Demand(_)
+            | WarpLaneSpec::DemandMap(_, _)
+            | WarpLaneSpec::JoinValue(_, _) => {
                 quote!(#root::event_handler::UnitHandler::default())
             }
         };
@@ -457,13 +542,51 @@ fn coproduct_constructor(root: &syn::Path, expr: syn::Expr, n: usize) -> syn::Ex
     acc
 }
 
+struct HttpLaneHandlerMatch<'a> {
+    model: OrdinalHttpLaneModel<'a>,
+}
+
+impl<'a> HttpLaneHandlerMatch<'a> {
+    pub fn new(model: OrdinalHttpLaneModel<'a>) -> Self {
+        HttpLaneHandlerMatch { model }
+    }
+
+    fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
+        let HttpLaneHandlerMatch {
+            model:
+                OrdinalHttpLaneModel {
+                    agent_name,
+                    lane_ordinal,
+                    model,
+                },
+        } = self;
+        let name_lit = model.literal();
+        let HttpLaneModel { name, kind } = model;
+        let handler_base: syn::Expr = parse_quote!(handler);
+        let coprod_con = coproduct_constructor(root, handler_base, lane_ordinal);
+        let HttpLaneSpec {
+            get,
+            post,
+            put,
+            codec,
+        } = kind;
+        let lane_handler_expr = quote!(#root::lanes::http::HttpLaneAccept::<#agent_name, #get, #post, #put, #codec>::new(|agent: &#agent_name| &agent.#name, request));
+        quote! {
+            #name_lit => {
+                let handler = #lane_handler_expr;
+                ::core::result::Result::Ok(#coprod_con)
+            }
+        }
+    }
+}
+
 struct SyncHandlerMatch<'a> {
     root: &'a syn::Path,
-    model: OrdinalLaneModel<'a>,
+    model: OrdinalWarpLaneModel<'a>,
 }
 
 impl<'a> SyncHandlerMatch<'a> {
-    fn new(root: &'a syn::Path, model: OrdinalLaneModel<'a>) -> Self {
+    fn new(root: &'a syn::Path, model: OrdinalWarpLaneModel<'a>) -> Self {
         SyncHandlerMatch { root, model }
     }
 }
@@ -473,7 +596,7 @@ impl<'a> SyncHandlerMatch<'a> {
         let SyncHandlerMatch {
             root,
             model:
-                OrdinalLaneModel {
+                OrdinalWarpLaneModel {
                     agent_name,
                     lane_ordinal: ord,
                     model,
@@ -481,24 +604,24 @@ impl<'a> SyncHandlerMatch<'a> {
                 },
         } = self;
         let name_lit = model.literal();
-        let LaneModel { name, kind, .. } = model;
+        let WarpLaneModel { name, kind, .. } = model;
         let handler_base: syn::Expr = parse_quote!(handler);
         let coprod_con = coproduct_constructor(root, handler_base, ord);
         let sync_handler_expr = match kind {
-            LaneSpec::Command(_) => quote!(#root::event_handler::UnitHandler::default()),
-            LaneSpec::Demand(ty) => {
+            WarpLaneSpec::Command(_) => quote!(#root::event_handler::UnitHandler::default()),
+            WarpLaneSpec::Demand(ty) => {
                 quote!(#root::lanes::demand::DemandLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &agent.#name, id))
             }
-            LaneSpec::DemandMap(k, v) => {
+            WarpLaneSpec::DemandMap(k, v) => {
                 quote!(#root::lanes::demand_map::DemandMapLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
             }
-            LaneSpec::Value(ty) => {
+            WarpLaneSpec::Value(ty) => {
                 quote!(#root::lanes::value::ValueLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &agent.#name, id))
             }
-            LaneSpec::Map(k, v) => {
+            WarpLaneSpec::Map(k, v) => {
                 quote!(#root::lanes::map::MapLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
             }
-            LaneSpec::JoinValue(k, v) => {
+            WarpLaneSpec::JoinValue(k, v) => {
                 quote!(#root::lanes::join_value::JoinValueLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
             }
         };
@@ -617,46 +740,66 @@ impl<'a> MapItemInitMatch<'a> {
     }
 }
 
-struct LaneSpecInsert<'a>(ItemModel<'a>);
+struct LaneSpecInsert<'a>(u64, ItemModel<'a>);
 
 impl<'a> LaneSpecInsert<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
-        let LaneSpecInsert(model) = self;
+        let LaneSpecInsert(ordinal, model) = self;
 
-        let item_kind = match model.kind {
-            ItemSpec::Command(_) => {
-                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::Command))
-            }
-            ItemSpec::Value(ItemKind::Store, _) => {
-                quote!(#root::agent_model::ItemKind::Store(#root::agent_model::StoreKind::Value))
-            }
-            ItemSpec::Value(ItemKind::Lane, _) => {
-                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::Value))
-            }
-            ItemSpec::Map(ItemKind::Store, _, _) => {
-                quote!(#root::agent_model::ItemKind::Store(#root::agent_model::StoreKind::Map))
-            }
-            ItemSpec::Map(ItemKind::Lane, _, _) => {
-                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::Map))
-            }
-            ItemSpec::JoinValue(_, _) => {
-                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::JoinValue))
-            }
-            ItemSpec::Demand(_) => {
-                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::Demand))
-            }
-            ItemSpec::DemandMap(_, _) => {
-                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::DemandMap))
-            }
-        };
-
-        let lane_name = model.literal();
         let flags = if model.is_stateful() {
             quote!(#root::agent_model::ItemFlags::empty())
         } else {
             quote!(#root::agent_model::ItemFlags::TRANSIENT)
         };
-
-        quote!(::std::collections::HashMap::insert(&mut lanes, #lane_name, #root::agent_model::ItemSpec::new(#item_kind, #flags)))
+        let descriptor = match model.kind {
+            ItemSpec::Command(_) => {
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::Command, flags: #flags })
+            }
+            ItemSpec::Demand(_) => {
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::Demand, flags: #flags })
+            }
+            ItemSpec::DemandMap(_, _) => {
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::DemandMap, flags: #flags })
+            }
+            ItemSpec::Value(ItemKind::Lane, _) => {
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::Value, flags: #flags })
+            }
+            ItemSpec::Value(ItemKind::Store, _) => {
+                quote!(#root::agent_model::ItemDescriptor::Store { kind: #root::agent_model::StoreKind::Value, flags: #flags })
+            }
+            ItemSpec::Map(ItemKind::Lane, _, _) => {
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::Map, flags: #flags })
+            }
+            ItemSpec::Map(ItemKind::Store, _, _) => {
+                quote!(#root::agent_model::ItemDescriptor::Store { kind: #root::agent_model::StoreKind::Map, flags: #flags })
+            }
+            ItemSpec::JoinValue(_, _) => {
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::JoinValue, flags: #flags })
+            }
+            ItemSpec::Http(_) => quote!(#root::agent_model::ItemDescriptor::Http),
+        };
+        let spec = quote!(#root::agent_model::ItemSpec::new(#ordinal, #descriptor));
+        let lane_name = model.literal();
+        quote!(::std::collections::HashMap::insert(&mut lanes, #lane_name, #spec))
     }
+}
+
+fn ident_to_literal(name: &Ident) -> proc_macro2::Literal {
+    let name_str = name.to_string();
+    proc_macro2::Literal::string(name_str.as_str())
+}
+
+fn partition_models<T, F>(it: impl Iterator<Item = T>, f: F) -> (Vec<T>, Vec<T>)
+where
+    F: Fn(&T) -> ItemCategory,
+{
+    it.fold((vec![], vec![]), |mut acc, item| {
+        let (value_like, map_like) = &mut acc;
+        match f(&item) {
+            ItemCategory::ValueLike => value_like.push(item),
+            ItemCategory::MapLike => map_like.push(item),
+            ItemCategory::Http => {}
+        }
+        acc
+    })
 }

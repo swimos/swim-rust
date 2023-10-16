@@ -20,19 +20,19 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swim_api::{
-    agent::{AgentContext, HttpLaneRequestChannel, LaneConfig, UplinkKind},
+    agent::{AgentContext, HttpLaneRequest, HttpLaneRequestChannel, LaneConfig, UplinkKind},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    meta::lane::LaneKind,
+    lane::WarpLaneKind,
     store::StoreKind,
 };
 use swim_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
 };
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 
-use super::{CMD_LANE, MAP_LANE, VAL_LANE};
+use super::{CMD_LANE, HTTP_LANE, MAP_LANE, VAL_LANE};
 
 #[derive(Debug, Default, Clone)]
 pub struct TestAgentContext {
@@ -61,6 +61,10 @@ impl TestAgentContext {
         } = &mut *guard;
         (value_lane_io.take(), map_lane_io.take(), cmd_lane_io.take())
     }
+
+    pub fn take_http_io(&self) -> Option<mpsc::Sender<HttpLaneRequest>> {
+        self.inner.lock().http_sender.take()
+    }
 }
 
 type Io = (ByteWriter, ByteReader);
@@ -70,10 +74,12 @@ struct Inner {
     value_lane_io: Option<Io>,
     map_lane_io: Option<Io>,
     cmd_lane_io: Option<Io>,
+    http_sender: Option<mpsc::Sender<HttpLaneRequest>>,
     ad_hoc_consumer: Option<oneshot::Sender<ByteReader>>,
     ad_hoc_rx: Option<ByteReader>,
 }
 
+const CHAN_SIZE: NonZeroUsize = non_zero_usize!(8);
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 impl AgentContext for TestAgentContext {
@@ -91,7 +97,7 @@ impl AgentContext for TestAgentContext {
     fn add_lane(
         &self,
         name: &str,
-        lane_kind: LaneKind,
+        lane_kind: WarpLaneKind,
         _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         match (name, lane_kind.uplink_kind()) {
@@ -140,8 +146,15 @@ impl AgentContext for TestAgentContext {
 
     fn add_http_lane(
         &self,
-        _name: &str,
+        name: &str,
     ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
-        panic!("Unexpected HTTP lane registration.");
+        if name == HTTP_LANE {
+            let mut guard = self.inner.lock();
+            let (tx, rx) = mpsc::channel(CHAN_SIZE.get());
+            guard.http_sender = Some(tx);
+            ready(Ok(rx)).boxed()
+        } else {
+            panic!("Unexpected lane registration: {:?}", name);
+        }
     }
 }

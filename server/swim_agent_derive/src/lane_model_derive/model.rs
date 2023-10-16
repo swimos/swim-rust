@@ -23,6 +23,8 @@ use syn::{
     GenericArgument, Ident, PathArguments, PathSegment, Type, TypePath,
 };
 
+use super::ident_to_literal;
+
 /// Model of a struct type for the AgentLaneModel derivation macro.
 pub struct LanesModel<'a> {
     pub agent_type: &'a Ident,
@@ -54,18 +56,27 @@ pub enum ItemSpec<'a> {
     Value(ItemKind, &'a Type),
     Map(ItemKind, &'a Type, &'a Type),
     JoinValue(&'a Type, &'a Type),
+    Http(HttpLaneSpec<'a>),
 }
 
 impl<'a> ItemSpec<'a> {
-    pub fn lane(&self) -> Option<LaneSpec<'a>> {
+    pub fn lane(&self) -> Option<WarpLaneSpec<'a>> {
         match self {
-            ItemSpec::Command(t) => Some(LaneSpec::Command(t)),
-            ItemSpec::Demand(t) => Some(LaneSpec::Demand(t)),
-            ItemSpec::DemandMap(k, v) => Some(LaneSpec::DemandMap(k, v)),
-            ItemSpec::Value(ItemKind::Lane, t) => Some(LaneSpec::Value(t)),
-            ItemSpec::Map(ItemKind::Lane, k, v) => Some(LaneSpec::Map(k, v)),
-            ItemSpec::JoinValue(k, v) => Some(LaneSpec::JoinValue(k, v)),
+            ItemSpec::Command(t) => Some(WarpLaneSpec::Command(t)),
+            ItemSpec::Demand(t) => Some(WarpLaneSpec::Demand(t)),
+            ItemSpec::DemandMap(k, v) => Some(WarpLaneSpec::DemandMap(k, v)),
+            ItemSpec::Value(ItemKind::Lane, t) => Some(WarpLaneSpec::Value(t)),
+            ItemSpec::Map(ItemKind::Lane, k, v) => Some(WarpLaneSpec::Map(k, v)),
+            ItemSpec::JoinValue(k, v) => Some(WarpLaneSpec::JoinValue(k, v)),
             _ => None,
+        }
+    }
+
+    pub fn http(&self) -> Option<HttpLaneSpec<'a>> {
+        if let ItemSpec::Http(spec) = self {
+            Some(*spec)
+        } else {
+            None
         }
     }
 
@@ -77,19 +88,28 @@ impl<'a> ItemSpec<'a> {
             ItemSpec::JoinValue(_, _) => ItemKind::Lane,
             ItemSpec::Demand(_) => ItemKind::Lane,
             ItemSpec::DemandMap(_, _) => ItemKind::Lane,
+            ItemSpec::Http(_) => ItemKind::Lane,
         }
     }
 }
 
 /// The kinds of lane that can be inferred from the type of a field.
 #[derive(Clone, Copy, Debug)]
-pub enum LaneSpec<'a> {
+pub enum WarpLaneSpec<'a> {
     Command(&'a Type),
     Demand(&'a Type),
     DemandMap(&'a Type, &'a Type),
     Value(&'a Type),
     Map(&'a Type, &'a Type),
     JoinValue(&'a Type, &'a Type),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct HttpLaneSpec<'a> {
+    pub get: &'a Type,
+    pub post: &'a Type,
+    pub put: &'a Type,
+    pub codec: Option<&'a Type>,
 }
 
 impl<'a> ItemSpec<'a> {
@@ -115,13 +135,18 @@ pub struct ItemModel<'a> {
 }
 
 impl<'a> ItemModel<'a> {
-    pub fn lane(&self) -> Option<LaneModel<'a>> {
+    pub fn lane(&self) -> Option<WarpLaneModel<'a>> {
         let ItemModel { name, kind, flags } = self;
-        kind.lane().map(move |kind| LaneModel {
+        kind.lane().map(move |kind| WarpLaneModel {
             name,
             kind,
             flags: *flags,
         })
+    }
+
+    pub fn http(&self) -> Option<HttpLaneModel<'a>> {
+        let ItemModel { name, kind, .. } = self;
+        kind.http().map(move |kind| HttpLaneModel { name, kind })
     }
 
     pub fn item_kind(&self) -> ItemKind {
@@ -131,18 +156,20 @@ impl<'a> ItemModel<'a> {
 
 /// Description of an lane (its name the the kind of the lane, along with types).
 #[derive(Clone, Copy)]
-pub struct LaneModel<'a> {
+pub struct WarpLaneModel<'a> {
     pub name: &'a Ident,
-    pub kind: LaneSpec<'a>,
+    pub kind: WarpLaneSpec<'a>,
     pub flags: ItemFlags,
 }
 
-fn ident_to_literal(name: &Ident) -> proc_macro2::Literal {
-    let name_str = name.to_string();
-    proc_macro2::Literal::string(name_str.as_str())
+/// Description of an HTTP lane (its name the the kind of the lane, along with types).
+#[derive(Clone, Copy)]
+pub struct HttpLaneModel<'a> {
+    pub name: &'a Ident,
+    pub kind: HttpLaneSpec<'a>,
 }
 
-impl<'a> LaneModel<'a> {
+impl<'a> WarpLaneModel<'a> {
     /// The name of the lane as a string literal.
     pub fn literal(&self) -> proc_macro2::Literal {
         ident_to_literal(self.name)
@@ -166,6 +193,13 @@ impl<'a> ItemModel<'a> {
     /// Determine if the lane needs to persist its state.
     pub fn is_stateful(&self) -> bool {
         self.kind.is_stateful() && !self.flags.contains(ItemFlags::TRANSIENT)
+    }
+}
+
+impl<'a> HttpLaneModel<'a> {
+    /// The name of the lane as a string literal.
+    pub fn literal(&self) -> proc_macro2::Literal {
+        ident_to_literal(self.name)
     }
 }
 
@@ -230,6 +264,8 @@ const VALUE_STORE_NAME: &str = "ValueStore";
 const MAP_LANE_NAME: &str = "MapLane";
 const MAP_STORE_NAME: &str = "MapStore";
 const JOIN_VALUE_LANE_NAME: &str = "JoinValueLane";
+const HTTP_LANE_NAME: &str = "HttpLane";
+const SIMPLE_HTTP_LANE_NAME: &str = "SimpleHttpLane";
 
 fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
     if let (Some(fld_name), Type::Path(TypePath { qself: None, path })) = (&field.ident, &field.ty)
@@ -306,6 +342,10 @@ fn extract_lane_model(field: &Field) -> Result<ItemModel<'_>, syn::Error> {
                         lane_flags,
                     ))
                 }
+                name @ (HTTP_LANE_NAME | SIMPLE_HTTP_LANE_NAME) => {
+                    let spec = http_params(arguments, name == SIMPLE_HTTP_LANE_NAME)?;
+                    Ok(ItemModel::new(fld_name, ItemSpec::Http(spec), lane_flags))
+                }
                 _ => Err(syn::Error::new_spanned(&field.ty, NOT_LANE_TYPE)),
             }
         } else {
@@ -351,6 +391,55 @@ fn single_param(args: &PathArguments) -> Result<&Type, syn::Error> {
             }
         }
         selected.ok_or_else(|| syn::Error::new_spanned(args, BAD_PARAMS))
+    } else {
+        Err(syn::Error::new_spanned(args, BAD_PARAMS))
+    }
+}
+
+fn http_params(args: &PathArguments, simple: bool) -> Result<HttpLaneSpec<'_>, syn::Error> {
+    if let PathArguments::AngleBracketed(AngleBracketedGenericArguments { args, .. }) = args {
+        let params = args.iter().try_fold(vec![], |mut params, param| {
+            if let GenericArgument::Type(ty) = param {
+                params.push(ty);
+                Ok(params)
+            } else {
+                Err(syn::Error::new_spanned(args, BAD_PARAMS))
+            }
+        })?;
+        let http_type = match params.as_slice() {
+            [get] => HttpLaneSpec {
+                get,
+                post: get,
+                put: get,
+                codec: None,
+            },
+            [get, codec] if simple => HttpLaneSpec {
+                get,
+                post: get,
+                put: get,
+                codec: Some(*codec),
+            },
+            [get, post] => HttpLaneSpec {
+                get,
+                post,
+                put: post,
+                codec: None,
+            },
+            [get, post, put] if !simple => HttpLaneSpec {
+                get,
+                post,
+                put,
+                codec: None,
+            },
+            [get, post, put, codec] if !simple => HttpLaneSpec {
+                get,
+                post,
+                put,
+                codec: Some(*codec),
+            },
+            _ => return Err(syn::Error::new_spanned(args, BAD_PARAMS)),
+        };
+        Ok(http_type)
     } else {
         Err(syn::Error::new_spanned(args, BAD_PARAMS))
     }

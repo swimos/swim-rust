@@ -14,17 +14,17 @@ use std::{cell::RefCell, collections::HashMap, io::ErrorKind, sync::Arc, time::D
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use futures::{
     future::{join, ready, BoxFuture},
     Future, FutureExt, SinkExt, StreamExt,
 };
 use parking_lot::Mutex;
 use swim_api::{
-    agent::{AgentConfig, AgentContext, AgentTask},
+    agent::{AgentConfig, AgentContext, AgentTask, HttpLaneRequest},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    meta::lane::LaneKind,
+    lane::WarpLaneKind,
     protocol::{
         agent::{AdHocCommand, AdHocCommandDecoder},
         downlink::{DownlinkNotification, DownlinkNotificationEncoder},
@@ -33,7 +33,11 @@ use swim_api::{
     },
 };
 use swim_form::structural::read::recognizer::{primitive::TextRecognizer, RecognizerReadable};
-use swim_model::{address::Address, BytesStr, Text};
+use swim_model::{
+    address::Address,
+    http::{HttpRequest, Method, StatusCode, Version},
+    BytesStr, Text,
+};
 use swim_utilities::{
     future::retryable::RetryStrategy,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
@@ -104,10 +108,13 @@ pub enum TestEvent {
 const VAL_ID: u64 = 0;
 const MAP_ID: u64 = 1;
 const CMD_ID: u64 = 2;
+const HTTP_ID: u64 = 3;
 
 const VAL_LANE: &str = "first";
 const MAP_LANE: &str = "second";
 const CMD_LANE: &str = "third";
+const HTTP_LANE: &str = "fourth";
+const HTTP_LANE_URI: &str = "http://example/node?lane=fourth";
 
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
@@ -136,10 +143,12 @@ type CommandReceiver =
 
 struct TestContext {
     test_event_rx: UnboundedReceiverStream<TestEvent>,
+    http_request_rx: UnboundedReceiverStream<HttpRequest<Bytes>>,
     lc_event_rx: UnboundedReceiverStream<LifecycleEvent>,
     val_lane_io: (ValueLaneSender, ValueLaneReceiver),
     map_lane_io: (MapLaneSender, MapLaneReceiver),
     cmd_lane_io: (ValueLaneSender, ValueLaneReceiver),
+    http_lane_tx: mpsc::Sender<HttpLaneRequest>,
 }
 
 #[derive(Clone)]
@@ -167,6 +176,7 @@ impl Fac {
 async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) {
     let mut agent = TestAgent::default();
     let test_event_rx = agent.take_receiver();
+    let http_req_rx = agent.take_http_receiver();
     let lane_model_fac = Fac::new(agent);
 
     let (lc_event_tx, lc_event_rx) = mpsc::unbounded_channel();
@@ -180,6 +190,7 @@ async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) 
         .expect("Initialization failed.");
 
     let (val_lane_io, map_lane_io, cmd_lane_io) = context.take_lane_io();
+    let http_tx = context.take_http_io();
 
     let (val_tx, val_rx) = val_lane_io.expect("Value lane not registered.");
     let val_sender = ValueLaneSender::new(val_tx);
@@ -193,14 +204,18 @@ async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) 
     let (cmd_tx, cmd_rx) = cmd_lane_io.expect("Command lane not registered.");
     let cmd_sender = ValueLaneSender::new(cmd_tx);
     let cmd_receiver = ValueLaneReceiver::new(cmd_rx);
+
+    let http_tx = http_tx.expect("HTTP lane not registered.");
     (
         task,
         TestContext {
             test_event_rx: UnboundedReceiverStream::new(test_event_rx),
+            http_request_rx: UnboundedReceiverStream::new(http_req_rx),
             lc_event_rx: UnboundedReceiverStream::new(lc_event_rx),
             val_lane_io: (val_sender, val_receiver),
             map_lane_io: (map_sender, map_receiver),
             cmd_lane_io: (cmd_sender, cmd_receiver),
+            http_lane_tx: http_tx,
         },
     )
 }
@@ -235,16 +250,18 @@ async fn run_agent_init_task() {
 
 #[tokio::test]
 async fn stops_if_all_lanes_stop() {
-    with_timeout(async {
+    with_timeout(async move {
         let context = Box::<TestAgentContext>::default();
         let (
             task,
             TestContext {
                 test_event_rx,
+                http_request_rx: _http_request_rx,
                 mut lc_event_rx,
                 val_lane_io,
                 map_lane_io,
                 cmd_lane_io,
+                http_lane_tx,
             },
         ) = init_agent(context).await;
 
@@ -266,6 +283,7 @@ async fn stops_if_all_lanes_stop() {
             drop(vtx);
             drop(mtx);
             drop(ctx);
+            drop(http_lane_tx);
 
             (lc_event_rx, vrx, mrx, crx)
         };
@@ -292,10 +310,12 @@ async fn command_to_value_lane() {
             task,
             TestContext {
                 mut test_event_rx,
+                http_request_rx: _http_request_rx,
                 mut lc_event_rx,
                 val_lane_io,
                 map_lane_io,
                 cmd_lane_io,
+                http_lane_tx,
             },
         ) = init_agent(context).await;
 
@@ -330,10 +350,95 @@ async fn command_to_value_lane() {
             drop(sender);
             drop(map_lane_io);
             drop(cmd_lane_io);
+            drop(http_lane_tx);
             (test_event_rx, lc_event_rx)
         };
 
         let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
+        assert!(result.is_ok());
+
+        let events = lc_event_rx.collect::<Vec<_>>().await;
+
+        //Check that the `on_stop` event fired.
+        assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+
+        let lane_events = test_event_rx.collect::<Vec<_>>().await;
+        assert!(lane_events.is_empty());
+    })
+    .await
+}
+
+#[tokio::test]
+async fn request_to_http_lane() {
+    with_timeout(async move {
+        let context = Box::<TestAgentContext>::default();
+        let (
+            task,
+            TestContext {
+                test_event_rx,
+                mut http_request_rx,
+                mut lc_event_rx,
+                val_lane_io,
+                map_lane_io,
+                cmd_lane_io,
+                http_lane_tx,
+            },
+        ) = init_agent(context).await;
+
+        let test_case = async move {
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected init event."),
+                LifecycleEvent::Init
+            );
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected start event."),
+                LifecycleEvent::Start
+            );
+
+            let req = HttpRequest {
+                method: Method::GET,
+                version: Version::HTTP_1_1,
+                uri: HTTP_LANE_URI.parse().unwrap(),
+                headers: vec![],
+                payload: Bytes::new(),
+            };
+            let (lane_request, response_rx) = HttpLaneRequest::new(req.clone());
+
+            http_lane_tx
+                .send(lane_request)
+                .await
+                .expect("HTTP lane stopped.");
+
+            // The agent should receive the request...
+            assert_eq!(
+                http_request_rx
+                    .next()
+                    .await
+                    .expect("Expected HTTP request."),
+                req
+            );
+
+            //... ,trigger the lane event...
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected HTTP lane event."),
+                LifecycleEvent::Lane(Text::new(HTTP_LANE))
+            );
+
+            //... and then satisfy the request.
+            let response = response_rx.await.expect("Request not satisfied.");
+            assert_eq!(response.status_code, StatusCode::OK);
+
+            drop(val_lane_io);
+            drop(map_lane_io);
+            drop(cmd_lane_io);
+            drop(http_lane_tx);
+            (test_event_rx, lc_event_rx)
+        };
+
+        let (result, (test_event_rx, lc_event_rx)) =
+            tokio::time::timeout(TEST_TIMEOUT, join(task, test_case))
+                .await
+                .expect("Timed out");
         assert!(result.is_ok());
 
         let events = lc_event_rx.collect::<Vec<_>>().await;
@@ -357,10 +462,12 @@ async fn sync_with_lane() {
             task,
             TestContext {
                 mut test_event_rx,
+                http_request_rx: _http_request_rx,
                 mut lc_event_rx,
                 val_lane_io,
                 map_lane_io,
                 cmd_lane_io,
+                http_lane_tx,
             },
         ) = init_agent(context).await;
 
@@ -389,6 +496,7 @@ async fn sync_with_lane() {
             drop(sender);
             drop(map_lane_io);
             drop(cmd_lane_io);
+            drop(http_lane_tx);
             (test_event_rx, lc_event_rx)
         };
 
@@ -414,10 +522,12 @@ async fn command_to_map_lane() {
             task,
             TestContext {
                 mut test_event_rx,
+                http_request_rx: _http_request_rx,
                 mut lc_event_rx,
                 val_lane_io,
                 map_lane_io,
                 cmd_lane_io,
+                http_lane_tx,
             },
         ) = init_agent(context).await;
 
@@ -462,6 +572,7 @@ async fn command_to_map_lane() {
             drop(sender);
             drop(val_lane_io);
             drop(cmd_lane_io);
+            drop(http_lane_tx);
             (test_event_rx, lc_event_rx)
         };
 
@@ -487,10 +598,12 @@ async fn suspend_future() {
             task,
             TestContext {
                 mut test_event_rx,
+                http_request_rx: _http_request_rx,
                 mut lc_event_rx,
                 val_lane_io,
                 map_lane_io,
                 cmd_lane_io,
+                http_lane_tx,
             },
         ) = init_agent(context).await;
 
@@ -543,6 +656,7 @@ async fn suspend_future() {
             drop(receiver);
             drop(val_lane_io);
             drop(map_lane_io);
+            drop(http_lane_tx);
             (test_event_rx, lc_event_rx)
         };
 
@@ -568,10 +682,12 @@ async fn trigger_ad_hoc_command() {
         task,
         TestContext {
             mut test_event_rx,
+            http_request_rx: _http_request_rx,
             mut lc_event_rx,
             val_lane_io,
             map_lane_io,
             cmd_lane_io,
+            http_lane_tx,
         },
     ) = init_agent(context).await;
 
@@ -632,6 +748,7 @@ async fn trigger_ad_hoc_command() {
         drop(receiver);
         drop(val_lane_io);
         drop(map_lane_io);
+        drop(http_lane_tx);
         (test_event_rx, lc_event_rx)
     };
 
@@ -1119,7 +1236,7 @@ impl AgentContext for DlTestContext {
     fn add_lane(
         &self,
         _name: &str,
-        _lane_kind: LaneKind,
+        _lane_kind: WarpLaneKind,
         _config: swim_api::agent::LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Unexpected call.");

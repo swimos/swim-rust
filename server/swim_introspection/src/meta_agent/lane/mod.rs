@@ -18,7 +18,8 @@ use futures::{future::BoxFuture, FutureExt};
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::{AgentInitError, AgentTaskError},
-    meta::{lane::LaneKind, uplink::LanePulse},
+    lane::WarpLaneKind,
+    meta::uplink::LanePulse,
 };
 use swim_model::Text;
 use swim_utilities::{
@@ -105,7 +106,7 @@ async fn run_init(
     let mut lane_config = config.default_lane_config.unwrap_or_default();
     lane_config.transient = true;
     let pulse_io = context
-        .add_lane(PULSE_LANE, LaneKind::Supply, lane_config)
+        .add_lane(PULSE_LANE, WarpLaneKind::Supply, lane_config)
         .await?;
 
     Ok(run_task(pulse_interval, view, pulse_io).boxed())

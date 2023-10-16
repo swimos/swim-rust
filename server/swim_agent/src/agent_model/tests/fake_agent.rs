@@ -17,46 +17,58 @@ use std::{
     collections::{HashMap, VecDeque},
 };
 
-use bytes::BytesMut;
-use swim_api::meta::lane::LaneKind;
-use swim_api::protocol::{
-    agent::{LaneResponse, MapLaneResponse, MapLaneResponseEncoder, ValueLaneResponseEncoder},
-    map::{MapMessage, MapOperation},
+use bytes::{Bytes, BytesMut};
+use swim_api::lane::WarpLaneKind;
+use swim_api::{
+    agent::HttpLaneRequest,
+    protocol::{
+        agent::{LaneResponse, MapLaneResponse, MapLaneResponseEncoder, ValueLaneResponseEncoder},
+        map::{MapMessage, MapOperation},
+    },
 };
-use swim_model::Text;
+use swim_model::http::{HttpRequest, HttpResponse, StatusCode, SupportedMethod, Version};
 use tokio::sync::mpsc;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
-use crate::agent_model::{MapLikeInitializer, ValueLikeInitializer};
+use crate::agent_model::{ItemDescriptor, ItemSpec, MapLikeInitializer, ValueLikeInitializer};
 use crate::{
-    agent_model::{AgentSpec, ItemFlags, ItemKind, ItemSpec, WriteResult},
+    agent_model::{AgentSpec, ItemFlags, WriteResult},
     event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
 };
 
-use super::{TestEvent, CMD_ID, CMD_LANE, MAP_ID, MAP_LANE, SYNC_VALUE, VAL_ID, VAL_LANE};
+use super::{
+    TestEvent, CMD_ID, CMD_LANE, HTTP_ID, HTTP_LANE, MAP_ID, MAP_LANE, SYNC_VALUE, VAL_ID, VAL_LANE,
+};
 
 #[derive(Debug)]
 pub struct TestAgent {
     receiver: Option<mpsc::UnboundedReceiver<TestEvent>>,
+    http_receiver: Option<mpsc::UnboundedReceiver<HttpRequest<Bytes>>>,
     sender: mpsc::UnboundedSender<TestEvent>,
+    http_sender: mpsc::UnboundedSender<HttpRequest<Bytes>>,
     staged_value: RefCell<Option<i32>>,
     staged_map: RefCell<Option<MapOperation<i32, i32>>>,
     sync_ids: RefCell<VecDeque<Uuid>>,
     cmd: RefCell<Option<i32>>,
+    http_requests: RefCell<Vec<HttpLaneRequest>>,
 }
 
 impl Default for TestAgent {
     fn default() -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
+        let (http_tx, http_rx) = mpsc::unbounded_channel();
         Self {
             receiver: Some(rx),
+            http_receiver: Some(http_rx),
             sender: tx,
+            http_sender: http_tx,
             staged_value: Default::default(),
             staged_map: Default::default(),
             sync_ids: Default::default(),
             cmd: Default::default(),
+            http_requests: Default::default(),
         }
     }
 }
@@ -64,6 +76,10 @@ impl Default for TestAgent {
 impl TestAgent {
     pub fn take_receiver(&mut self) -> mpsc::UnboundedReceiver<TestEvent> {
         self.receiver.take().expect("Receiver taken twice.")
+    }
+
+    pub fn take_http_receiver(&mut self) -> mpsc::UnboundedReceiver<HttpRequest<Bytes>> {
+        self.http_receiver.take().expect("Receiver taken twice.")
     }
 
     pub fn take_cmd(&self) -> i32 {
@@ -82,10 +98,36 @@ impl TestAgent {
     pub fn add_sync(&self, id: Uuid) {
         self.sync_ids.borrow_mut().push_back(id);
     }
+
+    pub fn stage_http_request(&self, request: HttpLaneRequest) {
+        self.http_requests.borrow_mut().push(request);
+    }
+
+    pub fn satisfy_http_requests(&self) {
+        for req in self.http_requests.borrow_mut().drain(..) {
+            let (req, tx) = req.into_parts();
+            let payload = match req.method.supported_method() {
+                Some(SupportedMethod::Get) => Bytes::from(b"Hello".as_ref()),
+                None => panic!("Unsupported method."),
+                _ => Bytes::new(),
+            };
+            let response = HttpResponse {
+                status_code: StatusCode::OK,
+                version: Version::HTTP_1_1,
+                headers: vec![],
+                payload,
+            };
+            tx.send(response).expect("Request dropped.");
+        }
+    }
 }
 
 pub struct TestHandler {
     event: Option<TestEvent>,
+}
+
+pub struct TestHttpHandler {
+    request: Option<HttpLaneRequest>,
 }
 
 impl From<TestEvent> for TestHandler {
@@ -101,28 +143,43 @@ impl AgentSpec for TestAgent {
 
     type OnSyncHandler = TestHandler;
 
+    type HttpRequestHandler = TestHttpHandler;
+
     fn item_specs() -> HashMap<&'static str, ItemSpec> {
         let mut lanes = HashMap::new();
+
         lanes.insert(
             VAL_LANE,
-            ItemSpec::new(ItemKind::Lane(LaneKind::Value), ItemFlags::TRANSIENT),
+            ItemSpec::new(
+                VAL_ID,
+                ItemDescriptor::WarpLane {
+                    kind: WarpLaneKind::Value,
+                    flags: ItemFlags::TRANSIENT,
+                },
+            ),
         );
         lanes.insert(
             CMD_LANE,
-            ItemSpec::new(ItemKind::Lane(LaneKind::Command), ItemFlags::TRANSIENT),
+            ItemSpec::new(
+                CMD_ID,
+                ItemDescriptor::WarpLane {
+                    kind: WarpLaneKind::Command,
+                    flags: ItemFlags::TRANSIENT,
+                },
+            ),
         );
         lanes.insert(
             MAP_LANE,
-            ItemSpec::new(ItemKind::Lane(LaneKind::Map), ItemFlags::TRANSIENT),
+            ItemSpec::new(
+                MAP_ID,
+                ItemDescriptor::WarpLane {
+                    kind: WarpLaneKind::Map,
+                    flags: ItemFlags::TRANSIENT,
+                },
+            ),
         );
+        lanes.insert(HTTP_LANE, ItemSpec::new(HTTP_ID, ItemDescriptor::Http));
         lanes
-    }
-
-    fn item_ids() -> HashMap<u64, Text> {
-        [(VAL_ID, VAL_LANE), (MAP_ID, MAP_LANE), (CMD_ID, CMD_LANE)]
-            .into_iter()
-            .map(|(k, v)| (k, Text::new(v)))
-            .collect()
     }
 
     fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler> {
@@ -229,6 +286,20 @@ impl AgentSpec for TestAgent {
             _ => None,
         }
     }
+
+    fn on_http_request(
+        &self,
+        lane: &str,
+        request: HttpLaneRequest,
+    ) -> Result<Self::HttpRequestHandler, HttpLaneRequest> {
+        if lane == HTTP_LANE {
+            Ok(TestHttpHandler {
+                request: Some(request),
+            })
+        } else {
+            Err(request)
+        }
+    }
 }
 
 impl HandlerAction<TestAgent> for TestHandler {
@@ -241,8 +312,8 @@ impl HandlerAction<TestAgent> for TestHandler {
         context: &TestAgent,
     ) -> StepResult<Self::Completion> {
         let TestHandler { event } = self;
-        if let Some(event) = event.take() {
-            let modified_item = match &event {
+        if let Some(mut event) = event.take() {
+            let modified_item = match &mut event {
                 TestEvent::Value { body } => {
                     context.stage_value(*body);
                     Some(Modification::of(VAL_ID))
@@ -264,6 +335,33 @@ impl HandlerAction<TestAgent> for TestHandler {
             context.sender.send(event).expect("Receiver dropped.");
             StepResult::Complete {
                 modified_item,
+                result: (),
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+impl HandlerAction<TestAgent> for TestHttpHandler {
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<TestAgent>,
+        _meta: AgentMetadata,
+        context: &TestAgent,
+    ) -> StepResult<Self::Completion> {
+        let TestHttpHandler { request } = self;
+        if let Some(request) = request.take() {
+            let req_cpy = request.request.clone();
+            context.stage_http_request(request);
+            context
+                .http_sender
+                .send(req_cpy)
+                .expect("Receiver dropped.");
+            StepResult::Complete {
+                modified_item: Some(Modification::trigger_only(HTTP_ID)),
                 result: (),
             }
         } else {

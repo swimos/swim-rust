@@ -22,10 +22,8 @@ use futures::{
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::{AgentInitError, AgentTaskError, FrameIoError},
-    meta::{
-        lane::{LaneInfo, LaneKind},
-        uplink::NodePulse,
-    },
+    lane::WarpLaneKind,
+    meta::{lane::LaneInfo, uplink::NodePulse},
     protocol::{
         agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
         map::{MapOperation, MapOperationEncoder},
@@ -110,10 +108,10 @@ async fn run_init(
     let mut lane_config = config.default_lane_config.unwrap_or_default();
     lane_config.transient = true;
     let pulse_io = context
-        .add_lane(PULSE_LANE, LaneKind::Supply, lane_config)
+        .add_lane(PULSE_LANE, WarpLaneKind::Supply, lane_config)
         .await?;
     let lanes_io = context
-        .add_lane(LANES_LANE, LaneKind::DemandMap, lane_config)
+        .add_lane(LANES_LANE, WarpLaneKind::DemandMap, lane_config)
         .await?;
     Ok(run_task(context, pulse_interval, handle, pulse_io, lanes_io).boxed())
 }

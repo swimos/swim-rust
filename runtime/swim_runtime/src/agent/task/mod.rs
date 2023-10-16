@@ -49,14 +49,14 @@ use futures::{
     Stream, StreamExt,
 };
 use swim_api::agent::{
-    HttpLaneRequest, HttpLaneRequestChannel, HttpLaneResponse, LaneConfig, StoreConfig,
+    HttpLaneRequest, HttpLaneRequestChannel, HttpResponseSender, LaneConfig, StoreConfig,
 };
 use swim_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
-use swim_api::meta::lane::LaneKind;
+use swim_api::lane::WarpLaneKind;
 use swim_api::store::{StoreDisabled, StoreKind};
 use swim_api::{agent::UplinkKind, error::AgentRuntimeError};
 use swim_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
-use swim_model::http::{HttpResponse, StatusCode, Version};
+use swim_model::http::{Header, HttpResponse, StandardHeaderName, StatusCode, Version};
 use swim_model::{BytesStr, Text};
 use swim_recon::parser::MessageExtractError;
 use swim_utilities::future::{immediate_or_join, StopAfterError};
@@ -90,7 +90,7 @@ mod tests;
 #[derive(Debug)]
 pub struct LaneRuntimeSpec {
     pub name: Text,
-    pub kind: LaneKind,
+    pub kind: WarpLaneKind,
     pub config: LaneConfig,
     pub promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
 }
@@ -104,7 +104,7 @@ pub struct HttpLaneRuntimeSpec {
 impl LaneRuntimeSpec {
     pub fn new(
         name: Text,
-        kind: LaneKind,
+        kind: WarpLaneKind,
         config: LaneConfig,
         promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
     ) -> Self {
@@ -396,6 +396,7 @@ impl AgentRuntimeTask {
     /// * `node` - The routing ID and node URI of this agent instance.
     /// * `init` - The initial lane and store endpoints for this agent.
     /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
+    /// * `http_requests` - Channel to accept HTTP requests targetted at agent lanes.
     /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
     /// * `config` - Configuration parameters for the agent runtime.
     pub fn new(
@@ -427,6 +428,7 @@ where
     /// * `node` - The routing ID and node URI of this agent instance.
     /// * `init` - The initial lane and store endpoints for this agent.
     /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
+    /// * `http_requests` - Channel to accept HTTP requests targetted at agent lanes.
     /// * `stopping` - A signal for initiating a clean shutdown for the agent instance.
     /// * `config` - Configuration parameters for the agent runtime.
     /// * `store` - Persistence store for the agent.
@@ -1717,7 +1719,6 @@ impl WriteTaskEndpoints {
 /// * `stop_voter` - Votes to stop if this task becomes inactive (unanimity with the write task is required).
 /// * `reporting` - Introspection reporting context for the agent (if introspection is enabled).
 /// * `store` - Persistence for the state of the lanes.
-///
 async fn write_task<Msg, Store>(
     configuration: WriteTaskConfiguration,
     initial_endpoints: WriteTaskEndpoints,
@@ -2003,12 +2004,25 @@ where
     }
 }
 
+/// Events that can occur in the HTTP task.
 enum HttpTaskEvent {
+    /// Request to register a new HTTP lane.
     Registration(HttpLaneRuntimeSpec),
+    /// An incoming HTTP request to be routed to a lane.
     Request(HttpLaneRequest),
+    /// Time-out after new requests received.
     Timeout,
 }
 
+/// A task that routes incoming HTTP requests to the HTTP lanes of the agent.
+///
+/// #Arguments
+/// * `stopping` - A signal that the agent is stopping and this task should stop immediately.
+/// * `config` - Configuration parameters for the agent runtime.
+/// * `requests` - Incoming HTTP requests.
+/// * `initial_endpoints` - HTTP lanes that were registered during agent initialization.
+/// * `registrations` - Requests to register new HTTP lanes.
+/// * `stop_voter` - Used by this task to vote for the agent to stop after a period of inactivity.
 async fn http_task(
     mut stopping: trigger::Receiver,
     config: AgentRuntimeConfig,
@@ -2084,7 +2098,9 @@ async fn http_task(
                         }
                     }
                 } else {
-                    not_found(extracted_name.as_deref(), request.response_tx);
+                    let name = extracted_name.map(|s| s.to_string());
+                    let (_, response_tx) = request.into_parts();
+                    not_found(name.as_deref(), response_tx);
                 }
             }
             HttpTaskEvent::Timeout => {
@@ -2104,19 +2120,21 @@ async fn http_task(
     }
 }
 
-fn not_found(lane_name: Option<&str>, response_tx: oneshot::Sender<HttpLaneResponse>) {
+/// Send a 404 if the target lane for an HTTP request does not exist.
+fn not_found(lane_name: Option<&str>, response_tx: HttpResponseSender) {
     let payload = if let Some(name) = lane_name {
         Bytes::from(format!(
             "This agent does not have an HTTP lane called `{}`",
             name
         ))
     } else {
-        Bytes::from("No lane name was specified.")
+        Bytes::from_static(b"No lane name was specified.")
     };
+    let content_len = Header::new(StandardHeaderName::ContentLength, payload.len().to_string());
     let not_found_response = HttpResponse {
         status_code: StatusCode::NOT_FOUND,
         version: Version::HTTP_1_1,
-        headers: vec![],
+        headers: vec![content_len],
         payload,
     };
     if response_tx.send(not_found_response).is_err() {

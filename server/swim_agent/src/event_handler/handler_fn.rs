@@ -14,7 +14,10 @@
 
 use std::collections::HashMap;
 
-use crate::agent_lifecycle::utility::HandlerContext;
+use crate::{
+    agent_lifecycle::utility::HandlerContext,
+    lanes::http::{lifecycle::HttpRequestContext, Response, UnitResponse},
+};
 
 use super::{EventHandler, HandlerAction};
 
@@ -355,5 +358,96 @@ where
         value: In,
     ) -> Self::Handler {
         self(shared, handler_context, value)
+    }
+}
+
+pub trait GetFn<'a, T, Context, Shared> {
+    type Handler: HandlerAction<Context, Completion = Response<T>> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        http_context: HttpRequestContext,
+    ) -> Self::Handler;
+}
+
+impl<'a, T, Context, Shared, F, H> GetFn<'a, T, Context, Shared> for F
+where
+    H: HandlerAction<Context, Completion = Response<T>> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, HttpRequestContext) -> H + 'a,
+    Shared: 'a,
+    T: 'static,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        http_context: HttpRequestContext,
+    ) -> Self::Handler {
+        self(shared, handler_context, http_context)
+    }
+}
+
+pub trait RequestFn0<'a, Context, Shared> {
+    type Handler: HandlerAction<Context, Completion = UnitResponse> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        http_context: HttpRequestContext,
+    ) -> Self::Handler;
+}
+
+impl<'a, Context, Shared, F, H> RequestFn0<'a, Context, Shared> for F
+where
+    H: HandlerAction<Context, Completion = UnitResponse> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, HttpRequestContext) -> H + 'a,
+    Shared: 'a,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        http_context: HttpRequestContext,
+    ) -> Self::Handler {
+        self(shared, handler_context, http_context)
+    }
+}
+
+pub trait RequestFn1<'a, T, Context, Shared> {
+    type Handler: HandlerAction<Context, Completion = UnitResponse> + 'a;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        http_context: HttpRequestContext,
+        value: T,
+    ) -> Self::Handler;
+}
+
+impl<'a, T, Context, Shared, F, H> RequestFn1<'a, T, Context, Shared> for F
+where
+    H: HandlerAction<Context, Completion = UnitResponse> + 'a,
+    F: Fn(&'a Shared, HandlerContext<Context>, HttpRequestContext, T) -> H + 'a,
+    Shared: 'a,
+    T: 'static,
+{
+    type Handler = H;
+
+    fn make_handler(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        http_context: HttpRequestContext,
+        value: T,
+    ) -> Self::Handler {
+        self(shared, handler_context, http_context, value)
     }
 }

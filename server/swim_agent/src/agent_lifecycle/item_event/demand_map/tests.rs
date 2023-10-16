@@ -37,7 +37,7 @@ use uuid::Uuid;
 use crate::{
     agent_lifecycle::item_event::{DemandMapBranch, DemandMapLeaf, HLeaf, ItemEvent},
     agent_model::WriteResult,
-    event_handler::{ActionContext, HandlerAction, Modification, StepResult},
+    event_handler::{ActionContext, HandlerAction, Modification, ModificationFlags, StepResult},
     lanes::{
         demand_map::lifecycle::{keys::Keys, on_cue_key::OnCueKey},
         DemandMapLane, LaneItem,
@@ -288,7 +288,7 @@ fn check_interaction<H, K, V>(
         modified,
         Some(Modification {
             item_id: lane_id,
-            trigger_handler: true
+            flags: ModificationFlags::all()
         })
     );
     assert!(lifecycle.state.lock().keys_used);
@@ -301,7 +301,7 @@ fn check_interaction<H, K, V>(
         modified,
         Some(Modification {
             item_id: lane_id,
-            trigger_handler: false
+            flags: ModificationFlags::DIRTY,
         })
     );
     assert!(lifecycle.state.lock().cue_used);

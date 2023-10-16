@@ -179,6 +179,18 @@ pub fn parse_value(repr: &str, allow_comments: bool) -> Result<Value, ParseError
     parse_recognize(Span::new(repr), allow_comments)
 }
 
+/// Parse exactly one value of type `T` from the input, returning an error if the string does not contain
+/// the representation of exactly one.
+///
+/// * `repr` - The input to parse.
+/// * `allow_comments` - Boolean flag indicating whether or not the parsing should fail on comments.
+pub fn parse_into<T: RecognizerReadable>(
+    repr: &str,
+    allow_comments: bool,
+) -> Result<T, ParseError> {
+    parse_recognize(Span::new(repr), allow_comments)
+}
+
 use crate::comparator::compare_values;
 #[cfg(feature = "async_parser")]
 pub use async_parser::{

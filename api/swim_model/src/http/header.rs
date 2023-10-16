@@ -12,15 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::str::FromStr;
+use std::{
+    cmp::Ordering,
+    hash::{Hash, Hasher},
+    str::FromStr,
+};
 
 use bytes::Bytes;
 
 use crate::BytesStr;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Model for the name of an HTTP header. The representation of this type will either be an enumeration
+/// of the standard header names or a general ASCII string for custom headers.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HeaderName(Name);
 
+/// Model for the value of an HTTP header. The representation of this type is an array of bytes that
+/// may, or may not, be a valid UTF8 string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeaderValue(HeaderValueInner);
 
@@ -30,10 +38,25 @@ enum HeaderValueInner {
     BytesHeader(Bytes),
 }
 
+/// Mode of an HTTP header, used by [`super::HttpRequest`] and [`super::HttpResponse`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Header {
     pub name: HeaderName,
     pub value: HeaderValue,
+}
+
+impl Header {
+    /// Create a header from anything that can be converted into header names and header values.
+    pub fn new<N, V>(name: N, value: V) -> Self
+    where
+        N: Into<HeaderName>,
+        V: Into<HeaderValue>,
+    {
+        Header {
+            name: name.into(),
+            value: value.into(),
+        }
+    }
 }
 
 impl HeaderName {
@@ -182,6 +205,7 @@ impl From<&str> for HeaderName {
     }
 }
 
+/// An enumeration of standard header names.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StandardHeaderName {
@@ -229,6 +253,33 @@ impl Name {
         match self {
             Name::Standard(s) => s.str_value(),
             Name::Other(s) => s.as_str(),
+        }
+    }
+}
+
+impl PartialOrd for Name {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.str_value().partial_cmp(other.str_value())
+    }
+}
+
+impl Ord for Name {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.str_value().cmp(other.str_value())
+    }
+}
+
+impl Hash for Name {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.str_value().hash(state)
+    }
+}
+
+impl PartialEq<StandardHeaderName> for HeaderName {
+    fn eq(&self, other: &StandardHeaderName) -> bool {
+        match &self.0 {
+            Name::Standard(h) => h == other,
+            Name::Other(_) => false,
         }
     }
 }

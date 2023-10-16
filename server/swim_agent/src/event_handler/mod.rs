@@ -51,6 +51,10 @@ use crate::{
     meta::AgentMetadata,
 };
 
+use bitflags::bitflags;
+
+#[cfg(test)]
+pub mod check_step;
 mod command;
 mod handler_fn;
 mod register_downlink;
@@ -62,8 +66,8 @@ pub use suspend::{run_after, run_schedule, HandlerFuture, Spawner, Suspend};
 
 pub use command::SendCommand;
 pub use handler_fn::{
-    CueFn0, CueFn1, EventConsumeFn, EventFn, HandlerFn0, MapRemoveFn, MapUpdateBorrowFn,
-    MapUpdateFn, TakeFn, UpdateBorrowFn, UpdateFn,
+    CueFn0, CueFn1, EventConsumeFn, EventFn, GetFn, HandlerFn0, MapRemoveFn, MapUpdateBorrowFn,
+    MapUpdateFn, RequestFn0, RequestFn1, TakeFn, UpdateBorrowFn, UpdateFn,
 };
 
 use self::register_downlink::RegisterHostedDownlink;
@@ -317,8 +321,21 @@ pub enum EventHandlerError {
     BadJoinLifecycle(DowncastError),
     #[error("The cue operation for a demand lane was undefined.")]
     DemandCueUndefined,
+    #[error("No GET handler was defined for an HTTP lane.")]
+    HttpGetUndefined,
     #[error("The event handler has instructed the agent to stop.")]
     StopInstructed,
+}
+
+bitflags! {
+
+    pub struct ModificationFlags: u8 {
+        /// The lane has data to write.
+        const DIRTY = 0b01;
+        /// The lane's event handler should be triggered.
+        const TRIGGER_HANDLER = 0b10;
+    }
+
 }
 
 /// When a handler completes or suspends it can indicate that is has modified the
@@ -328,21 +345,28 @@ pub struct Modification {
     /// The ID of the item.
     pub item_id: u64,
     /// If this is true, lifecycle event handlers on the lane should be executed.
-    pub trigger_handler: bool,
+    pub flags: ModificationFlags,
 }
 
 impl Modification {
     pub fn of(item_id: u64) -> Self {
         Modification {
             item_id,
-            trigger_handler: true,
+            flags: ModificationFlags::all(),
         }
     }
 
     pub fn no_trigger(item_id: u64) -> Self {
         Modification {
             item_id,
-            trigger_handler: false,
+            flags: ModificationFlags::complement(ModificationFlags::TRIGGER_HANDLER),
+        }
+    }
+
+    pub fn trigger_only(item_id: u64) -> Self {
+        Modification {
+            item_id,
+            flags: ModificationFlags::TRIGGER_HANDLER,
         }
     }
 }

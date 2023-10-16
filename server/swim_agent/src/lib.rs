@@ -31,15 +31,9 @@ mod test_context;
 pub use agent_model::AgentSpec;
 
 pub mod model {
+    pub use swim_api::agent::HttpLaneRequest;
     pub use swim_api::protocol::map::{MapMessage, MapOperation};
     pub use swim_model::Text;
-}
-
-/// Base trait for all agent items (lanes and stores).
-pub trait AgentItem {
-    /// Each item has a (unique within an agent instance) ID. This is used by the task that drives the
-    /// agent to avoid keying internal hash-maps on the name.
-    fn id(&self) -> u64;
 }
 
 pub mod reexport {

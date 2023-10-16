@@ -18,7 +18,7 @@ use futures::{future::BoxFuture, Future, FutureExt};
 use swim_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult, LaneConfig},
     error::{AgentInitError, AgentTaskError},
-    meta::lane::LaneKind,
+    lane::WarpLaneKind,
     store::StoreDisabled,
 };
 use swim_form::structural::read::ReadError;
@@ -92,7 +92,7 @@ impl Agent for TestAgent {
                     ..Default::default()
                 };
                 let io = context
-                    .add_lane(LANE_NAME, LaneKind::Value, config)
+                    .add_lane(LANE_NAME, WarpLaneKind::Value, config)
                     .await
                     .expect("Registering lane failed.");
                 Ok(agent_task(context, io).boxed())

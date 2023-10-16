@@ -26,7 +26,9 @@ use uuid::Uuid;
 use crate::{
     agent_model::WriteResult,
     event_handler::{
-        ActionContext, ConstHandler, EventHandlerError, HandlerAction, Modification, StepResult,
+        check_step::{check_is_complete, check_is_continue},
+        ActionContext, ConstHandler, EventHandlerError, HandlerAction, Modification,
+        ModificationFlags, StepResult,
     },
     lanes::{
         demand::{Cue, Demand, DemandLaneSync},
@@ -86,16 +88,7 @@ fn cue_event_handler() {
         &agent,
     );
 
-    assert!(matches!(
-        result,
-        StepResult::Complete {
-            modified_item: Some(Modification {
-                item_id: LANE_ID,
-                trigger_handler: true
-            }),
-            result: ()
-        }
-    ));
+    check_is_complete(result, LANE_ID, &(), ModificationFlags::all());
 
     assert!(agent.lane.cued.get());
 
@@ -125,16 +118,7 @@ fn demand_lane_sync_handler() {
         &agent,
     );
 
-    assert!(matches!(
-        result,
-        StepResult::Complete {
-            modified_item: Some(Modification {
-                item_id: LANE_ID,
-                trigger_handler: true
-            }),
-            result: ()
-        }
-    ));
+    check_is_complete(result, LANE_ID, &(), ModificationFlags::all());
 
     assert!(!agent.lane.cued.get());
     let guard = agent.lane.inner.borrow();
@@ -182,13 +166,7 @@ fn demand_event_handler_no_modify() {
         &agent,
     );
 
-    assert!(matches!(
-        result,
-        StepResult::Complete {
-            modified_item: Some(Modification { item_id, trigger_handler: false }),
-            result: ()
-        } if item_id == LANE_ID
-    ));
+    check_is_complete(result, LANE_ID, &(), ModificationFlags::DIRTY);
 
     let guard = agent.lane.inner.borrow();
     assert_eq!(guard.computed_value, Some(34));
@@ -254,15 +232,7 @@ fn demand_event_handler_with_mod() {
         &agent,
     );
 
-    assert!(matches!(
-        result,
-        StepResult::Continue {
-            modified_item: Some(Modification {
-                item_id: 0,
-                trigger_handler: true
-            }),
-        }
-    ));
+    check_is_continue(result, 0, ModificationFlags::all());
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
@@ -283,13 +253,7 @@ fn demand_event_handler_with_mod() {
         &agent,
     );
 
-    assert!(matches!(
-        result,
-        StepResult::Complete {
-            modified_item: Some(Modification { item_id, trigger_handler: false }),
-            result: ()
-        } if item_id == LANE_ID
-    ));
+    check_is_complete(result, LANE_ID, &(), ModificationFlags::DIRTY);
 
     let guard = agent.lane.inner.borrow();
     assert_eq!(guard.computed_value, Some(123));
