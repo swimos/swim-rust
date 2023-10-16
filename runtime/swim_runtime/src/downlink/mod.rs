@@ -996,6 +996,7 @@ async fn write_task<B: DownlinkBackpressure>(
                                 info!("Stopping as no subscribers attached within the timeout and read task voted to stop.");
                                 break 'outer;
                             } else {
+                                voted = true;
                                 state = WriteState::Idle {
                                     message_writer,
                                     buffer,
