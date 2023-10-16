@@ -74,6 +74,10 @@ pub fn agent_timeout_coordinator() -> (Voter, Voter, Voter, Receiver) {
     (sender1, sender2, sender3, receiver)
 }
 
+/// Allows the read and write parts of the downlink runtime to vote on when the runtime should stop.
+/// The [`Receiver`] future will only complete when both [`Sender`]s have voted to stop. If only one
+/// sender has voted to stop, it may rescind its vote. Rescinding a vote will only be respected if unanimity
+/// was not reached.
 pub fn downlink_timeout_coordinator() -> (Voter, Voter, Receiver) {
     let ([sender1, sender2], receiver) = multi_party_coordinator::<2>();
     (sender1, sender2, receiver)
@@ -119,7 +123,7 @@ impl NumParties for [Voter; 8] {
     }
 }
 
-pub fn multi_party_coordinator<const N: usize>() -> ([Voter; N], Receiver)
+pub(crate) fn multi_party_coordinator<const N: usize>() -> ([Voter; N], Receiver)
 where
     [Voter; N]: NumParties,
 {
