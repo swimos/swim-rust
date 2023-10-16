@@ -177,7 +177,7 @@ where
 
     let agent = FakeAgent::new(endpoints_rx, coord_rx, stop_rx.clone(), event_tx);
 
-    let (vote1, vote2, vote3, vote_rx) = timeout_coord::timeout_coordinator();
+    let (vote1, vote2, vote3, vote_rx) = timeout_coord::agent_timeout_coordinator();
 
     let read = read_task(
         config,
