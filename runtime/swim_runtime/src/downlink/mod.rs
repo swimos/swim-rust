@@ -20,7 +20,7 @@ use crate::downlink::failure::BadFrameResponse;
 use crate::timeout_coord::{VoteResult, Voter};
 use backpressure::DownlinkBackpressure;
 use bitflags::bitflags;
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use futures::future::{join, select, Either};
 use futures::stream::SelectAll;
 use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
@@ -32,12 +32,12 @@ use swim_messages::protocol::{
     RawResponseMessageDecoder, ResponseMessage,
 };
 use swim_model::address::RelativeAddress;
-use swim_model::Text;
+use swim_model::{BytesStr, Text};
 use swim_utilities::future::{immediate_or_join, immediate_or_start, SecondaryResult};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::trigger;
 use tokio::sync::mpsc;
-use tokio::time::{timeout, timeout_at, Instant};
+use tokio::time::{timeout, Instant};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 use tracing::{error, info, info_span, trace, warn, Instrument};
@@ -421,7 +421,7 @@ async fn attach_task<F>(
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum ReadTaskState {
+enum ReadTaskDlState {
     Init,
     Linked,
     Synced,
@@ -519,6 +519,15 @@ impl<D: Decoder> Stream for DownlinkReceiver<D> {
     }
 }
 
+enum ReadTaskEvent {
+    Message(ResponseMessage<BytesStr, Bytes, Bytes>),
+    ReadFailed(std::io::Error),
+    MessagesStopped,
+    NewConsumer(ByteWriter, DownlinkOptions),
+    ConsumerChannelStopped,
+    ConsumersTimedOut,
+}
+
 /// Consumes incoming messages from the remote lane and passes them to the consumers.
 async fn read_task<I, H>(
     input: ByteReader,
@@ -539,128 +548,182 @@ where
 
     let mut consumer_stream = ReceiverStream::new(consumers);
 
-    let mut state = ReadTaskState::Init;
+    let make_timeout = || tokio::time::sleep_until(Instant::now() + config.empty_timeout);
+    let mut task_state = pin!(Some(make_timeout()));
+    let mut dl_state = ReadTaskDlState::Init;
     let mut current = BytesMut::new();
     let mut awaiting_synced: Vec<DownlinkSender> = vec![];
     let mut awaiting_linked: Vec<DownlinkSender> = vec![];
     let mut registered: Vec<DownlinkSender> = vec![];
 
-    let mut empty_timestamp = Some(Instant::now() + config.empty_timeout);
-    let result = loop {
-        let next_item = if let Some(timestamp) = empty_timestamp {
-            if voted {
-                consumer_stream.next().await.map(Either::Right)
-            } else if let Ok(result) = timeout_at(timestamp, consumer_stream.next()).await {
-                result.map(Either::Right)
-            } else {
+    let result: Result<(), H::Report> = loop {
+        let (event, is_active) = match task_state.as_mut().as_pin_mut() {
+            Some(sleep) if !voted => (
+                tokio::select! {
+                    biased;
+                    _ = sleep => {
+                        task_state.set(None);
+                        ReadTaskEvent::ConsumersTimedOut
+                    },
+                    maybe_consumer = consumer_stream.next() => {
+                        if let Some((consumer, options)) = maybe_consumer {
+                            ReadTaskEvent::NewConsumer(consumer, options)
+                        } else {
+                            ReadTaskEvent::ConsumerChannelStopped
+                        }
+                    },
+                    maybe_message = messages.next() => {
+                        match maybe_message {
+                            Some(Ok(msg)) => ReadTaskEvent::Message(msg),
+                            Some(Err(err)) => ReadTaskEvent::ReadFailed(err),
+                            _ => ReadTaskEvent::MessagesStopped,
+                        }
+                    }
+                },
+                false,
+            ),
+            _ => {
+                let get_next = async {
+                    tokio::select! {
+                        maybe_consumer = consumer_stream.next() => {
+                            if let Some((consumer, options)) = maybe_consumer {
+                                ReadTaskEvent::NewConsumer(consumer, options)
+                            } else {
+                                ReadTaskEvent::ConsumerChannelStopped
+                            }
+                        },
+                        maybe_message = messages.next() => {
+                            match maybe_message {
+                                Some(Ok(msg)) => ReadTaskEvent::Message(msg),
+                                Some(Err(err)) => ReadTaskEvent::ReadFailed(err),
+                                _ => ReadTaskEvent::MessagesStopped,
+                            }
+                        }
+                    }
+                };
+                if flushed {
+                    trace!("Waiting without flush.");
+                    (get_next.await, true)
+                } else {
+                    trace!("Waiting with flush.");
+                    let flush = join(flush_all(&mut awaiting_synced), flush_all(&mut registered));
+                    let next_with_flush = immediate_or_join(get_next, flush);
+                    let (next, flush_result) = next_with_flush.await;
+                    let is_active = if flush_result.is_some() {
+                        trace!("Flush completed.");
+                        flushed = true;
+                        if registered.is_empty() && awaiting_synced.is_empty() {
+                            trace!("Number of subscribers dropped to 0.");
+                            task_state.set(Some(make_timeout()));
+                            false
+                        } else {
+                            true
+                        }
+                    } else {
+                        true
+                    };
+                    (next, is_active)
+                }
+            }
+        };
+
+        match event {
+            ReadTaskEvent::ConsumersTimedOut => {
                 info!("No consumers connected within the timeout period. Voting to stop.");
                 if stop_voter.vote() == VoteResult::Unanimous {
                     // No consumers registered within the timeout and the write task has voted to stop.
                     break Ok(());
                 } else {
                     voted = true;
-                    consumer_stream.next().await.map(Either::Right)
                 }
             }
-        } else if flushed {
-            trace!("Waiting without flush.");
-            match select(consumer_stream.next(), messages.next()).await {
-                Either::Left((consumer, _)) => consumer.map(Either::Right),
-                Either::Right((msg, _)) => msg.map(Either::Left),
-            }
-        } else {
-            trace!("Waiting with flush.");
-            let get_next = select(consumer_stream.next(), messages.next());
-            let flush = join(flush_all(&mut awaiting_synced), flush_all(&mut registered));
-            let next_with_flush = immediate_or_join(get_next, flush);
-            let (next, flush_result) = next_with_flush.await;
-            if flush_result.is_some() {
-                trace!("Flush completed.");
-                if registered.is_empty() && awaiting_synced.is_empty() {
-                    trace!("Number of subscribers dropped to 0.");
-                    empty_timestamp = Some(Instant::now() + config.empty_timeout);
-                }
-                flushed = true;
-            }
-            match next {
-                Either::Left((consumer, _)) => consumer.map(Either::Right),
-                Either::Right((msg, _)) => msg.map(Either::Left),
-            }
-        };
-
-        match next_item {
-            Some(Either::Left(Ok(ResponseMessage { envelope, .. }))) => match envelope {
+            ReadTaskEvent::Message(ResponseMessage { envelope, .. }) => match envelope {
                 Notification::Linked => {
                     trace!("Entering Linked state.");
-                    state = ReadTaskState::Linked;
-                    link(&mut awaiting_linked, &mut awaiting_synced, &mut registered).await;
-                    if awaiting_synced.is_empty() && registered.is_empty() {
-                        empty_timestamp = Some(Instant::now() + config.empty_timeout);
+                    dl_state = ReadTaskDlState::Linked;
+                    if is_active {
+                        link(&mut awaiting_linked, &mut awaiting_synced, &mut registered).await;
+                        if awaiting_synced.is_empty() && registered.is_empty() {
+                            trace!("Number of subscribers dropped to 0.");
+                            task_state.set(Some(make_timeout()));
+                        }
                     }
                 }
                 Notification::Synced => {
                     trace!("Entering Synced state.");
-                    state = ReadTaskState::Synced;
-                    if I::SINGLE_FRAME_STATE {
-                        sync_current(&mut awaiting_synced, &mut registered, &current).await;
-                    } else {
-                        sync_only(&mut awaiting_synced, &mut registered).await;
-                    }
-                    if registered.is_empty() {
-                        empty_timestamp = Some(Instant::now() + config.empty_timeout);
-                    }
-                }
-                Notification::Event(bytes) => {
-                    trace!("Dispatching an event.");
-                    current.clear();
-                    if let Err(e) = interpretation.interpret_frame_data(bytes, &mut current) {
-                        if let BadFrameResponse::Abort(report) = failure_handler.failed_with(e) {
-                            break Err(report);
+                    dl_state = ReadTaskDlState::Synced;
+                    if is_active {
+                        if I::SINGLE_FRAME_STATE {
+                            sync_current(&mut awaiting_synced, &mut registered, &current).await;
+                        } else {
+                            sync_only(&mut awaiting_synced, &mut registered).await;
                         }
-                    }
-                    send_current(&mut registered, &current).await;
-                    if !I::SINGLE_FRAME_STATE {
-                        send_current(&mut awaiting_synced, &current).await;
-                    }
-                    if registered.is_empty() && awaiting_synced.is_empty() {
-                        trace!("Number of subscribers dropped to 0.");
-                        empty_timestamp = Some(Instant::now() + config.empty_timeout);
-                        flushed = true;
-                    } else {
-                        flushed = false;
+                        if registered.is_empty() {
+                            trace!("Number of subscribers dropped to 0.");
+                            task_state.set(Some(make_timeout()));
+                        }
                     }
                 }
                 Notification::Unlinked(message) => {
                     trace!("Stopping after unlinked: {msg:?}", msg = message);
                     break Ok(());
                 }
-            },
-            Some(Either::Right((writer, options))) => {
-                if voted {
-                    if stop_voter.rescind() == VoteResult::Unanimous {
-                        info!("Attempted to rescind stop vote but shutdown had already started.");
-                        break Ok(());
-                    } else {
-                        voted = false;
+                Notification::Event(bytes) => {
+                    trace!("Updating the current value.");
+                    current.clear();
+                    if let Err(e) = interpretation.interpret_frame_data(bytes, &mut current) {
+                        if let BadFrameResponse::Abort(report) = failure_handler.failed_with(e) {
+                            break Err(report);
+                        }
+                    }
+                    if is_active {
+                        send_current(&mut registered, &current).await;
+                        if !I::SINGLE_FRAME_STATE {
+                            send_current(&mut awaiting_synced, &current).await;
+                        }
+                        if registered.is_empty() && awaiting_synced.is_empty() {
+                            trace!("Number of subscribers dropped to 0.");
+                            task_state.set(Some(make_timeout()));
+                            flushed = true;
+                        } else {
+                            flushed = false;
+                        }
                     }
                 }
-                let mut dl_writer = DownlinkSender::new(writer, options);
-                if matches!(state, ReadTaskState::Init) {
-                    trace!("Attaching a new subscriber to be linked.");
-                    empty_timestamp = None;
-                    awaiting_linked.push(dl_writer);
-                } else if dl_writer.send(DownlinkNotification::Linked).await.is_ok() {
-                    trace!("Attaching a new subscriber to be synced.");
-                    empty_timestamp = None;
-                    awaiting_synced.push(dl_writer);
-                }
-            }
-            Some(Either::Left(Err(err))) => {
+            },
+            ReadTaskEvent::ReadFailed(err) => {
                 error!(
                     "Failed to read a frame from the input: {error}",
                     error = err
                 );
                 break Ok(());
+            }
+            ReadTaskEvent::NewConsumer(writer, options) => {
+                let mut dl_writer = DownlinkSender::new(writer, options);
+                let added = if matches!(dl_state, ReadTaskDlState::Init) {
+                    trace!("Attaching a new subscriber to be linked.");
+                    awaiting_linked.push(dl_writer);
+                    true
+                } else if dl_writer.send(DownlinkNotification::Linked).await.is_ok() {
+                    trace!("Attaching a new subscriber to be synced.");
+                    awaiting_synced.push(dl_writer);
+                    true
+                } else {
+                    false
+                };
+                if added {
+                    task_state.set(None);
+                    if voted {
+                        if stop_voter.rescind() == VoteResult::Unanimous {
+                            info!(
+                                "Attempted to rescind stop vote but shutdown had already started."
+                            );
+                            break Ok(());
+                        } else {
+                            voted = false;
+                        }
+                    }
+                }
             }
             _ => {
                 trace!("Instructed to stop.");
@@ -668,6 +731,7 @@ where
             }
         }
     };
+
     trace!("Read task stopping and unlinked all subscribers");
     unlink(awaiting_linked).await;
     unlink(awaiting_synced).await;
