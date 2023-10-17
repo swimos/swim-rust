@@ -1292,7 +1292,7 @@ where
 
 #[derive(Debug, Error)]
 pub enum DowncastError {
-    #[error("Expected a key of type {expected_type:?} but received type {:?}", key.type_id())]
+    #[error("Expected a key of type {expected_type:?} but received type {:?}", (**key).type_id())]
     Key {
         key: Box<dyn Any + Send>,
         expected_type: TypeId,

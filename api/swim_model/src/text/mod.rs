@@ -345,7 +345,7 @@ impl PartialEq<&mut str> for Text {
 
 impl PartialOrd for Text {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.as_str().partial_cmp(other.as_str())
+        Some(self.cmp(other))
     }
 }
 

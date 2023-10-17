@@ -138,7 +138,7 @@ impl From<Attr> for Value {
 
 impl PartialOrd for Attr {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.compare(other))
+        Some(self.cmp(other))
     }
 }
 

@@ -259,7 +259,7 @@ impl Name {
 
 impl PartialOrd for Name {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.str_value().partial_cmp(other.str_value())
+        Some(self.cmp(other))
     }
 }
 
