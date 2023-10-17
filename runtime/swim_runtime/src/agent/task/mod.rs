@@ -1862,18 +1862,19 @@ where
                     }
                 }
             }
-            WriteTaskEvent::WriteDone((writer, buffer, result)) => {
-                if let Err(e) = result {
-                    let remote_id = writer.remote_id();
-                    error!(
-                        error = %e,
-                        "Writing to remote {} failed. Removing attached uplinks.",
-                        remote_id
-                    );
-                    state.remove_remote(remote_id, DisconnectionReason::ChannelClosed);
-                } else if let Some(write) = state.replace(writer, buffer) {
+            WriteTaskEvent::WriteDone((writer, buffer, Ok(_))) => {
+                if let Some(write) = state.replace(writer, buffer) {
                     streams.schedule_write(write.into_future());
                 }
+            }
+            WriteTaskEvent::WriteDone((writer, _, Err(err))) => {
+                let remote_id = writer.remote_id();
+                info!(
+                    error = %err,
+                    "Writing to remote {} failed. Removing attached uplinks.",
+                    remote_id
+                );
+                state.remove_remote(remote_id, DisconnectionReason::ChannelClosed);
             }
             WriteTaskEvent::LaneFailed(lane_id) => {
                 error!(
