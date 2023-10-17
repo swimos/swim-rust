@@ -227,7 +227,7 @@ pub trait AgentSpec: Sized + Send {
     fn on_sync(&self, lane: &str, id: Uuid) -> Option<Self::OnSyncHandler>;
 
     /// Create a handler that will update the state of the agent when an HTTP request is
-    /// made to a lane. If not HTTP lane exists with the specified name the request will
+    /// made to a lane. If no HTTP lane exists with the specified name the request will
     /// be returned as an error (so that the caller can handle it will a 404 response).
     ///
     /// #Arguments
