@@ -35,6 +35,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         enable_logging,
         include_ui,
         port,
+        ui_port,
     } = Params::parse();
 
     if enable_logging {
@@ -54,8 +55,9 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     };
 
     let server_task = tokio::spawn(run_swim_server(agencies, addr_tx, bind_to));
+
     if include_ui {
-        let ui_task = tokio::spawn(ui_server(addr_rx, shutdown_rx, SHUTDOWN_TIMEOUT));
+        let ui_task = tokio::spawn(ui_server(addr_rx, shutdown_rx, SHUTDOWN_TIMEOUT, ui_port));
         ui_task.await??;
     }
     server_task.await??;
@@ -67,10 +69,14 @@ async fn ui_server(
     swim_addr_rx: oneshot::Receiver<SocketAddr>,
     shutdown_signal: Arc<Notify>,
     shutdown_timeout: Duration,
+    port: Option<u16>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     if let Ok(addr) = swim_addr_rx.await {
         let app = ui_server_router(addr.port());
-        let server = axum::Server::try_bind(&"0.0.0.0:0".parse()?)?.serve(app.into_make_service());
+
+        let bind_to = format!("0.0.0.0:{}", port.unwrap_or_default()).parse()?;
+
+        let server = axum::Server::try_bind(&bind_to)?.serve(app.into_make_service());
         let ui_addr = server.local_addr();
         println!("UI bound to: {}", ui_addr);
         let stop_tx = Arc::new(Notify::new());
@@ -135,6 +141,9 @@ struct Params {
     /// Bind to a specific port.
     #[arg(short, long)]
     port: Option<u16>,
+    /// Bind the UI a specific port.
+    #[arg(short, long)]
+    ui_port: Option<u16>,
 }
 
 fn example_filter() -> Result<EnvFilter, Box<dyn std::error::Error + Send + Sync>> {
