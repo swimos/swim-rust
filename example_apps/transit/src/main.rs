@@ -22,7 +22,6 @@ use swim::{
     server::{Server, ServerBuilder},
 };
 use tokio::sync::{oneshot, Notify};
-use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 use transit::start_agencies_and_wait;
 use transit::{buses_api::BusesApi, create_plane, ui::ui_server_router};
@@ -38,11 +37,10 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         port,
     } = Params::parse();
 
-    let _logging_guard = if enable_logging {
-        Some(configure_logging()?)
-    } else {
-        None
-    };
+    if enable_logging {
+        configure_logging()?;
+    }
+
     let agencies = transit::model::agencies();
 
     let (addr_tx, addr_rx) = oneshot::channel::<SocketAddr>();
@@ -153,17 +151,11 @@ fn example_filter() -> Result<EnvFilter, Box<dyn std::error::Error + Send + Sync
     Ok(filter)
 }
 
-fn configure_logging() -> Result<WorkerGuard, Box<dyn std::error::Error + Send + Sync>> {
+fn configure_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let filter = example_filter()?
         .add_directive("transit=warn".parse()?)
         .add_directive(LevelFilter::WARN.into());
 
-    let rolling = tracing_appender::rolling::never("logs", "debug.log");
-    let (appender, guard) = tracing_appender::non_blocking(rolling);
-
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_writer(appender)
-        .init();
-    Ok(guard)
+    tracing_subscriber::fmt().with_env_filter(filter).init();
+    Ok(())
 }

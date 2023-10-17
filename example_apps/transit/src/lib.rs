@@ -69,6 +69,7 @@ pub fn create_plane(
     let state_route = RoutePattern::parse_str("/state/:country/:state")?;
     let state_agent = AgentModel::new(StateAgent::default, StateLifecycle.into_lifecycle());
     builder = builder.add_route(state_route, state_agent);
+
     debug!("Adding country routes.");
     let country_route = RoutePattern::parse_str("/country/:country")?;
     let country_agent = AgentModel::new(CountryAgent::default, CountryLifecycle.into_lifecycle());
