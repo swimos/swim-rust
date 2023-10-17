@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashSet, error::Error, net::SocketAddr, time::Duration};
+use std::{error::Error, net::SocketAddr, time::Duration};
 
-use clap::ValueEnum;
 use example_util::manage_handle_report;
 use futures::{stream::FuturesUnordered, StreamExt};
 use swim::{
@@ -24,8 +23,6 @@ use swim::{
 };
 use tokio::{sync::oneshot, time::Instant};
 use tracing::{debug, error, info};
-use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 use transit_model::agency::Agency;
 
 use crate::{
@@ -47,30 +44,10 @@ const POLL_DELAY: Duration = Duration::from_secs(10);
 const WEEK: Duration = Duration::from_secs(7 * 86400);
 const HISTORY_LEN: usize = 10;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Hash, Ord, ValueEnum)]
-pub enum IncludeRoutes {
-    Vehicle,
-    State,
-    Country,
-}
-
-impl IncludeRoutes {
-    pub fn all() -> HashSet<Self> {
-        [
-            IncludeRoutes::Vehicle,
-            IncludeRoutes::State,
-            IncludeRoutes::Country,
-        ]
-        .into_iter()
-        .collect()
-    }
-}
-
 pub fn create_plane(
     agencies: Vec<Agency>,
     api: BusesApi,
     mut builder: ServerBuilder,
-    inc: HashSet<IncludeRoutes>,
 ) -> Result<ServerBuilder, Box<dyn Error + Send + Sync>> {
     debug!("Adding agency routes.");
     for agency in agencies {
@@ -81,29 +58,21 @@ pub fn create_plane(
         builder = builder.add_route(route, agent);
     }
 
-    if inc.contains(&IncludeRoutes::Vehicle) {
-        let epoch = Instant::now() - WEEK;
-        debug!(epoch = ?epoch, "Adding vehicle route.");
-        let vehicle_route = RoutePattern::parse_str("/vehicle/:country/:state/:agency/:id")?;
-        let vehicle_lifecycle = move || VehicleLifecycle::new(epoch, HISTORY_LEN).into_lifecycle();
-        let vehicle_agent = AgentModel::from_fn(VehicleAgent::default, vehicle_lifecycle);
-        builder = builder.add_route(vehicle_route, vehicle_agent);
-    }
+    let epoch = Instant::now() - WEEK;
+    debug!(epoch = ?epoch, "Adding vehicle route.");
+    let vehicle_route = RoutePattern::parse_str("/vehicle/:country/:state/:agency/:id")?;
+    let vehicle_lifecycle = move || VehicleLifecycle::new(epoch, HISTORY_LEN).into_lifecycle();
+    let vehicle_agent = AgentModel::from_fn(VehicleAgent::default, vehicle_lifecycle);
+    builder = builder.add_route(vehicle_route, vehicle_agent);
 
-    if inc.contains(&IncludeRoutes::State) {
-        debug!("Adding state route.");
-        let state_route = RoutePattern::parse_str("/state/:country/:state")?;
-        let state_agent = AgentModel::new(StateAgent::default, StateLifecycle.into_lifecycle());
-        builder = builder.add_route(state_route, state_agent);
-    }
-
-    if inc.contains(&IncludeRoutes::Country) {
-        debug!("Adding country routes.");
-        let country_route = RoutePattern::parse_str("/country/:country")?;
-        let country_agent =
-            AgentModel::new(CountryAgent::default, CountryLifecycle.into_lifecycle());
-        builder = builder.add_route(country_route, country_agent);
-    }
+    debug!("Adding state route.");
+    let state_route = RoutePattern::parse_str("/state/:country/:state")?;
+    let state_agent = AgentModel::new(StateAgent::default, StateLifecycle.into_lifecycle());
+    builder = builder.add_route(state_route, state_agent);
+    debug!("Adding country routes.");
+    let country_route = RoutePattern::parse_str("/country/:country")?;
+    let country_agent = AgentModel::new(CountryAgent::default, CountryLifecycle.into_lifecycle());
+    builder = builder.add_route(country_route, country_agent);
 
     Ok(builder)
 }
@@ -124,33 +93,4 @@ pub async fn start_agencies_and_wait(
         error!(error = %error, "Failed to start agency agent.");
     }
     manage_handle_report(handle, bound).await
-}
-
-pub fn example_filter() -> Result<EnvFilter, Box<dyn std::error::Error + Send + Sync>> {
-    let filter = if let Ok(filter) = EnvFilter::try_from_default_env() {
-        filter
-    } else {
-        EnvFilter::new("")
-            .add_directive("swim_server_app=trace".parse()?)
-            .add_directive("swim_runtime=trace".parse()?)
-            .add_directive("swim_agent=warn".parse()?)
-            .add_directive("swim_messages=warn".parse()?)
-            .add_directive("swim_remote=warn".parse()?)
-    };
-    Ok(filter)
-}
-
-pub fn configure_logging() -> Result<WorkerGuard, Box<dyn std::error::Error + Send + Sync>> {
-    let filter = example_filter()?
-        .add_directive("transit=warn".parse()?)
-        .add_directive(LevelFilter::WARN.into());
-
-    let rolling = tracing_appender::rolling::never("logs", "debug.log");
-    let (appender, guard) = tracing_appender::non_blocking(rolling);
-
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_writer(appender)
-        .init();
-    Ok(guard)
 }

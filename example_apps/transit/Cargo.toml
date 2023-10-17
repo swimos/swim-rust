@@ -3,10 +3,6 @@ name = "transit"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = []
-mock-server = ["dep:transit-fixture"]
-
 [dependencies]
 swim = { path = "../../swim", features = ["server", "agent"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "io-util", "fs"]}
@@ -22,13 +18,8 @@ reqwest = { workspace = true, features = ["rustls-tls", "gzip"]}
 bytes = { workspace = true }
 tracing = { workspace = true }
 transit-model = { path = "transit-model" }
-transit-fixture = { path = "transit-fixture", optional = true }
 futures = { workspace = true }
 clap = { workspace = true, features = ["derive"]}
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tracing-appender = { workspace = true }
 axum = { version = "0.6.20", features = ["tokio", "http1"]}
-
-[[bin]]
-name = "fixture"
-required-features = ["mock-server"]

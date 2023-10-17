@@ -32,7 +32,6 @@ members = [
     "example_apps/local_downlink",
     "example_apps/http_lane",
     "example_apps/transit",
-    "example_apps/transit/transit-fixture",
     "example_apps/transit/transit-model",
     "example_apps/tutorial_app",
     "example_apps/tutorial_app/model",

@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{
-    collections::HashSet, error::Error, net::SocketAddr, pin::pin, sync::Arc, time::Duration,
-};
+use std::{error::Error, net::SocketAddr, pin::pin, sync::Arc, time::Duration};
 
 use clap::Parser;
 
@@ -24,10 +22,10 @@ use swim::{
     server::{Server, ServerBuilder},
 };
 use tokio::sync::{oneshot, Notify};
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 use transit::start_agencies_and_wait;
-use transit::{
-    buses_api::BusesApi, configure_logging, create_plane, ui::ui_server_router, IncludeRoutes,
-};
+use transit::{buses_api::BusesApi, create_plane, ui::ui_server_router};
 use transit_model::agency::Agency;
 
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -35,7 +33,6 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let Params {
-        routes,
         enable_logging,
         include_ui,
         port,
@@ -48,21 +45,6 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     };
     let agencies = transit::model::agencies();
 
-    let routes = match routes {
-        Some(IncludeRoutes::Vehicle) => [IncludeRoutes::Vehicle].into_iter().collect(),
-        Some(IncludeRoutes::State) => [IncludeRoutes::Vehicle, IncludeRoutes::State]
-            .into_iter()
-            .collect(),
-        Some(IncludeRoutes::Country) => [
-            IncludeRoutes::Vehicle,
-            IncludeRoutes::State,
-            IncludeRoutes::Country,
-        ]
-        .into_iter()
-        .collect(),
-        None => HashSet::new(),
-    };
-
     let (addr_tx, addr_rx) = oneshot::channel::<SocketAddr>();
     let shutdown_tx = Arc::new(Notify::new());
     let shutdown_rx = shutdown_tx.clone();
@@ -73,7 +55,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         None
     };
 
-    let server_task = tokio::spawn(run_swim_server(agencies, addr_tx, routes, bind_to));
+    let server_task = tokio::spawn(run_swim_server(agencies, addr_tx, bind_to));
     if include_ui {
         let ui_task = tokio::spawn(ui_server(addr_rx, shutdown_rx, SHUTDOWN_TIMEOUT));
         ui_task.await??;
@@ -111,7 +93,6 @@ async fn ui_server(
 async fn run_swim_server(
     agencies: Vec<Agency>,
     bound: oneshot::Sender<SocketAddr>,
-    routes: HashSet<IncludeRoutes>,
     bind_to: Option<SocketAddr>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let api = BusesApi::default();
@@ -121,7 +102,7 @@ async fn run_swim_server(
         .collect::<Result<Vec<_>, _>>()?;
     let mut builder = ServerBuilder::with_plane_name("Transit Plane");
 
-    builder = create_plane(agencies, api, builder, routes)?;
+    builder = create_plane(agencies, api, builder)?;
 
     if let Some(addr) = bind_to {
         builder = builder.set_bind_addr(addr);
@@ -147,9 +128,6 @@ async fn run_swim_server(
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Params {
-    /// Most general routes to include.
-    #[arg(short, long)]
-    routes: Option<IncludeRoutes>,
     /// Switch on logging to the console.
     #[arg(long)]
     enable_logging: bool,
@@ -159,4 +137,33 @@ struct Params {
     /// Bind to a specific port.
     #[arg(short, long)]
     port: Option<u16>,
+}
+
+fn example_filter() -> Result<EnvFilter, Box<dyn std::error::Error + Send + Sync>> {
+    let filter = if let Ok(filter) = EnvFilter::try_from_default_env() {
+        filter
+    } else {
+        EnvFilter::new("")
+            .add_directive("swim_server_app=info".parse()?)
+            .add_directive("swim_runtime=info".parse()?)
+            .add_directive("swim_agent=warn".parse()?)
+            .add_directive("swim_messages=warn".parse()?)
+            .add_directive("swim_remote=warn".parse()?)
+    };
+    Ok(filter)
+}
+
+fn configure_logging() -> Result<WorkerGuard, Box<dyn std::error::Error + Send + Sync>> {
+    let filter = example_filter()?
+        .add_directive("transit=warn".parse()?)
+        .add_directive(LevelFilter::WARN.into());
+
+    let rolling = tracing_appender::rolling::never("logs", "debug.log");
+    let (appender, guard) = tracing_appender::non_blocking(rolling);
+
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(appender)
+        .init();
+    Ok(guard)
 }
