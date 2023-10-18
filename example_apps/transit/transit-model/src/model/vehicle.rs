@@ -45,23 +45,37 @@ struct Body {
     last_time: Option<LastTime>,
 }
 
+/// The current state of a vehicle as reported by the web service.
 #[derive(Debug, Clone, PartialEq, Form)]
 #[form(tag = "vehicle", fields_convention = "camel")]
 pub struct Vehicle {
+    /// Unique service identifier for the vehicle.
     pub id: String,
+    /// The ID of the agency to which the vehicle belongs.
     pub agency: String,
+    /// The Swim node URI of the agent representing the vehicle.
     pub uri: String,
+    /// The service identifier of the route which the vehicle is on.
     pub route_tag: String,
+    /// ID defining the direction of the vehicle on its route.
     pub dir_id: String,
+    /// Last reported latitude of the vehicle.
     pub latitude: f64,
+    /// Last reported longitude of the vehicle.
     pub longitude: f64,
+    /// Last reported speed of the vehicle.
     pub speed: u32,
+    /// Number of seconds since the vehicle reported, relative to the timestamp of the response.
     pub secs_since_report: u32,
+    /// Last reported heading of the vehicle.
     pub heading: Heading,
+    /// Whether the future state of the vehicle can be predicted.
     pub predictable: bool,
+    /// Descriptive title of the route which the vehicle is on.
     pub route_title: String,
 }
 
+/// Representation of the type that is returned by the vehicles endpoint of the web servive.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Form)]
 pub struct VehicleResponse {
     #[serde(rename = "@id")]
@@ -91,6 +105,7 @@ pub struct LastTime {
     pub time: u64,
 }
 
+/// Parse the XML returned by the vehicles endpoint of the web service.
 pub fn load_xml_vehicles<R: BufRead>(
     read: R,
 ) -> Result<(Vec<VehicleResponse>, Option<u64>), DeError> {
@@ -101,6 +116,7 @@ pub fn load_xml_vehicles<R: BufRead>(
     )
 }
 
+/// Enumeration of cardinal and ordinal headings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Tag)]
 pub enum Heading {
     N,
@@ -290,5 +306,4 @@ mod tests {
         assert_eq!(vehicles, expected);
         assert_eq!(time, Some(TIMESTAMP));
     }
-
 }

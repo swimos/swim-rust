@@ -37,16 +37,24 @@ use self::statistics::Statistics;
 
 mod statistics;
 
+/// Agency representing a transit agency (and its current state).
 #[derive(AgentLaneModel)]
 #[projections]
 #[agent(transient, convention = "camel")]
 pub struct AgencyAgent {
+    // Vehicles currently associated with the agency (keys are the IDs used by the service.).
     vehicles: MapLane<String, Vehicle>,
+    // Total count of vehicles associated with the agency.
     count: ValueLane<usize>,
+    // Average current speed of vehicles associated with the agency.
     speed: ValueLane<f64>,
+    // Update the vehicles associated with the agency.
     add_vehicles: CommandLane<Vec<VehicleResponse>>,
+    // Exposes the agency metadata.
     info: DemandLane<Agency>,
+    // Routes in the agency (keys are the IDs used by the service).
     routes: MapLane<String, Route>,
+    // Smallest geographical bounding box containing all vehicles associated with the agency.
     bounding_box: ValueLane<BoundingBox>,
 }
 
@@ -62,12 +70,16 @@ impl AgencyLifecycle {
     #[on_start]
     fn init(&self, context: HandlerContext<AgencyAgent>) -> impl EventHandler<AgencyAgent> + '_ {
         let this = self.clone();
+
+        //Fetch the titles of the routes for the agency and start polling for updates to its vehicles.
         let get_routes_and_poll = async move {
             let on_routes = this.clone().load_routes(context).await;
             let start_polling = this.start_polling(context);
             on_routes.followed_by(start_polling)
         };
         let state_uri = self.agency.state_uri();
+
+        //Associate this agency with the state that contains it.
         let add_to_state = context.send_command(
             None,
             state_uri,
@@ -111,6 +123,7 @@ impl AgencyLifecycle {
         vehicles: &[VehicleResponse],
     ) -> impl EventHandler<AgencyAgent> + '_ {
         let responses = vehicles.to_vec();
+        //Compute statistics for the new list of vehicles and update the state of all of the lanes.
         let stats = vehicles
             .iter()
             .fold(Statistics::default(), |s, v| s.update(v));

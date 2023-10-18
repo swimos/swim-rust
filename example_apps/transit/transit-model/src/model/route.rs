@@ -18,15 +18,8 @@ use quick_xml::DeError;
 use serde::{Deserialize, Serialize};
 use swim::form::Form;
 
-#[derive(Deserialize, Serialize)]
-#[serde(rename = "body")]
-struct Body {
-    #[serde(rename = "@copyright")]
-    copyright: String,
-    #[serde(default)]
-    route: Vec<Route>,
-}
-
+/// A transit agency has some number of routes upon which are some number of vehicles. This type
+/// defines the mapping from the ID of a route to its descriptive title.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Form)]
 #[form(tag = "route")]
 pub struct Route {
@@ -36,6 +29,16 @@ pub struct Route {
     pub title: String,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename = "body")]
+struct Body {
+    #[serde(rename = "@copyright")]
+    copyright: String,
+    #[serde(default)]
+    route: Vec<Route>,
+}
+
+/// Parse the routes for an agency from the XML returned by the corresponding service endpoint.
 pub fn load_xml_routes<R: BufRead>(read: R) -> Result<Vec<Route>, DeError> {
     quick_xml::de::from_reader::<R, Body>(read).map(|body| body.route)
 }
@@ -70,5 +73,4 @@ mod tests {
         let result = load_xml_routes(ROUTES_EXAMPLE).expect("Loading routes failed.");
         assert_eq!(result, expected);
     }
-
 }

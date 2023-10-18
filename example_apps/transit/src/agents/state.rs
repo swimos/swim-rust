@@ -26,14 +26,20 @@ use crate::model::{agency::Agency, counts::Count};
 
 use super::join_value_logging_lifecycle;
 
+/// An agent with state level aggregate information.
 #[derive(AgentLaneModel)]
 #[projections]
 #[agent(transient, convention = "camel")]
 pub struct StateAgent {
+    // Count of the number of vehicles within the state.
     count: ValueLane<Count>,
+    // Counts of the number of vehicles within each agency in the state.
     agency_count: JoinValueLane<Agency, usize>,
+    // Average speed of vehicles within the state.
     speed: ValueLane<f64>,
+    // Average speeds of vehicles within each agency in the state.
     agency_speed: JoinValueLane<Agency, f64>,
+    // Add an agency to the state.
     add_agency: CommandLane<Agency>,
 }
 

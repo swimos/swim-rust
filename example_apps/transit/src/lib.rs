@@ -78,6 +78,7 @@ pub fn create_plane(
     Ok(builder)
 }
 
+/// Starts the agents for each supported agency and then waits for the server to stop.
 pub async fn start_agencies_and_wait(
     agency_uris: Vec<RouteUri>,
     handle: ServerHandle,

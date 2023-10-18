@@ -34,6 +34,10 @@ impl UiConfig {
     }
 }
 
+/// Trivial web server to present the app UI.
+///
+/// #Arguments
+/// * `port` - The port that the swim server is listening on.
 pub fn ui_server_router(port: u16) -> Router {
     Router::new()
         .route("/index.html", get(index_html))

@@ -16,6 +16,7 @@ use std::fmt::Display;
 
 use swim::form::Form;
 
+/// A "square" geographical region described by intervals of latitude and longitude.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Form)]
 #[form(tag = "bounds", fields_convention = "camel")]
 pub struct BoundingBox {

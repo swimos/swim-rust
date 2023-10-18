@@ -29,16 +29,24 @@ use crate::model::{agency::Agency, counts::Count};
 
 use super::join_value_logging_lifecycle;
 
+/// An agent with country level aggregate information.
 #[derive(AgentLaneModel)]
 #[projections]
 #[agent(transient, convention = "camel")]
 pub struct CountryAgent {
+    // Count of the number of vehicles within the country.
     count: ValueLane<Count>,
+    // Agencies in the country (keyed by service ID).
     agencies: MapLane<String, Agency>,
+    // The states within the country.
     states: MapLane<String, ()>,
+    // Counts of the number of vehicles within each state in the country.
     state_count: JoinValueLane<String, Count>,
+    // Average speed of all vehicles in the country.
     speed: ValueLane<f64>,
+    // Average speed of vehicles in each state in the country.
     state_speed: JoinValueLane<String, f64>,
+    // Add a new agency to the country.
     add_agency: CommandLane<Agency>,
 }
 
