@@ -38,6 +38,7 @@ fn enc(s: &str) -> PercentEncode<'_> {
 }
 
 impl Agency {
+    
     pub fn uri(&self) -> String {
         format!(
             "/agency/{}/{}/{}",

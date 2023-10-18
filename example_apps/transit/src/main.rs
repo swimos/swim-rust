@@ -16,13 +16,14 @@ use std::{error::Error, net::SocketAddr, pin::pin, sync::Arc, time::Duration};
 
 use clap::Parser;
 
+use example_util::example_filter;
 use futures::future::{select, Either};
 use swim::{
     route::RouteUri,
     server::{Server, ServerBuilder},
 };
 use tokio::sync::{oneshot, Notify};
-use tracing_subscriber::{filter::LevelFilter, EnvFilter};
+use tracing_subscriber::filter::LevelFilter;
 use transit::start_agencies_and_wait;
 use transit::{buses_api::BusesApi, create_plane, ui::ui_server_router};
 use transit_model::agency::Agency;
@@ -146,23 +147,14 @@ struct Params {
     ui_port: Option<u16>,
 }
 
-fn example_filter() -> Result<EnvFilter, Box<dyn std::error::Error + Send + Sync>> {
-    let filter = if let Ok(filter) = EnvFilter::try_from_default_env() {
-        filter
-    } else {
-        EnvFilter::new("")
-            .add_directive("swim_server_app=info".parse()?)
-            .add_directive("swim_runtime=info".parse()?)
-            .add_directive("swim_agent=warn".parse()?)
-            .add_directive("swim_messages=warn".parse()?)
-            .add_directive("swim_remote=warn".parse()?)
-    };
-    Ok(filter)
-}
-
 fn configure_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let filter = example_filter()?
-        .add_directive("transit=warn".parse()?)
+        .add_directive("swim_server_app=info".parse()?)
+        .add_directive("swim_runtime=warn".parse()?)
+        .add_directive("swim_agent=info".parse()?)
+        .add_directive("swim_messages=warn".parse()?)
+        .add_directive("swim_remote=warn".parse()?)
+        .add_directive("transit=info".parse()?)
         .add_directive(LevelFilter::WARN.into());
 
     tracing_subscriber::fmt().with_env_filter(filter).init();

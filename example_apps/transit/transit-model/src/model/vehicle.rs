@@ -14,7 +14,7 @@
 
 use std::io::BufRead;
 
-use quick_xml::{se::Serializer, DeError};
+use quick_xml::DeError;
 use serde::{Deserialize, Deserializer, Serialize};
 use swim::{
     form::{
@@ -33,8 +33,6 @@ use swim::{
     model::{Text, ValueKind},
 };
 use thiserror::Error;
-
-use super::{XML_HEADER, XML_INDENT, XML_INDENT_CHAR};
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename = "body")]
@@ -101,19 +99,6 @@ pub fn load_xml_vehicles<R: BufRead>(
              vehicle, last_time, ..
          }| (vehicle, last_time.map(|t| t.time)),
     )
-}
-
-pub fn produce_xml(copyright: String, vehicles: Vec<VehicleResponse>, last_time: u64) -> String {
-    let body = Body {
-        copyright,
-        vehicle: vehicles,
-        last_time: Some(LastTime { time: last_time }),
-    };
-    let mut out = XML_HEADER.to_string();
-    let mut ser = Serializer::new(&mut out);
-    ser.indent(XML_INDENT_CHAR, XML_INDENT);
-    body.serialize(ser).expect("Invalid vehicles.");
-    out
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Tag)]
@@ -306,10 +291,4 @@ mod tests {
         assert_eq!(time, Some(TIMESTAMP));
     }
 
-    #[test]
-    fn produce_vehicle_xml() {
-        let vehicles = vehicles();
-        let xml = super::produce_xml("NStream 2023".to_string(), vehicles, TIMESTAMP);
-        assert_eq!(xml.as_bytes(), VEHICLES_EXAMPLE);
-    }
 }

@@ -20,10 +20,6 @@ pub mod counts;
 pub mod route;
 pub mod vehicle;
 
-const XML_HEADER: &str = "<?xml version=\"1.0\" encoding=\"utf-8\" ?>\n";
-const XML_INDENT_CHAR: char = ' ';
-const XML_INDENT: usize = 4;
-
 pub const URL_ENCODE: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'-')
     .remove(b'_')
