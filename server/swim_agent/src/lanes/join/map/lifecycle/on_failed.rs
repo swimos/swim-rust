@@ -1,0 +1,177 @@
+// Copyright 2015-2023 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::collections::HashSet;
+
+use swim_api::handlers::{FnHandler, NoHandler};
+use swim_model::address::Address;
+
+use crate::{
+    agent_lifecycle::utility::HandlerContext,
+    event_handler::{ConstHandler, HandlerAction},
+    lanes::LinkClosedResponse,
+    lifecycle_fn::{LiftShared, WithHandlerContext},
+};
+
+use super::JoinMapHandlerStoppedFn;
+
+/// Lifecycle event for the `on_failed` event of a join map lane downlink.
+pub trait OnJoinMapFailed<L, K, Context>: Send {
+    type OnJoinMapFailedHandler<'a>: HandlerAction<Context, Completion = LinkClosedResponse> + 'a
+    where
+        Self: 'a;
+
+    fn on_failed<'a>(
+        &'a self,
+        link: L,
+        remote: Address<&str>,
+        keys: HashSet<K>,
+    ) -> Self::OnJoinMapFailedHandler<'a>;
+}
+
+/// Lifecycle event for the `on_failed` event of a join map lane downlink, where the event
+/// handler has shared state with other handlers for the same downlink.
+pub trait OnJoinMapFailedShared<L, K, Context, Shared>: Send {
+    type OnJoinMapFailedHandler<'a>: HandlerAction<Context, Completion = LinkClosedResponse> + 'a
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_failed<'a>(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        link: L,
+        remote: Address<&str>,
+        keys: HashSet<K>,
+    ) -> Self::OnJoinMapFailedHandler<'a>;
+}
+
+impl<L, K, Context> OnJoinMapFailed<L, K, Context> for NoHandler {
+    type OnJoinMapFailedHandler<'a> = ConstHandler<LinkClosedResponse>
+    where
+        Self: 'a;
+
+    fn on_failed<'a>(
+        &'a self,
+        _link: L,
+        _remote: Address<&str>,
+        _keys: HashSet<K>,
+    ) -> Self::OnJoinMapFailedHandler<'a> {
+        ConstHandler::default()
+    }
+}
+
+impl<L, K, Context, Shared> OnJoinMapFailedShared<L, K, Context, Shared> for NoHandler {
+    type OnJoinMapFailedHandler<'a> = ConstHandler<LinkClosedResponse>
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_failed<'a>(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+        _link: L,
+        _remote: Address<&str>,
+        _keys: HashSet<K>,
+    ) -> Self::OnJoinMapFailedHandler<'a> {
+        ConstHandler::default()
+    }
+}
+
+impl<L, K, Context, F, H> OnJoinMapFailed<L, K, Context> for FnHandler<F>
+where
+    F: Fn(L, Address<&str>, HashSet<K>) -> H + Send,
+    H: HandlerAction<Context, Completion = LinkClosedResponse> + 'static,
+{
+    type OnJoinMapFailedHandler<'a> = H
+    where
+        Self: 'a;
+
+    fn on_failed<'a>(
+        &'a self,
+        link: L,
+        remote: Address<&str>,
+        keys: HashSet<K>,
+    ) -> Self::OnJoinMapFailedHandler<'a> {
+        let FnHandler(f) = self;
+        f(link, remote, keys)
+    }
+}
+
+impl<L, K, Context, Shared, F> OnJoinMapFailedShared<L, K, Context, Shared> for FnHandler<F>
+where
+    F: for<'a> JoinMapHandlerStoppedFn<'a, Context, Shared, L, K, LinkClosedResponse> + Send,
+{
+    type OnJoinMapFailedHandler<'a> = <F as JoinMapHandlerStoppedFn<'a, Context, Shared, L, K, LinkClosedResponse>>::Handler
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_failed<'a>(
+        &'a self,
+        shared: &'a Shared,
+        handler_context: HandlerContext<Context>,
+        link: L,
+        remote: Address<&str>,
+        keys: HashSet<K>,
+    ) -> Self::OnJoinMapFailedHandler<'a> {
+        let FnHandler(f) = self;
+        f.make_handler(shared, handler_context, link, remote, keys)
+    }
+}
+
+impl<Context, L, K, F, H> OnJoinMapFailed<L, K, Context> for WithHandlerContext<F>
+where
+    F: Fn(HandlerContext<Context>, L, Address<&str>, HashSet<K>) -> H + Send,
+    H: HandlerAction<Context, Completion = LinkClosedResponse> + 'static,
+{
+    type OnJoinMapFailedHandler<'a> = H
+    where
+        Self: 'a;
+
+    fn on_failed<'a>(
+        &'a self,
+        link: L,
+        remote: Address<&str>,
+        keys: HashSet<K>,
+    ) -> Self::OnJoinMapFailedHandler<'a> {
+        let WithHandlerContext { inner } = self;
+        inner(HandlerContext::default(), link, remote, keys)
+    }
+}
+
+impl<L, K, Context, Shared, F> OnJoinMapFailedShared<L, K, Context, Shared>
+    for LiftShared<F, Shared>
+where
+    F: OnJoinMapFailed<L, K, Context> + Send,
+{
+    type OnJoinMapFailedHandler<'a> = F::OnJoinMapFailedHandler<'a>
+    where
+        Self: 'a,
+        Shared: 'a;
+
+    fn on_failed<'a>(
+        &'a self,
+        _shared: &'a Shared,
+        _handler_context: HandlerContext<Context>,
+        link: L,
+        remote: Address<&str>,
+        keys: HashSet<K>,
+    ) -> Self::OnJoinMapFailedHandler<'a> {
+        let LiftShared { inner, .. } = self;
+        inner.on_failed(link, remote, keys)
+    }
+}

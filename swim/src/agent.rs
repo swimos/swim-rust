@@ -240,8 +240,8 @@ pub mod item {
 
 pub mod lanes {
     pub use swim_agent::lanes::{
-        CommandLane, DemandLane, DemandMapLane, HttpLane, JoinValueLane, LaneItem, MapLane,
-        SimpleHttpLane, ValueLane,
+        CommandLane, DemandLane, DemandMapLane, HttpLane, JoinValueLane, LaneItem,
+        LinkClosedResponse, MapLane, SimpleHttpLane, ValueLane,
     };
 
     pub mod command {
@@ -282,7 +282,7 @@ pub mod lanes {
     }
 
     pub mod join_value {
-        pub use swim_agent::lanes::join_value::{JoinValueLaneSync, LinkClosedResponse};
+        pub use swim_agent::lanes::join_value::JoinValueLaneSync;
         pub mod lifecycle {
             pub use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
         }

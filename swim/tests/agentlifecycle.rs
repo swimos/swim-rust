@@ -39,8 +39,10 @@ use swim_agent::lanes::demand_map::{CueKey, DemandMapLaneSync};
 use swim_agent::lanes::http::lifecycle::HttpRequestContext;
 use swim_agent::lanes::http::{HttpLaneAccept, Recon, Response, UnitResponse};
 use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
-use swim_agent::lanes::join_value::{AfterClosed, JoinValueLaneUpdate, LinkClosedResponse};
-use swim_agent::lanes::{DemandLane, DemandMapLane, JoinValueLane, LaneItem, SimpleHttpLane};
+use swim_agent::lanes::join_value::{AfterClosed, JoinValueLaneUpdate};
+use swim_agent::lanes::{
+    DemandLane, DemandMapLane, JoinValueLane, LaneItem, LinkClosedResponse, SimpleHttpLane,
+};
 use swim_agent::meta::AgentMetadata;
 use swim_agent::reexport::bytes::BytesMut;
 use swim_agent::reexport::uuid::Uuid;

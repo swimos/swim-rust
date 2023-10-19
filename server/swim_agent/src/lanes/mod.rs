@@ -16,10 +16,14 @@ pub mod command;
 pub mod demand;
 pub mod demand_map;
 pub mod http;
-pub mod join_value;
+mod join;
 pub mod map;
 mod queues;
 pub mod value;
+
+pub use join::map as join_map;
+pub use join::value as join_value;
+pub use join::LinkClosedResponse;
 
 use bytes::BytesMut;
 

@@ -39,7 +39,8 @@ use self::default_lifecycle::DefaultJoinValueLifecycle;
 use self::downlink::JoinValueDownlink;
 use self::lifecycle::JoinValueLaneLifecycle;
 
-use super::{map::MapLaneEvent, LaneItem, MapLane};
+use super::super::{map::MapLaneEvent, LaneItem, MapLane};
+use super::DownlinkStatus;
 
 mod default_lifecycle;
 mod downlink;
@@ -96,12 +97,6 @@ where
     {
         self.inner.get_map(f)
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum DownlinkStatus {
-    Pending,
-    Linked,
 }
 
 impl<K, V> AgentItem for JoinValueLane<K, V> {
@@ -209,14 +204,6 @@ where
     {
         self.inner.read_with_prev(f)
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
-pub enum LinkClosedResponse {
-    Retry,
-    #[default]
-    Abandon,
-    Delete,
 }
 
 /// An [`EventHandler`] that will get an entry from the map.
