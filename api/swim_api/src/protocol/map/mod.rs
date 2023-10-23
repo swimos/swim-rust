@@ -456,9 +456,9 @@ impl<K: StructuralWritable, V: StructuralWritable> Encoder<MapOperation<K, V>>
     }
 }
 
-/// Repreesentation of map lane messages (used to form the body of Recon messages when operating)
+/// Representation of map lane messages (used to form the body of Recon messages when operating)
 /// on downlinks. This extends [`MapOperation`] with `Take` (retain the first `n` items) and `Drop`
-/// (remove teh first `n` items). We never use these internally but must support them for communicating
+/// (remove the first `n` items). We never use these internally but must support them for communicating
 /// with other implementations.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Form, Hash)]
 #[form_root(::swim_form)]

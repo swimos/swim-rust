@@ -15,11 +15,12 @@
 use std::{
     borrow::Borrow,
     cell::RefCell,
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     hash::Hash,
 };
 
 use bytes::BytesMut;
+use swim_api::protocol::map::MapMessage;
 use swim_form::structural::write::StructuralWritable;
 
 use crate::{
@@ -45,10 +46,102 @@ struct Link<K> {
     keys: HashSet<K>,
 }
 
+impl<K> Default for Link<K> {
+    fn default() -> Self {
+        Self {
+            status: DownlinkStatus::Pending,
+            keys: Default::default(),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Links<L, K> {
     links: HashMap<L, Link<K>>,
     ownership: HashMap<K, L>,
+}
+
+impl<L, K> Links<L, K>
+where
+    L: Clone + Hash + Eq,
+    K: Clone + Hash + Eq,
+{
+    fn insert(&mut self, link: L, key: K) {
+        let Links { links, ownership } = self;
+        if let Some(old_link) = ownership.remove(&key) {
+            if let Some(l) = links.get_mut(&old_link) {
+                l.keys.remove(&key);
+            }
+        }
+        ownership.insert(key.clone(), link.clone());
+        links.entry(link).or_default().keys.insert(key);
+    }
+
+    fn remove(&mut self, link: &L, key: &K) {
+        let Links { links, ownership } = self;
+        ownership.remove(key);
+        if let Some(l) = links.get_mut(link) {
+            l.keys.remove(key);
+        }
+    }
+
+    fn clear(&mut self, link: &L) -> HashSet<K> {
+        let Links { links, ownership } = self;
+        let keys = links
+            .get_mut(link)
+            .map(|l| std::mem::take(&mut l.keys))
+            .unwrap_or_default();
+        for k in &keys {
+            ownership.remove(k);
+        }
+        keys
+    }
+}
+
+impl<L, K> Links<L, K>
+where
+    L: Clone + Hash + Eq,
+    K: Clone + Hash + Eq + Ord,
+{
+    fn take(&mut self, link: &L, n: usize) -> Vec<K> {
+        let Links { links, ownership } = self;
+        links
+            .get_mut(&link)
+            .map(|l| {
+                let sorted = l.keys.iter().collect::<BTreeSet<_>>();
+                let to_remove = sorted
+                    .iter()
+                    .skip(n)
+                    .map(|k| (*k).clone())
+                    .collect::<Vec<_>>();
+                for k in &to_remove {
+                    l.keys.remove(&k);
+                    ownership.remove(k);
+                }
+                to_remove
+            })
+            .unwrap_or_default()
+    }
+
+    fn drop(&mut self, link: &L, n: usize) -> Vec<K> {
+        let Links { links, ownership } = self;
+        links
+            .get_mut(&link)
+            .map(|l| {
+                let sorted = l.keys.iter().collect::<BTreeSet<_>>();
+                let to_remove = sorted
+                    .iter()
+                    .take(n)
+                    .map(|k| (*k).clone())
+                    .collect::<Vec<_>>();
+                for k in &to_remove {
+                    l.keys.remove(&k);
+                    ownership.remove(k);
+                }
+                to_remove
+            })
+            .unwrap_or_default()
+    }
 }
 
 impl<L, K> Default for Links<L, K> {
@@ -70,6 +163,45 @@ impl<L, K, V> JoinMapLane<L, K, V> {
 
     pub(crate) fn map_lane(&self) -> &MapLane<K, V> {
         &self.inner
+    }
+}
+
+impl<L, K, V> JoinMapLane<L, K, V>
+where
+    L: Clone + Hash + Eq,
+    K: Clone + Hash + Eq + Ord,
+{
+    pub(crate) fn update(&self, link_key: L, message: MapMessage<K, V>) {
+        let JoinMapLane {
+            inner,
+            link_tracker,
+        } = self;
+        let mut guard = link_tracker.borrow_mut();
+        match message {
+            MapMessage::Update { key, value } => {
+                guard.insert(link_key, key.clone());
+                inner.update(key, value);
+            }
+            MapMessage::Remove { key } => {
+                guard.remove(&link_key, &key);
+                inner.remove(&key);
+            }
+            MapMessage::Clear => {
+                for k in guard.clear(&link_key) {
+                    inner.remove(&k);
+                }
+            }
+            MapMessage::Take(n) => {
+                for k in guard.take(&link_key, n as usize) {
+                    inner.remove(&k);
+                }
+            }
+            MapMessage::Drop(n) => {
+                for k in guard.drop(&link_key, n as usize) {
+                    inner.remove(&k);
+                }
+            }
+        }
     }
 }
 
