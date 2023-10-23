@@ -31,6 +31,7 @@ use crate::{
 
 use super::DownlinkStatus;
 
+mod default_lifecycle;
 mod downlink;
 pub mod lifecycle;
 
