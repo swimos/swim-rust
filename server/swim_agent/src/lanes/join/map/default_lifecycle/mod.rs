@@ -16,9 +16,15 @@ use std::collections::HashSet;
 
 use swim_model::address::Address;
 
-use crate::{event_handler::{UnitHandler, ConstHandler}, lanes::LinkClosedResponse};
+use crate::{
+    event_handler::{ConstHandler, UnitHandler},
+    lanes::LinkClosedResponse,
+};
 
-use super::lifecycle::{on_linked::OnJoinMapLinked, on_synced::OnJoinMapSynced, on_unlinked::OnJoinMapUnlinked, on_failed::OnJoinMapFailed};
+use super::lifecycle::{
+    on_failed::OnJoinMapFailed, on_linked::OnJoinMapLinked, on_synced::OnJoinMapSynced,
+    on_unlinked::OnJoinMapUnlinked,
+};
 
 /// The default lifecycle for downlinks associated with join map lanes. This is used if no
 /// lifecycle is explicitly specified. The event handlers all do nothing.
@@ -30,7 +36,11 @@ impl<L, Context> OnJoinMapLinked<L, Context> for DefaultJoinMapLifecycle {
     where
         Self: 'a;
 
-    fn on_linked<'a>(&'a self, _link: L, _remote: Address<&str>) -> Self::OnJoinMapLinkedHandler<'a> {
+    fn on_linked<'a>(
+        &'a self,
+        _link: L,
+        _remote: Address<&str>,
+    ) -> Self::OnJoinMapLinkedHandler<'a> {
         UnitHandler::default()
     }
 }

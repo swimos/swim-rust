@@ -33,6 +33,7 @@ use super::DownlinkStatus;
 
 mod default_lifecycle;
 mod downlink;
+mod init;
 pub mod lifecycle;
 
 #[derive(Debug)]
