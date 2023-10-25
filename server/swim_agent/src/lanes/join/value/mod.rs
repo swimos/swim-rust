@@ -373,9 +373,14 @@ where
                     address,
                 } => {
                     let lane_id = projection(context).id();
-                    let handler = if let Some(init) = action_context.join_value_initializer(lane_id)
+                    let handler = if let Some(init) = action_context.join_lane_initializer(lane_id)
                     {
-                        match init.try_create_action(Box::new(key), TypeId::of::<V>(), address) {
+                        match init.try_create_action(
+                            Box::new(key),
+                            TypeId::of::<K>(),
+                            TypeId::of::<V>(),
+                            address,
+                        ) {
                             Ok(boxed) => boxed,
                             Err(err) => {
                                 break StepResult::Fail(EventHandlerError::BadJoinLifecycle(err))

@@ -31,7 +31,7 @@ use swim_agent::agent_lifecycle::utility::JoinValueContext;
 use swim_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
 use swim_agent::agent_model::WriteResult;
 use swim_agent::event_handler::{
-    BoxJoinValueInit, HandlerAction, HandlerFuture, Modification, Spawner,
+    BoxJoinLaneInit, HandlerAction, HandlerFuture, Modification, Spawner,
 };
 use swim_agent::item::{AgentItem, MapItem};
 use swim_agent::lanes::demand::Cue;
@@ -78,14 +78,14 @@ pub fn no_downlink<Context>(_dl: BoxDownlinkChannel<Context>) -> Result<(), Down
 }
 
 pub fn dummy_context<'a, Context>(
-    join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
+    join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
     ad_hoc_buffer: &'a mut BytesMut,
 ) -> ActionContext<'a, Context> {
     ActionContext::new(
         &NO_SPAWN,
         &NO_AGENT,
         &no_downlink,
-        join_value_init,
+        join_lane_init,
         ad_hoc_buffer,
     )
 }
@@ -243,12 +243,12 @@ fn run_handler_mod<Agent, H: EventHandler<Agent>>(
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
-    let mut join_value_init = HashMap::new();
+    let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
     let mut seen_mod = None;
     loop {
         match handler.step(
-            &mut dummy_context(&mut join_value_init, &mut ad_hoc_buffer),
+            &mut dummy_context(&mut join_lane_init, &mut ad_hoc_buffer),
             meta,
             agent,
         ) {
@@ -275,7 +275,7 @@ fn run_handler_mod<Agent, H: EventHandler<Agent>>(
         }
     }
     assert_eq!(seen_mod, modified);
-    assert!(join_value_init.is_empty());
+    assert!(join_lane_init.is_empty());
     assert!(ad_hoc_buffer.is_empty());
 }
 
@@ -1472,9 +1472,9 @@ fn register_join_value_lifecycle() {
 
     let lifecycle = template.into_lifecycle();
 
-    let mut join_value_init = HashMap::new();
+    let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
-    let mut action_context = dummy_context(&mut join_value_init, &mut ad_hoc_buffer);
+    let mut action_context = dummy_context(&mut join_lane_init, &mut ad_hoc_buffer);
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
@@ -1483,8 +1483,8 @@ fn register_join_value_lifecycle() {
 
     let lane_id = agent.join_value.id();
 
-    assert_eq!(join_value_init.len(), 1);
-    assert!(join_value_init.contains_key(&lane_id));
+    assert_eq!(join_lane_init.len(), 1);
+    assert!(join_lane_init.contains_key(&lane_id));
     assert!(ad_hoc_buffer.is_empty());
 }
 
@@ -1524,9 +1524,9 @@ fn register_two_join_value_lifecycles() {
 
     let lifecycle = template.into_lifecycle();
 
-    let mut join_value_init = HashMap::new();
+    let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
-    let mut action_context = dummy_context(&mut join_value_init, &mut ad_hoc_buffer);
+    let mut action_context = dummy_context(&mut join_lane_init, &mut ad_hoc_buffer);
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
@@ -1536,9 +1536,9 @@ fn register_two_join_value_lifecycles() {
     let lane_id1 = agent.join_value1.id();
     let lane_id2 = agent.join_value1.id();
 
-    assert_eq!(join_value_init.len(), 2);
-    assert!(join_value_init.contains_key(&lane_id1));
-    assert!(join_value_init.contains_key(&lane_id2));
+    assert_eq!(join_lane_init.len(), 2);
+    assert!(join_lane_init.contains_key(&lane_id1));
+    assert!(join_lane_init.contains_key(&lane_id2));
     assert!(ad_hoc_buffer.is_empty());
 }
 

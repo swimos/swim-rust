@@ -62,3 +62,9 @@ where
         (*self)(shared, handler_context, key, remote)
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum JoinLaneKind {
+    Value,
+    Map,
+}

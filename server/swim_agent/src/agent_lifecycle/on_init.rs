@@ -18,16 +18,17 @@ use swim_api::handlers::{FnHandler, NoHandler};
 use swim_form::Form;
 
 use crate::{
-    event_handler::{ActionContext, BoxJoinValueInit},
+    event_handler::{ActionContext, BoxJoinLaneInit},
     item::AgentItem,
     lanes::{
-        join_value::{lifecycle::JoinValueLaneLifecycle, LifecycleInitializer},
-        JoinValueLane,
+        join_map::{self, lifecycle::JoinMapLaneLifecycle},
+        join_value::{self, lifecycle::JoinValueLaneLifecycle},
+        JoinMapLane, JoinValueLane,
     },
     meta::AgentMetadata,
 };
 
-use super::utility::JoinValueContext;
+use super::utility::{JoinMapContext, JoinValueContext};
 
 /// Pre-initialization function for a agent. Allows for the initialization of the agent context
 /// before any event handlers run.
@@ -214,9 +215,76 @@ where
         } = self;
         let lc = lifecycle_fac(shared, Default::default());
         let fac = move || lc.clone();
-        let init: BoxJoinValueInit<'static, Context> =
-            Box::new(LifecycleInitializer::new(*projection, fac));
+        let init: BoxJoinLaneInit<'static, Context> =
+            Box::new(join_value::LifecycleInitializer::new(*projection, fac));
         let lane_id = projection(context).id();
-        action_context.register_join_value_initializer(lane_id, init);
+        action_context.register_join_lane_initializer(lane_id, init);
+    }
+}
+
+/// An initializer that will register the downlink lifecycle for a join map lane in the context.
+pub struct RegisterJoinMap<Context, Shared, L, K, V, F> {
+    _type: PhantomData<fn(&Shared)>,
+    projection: fn(&Context) -> &JoinMapLane<L, K, V>,
+    lifecycle_fac: F,
+}
+
+impl<Context, Shared, L, K, V, F> Clone for RegisterJoinMap<Context, Shared, L, K, V, F>
+where
+    F: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            _type: PhantomData,
+            projection: self.projection,
+            lifecycle_fac: self.lifecycle_fac.clone(),
+        }
+    }
+}
+
+impl<Context, Shared, L, K, V, F> RegisterJoinMap<Context, Shared, L, K, V, F> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent type to the lane.
+    /// * `lifecycle_fac` - A factory that will create lifecycle instances for each key of the
+    /// join map lane.
+    pub fn new(projection: fn(&Context) -> &JoinMapLane<L, K, V>, lifecycle_fac: F) -> Self {
+        RegisterJoinMap {
+            _type: PhantomData,
+            projection,
+            lifecycle_fac,
+        }
+    }
+}
+
+impl<Context, Shared, L, K, V, F, LC> OnInitShared<Context, Shared>
+    for RegisterJoinMap<Context, Shared, L, K, V, F>
+where
+    Context: 'static,
+    L: Clone + Eq + Hash + Send + 'static,
+    K: Clone + Form + Eq + Hash + Ord + Send + 'static,
+    V: Form + Send + Sync + 'static,
+    K::Rec: Send,
+    V::BodyRec: Send,
+    F: Fn(&Shared, JoinMapContext<Context, L, K, V>) -> LC + Send + Clone + 'static,
+    LC: JoinMapLaneLifecycle<L, K, Context> + 'static,
+{
+    fn initialize(
+        &self,
+        shared: &Shared,
+        action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        context: &Context,
+    ) {
+        let RegisterJoinMap {
+            projection,
+            lifecycle_fac,
+            ..
+        } = self;
+        let lc = lifecycle_fac(shared, Default::default());
+        let fac = move || lc.clone();
+        let init: BoxJoinLaneInit<'static, Context> =
+            Box::new(join_map::LifecycleInitializer::new(*projection, fac));
+        let lane_id = projection(context).id();
+        action_context.register_join_lane_initializer(lane_id, init);
     }
 }

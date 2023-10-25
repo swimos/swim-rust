@@ -28,7 +28,7 @@ use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use crate::{
     agent_model::downlink::handlers::BoxDownlinkChannel,
     event_handler::{
-        ActionContext, BoxJoinValueInit, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner,
+        ActionContext, BoxJoinLaneInit, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner,
         StepResult,
     },
     meta::AgentMetadata,
@@ -45,14 +45,14 @@ const NO_SPAWN: NoSpawn = NoSpawn;
 const NO_AGENT: DummyAgentContext = DummyAgentContext;
 
 pub fn dummy_context<'a, Context>(
-    join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
+    join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
     ad_hoc_buffer: &'a mut BytesMut,
 ) -> ActionContext<'a, Context> {
     ActionContext::new(
         &NO_SPAWN,
         &NO_AGENT,
         &no_downlink,
-        join_value_init,
+        join_lane_init,
         ad_hoc_buffer,
     )
 }
@@ -108,7 +108,7 @@ pub async fn run_with_futures<H, Agent>(
     downlink_spawner: &dyn DownlinkSpawner<Agent>,
     agent: &Agent,
     meta: AgentMetadata<'_>,
-    inits: &mut HashMap<u64, BoxJoinValueInit<'static, Agent>>,
+    inits: &mut HashMap<u64, BoxJoinLaneInit<'static, Agent>>,
     ad_hoc_buffer: &mut BytesMut,
     mut handler: H,
 ) -> H::Completion
@@ -153,7 +153,7 @@ pub async fn run_event_handlers<'a, Agent>(
     downlink_spawner: &dyn DownlinkSpawner<Agent>,
     agent: &Agent,
     meta: AgentMetadata<'_>,
-    inits: &mut HashMap<u64, BoxJoinValueInit<'static, Agent>>,
+    inits: &mut HashMap<u64, BoxJoinLaneInit<'static, Agent>>,
     ad_hoc_buffer: &mut BytesMut,
     mut handlers: FuturesUnordered<HandlerFuture<Agent>>,
 ) {

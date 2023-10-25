@@ -59,7 +59,7 @@ async fn suspend_future() {
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
-    let mut join_value_init = HashMap::new();
+    let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
 
     let (tx, mut rx) = mpsc::channel(4);
@@ -79,7 +79,7 @@ async fn suspend_future() {
             &spawner,
             &DummyAgentContext,
             &no_downlink,
-            &mut join_value_init,
+            &mut join_lane_init,
             &mut ad_hoc_buffer,
         ),
         meta,
@@ -105,7 +105,7 @@ async fn suspend_future() {
                 &spawner,
                 &DummyAgentContext,
                 &no_downlink,
-                &mut join_value_init,
+                &mut join_lane_init,
                 &mut ad_hoc_buffer,
             ),
             meta,
@@ -126,7 +126,7 @@ async fn suspend_future() {
                 &spawner,
                 &DummyAgentContext,
                 &no_downlink,
-                &mut join_value_init,
+                &mut join_lane_init,
                 &mut ad_hoc_buffer,
             ),
             meta,
@@ -150,14 +150,14 @@ where
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
-    let mut join_value_init = HashMap::new();
+    let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
 
     let mut action_context = ActionContext::new(
         spawner,
         &DummyAgentContext,
         &no_downlink,
-        &mut join_value_init,
+        &mut join_lane_init,
         &mut ad_hoc_buffer,
     );
     loop {

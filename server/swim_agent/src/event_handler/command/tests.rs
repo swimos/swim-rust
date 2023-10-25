@@ -54,7 +54,7 @@ fn make_meta<'a>(
 
 #[test]
 fn write_command_to_buffer() {
-    let mut join_value_init = HashMap::new();
+    let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
     let uri = make_uri();
     let route_params = HashMap::new();
@@ -64,7 +64,7 @@ fn write_command_to_buffer() {
     let command = 23;
     let mut handler = SendCommand::new(address, command, true);
     {
-        let mut action_context = dummy_context(&mut join_value_init, &mut ad_hoc_buffer);
+        let mut action_context = dummy_context(&mut join_lane_init, &mut ad_hoc_buffer);
 
         match handler.step(&mut action_context, meta, &FakeAgent) {
             StepResult::Complete { modified_item, .. } => {
@@ -76,7 +76,7 @@ fn write_command_to_buffer() {
     let msg = decode_message(&mut ad_hoc_buffer);
     assert_eq!(msg, AdHocCommand::new(address, command, true));
     {
-        let mut action_context = dummy_context(&mut join_value_init, &mut ad_hoc_buffer);
+        let mut action_context = dummy_context(&mut join_lane_init, &mut ad_hoc_buffer);
         let result = handler.step(&mut action_context, meta, &FakeAgent);
         assert!(matches!(
             result,

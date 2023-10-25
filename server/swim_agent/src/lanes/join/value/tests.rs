@@ -42,7 +42,7 @@ use swim_utilities::{
 use crate::{
     agent_model::downlink::handlers::BoxDownlinkChannel,
     event_handler::{
-        ActionContext, BoxJoinValueInit, DownlinkSpawner, EventHandlerError, HandlerAction,
+        ActionContext, BoxJoinLaneInit, DownlinkSpawner, EventHandlerError, HandlerAction,
         Modification, StepResult,
     },
     item::{AgentItem, MapItem},
@@ -401,10 +401,10 @@ fn register_lifecycle(
         count.fetch_add(1, Ordering::Relaxed);
         lc
     };
-    let init: BoxJoinValueInit<'static, TestAgent> =
+    let init: BoxJoinLaneInit<'static, TestAgent> =
         Box::new(LifecycleInitializer::new(TestAgent::LANE, fac));
     let lane_id = agent.lane.id();
-    action_context.register_join_value_initializer(lane_id, init);
+    action_context.register_join_lane_initializer(lane_id, init);
 }
 
 #[tokio::test]

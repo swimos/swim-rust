@@ -93,7 +93,7 @@ async fn suspend_repeatedly() {
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let mut spawner = FuturesUnordered::new();
-    let mut join_value_init = HashMap::new();
+    let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
 
     loop {
@@ -103,7 +103,7 @@ async fn suspend_repeatedly() {
                     &spawner,
                     &DummyAgentContext,
                     &no_downlink,
-                    &mut join_value_init,
+                    &mut join_lane_init,
                     &mut ad_hoc_buffer,
                 ),
                 meta,

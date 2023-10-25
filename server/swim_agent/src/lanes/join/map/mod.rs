@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::{
+    any::{Any, TypeId},
     borrow::Borrow,
     cell::RefCell,
     collections::{BTreeSet, HashMap, HashSet},
@@ -21,13 +22,21 @@ use std::{
 
 use bytes::BytesMut;
 use swim_api::protocol::map::MapMessage;
-use swim_form::structural::write::StructuralWritable;
+use swim_form::{structural::write::StructuralWritable, Form};
+use swim_model::{address::Address, Text};
 
 use crate::{
-    agent_model::WriteResult,
-    item::AgentItem,
-    lanes::{LaneItem, MapLane},
+    agent_model::{downlink::OpenEventDownlinkAction, WriteResult},
+    config::SimpleDownlinkConfig,
+    event_handler::{ActionContext, EventHandler, EventHandlerError, HandlerAction, StepResult},
+    item::{AgentItem, MapItem},
+    lanes::{
+        join_map::default_lifecycle::DefaultJoinMapLifecycle, map::MapLaneEvent, LaneItem, MapLane,
+    },
+    meta::AgentMetadata,
 };
+
+use self::{downlink::JoinMapDownlink, lifecycle::JoinMapLaneLifecycle};
 
 use super::DownlinkStatus;
 
@@ -35,6 +44,9 @@ mod default_lifecycle;
 mod downlink;
 mod init;
 pub mod lifecycle;
+
+pub use downlink::{AfterClosed, JoinMapLaneUpdate};
+pub use init::LifecycleInitializer;
 
 #[derive(Debug)]
 pub struct JoinMapLane<L, K, V> {
@@ -68,6 +80,16 @@ where
     L: Clone + Hash + Eq,
     K: Clone + Hash + Eq,
 {
+    fn add_link(&mut self, link: L) -> bool {
+        let Links { links, .. } = self;
+        if links.contains_key(&link) {
+            links.insert(link, Default::default());
+            true
+        } else {
+            false
+        }
+    }
+
     fn insert(&mut self, link: L, key: K) {
         let Links { links, ownership } = self;
         if let Some(old_link) = ownership.remove(&key) {
@@ -243,5 +265,196 @@ where
 {
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult {
         self.inner.write_to_buffer(buffer)
+    }
+}
+
+/// [`HandlerAction`] that attempts to add a new downlink to a [`JoinMapLane`].
+struct AddDownlinkAction<Context, L, K, V, LC> {
+    projection: fn(&Context) -> &JoinMapLane<L, K, V>,
+    link_key: Option<L>,
+    inner: Option<OpenEventDownlinkAction<MapMessage<K, V>, JoinMapDownlink<L, K, V, LC, Context>>>,
+}
+
+impl<Context, L, K, V, LC> AddDownlinkAction<Context, L, K, V, LC>
+where
+    L: Clone,
+{
+    fn new(
+        projection: fn(&Context) -> &JoinMapLane<L, K, V>,
+        link_key: L,
+        lane: Address<Text>,
+        lifecycle: LC,
+    ) -> Self {
+        let dl_lifecycle =
+            JoinMapDownlink::new(projection, link_key.clone(), lane.clone(), lifecycle);
+        let inner = OpenEventDownlinkAction::new(
+            lane,
+            dl_lifecycle,
+            SimpleDownlinkConfig {
+                events_when_not_synced: true,
+                terminate_on_unlinked: true,
+            },
+        );
+        AddDownlinkAction {
+            projection,
+            link_key: Some(link_key),
+            inner: Some(inner),
+        }
+    }
+}
+
+impl<Context, L, K, V, LC> HandlerAction<Context> for AddDownlinkAction<Context, L, K, V, LC>
+where
+    Context: 'static,
+    L: Clone + Eq + Hash + Send + 'static,
+    K: Form + Clone + Eq + Hash + Send + Ord + 'static,
+    V: Form + Send + 'static,
+    K::Rec: Send,
+    V::BodyRec: Send,
+    LC: JoinMapLaneLifecycle<L, K, Context> + Send + 'static,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        meta: AgentMetadata,
+        context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let AddDownlinkAction {
+            projection,
+            link_key,
+            inner,
+        } = self;
+        if let Some(inner) = inner {
+            if let Some(link_key) = link_key.take() {
+                let lane = projection(context);
+                let mut guard = lane.link_tracker.borrow_mut();
+                if guard.add_link(link_key) {
+                    inner.step(action_context, meta, context).map(|_| ())
+                } else {
+                    self.inner = None;
+                    StepResult::done(())
+                }
+            } else {
+                inner.step(action_context, meta, context).map(|_| ())
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+impl<L, K, V> MapItem<K, V> for JoinMapLane<L, K, V>
+where
+    K: Eq + Hash + Clone,
+{
+    fn init(&self, map: HashMap<K, V>) {
+        self.inner.init(map)
+    }
+
+    fn read_with_prev<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R,
+    {
+        self.inner.read_with_prev(f)
+    }
+}
+
+#[derive(Default)]
+enum OpenDownlinkState<C, L, K, V> {
+    Init {
+        projection: fn(&C) -> &JoinMapLane<L, K, V>,
+        link_key: L,
+        address: Address<Text>,
+    },
+    Running {
+        handler: Box<dyn EventHandler<C> + Send + 'static>,
+    },
+    #[default]
+    Done,
+}
+
+pub struct JoinMapAddDownlink<C, L, K, V> {
+    state: OpenDownlinkState<C, L, K, V>,
+}
+
+impl<C, L, K, V> HandlerAction<C> for JoinMapAddDownlink<C, L, K, V>
+where
+    C: 'static,
+    L: Any + Clone + Eq + Hash + Send + 'static,
+    K: Any + Form + Clone + Eq + Hash + Ord + Send + 'static,
+    V: Any + Form + Send + 'static,
+    K::Rec: Send,
+    V::BodyRec: Send,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<C>,
+        meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let JoinMapAddDownlink { state } = self;
+        loop {
+            match std::mem::take(state) {
+                OpenDownlinkState::Init {
+                    projection,
+                    link_key,
+                    address,
+                } => {
+                    let lane_id = projection(context).id();
+                    let handler = if let Some(init) = action_context.join_lane_initializer(lane_id)
+                    {
+                        match init.try_create_action(
+                            Box::new(link_key),
+                            TypeId::of::<K>(),
+                            TypeId::of::<V>(),
+                            address,
+                        ) {
+                            Ok(boxed) => boxed,
+                            Err(err) => {
+                                break StepResult::Fail(EventHandlerError::BadJoinLifecycle(err))
+                            }
+                        }
+                    } else {
+                        let action = AddDownlinkAction::new(
+                            projection,
+                            link_key,
+                            address,
+                            DefaultJoinMapLifecycle,
+                        );
+                        let boxed: Box<dyn EventHandler<C> + Send + 'static> = Box::new(action);
+                        boxed
+                    };
+                    *state = OpenDownlinkState::Running { handler };
+                }
+                OpenDownlinkState::Running { mut handler } => {
+                    let result = handler.step(action_context, meta, context);
+                    if result.is_cont() {
+                        *state = OpenDownlinkState::Running { handler };
+                    }
+                    break result;
+                }
+                OpenDownlinkState::Done => break StepResult::after_done(),
+            }
+        }
+    }
+}
+
+impl<C, L, K, V> JoinMapAddDownlink<C, L, K, V> {
+    pub(crate) fn new(
+        projection: fn(&C) -> &JoinMapLane<L, K, V>,
+        link_key: L,
+        address: Address<Text>,
+    ) -> Self {
+        JoinMapAddDownlink {
+            state: OpenDownlinkState::Init {
+                projection,
+                link_key,
+                address,
+            },
+        }
     }
 }

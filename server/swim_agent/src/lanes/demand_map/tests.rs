@@ -177,9 +177,9 @@ where
     if depth == DEPTH_LIMIT {
         panic!("Handler probably diverged.");
     }
-    let mut join_value_init = Default::default();
+    let mut join_lane_init = Default::default();
     let mut ad_hoc = Default::default();
-    let action_context = &mut dummy_context(&mut join_value_init, &mut ad_hoc);
+    let action_context = &mut dummy_context(&mut join_lane_init, &mut ad_hoc);
     let mut result = HandlerResult(ModificationFlags::empty());
     loop {
         match handler.step(action_context, meta, agent) {

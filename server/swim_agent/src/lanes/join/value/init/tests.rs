@@ -27,7 +27,7 @@ use swim_model::address::Address;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::{
-    event_handler::{DowncastError, JoinValueInitializer},
+    event_handler::{DowncastError, JoinLaneInitializer},
     lanes::{
         join_value::{default_lifecycle::DefaultJoinValueLifecycle, tests::TestDownlinkContext},
         JoinValueLane,
@@ -64,10 +64,15 @@ fn bad_key_type() {
 
     let address = Address::text(None, NODE, LANE);
 
-    let result = init.try_create_action(Box::new("a".to_string()), TypeId::of::<String>(), address);
+    let result = init.try_create_action(
+        Box::new("a".to_string()),
+        TypeId::of::<String>(),
+        TypeId::of::<String>(),
+        address,
+    );
 
     match result.err().expect("Expected failure.") {
-        DowncastError::Key { key, expected_type } => {
+        DowncastError::LinkKey { key, expected_type } => {
             assert_eq!(
                 key.downcast_ref::<String>().expect("Key should be string."),
                 "a"
@@ -84,7 +89,12 @@ fn bad_value_type() {
 
     let address = Address::text(None, NODE, LANE);
 
-    let result = init.try_create_action(Box::new(1i32), TypeId::of::<i32>(), address);
+    let result = init.try_create_action(
+        Box::new(1i32),
+        TypeId::of::<i32>(),
+        TypeId::of::<i32>(),
+        address,
+    );
 
     match result.err().expect("Expected failure.") {
         DowncastError::Value {
@@ -123,7 +133,12 @@ async fn successfully_create_action() {
 
     let address = Address::text(None, NODE, LANE);
 
-    let result = init.try_create_action(Box::new(1i32), TypeId::of::<String>(), address.clone());
+    let result = init.try_create_action(
+        Box::new(1i32),
+        TypeId::of::<i32>(),
+        TypeId::of::<String>(),
+        address.clone(),
+    );
 
     let handler = result.expect("Should succeed.");
 

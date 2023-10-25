@@ -44,9 +44,10 @@ use crate::event_handler::{
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::demand::{Cue, DemandLane};
 use crate::lanes::demand_map::CueKey;
+use crate::lanes::join_map::JoinMapAddDownlink;
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
 use crate::lanes::map::{MapLaneGetMap, MapLaneWithEntry};
-use crate::lanes::DemandMapLane;
+use crate::lanes::{DemandMapLane, JoinMapLane};
 use crate::stores::map::{
     MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate, MapStoreWithEntry,
 };
@@ -806,6 +807,34 @@ impl<Agent: 'static> HandlerContext<Agent> {
         JoinValueAddDownlink::new(lane, key, address)
     }
 
+    /// Add a downlink to a Join Map lane. All key-value pairs received on the downlink will be set into the
+    /// map state of the lane.
+    ///
+    /// #Arguments
+    /// * `lane` - Projection to the lane.
+    /// * `link_key - A key to identify the link.
+    /// * `host` - The remote host at which the agent resides (a local agent if not specified).
+    /// * `node` - The node URI of the agent.
+    /// * `lane_uri` - The lane to downlink from.
+    pub fn add_map_downlink<L, K, V>(
+        &self,
+        lane: fn(&Agent) -> &JoinMapLane<L, K, V>,
+        link_key: L,
+        host: Option<&str>,
+        node: &str,
+        lane_uri: &str,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        L: Any + Clone + Eq + Hash + Send + 'static,
+        K: Any + Form + Clone + Eq + Hash + Send + Ord + 'static,
+        V: Form + Send + 'static,
+        K::Rec: Send,
+        V::BodyRec: Send,
+    {
+        let address = Address::text(host, node, lane_uri);
+        JoinMapAddDownlink::new(lane, link_key, address)
+    }
+
     /// Causes the agent to stop. If this is encountered during the `on_start` event of an agent it will
     /// fail to start at all. Otherwise, execution of the event handler will terminate and the agent will
     /// begin to shutdown. The 'on_stop' handler will still be run. If a stop is requested in
@@ -837,5 +866,17 @@ where
     /// Creates a builder to construct a lifecycle for the downlinks of a [`JoinValueLane`].
     pub fn builder(&self) -> StatelessJoinValueLaneBuilder<Agent, K, V> {
         StatelessJoinValueLaneBuilder::default()
+    }
+}
+
+pub struct JoinMapContext<Agent, L, K, V> {
+    _type: PhantomData<fn(&Agent, L, K, V)>,
+}
+
+impl<Agent, L, K, V> Default for JoinMapContext<Agent, L, K, V> {
+    fn default() -> Self {
+        Self {
+            _type: Default::default(),
+        }
     }
 }

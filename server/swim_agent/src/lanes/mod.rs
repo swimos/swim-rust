@@ -34,6 +34,8 @@ pub use self::{
     demand::DemandLane,
     demand_map::DemandMapLane,
     http::{HttpLane, SimpleHttpLane},
+    join::JoinLaneKind,
+    join_map::JoinMapLane,
     join_value::JoinValueLane,
     map::MapLane,
     value::ValueLane,
