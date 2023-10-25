@@ -28,6 +28,7 @@ use uuid::Uuid;
 use crate::agent_model::downlink::OpenEventDownlinkAction;
 use crate::config::SimpleDownlinkConfig;
 use crate::event_handler::{EventHandler, EventHandlerError, Modification};
+use crate::item::MapLikeItem;
 use crate::{
     agent_model::WriteResult,
     event_handler::{ActionContext, HandlerAction, StepResult},
@@ -424,5 +425,27 @@ impl<C, K, V> JoinValueAddDownlink<C, K, V> {
                 address,
             },
         }
+    }
+}
+
+impl<K, V> MapLikeItem<K, V> for JoinValueLane<K, V>
+where
+    K: Clone + Eq + Hash + Send + 'static,
+    V: Clone + Send + 'static,
+{
+    type GetHandler<C> = JoinValueLaneGet<C, K, V>
+    where
+        C: 'static;
+
+    type GetMapHandler<C> = JoinValueLaneGetMap<C, K, V>
+    where
+        C: 'static;
+
+    fn get_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::GetHandler<C> {
+        JoinValueLaneGet::new(projection, key)
+    }
+
+    fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
+        JoinValueLaneGetMap::new(projection)
     }
 }

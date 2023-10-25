@@ -24,12 +24,15 @@ use bytes::BytesMut;
 use swim_api::protocol::map::MapMessage;
 use swim_form::{structural::write::StructuralWritable, Form};
 use swim_model::{address::Address, Text};
+use uuid::Uuid;
 
 use crate::{
     agent_model::{downlink::OpenEventDownlinkAction, WriteResult},
     config::SimpleDownlinkConfig,
-    event_handler::{ActionContext, EventHandler, EventHandlerError, HandlerAction, StepResult},
-    item::{AgentItem, MapItem},
+    event_handler::{
+        ActionContext, EventHandler, EventHandlerError, HandlerAction, Modification, StepResult,
+    },
+    item::{AgentItem, MapItem, MapLikeItem},
     lanes::{
         join_map::default_lifecycle::DefaultJoinMapLifecycle, map::MapLaneEvent, LaneItem, MapLane,
     },
@@ -82,8 +85,8 @@ where
 {
     fn add_link(&mut self, link: L) -> bool {
         let Links { links, .. } = self;
-        if links.contains_key(&link) {
-            links.insert(link, Default::default());
+        if let std::collections::hash_map::Entry::Occupied(mut e) = links.entry(link) {
+            e.insert(Default::default());
             true
         } else {
             false
@@ -130,7 +133,7 @@ where
     fn take(&mut self, link: &L, n: usize) -> Vec<K> {
         let Links { links, ownership } = self;
         links
-            .get_mut(&link)
+            .get_mut(link)
             .map(|l| {
                 let sorted = l.keys.iter().collect::<BTreeSet<_>>();
                 let to_remove = sorted
@@ -139,7 +142,7 @@ where
                     .map(|k| (*k).clone())
                     .collect::<Vec<_>>();
                 for k in &to_remove {
-                    l.keys.remove(&k);
+                    l.keys.remove(k);
                     ownership.remove(k);
                 }
                 to_remove
@@ -150,7 +153,7 @@ where
     fn drop(&mut self, link: &L, n: usize) -> Vec<K> {
         let Links { links, ownership } = self;
         links
-            .get_mut(&link)
+            .get_mut(link)
             .map(|l| {
                 let sorted = l.keys.iter().collect::<BTreeSet<_>>();
                 let to_remove = sorted
@@ -159,7 +162,7 @@ where
                     .map(|k| (*k).clone())
                     .collect::<Vec<_>>();
                 for k in &to_remove {
-                    l.keys.remove(&k);
+                    l.keys.remove(k);
                     ownership.remove(k);
                 }
                 to_remove
@@ -268,11 +271,13 @@ where
     }
 }
 
+type JoinMapStartAction<Context, L, K, V, LC> =
+    OpenEventDownlinkAction<MapMessage<K, V>, JoinMapDownlink<L, K, V, LC, Context>>;
 /// [`HandlerAction`] that attempts to add a new downlink to a [`JoinMapLane`].
 struct AddDownlinkAction<Context, L, K, V, LC> {
     projection: fn(&Context) -> &JoinMapLane<L, K, V>,
     link_key: Option<L>,
-    inner: Option<OpenEventDownlinkAction<MapMessage<K, V>, JoinMapDownlink<L, K, V, LC, Context>>>,
+    inner: Option<JoinMapStartAction<Context, L, K, V, LC>>,
 }
 
 impl<Context, L, K, V, LC> AddDownlinkAction<Context, L, K, V, LC>
@@ -456,5 +461,153 @@ impl<C, L, K, V> JoinMapAddDownlink<C, L, K, V> {
                 address,
             },
         }
+    }
+}
+
+/// An [`EventHandler`] that will get an entry from the map.
+pub struct JoinMapLaneGet<C, L, K, V> {
+    projection: fn(&C) -> &JoinMapLane<L, K, V>,
+    key: K,
+    done: bool,
+}
+
+impl<C, L, K, V> JoinMapLaneGet<C, L, K, V> {
+    pub fn new(projection: fn(&C) -> &JoinMapLane<L, K, V>, key: K) -> Self {
+        JoinMapLaneGet {
+            projection,
+            key,
+            done: false,
+        }
+    }
+}
+
+impl<C, L, K, V> HandlerAction<C> for JoinMapLaneGet<C, L, K, V>
+where
+    K: Clone + Eq + Hash,
+    V: Clone,
+{
+    type Completion = Option<V>;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let JoinMapLaneGet {
+            projection,
+            key,
+            done,
+        } = self;
+        if !*done {
+            *done = true;
+            let lane = projection(context);
+            StepResult::done(lane.inner.get(key, |v| v.cloned()))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+/// An [`EventHandler`] that will get an entry from the map.
+pub struct JoinMapLaneGetMap<C, L, K, V> {
+    projection: fn(&C) -> &JoinMapLane<L, K, V>,
+    done: bool,
+}
+
+impl<C, L, K, V> JoinMapLaneGetMap<C, L, K, V> {
+    pub fn new(projection: fn(&C) -> &JoinMapLane<L, K, V>) -> Self {
+        JoinMapLaneGetMap {
+            projection,
+            done: false,
+        }
+    }
+}
+
+impl<C, L, K, V> HandlerAction<C> for JoinMapLaneGetMap<C, L, K, V>
+where
+    K: Clone + Eq + Hash,
+    V: Clone,
+{
+    type Completion = HashMap<K, V>;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let JoinMapLaneGetMap { projection, done } = self;
+        if !*done {
+            *done = true;
+            let lane = projection(context);
+            StepResult::done(lane.inner.get_map(Clone::clone))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+/// An [`EventHandler`] that will request a sync from the lane.
+pub struct JoinMapLaneSync<C, L, K, V> {
+    projection: fn(&C) -> &JoinMapLane<L, K, V>,
+    id: Option<Uuid>,
+}
+
+impl<C, L, K, V> JoinMapLaneSync<C, L, K, V> {
+    pub fn new(projection: fn(&C) -> &JoinMapLane<L, K, V>, id: Uuid) -> Self {
+        JoinMapLaneSync {
+            projection,
+            id: Some(id),
+        }
+    }
+}
+
+impl<C, L, K, V> HandlerAction<C> for JoinMapLaneSync<C, L, K, V>
+where
+    K: Clone + Eq + Hash,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let JoinMapLaneSync { projection, id } = self;
+        if let Some(id) = id.take() {
+            let lane = &projection(context).inner;
+            lane.sync(id);
+            StepResult::Complete {
+                modified_item: Some(Modification::no_trigger(lane.id())),
+                result: (),
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+impl<L, K, V> MapLikeItem<K, V> for JoinMapLane<L, K, V>
+where
+    L: Send + 'static,
+    K: Clone + Eq + Hash + Send + 'static,
+    V: Clone + Send + 'static,
+{
+    type GetHandler<C> = JoinMapLaneGet<C, L, K, V>
+    where
+        C: 'static;
+
+    type GetMapHandler<C> = JoinMapLaneGetMap<C, L, K, V>
+    where
+        C: 'static;
+
+    fn get_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::GetHandler<C> {
+        JoinMapLaneGet::new(projection, key)
+    }
+
+    fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
+        JoinMapLaneGetMap::new(projection)
     }
 }
