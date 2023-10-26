@@ -409,6 +409,9 @@ impl<'a> FieldInitializer<'a> {
             ItemSpec::JoinValue(_, _) => {
                 quote!(#name: #root::lanes::JoinValueLane::new(#ordinal))
             }
+            ItemSpec::JoinMap(_, _, _) => {
+                quote!(#name: #root::lanes::JoinMapLane::new(#ordinal))
+            }
             ItemSpec::Http { .. } => {
                 quote!(#name: #root::lanes::HttpLane::new(#ordinal))
             }
@@ -442,7 +445,8 @@ impl<'a> HandlerType<'a> {
             }
             WarpLaneSpec::Demand(_)
             | WarpLaneSpec::DemandMap(_, _)
-            | WarpLaneSpec::JoinValue(_, _) => {
+            | WarpLaneSpec::JoinValue(_, _)
+            | WarpLaneSpec::JoinMap(_, _, _) => {
                 quote!(#root::event_handler::UnitHandler)
             }
         }
@@ -473,6 +477,9 @@ impl<'a> SyncHandlerType<'a> {
             }
             WarpLaneSpec::JoinValue(k, v) => {
                 quote!(#root::lanes::join_value::JoinValueLaneSync<#agent_name, #k, #v>)
+            }
+            WarpLaneSpec::JoinMap(l, k, v) => {
+                quote!(#root::lanes::join_map::JoinMapLaneSync<#agent_name, #l, #k, #v>)
             }
         }
     }
@@ -532,7 +539,8 @@ impl<'a> WarpLaneHandlerMatch<'a> {
             }
             WarpLaneSpec::Demand(_)
             | WarpLaneSpec::DemandMap(_, _)
-            | WarpLaneSpec::JoinValue(_, _) => {
+            | WarpLaneSpec::JoinValue(_, _)
+            | WarpLaneSpec::JoinMap(_, _, _) => {
                 quote!(#root::event_handler::UnitHandler::default())
             }
         };
@@ -634,6 +642,9 @@ impl<'a> SyncHandlerMatch<'a> {
             }
             WarpLaneSpec::JoinValue(k, v) => {
                 quote!(#root::lanes::join_value::JoinValueLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
+            }
+            WarpLaneSpec::JoinMap(l, k, v) => {
+                quote!(#root::lanes::join_map::JoinMapLaneSync::<#agent_name, #l, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
             }
         };
         quote! {
@@ -786,6 +797,9 @@ impl<'a> LaneSpecInsert<'a> {
             }
             ItemSpec::JoinValue(_, _) => {
                 quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::JoinValue, flags: #flags })
+            }
+            ItemSpec::JoinMap(_, _, _) => {
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::JoinMap, flags: #flags })
             }
             ItemSpec::Http(_) => quote!(#root::agent_model::ItemDescriptor::Http),
         };
