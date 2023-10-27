@@ -38,6 +38,9 @@ use super::{
     JoinMapLane,
 };
 
+#[cfg(test)]
+mod tests;
+
 /// Wraps a [`crate::lanes::join_map::lifecycle::JoinMapLaneLifecycle`] as an [`crate::downlink_lifecycle::event::EventDownlinkLifecycle`] to
 /// allow it to be executed on a downlink.
 pub struct JoinMapDownlink<L, K, V, LC, Context> {
@@ -165,13 +168,13 @@ where
 /// An event handler that performs an update on the underlying map of a join map lane
 /// when a value is received on one of its downlinks.
 pub struct JoinMapLaneUpdate<C, L, K, V> {
-    projection: for<'a> fn(&'a C) -> &'a JoinMapLane<L, K, V>,
+    projection: fn(&C) -> &JoinMapLane<L, K, V>,
     key_message: Option<(L, MapMessage<K, V>)>,
 }
 
 impl<C, L, K, V> JoinMapLaneUpdate<C, L, K, V> {
     pub fn new(
-        projection: for<'a> fn(&'a C) -> &'a JoinMapLane<L, K, V>,
+        projection: fn(&C) -> &JoinMapLane<L, K, V>,
         link_key: L,
         message: MapMessage<K, V>,
     ) -> Self {
@@ -201,10 +204,13 @@ where
         } = self;
         if let Some((link_key, message)) = key_message.take() {
             let lane = projection(context);
-            lane.update(link_key, message);
-            StepResult::Complete {
-                modified_item: Some(Modification::of(lane.id())),
-                result: (),
+            if lane.update(link_key, message) {
+                StepResult::Complete {
+                    modified_item: Some(Modification::of(lane.id())),
+                    result: (),
+                }
+            } else {
+                StepResult::done(())
             }
         } else {
             StepResult::after_done()
@@ -414,11 +420,19 @@ where
             lifecycle,
         } = self;
         let lane = projection(context);
-        let keys = lane.link_tracker.borrow_mut().clear(&link_key);
+        let keys = lane
+            .link_tracker
+            .borrow_mut()
+            .clear(&link_key)
+            .unwrap_or_default();
         let remote = remote_lane.borrow_parts();
         lifecycle
             .on_unlinked(link_key.clone(), remote, keys.clone())
-            .and_then(AfterClosedTrans { projection, keys })
+            .and_then(AfterClosedTrans {
+                projection,
+                link_key,
+                keys,
+            })
     }
 }
 
@@ -438,16 +452,25 @@ where
             lifecycle,
         } = self;
         let lane = projection(context);
-        let keys = lane.link_tracker.borrow_mut().clear(&link_key);
+        let keys = lane
+            .link_tracker
+            .borrow_mut()
+            .clear(&link_key)
+            .unwrap_or_default();
         let remote = remote_lane.borrow_parts();
         lifecycle
             .on_failed(link_key.clone(), remote, keys.clone())
-            .and_then(AfterClosedTrans { projection, keys })
+            .and_then(AfterClosedTrans {
+                projection,
+                link_key,
+                keys,
+            })
     }
 }
 
 pub struct AfterClosedTrans<L, K, V, Context> {
     projection: fn(&Context) -> &JoinMapLane<L, K, V>,
+    link_key: L,
     keys: HashSet<K>,
 }
 
@@ -455,9 +478,14 @@ impl<L, K, V, Context> HandlerTrans<LinkClosedResponse> for AfterClosedTrans<L, 
     type Out = AfterClosed<L, K, V, Context>;
 
     fn transform(self, input: LinkClosedResponse) -> Self::Out {
-        let AfterClosedTrans { projection, keys } = self;
+        let AfterClosedTrans {
+            projection,
+            link_key,
+            keys,
+        } = self;
         AfterClosed {
             projection,
+            link_key,
             response: Some(input),
             keys,
         }
@@ -466,6 +494,7 @@ impl<L, K, V, Context> HandlerTrans<LinkClosedResponse> for AfterClosedTrans<L, 
 
 /// An event handler that cleans up after a downlink unlinks or fails.
 pub struct AfterClosed<L, K, V, Context> {
+    link_key: L,
     projection: fn(&Context) -> &JoinMapLane<L, K, V>,
     response: Option<LinkClosedResponse>,
     keys: HashSet<K>,
@@ -473,6 +502,7 @@ pub struct AfterClosed<L, K, V, Context> {
 
 impl<L, K, V, Context> HandlerAction<Context> for AfterClosed<L, K, V, Context>
 where
+    L: Clone + Hash + Eq,
     K: Clone + Hash + Eq,
 {
     type Completion = ();
@@ -484,22 +514,31 @@ where
         context: &Context,
     ) -> StepResult<Self::Completion> {
         let AfterClosed {
+            link_key,
             projection,
             response,
             keys,
         } = self;
         if let Some(response) = response.take() {
-            let lane = projection(context);
+            let JoinMapLane {
+                inner,
+                link_tracker,
+            } = projection(context);
+            link_tracker.borrow_mut().remove_link(link_key);
             match response {
                 LinkClosedResponse::Retry => todo!(),
                 LinkClosedResponse::Abandon => StepResult::done(()),
                 LinkClosedResponse::Delete => {
-                    for key in keys.iter() {
-                        lane.inner.remove(key);
-                    }
-                    StepResult::Complete {
-                        modified_item: Some(Modification::of(lane.id())),
-                        result: (),
+                    if keys.is_empty() {
+                        StepResult::done(())
+                    } else {
+                        for key in keys.iter() {
+                            inner.remove(key);
+                        }
+                        StepResult::Complete {
+                            modified_item: Some(Modification::of(inner.id())),
+                            result: (),
+                        }
                     }
                 }
             }

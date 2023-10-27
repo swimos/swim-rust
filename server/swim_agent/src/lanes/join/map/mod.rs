@@ -16,7 +16,7 @@ use std::{
     any::{Any, TypeId},
     borrow::Borrow,
     cell::RefCell,
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{hash_map::Entry, BTreeSet, HashMap, HashSet},
     hash::Hash,
 };
 
@@ -57,7 +57,7 @@ pub struct JoinMapLane<L, K, V> {
     link_tracker: RefCell<Links<L, K>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Link<K> {
     status: DownlinkStatus,
     keys: HashSet<K>,
@@ -85,7 +85,7 @@ where
 {
     fn add_link(&mut self, link: L) -> bool {
         let Links { links, .. } = self;
-        if let std::collections::hash_map::Entry::Occupied(mut e) = links.entry(link) {
+        if let Entry::Occupied(mut e) = links.entry(link) {
             e.insert(Default::default());
             true
         } else {
@@ -93,35 +93,63 @@ where
         }
     }
 
-    fn insert(&mut self, link: L, key: K) {
+    fn insert(&mut self, link: L, key: K) -> bool {
         let Links { links, ownership } = self;
-        if let Some(old_link) = ownership.remove(&key) {
-            if let Some(l) = links.get_mut(&old_link) {
-                l.keys.remove(&key);
+        if let Some(Link { status, keys }) = links.get_mut(&link) {
+            if *status == DownlinkStatus::Linked {
+                keys.insert(key.clone());
+                if let Some(old_link) = ownership.remove(&key) {
+                    if let Some(l) = links.get_mut(&old_link) {
+                        l.keys.remove(&key);
+                    }
+                }
+                ownership.insert(key, link);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    fn remove(&mut self, link: &L, key: &K) -> bool {
+        let Links { links, ownership } = self;
+        if let Some(l) = links.get_mut(link) {
+            if l.status == DownlinkStatus::Linked {
+                l.keys.remove(key);
+                ownership.remove(key);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    fn clear(&mut self, link: &L) -> Option<HashSet<K>> {
+        let Links { links, ownership } = self;
+        links.get_mut(link).and_then(|l| {
+            if l.status == DownlinkStatus::Linked {
+                let keys = std::mem::take(&mut l.keys);
+                for k in &keys {
+                    ownership.remove(k);
+                }
+                Some(keys)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn remove_link(&mut self, link: &L) {
+        let Links { links, ownership } = self;
+        if let Some(Link { keys, .. }) = links.remove(link) {
+            for k in keys {
+                ownership.remove(&k);
             }
         }
-        ownership.insert(key.clone(), link.clone());
-        links.entry(link).or_default().keys.insert(key);
-    }
-
-    fn remove(&mut self, link: &L, key: &K) {
-        let Links { links, ownership } = self;
-        ownership.remove(key);
-        if let Some(l) = links.get_mut(link) {
-            l.keys.remove(key);
-        }
-    }
-
-    fn clear(&mut self, link: &L) -> HashSet<K> {
-        let Links { links, ownership } = self;
-        let keys = links
-            .get_mut(link)
-            .map(|l| std::mem::take(&mut l.keys))
-            .unwrap_or_default();
-        for k in &keys {
-            ownership.remove(k);
-        }
-        keys
     }
 }
 
@@ -130,11 +158,10 @@ where
     L: Clone + Hash + Eq,
     K: Clone + Hash + Eq + Ord,
 {
-    fn take(&mut self, link: &L, n: usize) -> Vec<K> {
+    fn take(&mut self, link: &L, n: usize) -> Option<Vec<K>> {
         let Links { links, ownership } = self;
-        links
-            .get_mut(link)
-            .map(|l| {
+        links.get_mut(link).and_then(|l| {
+            if l.status == DownlinkStatus::Linked {
                 let sorted = l.keys.iter().collect::<BTreeSet<_>>();
                 let to_remove = sorted
                     .iter()
@@ -145,16 +172,17 @@ where
                     l.keys.remove(k);
                     ownership.remove(k);
                 }
-                to_remove
-            })
-            .unwrap_or_default()
+                Some(to_remove)
+            } else {
+                None
+            }
+        })
     }
 
-    fn drop(&mut self, link: &L, n: usize) -> Vec<K> {
+    fn drop(&mut self, link: &L, n: usize) -> Option<Vec<K>> {
         let Links { links, ownership } = self;
-        links
-            .get_mut(link)
-            .map(|l| {
+        links.get_mut(link).and_then(|l| {
+            if l.status == DownlinkStatus::Linked {
                 let sorted = l.keys.iter().collect::<BTreeSet<_>>();
                 let to_remove = sorted
                     .iter()
@@ -165,9 +193,11 @@ where
                     l.keys.remove(k);
                     ownership.remove(k);
                 }
-                to_remove
-            })
-            .unwrap_or_default()
+                Some(to_remove)
+            } else {
+                None
+            }
+        })
     }
 }
 
@@ -198,7 +228,7 @@ where
     L: Clone + Hash + Eq,
     K: Clone + Hash + Eq + Ord,
 {
-    pub(crate) fn update(&self, link_key: L, message: MapMessage<K, V>) {
+    pub(crate) fn update(&self, link_key: L, message: MapMessage<K, V>) -> bool {
         let JoinMapLane {
             inner,
             link_tracker,
@@ -206,26 +236,61 @@ where
         let mut guard = link_tracker.borrow_mut();
         match message {
             MapMessage::Update { key, value } => {
-                guard.insert(link_key, key.clone());
-                inner.update(key, value);
+                if guard.insert(link_key, key.clone()) {
+                    inner.update(key, value);
+                    true
+                } else {
+                    false
+                }
             }
             MapMessage::Remove { key } => {
-                guard.remove(&link_key, &key);
-                inner.remove(&key);
+                if guard.remove(&link_key, &key) {
+                    inner.remove(&key);
+                    true
+                } else {
+                    false
+                }
             }
             MapMessage::Clear => {
-                for k in guard.clear(&link_key) {
-                    inner.remove(&k);
+                if let Some(keys) = guard.clear(&link_key) {
+                    for k in keys {
+                        inner.remove(&k);
+                    }
+                    true
+                } else {
+                    false
                 }
             }
             MapMessage::Take(n) => {
-                for k in guard.take(&link_key, n as usize) {
-                    inner.remove(&k);
+                if let Some(keys) = usize::try_from(n)
+                    .ok()
+                    .and_then(|n| guard.take(&link_key, n))
+                {
+                    for k in keys {
+                        inner.remove(&k);
+                    }
+                    true
+                } else {
+                    false
                 }
             }
             MapMessage::Drop(n) => {
-                for k in guard.drop(&link_key, n as usize) {
-                    inner.remove(&k);
+                if let Ok(n) = usize::try_from(n) {
+                    if let Some(keys) = guard.drop(&link_key, n) {
+                        for k in keys {
+                            inner.remove(&k);
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                } else if let Some(keys) = guard.clear(&link_key) {
+                    for k in keys {
+                        inner.remove(&k);
+                    }
+                    true
+                } else {
+                    false
                 }
             }
         }
