@@ -59,9 +59,11 @@ pub use self::downlink_builder::map::{StatefulMapDownlinkBuilder, StatelessMapDo
 pub use self::downlink_builder::value::{
     StatefulValueDownlinkBuilder, StatelessValueDownlinkBuilder,
 };
+use self::join_map_builder::StatelessJoinMapLaneBuilder;
 pub use self::join_value_builder::{StatefulJoinValueLaneBuilder, StatelessJoinValueLaneBuilder};
 
 mod downlink_builder;
+mod join_map_builder;
 mod join_value_builder;
 
 #[cfg(test)]
@@ -722,5 +724,20 @@ impl<Agent, L, K, V> Default for JoinMapContext<Agent, L, K, V> {
         Self {
             _type: Default::default(),
         }
+    }
+}
+
+impl<Agent, L, K, V> JoinMapContext<Agent, L, K, V>
+where
+    Agent: 'static,
+    L: Any + Clone + Eq + Hash + Send + 'static,
+    K: Any + Form + Clone + Eq + Hash + Ord + Send + 'static,
+    V: Form + Send + 'static,
+    K::Rec: Send,
+    V::BodyRec: Send,
+{
+    /// Creates a builder to construct a lifecycle for the downlinks of a [`JoinMapLane`].
+    pub fn builder(&self) -> StatelessJoinMapLaneBuilder<Agent, L, K, V> {
+        StatelessJoinMapLaneBuilder::default()
     }
 }

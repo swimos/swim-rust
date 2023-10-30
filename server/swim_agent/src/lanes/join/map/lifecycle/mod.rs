@@ -188,6 +188,18 @@ pub struct StatelessJoinMapLaneLifecycle<
     on_failed: FFailed,
 }
 
+impl<Context, L, K> Default for StatelessJoinMapLaneLifecycle<Context, L, K> {
+    fn default() -> Self {
+        Self {
+            _type: Default::default(),
+            on_linked: Default::default(),
+            on_synced: Default::default(),
+            on_unlinked: Default::default(),
+            on_failed: Default::default(),
+        }
+    }
+}
+
 /// A lifecycle for a join map downlink where the event handlers can share state.
 ///
 /// #Type Parameters
@@ -217,18 +229,6 @@ pub struct StatefulJoinMapLaneLifecycle<
     on_synced: FSynced,
     on_unlinked: FUnlinked,
     on_failed: FFailed,
-}
-
-impl<Context, L, K> Default for StatelessJoinMapLaneLifecycle<Context, L, K> {
-    fn default() -> Self {
-        Self {
-            _type: Default::default(),
-            on_linked: Default::default(),
-            on_synced: Default::default(),
-            on_unlinked: Default::default(),
-            on_failed: Default::default(),
-        }
-    }
 }
 
 impl<Context, State, L, K> StatefulJoinMapLaneLifecycle<Context, State, L, K> {
