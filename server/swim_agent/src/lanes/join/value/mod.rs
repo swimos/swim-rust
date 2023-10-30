@@ -141,6 +141,7 @@ where
                 events_when_not_synced: true,
                 terminate_on_unlinked: true,
             },
+            false,
         );
         AddDownlinkAction {
             projection,

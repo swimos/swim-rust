@@ -534,7 +534,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         LC: EventDownlinkLifecycle<T, Agent> + Send + 'static,
         T::Rec: Send,
     {
-        OpenEventDownlinkAction::new(Address::text(host, node, lane), lifecycle, config)
+        OpenEventDownlinkAction::new(Address::text(host, node, lane), lifecycle, config, false)
     }
 
     /// Open a map downlink to a lane on another agent.

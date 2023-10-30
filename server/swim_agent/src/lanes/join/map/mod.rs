@@ -47,6 +47,8 @@ mod default_lifecycle;
 mod downlink;
 mod init;
 pub mod lifecycle;
+#[cfg(test)]
+mod tests;
 
 pub use downlink::{AfterClosed, JoinMapLaneUpdate};
 pub use init::LifecycleInitializer;
@@ -85,7 +87,7 @@ where
 {
     fn add_link(&mut self, link: L) -> bool {
         let Links { links, .. } = self;
-        if let Entry::Occupied(mut e) = links.entry(link) {
+        if let Entry::Vacant(e) = links.entry(link) {
             e.insert(Default::default());
             true
         } else {
@@ -364,6 +366,7 @@ where
                 events_when_not_synced: true,
                 terminate_on_unlinked: true,
             },
+            true,
         );
         AddDownlinkAction {
             projection,

@@ -12,38 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{
-    collections::HashMap,
-    fmt::Debug,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-};
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use bytes::BytesMut;
 use futures::stream::FuturesUnordered;
-use swim_api::{agent::AgentConfig, downlink::DownlinkKind};
+use swim_api::agent::AgentConfig;
+use swim_api::downlink::DownlinkKind;
 use swim_model::address::Address;
 use swim_utilities::routing::route_uri::RouteUri;
 
-use crate::{
-    event_handler::{
-        ActionContext, BoxJoinLaneInit, EventHandlerError, HandlerAction, Modification, StepResult,
-    },
-    item::{AgentItem, MapItem},
-    lanes::{
-        join::test_util::{TestDlContextInner, TestDownlinkContext},
-        join_value::{
-            default_lifecycle::DefaultJoinValueLifecycle, AddDownlinkAction, JoinValueLaneGet,
-            JoinValueLaneGetMap,
-        },
-    },
-    meta::AgentMetadata,
-    test_context::{dummy_context, run_event_handlers, run_with_futures},
+use crate::event_handler::{
+    ActionContext, BoxJoinLaneInit, EventHandlerError, HandlerAction, Modification,
 };
+use crate::item::AgentItem;
+use crate::lanes::join::test_util::{TestDlContextInner, TestDownlinkContext};
+use crate::lanes::join_map::default_lifecycle::DefaultJoinMapLifecycle;
+use crate::lanes::join_map::{
+    AddDownlinkAction, JoinMapAddDownlink, JoinMapLaneGet, JoinMapLaneGetMap,
+};
+use crate::test_context::{dummy_context, run_event_handlers, run_with_futures};
+use crate::{event_handler::StepResult, item::MapItem, meta::AgentMetadata};
 
-use super::{JoinValueAddDownlink, JoinValueLane, LifecycleInitializer};
+use super::{JoinMapLane, LifecycleInitializer};
 
 const ID: u64 = 857383;
 
@@ -64,14 +57,16 @@ fn init() -> HashMap<i32, String> {
         .collect()
 }
 
-fn make_lane(contents: impl IntoIterator<Item = (i32, String)>) -> JoinValueLane<i32, String> {
-    let lane = JoinValueLane::new(ID);
+fn make_lane(
+    contents: impl IntoIterator<Item = (i32, String)>,
+) -> JoinMapLane<String, i32, String> {
+    let lane = JoinMapLane::new(ID);
     lane.init(contents.into_iter().collect());
     lane
 }
 
 #[test]
-fn get_from_join_value_lane() {
+fn get_from_join_map_lane() {
     let lane = make_lane(init());
 
     let value = lane.get(&K1, |v| v.cloned());
@@ -82,7 +77,7 @@ fn get_from_join_value_lane() {
 }
 
 #[test]
-fn get_join_value_lane() {
+fn get_join_map_lane() {
     let lane = make_lane(init());
 
     let value = lane.get_map(Clone::clone);
@@ -102,13 +97,12 @@ fn make_meta<'a>(
 ) -> AgentMetadata<'a> {
     AgentMetadata::new(uri, route_params, &CONFIG)
 }
-
 struct TestAgent {
-    lane: JoinValueLane<i32, String>,
+    lane: JoinMapLane<String, i32, String>,
 }
 
 impl TestAgent {
-    pub const LANE: fn(&TestAgent) -> &JoinValueLane<i32, String> = |agent| &agent.lane;
+    pub const LANE: fn(&TestAgent) -> &JoinMapLane<String, i32, String> = |agent| &agent.lane;
 
     fn with_init() -> Self {
         TestAgent {
@@ -153,13 +147,13 @@ fn check_result<T: Eq + Debug>(
 }
 
 #[test]
-fn join_value_lane_get_event_handler() {
+fn join_map_lane_get_event_handler() {
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = JoinValueLaneGet::new(TestAgent::LANE, K1);
+    let mut handler = JoinMapLaneGet::new(TestAgent::LANE, K1);
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
@@ -168,7 +162,7 @@ fn join_value_lane_get_event_handler() {
     );
     check_result(result, false, false, Some(Some(V1.to_string())));
 
-    let mut handler = JoinValueLaneGet::new(TestAgent::LANE, ABSENT);
+    let mut handler = JoinMapLaneGet::new(TestAgent::LANE, ABSENT);
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
@@ -189,13 +183,13 @@ fn join_value_lane_get_event_handler() {
 }
 
 #[test]
-fn join_value_lane_get_map_event_handler() {
+fn join_map_lane_get_map_event_handler() {
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = JoinValueLaneGetMap::new(TestAgent::LANE);
+    let mut handler = JoinMapLaneGetMap::new(TestAgent::LANE);
 
     let expected = init();
 
@@ -221,7 +215,7 @@ const REMOTE_NODE: &str = "/remote_node";
 const REMOTE_LANE: &str = "remote_lane";
 
 #[tokio::test]
-async fn join_value_lane_add_downlinks_event_handler() {
+async fn join_map_lane_add_downlinks_event_handler() {
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
@@ -231,12 +225,12 @@ async fn join_value_lane_add_downlinks_event_handler() {
 
     let mut handler = AddDownlinkAction::new(
         TestAgent::LANE,
-        34,
+        "link".to_string(),
         address.clone(),
-        DefaultJoinValueLifecycle,
+        DefaultJoinMapLifecycle,
     );
 
-    let context = TestDownlinkContext::default();
+    let context = TestDownlinkContext::new(DownlinkKind::MapEvent);
     let spawner = FuturesUnordered::new();
     let mut inits = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
@@ -272,7 +266,7 @@ async fn join_value_lane_add_downlinks_event_handler() {
     assert!(downlink_channels.contains_key(&address));
     match downlinks.as_slice() {
         [channel] => {
-            assert_eq!(channel.kind(), DownlinkKind::Event);
+            assert_eq!(channel.kind(), DownlinkKind::MapEvent);
         }
         _ => panic!("Expected a single downlink."),
     }
@@ -283,7 +277,7 @@ fn register_lifecycle(
     agent: &TestAgent,
     count: Arc<AtomicUsize>,
 ) {
-    let lc = DefaultJoinValueLifecycle;
+    let lc = DefaultJoinMapLifecycle;
     let fac = move || {
         count.fetch_add(1, Ordering::Relaxed);
         lc
@@ -303,9 +297,9 @@ async fn open_downlink_from_registered() {
 
     let address = Address::text(None, REMOTE_NODE, REMOTE_LANE);
 
-    let handler = JoinValueAddDownlink::new(TestAgent::LANE, 12, address.clone());
+    let handler = JoinMapAddDownlink::new(TestAgent::LANE, "link".to_string(), address.clone());
 
-    let context = TestDownlinkContext::default();
+    let context = TestDownlinkContext::new(DownlinkKind::MapEvent);
     let mut inits = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
 

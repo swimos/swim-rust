@@ -29,8 +29,8 @@ use swim_utilities::routing::route_uri::RouteUri;
 use crate::{
     event_handler::{DowncastError, JoinLaneInitializer},
     lanes::{
-        join_value::{default_lifecycle::DefaultJoinValueLifecycle, tests::TestDownlinkContext},
-        JoinValueLane,
+        join::test_util::TestDownlinkContext,
+        join_value::default_lifecycle::DefaultJoinValueLifecycle, JoinValueLane,
     },
     meta::AgentMetadata,
     test_context::run_with_futures,
