@@ -26,7 +26,7 @@ use super::AddDownlinkAction;
 use super::{lifecycle::JoinMapLaneLifecycle, JoinMapLane};
 
 /// Uses a [`JoinMapLaneLifecycle`] to create a handler action that will open a new downlink
-/// for a join value lane. The purposes of this is to hide the specific types of the lane behind
+/// for a join map lane. The purposes of this is to hide the specific types of the lane behind
 /// the [`JoinMapInitializer`] trait so it can be stored inside the agent context (which has no
 /// knowledge of the types).
 pub struct LifecycleInitializer<Context, L, K, V, F> {
@@ -99,6 +99,6 @@ where
     }
 
     fn kind(&self) -> JoinLaneKind {
-        JoinLaneKind::Value
+        JoinLaneKind::Map
     }
 }
