@@ -230,12 +230,15 @@ where
     L: Clone + Hash + Eq,
     K: Clone + Hash + Eq + Ord,
 {
-    pub(crate) fn update(&self, link_key: L, message: MapMessage<K, V>) -> bool {
+    pub(crate) fn update(&self, link_key: L, message: MapMessage<K, V>, add_link: bool) -> bool {
         let JoinMapLane {
             inner,
             link_tracker,
         } = self;
         let mut guard = link_tracker.borrow_mut();
+        if add_link {
+            guard.links.entry(link_key.clone()).or_default().status = DownlinkStatus::Linked;
+        }
         match message {
             MapMessage::Update { key, value } => {
                 if guard.insert(link_key, key.clone()) {

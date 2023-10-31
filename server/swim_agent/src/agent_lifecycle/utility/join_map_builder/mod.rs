@@ -49,6 +49,8 @@ impl<Context, L, K, V, LC: Default> Default for StatelessJoinMapLaneBuilder<Cont
     }
 }
 
+type JoinMapType<Context, State, L, K, V> = for<'a> fn(&'a Context, &'a State, L, K, V);
+
 #[derive(Debug)]
 pub struct StatefulJoinMapLaneBuilder<
     Context,
@@ -58,7 +60,7 @@ pub struct StatefulJoinMapLaneBuilder<
     V,
     LC = StatefulJoinMapLaneLifecycle<Context, State, L, K>,
 > {
-    _type: PhantomData<fn(&Context, &State, L, K, V)>,
+    _type: PhantomData<JoinMapType<Context, State, L, K, V>>,
     inner: LC,
 }
 

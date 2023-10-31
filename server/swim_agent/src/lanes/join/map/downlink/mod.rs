@@ -161,7 +161,7 @@ where
             link_key,
             ..
         } = self;
-        JoinMapLaneUpdate::new(*projection, link_key.clone(), message)
+        JoinMapLaneUpdate::new(*projection, link_key.clone(), message, false)
     }
 }
 
@@ -170,6 +170,7 @@ where
 pub struct JoinMapLaneUpdate<C, L, K, V> {
     projection: fn(&C) -> &JoinMapLane<L, K, V>,
     key_message: Option<(L, MapMessage<K, V>)>,
+    add_link: bool,
 }
 
 impl<C, L, K, V> JoinMapLaneUpdate<C, L, K, V> {
@@ -177,10 +178,12 @@ impl<C, L, K, V> JoinMapLaneUpdate<C, L, K, V> {
         projection: fn(&C) -> &JoinMapLane<L, K, V>,
         link_key: L,
         message: MapMessage<K, V>,
+        add_link: bool,
     ) -> Self {
         JoinMapLaneUpdate {
             projection,
             key_message: Some((link_key, message)),
+            add_link,
         }
     }
 }
@@ -201,10 +204,11 @@ where
         let JoinMapLaneUpdate {
             projection,
             key_message,
+            add_link,
         } = self;
         if let Some((link_key, message)) = key_message.take() {
             let lane = projection(context);
-            if lane.update(link_key, message) {
+            if lane.update(link_key, message, *add_link) {
                 StepResult::Complete {
                     modified_item: Some(Modification::of(lane.id())),
                     result: (),
