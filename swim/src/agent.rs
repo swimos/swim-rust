@@ -218,8 +218,8 @@ pub mod model {
 pub mod agent_model {
     pub use swim_agent::agent_model::{
         AgentModel, AgentSpec, ItemDescriptor, ItemFlags, ItemInitializer, ItemKind, ItemSpec,
-        JoinValueInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,
-        ValueStoreInitializer, WriteResult,
+        JoinMapInitializer, JoinValueInitializer, MapLaneInitializer, MapStoreInitializer,
+        ValueLaneInitializer, ValueStoreInitializer, WriteResult,
     };
     pub use swim_api::lane::WarpLaneKind;
     pub use swim_api::meta::lane::LaneKind;
@@ -240,7 +240,7 @@ pub mod item {
 
 pub mod lanes {
     pub use swim_agent::lanes::{
-        CommandLane, DemandLane, DemandMapLane, HttpLane, JoinValueLane, LaneItem,
+        CommandLane, DemandLane, DemandMapLane, HttpLane, JoinMapLane, JoinValueLane, LaneItem,
         LinkClosedResponse, MapLane, SimpleHttpLane, ValueLane,
     };
 
@@ -278,6 +278,13 @@ pub mod lanes {
         pub use swim_agent::lanes::map::{decode_and_apply, DecodeAndApply, MapLaneSync};
         pub mod lifecycle {
             pub use swim_agent::lanes::map::lifecycle::StatefulMapLaneLifecycle;
+        }
+    }
+
+    pub mod join_map {
+        pub use swim_agent::lanes::join_map::JoinMapLaneSync;
+        pub mod lifecycle {
+            pub use swim_agent::lanes::join_map::lifecycle::JoinMapLaneLifecycle;
         }
     }
 

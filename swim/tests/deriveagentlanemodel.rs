@@ -24,7 +24,9 @@ use swim::agent::reexport::uuid::Uuid;
 use swim::agent::AgentLaneModel;
 use swim_agent::agent_model::{ItemDescriptor, ItemSpec};
 use swim_agent::lanes::http::Recon;
-use swim_agent::lanes::{DemandLane, DemandMapLane, HttpLane, JoinValueLane, SimpleHttpLane};
+use swim_agent::lanes::{
+    DemandLane, DemandMapLane, HttpLane, JoinMapLane, JoinValueLane, SimpleHttpLane,
+};
 use swim_agent::reexport::bytes::Bytes;
 use swim_agent::stores::{MapStore, ValueStore};
 use swim_api::agent::HttpLaneRequest;
@@ -366,6 +368,7 @@ fn multiple_lanes() {
         seventh: DemandLane<i32>,
         eighth: DemandMapLane<i32, i32>,
         ninth: SimpleHttpLane<i32>,
+        tenth: JoinMapLane<i32, i32, i32>,
     }
 
     check_agent::<MultipleLanes>(vec![
@@ -378,6 +381,7 @@ fn multiple_lanes() {
         persistent_lane(5, "sixth", WarpLaneKind::JoinValue),
         transient_lane(7, "eighth", WarpLaneKind::DemandMap),
         http_lane(8, "ninth"),
+        persistent_lane(9, "tenth", WarpLaneKind::JoinMap),
     ]);
 }
 
@@ -544,6 +548,45 @@ fn join_value_lane_tagged_transient() {
 }
 
 #[test]
+fn single_join_map_lane() {
+    #[derive(AgentLaneModel)]
+    struct SingleJoinMapLane {
+        lane: JoinMapLane<i32, i32, i32>,
+    }
+
+    check_agent::<SingleJoinMapLane>(vec![persistent_lane(0, "lane", WarpLaneKind::JoinMap)]);
+}
+
+#[test]
+fn two_join_map_lanes() {
+    #[derive(AgentLaneModel)]
+    struct TwoJoinMapLanes {
+        first: JoinMapLane<i32, i32, i32>,
+        second: JoinMapLane<i32, i32, i32>,
+    }
+
+    check_agent::<TwoJoinMapLanes>(vec![
+        persistent_lane(0, "first", WarpLaneKind::JoinMap),
+        persistent_lane(1, "second", WarpLaneKind::JoinMap),
+    ]);
+}
+
+#[test]
+fn join_map_lane_tagged_transient() {
+    #[derive(AgentLaneModel)]
+    struct TwoJoinMapLanes {
+        first: JoinMapLane<i32, i32, i32>,
+        #[lane(transient)]
+        second: JoinMapLane<i32, i32, i32>,
+    }
+
+    check_agent::<TwoJoinMapLanes>(vec![
+        persistent_lane(0, "first", WarpLaneKind::JoinMap),
+        transient_lane(1, "second", WarpLaneKind::JoinMap),
+    ]);
+}
+
+#[test]
 fn single_simple_http_lane() {
     #[derive(AgentLaneModel)]
     struct SingleSimpleHttpLane {
@@ -638,6 +681,7 @@ mod isolated {
             tenth: swim::agent::lanes::DemandMapLane<i32, i32>,
             eleventh: swim::agent::lanes::SimpleHttpLane<i32>,
             twelfth: swim::agent::lanes::HttpLane<i32, i32>,
+            thirteenth: swim::agent::lanes::JoinMapLane<i32, i32, i32>,
         }
 
         check_agent::<MultipleLanes>(vec![
@@ -653,6 +697,7 @@ mod isolated {
             transient_lane(9, "tenth", WarpLaneKind::DemandMap),
             http_lane(10, "eleventh"),
             http_lane(11, "twelfth"),
+            persistent_lane(12, "thirteenth", WarpLaneKind::JoinMap),
         ]);
     }
 }
