@@ -219,10 +219,6 @@ impl<L, K, V> JoinMapLane<L, K, V> {
             link_tracker: Default::default(),
         }
     }
-
-    pub(crate) fn map_lane(&self) -> &MapLane<K, V> {
-        &self.inner
-    }
 }
 
 impl<L, K, V> JoinMapLane<L, K, V>

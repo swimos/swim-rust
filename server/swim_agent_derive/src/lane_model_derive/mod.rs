@@ -718,8 +718,6 @@ impl<'a> ValueItemInitMatch<'a> {
 enum InitKind {
     MapLane,
     MapStore,
-    JoinMapLane,
-    JoinValueLane,
 }
 
 struct MapItemInitMatch<'a> {
@@ -733,9 +731,7 @@ impl<'a> MapItemInitMatch<'a> {
     pub fn new(item: &OrdinalItemModel<'a>) -> Self {
         let init_kind = match &item.model.kind {
             ItemSpec::Map(ItemKind::Lane, _, _) => InitKind::MapLane,
-            ItemSpec::Map(ItemKind::Store, _, _) => InitKind::MapStore,
-            ItemSpec::JoinMap(_, _, _) => InitKind::JoinMapLane,
-            _ => InitKind::JoinValueLane,
+            _ => InitKind::MapStore,
         };
         MapItemInitMatch {
             agent_name: item.agent_name,
@@ -760,12 +756,6 @@ impl<'a> MapItemInitMatch<'a> {
             }
             InitKind::MapStore => {
                 quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::MapStoreInitializer::new(|agent: &#agent_name| &agent.#name))))
-            }
-            InitKind::JoinMapLane => {
-                quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::JoinMapInitializer::new(|agent: &#agent_name| &agent.#name))))
-            }
-            InitKind::JoinValueLane => {
-                quote!(#name_lit => ::core::option::Option::Some(::std::boxed::Box::new(#root::agent_model::JoinValueInitializer::new(|agent: &#agent_name| &agent.#name))))
             }
         }
     }

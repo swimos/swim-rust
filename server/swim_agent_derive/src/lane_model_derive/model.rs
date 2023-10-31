@@ -413,7 +413,7 @@ fn extract_lane_model(field: &Field) -> Validation<ItemModel<'_>, Errors<syn::Er
                             Ok((param1, param2)) => Validation::valid(ItemModel::new(
                                 fld_name,
                                 ItemSpec::JoinValue(param1, param2),
-                                lane_flags,
+                                ItemFlags::TRANSIENT, //Join value lanes are always transient.
                                 transform,
                             )),
                             Err(e) => Validation::fail(Errors::of(e)),
@@ -422,7 +422,7 @@ fn extract_lane_model(field: &Field) -> Validation<ItemModel<'_>, Errors<syn::Er
                             Ok((param1, param2, param3)) => Validation::valid(ItemModel::new(
                                 fld_name,
                                 ItemSpec::JoinMap(param1, param2, param3),
-                                lane_flags,
+                                ItemFlags::TRANSIENT, //Join map lanes are always transient.
                                 transform,
                             )),
                             Err(e) => Validation::fail(Errors::of(e)),

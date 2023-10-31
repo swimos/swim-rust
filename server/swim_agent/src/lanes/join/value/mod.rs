@@ -71,10 +71,6 @@ impl<K, V> JoinValueLane<K, V> {
             keys: RefCell::new(HashMap::new()),
         }
     }
-
-    pub(crate) fn map_lane(&self) -> &MapLane<K, V> {
-        &self.inner
-    }
 }
 
 impl<K, V> JoinValueLane<K, V>

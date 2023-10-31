@@ -378,10 +378,10 @@ fn multiple_lanes() {
         transient_lane(6, "seventh", WarpLaneKind::Demand),
         persistent_lane(1, "second", WarpLaneKind::Map),
         persistent_lane(3, "fourth", WarpLaneKind::Map),
-        persistent_lane(5, "sixth", WarpLaneKind::JoinValue),
+        transient_lane(5, "sixth", WarpLaneKind::JoinValue),
         transient_lane(7, "eighth", WarpLaneKind::DemandMap),
         http_lane(8, "ninth"),
-        persistent_lane(9, "tenth", WarpLaneKind::JoinMap),
+        transient_lane(9, "tenth", WarpLaneKind::JoinMap),
     ]);
 }
 
@@ -515,7 +515,7 @@ fn single_join_value_lane() {
         lane: JoinValueLane<i32, i32>,
     }
 
-    check_agent::<SingleJoinValueLane>(vec![persistent_lane(0, "lane", WarpLaneKind::JoinValue)]);
+    check_agent::<SingleJoinValueLane>(vec![transient_lane(0, "lane", WarpLaneKind::JoinValue)]);
 }
 
 #[test]
@@ -527,8 +527,8 @@ fn two_join_value_lanes() {
     }
 
     check_agent::<TwoJoinValueLanes>(vec![
-        persistent_lane(0, "first", WarpLaneKind::JoinValue),
-        persistent_lane(1, "second", WarpLaneKind::JoinValue),
+        transient_lane(0, "first", WarpLaneKind::JoinValue),
+        transient_lane(1, "second", WarpLaneKind::JoinValue),
     ]);
 }
 
@@ -542,7 +542,7 @@ fn join_value_lane_tagged_transient() {
     }
 
     check_agent::<TwoJoinValueLanes>(vec![
-        persistent_lane(0, "first", WarpLaneKind::JoinValue),
+        transient_lane(0, "first", WarpLaneKind::JoinValue),
         transient_lane(1, "second", WarpLaneKind::JoinValue),
     ]);
 }
@@ -554,7 +554,7 @@ fn single_join_map_lane() {
         lane: JoinMapLane<i32, i32, i32>,
     }
 
-    check_agent::<SingleJoinMapLane>(vec![persistent_lane(0, "lane", WarpLaneKind::JoinMap)]);
+    check_agent::<SingleJoinMapLane>(vec![transient_lane(0, "lane", WarpLaneKind::JoinMap)]);
 }
 
 #[test]
@@ -566,8 +566,8 @@ fn two_join_map_lanes() {
     }
 
     check_agent::<TwoJoinMapLanes>(vec![
-        persistent_lane(0, "first", WarpLaneKind::JoinMap),
-        persistent_lane(1, "second", WarpLaneKind::JoinMap),
+        transient_lane(0, "first", WarpLaneKind::JoinMap),
+        transient_lane(1, "second", WarpLaneKind::JoinMap),
     ]);
 }
 
@@ -581,7 +581,7 @@ fn join_map_lane_tagged_transient() {
     }
 
     check_agent::<TwoJoinMapLanes>(vec![
-        persistent_lane(0, "first", WarpLaneKind::JoinMap),
+        transient_lane(0, "first", WarpLaneKind::JoinMap),
         transient_lane(1, "second", WarpLaneKind::JoinMap),
     ]);
 }
@@ -692,12 +692,12 @@ mod isolated {
             persistent_lane(1, "second", WarpLaneKind::Map),
             persistent_lane(3, "fourth", WarpLaneKind::Map),
             persistent_store(6, "seventh", StoreKind::Map),
-            persistent_lane(7, "eighth", WarpLaneKind::JoinValue),
+            transient_lane(7, "eighth", WarpLaneKind::JoinValue),
             transient_lane(8, "ninth", WarpLaneKind::Demand),
             transient_lane(9, "tenth", WarpLaneKind::DemandMap),
             http_lane(10, "eleventh"),
             http_lane(11, "twelfth"),
-            persistent_lane(12, "thirteenth", WarpLaneKind::JoinMap),
+            transient_lane(12, "thirteenth", WarpLaneKind::JoinMap),
         ]);
     }
 }

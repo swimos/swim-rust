@@ -218,8 +218,8 @@ pub mod model {
 pub mod agent_model {
     pub use swim_agent::agent_model::{
         AgentModel, AgentSpec, ItemDescriptor, ItemFlags, ItemInitializer, ItemKind, ItemSpec,
-        JoinMapInitializer, JoinValueInitializer, MapLaneInitializer, MapStoreInitializer,
-        ValueLaneInitializer, ValueStoreInitializer, WriteResult,
+        MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer, ValueStoreInitializer,
+        WriteResult,
     };
     pub use swim_api::lane::WarpLaneKind;
     pub use swim_api::meta::lane::LaneKind;

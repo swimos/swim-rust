@@ -72,8 +72,8 @@ use bitflags::bitflags;
 use self::downlink::handlers::{BoxDownlinkChannel, DownlinkChannelError, DownlinkChannelEvent};
 use self::init::{run_item_initializer, InitializedItem};
 pub use init::{
-    ItemInitializer, JoinMapInitializer, JoinValueInitializer, MapLaneInitializer,
-    MapStoreInitializer, ValueLaneInitializer, ValueStoreInitializer,
+    ItemInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,
+    ValueStoreInitializer,
 };
 pub use swim_api::lane::WarpLaneKind;
 
