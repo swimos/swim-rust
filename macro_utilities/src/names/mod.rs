@@ -147,10 +147,10 @@ impl NameTransform {
         }
     }
 
-    pub fn transform_cow<'a>(&'a self, name: String) -> Cow<'a, str> {
+    pub fn transform_cow(&self, name: String) -> Cow<'_, str> {
         match self {
             NameTransform::Identity => Cow::Owned(name),
-            NameTransform::Rename(new_name) => Cow::Borrowed(&new_name),
+            NameTransform::Rename(new_name) => Cow::Borrowed(new_name),
             NameTransform::Convention(case_conv) => {
                 Cow::Owned(name.to_case(Case::from(*case_conv)))
             }
