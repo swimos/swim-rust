@@ -1,0 +1,10 @@
+error: Agent item names must be unique. Duplicated names: [firstLane]
+  --> tests/bad_agents/duplicate_names.rs:19:1
+   |
+19 | / #[allow(non_snake_case)]
+20 | | pub struct RenameConvention {
+21 | |     #[lane(convention = "camel")]
+22 | |     first_lane: ValueLane<i32>,
+23 | |     firstLane: ValueLane<i32>,
+24 | | }
+   | |_^

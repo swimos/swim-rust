@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::str::FromStr;
+use std::{borrow::Cow, str::FromStr};
 
 use convert_case::{Case, Casing};
 use proc_macro2::Literal;
@@ -144,6 +144,16 @@ impl NameTransform {
                 meta,
                 "Duplicate name transformations.",
             )),
+        }
+    }
+
+    pub fn transform_cow<'a>(&'a self, name: String) -> Cow<'a, str> {
+        match self {
+            NameTransform::Identity => Cow::Owned(name),
+            NameTransform::Rename(new_name) => Cow::Borrowed(&new_name),
+            NameTransform::Convention(case_conv) => {
+                Cow::Owned(name.to_case(Case::from(*case_conv)))
+            }
         }
     }
 

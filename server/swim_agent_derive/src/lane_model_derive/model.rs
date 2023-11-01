@@ -15,10 +15,13 @@
 use bitflags::bitflags;
 use macro_utilities::{attributes::consume_attributes, NameTransform, TypeLevelNameTransform};
 use proc_macro2::Literal;
-use std::hash::Hash;
-use swim_utilities::errors::{
-    validation::{Validation, ValidationItExt},
-    Errors,
+use std::{collections::HashSet, hash::Hash};
+use swim_utilities::{
+    errors::{
+        validation::{Validation, ValidationItExt},
+        Errors,
+    },
+    format::comma_sep,
 };
 use syn::{
     AngleBracketedGenericArguments, Data, DataStruct, DeriveInput, Field, GenericArgument, Ident,
@@ -46,6 +49,29 @@ impl<'a> LanesModel<'a> {
     pub fn apply_transform(&mut self, type_transform: TypeLevelNameTransform) {
         for ItemModel { transform, .. } in &mut self.lanes {
             *transform = type_transform.resolve(std::mem::take(transform));
+        }
+    }
+
+    pub fn check_names(&self, src: &DeriveInput) -> Result<(), syn::Error> {
+        let LanesModel { lanes, .. } = self;
+        let mut names = HashSet::new();
+        let mut duplicates = HashSet::new();
+        for lane in lanes.iter() {
+            let name = lane.transform.transform_cow(lane.name.to_string());
+            if names.contains(&name) {
+                duplicates.insert(name);
+            } else {
+                names.insert(name);
+            }
+        }
+        if duplicates.is_empty() {
+            Ok(())
+        } else {
+            let message = format!(
+                "Agent item names must be unique. Duplicated names: [{}]",
+                comma_sep(&duplicates)
+            );
+            Err(syn::Error::new_spanned(src, message))
         }
     }
 }
