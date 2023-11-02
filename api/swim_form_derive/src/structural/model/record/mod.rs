@@ -28,9 +28,11 @@ use macro_utilities::CompoundTypeKind;
 use macro_utilities::FieldKind;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
+use std::collections::HashSet;
 use std::ops::Add;
 use swim_utilities::errors::validation::{validate2, Validation, ValidationItExt};
 use swim_utilities::errors::Errors;
+use swim_utilities::format::comma_sep;
 use syn::{Attribute, Fields, Ident};
 
 const NEWTYPE_MULTI_FIELD_ERR: &str =
@@ -156,6 +158,30 @@ impl<'a> StructModel<'a> {
             None
         }
     }
+
+    pub fn check_field_names(&self, src: &'a dyn ToTokens) -> Result<(), syn::Error> {
+        let mut names = HashSet::new();
+        let mut duplicates = HashSet::new();
+        for field in &self.fields_model.fields {
+            if field.is_labelled() {
+                let name = field.model.resolve_name().as_cow();
+                if names.contains(&name) {
+                    duplicates.insert(name);
+                } else {
+                    names.insert(name);
+                }
+            }
+        }
+        if duplicates.is_empty() {
+            Ok(())
+        } else {
+            let message = format!(
+                "Form field names must be unique. Duplicated names: [{}]",
+                comma_sep(&duplicates)
+            );
+            Err(syn::Error::new_spanned(src, message))
+        }
+    }
 }
 
 pub struct ResolvedName<'a>(&'a StructModel<'a>);
@@ -203,8 +229,22 @@ pub(crate) struct StructDef<'a, Flds> {
     definition: &'a Flds,
 }
 
+impl<'a, Flds> Clone for StructDef<'a, Flds> {
+    fn clone(&self) -> Self {
+        Self {
+            root: self.root,
+            name: self.name,
+            top: self.top,
+            attributes: self.attributes,
+            definition: self.definition,
+        }
+    }
+}
+
+impl<'a, Flds> Copy for StructDef<'a, Flds> {}
+
 impl<'a, Flds> StructDef<'a, Flds> {
-    pub(crate) fn new(
+    pub fn new(
         root: &'a syn::Path,
         name: &'a Ident,
         top: &'a dyn ToTokens,
@@ -218,6 +258,10 @@ impl<'a, Flds> StructDef<'a, Flds> {
             attributes,
             definition,
         }
+    }
+
+    pub fn source(&self) -> &'a dyn ToTokens {
+        self.top
     }
 }
 

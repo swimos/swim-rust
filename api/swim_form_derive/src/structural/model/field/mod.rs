@@ -21,6 +21,7 @@ use macro_utilities::attributes::NestedMetaConsumer;
 use macro_utilities::{FieldKind, NameTransform, NameTransformConsumer, Symbol, Transformation};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt};
+use std::borrow::Cow;
 use std::ops::Add;
 use swim_utilities::errors::validation::Validation;
 use syn::{Field, Ident, Meta, NestedMeta, Type};
@@ -112,13 +113,26 @@ impl<'a> FieldModel<'a> {
 
 pub struct ResolvedName<'a>(&'a FieldModel<'a>);
 
+impl<'a> ResolvedName<'a> {
+
+    fn intrinsic_name(&self) -> String {
+        let ResolvedName(field) = self;
+        match field.selector {
+            FieldSelector::Ordinal(i) => format!("value_{}", i),
+            FieldSelector::Named(id) => id.to_string(),
+        }
+    }
+
+    pub fn as_cow(&self) -> Cow<'a, str> {
+        self.0.transform.transform_cow(self.intrinsic_name())
+    }
+
+}
+
 impl<'a> ToTokens for ResolvedName<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ResolvedName(field) = self;
-        let name_fn = || match field.selector {
-            FieldSelector::Ordinal(i) => format!("value_{}", i),
-            FieldSelector::Named(id) => id.to_string(),
-        };
+        let name_fn = || self.intrinsic_name();
         field.transform.transform(name_fn).to_tokens(tokens);
     }
 }
