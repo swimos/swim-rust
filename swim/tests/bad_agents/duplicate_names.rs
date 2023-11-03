@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_form_derive::*;
+use swim::agent::AgentLaneModel;
+use swim::agent::lanes::ValueLane;
 
-fn main() {
-    #[derive(Form)]
-    #[form_root(::swim_form)]
-    struct S {
-        #[form(swim)]
-        a: i32,
-    }
+#[derive(AgentLaneModel)]
+#[allow(non_snake_case)]
+pub struct RenameConvention {
+    #[lane(convention = "camel")]
+    first_lane: ValueLane<i32>,
+    firstLane: ValueLane<i32>,
 }
+
+fn main() {}

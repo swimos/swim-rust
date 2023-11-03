@@ -12,20 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use super::field::FieldModel;
 use super::ValidateFrom;
-use crate::modifiers::{NameTransform, StructTransform};
+use crate::modifiers::{
+    combine_struct_trans_parts, EnumTransform, StructTransform, StructTransformPartConsumer,
+};
 use crate::structural::model::field::{
     FieldSelector, FieldWithIndex, Manifest, SegregatedFields, TaggedFieldModel,
 };
 use crate::structural::model::StructLike;
 use crate::SynValidation;
-use macro_utilities::attr_names::FORM_PATH;
+use macro_utilities::attr_names::FORM_NAME;
+use macro_utilities::attributes::consume_attributes;
 use macro_utilities::CompoundTypeKind;
 use macro_utilities::FieldKind;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
+use std::collections::HashSet;
 use std::ops::Add;
 use swim_utilities::errors::validation::{validate2, Validation, ValidationItExt};
+use swim_utilities::errors::Errors;
+use swim_utilities::format::comma_sep;
 use syn::{Attribute, Fields, Ident};
 
 const NEWTYPE_MULTI_FIELD_ERR: &str =
@@ -74,6 +81,7 @@ pub enum NewtypeFieldError {
 }
 
 /// Preprocessed description of a struct type.
+#[non_exhaustive]
 pub struct StructModel<'a> {
     pub root: &'a syn::Path,
     /// The original name of the type.
@@ -81,10 +89,62 @@ pub struct StructModel<'a> {
     /// Description of the fields of the struct.
     pub fields_model: FieldsModel<'a>,
     /// Transformation to apply to the struct.
-    pub transform: Option<StructTransform<'a>>,
+    pub transform: StructTransform<'a>,
 }
 
 impl<'a> StructModel<'a> {
+    pub fn new(
+        root: &'a syn::Path,
+        name: &'a Ident,
+        mut fields_model: FieldsModel<'a>,
+        transform: StructTransform<'a>,
+    ) -> Self {
+        let FieldsModel { fields, .. } = &mut fields_model;
+        if let StructTransform::Standard { field_rename, .. } = &transform {
+            for TaggedFieldModel {
+                model: FieldModel { transform, .. },
+                ..
+            } in fields
+            {
+                *transform = field_rename.resolve(std::mem::take(transform));
+            }
+        }
+
+        StructModel {
+            root,
+            name,
+            fields_model,
+            transform,
+        }
+    }
+
+    pub fn apply(&mut self, enum_transform: &EnumTransform) {
+        let EnumTransform {
+            variant_rename,
+            field_rename: super_field_rename,
+        } = enum_transform;
+        let StructModel {
+            fields_model: FieldsModel { fields, .. },
+            transform,
+            ..
+        } = self;
+        if let StructTransform::Standard {
+            rename,
+            field_rename,
+        } = transform
+        {
+            *rename = variant_rename.resolve(std::mem::take(rename));
+            *field_rename = super_field_rename.combine(std::mem::take(field_rename));
+            for TaggedFieldModel {
+                model: FieldModel { transform, .. },
+                ..
+            } in fields
+            {
+                *transform = field_rename.resolve(std::mem::take(transform));
+            }
+        }
+    }
+
     /// Get the (possible renamed) name of the type as a string literal.
     pub fn resolve_name(&self) -> ResolvedName<'_> {
         ResolvedName(self)
@@ -92,10 +152,34 @@ impl<'a> StructModel<'a> {
 
     /// Returns the field selector if a newtype transform should be applied.
     pub fn newtype_selector(&self) -> Option<FieldSelector<'a>> {
-        if let Some(StructTransform::Newtype(Some(selector))) = self.transform {
+        if let StructTransform::Newtype(Some(selector)) = self.transform {
             Some(selector)
         } else {
             None
+        }
+    }
+
+    pub fn check_field_names(&self, src: &'a dyn ToTokens) -> Result<(), syn::Error> {
+        let mut names = HashSet::new();
+        let mut duplicates = HashSet::new();
+        for field in &self.fields_model.fields {
+            if field.is_labelled() {
+                let name = field.model.resolve_name().as_cow();
+                if names.contains(&name) {
+                    duplicates.insert(name);
+                } else {
+                    names.insert(name);
+                }
+            }
+        }
+        if duplicates.is_empty() {
+            Ok(())
+        } else {
+            let message = format!(
+                "Form field names must be unique. Duplicated names: [{}]",
+                comma_sep(&duplicates)
+            );
+            Err(syn::Error::new_spanned(src, message))
         }
     }
 }
@@ -105,10 +189,8 @@ pub struct ResolvedName<'a>(&'a StructModel<'a>);
 impl<'a> ToTokens for ResolvedName<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let ResolvedName(def) = self;
-        if let Some(StructTransform::Rename(trans)) = def.transform.as_ref() {
-            match trans {
-                NameTransform::Rename(name) => proc_macro2::Literal::string(name),
-            }
+        if let StructTransform::Standard { rename, .. } = &def.transform {
+            rename.transform(|| def.name.to_string())
         } else {
             proc_macro2::Literal::string(&def.name.to_string())
         }
@@ -147,8 +229,16 @@ pub(crate) struct StructDef<'a, Flds> {
     definition: &'a Flds,
 }
 
+impl<'a, Flds> Clone for StructDef<'a, Flds> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a, Flds> Copy for StructDef<'a, Flds> {}
+
 impl<'a, Flds> StructDef<'a, Flds> {
-    pub(crate) fn new(
+    pub fn new(
         root: &'a syn::Path,
         name: &'a Ident,
         top: &'a dyn ToTokens,
@@ -162,6 +252,10 @@ impl<'a, Flds> StructDef<'a, Flds> {
             attributes,
             definition,
         }
+    }
+
+    pub fn source(&self) -> &'a dyn ToTokens {
+        self.top
     }
 }
 
@@ -180,66 +274,59 @@ where
 
         let fields_model = FieldsModel::validate(definition.fields());
 
-        let transform = crate::modifiers::fold_attr_meta(
-            FORM_PATH,
-            attributes.iter(),
-            None,
-            crate::modifiers::acc_struct_transform,
+        let (parts, errors) = consume_attributes(
+            FORM_NAME,
+            attributes,
+            StructTransformPartConsumer::default(),
         );
+        let transform = Validation::Validated(parts, Errors::from(errors))
+            .and_then(|parts| combine_struct_trans_parts(top, parts));
 
         validate2(fields_model, transform).and_then(|(model, transform)| match transform {
-            Some(StructTransform::Newtype(_)) => match model.newtype_field() {
+            StructTransform::Newtype(_) => match model.newtype_field() {
                 Ok(selector) => {
-                    let struct_model = StructModel {
+                    let struct_model = StructModel::new(
                         root,
                         name,
-                        fields_model: model,
-                        transform: Some(StructTransform::Newtype(Some(selector))),
-                    };
+                        model,
+                        StructTransform::Newtype(Some(selector)),
+                    );
                     Validation::valid(struct_model)
                 }
                 Err(NewtypeFieldError::Multiple) => {
-                    let struct_model = StructModel {
-                        root,
-                        name,
-                        fields_model: model,
-                        transform: None,
-                    };
+                    let struct_model =
+                        StructModel::new(root, name, model, StructTransform::default());
                     let err = syn::Error::new_spanned(top, NEWTYPE_MULTI_FIELD_ERR);
                     Validation::Validated(struct_model, err.into())
                 }
                 Err(NewtypeFieldError::Empty) => {
-                    let struct_model = StructModel {
-                        root,
-                        name,
-                        fields_model: model,
-                        transform: None,
-                    };
+                    let struct_model =
+                        StructModel::new(root, name, model, StructTransform::default());
                     let err = syn::Error::new_spanned(top, NEWTYPE_EMPTY_ERR);
                     Validation::Validated(struct_model, err.into())
                 }
             },
-            Some(transform @ StructTransform::Rename(_)) => {
-                let struct_model = StructModel {
+            StructTransform::Standard {
+                rename,
+                field_rename,
+            } => {
+                let is_id = rename.is_identity();
+                let struct_model = StructModel::new(
                     root,
                     name,
-                    fields_model: model,
-                    transform: Some(transform),
-                };
-
-                if struct_model.fields_model.has_tag_field() {
+                    model,
+                    StructTransform::Standard {
+                        rename,
+                        field_rename,
+                    },
+                );
+                if !is_id && struct_model.fields_model.has_tag_field() {
                     let err = syn::Error::new_spanned(top, FIELD_TAG_ERR);
                     Validation::Validated(struct_model, err.into())
                 } else {
                     Validation::valid(struct_model)
                 }
             }
-            None => Validation::valid(StructModel {
-                root,
-                name,
-                fields_model: model,
-                transform: None,
-            }),
         })
     }
 }

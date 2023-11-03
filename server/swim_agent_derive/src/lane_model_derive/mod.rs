@@ -12,31 +12,50 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use macro_utilities::TypeLevelNameTransform;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
-use syn::{parse_quote, Ident};
+use swim_utilities::errors::{validation::Validation, Errors};
+use syn::{parse_quote, DeriveInput, Ident};
 
+mod attributes;
 mod model;
 
+pub use attributes::{combine_agent_attrs, make_agent_attr_consumer};
 pub use model::{validate_input, ItemModel, ItemSpec, LanesModel};
 
-use self::model::{HttpLaneModel, HttpLaneSpec, ItemKind, WarpLaneModel, WarpLaneSpec};
+use self::{
+    attributes::AgentModifiers,
+    model::{HttpLaneModel, HttpLaneSpec, ItemKind, WarpLaneModel, WarpLaneSpec},
+};
 
 pub struct DeriveAgentLaneModel<'a> {
-    root: &'a syn::Path,
+    root: syn::Path,
     model: LanesModel<'a>,
 }
 
 impl<'a> DeriveAgentLaneModel<'a> {
-    pub fn new(root: &'a syn::Path, model: LanesModel<'a>) -> Self {
-        DeriveAgentLaneModel { root, model }
+    pub fn validate(
+        src: &DeriveInput,
+        modifiers: AgentModifiers,
+        mut model: LanesModel<'a>,
+    ) -> Validation<Self, Errors<syn::Error>> {
+        let AgentModifiers { transform, root } = modifiers;
+        if let Some(convention) = transform {
+            model.apply_transform(TypeLevelNameTransform::Convention(convention));
+        }
+        if let Err(err) = model.check_names(src) {
+            Validation::Validated(DeriveAgentLaneModel { root, model }, Errors::of(err))
+        } else {
+            Validation::valid(DeriveAgentLaneModel { root, model })
+        }
     }
 }
 
 impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let DeriveAgentLaneModel {
-            root,
+            ref root,
             model: LanesModel {
                 agent_type,
                 ref lanes,
@@ -46,12 +65,12 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
         let item_models = lanes
             .iter()
             .zip(0u64..)
-            .map(|(model, i)| OrdinalItemModel::new(agent_type, i, *model))
+            .map(|(model, i)| OrdinalItemModel::new(agent_type, i, model.clone()))
             .collect::<Vec<_>>();
 
         let initializers = item_models
             .iter()
-            .copied()
+            .cloned()
             .map(FieldInitializer)
             .map(|init| init.into_tokens(root));
 
@@ -60,7 +79,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
         let no_handler: syn::Type = parse_quote!(#root::event_handler::UnitHandler);
 
         let (value_item_models, map_item_models) =
-            partition_models(item_models.iter().copied(), OrdinalItemModel::category);
+            partition_models(item_models.iter().cloned(), OrdinalItemModel::category);
 
         let warp_lane_models = OrdinalWarpLaneModel::from_item_models(&item_models);
 
@@ -68,7 +87,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
         let (map_lane_models, value_lane_models) = warp_lane_models
             .iter()
-            .copied()
+            .cloned()
             .partition::<Vec<_>, _>(OrdinalWarpLaneModel::map_like);
 
         let value_handler = if !value_lane_models.is_empty() {
@@ -76,7 +95,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
                 .iter()
                 .rev()
                 .fold(base.clone(), |acc, model| {
-                    let handler_ty = HandlerType(*model);
+                    let handler_ty = HandlerType(model.clone());
                     let handler_tok = handler_ty.into_tokens(root);
                     parse_quote!(#root::reexport::coproduct::Coproduct<#handler_tok, #acc>)
                 })
@@ -89,7 +108,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
                 .iter()
                 .rev()
                 .fold(base.clone(), |acc, model| {
-                    let handler_ty = HandlerType(*model);
+                    let handler_ty = HandlerType(model.clone());
                     let handler_tok = handler_ty.into_tokens(root);
                     parse_quote!(#root::reexport::coproduct::Coproduct<#handler_tok, #acc>)
                 })
@@ -102,7 +121,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
                 .iter()
                 .rev()
                 .fold(base.clone(), |acc, model| {
-                    let handler_ty = HttpHandlerType(*model);
+                    let handler_ty = HttpHandlerType(model.clone());
                     let handler_tok = handler_ty.into_tokens(root);
                     parse_quote!(#root::reexport::coproduct::Coproduct<#handler_tok, #acc>)
                 })
@@ -112,7 +131,7 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
         let sync_handler = if !warp_lane_models.is_empty() {
             warp_lane_models.iter().rev().fold(base, |acc, model| {
-                let handler_ty = SyncHandlerType(*model);
+                let handler_ty = SyncHandlerType(model.clone());
                 let handler_tok = handler_ty.into_tokens(root);
                 parse_quote!(#root::reexport::coproduct::Coproduct<#handler_tok, #acc>)
             })
@@ -122,36 +141,36 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
 
         let item_specs = item_models
             .iter()
-            .map(|model| LaneSpecInsert(model.ordinal, model.model))
+            .map(|model| LaneSpecInsert(model.ordinal, model.model.clone()))
             .map(|insert| insert.into_tokens(root));
 
         let value_match_blocks = value_lane_models
             .iter()
             .enumerate()
-            .map(|(i, model)| WarpLaneHandlerMatch::new(i, *model))
+            .map(|(i, model)| WarpLaneHandlerMatch::new(i, model.clone()))
             .map(|hmatch| hmatch.into_tokens(root));
 
         let map_match_blocks = map_lane_models
             .iter()
             .enumerate()
-            .map(|(i, model)| WarpLaneHandlerMatch::new(i, *model))
+            .map(|(i, model)| WarpLaneHandlerMatch::new(i, model.clone()))
             .map(|hmatch| hmatch.into_tokens(root));
 
         let http_match_blocks = http_lane_models
             .iter()
-            .map(|model| HttpLaneHandlerMatch::new(*model))
+            .map(|model| HttpLaneHandlerMatch::new(model.clone()))
             .map(|hmatch| hmatch.into_tokens(root));
 
         let sync_match_blocks = warp_lane_models
             .iter()
-            .copied()
+            .cloned()
             .map(|model| SyncHandlerMatch::new(root, model))
             .map(SyncHandlerMatch::into_tokens);
 
         let write_match_blocks = item_models
             .iter()
             .filter(|m| m.category() != ItemCategory::Http)
-            .copied()
+            .cloned()
             .map(|model| WriteToBufferMatch(model.model))
             .map(|wmatch| wmatch.into_tokens(root));
 
@@ -268,21 +287,21 @@ impl<'a> ToTokens for DeriveAgentLaneModel<'a> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct OrdinalItemModel<'a> {
     agent_name: &'a Ident,
     ordinal: u64,
     model: ItemModel<'a>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct OrdinalWarpLaneModel<'a> {
     agent_name: &'a Ident,
     lane_ordinal: usize,
     model: WarpLaneModel<'a>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct OrdinalHttpLaneModel<'a> {
     agent_name: &'a Ident,
     lane_ordinal: usize,
@@ -293,7 +312,7 @@ impl<'a> OrdinalWarpLaneModel<'a> {
     pub fn from_item_models(models: &[OrdinalItemModel<'a>]) -> Vec<OrdinalWarpLaneModel<'a>> {
         models
             .iter()
-            .copied()
+            .cloned()
             .filter_map(
                 |OrdinalItemModel {
                      agent_name, model, ..
@@ -320,7 +339,7 @@ impl<'a> OrdinalHttpLaneModel<'a> {
     pub fn from_item_models(models: &[OrdinalItemModel<'a>]) -> Vec<OrdinalHttpLaneModel<'a>> {
         models
             .iter()
-            .copied()
+            .cloned()
             .filter_map(
                 |OrdinalItemModel {
                      agent_name, model, ..
@@ -561,7 +580,7 @@ impl<'a> HttpLaneHandlerMatch<'a> {
                 },
         } = self;
         let name_lit = model.literal();
-        let HttpLaneModel { name, kind } = model;
+        let HttpLaneModel { name, kind, .. } = model;
         let handler_base: syn::Expr = parse_quote!(handler);
         let coprod_con = coproduct_constructor(root, handler_base, lane_ordinal);
         let HttpLaneSpec {
@@ -639,7 +658,7 @@ struct WriteToBufferMatch<'a>(ItemModel<'a>);
 impl<'a> WriteToBufferMatch<'a> {
     fn into_tokens(self, root: &syn::Path) -> impl ToTokens {
         let WriteToBufferMatch(model) = self;
-        let name_lit = model.literal();
+        let name_lit = model.external_literal();
         let ItemModel { name, kind, .. } = model;
         match kind.item_kind() {
             ItemKind::Lane => {
@@ -664,7 +683,7 @@ impl<'a> ValueItemInitMatch<'a> {
         ValueItemInitMatch {
             agent_name: item.agent_name,
             name: item.model.name,
-            name_lit: item.model.literal(),
+            name_lit: item.model.external_literal(),
             kind: item.model.item_kind(),
         }
     }
@@ -712,7 +731,7 @@ impl<'a> MapItemInitMatch<'a> {
         MapItemInitMatch {
             agent_name: item.agent_name,
             name: item.model.name,
-            name_lit: item.model.literal(),
+            name_lit: item.model.external_literal(),
             init_kind,
         }
     }
@@ -778,15 +797,12 @@ impl<'a> LaneSpecInsert<'a> {
             }
             ItemSpec::Http(_) => quote!(#root::agent_model::ItemDescriptor::Http),
         };
-        let spec = quote!(#root::agent_model::ItemSpec::new(#ordinal, #descriptor));
-        let lane_name = model.literal();
-        quote!(::std::collections::HashMap::insert(&mut lanes, #lane_name, #spec))
+        let external_lane_name = model.external_literal();
+        let lifecycle_lane_name = model.lifecycle_literal();
+        let spec =
+            quote!(#root::agent_model::ItemSpec::new(#ordinal, #lifecycle_lane_name, #descriptor));
+        quote!(::std::collections::HashMap::insert(&mut lanes, #external_lane_name, #spec))
     }
-}
-
-fn ident_to_literal(name: &Ident) -> proc_macro2::Literal {
-    let name_str = name.to_string();
-    proc_macro2::Literal::string(name_str.as_str())
 }
 
 fn partition_models<T, F>(it: impl Iterator<Item = T>, f: F) -> (Vec<T>, Vec<T>)

@@ -12,13 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim_form_derive::*;
+use trybuild::TestCases;
 
-fn main() {
-    #[derive(Form)]
-    #[form_root(::swim_form)]
-    struct S {
-        #[form(swim)]
-        a: i32,
-    }
+#[test]
+fn failed_agent_derivations() {
+    let t = TestCases::new();
+
+    t.compile_fail("tests/bad_agents/*.rs");
 }

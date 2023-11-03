@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::modifiers::NameTransform;
 use crate::quote::TokenStreamExt;
-use macro_utilities::attr_names::FORM_PATH;
-use proc_macro2::{Span, TokenStream};
+use macro_utilities::attr_names::{CONV_NAME, FORM_NAME, TAG_NAME};
+use macro_utilities::attributes::consume_attributes;
+use macro_utilities::{combine_name_transform, NameTransform, NameTransformConsumer};
+use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::fmt::{Display, Formatter};
-use swim_utilities::errors::validation::ValidationItExt;
+use swim_utilities::errors::validation::{Validation, ValidationItExt};
 use swim_utilities::errors::Errors;
 
 /// Model for an enumeration where all variants have no fields.
@@ -27,14 +28,14 @@ pub struct UnitEnum<'a> {
     /// The name of the enumeration.
     name: &'a syn::Ident,
     /// The name of each variant, in order.
-    variants: Vec<(&'a syn::Ident, Option<NameTransform>)>,
+    variants: Vec<(&'a syn::Ident, NameTransform)>,
 }
 
 impl<'a> UnitEnum<'a> {
     pub fn new(
         root: &'a syn::Path,
         name: &'a syn::Ident,
-        variants: Vec<(&'a syn::Ident, Option<NameTransform>)>,
+        variants: Vec<(&'a syn::Ident, NameTransform)>,
     ) -> Self {
         UnitEnum {
             root,
@@ -47,14 +48,6 @@ impl<'a> UnitEnum<'a> {
 /// Derives the `Tag` trait or a type.
 pub struct DeriveTag<T>(pub T);
 
-fn lit_name(var_name: &syn::Ident, rename: &Option<NameTransform>) -> syn::LitStr {
-    if let Some(NameTransform::Rename(renamed)) = rename {
-        syn::LitStr::new(renamed.as_ref(), Span::call_site())
-    } else {
-        syn::LitStr::new(&var_name.to_string(), Span::call_site())
-    }
-}
-
 impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let DeriveTag(UnitEnum {
@@ -65,18 +58,18 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
         }) = self;
 
         let var_as_str = variants.iter().map(|(var_name, rename)| {
-            let lit = lit_name(var_name, rename);
+            let lit = rename.transform(|| var_name.to_string());
             quote!(#name::#var_name => #lit)
         });
 
         let str_as_var = variants.iter().map(|(var_name, rename)| {
-            let lit = lit_name(var_name, rename);
+            let lit = rename.transform(|| var_name.to_string());
             quote!(#lit => ::core::result::Result::Ok(#name::#var_name))
         });
 
         let literals = variants
             .iter()
-            .map(|(var_name, rename)| lit_name(var_name, rename));
+            .map(|(var_name, rename)| rename.transform(|| var_name.to_string()));
 
         let err_lit = format!("Possible values are: {}.", Variants(variants.as_slice()));
         let num_vars = variants.len();
@@ -127,7 +120,7 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
 }
 
 /// Format the variants of an enumeration into a string for the failed parse error message.
-struct Variants<'a>(&'a [(&'a syn::Ident, Option<NameTransform>)]);
+struct Variants<'a>(&'a [(&'a syn::Ident, NameTransform)]);
 
 impl<'a> Display for Variants<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -162,12 +155,16 @@ pub fn build_derive_tag(
                     .variants
                     .iter()
                     .validate_collect(true, |v| {
-                        let rename = crate::modifiers::fold_attr_meta(
-                            FORM_PATH,
-                            v.attrs.iter(),
-                            None,
-                            crate::modifiers::acc_rename,
+                        let (transforms, errors) = consume_attributes(
+                            FORM_NAME,
+                            &v.attrs,
+                            NameTransformConsumer::new(TAG_NAME, CONV_NAME),
                         );
+                        let rename = Validation::Validated(transforms, Errors::from(errors))
+                            .and_then(|transforms| match combine_name_transform(v, transforms) {
+                                Ok(t) => Validation::valid(t),
+                                Err(e) => Validation::Failed(Errors::of(e)),
+                            });
                         rename.map(move |rename| (&v.ident, rename))
                     })
                     .map(|var_names| {

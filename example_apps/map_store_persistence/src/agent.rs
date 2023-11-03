@@ -28,7 +28,7 @@ use crate::model::Instruction;
 #[projections]
 pub struct ExampleAgent {
     value: MapStore<String, i32>,
-    #[transient]
+    #[lane(transient)]
     temporary: MapStore<String, i32>,
     instructions: CommandLane<Instruction>,
 }

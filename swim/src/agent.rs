@@ -195,7 +195,7 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 ///
 /// #[derive(AgentLaneModel)]
 /// struct TransientAgent {
-///     #[transient]
+///     #[lane(transient)]
 ///     value_lane: ValueLane<i32>,
 /// }
 /// ```

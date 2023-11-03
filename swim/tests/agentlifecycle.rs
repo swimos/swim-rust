@@ -136,7 +136,7 @@ impl AgentContext for DummyAgentContext {
 }
 
 #[derive(AgentLaneModel)]
-#[agent_root(::swim_agent)]
+#[agent(root(::swim_agent))]
 struct TestAgent {
     value: ValueLane<i32>,
     value2: ValueLane<i32>,
@@ -1137,7 +1137,7 @@ fn all_handlers() {
 }
 
 #[derive(AgentLaneModel)]
-#[agent_root(::swim_agent)]
+#[agent(root(::swim_agent))]
 struct BorrowAgent {
     array: ValueLane<Vec<i32>>,
     string: CommandLane<String>,
@@ -1487,7 +1487,7 @@ fn register_join_value_lifecycle() {
 }
 
 #[derive(AgentLaneModel)]
-#[agent_root(::swim_agent)]
+#[agent(root(::swim_agent))]
 struct TwoJoinValueAgent {
     join_value1: JoinValueLane<i32, Text>,
     join_value2: JoinValueLane<i32, i64>,
