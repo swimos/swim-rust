@@ -108,15 +108,14 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
         let transform = Validation::Validated(parts, Errors::from(errs))
             .and_then(|parts| combine_enum_trans_parts(top, parts));
 
-        let init = transform.map(|t| (t, Vec::with_capacity(num_var) ));
-        let variants =
-            definition
-                .variants
-                .iter()
-                .validate_fold(init, false, |(transform, mut var_models), variant| {
-                    let struct_def =
-                        StructDef::new(root, &variant.ident, variant, &variant.attrs, variant);
-                    let model = StructModel::validate(struct_def)
+        let init = transform.map(|t| (t, Vec::with_capacity(num_var)));
+        let variants = definition.variants.iter().validate_fold(
+            init,
+            false,
+            |(transform, mut var_models), variant| {
+                let struct_def =
+                    StructDef::new(root, &variant.ident, variant, &variant.attrs, variant);
+                let model = StructModel::validate(struct_def)
                     .map(|mut v| {
                         v.apply(&transform);
                         v
@@ -136,14 +135,17 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                             Validation::valid(model)
                         }
                     });
-                    match model {
-                        Validation::Validated(model, errs) => {
-                            var_models.push(model);
-                            Validation::Validated((transform, var_models), errs)
-                        }
-                        Validation::Failed(errs) => Validation::Validated((transform, var_models), errs),
+                match model {
+                    Validation::Validated(model, errs) => {
+                        var_models.push(model);
+                        Validation::Validated((transform, var_models), errs)
                     }
-                });
+                    Validation::Failed(errs) => {
+                        Validation::Validated((transform, var_models), errs)
+                    }
+                }
+            },
+        );
 
         variants.and_then(|(_, mut variants)| {
             let names = variants.iter_mut().validate_fold(

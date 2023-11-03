@@ -231,13 +231,7 @@ pub(crate) struct StructDef<'a, Flds> {
 
 impl<'a, Flds> Clone for StructDef<'a, Flds> {
     fn clone(&self) -> Self {
-        Self {
-            root: self.root,
-            name: self.name,
-            top: self.top,
-            attributes: self.attributes,
-            definition: self.definition,
-        }
+        *self
     }
 }
 

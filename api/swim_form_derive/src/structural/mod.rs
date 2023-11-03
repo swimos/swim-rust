@@ -68,8 +68,8 @@ pub fn build_derive_structural_writable(
     }
 }
 
-fn validate_and_check_fields<'a, Flds>(
-    input: StructDef<'a, Flds>,
+fn validate_and_check_fields<Flds>(
+    input: StructDef<'_, Flds>,
 ) -> Result<StructModel, Errors<syn::Error>>
 where
     Flds: StructLike,

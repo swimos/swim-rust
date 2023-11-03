@@ -114,7 +114,6 @@ impl<'a> FieldModel<'a> {
 pub struct ResolvedName<'a>(&'a FieldModel<'a>);
 
 impl<'a> ResolvedName<'a> {
-
     fn intrinsic_name(&self) -> String {
         let ResolvedName(field) = self;
         match field.selector {
@@ -126,7 +125,6 @@ impl<'a> ResolvedName<'a> {
     pub fn as_cow(&self) -> Cow<'a, str> {
         self.0.transform.transform_cow(self.intrinsic_name())
     }
-
 }
 
 impl<'a> ToTokens for ResolvedName<'a> {
