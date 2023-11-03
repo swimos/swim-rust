@@ -1,0 +1,10 @@
+error: Form field names must be unique. Duplicated names: [secondField]
+  --> src/tests/derive/form/struct_duplicate_fields.rs:6:5
+   |
+6  | /     #[allow(non_snake_case)]
+7  | |     struct Duplicates {
+8  | |         #[form(convention = "camel")]
+9  | |         second_field: i32,
+10 | |         secondField: String,
+11 | |     }
+   | |_____^

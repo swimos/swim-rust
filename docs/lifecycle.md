@@ -256,7 +256,7 @@ An HTTP lane generates events when HTTP requests are received for that lane. The
 3. `on_post` for POST.
 4. `on_delete` for DELETE.
 
-When a HEAD request is received, the `on_get` handler will be called and then the payload  will be discarded.
+When a HEAD request is received, the `on_get` handler will be called and then the payload of the response will be discarded.
 The signatures of these events are as follows:
 
 ```rust
@@ -264,7 +264,7 @@ The signatures of these events are as follows:
 fn my_get_handler(
     &self, 
     context: HandlerContext<ExampleAgent>,
-    http_context: HttpContext) -> impl HandlerAction<ExampleAgent, Completion = Response<String>> {
+    http_context: HttpRequestContext) -> impl HandlerAction<ExampleAgent, Completion = Response<String>> {
     //...
 }
 
@@ -272,7 +272,7 @@ fn my_get_handler(
 fn my_put_handler(
     &self, 
     context: HandlerContext<ExampleAgent>,
-    http_context: HttpContext,
+    http_context: HttpRequestContext,
     value: String) -> impl HandlerAction<ExampleAgent, Completion = UnitResponse> {
     //...
 }
@@ -281,7 +281,7 @@ fn my_put_handler(
 fn my_post_handler(
     &self, 
     context: HandlerContext<ExampleAgent>,
-    http_context: HttpContext,
+    http_context: HttpRequestContext,
     value: String) -> impl HandlerAction<ExampleAgent, Completion = UnitResponse> {
     //...
 }
@@ -290,12 +290,12 @@ fn my_post_handler(
 fn my_delete_handler(
     &self, 
     context: HandlerContext<ExampleAgent>,
-    http_context: HttpContext) -> impl HandlerAction<ExampleAgent, Completion = UnitResponse> {
+    http_context: HttpRequestContext) -> impl HandlerAction<ExampleAgent, Completion = UnitResponse> {
     //...
 }
 ```
 
-The `HttpContext` passed to each of these handlers provides access to the request URI and the headers that were set in the request.
+The `HttpRequestContext` passed to each of these handlers provides access to the request URI and the headers that were set in the request.
 
 The `Response` type produced by the event handlers contains the payload, status code and any custom headers. It is the responsibility of the codec associated with the lane to interpret the content type and accept headers from the request and to append the correct content type header to the response. In most cases a response can be constructed as:
 

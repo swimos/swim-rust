@@ -42,7 +42,7 @@ pub use lifecycle::HttpRequestContext;
 pub(crate) use model::{MethodAndPayload, Request};
 pub use model::{Response, UnitResponse};
 
-/// An HTTP lane allows an agent to expose and HTTP endpoint over the HTTP server exposed by the server
+/// An HTTP lane allows an agent to expose an HTTP endpoint over the HTTP server exposed by the server
 /// hosting the agent. If an agent is hosted with the node URI '/node' on a host 'host', listening on port
 /// 8080, a lane named 'http_lane' can be addressed at the URI: 'https://host:8080/node?lane=http_lane'.
 ///

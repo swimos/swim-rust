@@ -42,7 +42,7 @@ pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {
 
     lane_model_derive::validate_input(&input)
         .join(modifiers)
-        .map(|(model, modifiers)| DeriveAgentLaneModel::new(modifiers, model))
+        .and_then(|(model, modifiers)| DeriveAgentLaneModel::validate(&input, modifiers, model))
         .map(ToTokens::into_token_stream)
         .into_result()
         .unwrap_or_else(|errs| to_compile_errors(errs.into_vec()))

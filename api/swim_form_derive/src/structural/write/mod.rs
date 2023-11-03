@@ -71,6 +71,7 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
             quote! {
 
                 #[automatically_derived]
+                #[allow(non_snake_case)]
                 impl #impl_lst #root::structural::write::StructuralWritable for #name #ty_params #where_clause {
 
                     #[inline]
@@ -122,6 +123,7 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
             quote! {
 
                 #[automatically_derived]
+                #[allow(non_snake_case, unused_variables)]
                 impl #impl_lst #root::structural::write::StructuralWritable for #name #ty_params #where_clause {
 
                     #[inline]
@@ -129,7 +131,6 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
                         #num_attrs
                     }
 
-                    #[allow(non_snake_case, unused_variables)]
                     #[inline]
                     fn write_with<__W: #writer_trait>(&self, writer: __W) -> ::core::result::Result<__W::Repr, __W::Error> {
                         use #root::structural::write::HeaderWriter;
@@ -139,7 +140,6 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedEnumModel<'a>> {
                         }
                     }
 
-                    #[allow(non_snake_case, unused_variables)]
                     #[inline]
                     fn write_into<__W: #writer_trait>(self, writer: __W) -> ::core::result::Result<__W::Repr, __W::Error> {
                         use #root::structural::write::HeaderWriter;
@@ -191,6 +191,7 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
         let writable_impl = quote! {
 
             #[automatically_derived]
+            #[allow(non_snake_case, unused_variables)]
             impl #impl_lst #root::structural::write::StructuralWritable for #name #ty_params #where_clause {
 
                 #[inline]
@@ -198,7 +199,6 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
                     #num_attrs
                 }
 
-                #[allow(non_snake_case, unused_variables)]
                 #[inline]
                 fn write_with<__W: #writer_trait>(&self, writer: __W) -> ::core::result::Result<__W::Repr, __W::Error> {
                     use #root::structural::write::HeaderWriter;
@@ -208,7 +208,6 @@ impl<'a> ToTokens for DeriveStructuralWritable<'a, SegregatedStructModel<'a>> {
                     #write_with
                 }
 
-                #[allow(non_snake_case, unused_variables)]
                 #[inline]
                 fn write_into<__W: #writer_trait>(self, writer: __W) -> ::core::result::Result<__W::Repr, __W::Error> {
                     use #root::structural::write::HeaderWriter;

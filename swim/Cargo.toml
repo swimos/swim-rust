@@ -25,3 +25,4 @@ swim_agent_derive = { path = "../server/swim_agent_derive", optional = true }
 [dev-dependencies]
 parking_lot = { workspace = true }
 futures = { workspace = true }
+trybuild = { workspace = true }
