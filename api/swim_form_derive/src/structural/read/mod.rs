@@ -124,7 +124,6 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
 
             tokens.append_all(quote! {
                 const _: () = {
-                    
                     type #builder_name #type_gen = #builder_type;
                     #select_index
 
