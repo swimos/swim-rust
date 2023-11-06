@@ -16,6 +16,7 @@ use std::str::FromStr;
 
 use mime::Mime;
 use swim_model::http::{Header, HeaderValue, StandardHeaderName};
+use tracing::warn;
 
 #[cfg(test)]
 mod tests;
@@ -45,9 +46,13 @@ impl<'a> Headers<'a> {
             if let Some(value) = header.value.as_str() {
                 match Mime::from_str(value) {
                     Ok(mime) => Ok(Some(mime)),
-                    Err(_) => Err(InvalidHeader),
+                    Err(error) => {
+                        warn!(header_value = %value, error = %error, "Invalid content type in request.");
+                        Err(InvalidHeader)
+                    }
                 }
             } else {
+                warn!("Non-string content type header in request.");
                 Err(InvalidHeader)
             }
         } else {

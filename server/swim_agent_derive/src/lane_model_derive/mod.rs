@@ -14,7 +14,8 @@
 
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
-use syn::{parse_quote, Ident};
+use swim_utilities::errors::{validation::Validation, Errors};
+use syn::{parse_quote, DeriveInput, Ident};
 
 mod attributes;
 mod model;
@@ -33,14 +34,22 @@ pub struct DeriveAgentLaneModel<'a> {
 }
 
 impl<'a> DeriveAgentLaneModel<'a> {
-    pub fn new(modifiers: AgentModifiers, mut model: LanesModel<'a>) -> Self {
+    pub fn validate(
+        src: &DeriveInput,
+        modifiers: AgentModifiers,
+        mut model: LanesModel<'a>,
+    ) -> Validation<Self, Errors<syn::Error>> {
         let AgentModifiers {
             transient,
             transform,
             root,
         } = modifiers;
         model.apply_modifiers(transient, transform.into());
-        DeriveAgentLaneModel { root, model }
+        if let Err(err) = model.check_names(src) {
+            Validation::Validated(DeriveAgentLaneModel { root, model }, Errors::of(err))
+        } else {
+            Validation::valid(DeriveAgentLaneModel { root, model })
+        }
     }
 }
 
