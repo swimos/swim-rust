@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use macro_utilities::TypeLevelNameTransform;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use swim_utilities::errors::{validation::Validation, Errors};
@@ -40,10 +39,12 @@ impl<'a> DeriveAgentLaneModel<'a> {
         modifiers: AgentModifiers,
         mut model: LanesModel<'a>,
     ) -> Validation<Self, Errors<syn::Error>> {
-        let AgentModifiers { transform, root } = modifiers;
-        if let Some(convention) = transform {
-            model.apply_transform(TypeLevelNameTransform::Convention(convention));
-        }
+        let AgentModifiers {
+            transient,
+            transform,
+            root,
+        } = modifiers;
+        model.apply_modifiers(transient, transform.into());
         if let Err(err) = model.check_names(src) {
             Validation::Validated(DeriveAgentLaneModel { root, model }, Errors::of(err))
         } else {
