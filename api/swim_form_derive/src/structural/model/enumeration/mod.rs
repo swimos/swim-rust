@@ -20,7 +20,7 @@ use macro_utilities::attr_names::FORM_NAME;
 use macro_utilities::attributes::consume_attributes;
 use quote::ToTokens;
 use std::collections::HashSet;
-use swim_utilities::errors::validation::{validate2, Validation, ValidationItExt};
+use swim_utilities::errors::validation::{Validation, ValidationItExt};
 use swim_utilities::errors::Errors;
 use syn::{Attribute, DataEnum, Ident};
 
@@ -108,15 +108,26 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
         let transform = Validation::Validated(parts, Errors::from(errs))
             .and_then(|parts| combine_enum_trans_parts(top, parts));
 
-        let init = Validation::valid(Vec::with_capacity(num_var));
-        let variants =
-            definition
-                .variants
-                .iter()
-                .validate_fold(init, false, |mut var_models, variant| {
-                    let struct_def =
-                        StructDef::new(root, &variant.ident, variant, &variant.attrs, variant);
-                    let model = StructModel::validate(struct_def).and_then(|model| {
+        let init = transform.map(|t| (t, Vec::with_capacity(num_var)));
+        let variants = definition.variants.iter().validate_fold(
+            init,
+            false,
+            |(transform, mut var_models), variant| {
+                let struct_def =
+                    StructDef::new(root, &variant.ident, variant, &variant.attrs, variant);
+                let model = StructModel::validate(struct_def)
+                    .map(|mut v| {
+                        v.apply(&transform);
+                        v
+                    })
+                    .and_then(|v| {
+                        if let Err(err) = v.check_field_names(variant) {
+                            Validation::Validated(v, Errors::of(err))
+                        } else {
+                            Validation::valid(v)
+                        }
+                    })
+                    .and_then(|model| {
                         if model.fields_model.has_tag_field() {
                             let err = syn::Error::new_spanned(variant, VARIANT_WITH_TAG);
                             Validation::Validated(model, err.into())
@@ -124,21 +135,23 @@ impl<'a> ValidateFrom<EnumDef<'a>> for EnumModel<'a> {
                             Validation::valid(model)
                         }
                     });
-                    match model {
-                        Validation::Validated(model, errs) => {
-                            var_models.push(model);
-                            Validation::Validated(var_models, errs)
-                        }
-                        Validation::Failed(errs) => Validation::Validated(var_models, errs),
+                match model {
+                    Validation::Validated(model, errs) => {
+                        var_models.push(model);
+                        Validation::Validated((transform, var_models), errs)
                     }
-                });
+                    Validation::Failed(errs) => {
+                        Validation::Validated((transform, var_models), errs)
+                    }
+                }
+            },
+        );
 
-        validate2(variants, transform).and_then(|(mut variants, transform)| {
+        variants.and_then(|(_, mut variants)| {
             let names = variants.iter_mut().validate_fold(
                 Validation::valid(HashSet::new()),
                 false,
                 |mut names, v| {
-                    v.apply(&transform);
                     let name = match &mut v.transform {
                         StructTransform::Standard { rename, .. } => {
                             rename.transform(|| v.name.to_string()).to_string()

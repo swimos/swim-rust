@@ -1,0 +1,20 @@
+error: Form field names must be unique. Duplicated names: [firstField]
+  --> src/tests/derive/form/enum_duplicate_fields.rs:8:9
+   |
+8  | /         First {
+9  | |             #[form(convention = "camel")]
+10 | |             first_field: i32,
+11 | |             firstField: i32,
+12 | |         },
+   | |_________^
+
+error: Form field names must be unique. Duplicated names: [firstField]
+  --> src/tests/derive/form/enum_duplicate_fields.rs:13:9
+   |
+13 | /         #[form(fields_convention = "camel")]
+14 | |         Second {
+15 | |             first_field: i32,
+16 | |             #[form(name = "firstField")]
+17 | |             second_field: i32,
+18 | |         }
+   | |_________^
