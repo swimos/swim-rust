@@ -328,7 +328,7 @@ where
 
     let (endpoints_tx, endpoints_rx) = endpoints.into_iter().map(LaneEndpoint::split).unzip();
     let (instr_tx, instr_rx) = mpsc::unbounded_channel();
-    let (vote1, vote2, vote3, vote_rx) = timeout_coord::timeout_coordinator();
+    let (vote1, vote2, vote3, vote_rx) = timeout_coord::agent_timeout_coordinator();
     let (messages_tx, messages_rx) = mpsc::channel(QUEUE_SIZE.get());
 
     let fake_agent = FakeAgent::new(endpoints_tx, fake_stores, stop_rx.clone(), instr_rx);

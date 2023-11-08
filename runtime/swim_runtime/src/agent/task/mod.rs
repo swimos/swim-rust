@@ -21,9 +21,9 @@ use std::time::Duration;
 use crate::agent::store::StoreInitError;
 use crate::agent::task::links::TriggerUnlink;
 use crate::agent::task::sender::LaneSendError;
-use crate::agent::task::timeout_coord::VoteResult;
 use crate::agent::task::write_fut::SpecialAction;
 use crate::error::InvalidKey;
+use crate::timeout_coord::{self, VoteResult};
 
 use self::external_links::{LinksTaskState, NoReport};
 use self::init::Initialization;
@@ -70,7 +70,6 @@ mod prune;
 mod receiver;
 mod remotes;
 mod sender;
-mod timeout_coord;
 mod uri_params;
 mod write_fut;
 
@@ -486,7 +485,8 @@ where
         let (write_tx, write_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (http_tx, http_rx) = mpsc::channel(config.attachment_queue_size.get());
         let (ext_link_tx, ext_link_rx) = mpsc::channel(config.attachment_queue_size.get());
-        let (read_vote, write_vote, http_vote, vote_waiter) = timeout_coord::timeout_coordinator();
+        let (read_vote, write_vote, http_vote, vote_waiter) =
+            timeout_coord::agent_timeout_coordinator();
 
         let (kill_switch_tx, kill_switch_rx) = trigger::trigger();
 

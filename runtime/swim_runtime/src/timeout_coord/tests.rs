@@ -20,7 +20,7 @@ use swim_utilities::future::NotifyOnBlocked;
 use tokio::sync::Notify;
 use tokio::time::timeout;
 
-use crate::agent::task::timeout_coord::VoteResult;
+use crate::timeout_coord::VoteResult;
 
 const TIMEOUT: Duration = Duration::from_millis(100);
 
