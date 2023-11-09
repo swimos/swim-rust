@@ -44,8 +44,8 @@ impl ExampleLifecycle {
     ) -> impl EventHandler<ExampleAgent> {
         join3(
             context.get_agent_uri(),
-            context.get_store_value(ExampleAgent::VALUE),
-            context.get_store_value(ExampleAgent::TEMPORARY),
+            context.get_value(ExampleAgent::VALUE),
+            context.get_value(ExampleAgent::TEMPORARY),
         )
         .and_then(move |(uri, v1, v2)| {
             context.effect(move || {
@@ -64,8 +64,8 @@ impl ExampleLifecycle {
     ) -> impl EventHandler<ExampleAgent> {
         join3(
             context.get_agent_uri(),
-            context.get_store_value(ExampleAgent::VALUE),
-            context.get_store_value(ExampleAgent::TEMPORARY),
+            context.get_value(ExampleAgent::VALUE),
+            context.get_value(ExampleAgent::TEMPORARY),
         )
         .and_then(move |(uri, v1, v2)| {
             context.effect(move || {
@@ -85,8 +85,8 @@ impl ExampleLifecycle {
     ) -> impl EventHandler<ExampleAgent> {
         match *cmd {
             Instruction::Wake => UnitHandler::default().boxed(),
-            Instruction::SetValue(n) => context.set_store_value(ExampleAgent::VALUE, n).boxed(),
-            Instruction::SetTemp(n) => context.set_store_value(ExampleAgent::TEMPORARY, n).boxed(),
+            Instruction::SetValue(n) => context.set_value(ExampleAgent::VALUE, n).boxed(),
+            Instruction::SetTemp(n) => context.set_value(ExampleAgent::TEMPORARY, n).boxed(),
             Instruction::Stop => context.stop().boxed(),
         }
     }

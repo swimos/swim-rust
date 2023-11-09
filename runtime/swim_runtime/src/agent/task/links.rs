@@ -125,10 +125,7 @@ impl Links {
     }
 
     pub fn register_reporter(&mut self, lane_id: u64, reporter: UplinkReporter) {
-        self.forward
-            .entry(lane_id)
-            .or_insert_with(Default::default)
-            .reporter = Some(reporter);
+        self.forward.entry(lane_id).or_default().reporter = Some(reporter);
     }
 
     /// Create a new link from a lane to a remote.

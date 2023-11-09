@@ -48,6 +48,7 @@ use crate::{
         handlers::BoxDownlinkChannel,
         hosted::{MapDownlinkHandle, ValueDownlinkHandle},
     },
+    lanes::JoinLaneKind,
     meta::AgentMetadata,
 };
 
@@ -109,7 +110,7 @@ pub struct ActionContext<'a, Context> {
     spawner: &'a dyn Spawner<Context>,
     agent_context: &'a dyn AgentContext,
     downlink: &'a dyn DownlinkSpawner<Context>,
-    join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
+    join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
     ad_hoc_buffer: &'a mut BytesMut,
 }
 
@@ -133,31 +134,31 @@ impl<'a, Context> ActionContext<'a, Context> {
         spawner: &'a dyn Spawner<Context>,
         agent_context: &'a dyn AgentContext,
         downlink: &'a dyn DownlinkSpawner<Context>,
-        join_value_init: &'a mut HashMap<u64, BoxJoinValueInit<'static, Context>>,
+        join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
         ad_hoc_buffer: &'a mut BytesMut,
     ) -> Self {
         ActionContext {
             spawner,
             agent_context,
             downlink,
-            join_value_init,
+            join_lane_init,
             ad_hoc_buffer,
         }
     }
 
-    pub fn join_value_initializer(
+    pub fn join_lane_initializer(
         &self,
         lane_id: u64,
-    ) -> Option<&BoxJoinValueInit<'static, Context>> {
-        self.join_value_init.get(&lane_id)
+    ) -> Option<&BoxJoinLaneInit<'static, Context>> {
+        self.join_lane_init.get(&lane_id)
     }
 
-    pub fn register_join_value_initializer(
+    pub fn register_join_lane_initializer(
         &mut self,
         lane_id: u64,
-        factory: BoxJoinValueInit<'static, Context>,
+        factory: BoxJoinLaneInit<'static, Context>,
     ) {
-        self.join_value_init.insert(lane_id, factory);
+        self.join_lane_init.insert(lane_id, factory);
     }
 
     pub(crate) fn start_downlink<S, F, OnDone, H>(
@@ -1292,9 +1293,14 @@ where
 
 #[derive(Debug, Error)]
 pub enum DowncastError {
-    #[error("Expected a key of type {expected_type:?} but received type {:?}", key.type_id())]
-    Key {
+    #[error("Expected a key of type {expected_type:?} but received type {:?}", (**key).type_id())]
+    LinkKey {
         key: Box<dyn Any + Send>,
+        expected_type: TypeId,
+    },
+    #[error("Expected key type {expected_type:?} but received type {actual_type:?}")]
+    Key {
+        actual_type: TypeId,
         expected_type: TypeId,
     },
     #[error("Expected value type {expected_type:?} but received type {actual_type:?}")]
@@ -1304,18 +1310,21 @@ pub enum DowncastError {
     },
 }
 
-pub trait JoinValueInitializer<Context>: Send {
+pub trait JoinLaneInitializer<Context>: Send {
     fn try_create_action(
         &self,
-        key: Box<dyn Any + Send>,
+        link_key: Box<dyn Any + Send>,
+        key_type: TypeId,
         value_type: TypeId,
         address: Address<Text>,
     ) -> Result<Box<dyn EventHandler<Context> + Send + 'static>, DowncastError>;
+
+    fn kind(&self) -> JoinLaneKind;
 }
 
-static_assertions::assert_obj_safe!(JoinValueInitializer<()>);
+static_assertions::assert_obj_safe!(JoinLaneInitializer<()>);
 
-pub type BoxJoinValueInit<'a, Context> = Box<dyn JoinValueInitializer<Context> + Send + 'a>;
+pub type BoxJoinLaneInit<'a, Context> = Box<dyn JoinLaneInitializer<Context> + Send + 'a>;
 
 /// Causes the agent to stop. If this is encountered during the `on_start` event of an agent it will
 /// fail to start at all. Otherwise, execution of the event handler will terminate and the agent will

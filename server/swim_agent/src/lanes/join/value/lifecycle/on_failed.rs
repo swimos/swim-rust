@@ -18,11 +18,9 @@ use swim_model::address::Address;
 use crate::{
     agent_lifecycle::utility::HandlerContext,
     event_handler::{ConstHandler, HandlerAction},
-    lanes::join_value::LinkClosedResponse,
+    lanes::join::{JoinHandlerFn, LinkClosedResponse},
     lifecycle_fn::{LiftShared, WithHandlerContext},
 };
-
-use super::JoinValueHandlerFn0;
 
 /// Lifecycle event for the `on_failed` event of a join value lane downlink.
 pub trait OnJoinValueFailed<K, Context>: Send {
@@ -103,9 +101,9 @@ impl<K, Context, Shared> OnJoinValueFailedShared<K, Context, Shared> for NoHandl
 
 impl<K, Context, Shared, F> OnJoinValueFailedShared<K, Context, Shared> for FnHandler<F>
 where
-    F: for<'a> JoinValueHandlerFn0<'a, Context, Shared, K, LinkClosedResponse> + Send,
+    F: for<'a> JoinHandlerFn<'a, Context, Shared, K, LinkClosedResponse> + Send,
 {
-    type OnJoinValueFailedHandler<'a> = <F as JoinValueHandlerFn0<'a, Context, Shared, K, LinkClosedResponse>>::Handler
+    type OnJoinValueFailedHandler<'a> = <F as JoinHandlerFn<'a, Context, Shared, K, LinkClosedResponse>>::Handler
     where
         Self: 'a,
         Shared: 'a;

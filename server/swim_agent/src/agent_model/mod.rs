@@ -51,7 +51,7 @@ use uuid::Uuid;
 use crate::agent_lifecycle::item_event::ItemEvent;
 use crate::agent_model::io::LaneReadEvent;
 use crate::event_handler::{
-    ActionContext, BoxEventHandler, BoxJoinValueInit, HandlerFuture, ModificationFlags,
+    ActionContext, BoxEventHandler, BoxJoinLaneInit, HandlerFuture, ModificationFlags,
 };
 use crate::{
     agent_lifecycle::AgentLifecycle,
@@ -72,8 +72,8 @@ use bitflags::bitflags;
 use self::downlink::handlers::{BoxDownlinkChannel, DownlinkChannelError, DownlinkChannelEvent};
 use self::init::{run_item_initializer, InitializedItem};
 pub use init::{
-    ItemInitializer, JoinValueInitializer, MapLaneInitializer, MapStoreInitializer,
-    ValueLaneInitializer, ValueStoreInitializer,
+    ItemInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,
+    ValueStoreInitializer,
 };
 pub use swim_api::lane::WarpLaneKind;
 
@@ -600,7 +600,7 @@ where
 
         let suspended = FuturesUnordered::new();
         let downlink_channels = RefCell::new(vec![]);
-        let mut join_value_init = HashMap::new();
+        let mut join_lane_init = HashMap::new();
         let mut ad_hoc_buffer = BytesMut::new();
 
         let item_model = item_model_fac.create();
@@ -706,7 +706,7 @@ where
                 &suspended,
                 &*context,
                 &downlink_channels,
-                &mut join_value_init,
+                &mut join_lane_init,
                 &mut ad_hoc_buffer,
             ),
             meta,
@@ -721,7 +721,7 @@ where
                 &suspended,
                 &*context,
                 &downlink_channels,
-                &mut join_value_init,
+                &mut join_lane_init,
                 &mut ad_hoc_buffer,
             ),
             meta,
@@ -749,7 +749,7 @@ where
             suspended,
             downlink_channels: downlink_channels.into_inner(),
             ad_hoc_buffer,
-            join_value_init,
+            join_lane_init,
         };
         Ok(agent_task.run_agent(context).boxed())
     }
@@ -905,7 +905,7 @@ struct AgentTask<ItemModel, Lifecycle> {
     store_io: HashMap<Text, ByteWriter>,
     http_lane_rxs: HashMap<Text, mpsc::Receiver<HttpLaneRequest>>,
     suspended: FuturesUnordered<HandlerFuture<ItemModel>>,
-    join_value_init: HashMap<u64, BoxJoinValueInit<'static, ItemModel>>,
+    join_lane_init: HashMap<u64, BoxJoinLaneInit<'static, ItemModel>>,
     ad_hoc_buffer: BytesMut,
     downlink_channels: Vec<BoxDownlinkChannel<ItemModel>>,
 }
@@ -936,7 +936,7 @@ where
             store_io,
             http_lane_rxs,
             mut suspended,
-            mut join_value_init,
+            mut join_lane_init,
             mut ad_hoc_buffer,
             downlink_channels,
         } = self;
@@ -1065,7 +1065,7 @@ where
                                         &suspended,
                                         &*context,
                                         &add_downlink,
-                                        &mut join_value_init,
+                                        &mut join_lane_init,
                                         &mut ad_hoc_buffer,
                                     ),
                                     meta,
@@ -1099,7 +1099,7 @@ where
                             &suspended,
                             &*context,
                             &add_downlink,
-                            &mut join_value_init,
+                            &mut join_lane_init,
                             &mut ad_hoc_buffer,
                         ),
                         meta,
@@ -1145,7 +1145,7 @@ where
                                     &suspended,
                                     &*context,
                                     &add_downlink,
-                                    &mut join_value_init,
+                                    &mut join_lane_init,
                                     &mut ad_hoc_buffer,
                                 ),
                                 meta,
@@ -1212,7 +1212,7 @@ where
                                         &suspended,
                                         &*context,
                                         &add_downlink,
-                                        &mut join_value_init,
+                                        &mut join_lane_init,
                                         &mut ad_hoc_buffer,
                                     ),
                                     meta,
@@ -1253,7 +1253,7 @@ where
                                         &suspended,
                                         &*context,
                                         &add_downlink,
-                                        &mut join_value_init,
+                                        &mut join_lane_init,
                                         &mut ad_hoc_buffer,
                                     ),
                                     meta,
@@ -1290,7 +1290,7 @@ where
                                         &suspended,
                                         &*context,
                                         &add_downlink,
-                                        &mut join_value_init,
+                                        &mut join_lane_init,
                                         &mut ad_hoc_buffer,
                                     ),
                                     meta,
@@ -1331,7 +1331,7 @@ where
                                         &suspended,
                                         &*context,
                                         &add_downlink,
-                                        &mut join_value_init,
+                                        &mut join_lane_init,
                                         &mut ad_hoc_buffer,
                                     ),
                                     meta,
@@ -1367,7 +1367,7 @@ where
                                     &suspended,
                                     &*context,
                                     &add_downlink,
-                                    &mut join_value_init,
+                                    &mut join_lane_init,
                                     &mut ad_hoc_buffer,
                                 ),
                                 meta,
@@ -1443,7 +1443,7 @@ where
                 &suspended,
                 &*context,
                 &discard,
-                &mut join_value_init,
+                &mut join_lane_init,
                 &mut ad_hoc_buffer,
             ),
             meta,

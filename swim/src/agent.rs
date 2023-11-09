@@ -135,13 +135,16 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 /// 2. [`crate::agent::lanes::CommandLane`]
 /// 3. [`crate::agent::lanes::MapLane`]
 /// 4. [`crate::agent::lanes::JoinValueLane`]
-/// 5. [`crate::agent::lanes::HttpLane`] (or [`crate::agent::lanes::SimpleHttpLane`])
+/// 5. [`crate::agent::lanes::JoinMapLane`]
+/// 6. [`crate::agent::lanes::HttpLane`] (or [`crate::agent::lanes::SimpleHttpLane`])
 ///
 /// For [`crate::agent::lanes::ValueLane`] and [`crate::agent::lanes::CommandLane`], the type parameter
 /// must implement the [`crate::form::Form`] trait (used for serialization and deserialization). For
-/// [`crate::agent::lanes::MapLane`] and [`crate::agent::lanes::JoinValueLane`], both parameters must
-/// implement [`crate::form::Form`] and additionally, the key type `K` must additionally satisfy
-/// `K: Hash + Eq + Ord + Clone`.
+/// [`crate::agent::lanes::MapLane`], [`crate::agent::lanes::JoinValueLane`] and [`crate::agent::lanes::JoinMapLane`],
+/// both parameters must implement [`crate::form::Form`] and additionally, the key type `K` must additionally
+/// satisfy `K: Hash + Eq + Ord + Clone`.
+///
+/// Additionally, for [`crate::agent::lanes::JoinMapLane`], the link key type `L` must satisfy`L: Hash + Eq + Clone`.
 ///
 /// The supported store types are:
 ///
@@ -166,7 +169,7 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 ///
 /// ```no_run
 /// use swim::agent::AgentLaneModel;
-/// use swim::agent::lanes::{ValueLane, CommandLane, MapLane, JoinValueLane, SimpleHttpLane};
+/// use swim::agent::lanes::{ValueLane, CommandLane, MapLane, JoinValueLane, JoinMapLane, SimpleHttpLane};
 /// use swim::agent::stores::{ValueStore, MapStore};
 ///
 /// #[derive(AgentLaneModel)]
@@ -177,6 +180,7 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 ///     value_store: ValueStore<i32>,
 ///     map_store: MapStore<String, i64>,
 ///     join_value: JoinValueLane<String, i64>,
+///     join_map: JoinMapLane<String, String, i64>,
 ///     http_lane: SimpleHttpLane<String>,
 /// }
 /// ```
@@ -184,10 +188,9 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 /// The macro will use the name of the field as the name of the item (the value lane from this example will
 /// have the name `"value_lane"`).
 ///
-/// By default [`crate::agent::lanes::ValueLane`]s, [`crate::agent::lanes::MapLane`]s and
-/// [`crate::agent::lanes::JoinValueLane`]s (and the corresponding stores types) will persist their state
-/// (where the server has a persistence store). To disable this, the lane field may be marked as transient
-/// with an attribute:
+/// By default [`crate::agent::lanes::ValueLane`]s and[`crate::agent::lanes::MapLane`]s (and the corresponding
+/// stores types) will persist their state (where the server has a persistence store). To disable this, the lane
+/// field may be marked as transient with an attribute:
 ///
 /// / ```no_run
 /// use swim::agent::AgentLaneModel;
@@ -218,8 +221,8 @@ pub mod model {
 pub mod agent_model {
     pub use swim_agent::agent_model::{
         AgentModel, AgentSpec, ItemDescriptor, ItemFlags, ItemInitializer, ItemKind, ItemSpec,
-        JoinValueInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,
-        ValueStoreInitializer, WriteResult,
+        MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer, ValueStoreInitializer,
+        WriteResult,
     };
     pub use swim_api::lane::WarpLaneKind;
     pub use swim_api::meta::lane::LaneKind;
@@ -240,8 +243,8 @@ pub mod item {
 
 pub mod lanes {
     pub use swim_agent::lanes::{
-        CommandLane, DemandLane, DemandMapLane, HttpLane, JoinValueLane, LaneItem, MapLane,
-        SimpleHttpLane, SupplyLane, ValueLane,
+        CommandLane, DemandLane, DemandMapLane, HttpLane, JoinMapLane, JoinValueLane, LaneItem,
+        LinkClosedResponse, MapLane, SimpleHttpLane, SupplyLane, ValueLane,
     };
 
     pub mod command {
@@ -281,8 +284,15 @@ pub mod lanes {
         }
     }
 
+    pub mod join_map {
+        pub use swim_agent::lanes::join_map::JoinMapLaneSync;
+        pub mod lifecycle {
+            pub use swim_agent::lanes::join_map::lifecycle::JoinMapLaneLifecycle;
+        }
+    }
+
     pub mod join_value {
-        pub use swim_agent::lanes::join_value::{JoinValueLaneSync, LinkClosedResponse};
+        pub use swim_agent::lanes::join_value::JoinValueLaneSync;
         pub mod lifecycle {
             pub use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
         }

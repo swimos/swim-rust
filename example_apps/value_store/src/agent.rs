@@ -82,10 +82,10 @@ impl ExampleLifecycle {
         match *cmd {
             Instruction::Save => context
                 .get_value(ExampleAgent::LANE)
-                .and_then(move |v| context.set_store_value(ExampleAgent::SAVED, v))
+                .and_then(move |v| context.set_value(ExampleAgent::SAVED, v))
                 .boxed(),
             Instruction::Restore => context
-                .get_store_value(ExampleAgent::SAVED)
+                .get_value(ExampleAgent::SAVED)
                 .and_then(move |v| context.set_value(ExampleAgent::LANE, v))
                 .boxed(),
         }

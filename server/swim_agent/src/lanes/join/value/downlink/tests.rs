@@ -30,12 +30,13 @@ use crate::{
         ModificationFlags, SideEffect, StepResult,
     },
     lanes::{
+        join::LinkClosedResponse,
         join_value::{
             lifecycle::{
                 on_failed::OnJoinValueFailed, on_linked::OnJoinValueLinked,
                 on_synced::OnJoinValueSynced, on_unlinked::OnJoinValueUnlinked,
             },
-            DownlinkStatus, LinkClosedResponse,
+            DownlinkStatus,
         },
         JoinValueLane,
     },

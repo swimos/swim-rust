@@ -97,6 +97,8 @@ pub struct NoInterpretation;
 impl DownlinkInterpretation for NoInterpretation {
     type Error = Infallible;
 
+    const SINGLE_FRAME_STATE: bool = false;
+
     fn interpret_frame_data(
         &mut self,
         frame: Bytes,

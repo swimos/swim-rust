@@ -15,7 +15,6 @@
 use std::{
     collections::HashMap,
     fmt::Debug,
-    num::NonZeroUsize,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -23,32 +22,22 @@ use std::{
 };
 
 use bytes::BytesMut;
-use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt};
-use parking_lot::Mutex;
-use swim_api::{
-    agent::{AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig},
-    downlink::DownlinkKind,
-    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    lane::WarpLaneKind,
-    store::StoreKind,
-};
-use swim_model::{address::Address, Text};
-use swim_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
-    non_zero_usize,
-    routing::route_uri::RouteUri,
-};
+use futures::stream::FuturesUnordered;
+use swim_api::{agent::AgentConfig, downlink::DownlinkKind};
+use swim_model::address::Address;
+use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::{
-    agent_model::downlink::handlers::BoxDownlinkChannel,
     event_handler::{
-        ActionContext, BoxJoinValueInit, DownlinkSpawner, EventHandlerError, HandlerAction,
-        Modification, StepResult,
+        ActionContext, BoxJoinLaneInit, EventHandlerError, HandlerAction, Modification, StepResult,
     },
     item::{AgentItem, MapItem},
-    lanes::join_value::{
-        default_lifecycle::DefaultJoinValueLifecycle, AddDownlinkAction, JoinValueLaneGet,
-        JoinValueLaneGetMap,
+    lanes::{
+        join::test_util::{TestDlContextInner, TestDownlinkContext},
+        join_value::{
+            default_lifecycle::DefaultJoinValueLifecycle, AddDownlinkAction, JoinValueLaneGet,
+            JoinValueLaneGetMap,
+        },
     },
     meta::AgentMetadata,
     test_context::{dummy_context, run_event_handlers, run_with_futures},
@@ -67,7 +56,6 @@ const ABSENT: i32 = 93;
 const V1: &str = "first";
 const V2: &str = "second";
 const V3: &str = "third";
-const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 fn init() -> HashMap<i32, String> {
     [(K1, V1), (K2, V2), (K3, V3)]
@@ -229,107 +217,6 @@ fn join_value_lane_get_map_event_handler() {
     ));
 }
 
-struct Inner<Agent> {
-    downlink_channels: HashMap<Address<Text>, (ByteWriter, ByteReader)>,
-    downlinks: Vec<BoxDownlinkChannel<Agent>>,
-}
-
-impl<Agent> Default for Inner<Agent> {
-    fn default() -> Self {
-        Self {
-            downlink_channels: Default::default(),
-            downlinks: Default::default(),
-        }
-    }
-}
-
-pub struct TestDownlinkContext<Agent> {
-    inner: Arc<Mutex<Inner<Agent>>>,
-}
-
-impl<Agent> Default for TestDownlinkContext<Agent> {
-    fn default() -> Self {
-        Self {
-            inner: Default::default(),
-        }
-    }
-}
-
-impl<Agent> TestDownlinkContext<Agent> {
-    pub fn push_dl(&self, dl_channel: BoxDownlinkChannel<Agent>) {
-        self.inner.lock().downlinks.push(dl_channel);
-    }
-
-    pub fn push_channels(&self, key: Address<Text>, io: (ByteWriter, ByteReader)) {
-        self.inner.lock().downlink_channels.insert(key, io);
-    }
-
-    pub fn take_channels(&self) -> HashMap<Address<Text>, (ByteWriter, ByteReader)> {
-        let mut guard = self.inner.lock();
-        std::mem::take(&mut guard.downlink_channels)
-    }
-
-    pub fn take_downlinks(&self) -> Vec<BoxDownlinkChannel<Agent>> {
-        let mut guard = self.inner.lock();
-        std::mem::take(&mut guard.downlinks)
-    }
-}
-
-impl<Agent> DownlinkSpawner<Agent> for TestDownlinkContext<Agent> {
-    fn spawn_downlink(
-        &self,
-        dl_channel: BoxDownlinkChannel<Agent>,
-    ) -> Result<(), DownlinkRuntimeError> {
-        self.push_dl(dl_channel);
-        Ok(())
-    }
-}
-
-impl<Agent> AgentContext for TestDownlinkContext<Agent> {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
-        panic!("Unexpected request for ad hoc channel.");
-    }
-
-    fn add_lane(
-        &self,
-        _name: &str,
-        _lane_kind: WarpLaneKind,
-        _config: LaneConfig,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
-        panic!("Unexpected new lane.");
-    }
-
-    fn add_store(
-        &self,
-        _name: &str,
-        _kind: StoreKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
-        panic!("Unexpected new store.");
-    }
-
-    fn open_downlink(
-        &self,
-        host: Option<&str>,
-        node: &str,
-        lane: &str,
-        kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
-        assert_eq!(kind, DownlinkKind::Event);
-        let key = Address::text(host, node, lane);
-        let (in_tx, in_rx) = byte_channel(BUFFER_SIZE);
-        let (out_tx, out_rx) = byte_channel(BUFFER_SIZE);
-        self.push_channels(key, (in_tx, out_rx));
-        async move { Ok((out_tx, in_rx)) }.boxed()
-    }
-
-    fn add_http_lane(
-        &self,
-        _name: &str,
-    ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
-        panic!("Unexpected new HTTP lane.");
-    }
-}
-
 const REMOTE_NODE: &str = "/remote_node";
 const REMOTE_LANE: &str = "remote_lane";
 
@@ -377,7 +264,7 @@ async fn join_value_lane_add_downlinks_event_handler() {
     .await;
 
     let guard = context.inner.lock();
-    let Inner {
+    let TestDlContextInner {
         downlink_channels,
         downlinks,
     } = &*guard;
@@ -401,10 +288,10 @@ fn register_lifecycle(
         count.fetch_add(1, Ordering::Relaxed);
         lc
     };
-    let init: BoxJoinValueInit<'static, TestAgent> =
+    let init: BoxJoinLaneInit<'static, TestAgent> =
         Box::new(LifecycleInitializer::new(TestAgent::LANE, fac));
     let lane_id = agent.lane.id();
-    action_context.register_join_value_initializer(lane_id, init);
+    action_context.register_join_lane_initializer(lane_id, init);
 }
 
 #[tokio::test]

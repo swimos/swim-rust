@@ -14,7 +14,10 @@
 
 use std::collections::HashMap;
 
-use crate::lanes::map::MapLaneEvent;
+use crate::{
+    event_handler::{EventHandler, HandlerAction},
+    lanes::map::MapLaneEvent,
+};
 
 /// Base trait for all agent items (lanes and stores).
 pub trait AgentItem {
@@ -37,4 +40,70 @@ pub trait MapItem<K, V>: AgentItem {
     fn read_with_prev<F, R>(&self, f: F) -> R
     where
         F: FnOnce(Option<MapLaneEvent<K, V>>, &HashMap<K, V>) -> R;
+}
+
+pub trait MapLikeItem<K, V> {
+    type GetHandler<C>: HandlerAction<C, Completion = Option<V>> + Send + 'static
+    where
+        C: 'static;
+    type GetMapHandler<C>: HandlerAction<C, Completion = HashMap<K, V>> + Send + 'static
+    where
+        C: 'static;
+
+    fn get_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::GetHandler<C>;
+    fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C>;
+}
+
+pub trait MutableMapLikeItem<K, V> {
+    type UpdateHandler<C>: EventHandler<C> + Send + 'static
+    where
+        C: 'static;
+    type RemoveHandler<C>: EventHandler<C> + Send + 'static
+    where
+        C: 'static;
+    type ClearHandler<C>: EventHandler<C> + Send + 'static
+    where
+        C: 'static;
+
+    fn update_handler<C: 'static>(
+        projection: fn(&C) -> &Self,
+        key: K,
+        value: V,
+    ) -> Self::UpdateHandler<C>;
+    fn remove_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::RemoveHandler<C>;
+    fn clear_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::ClearHandler<C>;
+}
+
+pub trait TransformableMapLikeItem<K, V> {
+    type WithEntryHandler<'a, C, F>: EventHandler<C> + Send + 'a
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(Option<V>) -> Option<V> + Send + 'a;
+
+    fn with_handler<'a, C, F>(
+        projection: fn(&C) -> &Self,
+        key: K,
+        f: F,
+    ) -> Self::WithEntryHandler<'a, C, F>
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(Option<V>) -> Option<V> + Send + 'a;
+}
+
+pub trait ValueLikeItem<T> {
+    type GetHandler<C>: HandlerAction<C, Completion = T> + Send + 'static
+    where
+        C: 'static;
+
+    fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C>;
+}
+
+pub trait MutableValueLikeItem<T> {
+    type SetHandler<C>: EventHandler<C> + Send + 'static
+    where
+        C: 'static;
+
+    fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C>;
 }

@@ -23,7 +23,7 @@ use tokio_util::codec::Encoder;
 use crate::{
     agent_model::WriteResult,
     event_handler::{ActionContext, EventHandlerError, HandlerAction, Modification, StepResult},
-    item::{AgentItem, ValueItem},
+    item::{AgentItem, MutableValueLikeItem, ValueItem, ValueLikeItem},
     meta::AgentMetadata,
 };
 
@@ -244,5 +244,31 @@ impl<C, T> HandlerAction<C> for ValueStoreSet<C, T> {
         } else {
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)
         }
+    }
+}
+
+impl<T> ValueLikeItem<T> for ValueStore<T>
+where
+    T: Clone + Send + 'static,
+{
+    type GetHandler<C> = ValueStoreGet<C, T>
+    where
+        C: 'static;
+
+    fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C> {
+        ValueStoreGet::new(projection)
+    }
+}
+
+impl<T> MutableValueLikeItem<T> for ValueStore<T>
+where
+    T: Send + 'static,
+{
+    type SetHandler<C> = ValueStoreSet<C, T>
+    where
+        C: 'static;
+
+    fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C> {
+        ValueStoreSet::new(projection, value)
     }
 }

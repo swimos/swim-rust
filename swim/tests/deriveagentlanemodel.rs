@@ -24,8 +24,9 @@ use swim::agent::reexport::uuid::Uuid;
 use swim::agent::AgentLaneModel;
 use swim_agent::agent_model::{ItemDescriptor, ItemSpec};
 use swim_agent::lanes::http::Recon;
-use swim_agent::lanes::supply::SupplyLane;
-use swim_agent::lanes::{DemandLane, DemandMapLane, HttpLane, JoinValueLane, SimpleHttpLane};
+use swim_agent::lanes::{
+    DemandLane, DemandMapLane, HttpLane, JoinMapLane, JoinValueLane, SimpleHttpLane, SupplyLane,
+};
 use swim_agent::reexport::bytes::Bytes;
 use swim_agent::stores::{MapStore, ValueStore};
 use swim_api::agent::HttpLaneRequest;
@@ -391,7 +392,7 @@ fn multiple_lanes() {
         seventh: DemandLane<i32>,
         eighth: DemandMapLane<i32, i32>,
         ninth: SimpleHttpLane<i32>,
-        tenth: SupplyLane<i32>,
+        tenth: JoinMapLane<i32, i32, i32>,
     }
 
     check_agent::<MultipleLanes>(vec![
@@ -402,8 +403,12 @@ fn multiple_lanes() {
         transient_lane(4, "fifth", WarpLaneKind::Command),
         persistent_lane(5, "sixth", WarpLaneKind::JoinValue),
         transient_lane(6, "seventh", WarpLaneKind::Demand),
+        persistent_lane(1, "second", WarpLaneKind::Map),
+        persistent_lane(3, "fourth", WarpLaneKind::Map),
+        persistent_lane(5, "sixth", WarpLaneKind::JoinValue),
         transient_lane(7, "eighth", WarpLaneKind::DemandMap),
         http_lane(8, "ninth"),
+        transient_lane(9, "tenth", WarpLaneKind::JoinMap),
         transient_lane(9, "tenth", WarpLaneKind::Supply),
     ]);
 }
@@ -553,7 +558,7 @@ fn single_join_value_lane() {
         lane: JoinValueLane<i32, i32>,
     }
 
-    check_agent::<SingleJoinValueLane>(vec![persistent_lane(0, "lane", WarpLaneKind::JoinValue)]);
+    check_agent::<SingleJoinValueLane>(vec![transient_lane(0, "lane", WarpLaneKind::JoinValue)]);
 }
 
 #[test]
@@ -565,8 +570,8 @@ fn two_join_value_lanes() {
     }
 
     check_agent::<TwoJoinValueLanes>(vec![
-        persistent_lane(0, "first", WarpLaneKind::JoinValue),
-        persistent_lane(1, "second", WarpLaneKind::JoinValue),
+        transient_lane(0, "first", WarpLaneKind::JoinValue),
+        transient_lane(1, "second", WarpLaneKind::JoinValue),
     ]);
 }
 
@@ -580,8 +585,47 @@ fn join_value_lane_tagged_transient() {
     }
 
     check_agent::<TwoJoinValueLanes>(vec![
-        persistent_lane(0, "first", WarpLaneKind::JoinValue),
+        transient_lane(0, "first", WarpLaneKind::JoinValue),
         transient_lane(1, "second", WarpLaneKind::JoinValue),
+    ]);
+}
+
+#[test]
+fn single_join_map_lane() {
+    #[derive(AgentLaneModel)]
+    struct SingleJoinMapLane {
+        lane: JoinMapLane<i32, i32, i32>,
+    }
+
+    check_agent::<SingleJoinMapLane>(vec![transient_lane(0, "lane", WarpLaneKind::JoinMap)]);
+}
+
+#[test]
+fn two_join_map_lanes() {
+    #[derive(AgentLaneModel)]
+    struct TwoJoinMapLanes {
+        first: JoinMapLane<i32, i32, i32>,
+        second: JoinMapLane<i32, i32, i32>,
+    }
+
+    check_agent::<TwoJoinMapLanes>(vec![
+        transient_lane(0, "first", WarpLaneKind::JoinMap),
+        transient_lane(1, "second", WarpLaneKind::JoinMap),
+    ]);
+}
+
+#[test]
+fn join_map_lane_tagged_transient() {
+    #[derive(AgentLaneModel)]
+    struct TwoJoinMapLanes {
+        first: JoinMapLane<i32, i32, i32>,
+        #[lane(transient)]
+        second: JoinMapLane<i32, i32, i32>,
+    }
+
+    check_agent::<TwoJoinMapLanes>(vec![
+        transient_lane(0, "first", WarpLaneKind::JoinMap),
+        transient_lane(1, "second", WarpLaneKind::JoinMap),
     ]);
 }
 
@@ -681,6 +725,7 @@ mod isolated {
             tenth: swim::agent::lanes::DemandMapLane<i32, i32>,
             eleventh: swim::agent::lanes::SimpleHttpLane<i32>,
             twelfth: swim::agent::lanes::HttpLane<i32, i32>,
+            thirteenth: swim::agent::lanes::JoinMapLane<i32, i32, i32>,
         }
 
         check_agent::<MultipleLanes>(vec![
@@ -691,11 +736,12 @@ mod isolated {
             persistent_lane(1, "second", WarpLaneKind::Map),
             persistent_lane(3, "fourth", WarpLaneKind::Map),
             persistent_store(6, "seventh", StoreKind::Map),
-            persistent_lane(7, "eighth", WarpLaneKind::JoinValue),
+            transient_lane(7, "eighth", WarpLaneKind::JoinValue),
             transient_lane(8, "ninth", WarpLaneKind::Demand),
             transient_lane(9, "tenth", WarpLaneKind::DemandMap),
             http_lane(10, "eleventh"),
             http_lane(11, "twelfth"),
+            transient_lane(12, "thirteenth", WarpLaneKind::JoinMap),
         ]);
     }
 }
