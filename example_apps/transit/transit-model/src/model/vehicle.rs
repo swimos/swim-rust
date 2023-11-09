@@ -14,7 +14,7 @@
 
 use std::io::BufRead;
 
-use quick_xml::{se::Serializer, DeError};
+use quick_xml::DeError;
 use serde::{Deserialize, Deserializer, Serialize};
 use swim::{
     form::{
@@ -34,8 +34,6 @@ use swim::{
 };
 use thiserror::Error;
 
-use super::{XML_HEADER, XML_INDENT, XML_INDENT_CHAR};
-
 #[derive(Deserialize, Serialize)]
 #[serde(rename = "body")]
 struct Body {
@@ -47,23 +45,37 @@ struct Body {
     last_time: Option<LastTime>,
 }
 
+/// The current state of a vehicle as reported by the web service.
 #[derive(Debug, Clone, PartialEq, Form)]
 #[form(tag = "vehicle", fields_convention = "camel")]
 pub struct Vehicle {
+    /// Unique service identifier for the vehicle.
     pub id: String,
+    /// The ID of the agency to which the vehicle belongs.
     pub agency: String,
+    /// The Swim node URI of the agent representing the vehicle.
     pub uri: String,
+    /// The service identifier of the route which the vehicle is on.
     pub route_tag: String,
+    /// ID defining the direction of the vehicle on its route.
     pub dir_id: String,
+    /// Last reported latitude of the vehicle.
     pub latitude: f64,
+    /// Last reported longitude of the vehicle.
     pub longitude: f64,
+    /// Last reported speed of the vehicle.
     pub speed: u32,
+    /// Number of seconds since the vehicle reported, relative to the timestamp of the response.
     pub secs_since_report: u32,
+    /// Last reported heading of the vehicle.
     pub heading: Heading,
+    /// Whether the future state of the vehicle can be predicted.
     pub predictable: bool,
+    /// Descriptive title of the route which the vehicle is on.
     pub route_title: String,
 }
 
+/// Representation of the type that is returned by the vehicles endpoint of the web servive.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Form)]
 pub struct VehicleResponse {
     #[serde(rename = "@id")]
@@ -93,6 +105,7 @@ pub struct LastTime {
     pub time: u64,
 }
 
+/// Parse the XML returned by the vehicles endpoint of the web service.
 pub fn load_xml_vehicles<R: BufRead>(
     read: R,
 ) -> Result<(Vec<VehicleResponse>, Option<u64>), DeError> {
@@ -103,19 +116,7 @@ pub fn load_xml_vehicles<R: BufRead>(
     )
 }
 
-pub fn produce_xml(copyright: String, vehicles: Vec<VehicleResponse>, last_time: u64) -> String {
-    let body = Body {
-        copyright,
-        vehicle: vehicles,
-        last_time: Some(LastTime { time: last_time }),
-    };
-    let mut out = XML_HEADER.to_string();
-    let mut ser = Serializer::new(&mut out);
-    ser.indent(XML_INDENT_CHAR, XML_INDENT);
-    body.serialize(ser).expect("Invalid vehicles.");
-    out
-}
-
+/// Enumeration of cardinal and ordinal headings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Tag)]
 pub enum Heading {
     N,
@@ -304,12 +305,5 @@ mod tests {
 
         assert_eq!(vehicles, expected);
         assert_eq!(time, Some(TIMESTAMP));
-    }
-
-    #[test]
-    fn produce_vehicle_xml() {
-        let vehicles = vehicles();
-        let xml = super::produce_xml("NStream 2023".to_string(), vehicles, TIMESTAMP);
-        assert_eq!(xml.as_bytes(), VEHICLES_EXAMPLE);
     }
 }

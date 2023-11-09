@@ -12,16 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use percent_encoding::{AsciiSet, NON_ALPHANUMERIC};
+use trybuild::TestCases;
 
-pub mod agency;
-pub mod bounding_box;
-pub mod counts;
-pub mod route;
-pub mod vehicle;
+#[test]
+fn failed_agent_derivations() {
+    let t = TestCases::new();
 
-pub const URL_ENCODE: &AsciiSet = &NON_ALPHANUMERIC
-    .remove(b'-')
-    .remove(b'_')
-    .remove(b'.')
-    .remove(b'~');
+    t.compile_fail("tests/bad_agents/*.rs");
+}

@@ -20,6 +20,7 @@ use crate::structural::read::DeriveStructuralReadable;
 use crate::structural::write::DeriveStructuralWritable;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
+use swim_utilities::errors::validation::Validation;
 use swim_utilities::errors::Errors;
 use syn::{Data, DeriveInput, Generics};
 
@@ -67,11 +68,25 @@ pub fn build_derive_structural_writable(
     }
 }
 
+fn validate_and_check_fields<Flds>(
+    input: StructDef<'_, Flds>,
+) -> Result<StructModel, Errors<syn::Error>>
+where
+    Flds: StructLike,
+{
+    StructModel::validate(input)
+        .and_then(|model| match model.check_field_names(input.source()) {
+            Ok(_) => Validation::valid(model),
+            Err(err) => Validation::Validated(model, Errors::of(err)),
+        })
+        .into_result()
+}
+
 fn struct_derive_structural_writable<'a, Flds: StructLike>(
     input: StructDef<'a, Flds>,
     generics: &'a Generics,
 ) -> Result<TokenStream, Errors<syn::Error>> {
-    let model = StructModel::validate(input).into_result()?;
+    let model = validate_and_check_fields(input)?;
     let segregated = SegregatedStructModel::from(&model);
     let derive = DeriveStructuralWritable(segregated, generics);
     Ok(derive.into_token_stream())
@@ -81,7 +96,7 @@ fn struct_derive_structural_form<'a, Flds: StructLike>(
     input: StructDef<'a, Flds>,
     generics: &'a Generics,
 ) -> Result<TokenStream, Errors<syn::Error>> {
-    let model = StructModel::validate(input).into_result()?;
+    let model = validate_and_check_fields(input)?;
     let segregated = SegregatedStructModel::from(&model);
     let derive_writable = DeriveStructuralWritable(segregated.clone(), generics);
     let derive_readable = DeriveStructuralReadable(segregated, generics);
@@ -139,7 +154,7 @@ fn struct_derive_structural_readable<Flds: StructLike>(
     input: StructDef<'_, Flds>,
     generics: &Generics,
 ) -> Result<TokenStream, Errors<syn::Error>> {
-    let model = StructModel::validate(input).into_result()?;
+    let model = validate_and_check_fields(input)?;
     let segregated = SegregatedStructModel::from(&model);
     let derive = DeriveStructuralReadable(segregated, generics);
     Ok(derive.into_token_stream())

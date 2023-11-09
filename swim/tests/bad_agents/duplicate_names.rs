@@ -12,16 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use percent_encoding::{AsciiSet, NON_ALPHANUMERIC};
+use swim::agent::AgentLaneModel;
+use swim::agent::lanes::ValueLane;
 
-pub mod agency;
-pub mod bounding_box;
-pub mod counts;
-pub mod route;
-pub mod vehicle;
+#[derive(AgentLaneModel)]
+#[allow(non_snake_case)]
+pub struct RenameConvention {
+    #[lane(convention = "camel")]
+    first_lane: ValueLane<i32>,
+    firstLane: ValueLane<i32>,
+}
 
-pub const URL_ENCODE: &AsciiSet = &NON_ALPHANUMERIC
-    .remove(b'-')
-    .remove(b'_')
-    .remove(b'.')
-    .remove(b'~');
+fn main() {}

@@ -28,13 +28,18 @@ use tracing::{debug, info};
 
 use crate::model::vehicle::Vehicle;
 
+/// A agent representing the current state of a vehicle.
 #[derive(AgentLaneModel)]
 #[projections]
 #[agent(transient, convention = "camel")]
 pub struct VehicleAgent {
+    // Description of the vehicle.
     vehicle: ValueLane<Option<Vehicle>>,
+    // Speed history of the vehicle (keyed by arbitrary epoch milliseconds).
     speeds: MapLane<u64, u32>,
+    // Acceleration history of the vehicle (keyed by arbitrary epoch milliseconds).
     accelerations: MapLane<u64, u32>,
+    // Set the descriptor of the vehicle.
     add_vehicle: CommandLane<Vehicle>,
 }
 

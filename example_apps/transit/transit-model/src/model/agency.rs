@@ -23,6 +23,8 @@ use super::{
     vehicle::{Vehicle, VehicleResponse},
 };
 
+/// Representation of a transport agency. An agency is contained within a state, within a country. It will have
+/// some number of vehicles associated with it on some number of routes.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize, Form, Hash)]
 #[form(tag = "agency")]
 pub struct Agency {
@@ -38,6 +40,7 @@ fn enc(s: &str) -> PercentEncode<'_> {
 }
 
 impl Agency {
+    /// The Swim node URI of the agent that will represent this agency.
     pub fn uri(&self) -> String {
         format!(
             "/agency/{}/{}/{}",
@@ -47,14 +50,18 @@ impl Agency {
         )
     }
 
+    /// The Swim node URI of the country that contains this agency.
     pub fn country_uri(&self) -> String {
         format!("/country/{}", enc(&self.country))
     }
 
+    /// The Swim node URI of the state that contains this agency.
     pub fn state_uri(&self) -> String {
         format!("/state/{}/{}", enc(&self.country), enc(&self.state))
     }
 
+    /// Create a new vehicle entity from the response returned by the web service (incorporating information
+    /// from the route of the vehicle.)
     pub fn create_vehicle(&self, route: &Route, response: VehicleResponse) -> Vehicle {
         let VehicleResponse {
             id,
