@@ -20,6 +20,7 @@ use std::{
 use swim_api::downlink::DownlinkKind;
 use swim_model::{address::RelativeAddress, Text};
 use swim_runtime::agent::{CommanderRequest, DownlinkRequest};
+use tracing::debug;
 
 pub type DlKey = (RelativeAddress<Text>, DownlinkKind);
 
@@ -42,6 +43,7 @@ impl PendingDownlinks {
         let PendingDownlinks {
             awaiting_remote, ..
         } = self;
+        debug!(remote = %remote, address = %request.address, "Adding pending downlink request.");
         let remote_pending = awaiting_remote.contains_key(&remote);
         let key = (request.address.clone(), request.kind);
         awaiting_remote
@@ -59,6 +61,7 @@ impl PendingDownlinks {
         let PendingDownlinks {
             awaiting_remote, ..
         } = self;
+        debug!(remote = %remote, key = ?request.key, "Adding pending commander request.");
         let remote_pending = awaiting_remote.contains_key(&remote);
         awaiting_remote
             .entry(remote)
@@ -74,6 +77,7 @@ impl PendingDownlinks {
         key: DlKey,
         requests: Vec<DownlinkRequest>,
     ) {
+        debug!(remote = %remote, key = ?key, "Adding {} downlink requests for socket.", requests.len());
         let PendingDownlinks { awaiting_dl, .. } = self;
         awaiting_dl
             .entry(remote)
@@ -86,10 +90,12 @@ impl PendingDownlinks {
     pub fn push_local(&mut self, request: DownlinkRequest) {
         let PendingDownlinks { local, .. } = self;
         let key = (request.address.clone(), request.kind);
+        debug!(key = ?key, "Adding a request for a local downlink.");
         local.entry(key).or_default().push(request);
     }
 
     pub fn take_socket_ready(&mut self, host: &Text) -> Waiting {
+        debug!(host = %host, "Removing downlink requests for a remote.");
         let PendingDownlinks {
             awaiting_remote, ..
         } = self;
@@ -101,6 +107,7 @@ impl PendingDownlinks {
         host: &Text,
         addr: SocketAddr,
     ) -> Option<(impl Iterator<Item = &DlKey> + '_, Vec<CommanderRequest>)> {
+        debug!(host = %host, addr = %addr, "Socket ready for host.");
         let PendingDownlinks {
             awaiting_remote,
             awaiting_dl,
@@ -125,6 +132,7 @@ impl PendingDownlinks {
         &mut self,
         host: &Text,
     ) -> (impl Iterator<Item = DownlinkRequest>, Vec<CommanderRequest>) {
+        debug!(host = %host, "Removing pending downlinks for failed host connection.");
         let (dl_requests, cmd_requests) = if let Some(Waiting {
             dl_requests,
             cmd_requests,
@@ -144,6 +152,7 @@ impl PendingDownlinks {
     }
 
     pub fn dl_ready(&mut self, addr: Option<SocketAddr>, key: &DlKey) -> Vec<DownlinkRequest> {
+        debug!(key = ?key, addr = ?addr, "Taking requests for established downlink connection.");
         let PendingDownlinks {
             awaiting_dl, local, ..
         } = self;

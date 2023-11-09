@@ -18,6 +18,7 @@ use thiserror::Error;
 
 use super::{Header, HeaderName, HeaderValue, StatusCode, Version};
 
+/// Model for an HTTP response where the value of the payload can be typed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HttpResponse<T> {
     pub status_code: StatusCode,
@@ -65,5 +66,25 @@ impl<T> TryFrom<HttpResponse<T>> for http::Response<T> {
             response.headers_mut().append(name, value);
         }
         Ok(response)
+    }
+}
+
+impl<T> HttpResponse<T> {
+    pub fn map<F, U>(self, f: F) -> HttpResponse<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        let HttpResponse {
+            status_code,
+            version,
+            headers,
+            payload,
+        } = self;
+        HttpResponse {
+            status_code,
+            version,
+            headers,
+            payload: f(payload),
+        }
     }
 }

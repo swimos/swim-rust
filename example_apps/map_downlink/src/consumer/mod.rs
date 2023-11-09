@@ -25,7 +25,10 @@ use self::agent::{ConsumerAgent, ConsumerLifecycle};
 mod agent;
 mod model;
 
-pub async fn make_server(producer_port: u16, key: &str) -> Result<BoxServer, Box<dyn Error>> {
+pub async fn make_server(
+    producer_port: u16,
+    key: &str,
+) -> Result<BoxServer, Box<dyn Error + Send + Sync>> {
     let route = RoutePattern::parse_str("/consumer/:name}")?;
     let key = key.to_string();
     let lifecycle_fn = move || ConsumerLifecycle::new(producer_port, key.clone()).into_lifecycle();

@@ -135,6 +135,7 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 /// 2. [`crate::agent::lanes::CommandLane`]
 /// 3. [`crate::agent::lanes::MapLane`]
 /// 4. [`crate::agent::lanes::JoinValueLane`]
+/// 5. [`crate::agent::lanes::HttpLane`] (or [`crate::agent::lanes::SimpleHttpLane`])
 ///
 /// For [`crate::agent::lanes::ValueLane`] and [`crate::agent::lanes::CommandLane`], the type parameter
 /// must implement the [`crate::form::Form`] trait (used for serialization and deserialization). For
@@ -149,6 +150,11 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 ///
 /// These have exactly the same restrictions on their type parameters as the corresponding lane types.
 ///
+/// For [`crate::agent::lanes::HttpLane`], the constraints on the type parameters are determined by the
+/// codec that is selected for the lane (using the appropriate type parameter). By default, this is the
+/// [`crate::agent::lanes::http::DefaultCodec`]. This codec always requires that type parameters implement
+/// [`crate::form::Form`] and, if the 'json' feature is active, that the they are Serde serializable.
+///
 /// The supported store types are:
 ///
 /// 1. [`crate::agent::stores::ValueStore`]
@@ -160,7 +166,7 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 ///
 /// ```no_run
 /// use swim::agent::AgentLaneModel;
-/// use swim::agent::lanes::{ValueLane, CommandLane, MapLane, JoinValueLane};
+/// use swim::agent::lanes::{ValueLane, CommandLane, MapLane, JoinValueLane, SimpleHttpLane};
 /// use swim::agent::stores::{ValueStore, MapStore};
 ///
 /// #[derive(AgentLaneModel)]
@@ -171,6 +177,7 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 ///     value_store: ValueStore<i32>,
 ///     map_store: MapStore<String, i64>,
 ///     join_value: JoinValueLane<String, i64>,
+///     http_lane: SimpleHttpLane<String>,
 /// }
 /// ```
 ///
@@ -188,7 +195,7 @@ pub use swim_agent_derive::{lifecycle, projections, AgentLaneModel};
 ///
 /// #[derive(AgentLaneModel)]
 /// struct TransientAgent {
-///     #[transient]
+///     #[lane(transient)]
 ///     value_lane: ValueLane<i32>,
 /// }
 /// ```
@@ -205,15 +212,16 @@ pub mod config {
     pub use swim_agent::config::{MapDownlinkConfig, SimpleDownlinkConfig};
 }
 pub mod model {
-    pub use swim_agent::model::{MapMessage, Text};
+    pub use swim_agent::model::{HttpLaneRequest, MapMessage, Text};
 }
 
 pub mod agent_model {
     pub use swim_agent::agent_model::{
-        AgentModel, AgentSpec, ItemFlags, ItemInitializer, ItemKind, ItemSpec,
+        AgentModel, AgentSpec, ItemDescriptor, ItemFlags, ItemInitializer, ItemKind, ItemSpec,
         JoinValueInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,
         ValueStoreInitializer, WriteResult,
     };
+    pub use swim_api::lane::WarpLaneKind;
     pub use swim_api::meta::lane::LaneKind;
     pub use swim_api::store::StoreKind;
 
@@ -232,8 +240,8 @@ pub mod item {
 
 pub mod lanes {
     pub use swim_agent::lanes::{
-        CommandLane, DemandLane, DemandMapLane, JoinValueLane, LaneItem, MapLane, SupplyLane,
-        ValueLane,
+        CommandLane, DemandLane, DemandMapLane, HttpLane, JoinValueLane, LaneItem, MapLane,
+        SimpleHttpLane, SupplyLane, ValueLane,
     };
 
     pub mod command {
@@ -277,6 +285,20 @@ pub mod lanes {
         pub use swim_agent::lanes::join_value::{JoinValueLaneSync, LinkClosedResponse};
         pub mod lifecycle {
             pub use swim_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
+        }
+    }
+
+    pub mod http {
+        pub use swim_agent::lanes::http::{
+            CodecError, DefaultCodec, HttpLaneAccept, HttpLaneCodec, HttpLaneCodecSupport,
+            HttpRequestContext, Recon, Response, UnitResponse,
+        };
+
+        #[cfg(feature = "json")]
+        pub use swim_agent::lanes::http::Json;
+
+        pub mod lifecycle {
+            pub use swim_agent::lanes::http::lifecycle::StatefulHttpLaneLifecycle;
         }
     }
 

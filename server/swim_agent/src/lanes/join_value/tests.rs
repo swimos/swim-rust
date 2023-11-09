@@ -29,7 +29,7 @@ use swim_api::{
     agent::{AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    meta::lane::LaneKind,
+    lane::WarpLaneKind,
     store::StoreKind,
 };
 use swim_model::{address::Address, Text};
@@ -293,7 +293,7 @@ impl<Agent> AgentContext for TestDownlinkContext<Agent> {
     fn add_lane(
         &self,
         _name: &str,
-        _lane_kind: LaneKind,
+        _lane_kind: WarpLaneKind,
         _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Unexpected new lane.");

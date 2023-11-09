@@ -136,20 +136,24 @@ pub async fn manage_producer_and_consumer(
     }
 }
 
-pub fn example_logging() -> Result<(), Box<dyn std::error::Error>> {
+pub fn example_filter() -> Result<EnvFilter, Box<dyn std::error::Error + Send + Sync>> {
+    let filter = if let Ok(filter) = EnvFilter::try_from_default_env() {
+        filter
+    } else {
+        EnvFilter::new("")
+            .add_directive("swim_server_app=trace".parse()?)
+            .add_directive("swim_runtime=trace".parse()?)
+            .add_directive("swim_agent=trace".parse()?)
+            .add_directive("swim_messages=trace".parse()?)
+            .add_directive("swim_remote=trace".parse()?)
+    };
+    Ok(filter)
+}
+
+pub fn example_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = std::env::args().collect::<Vec<_>>();
     if args.get(1).map(String::as_str) == Some("--enable-logging") {
-        let filter = if let Ok(filter) = EnvFilter::try_from_default_env() {
-            filter
-        } else {
-            EnvFilter::new("")
-                .add_directive("swim_server_app=trace".parse()?)
-                .add_directive("swim_runtime=trace".parse()?)
-                .add_directive("swim_agent=trace".parse()?)
-                .add_directive("swim_messages=trace".parse()?)
-                .add_directive("swim_remote=trace".parse()?)
-                .add_directive(LevelFilter::WARN.into())
-        };
+        let filter = example_filter()?.add_directive(LevelFilter::WARN.into());
         tracing_subscriber::fmt().with_env_filter(filter).init();
     }
     Ok(())

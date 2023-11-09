@@ -24,7 +24,7 @@ use swim::agent::{
 #[projections]
 pub struct ExampleAgent {
     map: MapLane<String, i32>,
-    #[transient]
+    #[lane(transient)]
     temporary: MapLane<String, i32>,
     stop: CommandLane<()>,
 }

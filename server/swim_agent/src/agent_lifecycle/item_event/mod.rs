@@ -23,6 +23,7 @@ use super::utility::HandlerContext;
 mod command;
 mod demand;
 mod demand_map;
+mod http;
 mod map;
 #[cfg(test)]
 mod tests;
@@ -35,6 +36,7 @@ pub use demand::{DemandBranch, DemandLeaf, DemandLifecycleHandler, DemandLifecyc
 pub use demand_map::{
     DemandMapBranch, DemandMapLeaf, DemandMapLifecycleHandler, DemandMapLifecycleHandlerShared,
 };
+pub use http::{HttpBranch, HttpLeaf};
 pub use map::{
     MapBranch, MapLeaf, MapLifecycleHandler, MapLifecycleHandlerShared, MapLikeBranch,
     MapStoreBranch, MapStoreLeaf,

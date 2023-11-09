@@ -30,6 +30,7 @@ use futures::{
 };
 use hyper::{
     body::to_bytes,
+    header::CONTENT_LENGTH,
     server::conn::http1,
     service::Service,
     upgrade::{Parts, Upgraded},
@@ -49,7 +50,7 @@ use swim_remote::{
 use swim_remote::{AgentResolutionError, FindNode, NoSuchAgent};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{mpsc, oneshot},
+    sync::mpsc,
     time::{sleep, Sleep},
 };
 
@@ -622,24 +623,36 @@ impl WebsocketClient for HyperWebsockets {
 /// Produce a bad request response for an request that we cannot route correctly.
 fn bad_request(msg: String) -> Response<Body> {
     let mut response = Response::default();
+    let payload = Bytes::from(msg);
     *response.status_mut() = StatusCode::BAD_REQUEST;
-    *response.body_mut() = Bytes::from(msg).into();
+    response
+        .headers_mut()
+        .append(CONTENT_LENGTH, payload.len().into());
+    *response.body_mut() = payload.into();
     response
 }
 
 /// Produce an error response if the agent sends back invalid data.
 fn error(msg: &'static str) -> Response<Body> {
     let mut response = Response::default();
+    let payload = Bytes::from_static(msg.as_bytes());
     *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-    *response.body_mut() = Bytes::from_static(msg.as_bytes()).into();
+    response
+        .headers_mut()
+        .append(CONTENT_LENGTH, payload.len().into());
+    *response.body_mut() = payload.into();
     response
 }
 
 /// Produce a timeout response for when the agent does not respond in time.
 fn req_timeout() -> Response<Body> {
     let mut response = Response::default();
+    let payload = Bytes::from("The agent failed to respond.".to_string());
     *response.status_mut() = StatusCode::REQUEST_TIMEOUT;
-    *response.body_mut() = Bytes::from("The agent failed to respond.".to_string()).into();
+    response
+        .headers_mut()
+        .append(CONTENT_LENGTH, payload.len().into());
+    *response.body_mut() = payload.into();
     response
 }
 
@@ -647,16 +660,24 @@ fn req_timeout() -> Response<Body> {
 /// for sending this if the lane does not exist).
 fn not_found(node: &str) -> Response<Body> {
     let mut response = Response::default();
+    let payload = Bytes::from(format!("No agent at '{}'", node));
     *response.status_mut() = StatusCode::NOT_FOUND;
-    *response.body_mut() = Bytes::from(format!("No agent at '{}'", node)).into();
+    response
+        .headers_mut()
+        .append(CONTENT_LENGTH, payload.len().into());
+    *response.body_mut() = payload.into();
     response
 }
 
 /// Produce a response to send if the server is already stopping.
 fn unavailable() -> Response<Body> {
     let mut response = Response::default();
+    let payload = Bytes::from_static(b"The server is stopping.");
     *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
-    *response.body_mut() = Bytes::from_static(b"The server is stopping.").into();
+    response
+        .headers_mut()
+        .append(CONTENT_LENGTH, payload.len().into());
+    *response.body_mut() = payload.into();
     response
 }
 
@@ -680,8 +701,7 @@ async fn serve_request(
         Err(err) => return bad_request(err.to_string()),
     };
 
-    let (response_tx, response_rx) = oneshot::channel();
-    let message = HttpLaneRequest::new(bytes_request, response_tx);
+    let (message, response_rx) = HttpLaneRequest::new(bytes_request);
     if let Err(err) = resolver.send(message).await {
         match err {
             AgentResolutionError::NotFound(NoSuchAgent { node, .. }) => {

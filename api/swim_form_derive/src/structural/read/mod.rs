@@ -50,6 +50,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
 
             tokens.append_all(quote! {
                 #[automatically_derived]
+                #[allow(non_snake_case)]
                 impl #root::structural::read::recognizer::RecognizerReadable for #name {
                     type Rec = #root::structural::read::recognizer::UnitStructRecognizer<#name>;
                     type AttrRec = #root::structural::read::recognizer::SimpleAttrBody<
@@ -57,7 +58,6 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
                     >;
                     type BodyRec = Self::Rec;
 
-                    #[allow(non_snake_case)]
                     #[inline]
                     fn make_recognizer() -> Self::Rec {
                         #root::structural::read::recognizer::UnitStructRecognizer::new(
@@ -124,11 +124,11 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
 
             tokens.append_all(quote! {
                 const _: () = {
-
                     type #builder_name #type_gen = #builder_type;
                     #select_index
 
                     #[automatically_derived]
+                    #[allow(non_snake_case)]
                     fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: #root::structural::read::event::ReadEvent<'_>)
                         -> ::core::option::Option<::core::result::Result<(), #root::structural::read::error::ReadError>>
                     #where_clause
@@ -137,6 +137,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
                     }
 
                     #[automatically_derived]
+                    #[allow(non_snake_case)]
                     fn #on_done_name #impl_gen(state: &mut #builder_name #type_gen) -> ::core::result::Result<#target, #root::structural::read::error::ReadError>
                     #where_clause
                     {
@@ -144,6 +145,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
                     }
 
                     #[automatically_derived]
+                    #[allow(non_snake_case)]
                     fn #on_reset_name #impl_gen(state: &mut #builder_name #type_gen)
                     #where_clause
                     {
@@ -153,6 +155,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedStructModel<'a>> {
                     #header_recog_block
 
                     #[automatically_derived]
+                    #[allow(non_snake_case)]
                     impl #impl_gen #root::structural::read::recognizer::RecognizerReadable for #name #type_gen #where_clause {
                         #read_impl
                     }
@@ -206,6 +209,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
         if variants.is_empty() {
             tokens.append_all(quote! {
                 #[automatically_derived]
+                #[allow(non_snake_case)]
                 impl #impl_gen #root::structural::read::recognizer::RecognizerReadable for #name #type_gen
                 #where_clause
                 {
@@ -276,6 +280,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
                         #select_index
 
                         #[automatically_derived]
+                        #[allow(non_snake_case)]
                         fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: #root::structural::read::event::ReadEvent<'_>)
                             -> ::core::option::Option<::core::result::Result<(), #root::structural::read::error::ReadError>>
                         #where_clause
@@ -284,6 +289,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
                         }
 
                         #[automatically_derived]
+                        #[allow(non_snake_case)]
                         fn #on_done_name #impl_gen(state: &mut #builder_name #type_gen) -> ::core::result::Result<#enum_ty, #root::structural::read::error::ReadError>
                         #where_clause
                         {
@@ -291,6 +297,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
                         }
 
                         #[automatically_derived]
+                        #[allow(non_snake_case)]
                         fn #on_reset_name #impl_gen(state: &mut #builder_name #type_gen)
                         #where_clause
                         {
@@ -316,6 +323,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
                     #state
 
                     #[automatically_derived]
+                    #[allow(non_snake_case)]
                     #[inline]
                     fn #select_var_name #impl_gen(name: &str) -> ::core::option::Option<#builder_name #type_gen>
                     #where_clause
@@ -324,6 +332,7 @@ impl<'a> ToTokens for DeriveStructuralReadable<'a, SegregatedEnumModel<'a>> {
                     }
 
                     #[automatically_derived]
+                    #[allow(non_snake_case)]
                     impl #impl_gen #root::structural::read::recognizer::RecognizerReadable for #name #type_gen
                     #where_clause
                     {
@@ -671,6 +680,7 @@ impl<'a> ToTokens for SelectIndexFnLabelled<'a> {
 
         tokens.append_all(quote! {
             #[automatically_derived]
+            #[allow(non_snake_case)]
             fn #fn_name(key: #root::structural::read::recognizer::LabelledFieldKey<'_>) -> ::core::option::Option<u32> {
                 match key {
                     #name_case
@@ -761,6 +771,7 @@ impl<'a> ToTokens for SelectIndexFnOrdinal<'a> {
 
         tokens.append_all(quote! {
             #[automatically_derived]
+            #[allow(non_snake_case)]
             fn #fn_name(key: #root::structural::read::recognizer::OrdinalFieldKey<'_>) -> ::core::option::Option<u32> {
                 match key {
                     #name_case
@@ -1513,6 +1524,7 @@ impl<'a> ToTokens for HeaderSelectIndexFn<'a> {
 
         tokens.append_all(quote! {
             #[automatically_derived]
+            #[allow(non_snake_case)]
             fn #fn_name(key: #root::structural::read::recognizer::HeaderFieldKey<'_>) -> ::core::option::Option<u32> {
                 match key {
                     #body_case
@@ -1652,6 +1664,7 @@ impl<'a> ToTokens for HeaderRecognizerFns<'a> {
             #select_index
 
             #[automatically_derived]
+            #[allow(non_snake_case)]
             fn #select_feed_name #impl_gen(state: &mut #builder_name #type_gen, index: u32, event: #root::structural::read::event::ReadEvent<'_>)
                 -> ::core::option::Option<::core::result::Result<(), #root::structural::read::error::ReadError>>
             #where_clause
@@ -1660,6 +1673,7 @@ impl<'a> ToTokens for HeaderRecognizerFns<'a> {
             }
 
             #[automatically_derived]
+            #[allow(non_snake_case)]
             fn #on_reset_name #impl_gen(state: &mut #builder_name #type_gen)
             #where_clause
             {

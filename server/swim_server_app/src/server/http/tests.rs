@@ -317,7 +317,7 @@ async fn fake_plane(responses: HashMap<Text, FindResponse>, mut find_rx: mpsc::R
                 },
             },
             Either::Left((provision, request)) => {
-                let HttpLaneRequest { response_tx, .. } = request;
+                let (_, response_tx) = request.into_parts();
                 match provision {
                     Provision::Immediate => {
                         let response = HttpLaneResponse {

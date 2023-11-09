@@ -27,7 +27,7 @@ mod agent;
 mod model;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     example_logging()?;
     let route = RoutePattern::parse_str("/example/:name}")?;
 

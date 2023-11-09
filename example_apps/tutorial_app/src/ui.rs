@@ -40,7 +40,7 @@ impl std::error::Error for TimeoutError {}
 pub async fn run_web_server<Shutdown>(
     shutdown: Shutdown,
     addr: oneshot::Receiver<SocketAddr>,
-) -> Result<(), Box<dyn std::error::Error>>
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
 where
     Shutdown: Future<Output = ()>,
 {

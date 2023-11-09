@@ -16,6 +16,7 @@ use lazy_static::lazy_static;
 use std::{collections::HashMap, fmt::Formatter};
 use thiserror::Error;
 
+/// Model describing the method of an HTTP request.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Method(MethodInner);
 
@@ -106,4 +107,29 @@ impl std::fmt::Debug for Method {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(&self, f)
     }
+}
+
+impl Method {
+    /// Determine if this method can be supported by a Swim server.
+    pub fn supported_method(&self) -> Option<SupportedMethod> {
+        match self.0 {
+            MethodInner::Get => Some(SupportedMethod::Get),
+            MethodInner::Head => Some(SupportedMethod::Head),
+            MethodInner::Post => Some(SupportedMethod::Post),
+            MethodInner::Put => Some(SupportedMethod::Put),
+            MethodInner::Delete => Some(SupportedMethod::Delete),
+            _ => None,
+        }
+    }
+}
+
+/// Enumeration of the HTTP methods that a Swim server can support,
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SupportedMethod {
+    #[default]
+    Get,
+    Head,
+    Post,
+    Put,
+    Delete,
 }

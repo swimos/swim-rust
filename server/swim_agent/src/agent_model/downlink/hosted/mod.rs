@@ -122,7 +122,7 @@ mod test_support {
         agent::{AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig},
         downlink::DownlinkKind,
         error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-        meta::lane::LaneKind,
+        lane::WarpLaneKind,
         store::StoreKind,
     };
     use swim_utilities::{
@@ -165,7 +165,7 @@ mod test_support {
         fn add_lane(
             &self,
             _name: &str,
-            _lane_kind: LaneKind,
+            _lane_kind: WarpLaneKind,
             _config: LaneConfig,
         ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
             panic!("Unexpected runtime interaction.");

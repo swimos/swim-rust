@@ -16,10 +16,12 @@ use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
     num::NonZeroUsize,
+    pin::Pin,
+    task::{Context, Poll},
 };
 
 use bytes::Bytes;
-use futures::future::BoxFuture;
+use futures::{future::BoxFuture, ready, Future, FutureExt};
 use swim_model::http::{HttpRequest, HttpResponse};
 use swim_utilities::{
     future::retryable::RetryStrategy,
@@ -27,6 +29,7 @@ use swim_utilities::{
     non_zero_usize,
     routing::route_uri::RouteUri,
 };
+use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
@@ -34,7 +37,7 @@ use crate::{
     error::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
     },
-    meta::lane::LaneKind,
+    lane::WarpLaneKind,
     store::StoreKind,
 };
 
@@ -101,21 +104,73 @@ impl Default for StoreConfig {
 
 pub type HttpLaneResponse = HttpResponse<Bytes>;
 
+/// Send half of a single use channel for providing an HTTP response.
+#[derive(Debug)]
+pub struct HttpResponseSender(oneshot::Sender<HttpLaneResponse>);
+
+impl HttpResponseSender {
+    pub fn send(self, response: HttpLaneResponse) -> Result<(), HttpLaneResponse> {
+        self.0.send(response)
+    }
+}
+
+impl Future for HttpResponseReceiver {
+    type Output = Result<HttpLaneResponse, ()>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Poll::Ready(ready!(self.as_mut().0.poll_unpin(cx)).map_err(|_| ()))
+    }
+}
+
+pub fn response_channel() -> (HttpResponseSender, HttpResponseReceiver) {
+    let (tx, rx) = oneshot::channel();
+    (HttpResponseSender(tx), HttpResponseReceiver(rx))
+}
+
+/// Receive half of a single use channel for providing an HTTP response.
+#[derive(Debug)]
+pub struct HttpResponseReceiver(oneshot::Receiver<HttpLaneResponse>);
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq, Default)]
+#[error("An HTTP request was dropped before a response was sent.")]
+pub struct ReceiveResponseError;
+
+impl HttpResponseReceiver {
+    pub fn try_recv(&mut self) -> Result<HttpLaneResponse, ReceiveResponseError> {
+        self.0.try_recv().map_err(|_| ReceiveResponseError)
+    }
+}
+
+/// The type of messages sent from the Swim agent runtime to an agent implementation. It includes the
+/// request that was received by the server and a single use channel for the agent implementation to
+/// provide the response.
 #[derive(Debug)]
 pub struct HttpLaneRequest {
     pub request: HttpRequest<Bytes>,
-    pub response_tx: oneshot::Sender<HttpLaneResponse>,
+    response_tx: HttpResponseSender,
 }
 
 impl HttpLaneRequest {
-    pub fn new(
-        request: HttpRequest<Bytes>,
-        response_tx: oneshot::Sender<HttpLaneResponse>,
-    ) -> Self {
-        HttpLaneRequest {
+    /// Create a new instance from an HTTP request and provide the receiver that can be
+    /// used to wait for the response.
+    pub fn new(request: HttpRequest<Bytes>) -> (Self, HttpResponseReceiver) {
+        let (tx, rx) = response_channel();
+        (
+            HttpLaneRequest {
+                request,
+                response_tx: tx,
+            },
+            rx,
+        )
+    }
+
+    /// Split this message into the original request and the channel for sending the response.
+    pub fn into_parts(self) -> (HttpRequest<Bytes>, HttpResponseSender) {
+        let HttpLaneRequest {
             request,
             response_tx,
-        }
+        } = self;
+        (request, response_tx)
     }
 }
 
@@ -136,7 +191,7 @@ pub trait AgentContext: Sync {
     fn add_lane(
         &self,
         name: &str,
-        lane_kind: LaneKind,
+        lane_kind: WarpLaneKind,
         config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>>;
 

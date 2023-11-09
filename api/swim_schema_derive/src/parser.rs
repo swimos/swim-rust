@@ -133,7 +133,7 @@ pub fn fields_from_ast<'t>(
                                 manifest.header_body = true;
                             }
                         }
-                        NestedMeta::Meta(Meta::NameValue(name)) if name.path == NAME_PATH => {
+                        NestedMeta::Meta(Meta::NameValue(name)) if name.path.is_ident(NAME_NAME) => {
                             match &name.lit {
                                 Lit::Str(s) => {
                                     let old_ident = original.ident.clone().unwrap_or_else(|| {

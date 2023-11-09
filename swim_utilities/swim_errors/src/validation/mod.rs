@@ -247,6 +247,12 @@ impl<E> Append<Option<E>> for Errors<E> {
     }
 }
 
+impl<E> Append<Errors<E>> for Errors<E> {
+    fn append(&mut self, value: Errors<E>) {
+        self.op_in_place(value)
+    }
+}
+
 /// Combine two validated values, accumulating errors.
 pub fn validate2<T1, T2, E: Semigroup>(
     first: Validation<T1, E>,

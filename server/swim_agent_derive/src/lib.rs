@@ -13,17 +13,14 @@
 // limitations under the License.
 
 use agent_lifecycle::ImplAgentLifecycle;
-use lane_model_derive::DeriveAgentLaneModel;
+use lane_model_derive::{combine_agent_attrs, make_agent_attr_consumer, DeriveAgentLaneModel};
 use lane_projections::ProjectionsImpl;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 
-use macro_utilities::to_compile_errors;
-use swim_utilities::errors::validation::Validation;
-use syn::{
-    parse_macro_input, parse_quote, punctuated::Pair, AttributeArgs, DeriveInput, Item, Meta,
-    NestedMeta,
-};
+use macro_utilities::{attributes::consume_attributes, to_compile_errors};
+use swim_utilities::errors::{validation::Validation, Errors};
+use syn::{parse_macro_input, parse_quote, AttributeArgs, DeriveInput, Item};
 
 mod agent_lifecycle;
 mod lane_model_derive;
@@ -33,12 +30,19 @@ fn default_root() -> syn::Path {
     parse_quote!(::swim::agent)
 }
 
-#[proc_macro_derive(AgentLaneModel, attributes(agent_root, transient))]
+const AGENT_TAG: &str = "agent";
+
+#[proc_macro_derive(AgentLaneModel, attributes(agent, lane))]
 pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {
-    let mut input = parse_macro_input!(input as DeriveInput);
-    let root = extract_replace_root(&mut input.attrs).unwrap_or_else(default_root);
+    let input = parse_macro_input!(input as DeriveInput);
+    let (item_attrs, errors) =
+        consume_attributes(AGENT_TAG, &input.attrs, make_agent_attr_consumer());
+    let modifiers = Validation::Validated(item_attrs, Errors::from(errors))
+        .and_then(|item_attrs| combine_agent_attrs(&input, item_attrs));
+
     lane_model_derive::validate_input(&input)
-        .map(|model| DeriveAgentLaneModel::new(&root, model))
+        .join(modifiers)
+        .and_then(|(model, modifiers)| DeriveAgentLaneModel::validate(&input, modifiers, model))
         .map(ToTokens::into_token_stream)
         .into_result()
         .unwrap_or_else(|errs| to_compile_errors(errs.into_vec()))
@@ -86,28 +90,4 @@ pub fn lifecycle(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into_result()
         .unwrap_or_else(|errs| to_compile_errors(errs.into_vec()))
         .into()
-}
-
-fn extract_replace_root(attrs: &mut Vec<syn::Attribute>) -> Option<syn::Path> {
-    if let Some((i, p)) = attrs.iter_mut().enumerate().find_map(|(i, attr)| {
-        if attr.path.is_ident("agent_root") {
-            match attr.parse_meta() {
-                Ok(Meta::List(lst)) => {
-                    let mut nested = lst.nested;
-                    match nested.pop().map(Pair::into_value) {
-                        Some(NestedMeta::Meta(Meta::Path(p))) if nested.is_empty() => Some((i, p)),
-                        _ => None,
-                    }
-                }
-                _ => None,
-            }
-        } else {
-            None
-        }
-    }) {
-        attrs.remove(i);
-        Some(p)
-    } else {
-        None
-    }
 }

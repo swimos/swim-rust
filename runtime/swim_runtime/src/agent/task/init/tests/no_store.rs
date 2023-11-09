@@ -16,6 +16,7 @@ use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use swim_api::{
     agent::{LaneConfig, StoreConfig, UplinkKind},
     error::OpenStoreError,
+    lane::WarpLaneKind,
     meta::lane::LaneKind,
     protocol::{
         agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
@@ -149,7 +150,7 @@ impl SingleLaneInitTask {
         requests
             .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                 Text::new("my_lane"),
-                LaneKind::Value,
+                WarpLaneKind::Value,
                 config,
                 lane_tx,
             )))
@@ -306,7 +307,7 @@ impl TwoLanesInitTask {
         requests
             .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                 Text::new("value_lane"),
-                LaneKind::Value,
+                WarpLaneKind::Value,
                 config,
                 lane_tx1,
             )))
@@ -316,7 +317,7 @@ impl TwoLanesInitTask {
         requests
             .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                 Text::new("map_lane"),
-                LaneKind::Map,
+                WarpLaneKind::Map,
                 config,
                 lane_tx2,
             )))
@@ -476,7 +477,7 @@ impl StoresInitTask {
         requests
             .send(AgentRuntimeRequest::AddLane(LaneRuntimeSpec::new(
                 Text::new("lane_name"),
-                LaneKind::Command,
+                WarpLaneKind::Command,
                 lane_config,
                 lane_tx,
             )))

@@ -20,7 +20,7 @@ use swim_api::{
     agent::{AgentContext, HttpLaneRequestChannel, LaneConfig},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    meta::lane::LaneKind,
+    lane::WarpLaneKind,
     store::StoreKind,
 };
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
@@ -71,7 +71,7 @@ impl AgentContext for DummyAgentContext {
     fn add_lane(
         &self,
         _name: &str,
-        _lane_kind: LaneKind,
+        _lane_kind: WarpLaneKind,
         _config: LaneConfig,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
         panic!("Dummy context used.");

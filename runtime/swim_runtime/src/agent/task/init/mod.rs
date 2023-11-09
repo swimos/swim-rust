@@ -22,7 +22,7 @@ use futures::{
 use swim_api::{
     agent::{LaneConfig, StoreConfig, UplinkKind},
     error::{AgentRuntimeError, OpenStoreError, StoreError},
-    meta::lane::LaneKind,
+    lane::WarpLaneKind,
     protocol::agent::StoreInitializedCodec,
     store::{StoreDisabled, StoreKind},
 };
@@ -289,7 +289,7 @@ impl Initialization {
         &'a self,
         store: &'a Store,
         name: Text,
-        kind: LaneKind,
+        kind: WarpLaneKind,
         config: LaneConfig,
         promise: oneshot::Sender<Result<Io, AgentRuntimeError>>,
     ) -> Option<impl Future<Output = LaneResult<Store::StoreId>> + Send + 'a>
@@ -388,7 +388,7 @@ async fn wait_for_initialized(reader: &mut ByteReader) -> Result<(), StoreInitEr
 
 async fn lane_initialization(
     name: Text,
-    lane_kind: LaneKind,
+    lane_kind: WarpLaneKind,
     timeout: Duration,
     reporting: Option<&NodeReporting>,
     mut in_tx: ByteWriter,

@@ -37,7 +37,7 @@ use super::{
     http::HyperWebsockets,
     runtime::{SwimServer, Transport},
     store::{in_memory::InMemoryPersistence, ServerPersistence},
-    BoxServer, Server,
+    BoxServer,
 };
 
 /// Builder for a swim server that will listen on a socket and run a suite of agents.
@@ -176,10 +176,10 @@ impl ServerBuilder {
         };
         if let Some(tls_conf) = tls_config {
             let networking = RustlsNetworking::try_from_config(resolver, tls_conf)?;
-            Ok(BoxServer(with_store(bind_to, routes, networking, config)?))
+            Ok(with_store(bind_to, routes, networking, config)?)
         } else {
             let networking = TokioPlainTextNetworking::new(resolver);
-            Ok(BoxServer(with_store(bind_to, routes, networking, config)?))
+            Ok(with_store(bind_to, routes, networking, config)?)
         }
     }
 }
@@ -196,7 +196,7 @@ fn with_store<N>(
     routes: PlaneModel,
     networking: N,
     mut config: AppConfig,
-) -> Result<Box<dyn Server>, StoreError>
+) -> Result<BoxServer, StoreError>
 where
     N: ExternalConnections,
     N::Socket: WebSocketStream,
@@ -231,7 +231,7 @@ fn with_websockets<N, Store>(
     networking: N,
     config: AppConfig,
     store: Store,
-) -> Box<dyn Server>
+) -> BoxServer
 where
     N: ExternalConnections,
     N::Socket: WebSocketStream,
@@ -246,25 +246,25 @@ where
     if let Some(deflate_config) = deflate {
         let websockets = HyperWebsockets::new(server_config.http);
         let ext_provider = DeflateExtProvider::with_config(deflate_config);
-        Box::new(SwimServer::new(
+        BoxServer(Box::new(SwimServer::new(
             routes,
             bind_to,
             Transport::new(networking, websockets, ext_provider),
             server_config,
             store,
             introspection,
-        ))
+        )))
     } else {
         let websockets = HyperWebsockets::new(server_config.http);
         let ext_provider = NoExtProvider;
-        Box::new(SwimServer::new(
+        BoxServer(Box::new(SwimServer::new(
             routes,
             bind_to,
             Transport::new(networking, websockets, ext_provider),
             server_config,
             store,
             introspection,
-        ))
+        )))
     }
 }
 

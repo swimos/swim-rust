@@ -25,7 +25,8 @@ use tokio_util::codec::Decoder;
 use crate::{
     agent_model::WriteResult,
     event_handler::{
-        EventHandlerError, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
+        check_step::check_is_complete, EventHandlerError, HandlerAction, HandlerFuture,
+        ModificationFlags, Spawner, StepResult,
     },
     lanes::{command::DoCommand, LaneItem},
     meta::AgentMetadata,
@@ -121,17 +122,7 @@ fn command_event_handler() {
         meta,
         &agent,
     );
-
-    assert!(matches!(
-        result,
-        StepResult::Complete {
-            modified_item: Some(Modification {
-                item_id: LANE_ID,
-                trigger_handler: true
-            }),
-            result: ()
-        }
-    ));
+    check_is_complete(result, LANE_ID, &(), ModificationFlags::all());
 
     assert_eq!(agent.lane.with_prev(Clone::clone), Some(546));
 

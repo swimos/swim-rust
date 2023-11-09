@@ -16,9 +16,10 @@ use std::collections::HashMap;
 
 use crate::lanes::map::MapLaneEvent;
 
-/// Base trait for types that can be used as the field of an agent (for use with the derive macro
-/// for  the `AgentLaneModel` trait).
+/// Base trait for all agent items (lanes and stores).
 pub trait AgentItem {
+    /// Each item has a (unique within an agent instance) ID. This is used by the task that drives the
+    /// agent to avoid keying internal hash-maps on the name.
     fn id(&self) -> u64;
 }
 

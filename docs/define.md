@@ -27,6 +27,7 @@ The derive macro for `AgentLaneModel` can be applied to any struct type where al
 * Demand Map lanes: `swim::agent::lanes::DemandMapLane`.
 * Map Lanes: `swim::agent::lanes::MapLane`.
 * Join Value Lanes: `swim::agent::lanes::JoinValueLane`.
+* HTTP Lanes: `swim::agent::lanes::HttpLane` (or the shorthand `swim::agent::lanes::SimpleHttpLane`).
 * Supply Lanes: `swim::agent::lanes::SupplyLane`.
 
 The supported store types are:
@@ -96,7 +97,7 @@ However, in some cases it maybe be desirable to disable this. Flushing the state
 ```rust
 #[derive(AgentLaneModel)]
 struct ExampleAgent {
-    #[transient]
+    #[lane(transient)]
     value_lane: ValueLane<i32>,
     map_lane: MapLane<String, u64>,
 }

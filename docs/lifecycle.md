@@ -24,6 +24,7 @@ struct ExampleAgent {
     example_value: ValueLane<i32>,
     example_map: MapLane<String, i32>,
     example_join_value: JoinValueLane<String, i32>,
+    example_http: SimpleHttpLane<String>,
 }
 ```
 
@@ -249,6 +250,65 @@ The `on_unlinked` and `on_failed` handlers return a `LinkClosedResponse`. This i
 3. `Delete`: The link will be abandoned and the entry deleted from the map.
 
 It is possible to add a shared state to a join value lifecycle in a similar way to other downlinks types (see [Downlinks](downlink.md)). Note that this state is shared between the event handlers of a single instance of the lifecycle and not between all instances. If you have state that needs to be shared between all instances it must be stored inside an `Arc`.
+
+HTTP lane events
+----------------
+
+An HTTP lane generates events when HTTP requests are received for that lane. The supported methods are GET, PUT, POST, DELETE and HEAD. The event handlers used to serve these methods are named.
+
+1. `on_get` for GET.
+2. `on_put` for PUT.
+3. `on_post` for POST.
+4. `on_delete` for DELETE.
+
+When a HEAD request is received, the `on_get` handler will be called and then the payload of the response will be discarded.
+The signatures of these events are as follows:
+
+```rust
+#[on_get(example_http)]
+fn my_get_handler(
+    &self, 
+    context: HandlerContext<ExampleAgent>,
+    http_context: HttpRequestContext) -> impl HandlerAction<ExampleAgent, Completion = Response<String>> {
+    //...
+}
+
+#[on_put(example_http)]
+fn my_put_handler(
+    &self, 
+    context: HandlerContext<ExampleAgent>,
+    http_context: HttpRequestContext,
+    value: String) -> impl HandlerAction<ExampleAgent, Completion = UnitResponse> {
+    //...
+}
+
+#[on_post(example_http)]
+fn my_post_handler(
+    &self, 
+    context: HandlerContext<ExampleAgent>,
+    http_context: HttpRequestContext,
+    value: String) -> impl HandlerAction<ExampleAgent, Completion = UnitResponse> {
+    //...
+}
+
+#[on_delete(example_http)]
+fn my_delete_handler(
+    &self, 
+    context: HandlerContext<ExampleAgent>,
+    http_context: HttpRequestContext) -> impl HandlerAction<ExampleAgent, Completion = UnitResponse> {
+    //...
+}
+```
+
+The `HttpRequestContext` passed to each of these handlers provides access to the request URI and the headers that were set in the request.
+
+The `Response` type produced by the event handlers contains the payload, status code and any custom headers. It is the responsibility of the codec associated with the lane to interpret the content type and accept headers from the request and to append the correct content type header to the response. In most cases a response can be constructed as:
+
+```rust
+Response::from(value)
+```
+
+where `value` is the payload. The status code will be 200(OK) and no extra headers will be set. `UnitResponse` is equivalent to `Response<()>`.
 
 Store events
 ------------

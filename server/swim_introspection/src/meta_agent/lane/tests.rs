@@ -25,6 +25,7 @@ use crate::{
 use futures::StreamExt;
 use swim_api::{
     agent::LaneConfig,
+    lane::WarpLaneKind,
     meta::{lane::LaneKind, uplink::LanePulse},
     protocol::{
         agent::{LaneResponse, LaneResponseDecoder},
@@ -55,7 +56,7 @@ async fn run_lane_meta_agent() {
     .into_iter()
     .collect();
 
-    let lanes = vec![(PULSE_LANE.to_string(), LaneKind::Supply)];
+    let lanes = vec![(PULSE_LANE.to_string(), WarpLaneKind::Supply)];
     introspection_agent_test(
         expected_lane_config,
         lanes,

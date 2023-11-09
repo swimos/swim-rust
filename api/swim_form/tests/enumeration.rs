@@ -258,6 +258,165 @@ fn test_rename() {
 }
 
 #[test]
+fn test_rename_by_convention() {
+    #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
+    enum S {
+        #[form(convention = "kebab")]
+        FirstVariant {
+            #[form(convention = "camel")]
+            first_field: i32,
+            second_field: i64,
+        },
+    }
+
+    {
+        let s = S::FirstVariant {
+            first_field: 1,
+            second_field: 2,
+        };
+        let rec = Value::Record(
+            vec![Attr::of("first-variant")],
+            vec![
+                Item::Slot(Value::text("firstField"), Value::Int32Value(1)),
+                Item::Slot(Value::text("second_field"), Value::Int64Value(2)),
+            ],
+        );
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+        assert_eq!(S::try_convert(rec), Ok(s));
+    }
+}
+
+#[test]
+fn test_rename_all_by_convention() {
+    #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
+    enum S {
+        #[form(convention = "kebab", fields_convention = "camel")]
+        FirstVariant { first_field: i32, second_field: i64 },
+    }
+
+    {
+        let s = S::FirstVariant {
+            first_field: 1,
+            second_field: 2,
+        };
+        let rec = Value::Record(
+            vec![Attr::of("first-variant")],
+            vec![
+                Item::Slot(Value::text("firstField"), Value::Int32Value(1)),
+                Item::Slot(Value::text("secondField"), Value::Int64Value(2)),
+            ],
+        );
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+        assert_eq!(S::try_convert(rec), Ok(s));
+    }
+}
+
+#[test]
+fn test_override_field_convention() {
+    #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
+    enum S {
+        #[form(convention = "kebab", fields_convention = "camel")]
+        FirstVariant {
+            #[form(name = "renamed")]
+            first_field: i32,
+            second_field: i64,
+        },
+    }
+
+    {
+        let s = S::FirstVariant {
+            first_field: 1,
+            second_field: 2,
+        };
+        let rec = Value::Record(
+            vec![Attr::of("first-variant")],
+            vec![
+                Item::Slot(Value::text("renamed"), Value::Int32Value(1)),
+                Item::Slot(Value::text("secondField"), Value::Int64Value(2)),
+            ],
+        );
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+        assert_eq!(S::try_convert(rec), Ok(s));
+    }
+}
+
+#[test]
+fn test_top_level_convention() {
+    #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
+    #[form(convention = "kebab", fields_convention = "camel")]
+    enum S {
+        FirstVariant { first_field: i32, second_field: i64 },
+    }
+
+    {
+        let s = S::FirstVariant {
+            first_field: 1,
+            second_field: 2,
+        };
+        let rec = Value::Record(
+            vec![Attr::of("first-variant")],
+            vec![
+                Item::Slot(Value::text("firstField"), Value::Int32Value(1)),
+                Item::Slot(Value::text("secondField"), Value::Int64Value(2)),
+            ],
+        );
+        assert_eq!(s.as_value(), rec);
+        assert_eq!(S::try_from_value(&rec), Ok(s.clone()));
+        assert_eq!(S::try_convert(rec), Ok(s));
+    }
+}
+
+#[test]
+fn test_override_top_level_convention() {
+    #[derive(Form, Debug, PartialEq, Clone)]
+    #[form_root(::swim_form)]
+    #[form(convention = "kebab", fields_convention = "camel")]
+    enum S {
+        FirstVariant {
+            first_field: i32,
+            second_field: i64,
+        },
+        #[form(tag = "Renamed", fields_convention = "kebab")]
+        SecondVariant {
+            third_field: i32,
+        },
+    }
+
+    {
+        let s1 = S::FirstVariant {
+            first_field: 1,
+            second_field: 2,
+        };
+        let rec1 = Value::Record(
+            vec![Attr::of("first-variant")],
+            vec![
+                Item::Slot(Value::text("firstField"), Value::Int32Value(1)),
+                Item::Slot(Value::text("secondField"), Value::Int64Value(2)),
+            ],
+        );
+        assert_eq!(s1.as_value(), rec1);
+        assert_eq!(S::try_from_value(&rec1), Ok(s1.clone()));
+        assert_eq!(S::try_convert(rec1), Ok(s1));
+
+        let s2 = S::SecondVariant { third_field: 3 };
+        let rec2 = Value::Record(
+            vec![Attr::of("Renamed")],
+            vec![Item::Slot(Value::text("third-field"), Value::Int32Value(3))],
+        );
+        assert_eq!(s2.as_value(), rec2);
+        assert_eq!(S::try_from_value(&rec2), Ok(s2.clone()));
+        assert_eq!(S::try_convert(rec2), Ok(s2));
+    }
+}
+
+#[test]
 fn body_replaces() {
     #[derive(Debug, PartialEq, Clone, Form)]
     #[form_root(::swim_form)]

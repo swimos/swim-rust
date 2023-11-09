@@ -19,8 +19,8 @@ use syn::{parse_quote, Path, Type};
 use self::{
     model::{
         AgentLifecycleDescriptor, CommandLifecycleDescriptor, DemandLifecycleDescriptor,
-        DemandMapLifecycleDescriptor, ItemLifecycle, JoinValueInit, MapLifecycleDescriptor,
-        ValueLifecycleDescriptor,
+        DemandMapLifecycleDescriptor, HttpLifecycleDescriptor, ItemLifecycle, JoinValueInit,
+        MapLifecycleDescriptor, ValueLifecycleDescriptor,
     },
     tree::BinTree,
 };
@@ -125,6 +125,38 @@ impl<'a> LaneLifecycleBuilder<'a> {
                 if let Some(handler) = on_cue_key {
                     builder = parse_quote! {
                         #root::lanes::demand_map::lifecycle::StatefulDemandMapLaneLifecycle::on_cue_key(#builder, #lifecycle_type::#handler)
+                    };
+                }
+                builder
+            }
+            ItemLifecycle::Http(HttpLifecycleDescriptor {
+                on_get,
+                on_post,
+                on_put,
+                on_delete,
+                ..
+            }) => {
+                let mut builder: syn::Expr = parse_quote! {
+                    <#root::lanes::http::lifecycle::StatefulHttpLaneLifecycle::<#agent_type, #lifecycle_type, _, _, _> as ::core::default::Default>::default()
+                };
+                if let Some(handler) = on_get {
+                    builder = parse_quote! {
+                        #root::lanes::http::lifecycle::StatefulHttpLaneLifecycle::on_get(#builder, #lifecycle_type::#handler)
+                    };
+                }
+                if let Some(handler) = on_post {
+                    builder = parse_quote! {
+                        #root::lanes::http::lifecycle::StatefulHttpLaneLifecycle::on_post(#builder, #lifecycle_type::#handler)
+                    };
+                }
+                if let Some(handler) = on_put {
+                    builder = parse_quote! {
+                        #root::lanes::http::lifecycle::StatefulHttpLaneLifecycle::on_put(#builder, #lifecycle_type::#handler)
+                    };
+                }
+                if let Some(handler) = on_delete {
+                    builder = parse_quote! {
+                        #root::lanes::http::lifecycle::StatefulHttpLaneLifecycle::on_delete(#builder, #lifecycle_type::#handler)
                     };
                 }
                 builder

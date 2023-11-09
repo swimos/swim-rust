@@ -24,7 +24,7 @@ mod producer;
 const TARGET_KEY: &str = "apple";
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     example_logging()?;
 
     let server = producer::make_server().await?;
@@ -45,7 +45,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn start_consumer(rx: oneshot::Receiver<StartDependent>) -> Result<(), Box<dyn Error>> {
+async fn start_consumer(
+    rx: oneshot::Receiver<StartDependent>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     let StartDependent { bound, request } = rx.await?;
     let server = consumer::make_server(bound.port(), TARGET_KEY).await?;
     let (task, handle) = server.run();
