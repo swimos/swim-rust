@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<body copyright="NStream 2023">
+    <vehicle id="Citi2" routeTag="asdf" dirTag="bloop" lat="64.1511322" lon="-0.2549486" secsSinceReport="12" predictable="true" heading="23" speedKmHr="10"/>
+    <vehicle id="Citi3" routeTag="jhkl" dirTag="sloop" lat="64.1603444" lon="-0.2380486" secsSinceReport="36" predictable="true" heading="4" speedKmHr="70"/>
+    <vehicle id="A" routeTag="yhdjd" dirTag="floop" lat="64.1463333" lon="-0.2469221" secsSinceReport="5" predictable="true" heading="300" speedKmHr="0"/>
+    <vehicle id="B" routeTag="uuu8" dirTag="up" lat="64.1467001" lon="-0.2469456" secsSinceReport="2" predictable="false" heading="110" speedKmHr="22"/>
+    <lastTime time="1333098017222"/>
+</body>

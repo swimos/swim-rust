@@ -56,6 +56,57 @@ pub enum Notification<T, U> {
     Event(T),
 }
 
+impl<T, U> Notification<T, U>
+where
+    T: AsRef<[u8]>,
+    U: AsRef<[u8]>,
+{
+    pub fn debug_formatter(&self) -> NotificationDebugFormatter<'_, T, U> {
+        NotificationDebugFormatter(self)
+    }
+}
+
+pub struct NotificationDebugFormatter<'a, T, U>(&'a Notification<T, U>);
+
+impl<'a, T, U> Debug for NotificationDebugFormatter<'a, T, U>
+where
+    T: AsRef<[u8]>,
+    U: AsRef<[u8]>,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            Notification::Linked => write!(f, "Linked"),
+            Notification::Synced => write!(f, "Synced"),
+            Notification::Unlinked(msg) => {
+                if let Some(msg) = msg {
+                    if let Ok(msg_str) = std::str::from_utf8(msg.as_ref()) {
+                        f.debug_tuple("Unlinked")
+                            .field(&format!("Str[{:}]", msg_str))
+                            .finish()
+                    } else {
+                        f.debug_tuple("Unlinked")
+                            .field(&format!("Bytes[{:?}]", msg.as_ref()))
+                            .finish()
+                    }
+                } else {
+                    f.debug_tuple("Unlinked").field(&"Absent").finish()
+                }
+            }
+            Notification::Event(body) => {
+                if let Ok(body_str) = std::str::from_utf8(body.as_ref()) {
+                    f.debug_tuple("Event")
+                        .field(&format!("Str[{}]", body_str))
+                        .finish()
+                } else {
+                    f.debug_tuple("Event")
+                        .field(&format!("Bytes[{:?}]", body.as_ref()))
+                        .finish()
+                }
+            }
+        }
+    }
+}
+
 pub type Path<P> = RelativeAddress<P>;
 
 pub fn path_from_static_strs(node: &'static str, lane: &'static str) -> Path<BytesStr> {

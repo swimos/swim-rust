@@ -113,7 +113,7 @@ pub trait Server {
 }
 
 /// A boxed server implementation.
-pub struct BoxServer(pub Box<dyn Server>);
+pub struct BoxServer(pub Box<dyn Server + Send>);
 
 impl Server for BoxServer {
     fn run(self) -> (BoxFuture<'static, Result<(), ServerError>>, ServerHandle) {

@@ -31,6 +31,8 @@ members = [
     "example_apps/map_downlink",
     "example_apps/local_downlink",
     "example_apps/http_lane",
+    "example_apps/transit",
+    "example_apps/transit/transit-model",
     "example_apps/tutorial_app",
     "example_apps/tutorial_app/model",
     "example_apps/tutorial_app/generator",
@@ -71,6 +73,7 @@ nom = "7.1"
 nom_locate = "4.0"
 tracing = "0.1"
 tracing-subscriber = "0.3"
+tracing-appender = "0.2"
 base64 = "0.13"
 num-traits = "0.2"
 thiserror = "1.0"
@@ -103,5 +106,6 @@ percent-encoding = "2.1.0"
 mime = "0.3"
 serde_json = "1.0"
 serde = "1.0"
+reqwest = "0.11"
 convert_case = "0.6"
 frunk = "0.4"

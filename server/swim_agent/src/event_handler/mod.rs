@@ -21,7 +21,7 @@ use std::{
 
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
-use futures::{future::Either, stream::BoxStream, FutureExt};
+use futures::{stream::BoxStream, FutureExt};
 use static_assertions::assert_obj_safe;
 use swim_api::{
     agent::AgentContext,
@@ -53,6 +53,8 @@ use crate::{
 
 use bitflags::bitflags;
 
+pub use futures::future::Either;
+
 #[cfg(test)]
 pub mod check_step;
 mod command;
@@ -62,7 +64,7 @@ mod suspend;
 #[cfg(test)]
 mod tests;
 
-pub use suspend::{run_after, run_schedule, HandlerFuture, Spawner, Suspend};
+pub use suspend::{run_after, run_schedule, run_schedule_async, HandlerFuture, Spawner, Suspend};
 
 pub use command::SendCommand;
 pub use handler_fn::{

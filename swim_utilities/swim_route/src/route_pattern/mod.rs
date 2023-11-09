@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
+use percent_encoding::{percent_decode_str, utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::{Display, Formatter, Write};
@@ -122,6 +122,12 @@ impl ApplyError {
     }
 }
 
+pub const URL_ENCODE: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'~');
+
 impl RoutePattern {
     /// Attempt to parse a pattern from its string representation.
     pub fn parse<I>(pattern: I) -> Result<RoutePattern, ParseError>
@@ -189,8 +195,7 @@ impl RoutePattern {
     /// Match a route against the route pattern, extracting the values of each named parameter.
     fn unapply_parts<'a, I>(&self, mut parts: I) -> Option<HashMap<String, String>>
     where
-        I: Iterator,
-        I::Item: Iterator<Item = char> + 'a,
+        I: Iterator<Item = &'a str>,
     {
         let RoutePattern {
             pattern, segments, ..
@@ -201,16 +206,18 @@ impl RoutePattern {
             let part = parts.next();
             let segment = segments.next();
             if let Some(part) = part {
+                let part_decoded = percent_decode_str(part);
                 if let Some(segment) = segment {
-                    let segment_str = segment.segment_str(pattern.as_str());
+                    let segment_decoded = percent_decode_str(segment.segment_str(pattern.as_str()));
                     if segment.parameter {
-                        let collected: String = part.collect();
+                        let collected = part_decoded.decode_utf8_lossy().to_string();
                         if collected.is_empty() {
                             return None;
                         } else {
-                            param_map.insert(segment_str.to_string(), collected);
+                            param_map
+                                .insert(segment_decoded.decode_utf8_lossy().to_string(), collected);
                         }
-                    } else if !part.eq(segment_str.chars()) {
+                    } else if !part_decoded.eq(segment_decoded) {
                         return None;
                     }
                 } else {
@@ -257,9 +264,7 @@ impl RoutePattern {
         if self.absolute && !matches!(segments.next(), Some("")) {
             return make_err();
         }
-        if let Some(part_map) =
-            self.unapply_parts(segments.map(|s| percent_decode_str(s).map(|b| b as char)))
-        {
+        if let Some(part_map) = self.unapply_parts(segments) {
             Ok(part_map)
         } else {
             make_err()
@@ -275,7 +280,7 @@ impl RoutePattern {
         self.absolute
     }
 
-    /// Attempt to craete a route from a route pattern by providing the values for each parameter.
+    /// Attempt to create a route from a route pattern by providing the values for each parameter.
     pub fn apply(&self, params: &HashMap<String, String>) -> Result<String, ApplyError> {
         let RoutePattern {
             pattern,
@@ -299,7 +304,7 @@ impl RoutePattern {
             if segment.parameter {
                 match params.get(segment_str) {
                     Some(param_value) if !param_value.is_empty() => {
-                        let encoded = utf8_percent_encode(param_value, NON_ALPHANUMERIC);
+                        let encoded = utf8_percent_encode(param_value, URL_ENCODE);
                         write!(&mut route, "{}", encoded).expect("Formatting should not fail.");
                     }
                     _ => {

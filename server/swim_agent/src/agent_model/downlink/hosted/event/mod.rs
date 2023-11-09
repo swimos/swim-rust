@@ -151,6 +151,7 @@ where
                     triggered_result = stop_signal => {
                         *stop_rx = None;
                         if triggered_result.is_ok() {
+                            info!(address = %address, "Downlink stopped by trigger.");
                             *receiver = None;
                             if dl_state.get().is_linked() {
                                 *next = Some(Ok(DownlinkNotification::Unlinked));
@@ -186,13 +187,14 @@ fn handle_read<T: RecognizerReadable>(
             *next = r;
             Some(Ok(DownlinkChannelEvent::HandlerReady))
         }
-        r @ Some(Err(_)) => {
-            *next = r;
+        Some(Err(error)) => {
+            error!(address = %address, error = %error, "Downlink input channel failed.");
+            *next = Some(Err(error));
             *receiver = None;
-            error!(address = %address, "Downlink input channel failed.");
             Some(Err(DownlinkChannelError::ReadFailed))
         }
         _ => {
+            trace!("Downlink receiver closed.");
             *receiver = None;
             if dl_state.get().is_linked() {
                 *next = Some(Ok(DownlinkNotification::Unlinked));

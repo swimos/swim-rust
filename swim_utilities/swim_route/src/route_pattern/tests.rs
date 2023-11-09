@@ -145,6 +145,13 @@ fn simple_parameter_route_pattern() {
         panic!("Unapply failed.");
     }
 
+    if let Ok(params) = route_pattern.unapply_str("/aaa%2Fbbb") {
+        assert_eq!(params.len(), 1);
+        assert_eq!(params.get("id"), Some(&"aaa/bbb".to_string()));
+    } else {
+        panic!("Unapply failed.");
+    }
+
     if let Ok(params) = route_pattern.unapply_str("swim:/path") {
         assert_eq!(params.len(), 1);
         assert_eq!(params.get("id"), Some(&"path".to_string()));
@@ -536,5 +543,52 @@ fn relative_pattern_with_scheme() {
     assert_eq!(
         route_pattern.apply(&with_param),
         Ok("swim:meta:node/unit%2Ffoo/pulse".to_string())
+    );
+}
+
+#[test]
+fn simple_static_route_pattern_with_escape() {
+    let pattern = "/path/abc%2Ddef";
+    let route_pattern = RoutePattern::parse_str(pattern);
+
+    let route_pattern = route_pattern.expect("Parse failed.");
+
+    assert!(route_pattern.scheme_str().is_none());
+    assert!(route_pattern.has_absolute_path());
+
+    let mut params = route_pattern.parameters();
+    assert!(params.next().is_none());
+
+    let route_uri: RouteUri = "/path/abc%2Ddef".parse().expect("Bad route.");
+    let params = route_pattern
+        .unapply_route_uri(&route_uri)
+        .expect("Unapply failed.");
+    assert!(params.is_empty());
+
+    let params = route_pattern
+        .unapply_str("swim:/path/abc%2Ddef")
+        .expect("Unapply failed.");
+    assert!(params.is_empty());
+
+    let route_uri: RouteUri = "/path/abc-def".parse().expect("Bad route.");
+    let params = route_pattern
+        .unapply_route_uri(&route_uri)
+        .expect("Unapply failed.");
+    assert!(params.is_empty());
+
+    assert!(route_pattern.unapply_str("/path").is_err());
+    assert!(route_pattern.unapply_str("/path/additional").is_err());
+
+    let empty = HashMap::new();
+    let mut with_param = HashMap::new();
+    with_param.insert("id".to_string(), "hello".to_string());
+
+    assert_eq!(
+        route_pattern.apply(&empty),
+        Ok("/path/abc%2Ddef".to_string())
+    );
+    assert_eq!(
+        route_pattern.apply(&with_param),
+        Ok("/path/abc%2Ddef".to_string())
     );
 }

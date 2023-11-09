@@ -45,7 +45,7 @@ use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swim_utilities::routing::route_uri::RouteUri;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 use uuid::Uuid;
 
 use crate::agent_lifecycle::item_event::ItemEvent;
@@ -1204,6 +1204,7 @@ where
                     let name = &external_item_ids_rev[&id];
                     match request {
                         LaneRequest::Command(body) => {
+                            trace!(name = %name, "Received a command for a value-like lane.");
                             if let Some(handler) = item_model.on_value_command(name.as_str(), body)
                             {
                                 let result = run_handler(
@@ -1245,6 +1246,7 @@ where
                             }
                         }
                         LaneRequest::Sync(remote_id) => {
+                            trace!(name = %name, remote_id = %remote_id, "Received a sync request for a value-like lane.");
                             if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
                                 match run_handler(
                                     &mut ActionContext::new(
@@ -1281,6 +1283,7 @@ where
                     let name = &external_item_ids_rev[&id];
                     match request {
                         LaneRequest::Command(body) => {
+                            trace!(name = %name, "Received a command for a map-like lane.");
                             if let Some(handler) = item_model.on_map_command(name.as_str(), body) {
                                 let result = run_handler(
                                     &mut ActionContext::new(
@@ -1321,6 +1324,7 @@ where
                             }
                         }
                         LaneRequest::Sync(remote_id) => {
+                            trace!(name = %name, remote_id = %remote_id, "Received a sync request for a map-like lane.");
                             if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
                                 match run_handler(
                                     &mut ActionContext::new(
@@ -1355,6 +1359,7 @@ where
                 }
                 TaskEvent::HttpRequest { id, request } => {
                     let name = &external_item_ids_rev[&id];
+                    trace!(name = %name, "Received an HTTP request for a lane.");
                     match item_model.on_http_request(name.as_str(), request) {
                         Ok(handler) => {
                             match run_handler(

@@ -469,6 +469,8 @@ impl OutgoingTask {
         let mut buffer = BytesMut::new();
         let mut recon_encoder = ReconEncoder;
 
+        debug!("Outgoing task starting.");
+
         loop {
             let event = tokio::select! {
                 _ = &mut stop_signal => break,
@@ -499,6 +501,8 @@ impl OutgoingTask {
                 },
                 else => break,
             };
+
+            trace!(event = ?event, "Handling outgoing event.");
 
             match event {
                 OutgoingEvent::Message(OutgoingTaskMessage::RegisterOutgoing {
@@ -569,6 +573,7 @@ impl OutgoingTask {
                 }
             }
         }
+        debug!("Outgoing task stopping.");
     }
 }
 

@@ -33,7 +33,7 @@ mod unit_agent;
 const MAX_HISTORY: usize = 200;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     example_logging()?;
 
     let route = RoutePattern::parse_str("/unit/:name}")?;
