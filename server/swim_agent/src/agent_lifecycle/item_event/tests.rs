@@ -38,11 +38,11 @@ pub fn run_handler_expect_mod<H, Agent>(
 ) where
     H: HandlerAction<Agent, Completion = ()>,
 {
-    let mut join_value_init = HashMap::new();
+    let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
     loop {
         match event_handler.step(
-            &mut dummy_context(&mut join_value_init, &mut ad_hoc_buffer),
+            &mut dummy_context(&mut join_lane_init, &mut ad_hoc_buffer),
             meta,
             agent,
         ) {
@@ -58,7 +58,7 @@ pub fn run_handler_expect_mod<H, Agent>(
             }
         }
     }
-    assert!(join_value_init.is_empty());
+    assert!(join_lane_init.is_empty());
     assert!(ad_hoc_buffer.is_empty());
 }
 

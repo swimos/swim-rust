@@ -84,13 +84,13 @@ impl ExampleLifecycle {
                 let key = name.clone();
                 context
                     .get_value(ExampleAgent::LANE)
-                    .and_then(move |v| context.update_store(ExampleAgent::SAVED, key, v))
+                    .and_then(move |v| context.update(ExampleAgent::SAVED, key, v))
                     .boxed()
             }
             Instruction::Restore(name) => {
                 let key = name.clone();
                 context
-                    .get_entry_store(ExampleAgent::SAVED, key)
+                    .get_entry(ExampleAgent::SAVED, key)
                     .map(|maybe: Option<i32>| maybe.unwrap_or_default())
                     .and_then(move |v| context.set_value(ExampleAgent::LANE, v))
                     .boxed()

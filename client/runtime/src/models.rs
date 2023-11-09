@@ -163,7 +163,7 @@ impl DownlinkRuntime {
                     );
                     runtime.run().await;
                 }
-                DownlinkKind::Map => {
+                DownlinkKind::Map | DownlinkKind::MapEvent => {
                     let strategy = if config.abort_on_bad_frames {
                         ReportStrategy::new(AlwaysAbortStrategy).boxed()
                     } else {

@@ -32,6 +32,8 @@ pub enum DownlinkKind {
     Event,
     /// Accepts key-value pairs and maintains a state as a map.
     Map,
+    /// Accepts map updates but does not maintain any state.
+    MapEvent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -28,6 +28,7 @@ use uuid::Uuid;
 use crate::agent_model::downlink::OpenEventDownlinkAction;
 use crate::config::SimpleDownlinkConfig;
 use crate::event_handler::{EventHandler, EventHandlerError, Modification};
+use crate::item::MapLikeItem;
 use crate::{
     agent_model::WriteResult,
     event_handler::{ActionContext, HandlerAction, StepResult},
@@ -39,7 +40,8 @@ use self::default_lifecycle::DefaultJoinValueLifecycle;
 use self::downlink::JoinValueDownlink;
 use self::lifecycle::JoinValueLaneLifecycle;
 
-use super::{map::MapLaneEvent, LaneItem, MapLane};
+use super::super::{map::MapLaneEvent, LaneItem, MapLane};
+use super::DownlinkStatus;
 
 mod default_lifecycle;
 mod downlink;
@@ -51,11 +53,13 @@ mod tests;
 pub use downlink::{AfterClosed, JoinValueLaneUpdate};
 pub use init::LifecycleInitializer;
 
-/// Model of a join value lane. This is conceptually similar to a [`super::MapLane`] only, rather than the
-/// state being modified directly, it is populated through a series of downlinks associated with each
-/// key. Hence it maintains a view of the state of a number of remote values as a single map. In all
-/// other respects, it behaves as a map lane having the same event handlers and having the ability
-/// to persist its state.
+/// Model of a join value lane. This is conceptually similar to a [`super::super::MapLane`] only, rather
+/// than the state being modified directly, it is populated through a series of downlinks associated with
+/// each key. Hence it maintains a view of the state of a number of remote values as a single map. In all
+/// other respects, it behaves as a read only map lane, having the same event handlers.
+///
+/// Join lanes provide views of the state of other remote lanes and so do not persist their state and are
+/// always considered to be transient.
 #[derive(Debug)]
 pub struct JoinValueLane<K, V> {
     inner: MapLane<K, V>,
@@ -68,10 +72,6 @@ impl<K, V> JoinValueLane<K, V> {
             inner: MapLane::new(id, HashMap::new()),
             keys: RefCell::new(HashMap::new()),
         }
-    }
-
-    pub(crate) fn map_lane(&self) -> &MapLane<K, V> {
-        &self.inner
     }
 }
 
@@ -96,12 +96,6 @@ where
     {
         self.inner.get_map(f)
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum DownlinkStatus {
-    Pending,
-    Linked,
 }
 
 impl<K, V> AgentItem for JoinValueLane<K, V> {
@@ -145,6 +139,7 @@ where
                 events_when_not_synced: true,
                 terminate_on_unlinked: true,
             },
+            false,
         );
         AddDownlinkAction {
             projection,
@@ -209,14 +204,6 @@ where
     {
         self.inner.read_with_prev(f)
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
-pub enum LinkClosedResponse {
-    Retry,
-    #[default]
-    Abandon,
-    Delete,
 }
 
 /// An [`EventHandler`] that will get an entry from the map.
@@ -386,9 +373,14 @@ where
                     address,
                 } => {
                     let lane_id = projection(context).id();
-                    let handler = if let Some(init) = action_context.join_value_initializer(lane_id)
+                    let handler = if let Some(init) = action_context.join_lane_initializer(lane_id)
                     {
-                        match init.try_create_action(Box::new(key), TypeId::of::<V>(), address) {
+                        match init.try_create_action(
+                            Box::new(key),
+                            TypeId::of::<K>(),
+                            TypeId::of::<V>(),
+                            address,
+                        ) {
                             Ok(boxed) => boxed,
                             Err(err) => {
                                 break StepResult::Fail(EventHandlerError::BadJoinLifecycle(err))
@@ -432,5 +424,27 @@ impl<C, K, V> JoinValueAddDownlink<C, K, V> {
                 address,
             },
         }
+    }
+}
+
+impl<K, V> MapLikeItem<K, V> for JoinValueLane<K, V>
+where
+    K: Clone + Eq + Hash + Send + 'static,
+    V: Clone + Send + 'static,
+{
+    type GetHandler<C> = JoinValueLaneGet<C, K, V>
+    where
+        C: 'static;
+
+    type GetMapHandler<C> = JoinValueLaneGetMap<C, K, V>
+    where
+        C: 'static;
+
+    fn get_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::GetHandler<C> {
+        JoinValueLaneGet::new(projection, key)
+    }
+
+    fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
+        JoinValueLaneGetMap::new(projection)
     }
 }

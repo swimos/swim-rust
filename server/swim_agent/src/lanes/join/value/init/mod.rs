@@ -19,7 +19,8 @@ use swim_form::Form;
 use swim_model::address::Address;
 use swim_model::Text;
 
-use crate::event_handler::{DowncastError, EventHandler, JoinValueInitializer};
+use crate::event_handler::{DowncastError, EventHandler, JoinLaneInitializer};
+use crate::lanes::JoinLaneKind;
 
 use super::AddDownlinkAction;
 use super::{lifecycle::JoinValueLaneLifecycle, JoinValueLane};
@@ -49,7 +50,7 @@ where
     }
 }
 
-impl<Context, K, V, F, LC> JoinValueInitializer<Context> for LifecycleInitializer<Context, K, V, F>
+impl<Context, K, V, F, LC> JoinLaneInitializer<Context> for LifecycleInitializer<Context, K, V, F>
 where
     Context: 'static,
     K: Any + Clone + Eq + Hash + Send + 'static,
@@ -60,7 +61,8 @@ where
 {
     fn try_create_action(
         &self,
-        key: Box<dyn Any + Send>,
+        link_key: Box<dyn Any + Send>,
+        key_type: TypeId,
         value_type: TypeId,
         address: Address<Text>,
     ) -> Result<Box<dyn EventHandler<Context> + Send + 'static>, DowncastError> {
@@ -69,7 +71,14 @@ where
             lifecycle_factory,
         } = self;
 
-        match key.downcast::<K>() {
+        if (*link_key).type_id() != key_type {
+            return Err(DowncastError::LinkKey {
+                key: link_key,
+                expected_type: key_type,
+            });
+        }
+
+        match link_key.downcast::<K>() {
             Ok(key) => {
                 let expected_value = TypeId::of::<V>();
                 if value_type == expected_value {
@@ -83,10 +92,14 @@ where
                     })
                 }
             }
-            Err(bad_key) => Err(DowncastError::Key {
+            Err(bad_key) => Err(DowncastError::LinkKey {
                 key: bad_key,
                 expected_type: std::any::TypeId::of::<K>(),
             }),
         }
+    }
+
+    fn kind(&self) -> JoinLaneKind {
+        JoinLaneKind::Value
     }
 }

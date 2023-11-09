@@ -72,7 +72,7 @@ impl FakeStore {
         let mut guard = self.inner.lock();
         let FakeStoreInner { maps, ids_back, .. } = &mut *guard;
         assert!(ids_back.contains_key(&id));
-        let target = maps.entry(id).or_insert_with(Default::default);
+        let target = maps.entry(id).or_default();
         target.staged_error = error;
         for (k, v) in map {
             let key = format!("{}", print_recon_compact(&k)).into_bytes();
@@ -209,7 +209,7 @@ impl NodePersistence for FakeStore {
         if !ids_back.contains_key(&id) {
             Err(StoreError::KeyNotFound)
         } else {
-            let FakeMapLaneStore { data, .. } = maps.entry(id).or_insert_with(Default::default);
+            let FakeMapLaneStore { data, .. } = maps.entry(id).or_default();
             data.insert(key.to_vec(), value.to_vec());
             waiters.drain(..).for_each(|t| {
                 t.trigger();
@@ -229,7 +229,7 @@ impl NodePersistence for FakeStore {
         if !ids_back.contains_key(&id) {
             Err(StoreError::KeyNotFound)
         } else {
-            let FakeMapLaneStore { data, .. } = maps.entry(id).or_insert_with(Default::default);
+            let FakeMapLaneStore { data, .. } = maps.entry(id).or_default();
             data.remove(key);
             waiters.drain(..).for_each(|t| {
                 t.trigger();
@@ -249,7 +249,7 @@ impl NodePersistence for FakeStore {
         if !ids_back.contains_key(&id) {
             Err(StoreError::KeyNotFound)
         } else {
-            let FakeMapLaneStore { data, .. } = maps.entry(id).or_insert_with(Default::default);
+            let FakeMapLaneStore { data, .. } = maps.entry(id).or_default();
             data.clear();
             waiters.drain(..).for_each(|t| {
                 t.trigger();

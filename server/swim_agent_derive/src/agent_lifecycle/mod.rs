@@ -16,10 +16,12 @@ use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
 use syn::{parse_quote, Path, Type};
 
+use crate::agent_lifecycle::model::JoinLaneKind;
+
 use self::{
     model::{
         AgentLifecycleDescriptor, CommandLifecycleDescriptor, DemandLifecycleDescriptor,
-        DemandMapLifecycleDescriptor, HttpLifecycleDescriptor, ItemLifecycle, JoinValueInit,
+        DemandMapLifecycleDescriptor, HttpLifecycleDescriptor, ItemLifecycle, JoinLaneInit,
         MapLifecycleDescriptor, ValueLifecycleDescriptor,
     },
     tree::BinTree,
@@ -312,7 +314,7 @@ impl<'a> ToTokens for ImplAgentLifecycle<'a> {
 }
 
 fn construct_join_init(
-    join_inits: &[JoinValueInit<'_>],
+    join_inits: &[JoinLaneInit<'_>],
     root: &Path,
     agent_type: &Path,
     lifecycle_type: &Type,
@@ -322,8 +324,13 @@ fn construct_join_init(
     join_inits.iter().rev().fold(base, |acc, init| {
         let item_name = init.item_ident();
         let lifecycle = init.lifecycle;
-        let constructor = quote! {
-            #root::agent_lifecycle::on_init::RegisterJoinValue::new(|agent: &#agent_type| &agent.#item_name, #lifecycle_type::#lifecycle)
+        let constructor = match init.kind {
+            JoinLaneKind::Map => quote! {
+                #root::agent_lifecycle::on_init::RegisterJoinMap::new(|agent: &#agent_type| &agent.#item_name, #lifecycle_type::#lifecycle)
+            },
+            JoinLaneKind::Value => quote! {
+                #root::agent_lifecycle::on_init::RegisterJoinValue::new(|agent: &#agent_type| &agent.#item_name, #lifecycle_type::#lifecycle)
+            },
         };
         quote!(#root::agent_lifecycle::on_init::InitCons::cons(#constructor, #acc))
     })

@@ -54,6 +54,7 @@ pub struct HostedEventDownlinkFactory<T: RecognizerReadable, LC> {
     config: SimpleDownlinkConfig,
     dl_state: Arc<AtomicU8>,
     stop_rx: trigger::Receiver,
+    map_events: bool,
     _type: PhantomData<fn() -> T>,
 }
 
@@ -67,6 +68,7 @@ where
         lifecycle: LC,
         config: SimpleDownlinkConfig,
         stop_rx: trigger::Receiver,
+        map_events: bool,
     ) -> Self {
         HostedEventDownlinkFactory {
             address,
@@ -74,6 +76,7 @@ where
             config,
             dl_state: Default::default(),
             stop_rx,
+            map_events,
             _type: PhantomData,
         }
     }
@@ -88,9 +91,9 @@ where
             config,
             dl_state,
             stop_rx,
+            map_events,
             ..
         } = self;
-
         let chan = HostedEventDownlink {
             address,
             receiver: Some(FramedRead::new(receiver, Default::default())),
@@ -100,6 +103,7 @@ where
             dl_state: DlStateTracker::new(dl_state),
             stop_rx: Some(stop_rx),
             write_terminated: false,
+            map_events,
         };
         Box::new(chan)
     }
@@ -120,6 +124,7 @@ pub struct HostedEventDownlink<T: RecognizerReadable, LC> {
     dl_state: DlStateTracker,
     stop_rx: Option<trigger::Receiver>,
     write_terminated: bool,
+    map_events: bool,
 }
 
 impl<T, LC> HostedEventDownlink<T, LC>
@@ -213,7 +218,11 @@ where
     LC: EventDownlinkLifecycle<T, Context> + 'static,
 {
     fn kind(&self) -> DownlinkKind {
-        DownlinkKind::Event
+        if self.map_events {
+            DownlinkKind::MapEvent
+        } else {
+            DownlinkKind::Event
+        }
     }
 
     fn await_ready(

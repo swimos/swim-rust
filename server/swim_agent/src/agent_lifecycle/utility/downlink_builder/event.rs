@@ -231,7 +231,7 @@ where
             inner,
             ..
         } = self;
-        OpenEventDownlinkAction::new(address, inner, config)
+        OpenEventDownlinkAction::new(address, inner, config, false)
     }
 }
 
@@ -363,6 +363,6 @@ where
             inner,
             ..
         } = self;
-        OpenEventDownlinkAction::new(address, inner, config)
+        OpenEventDownlinkAction::new(address, inner, config, false)
     }
 }

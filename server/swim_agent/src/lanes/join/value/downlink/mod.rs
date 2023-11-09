@@ -26,6 +26,7 @@ use crate::{
         HandlerAction, HandlerActionExt, HandlerTrans, Modification, StepResult,
     },
     item::AgentItem,
+    lanes::join::LinkClosedResponse,
     meta::AgentMetadata,
 };
 
@@ -34,13 +35,13 @@ use super::{
         on_failed::OnJoinValueFailed, on_linked::OnJoinValueLinked, on_synced::OnJoinValueSynced,
         on_unlinked::OnJoinValueUnlinked,
     },
-    DownlinkStatus, JoinValueLane, LinkClosedResponse,
+    DownlinkStatus, JoinValueLane,
 };
 
 #[cfg(test)]
 mod tests;
 
-/// Wraps a [`crate::lanes::join_value::JoinValueLaneLifecycle`] as an [`crate::downlink_lifecycle::event::EventDownlinkLifecycle`] to
+/// Wraps a [`crate::lanes::join_value::lifecycle::JoinValueLaneLifecycle`] as an [`crate::downlink_lifecycle::event::EventDownlinkLifecycle`] to
 /// allow it to be executed on a downlink.
 pub struct JoinValueDownlink<K, V, LC, Context> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,

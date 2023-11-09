@@ -18,10 +18,9 @@ use swim_model::address::Address;
 use crate::{
     agent_lifecycle::utility::HandlerContext,
     event_handler::{EventHandler, UnitHandler},
+    lanes::join::JoinHandlerFn,
     lifecycle_fn::{LiftShared, WithHandlerContext},
 };
-
-use super::JoinValueHandlerFn0;
 
 /// Lifecycle event for the `on_linked` event of a join value lane downlink.
 pub trait OnJoinValueLinked<K, Context>: Send {
@@ -102,9 +101,9 @@ impl<K, Context, Shared> OnJoinValueLinkedShared<K, Context, Shared> for NoHandl
 
 impl<K, Context, Shared, F> OnJoinValueLinkedShared<K, Context, Shared> for FnHandler<F>
 where
-    F: for<'a> JoinValueHandlerFn0<'a, Context, Shared, K, ()> + Send,
+    F: for<'a> JoinHandlerFn<'a, Context, Shared, K, ()> + Send,
 {
-    type OnJoinValueLinkedHandler<'a> = <F as JoinValueHandlerFn0<'a, Context, Shared, K, ()>>::Handler
+    type OnJoinValueLinkedHandler<'a> = <F as JoinHandlerFn<'a, Context, Shared, K, ()>>::Handler
     where
         Self: 'a,
         Shared: 'a;

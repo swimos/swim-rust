@@ -34,7 +34,7 @@ use crate::{
         ActionContext, AndThen, EventHandlerError, HandlerAction, HandlerActionExt, HandlerTrans,
         Modification, StepResult,
     },
-    item::{AgentItem, MapItem},
+    item::{AgentItem, MapItem, MapLikeItem, MutableMapLikeItem, TransformableMapLikeItem},
     map_storage::{MapStoreInner, WithEntryResult},
     meta::AgentMetadata,
 };
@@ -574,5 +574,86 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+}
+
+impl<K, V> MapLikeItem<K, V> for MapLane<K, V>
+where
+    K: Clone + Eq + Hash + Send + 'static,
+    V: Clone + 'static,
+{
+    type GetHandler<C> = MapLaneGet<C, K, V>
+    where
+        C: 'static;
+
+    fn get_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::GetHandler<C> {
+        MapLaneGet::new(projection, key)
+    }
+
+    type GetMapHandler<C> = MapLaneGetMap<C, K, V>
+    where
+        C: 'static;
+
+    fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
+        MapLaneGetMap::new(projection)
+    }
+}
+
+impl<K, V> MutableMapLikeItem<K, V> for MapLane<K, V>
+where
+    K: Clone + Eq + Hash + Send + 'static,
+    V: Send + 'static,
+{
+    type UpdateHandler<C> = MapLaneUpdate<C, K, V>
+    where
+        C: 'static;
+
+    type RemoveHandler<C> = MapLaneRemove<C, K, V>
+    where
+        C: 'static;
+
+    type ClearHandler<C> = MapLaneClear<C, K, V>
+    where
+        C: 'static;
+
+    fn update_handler<C: 'static>(
+        projection: fn(&C) -> &Self,
+        key: K,
+        value: V,
+    ) -> Self::UpdateHandler<C> {
+        MapLaneUpdate::new(projection, key, value)
+    }
+
+    fn remove_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::RemoveHandler<C> {
+        MapLaneRemove::new(projection, key)
+    }
+
+    fn clear_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::ClearHandler<C> {
+        MapLaneClear::new(projection)
+    }
+}
+
+impl<K, V> TransformableMapLikeItem<K, V> for MapLane<K, V>
+where
+    K: Clone + Eq + Hash + Send + 'static,
+    V: Clone + Send + 'static,
+{
+    type WithEntryHandler<'a, C, F> = MapLaneWithEntry<C, K, V, F>
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(Option<V>) -> Option<V> + Send + 'a;
+
+    fn with_handler<'a, C, F>(
+        projection: fn(&C) -> &Self,
+        key: K,
+        f: F,
+    ) -> Self::WithEntryHandler<'a, C, F>
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(Option<V>) -> Option<V> + Send + 'a,
+    {
+        MapLaneWithEntry::new(projection, key, f)
     }
 }
