@@ -83,13 +83,11 @@ fn supply_event_handler() {
         &agent,
     );
 
+    let _modification = Modification::no_trigger(LANE_ID);
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_item: Some(Modification {
-                item_id: LANE_ID,
-                trigger_handler: false
-            }),
+            modified_item: Some(_modification),
             result: ()
         }
     ));
@@ -120,13 +118,11 @@ fn supply_lane_sync_handler() {
         &agent,
     );
 
+    let _modification = Modification::no_trigger(LANE_ID);
     assert!(matches!(
         result,
         StepResult::Complete {
-            modified_item: Some(Modification {
-                item_id: LANE_ID,
-                trigger_handler: false
-            }),
+            modified_item: Some(_modification),
             result: ()
         }
     ));

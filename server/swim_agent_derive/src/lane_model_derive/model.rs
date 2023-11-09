@@ -117,7 +117,7 @@ impl<'a> ItemSpec<'a> {
             ItemSpec::Value(ItemKind::Lane, t) => Some(WarpLaneSpec::Value(t)),
             ItemSpec::Map(ItemKind::Lane, k, v) => Some(WarpLaneSpec::Map(k, v)),
             ItemSpec::JoinValue(k, v) => Some(WarpLaneSpec::JoinValue(k, v)),
-            ItemSpec::Supply(t) => Some(LaneSpec::Supply(t))
+            ItemSpec::Supply(t) => Some(WarpLaneSpec::Supply(t)),
             _ => None,
         }
     }
@@ -448,12 +448,15 @@ fn extract_lane_model(field: &Field) -> Validation<ItemModel<'_>, Errors<syn::Er
                             Err(e) => Validation::fail(Errors::of(e)),
                         },
                         SUPPLY_LANE_NAME => {
-                            let param = single_param(arguments)?;
-                            Ok(ItemModel::new(
-                                fld_name,
-                                ItemSpec::Supply(param),
-                                ItemFlags::TRANSIENT, //Supply lanes are always transient.
-                            ))
+                            match single_param(arguments) {
+                                Ok(param) => Validation::valid(ItemModel::new(
+                                    fld_name,
+                                    ItemSpec::Supply(param),
+                                    ItemFlags::TRANSIENT, //Supply lanes are always transient.
+                                    transform,
+                                )),
+                                Err(e) => Validation::fail(Errors::of(e)),
+                            }
                         }
                         name @ (HTTP_LANE_NAME | SIMPLE_HTTP_LANE_NAME) => {
                             match http_params(arguments, name == SIMPLE_HTTP_LANE_NAME) {

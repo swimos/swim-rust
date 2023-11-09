@@ -455,7 +455,7 @@ impl<'a> HandlerType<'a> {
             WarpLaneSpec::Demand(_)
             | WarpLaneSpec::DemandMap(_, _)
             | WarpLaneSpec::JoinValue(_, _)
-            | LaneSpec::Supply(_) => {
+            | WarpLaneSpec::Supply(_) => {
                 quote!(#root::event_handler::UnitHandler)
             }
         }
@@ -487,7 +487,7 @@ impl<'a> SyncHandlerType<'a> {
             WarpLaneSpec::JoinValue(k, v) => {
                 quote!(#root::lanes::join_value::JoinValueLaneSync<#agent_name, #k, #v>)
             }
-            LaneSpec::Supply(t) => {
+            WarpLaneSpec::Supply(t) => {
                 quote!(#root::lanes::supply::SupplyLaneSync<#agent_name, #t>)
             }
         }
@@ -549,7 +549,7 @@ impl<'a> WarpLaneHandlerMatch<'a> {
             WarpLaneSpec::Demand(_)
             | WarpLaneSpec::DemandMap(_, _)
             | WarpLaneSpec::JoinValue(_, _)
-            | LaneSpec::Supply(_) => {
+            | WarpLaneSpec::Supply(_) => {
                 quote!(#root::event_handler::UnitHandler::default())
             }
         };
@@ -652,7 +652,7 @@ impl<'a> SyncHandlerMatch<'a> {
             WarpLaneSpec::JoinValue(k, v) => {
                 quote!(#root::lanes::join_value::JoinValueLaneSync::<#agent_name, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
             }
-            LaneSpec::Supply(ty) => {
+            WarpLaneSpec::Supply(ty) => {
                 quote!(#root::lanes::supply::SupplyLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &agent.#name, id))
             }
         };
@@ -809,7 +809,7 @@ impl<'a> LaneSpecInsert<'a> {
             }
             ItemSpec::Http(_) => quote!(#root::agent_model::ItemDescriptor::Http),
             ItemSpec::Supply(_) => {
-                quote!(#root::agent_model::ItemKind::Lane(#root::agent_model::LaneKind::Supply))
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::Supply, flags: #flags })
             }
         };
         let external_lane_name = model.external_literal();
