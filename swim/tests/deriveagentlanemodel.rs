@@ -393,6 +393,7 @@ fn multiple_lanes() {
         eighth: DemandMapLane<i32, i32>,
         ninth: SimpleHttpLane<i32>,
         tenth: JoinMapLane<i32, i32, i32>,
+        eleventh: SupplyLane<i32>,
     }
 
     check_agent::<MultipleLanes>(vec![
@@ -401,15 +402,12 @@ fn multiple_lanes() {
         persistent_lane(2, "third", WarpLaneKind::Value),
         persistent_lane(3, "fourth", WarpLaneKind::Map),
         transient_lane(4, "fifth", WarpLaneKind::Command),
-        persistent_lane(5, "sixth", WarpLaneKind::JoinValue),
+        transient_lane(5, "sixth", WarpLaneKind::JoinValue),
         transient_lane(6, "seventh", WarpLaneKind::Demand),
-        persistent_lane(1, "second", WarpLaneKind::Map),
-        persistent_lane(3, "fourth", WarpLaneKind::Map),
-        persistent_lane(5, "sixth", WarpLaneKind::JoinValue),
         transient_lane(7, "eighth", WarpLaneKind::DemandMap),
         http_lane(8, "ninth"),
         transient_lane(9, "tenth", WarpLaneKind::JoinMap),
-        transient_lane(9, "tenth", WarpLaneKind::Supply),
+        transient_lane(10, "eleventh", WarpLaneKind::Supply),
     ]);
 }
 

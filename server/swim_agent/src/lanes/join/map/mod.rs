@@ -53,15 +53,15 @@ mod tests;
 pub use downlink::{AfterClosed, JoinMapLaneUpdate};
 pub use init::LifecycleInitializer;
 
-/// Model of a join map lane. This is conceptually similar to a [`super::super::MapLane`] only, rather than 
+/// Model of a join map lane. This is conceptually similar to a [`super::super::MapLane`] only, rather than
 /// the state being modified directly, it is populated through a series of map downlinks Each map downlink is
 /// identified by a link key of type `L`.
-/// 
+///
 /// Each entry in the map is 'owned' by the link that most recently updated it. When a 'clear' message is
 /// received on a link, all keys owned by that link will be removed from the map. In all other respects,
 /// it behaves as a read only map lane, having the same set of event handlers.
-/// 
-/// Join lanes provide views of the state of other remote lanes and so do not persist their state and are 
+///
+/// Join lanes provide views of the state of other remote lanes and so do not persist their state and are
 /// always considered to be transient.
 #[derive(Debug)]
 pub struct JoinMapLane<L, K, V> {
