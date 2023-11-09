@@ -59,6 +59,7 @@ pub struct OpenEventDownlinkAction<T, LC> {
     _type: PhantomData<fn(T) -> T>,
     inner: Option<Inner<LC>>,
     config: SimpleDownlinkConfig,
+    map_events: bool,
 }
 
 type KvInvariant<K, V> = fn(K, V) -> (K, V);
@@ -82,11 +83,17 @@ impl<T, LC> OpenValueDownlinkAction<T, LC> {
 }
 
 impl<T, LC> OpenEventDownlinkAction<T, LC> {
-    pub fn new(address: Address<Text>, lifecycle: LC, config: SimpleDownlinkConfig) -> Self {
+    pub fn new(
+        address: Address<Text>,
+        lifecycle: LC,
+        config: SimpleDownlinkConfig,
+        map_events: bool,
+    ) -> Self {
         OpenEventDownlinkAction {
             _type: PhantomData,
             inner: Some(Inner { address, lifecycle }),
             config,
+            map_events,
         }
     }
 }
@@ -172,17 +179,32 @@ where
         _meta: AgentMetadata,
         _context: &Context,
     ) -> StepResult<Self::Completion> {
-        let OpenEventDownlinkAction { inner, config, .. } = self;
+        let OpenEventDownlinkAction {
+            inner,
+            config,
+            map_events,
+            ..
+        } = self;
         if let Some(Inner { address, lifecycle }) = inner.take() {
             let config = *config;
             let (stop_tx, stop_rx) = trigger::trigger();
 
-            let fac = HostedEventDownlinkFactory::new(address.clone(), lifecycle, config, stop_rx);
+            let fac = HostedEventDownlinkFactory::new(
+                address.clone(),
+                lifecycle,
+                config,
+                stop_rx,
+                *map_events,
+            );
             let handle = EventDownlinkHandle::new(address.clone(), stop_tx, fac.dl_state());
-
+            let kind = if *map_events {
+                DownlinkKind::MapEvent
+            } else {
+                DownlinkKind::Event
+            };
             action_context.start_downlink(
                 address,
-                DownlinkKind::Event,
+                kind,
                 move |_con, _writer, receiver| fac.create(receiver),
                 |result| {
                     if let Err(err) = result {

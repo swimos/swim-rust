@@ -37,7 +37,7 @@ use swim_api::{
 use swim_model::{address::RelativeAddress, Text};
 use swim_remote::net::dns::DnsResolver;
 use swim_remote::{AttachClient, LinkError};
-use swim_runtime::downlink::IdentifiedAddress;
+use swim_runtime::downlink::{IdentifiedAddress, NoInterpretation};
 use swim_runtime::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
     downlink::{
@@ -839,7 +839,7 @@ impl DownlinkRuntime {
                     );
                     runtime.run().await;
                 }
-                _ => {
+                DownlinkKind::Value | DownlinkKind::Event => {
                     let runtime = ValueDownlinkRuntime::new(
                         attachment_rx,
                         io,
@@ -849,6 +849,26 @@ impl DownlinkRuntime {
                             address: path,
                         },
                         config,
+                    );
+                    runtime.run().await;
+                }
+                DownlinkKind::MapEvent => {
+                    let bad_frame_strat = if config.abort_on_bad_frames {
+                        ReportStrategy::new(AlwaysAbortStrategy).boxed()
+                    } else {
+                        ReportStrategy::new(AlwaysIgnoreStrategy).boxed()
+                    };
+                    let runtime = MapDownlinkRuntime::with_interpretation(
+                        attachment_rx,
+                        io,
+                        stopping,
+                        IdentifiedAddress {
+                            identity,
+                            address: path,
+                        },
+                        config,
+                        bad_frame_strat,
+                        NoInterpretation,
                     );
                     runtime.run().await;
                 }

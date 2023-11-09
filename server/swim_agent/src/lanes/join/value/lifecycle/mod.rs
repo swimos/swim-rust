@@ -19,7 +19,7 @@ use swim_model::address::Address;
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,
-    event_handler::{EventHandler, HandlerAction},
+    event_handler::EventHandler,
     lifecycle_fn::{LiftShared, WithHandlerContext, WithHandlerContextBorrow},
 };
 
@@ -35,7 +35,7 @@ pub mod on_linked;
 pub mod on_synced;
 pub mod on_unlinked;
 
-/// Trait for the lifecycle of an join value lane lifecycle (in fac, a specialized event downlink
+/// Trait for the lifecycle of an join value lane lifecycle (in fact, a specialized event downlink
 /// lifecycle).
 ///
 /// #Node
@@ -44,7 +44,7 @@ pub mod on_unlinked;
 ///
 /// #Type Parameters
 /// * `K` - The key type of the join value lane.
-/// * `V` - THe value type of the join value lane.
+/// * `V` - The value type of the join value lane.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait JoinValueLaneLifecycle<K, V, Context>:
     OnJoinValueLinked<K, Context>
@@ -167,7 +167,7 @@ pub trait StatefulJoinValueLifecycle<Context, Shared, K, V>:
         FnHandler<F>: OnJoinValueFailedShared<K, Context, Shared>;
 }
 
-/// A lifecycle for a join value where the event handlers do not share state.
+/// A lifecycle for a join value downlink where the event handlers do not share state.
 ///
 /// #Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
@@ -176,6 +176,7 @@ pub trait StatefulJoinValueLifecycle<Context, Shared, K, V>:
 /// * `FLinked` - The type of the 'on_linked' handler.
 /// * `FSynced` - The type of the 'on_synced' handler.
 /// * `FUnlinked` - The type of the 'on_unlinked' handler.
+/// * `FFailed` - The type of the 'on_failed handler.
 #[derive(Debug)]
 pub struct StatelessJoinValueLaneLifecycle<
     Context,
@@ -193,7 +194,7 @@ pub struct StatelessJoinValueLaneLifecycle<
     on_failed: FFailed,
 }
 
-/// A lifecycle for a join value where the event handlers can share state.
+/// A lifecycle for a join value downlink where the event handlers can share state.
 ///
 /// #Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
@@ -203,6 +204,7 @@ pub struct StatelessJoinValueLaneLifecycle<
 /// * `FLinked` - The type of the 'on_linked' handler.
 /// * `FSynced` - The type of the 'on_synced' handler.
 /// * `FUnlinked` - The type of the 'on_unlinked' handler.
+/// * `FFailed` - The type of the 'on_failed handler.
 #[derive(Debug)]
 pub struct StatefulJoinValueLaneLifecycle<
     Context,
@@ -287,36 +289,6 @@ where
             on_unlinked: self.on_unlinked.clone(),
             on_failed: self.on_failed.clone(),
         }
-    }
-}
-
-pub trait JoinValueHandlerFn0<'a, Context, Shared, K, Out> {
-    type Handler: HandlerAction<Context, Completion = Out> + 'a;
-
-    fn make_handler(
-        &'a self,
-        shared: &'a Shared,
-        handler_context: HandlerContext<Context>,
-        key: K,
-        remote: Address<&str>,
-    ) -> Self::Handler;
-}
-
-impl<'a, Context, Shared, K, F, H, Out> JoinValueHandlerFn0<'a, Context, Shared, K, Out> for F
-where
-    F: Fn(&'a Shared, HandlerContext<Context>, K, Address<&str>) -> H,
-    H: HandlerAction<Context, Completion = Out> + 'a,
-{
-    type Handler = H;
-
-    fn make_handler(
-        &'a self,
-        shared: &'a Shared,
-        handler_context: HandlerContext<Context>,
-        key: K,
-        remote: Address<&str>,
-    ) -> Self::Handler {
-        (*self)(shared, handler_context, key, remote)
     }
 }
 

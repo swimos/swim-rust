@@ -104,6 +104,7 @@ pub enum ItemSpec<'a> {
     Value(ItemKind, &'a Type),
     Map(ItemKind, &'a Type, &'a Type),
     JoinValue(&'a Type, &'a Type),
+    JoinMap(&'a Type, &'a Type, &'a Type),
     Http(HttpLaneSpec<'a>),
 }
 
@@ -116,6 +117,7 @@ impl<'a> ItemSpec<'a> {
             ItemSpec::Value(ItemKind::Lane, t) => Some(WarpLaneSpec::Value(t)),
             ItemSpec::Map(ItemKind::Lane, k, v) => Some(WarpLaneSpec::Map(k, v)),
             ItemSpec::JoinValue(k, v) => Some(WarpLaneSpec::JoinValue(k, v)),
+            ItemSpec::JoinMap(l, k, v) => Some(WarpLaneSpec::JoinMap(l, k, v)),
             _ => None,
         }
     }
@@ -134,6 +136,7 @@ impl<'a> ItemSpec<'a> {
             ItemSpec::Map(k, _, _) => *k,
             ItemSpec::Command(_) => ItemKind::Lane,
             ItemSpec::JoinValue(_, _) => ItemKind::Lane,
+            ItemSpec::JoinMap(_, _, _) => ItemKind::Lane,
             ItemSpec::Demand(_) => ItemKind::Lane,
             ItemSpec::DemandMap(_, _) => ItemKind::Lane,
             ItemSpec::Http(_) => ItemKind::Lane,
@@ -150,6 +153,7 @@ pub enum WarpLaneSpec<'a> {
     Value(&'a Type),
     Map(&'a Type, &'a Type),
     JoinValue(&'a Type, &'a Type),
+    JoinMap(&'a Type, &'a Type, &'a Type),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -340,6 +344,7 @@ const VALUE_STORE_NAME: &str = "ValueStore";
 const MAP_LANE_NAME: &str = "MapLane";
 const MAP_STORE_NAME: &str = "MapStore";
 const JOIN_VALUE_LANE_NAME: &str = "JoinValueLane";
+const JOIN_MAP_LANE_NAME: &str = "JoinMapLane";
 const HTTP_LANE_NAME: &str = "HttpLane";
 const SIMPLE_HTTP_LANE_NAME: &str = "SimpleHttpLane";
 
@@ -434,7 +439,16 @@ fn extract_lane_model(field: &Field) -> Validation<ItemModel<'_>, Errors<syn::Er
                             Ok((param1, param2)) => Validation::valid(ItemModel::new(
                                 fld_name,
                                 ItemSpec::JoinValue(param1, param2),
-                                lane_flags,
+                                ItemFlags::TRANSIENT, //Join value lanes are always transient.
+                                transform,
+                            )),
+                            Err(e) => Validation::fail(Errors::of(e)),
+                        },
+                        JOIN_MAP_LANE_NAME => match three_params(arguments) {
+                            Ok((param1, param2, param3)) => Validation::valid(ItemModel::new(
+                                fld_name,
+                                ItemSpec::JoinMap(param1, param2, param3),
+                                ItemFlags::TRANSIENT, //Join map lanes are always transient.
                                 transform,
                             )),
                             Err(e) => Validation::fail(Errors::of(e)),
@@ -540,26 +554,27 @@ fn http_params(args: &PathArguments, simple: bool) -> Result<HttpLaneSpec<'_>, s
 }
 
 fn two_params(args: &PathArguments) -> Result<(&Type, &Type), syn::Error> {
+    extract_params::<2>(args).map(|[p1, p2]| (p1, p2))
+}
+
+fn three_params(args: &PathArguments) -> Result<(&Type, &Type, &Type), syn::Error> {
+    extract_params::<3>(args).map(|[p1, p2, p3]| (p1, p2, p3))
+}
+
+fn extract_params<const N: usize>(args: &PathArguments) -> Result<[&Type; N], syn::Error> {
     if let PathArguments::AngleBracketed(AngleBracketedGenericArguments { args, .. }) = args {
-        let mut first = None;
-        let mut second = None;
+        let mut good = vec![];
         let it = args.iter();
         for arg in it {
-            match (arg, &first, &second) {
-                (GenericArgument::Type(ty), None, None) => {
-                    first = Some(ty);
-                }
-                (GenericArgument::Type(ty), _, None) => {
-                    second = Some(ty);
-                }
-                _ => {
-                    return Err(syn::Error::new_spanned(args, BAD_PARAMS));
-                }
+            if let GenericArgument::Type(ty) = arg {
+                good.push(ty);
+            } else {
+                return Err(syn::Error::new_spanned(args, BAD_PARAMS));
             }
         }
-        first
-            .zip(second)
-            .ok_or_else(|| syn::Error::new_spanned(args, BAD_PARAMS))
+        Ok(good
+            .try_into()
+            .map_err(|_| syn::Error::new_spanned(args, BAD_PARAMS))?)
     } else {
         Err(syn::Error::new_spanned(args, BAD_PARAMS))
     }

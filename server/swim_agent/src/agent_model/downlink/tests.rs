@@ -41,7 +41,7 @@ use crate::{
         map::StatefulMapDownlinkLifecycle, value::StatefulValueDownlinkLifecycle,
     },
     event_handler::{
-        ActionContext, BoxJoinValueInit, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner,
+        ActionContext, BoxJoinLaneInit, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner,
         StepResult,
     },
     meta::AgentMetadata,
@@ -167,7 +167,7 @@ async fn run_all_and_check(
     mut spawner: TestSpawner,
     context: TestContext,
     meta: AgentMetadata<'_>,
-    join_value_init: &mut HashMap<u64, BoxJoinValueInit<'static, TestAgent>>,
+    join_lane_init: &mut HashMap<u64, BoxJoinLaneInit<'static, TestAgent>>,
     agent: &TestAgent,
 ) {
     let mut ad_hoc_buffer = BytesMut::new();
@@ -176,12 +176,12 @@ async fn run_all_and_check(
             &spawner,
             &context,
             &spawner,
-            join_value_init,
+            join_lane_init,
             &mut ad_hoc_buffer,
         );
         run_handler(handler, &mut action_context, agent, meta);
     }
-    assert!(join_value_init.is_empty());
+    assert!(join_lane_init.is_empty());
     assert!(ad_hoc_buffer.is_empty());
     spawner
         .inner
@@ -222,7 +222,7 @@ async fn open_value_downlink() {
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
-    let mut join_value_init = HashMap::new();
+    let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
     let lifecycle = StatefulValueDownlinkLifecycle::<TestAgent, _, i32>::new(());
 
@@ -242,12 +242,12 @@ async fn open_value_downlink() {
         &spawner,
         &context,
         &spawner,
-        &mut join_value_init,
+        &mut join_lane_init,
         &mut ad_hoc_buffer,
     );
     let _handle = run_handler(handler, &mut action_context, &agent, meta);
 
-    run_all_and_check(spawner, context, meta, &mut join_value_init, &agent).await;
+    run_all_and_check(spawner, context, meta, &mut join_lane_init, &agent).await;
 }
 
 #[tokio::test]
@@ -255,7 +255,7 @@ async fn open_map_downlink() {
     let uri = make_uri();
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
-    let mut join_value_init = HashMap::new();
+    let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
     let lifecycle = StatefulMapDownlinkLifecycle::<TestAgent, _, i32, Text>::new(());
 
@@ -275,10 +275,10 @@ async fn open_map_downlink() {
         &spawner,
         &context,
         &spawner,
-        &mut join_value_init,
+        &mut join_lane_init,
         &mut ad_hoc_buffer,
     );
     let _handle = run_handler(handler, &mut action_context, &agent, meta);
 
-    run_all_and_check(spawner, context, meta, &mut join_value_init, &agent).await;
+    run_all_and_check(spawner, context, meta, &mut join_lane_init, &agent).await;
 }

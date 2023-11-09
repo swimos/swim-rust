@@ -14,14 +14,14 @@
 
 use swim_model::address::Address;
 
-use crate::event_handler::{ConstHandler, UnitHandler};
+use crate::{
+    event_handler::{ConstHandler, UnitHandler},
+    lanes::join::LinkClosedResponse,
+};
 
-use super::{
-    lifecycle::{
-        on_failed::OnJoinValueFailed, on_linked::OnJoinValueLinked, on_synced::OnJoinValueSynced,
-        on_unlinked::OnJoinValueUnlinked,
-    },
-    LinkClosedResponse,
+use super::lifecycle::{
+    on_failed::OnJoinValueFailed, on_linked::OnJoinValueLinked, on_synced::OnJoinValueSynced,
+    on_unlinked::OnJoinValueUnlinked,
 };
 
 /// The default lifecycle for downlinks associated with join value lanes. This is used if no

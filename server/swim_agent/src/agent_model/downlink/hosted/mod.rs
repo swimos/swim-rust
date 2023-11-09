@@ -217,13 +217,13 @@ mod test_support {
         let meta = make_meta(&uri, &route_params);
         let no_spawn = NoSpawn;
         let no_runtime = NoAgentRuntime;
-        let mut join_value_init = HashMap::new();
+        let mut join_lane_init = HashMap::new();
         let mut ad_hoc_buffer = BytesMut::new();
         let mut context = ActionContext::new(
             &no_spawn,
             &no_runtime,
             &no_spawn,
-            &mut join_value_init,
+            &mut join_lane_init,
             &mut ad_hoc_buffer,
         );
         loop {

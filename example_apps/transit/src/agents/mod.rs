@@ -18,7 +18,7 @@ use std::hash::Hash;
 use swim::{
     agent::{
         agent_lifecycle::utility::JoinValueContext,
-        lanes::join_value::{lifecycle::JoinValueLaneLifecycle, LinkClosedResponse},
+        lanes::{join_value::lifecycle::JoinValueLaneLifecycle, LinkClosedResponse},
     },
     form::Form,
 };

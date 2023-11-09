@@ -1396,11 +1396,11 @@ fn run_handler(mut event_handler: BoxEventHandler<'_, FakeAgent>) {
     let params = HashMap::new();
     let meta = make_meta(&uri, &params);
     let agent = FakeAgent;
-    let mut join_value_init = HashMap::new();
+    let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
     loop {
         match event_handler.step(
-            &mut dummy_context(&mut join_value_init, &mut ad_hoc_buffer),
+            &mut dummy_context(&mut join_lane_init, &mut ad_hoc_buffer),
             meta,
             &agent,
         ) {

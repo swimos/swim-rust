@@ -32,7 +32,7 @@ use crate::{
         ActionContext, AndThen, Decode, EventHandlerError, HandlerAction, HandlerActionExt,
         HandlerTrans, Modification, StepResult,
     },
-    item::{AgentItem, ValueItem},
+    item::{AgentItem, MutableValueLikeItem, ValueItem, ValueLikeItem},
     meta::AgentMetadata,
     stores::value::ValueStore,
 };
@@ -276,4 +276,30 @@ pub fn decode_and_set<C, T: RecognizerReadable>(
 ) -> DecodeAndSet<C, T> {
     let decode: Decode<T> = Decode::new(buffer);
     decode.and_then(ProjTransform::new(projection))
+}
+
+impl<T> ValueLikeItem<T> for ValueLane<T>
+where
+    T: Clone + Send + 'static,
+{
+    type GetHandler<C> = ValueLaneGet<C, T>
+    where
+        C: 'static;
+
+    fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C> {
+        ValueLaneGet::new(projection)
+    }
+}
+
+impl<T> MutableValueLikeItem<T> for ValueLane<T>
+where
+    T: Send + 'static,
+{
+    type SetHandler<C> = ValueLaneSet<C, T>
+    where
+        C: 'static;
+
+    fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C> {
+        ValueLaneSet::new(projection, value)
+    }
 }

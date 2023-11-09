@@ -18,11 +18,9 @@ use swim_model::address::Address;
 use crate::{
     agent_lifecycle::utility::HandlerContext,
     event_handler::{ConstHandler, HandlerAction},
-    lanes::join_value::LinkClosedResponse,
+    lanes::join::{JoinHandlerFn, LinkClosedResponse},
     lifecycle_fn::{LiftShared, WithHandlerContext},
 };
-
-use super::JoinValueHandlerFn0;
 
 /// Lifecycle event for the `on_unlinked` event of a join value lane downlink.
 pub trait OnJoinValueUnlinked<K, Context>: Send {
@@ -108,9 +106,9 @@ impl<K, Context, Shared> OnJoinValueUnlinkedShared<K, Context, Shared> for NoHan
 
 impl<K, Context, Shared, F> OnJoinValueUnlinkedShared<K, Context, Shared> for FnHandler<F>
 where
-    F: for<'a> JoinValueHandlerFn0<'a, Context, Shared, K, LinkClosedResponse> + Send,
+    F: for<'a> JoinHandlerFn<'a, Context, Shared, K, LinkClosedResponse> + Send,
 {
-    type OnJoinValueUnlinkedHandler<'a> = <F as JoinValueHandlerFn0<'a, Context, Shared, K, LinkClosedResponse>>::Handler
+    type OnJoinValueUnlinkedHandler<'a> = <F as JoinHandlerFn<'a, Context, Shared, K, LinkClosedResponse>>::Handler
     where
         Self: 'a,
         Shared: 'a;

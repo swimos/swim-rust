@@ -25,7 +25,7 @@ use tokio_util::codec::Encoder;
 use crate::agent_model::WriteResult;
 use crate::event_handler::{ActionContext, HandlerAction, Modification, StepResult};
 use crate::event_queue::EventQueue;
-use crate::item::{AgentItem, MapItem};
+use crate::item::{AgentItem, MapItem, MapLikeItem, MutableMapLikeItem, TransformableMapLikeItem};
 use crate::map_storage::{MapStoreInner, WithEntryResult};
 use crate::meta::AgentMetadata;
 
@@ -408,5 +408,86 @@ where
         } else {
             StepResult::after_done()
         }
+    }
+}
+
+impl<K, V> MapLikeItem<K, V> for MapStore<K, V>
+where
+    K: Clone + Eq + Hash + Send + 'static,
+    V: Clone + 'static,
+{
+    type GetHandler<C> = MapStoreGet<C, K, V>
+    where
+        C: 'static;
+
+    fn get_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::GetHandler<C> {
+        MapStoreGet::new(projection, key)
+    }
+
+    type GetMapHandler<C> = MapStoreGetMap<C, K, V>
+    where
+        C: 'static;
+
+    fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
+        MapStoreGetMap::new(projection)
+    }
+}
+
+impl<K, V> MutableMapLikeItem<K, V> for MapStore<K, V>
+where
+    K: Clone + Eq + Hash + Send + 'static,
+    V: Send + 'static,
+{
+    type UpdateHandler<C> = MapStoreUpdate<C, K, V>
+    where
+        C: 'static;
+
+    type RemoveHandler<C> = MapStoreRemove<C, K, V>
+    where
+        C: 'static;
+
+    type ClearHandler<C> = MapStoreClear<C, K, V>
+    where
+        C: 'static;
+
+    fn update_handler<C: 'static>(
+        projection: fn(&C) -> &Self,
+        key: K,
+        value: V,
+    ) -> Self::UpdateHandler<C> {
+        MapStoreUpdate::new(projection, key, value)
+    }
+
+    fn remove_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::RemoveHandler<C> {
+        MapStoreRemove::new(projection, key)
+    }
+
+    fn clear_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::ClearHandler<C> {
+        MapStoreClear::new(projection)
+    }
+}
+
+impl<K, V> TransformableMapLikeItem<K, V> for MapStore<K, V>
+where
+    K: Clone + Eq + Hash + Send + 'static,
+    V: Clone + Send + 'static,
+{
+    type WithEntryHandler<'a, C, F> = MapStoreWithEntry<C, K, V, F>
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(Option<V>) -> Option<V> + Send + 'a;
+
+    fn with_handler<'a, C, F>(
+        projection: fn(&C) -> &Self,
+        key: K,
+        f: F,
+    ) -> Self::WithEntryHandler<'a, C, F>
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(Option<V>) -> Option<V> + Send + 'a,
+    {
+        MapStoreWithEntry::new(projection, key, f)
     }
 }

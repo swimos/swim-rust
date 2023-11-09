@@ -24,6 +24,7 @@ struct ExampleAgent {
     example_value: ValueLane<i32>,
     example_map: MapLane<String, i32>,
     example_join_value: JoinValueLane<String, i32>,
+    example_join_map: JoinMapLane<String, String, i32>,
     example_http: SimpleHttpLane<String>,
 }
 ```
@@ -212,7 +213,7 @@ Additionally, it is possible to attach events to the downlinks used for each key
 fn register_lifecycle(
     &self,
     context: JoinValueContext<ExampleAgent, String, i32>,
-) -> impl JoinValueLaneLifecycle<i32, Text, ExampleAgent> + 'static {
+) -> impl JoinValueLaneLifecycle<String, i32, ExampleAgent> + 'static {
     context.builder()
         .on_linked(|context, key, address| context.effect(move || {
             println!("Linked downlink for key: {} from lane at: {}", key, address);
@@ -236,6 +237,52 @@ Supported handlers are `on_linked`, `on_synced`, `on_unlinked` and `on_failed`. 
 3. `on_unlinked` and `on_failed`:
 ```rust
 (context: HandlerContext<ExampleAgent>, key: K, address: Address<&str>) -> impl HandlerAction<ExampleAgent, Completion = LinkClosedResponse>
+```
+
+The `on_unlinked` and `on_failed` handlers return a `LinkClosedResponse`. This is an enumeration with the values `Retry`, `Abandon` and `Delete`. These have the following effects:
+
+1. `Retry`: An attempt will be made to reconnect the link (TODO: this is not implemented yet.)
+2. `Abandon`: The link will be abandoned by the entry will still remain in the map. (This is the default.)
+3. `Delete`: The link will be abandoned and the entry deleted from the map.
+
+It is possible to add a shared state to a join value lifecycle in a similar way to other downlinks types (see [Downlinks](downlink.md)). Note that this state is shared between the event handlers of a single instance of the lifecycle and not between all instances. If you have state that needs to be shared between all instances it must be stored inside an `Arc`.
+
+Join map lane events
+--------------------
+
+A join map lane supports all of the events supported by a map lane (`on_update`, `on_remove` and `on_clear`).
+
+Additionally, it is possible to attach events to the downlinks used for each key of the join value lane. To do this, add the following to the agent lifecycle implementation:
+
+```rust
+#[join_map_lifecycle(example_join_map)]
+fn register_lifecycle(
+    &self,
+    context: JoinMapContext<ExampleAgent, String, String, i32>,
+) -> impl JoinMapLaneLifecycle<String, String, ExampleAgent> + 'static {
+    context.builder()
+        .on_linked(|context, link_key, address| context.effect(move || {
+            println!("Linked downlink for link: {} from lane at: {}", key, address);
+        }))
+        .done()
+}
+```
+
+An instance of the lifecycle will be created for each link that is attached to the lane so it is necessary that the lifecycle is `Clone` and has a `static` lifetime.
+
+Supported handlers are `on_linked`, `on_synced`, `on_unlinked` and `on_failed`. These take closures with the following signatures:
+
+1. `on_linked`: 
+```rust
+(context: HandlerContext<ExampleAgent>, link_key: L, address: Address<&str>) -> impl EventHandler<ExampleAgent>
+```
+2. `on_synced`:
+```rust
+(context: HandlerContext<ExampleAgent>, link_key: L, address: Address<&str>, keys: &HashSet<K>) -> impl EventHandler<ExampleAgent>
+```
+3. `on_unlinked` and `on_failed`:
+```rust
+(context: HandlerContext<ExampleAgent>, link_key: L, address: Address<&str>, keys: HashSet<K>) -> impl HandlerAction<ExampleAgent, Completion = LinkClosedResponse>
 ```
 
 The `on_unlinked` and `on_failed` handlers return a `LinkClosedResponse`. This is an enumeration with the values `Retry`, `Abandon` and `Delete`. These have the following effects:
