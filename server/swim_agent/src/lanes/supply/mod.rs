@@ -39,7 +39,6 @@ mod tests;
 struct SupplyLaneInner<T> {
     sync_queue: VecDeque<Uuid>,
     event_queue: VecDeque<T>,
-    next: EventOrSync,
 }
 
 impl<T> Default for SupplyLaneInner<T> {
@@ -47,7 +46,6 @@ impl<T> Default for SupplyLaneInner<T> {
         SupplyLaneInner {
             sync_queue: Default::default(),
             event_queue: Default::default(),
-            next: Default::default(),
         }
     }
 }
@@ -90,58 +88,7 @@ impl<T> AgentItem for SupplyLane<T> {
     }
 }
 
-#[derive(Debug, Default)]
-enum EventOrSync {
-    #[default]
-    Event,
-    Sync,
-}
-
-impl EventOrSync {
-    fn negate(&mut self) {
-        match self {
-            EventOrSync::Event => *self = EventOrSync::Sync,
-            EventOrSync::Sync => *self = EventOrSync::Event,
-        }
-    }
-}
-
 const INFALLIBLE_SER: &str = "Serializing a value to recon should be infallible.";
-
-fn write<F, I, T, O>(
-    buffer: &mut BytesMut,
-    poll_queue: &mut VecDeque<I>,
-    on_empty_queue: &mut VecDeque<O>,
-    state: &mut EventOrSync,
-    wrap: F,
-) -> Option<WriteResult>
-where
-    F: Fn(I) -> LaneResponse<T>,
-    T: StructuralWritable,
-{
-    match poll_queue.pop_front() {
-        Some(elem) => {
-            let mut encoder = ValueLaneResponseEncoder::default();
-            encoder.encode(wrap(elem), buffer).expect(INFALLIBLE_SER);
-            if !on_empty_queue.is_empty() {
-                state.negate();
-                Some(WriteResult::DataStillAvailable)
-            } else if poll_queue.is_empty() {
-                Some(WriteResult::Done)
-            } else {
-                Some(WriteResult::DataStillAvailable)
-            }
-        }
-        None => {
-            if on_empty_queue.is_empty() {
-                Some(WriteResult::Done)
-            } else {
-                state.negate();
-                None
-            }
-        }
-    }
-}
 
 impl<T> LaneItem for SupplyLane<T>
 where
@@ -153,34 +100,29 @@ where
         let SupplyLaneInner {
             sync_queue,
             event_queue,
-            next,
         } = &mut *guard;
 
-        loop {
-            match next {
-                EventOrSync::Event => {
-                    if let Some(result) = write(
-                        buffer,
-                        event_queue,
-                        sync_queue,
-                        next,
-                        LaneResponse::<T>::event,
-                    ) {
-                        return result;
-                    }
-                }
-                EventOrSync::Sync => {
-                    if let Some(result) = write(
-                        buffer,
-                        sync_queue,
-                        event_queue,
-                        next,
-                        LaneResponse::<T>::synced,
-                    ) {
-                        return result;
-                    }
+        match sync_queue.pop_front() {
+            Some(remote) => {
+                let mut encoder = ValueLaneResponseEncoder::default();
+                encoder
+                    .encode(LaneResponse::<T>::synced(remote), buffer)
+                    .expect(INFALLIBLE_SER);
+            }
+            None => {
+                if let Some(event) = event_queue.pop_front() {
+                    let mut encoder = ValueLaneResponseEncoder::default();
+                    encoder
+                        .encode(LaneResponse::event(event), buffer)
+                        .expect(INFALLIBLE_SER);
                 }
             }
+        }
+
+        if !event_queue.is_empty() || !sync_queue.is_empty() {
+            WriteResult::DataStillAvailable
+        } else {
+            WriteResult::Done
         }
     }
 }

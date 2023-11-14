@@ -223,10 +223,10 @@ fn write_multiple() {
     assert_eq!(
         messages,
         vec![
-            LaneResponse::StandardEvent(13),
             LaneResponse::Synced(SYNC_ID),
-            LaneResponse::StandardEvent(14),
             LaneResponse::Synced(SYNC_ID2),
+            LaneResponse::StandardEvent(13),
+            LaneResponse::StandardEvent(14),
             LaneResponse::StandardEvent(15),
         ]
     );
