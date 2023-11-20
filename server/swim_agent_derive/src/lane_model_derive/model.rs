@@ -103,6 +103,7 @@ pub enum ItemSpec<'a> {
     DemandMap(&'a Type, &'a Type),
     Value(ItemKind, &'a Type),
     Map(ItemKind, &'a Type, &'a Type),
+    Supply(&'a Type),
     JoinValue(&'a Type, &'a Type),
     JoinMap(&'a Type, &'a Type, &'a Type),
     Http(HttpLaneSpec<'a>),
@@ -118,6 +119,7 @@ impl<'a> ItemSpec<'a> {
             ItemSpec::Map(ItemKind::Lane, k, v) => Some(WarpLaneSpec::Map(k, v)),
             ItemSpec::JoinValue(k, v) => Some(WarpLaneSpec::JoinValue(k, v)),
             ItemSpec::JoinMap(l, k, v) => Some(WarpLaneSpec::JoinMap(l, k, v)),
+            ItemSpec::Supply(t) => Some(WarpLaneSpec::Supply(t)),
             _ => None,
         }
     }
@@ -140,6 +142,7 @@ impl<'a> ItemSpec<'a> {
             ItemSpec::Demand(_) => ItemKind::Lane,
             ItemSpec::DemandMap(_, _) => ItemKind::Lane,
             ItemSpec::Http(_) => ItemKind::Lane,
+            ItemSpec::Supply(_) => ItemKind::Lane,
         }
     }
 }
@@ -151,6 +154,7 @@ pub enum WarpLaneSpec<'a> {
     Demand(&'a Type),
     DemandMap(&'a Type, &'a Type),
     Value(&'a Type),
+    Supply(&'a Type),
     Map(&'a Type, &'a Type),
     JoinValue(&'a Type, &'a Type),
     JoinMap(&'a Type, &'a Type, &'a Type),
@@ -166,7 +170,10 @@ pub struct HttpLaneSpec<'a> {
 
 impl<'a> ItemSpec<'a> {
     pub fn is_stateful(&self) -> bool {
-        !matches!(self, ItemSpec::Command(_) | ItemSpec::Demand(_))
+        !matches!(
+            self,
+            ItemSpec::Command(_) | ItemSpec::Demand(_) | ItemSpec::Supply(_)
+        )
     }
 }
 
@@ -345,6 +352,7 @@ const MAP_LANE_NAME: &str = "MapLane";
 const MAP_STORE_NAME: &str = "MapStore";
 const JOIN_VALUE_LANE_NAME: &str = "JoinValueLane";
 const JOIN_MAP_LANE_NAME: &str = "JoinMapLane";
+const SUPPLY_LANE_NAME: &str = "SupplyLane";
 const HTTP_LANE_NAME: &str = "HttpLane";
 const SIMPLE_HTTP_LANE_NAME: &str = "SimpleHttpLane";
 
@@ -453,6 +461,17 @@ fn extract_lane_model(field: &Field) -> Validation<ItemModel<'_>, Errors<syn::Er
                             )),
                             Err(e) => Validation::fail(Errors::of(e)),
                         },
+                        SUPPLY_LANE_NAME => {
+                            match single_param(arguments) {
+                                Ok(param) => Validation::valid(ItemModel::new(
+                                    fld_name,
+                                    ItemSpec::Supply(param),
+                                    ItemFlags::TRANSIENT, //Supply lanes are always transient.
+                                    transform,
+                                )),
+                                Err(e) => Validation::fail(Errors::of(e)),
+                            }
+                        }
                         name @ (HTTP_LANE_NAME | SIMPLE_HTTP_LANE_NAME) => {
                             match http_params(arguments, name == SIMPLE_HTTP_LANE_NAME) {
                                 Ok(spec) => Validation::valid(ItemModel::new(

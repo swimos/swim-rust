@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use std::collections::HashMap;
-
 use std::fmt::Write;
+
 use swim::agent::agent_model::ItemFlags;
 use swim::agent::lanes::{CommandLane, MapLane, ValueLane};
 use swim::agent::model::MapMessage;
@@ -25,7 +25,7 @@ use swim::agent::AgentLaneModel;
 use swim_agent::agent_model::{ItemDescriptor, ItemSpec};
 use swim_agent::lanes::http::Recon;
 use swim_agent::lanes::{
-    DemandLane, DemandMapLane, HttpLane, JoinMapLane, JoinValueLane, SimpleHttpLane,
+    DemandLane, DemandMapLane, HttpLane, JoinMapLane, JoinValueLane, SimpleHttpLane, SupplyLane,
 };
 use swim_agent::reexport::bytes::Bytes;
 use swim_agent::stores::{MapStore, ValueStore};
@@ -230,6 +230,16 @@ fn single_demand_map_lane() {
 }
 
 #[test]
+fn single_supply_lane() {
+    #[derive(AgentLaneModel)]
+    struct SingleSupplyLane {
+        lane: SupplyLane<i32>,
+    }
+
+    check_agent::<SingleSupplyLane>(vec![transient_lane(0, "lane", WarpLaneKind::Supply)]);
+}
+
+#[test]
 fn two_value_lanes() {
     #[derive(AgentLaneModel)]
     struct TwoValueLanes {
@@ -314,6 +324,20 @@ fn two_demand_lanes() {
 }
 
 #[test]
+fn two_supply_lanes() {
+    #[derive(AgentLaneModel)]
+    struct TwoSupplyLanes {
+        first: SupplyLane<i32>,
+        second: SupplyLane<i32>,
+    }
+
+    check_agent::<TwoSupplyLanes>(vec![
+        transient_lane(0, "first", WarpLaneKind::Supply),
+        transient_lane(1, "second", WarpLaneKind::Supply),
+    ]);
+}
+
+#[test]
 fn two_demand_map_lanes() {
     #[derive(AgentLaneModel)]
     struct TwoDemandMapLanes {
@@ -369,19 +393,21 @@ fn multiple_lanes() {
         eighth: DemandMapLane<i32, i32>,
         ninth: SimpleHttpLane<i32>,
         tenth: JoinMapLane<i32, i32, i32>,
+        eleventh: SupplyLane<i32>,
     }
 
     check_agent::<MultipleLanes>(vec![
         persistent_lane(0, "first", WarpLaneKind::Value),
-        persistent_lane(2, "third", WarpLaneKind::Value),
-        transient_lane(4, "fifth", WarpLaneKind::Command),
-        transient_lane(6, "seventh", WarpLaneKind::Demand),
         persistent_lane(1, "second", WarpLaneKind::Map),
+        persistent_lane(2, "third", WarpLaneKind::Value),
         persistent_lane(3, "fourth", WarpLaneKind::Map),
+        transient_lane(4, "fifth", WarpLaneKind::Command),
         transient_lane(5, "sixth", WarpLaneKind::JoinValue),
+        transient_lane(6, "seventh", WarpLaneKind::Demand),
         transient_lane(7, "eighth", WarpLaneKind::DemandMap),
         http_lane(8, "ninth"),
         transient_lane(9, "tenth", WarpLaneKind::JoinMap),
+        transient_lane(10, "eleventh", WarpLaneKind::Supply),
     ]);
 }
 
@@ -490,6 +516,21 @@ fn demand_lane_tagged_transient() {
     check_agent::<TwoDemandLanes>(vec![
         transient_lane(0, "first", WarpLaneKind::Demand),
         transient_lane(1, "second", WarpLaneKind::Demand),
+    ]);
+}
+
+#[test]
+fn supply_lane_tagged_transient() {
+    #[derive(AgentLaneModel)]
+    struct TwoSupplyLanes {
+        #[lane(transient)]
+        first: SupplyLane<i32>,
+        second: SupplyLane<i32>,
+    }
+
+    check_agent::<TwoSupplyLanes>(vec![
+        transient_lane(0, "first", WarpLaneKind::Supply),
+        transient_lane(1, "second", WarpLaneKind::Supply),
     ]);
 }
 
@@ -659,11 +700,12 @@ fn two_general_http_lanes() {
 }
 
 mod isolated {
+    use swim_api::lane::WarpLaneKind;
+    use swim_api::store::StoreKind;
+
     use crate::check_agent;
 
     use super::{http_lane, persistent_lane, persistent_store, transient_lane};
-    use swim_api::lane::WarpLaneKind;
-    use swim_api::store::StoreKind;
 
     #[test]
     fn multiple_items_qualified() {

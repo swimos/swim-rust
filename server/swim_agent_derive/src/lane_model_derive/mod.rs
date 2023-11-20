@@ -407,6 +407,9 @@ impl<'a> FieldInitializer<'a> {
             ItemSpec::DemandMap(_, _) => {
                 quote!(#name: #root::lanes::DemandMapLane::new(#ordinal))
             }
+            ItemSpec::Supply(_) => {
+                quote!(#name: #root::lanes::SupplyLane::new(#ordinal))
+            }
             ItemSpec::Value(ItemKind::Lane, _) => {
                 quote!(#name: #root::lanes::ValueLane::new(#ordinal, ::core::default::Default::default()))
             }
@@ -459,7 +462,8 @@ impl<'a> HandlerType<'a> {
             WarpLaneSpec::Demand(_)
             | WarpLaneSpec::DemandMap(_, _)
             | WarpLaneSpec::JoinValue(_, _)
-            | WarpLaneSpec::JoinMap(_, _, _) => {
+            | WarpLaneSpec::JoinMap(_, _, _)
+            | WarpLaneSpec::Supply(_) => {
                 quote!(#root::event_handler::UnitHandler)
             }
         }
@@ -493,6 +497,9 @@ impl<'a> SyncHandlerType<'a> {
             }
             WarpLaneSpec::JoinMap(l, k, v) => {
                 quote!(#root::lanes::join_map::JoinMapLaneSync<#agent_name, #l, #k, #v>)
+            }
+            WarpLaneSpec::Supply(t) => {
+                quote!(#root::lanes::supply::SupplyLaneSync<#agent_name, #t>)
             }
         }
     }
@@ -553,7 +560,8 @@ impl<'a> WarpLaneHandlerMatch<'a> {
             WarpLaneSpec::Demand(_)
             | WarpLaneSpec::DemandMap(_, _)
             | WarpLaneSpec::JoinValue(_, _)
-            | WarpLaneSpec::JoinMap(_, _, _) => {
+            | WarpLaneSpec::JoinMap(_, _, _)
+            | WarpLaneSpec::Supply(_) => {
                 quote!(#root::event_handler::UnitHandler::default())
             }
         };
@@ -658,6 +666,9 @@ impl<'a> SyncHandlerMatch<'a> {
             }
             WarpLaneSpec::JoinMap(l, k, v) => {
                 quote!(#root::lanes::join_map::JoinMapLaneSync::<#agent_name, #l, #k, #v>::new(|agent: &#agent_name| &agent.#name, id))
+            }
+            WarpLaneSpec::Supply(ty) => {
+                quote!(#root::lanes::supply::SupplyLaneSync::<#agent_name, #ty>::new(|agent: &#agent_name| &agent.#name, id))
             }
         };
         quote! {
@@ -810,6 +821,9 @@ impl<'a> LaneSpecInsert<'a> {
                 quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::JoinMap, flags: #flags })
             }
             ItemSpec::Http(_) => quote!(#root::agent_model::ItemDescriptor::Http),
+            ItemSpec::Supply(_) => {
+                quote!(#root::agent_model::ItemDescriptor::WarpLane { kind: #root::agent_model::WarpLaneKind::Supply, flags: #flags })
+            }
         };
         let external_lane_name = model.external_literal();
         let lifecycle_lane_name = model.lifecycle_literal();

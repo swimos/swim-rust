@@ -29,6 +29,7 @@ The derive macro for `AgentLaneModel` can be applied to any struct type where al
 * Join Value Lanes: `swim::agent::lanes::JoinValueLane`.
 * Join Map Lanes: `swim::agent::lanes::JoinMapLane`.
 * HTTP Lanes: `swim::agent::lanes::HttpLane` (or the shorthand `swim::agent::lanes::SimpleHttpLane`).
+* Supply Lanes: `swim::agent::lanes::SupplyLane`.
 
 The supported store types are:
 

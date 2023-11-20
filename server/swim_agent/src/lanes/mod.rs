@@ -19,6 +19,8 @@ pub mod http;
 mod join;
 pub mod map;
 mod queues;
+
+pub mod supply;
 pub mod value;
 
 pub use join::map as join_map;
@@ -38,6 +40,7 @@ pub use self::{
     join_map::JoinMapLane,
     join_value::JoinValueLane,
     map::MapLane,
+    supply::SupplyLane,
     value::ValueLane,
 };
 
