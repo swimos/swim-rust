@@ -1,30 +1,28 @@
-mod connector;
-
-use crate::connector::run_connector;
-use client::{ClientHandle, SwimClientBuilder};
-use control_ir::{AgentSpec, ConnectorSpec, DeploySpec};
-use futures::StreamExt;
-use futures_util::future::BoxFuture;
-use futures_util::stream::FuturesUnordered;
-use futures_util::FutureExt;
-use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::str::FromStr;
-use swim_server_app::error::ServerError;
-use swim_server_app::{Server, ServerBuilder, ServerHandle};
-use swim_utilities::routing::route_pattern::RoutePattern;
-use swim_wasm_host::runtime::wasm::WasmModuleRuntime;
-use swim_wasm_host::wasm::{Config, Engine, Linker};
-use swim_wasm_host::WasmAgentModel;
+
+use futures::StreamExt;
+use futures_util::stream::FuturesUnordered;
+use futures_util::FutureExt;
+use serde::de::DeserializeOwned;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::{join, select};
-use tracing::{debug, error, info, info_span, trace, Instrument};
+use tracing::{debug, error, info, trace, Instrument};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::EnvFilter;
 use warp::http::StatusCode;
 use warp::{Buf, Filter, Stream};
+
+use client::SwimClientBuilder;
+use control_ir::{AgentSpec, DeploySpec};
+use swim_server_app::error::ServerError;
+use swim_server_app::{Server, ServerBuilder, ServerHandle};
+use swim_utilities::routing::route_pattern::RoutePattern;
+use swim_wasm_connector_host::ConnectorPool;
+use swim_wasm_host::wasm::{Config, Engine, Linker};
+use swim_wasm_host::{WasmAgentModel, WasmAgentState, WasmModule};
 
 #[tokio::main]
 async fn main() {
@@ -47,9 +45,10 @@ async fn main() {
     join!(http_server, runtime);
 }
 
-struct SwimServerHandle {
+struct EnvHandle {
     server: ServerHandle,
-    routes: HashMap<String, watch::Sender<WasmModuleRuntime>>,
+    routes: HashMap<String, watch::Sender<WasmModule<WasmAgentState>>>,
+    connectors: ConnectorPool,
 }
 
 fn build_runtime(
@@ -58,7 +57,7 @@ fn build_runtime(
 ) -> Result<
     (
         ServerBuilder,
-        HashMap<String, watch::Sender<WasmModuleRuntime>>,
+        HashMap<String, watch::Sender<WasmModule<WasmAgentState>>>,
     ),
     String,
 > {
@@ -81,7 +80,7 @@ fn build_runtime(
             Err(e) => return Err(e.to_string()),
         };
 
-        let module = match WasmModuleRuntime::new(&engine, Linker::new(&engine), module) {
+        let module = match WasmModule::new(&engine, Linker::new(&engine), module) {
             Ok(module) => module,
             Err(e) => return Err(e.to_string()),
         };
@@ -109,7 +108,6 @@ enum RuntimeEvent {
 
 async fn run_runtime(mut rx: mpsc::Receiver<RuntimeRequest>) {
     let mut server_tasks = FuturesUnordered::new();
-    let mut connector_tasks = FuturesUnordered::new();
     let mut handles = HashMap::new();
 
     let (client, mut client_task) = SwimClientBuilder::new(Default::default()).build().await;
@@ -125,12 +123,6 @@ async fn run_runtime(mut rx: mpsc::Receiver<RuntimeRequest>) {
                     result: result.1
                 }
             }),
-            connector = connector_tasks.next(), if !connector_tasks.is_empty() => connector.map(|result: (String, anyhow::Result<()>) | {
-                RuntimeEvent::ConnectorComplete {
-                    name: result.0,
-                    result: result.1
-                }
-            }),
             client = &mut client_task => {
                 error!("Client stopped");
                 return;
@@ -142,7 +134,7 @@ async fn run_runtime(mut rx: mpsc::Receiver<RuntimeRequest>) {
                 trace!(?request, "Server runtime event received");
                 match request {
                     RuntimeRequest::Stop { name, tx } => match handles.remove(&name) {
-                        Some(SwimServerHandle { mut server, .. }) => {
+                        Some(EnvHandle { mut server, .. }) => {
                             server.stop();
                             tx.send(Ok(())).unwrap();
                         }
@@ -174,22 +166,21 @@ async fn run_runtime(mut rx: mpsc::Receiver<RuntimeRequest>) {
                                 let task_name = name.clone();
                                 server_tasks.push(async move { (task_name, task.await) });
 
-                                debug!(?name, "Deployed server");
+                                let pool = ConnectorPool::build(port).await;
+                                pool.deploy(connectors).await;
 
                                 handles.insert(
-                                    name,
-                                    SwimServerHandle {
+                                    name.clone(),
+                                    EnvHandle {
                                         server: handle,
                                         routes,
+                                        connectors: pool,
                                     },
                                 );
-                                deploy_connectors(
-                                    client.handle(),
-                                    port,
-                                    &mut connector_tasks,
-                                    connectors,
-                                );
+
                                 tx.send(Ok(())).unwrap();
+
+                                debug!(?name, "Deployed server");
                             }
                             Err(e) => {
                                 tx.send(Err(e.to_string())).unwrap();
@@ -207,27 +198,6 @@ async fn run_runtime(mut rx: mpsc::Receiver<RuntimeRequest>) {
             }
             None => break,
         }
-    }
-}
-
-fn deploy_connectors(
-    client: ClientHandle,
-    port: usize,
-    connector_tasks: &mut FuturesUnordered<BoxFuture<'static, (String, anyhow::Result<()>)>>,
-    connectors: HashMap<String, ConnectorSpec>,
-) {
-    for (name, spec) in connectors {
-        let kind = spec.kind();
-        debug!(?kind, "Deploying connector");
-
-        let span = info_span!("Connector task", name = ?name);
-        let client = client.clone();
-
-        connector_tasks.push(
-            async move { (name, run_connector(port, client, spec).await) }
-                .instrument(span)
-                .boxed(),
-        );
     }
 }
 

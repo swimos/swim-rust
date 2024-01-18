@@ -25,6 +25,7 @@ use swim_model::{Attr, Blob, Item, Text, Value};
 
 #[doc(hidden)]
 pub use swim_form_derive::StructuralWritable;
+#[cfg(feature = "time")]
 use swim_model::time::Timestamp;
 use swim_utilities::routing::route_uri::RouteUri;
 
@@ -910,6 +911,7 @@ macro_rules! map_impl {
 map_impl!(HashMap<K, V, S>);
 map_impl!(BTreeMap<K, V>);
 
+#[cfg(feature = "time")]
 impl StructuralWritable for Timestamp {
     fn write_with<W: StructuralWriter>(
         &self,

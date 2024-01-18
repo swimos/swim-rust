@@ -14,9 +14,9 @@ json = ["agent", "swim_agent/json"]
 
 [dependencies]
 swim_utilities = { path = "../swim_utilities", features = ["io", "text"] }
-swim_api = { path = "../api/swim_api" }
+swim_api = { path = "../api/swim_api", features = ["log_api"] }
 swim_model = { path = "../api/swim_model" }
-swim_form = { path = "../api/swim_form", optional = true }
+swim_form = { path = "../api/swim_form", optional = true, features = ["time"] }
 swim_recon = { path = "../api/formats/swim_recon", features = ["async_parser"] }
 swim_server_app = { path = "../server/swim_server_app", optional = true }
 swim_agent = { path = "../server/swim_agent", optional = true }

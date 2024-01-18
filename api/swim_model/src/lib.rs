@@ -28,6 +28,7 @@ mod num;
 #[cfg(test)]
 mod tests;
 mod text;
+#[cfg(feature = "time")]
 pub mod time;
 mod value;
 

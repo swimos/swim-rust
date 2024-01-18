@@ -49,6 +49,4 @@ pub trait WasmGuestRuntime: Send + 'static {
 
     // todo replace with async fn when stabilised
     fn stop(self, ptr: WasmAgentPointer) -> BoxFuture<'static, Result<(), WasmError>>;
-
-    fn read(&mut self) -> Result<Vec<u8>, WasmError>;
 }

@@ -62,7 +62,7 @@ impl NewAgentCommand {
         write_config(config_file_path()?, &config)?;
         print_success(format!("Created new agent: {name}"));
 
-        add_member(&format!("agents/{name}")).context("Wildcard agent directory in manifest")?;
+        add_member(&format!("agents/{name}"))?;
 
         Ok(())
     }

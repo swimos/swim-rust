@@ -43,9 +43,10 @@ members = [
     "wasm/test/simple",
     "wasm/test/simple/simple_guest",
     "wasm/test/wasm_test_fixture",
-    "wasm/swim_wasm",
     "wasm/control/*",
-    "wasm/sender"
+    "wasm/sender",
+    "wasm/wasm_utils",
+    "wasm/wasm_utils"
 ]
 
 exclude = [

@@ -4,8 +4,12 @@ version = "0.1.0"
 authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
+[features]
+default = []
+time = ["chrono"]
+
 [dependencies]
-chrono = { workspace = true }
+chrono = { workspace = true, optional = true }
 bytes = { workspace = true }
 either = { workspace = true }
 num-bigint = { workspace = true }

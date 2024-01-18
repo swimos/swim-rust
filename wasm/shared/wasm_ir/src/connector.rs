@@ -12,15 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::connector::kafka::run_kafka_connector;
-use anyhow::Result;
-use client::ClientHandle;
-use control_ir::ConnectorSpec;
+use serde::{Deserialize, Serialize};
 
-mod kafka;
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConnectorMessage {
+    pub node: String,
+    pub lane: String,
+    pub data: String,
+}
 
-pub async fn run_connector(port: usize, client: ClientHandle, spec: ConnectorSpec) -> Result<()> {
-    match spec {
-        ConnectorSpec::Kafka(spec) => run_kafka_connector(client, port, spec).await,
-    }
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConnectorMessageRef<'a> {
+    pub node: &'a str,
+    pub lane: &'a str,
+    pub data: String,
 }

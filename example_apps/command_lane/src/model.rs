@@ -23,8 +23,3 @@ pub enum Instruction {
     #[form(tag = "stop")]
     Stop,
 }
-
-#[test]
-fn t() {
-    println!("{}", Instruction::Add(1).as_value());
-}

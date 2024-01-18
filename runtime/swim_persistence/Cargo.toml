@@ -11,7 +11,7 @@ rocks = ["rocksdb", "swim_store/rocks"]
 swim_store = { path = "../../swim_store" }
 rocksdb = { workspace = true, optional = true }
 swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger", "future"] }
-swim_model = { path = "../../api/swim_model" }
+swim_model = { path = "../../api/swim_model", features = ["time"] }
 swim_form = { path = "../../api/swim_form" }
 swim_api = { path = "../../api/swim_api" }
 tokio = { workspace = true, features = ["sync"] }

@@ -2,8 +2,9 @@
 
 pub use spec::*;
 
-pub mod requests;
+pub mod agent;
 mod spec;
 
+pub mod connector;
 /// Web Assembly Procedure Calls.
 pub mod wpc;

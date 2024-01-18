@@ -10,6 +10,7 @@ swim_api = { path = "../../../api/swim_api" }
 swim_utilities = { path = "../../../swim_utilities", features = ["text"] }
 swim_model = { path = "../../../api/swim_model" }
 interval_stream = { path = "../../shared/interval_stream" }
+wasm_utils = { path = "../../wasm_utils" }
 
 thiserror = { workspace = true }
 futures = { workspace = true }

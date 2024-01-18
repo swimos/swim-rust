@@ -18,7 +18,7 @@ use uuid::Uuid;
 use interval_stream::ScheduleDef;
 use swim_model::Text;
 
-use crate::requests::GuestLaneResponses;
+use crate::agent::GuestLaneResponses;
 use crate::wpc::WasmProcedure;
 use crate::{AgentSpec, LaneSpec};
 

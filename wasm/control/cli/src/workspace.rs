@@ -38,6 +38,7 @@ pub struct WorkspaceConfig {
     remote: Url,
     deploy_port: usize,
     connectors: HashSet<String>,
+    modules: HashSet<String>,
     // name -> uri
     agents: HashMap<String, String>,
 }
@@ -61,11 +62,21 @@ impl WorkspaceConfig {
         }
     }
 
+    pub fn add_module(&mut self, name: &String) -> bool {
+        if !self.modules.contains(name) {
+            self.modules.insert(name.clone());
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn new(remote: Url, deploy_port: usize) -> WorkspaceConfig {
         WorkspaceConfig {
             remote,
             deploy_port,
             connectors: HashSet::default(),
+            modules: Default::default(),
             agents: HashMap::default(),
         }
     }
@@ -158,6 +169,7 @@ members = []
 
 [workspace.dependencies]
 swim_wasm_guest = { path = "../../guest/swim_wasm_guest" }
+swim_wasm_connector = { path = "../../guest/swim_wasm_connector" }
 swim_utilities = { path = "../../../swim_utilities" }
 bincode = "1.3.3""#;
         fs::write(cargo_file_path, cargo_contents)?;
@@ -178,6 +190,7 @@ impl DeployCommand {
             deploy_port,
             connectors,
             agents,
+            modules,
         } = load_workspace_config()?;
 
         if agents.is_empty() {

@@ -2,8 +2,8 @@ use bytes::BytesMut;
 use ratchet::{NoExt, WebSocket};
 use tokio::net::TcpStream;
 
-#[tokio::test]
-async fn t() {
+#[tokio::main]
+async fn main() {
     let stream = TcpStream::connect("127.0.0.1:6363").await.unwrap();
     let mut client = ratchet::subscribe(Default::default(), stream, "ws://localhost:6363")
         .await

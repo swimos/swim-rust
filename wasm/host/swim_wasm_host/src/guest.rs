@@ -14,7 +14,7 @@
 
 use bytes::{BufMut, BytesMut};
 
-use wasm_ir::requests::HostRequest;
+use wasm_ir::agent::HostRequest;
 use wasm_ir::AgentSpec;
 
 use crate::error::WasmAgentError;
@@ -55,14 +55,6 @@ impl<R> WasmGuestAgent<R> {
         bincode::serialize_into(&mut writer, &req).expect("Failed to serialize host request");
 
         runtime.dispatch(*ptr, writer.into_inner()).await
-    }
-
-    pub fn read(&mut self) -> Result<Vec<u8>, WasmError>
-    where
-        R: WasmGuestRuntime,
-    {
-        let WasmGuestAgent { runtime, .. } = self;
-        runtime.read()
     }
 
     pub fn stop(self)

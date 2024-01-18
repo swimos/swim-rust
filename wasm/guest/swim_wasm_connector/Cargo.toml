@@ -1,0 +1,11 @@
+[package]
+name = "swim_wasm_connector"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+guest_derive = { path = "../guest_derive" }
+wasm_ir = { path = "../../shared/wasm_ir" }
+bincode = { workspace = true }
+swim_form = { path = "../../../api/swim_form" }
+swim_recon = { path = "../../../api/formats/swim_recon" }

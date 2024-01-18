@@ -12,21 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::UnsafeCell;
-use std::path::Path;
-use std::sync::Arc;
-
 use bytes::BytesMut;
 use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use tokio::sync::{mpsc, oneshot};
 use wasmtime::{
-    AsContextMut, Caller, Engine, Extern, Func, Instance, Linker, Memory, MemoryAccessError,
-    Module, Store, TypedFunc, Val,
+    AsContextMut, Caller, Extern, Func, Instance, Memory, MemoryAccessError, Store, TypedFunc, Val,
 };
 
+use wasm_ir::agent::GuestRuntimeEvent;
+use wasm_utils::{SharedMemory, WasmModule};
+
 use crate::runtime::{WasmAgentPointer, WasmGuestRuntime, WasmGuestRuntimeFactory};
-use crate::{GuestRuntimeEvent, WasmAgentState};
+use crate::WasmAgentState;
 
 mod vtable {
     pub const ALLOC_EXPORT: &str = "alloc";
@@ -45,41 +43,6 @@ mod vtable {
     }
 }
 
-#[derive(Clone)]
-pub struct WasmModuleRuntime {
-    engine: Engine,
-    module: Module,
-    linker: Linker<WasmAgentState>,
-}
-
-impl WasmModuleRuntime {
-    pub fn new(
-        engine: &Engine,
-        linker: Linker<WasmAgentState>,
-        bytes: impl AsRef<[u8]>,
-    ) -> Result<WasmModuleRuntime, WasmError> {
-        let module = Module::new(engine, bytes)?;
-        Ok(WasmModuleRuntime {
-            engine: engine.clone(),
-            module,
-            linker,
-        })
-    }
-
-    pub fn from_file(
-        engine: &Engine,
-        linker: Linker<WasmAgentState>,
-        file: impl AsRef<Path>,
-    ) -> Result<WasmModuleRuntime, WasmError> {
-        let module = Module::from_file(engine, file)?;
-        Ok(WasmModuleRuntime {
-            engine: engine.clone(),
-            module,
-            linker,
-        })
-    }
-}
-
 pub struct UninitialisedWasmAgent {
     runtime: WasmAgentRuntime,
 }
@@ -91,7 +54,7 @@ enum State {
 }
 
 pub struct WasmAgentRuntime {
-    module: WasmModuleRuntime,
+    module: WasmModule<WasmAgentState>,
     store: Store<WasmAgentState>,
     instance: Instance,
     shared_memory: SharedMemory,
@@ -103,11 +66,10 @@ pub struct WasmAgentRuntime {
 
 impl WasmAgentRuntime {
     async fn new(
-        module: WasmModuleRuntime,
-        // guest_notify: Arc<Notify>,
+        module: WasmModule<WasmAgentState>,
         channel: mpsc::Sender<(GuestRuntimeEvent, oneshot::Sender<BytesMut>)>,
     ) -> Result<WasmAgentRuntime, WasmError> {
-        let WasmModuleRuntime {
+        let WasmModule {
             engine,
             module,
             mut linker,
@@ -219,7 +181,7 @@ impl WasmAgentRuntime {
             .ok_or_else(|| wasmtime::Error::msg("Missing alloc"))?;
 
         Ok(WasmAgentRuntime {
-            module: WasmModuleRuntime {
+            module: WasmModule {
                 engine,
                 module,
                 linker,
@@ -328,14 +290,9 @@ impl WasmGuestRuntime for WasmAgentRuntime {
             }
         })
     }
-
-    fn read(&mut self) -> Result<Vec<u8>, WasmError> {
-        let data = unsafe { self.shared_memory.read(&mut self.store)? };
-        Ok(data)
-    }
 }
 
-impl WasmGuestRuntimeFactory for WasmModuleRuntime {
+impl WasmGuestRuntimeFactory for WasmModule<WasmAgentState> {
     type CreateFuture = BoxFuture<'static, Result<Self::AgentRuntime, WasmError>>;
     type AgentRuntime = WasmAgentRuntime;
 
@@ -345,66 +302,4 @@ impl WasmGuestRuntimeFactory for WasmModuleRuntime {
     ) -> Self::CreateFuture {
         WasmAgentRuntime::new(self.clone(), channel).boxed()
     }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct SharedMemory {
-    inner: Arc<UnsafeCell<Option<SharedMemoryInner>>>,
-}
-
-impl SharedMemory {
-    async unsafe fn write<A>(
-        &mut self,
-        store: &mut A,
-        memory: &Memory,
-        alloc_func: &Func,
-        bytes: impl AsRef<[u8]>,
-    ) -> Result<isize, wasmtime::Error>
-    where
-        A: AsContextMut,
-        A::Data: Send,
-    {
-        let data = bytes.as_ref();
-        let mut offset = [Val::I32(0)];
-
-        alloc_func
-            .call_async(&mut *store, &[Val::from(data.len() as i32)], &mut offset)
-            .await?;
-
-        let offset = *&offset[0].unwrap_i32() as isize;
-
-        memory
-            .data_ptr(store)
-            .offset(offset)
-            .copy_from(data.as_ptr(), data.len());
-
-        Ok(offset)
-    }
-
-    unsafe fn set(&self, ptr: i32, len: i32, memory: Memory) {
-        *self.inner.get() = Some(SharedMemoryInner { ptr, len, memory });
-    }
-
-    pub unsafe fn read(&mut self, store: &mut impl AsContextMut) -> Result<Vec<u8>, WasmError> {
-        match (*self.inner.get()).take() {
-            Some(SharedMemoryInner { ptr, len, memory }) => {
-                let mut bytes = vec![0u8; len as u32 as usize];
-                memory.read(store, ptr as usize, &mut bytes)?;
-
-                Ok(bytes)
-            }
-            None => Ok(Vec::new()),
-        }
-    }
-}
-
-unsafe impl Send for SharedMemory {}
-
-unsafe impl Sync for SharedMemory {}
-
-#[derive(Debug)]
-pub struct SharedMemoryInner {
-    ptr: i32,
-    len: i32,
-    memory: Memory,
 }

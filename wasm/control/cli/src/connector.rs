@@ -18,6 +18,7 @@ use anyhow::{anyhow, Result};
 use clap::Parser;
 use url::Url;
 
+use crate::config::add_member;
 use control_ir::{ConnectorSpec, KafkaConnectorSpec, Pipe};
 
 use crate::ui::print_success;
@@ -50,6 +51,8 @@ pub struct NewKafkaConnectorCommand {
     node: String,
     #[arg(long)]
     lane: String,
+    #[arg(long)]
+    module: Option<String>,
 }
 
 impl NewKafkaConnectorCommand {
@@ -61,12 +64,20 @@ impl NewKafkaConnectorCommand {
             group,
             node,
             lane,
+            module,
         } = self;
 
         let mut config = load_workspace_config()?;
 
         if !config.add_connector(&name) {
             return Err(anyhow!("Workspace already contains connector: {name}"));
+        } else if let Some(module) = module.as_ref() {
+            if !config.add_module(module) {
+                return Err(anyhow!("Workspace already contains module: {name}"));
+            }
+
+            add_member(&format!("connectors/{name}"))?;
+            print_success(format!("Creating connector module: {module}"));
         }
 
         write_config(config_file_path()?, &config)?;
@@ -79,6 +90,7 @@ impl NewKafkaConnectorCommand {
             broker,
             topic,
             group,
+            module,
             pipe: Pipe { node, lane },
         });
         let spec_str = serde_yaml::to_string(&spec)?;

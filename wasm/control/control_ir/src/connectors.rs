@@ -39,6 +39,7 @@ pub struct KafkaConnectorSpec {
     pub broker: Url,
     pub topic: String,
     pub group: String,
+    pub module: Vec<u8>,
     pub pipe: Pipe,
 }
 

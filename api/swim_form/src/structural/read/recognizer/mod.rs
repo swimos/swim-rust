@@ -15,7 +15,9 @@
 use crate::structural::bridge::RecognizerBridge;
 use crate::structural::generic::coproduct::{CCons, CNil, Unify};
 use crate::structural::read::error::ExpectedEvent;
-use crate::structural::read::event::{NumericValue, ReadEvent};
+#[cfg(feature = "time")]
+use crate::structural::read::event::NumericValue;
+use crate::structural::read::event::ReadEvent;
 use crate::structural::read::from_model::{
     AttrBodyMaterializer, DelegateBodyMaterializer, ValueMaterializer,
 };
@@ -23,9 +25,11 @@ use crate::structural::read::recognizer::primitive::DataRecognizer;
 use crate::structural::read::ReadError;
 use crate::structural::write::StructuralWritable;
 use crate::structural::Tag;
+#[cfg(feature = "time")]
 use chrono::{LocalResult, TimeZone, Utc};
 use std::borrow::Borrow;
 use std::collections::HashMap;
+#[cfg(feature = "time")]
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -34,6 +38,7 @@ use std::option::Option::None;
 use std::str::FromStr;
 use std::sync::Arc;
 use swim_model::bigint::{BigInt, BigUint};
+#[cfg(feature = "time")]
 use swim_model::time::Timestamp;
 use swim_model::{Blob, Text, Value, ValueKind};
 use swim_utilities::routing::route_uri::RouteUri;
@@ -263,6 +268,7 @@ impl Recognizer for RouteUriRecognizer {
     fn reset(&mut self) {}
 }
 
+#[cfg(feature = "time")]
 fn check_parse_time_result<T, V>(me: LocalResult<T>, ts: &V) -> Result<T, ReadError>
 where
     V: Display,
@@ -275,6 +281,7 @@ where
     }
 }
 
+#[cfg(feature = "time")]
 impl RecognizerReadable for Timestamp {
     type Rec = TimestampRecognizer;
     type AttrRec = SimpleAttrBody<TimestampRecognizer>;
@@ -293,9 +300,11 @@ impl RecognizerReadable for Timestamp {
     }
 }
 
+#[cfg(feature = "time")]
 #[derive(Debug)]
 pub struct TimestampRecognizer;
 
+#[cfg(feature = "time")]
 impl Recognizer for TimestampRecognizer {
     type Target = Timestamp;
 

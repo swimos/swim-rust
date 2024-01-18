@@ -16,7 +16,7 @@ use bytes::BytesMut;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::requests::GuestLaneResponses;
+use crate::agent::GuestLaneResponses;
 use crate::wpc::WasmProcedure;
 
 #[derive(Debug, Deserialize, Serialize)]

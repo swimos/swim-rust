@@ -27,17 +27,18 @@ use swim_api::protocol::agent::LaneRequest;
 use swim_model::Text;
 use swim_utilities::io::byte_channel::ByteWriter;
 use swim_utilities::routing::route_uri::RouteUri;
-use wasm_ir::requests::{
+use wasm_ir::agent::{
     CancelTaskRequest, CommandEvent, GuestLaneResponses, GuestRuntimeEvent, HostRequest,
     IdentifiedLaneResponse, IdentifiedLaneResponseDecoder, LaneSyncRequest, OpenLaneRequest,
     ScheduleTaskRequest,
 };
 use wasm_ir::AgentSpec;
+use wasm_utils::SharedMemory;
+pub use wasm_utils::WasmModule;
 
 use crate::codec::{DiscriminatedLaneRequest, LaneReader};
 use crate::guest::{InitialisedWasmAgent, WasmGuestAgent};
 use crate::lanes::{open_lane, OpenLaneError};
-use crate::runtime::wasm::SharedMemory;
 use crate::runtime::{WasmGuestRuntime, WasmGuestRuntimeFactory};
 
 mod codec;
@@ -54,18 +55,15 @@ pub enum WasmAgentInitError {}
 
 pub struct WasmAgentState {
     channel: mpsc::Sender<(GuestRuntimeEvent, oneshot::Sender<BytesMut>)>,
-    // guest_notify: Arc<Notify>,
     shared_memory: SharedMemory,
 }
 
 impl WasmAgentState {
     pub fn new(
         channel: mpsc::Sender<(GuestRuntimeEvent, oneshot::Sender<BytesMut>)>,
-        /*guest_notify: Arc<Notify>, */ shared_memory: SharedMemory,
+        shared_memory: SharedMemory,
     ) -> WasmAgentState {
         WasmAgentState {
-            // store,
-            // guest_notify,
             channel,
             shared_memory,
         }

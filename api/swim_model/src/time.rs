@@ -50,7 +50,7 @@ impl Timestamp {
     /// Returns a new Timestamp representing the current date.
     pub fn now() -> Timestamp {
         // Timestamp(Utc::now())
-        unimplemented!()
+        todo!("Implement UTC support for WASM")
     }
 
     pub fn micros(&self) -> i64 {

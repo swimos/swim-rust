@@ -12,5 +12,5 @@ swim_utilities = { path = "../../../swim_utilities", features = ["errors"] }
 macro_utilities = { path = "../../../macro_utilities" }
 
 proc-macro2 = { workspace = true }
-syn = { workspace = true }
+syn = { workspace = true, features = ["full"] }
 quote = { workspace = true }

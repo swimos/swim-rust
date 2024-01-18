@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
+[features]
+default = []
+log_api = ["swim_model/time"]
+
 [dependencies]
 futures = { workspace = true }
 swim_utilities = { path = "../../swim_utilities", features = ["io", "trigger", "errors"] }

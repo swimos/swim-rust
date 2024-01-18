@@ -13,5 +13,6 @@
 // limitations under the License.
 
 pub mod lane;
+#[cfg(feature = "log_api")]
 pub mod log;
 pub mod uplink;

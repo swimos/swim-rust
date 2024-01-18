@@ -1,0 +1,21 @@
+[package]
+name = "swim_wasm_connector_host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wasm_ir = { path = "../../shared/wasm_ir" }
+client = { path = "../../../client/swim_client" }
+control_ir = { path = "../../control/control_ir"}
+wasm_utils = { path = "../../wasm_utils" }
+
+bincode = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
+wasmtime = { workspace = true }
+rdkafka = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
