@@ -50,7 +50,6 @@ use quote::ToTokens;
 use syn::{NestedMeta, Path};
 
 use syn::{Attribute, Data};
-pub use utilities::*;
 
 #[derive(Copy, Clone)]
 pub struct Symbol(pub &'static str);

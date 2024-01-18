@@ -1,0 +1,23 @@
+[package]
+name = "cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+control_ir = { path = "../control_ir" }
+wasm_compiler = { path = "../../shared/wasm_compiler" }
+
+clap = { workspace = true, features = ["derive"] }
+cargo-generate = { workspace = true }
+include_dir = { workspace = true }
+tempdir = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+reqwest = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+toml = { workspace = true }
+url = { workspace = true, features = ["serde"] }
+console = { workspace = true }
+cargo_toml = { workspace = true }
+serde_yaml = { workspace = true }
+serde_json = { workspace = true }

@@ -25,6 +25,7 @@ use lifecycle::{
     BasicEventDownlinkLifecycle, BasicValueDownlinkLifecycle, EventDownlinkLifecycle,
     ValueDownlinkLifecycle,
 };
+use swim_api::protocol::downlink::RawMessage;
 use swim_api::protocol::map::MapMessage;
 
 pub mod lifecycle;
@@ -44,15 +45,26 @@ pub struct ValueDownlinkModel<T, LC> {
     pub lifecycle: LC,
 }
 
-pub struct EventDownlinkModel<T, LC> {
-    _type: PhantomData<T>,
-    pub lifecycle: LC,
-}
-
 impl<T, LC> ValueDownlinkModel<T, LC> {
     pub fn new(handle: mpsc::Receiver<ValueDownlinkOperation<T>>, lifecycle: LC) -> Self {
         ValueDownlinkModel { handle, lifecycle }
     }
+}
+
+pub struct UntypedValueDownlinkModel<LC> {
+    pub handle: mpsc::Receiver<ValueDownlinkOperation<RawMessage>>,
+    pub lifecycle: LC,
+}
+
+impl<LC> UntypedValueDownlinkModel<LC> {
+    pub fn new(handle: mpsc::Receiver<ValueDownlinkOperation<RawMessage>>, lifecycle: LC) -> Self {
+        UntypedValueDownlinkModel { handle, lifecycle }
+    }
+}
+
+pub struct EventDownlinkModel<T, LC> {
+    _type: PhantomData<T>,
+    pub lifecycle: LC,
 }
 
 impl<T, LC> EventDownlinkModel<T, LC> {

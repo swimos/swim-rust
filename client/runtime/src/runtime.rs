@@ -289,13 +289,17 @@ async fn runtime_task<Net, Ws, Provider>(
                 req = requests_rx.recv() => {
                     match req {
                         Some(req) => RuntimeEvent::StartDownlink(req),
-                        None => break,
+                        None => {
+                            debug!("Request channel dropped");
+                            break
+                        },
                     }
                 },
                 join_result = &mut transport_task => {
                     if let Err(ref e) = join_result {
                         panic!("Transport task completed unexpectedly: {:?}", e);
                     } else {
+                        debug!("Transport task completed");
                         break;
                     }
                 }
@@ -666,6 +670,7 @@ async fn runtime_task<Net, Ws, Provider>(
                 let _r = tx.provide(result);
             }
             RuntimeEvent::Shutdown => {
+                debug!("Runtime task received shutdown signal");
                 for peer in peers.values_mut() {
                     peer.stop_all();
                 }
@@ -673,9 +678,9 @@ async fn runtime_task<Net, Ws, Provider>(
                 break;
             }
         }
-
-        debug!("Runtime task completed");
     }
+
+    debug!("Runtime task completed");
 }
 
 async fn start_downlink_runtime(

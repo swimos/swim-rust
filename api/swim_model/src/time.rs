@@ -49,7 +49,8 @@ impl From<Timestamp> for DateTime<Utc> {
 impl Timestamp {
     /// Returns a new Timestamp representing the current date.
     pub fn now() -> Timestamp {
-        Timestamp(Utc::now())
+        // Timestamp(Utc::now())
+        unimplemented!()
     }
 
     pub fn micros(&self) -> i64 {

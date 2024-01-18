@@ -22,7 +22,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use swim_model::bigint::{BigInt, BigUint};
 use swim_model::{Attr, Blob, Item, Text, Value};
-use swim_utilities::future::retryable::strategy::Quantity;
 
 #[doc(hidden)]
 pub use swim_form_derive::StructuralWritable;
@@ -30,7 +29,9 @@ use swim_model::time::Timestamp;
 use swim_utilities::routing::route_uri::RouteUri;
 
 use crate::structural::write::to_model::ValueInterpreter;
-pub mod impls;
+
+#[cfg(feature = "futures")]
+pub mod retryable;
 #[cfg(test)]
 mod tests;
 pub mod to_model;
@@ -926,26 +927,6 @@ impl StructuralWritable for Timestamp {
 
     fn num_attributes(&self) -> usize {
         0
-    }
-}
-
-impl<T: StructuralWritable> StructuralWritable for Quantity<T> {
-    fn num_attributes(&self) -> usize {
-        0
-    }
-
-    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
-        match self {
-            Quantity::Finite(val) => val.write_with(writer),
-            Quantity::Infinite => writer.write_text("infinite"),
-        }
-    }
-
-    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        match self {
-            Quantity::Finite(val) => val.write_into(writer),
-            Quantity::Infinite => writer.write_text("infinite"),
-        }
     }
 }
 

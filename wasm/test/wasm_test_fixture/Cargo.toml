@@ -1,0 +1,17 @@
+[package]
+name = "wasm_test_fixture"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+futures = { workspace = true }
+futures-util = { workspace = true }
+swim_api = { path = "../../../api/swim_api" }
+swim_utilities = { path = "../../../swim_utilities", features = ["byte_channel", "trigger"] }
+
+tokio-util = { workspace = true, features = ["codec"] }
+tokio = { workspace = true, features = ["io-util"] }
+bytes = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

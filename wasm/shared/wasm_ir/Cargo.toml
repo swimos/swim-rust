@@ -1,0 +1,15 @@
+[package]
+name = "wasm_ir"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+swim_model = { path = "../../../api/swim_model" }
+swim_form = { path = "../../../api/swim_form" }
+swim_protocol = { path = "../../../api/swim_protocol" }
+interval_stream = { path = "../interval_stream" }
+
+serde = { workspace = true, features = ["derive"] }
+uuid = { workspace = true, features = ["serde"] }
+bytes = { workspace = true, features = ["serde"] }
+tokio-util = { workspace = true, features = ["codec"] }

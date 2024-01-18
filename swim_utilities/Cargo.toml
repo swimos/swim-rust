@@ -36,4 +36,3 @@ swim_rtree = { path = "./swim_rtree", optional = true }
 swim_sync = { path = "./swim_sync", optional = true }
 swim_time = { path = "./swim_time", optional = true }
 swim_uri_forest = { path = "./swim_uri_forest", optional = true }
-

@@ -16,6 +16,8 @@
 use ratchet::NoExtProvider;
 use ratchet::WebSocketStream;
 use std::collections::BTreeMap;
+use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use swim_remote::ws::RatchetClient;
 
@@ -23,25 +25,26 @@ use futures_util::future::BoxFuture;
 #[cfg(feature = "deflate")]
 use ratchet::deflate::{DeflateConfig, DeflateExtProvider};
 use runtime::{
-    start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, RemotePath, Transport,
-    WebSocketConfig,
+    start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, Transport, WebSocketConfig,
 };
-pub use runtime::{CommandError, Commander};
+pub use runtime::{CommandError, Commander, RemotePath};
 use std::sync::Arc;
 use swim_api::downlink::DownlinkConfig;
+pub use swim_api::protocol::downlink::RawMessage;
 use swim_downlink::lifecycle::{
     BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle, MapDownlinkLifecycle,
     ValueDownlinkLifecycle,
 };
 use swim_downlink::{
     ChannelError, DownlinkTask, MapDownlinkHandle, MapDownlinkModel, MapKey, MapValue,
-    NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation,
+    NotYetSyncedError, UntypedValueDownlinkModel, ValueDownlinkModel, ValueDownlinkOperation,
 };
 use swim_form::Form;
 use swim_remote::net::dns::Resolver;
 use swim_remote::net::plain::TokioPlainTextNetworking;
 use swim_remote::net::ClientConnections;
-use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
+pub use swim_runtime::downlink::DownlinkOptions;
+use swim_runtime::downlink::DownlinkRuntimeConfig;
 #[cfg(feature = "tls")]
 use swim_tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
 use swim_utilities::trigger;
@@ -223,11 +226,29 @@ impl ClientHandle {
     ///
     /// # Arguments
     /// * `path` - The path of the downlink top open.
-    pub fn value_downlink<L, T>(
+    pub fn value_downlink<T>(
         &self,
         path: RemotePath,
     ) -> ValueDownlinkBuilder<'_, BasicValueDownlinkLifecycle<T>> {
         ValueDownlinkBuilder {
+            handle: self,
+            lifecycle: BasicValueDownlinkLifecycle::default(),
+            path,
+            options: DownlinkOptions::SYNC,
+            runtime_config: Default::default(),
+            downlink_config: Default::default(),
+        }
+    }
+
+    /// Returns an untyped value downlink builder initialised with the default options.
+    ///
+    /// # Arguments
+    /// * `path` - The path of the downlink top open.
+    pub fn untyped_value_downlink<T>(
+        &self,
+        path: RemotePath,
+    ) -> UntypedValueDownlinkBuilder<'_, BasicValueDownlinkLifecycle<T>> {
+        UntypedValueDownlinkBuilder {
             handle: self,
             lifecycle: BasicValueDownlinkLifecycle::default(),
             path,
@@ -288,19 +309,19 @@ impl<'h, L> ValueDownlinkBuilder<'h, L> {
     }
 
     /// Sets link options for the downlink.
-    pub fn options(&mut self, options: DownlinkOptions) -> &mut Self {
+    pub fn options(mut self, options: DownlinkOptions) -> Self {
         self.options = options;
         self
     }
 
     /// Sets a new downlink runtime configuration.
-    pub fn runtime_config(&mut self, config: DownlinkRuntimeConfig) -> &mut Self {
+    pub fn runtime_config(mut self, config: DownlinkRuntimeConfig) -> Self {
         self.runtime_config = config;
         self
     }
 
     /// Sets a new downlink configuration.
-    pub fn downlink_config(&mut self, config: DownlinkConfig) -> &mut Self {
+    pub fn downlink_config(mut self, config: DownlinkConfig) -> Self {
         self.downlink_config = config;
         self
     }
@@ -334,9 +355,101 @@ impl<'h, L> ValueDownlinkBuilder<'h, L> {
     }
 }
 
+/// A builder for value downlinks.
+pub struct UntypedValueDownlinkBuilder<'h, L> {
+    handle: &'h ClientHandle,
+    lifecycle: L,
+    path: RemotePath,
+    options: DownlinkOptions,
+    runtime_config: DownlinkRuntimeConfig,
+    downlink_config: DownlinkConfig,
+}
+
+impl<'h, L> UntypedValueDownlinkBuilder<'h, L> {
+    /// Sets a new lifecycle that to be used.
+    pub fn lifecycle<NL>(self, lifecycle: NL) -> UntypedValueDownlinkBuilder<'h, NL> {
+        let UntypedValueDownlinkBuilder {
+            handle,
+            path,
+            options,
+            runtime_config,
+            downlink_config,
+            ..
+        } = self;
+        UntypedValueDownlinkBuilder {
+            handle,
+            lifecycle,
+            path,
+            options,
+            runtime_config,
+            downlink_config,
+        }
+    }
+
+    /// Sets link options for the downlink.
+    pub fn options(mut self, options: DownlinkOptions) -> Self {
+        self.options = options;
+        self
+    }
+
+    /// Sets a new downlink runtime configuration.
+    pub fn runtime_config(mut self, config: DownlinkRuntimeConfig) -> Self {
+        self.runtime_config = config;
+        self
+    }
+
+    /// Sets a new downlink configuration.
+    pub fn downlink_config(mut self, config: DownlinkConfig) -> Self {
+        self.downlink_config = config;
+        self
+    }
+
+    /// Attempts to open the downlink.
+    pub async fn open(self) -> Result<UntypedValueDownlinkView, Arc<DownlinkRuntimeError>>
+    where
+        L: ValueDownlinkLifecycle<RawMessage> + Sync + 'static,
+    {
+        let UntypedValueDownlinkBuilder {
+            handle,
+            lifecycle,
+            path,
+            options,
+            runtime_config,
+            downlink_config,
+        } = self;
+        let (handle_tx, handle_rx) = mpsc::channel(downlink_config.buffer_size.get());
+        let task = DownlinkTask::new(UntypedValueDownlinkModel::new(handle_rx, lifecycle));
+        let stop_rx = handle
+            .inner
+            .run_downlink(path, runtime_config, downlink_config, options, task)
+            .await?;
+
+        Ok(UntypedValueDownlinkView {
+            tx: handle_tx,
+            stop_rx,
+        })
+    }
+}
+
+#[derive(Debug)]
 pub enum ValueDownlinkOperationError {
     NotYetSynced,
     DownlinkStopped,
+}
+
+impl Error for ValueDownlinkOperationError {}
+
+impl Display for ValueDownlinkOperationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValueDownlinkOperationError::NotYetSynced => {
+                write!(f, "Downlink has not synced yet")
+            }
+            ValueDownlinkOperationError::DownlinkStopped => {
+                write!(f, "Downlink stopped")
+            }
+        }
+    }
 }
 
 impl<T> From<SendError<T>> for ValueDownlinkOperationError {
@@ -375,6 +488,39 @@ impl<T> ValueDownlinkView<T> {
     /// Sets the value of the downlink to 'to'
     pub async fn set(&self, to: T) -> Result<(), ValueDownlinkOperationError> {
         self.tx.send(ValueDownlinkOperation::Set(to)).await?;
+        Ok(())
+    }
+
+    /// Returns a receiver that completes with the result of downlink's internal task.
+    pub fn stop_notification(&self) -> promise::Receiver<Result<(), DownlinkRuntimeError>> {
+        self.stop_rx.clone()
+    }
+}
+
+/// A view over a value downlink.
+#[derive(Debug, Clone)]
+pub struct UntypedValueDownlinkView {
+    tx: mpsc::Sender<ValueDownlinkOperation<RawMessage>>,
+    stop_rx: promise::Receiver<Result<(), DownlinkRuntimeError>>,
+}
+
+impl UntypedValueDownlinkView {
+    /// Gets the most recent value of the downlink.
+    pub async fn get(&mut self) -> Result<RawMessage, ValueDownlinkOperationError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx.send(ValueDownlinkOperation::Get(tx)).await?;
+        rx.await?.map_err(Into::into)
+    }
+
+    /// Sets the value of the downlink to 'to'
+    pub async fn set(&self, to: RawMessage) -> Result<(), ValueDownlinkOperationError> {
+        self.tx
+            .send(ValueDownlinkOperation::Set(to))
+            .await
+            .map_err(|e| {
+                println!("Set err: {:?}", e);
+                e
+            })?;
         Ok(())
     }
 

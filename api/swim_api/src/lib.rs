@@ -19,5 +19,15 @@ pub mod handlers;
 pub mod lane;
 pub mod meta;
 pub mod net;
-pub mod protocol;
+
+pub mod protocol {
+    pub use swim_protocol::agent;
+    pub use swim_protocol::downlink;
+    pub use swim_protocol::map;
+
+    pub use swim_protocol::{
+        write_recon, WithLenRecognizerDecoder, WithLenReconEncoder, WithLengthBytesCodec,
+    };
+}
+
 pub mod store;

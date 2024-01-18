@@ -4,8 +4,12 @@ version = "0.1.0"
 authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
+[features]
+default = []
+futures = ["swim_utilities/future"]
+
 [dependencies]
-swim_utilities = { path = "../../swim_utilities", features = ["text", "future"] }
+swim_utilities = { path = "../../swim_utilities", features = ["text"] }
 swim_form_derive = { path = "../swim_form_derive" }
 swim_model = { path = "../swim_model" }
 chrono = { workspace = true }

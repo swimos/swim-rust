@@ -18,8 +18,8 @@ use std::{
 };
 
 use futures::{stream::unfold, SinkExt, Stream, StreamExt};
+use swim_api::error::FrameIoError;
 use swim_api::{
-    error::FrameIoError,
     meta::uplink::WarpUplinkPulse,
     protocol::{
         agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},

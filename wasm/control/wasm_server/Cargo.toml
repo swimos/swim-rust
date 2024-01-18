@@ -1,0 +1,22 @@
+[package]
+name = "wasm_server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+control_ir = { path = "../control_ir" }
+swim_wasm_host = { path = "../../host/swim_wasm_host" }
+swim_server_app = { path = "../../../server/swim_server_app" }
+swim_utilities = { path = "../../../swim_utilities", features = ["text"] }
+client = { path = "../../../client/swim_client" }
+
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+warp = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+serde = { workspace = true }
+rdkafka = { workspace = true }
+anyhow = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing = { workspace = true }

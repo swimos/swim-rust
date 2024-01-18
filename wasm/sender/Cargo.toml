@@ -1,0 +1,9 @@
+[package]
+name = "sender"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ratchet = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+bytes = { workspace = true }

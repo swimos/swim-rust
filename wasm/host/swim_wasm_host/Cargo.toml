@@ -1,0 +1,25 @@
+[package]
+name = "swim_wasm_host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wasm_ir = { path = "../../shared/wasm_ir" }
+swim_server_app = { path = "../../../server/swim_server_app" }
+swim_api = { path = "../../../api/swim_api" }
+swim_utilities = { path = "../../../swim_utilities", features = ["text"] }
+swim_model = { path = "../../../api/swim_model" }
+interval_stream = { path = "../../shared/interval_stream" }
+
+thiserror = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+wasmtime = { workspace = true }
+bytes = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
+tokio-util = { workspace = true, features = ["codec"] }
+tracing = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+pin-project = { workspace = true }
+bincode = { workspace = true }
+serde = { workspace = true }

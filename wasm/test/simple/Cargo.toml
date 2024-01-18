@@ -1,0 +1,21 @@
+[package]
+name = "simple"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+swim_wasm_host = { path = "../../host/swim_wasm_host" }
+wasm_ir = { path = "../../shared/wasm_ir" }
+wasm_test_fixture = { path = "../wasm_test_fixture" }
+
+tokio = { workspace = true, features = ["macros", "rt"] }
+futures = { workspace = true }
+futures-util = { workspace = true }
+swim_api = { path = "../../../api/swim_api" }
+swim_utilities = { path = "../../../swim_utilities", features = ["byte_channel"] }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+bytes = { workspace = true }
+tokio-util = { workspace = true, features = ["codec"] }

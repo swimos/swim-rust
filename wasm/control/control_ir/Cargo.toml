@@ -1,0 +1,9 @@
+[package]
+name = "control_ir"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bincode = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+url = { workspace = true, features = ["serde"] }

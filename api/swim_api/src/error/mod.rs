@@ -17,7 +17,6 @@ use std::{error::Error, sync::Arc};
 
 use swim_form::structural::read::ReadError;
 use swim_model::{address::RelativeAddress, Text};
-use swim_recon::parser::AsyncParseError;
 use swim_utilities::{errors::Recoverable, routing::route_pattern::UnapplyError, trigger::promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
@@ -26,35 +25,9 @@ use crate::store::StoreKind;
 
 use self::introspection::{LaneIntrospectionError, NodeIntrospectionError};
 
+pub use swim_protocol::error::{FrameIoError, InvalidFrame};
+
 pub mod introspection;
-
-/// Indicates that an agent or downlink failed to read a frame from a byte stream.
-#[derive(Error, Debug)]
-pub enum FrameIoError {
-    #[error("{0}")]
-    Io(#[from] std::io::Error),
-    #[error("{0}")]
-    BadFrame(#[from] InvalidFrame),
-    #[error("The stream terminated when a frame was expected.")]
-    InvalidTermination,
-}
-
-impl From<AsyncParseError> for FrameIoError {
-    fn from(e: AsyncParseError) -> Self {
-        FrameIoError::BadFrame(InvalidFrame::InvalidMessageBody(e))
-    }
-}
-
-/// Indicates that the content of a frame was invalid.
-#[derive(Error, Debug)]
-pub enum InvalidFrame {
-    #[error("An incoming frame was incomplete.")]
-    Incomplete,
-    #[error("Invalid frame header: {problem}")]
-    InvalidHeader { problem: Text },
-    #[error("Invalid frame body: {0}")]
-    InvalidMessageBody(#[from] AsyncParseError),
-}
 
 /// Possible failure modes for a downlink consumer.
 #[derive(Error, Debug)]

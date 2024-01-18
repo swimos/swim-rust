@@ -1,0 +1,22 @@
+[package]
+name = "swim_wasm_guest"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wasm_ir = { path = "../../shared/wasm_ir" }
+swim_form = { path = "../../../api/swim_form" }
+swim_recon = { path = "../../../api/formats/swim_recon" }
+swim_model = { path = "../../../api/swim_model" }
+swim_protocol = { path = "../../../api/swim_protocol" }
+guest_derive = { path = "../guest_derive" }
+
+bincode = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+either = { workspace = true }
+serde = { workspace = true }
+tokio-util = { workspace = true, features = ["codec"] }
+static_assertions = { workspace = true }
+uuid = { workspace = true }
+byteorder = { workspace = true }

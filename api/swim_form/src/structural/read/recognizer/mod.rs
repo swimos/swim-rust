@@ -42,8 +42,13 @@ use swim_utilities::routing::route_uri::RouteUri;
 pub mod impls;
 /// [`Recognizer`] implementations for basic types.
 pub mod primitive;
+#[cfg(feature = "futures")]
+mod retryable;
 #[cfg(test)]
 mod tests;
+
+#[cfg(feature = "futures")]
+pub use retryable::*;
 
 /// Trait for types that can be recognized by a [`Recognizer`] state machine.
 pub trait RecognizerReadable: Sized {

@@ -1,0 +1,16 @@
+[package]
+name = "guest_derive"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "guest_derive"
+proc-macro = true
+
+[dependencies]
+swim_utilities = { path = "../../../swim_utilities", features = ["errors"] }
+macro_utilities = { path = "../../../macro_utilities" }
+
+proc-macro2 = { workspace = true }
+syn = { workspace = true }
+quote = { workspace = true }

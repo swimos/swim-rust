@@ -12,27 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::model::lifecycle::{
-    EventDownlinkLifecycle, MapDownlinkLifecycle, ValueDownlinkLifecycle,
-};
+use std::hash::Hash;
+
 use futures::future::BoxFuture;
 use futures::FutureExt;
-use std::hash::Hash;
+use tracing::{info_span, Instrument};
+
+pub use map::MapRequest;
 use swim_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
 use swim_api::error::DownlinkTaskError;
-
+use swim_api::protocol::downlink::{
+    DownlinkOperationEncoder, RawDownlinkOperationDecoder, RawDownlinkOperationEncoder, RawMessage,
+    ValueNotificationDecoder,
+};
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::Form;
 use swim_model::address::Address;
 use swim_model::Text;
-
+use swim_recon::printer::print_recon;
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 
-use tracing::{info_span, Instrument};
-
-use crate::model::MapDownlinkModel;
+use crate::model::lifecycle::{
+    EventDownlinkLifecycle, MapDownlinkLifecycle, ValueDownlinkLifecycle,
+};
+use crate::model::{MapDownlinkModel, UntypedValueDownlinkModel};
 use crate::{EventDownlinkModel, ValueDownlinkModel};
-pub use map::MapRequest;
 
 mod event;
 mod map;
@@ -66,10 +70,62 @@ where
         input: ByteReader,
         output: ByteWriter,
     ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
-        let DownlinkTask(model) = self;
-        value::value_downlink_task(model, path, config, input, output)
-            .instrument(info_span!("Downlink task.", kind = ?DownlinkKind::Value))
-            .boxed()
+        let DownlinkTask(ValueDownlinkModel { handle, lifecycle }) = self;
+        value::value_downlink_task(
+            handle,
+            lifecycle,
+            path,
+            config,
+            input,
+            output,
+            DownlinkOperationEncoder,
+            ValueNotificationDecoder::default(),
+            |v| print_recon(v).to_string(),
+        )
+        .instrument(info_span!("Downlink task.", kind = ?DownlinkKind::Value))
+        .boxed()
+    }
+
+    fn run_boxed(
+        self: Box<Self>,
+        path: Address<Text>,
+        config: DownlinkConfig,
+        input: ByteReader,
+        output: ByteWriter,
+    ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
+        (*self).run(path, config, input, output)
+    }
+}
+
+impl<LC> Downlink for DownlinkTask<UntypedValueDownlinkModel<LC>>
+where
+    LC: ValueDownlinkLifecycle<RawMessage> + 'static,
+{
+    fn kind(&self) -> DownlinkKind {
+        DownlinkKind::Value
+    }
+
+    fn run(
+        self,
+        path: Address<Text>,
+        config: DownlinkConfig,
+        input: ByteReader,
+        output: ByteWriter,
+    ) -> BoxFuture<'static, Result<(), DownlinkTaskError>> {
+        let DownlinkTask(UntypedValueDownlinkModel { handle, lifecycle }) = self;
+        value::value_downlink_task(
+            handle,
+            lifecycle,
+            path,
+            config,
+            input,
+            output,
+            RawDownlinkOperationEncoder,
+            RawDownlinkOperationDecoder,
+            |v| format!("{:?}", v),
+        )
+        .instrument(info_span!("Downlink task.", kind = ?DownlinkKind::Value))
+        .boxed()
     }
 
     fn run_boxed(
