@@ -15,7 +15,6 @@
 use std::future::Future;
 
 use bytes::BytesMut;
-use futures_util::future::BoxFuture;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::runtime::wasm::WasmError;
@@ -27,26 +26,24 @@ pub mod wasm;
 pub struct WasmAgentPointer(pub i32);
 
 pub trait WasmGuestRuntimeFactory: Send + Sync + Clone + 'static {
-    type CreateFuture: Future<Output = Result<Self::AgentRuntime, WasmError>> + Send + 'static;
     type AgentRuntime: WasmGuestRuntime;
 
     fn new_instance(
         &self,
         channel: mpsc::Sender<(GuestRuntimeEvent, oneshot::Sender<BytesMut>)>,
-    ) -> Self::CreateFuture;
+    ) -> impl Future<Output = Result<Self::AgentRuntime, WasmError>> + Send + 'static;
 }
 
 pub trait WasmGuestRuntime: Send + 'static {
-    // todo replace with async fn when stabilised
-    fn init(&mut self) -> BoxFuture<Result<(WasmAgentPointer, Vec<u8>), WasmError>>;
+    fn init(
+        &mut self,
+    ) -> impl Future<Output = Result<(WasmAgentPointer, Vec<u8>), WasmError>> + Send;
 
-    // todo replace with async fn when stabilised
     fn dispatch(
         &mut self,
         ptr: WasmAgentPointer,
         data: BytesMut,
-    ) -> BoxFuture<Result<(), WasmError>>;
+    ) -> impl Future<Output = Result<(), WasmError>> + Send;
 
-    // todo replace with async fn when stabilised
-    fn stop(self, ptr: WasmAgentPointer) -> BoxFuture<'static, Result<(), WasmError>>;
+    fn stop(self, ptr: WasmAgentPointer) -> impl Future<Output = Result<(), WasmError>> + Send;
 }

@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::future::Future;
+use std::sync::Arc;
+
 use bytes::BytesMut;
-use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
 use tokio::sync::{mpsc, oneshot};
 use wasmtime::{
@@ -24,7 +26,7 @@ use wasm_ir::agent::GuestRuntimeEvent;
 use wasm_utils::{SharedMemory, WasmModule};
 
 use crate::runtime::{WasmAgentPointer, WasmGuestRuntime, WasmGuestRuntimeFactory};
-use crate::WasmAgentState;
+use crate::{ResolvedAccess, WasmAgentState};
 
 mod vtable {
     pub const ALLOC_EXPORT: &str = "alloc";
@@ -76,16 +78,20 @@ impl WasmAgentRuntime {
         } = module;
 
         let shared_memory = SharedMemory::default();
-        let mut store = Store::new(&engine, WasmAgentState::new(channel, shared_memory.clone()));
+        let resolved = Arc::new(ResolvedAccess::new());
+        let mut store = Store::new(
+            &engine,
+            WasmAgentState::new(channel, shared_memory.clone(), resolved.clone()),
+        );
 
         let guest_call_import = module
             .imports()
             .find(|import| import.name().eq(vtable::HOST_CALL_FUNCTION))
-            .ok_or_else(|| WasmError::MissingExport(vtable::HOST_CALL_FUNCTION.to_string()))?;
+            .ok_or_else(|| WasmError::MissingImport(vtable::HOST_CALL_FUNCTION.to_string()))?;
         let copy_schema_import = module
             .imports()
             .find(|import| import.name().eq(vtable::COPY_SCHEMA_FUNCTION))
-            .ok_or_else(|| WasmError::MissingExport(vtable::COPY_SCHEMA_FUNCTION.to_string()))?;
+            .ok_or_else(|| WasmError::MissingImport(vtable::COPY_SCHEMA_FUNCTION.to_string()))?;
 
         linker.func_wrap2_async(
             copy_schema_import.module(),
@@ -116,50 +122,32 @@ impl WasmAgentRuntime {
             move |mut caller: Caller<WasmAgentState>, ptr: i32, len: i32| {
                 let state = caller.data();
                 let channel = state.channel.clone();
+                let (mem, alloc) = state.resolved.get();
 
                 // We can't access the memory export until the instance has been created so we have
                 // to look it up every time.
                 let task = async move {
-                    match caller.get_export(vtable::MEMORY_EXPORT) {
-                        Some(Extern::Memory(memory)) => {
-                            let mut bytes = vec![0u8; len as u32 as usize];
-                            memory.read(caller.as_context_mut(), ptr as usize, &mut bytes)?;
-                            let event: GuestRuntimeEvent = bincode::deserialize(bytes.as_ref())?;
+                    let mut bytes = vec![0u8; len as u32 as usize];
+                    mem.read(caller.as_context_mut(), ptr as usize, &mut bytes)?;
+                    let event: GuestRuntimeEvent = bincode::deserialize(bytes.as_ref())?;
 
-                            let (tx, rx) = oneshot::channel();
-                            channel.send((event, tx)).await?;
-                            let response = rx.await?;
+                    let (tx, rx) = oneshot::channel();
+                    channel.send((event, tx)).await?;
+                    let response = rx.await?;
 
-                            let alloc_fn = caller
-                                .get_export(vtable::ALLOC_EXPORT)
-                                .unwrap()
-                                .into_func()
-                                .ok_or_else(|| {
-                                    WasmError::MissingExport(vtable::ALLOC_EXPORT.to_string())
-                                })?;
+                    let results = &mut [Val::I32(0)];
+                    alloc
+                        .call_async(
+                            caller.as_context_mut(),
+                            &[Val::I32(response.len() as i32)],
+                            results,
+                        )
+                        .await?;
 
-                            let results = &mut [Val::I32(0)];
-                            alloc_fn
-                                .call_async(
-                                    caller.as_context_mut(),
-                                    &[Val::I32(response.len() as i32)],
-                                    results,
-                                )
-                                .await?;
+                    let ptr = results[0].clone().i32().unwrap() as u32;
+                    mem.write(caller.as_context_mut(), ptr as usize, response.as_ref())?;
 
-                            let ptr = results[0].clone().i32().unwrap() as u32;
-                            memory.write(
-                                caller.as_context_mut(),
-                                ptr as usize,
-                                response.as_ref(),
-                            )?;
-
-                            Ok(ptr)
-                        }
-                        _ => {
-                            Err(WasmError::MissingExport(vtable::MEMORY_EXPORT.to_string()).into())
-                        }
-                    }
+                    Ok(ptr)
                 };
 
                 Box::new(task)
@@ -179,6 +167,8 @@ impl WasmAgentRuntime {
         let alloc_fn = instance
             .get_func(&mut store, vtable::ALLOC_EXPORT)
             .ok_or_else(|| wasmtime::Error::msg("Missing alloc"))?;
+
+        resolved.set(memory.clone(), alloc_fn.clone());
 
         Ok(WasmAgentRuntime {
             module: WasmModule {
@@ -201,6 +191,8 @@ impl WasmAgentRuntime {
 pub enum WasmError {
     #[error("Wasmtime error: {0}")]
     Runtime(#[from] wasmtime::Error),
+    #[error("Module missing import: {0}")]
+    MissingImport(String),
     #[error("Module missing export: {0}")]
     MissingExport(String),
     #[error("Memory access error: {0}")]
@@ -210,41 +202,39 @@ pub enum WasmError {
 }
 
 impl WasmGuestRuntime for WasmAgentRuntime {
-    fn init(&mut self) -> BoxFuture<Result<(WasmAgentPointer, Vec<u8>), WasmError>> {
-        Box::pin(async move {
-            match self.state {
-                State::Uninitialised => {
-                    let func = {
-                        self.instance
-                            .get_func(&mut self.store, vtable::INIT_FUNCTION)
-                            .ok_or_else(|| {
-                                WasmError::MissingExport(vtable::INIT_FUNCTION.to_string())
-                            })?
-                    };
+    async fn init(&mut self) -> Result<(WasmAgentPointer, Vec<u8>), WasmError> {
+        match self.state {
+            State::Uninitialised => {
+                let func = {
+                    self.instance
+                        .get_func(&mut self.store, vtable::INIT_FUNCTION)
+                        .ok_or_else(|| {
+                            WasmError::MissingExport(vtable::INIT_FUNCTION.to_string())
+                        })?
+                };
 
-                    let mut agent_ptr = [Val::I32(0)];
-                    func.call_async(&mut self.store, &[], &mut agent_ptr)
-                        .await?;
+                let mut agent_ptr = [Val::I32(0)];
+                func.call_async(&mut self.store, &[], &mut agent_ptr)
+                    .await?;
 
-                    let spec = unsafe { self.shared_memory.read(&mut self.store)? };
+                let spec = unsafe { self.shared_memory.read(&mut self.store)? };
 
-                    self.state = State::Initialised;
+                self.state = State::Initialised;
 
-                    Ok((WasmAgentPointer(agent_ptr[0].i32().unwrap()), spec))
-                }
-                State::Initialised => {
-                    panic!("Agent already initialised")
-                }
+                Ok((WasmAgentPointer(agent_ptr[0].i32().unwrap()), spec))
             }
-        })
+            State::Initialised => {
+                panic!("Agent already initialised")
+            }
+        }
     }
 
     fn dispatch(
         &mut self,
         agent_ptr: WasmAgentPointer,
         data: BytesMut,
-    ) -> BoxFuture<Result<(), WasmError>> {
-        Box::pin(async move {
+    ) -> impl Future<Output = Result<(), WasmError>> + Send {
+        async move {
             match self.state {
                 State::Uninitialised => {
                     panic!("Agent not initialised")
@@ -264,42 +254,39 @@ impl WasmGuestRuntime for WasmAgentRuntime {
                     Ok(())
                 }
             }
-        })
+        }
     }
 
-    fn stop(mut self, ptr: WasmAgentPointer) -> BoxFuture<'static, Result<(), WasmError>> {
-        Box::pin(async move {
-            match self.state {
-                State::Uninitialised => {
-                    panic!("Agent not initialised")
-                }
-                State::Initialised => {
-                    let func = {
-                        self.instance
-                            .get_func(&mut self.store, vtable::STOP_FUNCTION)
-                            .ok_or_else(|| {
-                                WasmError::MissingExport(vtable::STOP_FUNCTION.to_string())
-                            })?
-                    };
-
-                    let mut agent_ptr = [Val::I32(ptr.0)];
-                    func.call_async(&mut self.store, &[], &mut agent_ptr)
-                        .await?;
-                    Ok(())
-                }
+    async fn stop(mut self, ptr: WasmAgentPointer) -> Result<(), WasmError> {
+        match self.state {
+            State::Uninitialised => {
+                panic!("Agent not initialised")
             }
-        })
+            State::Initialised => {
+                let func = {
+                    self.instance
+                        .get_func(&mut self.store, vtable::STOP_FUNCTION)
+                        .ok_or_else(|| {
+                            WasmError::MissingExport(vtable::STOP_FUNCTION.to_string())
+                        })?
+                };
+
+                let mut agent_ptr = [Val::I32(ptr.0)];
+                func.call_async(&mut self.store, &[], &mut agent_ptr)
+                    .await?;
+                Ok(())
+            }
+        }
     }
 }
 
 impl WasmGuestRuntimeFactory for WasmModule<WasmAgentState> {
-    type CreateFuture = BoxFuture<'static, Result<Self::AgentRuntime, WasmError>>;
     type AgentRuntime = WasmAgentRuntime;
 
     fn new_instance(
         &self,
         channel: mpsc::Sender<(GuestRuntimeEvent, oneshot::Sender<BytesMut>)>,
-    ) -> Self::CreateFuture {
-        WasmAgentRuntime::new(self.clone(), channel).boxed()
+    ) -> impl Future<Output = Result<Self::AgentRuntime, WasmError>> + Send + 'static {
+        WasmAgentRuntime::new(self.clone(), channel)
     }
 }

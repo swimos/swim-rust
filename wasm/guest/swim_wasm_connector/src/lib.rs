@@ -1,8 +1,29 @@
 pub use guest_derive::connector;
+use std::collections::HashMap;
+pub use swim_form::Form;
+
 use std::mem::forget;
-use swim_form::Form;
 use swim_recon::printer::print_recon_compact;
 use wasm_ir::connector::ConnectorMessageRef;
+
+#[derive(Debug)]
+pub struct ConnectorProperties(HashMap<String, String>);
+
+impl From<HashMap<String, String>> for ConnectorProperties {
+    fn from(value: HashMap<String, String>) -> Self {
+        ConnectorProperties(value)
+    }
+}
+
+impl ConnectorProperties {
+    pub fn get(&self, key: &str) -> Option<&String> {
+        self.0.get(key)
+    }
+
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.0.contains_key(key)
+    }
+}
 
 pub struct ConnectorContext;
 

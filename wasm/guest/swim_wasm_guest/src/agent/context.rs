@@ -14,7 +14,7 @@
 
 use serde::Serialize;
 
-use wasm_ir::requests::GuestRuntimeEvent;
+use wasm_ir::agent::GuestRuntimeEvent;
 use wasm_ir::wpc::{EnvAccess, WasmProcedure};
 
 use crate::prelude::lanes::handlers::HandlerContext;

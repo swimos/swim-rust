@@ -101,6 +101,12 @@ pub fn agent_dir() -> Result<PathBuf> {
     Ok(path)
 }
 
+pub fn modules_dir() -> Result<PathBuf> {
+    let mut path = current_dir()?;
+    path.push(MODULES_DIR_NAME);
+    Ok(path)
+}
+
 pub fn connectors_dir() -> Result<PathBuf> {
     let mut path = current_dir()?;
     path.push(CONNECTORS_DIR_NAME);

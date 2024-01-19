@@ -30,7 +30,7 @@ use client::{
     ClientHandle, DownlinkOptions, RawMessage, RemotePath, UntypedValueDownlinkView,
     ValueDownlinkOperationError,
 };
-use control_ir::{KafkaConnectorSpec, Pipe};
+use control_ir::KafkaConnectorSpec;
 use wasm_ir::connector::ConnectorMessage;
 
 use crate::runtime::{WasmConnector, WasmConnectorFactory, WasmError};
@@ -45,11 +45,10 @@ pub async fn run_kafka_connector(
         broker,
         topic,
         group,
-        pipe,
         module,
+        properties,
     } = spec;
 
-    let Pipe { node, lane } = pipe;
     trace!(broker = ?broker, topic = ?topic, group = ?group, "Starting Kafka connector");
 
     let consumer: StreamConsumer = KafkaConfig::new()
@@ -65,19 +64,14 @@ pub async fn run_kafka_connector(
     consumer.subscribe(&[topic.as_str()])?;
 
     let (tx, mut rx) = mpsc::channel(1);
-    let mut connector = engine.new_connector(module, tx).await?;
+    let mut connector = engine.new_connector(module, tx, properties).await?;
     let mut downlinks = HashMap::default();
 
     loop {
         match consumer.recv().await {
             Ok(msg) => {
                 if let Some(bytes) = msg.payload() {
-                    trace!(
-                        ?bytes,
-                        ?node,
-                        ?lane,
-                        "Connector received message. Dispatching"
-                    );
+                    trace!(?bytes, "Connector received message. Dispatching");
 
                     suspend(
                         port,

@@ -20,9 +20,9 @@ use control_ir::{AgentSpec, DeploySpec};
 use swim_server_app::error::ServerError;
 use swim_server_app::{Server, ServerBuilder, ServerHandle};
 use swim_utilities::routing::route_pattern::RoutePattern;
-use swim_wasm_connector_host::ConnectorPool;
 use swim_wasm_host::wasm::{Config, Engine, Linker};
 use swim_wasm_host::{WasmAgentModel, WasmAgentState, WasmModule};
+use wasm_connector_host::ConnectorPool;
 
 #[tokio::main]
 async fn main() {

@@ -18,6 +18,10 @@ pub fn print_success(msg: impl AsRef<str>) {
     println!("{}", style(msg.as_ref()).green().bold());
 }
 
+pub fn print_warn(msg: impl AsRef<str>) {
+    println!("{}", style(msg.as_ref()).yellow().bold());
+}
+
 pub fn print_error(msg: impl AsRef<str>) {
     println!("{}", style(msg.as_ref()).red().bold());
 }

@@ -1,8 +1,10 @@
+use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::future::Future;
 use std::ops::ControlFlow;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{ready, Context, Poll};
 
 use bytes::BytesMut;
@@ -18,6 +20,7 @@ use tokio_util::codec::Decoder;
 use tokio_util::time::delay_queue::Key;
 use tracing::{debug, trace};
 use uuid::Uuid;
+use wasmtime::{Func, Memory};
 
 use interval_stream::{IntervalStream, ItemStatus, ScheduleDef, StreamItem};
 use swim_api::agent::Agent;
@@ -53,19 +56,55 @@ pub mod wasm {
 
 pub enum WasmAgentInitError {}
 
+pub struct ResolvedAccess {
+    memory: UnsafeCell<Option<Memory>>,
+    alloc: UnsafeCell<Option<Func>>,
+}
+
+impl ResolvedAccess {
+    pub fn new() -> ResolvedAccess {
+        ResolvedAccess {
+            memory: UnsafeCell::new(None),
+            alloc: UnsafeCell::new(None),
+        }
+    }
+
+    pub fn set(&self, memory: Memory, alloc: Func) {
+        unsafe {
+            *self.memory.get() = Some(memory);
+        }
+        unsafe {
+            *self.alloc.get() = Some(alloc);
+        }
+    }
+
+    pub fn get(&self) -> (Memory, Func) {
+        let mem = unsafe { *(*self.memory.get()).as_ref().clone().unwrap() };
+        let alloc = unsafe { *(*self.alloc.get()).as_ref().clone().unwrap() };
+        (mem, alloc)
+    }
+}
+
+unsafe impl Send for ResolvedAccess {}
+
+unsafe impl Sync for ResolvedAccess {}
+
 pub struct WasmAgentState {
     channel: mpsc::Sender<(GuestRuntimeEvent, oneshot::Sender<BytesMut>)>,
     shared_memory: SharedMemory,
+    resolved: Arc<ResolvedAccess>,
 }
 
 impl WasmAgentState {
     pub fn new(
         channel: mpsc::Sender<(GuestRuntimeEvent, oneshot::Sender<BytesMut>)>,
         shared_memory: SharedMemory,
+        resolved: Arc<ResolvedAccess>,
     ) -> WasmAgentState {
         WasmAgentState {
             channel,
             shared_memory,
+            resolved,
         }
     }
 }

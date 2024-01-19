@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use url::Url;
 
 #[derive(Debug)]
@@ -35,16 +36,30 @@ impl ConnectorSpec {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type", content = "properties")]
+pub enum ConnectorDef {
+    Kafka(KafkaConnectorDef),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct KafkaConnectorSpec {
     pub broker: Url,
     pub topic: String,
     pub group: String,
     pub module: Vec<u8>,
-    pub pipe: Pipe,
+    #[serde(flatten)]
+    pub properties: ConnectorProperties,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Pipe {
-    pub node: String,
-    pub lane: String,
+pub struct KafkaConnectorDef {
+    pub broker: Url,
+    pub topic: String,
+    pub group: String,
+    pub module: String,
+    #[serde(flatten)]
+    pub properties: ConnectorProperties,
 }
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct ConnectorProperties(HashMap<String, String>);

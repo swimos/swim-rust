@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use control_ir::ConnectorProperties;
 use tokio::sync::mpsc;
 use wasmtime::{
     AsContextMut, Caller, Engine, Extern, Func, Instance, Linker, Memory, Module, Store, TypedFunc,
@@ -27,11 +28,17 @@ mod vtable {
     pub const MEMORY_EXPORT: &str = "memory";
     pub const HOST_CALL_FUNCTION: &'static str = "dispatch";
 
+    pub const INIT_PROPS_FUNCTION: &'static str = "init_properties";
+
     pub const DISPATCH_FUNCTION: &str = "dispatch";
 
-    /// (data ptr, data len)
-    pub type DispatchParams = (i32, i32);
+    /// (data ptr, data len, connector properties ptr)
+    pub type DispatchParams = (i32, i32, i32);
     pub type DispatchReturns = ();
+
+    /// (data ptr, data len)
+    pub type InitPropertiesParams = (i32, i32);
+    pub type InitPropertiesReturns = i32;
 }
 
 impl WasmConnectorFactory for Engine {
@@ -41,8 +48,9 @@ impl WasmConnectorFactory for Engine {
         &self,
         bytes: Vec<u8>,
         channel: mpsc::Sender<ConnectorMessage>,
+        properties: ConnectorProperties,
     ) -> Result<Self::Connector, WasmError> {
-        WasmConnectorCallbackInstance::new(&self, bytes, channel).await
+        WasmConnectorCallbackInstance::new(&self, bytes, channel, properties).await
     }
 }
 
@@ -67,6 +75,7 @@ pub struct WasmConnectorCallbackInstance {
     dispatch_fn: TypedFunc<vtable::DispatchParams, vtable::DispatchReturns>,
     memory: Memory,
     alloc_fn: Func,
+    properties_ptr: i32,
 }
 
 impl WasmConnectorCallbackInstance {
@@ -74,11 +83,12 @@ impl WasmConnectorCallbackInstance {
         engine: &Engine,
         bytes: Vec<u8>,
         channel: mpsc::Sender<ConnectorMessage>,
+        properties: ConnectorProperties,
     ) -> Result<WasmConnectorCallbackInstance, WasmError> {
         let mut linker = Linker::new(engine);
         let module = Module::new(engine, bytes)?;
 
-        let shared_memory = SharedMemory::default();
+        let mut shared_memory = SharedMemory::default();
         let mut store = Store::new(engine, State::new(channel, shared_memory.clone()));
 
         let guest_call_import = module
@@ -127,6 +137,25 @@ impl WasmConnectorCallbackInstance {
             .get_func(&mut store, vtable::ALLOC_EXPORT)
             .ok_or_else(|| wasmtime::Error::msg("Missing alloc"))?;
 
+        let init_properties_fn = instance
+            .get_typed_func::<vtable::InitPropertiesParams, vtable::InitPropertiesReturns>(
+                &mut store,
+                vtable::INIT_PROPS_FUNCTION,
+            )?;
+
+        let properties_buf =
+            bincode::serialize(&properties).expect("Failed to serialize connector properties");
+        let len = properties_buf.len();
+        let data_ptr = unsafe {
+            shared_memory
+                .write(&mut store, &memory, &alloc_fn, properties_buf)
+                .await?
+        };
+
+        let properties_ptr = init_properties_fn
+            .call_async(&mut store, (data_ptr as i32, len as i32))
+            .await?;
+
         Ok(WasmConnectorCallbackInstance {
             store,
             instance,
@@ -134,6 +163,7 @@ impl WasmConnectorCallbackInstance {
             dispatch_fn,
             memory,
             alloc_fn,
+            properties_ptr,
         })
     }
 }
@@ -148,7 +178,10 @@ impl WasmConnector for WasmConnectorCallbackInstance {
         };
 
         self.dispatch_fn
-            .call_async(&mut self.store, (data_ptr as i32, len as i32))
+            .call_async(
+                &mut self.store,
+                (data_ptr as i32, len as i32, self.properties_ptr),
+            )
             .await?;
 
         Ok(())

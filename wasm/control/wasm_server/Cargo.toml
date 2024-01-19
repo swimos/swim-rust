@@ -9,7 +9,7 @@ swim_wasm_host = { path = "../../host/swim_wasm_host" }
 swim_server_app = { path = "../../../server/swim_server_app" }
 swim_utilities = { path = "../../../swim_utilities", features = ["text"] }
 client = { path = "../../../client/swim_client" }
-swim_wasm_connector_host = { path = "../../host/swim_wasm_connector_host" }
+wasm_connector_host = { path = "../../host/wasm_connector_host" }
 
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 warp = { workspace = true }

@@ -4,6 +4,7 @@ mod tests {
     use std::num::NonZeroUsize;
     use std::str::FromStr;
     use std::sync::Arc;
+    use std::time::Instant;
 
     use futures_util::future::BoxFuture;
     use futures_util::{join, FutureExt, SinkExt};
@@ -19,9 +20,8 @@ mod tests {
     use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
     use swim_utilities::non_zero_usize;
     use swim_utilities::routing::route_uri::RouteUri;
-    use swim_wasm_host::runtime::wasm::WasmModuleRuntime;
     use swim_wasm_host::wasm::{Config, Engine, Linker};
-    use swim_wasm_host::WasmAgentModel;
+    use swim_wasm_host::{WasmAgentModel, WasmModule};
     use wasm_ir::{LaneKindRepr, LaneSpec};
     use wasm_test_fixture::channels::{channels, ChannelsSender};
 
@@ -120,13 +120,13 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     pub async fn run() {
-        let file = "/Users/sircipher/Desktop/work/swim-rust/target/wasm32-unknown-unknown/debug/simple_guest.wasm";
+        let file = "/Users/sircipher/Desktop/work/swim-rust/target/wasm32-unknown-unknown/release/simple_guest.wasm";
 
         let mut config = Config::new();
         config.async_support(true);
 
         let engine = Engine::new(&config).unwrap();
-        let runtime = WasmModuleRuntime::from_file(&engine, Linker::new(&engine), file).unwrap();
+        let runtime = WasmModule::from_file(&engine, Linker::new(&engine), file).unwrap();
         let (_changes_tx, changes_rx) = watch::channel(runtime.clone());
         let model = WasmAgentModel::new(changes_rx);
 
@@ -136,10 +136,10 @@ mod tests {
                 "lane".to_string(),
                 LaneSpec::new(true, 0, LaneKindRepr::Value),
             ),
-            (
-                "twice".to_string(),
-                LaneSpec::new(true, 1, LaneKindRepr::Value),
-            ),
+            // (
+            //     "twice".to_string(),
+            //     LaneSpec::new(true, 1, LaneKindRepr::Value),
+            // ),
         ]);
 
         let agent_task = async move {
@@ -157,6 +157,7 @@ mod tests {
         };
 
         let task = async move {
+            println!("Warming up");
             for i in 0..1000 {
                 receiver
                     .with_writer("lane", |mut writer| async {
@@ -173,10 +174,44 @@ mod tests {
                 receiver
                     .expect_value_event("lane", i.to_string().as_str())
                     .await;
-                receiver
-                    .expect_value_event("twice", (i * 2).to_string().as_str())
-                    .await;
+                // receiver
+                //     .expect_value_event("twice", (i * 2).to_string().as_str())
+                //     .await;
             }
+
+            println!("Send messages");
+
+            let now = Instant::now();
+            let events = 5_000;
+
+            for i in 0..events {
+                receiver
+                    .with_writer("lane", |mut writer| async {
+                        let mut encoder =
+                            FramedWrite::new(&mut writer, LaneRequestEncoder::value());
+                        encoder
+                            .send(LaneRequest::Command(i.to_string()))
+                            .await
+                            .unwrap();
+                        (writer, ())
+                    })
+                    .await;
+
+                // receiver
+                //     .expect_value_event("lane", i.to_string().as_str())
+                //     .await;
+                // receiver
+                //     .expect_value_event("twice", (i * 2).to_string().as_str())
+                //     .await;
+            }
+
+            let elapsed = now.elapsed();
+            println!(
+                "Test took: {}.{}",
+                elapsed.as_secs(),
+                elapsed.subsec_millis()
+            );
+            println!("Message rate: {} per second", (events / elapsed.as_secs()));
 
             receiver.clear().await;
         };

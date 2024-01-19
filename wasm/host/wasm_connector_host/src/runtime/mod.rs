@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use control_ir::ConnectorProperties;
 use tokio::sync::mpsc;
 use wasm_ir::connector::ConnectorMessage;
 use wasmtime::MemoryAccessError;
@@ -25,6 +26,7 @@ pub trait WasmConnectorFactory: Send + Sync + Clone + 'static {
         &self,
         bytes: Vec<u8>,
         channel: mpsc::Sender<ConnectorMessage>,
+        properties: ConnectorProperties,
     ) -> Result<Self::Connector, WasmError>;
 }
 

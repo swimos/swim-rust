@@ -1,5 +1,5 @@
 [package]
-name = "swim_wasm_connector_host"
+name = "wasm_connector_host"
 version = "0.1.0"
 edition = "2021"
 

@@ -22,7 +22,7 @@ use swim_form::structural::read::ReadError;
 use swim_form::structural::write::StructuralWritable;
 use swim_protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
 use swim_recon::parser::{parse_recognize, ParseError, Span};
-use wasm_ir::requests::{
+use wasm_ir::agent::{
     DispatchLaneResponsesProcedure, GuestLaneResponses, IdentifiedLaneResponseEncoder,
 };
 use wasm_ir::wpc::EnvAccess;

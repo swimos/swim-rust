@@ -20,7 +20,7 @@ use uuid::Uuid;
 use swim_form::structural::read::recognizer::RecognizerReadable;
 use swim_form::structural::write::StructuralWritable;
 use swim_protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
-use wasm_ir::requests::{GuestLaneResponses, IdentifiedLaneResponseEncoder, LaneSyncProcedure};
+use wasm_ir::agent::{GuestLaneResponses, IdentifiedLaneResponseEncoder, LaneSyncProcedure};
 use wasm_ir::wpc::EnvAccess;
 
 use crate::agent::lanes::value::propagate_event;

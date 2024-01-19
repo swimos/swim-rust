@@ -15,14 +15,22 @@
 use std::fs;
 
 use anyhow::{anyhow, Result};
+use cargo_generate::{generate, GenerateArgs, TemplatePath};
 use clap::Parser;
+use include_dir::{include_dir, Dir};
+use tempdir::TempDir;
 use url::Url;
 
-use crate::config::add_member;
-use control_ir::{ConnectorSpec, KafkaConnectorSpec, Pipe};
+use control_ir::{ConnectorDef, ConnectorProperties, KafkaConnectorDef};
 
-use crate::ui::print_success;
-use crate::workspace::{config_file_path, connectors_dir, load_workspace_config, write_config};
+use crate::config::add_member;
+use crate::ui::{print_success, print_warn};
+use crate::workspace::{
+    config_file_path, connectors_dir, load_workspace_config, modules_dir, write_config,
+};
+
+static GUEST_CONNECTOR_TEMPLATE: Dir<'static> =
+    include_dir!("$CARGO_MANIFEST_DIR/../../../wasm/control/cli/templates/connector");
 
 #[derive(Debug, Parser)]
 pub enum NewConnectorCommand {
@@ -48,11 +56,7 @@ pub struct NewKafkaConnectorCommand {
     #[arg(long)]
     group: String,
     #[arg(long)]
-    node: String,
-    #[arg(long)]
-    lane: String,
-    #[arg(long)]
-    module: Option<String>,
+    module: String,
 }
 
 impl NewKafkaConnectorCommand {
@@ -62,8 +66,6 @@ impl NewKafkaConnectorCommand {
             broker,
             topic,
             group,
-            node,
-            lane,
             module,
         } = self;
 
@@ -71,13 +73,32 @@ impl NewKafkaConnectorCommand {
 
         if !config.add_connector(&name) {
             return Err(anyhow!("Workspace already contains connector: {name}"));
-        } else if let Some(module) = module.as_ref() {
-            if !config.add_module(module) {
-                return Err(anyhow!("Workspace already contains module: {name}"));
-            }
+        } else if config.add_module(&module) {
+            print_success(format!("Creating connector module: {module}"));
+
+            let temp_dir = TempDir::new("wasm")?;
+            let path = temp_dir.path().to_str().map(|s| s.to_string());
+            GUEST_CONNECTOR_TEMPLATE.extract(&temp_dir)?;
+
+            let template_path = TemplatePath {
+                path,
+                ..Default::default()
+            };
+            let args = GenerateArgs {
+                name: Some(module.clone()),
+                force: true,
+                template_path,
+                destination: Some(modules_dir()?),
+                ..Default::default()
+            };
+            generate(args)?;
 
             add_member(&format!("connectors/{name}"))?;
-            print_success(format!("Creating connector module: {module}"));
+            print_success(format!("Created new connector module: {module}"));
+        } else {
+            print_warn(format!(
+                "Connector module '{module}' already exists, linking"
+            ));
         }
 
         write_config(config_file_path()?, &config)?;
@@ -86,12 +107,12 @@ impl NewKafkaConnectorCommand {
         let mut connector = connectors_dir()?;
         connector.push(format!("{name}.yml"));
 
-        let spec = ConnectorSpec::Kafka(KafkaConnectorSpec {
+        let spec = ConnectorDef::Kafka(KafkaConnectorDef {
             broker,
             topic,
             group,
             module,
-            pipe: Pipe { node, lane },
+            properties: ConnectorProperties::default(),
         });
         let spec_str = serde_yaml::to_string(&spec)?;
 

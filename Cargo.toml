@@ -46,7 +46,6 @@ members = [
     "wasm/control/*",
     "wasm/sender",
     "wasm/wasm_utils",
-    "wasm/wasm_utils"
 ]
 
 exclude = [

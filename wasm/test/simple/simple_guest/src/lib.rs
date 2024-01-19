@@ -19,7 +19,6 @@ impl SwimAgent for MyAgent {
                 |agent| &mut agent.lane,
                 |ctx, _old_value, new_value| ctx.set_value(|agent| &mut agent.twice, new_value * 2),
             );
-
         let (twice, twice_router) = ValueLane::<i32>::builder(&mut spec, "twice", true)
             .on_update::<MyAgent, _>(|agent| &mut agent.twice, |_old_value, _new_value| {});
 

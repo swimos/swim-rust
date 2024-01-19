@@ -19,7 +19,7 @@ use static_assertions::assert_obj_safe;
 pub use context::AgentContext;
 pub use item::MutableValueLikeItem;
 pub use router::{EitherRoute, EventRouter, ItemRoute};
-use wasm_ir::requests::{CommandEvent, HostRequest, InitValueItemRequest, LaneSyncRequest};
+use wasm_ir::agent::{CommandEvent, HostRequest, InitValueItemRequest, LaneSyncRequest};
 use wasm_ir::wpc::EnvAccess;
 use wasm_ir::{AgentSpec, LaneKindRepr, LaneSpec};
 
@@ -72,10 +72,11 @@ impl AgentSpecBuilder {
         }
 
         let key = *id;
-
         let spec = LaneSpec::new(transient, key, L::kind());
+
         lanes.insert(uri.to_string(), spec);
         *id += 1;
+
         key
     }
 
@@ -144,8 +145,8 @@ where
     }
 }
 
-// This purely serves to abstract over the type parameters of the AgentModel so that they don't need
-// to be specified in the guest's implementation.
+// This purely serves to erase the type parameters of the AgentModel so that they don't need to be
+// specified in the guest's implementation.
 pub trait Dispatcher: Sealed {
     fn dispatch(&mut self, data: Vec<u8>);
 }
