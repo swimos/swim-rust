@@ -9,5 +9,3 @@
 
 **/.DS_Store
 *.iml
-
-/wasm/demo/*

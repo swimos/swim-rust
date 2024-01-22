@@ -14,6 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use url::Url;
 
 #[derive(Debug)]
@@ -36,19 +37,37 @@ impl ConnectorSpec {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "type", content = "properties")]
+#[serde(tag = "type", content = "config")]
 pub enum ConnectorDef {
     Kafka(KafkaConnectorDef),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize)]
 pub struct KafkaConnectorSpec {
     pub broker: Url,
     pub topic: String,
     pub group: String,
     pub module: Vec<u8>,
-    #[serde(flatten)]
     pub properties: ConnectorProperties,
+}
+
+impl Debug for KafkaConnectorSpec {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let KafkaConnectorSpec {
+            broker,
+            topic,
+            group,
+            properties,
+            ..
+        } = self;
+        f.debug_struct("KafkaConnectorSpec")
+            .field("broker", broker)
+            .field("topic", topic)
+            .field("group", group)
+            .field("module", &"..")
+            .field("properties", properties)
+            .finish()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -57,7 +76,6 @@ pub struct KafkaConnectorDef {
     pub topic: String,
     pub group: String,
     pub module: String,
-    #[serde(flatten)]
     pub properties: ConnectorProperties,
 }
 

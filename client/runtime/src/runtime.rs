@@ -450,8 +450,11 @@ async fn runtime_task<Net, Ws, Provider>(
                 host,
                 result: Ok((addr, attach)),
             } => {
-                assert!(peers.get(&addr).is_none());
-                let peer = Peer::new(attach);
+                println!("Host: {host}, addr: {addr}, peers: {peers:?}");
+                // assert!(peers.get(&addr).is_none());
+                // let peer = Peer::new(attach);
+
+                let peer = peers.entry(addr).or_insert_with(|| Peer::new(attach));
 
                 for (key, pending_downlink) in pending.drain_connection_queue(host.clone()) {
                     match peer.get_view(&key) {
@@ -479,7 +482,7 @@ async fn runtime_task<Net, Ws, Provider>(
                     }
                 }
 
-                peers.insert(addr, peer);
+                // peers.insert(addr, peer);
             }
             RuntimeEvent::ConnectionResult {
                 host,

@@ -102,7 +102,7 @@ impl<'l> ToTokens for InitFn<'l> {
             pub fn init() -> std::boxed::Box<*mut dyn Dispatcher> {
                 let (spec, agent) = unsafe { wasm_agent::<#ident>(WasmHostAccess::default()) };
 
-                let mut buf = bincode::serialize(&spec).expect("Serializing should be infallible");
+                let mut buf = swim_wasm_guest::prelude::bincode::serialize(&spec).expect("Serializing should be infallible");
 
                 let ptr = buf.as_mut_ptr();
                 let out_len = buf.len();

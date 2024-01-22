@@ -26,19 +26,19 @@ use crate::runtime::{WasmConnector, WasmConnectorFactory, WasmError};
 mod vtable {
     pub const ALLOC_EXPORT: &str = "alloc";
     pub const MEMORY_EXPORT: &str = "memory";
-    pub const HOST_CALL_FUNCTION: &'static str = "dispatch";
+    pub const HOST_CALL_FUNCTION: &'static str = "host_call";
 
-    pub const INIT_PROPS_FUNCTION: &'static str = "init_properties";
+    pub const INIT_PROPS_FUNCTION: &'static str = "init_context";
 
     pub const DISPATCH_FUNCTION: &str = "dispatch";
 
-    /// (data ptr, data len, connector properties ptr)
+    /// (data ptr, data len, connector context ptr)
     pub type DispatchParams = (i32, i32, i32);
     pub type DispatchReturns = ();
 
     /// (data ptr, data len)
-    pub type InitPropertiesParams = (i32, i32);
-    pub type InitPropertiesReturns = i32;
+    pub type InitContextParams = (i32, i32);
+    pub type InitContextReturns = i32;
 }
 
 impl WasmConnectorFactory for Engine {
@@ -75,7 +75,7 @@ pub struct WasmConnectorCallbackInstance {
     dispatch_fn: TypedFunc<vtable::DispatchParams, vtable::DispatchReturns>,
     memory: Memory,
     alloc_fn: Func,
-    properties_ptr: i32,
+    context_ptr: i32,
 }
 
 impl WasmConnectorCallbackInstance {
@@ -111,7 +111,7 @@ impl WasmConnectorCallbackInstance {
                             let event: ConnectorMessage = bincode::deserialize(bytes.as_ref())?;
                             channel.send(event).await.expect("Runtime stopped");
 
-                            Ok(ptr)
+                            Ok(())
                         }
                         _ => {
                             Err(WasmError::MissingExport(vtable::MEMORY_EXPORT.to_string()).into())
@@ -137,14 +137,14 @@ impl WasmConnectorCallbackInstance {
             .get_func(&mut store, vtable::ALLOC_EXPORT)
             .ok_or_else(|| wasmtime::Error::msg("Missing alloc"))?;
 
-        let init_properties_fn = instance
-            .get_typed_func::<vtable::InitPropertiesParams, vtable::InitPropertiesReturns>(
+        let init_context_fn = instance
+            .get_typed_func::<vtable::InitContextParams, vtable::InitContextReturns>(
                 &mut store,
                 vtable::INIT_PROPS_FUNCTION,
             )?;
 
         let properties_buf =
-            bincode::serialize(&properties).expect("Failed to serialize connector properties");
+            bincode::serialize(&properties).expect("Failed to serialize connector context");
         let len = properties_buf.len();
         let data_ptr = unsafe {
             shared_memory
@@ -152,7 +152,7 @@ impl WasmConnectorCallbackInstance {
                 .await?
         };
 
-        let properties_ptr = init_properties_fn
+        let context_ptr = init_context_fn
             .call_async(&mut store, (data_ptr as i32, len as i32))
             .await?;
 
@@ -163,7 +163,7 @@ impl WasmConnectorCallbackInstance {
             dispatch_fn,
             memory,
             alloc_fn,
-            properties_ptr,
+            context_ptr,
         })
     }
 }
@@ -180,7 +180,7 @@ impl WasmConnector for WasmConnectorCallbackInstance {
         self.dispatch_fn
             .call_async(
                 &mut self.store,
-                (data_ptr as i32, len as i32, self.properties_ptr),
+                (data_ptr as i32, len as i32, self.context_ptr),
             )
             .await?;
 

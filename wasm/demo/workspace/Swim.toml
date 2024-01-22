@@ -1,0 +1,7 @@
+remote = "http://127.0.0.1:9090/"
+deploy_port = 6363
+connectors = ["kafka_names", "kafka_counter", "kafka_ids"]
+modules = ["counter", "extractor"]
+
+[agents]
+test = "node"

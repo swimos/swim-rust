@@ -1,0 +1,10 @@
+type: Kafka
+config:
+  broker: localhost:9092
+  topic: topic
+  group: group#2
+  module: extractor
+  properties:
+    extract: id
+    node: node
+    lane: id_lane

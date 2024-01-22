@@ -310,10 +310,11 @@ where
                             "Connection task failure"
                         );
                     }
-                    debug_assert!(
-                        peers.remove(&addr).is_some(),
-                        "Attempted to remove a peer that didn't exist"
-                    );
+                    // debug_assert!(
+                    //     peers.remove(&addr).is_some(),
+                    //     "{}",
+                    //     format!("Attempted to remove a peer that didn't exist: {host}")
+                    // );
                 }
             }
         }

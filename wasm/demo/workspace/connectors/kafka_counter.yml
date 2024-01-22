@@ -1,0 +1,9 @@
+type: Kafka
+config:
+  broker: localhost:9092
+  topic: topic
+  group: group#1
+  module: counter
+  properties:
+    node: node
+    lane: counter_lane

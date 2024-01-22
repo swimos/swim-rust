@@ -23,9 +23,10 @@ use clap::{Args, Parser};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::connector::link_module;
 use crate::ui::{print_error, print_success};
-use control_ir::{AgentSpec, ConnectorSpec, DeploySpec};
-use wasm_compiler::ReleaseMode;
+use control_ir::{AgentSpec, ConnectorDef, DeploySpec};
+use wasm_compiler::{install_wasm_target, ReleaseMode};
 
 const AGENTS_DIR_NAME: &str = "agents";
 const CONNECTORS_DIR_NAME: &str = "connectors";
@@ -129,10 +130,13 @@ pub fn write_config(workspace_file: PathBuf, config: &WorkspaceConfig) -> Result
 
 #[derive(Debug, Args)]
 pub struct NewWorkspaceCommand {
+    /// The name of the workspace. A folder with this name must not exist in the current directory.
     #[arg(long)]
     name: String,
+    /// The port that this workspace will be deployed on at the remote server.
     #[arg(long)]
     port: usize,
+    /// The remote server's URL.
     #[arg(long)]
     remote: Url,
 }
@@ -199,58 +203,81 @@ impl DeployCommand {
             modules,
         } = load_workspace_config()?;
 
+        install_wasm_target().await?;
+
         if agents.is_empty() {
             return Err(anyhow!("Workspace contains no agents"));
         }
 
         let dir = current_dir()?;
-        let project = wasm_compiler::Project::new(dir.clone(), vec![], ReleaseMode::Release);
 
-        wasm_compiler::compile(project).await?;
-
-        print_success("Compiling workspace...");
+        print_success("Building workspace...");
         print_success("Compiling agents...");
 
-        let mut agent_dir = dir.clone();
-        agent_dir.push("target/wasm32-unknown-unknown/release");
-        let mut compiled_agents = HashMap::new();
+        let mut target_dir = dir.clone();
+        target_dir.push("target/wasm32-unknown-unknown/release");
+
+        let mut linked_agents = HashMap::new();
 
         for (name, uri) in agents {
+            let mut agent_dir = dir.clone();
+            agent_dir.push(format!("agents/{name}"));
+
             print_success(format!("\tCompiling agent: {name}"));
 
-            let mut agent_file = agent_dir.clone();
+            let project = wasm_compiler::Project::new(agent_dir, vec![], ReleaseMode::Release);
+            wasm_compiler::compile(project).await?;
+
+            let mut agent_file = target_dir.clone();
             agent_file.push(format!("{name}.wasm"));
+
             print_success(format!("\tCompiled agent: {name}"));
 
             let module = read(agent_file)?;
-            compiled_agents.insert(name, AgentSpec { route: uri, module });
+            linked_agents.insert(name, AgentSpec { route: uri, module });
+        }
+
+        for module in &modules {
+            print_success(format!("\tCompiling module: {module}"));
+
+            let mut module_dir = dir.clone();
+            module_dir.push(format!("modules/{module}"));
+
+            let project = wasm_compiler::Project::new(module_dir, vec![], ReleaseMode::Release);
+            wasm_compiler::compile(project).await?;
+
+            print_success(format!("\tCompiled module: {module}"));
         }
 
         print_success("Compiled agents");
 
-        let mut loaded_connectors = HashMap::new();
+        let mut linked_connectors = HashMap::new();
         let connectors_dir = connectors_dir()?;
 
-        print_success("Compiling connectors...");
+        print_success("Linking connectors...");
 
         for connector in connectors {
+            print_success(format!("\tLinking connector: {connector}"));
+
             let mut connector_file = connectors_dir.clone();
             connector_file.push(format!("{connector}.yml"));
 
             let connector_str = fs::read_to_string(connector_file)?;
-            loaded_connectors.insert(
-                connector,
-                serde_yaml::from_str::<ConnectorSpec>(&connector_str)?,
-            );
+            let def = serde_yaml::from_str::<ConnectorDef>(&connector_str)?;
+            let spec = link_module(&modules, def, target_dir.clone())?;
+
+            print_success(format!("\tLinked connector: {connector}"));
+
+            linked_connectors.insert(connector, spec);
         }
 
-        print_success("Compiled connectors");
+        print_success("Linked connectors");
 
         let command = DeploySpec {
             name: dir.iter().last().unwrap().to_string_lossy().to_string(),
             port: deploy_port,
-            agents: compiled_agents,
-            connectors: loaded_connectors,
+            agents: linked_agents,
+            connectors: linked_connectors,
         };
 
         let spec_str = serde_json::to_string(&command)?;
@@ -273,7 +300,9 @@ impl DeployCommand {
 
 #[derive(Debug, Parser)]
 pub enum WorkspaceCommand {
+    /// Create a new workspace.
     New(NewWorkspaceCommand),
+    /// Deploy the current workspace.
     Deploy(DeployCommand),
 }
 

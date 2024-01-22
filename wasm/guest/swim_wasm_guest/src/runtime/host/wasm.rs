@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::io::Cursor;
-use std::mem::forget;
+use std::mem::{forget, size_of};
 use std::ptr::slice_from_raw_parts;
 
 use byteorder::ReadBytesExt;
@@ -22,6 +22,13 @@ use serde::Serialize;
 
 use wasm_ir::wpc::EnvAccess;
 
+const LEN_SIZE: usize = size_of::<u32>();
+
+// todo: experiment with this not flushing events to the host immediately. i.e, stack the events
+//  and when either:
+//  - a dispatch event is fired that expects a return type, flush all of the events in one go and await the response
+//  - the size of the pending events reaches a certain limit
+//  - the struct is dropped
 #[derive(Debug, Clone, Default)]
 pub struct WasmHostAccess;
 
@@ -43,9 +50,9 @@ impl EnvAccess for WasmHostAccess {
 
         let response_ptr = unsafe { host_call(ptr as i32, out_len as i32) };
 
-        let len_slice = slice_from_raw_parts(response_ptr, 4);
-        let len = unsafe { (&*len_slice).read_u32::<byteorder::BigEndian>().unwrap() };
-        let base = unsafe { response_ptr.add(4) };
+        let len_slice = slice_from_raw_parts(response_ptr, LEN_SIZE);
+        let len = unsafe { (&*len_slice).read_u32::<byteorder::NativeEndian>().unwrap() };
+        let base = unsafe { response_ptr.add(LEN_SIZE) };
 
         let response = unsafe { Vec::from_raw_parts(base, len as usize, len as usize) };
 

@@ -27,8 +27,10 @@ static GUEST_AGENT_TEMPLATE: Dir<'static> =
 
 #[derive(Debug, Parser)]
 pub struct NewAgentCommand {
+    /// A unique name for the agent.
     #[arg(long)]
     name: String,
+    /// The route pattern that the agent will run at.
     #[arg(long)]
     uri: String,
 }
@@ -70,6 +72,7 @@ impl NewAgentCommand {
 
 #[derive(Debug, Parser)]
 pub enum AgentCommand {
+    /// Create a new agent.
     New(NewAgentCommand),
 }
 

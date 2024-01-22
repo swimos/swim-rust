@@ -1,0 +1,11 @@
+[package]
+name = "producer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rdkafka = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+serde_json = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+fake = "2.9.2"

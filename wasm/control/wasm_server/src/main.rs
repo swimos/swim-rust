@@ -27,14 +27,15 @@ use wasm_connector_host::ConnectorPool;
 #[tokio::main]
 async fn main() {
     let filter = EnvFilter::default()
-        // .add_directive("client=trace".parse().unwrap())
-        // .add_directive("swim_client=trace".parse().unwrap())
-        // .add_directive("runtime=trace".parse().unwrap())
-        // .add_directive("swim_agent=trace".parse().unwrap())
-        // .add_directive("swim_messages=trace".parse().unwrap())
-        // .add_directive("swim_remote=trace".parse().unwrap())
-        // .add_directive("swim_downlink=trace".parse().unwrap())
+        .add_directive("client=trace".parse().unwrap())
+        .add_directive("swim_client=trace".parse().unwrap())
+        .add_directive("runtime=trace".parse().unwrap())
+        .add_directive("swim_agent=trace".parse().unwrap())
+        .add_directive("swim_messages=trace".parse().unwrap())
+        .add_directive("swim_remote=trace".parse().unwrap())
+        .add_directive("swim_downlink=trace".parse().unwrap())
         .add_directive("wasm_server=trace".parse().unwrap())
+        .add_directive("wasm_connector_host=trace".parse().unwrap())
         .add_directive(LevelFilter::WARN.into());
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
@@ -117,10 +118,10 @@ async fn run_runtime(mut rx: mpsc::Receiver<RuntimeRequest>) {
     loop {
         let event: Option<RuntimeEvent> = select! {
             request = rx.recv() => request.map(|request| RuntimeEvent::Request { request }),
-            exit = server_tasks.next(), if !server_tasks.is_empty() => exit.map(|result: (String, Result<(), ServerError>) | {
+            exit = server_tasks.next(), if !server_tasks.is_empty() => exit.map(|result: (String, (Result<(), ServerError>, ())) | {
                 RuntimeEvent::TaskComplete {
                     name: result.0,
-                    result: result.1
+                    result: result.1.0
                 }
             }),
             client = &mut client_task => {
@@ -162,11 +163,14 @@ async fn run_runtime(mut rx: mpsc::Receiver<RuntimeRequest>) {
 
                         match server.build().await {
                             Ok(server) => {
-                                let (task, handle) = server.run();
+                                let (server_task, handle) = server.run();
                                 let task_name = name.clone();
-                                server_tasks.push(async move { (task_name, task.await) });
+                                let (pool, pool_task) = ConnectorPool::build(port).await;
 
-                                let pool = ConnectorPool::build(port).await;
+                                server_tasks.push(async move {
+                                    (task_name, join!(server_task, pool_task))
+                                });
+
                                 pool.deploy(connectors).await;
 
                                 handles.insert(

@@ -1,39 +1,90 @@
-pub use guest_derive::connector;
 use std::collections::HashMap;
-pub use swim_form::Form;
+use std::mem::{forget, ManuallyDrop};
+use std::slice;
 
-use std::mem::forget;
+pub use bincode;
+
+pub use guest_derive::connector;
+pub use swim_form::Form;
 use swim_recon::printer::print_recon_compact;
 use wasm_ir::connector::ConnectorMessageRef;
 
-#[derive(Debug)]
-pub struct ConnectorProperties(HashMap<String, String>);
-
-impl From<HashMap<String, String>> for ConnectorProperties {
-    fn from(value: HashMap<String, String>) -> Self {
-        ConnectorProperties(value)
-    }
+pub struct ConnectorContext {
+    state: *mut u8,
+    state_len: usize,
+    state_cap: usize,
+    properties: HashMap<String, String>,
 }
-
-impl ConnectorProperties {
-    pub fn get(&self, key: &str) -> Option<&String> {
-        self.0.get(key)
-    }
-
-    pub fn contains_key(&self, key: &str) -> bool {
-        self.0.contains_key(key)
-    }
-}
-
-pub struct ConnectorContext;
 
 impl ConnectorContext {
+    pub fn new(properties: HashMap<String, String>) -> ConnectorContext {
+        let mut state = ManuallyDrop::new(Vec::new());
+
+        let ptr = state.as_mut_ptr();
+        let len = state.len();
+        let cap = state.capacity();
+
+        forget(state);
+
+        ConnectorContext {
+            state: ptr,
+            state_len: len,
+            state_cap: cap,
+            properties,
+        }
+    }
+
+    pub fn get_property(&self, key: &str) -> Option<String> {
+        self.properties.get(key).cloned()
+    }
+
+    pub fn contains_property(&self, key: &str) -> bool {
+        self.properties.contains_key(key)
+    }
+
+    pub fn replace_state(&mut self, mut buf: Vec<u8>) -> Vec<u8> {
+        let ConnectorContext {
+            state,
+            state_len,
+            state_cap,
+            ..
+        } = self;
+
+        let old_state = unsafe { Vec::from_raw_parts(*state, *state_len, *state_cap) };
+
+        let ptr = buf.as_mut_ptr();
+        let len = buf.len();
+        let cap = buf.capacity();
+
+        forget(buf);
+
+        *state = ptr;
+        *state_len = len;
+        *state_cap = cap;
+
+        old_state
+    }
+
+    pub fn state(&self) -> &[u8] {
+        let ConnectorContext {
+            state, state_len, ..
+        } = self;
+        unsafe { slice::from_raw_parts(*state as *const u8, *state_len) }
+    }
+
+    pub fn state_mut(&mut self) -> &mut [u8] {
+        let ConnectorContext {
+            state, state_len, ..
+        } = self;
+        unsafe { slice::from_raw_parts_mut(*state, *state_len) }
+    }
+
     pub fn send<T>(&self, node: &str, lane: &str, data: &T)
     where
         T: Form,
     {
         extern "C" {
-            fn send_buf(ptr: i32, len: i32);
+            fn host_call(ptr: i32, len: i32);
         }
 
         let message = ConnectorMessageRef {
@@ -48,7 +99,7 @@ impl ConnectorContext {
         forget(buf);
 
         unsafe {
-            send_buf(ptr as i32, out_len as i32);
+            host_call(ptr as i32, out_len as i32);
         }
     }
 }

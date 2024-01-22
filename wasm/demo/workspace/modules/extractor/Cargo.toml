@@ -1,0 +1,12 @@
+[package]
+name = "extractor"
+version = "0.1.0"
+authors = ["SirCipher <tklapwijk92@gmail.com>"]
+edition = "2021"
+
+[lib]
+crate-type = ['cdylib']
+
+[dependencies]
+swim_wasm_connector = { workspace = true }
+serde_json = "*"

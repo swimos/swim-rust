@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashSet;
 use std::fs;
+use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
 use cargo_generate::{generate, GenerateArgs, TemplatePath};
@@ -21,7 +23,9 @@ use include_dir::{include_dir, Dir};
 use tempdir::TempDir;
 use url::Url;
 
-use control_ir::{ConnectorDef, ConnectorProperties, KafkaConnectorDef};
+use control_ir::{
+    ConnectorDef, ConnectorProperties, ConnectorSpec, KafkaConnectorDef, KafkaConnectorSpec,
+};
 
 use crate::config::add_member;
 use crate::ui::{print_success, print_warn};
@@ -34,6 +38,7 @@ static GUEST_CONNECTOR_TEMPLATE: Dir<'static> =
 
 #[derive(Debug, Parser)]
 pub enum NewConnectorCommand {
+    /// Create a new kafka connector.
     Kafka(NewKafkaConnectorCommand),
 }
 
@@ -47,14 +52,20 @@ impl NewConnectorCommand {
 
 #[derive(Debug, Parser)]
 pub struct NewKafkaConnectorCommand {
+    /// The name of the connector.
     #[arg(long)]
     name: String,
+    /// Kafka broker.
     #[arg(long)]
     broker: Url,
+    /// Kafka topic.
     #[arg(long)]
     topic: String,
+    /// Kafka consumer group.
     #[arg(long)]
     group: String,
+    /// The WASM module that will serve this connector. A module will be created if it does not
+    /// exist, otherwise, this connector will link to the module.
     #[arg(long)]
     module: String,
 }
@@ -93,7 +104,7 @@ impl NewKafkaConnectorCommand {
             };
             generate(args)?;
 
-            add_member(&format!("connectors/{name}"))?;
+            add_member(&format!("modules/{name}"))?;
             print_success(format!("Created new connector module: {module}"));
         } else {
             print_warn(format!(
@@ -124,6 +135,7 @@ impl NewKafkaConnectorCommand {
 
 #[derive(Debug, Parser)]
 pub enum ConnectorCommand {
+    /// Create a new connector.
     #[command(subcommand)]
     New(NewConnectorCommand),
 }
@@ -132,6 +144,40 @@ impl ConnectorCommand {
     pub async fn execute(self) -> Result<()> {
         match self {
             ConnectorCommand::New(command) => command.execute().await,
+        }
+    }
+}
+
+pub fn link_module(
+    modules: &HashSet<String>,
+    def: ConnectorDef,
+    mut target_dir: PathBuf,
+) -> Result<ConnectorSpec> {
+    match def {
+        ConnectorDef::Kafka(kafka) => {
+            let KafkaConnectorDef {
+                broker,
+                topic,
+                group,
+                module,
+                properties,
+            } = kafka;
+
+            if !modules.contains(&module) {
+                return Err(anyhow!("Missing module: {module}"));
+            }
+
+            target_dir.push(format!("{module}.wasm"));
+
+            let module = fs::read(target_dir)?;
+
+            Ok(ConnectorSpec::Kafka(KafkaConnectorSpec {
+                broker,
+                topic,
+                group,
+                module,
+                properties,
+            }))
         }
     }
 }

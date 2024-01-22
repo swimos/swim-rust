@@ -19,3 +19,4 @@ futures = { workspace = true }
 futures-util = { workspace = true }
 bytes = { workspace = true }
 thiserror = { workspace = true }
+rand = { workspace = true }

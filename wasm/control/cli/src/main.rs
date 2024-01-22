@@ -19,10 +19,13 @@ async fn main() -> Result<()> {
 
 #[derive(Debug, Parser)]
 enum Command {
+    /// Execute a command at the workspace level.
     #[command(subcommand)]
     Workspace(WorkspaceCommand),
+    /// Execute a command at a agent level.
     #[command(subcommand)]
     Agent(AgentCommand),
+    /// Execute a command at a connector level.
     #[command(subcommand)]
     Connector(ConnectorCommand),
 }

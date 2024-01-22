@@ -42,11 +42,12 @@ impl<'l> ToTokens for WasmConnector<'l> {
         tokens.append_all(quote! {
             #[no_mangle]
             #[allow(unused)]
-            pub fn init_properties(ptr: *mut u8, len: usize) -> *mut ConnectorProperties {
+            pub fn init_context(ptr: *mut u8, len: usize) -> *mut ConnectorContext {
                 let input_data = unsafe { std::vec::Vec::from_raw_parts(ptr, len, len) };
-                let props = bincode::deserialize(input_data.as_slice())
+                let props = swim_wasm_connector::bincode::deserialize(input_data.as_slice())
                     .expect("Failed to deserialize connector properties");
-                Box::into_raw(Box::new(props))
+                let context = swim_wasm_connector::ConnectorContext::new(props);
+                Box::into_raw(Box::new(context))
             }
 
             #[no_mangle]
@@ -67,11 +68,12 @@ impl<'l> ToTokens for WasmConnector<'l> {
 
             #[no_mangle]
             #[allow(unused)]
-            pub fn dispatch(ptr: *mut u8, len: usize, props: &*mut swim_wasm_connector::ConnectorProperties) {
+            pub fn dispatch(ptr: *mut u8, len: usize, ctx: *mut swim_wasm_connector::ConnectorContext) {
                 let input_data = unsafe { std::vec::Vec::from_raw_parts(ptr, len, len) };
-                let f: fn(swim_wasm_connector::ConnectorContext, &swim_wasm_connector::ConnectorProperties, std::vec::Vec<u8>) -> std::result::Result<(), Box<dyn std::error::Error>> = #ident;
-                let properties = unsafe { &**props };
-                let result = f(swim_wasm_connector::ConnectorContext, properties, input_data).map_err(|e| e.to_string());
+
+                let f: fn(&mut swim_wasm_connector::ConnectorContext, std::vec::Vec<u8>) -> std::result::Result<(), Box<dyn std::error::Error>> = #ident;
+                let ctx = unsafe { &mut *ctx };
+                let result = f(ctx,  input_data).map_err(|e| e.to_string());
             }
         })
     }

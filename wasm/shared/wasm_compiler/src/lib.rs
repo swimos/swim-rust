@@ -38,7 +38,7 @@ impl Project {
     }
 }
 
-async fn install_target() -> Result<()> {
+pub async fn install_wasm_target() -> Result<()> {
     let mut cargo = Command::new("rustup");
     let command = cargo
         .args(&["target", "add", TARGET])
@@ -55,8 +55,6 @@ async fn install_target() -> Result<()> {
 }
 
 pub async fn compile(project: Project) -> Result<()> {
-    install_target().await?;
-
     let Project {
         dir,
         features,
@@ -71,7 +69,8 @@ pub async fn compile(project: Project) -> Result<()> {
     command
         .current_dir(dir)
         .arg("build")
-        .args(&["--target", TARGET]);
+        .args(&["--target", TARGET])
+        .arg("--quiet");
 
     if release_mode == ReleaseMode::Release {
         command.arg("--release");

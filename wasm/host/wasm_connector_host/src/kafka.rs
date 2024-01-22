@@ -15,20 +15,24 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
+use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use futures::pin_mut;
+use rand::{Rng, SeedableRng};
 use rdkafka::config::RDKafkaLogLevel;
 use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::{ClientConfig as KafkaConfig, Message};
 use tokio::select;
 use tokio::sync::mpsc;
+use tokio::task::yield_now;
+use tokio::time::sleep;
 use tracing::{error, trace};
 use wasmtime::Engine;
 
 use client::{
-    ClientHandle, DownlinkOptions, RawMessage, RemotePath, UntypedValueDownlinkView,
-    ValueDownlinkOperationError,
+    ClientHandle, DownlinkOptions, RawMessage, RemotePath, SwimClientBuilder,
+    UntypedValueDownlinkView, ValueDownlinkOperationError,
 };
 use control_ir::KafkaConnectorSpec;
 use wasm_ir::connector::ConnectorMessage;
@@ -66,17 +70,21 @@ pub async fn run_kafka_connector(
     let (tx, mut rx) = mpsc::channel(1);
     let mut connector = engine.new_connector(module, tx, properties).await?;
     let mut downlinks = HashMap::default();
+    // todo: fix downlink runtime startup bug
+    let (client, client_task) = SwimClientBuilder::new(Default::default()).build().await;
+    let handle = client.handle();
+    let _task = tokio::spawn(client_task);
 
     loop {
         match consumer.recv().await {
             Ok(msg) => {
                 if let Some(bytes) = msg.payload() {
-                    trace!(?bytes, "Connector received message. Dispatching");
+                    trace!("Connector received message. Dispatching to module");
 
                     suspend(
                         port,
                         connector.dispatch(bytes),
-                        &client,
+                        &handle,
                         &mut downlinks,
                         &mut rx,
                     )
@@ -84,7 +92,7 @@ pub async fn run_kafka_connector(
                 }
             }
             Err(error) => {
-                error!(?error, "Kafka error");
+                error!(?error, "Kafka connector error");
                 return Err(anyhow!(error));
             }
         }
@@ -115,8 +123,13 @@ where
                     }
                 }
             },
-            _ = &mut suspended_task => return Ok(())
+            r = &mut suspended_task => {
+                trace!("Connector suspend complete");
+                return Ok(r?)
+            }
         };
+
+        trace!("Connector requested to dispatch envelope");
 
         let ConnectorMessage { node, lane, data } = dispatch;
         let remote = RemotePath::new(format!("ws://127.0.0.1:{port}"), &node, &lane);

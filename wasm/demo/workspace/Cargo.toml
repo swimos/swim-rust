@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "modules/extractor",
+    "agents/test",
+    "modules/counter",
+]
+resolver = "2"
+
+[workspace.dependencies.swim_wasm_connector]
+path = "../swim-rust/wasm/guest/swim_wasm_connector"
+
+[workspace.dependencies.swim_wasm_guest]
+path = "../swim-rust/wasm/guest/swim_wasm_guest"

@@ -31,6 +31,7 @@ use uuid::Uuid;
 
 pub type Key = (RelativeAddress<Text>, DownlinkKind);
 
+#[derive(Debug)]
 pub struct RuntimeView {
     stop: trigger::Sender,
     attach: mpsc::Sender<AttachAction>,
@@ -42,6 +43,7 @@ impl RuntimeView {
     }
 }
 
+#[derive(Debug)]
 pub struct Peer {
     attach: mpsc::Sender<AttachClient>,
     downlinks: FnvHashMap<Key, RuntimeView>,

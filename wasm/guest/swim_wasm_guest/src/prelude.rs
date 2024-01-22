@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub use bincode;
 pub use guest_derive::wasm_agent;
 
 pub mod form {
