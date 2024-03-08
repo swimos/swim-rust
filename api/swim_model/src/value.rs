@@ -213,8 +213,8 @@ impl Value {
             },
             Value::UInt32Value(n) => match &kind {
                 ValueKind::Int32 => i32::try_from(*n).is_ok(),
-                ValueKind::Int64 => i64::try_from(*n).is_ok(),
-                ValueKind::BigInt => BigInt::try_from(*n).is_ok(),
+                ValueKind::Int64 => true,
+                ValueKind::BigInt => true,
                 ValueKind::BigUint => true,
                 ValueKind::UInt32 => true,
                 ValueKind::UInt64 => true,
@@ -224,7 +224,7 @@ impl Value {
                 ValueKind::Int32 => i32::try_from(*n).is_ok(),
                 ValueKind::Int64 => i64::try_from(*n).is_ok(),
                 ValueKind::UInt32 => u32::try_from(*n).is_ok(),
-                ValueKind::BigInt => BigInt::try_from(*n).is_ok(),
+                ValueKind::BigInt => true,
                 ValueKind::BigUint => true,
                 ValueKind::UInt64 => true,
                 _ => false,
@@ -344,10 +344,7 @@ impl Value {
                     }
                 }
                 Value::BigInt(bi) => BigInt::from(*n).cmp(bi),
-                Value::BigUint(bi) => match BigUint::try_from(*n) {
-                    Ok(n) => n.cmp(bi),
-                    Err(_) => unreachable!(),
-                },
+                Value::BigUint(bi) => BigUint::from(*n).cmp(bi),
                 _ => Ordering::Greater,
             },
             Value::UInt64Value(n) => match other {
@@ -368,10 +365,7 @@ impl Value {
                     }
                 }
                 Value::BigInt(bi) => BigInt::from(*n).cmp(bi),
-                Value::BigUint(bi) => match BigUint::try_from(*n) {
-                    Ok(n) => n.cmp(bi),
-                    Err(_) => unreachable!(),
-                },
+                Value::BigUint(bi) => BigUint::from(*n).cmp(bi),
                 _ => Ordering::Greater,
             },
             Value::Float64Value(x) => match other {
@@ -589,9 +583,9 @@ impl PartialEq for Value {
                 _ => false,
             },
             Value::Int64Value(n) => match other {
-                Value::Int32Value(m) => i64::try_from(*m).map(|ref m| n == m).unwrap_or(false),
+                Value::Int32Value(m) => i64::from(*m) == *n,
                 Value::Int64Value(m) => n == m,
-                Value::UInt32Value(m) => i64::try_from(*m).map(|ref m| n == m).unwrap_or(false),
+                Value::UInt32Value(m) => i64::from(*m) == *n,
                 Value::UInt64Value(m) => i64::try_from(*m).map(|ref m| n == m).unwrap_or(false),
                 Value::BigInt(big_m) => big_m.to_i64().map(|ref m| n == m).unwrap_or(false),
                 Value::BigUint(big_m) => big_m.to_i64().map(|ref m| n == m).unwrap_or(false),
@@ -609,7 +603,7 @@ impl PartialEq for Value {
             Value::UInt64Value(n) => match other {
                 Value::Int32Value(m) => u64::try_from(*m).map(|ref m| n == m).unwrap_or(false),
                 Value::Int64Value(m) => u64::try_from(*m).map(|ref m| n == m).unwrap_or(false),
-                Value::UInt32Value(m) => u64::try_from(*m).map(|ref m| n == m).unwrap_or(false),
+                Value::UInt32Value(m) => u64::from(*m) == *n,
                 Value::UInt64Value(m) => n == m,
                 Value::BigInt(big_m) => big_m.to_u64().map(|ref m| n == m).unwrap_or(false),
                 Value::BigUint(big_m) => big_m.to_u64().map(|ref m| n == m).unwrap_or(false),

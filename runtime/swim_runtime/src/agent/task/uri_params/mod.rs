@@ -65,7 +65,7 @@ const LANE: &str = "lane";
 
 pub fn extract_lane(uri: &Uri) -> Option<Cow<'_, str>> {
     uri.query().and_then(|query| match params(query).finish() {
-        Ok((rem, uri_params)) if rem.is_empty() => uri_params
+        Ok(("", uri_params)) => uri_params
             .into_iter()
             .find(|(name, _)| name.eq_ignore_ascii_case(LANE))
             .map(|(_, value)| percent_decode_str(value).decode_utf8_lossy()),

@@ -19,6 +19,7 @@ use swim_form::structural::read::ReadError;
 const INVALID_UTF8: [u8; 2] = [0xc3, 0x28];
 
 #[test]
+#[allow(invalid_from_utf8)]
 fn msgpack_read_err_display() {
     let err = MsgPackReadError::Incomplete;
     let string = err.to_string();
