@@ -39,7 +39,7 @@ use crate::{
 struct FakeAgent;
 
 #[derive(Debug, PartialEq, Eq)]
-enum Event {
+enum TestEvent {
     Linked,
     Synced,
     Event(i32),
@@ -49,7 +49,7 @@ enum Event {
 
 #[derive(Debug)]
 struct FakeLifecycle {
-    inner: Arc<Mutex<Vec<Event>>>,
+    inner: Arc<Mutex<Vec<TestEvent>>>,
 }
 
 impl OnLinked<FakeAgent> for FakeLifecycle {
@@ -60,7 +60,7 @@ impl OnLinked<FakeAgent> for FakeLifecycle {
     fn on_linked(&self) -> Self::OnLinkedHandler<'_> {
         let state = self.inner.clone();
         SideEffect::from(move || {
-            state.lock().push(Event::Linked);
+            state.lock().push(TestEvent::Linked);
         })
         .boxed()
     }
@@ -74,7 +74,7 @@ impl OnUnlinked<FakeAgent> for FakeLifecycle {
     fn on_unlinked(&self) -> Self::OnUnlinkedHandler<'_> {
         let state = self.inner.clone();
         SideEffect::from(move || {
-            state.lock().push(Event::Unlinked);
+            state.lock().push(TestEvent::Unlinked);
         })
         .boxed()
     }
@@ -88,7 +88,7 @@ impl OnFailed<FakeAgent> for FakeLifecycle {
     fn on_failed(&self) -> Self::OnFailedHandler<'_> {
         let state = self.inner.clone();
         SideEffect::from(move || {
-            state.lock().push(Event::Failed);
+            state.lock().push(TestEvent::Failed);
         })
         .boxed()
     }
@@ -102,7 +102,7 @@ impl OnSynced<(), FakeAgent> for FakeLifecycle {
     fn on_synced<'a>(&'a self, _: &()) -> Self::OnSyncedHandler<'a> {
         let state = self.inner.clone();
         SideEffect::from(move || {
-            state.lock().push(Event::Synced);
+            state.lock().push(TestEvent::Synced);
         })
         .boxed()
     }
@@ -116,13 +116,13 @@ impl OnConsumeEvent<i32, FakeAgent> for FakeLifecycle {
     fn on_event(&self, value: i32) -> Self::OnEventHandler<'_> {
         let state = self.inner.clone();
         SideEffect::from(move || {
-            state.lock().push(Event::Event(value));
+            state.lock().push(TestEvent::Event(value));
         })
         .boxed()
     }
 }
 
-type Events = Arc<Mutex<Vec<Event>>>;
+type Events = Arc<Mutex<Vec<TestEvent>>>;
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
@@ -194,7 +194,7 @@ async fn expect_unlink_shutdown(
         .next_event(agent)
         .expect("Expected unlinked handler.");
     run_handler(handler, agent);
-    assert_eq!(take_events(events), vec![Event::Unlinked]);
+    assert_eq!(take_events(events), vec![TestEvent::Unlinked]);
 
     assert!(channel.await_ready().await.is_none());
     assert!(channel.next_event(agent).is_none());
@@ -261,10 +261,10 @@ async fn event_dl_terminate_on_error() {
         .next_event(&agent)
         .expect("Expected failure response.");
     run_handler(handler, &agent);
-    assert_eq!(take_events(&events), vec![Event::Failed]);
+    assert_eq!(take_events(&events), vec![TestEvent::Failed]);
 }
 
-fn take_events(events: &Events) -> Vec<Event> {
+fn take_events(events: &Events) -> Vec<TestEvent> {
     std::mem::take(&mut *events.lock())
 }
 
@@ -287,7 +287,7 @@ use super::super::test_support::run_handler;
 async fn run_with_expectations(
     context: &mut TestContext,
     agent: &FakeAgent,
-    notifications: Vec<(DownlinkNotification<i32>, Option<Vec<Event>>)>,
+    notifications: Vec<(DownlinkNotification<i32>, Option<Vec<TestEvent>>)>,
 ) {
     let TestContext {
         channel,
@@ -326,7 +326,7 @@ async fn event_dl_emit_linked_handler() {
     run_with_expectations(
         &mut context,
         &agent,
-        vec![(DownlinkNotification::Linked, Some(vec![Event::Linked]))],
+        vec![(DownlinkNotification::Linked, Some(vec![TestEvent::Linked]))],
     )
     .await;
 
@@ -345,9 +345,9 @@ async fn event_dl_emit_synced_handler() {
         &mut context,
         &agent,
         vec![
-            (DownlinkNotification::Linked, Some(vec![Event::Linked])),
+            (DownlinkNotification::Linked, Some(vec![TestEvent::Linked])),
             (DownlinkNotification::Event { body: 13 }, None),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced])),
+            (DownlinkNotification::Synced, Some(vec![TestEvent::Synced])),
         ],
     )
     .await;
@@ -367,12 +367,12 @@ async fn event_dl_emit_event_handlers() {
         &mut context,
         &agent,
         vec![
-            (DownlinkNotification::Linked, Some(vec![Event::Linked])),
+            (DownlinkNotification::Linked, Some(vec![TestEvent::Linked])),
             (DownlinkNotification::Event { body: 13 }, None),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced])),
+            (DownlinkNotification::Synced, Some(vec![TestEvent::Synced])),
             (
                 DownlinkNotification::Event { body: 15 },
-                Some(vec![Event::Event(15)]),
+                Some(vec![TestEvent::Event(15)]),
             ),
         ],
     )
@@ -397,12 +397,12 @@ async fn event_dl_emit_events_before_synced() {
         &mut context,
         &agent,
         vec![
-            (DownlinkNotification::Linked, Some(vec![Event::Linked])),
+            (DownlinkNotification::Linked, Some(vec![TestEvent::Linked])),
             (
                 DownlinkNotification::Event { body: 13 },
-                Some(vec![Event::Event(13)]),
+                Some(vec![TestEvent::Event(13)]),
             ),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced])),
+            (DownlinkNotification::Synced, Some(vec![TestEvent::Synced])),
         ],
     )
     .await;
@@ -422,8 +422,11 @@ async fn event_dl_emit_unlinked_handler() {
         &mut context,
         &agent,
         vec![
-            (DownlinkNotification::Linked, Some(vec![Event::Linked])),
-            (DownlinkNotification::Unlinked, Some(vec![Event::Unlinked])),
+            (DownlinkNotification::Linked, Some(vec![TestEvent::Linked])),
+            (
+                DownlinkNotification::Unlinked,
+                Some(vec![TestEvent::Unlinked]),
+            ),
         ],
     )
     .await;
@@ -450,19 +453,22 @@ async fn event_dl_revive_unlinked_downlink() {
         &mut context,
         &agent,
         vec![
-            (DownlinkNotification::Linked, Some(vec![Event::Linked])),
+            (DownlinkNotification::Linked, Some(vec![TestEvent::Linked])),
             (
                 DownlinkNotification::Event { body: 13 },
-                Some(vec![Event::Event(13)]),
+                Some(vec![TestEvent::Event(13)]),
             ),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced])),
-            (DownlinkNotification::Unlinked, Some(vec![Event::Unlinked])),
-            (DownlinkNotification::Linked, Some(vec![Event::Linked])),
+            (DownlinkNotification::Synced, Some(vec![TestEvent::Synced])),
+            (
+                DownlinkNotification::Unlinked,
+                Some(vec![TestEvent::Unlinked]),
+            ),
+            (DownlinkNotification::Linked, Some(vec![TestEvent::Linked])),
             (
                 DownlinkNotification::Event { body: 27 },
-                Some(vec![Event::Event(27)]),
+                Some(vec![TestEvent::Event(27)]),
             ),
-            (DownlinkNotification::Synced, Some(vec![Event::Synced])),
+            (DownlinkNotification::Synced, Some(vec![TestEvent::Synced])),
         ],
     )
     .await;

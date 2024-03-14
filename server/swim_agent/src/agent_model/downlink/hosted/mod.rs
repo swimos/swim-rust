@@ -112,6 +112,63 @@ impl DlStateObserver {
     }
 }
 
+enum OutputWriter<W: RestartableOutput> {
+    Active(W),
+    Inactive(W::Source),
+    Stopped,
+}
+
+impl<W: RestartableOutput + std::fmt::Debug> std::fmt::Debug for OutputWriter<W> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Active(arg0) => f.debug_tuple("Active").field(arg0).finish(),
+            Self::Inactive(_) => f.debug_tuple("Inactive").field(&"..").finish(),
+            Self::Stopped => write!(f, "Stopped"),
+        }
+    }
+}
+
+trait RestartableOutput {
+    type Source;
+
+    fn make_inactive(self) -> Self::Source;
+
+    fn restart(writer: ByteWriter, source: Self::Source) -> Self;
+}
+
+impl<W: RestartableOutput> OutputWriter<W> {
+    fn as_mut(&mut self) -> Option<&mut W> {
+        match self {
+            OutputWriter::Active(w) => Some(w),
+            _ => None,
+        }
+    }
+
+    fn is_active(&self) -> bool {
+        matches!(self, OutputWriter::Active(_))
+    }
+
+    fn make_inactive(&mut self) {
+        *self = match std::mem::replace(self, OutputWriter::Stopped) {
+            OutputWriter::Active(w) => OutputWriter::Inactive(w.make_inactive()),
+            OutputWriter::Inactive(i) => OutputWriter::Inactive(i),
+            OutputWriter::Stopped => OutputWriter::Stopped,
+        };
+    }
+
+    fn restart(&mut self, writer: ByteWriter) {
+        *self = match std::mem::replace(self, OutputWriter::Stopped) {
+            OutputWriter::Active(w) => {
+                OutputWriter::Active(<W as RestartableOutput>::restart(writer, w.make_inactive()))
+            }
+            OutputWriter::Inactive(i) => {
+                OutputWriter::Active(<W as RestartableOutput>::restart(writer, i))
+            }
+            OutputWriter::Stopped => OutputWriter::Stopped,
+        };
+    }
+}
+
 #[cfg(test)]
 mod test_support {
     use std::collections::HashMap;
@@ -240,62 +297,5 @@ mod test_support {
                 }
             }
         }
-    }
-}
-
-enum OutputWriter<W: RestartableOutput> {
-    Active(W),
-    Inactive(W::Source),
-    Stopped,
-}
-
-impl<W: RestartableOutput + std::fmt::Debug> std::fmt::Debug for OutputWriter<W> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Active(arg0) => f.debug_tuple("Active").field(arg0).finish(),
-            Self::Inactive(_) => f.debug_tuple("Inactive").field(&"..").finish(),
-            Self::Stopped => write!(f, "Stopped"),
-        }
-    }
-}
-
-trait RestartableOutput {
-    type Source;
-
-    fn make_inactive(self) -> Self::Source;
-
-    fn restart(writer: ByteWriter, source: Self::Source) -> Self;
-}
-
-impl<W: RestartableOutput> OutputWriter<W> {
-    fn as_mut(&mut self) -> Option<&mut W> {
-        match self {
-            OutputWriter::Active(w) => Some(w),
-            _ => None,
-        }
-    }
-
-    fn is_active(&self) -> bool {
-        matches!(self, OutputWriter::Active(_))
-    }
-
-    fn make_inactive(&mut self) {
-        *self = match std::mem::replace(self, OutputWriter::Stopped) {
-            OutputWriter::Active(w) => OutputWriter::Inactive(w.make_inactive()),
-            OutputWriter::Inactive(i) => OutputWriter::Inactive(i),
-            OutputWriter::Stopped => OutputWriter::Stopped,
-        };
-    }
-
-    fn restart(&mut self, writer: ByteWriter) {
-        *self = match std::mem::replace(self, OutputWriter::Stopped) {
-            OutputWriter::Active(w) => {
-                OutputWriter::Active(<W as RestartableOutput>::restart(writer, w.make_inactive()))
-            }
-            OutputWriter::Inactive(i) => {
-                OutputWriter::Active(<W as RestartableOutput>::restart(writer, i))
-            }
-            OutputWriter::Stopped => OutputWriter::Stopped,
-        };
     }
 }

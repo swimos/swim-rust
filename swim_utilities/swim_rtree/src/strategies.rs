@@ -255,7 +255,7 @@ where
 {
     (
         0,
-        mbb.combine_boxes(entries.get(0).unwrap().get_mbb()),
+        mbb.combine_boxes(entries.first().unwrap().get_mbb()),
         Group::First,
     )
 }

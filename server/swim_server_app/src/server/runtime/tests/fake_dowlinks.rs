@@ -15,7 +15,7 @@
 use crate::server::runtime::downlinks::DownlinksConnector;
 
 pub async fn fake_downlink_task(mut connector: DownlinksConnector) {
-    while connector.next_request().await.is_some() {
+    if connector.next_request().await.is_some() {
         panic!("Downlinks not supported.");
     }
     connector.stopped();

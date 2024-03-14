@@ -415,7 +415,7 @@ where
 
             //Split and sort by every dimension after the first
             for dim in 1..coord_count {
-                let entries_count = chunks.get(0).unwrap().len();
+                let entries_count = chunks.first().unwrap().len();
                 let coord_count = coord_count - dim + 1;
                 let mut axis_chunks = vec![];
                 let chunk_size = calculate_chunk_size(node_capacity, coord_count, entries_count);

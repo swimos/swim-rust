@@ -1626,7 +1626,7 @@ fn layout_item(schema: &ItemSchema, required: bool) -> Item {
 
 fn as_i64(value: &Value) -> Option<i64> {
     match value {
-        Value::UInt32Value(n) => i64::try_from(*n).ok(),
+        Value::UInt32Value(n) => Some(i64::from(*n)),
         Value::UInt64Value(n) => i64::try_from(*n).ok(),
         Value::Int32Value(n) => Some((*n).into()),
         Value::Int64Value(n) => Some(*n),
@@ -1650,10 +1650,10 @@ fn as_u64(value: &Value) -> Option<u64> {
 
 fn as_big_int(value: &Value) -> Option<BigInt> {
     match value {
-        Value::UInt32Value(n) => BigInt::try_from(*n).map(Some).unwrap_or(None),
-        Value::UInt64Value(n) => BigInt::try_from(*n).map(Some).unwrap_or(None),
-        Value::Int32Value(n) => BigInt::try_from(*n).map(Some).unwrap_or(None),
-        Value::Int64Value(n) => BigInt::try_from(*n).map(Some).unwrap_or(None),
+        Value::UInt32Value(n) => Some(BigInt::from(*n)),
+        Value::UInt64Value(n) => Some(BigInt::from(*n)),
+        Value::Int32Value(n) => Some(BigInt::from(*n)),
+        Value::Int64Value(n) => Some(BigInt::from(*n)),
         Value::BigInt(n) => Some(n.clone()),
         Value::BigUint(n) => n.to_bigint(),
         _ => None,
