@@ -1,0 +1,8 @@
+[package]
+name = "devguide_2-2-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+client = { path = "../../client/swim_client" }
+tokio = { workspace = true, features = ["full"]}

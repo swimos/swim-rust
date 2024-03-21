@@ -1,0 +1,9 @@
+[package]
+name = "devguide_2-4-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+client = { path = "../../client/swim_client" }
+tokio = { workspace = true, features = ["full"]}
+swim_form = { path = "../../api/swim_form"}
