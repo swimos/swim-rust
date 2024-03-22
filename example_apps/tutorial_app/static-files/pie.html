@@ -25,7 +25,7 @@ const pieView = canvasView.append(swim.PieView)
 
 const sliceColors = [swim.Color.parse("#00a6ed"),
     swim.Color.parse("#6acd00"),
-    swim.Color.parse("#c200fa")];
+    swim.Color.parse("#c200fa");
 
 const pieIndices = {"foo": 0, "bar": 1, "baz": 2};
 
@@ -37,7 +37,7 @@ function updateSlice(key, value) {
     slice.value(v, timing);
     slice.label(v.toFixed());
   } else {
-    const sliceColor = sliceColors[pieIndices[key]];
+    const sliceColor = sliceColors[pieIndices[key];
     slice = pieView.append(swim.SliceView, key)
         .value(v)
         .sliceColor(sliceColor)

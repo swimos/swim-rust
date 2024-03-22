@@ -18,7 +18,7 @@ use clap::Parser;
 
 use example_util::example_filter;
 use futures::future::{select, Either};
-use swim::{
+use swimos::{
     route::RouteUri,
     server::{Server, ServerBuilder},
 };
@@ -149,11 +149,11 @@ struct Params {
 
 fn configure_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let filter = example_filter()?
-        .add_directive("swim_server_app=info".parse()?)
-        .add_directive("swim_runtime=warn".parse()?)
-        .add_directive("swim_agent=info".parse()?)
-        .add_directive("swim_messages=warn".parse()?)
-        .add_directive("swim_remote=warn".parse()?)
+        .add_directive("swimos_server_app=info".parse()?)
+        .add_directive("swimos_runtime=warn".parse()?)
+        .add_directive("swimos_agent=info".parse()?)
+        .add_directive("swimos_messages=warn".parse()?)
+        .add_directive("swimos_remote=warn".parse()?)
         .add_directive("transit=info".parse()?)
         .add_directive(LevelFilter::WARN.into());
 

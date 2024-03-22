@@ -16,7 +16,7 @@ use std::{ops::Range, time::Duration};
 
 use futures::{future::Either, Stream, StreamExt};
 use rand::{seq::SliceRandom, Rng};
-use swim_model::Value;
+use swimos_model::Value;
 
 const WORDS: &str = include_str!("words.txt");
 

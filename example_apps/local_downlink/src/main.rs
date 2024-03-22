@@ -15,7 +15,7 @@
 use std::{error::Error, time::Duration};
 
 use example_util::{example_logging, manage_handle};
-use swim::{
+use swimos::{
     agent::agent_model::AgentModel,
     route::RoutePattern,
     server::{Server, ServerBuilder},

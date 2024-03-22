@@ -17,7 +17,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use std::time::Duration;
-use swim_api::error::DownlinkTaskError;
+use swimos_api::error::DownlinkTaskError;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinError;
 

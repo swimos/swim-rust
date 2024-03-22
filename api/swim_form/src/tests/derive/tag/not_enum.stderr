@@ -1,8 +1,0 @@
-error: Only enumeration types can be tags.
-  --> src/tests/derive/tag/not_enum.rs:20:5
-   |
-20 | /     struct S {
-21 | |         a: i32,
-22 | |         b: i32,
-23 | |     }
-   | |_____^

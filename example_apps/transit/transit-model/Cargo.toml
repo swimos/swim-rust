@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-swim = { path = "../../../swim" }
-serde = { workspace = true, features = ["derive"]}
+swimos = { path = "../../../swimos" }
+swimos_form = { path = "../../../api/swimos_form" }
+serde = { workspace = true, features = ["derive"] }
 quick-xml = { version = "0.30", features = ["serialize", "serde-types"] }
 percent-encoding = { workspace = true }
 thiserror = { workspace = true }

@@ -1,282 +1,313 @@
 <!DOCTYPE html>
 <html style="height: 100%; overflow: hidden;">
-  <head>
+<head>
     <meta charset="UTF-8">
     <title>Swim Transit</title>
-    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, maximum-scale=1, user-scalable=0, shrink-to-fit=no, viewport-fit=cover"/>
+    <meta name="viewport"
+          content="width=device-width, height=device-height, initial-scale=1, maximum-scale=1, user-scalable=0, shrink-to-fit=no, viewport-fit=cover"/>
     <link href="//fonts.googleapis.com/css?family=Open+Sans:400,400i,700,700i|Orbitron" rel="stylesheet">
     <link href="//fonts.googleapis.com/css?family=Lato:300,400,700" rel="stylesheet">
     <link href="//api.tiles.mapbox.com/mapbox-gl-js/v0.52.0/mapbox-gl.css" rel="stylesheet"/>
     <script src="//api.tiles.mapbox.com/mapbox-gl-js/v0.52.0/mapbox-gl.js"></script>
     <style>
-     html, body {
-        display: flex;
-        width: 100%;
-        height: 100%;
-        margin: 0;
-        font-family: Lato, sans-serif;
-        font-size: 12px;
-        color: #4a4a4a;
-        background: #071013;
-      }
+        html, body {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            font-family: Lato, sans-serif;
+            font-size: 12px;
+            color: #4a4a4a;
+            background: #071013;
+        }
 
-      * {
-        margin: 0px;
-        padding: 0px;
-      }
-      .logoContainer {
-        display: flex;
-        position: absolute;
-        top: 0px;
-        left: 0px;
-        height: 45px;
-        display: flex;
-        flex-direction: row;
-        align-items: flex-end;
-      }
-      .logoContainer h4 {
-        font-size: 23px;
-        font-weight: 300;
-        align-self: flex-end;
-        color: #bfbfbf;
-      }
-      .swim-log {
-        margin-left: 16px;
-        margin-right: 10px;
-        height: 30px;
-        opacity: 0.75;
-      }
-      #title {
-        position: absolute;
-        top: 4px;
-        left: 12px;
-        margin: 0;
-        font-size: 36px;
-        font-weight: 400;
-        color: #3d484e;
-        pointer-events: none;
-      }
-      small {
-        font-size: 14px;
-        font-weight: 300;
-        margin-left: 0px;
-      }
-      #main {
-        display: flex;
-        flex-grow: 1;
-        position: relative;
-      }
-      .subheaderNavigation {
-        position: absolute;
-        left: 15px;
-        top: 50px;
-        display: flex;
-        flex-direction: column;
-        color: #8f8f8f;
-        font-size: 15;
-      }
-      .subheaderNavigation .timer, .subheaderNavigation .date {
-        padding-top: 5px;
-        color: #767676;
-      }
-      .subheaderButton {
-        border-radius: 5px;
-        background-color: rgb(53, 61, 72);
-        color: white;
-        padding: 4px 15px;
-        font-size: 12px;
-        margin: 0px 8px 0 0;
-        font-weight: normal;
-      }
-      .popupInnerContainer {
-        display: flex;
-        flex-direction: column;
-      }
-      .busPopover {
-        color: white;
-        display: flex;
-        flex-direction: column;
-        flex-grow: 1;
-      }
-      .busColumns {
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-        flex-grow: 1;
-      }
-      .busTree {
-        display: flex;
-        flex-direction: column;
-        flex-grow: 1;
-      }
-      .busCharts {
-        width: 224px;
-        height: 300px;
-        overflow-x: auto;
-      }
-      .chartTitle {
-        width: 100%;
-        font-weight: 300;
-        font-size: 10px;
-      }
-      .chartContainer {
-        width: 100%;
-        height: 60px;
-      }
-      .busCircle {
-        border-radius: 50%;
-        flex-grow: 0;
-        width: 97px;
-        height: 97px;
-        margin: 5px auto;
-        display: flex;
-        align-items: center;
-      }
-      .busCircleLabel {
-        text-align: center;
-        width: 100%;
-      }
-      .placardHeader {
-        display: flex;
-        flex-direction: row;
-        margin: 3px 0px;
-      }
-      .placardSubheader {
-        display: flex;
-        flex-direction: row;
-        margin: 11px 0px 11px 0px;
-      }
-      .placardSubheaderItem {
-        border-radius: 8px;
-        background-color: #4171b8;
-        width: 50px;
-        height: 15px;
-        text-align: center;
-        line-height: 15px;
-        font-size: 9px;
-        margin: 0px 8px 0 0;
-        color: #000000;
-      }
-      .placardLabel {
-        font-size: 12px;
-        font-weight: bold;
-        display: flex;
-        align-items: center;
-        flex-grow: 1;
-        padding-left: 10px;
-      }
-      .ledIcon {
-        width: 45px;
-        height: 45px;
-        display: flex;
-        align-items: center;
-        border-radius: 50%;
-      }
-      .ledLabel {
-        padding-top: 2px;
-        width: 100%;
-        text-align: center;
-        color: black;
-      }
-      .websiteLink{
-        position: absolute;
-        bottom: 35px;
-        left: 12px;
-        color: #bfbfbf;
-        text-decoration: none;
-        font-size: 18px;
-      }
+        * {
+            margin: 0px;
+            padding: 0px;
+        }
 
-      .websiteLink:hover {
-        color: white;
-      }
+        .logoContainer {
+            display: flex;
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            height: 45px;
+            display: flex;
+            flex-direction: row;
+            align-items: flex-end;
+        }
 
-      .placardLabel {
-        font-size: 14px;
-      }
+        .logoContainer h4 {
+            font-size: 23px;
+            font-weight: 300;
+            align-self: flex-end;
+            color: #bfbfbf;
+        }
 
-      .tile, .placard {
-        overflow: hidden;
-        background: rgba(0, 0, 0, 0.35) !important;
-        backdrop-filter: blur(3px);
-        -webkit-backdrop-filter: blur(3px);
-      }
+        .swim-log {
+            margin-left: 16px;
+            margin-right: 10px;
+            height: 30px;
+            opacity: 0.75;
+        }
 
-      .popover-meter {
-        position: relative;
-        width: 20px;
-        height: 20px;
-        display: flex;
-        align-items: flex-end;
-        justify-content: center;
-        border-radius: 50%;
-        border-width: 1px;
-        border-style: solid;
-        overflow: hidden;
-      }
+        #title {
+            position: absolute;
+            top: 4px;
+            left: 12px;
+            margin: 0;
+            font-size: 36px;
+            font-weight: 400;
+            color: #3d484e;
+            pointer-events: none;
+        }
 
-      .popover-meter .fill {
-        width: 100%;
-      }
+        small {
+            font-size: 14px;
+            font-weight: 300;
+            margin-left: 0px;
+        }
 
-      .placard-route {
-        font-size: 16px;
-        color: #a0a0a0;
-      }
-      .placard-agency {
-        font-size: 14px;
-        color: #a0a0a0;
-      }
+        #main {
+            display: flex;
+            flex-grow: 1;
+            position: relative;
+        }
+
+        .subheaderNavigation {
+            position: absolute;
+            left: 15px;
+            top: 50px;
+            display: flex;
+            flex-direction: column;
+            color: #8f8f8f;
+            font-size: 15;
+        }
+
+        .subheaderNavigation .timer, .subheaderNavigation .date {
+            padding-top: 5px;
+            color: #767676;
+        }
+
+        .subheaderButton {
+            border-radius: 5px;
+            background-color: rgb(53, 61, 72);
+            color: white;
+            padding: 4px 15px;
+            font-size: 12px;
+            margin: 0px 8px 0 0;
+            font-weight: normal;
+        }
+
+        .popupInnerContainer {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .busPopover {
+            color: white;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+        }
+
+        .busColumns {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+        }
+
+        .busTree {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+        }
+
+        .busCharts {
+            width: 224px;
+            height: 300px;
+            overflow-x: auto;
+        }
+
+        .chartTitle {
+            width: 100%;
+            font-weight: 300;
+            font-size: 10px;
+        }
+
+        .chartContainer {
+            width: 100%;
+            height: 60px;
+        }
+
+        .busCircle {
+            border-radius: 50%;
+            flex-grow: 0;
+            width: 97px;
+            height: 97px;
+            margin: 5px auto;
+            display: flex;
+            align-items: center;
+        }
+
+        .busCircleLabel {
+            text-align: center;
+            width: 100%;
+        }
+
+        .placardHeader {
+            display: flex;
+            flex-direction: row;
+            margin: 3px 0px;
+        }
+
+        .placardSubheader {
+            display: flex;
+            flex-direction: row;
+            margin: 11px 0px 11px 0px;
+        }
+
+        .placardSubheaderItem {
+            border-radius: 8px;
+            background-color: #4171b8;
+            width: 50px;
+            height: 15px;
+            text-align: center;
+            line-height: 15px;
+            font-size: 9px;
+            margin: 0px 8px 0 0;
+            color: #000000;
+        }
+
+        .placardLabel {
+            font-size: 12px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            flex-grow: 1;
+            padding-left: 10px;
+        }
+
+        .ledIcon {
+            width: 45px;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            border-radius: 50%;
+        }
+
+        .ledLabel {
+            padding-top: 2px;
+            width: 100%;
+            text-align: center;
+            color: black;
+        }
+
+        .websiteLink {
+            position: absolute;
+            bottom: 35px;
+            left: 12px;
+            color: #bfbfbf;
+            text-decoration: none;
+            font-size: 18px;
+        }
+
+        .websiteLink:hover {
+            color: white;
+        }
+
+        .placardLabel {
+            font-size: 14px;
+        }
+
+        .tile, .placard {
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.35) !important;
+            backdrop-filter: blur(3px);
+            -webkit-backdrop-filter: blur(3px);
+        }
+
+        .popover-meter {
+            position: relative;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            border-radius: 50%;
+            border-width: 1px;
+            border-style: solid;
+            overflow: hidden;
+        }
+
+        .popover-meter .fill {
+            width: 100%;
+        }
+
+        .placard-route {
+            font-size: 16px;
+            color: #a0a0a0;
+        }
+
+        .placard-agency {
+            font-size: 14px;
+            color: #a0a0a0;
+        }
     </style>
-  </head>
-  <body style="width: 100%; height: 100%; margin: 0; overflow: auto; background-color: #040e19">
-    <div id="app" style="width: 100%; height: 100%;">
-    </div>
-    <script src="//cdn.swimos.org/js/3.10.2/swim-system.js"></script>
-    <script src="dist/main/swim-transit.js"></script>
-    <script>
+</head>
+<body style="width: 100%; height: 100%; margin: 0; overflow: auto; background-color: #040e19">
+<div id="app" style="width: 100%; height: 100%;">
+</div>
+<script src="//cdn.swimos.org/js/3.10.2/swim-system.js"></script>
+<script src="dist/main/swim-transit.js"></script>
+<script>
 
-mapboxgl.accessToken = "pk.eyJ1Ijoic3dpbWl0IiwiYSI6ImNqY2c3NXZkYzFoa2QycXQ1eXl1Mnd6M3EifQ.qpRE7xC08AyZfxJ56LoN7w";
+    mapboxgl.accessToken = "pk.eyJ1Ijoic3dpbWl0IiwiYSI6ImNqY2c3NXZkYzFoa2QycXQ1eXl1Mnd6M3EifQ.qpRE7xC08AyZfxJ56LoN7w";
 
-const app = new swim.HtmlAppView(document.getElementById("app"));
+    const app = new swim.HtmlAppView(document.getElementById("app"));
 
-const baseUri = swim.Uri.parse(document.location.href);
-const hostParam = baseUri.host().toString();
-const schemeParam = baseUri.scheme().toString();
-const portParam = baseUri.port();
-const warpScheme = schemeParam === "https" ? "warps":"warp"
+    const baseUri = swim.Uri.parse(document.location.href);
+    const hostParam = baseUri.host().toString();
+    const schemeParam = baseUri.scheme().toString();
+    const portParam = baseUri.port();
+    const warpScheme = schemeParam === "https" ? "warps" : "warp"
 
-let warpHost;
+    let warpHost;
 
-if(hostParam.endsWith("swim.services")) {
-  warpHost = "transit.swim.services"
-} else if(hostParam.endsWith("nstream-demo.io")) {
-  warpHost = "transit.services.nstream-demo.io"
-} else {
-  warpHost = hostParam;
-}
+    if (hostParam.endsWith("swim.services")) {
+        warpHost = "transit.swim.services"
+    } else if (hostParam.endsWith("nstream-demo.io")) {
+        warpHost = "transit.services.nstream-demo.io"
+    } else {
+        warpHost = hostParam;
+    }
 
-let hostUri;
+    let hostUri;
 
-if (portParam === undefined) {
-  hostUri = `${warpScheme}://${warpHost}`
-} else {
-  hostUri = `${warpScheme}://${warpHost}:${portParam.toString()}`
-}
+    if (portParam === undefined) {
+        hostUri = `${warpScheme}://${warpHost}`
+    } else {
+        hostUri = `${warpScheme}://${warpHost}:${portParam.toString()}`
+    }
 
-const transitNodeRef = swim.nodeRef(hostUri, "/country/US");
-//const transitNodeRef = swim.nodeRef("swim://transit.swim.services", "/country/US");
-const transitViewController = new swim.transit.TransitViewController(transitNodeRef);
-app.setViewController(transitViewController);
+    const transitNodeRef = swim.nodeRef(hostUri, "/country/US");
+    //const transitNodeRef = swimos.nodeRef("swimos://transit.swimos.services", "/country/US");
+    const transitViewController = new swim.transit.TransitViewController(transitNodeRef);
+    app.setViewController(transitViewController);
 
-    </script>
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-PMET8J149M"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
+</script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-PMET8J149M"></script>
+<script>
+    window.dataLayer = window.dataLayer || [];
 
-      gtag('config', 'G-PMET8J149M');
-    </script>
-  </body>
+    function gtag() {
+        dataLayer.push(arguments);
+    }
+
+    gtag('js', new Date());
+
+    gtag('config', 'G-PMET8J149M');
+</script>
+</body>
 </html>

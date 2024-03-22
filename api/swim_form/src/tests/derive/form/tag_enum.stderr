@@ -1,8 +1,0 @@
-error: Enum variants cannot specify a tag field
-  --> src/tests/derive/form/tag_enum.rs:21:9
-   |
-21 | /         B {
-22 | |             #[form(tag)]
-23 | |             tag: String,
-24 | |         },
-   | |_________^

@@ -25,7 +25,7 @@ use parking_lot::RwLock;
 use runtime::dummy_server::make_dummy_runtime;
 use runtime::ConsoleFactory;
 use shared_state::SharedState;
-use swim_utilities::trigger;
+use swimos_utilities::trigger;
 use tokio::runtime::Builder;
 use tokio::sync::mpsc;
 use ui::{CursiveUIUpdater, ViewUpdater};

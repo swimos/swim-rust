@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim::{form::Form, model::time::Timestamp};
+use swimos::model::time::Timestamp;
+use swimos_form::Form;
 
 #[derive(Debug, PartialEq, Eq, Hash, Form, Clone, Copy)]
 #[form(tag = "message")]

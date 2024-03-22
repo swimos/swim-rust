@@ -1,5 +1,0 @@
-error: Expected a string literal
-  --> src/tests/derive/form/incorrect_tag_type.rs:20:18
-   |
-20 |     #[form(tag = 13)]
-   |                  ^^

@@ -15,7 +15,7 @@
 use std::error::Error;
 
 use example_util::{example_logging, manage_producer_and_consumer, StartDependent};
-use swim::server::Server;
+use swimos::server::Server;
 use tokio::sync::oneshot;
 
 mod consumer;

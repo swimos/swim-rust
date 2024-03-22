@@ -16,7 +16,7 @@ use std::{error::Error, net::SocketAddr, time::Duration};
 
 use example_util::manage_handle_report;
 use futures::{stream::FuturesUnordered, StreamExt};
-use swim::{
+use swimos::{
     agent::agent_model::AgentModel,
     route::{RoutePattern, RouteUri},
     server::{ServerBuilder, ServerHandle},

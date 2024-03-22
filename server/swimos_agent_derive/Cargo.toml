@@ -1,0 +1,20 @@
+[package]
+name = "swimos_agent_derive"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[lib]
+name = "swimos_agent_derive"
+proc-macro = true
+
+[dependencies]
+proc-macro2 = { workspace = true }
+syn = { workspace = true, features = ["full", "extra-traits"] }
+quote = { workspace = true }
+swimos_utilities = { path = "../../swimos_utilities", features = ["errors", "text"] }
+bitflags = { workspace = true }
+macro_utilities = { path = "../../macro_utilities" }
+frunk = { workspace = true }
+
+[dev-dependencies]

@@ -31,11 +31,11 @@ use ratchet::{
     CloseCode, CloseReason, NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry,
     WebSocketConfig,
 };
-use swim_api::protocol::map::MapMessage;
-use swim_form::Form;
-use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
-use swim_recon::{parser::parse_value, printer::print_recon_compact};
-use swim_utilities::trigger;
+use swimos_api::protocol::map::MapMessage;
+use swimos_form::Form;
+use swimos_messages::warp::{peel_envelope_header_str, RawEnvelope};
+use swimos_recon::{parser::parse_value, printer::print_recon_compact};
+use swimos_utilities::trigger;
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::{

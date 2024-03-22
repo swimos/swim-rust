@@ -15,17 +15,19 @@
 use fnv::FnvHashMap;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
-use swim_api::downlink::DownlinkKind;
-use swim_model::address::RelativeAddress;
-use swim_model::Text;
-use swim_remote::AttachClient;
-use swim_runtime::downlink::failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy};
-use swim_runtime::downlink::{
+use swimos_api::downlink::DownlinkKind;
+use swimos_model::address::RelativeAddress;
+use swimos_model::Text;
+use swimos_remote::AttachClient;
+use swimos_runtime::downlink::failure::{
+    AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy,
+};
+use swimos_runtime::downlink::{
     AttachAction, DownlinkRuntimeConfig, IdentifiedAddress, MapDownlinkRuntime, NoInterpretation,
     ValueDownlinkRuntime,
 };
-use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
-use swim_utilities::trigger;
+use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::trigger;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 

@@ -15,13 +15,11 @@
 use std::fmt::Display;
 
 use std::hash::Hash;
-use swim::{
-    agent::{
-        agent_lifecycle::utility::JoinValueContext,
-        lanes::{join_value::lifecycle::JoinValueLaneLifecycle, LinkClosedResponse},
-    },
-    form::Form,
+use swimos::agent::{
+    agent_lifecycle::utility::JoinValueContext,
+    lanes::{join_value::lifecycle::JoinValueLaneLifecycle, LinkClosedResponse},
 };
+use swimos_form::Form;
 use tracing::debug;
 
 pub mod agency;

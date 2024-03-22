@@ -1,5 +1,0 @@
-error: Expected a string literal
-  --> src/tests/derive/form/incorrect_rename_type.rs:21:23
-   |
-21 |         #[form(name = 13)]
-   |                       ^^

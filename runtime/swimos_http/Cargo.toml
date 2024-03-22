@@ -1,0 +1,21 @@
+[package]
+name = "swimos_http"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[dependencies]
+futures = { workspace = true }
+ratchet = { workspace = true }
+hyper = { workspace = true }
+http = { workspace = true }
+httparse = "1.8"
+bytes = { workspace = true }
+sha1 = "0.10"
+base64 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "time"] }
+hyper = { workspace = true, features = ["server", "tcp", "http1"] }

@@ -2,16 +2,16 @@
 resolver = "2"
 members = [
     "client/*",
-    "swim",
-    "api/swim_*",
-    "api/formats/swim_*",
+    "swimos",
+    "api/swimos_*",
+    "api/formats/swimos_*",
     "macro_utilities",
-    "runtime/swim_*",
-    "swim_store",
-    "swim_utilities",
-    "swim_utilities/swim_*",
-    "swim_downlink",
-    "server/swim_*",
+    "runtime/swimos_*",
+    "swimos_store",
+    "swimos_utilities",
+    "swimos_utilities/swimos_*",
+    "swimos_downlink",
+    "server/swimos_*",
     "example_apps/example_util",
     "example_apps/console",
     "example_apps/console/console_views",
@@ -86,7 +86,7 @@ proc-macro2 = "1.0"
 syn = "1.0"
 quote = "1.0.3"
 num-bigint = "0.4"
-ratchet =  { package = "ratchet_rs", version = "0.4" }
+ratchet = { package = "ratchet_rs", version = "0.4" }
 ratchet_fixture = "0.4"
 flate2 = "1.0.22"
 bitflags = "1.3"

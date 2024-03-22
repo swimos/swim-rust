@@ -4,14 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-swim_utilities = { path = "../../swim_utilities", features = ["trigger"] }
-swim_api = { path = "../../api/swim_api" }
-swim_model = { path = "../../api/swim_model" }
-swim_form = { path = "../../api/swim_form" }
-swim_recon = { path = "../../api/formats/swim_recon" }
-swim_messages = { path = "../../runtime/swim_messages" }
+swimos_utilities = { path = "../../swimos_utilities", features = ["trigger"] }
+swimos_api = { path = "../../api/swimos_api" }
+swimos_model = { path = "../../api/swimos_model" }
+swimos_form = { path = "../../api/swimos_form" }
+swimos_recon = { path = "../../api/formats/swimos_recon" }
+swimos_messages = { path = "../../runtime/swimos_messages" }
 futures = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time"]}
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "time"] }
 parking_lot = { workspace = true }
 crossbeam-channel = { workspace = true }
 ratchet = { workspace = true, features = ["deflate", "split"] }

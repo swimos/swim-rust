@@ -22,9 +22,9 @@ pub use error::{DownlinkErrorKind, DownlinkRuntimeError, TimeoutElapsed};
 pub use models::RemotePath;
 #[cfg(feature = "deflate")]
 use ratchet::deflate::DeflateConfig;
-pub use swim_api::downlink::DownlinkKind;
-pub use swim_api::error::DownlinkTaskError;
-use swim_utilities::non_zero_usize;
+pub use swimos_api::downlink::DownlinkKind;
+pub use swimos_api::error::DownlinkTaskError;
+use swimos_utilities::non_zero_usize;
 pub use transport::Transport;
 
 #[cfg(test)]

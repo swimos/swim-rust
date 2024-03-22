@@ -1,0 +1,19 @@
+[package]
+name = "swimos_form_derive"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[lib]
+name = "swimos_form_derive"
+proc-macro = true
+
+[dependencies]
+either = { workspace = true }
+swimos_utilities = { path = "../../swimos_utilities", features = ["errors", "text"] }
+macro_utilities = { path = "../../macro_utilities" }
+proc-macro2 = { workspace = true }
+syn = { workspace = true, features = ["full"] }
+quote = { workspace = true }
+
+[dev-dependencies]

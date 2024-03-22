@@ -26,7 +26,7 @@ use futures_util::FutureExt;
 use ratchet::{
     Message, NegotiatedExtension, NoExt, NoExtProvider, Role, WebSocket, WebSocketConfig,
 };
-use swim_api::net::{Scheme, SchemeHostPort};
+use swimos_api::net::{Scheme, SchemeHostPort};
 use tokio::io::{duplex, AsyncWriteExt};
 use tokio::spawn;
 use tokio::sync::mpsc::unbounded_channel;
@@ -37,27 +37,27 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use fixture::{MockClientConnections, MockWs, Server, WsAction};
-use swim_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
-use swim_api::error::DownlinkTaskError;
-use swim_api::protocol::map::MapMessage;
-use swim_downlink::lifecycle::{
+use swimos_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
+use swimos_api::error::DownlinkTaskError;
+use swimos_api::protocol::map::MapMessage;
+use swimos_downlink::lifecycle::{
     BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle, MapDownlinkLifecycle,
     ValueDownlinkLifecycle,
 };
-use swim_downlink::{
+use swimos_downlink::{
     DownlinkTask, MapDownlinkHandle, MapDownlinkModel, NotYetSyncedError, ValueDownlinkModel,
     ValueDownlinkOperation,
 };
-use swim_form::Form;
-use swim_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
-use swim_model::address::{Address, RelativeAddress};
-use swim_model::Text;
-use swim_remote::ws::RatchetError;
-use swim_remote::AttachClient;
-use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
-use swim_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
-use swim_utilities::trigger::{promise, trigger};
-use swim_utilities::{non_zero_usize, trigger};
+use swimos_form::Form;
+use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
+use swimos_model::address::{Address, RelativeAddress};
+use swimos_model::Text;
+use swimos_remote::ws::RatchetError;
+use swimos_remote::AttachClient;
+use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
+use swimos_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
+use swimos_utilities::trigger::{promise, trigger};
+use swimos_utilities::{non_zero_usize, trigger};
 
 use crate::error::{DownlinkErrorKind, DownlinkRuntimeError};
 use crate::models::RemotePath;

@@ -1,0 +1,26 @@
+[package]
+name = "swimos"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[features]
+default = ["agent"]
+all = ["server", "agent", "json"]
+server = ["dep:swimos_server_app"]
+agent = ["dep:swimos_agent", "dep:swimos_agent_derive"]
+json = ["agent", "swimos_agent/json"]
+
+[dependencies]
+swimos_utilities = { path = "../swimos_utilities", features = ["io", "text"] }
+swimos_api = { path = "../api/swimos_api" }
+swimos_model = { path = "../api/swimos_model" }
+swimos_recon = { path = "../api/formats/swimos_recon", features = ["async_parser"] }
+swimos_server_app = { path = "../server/swimos_server_app", optional = true }
+swimos_agent = { path = "../server/swimos_agent", optional = true }
+swimos_agent_derive = { path = "../server/swimos_agent_derive", optional = true }
+
+[dev-dependencies]
+parking_lot = { workspace = true }
+futures = { workspace = true }
+trybuild = { workspace = true }

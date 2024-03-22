@@ -4,4 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-swim = { path = "../../../swim" }
+swimos = { path = "../../../swimos" }
+swimos_form = { path = "../../../api/swimos_form" }

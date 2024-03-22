@@ -14,7 +14,7 @@
 
 use std::time::Duration;
 
-use swim::agent::{
+use swimos::agent::{
     agent_lifecycle::utility::HandlerContext,
     event_handler::{EventHandler, HandlerAction, HandlerActionExt},
     lanes::{DemandLane, ValueLane},

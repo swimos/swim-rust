@@ -14,10 +14,10 @@
 
 use std::time::Duration;
 
-use swim_api::protocol::map::MapMessage;
-use swim_model::Value;
-use swim_recon::parser::parse_value;
-use swim_utilities::routing::route_uri::RouteUri;
+use swimos_api::protocol::map::MapMessage;
+use swimos_model::Value;
+use swimos_recon::parser::parse_value;
+use swimos_utilities::routing::route_uri::RouteUri;
 
 use crate::{
     data::DataKind,

@@ -22,12 +22,12 @@ use futures_util::stream::FuturesUnordered;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use swim_api::downlink::DownlinkConfig;
-use swim_api::net::Scheme;
-use swim_model::address::RelativeAddress;
-use swim_model::Text;
-use swim_remote::AttachClient;
-use swim_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
+use swimos_api::downlink::DownlinkConfig;
+use swimos_api::net::Scheme;
+use swimos_model::address::RelativeAddress;
+use swimos_model::Text;
+use swimos_remote::AttachClient;
+use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use tokio::sync::mpsc;
 
 type PendingDns = (Scheme, Text, Result<Vec<SocketAddr>, DownlinkRuntimeError>);

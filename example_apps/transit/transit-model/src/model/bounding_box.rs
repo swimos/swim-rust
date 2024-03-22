@@ -14,7 +14,7 @@
 
 use std::fmt::Display;
 
-use swim::form::Form;
+use swimos_form::Form;
 
 /// A "square" geographical region described by intervals of latitude and longitude.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Form)]
