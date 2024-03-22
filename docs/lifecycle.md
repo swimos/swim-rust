@@ -8,10 +8,10 @@ The `AgentLifecycle` trait
 -------------------------
 
 To attach event handlers to an agent implementation, it is necessary to provide an implementation of
-the `swim::agent::AgentLifecycle` trait.
+the `swimos::agent::AgentLifecycle` trait.
 
 The details of implementing this trait are somewhat complex and will be covered in a later chapter. In general,
-lifecycles will be created using the `swim::agent::lifecycle` attribute macro.
+lifecycles will be created using the `swimos::agent::lifecycle` attribute macro.
 
 All further examples in this chapter will use the following agent definition:
 

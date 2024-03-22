@@ -4,14 +4,13 @@ Defining Agents
 The `AgentLaneModel` trait
 --------------------------
 
-To create an agent it is necessary to produce a type that implements the `swim::agent::AgentLaneModel` trait. This is
+To create an agent it is necessary to produce a type that implements the `swimos::agent::AgentLaneModel` trait. This is
 defined as:
 
 ```rust
 pub trait AgentLaneModel: Sized + Send {
 
     //... methods
-
 }
 ```
 
@@ -26,20 +25,20 @@ Writing agent types
 The derive macro for `AgentLaneModel` can be applied to any struct type where all of the fields are lane types or store
 types. So far, the supported lane types are:
 
-* Value lanes: `swim::agent::lanes::ValueLane`.
-* Command lanes: `swim::agent::lanes::CommandLane`.
-* Demand lanes: `swim::agent::lanes::DemandLane`.
-* Demand Map lanes: `swim::agent::lanes::DemandMapLane`.
-* Map Lanes: `swim::agent::lanes::MapLane`.
-* Join Value Lanes: `swim::agent::lanes::JoinValueLane`.
-* Join Map Lanes: `swim::agent::lanes::JoinMapLane`.
-* HTTP Lanes: `swim::agent::lanes::HttpLane` (or the shorthand `swim::agent::lanes::SimpleHttpLane`).
-* Supply Lanes: `swim::agent::lanes::SupplyLane`.
+* Value lanes: `swimos::agent::lanes::ValueLane`.
+* Command lanes: `swimos::agent::lanes::CommandLane`.
+* Demand lanes: `swimos::agent::lanes::DemandLane`.
+* Demand Map lanes: `swimos::agent::lanes::DemandMapLane`.
+* Map Lanes: `swimos::agent::lanes::MapLane`.
+* Join Value Lanes: `swimos::agent::lanes::JoinValueLane`.
+* Join Map Lanes: `swimos::agent::lanes::JoinMapLane`.
+* HTTP Lanes: `swimos::agent::lanes::HttpLane` (or the shorthand `swimos::agent::lanes::SimpleHttpLane`).
+* Supply Lanes: `swimos::agent::lanes::SupplyLane`.
 
 The supported store types are:
 
-* Value stores: `swim::agent::stores::ValueStore`.
-* Map stores: `swim::agent::stores::MapStores`.
+* Value stores: `swimos::agent::stores::ValueStore`.
+* Map stores: `swimos::agent::stores::MapStores`.
 
 An example of a valid agent struct is:
 
@@ -59,7 +58,7 @@ As mentioned above, all of the type parameters used in the lane types must be `S
 for `i32`, `String`, and `u64`). However, to use the derive macro there is a further restriction.
 
 For the macro to be able to generate the implementation, it needs to know how to serialize and deserialize the types use
-in the lane. This is encoded by the `swim::form::Form` trait which is covered in the following section. Additionally,
+in the lane. This is encoded by the `swimos::Form` trait which is covered in the following section. Additionally,
 for a map-like item (`MapLane<K, V>`, `MapStore<K, V>`, `JoinValueLane<K, V>`, `JoinMapLane<L, K, V>`) the key type `K`
 must additionally satisfy:
 
@@ -79,7 +78,8 @@ lane types but are not exposed externally.
 The `Form` trait
 ----------------
 
-The `swim::form::Form` trait tells the Swim framework how to serialize and deserialize a type. It is defined for a wide
+The `swimos::Form` trait tells the Swim framework how to serialize and deserialize a type. It is defined for a
+wide
 range of standard types including.
 
 * Integers: `i32, i64, u32, u64, usize`.

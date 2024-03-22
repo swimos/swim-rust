@@ -90,7 +90,7 @@ The `HandlerContext`.
 The aid in the construction of event handlers, a factor type is provided in the form of:
 
 ```rust
-swim::agent::agent_lifecycle::utility::HandlerContext<AgentType>
+swimos::agent::agent_lifecycle::utility::HandlerContext<AgentType>
 ```
 
 This allows for the easier construction of event handlers that will run in the context of the `AgentType`. Typically, in
@@ -172,7 +172,7 @@ Handler combinators
 -------------------
 
 A number of combinators are provided to combine handler actions together. This are available as extensions methods using
-the `swim::agent::event_handler::HandlerActionExt` trait. As an example, consider the `and_then` combinator. When
+the `swimos::agent::event_handler::HandlerActionExt` trait. As an example, consider the `and_then` combinator. When
 applied to a handler action this applies a closure to the result of that handler which, in turn produces another
 handler. When an `and_then` actions is executed, the first handler action runs to completion, the function is applied to
 the result, and execution continues with the resulting handler action. As an example:
