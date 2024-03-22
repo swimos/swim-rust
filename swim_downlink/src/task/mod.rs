@@ -32,7 +32,6 @@ use tracing::{info_span, Instrument};
 
 use crate::model::MapDownlinkModel;
 use crate::{EventDownlinkModel, ValueDownlinkModel};
-pub use map::MapRequest;
 
 mod event;
 mod map;

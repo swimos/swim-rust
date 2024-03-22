@@ -35,7 +35,7 @@ use swim_utilities::future::{immediate_or_join, race};
 use swim_utilities::io::byte_channel::{ByteReader, ByteWriter};
 
 use crate::model::lifecycle::ValueDownlinkLifecycle;
-use crate::model::{NotYetSyncedError, ValueDownlinkOperation};
+use crate::model::ValueDownlinkSet;
 use crate::ValueDownlinkModel;
 
 /// Task to drive a value downlink, calling lifecyle events at appropriate points.
@@ -99,7 +99,7 @@ async fn run_io<T, LC, S>(
     config: DownlinkConfig,
     input: ByteReader,
     mut lifecycle: LC,
-    handle_rx: mpsc::Receiver<ValueDownlinkOperation<T>>,
+    handle_rx: mpsc::Receiver<ValueDownlinkSet<T>>,
     mut framed: S,
 ) -> Result<(), DownlinkTaskError>
 where
@@ -127,21 +127,11 @@ where
                 )
                 .await
                 {
-                    Either::Left((Some(value), Some(Ok(_)) | None)) => match value {
-                        ValueDownlinkOperation::Set(to) => {
-                            if write(&mut framed, to).await.is_err() {
-                                mode = Mode::Read;
-                            }
+                    Either::Left((Some(ValueDownlinkSet { to }), Some(Ok(_)) | None)) => {
+                        if write(&mut framed, to).await.is_err() {
+                            mode = Mode::Read;
                         }
-                        ValueDownlinkOperation::Get(callback) => {
-                            let message = match &state {
-                                State::Synced(state) => Ok(state.clone()),
-                                State::Unlinked | State::Linked(_) => Err(NotYetSyncedError),
-                            };
-
-                            let _r = callback.send(message);
-                        }
-                    },
+                    }
                     Either::Left(_) => mode = Mode::Read,
                     Either::Right(Some(Ok(frame))) => {
                         match on_read(

@@ -15,7 +15,7 @@
 pub use model::{
     event_downlink, map_downlink, value_downlink, ChannelError, DefaultEventDownlinkModel,
     DefaultMapDownlinkModel, DefaultValueDownlinkModel, EventDownlinkModel, MapDownlinkHandle,
-    MapDownlinkModel, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation,
+    MapDownlinkModel, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkSet,
 };
 pub use task::{DownlinkTask, MapKey, MapValue};
 
