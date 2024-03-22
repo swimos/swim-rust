@@ -45,8 +45,7 @@ use swim_downlink::lifecycle::{
     ValueDownlinkLifecycle,
 };
 use swim_downlink::{
-    DownlinkTask, MapDownlinkHandle, MapDownlinkModel, NotYetSyncedError, ValueDownlinkModel,
-    ValueDownlinkOperation,
+    DownlinkTask, MapDownlinkHandle, MapDownlinkModel, ValueDownlinkModel, ValueDownlinkSet,
 };
 use swim_form::Form;
 use swim_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
@@ -63,17 +62,6 @@ use crate::error::{DownlinkErrorKind, DownlinkRuntimeError};
 use crate::models::RemotePath;
 use crate::runtime::{start_runtime, RawHandle};
 use crate::transport::{Transport, TransportHandle};
-
-async fn get_value<T>(tx: mpsc::Sender<ValueDownlinkOperation<T>>) -> Result<T, NotYetSyncedError>
-where
-    T: Debug,
-{
-    let (callback_tx, callback_rx) = oneshot::channel();
-    tx.send(ValueDownlinkOperation::Get(callback_tx))
-        .await
-        .unwrap();
-    callback_rx.await.unwrap()
-}
 
 #[tokio::test]
 async fn transport_opens_connection_ok() {
@@ -394,7 +382,7 @@ struct ValueDownlinkContext {
     handle: RawHandle,
     spawned: Arc<Notify>,
     stopped: Arc<Notify>,
-    handle_tx: mpsc::Sender<ValueDownlinkOperation<i32>>,
+    handle_tx: mpsc::Sender<ValueDownlinkSet<i32>>,
     server: Server,
     promise: promise::Receiver<Result<(), DownlinkRuntimeError>>,
     stop_tx: trigger::Sender,
@@ -522,12 +510,7 @@ async fn test_value_lifecycle() {
         lane.await_sync(vec![7]).await;
         assert_eq!(msg_rx.recv().await.unwrap(), ValueTestMessage::Synced(7));
 
-        assert_eq!(get_value(handle_tx.clone()).await.unwrap(), 7);
-
-        handle_tx
-            .send(ValueDownlinkOperation::Set(13))
-            .await
-            .unwrap();
+        handle_tx.send(ValueDownlinkSet { to: 13 }).await.unwrap();
 
         lane.await_command(13).await;
 
@@ -623,7 +606,7 @@ where
 struct TrackingValueContext {
     spawned: Arc<Notify>,
     stopped: Arc<Notify>,
-    handle_tx: mpsc::Sender<ValueDownlinkOperation<i32>>,
+    handle_tx: mpsc::Sender<ValueDownlinkSet<i32>>,
     promise: promise::Receiver<Result<(), DownlinkRuntimeError>>,
 }
 
