@@ -5,6 +5,6 @@ edition = "2021"
 
 [dependencies]
 tutorial-app-model = { path = "../model" }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"]}
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 rand = { workspace = true }
-client = { path = "../../../client/swim_client" }
+swimos_client = { path = "../../../client/swimos_client" }

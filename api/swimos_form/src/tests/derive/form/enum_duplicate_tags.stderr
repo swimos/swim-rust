@@ -1,0 +1,11 @@
+error: Duplicate enumeration tag: "First"
+  --> src/tests/derive/form/enum_duplicate_tags.rs:4:5
+   |
+4  | /     #[allow(non_snake_case)]
+5  | |     #[derive(Form)]
+6  | |     enum Duplicates {
+7  | |         First {
+...  |
+12 | |         Second,
+13 | |     }
+   | |_____^

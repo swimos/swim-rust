@@ -1,0 +1,5 @@
+error: Unrecognized attribute for 'form'.
+  --> src/tests/derive/form/unknown_container_attr.rs:19:12
+   |
+19 |     #[form(swim)]
+   |            ^^^^

@@ -1,0 +1,43 @@
+[package]
+name = "swimos_runtime"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[features]
+default = []
+trust_dns = ["trust-dns-resolver"]
+
+[dependencies]
+bitflags = { workspace = true }
+bytes = { workspace = true }
+either = { workspace = true }
+flate2 = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+http = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt", "macros"] }
+tokio-util = { workspace = true, features = ["codec"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["sync", "errors", "future", "io"] }
+swimos_api = { path = "../../api/swimos_api" }
+swimos_model = { path = "../../api/swimos_model" }
+swimos_form = { path = "../../api/swimos_form" }
+swimos_tracing = { path = "../../swimos_utilities/swimos_tracing" }
+swimos_recon = { path = "../../api/formats/swimos_recon", features = ["async_parser"] }
+swimos_messages = { path = "../swimos_messages" }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+tokio-stream = { workspace = true, features = ["sync"] }
+uuid = { workspace = true }
+static_assertions = { workspace = true }
+trust-dns-resolver = { workspace = true, optional = true }
+nom = { workspace = true }
+percent-encoding = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+parking_lot = { workspace = true }
+tokio-stream = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["buf_channel"] }
+rand = { workspace = true }

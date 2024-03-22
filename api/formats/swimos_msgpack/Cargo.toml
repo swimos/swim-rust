@@ -1,0 +1,17 @@
+[package]
+name = "swimos_msgpack"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[dependencies]
+base64 = { workspace = true }
+either = { workspace = true }
+swimos_form = { path = "../../swimos_form" }
+swimos_model = { path = "../../swimos_model" }
+bytes = { workspace = true }
+byteorder = "1.4"
+rmp = "0.8"
+
+[dev-dependencies]
+

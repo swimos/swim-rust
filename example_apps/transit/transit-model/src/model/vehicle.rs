@@ -16,21 +16,19 @@ use std::io::BufRead;
 
 use quick_xml::DeError;
 use serde::{Deserialize, Deserializer, Serialize};
-use swim::{
-    form::{
-        structural::{
-            read::{
-                error::ExpectedEvent,
-                event::ReadEvent,
-                recognizer::{Recognizer, RecognizerReadable},
-                ReadError,
-            },
-            write::{StructuralWritable, StructuralWriter},
-            Tag,
+use swimos::model::{Text, ValueKind};
+use swimos_form::{
+    structural::{
+        read::{
+            error::ExpectedEvent,
+            event::ReadEvent,
+            recognizer::{Recognizer, RecognizerReadable},
+            ReadError,
         },
-        Form,
+        write::{StructuralWritable, StructuralWriter},
+        Tag,
     },
-    model::{Text, ValueKind},
+    Form,
 };
 use thiserror::Error;
 

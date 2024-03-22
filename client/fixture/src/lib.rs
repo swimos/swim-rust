@@ -13,17 +13,17 @@ use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::ops::DerefMut;
 use std::sync::Arc;
-use swim_api::net::Scheme;
-use swim_form::Form;
-use swim_model::{Text, Value};
-use swim_recon::parser::{parse_recognize, Span};
-use swim_recon::printer::print_recon;
-use swim_remote::net::dns::{BoxDnsResolver, DnsResolver};
-use swim_remote::net::{
+use swimos_api::net::Scheme;
+use swimos_form::Form;
+use swimos_model::{Text, Value};
+use swimos_recon::parser::{parse_recognize, Span};
+use swimos_recon::printer::print_recon;
+use swimos_remote::net::dns::{BoxDnsResolver, DnsResolver};
+use swimos_remote::net::{
     ClientConnections, ConnResult, ConnectionError, IoResult, Listener, ListenerError,
 };
-use swim_remote::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
-use swim_remote::FindNode;
+use swimos_remote::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
+use swimos_remote::FindNode;
 use tokio::io::{AsyncRead, AsyncWrite, DuplexStream};
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
@@ -185,7 +185,7 @@ impl WebsocketServer for MockWs {
 }
 
 #[derive(Clone, Debug, PartialEq, Form)]
-#[form_root(::swim_form)]
+
 pub enum Envelope {
     #[form(tag = "link")]
     Link {

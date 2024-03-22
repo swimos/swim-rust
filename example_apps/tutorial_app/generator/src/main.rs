@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("No port provided.")
         .parse::<u16>()
         .expect("Invalid port.");
-    let mut commander = client::Commander::default();
+    let mut commander = swimos_client::Commander::default();
 
     let host = format!("ws://localhost:{}", port);
     let mut rng = rand::thread_rng();

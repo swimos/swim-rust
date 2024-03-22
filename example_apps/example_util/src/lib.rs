@@ -18,7 +18,7 @@ use std::{
     net::SocketAddr,
 };
 
-use swim::server::ServerHandle;
+use swimos::server::ServerHandle;
 use tokio::{select, sync::oneshot};
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
@@ -141,11 +141,11 @@ pub fn example_filter() -> Result<EnvFilter, Box<dyn std::error::Error + Send + 
         filter
     } else {
         EnvFilter::new("")
-            .add_directive("swim_server_app=trace".parse()?)
-            .add_directive("swim_runtime=trace".parse()?)
-            .add_directive("swim_agent=trace".parse()?)
-            .add_directive("swim_messages=trace".parse()?)
-            .add_directive("swim_remote=trace".parse()?)
+            .add_directive("swimos_server_app=trace".parse()?)
+            .add_directive("swimos_runtime=trace".parse()?)
+            .add_directive("swimos_agent=trace".parse()?)
+            .add_directive("swimos_messages=trace".parse()?)
+            .add_directive("swimos_remote=trace".parse()?)
     };
     Ok(filter)
 }

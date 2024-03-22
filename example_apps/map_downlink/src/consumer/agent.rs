@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use example_util::format_map;
-use swim::agent::{
+use swimos::agent::{
     agent_lifecycle::utility::HandlerContext,
     agent_model::downlink::hosted::MapDownlinkHandle,
     event_handler::{EventHandler, HandlerAction, HandlerActionExt},

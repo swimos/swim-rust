@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim::form::Form;
+use swimos_form::Form;
 
 #[derive(Form, Clone, Copy, Debug)]
 pub enum Instruction {

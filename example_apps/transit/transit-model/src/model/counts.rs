@@ -14,7 +14,7 @@
 
 use std::fmt::{Display, Formatter};
 
-use swim::form::Form;
+use swimos_form::Form;
 
 #[derive(Debug, Clone, Copy, Default, Form)]
 #[form(tag = "count")]
