@@ -65,9 +65,7 @@ fn make_client_config() -> ClientConfig {
     }
 }
 
-// todo: https://github.com/swimos/swim-rust/issues/595 update expired certificates.
 #[tokio::test]
-#[ignore]
 async fn perform_handshake() {
     let server_net =
         RustlsServerNetworking::try_from(make_server_config()).expect("Invalid server config.");
