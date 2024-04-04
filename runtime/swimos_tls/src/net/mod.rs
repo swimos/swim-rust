@@ -19,11 +19,13 @@ mod tests;
 
 use std::{net::SocketAddr, sync::Arc};
 
-pub use client::RustlsClientNetworking;
+pub use client::RustTlsClientNetworking;
+use futures::future::Either;
 use futures::TryFutureExt;
 use futures::{future::BoxFuture, FutureExt};
-pub use server::{RustlsListener, RustlsServerNetworking};
+pub use server::{RustTlsListener, RustTlsServerNetworking};
 use swimos_api::net::Scheme;
+use swimos_remote::net::plain::TokioPlainTextNetworking;
 use swimos_remote::net::{
     dns::{BoxDnsResolver, Resolver},
     ClientConnections, ConnResult, IoResult, ServerConnections,
@@ -33,9 +35,10 @@ use crate::{
     config::{CertFormat, CertificateFile, TlsConfig},
     errors::TlsError,
     maybe::MaybeTlsStream,
+    ClientConfig,
 };
 
-use self::server::MaybeRustlsListener;
+use self::server::MaybeRustTlsListener;
 
 fn load_cert_file(file: CertificateFile) -> Result<Vec<rustls::Certificate>, TlsError> {
     let CertificateFile { format, body } = file;
@@ -49,33 +52,64 @@ fn load_cert_file(file: CertificateFile) -> Result<Vec<rustls::Certificate>, Tls
     Ok(certs.into_iter().map(rustls::Certificate).collect())
 }
 
-/// Combined implementation of [`ClientConnections`] and [`ServerConnections`] that wraps both
-/// [`RustlsClientNetworking`] and [`RustlsServerNetworking`]. The server part is adapted to
+/// Combined implementation of [`ClientConnections`] and [`ServerConnections`] that wraps
+/// [`RustTlsClientNetworking`], [`RustTlsServerNetworking`] and [`TokioPlainTextNetworking`]. The server part is adapted to
 /// produce [`MaybeTlsStream`] connections so that there is a unified client/server socket type,
 /// inducing an implementation of [`super::ExternalConnections`].
 #[derive(Clone)]
-pub struct RustlsNetworking {
-    client: RustlsClientNetworking,
-    server: RustlsServerNetworking,
+pub struct RustNetworking {
+    client: RustTlsClientNetworking,
+    server: Either<TokioPlainTextNetworking, RustTlsServerNetworking>,
 }
 
-impl RustlsNetworking {
-    pub fn new(client: RustlsClientNetworking, server: RustlsServerNetworking) -> Self {
-        RustlsNetworking { client, server }
+impl RustNetworking {
+    pub fn new_plain_text(
+        client: RustTlsClientNetworking,
+        server: TokioPlainTextNetworking,
+    ) -> Self {
+        RustNetworking {
+            client,
+            server: Either::Left(server),
+        }
     }
 
-    pub fn try_from_config(resolver: Arc<Resolver>, config: TlsConfig) -> Result<Self, TlsError> {
+    pub fn new_tls(client: RustTlsClientNetworking, server: RustTlsServerNetworking) -> Self {
+        RustNetworking {
+            client,
+            server: Either::Right(server),
+        }
+    }
+
+    pub fn try_plain_text_from_config(
+        resolver: Arc<Resolver>,
+        client_config: ClientConfig,
+    ) -> Result<Self, TlsError> {
+        let client = RustTlsClientNetworking::try_from_config(resolver.clone(), client_config)?;
+        let server = TokioPlainTextNetworking::new(resolver);
+        Ok(RustNetworking {
+            client,
+            server: Either::Left(server),
+        })
+    }
+
+    pub fn try_tls_from_config(
+        resolver: Arc<Resolver>,
+        config: TlsConfig,
+    ) -> Result<Self, TlsError> {
         let TlsConfig {
             client: client_conf,
             server: server_conf,
         } = config;
-        let client = RustlsClientNetworking::try_from_config(resolver, client_conf)?;
-        let server = RustlsServerNetworking::try_from(server_conf)?;
-        Ok(RustlsNetworking { client, server })
+        let client = RustTlsClientNetworking::try_from_config(resolver, client_conf)?;
+        let server = RustTlsServerNetworking::try_from(server_conf)?;
+        Ok(RustNetworking {
+            client,
+            server: Either::Right(server),
+        })
     }
 }
 
-impl ClientConnections for RustlsNetworking {
+impl ClientConnections for RustNetworking {
     type ClientSocket = MaybeTlsStream;
 
     fn try_open(
@@ -96,18 +130,24 @@ impl ClientConnections for RustlsNetworking {
     }
 }
 
-impl ServerConnections for RustlsNetworking {
+impl ServerConnections for RustNetworking {
     type ServerSocket = MaybeTlsStream;
 
-    type ListenerType = MaybeRustlsListener;
+    type ListenerType = MaybeRustTlsListener;
 
     fn bind(
         &self,
         addr: SocketAddr,
     ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
-        self.server
-            .make_listener(addr)
-            .map_ok(|(addr, listener)| (addr, MaybeRustlsListener::from(listener)))
-            .boxed()
+        match &self.server {
+            Either::Left(plain_text_server) => plain_text_server
+                .bind(addr)
+                .map_ok(|(addr, listener)| (addr, MaybeRustTlsListener::from(listener)))
+                .boxed(),
+            Either::Right(tls_server) => tls_server
+                .make_listener(addr)
+                .map_ok(|(addr, listener)| (addr, MaybeRustTlsListener::from(listener)))
+                .boxed(),
+        }
     }
 }

@@ -71,12 +71,12 @@ impl ClientConnections for TokioPlainTextNetworking {
         .boxed()
     }
 
-    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
-        self.resolver.resolve(host, port)
-    }
-
     fn dns_resolver(&self) -> BoxDnsResolver {
         Box::new(self.resolver.clone())
+    }
+
+    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+        self.resolver.resolve(host, port)
     }
 }
 

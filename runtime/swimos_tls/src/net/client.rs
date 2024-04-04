@@ -29,14 +29,14 @@ use crate::{config::ClientConfig, errors::TlsError, maybe::MaybeTlsStream};
 
 /// [`ClientConnections`] implementation that supports opening both secure and insecure connections.
 #[derive(Clone)]
-pub struct RustlsClientNetworking {
+pub struct RustTlsClientNetworking {
     resolver: Arc<Resolver>,
     connector: TlsConnector,
 }
 
-impl RustlsClientNetworking {
+impl RustTlsClientNetworking {
     pub fn new(resolver: Arc<Resolver>, connector: TlsConnector) -> Self {
-        RustlsClientNetworking {
+        RustTlsClientNetworking {
             resolver,
             connector,
         }
@@ -75,11 +75,11 @@ impl RustlsClientNetworking {
             .with_no_client_auth();
 
         let connector = TlsConnector::from(Arc::new(config));
-        Ok(RustlsClientNetworking::new(resolver, connector))
+        Ok(RustTlsClientNetworking::new(resolver, connector))
     }
 }
 
-impl ClientConnections for RustlsClientNetworking {
+impl ClientConnections for RustTlsClientNetworking {
     type ClientSocket = MaybeTlsStream;
 
     fn try_open(
@@ -104,7 +104,7 @@ impl ClientConnections for RustlsClientNetworking {
                 };
                 async move {
                     let stream = TcpStream::connect(addr).await?;
-                    let RustlsClientNetworking { connector, .. } = self;
+                    let RustTlsClientNetworking { connector, .. } = self;
 
                     let client = connector.connect(domain?, stream).await.map_err(|err| {
                         let tls_err = TlsError::HandshakeFailed(err);
