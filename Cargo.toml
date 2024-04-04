@@ -36,7 +36,9 @@ members = [
     "example_apps/transit/transit-model",
     "example_apps/tutorial_app",
     "example_apps/tutorial_app/model",
-    "example_apps/tutorial_app/generator",
+    "example_apps/tutorial_app/generator", 
+    "example_apps/game",
+    "example_apps/game/game-model"
 ]
 
 exclude = [

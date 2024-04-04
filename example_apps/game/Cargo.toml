@@ -1,0 +1,17 @@
+[package]
+name = "game"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+game-model = { path = "game-model" }
+swim = { path = "../../swim", features = ["server", "agent"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "fs"]}
+futures = { workspace = true }
+example-util = { path = "../example_util" }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+clap = { workspace = true, features = ["derive"]}
+axum = { version = "0.6.20", features = ["tokio", "http1"]}
+tokio-stream = { workspace = true, features = ["io-util"]}
+tokio-util = { workspace = true, features = ["io"]}
