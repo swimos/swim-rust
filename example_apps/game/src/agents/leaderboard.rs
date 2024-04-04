@@ -15,7 +15,7 @@
 use std::{cell::RefCell, collections::HashMap, time::Duration};
 
 use game_model::config;
-use swim::{agent::{agent_lifecycle::utility::HandlerContext, event_handler::{EventHandler, HandlerAction, HandlerActionExt}, lanes::{CommandLane, DemandLane, JoinValueLane, ValueLane}, lifecycle, projections, AgentLaneModel}, route::RouteUri};
+use swimos::{agent::{agent_lifecycle::utility::HandlerContext, event_handler::{EventHandler, HandlerAction, HandlerActionExt}, lanes::{CommandLane, DemandLane, JoinValueLane, ValueLane}, lifecycle, projections, AgentLaneModel}, route::RouteUri};
 use tracing::info;
 
 use super::model::{leaderboard::Leaderboard, stats::{LeaderboardTotals, PlayerTotals}};

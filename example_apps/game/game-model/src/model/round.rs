@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::time::{SystemTime, UNIX_EPOCH};
-use swim::form::Form;
+use swimos_form::Form;
 use crate::{battle::Battle, config, player::Player};
 
 #[derive(Debug, Clone, Form)]

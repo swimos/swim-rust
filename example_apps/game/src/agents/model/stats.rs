@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 use game_model::round::{PlayerRound, Round};
-use swim::form::Form;
+use swimos_form::Form;
 
 #[derive(Form, Default, Clone, Debug)]
 #[form(fields_convention = "camel")]

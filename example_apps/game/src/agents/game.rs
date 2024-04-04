@@ -15,7 +15,7 @@
 use std::{cell::RefCell, collections::VecDeque, time::Duration};
 
 use game_model::game::Game;
-use swim::agent::{agent_lifecycle::utility::HandlerContext, event_handler::{EventHandler, HandlerActionExt}, lanes::{CommandLane, MapLane, ValueLane}, lifecycle, projections, AgentLaneModel};
+use swimos::agent::{agent_lifecycle::utility::HandlerContext, event_handler::{EventHandler, HandlerActionExt}, lanes::{CommandLane, MapLane, ValueLane}, lifecycle, projections, AgentLaneModel};
 use tracing::info;
 
 use super::model::stats::{MatchSummary, MatchTotals};

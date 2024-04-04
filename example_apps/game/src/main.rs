@@ -18,7 +18,7 @@ use clap::Parser;
 use example_util::{example_filter, manage_handle_report};
 use futures::future::{select, Either};
 use game::{agents::{game::{GameAgent, GameLifecycle}, leaderboard::{LeaderboardAgent, LeaderboardLifecycle}, player::{PlayerAgent, PlayerLifecycle}, round::{MatchAgent, MatchLifecycle}, team::{TeamAgent, TeamLifecycle}}, ui::ui_server_router};
-use swim::{
+use swimos::{
     agent::agent_model::AgentModel, 
     route::{RoutePattern, RouteUri}, 
     server::{Server, ServerBuilder, ServerHandle}
@@ -83,11 +83,11 @@ struct Params {
 
 fn configure_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let filter = example_filter()?
-        .add_directive("swim_server_app=warn".parse()?)
-        .add_directive("swim_runtime=warn".parse()?)
-        .add_directive("swim_agent=warn".parse()?)
-        .add_directive("swim_messages=warn".parse()?)
-        .add_directive("swim_remote=warn".parse()?)
+        .add_directive("swimos_server_app=warn".parse()?)
+        .add_directive("swimos_runtime=warn".parse()?)
+        .add_directive("swimos_agent=warn".parse()?)
+        .add_directive("swimos_messages=warn".parse()?)
+        .add_directive("swimos_remote=warn".parse()?)
         .add_directive("game=info".parse()?)
         .add_directive(LevelFilter::WARN.into());
 

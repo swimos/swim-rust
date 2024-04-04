@@ -15,7 +15,7 @@
 use std::{cell::RefCell, collections::VecDeque};
 
 use game_model::gamertag;
-use swim::agent::{
+use swimos::agent::{
     agent_lifecycle::utility::HandlerContext, event_handler::{EventHandler, HandlerActionExt},
     lanes::{CommandLane, MapLane, ValueLane}, 
     lifecycle, projections, AgentLaneModel

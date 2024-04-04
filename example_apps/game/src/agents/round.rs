@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use game_model::round::Round;
-use swim::agent::{
+use swimos::agent::{
     agent_lifecycle::utility::HandlerContext, event_handler::{EventHandler, HandlerActionExt, Sequentially},
     lanes::{CommandLane, ValueLane}, 
     lifecycle, projections, AgentLaneModel
