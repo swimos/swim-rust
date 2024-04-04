@@ -1,0 +1,33 @@
+[package]
+name = "swimos_remote"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[dependencies]
+ratchet = { workspace = true, features = ["deflate", "split"] }
+ratchet_fixture = { workspace = true }
+bytes = { workspace = true }
+flate2 = { workspace = true }
+futures = { workspace = true }
+http = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+tokio-util = { workspace = true, features = ["codec"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["io", "buf_channel", "multi_reader"] }
+swimos_api = { path = "../../api/swimos_api" }
+swimos_model = { path = "../../api/swimos_model" }
+swimos_recon = { path = "../../api/formats/swimos_recon", features = ["async_parser"] }
+swimos_messages = { path = "../swimos_messages" }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+tokio-stream = { workspace = true, features = ["sync"] }
+uuid = { workspace = true }
+static_assertions = { workspace = true }
+either = { workspace = true }
+smallvec = { workspace = true }
+url = { workspace = true }
+pin-project = { workspace = true }
+lazy_static = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

@@ -27,10 +27,10 @@ use ratchet::{
     CloseCode, CloseReason, ErrorKind, Message, NoExt, NoExtDecoder, NoExtEncoder, NoExtProvider,
     ProtocolRegistry, WebSocket, WebSocketConfig,
 };
-use swim_messages::warp::{peel_envelope_header_str, RawEnvelope};
-use swim_model::Value;
-use swim_recon::{parser::MessageExtractError, printer::print_recon_compact};
-use swim_utilities::{
+use swimos_messages::warp::{peel_envelope_header_str, RawEnvelope};
+use swimos_model::Value;
+use swimos_recon::{parser::MessageExtractError, printer::print_recon_compact};
+use swimos_utilities::{
     routing::route_uri::{InvalidRouteUri, RouteUri},
     trigger,
 };

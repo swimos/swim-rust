@@ -1,0 +1,30 @@
+[package]
+name = "swimos_multi_reader"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes = { workspace = true }
+byte_channel = { path = "../byte_channel" }
+parking_lot = { workspace = true }
+waker-fn = "1.1.0"
+slab = { workspace = true }
+tokio-util = { workspace = true, features = ["codec"] }
+futures-util = { workspace = true }
+smallvec = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "test-util", "macros"] }
+futures = { workspace = true, features = ["io-compat", "compat"] }
+criterion = { workspace = true, features = ["async_tokio"] }
+rand = { workspace = true }
+swimos_api = { path = "../../api/swimos_api" }
+swimos_runtime = { path = "../../runtime/swimos_runtime" }
+swimos_messages = { path = "../../runtime/swimos_messages" }
+swimos_model = { path = "../../api/swimos_model" }
+swimos_form = { path = "../../api/swimos_form" }
+uuid = { workspace = true }
+
+[[bench]]
+name = "multi_reader_throughput"
+harness = false

@@ -1,0 +1,17 @@
+[package]
+name = "swimos_sync"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[dependencies]
+crossbeam-queue = { workspace = true }
+futures = { workspace = true }
+parking_lot = { workspace = true }
+swimos_future = { path = "../swimos_future" }
+swimos_num = { path = "../swimos_num" }
+
+[dev-dependencies]
+futures = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+swimos_trigger = { path = "../swimos_trigger" }

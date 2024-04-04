@@ -1,0 +1,25 @@
+[package]
+name = "swimos_messages"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[dependencies]
+bytes = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true, features = ["codec"] }
+swimos_model = { path = "../../api/swimos_model" }
+swimos_form = { path = "../../api/swimos_form" }
+swimos_recon = { path = "../../api/formats/swimos_recon", features = ["async_parser"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["algebra"] }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+smallvec = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+uuid = { workspace = true, features = ["v4"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["buf_channel"] }
+rand = { workspace = true }
+swimos_api = { path = "../../api/swimos_api" }

@@ -15,7 +15,7 @@
 use std::{cell::Cell, collections::HashMap, time::Duration};
 
 use rand::Rng;
-use swim::{
+use swimos::{
     agent::{
         agent_lifecycle::utility::HandlerContext,
         event_handler::{EventHandler, HandlerActionExt, Sequentially},

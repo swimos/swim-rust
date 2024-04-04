@@ -14,9 +14,9 @@
 
 use std::{collections::BTreeMap, fmt::Debug};
 
-use swim_api::protocol::map::{extract_header_str, MapMessage};
-use swim_model::Value;
-use swim_recon::{
+use swimos_api::protocol::map::{extract_header_str, MapMessage};
+use swimos_model::Value;
+use swimos_recon::{
     parser::{parse_value, MessageExtractError, ParseError},
     printer::print_recon,
 };

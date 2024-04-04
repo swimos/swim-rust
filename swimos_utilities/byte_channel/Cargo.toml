@@ -1,0 +1,27 @@
+[package]
+name = "byte_channel"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["coop"]
+coop = []
+
+[dependencies]
+bytes = { workspace = true }
+tokio = { workspace = true, features = ["io-util"] }
+parking_lot = { workspace = true }
+futures = { workspace = true }
+pin-project = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "test-util", "macros"] }
+futures = { workspace = true }
+futures-util = { workspace = true }
+criterion = { workspace = true, features = ["async_tokio"] }
+rand = { workspace = true }
+swimos_num = { path = "../swimos_num" }
+
+[[bench]]
+name = "async_throughput"
+harness = false

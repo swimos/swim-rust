@@ -1,19 +1,22 @@
 Agent Lifecycles
 ================
 
-For any given agent definition there are a number of different events to which event handlers can be attached. Some of these will receive one or more arguments and some receive none.
+For any given agent definition there are a number of different events to which event handlers can be attached. Some of
+these will receive one or more arguments and some receive none.
 
 The `AgentLifecycle` trait
 -------------------------
 
-To attach event handlers to an agent implementation, it is necessary to provide an implementation of the `swim::agent::AgentLifecycle` trait.
+To attach event handlers to an agent implementation, it is necessary to provide an implementation of
+the `swimos::agent::AgentLifecycle` trait.
 
-The details of implementing this trait are somewhat complex and will be covered in a later chapter. In general, lifecycles will be created using the `swim::agent::lifecycle` attribute macro.
+The details of implementing this trait are somewhat complex and will be covered in a later chapter. In general,
+lifecycles will be created using the `swimos::agent::lifecycle` attribute macro.
 
 All further examples in this chapter will use the following agent definition:
 
 ```rust
-use swim::agent::{AgentLaneModel, projections};
+use swimos::agent::{AgentLaneModel, projections};
 
 #[derive(AgentLaneModel)]
 #[projections]
@@ -32,7 +35,7 @@ struct ExampleAgent {
 The derivation of an agent lifecycle for this agent will follow this template:
 
 ```rust
-use swim::agent::lifecycle;
+use swimos::agent::lifecycle;
 
 #[derive(Clone, Copy)]
 struct ExampleLifecycle;
@@ -57,7 +60,8 @@ Agent lifecycle events
 Regardless of what lanes the agent has, it will have the following events.
 
 1. The `on_start` event. This is triggered exactly once when the agent starts and receives no arguments.
-2. The `on_stop` event. This is triggered just before the agent stops and receives no arguments. It is the last event handler be run by an agent (aside from any that are triggered by the event handler attached to the `on_stop` event.)
+2. The `on_stop` event. This is triggered just before the agent stops and receives no arguments. It is the last event
+   handler be run by an agent (aside from any that are triggered by the event handler attached to the `on_stop` event.)
 
 To attach a handler to the `on_start` method, add a function annotated with `#[on_start]`, with the following signature.
 
@@ -70,7 +74,8 @@ fn my_start_handler(&self, context: HandlerContext<ExampleAgent>) -> impl EventH
 
 The `on_stop` event is identical but uses the `#[on_stop]` annotation.
 
-Note that a function (with an appropriate signature) may have any number of lifecycle annotations. For example, the following is entirely acceptable:
+Note that a function (with an appropriate signature) may have any number of lifecycle annotations. For example, the
+following is entirely acceptable:
 
 ```rust
 #[on_start]
@@ -80,12 +85,15 @@ fn my_start_or_stop_handler(&self, context: HandlerContext<ExampleAgent>) -> imp
 }
 ```
 
-Additionally, for each lane of the agent, there are events that can be attached to that lane, using its name. For example, to annotate a function to be used for the `on_command` event of the command lane `example_command`, the annotation `#[on_command(example_command)]` would be used.
+Additionally, for each lane of the agent, there are events that can be attached to that lane, using its name. For
+example, to annotate a function to be used for the `on_command` event of the command lane `example_command`, the
+annotation `#[on_command(example_command)]` would be used.
 
 Command lane events
 -------------------
 
-The command lane has only one type of event that triggers any time it receives a command. The `on_command` event has the following signature:
+The command lane has only one type of event that triggers any time it receives a command. The `on_command` event has the
+following signature:
 
 ```rust
 #[on_command(example_command)]
@@ -116,8 +124,10 @@ Demand Map lane events
 
 A demand map lane has two types of event that generate its contents, on demand.
 
-1. `on_cue_key`: This triggers each time a key of the map is cued to be generated. This occurs upon a manual cue operation and once for each defined key when a downlink attempts to sync with the lane.
-2. `keys`: This triggers each time a downlink attempts to sync with the lane. It generates the set of keys that are defined.
+1. `on_cue_key`: This triggers each time a key of the map is cued to be generated. This occurs upon a manual cue
+   operation and once for each defined key when a downlink attempts to sync with the lane.
+2. `keys`: This triggers each time a downlink attempts to sync with the lane. It generates the set of keys that are
+   defined.
 
 The `on_cue_key` event has the following signature:
 
@@ -169,9 +179,12 @@ Map lane events
 
 A map lanes generates events in the following three circumstances:
 
-1. `on_update`: Triggered when an entry in the map is updated. The handler will receive a reference to the contents of the map (after the update), the key that was changed, the previous value (if any) and a reference to the new value.
-2. `on_remove`: Triggered when an entry is removed. The handler will receive a reference to the contents of the map (after the removal), the key that was removed and the previous value.
-3. `on_clear`: Triggered when the contents of the map are cleared. The handler will receive the previous contents of the map.
+1. `on_update`: Triggered when an entry in the map is updated. The handler will receive a reference to the contents of
+   the map (after the update), the key that was changed, the previous value (if any) and a reference to the new value.
+2. `on_remove`: Triggered when an entry is removed. The handler will receive a reference to the contents of the map (
+   after the removal), the key that was removed and the previous value.
+3. `on_clear`: Triggered when the contents of the map are cleared. The handler will receive the previous contents of the
+   map.
 
 The signatures of these events are as follows:
 
@@ -211,7 +224,8 @@ Join value lane events
 
 A join value lane supports all of the events supported by a map lane (`on_update`, `on_remove` and `on_clear`).
 
-Additionally, it is possible to attach events to the downlinks used for each key of the join value lane. To do this, add the following to the agent lifecycle implementation:
+Additionally, it is possible to attach events to the downlinks used for each key of the join value lane. To do this, add
+the following to the agent lifecycle implementation:
 
 ```rust
 #[join_value_lifecycle(example_join_value)]
@@ -227,37 +241,49 @@ fn register_lifecycle(
 }
 ```
 
-An instance of the lifecycle will be created for each link that is attached to the lane so it is necessary that the lifecycle is `Clone` and has a `static` lifetime.
+An instance of the lifecycle will be created for each link that is attached to the lane so it is necessary that the
+lifecycle is `Clone` and has a `static` lifetime.
 
-Supported handlers are `on_linked`, `on_synced`, `on_unlinked` and `on_failed`. These take closures with the following signatures:
+Supported handlers are `on_linked`, `on_synced`, `on_unlinked` and `on_failed`. These take closures with the following
+signatures:
 
-1. `on_linked`: 
+1. `on_linked`:
+
 ```rust
 (context: HandlerContext<ExampleAgent>, key: K, address: Address<&str>) -> impl EventHandler<ExampleAgent>
 ```
+
 2. `on_synced`:
+
 ```rust
 (context: HandlerContext<ExampleAgent>, key: K, address: Address<&str>, value: Option<&V>) -> impl EventHandler<ExampleAgent>
 ```
+
 3. `on_unlinked` and `on_failed`:
+
 ```rust
 (context: HandlerContext<ExampleAgent>, key: K, address: Address<&str>) -> impl HandlerAction<ExampleAgent, Completion = LinkClosedResponse>
 ```
 
-The `on_unlinked` and `on_failed` handlers return a `LinkClosedResponse`. This is an enumeration with the values `Retry`, `Abandon` and `Delete`. These have the following effects:
+The `on_unlinked` and `on_failed` handlers return a `LinkClosedResponse`. This is an enumeration with the
+values `Retry`, `Abandon` and `Delete`. These have the following effects:
 
 1. `Retry`: An attempt will be made to reconnect the link (TODO: this is not implemented yet.)
 2. `Abandon`: The link will be abandoned by the entry will still remain in the map. (This is the default.)
 3. `Delete`: The link will be abandoned and the entry deleted from the map.
 
-It is possible to add a shared state to a join value lifecycle in a similar way to other downlinks types (see [Downlinks](downlink.md)). Note that this state is shared between the event handlers of a single instance of the lifecycle and not between all instances. If you have state that needs to be shared between all instances it must be stored inside an `Arc`.
+It is possible to add a shared state to a join value lifecycle in a similar way to other downlinks types (
+see [Downlinks](downlink.md)). Note that this state is shared between the event handlers of a single instance of the
+lifecycle and not between all instances. If you have state that needs to be shared between all instances it must be
+stored inside an `Arc`.
 
 Join map lane events
 --------------------
 
 A join map lane supports all of the events supported by a map lane (`on_update`, `on_remove` and `on_clear`).
 
-Additionally, it is possible to attach events to the downlinks used for each key of the join value lane. To do this, add the following to the agent lifecycle implementation:
+Additionally, it is possible to attach events to the downlinks used for each key of the join value lane. To do this, add
+the following to the agent lifecycle implementation:
 
 ```rust
 #[join_map_lifecycle(example_join_map)]
@@ -273,42 +299,55 @@ fn register_lifecycle(
 }
 ```
 
-An instance of the lifecycle will be created for each link that is attached to the lane so it is necessary that the lifecycle is `Clone` and has a `static` lifetime.
+An instance of the lifecycle will be created for each link that is attached to the lane so it is necessary that the
+lifecycle is `Clone` and has a `static` lifetime.
 
-Supported handlers are `on_linked`, `on_synced`, `on_unlinked` and `on_failed`. These take closures with the following signatures:
+Supported handlers are `on_linked`, `on_synced`, `on_unlinked` and `on_failed`. These take closures with the following
+signatures:
 
-1. `on_linked`: 
+1. `on_linked`:
+
 ```rust
 (context: HandlerContext<ExampleAgent>, link_key: L, address: Address<&str>) -> impl EventHandler<ExampleAgent>
 ```
+
 2. `on_synced`:
+
 ```rust
 (context: HandlerContext<ExampleAgent>, link_key: L, address: Address<&str>, keys: &HashSet<K>) -> impl EventHandler<ExampleAgent>
 ```
+
 3. `on_unlinked` and `on_failed`:
+
 ```rust
 (context: HandlerContext<ExampleAgent>, link_key: L, address: Address<&str>, keys: HashSet<K>) -> impl HandlerAction<ExampleAgent, Completion = LinkClosedResponse>
 ```
 
-The `on_unlinked` and `on_failed` handlers return a `LinkClosedResponse`. This is an enumeration with the values `Retry`, `Abandon` and `Delete`. These have the following effects:
+The `on_unlinked` and `on_failed` handlers return a `LinkClosedResponse`. This is an enumeration with the
+values `Retry`, `Abandon` and `Delete`. These have the following effects:
 
 1. `Retry`: An attempt will be made to reconnect the link (TODO: this is not implemented yet.)
 2. `Abandon`: The link will be abandoned by the entry will still remain in the map. (This is the default.)
 3. `Delete`: The link will be abandoned and the entry deleted from the map.
 
-It is possible to add a shared state to a join value lifecycle in a similar way to other downlinks types (see [Downlinks](downlink.md)). Note that this state is shared between the event handlers of a single instance of the lifecycle and not between all instances. If you have state that needs to be shared between all instances it must be stored inside an `Arc`.
+It is possible to add a shared state to a join value lifecycle in a similar way to other downlinks types (
+see [Downlinks](downlink.md)). Note that this state is shared between the event handlers of a single instance of the
+lifecycle and not between all instances. If you have state that needs to be shared between all instances it must be
+stored inside an `Arc`.
 
 HTTP lane events
 ----------------
 
-An HTTP lane generates events when HTTP requests are received for that lane. The supported methods are GET, PUT, POST, DELETE and HEAD. The event handlers used to serve these methods are named.
+An HTTP lane generates events when HTTP requests are received for that lane. The supported methods are GET, PUT, POST,
+DELETE and HEAD. The event handlers used to serve these methods are named.
 
 1. `on_get` for GET.
 2. `on_put` for PUT.
 3. `on_post` for POST.
 4. `on_delete` for DELETE.
 
-When a HEAD request is received, the `on_get` handler will be called and then the payload of the response will be discarded.
+When a HEAD request is received, the `on_get` handler will be called and then the payload of the response will be
+discarded.
 The signatures of these events are as follows:
 
 ```rust
@@ -347,25 +386,31 @@ fn my_delete_handler(
 }
 ```
 
-The `HttpRequestContext` passed to each of these handlers provides access to the request URI and the headers that were set in the request.
+The `HttpRequestContext` passed to each of these handlers provides access to the request URI and the headers that were
+set in the request.
 
-The `Response` type produced by the event handlers contains the payload, status code and any custom headers. It is the responsibility of the codec associated with the lane to interpret the content type and accept headers from the request and to append the correct content type header to the response. In most cases a response can be constructed as:
+The `Response` type produced by the event handlers contains the payload, status code and any custom headers. It is the
+responsibility of the codec associated with the lane to interpret the content type and accept headers from the request
+and to append the correct content type header to the response. In most cases a response can be constructed as:
 
 ```rust
 Response::from(value)
 ```
 
-where `value` is the payload. The status code will be 200(OK) and no extra headers will be set. `UnitResponse` is equivalent to `Response<()>`.
+where `value` is the payload. The status code will be 200(OK) and no extra headers will be set. `UnitResponse` is
+equivalent to `Response<()>`.
 
 Store events
 ------------
 
-The store types support exactly the same event handlers as their lane equivalents (for example `ValueStore`s have the same events as `ValueLane`s).
+The store types support exactly the same event handlers as their lane equivalents (for example `ValueStore`s have the
+same events as `ValueLane`s).
 
 Borrowing from lifecycles
 -------------------------
 
-Although none of the examples so far have used event handlers that borrow any data from the lifecycle, this is entirely possible.
+Although none of the examples so far have used event handlers that borrow any data from the lifecycle, this is entirely
+possible.
 
 Consider the following, alternative lifecycle type.
 
@@ -399,16 +444,24 @@ fn with_name_event<'a>(
 }
 ```
 
-Note that, whilst we can borrow `&self.name` safely, it is _not_ possible to move the borrow of `value` into the event handler. This is as the current value of the lane can change during the execution of the event handler so it is not possible to hold a borrow of it.
+Note that, whilst we can borrow `&self.name` safely, it is _not_ possible to move the borrow of `value` into the event
+handler. This is as the current value of the lane can change during the execution of the event handler so it is not
+possible to hold a borrow of it.
 
 Interior mutability in lifecycles
 ---------------------------------
 
-The reference to `self` for the agent lifecycle is always passed as `&self` and a function taking `&mut self` cannot be used for an event handler. This is as an event handler can trigger other handlers on the same lifecycle (even itself) which results in multiple borrows of the data in the lifecycle.
+The reference to `self` for the agent lifecycle is always passed as `&self` and a function taking `&mut self` cannot be
+used for an event handler. This is as an event handler can trigger other handlers on the same lifecycle (even itself)
+which results in multiple borrows of the data in the lifecycle.
 
-Often, it will not be possible for a stateful lifecycle to be `Clone` (as the state may not be cloneable). In such a case, the `no_clone` option to the lifecycle macro. When registering the agent in the server, it will be necessary to provide a factory rather than a template instance.
+Often, it will not be possible for a stateful lifecycle to be `Clone` (as the state may not be cloneable). In such a
+case, the `no_clone` option to the lifecycle macro. When registering the agent in the server, it will be necessary to
+provide a factory rather than a template instance.
 
-However, due to the way in which lifecycles are executed, only one event handler will be executing at any one time. This means that it is safe to use interior mutability in a lifecycle without requiring locking. Consider the following alternative lifecycle:
+However, due to the way in which lifecycles are executed, only one event handler will be executing at any one time. This
+means that it is safe to use interior mutability in a lifecycle without requiring locking. Consider the following
+alternative lifecycle:
 
 ```rust
 struct MutableLifecycle {

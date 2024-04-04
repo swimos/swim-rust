@@ -16,7 +16,7 @@ use std::io::BufRead;
 
 use quick_xml::DeError;
 use serde::{Deserialize, Serialize};
-use swim::form::Form;
+use swimos_form::Form;
 
 /// A transit agency has some number of routes upon which are some number of vehicles. This type
 /// defines the mapping from the ID of a route to its descriptive title.

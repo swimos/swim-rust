@@ -17,7 +17,7 @@ use std::{
     collections::VecDeque,
 };
 
-use swim::agent::{
+use swimos::agent::{
     agent_lifecycle::utility::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt},
     lanes::{CommandLane, MapLane, ValueLane},

@@ -1,5 +1,0 @@
-error: Unknown field attribute.
-  --> src/tests/derive/form/unknown_field_attr.rs:21:16
-   |
-21 |         #[form(swim)]
-   |                ^^^^
