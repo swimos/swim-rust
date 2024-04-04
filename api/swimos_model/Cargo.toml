@@ -1,0 +1,19 @@
+[package]
+name = "swimos_model"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[dependencies]
+chrono = { workspace = true }
+bytes = { workspace = true }
+either = { workspace = true }
+num-bigint = { workspace = true }
+base64 = { workspace = true }
+http = { workspace = true }
+swimos_utilities = { path = "../../swimos_utilities", features = ["text"] }
+num-traits = { workspace = true }
+thiserror = { workspace = true }
+lazy_static = { workspace = true }
+
+[dev-dependencies]

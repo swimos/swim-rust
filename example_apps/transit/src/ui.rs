@@ -37,12 +37,12 @@ impl UiConfig {
 /// Trivial web server to present the app UI.
 ///
 /// #Arguments
-/// * `port` - The port that the swim server is listening on.
+/// * `port` - The port that the swimos server is listening on.
 pub fn ui_server_router(port: u16) -> Router {
     Router::new()
         .route("/index.html", get(index_html))
-        .route("/dist/main/swim-transit.js", get(transit_js))
-        .route("/dist/main/swim-transit.js.map", get(transit_js_map))
+        .route("/dist/main/swimos-transit.js", get(transit_js))
+        .route("/dist/main/swimos-transit.js.map", get(transit_js_map))
         .with_state(UiConfig { port })
 }
 
@@ -80,7 +80,7 @@ async fn index_html(State(UiConfig { port }): State<UiConfig>) -> impl IntoRespo
 
 async fn transit_js() -> impl IntoResponse {
     let headers = [(header::CONTENT_TYPE, JS.clone())];
-    (headers, load_file("dist/main/swim-transit.js").await)
+    (headers, load_file("dist/main/swimos-transit.js").await)
 }
 
 static HTML: HeaderValue = HeaderValue::from_static("text/html; charset=utf-8");
@@ -88,7 +88,7 @@ static JS: HeaderValue = HeaderValue::from_static("application/json");
 
 async fn transit_js_map() -> impl IntoResponse {
     let headers = [(header::CONTENT_TYPE, JS.clone())];
-    (headers, load_file("dist/main/swim-transit.js.map").await)
+    (headers, load_file("dist/main/swimos-transit.js.map").await)
 }
 
 async fn load_file(path: &str) -> impl IntoResponse {

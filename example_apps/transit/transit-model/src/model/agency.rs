@@ -14,7 +14,7 @@
 
 use percent_encoding::PercentEncode;
 use serde::Deserialize;
-use swim::form::Form;
+use swimos_form::Form;
 
 use crate::{vehicle::Heading, URL_ENCODE};
 

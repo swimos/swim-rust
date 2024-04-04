@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use swim::agent::{
+use swimos::agent::{
     agent_lifecycle::utility::{HandlerContext, JoinValueContext},
     event_handler::{EventHandler, HandlerActionExt},
     lanes::{join_value::lifecycle::JoinValueLaneLifecycle, CommandLane, JoinValueLane, ValueLane},

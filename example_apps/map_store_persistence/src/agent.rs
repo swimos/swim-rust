@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use example_util::format_map;
-use swim::agent::{
+use swimos::agent::{
     agent_lifecycle::utility::HandlerContext,
     event_handler::{join3, EventHandler, HandlerActionExt, UnitHandler},
     lanes::CommandLane,

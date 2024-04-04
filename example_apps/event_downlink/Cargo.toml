@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-swim = { path = "../../swim", features = ["server", "agent"] }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"]}
+swimos = { path = "../../swimos", features = ["server", "agent"] }
+swimos_form = { path = "../../api/swimos_form" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 example-util = { path = "../example_util" }

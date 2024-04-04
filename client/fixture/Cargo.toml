@@ -3,16 +3,14 @@ name = "fixture"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-swim_runtime = { path = "../../runtime/swim_runtime" }
-swim_remote = { path  = "../../runtime/swim_remote" }
-swim_api = { path = "../../api/swim_api" }
+swimos_runtime = { path = "../../runtime/swimos_runtime" }
+swimos_remote = { path = "../../runtime/swimos_remote" }
+swimos_api = { path = "../../api/swimos_api" }
 ratchet = { features = ["deflate", "split"], workspace = true }
-swim_recon = { path = "../../api/formats/swim_recon" }
-swim_model = { path = "../../api/swim_model" }
-swim_form = { path = "../../api/swim_form" }
+swimos_recon = { path = "../../api/formats/swimos_recon" }
+swimos_model = { path = "../../api/swimos_model" }
+swimos_form = { path = "../../api/swimos_form" }
 tokio-util = { version = "0.6.8", features = ["codec"] }
 futures = { workspace = true }
 futures-util = { workspace = true }

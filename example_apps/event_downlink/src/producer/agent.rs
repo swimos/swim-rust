@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swim::agent::{
+use swimos::agent::{
     agent_lifecycle::utility::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt},
     lanes::ValueLane,

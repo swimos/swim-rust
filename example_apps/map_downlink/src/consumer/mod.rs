@@ -14,7 +14,7 @@
 
 use std::{error::Error, time::Duration};
 
-use swim::{
+use swimos::{
     agent::agent_model::AgentModel,
     route::RoutePattern,
     server::{BoxServer, ServerBuilder},

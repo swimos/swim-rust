@@ -1,8 +1,9 @@
 (function (global, factory) {
-    typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('@swim/length'), require('@swim/view'), require('@swim/typeset'), require('@swim/pie'), require('@swim/color'), require('@swim/transition'), require('mapbox-gl'), require('@swim/mapbox'), require('@swim/map'), require('@swim/chart')) :
-    typeof define === 'function' && define.amd ? define(['exports', '@swim/length', '@swim/view', '@swim/typeset', '@swim/pie', '@swim/color', '@swim/transition', 'mapbox-gl', '@swim/mapbox', '@swim/map', '@swim/chart'], factory) :
-    (global = global || self, factory((global.swim = global.swim || {}, global.swim.transit = global.swim.transit || {}), global.swim, global.swim, global.swim, global.swim, global.swim, global.swim, global.mapboxgl, global.swim, global.swim, global.swim));
-}(this, function (exports, length, view, typeset, pie, color, transition, mapboxgl, mapbox, map, chart) { 'use strict';
+    typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('@swimos/length'), require('@swimos/view'), require('@swimos/typeset'), require('@swimos/pie'), require('@swimos/color'), require('@swimos/transition'), require('mapbox-gl'), require('@swimos/mapbox'), require('@swimos/map'), require('@swimos/chart')) :
+        typeof define === 'function' && define.amd ? define(['exports', '@swimos/length', '@swimos/view', '@swimos/typeset', '@swimos/pie', '@swimos/color', '@swimos/transition', 'mapbox-gl', '@swimos/mapbox', '@swimos/map', '@swimos/chart'], factory) :
+            (global = global || self, factory((global.swim = global.swim || {}, global.swim.transit = global.swim.transit || {}), global.swim, global.swim, global.swim, global.swim, global.swim, global.swim, global.mapboxgl, global.swim, global.swim, global.swim));
+}(this, function (exports, length, view, typeset, pie, color, transition, mapboxgl, mapbox, map, chart) {
+    'use strict';
 
     /*! *****************************************************************************
     Copyright (c) Microsoft Corporation.
@@ -20,21 +21,30 @@
     ***************************************************************************** */
     /* global Reflect, Promise */
 
-    var extendStatics = function(d, b) {
+    var extendStatics = function (d, b) {
         extendStatics = Object.setPrototypeOf ||
-            ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
-            function (d, b) { for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]; };
+            ({__proto__: []} instanceof Array && function (d, b) {
+                d.__proto__ = b;
+            }) ||
+            function (d, b) {
+                for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+            };
         return extendStatics(d, b);
     };
 
     function __extends(d, b) {
         extendStatics(d, b);
-        function __() { this.constructor = d; }
+
+        function __() {
+            this.constructor = d;
+        }
+
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
     }
 
     function __decorate(decorators, target, key, desc) {
-        var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+        var c = arguments.length,
+            r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
         if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
         else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
         return c > 3 && r && Object.defineProperty(target, key, r), r;
@@ -42,11 +52,13 @@
 
     var KpiViewController = (function (_super) {
         __extends(KpiViewController, _super);
+
         function KpiViewController() {
             var _this = _super.call(this) || this;
             _this._updateTimer = 0;
             return _this;
         }
+
         Object.defineProperty(KpiViewController.prototype, "kpiTitle", {
             get: function () {
                 return this._kpiTitle;
@@ -113,12 +125,14 @@
 
     var Kpi1ViewController = (function (_super) {
         __extends(Kpi1ViewController, _super);
+
         function Kpi1ViewController(nodeRef, transitMapView) {
             var _this = _super.call(this) || this;
             _this._nodeRef = nodeRef;
             _this._transitMapView = transitMapView;
             return _this;
         }
+
         Object.defineProperty(Kpi1ViewController.prototype, "primaryColor", {
             get: function () {
                 return color.Color.parse("#00a6ed");
@@ -134,12 +148,14 @@
 
     var Kpi2ViewController = (function (_super) {
         __extends(Kpi2ViewController, _super);
+
         function Kpi2ViewController(nodeRef, trafficMapView) {
             var _this = _super.call(this) || this;
             _this._nodeRef = nodeRef;
             _this._trafficMapView = trafficMapView;
             return _this;
         }
+
         Object.defineProperty(Kpi2ViewController.prototype, "primaryColor", {
             get: function () {
                 return color.Color.parse("#00a6ed");
@@ -165,8 +181,7 @@
                 var slice = pie$1.getChildView(id);
                 if (slice) {
                     slice.value(sliceValue, tween);
-                }
-                else {
+                } else {
                     slice = new pie.SliceView()
                         .value(sliceValue)
                         .sliceColor(sliceColor)
@@ -188,12 +203,14 @@
 
     var Kpi3ViewController = (function (_super) {
         __extends(Kpi3ViewController, _super);
+
         function Kpi3ViewController(nodeRef, trafficMapView) {
             var _this = _super.call(this) || this;
             _this._nodeRef = nodeRef;
             _this._trafficMapView = trafficMapView;
             return _this;
         }
+
         Object.defineProperty(Kpi3ViewController.prototype, "primaryColor", {
             get: function () {
                 return color.Color.parse("#00a6ed");
@@ -217,12 +234,14 @@
 
     var TransitMapView = (function (_super) {
         __extends(TransitMapView, _super);
+
         function TransitMapView() {
             var _this = _super.call(this) || this;
             _this.agencyMarkerColor.setState(color.Color.parse("#5aff15"));
             _this.vehicleMarkerColor.setState(color.Color.parse("#00a6ed"));
             return _this;
         }
+
         Object.defineProperty(TransitMapView.prototype, "viewController", {
             get: function () {
                 return this._viewController;
@@ -241,9 +260,11 @@
 
     var AgencyMapView = (function (_super) {
         __extends(AgencyMapView, _super);
+
         function AgencyMapView() {
             return _super !== null && _super.apply(this, arguments) || this;
         }
+
         Object.defineProperty(AgencyMapView.prototype, "viewController", {
             get: function () {
                 return this._viewController;
@@ -252,22 +273,24 @@
             configurable: true
         });
         __decorate([
-            view.MemberAnimator(color.Color, { inherit: true })
+            view.MemberAnimator(color.Color, {inherit: true})
         ], AgencyMapView.prototype, "agencyMarkerColor", void 0);
         __decorate([
-            view.MemberAnimator(color.Color, { inherit: true })
+            view.MemberAnimator(color.Color, {inherit: true})
         ], AgencyMapView.prototype, "vehicleMarkerColor", void 0);
         return AgencyMapView;
     }(map.MapGraphicView));
 
     var AgencyPopoverViewController = (function (_super) {
         __extends(AgencyPopoverViewController, _super);
+
         function AgencyPopoverViewController(info, nodeRef) {
             var _this = _super.call(this) || this;
             _this._info = info;
             _this._nodeRef = nodeRef;
             return _this;
         }
+
         AgencyPopoverViewController.prototype.didSetView = function (view) {
             view.width(240)
                 .height(360)
@@ -284,12 +307,14 @@
 
     var VehicleMapView = (function (_super) {
         __extends(VehicleMapView, _super);
+
         function VehicleMapView() {
             var _this = _super.call(this) || this;
             _this.fill.setState(color.Color.transparent());
             _this.radius.setState(length.Length.px(5));
             return _this;
         }
+
         Object.defineProperty(VehicleMapView.prototype, "viewController", {
             get: function () {
                 return this._viewController;
@@ -298,13 +323,14 @@
             configurable: true
         });
         __decorate([
-            view.MemberAnimator(color.Color, { inherit: true })
+            view.MemberAnimator(color.Color, {inherit: true})
         ], VehicleMapView.prototype, "vehicleMarkerColor", void 0);
         return VehicleMapView;
     }(map.MapCircleView));
 
     var VehiclePopoverViewController = (function (_super) {
         __extends(VehiclePopoverViewController, _super);
+
         function VehiclePopoverViewController(info, nodeRef) {
             var _this = _super.call(this) || this;
             _this._info = info;
@@ -321,6 +347,7 @@
             ];
             return _this;
         }
+
         VehiclePopoverViewController.prototype.didSetView = function (view) {
             view.width(240)
                 .height(360)
@@ -442,10 +469,10 @@
         };
         VehiclePopoverViewController.prototype.didUpdateSpeedHistory = function (k, v) {
             this._speedItem.text("".concat(v.numberValue(), " km/h"));
-            this._speedPlot.insertDatum({ x: k.numberValue(), y: v.numberValue() });
+            this._speedPlot.insertDatum({x: k.numberValue(), y: v.numberValue()});
         };
         VehiclePopoverViewController.prototype.didRemoveSpeedHistory = function (k, v) {
-            this._speedPlot.removeDatum({ x: k.numberValue(), y: v.numberValue() });
+            this._speedPlot.removeDatum({x: k.numberValue(), y: v.numberValue()});
         };
         VehiclePopoverViewController.prototype.linkAccelHistory = function () {
             if (!this._linkAccelHistory) {
@@ -464,22 +491,24 @@
             }
         };
         VehiclePopoverViewController.prototype.didUpdateAccelHistory = function (k, v) {
-            this._accelerationPlot.insertDatum({ x: k.numberValue(), y: v.numberValue() });
+            this._accelerationPlot.insertDatum({x: k.numberValue(), y: v.numberValue()});
         };
         VehiclePopoverViewController.prototype.didRemoveAccelHistory = function (k, v) {
-            this._accelerationPlot.removeDatum({ x: k.numberValue(), y: v.numberValue() });
+            this._accelerationPlot.removeDatum({x: k.numberValue(), y: v.numberValue()});
         };
         return VehiclePopoverViewController;
     }(view.PopoverViewController));
 
     var VehicleMapViewController = (function (_super) {
         __extends(VehicleMapViewController, _super);
+
         function VehicleMapViewController(info, nodeRef) {
             var _this = _super.call(this) || this;
             _this._info = info;
             _this._nodeRef = nodeRef;
             return _this;
         }
+
         VehicleMapViewController.prototype.setInfo = function (info) {
             this._info = info;
             this.updateVehicle();
@@ -520,7 +549,9 @@
             var radius = Math.min(this.bounds.width, this.bounds.height) / 8;
             var tween = transition.Transition.duration(5000);
             ripple.stroke(color.alpha(0), tween)
-                .radius(radius, tween.onEnd(function () { ripple.remove(); }));
+                .radius(radius, tween.onEnd(function () {
+                    ripple.remove();
+                }));
         };
         VehicleMapViewController.prototype.onClick = function (event) {
             event.stopPropagation();
@@ -531,7 +562,7 @@
                 this._popoverView.setSource(this._view);
                 this._popoverView.hidePopover();
             }
-            this.appView.togglePopover(this._popoverView, { multi: event.altKey });
+            this.appView.togglePopover(this._popoverView, {multi: event.altKey});
         };
         return VehicleMapViewController;
     }(map.MapGraphicViewController));
@@ -539,6 +570,7 @@
     var VEHICLE_ZOOM = 11;
     var AgencyMapViewController = (function (_super) {
         __extends(AgencyMapViewController, _super);
+
         function AgencyMapViewController(info, nodeRef) {
             var _this = _super.call(this) || this;
             _this._info = info;
@@ -548,6 +580,7 @@
             _this._popoverView = null;
             return _this;
         }
+
         AgencyMapViewController.prototype.didSetBoundingBox = function (value) {
             if (this._reduced === true) {
                 this.ripple(this._view.agencyMarkerColor.value);
@@ -565,8 +598,7 @@
                 var vehcileMapViewController = new VehicleMapViewController(vehicleInfo, vehicleNodeRef);
                 vehicleMapView.setViewController(vehcileMapViewController);
                 this.setChildView(vehicleId, vehicleMapView);
-            }
-            else {
+            } else {
                 var vehicleMapViewController = vehicleMapView.viewController;
                 vehicleMapViewController.setInfo(vehicleInfo);
             }
@@ -596,7 +628,7 @@
                 this._popoverView.hidePopover();
             }
             this._popoverView.setSource(this.getChildView("marker"));
-            this.appView.togglePopover(this._popoverView, { multi: event.altKey });
+            this.appView.togglePopover(this._popoverView, {multi: event.altKey});
         };
         AgencyMapViewController.prototype.ripple = function (color) {
             if (document.hidden || this.culled || !this._boundingBoxLink) {
@@ -615,7 +647,9 @@
             var radius = Math.min(this.bounds.width, this.bounds.height) / 8;
             var tween = transition.Transition.duration(2000);
             ripple.stroke(color.alpha(0), tween)
-                .radius(radius, tween.onEnd(function () { ripple.remove(); }));
+                .radius(radius, tween.onEnd(function () {
+                    ripple.remove();
+                }));
         };
         AgencyMapViewController.prototype.viewDidMount = function (view) {
             this.linkBoundingBox();
@@ -631,8 +665,7 @@
                 var culled = !(boundingBox.minLng <= ne.lng && sw.lng <= boundingBox.maxLng
                     && boundingBox.minLat <= ne.lat && sw.lat <= boundingBox.maxLat);
                 view.setCulled(culled);
-            }
-            else {
+            } else {
                 view.setCulled(true);
             }
             this.updateLevelOfDetail();
@@ -642,8 +675,7 @@
                 this._reduced = false;
                 this.removeAll();
                 this.linkVehicles();
-            }
-            else if (this._reduced !== true && !this.culled && this.zoom < VEHICLE_ZOOM) {
+            } else if (this._reduced !== true && !this.culled && this.zoom < VEHICLE_ZOOM) {
                 this._reduced = true;
                 this.unlinkVehicles();
                 this.removeAll();
@@ -683,12 +715,14 @@
 
     var TransitMapViewController = (function (_super) {
         __extends(TransitMapViewController, _super);
+
         function TransitMapViewController(nodeRef) {
             var _this = _super.call(this) || this;
             _this._nodeRef = nodeRef;
             _this._agenciesLink = null;
             return _this;
         }
+
         TransitMapViewController.prototype.viewDidMount = function (view) {
             this.linkAgencies();
         };
@@ -727,6 +761,7 @@
 
     var TransitViewController = (function (_super) {
         __extends(TransitViewController, _super);
+
         function TransitViewController(nodeRef) {
             var _this = _super.call(this) || this;
             _this._nodeRef = nodeRef;
@@ -734,6 +769,7 @@
             _this._canvasView = null;
             return _this;
         }
+
         Object.defineProperty(TransitViewController.prototype, "canvasView", {
             get: function () {
                 return this._canvasView;
@@ -745,7 +781,7 @@
             this._map = new mapboxgl.Map({
                 container: view.node,
                 style: "mapbox://styles/swimit/cjs5h20wh0fyf1gocidkpmcvm",
-                center: { lng: -97.922211, lat: 39.381266 },
+                center: {lng: -97.922211, lat: 39.381266},
                 pitch: 45,
                 zoom: 4,
             });
@@ -830,8 +866,7 @@
             }
             if (kpiStackWidth > 240 && view.node.offsetWidth >= 2 * kpiStackWidth) {
                 kpiStack.display("block");
-            }
-            else {
+            } else {
                 kpiStack.display("none");
             }
         };
@@ -872,7 +907,7 @@
     exports.KpiViewController = KpiViewController;
     exports.TransitViewController = TransitViewController;
 
-    Object.defineProperty(exports, '__esModule', { value: true });
+    Object.defineProperty(exports, '__esModule', {value: true});
 
 }));
-//# sourceMappingURL=swim-transit.js.map
+//# sourceMappingURL=swimos-transit.js.map

@@ -1,5 +1,0 @@
-error: Unrecognized attribute for 'form'.
- --> src/tests/derive/form/newtype_enum.rs:6:12
-  |
-6 |     #[form(newtype)]
-  |            ^^^^^^^

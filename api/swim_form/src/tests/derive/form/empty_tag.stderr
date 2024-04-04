@@ -1,5 +1,0 @@
-error: New tag cannot be empty
-  --> src/tests/derive/form/empty_tag.rs:20:18
-   |
-20 |     #[form(tag = "")]
-   |                  ^^
