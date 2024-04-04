@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
@@ -20,7 +19,6 @@ use std::marker::PhantomData;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::model::lifecycle::{BasicMapDownlinkLifecycle, MapDownlinkLifecycle};
-use crate::task::MapRequest;
 use lifecycle::{
     BasicEventDownlinkLifecycle, BasicValueDownlinkLifecycle, EventDownlinkLifecycle,
     ValueDownlinkLifecycle,
@@ -34,13 +32,12 @@ pub mod lifecycle;
 pub struct NotYetSyncedError;
 
 #[derive(Debug)]
-pub enum ValueDownlinkOperation<T> {
-    Set(T),
-    Get(oneshot::Sender<Result<T, NotYetSyncedError>>),
+pub struct ValueDownlinkSet<T> {
+    pub to: T,
 }
 
 pub struct ValueDownlinkModel<T, LC> {
-    pub handle: mpsc::Receiver<ValueDownlinkOperation<T>>,
+    pub handle: mpsc::Receiver<ValueDownlinkSet<T>>,
     pub lifecycle: LC,
 }
 
@@ -50,7 +47,7 @@ pub struct EventDownlinkModel<T, LC> {
 }
 
 impl<T, LC> ValueDownlinkModel<T, LC> {
-    pub fn new(handle: mpsc::Receiver<ValueDownlinkOperation<T>>, lifecycle: LC) -> Self {
+    pub fn new(handle: mpsc::Receiver<ValueDownlinkSet<T>>, lifecycle: LC) -> Self {
         ValueDownlinkModel { handle, lifecycle }
     }
 }
@@ -65,14 +62,14 @@ impl<T, LC> EventDownlinkModel<T, LC> {
 }
 
 pub struct MapDownlinkModel<K, V, LC> {
-    pub actions: mpsc::Receiver<MapRequest<K, V>>,
+    pub actions: mpsc::Receiver<MapMessage<K, V>>,
     pub lifecycle: LC,
     pub remote: bool,
 }
 
 impl<K, V, LC> MapDownlinkModel<K, V, LC> {
     pub fn new(
-        actions: mpsc::Receiver<MapRequest<K, V>>,
+        actions: mpsc::Receiver<MapMessage<K, V>>,
         lifecycle: LC,
         remote: bool,
     ) -> MapDownlinkModel<K, V, LC> {
@@ -91,7 +88,7 @@ pub type DefaultEventDownlinkModel<T> = EventDownlinkModel<T, BasicEventDownlink
 pub type DefaultMapDownlinkModel<K, V> = MapDownlinkModel<K, V, BasicMapDownlinkLifecycle<K, V>>;
 
 pub fn value_downlink<T>(
-    handle: mpsc::Receiver<ValueDownlinkOperation<T>>,
+    handle: mpsc::Receiver<ValueDownlinkSet<T>>,
 ) -> DefaultValueDownlinkModel<T> {
     ValueDownlinkModel {
         handle,
@@ -107,7 +104,7 @@ pub fn event_downlink<T>() -> DefaultEventDownlinkModel<T> {
 }
 
 pub fn map_downlink<K, V>(
-    actions: mpsc::Receiver<MapRequest<K, V>>,
+    actions: mpsc::Receiver<MapMessage<K, V>>,
     remote: bool,
 ) -> DefaultMapDownlinkModel<K, V> {
     MapDownlinkModel::new(actions, Default::default(), remote)
@@ -139,54 +136,37 @@ impl From<oneshot::error::RecvError> for ChannelError {
 /// A map downlink handle.
 #[derive(Debug, Clone)]
 pub struct MapDownlinkHandle<K, V> {
-    inner: mpsc::Sender<MapRequest<K, V>>,
+    inner: mpsc::Sender<MapMessage<K, V>>,
 }
 
 impl<K, V> MapDownlinkHandle<K, V> {
-    pub fn new(inner: mpsc::Sender<MapRequest<K, V>>) -> MapDownlinkHandle<K, V> {
+    pub fn new(inner: mpsc::Sender<MapMessage<K, V>>) -> MapDownlinkHandle<K, V> {
         MapDownlinkHandle { inner }
-    }
-
-    /// Returns an owned value corresponding to the key.
-    pub async fn get(&self, key: K) -> Result<Option<V>, ChannelError> {
-        let (tx, rx) = oneshot::channel();
-        self.inner.send(MapRequest::Get(tx, key)).await?;
-        Ok(rx.await?)
-    }
-
-    /// Returns a snapshot of the map downlink's current state.
-    pub async fn snapshot(&self) -> Result<BTreeMap<K, V>, ChannelError> {
-        let (tx, rx) = oneshot::channel();
-        self.inner.send(MapRequest::Snapshot(tx)).await?;
-        Ok(rx.await?)
     }
 
     /// Updates or inserts the key-value pair into the map.
     pub async fn update(&self, key: K, value: V) -> Result<(), ChannelError> {
-        Ok(self
-            .inner
-            .send(MapMessage::Update { key, value }.into())
-            .await?)
+        Ok(self.inner.send(MapMessage::Update { key, value }).await?)
     }
 
     /// Removes the value corresponding to the key.
     pub async fn remove(&self, key: K) -> Result<(), ChannelError> {
-        Ok(self.inner.send(MapMessage::Remove { key }.into()).await?)
+        Ok(self.inner.send(MapMessage::Remove { key }).await?)
     }
 
     /// Clears the map, removing all of the elements.
     pub async fn clear(&self) -> Result<(), ChannelError> {
-        Ok(self.inner.send(MapMessage::Clear.into()).await?)
+        Ok(self.inner.send(MapMessage::Clear).await?)
     }
 
     /// Retains the last `n` elements in the map.
     pub async fn take(&self, n: u64) -> Result<(), ChannelError> {
-        Ok(self.inner.send(MapMessage::Take(n).into()).await?)
+        Ok(self.inner.send(MapMessage::Take(n)).await?)
     }
 
     /// Retains the first `n` elements in the map.
     pub async fn drop(&self, n: u64) -> Result<(), ChannelError> {
-        Ok(self.inner.send(MapMessage::Drop(n).into()).await?)
+        Ok(self.inner.send(MapMessage::Drop(n)).await?)
     }
 
     /// Completes when the downlink closes; a downlink closes when the connection closes or an

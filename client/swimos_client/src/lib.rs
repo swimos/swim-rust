@@ -15,7 +15,6 @@
 #[cfg(not(feature = "deflate"))]
 use ratchet::NoExtProvider;
 use ratchet::WebSocketStream;
-use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use swimos_remote::ws::RatchetClient;
 
@@ -35,7 +34,7 @@ use swimos_downlink::lifecycle::{
 };
 use swimos_downlink::{
     ChannelError, DownlinkTask, MapDownlinkHandle, MapDownlinkModel, MapKey, MapValue,
-    NotYetSyncedError, ValueDownlinkModel, ValueDownlinkOperation,
+    NotYetSyncedError, ValueDownlinkModel, ValueDownlinkSet,
 };
 use swimos_form::Form;
 use swimos_remote::net::dns::Resolver;
@@ -46,9 +45,9 @@ use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use swimos_tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
 use swimos_utilities::trigger;
 use swimos_utilities::trigger::promise;
+use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
-use tokio::sync::{mpsc, oneshot};
 pub use url::Url;
 
 pub type DownlinkOperationResult<T> = Result<T, DownlinkRuntimeError>;
@@ -360,21 +359,14 @@ impl From<NotYetSyncedError> for ValueDownlinkOperationError {
 /// A view over a value downlink.
 #[derive(Debug, Clone)]
 pub struct ValueDownlinkView<T> {
-    tx: mpsc::Sender<ValueDownlinkOperation<T>>,
+    tx: mpsc::Sender<ValueDownlinkSet<T>>,
     stop_rx: promise::Receiver<Result<(), DownlinkRuntimeError>>,
 }
 
 impl<T> ValueDownlinkView<T> {
-    /// Gets the most recent value of the downlink.
-    pub async fn get(&mut self) -> Result<T, ValueDownlinkOperationError> {
-        let (tx, rx) = oneshot::channel();
-        self.tx.send(ValueDownlinkOperation::Get(tx)).await?;
-        rx.await?.map_err(Into::into)
-    }
-
     /// Sets the value of the downlink to 'to'
     pub async fn set(&self, to: T) -> Result<(), ValueDownlinkOperationError> {
-        self.tx.send(ValueDownlinkOperation::Set(to)).await?;
+        self.tx.send(ValueDownlinkSet { to }).await?;
         Ok(())
     }
 
@@ -475,16 +467,6 @@ pub struct MapDownlinkView<K, V> {
 }
 
 impl<K, V> MapDownlinkView<K, V> {
-    /// Returns an owned value corresponding to the key.
-    pub async fn get(&self, key: K) -> Result<Option<V>, ChannelError> {
-        self.inner.get(key).await
-    }
-
-    /// Returns a snapshot of the map downlink's current state.
-    pub async fn snapshot(&self) -> Result<BTreeMap<K, V>, ChannelError> {
-        self.inner.snapshot().await
-    }
-
     /// Updates or inserts the key-value pair into the map.
     pub async fn update(&self, key: K, value: V) -> Result<(), ChannelError> {
         self.inner.update(key, value).await

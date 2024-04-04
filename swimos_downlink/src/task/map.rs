@@ -33,7 +33,7 @@ use swimos_recon::printer::print_recon;
 use swimos_utilities::future::immediate_or_join;
 use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio::select;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
 use tracing::{info_span, trace, Instrument};
@@ -117,7 +117,7 @@ where
 
 enum IoEvent<K, V> {
     Read(DownlinkNotification<MapMessage<K, V>>),
-    Write(Option<MapRequest<K, V>>),
+    Write(Option<MapMessage<K, V>>),
 }
 
 /// The current IO mode. Defaults to read/write and once the writer channel is dropped, the IO loop
@@ -127,29 +127,12 @@ enum Mode {
     Read,
 }
 
-/// Requests produced by a downlink sender handle.
-#[derive(Debug)]
-pub enum MapRequest<K, V> {
-    /// Send the provided message and update the state.
-    Message(MapMessage<K, V>),
-    /// Get a value from the map.
-    Get(oneshot::Sender<Option<V>>, K),
-    /// Return a snapshot of the state at the current point in time.
-    Snapshot(oneshot::Sender<BTreeMap<K, V>>),
-}
-
-impl<K, V> From<MapMessage<K, V>> for MapRequest<K, V> {
-    fn from(msg: MapMessage<K, V>) -> Self {
-        MapRequest::Message(msg)
-    }
-}
-
 async fn run_io<K, V, LC, Snk, D, E>(
     config: DownlinkConfig,
     input: ByteReader,
     mut lifecycle: LC,
     mut framed: Snk,
-    actions: mpsc::Receiver<MapRequest<K, V>>,
+    actions: mpsc::Receiver<MapMessage<K, V>>,
     decoder: D,
 ) -> Result<(), DownlinkTaskError>
 where
@@ -177,7 +160,6 @@ where
                     read_event = framed_read.next() => match read_event {
                         Some(Ok(notification)) => IoEvent::Read(notification),
                         Some(Err(e)) => {
-                            println!("Map err: {:?}", e);
                             break Err(e.into())
                         } ,
                         None => break Ok(()),
@@ -185,55 +167,39 @@ where
                 };
 
                 match event {
-                    IoEvent::Write(Some(msg)) => match msg {
-                        MapRequest::Message(message) => {
-                            trace!("Sending command '{cmd}'.", cmd = print_recon(&message));
+                    IoEvent::Write(Some(message)) => {
+                        trace!("Sending command '{cmd}'.", cmd = print_recon(&message));
 
-                            match &mut state {
-                                State::Synced(map) | State::Linked(map) => match &message {
-                                    MapMessage::Update { key, value } => {
-                                        map.insert(K::clone(key), V::clone(value));
+                        match &mut state {
+                            State::Synced(map) | State::Linked(map) => match &message {
+                                MapMessage::Update { key, value } => {
+                                    map.insert(K::clone(key), V::clone(value));
+                                }
+                                MapMessage::Remove { key } => {
+                                    map.remove(key);
+                                }
+                                MapMessage::Clear => map.clear(),
+                                MapMessage::Take(cnt) => {
+                                    let mut it = mem::take(map).into_iter();
+                                    for (key, value) in (&mut it).take(*cnt as usize) {
+                                        map.insert(key, value);
                                     }
-                                    MapMessage::Remove { key } => {
-                                        map.remove(key);
+                                }
+                                MapMessage::Drop(cnt) => {
+                                    let it = mem::take(map).into_iter().skip(*cnt as usize);
+                                    for (key, value) in it {
+                                        map.insert(key, value);
                                     }
-                                    MapMessage::Clear => map.clear(),
-                                    MapMessage::Take(cnt) => {
-                                        let mut it = mem::take(map).into_iter();
-                                        for (key, value) in (&mut it).take(*cnt as usize) {
-                                            map.insert(key, value);
-                                        }
-                                    }
-                                    MapMessage::Drop(cnt) => {
-                                        let it = mem::take(map).into_iter().skip(*cnt as usize);
-                                        for (key, value) in it {
-                                            map.insert(key, value);
-                                        }
-                                    }
-                                },
-                                State::Unlinked => {}
-                            }
+                                }
+                            },
+                            State::Unlinked => {}
+                        }
 
-                            let op = DownlinkOperation::new(message);
-                            if framed.feed(op).await.is_err() {
-                                mode = Mode::Read;
-                            }
+                        let op = DownlinkOperation::new(message);
+                        if framed.feed(op).await.is_err() {
+                            mode = Mode::Read;
                         }
-                        MapRequest::Get(tx, key) => {
-                            let opt = match &state {
-                                State::Synced(map) | State::Linked(map) => map.get(&key).cloned(),
-                                State::Unlinked => None,
-                            };
-                            let _r = tx.send(opt);
-                        }
-                        MapRequest::Snapshot(tx) => {
-                            let opt = match &state {
-                                State::Synced(map) | State::Linked(map) => map.clone(),
-                                State::Unlinked => BTreeMap::new(),
-                            };
-                            let _r = tx.send(opt);
-                        }
-                    },
+                    }
                     IoEvent::Write(None) => mode = Mode::Read,
                     IoEvent::Read(notification) => {
                         match on_read(state, &mut lifecycle, notification, config).await {
