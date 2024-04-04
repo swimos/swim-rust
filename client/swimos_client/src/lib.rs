@@ -45,6 +45,7 @@ use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use swimos_tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
 use swimos_utilities::trigger;
 use swimos_utilities::trigger::promise;
+use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
 pub use url::Url;
