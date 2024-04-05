@@ -12,11 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos::{agent::{
-    agent_lifecycle::utility::HandlerContext, event_handler::{EventHandler, HandlerActionExt},
-    lanes::{CommandLane, ValueLane}, 
-    lifecycle, projections, AgentLaneModel
-}, route::RouteUri};
+use swimos::{
+    agent::{
+        agent_lifecycle::utility::HandlerContext,
+        event_handler::{EventHandler, HandlerActionExt},
+        lanes::{CommandLane, ValueLane},
+        lifecycle, projections, AgentLaneModel,
+    },
+    route::RouteUri,
+};
 use tracing::info;
 
 use super::model::stats::{MatchSummary, TeamTotals};
@@ -36,12 +40,11 @@ pub struct TeamLifecycle;
 
 #[lifecycle(TeamAgent)]
 impl TeamLifecycle {
-
     #[on_command(add_match)]
     fn add_match(
         &self,
         context: HandlerContext<TeamAgent>,
-        match_summary: &MatchSummary
+        match_summary: &MatchSummary,
     ) -> impl EventHandler<TeamAgent> {
         let match_summary = match_summary.clone();
         context
@@ -54,20 +57,24 @@ impl TeamLifecycle {
 
     #[on_start]
     fn starting(&self, context: HandlerContext<TeamAgent>) -> impl EventHandler<TeamAgent> {
-        context.get_agent_uri().and_then(move |uri: RouteUri| {
-            context.effect(move || info!(uri = %uri, "Starting team agent"))
-        }).followed_by(
-            context.get_parameter("name").and_then(move |name: Option<String>| {
-                context.set_value(TeamAgent::STATS, TeamTotals::new(name.unwrap()))
+        context
+            .get_agent_uri()
+            .and_then(move |uri: RouteUri| {
+                context.effect(move || info!(uri = %uri, "Starting team agent"))
             })
-        )
+            .followed_by(
+                context
+                    .get_parameter("name")
+                    .and_then(move |name: Option<String>| {
+                        context.set_value(TeamAgent::STATS, TeamTotals::new(name.unwrap()))
+                    }),
+            )
     }
 
     #[on_stop]
     fn stopping(&self, context: HandlerContext<TeamAgent>) -> impl EventHandler<TeamAgent> {
-        context.get_agent_uri().and_then(move |uri| {
-            context.effect(move || info!(uri = %uri, "Stopping team agent"))
-        })
+        context
+            .get_agent_uri()
+            .and_then(move |uri| context.effect(move || info!(uri = %uri, "Stopping team agent")))
     }
-
 }

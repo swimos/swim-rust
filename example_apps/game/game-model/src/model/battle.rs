@@ -37,7 +37,7 @@ impl<'a> Battle<'a> {
     }
 
     pub fn resolve(self) -> Vec<PlayerRound> {
-        self.team1.resolve().into_iter().chain(self.team2.resolve().into_iter()).collect()
+        self.team1.resolve().into_iter().chain(self.team2.resolve()).collect()
     }
 }
 
@@ -79,7 +79,7 @@ impl<'a> Team<'a> {
     }
 
     fn is_alive(&self) -> bool {
-        self.alive.len() > 0
+        self.alive.is_empty()
     }
 
     fn add_alive(&mut self, player: PlayerBattleContext<'a>) {

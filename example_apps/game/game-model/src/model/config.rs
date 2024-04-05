@@ -70,7 +70,6 @@ pub fn generate_all_players() -> Vec<Player> {
 
 pub fn generate_players(count: usize) -> Vec<Player> {
     (0..count)
-        .into_iter()
         .map(|id| Player::new(id, rand::thread_rng().sample(Beta::new(1.2, 2.2).unwrap())))
         .collect()
 }

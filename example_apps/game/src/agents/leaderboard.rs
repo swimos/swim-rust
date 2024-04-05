@@ -15,10 +15,21 @@
 use std::{cell::RefCell, collections::HashMap, time::Duration};
 
 use game_model::config;
-use swimos::{agent::{agent_lifecycle::utility::HandlerContext, event_handler::{EventHandler, HandlerAction, HandlerActionExt}, lanes::{CommandLane, DemandLane, JoinValueLane, ValueLane}, lifecycle, projections, AgentLaneModel}, route::RouteUri};
+use swimos::{
+    agent::{
+        agent_lifecycle::utility::HandlerContext,
+        event_handler::{EventHandler, HandlerAction, HandlerActionExt},
+        lanes::{CommandLane, DemandLane, JoinValueLane, ValueLane},
+        lifecycle, projections, AgentLaneModel,
+    },
+    route::RouteUri,
+};
 use tracing::info;
 
-use super::model::{leaderboard::Leaderboard, stats::{LeaderboardTotals, PlayerTotals}};
+use super::model::{
+    leaderboard::Leaderboard,
+    stats::{LeaderboardTotals, PlayerTotals},
+};
 
 #[derive(AgentLaneModel)]
 #[projections]
@@ -34,44 +45,62 @@ pub struct LeaderboardAgent {
     add_player: CommandLane<RouteUri>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct LeaderboardLifecycle {
-    leaderboards: RefCell<HashMap<String, Leaderboard>>
+    leaderboards: RefCell<HashMap<String, Leaderboard>>,
 }
 
 impl LeaderboardLifecycle {
     pub fn new() -> Self {
         let mut leaderboards = HashMap::new();
-        leaderboards.insert("kd".to_string(), Leaderboard::kd_ratio(config::UNIVERSE_PLAYER_COUNT));
-        leaderboards.insert("kc".to_string(), Leaderboard::kill_count(config::UNIVERSE_PLAYER_COUNT));
-        leaderboards.insert("dc".to_string(), Leaderboard::death_count(config::UNIVERSE_PLAYER_COUNT));
-        leaderboards.insert("xp".to_string(), Leaderboard::xp(config::UNIVERSE_PLAYER_COUNT));
-        Self { leaderboards: RefCell::new(leaderboards) }
+        leaderboards.insert(
+            "kd".to_string(),
+            Leaderboard::kd_ratio(config::UNIVERSE_PLAYER_COUNT),
+        );
+        leaderboards.insert(
+            "kc".to_string(),
+            Leaderboard::kill_count(config::UNIVERSE_PLAYER_COUNT),
+        );
+        leaderboards.insert(
+            "dc".to_string(),
+            Leaderboard::death_count(config::UNIVERSE_PLAYER_COUNT),
+        );
+        leaderboards.insert(
+            "xp".to_string(),
+            Leaderboard::xp(config::UNIVERSE_PLAYER_COUNT),
+        );
+        Self {
+            leaderboards: RefCell::new(leaderboards),
+        }
     }
 }
 
 #[lifecycle(LeaderboardAgent)]
 impl LeaderboardLifecycle {
-
     #[on_command(add_player)]
     fn add_player(
         &self,
         context: HandlerContext<LeaderboardAgent>,
-        player_uri: &RouteUri
+        player_uri: &RouteUri,
     ) -> impl EventHandler<LeaderboardAgent> + '_ {
         context
             .add_downlink(
                 LeaderboardAgent::PLAYERS,
-                player_uri.clone().to_string(), 
-                None, 
-                &player_uri.to_string(), 
-                "stats")
+                player_uri.clone().to_string(),
+                None,
+                &player_uri.to_string(),
+                "stats",
+            )
             .followed_by(
-                context.get_map(LeaderboardAgent::PLAYERS)
+                context
+                    .get_map(LeaderboardAgent::PLAYERS)
                     .map(|m: HashMap<String, PlayerTotals>| m.len())
                     .and_then(move |size| {
-                        context.set_value(LeaderboardAgent::STATS, LeaderboardTotals { player_count: size })
-                    })
+                        context.set_value(
+                            LeaderboardAgent::STATS,
+                            LeaderboardTotals { player_count: size },
+                        )
+                    }),
             )
     }
 
@@ -81,7 +110,13 @@ impl LeaderboardLifecycle {
         context: HandlerContext<LeaderboardAgent>,
     ) -> impl HandlerAction<LeaderboardAgent, Completion = Vec<PlayerTotals>> + '_ {
         context.effect(move || {
-            let result = self.leaderboards.try_borrow().unwrap().get("kd").unwrap().get(0, 20);
+            let result = self
+                .leaderboards
+                .try_borrow()
+                .unwrap()
+                .get("kd")
+                .unwrap()
+                .get(0, 20);
             result
         })
     }
@@ -93,35 +128,41 @@ impl LeaderboardLifecycle {
         _map: &HashMap<String, PlayerTotals>,
         _key: String,
         _previous_value: Option<PlayerTotals>,
-        new_value: &PlayerTotals
+        new_value: &PlayerTotals,
     ) -> impl EventHandler<LeaderboardAgent> + 'a {
         let update = new_value.clone();
         context.effect(move || {
             self.leaderboards
                 .borrow_mut()
                 .values_mut()
-                .into_iter()
                 .for_each(|leadboard| leadboard.update(update.clone()))
         })
     }
 
     #[on_start]
-    fn starting(&self, context: HandlerContext<LeaderboardAgent>) -> impl EventHandler<LeaderboardAgent> {
-        context.get_agent_uri().and_then(move |uri| {
-            context.effect(move || info!(uri = %uri, "Starting leaderboard agent"))
-        })
-        .followed_by(
-            context.schedule_repeatedly(Duration::from_secs(3), move || {
-                Some(context.cue(LeaderboardAgent::LEADERBOARD))
+    fn starting(
+        &self,
+        context: HandlerContext<LeaderboardAgent>,
+    ) -> impl EventHandler<LeaderboardAgent> {
+        context
+            .get_agent_uri()
+            .and_then(move |uri| {
+                context.effect(move || info!(uri = %uri, "Starting leaderboard agent"))
             })
-        )
+            .followed_by(
+                context.schedule_repeatedly(Duration::from_secs(3), move || {
+                    Some(context.cue(LeaderboardAgent::LEADERBOARD))
+                }),
+            )
     }
 
     #[on_stop]
-    fn stopping(&self, context: HandlerContext<LeaderboardAgent>) -> impl EventHandler<LeaderboardAgent> {
+    fn stopping(
+        &self,
+        context: HandlerContext<LeaderboardAgent>,
+    ) -> impl EventHandler<LeaderboardAgent> {
         context.get_agent_uri().and_then(move |uri| {
             context.effect(move || info!(uri = %uri, "Stopping leaderboard agent"))
         })
     }
-
 }

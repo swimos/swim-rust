@@ -17,11 +17,20 @@ use std::{error::Error, net::SocketAddr, pin::pin, str::FromStr, sync::Arc, time
 use clap::Parser;
 use example_util::{example_filter, manage_handle_report};
 use futures::future::{select, Either};
-use game::{agents::{game::{GameAgent, GameLifecycle}, leaderboard::{LeaderboardAgent, LeaderboardLifecycle}, player::{PlayerAgent, PlayerLifecycle}, round::{MatchAgent, MatchLifecycle}, team::{TeamAgent, TeamLifecycle}}, ui::ui_server_router};
+use game::{
+    agents::{
+        game::{GameAgent, GameLifecycle},
+        leaderboard::{LeaderboardAgent, LeaderboardLifecycle},
+        player::{PlayerAgent, PlayerLifecycle},
+        round::{MatchAgent, MatchLifecycle},
+        team::{TeamAgent, TeamLifecycle},
+    },
+    ui::ui_server_router,
+};
 use swimos::{
-    agent::agent_model::AgentModel, 
-    route::{RoutePattern, RouteUri}, 
-    server::{Server, ServerBuilder, ServerHandle}
+    agent::agent_model::AgentModel,
+    route::{RoutePattern, RouteUri},
+    server::{Server, ServerBuilder, ServerHandle},
 };
 use tokio::sync::{oneshot, Notify};
 use tracing::info;
@@ -61,7 +70,6 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     server_task.await??;
     Ok(())
-
 }
 
 #[derive(Parser)]
@@ -99,7 +107,6 @@ async fn run_swim_server(
     bound: oneshot::Sender<SocketAddr>,
     bind_to: Option<SocketAddr>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-
     let mut builder = ServerBuilder::with_plane_name("Game Plane");
     builder = add_routes(builder)?;
 
@@ -108,9 +115,9 @@ async fn run_swim_server(
     }
 
     let server = builder
-    .update_config(|config| {
-        config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
-    })
+        .update_config(|config| {
+            config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
+        })
         .build()
         .await?;
 
@@ -125,16 +132,21 @@ async fn run_swim_server(
     Ok(())
 }
 
-pub fn add_routes(mut builder: ServerBuilder) -> Result<ServerBuilder, Box<dyn Error + Send + Sync>> {
-
+pub fn add_routes(
+    mut builder: ServerBuilder,
+) -> Result<ServerBuilder, Box<dyn Error + Send + Sync>> {
     info!("Adding game route");
     let game_route = RoutePattern::parse_str("/match")?;
-    let game_agent = AgentModel::from_fn(GameAgent::default, move || GameLifecycle::new().into_lifecycle());
+    let game_agent = AgentModel::from_fn(GameAgent::default, move || {
+        GameLifecycle::new().into_lifecycle()
+    });
     builder = builder.add_route(game_route, game_agent);
 
     info!("Adding leaderboard route");
     let leaderboard_route = RoutePattern::parse_str("/player")?;
-    let leaderboard_agent = AgentModel::from_fn(LeaderboardAgent::default, move || LeaderboardLifecycle::new().into_lifecycle());
+    let leaderboard_agent = AgentModel::from_fn(LeaderboardAgent::default, move || {
+        LeaderboardLifecycle::new().into_lifecycle()
+    });
     builder = builder.add_route(leaderboard_route, leaderboard_agent);
 
     info!("Adding team routes");
@@ -144,7 +156,9 @@ pub fn add_routes(mut builder: ServerBuilder) -> Result<ServerBuilder, Box<dyn E
 
     info!("Adding player routes");
     let player_route = RoutePattern::parse_str("/player/:id")?;
-    let player_agent = AgentModel::from_fn(PlayerAgent::default, move || PlayerLifecycle::new().into_lifecycle());
+    let player_agent = AgentModel::from_fn(PlayerAgent::default, move || {
+        PlayerLifecycle::new().into_lifecycle()
+    });
     builder = builder.add_route(player_route, player_agent);
 
     info!("Adding match routes");
@@ -160,7 +174,10 @@ pub async fn start_agents_and_wait(
     bound: Option<oneshot::Sender<SocketAddr>>,
 ) {
     info!("Starting game agent");
-    handle.start_agent(RouteUri::from_str("/match").unwrap()).await.unwrap();
+    handle
+        .start_agent(RouteUri::from_str("/match").unwrap())
+        .await
+        .unwrap();
 
     manage_handle_report(handle, bound).await
 }

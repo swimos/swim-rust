@@ -17,7 +17,7 @@ use crate::{player::Player, round::Round};
 use crate::config;
 
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Game {
     players: Vec<Player>,
     match_id: usize,

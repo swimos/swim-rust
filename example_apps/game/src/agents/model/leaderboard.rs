@@ -16,39 +16,52 @@ use std::{cmp::Ordering, sync::Arc};
 
 use super::stats::PlayerTotals;
 
+type Comparator = Arc<dyn Fn(&PlayerTotals, &PlayerTotals) -> Ordering + Sync + Send>;
+
 #[derive(Clone)]
 pub struct Leaderboard {
-    comparator: Arc<dyn Fn(&PlayerTotals, &PlayerTotals) -> Ordering + Sync + Send>,
+    comparator: Comparator,
     // The players ordered by some comparator
     items: Vec<PlayerTotals>,
     // The index of each player in the items vector
-    indexes: Vec<Option<usize>>
+    indexes: Vec<Option<usize>>,
 }
 
 impl Leaderboard {
-    
     pub fn kill_count(capacity: usize) -> Self {
-        Leaderboard::new(capacity, Arc::new(|p1, p2| p1.total_kills.cmp(&p2.total_kills)))
+        Leaderboard::new(
+            capacity,
+            Arc::new(|p1, p2| p1.total_kills.cmp(&p2.total_kills)),
+        )
     }
 
     pub fn death_count(capacity: usize) -> Self {
-        Leaderboard::new(capacity, Arc::new(|p1, p2| p1.total_deaths.cmp(&p2.total_deaths)))
+        Leaderboard::new(
+            capacity,
+            Arc::new(|p1, p2| p1.total_deaths.cmp(&p2.total_deaths)),
+        )
     }
 
     pub fn kd_ratio(capacity: usize) -> Self {
-        Leaderboard::new(capacity, Arc::new(|p1, p2| p1.kd_ratio.partial_cmp(&p2.kd_ratio)
-            .unwrap_or_else(|| p1.total_kills.cmp(&p2.total_kills))))
+        Leaderboard::new(
+            capacity,
+            Arc::new(|p1, p2| {
+                p1.kd_ratio
+                    .partial_cmp(&p2.kd_ratio)
+                    .unwrap_or_else(|| p1.total_kills.cmp(&p2.total_kills))
+            }),
+        )
     }
 
     pub fn xp(capacity: usize) -> Self {
         Leaderboard::new(capacity, Arc::new(|p1, p2| p1.total_xp.cmp(&p2.total_xp)))
     }
 
-    pub fn new(capacity: usize, f: Arc<dyn Fn(&PlayerTotals, &PlayerTotals) -> Ordering + Sync + Send>) -> Self {
+    pub fn new(capacity: usize, f: Comparator) -> Self {
         Self {
             comparator: f,
             items: Vec::with_capacity(capacity),
-            indexes: vec![None; capacity]
+            indexes: vec![None; capacity],
         }
     }
 
@@ -60,11 +73,11 @@ impl Leaderboard {
                 self.indexes[player_totals.id] = Some(insert_index);
                 self.items.push(player_totals);
                 insert_index
-            },
+            }
             Some(i) => {
                 self.items[*i] = player_totals;
                 *i
-            },
+            }
         };
         self.resort_item(current_position);
     }
@@ -99,7 +112,7 @@ impl Leaderboard {
         if (self.comparator)(mover_stats, self.items.get(index - 1).unwrap()) != Ordering::Greater {
             return false;
         };
-        
+
         self.swap(index, index - 1);
         self.sort_down(index - 1);
         true
@@ -112,8 +125,6 @@ impl Leaderboard {
     }
 
     pub fn get(&self, start: usize, count: usize) -> Vec<PlayerTotals> {
-        self.items.iter().skip(start).take(count).map(|item| item.clone()).collect()
+        self.items.iter().skip(start).take(count).cloned().collect()
     }
-
-
 }

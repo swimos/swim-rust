@@ -15,7 +15,12 @@
 use std::{cell::RefCell, collections::VecDeque, time::Duration};
 
 use game_model::game::Game;
-use swimos::agent::{agent_lifecycle::utility::HandlerContext, event_handler::{EventHandler, HandlerActionExt}, lanes::{CommandLane, MapLane, ValueLane}, lifecycle, projections, AgentLaneModel};
+use swimos::agent::{
+    agent_lifecycle::utility::HandlerContext,
+    event_handler::{EventHandler, HandlerActionExt},
+    lanes::{CommandLane, MapLane, ValueLane},
+    lifecycle, projections, AgentLaneModel,
+};
 use tracing::info;
 
 use super::model::stats::{MatchSummary, MatchTotals};
@@ -32,7 +37,7 @@ pub struct GameAgent {
     add_match: CommandLane<MatchSummary>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GameLifecycle {
     timestamps: RefCell<VecDeque<u64>>,
 }
@@ -40,13 +45,13 @@ pub struct GameLifecycle {
 impl GameLifecycle {
     pub fn new() -> Self {
         GameLifecycle {
-            timestamps: Default::default()
+            timestamps: Default::default(),
         }
     }
 
     fn update_timestamps(&self, timestamp: u64) -> impl EventHandler<GameAgent> + '_ {
         let context: HandlerContext<GameAgent> = Default::default();
-        context 
+        context
             .effect(move || {
                 let mut guard = self.timestamps.borrow_mut();
                 guard.push_back(timestamp);
@@ -56,9 +61,7 @@ impl GameLifecycle {
                     None
                 }
             })
-            .and_then(move |to_remove: Option<u64>| {
-                to_remove.map(remove_old).discard()
-            })
+            .and_then(move |to_remove: Option<u64>| to_remove.map(remove_old).discard())
     }
 }
 
@@ -69,10 +72,8 @@ fn remove_old(to_remove: u64) -> impl EventHandler<GameAgent> {
 
 #[lifecycle(GameAgent)]
 impl GameLifecycle {
-
     #[on_start]
     fn starting(&self, context: HandlerContext<GameAgent>) -> impl EventHandler<GameAgent> + '_ {
-
         let mut game = Game::new();
 
         context
@@ -80,23 +81,25 @@ impl GameLifecycle {
             .and_then(move |uri| {
                 context.effect(move || info!(uri = %uri, "Starting game agent, generating matches"))
             })
-            .followed_by(context.schedule_repeatedly(Duration::from_secs(3), move || {
-                Some(generate_match(&mut game, context))
-            }))
+            .followed_by(
+                context.schedule_repeatedly(Duration::from_secs(3), move || {
+                    Some(generate_match(&mut game, context))
+                }),
+            )
     }
 
     #[on_stop]
     fn stopping(&self, context: HandlerContext<GameAgent>) -> impl EventHandler<GameAgent> {
-        context.get_agent_uri().and_then(move |uri| {
-            context.effect(move || info!(uri = %uri, "Stopping game agent"))
-        })
+        context
+            .get_agent_uri()
+            .and_then(move |uri| context.effect(move || info!(uri = %uri, "Stopping game agent")))
     }
 
     #[on_command(add_match)]
     fn add_match(
         &self,
         context: HandlerContext<GameAgent>,
-        match_summary: &MatchSummary
+        match_summary: &MatchSummary,
     ) -> impl EventHandler<GameAgent> + '_ {
         let summary = match_summary.clone();
         let ts = summary.start_time;
@@ -107,21 +110,24 @@ impl GameLifecycle {
                 current.increment(&summary);
                 context.set_value(GameAgent::STATS, current)
             })
-            .followed_by(context.update(GameAgent::MATCH_HISTORY, summary_history.start_time, summary_history))
+            .followed_by(context.update(
+                GameAgent::MATCH_HISTORY,
+                summary_history.start_time,
+                summary_history,
+            ))
             .followed_by(self.update_timestamps(ts))
     }
-
 }
 
 fn generate_match(
     game: &mut Game,
-    context: HandlerContext<GameAgent>
+    context: HandlerContext<GameAgent>,
 ) -> impl EventHandler<GameAgent> {
-
     let round = game.generate_round();
     context.send_command(
-        None, 
-        format!("/match/{id}", id = round.id), 
+        None,
+        format!("/match/{id}", id = round.id),
         "publish".to_string(),
-        round)
+        round,
+    )
 }

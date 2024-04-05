@@ -13,10 +13,7 @@
 // limitations under the License.
 
 use axum::http::{header, HeaderValue};
-use axum::{
-    body::StreamBody, http::StatusCode, response::IntoResponse, routing::get,
-    Router,
-};
+use axum::{body::StreamBody, http::StatusCode, response::IntoResponse, routing::get, Router};
 use futures::TryFutureExt;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
@@ -49,7 +46,6 @@ pub fn ui_server_router(port: u16) -> Router {
         .route("/lib/swim-vis.min.js.map", get(swim_vis_min_js_map))
         .route("/assets/favicon.ico", get(favicon))
         .route("/assets/swim-logo.png", get(swim_logo))
-
         .with_state(UiConfig { port })
 }
 

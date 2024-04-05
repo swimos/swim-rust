@@ -16,9 +16,10 @@ use std::{cell::RefCell, collections::VecDeque};
 
 use game_model::gamertag;
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext, event_handler::{EventHandler, HandlerActionExt},
-    lanes::{CommandLane, MapLane, ValueLane}, 
-    lifecycle, projections, AgentLaneModel
+    agent_lifecycle::utility::HandlerContext,
+    event_handler::{EventHandler, HandlerActionExt},
+    lanes::{CommandLane, MapLane, ValueLane},
+    lifecycle, projections, AgentLaneModel,
 };
 use tracing::info;
 
@@ -36,7 +37,7 @@ pub struct PlayerAgent {
     add_match: CommandLane<MatchSummary>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PlayerLifecycle {
     timestamps: RefCell<VecDeque<u64>>,
 }
@@ -44,7 +45,7 @@ pub struct PlayerLifecycle {
 impl PlayerLifecycle {
     pub fn new() -> Self {
         PlayerLifecycle {
-            timestamps: Default::default()
+            timestamps: Default::default(),
         }
     }
 
@@ -60,9 +61,7 @@ impl PlayerLifecycle {
                     None
                 }
             })
-            .and_then(move |to_remove: Option<u64>| {
-                to_remove.map(remove_old).discard()
-            })
+            .and_then(move |to_remove: Option<u64>| to_remove.map(remove_old).discard())
     }
 }
 
@@ -73,7 +72,6 @@ fn remove_old(to_remove: u64) -> impl EventHandler<PlayerAgent> {
 
 #[lifecycle(PlayerAgent)]
 impl PlayerLifecycle {
-
     #[on_command(add_match)]
     fn add_match(
         &self,
@@ -85,41 +83,40 @@ impl PlayerLifecycle {
             .get_value(PlayerAgent::STATS)
             .and_then(move |mut current: PlayerTotals| {
                 current.increment(&match_summary);
-                context.set_value(PlayerAgent::STATS, current.clone())
-                    .followed_by(context.update(PlayerAgent::STATS_HISTORY, match_summary.end_time, current))
+                context
+                    .set_value(PlayerAgent::STATS, current.clone())
+                    .followed_by(context.update(
+                        PlayerAgent::STATS_HISTORY,
+                        match_summary.end_time,
+                        current,
+                    ))
                     .followed_by(self.update_timestamps(match_summary.end_time))
             })
     }
 
     #[on_start]
     fn starting(&self, context: HandlerContext<PlayerAgent>) -> impl EventHandler<PlayerAgent> {
-        context.get_agent_uri().and_then(move |uri| {
-            context.effect(move || info!(uri = %uri, "Starting player agent"))
-        }).followed_by(
-            context.get_parameter("id").and_then(move |id: Option<String>| {
-                let id: usize = id.unwrap().parse().unwrap();
-                let tag = gamertag::from_id(id);
-                context.set_value(PlayerAgent::STATS, PlayerTotals::new(id, tag))
-            })
-        )
-        .followed_by(
-            context
-                .get_agent_uri()
-                .and_then(move |uri| {
-                    context.send_command(
-                        None, 
-                        "/player".to_string(), 
-                        "addPlayer".to_string(), 
-                        uri)
-                })
-        )
+        context
+            .get_agent_uri()
+            .and_then(move |uri| context.effect(move || info!(uri = %uri, "Starting player agent")))
+            .followed_by(
+                context
+                    .get_parameter("id")
+                    .and_then(move |id: Option<String>| {
+                        let id: usize = id.unwrap().parse().unwrap();
+                        let tag = gamertag::from_id(id);
+                        context.set_value(PlayerAgent::STATS, PlayerTotals::new(id, tag))
+                    }),
+            )
+            .followed_by(context.get_agent_uri().and_then(move |uri| {
+                context.send_command(None, "/player".to_string(), "addPlayer".to_string(), uri)
+            }))
     }
 
     #[on_stop]
     fn stopping(&self, context: HandlerContext<PlayerAgent>) -> impl EventHandler<PlayerAgent> {
-        context.get_agent_uri().and_then(move |uri| {
-            context.effect(move || info!(uri = %uri, "Stopping player agent"))
-        })
+        context
+            .get_agent_uri()
+            .and_then(move |uri| context.effect(move || info!(uri = %uri, "Stopping player agent")))
     }
-
 }

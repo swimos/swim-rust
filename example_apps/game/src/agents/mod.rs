@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod round;
-pub mod player;
-pub mod team;
 pub mod game;
-pub mod model;
 pub mod leaderboard;
+pub mod model;
+pub mod player;
+pub mod round;
+pub mod team;
