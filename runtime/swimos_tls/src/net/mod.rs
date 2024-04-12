@@ -17,25 +17,23 @@ mod server;
 #[cfg(test)]
 mod tests;
 
-use std::{net::SocketAddr, sync::Arc};
+use std::net::SocketAddr;
 
-pub use client::RustTlsClientNetworking;
+pub use client::RustlsClientNetworking;
 use futures::future::Either;
 use futures::TryFutureExt;
 use futures::{future::BoxFuture, FutureExt};
-pub use server::{RustTlsListener, RustTlsServerNetworking};
+pub use server::{RustTlsListener, RustlsServerNetworking};
 use swimos_api::net::Scheme;
 use swimos_remote::net::plain::TokioPlainTextNetworking;
 use swimos_remote::net::{
-    dns::{BoxDnsResolver, Resolver},
-    ClientConnections, ConnResult, IoResult, ServerConnections,
+    dns::BoxDnsResolver, ClientConnections, ConnResult, IoResult, ServerConnections,
 };
 
 use crate::{
-    config::{CertFormat, CertificateFile, TlsConfig},
+    config::{CertFormat, CertificateFile},
     errors::TlsError,
     maybe::MaybeTlsStream,
-    ClientConfig,
 };
 
 use self::server::MaybeRustTlsListener;
@@ -53,18 +51,18 @@ fn load_cert_file(file: CertificateFile) -> Result<Vec<rustls::Certificate>, Tls
 }
 
 /// Combined implementation of [`ClientConnections`] and [`ServerConnections`] that wraps
-/// [`RustTlsClientNetworking`], [`RustTlsServerNetworking`] and [`TokioPlainTextNetworking`]. The server part is adapted to
+/// [`RustlsClientNetworking`], [`RustlsServerNetworking`] and [`TokioPlainTextNetworking`]. The server part is adapted to
 /// produce [`MaybeTlsStream`] connections so that there is a unified client/server socket type,
 /// inducing an implementation of [`super::ExternalConnections`].
 #[derive(Clone)]
 pub struct RustNetworking {
-    client: RustTlsClientNetworking,
-    server: Either<TokioPlainTextNetworking, RustTlsServerNetworking>,
+    client: RustlsClientNetworking,
+    server: Either<TokioPlainTextNetworking, RustlsServerNetworking>,
 }
 
 impl RustNetworking {
     pub fn new_plain_text(
-        client: RustTlsClientNetworking,
+        client: RustlsClientNetworking,
         server: TokioPlainTextNetworking,
     ) -> Self {
         RustNetworking {
@@ -73,39 +71,11 @@ impl RustNetworking {
         }
     }
 
-    pub fn new_tls(client: RustTlsClientNetworking, server: RustTlsServerNetworking) -> Self {
+    pub fn new_tls(client: RustlsClientNetworking, server: RustlsServerNetworking) -> Self {
         RustNetworking {
             client,
             server: Either::Right(server),
         }
-    }
-
-    pub fn try_plain_text_from_config(
-        resolver: Arc<Resolver>,
-        client_config: ClientConfig,
-    ) -> Result<Self, TlsError> {
-        let client = RustTlsClientNetworking::try_from_config(resolver.clone(), client_config)?;
-        let server = TokioPlainTextNetworking::new(resolver);
-        Ok(RustNetworking {
-            client,
-            server: Either::Left(server),
-        })
-    }
-
-    pub fn try_tls_from_config(
-        resolver: Arc<Resolver>,
-        config: TlsConfig,
-    ) -> Result<Self, TlsError> {
-        let TlsConfig {
-            client: client_conf,
-            server: server_conf,
-        } = config;
-        let client = RustTlsClientNetworking::try_from_config(resolver, client_conf)?;
-        let server = RustTlsServerNetworking::try_from(server_conf)?;
-        Ok(RustNetworking {
-            client,
-            server: Either::Right(server),
-        })
     }
 }
 

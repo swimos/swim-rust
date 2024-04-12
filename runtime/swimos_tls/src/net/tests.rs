@@ -21,8 +21,8 @@ use swimos_remote::net::{
 };
 
 use crate::{
-    CertChain, CertificateFile, ClientConfig, PrivateKey, RustTlsClientNetworking,
-    RustTlsServerNetworking, ServerConfig,
+    CertChain, CertificateFile, ClientConfig, PrivateKey, RustlsClientNetworking,
+    RustlsServerNetworking, ServerConfig,
 };
 
 const CERTS_PATH: &str = "test-data/certs";
@@ -68,8 +68,8 @@ fn make_client_config() -> ClientConfig {
 #[tokio::test]
 async fn perform_handshake() {
     let server_net =
-        RustTlsServerNetworking::try_from(make_server_config()).expect("Invalid server config.");
-    let client_net = RustTlsClientNetworking::try_from_config(
+        RustlsServerNetworking::try_from(make_server_config()).expect("Invalid server config.");
+    let client_net = RustlsClientNetworking::try_from_config(
         Arc::new(Resolver::new().await),
         make_client_config(),
     )

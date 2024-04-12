@@ -42,7 +42,7 @@ use swimos_remote::net::plain::TokioPlainTextNetworking;
 use swimos_remote::net::ClientConnections;
 use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 #[cfg(feature = "tls")]
-use swimos_tls::{ClientConfig as TlsConfig, RustTlsClientNetworking, TlsError};
+use swimos_tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
 use swimos_utilities::trigger;
 use swimos_utilities::trigger::promise;
 use tokio::sync::mpsc;
@@ -106,7 +106,7 @@ impl SwimClientBuilder {
         let SwimClientBuilder { config } = self;
         Ok(open_client(
             config,
-            RustTlsClientNetworking::try_from_config(Arc::new(Resolver::new().await), tls_config)?,
+            RustlsClientNetworking::try_from_config(Arc::new(Resolver::new().await), tls_config)?,
         )
         .await)
     }

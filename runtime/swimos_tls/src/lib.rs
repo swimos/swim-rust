@@ -22,4 +22,4 @@ pub use config::{
 };
 pub use errors::TlsError;
 pub use maybe::MaybeTlsStream;
-pub use net::{RustNetworking, RustTlsClientNetworking, RustTlsListener, RustTlsServerNetworking};
+pub use net::{RustNetworking, RustTlsListener, RustlsClientNetworking, RustlsServerNetworking};

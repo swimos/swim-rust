@@ -37,7 +37,7 @@ use crate::{
 
 /// [`ServerConnections`] implementation that only supports secure connections.
 #[derive(Clone)]
-pub struct RustTlsServerNetworking {
+pub struct RustlsServerNetworking {
     acceptor: TlsAcceptor,
 }
 
@@ -50,24 +50,24 @@ async fn accept_tls(
     Ok((bound_to, RustTlsListener { listener, acceptor }))
 }
 
-impl RustTlsServerNetworking {
+impl RustlsServerNetworking {
     pub fn make_listener(
         &self,
         addr: SocketAddr,
     ) -> impl Future<Output = ConnResult<(SocketAddr, RustTlsListener)>> + Send + 'static {
-        let RustTlsServerNetworking { acceptor } = self;
+        let RustlsServerNetworking { acceptor } = self;
         let acc = acceptor.clone();
         accept_tls(acc, addr)
     }
 }
 
-impl RustTlsServerNetworking {
+impl RustlsServerNetworking {
     pub fn new(acceptor: TlsAcceptor) -> Self {
-        RustTlsServerNetworking { acceptor }
+        RustlsServerNetworking { acceptor }
     }
 }
 
-impl TryFrom<ServerConfig> for RustTlsServerNetworking {
+impl TryFrom<ServerConfig> for RustlsServerNetworking {
     type Error = TlsError;
 
     fn try_from(config: ServerConfig) -> Result<Self, Self::Error> {
@@ -108,11 +108,11 @@ impl TryFrom<ServerConfig> for RustTlsServerNetworking {
             config.key_log = Arc::new(KeyLogFile::new());
         }
         let acceptor = TlsAcceptor::from(Arc::new(config));
-        Ok(RustTlsServerNetworking::new(acceptor))
+        Ok(RustlsServerNetworking::new(acceptor))
     }
 }
 
-impl ServerConnections for RustTlsServerNetworking {
+impl ServerConnections for RustlsServerNetworking {
     type ServerSocket = TlsStream<TcpStream>;
 
     type ListenerType = RustTlsListener;
