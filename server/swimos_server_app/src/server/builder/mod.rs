@@ -22,8 +22,11 @@ use ratchet::{
     NoExtProvider, WebSocketStream,
 };
 use swimos_api::{agent::Agent, error::StoreError, store::StoreDisabled};
-use swimos_remote::net::{dns::Resolver, plain::TokioPlainTextNetworking, ExternalConnections};
-use swimos_tls::{RustlsNetworking, TlsConfig};
+use swimos_remote::net::plain::TokioPlainTextNetworking;
+use swimos_remote::net::{dns::Resolver, ExternalConnections};
+use swimos_tls::{
+    ClientConfig, RustlsClientNetworking, RustlsNetworking, RustlsServerNetworking, TlsConfig,
+};
 use swimos_utilities::routing::route_pattern::RoutePattern;
 
 use crate::{
@@ -175,10 +178,15 @@ impl ServerBuilder {
             introspection,
         };
         if let Some(tls_conf) = tls_config {
-            let networking = RustlsNetworking::try_from_config(resolver, tls_conf)?;
+            let client = RustlsClientNetworking::try_from_config(resolver, tls_conf.client)?;
+            let server = RustlsServerNetworking::try_from(tls_conf.server)?;
+            let networking = RustlsNetworking::new_tls(client, server);
             Ok(with_store(bind_to, routes, networking, config)?)
         } else {
-            let networking = TokioPlainTextNetworking::new(resolver);
+            let client =
+                RustlsClientNetworking::try_from_config(resolver.clone(), ClientConfig::default())?;
+            let server = TokioPlainTextNetworking::new(resolver);
+            let networking = RustlsNetworking::new_plain_text(client, server);
             Ok(with_store(bind_to, routes, networking, config)?)
         }
     }

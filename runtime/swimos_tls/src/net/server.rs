@@ -226,27 +226,45 @@ fn tls_accept_stream(
     })
 }
 
-/// This wraps connections for a [`RustlsListener`] as [`crate::maybe::MaybeTlsStream`] to unify server and client
+/// This wraps connections for [`TcpListener`] and [`RustlsListener`] as [`crate::maybe::MaybeTlsStream`] to unify server and client
 /// connection types.
-pub struct MaybeRustlsListener {
-    inner: RustlsListener,
+pub struct MaybeRustTlsListener {
+    inner: Either<TcpListener, RustlsListener>,
 }
 
-impl From<RustlsListener> for MaybeRustlsListener {
-    fn from(inner: RustlsListener) -> Self {
-        MaybeRustlsListener { inner }
+impl From<TcpListener> for MaybeRustTlsListener {
+    fn from(inner: TcpListener) -> Self {
+        MaybeRustTlsListener {
+            inner: Either::Left(inner),
+        }
     }
 }
 
-impl Listener<MaybeTlsStream> for MaybeRustlsListener {
+impl From<RustlsListener> for MaybeRustTlsListener {
+    fn from(inner: RustlsListener) -> Self {
+        MaybeRustTlsListener {
+            inner: Either::Right(inner),
+        }
+    }
+}
+
+impl Listener<MaybeTlsStream> for MaybeRustTlsListener {
     type AcceptStream = BoxListenerStream<MaybeTlsStream>;
 
     fn into_stream(self) -> Self::AcceptStream {
-        let MaybeRustlsListener {
-            inner: RustlsListener { listener, acceptor },
-        } = self;
-        tls_accept_stream(listener, acceptor)
-            .map_ok(|(sock, scheme, addr)| (MaybeTlsStream::Tls(sock), scheme, addr))
-            .boxed()
+        let MaybeRustTlsListener { inner } = self;
+
+        match inner {
+            Either::Left(listener) => listener
+                .into_stream()
+                .map_ok(|(sock, scheme, addr)| (MaybeTlsStream::Plain(sock), scheme, addr))
+                .boxed(),
+
+            Either::Right(RustlsListener { listener, acceptor }) => {
+                tls_accept_stream(listener, acceptor)
+                    .map_ok(|(sock, scheme, addr)| (MaybeTlsStream::Tls(sock), scheme, addr))
+                    .boxed()
+            }
+        }
     }
 }
