@@ -23,7 +23,7 @@ pub use client::RustlsClientNetworking;
 use futures::future::Either;
 use futures::TryFutureExt;
 use futures::{future::BoxFuture, FutureExt};
-pub use server::{RustTlsListener, RustlsServerNetworking};
+pub use server::{RustlsListener, RustlsServerNetworking};
 use swimos_api::net::Scheme;
 use swimos_remote::net::plain::TokioPlainTextNetworking;
 use swimos_remote::net::{
@@ -55,31 +55,31 @@ fn load_cert_file(file: CertificateFile) -> Result<Vec<rustls::Certificate>, Tls
 /// produce [`MaybeTlsStream`] connections so that there is a unified client/server socket type,
 /// inducing an implementation of [`super::ExternalConnections`].
 #[derive(Clone)]
-pub struct RustNetworking {
+pub struct RustlsNetworking {
     client: RustlsClientNetworking,
     server: Either<TokioPlainTextNetworking, RustlsServerNetworking>,
 }
 
-impl RustNetworking {
+impl RustlsNetworking {
     pub fn new_plain_text(
         client: RustlsClientNetworking,
         server: TokioPlainTextNetworking,
     ) -> Self {
-        RustNetworking {
+        RustlsNetworking {
             client,
             server: Either::Left(server),
         }
     }
 
     pub fn new_tls(client: RustlsClientNetworking, server: RustlsServerNetworking) -> Self {
-        RustNetworking {
+        RustlsNetworking {
             client,
             server: Either::Right(server),
         }
     }
 }
 
-impl ClientConnections for RustNetworking {
+impl ClientConnections for RustlsNetworking {
     type ClientSocket = MaybeTlsStream;
 
     fn try_open(
@@ -100,7 +100,7 @@ impl ClientConnections for RustNetworking {
     }
 }
 
-impl ServerConnections for RustNetworking {
+impl ServerConnections for RustlsNetworking {
     type ServerSocket = MaybeTlsStream;
 
     type ListenerType = MaybeRustTlsListener;

@@ -44,17 +44,17 @@ pub struct RustlsServerNetworking {
 async fn accept_tls(
     acceptor: TlsAcceptor,
     addr: SocketAddr,
-) -> ConnResult<(SocketAddr, RustTlsListener)> {
+) -> ConnResult<(SocketAddr, RustlsListener)> {
     let listener = TcpListener::bind(addr).await?;
     let bound_to = listener.local_addr()?;
-    Ok((bound_to, RustTlsListener { listener, acceptor }))
+    Ok((bound_to, RustlsListener { listener, acceptor }))
 }
 
 impl RustlsServerNetworking {
     pub fn make_listener(
         &self,
         addr: SocketAddr,
-    ) -> impl Future<Output = ConnResult<(SocketAddr, RustTlsListener)>> + Send + 'static {
+    ) -> impl Future<Output = ConnResult<(SocketAddr, RustlsListener)>> + Send + 'static {
         let RustlsServerNetworking { acceptor } = self;
         let acc = acceptor.clone();
         accept_tls(acc, addr)
@@ -115,7 +115,7 @@ impl TryFrom<ServerConfig> for RustlsServerNetworking {
 impl ServerConnections for RustlsServerNetworking {
     type ServerSocket = TlsStream<TcpStream>;
 
-    type ListenerType = RustTlsListener;
+    type ListenerType = RustlsListener;
 
     fn bind(
         &self,
@@ -127,16 +127,16 @@ impl ServerConnections for RustlsServerNetworking {
 
 /// A listener that will listen for incoming TCP connections and attempt to negotiate a
 /// TLS connection over them.
-pub struct RustTlsListener {
+pub struct RustlsListener {
     listener: TcpListener,
     acceptor: TlsAcceptor,
 }
 
-impl Listener<TlsStream<TcpStream>> for RustTlsListener {
+impl Listener<TlsStream<TcpStream>> for RustlsListener {
     type AcceptStream = BoxListenerStream<TlsStream<TcpStream>>;
 
     fn into_stream(self) -> Self::AcceptStream {
-        let RustTlsListener { listener, acceptor } = self;
+        let RustlsListener { listener, acceptor } = self;
         tls_accept_stream(listener, acceptor).boxed()
     }
 }
@@ -226,10 +226,10 @@ fn tls_accept_stream(
     })
 }
 
-/// This wraps connections for [`TcpListener`] and [`RustTlsListener`] as [`crate::maybe::MaybeTlsStream`] to unify server and client
+/// This wraps connections for [`TcpListener`] and [`RustlsListener`] as [`crate::maybe::MaybeTlsStream`] to unify server and client
 /// connection types.
 pub struct MaybeRustTlsListener {
-    inner: Either<TcpListener, RustTlsListener>,
+    inner: Either<TcpListener, RustlsListener>,
 }
 
 impl From<TcpListener> for MaybeRustTlsListener {
@@ -240,8 +240,8 @@ impl From<TcpListener> for MaybeRustTlsListener {
     }
 }
 
-impl From<RustTlsListener> for MaybeRustTlsListener {
-    fn from(inner: RustTlsListener) -> Self {
+impl From<RustlsListener> for MaybeRustTlsListener {
+    fn from(inner: RustlsListener) -> Self {
         MaybeRustTlsListener {
             inner: Either::Right(inner),
         }
@@ -260,7 +260,7 @@ impl Listener<MaybeTlsStream> for MaybeRustTlsListener {
                 .map_ok(|(sock, scheme, addr)| (MaybeTlsStream::Plain(sock), scheme, addr))
                 .boxed(),
 
-            Either::Right(RustTlsListener { listener, acceptor }) => {
+            Either::Right(RustlsListener { listener, acceptor }) => {
                 tls_accept_stream(listener, acceptor)
                     .map_ok(|(sock, scheme, addr)| (MaybeTlsStream::Tls(sock), scheme, addr))
                     .boxed()

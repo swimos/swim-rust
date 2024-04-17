@@ -25,7 +25,7 @@ use swimos_api::{agent::Agent, error::StoreError, store::StoreDisabled};
 use swimos_remote::net::plain::TokioPlainTextNetworking;
 use swimos_remote::net::{dns::Resolver, ExternalConnections};
 use swimos_tls::{
-    ClientConfig, RustNetworking, RustlsClientNetworking, RustlsServerNetworking, TlsConfig,
+    ClientConfig, RustlsNetworking, RustlsClientNetworking, RustlsServerNetworking, TlsConfig,
 };
 use swimos_utilities::routing::route_pattern::RoutePattern;
 
@@ -180,13 +180,13 @@ impl ServerBuilder {
         if let Some(tls_conf) = tls_config {
             let client = RustlsClientNetworking::try_from_config(resolver, tls_conf.client)?;
             let server = RustlsServerNetworking::try_from(tls_conf.server)?;
-            let networking = RustNetworking::new_tls(client, server);
+            let networking = RustlsNetworking::new_tls(client, server);
             Ok(with_store(bind_to, routes, networking, config)?)
         } else {
             let client =
                 RustlsClientNetworking::try_from_config(resolver.clone(), ClientConfig::default())?;
             let server = TokioPlainTextNetworking::new(resolver);
-            let networking = RustNetworking::new_plain_text(client, server);
+            let networking = RustlsNetworking::new_plain_text(client, server);
             Ok(with_store(bind_to, routes, networking, config)?)
         }
     }
