@@ -144,10 +144,10 @@ where
                                 let SchemeHostPort(scheme, host_name, port) = shp.clone();
                                 if pending.push_remote_cmd(host_str.clone(), request) {
                                     tasks.push(
-                                        dns.resolve(host_name, port)
+                                        dns.resolve(host_name.clone(), port)
                                             .map(move |result| Event::Resolved {
                                                 scheme,
-                                                host: host_str,
+                                                host: host_name.into(),
                                                 result,
                                             })
                                             .boxed(),
@@ -182,10 +182,10 @@ where
                             let SchemeHostPort(scheme, host_name, port) = shp;
                             if pending.push_remote(host_str.clone(), request) {
                                 tasks.push(
-                                    dns.resolve(host_name, port)
+                                    dns.resolve(host_name.clone(), port)
                                         .map(move |result| Event::Resolved {
                                             scheme,
-                                            host: host_str,
+                                            host: host_name.into(),
                                             result,
                                         })
                                         .boxed(),
