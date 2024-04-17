@@ -25,7 +25,7 @@ use swimos_api::{agent::Agent, error::StoreError, store::StoreDisabled};
 use swimos_remote::net::plain::TokioPlainTextNetworking;
 use swimos_remote::net::{dns::Resolver, ExternalConnections};
 use swimos_tls::{
-    ClientConfig, RustlsNetworking, RustlsClientNetworking, RustlsServerNetworking, TlsConfig,
+    ClientConfig, RustlsClientNetworking, RustlsNetworking, RustlsServerNetworking, TlsConfig,
 };
 use swimos_utilities::routing::route_pattern::RoutePattern;
 
