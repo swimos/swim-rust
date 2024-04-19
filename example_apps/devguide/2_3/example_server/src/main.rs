@@ -8,11 +8,23 @@ use swimos::{
 };
 
 use std::{error::Error, time::Duration};
+use swimos::agent::event_handler::HandlerActionExt;
+use swimos::agent::lanes::CommandLane;
+use swimos_form::Form;
+
+// Note how as this is a custom type we need to derive `Form` for it.
+// For most types, simply adding the derive attribute will suffice.
+#[derive(Debug, Form, Copy, Clone)]
+pub enum Operation {
+    Add(i32),
+    Sub(i32),
+}
 
 #[derive(AgentLaneModel)]
 #[projections]
 pub struct ExampleAgent {
     state: ValueLane<i32>,
+    exec: CommandLane<Operation>,
 }
 
 #[derive(Clone)]
@@ -51,6 +63,28 @@ impl ExampleLifecycle {
         context.effect(move || {
             println!("Setting value to: {}", n);
         })
+    }
+
+    #[on_command(exec)]
+    pub fn on_command(
+        &self,
+        context: HandlerContext<ExampleAgent>,
+        // Notice a reference to the deserialized command envelope is provided.
+        operation: &Operation,
+    ) -> impl EventHandler<ExampleAgent> {
+        let operation = *operation;
+        context
+            // Get the current state of our `state` lane.
+            .get_value(ExampleAgent::STATE)
+            .and_then(move |state| {
+                // Calculate the new state.
+                let new_state = match operation {
+                    Operation::Add(val) => state + val,
+                    Operation::Sub(val) => state - val,
+                };
+                // Return a event handler which updates the state of the `state` lane.
+                context.set_value(ExampleAgent::STATE, new_state)
+            })
     }
 }
 

@@ -38,6 +38,7 @@ members = [
     "example_apps/tutorial_app/model",
     "example_apps/tutorial_app/generator",
     "example_apps/devguide/2_2/*",
+    "example_apps/devguide/2_3/*",
 ]
 
 exclude = [
