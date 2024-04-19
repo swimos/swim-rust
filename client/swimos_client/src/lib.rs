@@ -21,14 +21,14 @@ use swimos_remote::ws::RatchetClient;
 use futures_util::future::BoxFuture;
 #[cfg(feature = "deflate")]
 use ratchet::deflate::{DeflateConfig, DeflateExtProvider};
+pub use runtime::RemotePath;
 use runtime::{
-    start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, RemotePath, Transport,
-    WebSocketConfig,
+    start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, Transport, WebSocketConfig,
 };
 pub use runtime::{CommandError, Commander};
 use std::sync::Arc;
-use swimos_api::downlink::DownlinkConfig;
-use swimos_downlink::lifecycle::{
+pub use swimos_api::downlink::DownlinkConfig;
+pub use swimos_downlink::lifecycle::{
     BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle, MapDownlinkLifecycle,
     ValueDownlinkLifecycle,
 };
@@ -222,7 +222,7 @@ impl ClientHandle {
     ///
     /// # Arguments
     /// * `path` - The path of the downlink top open.
-    pub fn value_downlink<L, T>(
+    pub fn value_downlink<T>(
         &self,
         path: RemotePath,
     ) -> ValueDownlinkBuilder<'_, BasicValueDownlinkLifecycle<T>> {
@@ -287,19 +287,19 @@ impl<'h, L> ValueDownlinkBuilder<'h, L> {
     }
 
     /// Sets link options for the downlink.
-    pub fn options(&mut self, options: DownlinkOptions) -> &mut Self {
+    pub fn options(mut self, options: DownlinkOptions) -> Self {
         self.options = options;
         self
     }
 
     /// Sets a new downlink runtime configuration.
-    pub fn runtime_config(&mut self, config: DownlinkRuntimeConfig) -> &mut Self {
+    pub fn runtime_config(mut self, config: DownlinkRuntimeConfig) -> Self {
         self.runtime_config = config;
         self
     }
 
     /// Sets a new downlink configuration.
-    pub fn downlink_config(&mut self, config: DownlinkConfig) -> &mut Self {
+    pub fn downlink_config(mut self, config: DownlinkConfig) -> Self {
         self.downlink_config = config;
         self
     }
@@ -333,6 +333,7 @@ impl<'h, L> ValueDownlinkBuilder<'h, L> {
     }
 }
 
+#[derive(Debug)]
 pub enum ValueDownlinkOperationError {
     NotYetSynced,
     DownlinkStopped,
