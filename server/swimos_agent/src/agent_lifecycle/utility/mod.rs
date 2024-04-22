@@ -220,7 +220,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         Agent: 'static,
         Item: TransformableMapLikeItem<K, V> + 'static,
         K: Send + Clone + Eq + Hash + 'static,
-        V: Clone + 'static,
+        V: 'static,
         F: FnOnce(Option<V>) -> Option<V> + Send + 'a,
     {
         Item::with_handler::<Agent, F>(lane, key, f)
