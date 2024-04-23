@@ -120,6 +120,29 @@ impl<T> ValueStore<T> {
             false
         }
     }
+
+    pub(crate) fn replace<F>(&self, f: F)
+    where
+        F: FnOnce(&T) -> T,
+    {
+        let ValueStore { inner, dirty, .. } = self;
+        let mut guard = inner.borrow_mut();
+        let Inner { content, previous } = &mut *guard;
+        let new_value = f(content);
+        let prev = std::mem::replace(content, new_value);
+        *previous = Some(prev);
+        dirty.replace(true);
+    }
+
+    pub(crate) fn with<F, U>(&self, f: F) -> U
+    where
+        F: FnOnce(&T) -> U,
+    {
+        let ValueStore { inner, .. } = self;
+        let guard = inner.borrow();
+        let Inner { content, .. } = &*guard;
+        f(content)
+    }
 }
 
 impl<T> AgentItem for ValueStore<T> {
@@ -247,6 +270,80 @@ impl<C, T> HandlerAction<C> for ValueStoreSet<C, T> {
     }
 }
 
+/// An [`EventHandler`] that will transform the value of a value store.
+pub struct ValueStoreTransformValue<C, T, F> {
+    projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
+    f: Option<F>,
+}
+
+impl<C, T, F> ValueStoreTransformValue<C, T, F> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueStore<T>, f: F) -> Self {
+        ValueStoreTransformValue {
+            projection,
+            f: Some(f),
+        }
+    }
+}
+
+impl<C, T, F> HandlerAction<C> for ValueStoreTransformValue<C, T, F>
+where
+    F: FnOnce(&T) -> T,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        if let Some(f) = self.f.take() {
+            let store = (self.projection)(context);
+            store.replace(f);
+            StepResult::Complete {
+                modified_item: Some(Modification::of(store.id())),
+                result: (),
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+pub struct ValueStoreWithValue<C, T, F> {
+    projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
+    f: Option<F>,
+}
+
+impl<C, T, F> ValueStoreWithValue<C, T, F> {
+
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
+    f: F) -> Self {
+        ValueStoreWithValue { projection, f: Some(f) }
+    }
+}
+
+impl<C, T, F, U> HandlerAction<C> for ValueStoreWithValue<C, T, F>
+where
+    F: FnOnce(&T) -> U,
+{
+    type Completion = U;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        if let Some(f) = self.f.take() {
+            let store = (self.projection)(context);
+            StepResult::done(store.with(f))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
 impl<T> ValueLikeItem<T> for ValueStore<T>
 where
     T: Clone + Send + 'static,
@@ -255,8 +352,25 @@ where
     where
         C: 'static;
 
+    type WithValueHandler<'a, C, F, U> = ValueStoreWithValue<C, T, F>
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(&T) -> U + Send + 'a;
+
     fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C> {
         ValueStoreGet::new(projection)
+    }
+
+    fn with_value_handler<'a, Item, C, F, U>(
+        projection: fn(&C) -> &Self,
+        f: F,
+    ) -> Self::WithValueHandler<'a, C, F, U>
+    where
+        C: 'a,
+        F: FnOnce(&T) -> U + Send + 'a,
+    {
+        ValueStoreWithValue::new(projection, f)
     }
 }
 
@@ -268,7 +382,24 @@ where
     where
         C: 'static;
 
+    type TransformValueHandler<'a, C, F> = ValueStoreTransformValue<C, T, F>
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(&T) -> T + Send + 'a;
+
     fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C> {
         ValueStoreSet::new(projection, value)
+    }
+
+    fn transform_handler<'a, Item, C, F>(
+        projection: fn(&C) -> &Self,
+        f: F,
+    ) -> Self::TransformValueHandler<'a, C, F>
+    where
+        C: 'a,
+        F: FnOnce(&T) -> T + Send + 'a,
+    {
+        ValueStoreTransformValue::new(projection, f)
     }
 }

@@ -51,7 +51,26 @@ pub trait MapLikeItem<K, V> {
         C: 'static;
 
     fn get_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::GetHandler<C>;
+
     fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C>;
+}
+
+pub trait InspectableMapLikeItem<K, V> {
+    type WithEntryHandler<'a, C, F, U>: HandlerAction<C, Completion = U> + Send + 'a
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(Option<&V>) -> U + Send + 'a;
+
+    fn with_entry_handler<'a, C, F, U>(
+        projection: fn(&C) -> &Self,
+        key: K,
+        f: F,
+    ) -> Self::WithEntryHandler<'a, C, F, U>
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(Option<&V>) -> U + Send + 'a;
 }
 
 pub trait MutableMapLikeItem<K, V> {
@@ -72,24 +91,22 @@ pub trait MutableMapLikeItem<K, V> {
     ) -> Self::UpdateHandler<C>;
     fn remove_handler<C: 'static>(projection: fn(&C) -> &Self, key: K) -> Self::RemoveHandler<C>;
     fn clear_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::ClearHandler<C>;
-}
 
-pub trait TransformableMapLikeItem<K, V> {
-    type WithEntryHandler<'a, C, F>: EventHandler<C> + Send + 'a
+    type TransformEntryHandler<'a, C, F>: EventHandler<C> + Send + 'a
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'a;
+        F: FnOnce(Option<&V>) -> Option<V> + Send + 'a;
 
-    fn with_handler<'a, C, F>(
+    fn transform_entry_handler<'a, C, F>(
         projection: fn(&C) -> &Self,
         key: K,
         f: F,
-    ) -> Self::WithEntryHandler<'a, C, F>
+    ) -> Self::TransformEntryHandler<'a, C, F>
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'a;
+        F: FnOnce(Option<&V>) -> Option<V> + Send + 'a;
 }
 
 pub trait ValueLikeItem<T> {
@@ -97,7 +114,21 @@ pub trait ValueLikeItem<T> {
     where
         C: 'static;
 
+    type WithValueHandler<'a, C, F, U>: HandlerAction<C, Completion = U> + Send + 'a
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(&T) -> U + Send + 'a;
+
     fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C>;
+
+    fn with_value_handler<'a, Item, C, F, U>(
+        projection: fn(&C) -> &Self,
+        f: F,
+    ) -> Self::WithValueHandler<'a, C, F, U>
+    where
+        C: 'a,
+        F: FnOnce(&T) -> U + Send + 'a;
 }
 
 pub trait MutableValueLikeItem<T> {
@@ -105,5 +136,19 @@ pub trait MutableValueLikeItem<T> {
     where
         C: 'static;
 
+    type TransformValueHandler<'a, C, F>: EventHandler<C> + Send + 'a
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(&T) -> T + Send + 'a;
+
     fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C>;
+
+    fn transform_handler<'a, Item, C, F>(
+        projection: fn(&C) -> &Self,
+        f: F,
+    ) -> Self::TransformValueHandler<'a, C, F>
+    where
+        C: 'a,
+        F: FnOnce(&T) -> T + Send + 'a;
 }

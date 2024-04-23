@@ -77,6 +77,21 @@ impl<T> ValueLane<T> {
         let ValueLane { sync_queue, .. } = self;
         sync_queue.borrow_mut().push_back(id);
     }
+
+    /// Replace the contents of the lane.
+    pub fn replace<F>(&self, f: F)
+    where
+        F: FnOnce(&T) -> T,
+    {
+        self.store.replace(f);
+    }
+
+    pub(crate) fn with<F, U>(&self, f: F) -> U
+    where
+        F: FnOnce(&T) -> U,
+    {
+        self.store.with(f)
+    }
 }
 
 impl<T> AgentItem for ValueLane<T> {
@@ -257,6 +272,40 @@ impl<C, T> HandlerAction<C> for ValueLaneSync<C, T> {
     }
 }
 
+pub struct ValueLaneWithValue<C, T, F> {
+    projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
+    f: Option<F>,
+}
+
+impl<C, T, F> ValueLaneWithValue<C, T, F> {
+
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
+    f: F) -> Self {
+        ValueLaneWithValue { projection, f: Some(f) }
+    }
+}
+
+impl<C, T, F, U> HandlerAction<C> for ValueLaneWithValue<C, T, F>
+where
+    F: FnOnce(&T) -> U,
+{
+    type Completion = U;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        if let Some(f) = self.f.take() {
+            let lane = (self.projection)(context);
+            StepResult::done(lane.with(f))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
 impl<C, T> HandlerTrans<T> for ProjTransform<C, ValueLane<T>> {
     type Out = ValueLaneSet<C, T>;
 
@@ -286,8 +335,25 @@ where
     where
         C: 'static;
 
+    type WithValueHandler<'a, C, F, U> = ValueLaneWithValue<C, T, F>
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(&T) -> U + Send + 'a;
+
     fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C> {
         ValueLaneGet::new(projection)
+    }
+
+    fn with_value_handler<'a, Item, C, F, U>(
+        projection: fn(&C) -> &Self,
+        f: F,
+    ) -> Self::WithValueHandler<'a, C, F, U>
+    where
+        C: 'a,
+        F: FnOnce(&T) -> U + Send + 'a,
+    {
+        ValueLaneWithValue::new(projection, f)
     }
 }
 
@@ -301,5 +367,62 @@ where
 
     fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C> {
         ValueLaneSet::new(projection, value)
+    }
+
+    type TransformValueHandler<'a, C, F> = ValueLaneTransformValue<C, T, F>
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(&T) -> T + Send + 'a;
+
+    fn transform_handler<'a, Item, C, F>(
+        projection: fn(&C) -> &Self,
+        f: F,
+    ) -> Self::TransformValueHandler<'a, C, F>
+    where
+        C: 'a,
+        F: FnOnce(&T) -> T + Send + 'a,
+    {
+        ValueLaneTransformValue::new(projection, f)
+    }
+}
+
+/// An [`EventHandler`] that will transform the value of a value lane.
+pub struct ValueLaneTransformValue<C, T, F> {
+    projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
+    f: Option<F>,
+}
+
+impl<C, T, F> ValueLaneTransformValue<C, T, F> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>, f: F) -> Self {
+        ValueLaneTransformValue {
+            projection,
+            f: Some(f),
+        }
+    }
+}
+
+impl<C, T, F> HandlerAction<C> for ValueLaneTransformValue<C, T, F>
+where
+    F: FnOnce(&T) -> T,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        if let Some(f) = self.f.take() {
+            let lane = (self.projection)(context);
+            lane.replace(f);
+            StepResult::Complete {
+                modified_item: Some(Modification::of(lane.id())),
+                result: (),
+            }
+        } else {
+            StepResult::after_done()
+        }
     }
 }

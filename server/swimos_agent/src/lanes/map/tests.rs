@@ -38,7 +38,7 @@ use crate::{
     lanes::{
         map::{
             MapLane, MapLaneClear, MapLaneEvent, MapLaneGet, MapLaneGetMap, MapLaneRemove,
-            MapLaneSync, MapLaneUpdate, MapLaneWithEntry,
+            MapLaneSync, MapLaneUpdate, MapLaneTransformEntry,
         },
         LaneItem,
     },
@@ -748,7 +748,7 @@ fn map_lane_with_event_handler_update() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = MapLaneWithEntry::new(TestAgent::LANE, K1, |maybe: Option<Text>| {
+    let mut handler = MapLaneTransformEntry::new(TestAgent::LANE, K1, |maybe: Option<&Text>| {
         maybe.map(|v| Text::from(v.as_str().to_uppercase()))
     });
 
@@ -787,7 +787,7 @@ fn map_lane_with_event_handler_remove() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = MapLaneWithEntry::new(TestAgent::LANE, K1, |_: Option<Text>| None);
+    let mut handler = MapLaneTransformEntry::new(TestAgent::LANE, K1, |_: Option<&Text>| None);
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),

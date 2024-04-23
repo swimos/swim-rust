@@ -78,10 +78,9 @@ where
         queue.push(MapOperation::Update { key, value: () });
     }
 
-    pub fn with_entry<F>(&mut self, key: K, f: F) -> WithEntryResult
+    pub fn transform_entry<F>(&mut self, key: K, f: F) -> WithEntryResult
     where
-        V: Clone,
-        F: FnOnce(Option<V>) -> Option<V>,
+        F: FnOnce(Option<&V>) -> Option<V>,
     {
         let MapStoreInner {
             content,
@@ -89,7 +88,7 @@ where
             queue,
         } = self;
         match content.remove(&key) {
-            Some(v) => match f(Some(v.clone())) {
+            Some(v) => match f(Some(&v)) {
                 Some(v2) => {
                     content.insert(key.clone(), v2);
                     *previous = Some(MapLaneEvent::Update(key.clone(), Some(v)));
@@ -172,5 +171,21 @@ where
     pub fn pop_operation(&mut self) -> Option<Q::Output<'_>> {
         let MapStoreInner { content, queue, .. } = self;
         queue.pop(content)
+    }
+}
+
+impl<K, V, Q> MapStoreInner<K, V, Q>
+where
+    K: Eq + Hash,
+{
+    pub fn with_entry<F, U>(&self, key: K, f: F) -> U
+    where
+        F: FnOnce(Option<&V>) -> U,
+    {
+        let MapStoreInner {
+            content,
+            ..
+        } = self;
+        f(content.get(&key))
     }
 }

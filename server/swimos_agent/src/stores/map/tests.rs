@@ -37,7 +37,7 @@ use crate::{
     stores::{
         map::{
             MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate,
-            MapStoreWithEntry,
+            MapStoreTransformEntry,
         },
         MapStore, StoreItem,
     },
@@ -577,7 +577,7 @@ fn map_store_with_event_handler_update() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = MapStoreWithEntry::new(TestAgent::STORE, K1, |maybe: Option<Text>| {
+    let mut handler = MapStoreTransformEntry::new(TestAgent::STORE, K1, |maybe: Option<&Text>| {
         maybe.map(|v| Text::from(v.as_str().to_uppercase()))
     });
 
@@ -616,7 +616,7 @@ fn map_lane_with_event_handler_remove() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = MapStoreWithEntry::new(TestAgent::STORE, K1, |_: Option<Text>| None);
+    let mut handler = MapStoreTransformEntry::new(TestAgent::STORE, K1, |_: Option<&Text>| None);
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),

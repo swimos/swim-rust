@@ -43,7 +43,7 @@ use crate::event_handler::{
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
 use crate::item::{
-    MapLikeItem, MutableMapLikeItem, MutableValueLikeItem, TransformableMapLikeItem, ValueLikeItem,
+    MapLikeItem, MutableMapLikeItem, MutableValueLikeItem, ValueLikeItem
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::demand::{Cue, DemandLane};
@@ -184,6 +184,34 @@ impl<Agent: 'static> HandlerContext<Agent> {
         Item::set_handler::<Agent>(lane, value)
     }
 
+    pub fn transform_value<'a, Item, T, F>(
+        &self,
+        projection: fn(&Agent) -> &Item,
+        f: F,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'a
+    where
+        Agent: 'static,
+        Item: MutableValueLikeItem<T> + 'static,
+        T: 'static,
+        F: FnOnce(&T) -> T + Send + 'a,
+    {
+        Item::transform_handler::<Item, Agent, F>(projection, f)
+    }
+
+    pub fn with_value<'a, Item, T, F, U>(
+        &self,
+        projection: fn(&Agent) -> &Item,
+        f: F,
+    ) -> impl HandlerAction<Agent, Completion = U> + Send + 'a
+    where
+        Agent: 'static,
+        Item: ValueLikeItem<T> + 'static,
+        T: 'static,
+        F: FnOnce(&T) -> U + Send + 'a,
+    {
+        Item::with_value_handler::<Item, Agent, F, U>(projection, f)
+    }
+
     /// Create an event handler that will update an entry in a map lane or store of the agent.
     ///
     /// #Arguments
@@ -210,7 +238,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// * `lane` - Projection to the map lane.
     /// * `key - The key to update.
     /// * `f` - A function to apple to the entry in the map.
-    pub fn with_entry<'a, Item, K, V, F>(
+    pub fn transform_entry<'a, Item, K, V, F>(
         &self,
         lane: fn(&Agent) -> &Item,
         key: K,
@@ -218,12 +246,12 @@ impl<Agent: 'static> HandlerContext<Agent> {
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'a
     where
         Agent: 'static,
-        Item: TransformableMapLikeItem<K, V> + 'static,
+        Item: MutableMapLikeItem<K, V> + 'static,
         K: Send + Clone + Eq + Hash + 'static,
-        V: Clone + 'static,
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'a,
+        V: 'static,
+        F: FnOnce(Option<&V>) -> Option<V> + Send + 'a,
     {
-        Item::with_handler::<Agent, F>(lane, key, f)
+        Item::transform_entry_handler::<Agent, F>(lane, key, f)
     }
 
     /// Create an event handler that will remove an entry from a map lane or store of the agent.
@@ -705,6 +733,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     pub fn stop(&self) -> impl EventHandler<Agent> + Send + 'static {
         HandlerActionExt::<Agent>::discard(Stop)
     }
+
 }
 
 pub struct JoinValueContext<Agent, K, V> {

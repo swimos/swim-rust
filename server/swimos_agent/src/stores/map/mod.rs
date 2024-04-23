@@ -25,7 +25,7 @@ use tokio_util::codec::Encoder;
 use crate::agent_model::WriteResult;
 use crate::event_handler::{ActionContext, HandlerAction, Modification, StepResult};
 use crate::event_queue::EventQueue;
-use crate::item::{AgentItem, MapItem, MapLikeItem, MutableMapLikeItem, TransformableMapLikeItem};
+use crate::item::{AgentItem, InspectableMapLikeItem, MapItem, MapLikeItem, MutableMapLikeItem};
 use crate::map_storage::{MapStoreInner, WithEntryResult};
 use crate::meta::AgentMetadata;
 
@@ -91,14 +91,14 @@ where
     }
 
     /// Transform the value associated with a key.
-    pub fn with_entry<F>(&self, key: K, f: F) -> WithEntryResult
+    pub fn transform_entry<F>(&self, key: K, f: F) -> WithEntryResult
     where
-        V: Clone,
-        F: FnOnce(Option<V>) -> Option<V>,
+        F: FnOnce(Option<&V>) -> Option<V>,
     {
-        self.inner.borrow_mut().with_entry(key, f)
+        self.inner.borrow_mut().transform_entry(key, f)
     }
 
+    
     /// Remove an entry from the map.
     pub fn remove(&self, key: &K) {
         self.inner.borrow_mut().remove(key)
@@ -126,6 +126,20 @@ where
     {
         self.inner.borrow().get_map(f)
     }
+}
+
+impl<K, V> MapStore<K, V>
+where
+    K: Eq + Hash,
+{
+   
+    pub fn with_entry<F, U>(&self, key: K, f: F) -> U
+    where
+        F: FnOnce(Option<&V>) -> U,
+    {
+        self.inner.borrow().with_entry(key, f)
+    }
+
 }
 
 const INFALLIBLE_SER: &str = "Serializing store responses to recon should be infallible.";
@@ -363,6 +377,53 @@ where
 }
 
 /// An [`EventHandler`] that will alter an entry in the map.
+pub struct MapStoreTransformEntry<C, K, V, F> {
+    projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
+    key_and_f: Option<(K, F)>,
+}
+
+impl<C, K, V, F> MapStoreTransformEntry<C, K, V, F> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>, key: K, f: F) -> Self {
+        MapStoreTransformEntry {
+            projection,
+            key_and_f: Some((key, f)),
+        }
+    }
+}
+
+impl<C, K, V, F> HandlerAction<C> for MapStoreTransformEntry<C, K, V, F>
+where
+    K: Clone + Eq + Hash,
+    F: FnOnce(Option<&V>) -> Option<V>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapStoreTransformEntry {
+            projection,
+            key_and_f,
+        } = self;
+        if let Some((key, f)) = key_and_f.take() {
+            let store = projection(context);
+            if matches!(store.transform_entry(key, f), WithEntryResult::NoChange) {
+                StepResult::done(())
+            } else {
+                StepResult::Complete {
+                    modified_item: Some(Modification::of(store.id())),
+                    result: (),
+                }
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
 pub struct MapStoreWithEntry<C, K, V, F> {
     projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
     key_and_f: Option<(K, F)>,
@@ -377,13 +438,12 @@ impl<C, K, V, F> MapStoreWithEntry<C, K, V, F> {
     }
 }
 
-impl<C, K, V, F> HandlerAction<C> for MapStoreWithEntry<C, K, V, F>
+impl<C, K, V, F, U> HandlerAction<C> for MapStoreWithEntry<C, K, V, F>
 where
-    K: Clone + Eq + Hash,
-    V: Clone,
-    F: FnOnce(Option<V>) -> Option<V>,
+    K: Eq + Hash,
+    F: FnOnce(Option<&V>) -> U,
 {
-    type Completion = ();
+    type Completion = U;
 
     fn step(
         &mut self,
@@ -397,14 +457,7 @@ where
         } = self;
         if let Some((key, f)) = key_and_f.take() {
             let store = projection(context);
-            if matches!(store.with_entry(key, f), WithEntryResult::NoChange) {
-                StepResult::done(())
-            } else {
-                StepResult::Complete {
-                    modified_item: Some(Modification::of(store.id())),
-                    result: (),
-                }
-            }
+            StepResult::done(store.with_entry(key, f))
         } else {
             StepResult::after_done()
         }
@@ -430,6 +483,31 @@ where
 
     fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
         MapStoreGetMap::new(projection)
+    }
+    
+}
+
+impl<K, V> InspectableMapLikeItem<K, V> for MapStore<K, V>
+where
+    K: Eq + Hash + Send + 'static,
+    V: 'static,
+{
+    type WithEntryHandler<'a, C, F, U> = MapStoreWithEntry<C, K, V, F>
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(Option<&V>) -> U + Send + 'a;
+    
+    fn with_entry_handler<'a, C, F, U>(
+        projection: fn(&C) -> &Self,
+        key: K,
+        f: F,
+    ) -> Self::WithEntryHandler<'a, C, F, U>
+    where
+        Self: 'static,
+        C: 'a,
+        F: FnOnce(Option<&V>) -> U + Send + 'a {
+        MapStoreWithEntry::new(projection, key, f)
     }
 }
 
@@ -465,29 +543,24 @@ where
     fn clear_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::ClearHandler<C> {
         MapStoreClear::new(projection)
     }
-}
 
-impl<K, V> TransformableMapLikeItem<K, V> for MapStore<K, V>
-where
-    K: Clone + Eq + Hash + Send + 'static,
-    V: Clone + Send + 'static,
-{
-    type WithEntryHandler<'a, C, F> = MapStoreWithEntry<C, K, V, F>
+    type TransformEntryHandler<'a, C, F> = MapStoreTransformEntry<C, K, V, F>
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'a;
+        F: FnOnce(Option<&V>) -> Option<V> + Send + 'a;
 
-    fn with_handler<'a, C, F>(
+    fn transform_entry_handler<'a, C, F>(
         projection: fn(&C) -> &Self,
         key: K,
         f: F,
-    ) -> Self::WithEntryHandler<'a, C, F>
+    ) -> Self::TransformEntryHandler<'a, C, F>
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'a,
+        F: FnOnce(Option<&V>) -> Option<V> + Send + 'a,
     {
-        MapStoreWithEntry::new(projection, key, f)
+        MapStoreTransformEntry::new(projection, key, f)
     }
+
 }
