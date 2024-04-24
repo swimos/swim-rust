@@ -99,19 +99,19 @@ fn update_map_lane() {
 
     lane.get_map(|m| {
         assert_eq!(m.len(), 3);
-        assert_eq!(m.get(&K1).as_deref(), Some(V1));
-        assert_eq!(m.get(&K2).as_deref(), Some("altered"));
-        assert_eq!(m.get(&K3).as_deref(), Some(V3));
+        assert_eq!(m.get(&K1).map(String::as_str), Some(V1));
+        assert_eq!(m.get(&K2).map(String::as_str), Some("altered"));
+        assert_eq!(m.get(&K3).map(String::as_str), Some(V3));
     });
 
     lane.update(ABSENT, "added".to_owned());
 
     lane.get_map(|m| {
         assert_eq!(m.len(), 4);
-        assert_eq!(m.get(&K1).as_deref(), Some(V1));
-        assert_eq!(m.get(&K2).as_deref(), Some("altered"));
-        assert_eq!(m.get(&K3).as_deref(), Some(V3));
-        assert_eq!(m.get(&ABSENT).as_deref(), Some("added"));
+        assert_eq!(m.get(&K1).map(String::as_str), Some(V1));
+        assert_eq!(m.get(&K2).map(String::as_str), Some("altered"));
+        assert_eq!(m.get(&K3).map(String::as_str), Some(V3));
+        assert_eq!(m.get(&ABSENT).map(String::as_str), Some("added"));
     });
 }
 
@@ -123,8 +123,8 @@ fn remove_from_map_lane() {
 
     lane.get_map(|m| {
         assert_eq!(m.len(), 2);
-        assert_eq!(m.get(&K1).as_deref(), Some(V1));
-        assert_eq!(m.get(&K3).as_deref(), Some(V3));
+        assert_eq!(m.get(&K1).map(String::as_str), Some(V1));
+        assert_eq!(m.get(&K3).map(String::as_str), Some(V3));
     });
 }
 
@@ -288,7 +288,7 @@ fn consume_events(lane: &MapLane<i32, String>) -> Operations {
     Operations { events, sync }
 }
 
-fn interpret(op: MapOperation<BytesMut, BytesMut>) -> MapOperation<i3, String> {
+fn interpret(op: MapOperation<BytesMut, BytesMut>) -> MapOperation<i32, String> {
     match op {
         MapOperation::Update { key, value } => {
             let key_str = std::str::from_utf8(key.as_ref()).expect("Bad key bytes.");
@@ -557,7 +557,7 @@ fn map_lane_update_event_handler() {
 
     agent.lane.get_map(|map| {
         assert_eq!(map.len(), 1);
-        assert_eq!(map.get(&K1).as_deref(), Some(V1));
+        assert_eq!(map.get(&K1).map(String::as_str), Some(V1));
     });
 
     let result = handler.step(
@@ -589,8 +589,8 @@ fn map_lane_remove_event_handler() {
 
     agent.lane.get_map(|map| {
         assert_eq!(map.len(), 2);
-        assert_eq!(map.get(&K2).as_deref(), Some(V2));
-        assert_eq!(map.get(&K3).as_deref(), Some(V3));
+        assert_eq!(map.get(&K2).map(String::as_str), Some(V2));
+        assert_eq!(map.get(&K3).map(String::as_str), Some(V3));
     });
 
     let result = handler.step(
@@ -761,8 +761,8 @@ fn map_lane_transform_entry_handler_update() {
     agent.lane.get_map(|map| {
         assert_eq!(map.len(), 3);
         assert_eq!(map.get(&K1), Some(&V1.to_uppercase()));
-        assert_eq!(map.get(&K2).as_deref(), Some(V2));
-        assert_eq!(map.get(&K3).as_deref(), Some(V3));
+        assert_eq!(map.get(&K2).map(String::as_str), Some(V2));
+        assert_eq!(map.get(&K3).map(String::as_str), Some(V3));
     });
 
     let result = handler.step(
@@ -797,8 +797,8 @@ fn map_lane_transform_entry_handler_remove() {
 
     agent.lane.get_map(|map| {
         assert_eq!(map.len(), 2);
-        assert_eq!(map.get(&K2).as_deref(), Some(V2));
-        assert_eq!(map.get(&K3).as_deref(), Some(V3));
+        assert_eq!(map.get(&K2).map(String::as_str), Some(V2));
+        assert_eq!(map.get(&K3).map(String::as_str), Some(V3));
     });
 
     let result = handler.step(

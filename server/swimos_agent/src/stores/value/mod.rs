@@ -136,6 +136,7 @@ impl<T> ValueStore<T> {
 
     pub(crate) fn with<F, B, U>(&self, f: F) -> U
     where
+        B: ?Sized,
         T: Borrow<B>,
         F: FnOnce(&B) -> U,
     {
@@ -271,53 +272,13 @@ impl<C, T> HandlerAction<C> for ValueStoreSet<C, T> {
     }
 }
 
-/// An [`EventHandler`] that will transform the value of a value store.
-pub struct ValueStoreTransformValue<C, T, F> {
-    projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
-    f: Option<F>,
-}
-
-impl<C, T, F> ValueStoreTransformValue<C, T, F> {
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueStore<T>, f: F) -> Self {
-        ValueStoreTransformValue {
-            projection,
-            f: Some(f),
-        }
-    }
-}
-
-impl<C, T, F> HandlerAction<C> for ValueStoreTransformValue<C, T, F>
-where
-    F: FnOnce(&T) -> T,
-{
-    type Completion = ();
-
-    fn step(
-        &mut self,
-        _action_context: &mut ActionContext<C>,
-        _meta: AgentMetadata,
-        context: &C,
-    ) -> StepResult<Self::Completion> {
-        if let Some(f) = self.f.take() {
-            let store = (self.projection)(context);
-            store.replace(f);
-            StepResult::Complete {
-                modified_item: Some(Modification::of(store.id())),
-                result: (),
-            }
-        } else {
-            StepResult::after_done()
-        }
-    }
-}
-
-pub struct ValueStoreWithValue<C, T, F, B> {
+pub struct ValueStoreWithValue<C, T, F,  B: ?Sized> {
     projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
     f: Option<F>,
     _type: PhantomData<fn(&B)>,
 }
 
-impl<C, T, F, B> ValueStoreWithValue<C, T, F, B> {
+impl<C, T, F,  B: ?Sized> ValueStoreWithValue<C, T, F, B> {
 
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
     f: F) -> Self {
@@ -328,6 +289,7 @@ impl<C, T, F, B> ValueStoreWithValue<C, T, F, B> {
 impl<C, T, F, B, U> HandlerAction<C> for ValueStoreWithValue<C, T, F, B>
 where
     T: Borrow<B>,
+    B: ?Sized,
     F: FnOnce(&B) -> U,
 {
     type Completion = U;
@@ -360,7 +322,7 @@ where
         Self: 'static,
         C: 'a,
         T: Borrow<B>,
-        B: 'static,
+        B: ?Sized + 'static,
         F: FnOnce(&B) -> U + Send + 'a;
 
     fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C> {
@@ -374,7 +336,7 @@ where
     where
         C: 'a,
         T: Borrow<B>,
-        B: 'static,
+        B: ?Sized + 'static,
         F: FnOnce(&B) -> U + Send + 'a,
     {
         ValueStoreWithValue::new(projection, f)
@@ -389,24 +351,8 @@ where
     where
         C: 'static;
 
-    type TransformValueHandler<'a, C, F> = ValueStoreTransformValue<C, T, F>
-    where
-        Self: 'static,
-        C: 'a,
-        F: FnOnce(&T) -> T + Send + 'a;
-
     fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C> {
         ValueStoreSet::new(projection, value)
     }
 
-    fn transform_handler<'a, Item, C, F>(
-        projection: fn(&C) -> &Self,
-        f: F,
-    ) -> Self::TransformValueHandler<'a, C, F>
-    where
-        C: 'a,
-        F: FnOnce(&T) -> T + Send + 'a,
-    {
-        ValueStoreTransformValue::new(projection, f)
-    }
 }

@@ -119,7 +119,7 @@ pub trait ValueLikeItem<T> {
         Self: 'static,
         C: 'a,
         T: Borrow<B>,
-        B: 'static,
+        B: ?Sized + 'static,
         F: FnOnce(&B) -> U + Send + 'a;
 
     fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C>;
@@ -131,7 +131,7 @@ pub trait ValueLikeItem<T> {
     where
         C: 'a,
         T: Borrow<B>,
-        B: 'static,
+        B: ?Sized + 'static,
         F: FnOnce(&B) -> U + Send + 'a;
 }
 
@@ -140,19 +140,6 @@ pub trait MutableValueLikeItem<T> {
     where
         C: 'static;
 
-    type TransformValueHandler<'a, C, F>: EventHandler<C> + Send + 'a
-    where
-        Self: 'static,
-        C: 'a,
-        F: FnOnce(&T) -> T + Send + 'a;
-
     fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C>;
 
-    fn transform_handler<'a, Item, C, F>(
-        projection: fn(&C) -> &Self,
-        f: F,
-    ) -> Self::TransformValueHandler<'a, C, F>
-    where
-        C: 'a,
-        F: FnOnce(&T) -> T + Send + 'a;
 }

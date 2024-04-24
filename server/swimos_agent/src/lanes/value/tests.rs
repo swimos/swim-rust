@@ -30,7 +30,7 @@ use crate::{
     },
     item::ValueItem,
     lanes::{
-        value::{ValueLaneGet, ValueLaneSync},
+        value::{ValueLaneGet, ValueLaneSync, ValueLaneWithValue},
         LaneItem,
     },
     meta::AgentMetadata,
@@ -277,23 +277,28 @@ fn make_meta<'a>(
 
 struct TestAgent {
     lane: ValueLane<i32>,
+    str_lane: ValueLane<String>,
 }
 
 const LANE_ID: u64 = 9;
+const STR_LANE_ID: u64 = 73;
 
 impl Default for TestAgent {
     fn default() -> Self {
         Self {
             lane: ValueLane::new(LANE_ID, 0),
+            str_lane: ValueLane::new(STR_LANE_ID, "hello".to_string())
         }
     }
 }
 
 impl TestAgent {
     const LANE: fn(&TestAgent) -> &ValueLane<i32> = |agent| &agent.lane;
+    const STR_LANE: fn(&TestAgent) -> &ValueLane<String> = |agent| &agent.str_lane;
 }
 
-fn check_result<T: Eq + Debug>(
+fn check_result_for<T: Eq + Debug>(
+    lane_id: u64,
     result: StepResult<T>,
     written: bool,
     trigger_handler: bool,
@@ -301,9 +306,9 @@ fn check_result<T: Eq + Debug>(
 ) {
     let expected_mod = if written {
         if trigger_handler {
-            Some(Modification::of(LANE_ID))
+            Some(Modification::of(lane_id))
         } else {
-            Some(Modification::no_trigger(LANE_ID))
+            Some(Modification::no_trigger(lane_id))
         }
     } else {
         None
@@ -326,6 +331,15 @@ fn check_result<T: Eq + Debug>(
             panic!("Unexpected result: {:?}", ow);
         }
     }
+}
+
+fn check_result<T: Eq + Debug>(
+    result: StepResult<T>,
+    written: bool,
+    trigger_handler: bool,
+    complete: Option<T>,
+) {
+    check_result_for(LANE_ID, result, written, trigger_handler, complete)
 }
 
 #[test]
@@ -437,4 +451,32 @@ fn value_lane_sync_event_handler() {
             panic!("Unexpected response.");
         }
     }
+}
+
+#[test]
+fn value_lane_with_value_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+
+    let mut handler = ValueLaneWithValue::new(TestAgent::STR_LANE, |s: &str| s.len());
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result_for(STR_LANE_ID, result, false, false, Some(5));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
 }

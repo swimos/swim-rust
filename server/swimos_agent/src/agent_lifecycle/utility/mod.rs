@@ -192,11 +192,12 @@ impl<Agent: 'static> HandlerContext<Agent> {
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'a
     where
         Agent: 'static,
-        Item: MutableValueLikeItem<T> + 'static,
+        Item: ValueLikeItem<T> + MutableValueLikeItem<T> + 'static,
         T: 'static,
         F: FnOnce(&T) -> T + Send + 'a,
     {
-        Item::transform_handler::<Item, Agent, F>(projection, f)
+        Item::with_value_handler::<Item, Agent, F, T, T>(projection, f)
+            .and_then(move |v| Item::set_handler(projection, v))
     }
 
     pub fn with_value<'a, Item, T, F, B, U>(
