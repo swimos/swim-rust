@@ -56,21 +56,25 @@ pub trait MapLikeItem<K, V> {
 }
 
 pub trait InspectableMapLikeItem<K, V> {
-    type WithEntryHandler<'a, C, F, U>: HandlerAction<C, Completion = U> + Send + 'a
+    type WithEntryHandler<'a, C, F, B, U>: HandlerAction<C, Completion = U> + Send + 'a
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(Option<&V>) -> U + Send + 'a;
+        B: ?Sized + 'static,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U + Send + 'a;
 
-    fn with_entry_handler<'a, C, F, U>(
+    fn with_entry_handler<'a, C, F, B, U>(
         projection: fn(&C) -> &Self,
         key: K,
         f: F,
-    ) -> Self::WithEntryHandler<'a, C, F, U>
+    ) -> Self::WithEntryHandler<'a, C, F, B, U>
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(Option<&V>) -> U + Send + 'a;
+        B: ?Sized + 'static,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U + Send + 'a;
 }
 
 pub trait MutableMapLikeItem<K, V> {

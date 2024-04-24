@@ -14,6 +14,7 @@
 
 use std::borrow::Borrow;
 use std::hash::Hash;
+use std::marker::PhantomData;
 use std::{cell::RefCell, collections::HashMap};
 
 use bytes::BytesMut;
@@ -133,9 +134,11 @@ where
     K: Eq + Hash,
 {
    
-    pub fn with_entry<F, U>(&self, key: K, f: F) -> U
+    pub fn with_entry<F, B, U>(&self, key: K, f: F) -> U
     where
-        F: FnOnce(Option<&V>) -> U,
+        B: ?Sized,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U,
     {
         self.inner.borrow().with_entry(key, f)
     }
@@ -424,24 +427,28 @@ where
     }
 }
 
-pub struct MapStoreWithEntry<C, K, V, F> {
+pub struct MapStoreWithEntry<C, K, V, F, B: ?Sized> {
     projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
     key_and_f: Option<(K, F)>,
+    _type: PhantomData<fn(&B)>,
 }
 
-impl<C, K, V, F> MapStoreWithEntry<C, K, V, F> {
+impl<C, K, V, F, B: ?Sized> MapStoreWithEntry<C, K, V, F, B> {
     pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>, key: K, f: F) -> Self {
         MapStoreWithEntry {
             projection,
             key_and_f: Some((key, f)),
+            _type: PhantomData,
         }
     }
 }
 
-impl<C, K, V, F, U> HandlerAction<C> for MapStoreWithEntry<C, K, V, F>
+impl<C, K, V, F, B, U> HandlerAction<C> for MapStoreWithEntry<C, K, V, F, B>
 where
     K: Eq + Hash,
-    F: FnOnce(Option<&V>) -> U,
+    B: ?Sized,
+    V: Borrow<B>,
+    F: FnOnce(Option<&B>) -> U,
 {
     type Completion = U;
 
@@ -454,6 +461,7 @@ where
         let MapStoreWithEntry {
             projection,
             key_and_f,
+            ..
         } = self;
         if let Some((key, f)) = key_and_f.take() {
             let store = projection(context);
@@ -492,21 +500,25 @@ where
     K: Eq + Hash + Send + 'static,
     V: 'static,
 {
-    type WithEntryHandler<'a, C, F, U> = MapStoreWithEntry<C, K, V, F>
+    type WithEntryHandler<'a, C, F, B, U> = MapStoreWithEntry<C, K, V, F, B>
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(Option<&V>) -> U + Send + 'a;
+        B: ?Sized +'static,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U + Send + 'a;
     
-    fn with_entry_handler<'a, C, F, U>(
+    fn with_entry_handler<'a, C, F, B, U>(
         projection: fn(&C) -> &Self,
         key: K,
         f: F,
-    ) -> Self::WithEntryHandler<'a, C, F, U>
+    ) -> Self::WithEntryHandler<'a, C, F, B, U>
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(Option<&V>) -> U + Send + 'a {
+        B: ?Sized +'static,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U + Send + 'a {
         MapStoreWithEntry::new(projection, key, f)
     }
 }

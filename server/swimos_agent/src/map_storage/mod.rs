@@ -178,14 +178,16 @@ impl<K, V, Q> MapStoreInner<K, V, Q>
 where
     K: Eq + Hash,
 {
-    pub fn with_entry<F, U>(&self, key: K, f: F) -> U
+    pub fn with_entry<F, B, U>(&self, key: K, f: F) -> U
     where
-        F: FnOnce(Option<&V>) -> U,
+        B: ?Sized,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U,
     {
         let MapStoreInner {
             content,
             ..
         } = self;
-        f(content.get(&key))
+        f(content.get(&key).map(Borrow::borrow))
     }
 }
