@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::any::Any;
+use std::borrow::Borrow;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::time::Duration;
@@ -198,7 +199,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         Item::transform_handler::<Item, Agent, F>(projection, f)
     }
 
-    pub fn with_value<'a, Item, T, F, U>(
+    pub fn with_value<'a, Item, T, F, B, U>(
         &self,
         projection: fn(&Agent) -> &Item,
         f: F,
@@ -206,10 +207,11 @@ impl<Agent: 'static> HandlerContext<Agent> {
     where
         Agent: 'static,
         Item: ValueLikeItem<T> + 'static,
-        T: 'static,
-        F: FnOnce(&T) -> U + Send + 'a,
+        T: Borrow<B>,
+        B: 'static,
+        F: FnOnce(&B) -> U + Send + 'a,
     {
-        Item::with_value_handler::<Item, Agent, F, U>(projection, f)
+        Item::with_value_handler::<Item, Agent, F, B, U>(projection, f)
     }
 
     /// Create an event handler that will update an entry in a map lane or store of the agent.

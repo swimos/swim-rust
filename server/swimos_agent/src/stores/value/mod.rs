@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::{Cell, RefCell};
+use std::{borrow::Borrow, cell::{Cell, RefCell}, marker::PhantomData};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
@@ -134,14 +134,15 @@ impl<T> ValueStore<T> {
         dirty.replace(true);
     }
 
-    pub(crate) fn with<F, U>(&self, f: F) -> U
+    pub(crate) fn with<F, B, U>(&self, f: F) -> U
     where
-        F: FnOnce(&T) -> U,
+        T: Borrow<B>,
+        F: FnOnce(&B) -> U,
     {
         let ValueStore { inner, .. } = self;
         let guard = inner.borrow();
         let Inner { content, .. } = &*guard;
-        f(content)
+        f(content.borrow())
     }
 }
 
@@ -310,22 +311,24 @@ where
     }
 }
 
-pub struct ValueStoreWithValue<C, T, F> {
+pub struct ValueStoreWithValue<C, T, F, B> {
     projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
     f: Option<F>,
+    _type: PhantomData<fn(&B)>,
 }
 
-impl<C, T, F> ValueStoreWithValue<C, T, F> {
+impl<C, T, F, B> ValueStoreWithValue<C, T, F, B> {
 
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
     f: F) -> Self {
-        ValueStoreWithValue { projection, f: Some(f) }
+        ValueStoreWithValue { projection, f: Some(f), _type: PhantomData }
     }
 }
 
-impl<C, T, F, U> HandlerAction<C> for ValueStoreWithValue<C, T, F>
+impl<C, T, F, B, U> HandlerAction<C> for ValueStoreWithValue<C, T, F, B>
 where
-    F: FnOnce(&T) -> U,
+    T: Borrow<B>,
+    F: FnOnce(&B) -> U,
 {
     type Completion = U;
 
@@ -352,23 +355,27 @@ where
     where
         C: 'static;
 
-    type WithValueHandler<'a, C, F, U> = ValueStoreWithValue<C, T, F>
+    type WithValueHandler<'a, C, F, B, U> = ValueStoreWithValue<C, T, F, B>
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(&T) -> U + Send + 'a;
+        T: Borrow<B>,
+        B: 'static,
+        F: FnOnce(&B) -> U + Send + 'a;
 
     fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C> {
         ValueStoreGet::new(projection)
     }
 
-    fn with_value_handler<'a, Item, C, F, U>(
+    fn with_value_handler<'a, Item, C, F, B, U>(
         projection: fn(&C) -> &Self,
         f: F,
-    ) -> Self::WithValueHandler<'a, C, F, U>
+    ) -> Self::WithValueHandler<'a, C, F, B, U>
     where
         C: 'a,
-        F: FnOnce(&T) -> U + Send + 'a,
+        T: Borrow<B>,
+        B: 'static,
+        F: FnOnce(&B) -> U + Send + 'a,
     {
         ValueStoreWithValue::new(projection, f)
     }

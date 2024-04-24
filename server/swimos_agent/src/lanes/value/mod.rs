@@ -17,7 +17,7 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
-use std::{cell::RefCell, collections::VecDeque};
+use std::{borrow::Borrow, cell::RefCell, collections::VecDeque, marker::PhantomData};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
@@ -86,9 +86,10 @@ impl<T> ValueLane<T> {
         self.store.replace(f);
     }
 
-    pub(crate) fn with<F, U>(&self, f: F) -> U
+    pub(crate) fn with<F, B, U>(&self, f: F) -> U
     where
-        F: FnOnce(&T) -> U,
+        T: Borrow<B>,
+        F: FnOnce(&B) -> U,
     {
         self.store.with(f)
     }
@@ -272,22 +273,24 @@ impl<C, T> HandlerAction<C> for ValueLaneSync<C, T> {
     }
 }
 
-pub struct ValueLaneWithValue<C, T, F> {
+pub struct ValueLaneWithValue<C, T, F, B> {
     projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
     f: Option<F>,
+    _type: PhantomData<fn(&B)>,
 }
 
-impl<C, T, F> ValueLaneWithValue<C, T, F> {
+impl<C, T, F, B> ValueLaneWithValue<C, T, F, B> {
 
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
     f: F) -> Self {
-        ValueLaneWithValue { projection, f: Some(f) }
+        ValueLaneWithValue { projection, f: Some(f), _type: PhantomData }
     }
 }
 
-impl<C, T, F, U> HandlerAction<C> for ValueLaneWithValue<C, T, F>
+impl<C, T, F, B, U> HandlerAction<C> for ValueLaneWithValue<C, T, F, B>
 where
-    F: FnOnce(&T) -> U,
+    T: Borrow<B>,
+    F: FnOnce(&B) -> U,
 {
     type Completion = U;
 
@@ -335,23 +338,27 @@ where
     where
         C: 'static;
 
-    type WithValueHandler<'a, C, F, U> = ValueLaneWithValue<C, T, F>
+    type WithValueHandler<'a, C, F, B, U> = ValueLaneWithValue<C, T, F, B>
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(&T) -> U + Send + 'a;
+        T: Borrow<B>,
+        B: 'static, 
+        F: FnOnce(&B) -> U + Send + 'a;
 
     fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C> {
         ValueLaneGet::new(projection)
     }
 
-    fn with_value_handler<'a, Item, C, F, U>(
+    fn with_value_handler<'a, Item, C, F, B, U>(
         projection: fn(&C) -> &Self,
         f: F,
-    ) -> Self::WithValueHandler<'a, C, F, U>
+    ) -> Self::WithValueHandler<'a, C, F, B, U>
     where
         C: 'a,
-        F: FnOnce(&T) -> U + Send + 'a,
+        T: Borrow<B>,
+        B: 'static,
+        F: FnOnce(&B) -> U + Send + 'a,
     {
         ValueLaneWithValue::new(projection, f)
     }

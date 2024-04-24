@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashMap;
+use std::{borrow::Borrow, collections::HashMap};
 
 use crate::{
     event_handler::{EventHandler, HandlerAction},
@@ -114,21 +114,25 @@ pub trait ValueLikeItem<T> {
     where
         C: 'static;
 
-    type WithValueHandler<'a, C, F, U>: HandlerAction<C, Completion = U> + Send + 'a
+    type WithValueHandler<'a, C, F, B, U>: HandlerAction<C, Completion = U> + Send + 'a
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(&T) -> U + Send + 'a;
+        T: Borrow<B>,
+        B: 'static,
+        F: FnOnce(&B) -> U + Send + 'a;
 
     fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C>;
 
-    fn with_value_handler<'a, Item, C, F, U>(
+    fn with_value_handler<'a, Item, C, F, B, U>(
         projection: fn(&C) -> &Self,
         f: F,
-    ) -> Self::WithValueHandler<'a, C, F, U>
+    ) -> Self::WithValueHandler<'a, C, F, B, U>
     where
         C: 'a,
-        F: FnOnce(&T) -> U + Send + 'a;
+        T: Borrow<B>,
+        B: 'static,
+        F: FnOnce(&B) -> U + Send + 'a;
 }
 
 pub trait MutableValueLikeItem<T> {
