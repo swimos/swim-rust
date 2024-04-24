@@ -45,6 +45,8 @@ use crate::{
     test_context::dummy_context,
 };
 
+use super::MapLaneWithEntry;
+
 const ID: u64 = 74;
 
 const K1: i32 = 5;
@@ -813,4 +815,38 @@ fn map_lane_transform_entry_handler_remove() {
 
     let event = agent.lane.read_with_prev(|event, _| event);
     assert_eq!(event, Some(MapLaneEvent::Remove(K1, V1.to_owned())));
+}
+
+#[test]
+fn map_lane_with_entry_handler_absent() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneWithEntry::new(TestAgent::LANE, ABSENT, |maybe_v: Option<&str>| maybe_v.map(str::to_owned));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(None));
+}
+
+#[test]
+fn map_lane_with_entry_handler_present() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneWithEntry::new(TestAgent::LANE, K1, |maybe_v: Option<&str>| maybe_v.map(str::to_owned));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(Some(V1.to_owned())));
 }
