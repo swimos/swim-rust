@@ -113,11 +113,11 @@ where
     /// Read a value from the map, if it exists.
     pub fn get<Q, F, R>(&self, key: &Q, f: F) -> R
     where
-        K: Borrow<Q>,
-        Q: Hash + Eq,
+        K: Borrow<Q> + Eq + Hash,
+        Q: Eq + Hash,
         F: FnOnce(Option<&V>) -> R,
     {
-        self.inner.borrow().get(key, f)
+        self.inner.borrow().with_entry(key, f)
     }
 
     /// Read the complete state of the map.
@@ -134,11 +134,14 @@ where
     K: Eq + Hash,
 {
    
-    pub fn with_entry<F, B, U>(&self, key: K, f: F) -> U
+    pub fn with_entry<F, B1, B2, U>(&self, key: &B1, f: F) -> U
     where
-        B: ?Sized,
-        V: Borrow<B>,
-        F: FnOnce(Option<&B>) -> U,
+        B1: ?Sized,
+        B2: ?Sized,
+        K: Borrow<B1>,
+        B1: Eq + Hash,
+        V: Borrow<B2>,
+        F: FnOnce(Option<&B2>) -> U,
     {
         self.inner.borrow().with_entry(key, f)
     }
@@ -465,7 +468,7 @@ where
         } = self;
         if let Some((key, f)) = key_and_f.take() {
             let store = projection(context);
-            StepResult::done(store.with_entry(key, f))
+            StepResult::done(store.with_entry(&key, f))
         } else {
             StepResult::after_done()
         }

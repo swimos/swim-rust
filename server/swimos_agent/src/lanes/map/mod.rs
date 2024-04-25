@@ -128,7 +128,7 @@ where
         Q: Hash + Eq,
         F: FnOnce(Option<&V>) -> R,
     {
-        self.inner.borrow().get(key, f)
+        self.inner.borrow().with_entry(key, f)
     }
 
     /// Read the complete state of the map.
@@ -151,7 +151,7 @@ where
     K: Eq + Hash,
 {
    
-    pub fn with_entry<F, B, U>(&self, key: K, f: F) -> U
+    pub fn with_entry<F, B, U>(&self, key: &K, f: F) -> U
     where
         B: ?Sized,
         V: Borrow<B>,
@@ -434,7 +434,7 @@ where
         } = self;
         if let Some((key, f)) = key_and_f.take() {
             let lane = projection(context);
-            StepResult::done(lane.with_entry(key, f))
+            StepResult::done(lane.with_entry(&key, f))
         } else {
             StepResult::after_done()
         }

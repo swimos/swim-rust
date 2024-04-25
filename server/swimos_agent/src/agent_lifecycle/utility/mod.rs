@@ -44,7 +44,7 @@ use crate::event_handler::{
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
 use crate::item::{
-    MapLikeItem, MutableMapLikeItem, MutableValueLikeItem, ValueLikeItem
+    InspectableMapLikeItem, MapLikeItem, MutableMapLikeItem, MutableValueLikeItem, ValueLikeItem
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::demand::{Cue, DemandLane};
@@ -156,38 +156,43 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// Create an event handler that will get the value of a value lane store of the agent.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the value lane.
+    /// * `item` - Projection to the value lane or store.
     pub fn get_value<Item, T>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
     ) -> impl HandlerAction<Agent, Completion = T> + Send + 'static
     where
         Item: ValueLikeItem<T>,
         T: Clone + Send + 'static,
     {
-        Item::get_handler::<Agent>(lane)
+        Item::get_handler::<Agent>(item)
     }
 
-    /// Create an event handler that will set a new value into value lane or store of the agent.
+    /// Create an event handler that will set a new value into a value lane or store of the agent.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the value lane.
+    /// * `item` - Projection to the value lane or store.
     /// * `value` - The value to set.
     pub fn set_value<Item, T>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
         value: T,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
         Item: MutableValueLikeItem<T>,
         T: Send + 'static,
     {
-        Item::set_handler::<Agent>(lane, value)
+        Item::set_handler::<Agent>(item, value)
     }
 
+    /// Create an event handler that will transform the value of a value lane or store of the agent.
+    /// 
+    /// #Arguments
+    /// * `item` - Projection to the value lane or store.
+    /// * `f` - A closure that produces a new value from a reference to the existing value.
     pub fn transform_value<'a, Item, T, F>(
         &self,
-        projection: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
         f: F,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'a
     where
@@ -196,13 +201,19 @@ impl<Agent: 'static> HandlerContext<Agent> {
         T: 'static,
         F: FnOnce(&T) -> T + Send + 'a,
     {
-        Item::with_value_handler::<Item, Agent, F, T, T>(projection, f)
-            .and_then(move |v| Item::set_handler(projection, v))
+        Item::with_value_handler::<Item, Agent, F, T, T>(item, f)
+            .and_then(move |v| Item::set_handler(item, v))
     }
 
+    /// Create an event handler that will inspect the value of a value lane or store and generate a result from it.
+    /// This differs from using [`Self::get_value`] in that it does not require a clone to be made of the existing value.
+    /// 
+    /// #Arguments
+    /// * `item` - Projection to the value lane or store.
+    /// * `f` - A closure that produces a value from a reference to the current value of the item.
     pub fn with_value<'a, Item, T, F, B, U>(
         &self,
-        projection: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
         f: F,
     ) -> impl HandlerAction<Agent, Completion = U> + Send + 'a
     where
@@ -212,18 +223,18 @@ impl<Agent: 'static> HandlerContext<Agent> {
         B: 'static,
         F: FnOnce(&B) -> U + Send + 'a,
     {
-        Item::with_value_handler::<Item, Agent, F, B, U>(projection, f)
+        Item::with_value_handler::<Item, Agent, F, B, U>(item, f)
     }
 
     /// Create an event handler that will update an entry in a map lane or store of the agent.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map lane.
+    /// * `item` - Projection to the map lane or store.
     /// * `key - The key to update.
     /// * `value` - The new value.
     pub fn update<Item, K, V>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
         key: K,
         value: V,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
@@ -232,18 +243,46 @@ impl<Agent: 'static> HandlerContext<Agent> {
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + 'static,
     {
-        Item::update_handler::<Agent>(lane, key, value)
+        Item::update_handler::<Agent>(item, key, value)
     }
 
-    /// Create an event handler that will transform the value in an entry of a map lane or store of the agent.
+    /// Create an event handler that will inspect an entry in the map and produce a new value from it.
+    /// This differs from using [`Self::get_entry`] in that it does not require that a clone be made of the existing value.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map lane.
+    /// * `item` - Projection to the map lane or store.
     /// * `key - The key to update.
     /// * `f` - A function to apple to the entry in the map.
+    pub fn with_entry<'a, Item, K, V, F, B, U>(
+        &self,
+        item: fn(&Agent) -> &Item,
+        key: K,
+        f: F
+    ) -> impl HandlerAction<Agent, Completion = U> + Send + 'a
+    where
+        Agent: 'static, 
+        Item: InspectableMapLikeItem<K, V> + 'static,
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Borrow<B> + 'static,
+        B: ?Sized + 'static,
+        F: FnOnce(Option<&B>) -> U + Send + 'a,
+    {
+        Item::with_entry_handler::<Agent, F, B, U>(item, key, f)
+    }
+
+
+    /// Create an event handler that will transform the value in an entry of a map lane or store of the agent.
+    /// If map contains an entry with that key, it will be updated (or removed) based on the result of the calling
+    /// the closure on it. If the map does not contain an entry with that key, the closure will be called with [`None`]
+    /// and an entry will be inserted if it returns a value.
+    ///
+    /// #Arguments
+    /// * `item` - Projection to the map lane.
+    /// * `key - The key to update.
+    /// * `f` - A closure to apply to the entry in the map to produce the replacement.
     pub fn transform_entry<'a, Item, K, V, F>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
         key: K,
         f: F,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'a
@@ -254,17 +293,17 @@ impl<Agent: 'static> HandlerContext<Agent> {
         V: 'static,
         F: FnOnce(Option<&V>) -> Option<V> + Send + 'a,
     {
-        Item::transform_entry_handler::<Agent, F>(lane, key, f)
+        Item::transform_entry_handler::<Agent, F>(item, key, f)
     }
 
     /// Create an event handler that will remove an entry from a map lane or store of the agent.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map lane.
+    /// * `item` - Projection to the map lane or store.
     /// * `key - The key to remove.
     pub fn remove<Item, K, V>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
         key: K,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
@@ -272,33 +311,33 @@ impl<Agent: 'static> HandlerContext<Agent> {
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + 'static,
     {
-        Item::remove_handler::<Agent>(lane, key)
+        Item::remove_handler::<Agent>(item, key)
     }
 
     /// Create an event handler that will clear a map lane or store of the agent.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map lane.
+    /// * `item` - Projection to the map lane or store.
     pub fn clear<Item, K, V>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
         Item: MutableMapLikeItem<K, V>,
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + 'static,
     {
-        Item::clear_handler::<Agent>(lane)
+        Item::clear_handler::<Agent>(item)
     }
 
     /// Create an event handler that replaces the entire contents of a map lane or store.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map lane.
+    /// * `item` - Projection to the map lane or store.
     /// * `entries` - The new entries for the lane.
     pub fn replace_map<Item, K, V, I>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
         entries: I,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
@@ -311,19 +350,19 @@ impl<Agent: 'static> HandlerContext<Agent> {
         let context = *self;
         let insertions = entries
             .into_iter()
-            .map(move |(k, v)| context.update(lane, k, v));
-        self.clear(lane).followed_by(Sequentially::new(insertions))
+            .map(move |(k, v)| context.update(item, k, v));
+        self.clear(item).followed_by(Sequentially::new(insertions))
     }
 
     /// Create an event handler that will attempt to get an entry from a map-like item of the agent.
     /// This includes map lanes and stores and join lanes.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map lane.
+    /// * `item` - Projection to the map-like item.
     /// * `key - The key to fetch.
     pub fn get_entry<Item, K, V>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
         key: K,
     ) -> impl HandlerAction<Agent, Completion = Option<V>> + Send + 'static
     where
@@ -331,24 +370,24 @@ impl<Agent: 'static> HandlerContext<Agent> {
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + Clone + 'static,
     {
-        Item::get_handler::<Agent>(lane, key)
+        Item::get_handler::<Agent>(item, key)
     }
 
     /// Create an event handler that will attempt to get the entire contents of a map-like item of the
     /// agent. This includes map lanes and stores and join lanes.
     ///
     /// #Arguments
-    /// * `lane` - Projection to the map lane.
+    /// * `item` - Projection to the map-like item.
     pub fn get_map<Item, K, V>(
         &self,
-        lane: fn(&Agent) -> &Item,
+        item: fn(&Agent) -> &Item,
     ) -> impl HandlerAction<Agent, Completion = HashMap<K, V>> + Send + 'static
     where
         Item: MapLikeItem<K, V>,
         K: Send + Clone + Eq + Hash + 'static,
         V: Send + Clone + 'static,
     {
-        Item::get_map_handler::<Agent>(lane)
+        Item::get_map_handler::<Agent>(item)
     }
 
     /// Create an event handler that will send a command to a command lane of the agent.

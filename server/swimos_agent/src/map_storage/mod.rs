@@ -136,16 +136,6 @@ where
         queue.push(MapOperation::Clear);
     }
 
-    pub fn get<B, F, R>(&self, key: &B, f: F) -> R
-    where
-        K: Borrow<B>,
-        B: Hash + Eq,
-        F: FnOnce(Option<&V>) -> R,
-    {
-        let MapStoreInner { content, .. } = self;
-        f(content.get(key))
-    }
-
     pub fn get_map<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&HashMap<K, V>) -> R,
@@ -178,16 +168,16 @@ impl<K, V, Q> MapStoreInner<K, V, Q>
 where
     K: Eq + Hash,
 {
-    pub fn with_entry<F, B, U>(&self, key: K, f: F) -> U
+    pub fn with_entry<B1, B2, F, R>(&self, key: &B1, f: F) -> R
     where
-        B: ?Sized,
-        V: Borrow<B>,
-        F: FnOnce(Option<&B>) -> U,
+        B1: ?Sized,
+        B2: ?Sized,
+        K: Borrow<B1>,
+        V: Borrow<B2>,
+        B1: Hash + Eq,
+        F: FnOnce(Option<&B2>) -> R,
     {
-        let MapStoreInner {
-            content,
-            ..
-        } = self;
-        f(content.get(&key).map(Borrow::borrow))
+        let MapStoreInner { content, .. } = self;
+        f(content.get(key).map(Borrow::borrow))
     }
 }

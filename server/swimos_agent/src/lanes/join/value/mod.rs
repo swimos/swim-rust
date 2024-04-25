@@ -16,6 +16,7 @@ use std::any::{Any, TypeId};
 use std::borrow::Borrow;
 use std::collections::hash_map::Entry;
 use std::hash::Hash;
+use std::marker::PhantomData;
 use std::{cell::RefCell, collections::HashMap};
 
 use bytes::BytesMut;
@@ -28,7 +29,7 @@ use uuid::Uuid;
 use crate::agent_model::downlink::OpenEventDownlinkAction;
 use crate::config::SimpleDownlinkConfig;
 use crate::event_handler::{EventHandler, EventHandlerError, Modification};
-use crate::item::MapLikeItem;
+use crate::item::{InspectableMapLikeItem, MapLikeItem};
 use crate::{
     agent_model::WriteResult,
     event_handler::{ActionContext, HandlerAction, StepResult},
@@ -427,6 +428,53 @@ impl<C, K, V> JoinValueAddDownlink<C, K, V> {
     }
 }
 
+
+pub struct JoinValueLaneWithEntry<C, K, V, F, B: ?Sized> {
+    projection: for<'a> fn(&'a C) -> &'a JoinValueLane<K, V>,
+    key: K,
+    f: Option<F>,
+    _type: PhantomData<fn(&B)>,
+}
+
+impl<C, K, V, F, B: ?Sized> JoinValueLaneWithEntry<C, K, V, F, B> {
+
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a JoinValueLane<K, V>,
+    key: K, f: F) -> Self {
+        JoinValueLaneWithEntry {
+            projection,
+            key,
+            f: Some(f),
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<'a, C, K, V, F, B, U> HandlerAction<C> for JoinValueLaneWithEntry<C, K, V, F, B>
+where
+    K: Eq + Hash + 'static,
+    C: 'a,
+    B: ?Sized + 'static,
+    V: Borrow<B>,
+    F: FnOnce(Option<&B>) -> U + Send + 'a,
+{
+    type Completion = U;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        if let Some(f) = self.f.take() {
+            let item = (self.projection)(context);
+            StepResult::done(item.inner.with_entry(&self.key, f))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+
 impl<K, V> MapLikeItem<K, V> for JoinValueLane<K, V>
 where
     K: Clone + Eq + Hash + Send + 'static,
@@ -446,5 +494,33 @@ where
 
     fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
         JoinValueLaneGetMap::new(projection)
+    }
+}
+
+impl<K, V> InspectableMapLikeItem<K, V> for JoinValueLane<K, V>
+where
+    K: Clone + Eq + Hash + Send + 'static,
+    V: Send + 'static,
+{
+    type WithEntryHandler<'a, C, F, B, U> = JoinValueLaneWithEntry<C, K, V, F, B>
+    where
+        Self: 'static,
+        C: 'a,
+        B: ?Sized + 'static,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U + Send + 'a;
+
+    fn with_entry_handler<'a, C, F, B, U>(
+        projection: fn(&C) -> &Self,
+        key: K,
+        f: F,
+    ) -> Self::WithEntryHandler<'a, C, F, B, U>
+    where
+        Self: 'static,
+        C: 'a,
+        B: ?Sized + 'static,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U + Send + 'a {
+        JoinValueLaneWithEntry::new(projection, key, f)
     }
 }
