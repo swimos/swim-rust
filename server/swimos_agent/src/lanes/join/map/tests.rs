@@ -332,7 +332,8 @@ fn join_map_lane_with_entry_event_handler() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = JoinMapLaneWithEntry::new(TestAgent::LANE, K1, |v: Option<&str>| v.map(str::to_owned));
+    let mut handler =
+        JoinMapLaneWithEntry::new(TestAgent::LANE, K1, |v: Option<&str>| v.map(str::to_owned));
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
@@ -351,7 +352,9 @@ fn join_map_lane_with_entry_event_handler() {
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     ));
 
-    let mut handler = JoinMapLaneWithEntry::new(TestAgent::LANE, ABSENT, |v: Option<&str>| v.map(str::to_owned));
+    let mut handler = JoinMapLaneWithEntry::new(TestAgent::LANE, ABSENT, |v: Option<&str>| {
+        v.map(str::to_owned)
+    });
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),

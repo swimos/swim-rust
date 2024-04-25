@@ -126,7 +126,7 @@ impl Default for TestAgent {
     fn default() -> Self {
         Self {
             store: ValueStore::new(STORE_ID, 0),
-            str_store: ValueStore::new(STR_STORE_ID, "world".to_owned())
+            str_store: ValueStore::new(STR_STORE_ID, "world".to_owned()),
         }
     }
 }

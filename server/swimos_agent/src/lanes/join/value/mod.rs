@@ -436,9 +436,7 @@ pub struct JoinValueLaneWithEntry<C, K, V, F, B: ?Sized> {
 }
 
 impl<C, K, V, F, B: ?Sized> JoinValueLaneWithEntry<C, K, V, F, B> {
-
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a JoinValueLane<K, V>,
-    key: K, f: F) -> Self {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a JoinValueLane<K, V>, key: K, f: F) -> Self {
         JoinValueLaneWithEntry {
             projection,
             key,
@@ -472,7 +470,6 @@ where
         }
     }
 }
-
 
 impl<K, V> MapLikeItem<K, V> for JoinValueLane<K, V>
 where
@@ -519,7 +516,8 @@ where
         C: 'a,
         B: ?Sized + 'static,
         V: Borrow<B>,
-        F: FnOnce(Option<&B>) -> U + Send + 'a {
+        F: FnOnce(Option<&B>) -> U + Send + 'a,
+    {
         JoinValueLaneWithEntry::new(projection, key, f)
     }
 }

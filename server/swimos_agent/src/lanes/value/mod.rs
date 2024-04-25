@@ -274,17 +274,19 @@ impl<C, T> HandlerAction<C> for ValueLaneSync<C, T> {
     }
 }
 
-pub struct ValueLaneWithValue<C, T, F,  B: ?Sized> {
+pub struct ValueLaneWithValue<C, T, F, B: ?Sized> {
     projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
     f: Option<F>,
     _type: PhantomData<fn(&B)>,
 }
 
-impl<C, T, F,  B: ?Sized,> ValueLaneWithValue<C, T, F, B> {
-
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
-    f: F) -> Self {
-        ValueLaneWithValue { projection, f: Some(f), _type: PhantomData }
+impl<C, T, F, B: ?Sized> ValueLaneWithValue<C, T, F, B> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>, f: F) -> Self {
+        ValueLaneWithValue {
+            projection,
+            f: Some(f),
+            _type: PhantomData,
+        }
     }
 }
 
@@ -377,5 +379,4 @@ where
     fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C> {
         ValueLaneSet::new(projection, value)
     }
-
 }

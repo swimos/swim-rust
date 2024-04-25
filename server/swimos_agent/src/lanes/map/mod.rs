@@ -150,7 +150,6 @@ impl<K, V> MapLane<K, V>
 where
     K: Eq + Hash,
 {
-   
     pub fn with_entry<F, B, U>(&self, key: &K, f: F) -> U
     where
         B: ?Sized,
@@ -159,7 +158,6 @@ where
     {
         self.inner.borrow().with_entry(key, f)
     }
-
 }
 
 const INFALLIBLE_SER: &str = "Serializing lane responses to recon should be infallible.";
@@ -670,7 +668,7 @@ where
         B: ?Sized +'static,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
-    
+
     fn with_entry_handler<'a, C, F, B, U>(
         projection: fn(&C) -> &Self,
         key: K,
@@ -679,9 +677,10 @@ where
     where
         Self: 'static,
         C: 'a,
-        B: ?Sized +'static,
+        B: ?Sized + 'static,
         V: Borrow<B>,
-        F: FnOnce(Option<&B>) -> U + Send + 'a {
+        F: FnOnce(Option<&B>) -> U + Send + 'a,
+    {
         MapLaneWithEntry::new(projection, key, f)
     }
 }
@@ -718,13 +717,13 @@ where
     fn clear_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::ClearHandler<C> {
         MapLaneClear::new(projection)
     }
-    
+
     type TransformEntryHandler<'a, C, F> = MapLaneTransformEntry<C, K, V, F>
     where
         Self: 'static,
         C: 'a,
         F: FnOnce(Option<&V>) -> Option<V> + Send + 'a;
-    
+
     fn transform_entry_handler<'a, C, F>(
         projection: fn(&C) -> &Self,
         key: K,
@@ -733,8 +732,8 @@ where
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(Option<&V>) -> Option<V> + Send + 'a {
-            MapLaneTransformEntry::new(projection, key, f)
+        F: FnOnce(Option<&V>) -> Option<V> + Send + 'a,
+    {
+        MapLaneTransformEntry::new(projection, key, f)
     }
-
 }

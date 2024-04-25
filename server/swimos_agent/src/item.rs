@@ -145,5 +145,4 @@ pub trait MutableValueLikeItem<T> {
         C: 'static;
 
     fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C>;
-
 }

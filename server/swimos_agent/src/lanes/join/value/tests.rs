@@ -195,7 +195,8 @@ fn join_value_lane_with_entry_event_handler() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = JoinValueLaneWithEntry::new(TestAgent::LANE, K1, |v: Option<&str>| v.map(str::to_owned));
+    let mut handler =
+        JoinValueLaneWithEntry::new(TestAgent::LANE, K1, |v: Option<&str>| v.map(str::to_owned));
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
@@ -214,7 +215,9 @@ fn join_value_lane_with_entry_event_handler() {
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     ));
 
-    let mut handler = JoinValueLaneWithEntry::new(TestAgent::LANE, ABSENT, |v: Option<&str>| v.map(str::to_owned));
+    let mut handler = JoinValueLaneWithEntry::new(TestAgent::LANE, ABSENT, |v: Option<&str>| {
+        v.map(str::to_owned)
+    });
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),

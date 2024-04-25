@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{borrow::Borrow, cell::{Cell, RefCell}, marker::PhantomData};
+use std::{
+    borrow::Borrow,
+    cell::{Cell, RefCell},
+    marker::PhantomData,
+};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
@@ -272,17 +276,19 @@ impl<C, T> HandlerAction<C> for ValueStoreSet<C, T> {
     }
 }
 
-pub struct ValueStoreWithValue<C, T, F,  B: ?Sized> {
+pub struct ValueStoreWithValue<C, T, F, B: ?Sized> {
     projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
     f: Option<F>,
     _type: PhantomData<fn(&B)>,
 }
 
-impl<C, T, F,  B: ?Sized> ValueStoreWithValue<C, T, F, B> {
-
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
-    f: F) -> Self {
-        ValueStoreWithValue { projection, f: Some(f), _type: PhantomData }
+impl<C, T, F, B: ?Sized> ValueStoreWithValue<C, T, F, B> {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueStore<T>, f: F) -> Self {
+        ValueStoreWithValue {
+            projection,
+            f: Some(f),
+            _type: PhantomData,
+        }
     }
 }
 
@@ -354,5 +360,4 @@ where
     fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C> {
         ValueStoreSet::new(projection, value)
     }
-
 }

@@ -36,7 +36,8 @@ use crate::{
     meta::AgentMetadata,
     stores::{
         map::{
-            MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreTransformEntry, MapStoreUpdate, MapStoreWithEntry
+            MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreTransformEntry,
+            MapStoreUpdate, MapStoreWithEntry,
         },
         MapStore, StoreItem,
     },
@@ -651,7 +652,9 @@ fn map_lane_with_entry_handler_absent() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = MapStoreWithEntry::new(TestAgent::STORE, ABSENT, |maybe_v: Option<&str>| maybe_v.map(str::to_owned));
+    let mut handler = MapStoreWithEntry::new(TestAgent::STORE, ABSENT, |maybe_v: Option<&str>| {
+        maybe_v.map(str::to_owned)
+    });
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
@@ -668,7 +671,9 @@ fn map_lane_with_entry_handler_present() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = MapStoreWithEntry::new(TestAgent::STORE, K1, |maybe_v: Option<&str>| maybe_v.map(str::to_owned));
+    let mut handler = MapStoreWithEntry::new(TestAgent::STORE, K1, |maybe_v: Option<&str>| {
+        maybe_v.map(str::to_owned)
+    });
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),

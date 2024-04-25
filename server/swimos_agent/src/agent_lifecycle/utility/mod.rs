@@ -44,7 +44,7 @@ use crate::event_handler::{
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
 use crate::item::{
-    InspectableMapLikeItem, MapLikeItem, MutableMapLikeItem, MutableValueLikeItem, ValueLikeItem
+    InspectableMapLikeItem, MapLikeItem, MutableMapLikeItem, MutableValueLikeItem, ValueLikeItem,
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::demand::{Cue, DemandLane};
@@ -186,7 +186,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 
     /// Create an event handler that will transform the value of a value lane or store of the agent.
-    /// 
+    ///
     /// #Arguments
     /// * `item` - Projection to the value lane or store.
     /// * `f` - A closure that produces a new value from a reference to the existing value.
@@ -207,7 +207,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that will inspect the value of a value lane or store and generate a result from it.
     /// This differs from using [`Self::get_value`] in that it does not require a clone to be made of the existing value.
-    /// 
+    ///
     /// #Arguments
     /// * `item` - Projection to the value lane or store.
     /// * `f` - A closure that produces a value from a reference to the current value of the item.
@@ -257,10 +257,10 @@ impl<Agent: 'static> HandlerContext<Agent> {
         &self,
         item: fn(&Agent) -> &Item,
         key: K,
-        f: F
+        f: F,
     ) -> impl HandlerAction<Agent, Completion = U> + Send + 'a
     where
-        Agent: 'static, 
+        Agent: 'static,
         Item: InspectableMapLikeItem<K, V> + 'static,
         K: Send + Clone + Eq + Hash + 'static,
         V: Borrow<B> + 'static,
@@ -269,7 +269,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
     {
         Item::with_entry_handler::<Agent, F, B, U>(item, key, f)
     }
-
 
     /// Create an event handler that will transform the value in an entry of a map lane or store of the agent.
     /// If map contains an entry with that key, it will be updated (or removed) based on the result of the calling
@@ -775,7 +774,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
     pub fn stop(&self) -> impl EventHandler<Agent> + Send + 'static {
         HandlerActionExt::<Agent>::discard(Stop)
     }
-
 }
 
 pub struct JoinValueContext<Agent, K, V> {

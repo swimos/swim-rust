@@ -287,7 +287,7 @@ impl Default for TestAgent {
     fn default() -> Self {
         Self {
             lane: ValueLane::new(LANE_ID, 0),
-            str_lane: ValueLane::new(STR_LANE_ID, "hello".to_string())
+            str_lane: ValueLane::new(STR_LANE_ID, "hello".to_string()),
         }
     }
 }
@@ -478,5 +478,4 @@ fn value_lane_with_value_event_handler() {
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     ));
-
 }

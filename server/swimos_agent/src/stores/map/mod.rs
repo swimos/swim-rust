@@ -99,7 +99,6 @@ where
         self.inner.borrow_mut().transform_entry(key, f)
     }
 
-    
     /// Remove an entry from the map.
     pub fn remove(&self, key: &K) {
         self.inner.borrow_mut().remove(key)
@@ -133,7 +132,6 @@ impl<K, V> MapStore<K, V>
 where
     K: Eq + Hash,
 {
-   
     pub fn with_entry<F, B1, B2, U>(&self, key: &B1, f: F) -> U
     where
         B1: ?Sized,
@@ -145,7 +143,6 @@ where
     {
         self.inner.borrow().with_entry(key, f)
     }
-
 }
 
 const INFALLIBLE_SER: &str = "Serializing store responses to recon should be infallible.";
@@ -495,7 +492,6 @@ where
     fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
         MapStoreGetMap::new(projection)
     }
-    
 }
 
 impl<K, V> InspectableMapLikeItem<K, V> for MapStore<K, V>
@@ -510,7 +506,7 @@ where
         B: ?Sized +'static,
         V: Borrow<B>,
         F: FnOnce(Option<&B>) -> U + Send + 'a;
-    
+
     fn with_entry_handler<'a, C, F, B, U>(
         projection: fn(&C) -> &Self,
         key: K,
@@ -519,9 +515,10 @@ where
     where
         Self: 'static,
         C: 'a,
-        B: ?Sized +'static,
+        B: ?Sized + 'static,
         V: Borrow<B>,
-        F: FnOnce(Option<&B>) -> U + Send + 'a {
+        F: FnOnce(Option<&B>) -> U + Send + 'a,
+    {
         MapStoreWithEntry::new(projection, key, f)
     }
 }
@@ -577,5 +574,4 @@ where
     {
         MapStoreTransformEntry::new(projection, key, f)
     }
-
 }

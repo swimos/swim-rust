@@ -17,7 +17,8 @@ use std::{
     borrow::Borrow,
     cell::RefCell,
     collections::{hash_map::Entry, BTreeSet, HashMap, HashSet},
-    hash::Hash, marker::PhantomData,
+    hash::Hash,
+    marker::PhantomData,
 };
 
 use bytes::BytesMut;
@@ -674,9 +675,7 @@ pub struct JoinMapLaneWithEntry<C, L, K, V, F, B: ?Sized> {
 }
 
 impl<C, L, K, V, F, B: ?Sized> JoinMapLaneWithEntry<C, L, K, V, F, B> {
-
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a JoinMapLane<L, K, V>,
-    key: K, f: F) -> Self {
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a JoinMapLane<L, K, V>, key: K, f: F) -> Self {
         JoinMapLaneWithEntry {
             projection,
             key,
@@ -758,7 +757,8 @@ where
         C: 'a,
         B: ?Sized + 'static,
         V: Borrow<B>,
-        F: FnOnce(Option<&B>) -> U + Send + 'a {
+        F: FnOnce(Option<&B>) -> U + Send + 'a,
+    {
         JoinMapLaneWithEntry::new(projection, key, f)
     }
 }
