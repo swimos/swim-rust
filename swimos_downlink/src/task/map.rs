@@ -73,7 +73,7 @@ where
             lifecycle,
             FramedWrite::new(output, DownlinkOperationEncoder),
             actions,
-            ValueNotificationDecoder::default(),
+            MapNotificationDecoder::default(),
         )
         .instrument(info_span!("Downlink IO task.", %path))
         .await
@@ -84,7 +84,7 @@ where
             lifecycle,
             FramedWrite::new(output, DownlinkOperationEncoder),
             actions,
-            MapNotificationDecoder::default(),
+            ValueNotificationDecoder::default(),
         )
         .instrument(info_span!("Downlink IO task.", %path))
         .await
