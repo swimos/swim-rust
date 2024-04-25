@@ -428,7 +428,6 @@ impl<C, K, V> JoinValueAddDownlink<C, K, V> {
     }
 }
 
-
 pub struct JoinValueLaneWithEntry<C, K, V, F, B: ?Sized> {
     projection: for<'a> fn(&'a C) -> &'a JoinValueLane<K, V>,
     key: K,
