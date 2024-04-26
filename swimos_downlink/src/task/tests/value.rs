@@ -24,7 +24,7 @@ use swimos_api::{
 use swimos_utilities::non_zero_usize;
 use tokio::sync::mpsc;
 
-use super::run_downlink_task;
+use super::run_value_downlink_task;
 use crate::model::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
 use crate::model::ValueDownlinkSet;
 use crate::{DownlinkTask, ValueDownlinkModel};
@@ -85,12 +85,14 @@ async fn link_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
             let _reader = reader;
-            writer.send_value::<i32>(DownlinkNotification::Linked).await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Linked)
+                .await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
 
             event_rx
@@ -114,13 +116,17 @@ async fn invalid_sync_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
             let _reader = reader;
-            writer.send_value::<i32>(DownlinkNotification::Linked).await;
-            writer.send_value::<i32>(DownlinkNotification::Synced).await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Linked)
+                .await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Synced)
+                .await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
         },
     )
@@ -142,17 +148,21 @@ async fn sync_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
             let _reader = reader;
 
-            writer.send_value::<i32>(DownlinkNotification::Linked).await;
             writer
-                .send_value::<i32>(DownlinkNotification::Event { body: 5 })
+                .send_scalar_value::<i32>(DownlinkNotification::Linked)
                 .await;
-            writer.send_value::<i32>(DownlinkNotification::Synced).await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Event { body: 5 })
+                .await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Synced)
+                .await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             expect_event(&mut event_rx, TestMessage::Synced(5)).await;
             event_rx
@@ -176,17 +186,19 @@ async fn report_events_before_sync() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
             let _reader = reader;
-            writer.send_value::<i32>(DownlinkNotification::Linked).await;
             writer
-                .send_value::<i32>(DownlinkNotification::Event { body: 5 })
+                .send_scalar_value::<i32>(DownlinkNotification::Linked)
                 .await;
             writer
-                .send_value::<i32>(DownlinkNotification::Event { body: 67 })
+                .send_scalar_value::<i32>(DownlinkNotification::Event { body: 5 })
+                .await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Event { body: 67 })
                 .await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             expect_event(&mut event_rx, TestMessage::Event(5)).await;
@@ -214,18 +226,22 @@ async fn report_events_after_sync() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
             let _reader = reader;
-            writer.send_value::<i32>(DownlinkNotification::Linked).await;
             writer
-                .send_value::<i32>(DownlinkNotification::Event { body: 5 })
+                .send_scalar_value::<i32>(DownlinkNotification::Linked)
                 .await;
-            writer.send_value::<i32>(DownlinkNotification::Synced).await;
             writer
-                .send_value::<i32>(DownlinkNotification::Event { body: 67 })
+                .send_scalar_value::<i32>(DownlinkNotification::Event { body: 5 })
+                .await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Synced)
+                .await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Event { body: 67 })
                 .await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             expect_event(&mut event_rx, TestMessage::Synced(5)).await;
@@ -252,19 +268,23 @@ async fn terminate_after_unlinked() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
-            writer.send_value::<i32>(DownlinkNotification::Linked).await;
             writer
-                .send_value::<i32>(DownlinkNotification::Event { body: 5 })
+                .send_scalar_value::<i32>(DownlinkNotification::Linked)
                 .await;
-            writer.send_value::<i32>(DownlinkNotification::Synced).await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Event { body: 5 })
+                .await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Synced)
+                .await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             expect_event(&mut event_rx, TestMessage::Synced(5)).await;
             writer
-                .send_value::<i32>(DownlinkNotification::Unlinked)
+                .send_scalar_value::<i32>(DownlinkNotification::Unlinked)
                 .await;
             expect_event(&mut event_rx, TestMessage::Unlinked).await;
             (writer, reader, event_rx)
@@ -294,13 +314,15 @@ async fn terminate_after_corrupt_frame() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
-            writer.send_value::<i32>(DownlinkNotification::Linked).await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Linked)
+                .await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
-            writer.send_corrupted_frame().await;
+            writer.send_corrupted_scalar_frame().await;
             (writer, reader, event_rx)
         },
     )
@@ -326,21 +348,29 @@ async fn unlink_discards_value() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
             let _reader = reader;
-            writer.send_value::<i32>(DownlinkNotification::Linked).await;
             writer
-                .send_value::<i32>(DownlinkNotification::Event { body: 5 })
+                .send_scalar_value::<i32>(DownlinkNotification::Linked)
                 .await;
-            writer.send_value::<i32>(DownlinkNotification::Synced).await;
             writer
-                .send_value::<i32>(DownlinkNotification::Unlinked)
+                .send_scalar_value::<i32>(DownlinkNotification::Event { body: 5 })
                 .await;
-            writer.send_value::<i32>(DownlinkNotification::Linked).await;
-            writer.send_value::<i32>(DownlinkNotification::Synced).await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Synced)
+                .await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Unlinked)
+                .await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Linked)
+                .await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Synced)
+                .await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             expect_event(&mut event_rx, TestMessage::Synced(5)).await;
             expect_event(&mut event_rx, TestMessage::Unlinked).await;
@@ -364,24 +394,32 @@ async fn relink_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
             let _reader = reader;
-            writer.send_value::<i32>(DownlinkNotification::Linked).await;
             writer
-                .send_value::<i32>(DownlinkNotification::Event { body: 5 })
+                .send_scalar_value::<i32>(DownlinkNotification::Linked)
                 .await;
-            writer.send_value::<i32>(DownlinkNotification::Synced).await;
             writer
-                .send_value::<i32>(DownlinkNotification::Unlinked)
+                .send_scalar_value::<i32>(DownlinkNotification::Event { body: 5 })
                 .await;
-            writer.send_value::<i32>(DownlinkNotification::Linked).await;
             writer
-                .send_value::<i32>(DownlinkNotification::Event { body: 7 })
+                .send_scalar_value::<i32>(DownlinkNotification::Synced)
                 .await;
-            writer.send_value::<i32>(DownlinkNotification::Synced).await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Unlinked)
+                .await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Linked)
+                .await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Event { body: 7 })
+                .await;
+            writer
+                .send_scalar_value::<i32>(DownlinkNotification::Synced)
+                .await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             expect_event(&mut event_rx, TestMessage::Synced(5)).await;
             expect_event(&mut event_rx, TestMessage::Unlinked).await;
@@ -408,7 +446,7 @@ async fn send_on_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |writer, mut reader| async move {

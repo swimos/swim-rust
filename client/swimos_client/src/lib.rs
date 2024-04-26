@@ -446,7 +446,7 @@ impl<'h, L> MapDownlinkBuilder<'h, L> {
         } = self;
 
         let (tx, rx) = mpsc::channel(downlink_config.buffer_size.get());
-        let task = DownlinkTask::new(MapDownlinkModel::new(rx, lifecycle, true));
+        let task = DownlinkTask::new(MapDownlinkModel::new(rx, lifecycle));
         let stop_rx = handle
             .inner
             .run_downlink(path, runtime_config, downlink_config, options, task)

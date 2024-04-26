@@ -64,20 +64,14 @@ impl<T, LC> EventDownlinkModel<T, LC> {
 pub struct MapDownlinkModel<K, V, LC> {
     pub actions: mpsc::Receiver<MapMessage<K, V>>,
     pub lifecycle: LC,
-    pub remote: bool,
 }
 
 impl<K, V, LC> MapDownlinkModel<K, V, LC> {
     pub fn new(
         actions: mpsc::Receiver<MapMessage<K, V>>,
         lifecycle: LC,
-        remote: bool,
     ) -> MapDownlinkModel<K, V, LC> {
-        MapDownlinkModel {
-            actions,
-            lifecycle,
-            remote,
-        }
+        MapDownlinkModel { actions, lifecycle }
     }
 }
 
@@ -105,9 +99,8 @@ pub fn event_downlink<T>() -> DefaultEventDownlinkModel<T> {
 
 pub fn map_downlink<K, V>(
     actions: mpsc::Receiver<MapMessage<K, V>>,
-    remote: bool,
 ) -> DefaultMapDownlinkModel<K, V> {
-    MapDownlinkModel::new(actions, Default::default(), remote)
+    MapDownlinkModel::new(actions, Default::default())
 }
 
 #[derive(Debug)]
@@ -220,16 +213,11 @@ where
         F: Fn(LC) -> LC2,
         LC2: MapDownlinkLifecycle<K, V>,
     {
-        let MapDownlinkModel {
-            actions,
-            lifecycle,
-            remote,
-        } = self;
+        let MapDownlinkModel { actions, lifecycle } = self;
 
         MapDownlinkModel {
             actions,
             lifecycle: f(lifecycle),
-            remote,
         }
     }
 }
