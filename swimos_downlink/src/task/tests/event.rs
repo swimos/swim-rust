@@ -74,9 +74,7 @@ async fn link_downlink() {
         config,
         |mut writer, reader| async move {
             let _reader = reader;
-            writer
-                .send_value::<i32>(DownlinkNotification::Linked)
-                .await;
+            writer.send_value::<i32>(DownlinkNotification::Linked).await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             event_rx
         },
@@ -106,9 +104,7 @@ async fn message_before_linked() {
             writer
                 .send_value::<i32>(DownlinkNotification::Event { body: 9 })
                 .await;
-            writer
-                .send_value::<i32>(DownlinkNotification::Linked)
-                .await;
+            writer.send_value::<i32>(DownlinkNotification::Linked).await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             event_rx
         },
@@ -135,9 +131,7 @@ async fn message_after_linked() {
         config,
         |mut writer, reader| async move {
             let _reader = reader;
-            writer
-                .send_value::<i32>(DownlinkNotification::Linked)
-                .await;
+            writer.send_value::<i32>(DownlinkNotification::Linked).await;
             writer
                 .send_value::<i32>(DownlinkNotification::Event { body: 9 })
                 .await;
@@ -167,9 +161,7 @@ async fn terminate_after_unlinked() {
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
-            writer
-                .send_value::<i32>(DownlinkNotification::Linked)
-                .await;
+            writer.send_value::<i32>(DownlinkNotification::Linked).await;
             writer
                 .send_value::<i32>(DownlinkNotification::Event { body: 9 })
                 .await;
@@ -209,9 +201,7 @@ async fn terminate_after_corrupt_frame() {
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
-            writer
-                .send_value::<i32>(DownlinkNotification::Linked)
-                .await;
+            writer.send_value::<i32>(DownlinkNotification::Linked).await;
             expect_event(&mut event_rx, TestMessage::Linked).await;
             writer.send_corrupted_frame().await;
             (writer, reader, event_rx)
@@ -243,9 +233,7 @@ async fn relink_downlink() {
         config,
         |mut writer, reader| async move {
             let _reader = reader;
-            writer
-                .send_value::<i32>(DownlinkNotification::Linked)
-                .await;
+            writer.send_value::<i32>(DownlinkNotification::Linked).await;
             writer
                 .send_value::<i32>(DownlinkNotification::Event { body: 9 })
                 .await;
@@ -255,9 +243,7 @@ async fn relink_downlink() {
             writer
                 .send_value::<i32>(DownlinkNotification::Event { body: 10 })
                 .await;
-            writer
-                .send_value::<i32>(DownlinkNotification::Linked)
-                .await;
+            writer.send_value::<i32>(DownlinkNotification::Linked).await;
             writer
                 .send_value::<i32>(DownlinkNotification::Event { body: 11 })
                 .await;
