@@ -27,7 +27,7 @@ use crate::agent_model::WriteResult;
 use crate::event_handler::{ActionContext, HandlerAction, Modification, StepResult};
 use crate::event_queue::EventQueue;
 use crate::item::{AgentItem, InspectableMapLikeItem, MapItem, MapLikeItem, MutableMapLikeItem};
-use crate::map_storage::{MapStoreInner, WithEntryResult};
+use crate::map_storage::{MapStoreInner, TransformEntryResult};
 use crate::meta::AgentMetadata;
 
 use super::StoreItem;
@@ -92,7 +92,7 @@ where
     }
 
     /// Transform the value associated with a key.
-    pub fn transform_entry<F>(&self, key: K, f: F) -> WithEntryResult
+    pub fn transform_entry<F>(&self, key: K, f: F) -> TransformEntryResult
     where
         F: FnOnce(Option<&V>) -> Option<V>,
     {
@@ -413,7 +413,10 @@ where
         } = self;
         if let Some((key, f)) = key_and_f.take() {
             let store = projection(context);
-            if matches!(store.transform_entry(key, f), WithEntryResult::NoChange) {
+            if matches!(
+                store.transform_entry(key, f),
+                TransformEntryResult::NoChange
+            ) {
                 StepResult::done(())
             } else {
                 StepResult::Complete {
@@ -427,6 +430,8 @@ where
     }
 }
 
+/// A [`HandlerAction`] that will produce a value by applying a closure to a reference to
+/// and entry in the store.
 pub struct MapStoreWithEntry<C, K, V, F, B: ?Sized> {
     projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
     key_and_f: Option<(K, F)>,
@@ -434,6 +439,10 @@ pub struct MapStoreWithEntry<C, K, V, F, B: ?Sized> {
 }
 
 impl<C, K, V, F, B: ?Sized> MapStoreWithEntry<C, K, V, F, B> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the store.
+    /// * `key` - Key of the entry.
+    /// * `f` - The closure to apply to the entry.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>, key: K, f: F) -> Self {
         MapStoreWithEntry {
             projection,

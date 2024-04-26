@@ -274,6 +274,7 @@ impl<C, T> HandlerAction<C> for ValueLaneSync<C, T> {
     }
 }
 
+/// An [`HandlerAction`] that will produce a value from a reference to the contents of the lane.
 pub struct ValueLaneWithValue<C, T, F, B: ?Sized> {
     projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
     f: Option<F>,
@@ -281,6 +282,9 @@ pub struct ValueLaneWithValue<C, T, F, B: ?Sized> {
 }
 
 impl<C, T, F, B: ?Sized> ValueLaneWithValue<C, T, F, B> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the lane.
+    /// * `f` - Closure to apply to the value of the lane.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>, f: F) -> Self {
         ValueLaneWithValue {
             projection,

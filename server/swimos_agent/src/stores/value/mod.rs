@@ -276,6 +276,7 @@ impl<C, T> HandlerAction<C> for ValueStoreSet<C, T> {
     }
 }
 
+/// An [`HandlerAction`] that will produce a value from a reference to the contents of the store.
 pub struct ValueStoreWithValue<C, T, F, B: ?Sized> {
     projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
     f: Option<F>,
@@ -283,6 +284,9 @@ pub struct ValueStoreWithValue<C, T, F, B: ?Sized> {
 }
 
 impl<C, T, F, B: ?Sized> ValueStoreWithValue<C, T, F, B> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the store.
+    /// * `f` - Closure to apply to the value of the store.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueStore<T>, f: F) -> Self {
         ValueStoreWithValue {
             projection,

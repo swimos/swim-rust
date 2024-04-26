@@ -52,7 +52,7 @@ impl<K, V, Q: Default> MapStoreInner<K, V, Q> {
     }
 }
 
-pub enum WithEntryResult {
+pub enum TransformEntryResult {
     NoChange,
     Update,
     Remove,
@@ -78,7 +78,7 @@ where
         queue.push(MapOperation::Update { key, value: () });
     }
 
-    pub fn transform_entry<F>(&mut self, key: K, f: F) -> WithEntryResult
+    pub fn transform_entry<F>(&mut self, key: K, f: F) -> TransformEntryResult
     where
         F: FnOnce(Option<&V>) -> Option<V>,
     {
@@ -93,12 +93,12 @@ where
                     content.insert(key.clone(), v2);
                     *previous = Some(MapLaneEvent::Update(key.clone(), Some(v)));
                     queue.push(MapOperation::Update { key, value: () });
-                    WithEntryResult::Update
+                    TransformEntryResult::Update
                 }
                 _ => {
                     *previous = Some(MapLaneEvent::Remove(key.clone(), v));
                     queue.push(MapOperation::Remove { key: key.clone() });
-                    WithEntryResult::Remove
+                    TransformEntryResult::Remove
                 }
             },
             _ => match f(None) {
@@ -106,9 +106,9 @@ where
                     content.insert(key.clone(), v2);
                     *previous = Some(MapLaneEvent::Update(key.clone(), None));
                     queue.push(MapOperation::Update { key, value: () });
-                    WithEntryResult::Update
+                    TransformEntryResult::Update
                 }
-                _ => WithEntryResult::NoChange,
+                _ => TransformEntryResult::NoChange,
             },
         }
     }

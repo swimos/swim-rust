@@ -35,7 +35,7 @@ use crate::{
         Modification, StepResult,
     },
     item::{AgentItem, InspectableMapLikeItem, MapItem, MapLikeItem, MutableMapLikeItem},
-    map_storage::{MapStoreInner, WithEntryResult},
+    map_storage::{MapStoreInner, TransformEntryResult},
     meta::AgentMetadata,
 };
 
@@ -104,7 +104,7 @@ where
     }
 
     /// Transform the value associated with a key.
-    pub fn transform_entry<F>(&self, key: K, f: F) -> WithEntryResult
+    pub fn transform_entry<F>(&self, key: K, f: F) -> TransformEntryResult
     where
         F: FnOnce(Option<&V>) -> Option<V>,
     {
@@ -394,6 +394,8 @@ where
     }
 }
 
+/// A [`HandlerAction`] that will produce a value by applying a closure to a reference to
+/// and entry in the lane.
 pub struct MapLaneWithEntry<C, K, V, F, B: ?Sized> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     key_and_f: Option<(K, F)>,
@@ -401,6 +403,10 @@ pub struct MapLaneWithEntry<C, K, V, F, B: ?Sized> {
 }
 
 impl<C, K, V, F, B: ?Sized> MapLaneWithEntry<C, K, V, F, B> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the lane.
+    /// * `key` - Key of the entry.
+    /// * `f` - The closure to apply to the entry.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K, f: F) -> Self {
         MapLaneWithEntry {
             projection,
@@ -620,7 +626,7 @@ where
         } = self;
         if let Some((key, f)) = key_and_f.take() {
             let lane = projection(context);
-            if matches!(lane.transform_entry(key, f), WithEntryResult::NoChange) {
+            if matches!(lane.transform_entry(key, f), TransformEntryResult::NoChange) {
                 StepResult::done(())
             } else {
                 StepResult::Complete {

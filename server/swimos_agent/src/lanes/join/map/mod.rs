@@ -667,6 +667,8 @@ where
     }
 }
 
+/// A [`HandlerAction`] that will produce a value by applying a closure to a reference to
+/// and entry in the lane.
 pub struct JoinMapLaneWithEntry<C, L, K, V, F, B: ?Sized> {
     projection: for<'a> fn(&'a C) -> &'a JoinMapLane<L, K, V>,
     key: K,
@@ -675,6 +677,10 @@ pub struct JoinMapLaneWithEntry<C, L, K, V, F, B: ?Sized> {
 }
 
 impl<C, L, K, V, F, B: ?Sized> JoinMapLaneWithEntry<C, L, K, V, F, B> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the lane.
+    /// * `key` - Key of the entry.
+    /// * `f` - The closure to apply to the entry.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a JoinMapLane<L, K, V>, key: K, f: F) -> Self {
         JoinMapLaneWithEntry {
             projection,
