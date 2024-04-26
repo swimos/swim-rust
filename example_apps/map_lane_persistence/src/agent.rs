@@ -24,7 +24,7 @@ use swimos::agent::{
 #[projections]
 pub struct ExampleAgent {
     map: MapLane<String, i32>,
-    #[lane(transient)]
+    #[item(transient)]
     temporary: MapLane<String, i32>,
     stop: CommandLane<()>,
 }

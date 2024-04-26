@@ -27,7 +27,7 @@ use crate::model::Instruction;
 #[projections]
 pub struct ExampleAgent {
     value: ValueStore<i32>,
-    #[lane(transient)]
+    #[item(transient)]
     temporary: ValueStore<i32>,
     instructions: CommandLane<Instruction>,
 }
