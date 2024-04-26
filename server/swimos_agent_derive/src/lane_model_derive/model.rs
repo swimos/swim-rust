@@ -356,7 +356,7 @@ const SUPPLY_LANE_NAME: &str = "SupplyLane";
 const HTTP_LANE_NAME: &str = "HttpLane";
 const SIMPLE_HTTP_LANE_NAME: &str = "SimpleHttpLane";
 
-const LANE_TAG: &str = "lane";
+const ITEM_TAG: &str = "item";
 
 fn extract_lane_model(field: &Field) -> Validation<ItemModel<'_>, Errors<syn::Error>> {
     if let (Some(fld_name), Type::Path(TypePath { qself: None, path })) = (&field.ident, &field.ty)
@@ -364,7 +364,7 @@ fn extract_lane_model(field: &Field) -> Validation<ItemModel<'_>, Errors<syn::Er
         if let Some(PathSegment { ident, arguments }) = path.segments.last() {
             let type_name = ident.to_string();
             let (item_attrs, errors) =
-                consume_attributes(LANE_TAG, &field.attrs, make_item_attr_consumer());
+                consume_attributes(ITEM_TAG, &field.attrs, make_item_attr_consumer());
             let modifiers = Validation::Validated(item_attrs, Errors::from(errors))
                 .and_then(|item_attrs| combine_item_attrs(field, item_attrs));
 
