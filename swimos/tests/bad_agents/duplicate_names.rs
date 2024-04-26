@@ -18,7 +18,7 @@ use swimos::agent::AgentLaneModel;
 #[derive(AgentLaneModel)]
 #[allow(non_snake_case)]
 pub struct RenameConvention {
-    #[lane(convention = "camel")]
+    #[item(convention = "camel")]
     first_lane: ValueLane<i32>,
     firstLane: ValueLane<i32>,
 }
