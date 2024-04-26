@@ -3,7 +3,7 @@ error: Agent item names must be unique. Duplicated names: [firstLane]
    |
 19 | / #[allow(non_snake_case)]
 20 | | pub struct RenameConvention {
-21 | |     #[lane(convention = "camel")]
+21 | |     #[item(convention = "camel")]
 22 | |     first_lane: ValueLane<i32>,
 23 | |     firstLane: ValueLane<i32>,
 24 | | }

@@ -23,7 +23,7 @@ use swimos::agent::{
 #[projections]
 pub struct ExampleAgent {
     value: ValueLane<i32>,
-    #[lane(transient)]
+    #[item(transient)]
     temporary: ValueLane<i32>,
     stop: CommandLane<()>,
 }
