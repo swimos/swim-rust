@@ -653,7 +653,13 @@ where
                     trace!("Entering Synced state.");
                     dl_state = ReadTaskDlState::Synced;
                     if is_active {
-                        if I::SINGLE_FRAME_STATE {
+                        // Current will be empty if we're communicating with a Supply Lane as no
+                        // event envelope will have been sent. Therefore, we can't use
+                        // `sync_current` as it will send an event notification with an empty body
+                        // and cause the downlink's runtime task envelope decoder will potentially
+                        // fail due to reading an extant. Therefore, delegate the operation to
+                        // `sync_only` which will not send an event notification.
+                        if I::SINGLE_FRAME_STATE && !current.is_empty() {
                             sync_current(&mut awaiting_synced, &mut registered, &current).await;
                         } else {
                             sync_only(&mut awaiting_synced, &mut registered).await;
