@@ -32,7 +32,7 @@ fn default_root() -> syn::Path {
 
 const AGENT_TAG: &str = "agent";
 
-#[proc_macro_derive(AgentLaneModel, attributes(agent, lane))]
+#[proc_macro_derive(AgentLaneModel, attributes(agent, item))]
 pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let (item_attrs, errors) =
