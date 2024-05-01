@@ -24,7 +24,7 @@ use swimos_api::{
 use swimos_utilities::non_zero_usize;
 use tokio::sync::mpsc;
 
-use super::run_downlink_task;
+use super::run_value_downlink_task;
 use crate::model::lifecycle::{BasicValueDownlinkLifecycle, ValueDownlinkLifecycle};
 use crate::model::ValueDownlinkSet;
 use crate::{DownlinkTask, ValueDownlinkModel};
@@ -85,7 +85,7 @@ async fn link_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -114,7 +114,7 @@ async fn invalid_sync_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -142,7 +142,7 @@ async fn sync_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -176,7 +176,7 @@ async fn report_events_before_sync() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -214,7 +214,7 @@ async fn report_events_after_sync() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -252,7 +252,7 @@ async fn terminate_after_unlinked() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -294,7 +294,7 @@ async fn terminate_after_corrupt_frame() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -326,7 +326,7 @@ async fn unlink_discards_value() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -364,7 +364,7 @@ async fn relink_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |mut writer, reader| async move {
@@ -408,7 +408,7 @@ async fn send_on_downlink() {
         buffer_size: DEFAULT_BUFFER_SIZE,
     };
 
-    let result = run_downlink_task(
+    let result = run_value_downlink_task(
         DownlinkTask::new(model),
         config,
         |writer, mut reader| async move {

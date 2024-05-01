@@ -17,6 +17,9 @@ use std::num::NonZeroUsize;
 
 use futures::future::join;
 use futures::{SinkExt, StreamExt};
+use tokio::time::{timeout, Duration};
+use tokio_util::codec::{FramedRead, FramedWrite};
+
 use swimos_api::{
     downlink::{Downlink, DownlinkConfig},
     error::DownlinkTaskError,
@@ -34,9 +37,6 @@ use swimos_utilities::{
     non_zero_usize,
 };
 
-use tokio::time::{timeout, Duration};
-use tokio_util::codec::{FramedRead, FramedWrite};
-
 mod event;
 mod map;
 mod value;
@@ -44,13 +44,14 @@ mod value;
 const CHANNEL_SIZE: NonZeroUsize = non_zero_usize!(1024);
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 
-struct TestWriter(FramedWrite<ByteWriter, DownlinkNotificationEncoder>);
+struct TestValueWriter(FramedWrite<ByteWriter, DownlinkNotificationEncoder>);
 
-impl TestWriter {
+impl TestValueWriter {
     fn new(tx: ByteWriter) -> Self {
-        TestWriter(FramedWrite::new(tx, DownlinkNotificationEncoder))
+        TestValueWriter(FramedWrite::new(tx, DownlinkNotificationEncoder))
     }
 }
+
 struct TestReader(FramedRead<ByteReader, DownlinkOperationDecoder>);
 
 impl TestReader {
@@ -94,12 +95,12 @@ impl TestReader {
 
 const BAD_UTF8: &[u8] = &[0xf0, 0x28, 0x8c, 0x28, 0x00, 0x00, 0x00];
 
-impl TestWriter {
+impl TestValueWriter {
     async fn send_value<T>(&mut self, notification: DownlinkNotification<T>)
     where
         T: StructuralWritable,
     {
-        let TestWriter(writer) = self;
+        let TestValueWriter(writer) = self;
         let raw = match notification {
             DownlinkNotification::Linked => DownlinkNotification::Linked,
             DownlinkNotification::Synced => DownlinkNotification::Synced,
@@ -113,21 +114,36 @@ impl TestWriter {
     }
 
     async fn send_corrupted_frame(&mut self) {
-        let TestWriter(writer) = self;
+        let TestValueWriter(writer) = self;
         let bad = DownlinkNotification::Event { body: BAD_UTF8 };
         assert!(writer.send(bad).await.is_ok());
     }
 }
 
-async fn run_downlink_task<D, F, Fut>(
+async fn run_value_downlink_task<D, F, Fut>(
     task: D,
     config: DownlinkConfig,
     test_block: F,
 ) -> Result<Fut::Output, DownlinkTaskError>
 where
     D: Downlink,
-    F: FnOnce(TestWriter, TestReader) -> Fut,
+    F: FnOnce(TestValueWriter, TestReader) -> Fut,
     Fut: Future,
+{
+    run_downlink_task(task, config, test_block, TestValueWriter::new).await
+}
+
+async fn run_downlink_task<D, F, Fut, Fac, W>(
+    task: D,
+    config: DownlinkConfig,
+    test_block: F,
+    make_writer: Fac,
+) -> Result<Fut::Output, DownlinkTaskError>
+where
+    D: Downlink,
+    F: FnOnce(W, TestReader) -> Fut,
+    Fut: Future,
+    Fac: FnOnce(ByteWriter) -> W,
 {
     let path = Address::text(None, "node", "lane");
 
@@ -135,7 +151,7 @@ where
     let (out_tx, out_rx) = byte_channel(CHANNEL_SIZE);
 
     let dl_task = task.run(path, config, in_rx, out_tx);
-    let test_body = test_block(TestWriter::new(in_tx), TestReader::new(out_rx));
+    let test_body = test_block(make_writer(in_tx), TestReader::new(out_rx));
     let (result, out) = timeout(TEST_TIMEOUT, join(dl_task, test_body))
         .await
         .expect("Test timed out.");
