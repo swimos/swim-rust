@@ -384,7 +384,7 @@ async fn shutdowm_after_attached() {
 }
 
 #[tokio::test]
-async fn shutdowm_after_corrupted_frame() {
+async fn shutdown_after_corrupted_frame() {
     let (events, result) = run_test(DownlinkOptions::empty(), |context| async move {
         let TestContext {
             mut tx,
@@ -1107,6 +1107,58 @@ async fn sync_no_event() {
 
             tx.sync().await;
 
+            expect_event(
+                events.next().await,
+                State::Linked,
+                DownlinkNotification::Synced,
+            );
+
+            stop.trigger();
+            events.collect::<Vec<_>>().await
+        },
+    )
+    .await;
+    assert!(result.is_ok());
+    assert_eq!(
+        events,
+        vec![(State::Synced, DownlinkNotification::Unlinked)]
+    );
+}
+
+#[tokio::test]
+async fn sync_empty_event() {
+    let (events, result) = run_test(
+        DownlinkOptions::SYNC,
+        |TestContext {
+             mut tx,
+             mut rx,
+             start_client,
+             stop,
+             mut events,
+             ..
+         }| async move {
+            expect_message(rx.recv().await, Operation::Link);
+
+            tx.link().await;
+
+            start_client.trigger();
+
+            expect_event(
+                events.next().await,
+                State::Unlinked,
+                DownlinkNotification::Linked,
+            );
+            expect_message(rx.recv().await, Operation::Sync);
+
+            let content = Message::CurrentValue(Text::new(""));
+            tx.update(content.clone()).await;
+            tx.sync().await;
+
+            expect_event(
+                events.next().await,
+                State::Linked,
+                DownlinkNotification::Event { body: content },
+            );
             expect_event(
                 events.next().await,
                 State::Linked,
