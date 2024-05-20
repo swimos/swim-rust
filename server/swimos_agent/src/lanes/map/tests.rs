@@ -31,9 +31,7 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{
-        EventHandlerError, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
-    },
+    event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
     item::MapItem,
     lanes::{
         map::{
@@ -63,14 +61,6 @@ fn init() -> HashMap<i32, Text> {
         .into_iter()
         .map(|(k, v)| (k, Text::new(v)))
         .collect()
-}
-
-struct NoSpawn;
-
-impl<Context> Spawner<Context> for NoSpawn {
-    fn spawn_suspend(&self, _: HandlerFuture<Context>) {
-        panic!("No suspended futures expected.");
-    }
 }
 
 #[test]
