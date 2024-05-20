@@ -25,8 +25,8 @@ use tokio_util::codec::Decoder;
 use crate::{
     agent_model::WriteResult,
     event_handler::{
-        check_step::check_is_complete, EventHandlerError, HandlerAction, HandlerFuture,
-        ModificationFlags, Spawner, StepResult,
+        check_step::check_is_complete, EventHandlerError, HandlerAction, ModificationFlags,
+        StepResult,
     },
     lanes::{command::DoCommand, LaneItem},
     meta::AgentMetadata,
@@ -36,14 +36,6 @@ use crate::{
 use super::CommandLane;
 
 const LANE_ID: u64 = 38;
-
-struct NoSpawn;
-
-impl<Context> Spawner<Context> for NoSpawn {
-    fn spawn_suspend(&self, _: HandlerFuture<Context>) {
-        panic!("No suspended futures expected.");
-    }
-}
 
 #[test]
 fn send_command() {

@@ -203,10 +203,6 @@ where
         self.push_operation(action)
     }
 
-    fn is_empty(&self) -> bool {
-        WriteQueues::is_empty(self)
-    }
-
     fn pop<'a>(&mut self, content: &'a HashMap<K, V>) -> Option<Self::Output<'a>> {
         loop {
             match WriteQueues::pop(self)? {

@@ -177,12 +177,17 @@ enum OutgoingEvent {
     Response(BytesResponseMessage),
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 enum InputError {
+    #[error("A web socket error occurred: {0}")]
     WsError(ratchet::Error),
+    #[error("A binary web socket frame was received.")]
     BinaryFrame,
+    #[error("A web socket frame contained invalid UTF-8: {0}")]
     BadUtf8(Utf8Error),
+    #[error("A web socket frame did not contain a valid Warp envelope: {0}")]
     InvalidEnvelope(MessageExtractError),
+    #[error("The web socket connection was closed.")]
     Closed(Option<CloseReason>),
 }
 

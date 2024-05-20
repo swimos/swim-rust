@@ -173,7 +173,7 @@ where
     /// assert_eq!(rtree.len(), 2);
     /// ```
     pub fn insert(&mut self, label: L, item: B) -> Result<(), DuplicateLabelError<L>> {
-        if self.lookup_map.get(&label).is_some() {
+        if self.lookup_map.contains_key(&label) {
             return Err(DuplicateLabelError(label));
         }
 
@@ -322,7 +322,7 @@ where
         let mut entries = Vec::new();
 
         for (label, item) in items.into_iter() {
-            if lookup_map.get(&label).is_some() {
+            if lookup_map.contains_key(&label) {
                 return Err(RTreeError::from(DuplicateLabelError(label)));
             }
 

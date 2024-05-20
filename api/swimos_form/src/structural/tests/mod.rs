@@ -204,36 +204,6 @@ impl<S: StructuralWritable, T: StructuralWritable> StructuralWritable for Genera
 
 pub struct HeaderView<T>(pub T);
 
-struct WithHeaderBody<T> {
-    header: T,
-    attr: T,
-    slot: T,
-}
-
-impl<T: StructuralWritable> StructuralWritable for WithHeaderBody<T> {
-    fn num_attributes(&self) -> usize {
-        2
-    }
-
-    fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
-        let mut rec_writer = writer.record(self.num_attributes())?;
-        rec_writer = rec_writer.write_attr(Cow::Borrowed("StructuralWritable"), &self.header)?;
-        rec_writer = rec_writer.write_attr(Cow::Borrowed("attr"), &self.attr)?;
-        let mut body_writer = rec_writer.complete_header(RecordBodyKind::MapLike, 1)?;
-        body_writer = body_writer.write_slot(&"slot", &self.slot)?;
-        body_writer.done()
-    }
-
-    fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
-        let mut rec_writer = writer.record(self.num_attributes())?;
-        rec_writer = rec_writer.write_attr_into("StructuralWritable", self.header)?;
-        rec_writer = rec_writer.write_attr_into("attr", self.attr)?;
-        let mut body_writer = rec_writer.complete_header(RecordBodyKind::MapLike, 1)?;
-        body_writer = body_writer.write_slot_into("slot", self.slot)?;
-        body_writer.done()
-    }
-}
-
 struct WithHeaderField<T> {
     header: T,
     attr: T,

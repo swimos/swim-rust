@@ -38,6 +38,7 @@ use tokio::{
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 enum ConnReq {
     Remote(
         Scheme,

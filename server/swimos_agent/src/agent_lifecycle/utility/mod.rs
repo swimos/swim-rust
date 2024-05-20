@@ -325,7 +325,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// #Arguments
     /// * `lane` - Projection to the value lane.
     /// * `value` - The value of the command.
-    pub fn command<T: Send + 'static>(
+    pub fn command<T>(
         &self,
         lane: fn(&Agent) -> &CommandLane<T>,
         value: T,

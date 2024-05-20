@@ -123,7 +123,7 @@ impl Future for Receiver {
                     0 => {
                         if let Some(waker) = slot.and_then(|i| lock.get_mut(i)) {
                             if !waker.will_wake(cx.waker()) {
-                                *waker = cx.waker().clone();
+                                waker.clone_from(cx.waker());
                             }
                         } else {
                             *slot = Some(lock.insert(cx.waker().clone()));
