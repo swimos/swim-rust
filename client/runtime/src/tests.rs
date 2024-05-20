@@ -581,7 +581,7 @@ where
     let downlink = TrackingMapDownlink::new(
         spawned.clone(),
         stopped.clone(),
-        MapDownlinkModel::new(set_rx, lifecycle, false),
+        MapDownlinkModel::new(set_rx, lifecycle),
     );
 
     let promise = handle
