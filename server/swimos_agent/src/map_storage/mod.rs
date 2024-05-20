@@ -37,8 +37,6 @@ pub trait MapEventQueue<K, V>: Default {
 
     fn push(&mut self, action: MapOperation<K, ()>);
 
-    fn is_empty(&self) -> bool;
-
     fn pop<'a>(&mut self, content: &'a HashMap<K, V>) -> Option<Self::Output<'a>>;
 }
 

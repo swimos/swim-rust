@@ -25,9 +25,7 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::WriteResult,
-    event_handler::{
-        EventHandlerError, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
-    },
+    event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
     item::ValueItem,
     lanes::{
         value::{ValueLaneGet, ValueLaneSync},
@@ -40,14 +38,6 @@ use crate::{
 use super::{ValueLane, ValueLaneSet};
 
 const ID: u64 = 74;
-
-struct NoSpawn;
-
-impl<Context> Spawner<Context> for NoSpawn {
-    fn spawn_suspend(&self, _: HandlerFuture<Context>) {
-        panic!("No suspended futures expected.");
-    }
-}
 
 #[test]
 fn not_dirty_initially() {
