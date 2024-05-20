@@ -17,7 +17,7 @@ error[E0277]: the trait bound `B: swimos_form::structural::Tag` is not satisfied
   --> src/tests/derive/form/tag_no_to_string.rs:21:14
    |
 21 |     #[derive(Form)]
-   |              ^^^^ the trait `swimos_form::structural::Tag` is not implemented for `B`
+   |              ^^^^ the trait `swimos_form::structural::Tag` is not implemented for `B`, which is required by `TagRecognizer<B>: Recognizer`
    |
    = help: the trait `Recognizer` is implemented for `TagRecognizer<T>`
    = note: required for `TagRecognizer<B>` to implement `Recognizer`
@@ -35,7 +35,7 @@ error[E0277]: the trait bound `B: swimos_form::structural::Tag` is not satisfied
   --> src/tests/derive/form/tag_no_to_string.rs:21:14
    |
 21 |     #[derive(Form)]
-   |              ^^^^ the trait `swimos_form::structural::Tag` is not implemented for `B`
+   |              ^^^^ the trait `swimos_form::structural::Tag` is not implemented for `B`, which is required by `TagRecognizer<B>: Recognizer`
    |
    = help: the trait `Recognizer` is implemented for `TagRecognizer<T>`
    = note: required for `TagRecognizer<B>` to implement `Recognizer`
@@ -45,7 +45,7 @@ error[E0277]: the trait bound `B: swimos_form::structural::Tag` is not satisfied
   --> src/tests/derive/form/tag_no_to_string.rs:21:14
    |
 21 |     #[derive(Form)]
-   |              ^^^^ the trait `swimos_form::structural::Tag` is not implemented for `B`
+   |              ^^^^ the trait `swimos_form::structural::Tag` is not implemented for `B`, which is required by `TagRecognizer<B>: Default`
    |
    = help: the trait `Default` is implemented for `TagRecognizer<T>`
    = note: required for `TagRecognizer<B>` to implement `Default`
