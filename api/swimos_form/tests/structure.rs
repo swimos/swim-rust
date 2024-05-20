@@ -530,7 +530,7 @@ fn test_enum_tag() {
 
     #[derive(Form, Debug, PartialEq, Clone)]
 
-    struct LogEntry<F: Form> {
+    struct LogEntry<F> {
         #[form(tag)]
         level: Level,
         #[form(header)]
@@ -559,6 +559,7 @@ fn test_enum_tag() {
 }
 
 #[test]
+#[allow(clippy::multiple_bound_locations)]
 fn generic_duplicated_bound() {
     #[derive(Form)]
 

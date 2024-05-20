@@ -446,7 +446,7 @@ async fn runtime_task<Net, Ws, Provider>(
                 host,
                 result: Ok((addr, attach)),
             } => {
-                assert!(peers.get(&addr).is_none());
+                assert!(!peers.contains_key(&addr));
                 let peer = Peer::new(attach);
 
                 for (key, pending_downlink) in pending.drain_connection_queue(host.clone()) {

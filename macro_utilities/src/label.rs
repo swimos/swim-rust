@@ -16,6 +16,7 @@ use core::fmt;
 use core::fmt::{Debug, Formatter};
 use proc_macro2::{Ident, TokenStream};
 use quote::ToTokens;
+use std::fmt::Display;
 use syn::Index;
 
 /// An enumeration representing a field or a compound type. This enumeration helps to keep track of
@@ -35,7 +36,7 @@ pub enum Label {
 
 impl Debug for Label {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", self)
     }
 }
 
@@ -92,13 +93,13 @@ impl Label {
     }
 }
 
-impl ToString for Label {
-    fn to_string(&self) -> String {
+impl Display for Label {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Label::Unmodified(ident) => ident.to_string(),
-            Label::Renamed { new_label, .. } => new_label.to_string(),
-            Label::Anonymous(index) => format!("__self_{}", index.index),
-            Label::Foreign(ident, ..) => ident.to_string(),
+            Label::Unmodified(ident) => write!(f, "{}", ident),
+            Label::Renamed { new_label, .. } => write!(f, "{}", new_label),
+            Label::Anonymous(index) => write!(f, "__self_{}", index.index),
+            Label::Foreign(ident, ..) => write!(f, "{}", ident),
         }
     }
 }

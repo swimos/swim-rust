@@ -1597,7 +1597,7 @@ fn form_enum_variants() {
         },
     ]);
 
-    let enums = vec![
+    let enums = [
         E::Unit,
         E::NewType(i32::max_value()),
         E::Tuple(i32::max_value(), i64::max_value(), String::from("swimos")),

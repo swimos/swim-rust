@@ -661,7 +661,7 @@ fn extend_text_with_strings() {
 
 #[test]
 fn extend_text_with_strings_by_ref() {
-    let strs = vec![
+    let strs = [
         "the ".to_string(),
         "cat ".to_string(),
         "sat ".to_string(),
