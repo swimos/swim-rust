@@ -15,9 +15,7 @@
 use std::num::ParseIntError;
 
 use bytes::Bytes;
-use swimos_recon::parser::{
-    try_extract_header, try_extract_header_str, HeaderPeeler, MessageExtractError, Span,
-};
+use swimos_recon::parser::{self, HeaderPeeler, MessageExtractError, Span};
 
 use super::{MapMessage, MapOperation};
 
@@ -211,12 +209,12 @@ fn make_str(message: &str, peeled: MapMessage<Chunk, usize>) -> MapMessage<&str,
 
 /// Attempt to interpret the header tag of a warp map message.
 pub fn extract_header(bytes: &Bytes) -> Result<MapMessage<Bytes, Bytes>, MessageExtractError> {
-    let offsets = try_extract_header(bytes, MapMessagePeeler::default())?;
+    let offsets = parser::extract_header(bytes, MapMessagePeeler::default())?;
     Ok(make_raw(bytes, offsets))
 }
 
 /// Attempt to interpret the header tag of a warp map message in a UTF8 string.
 pub fn extract_header_str(message: &str) -> Result<MapMessage<&str, &str>, MessageExtractError> {
-    let offsets = try_extract_header_str(message, MapMessagePeeler::default())?;
+    let offsets = parser::extract_header_str(message, MapMessagePeeler::default())?;
     Ok(make_str(message, offsets))
 }

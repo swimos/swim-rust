@@ -28,7 +28,7 @@ use swimos_api::protocol::map::MapMessage;
 use swimos_form::structural::write::StructuralWritable;
 use swimos_model::address::Address;
 use swimos_model::Text;
-use swimos_recon::printer::print_recon;
+use swimos_recon::print_recon;
 use swimos_utilities::future::immediate_or_join;
 use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio::select;

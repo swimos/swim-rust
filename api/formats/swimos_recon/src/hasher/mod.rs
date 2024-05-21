@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::parser::HashParser;
-use crate::parser::{ParseError, Span};
+use crate::recon_parser::record::HashParser;
+use crate::recon_parser::{ParseError, Span};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
@@ -21,7 +21,7 @@ use std::hash::{Hash, Hasher};
 #[cfg(test)]
 mod tests;
 
-pub fn calculate_hash<H: Hasher>(value: &str, hasher: &mut H) {
+pub fn recon_hash<H: Hasher>(value: &str, hasher: &mut H) {
     let parse_iterator = HashParser::new();
 
     if parse_iterator.hash(Span::new(value), hasher).is_some() {

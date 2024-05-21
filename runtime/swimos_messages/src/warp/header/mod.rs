@@ -16,7 +16,7 @@ use std::{borrow::Cow, fmt::Display, num::ParseFloatError};
 
 use smallvec::{smallvec, SmallVec};
 use swimos_recon::parser::{
-    parse_text, try_extract_header, try_extract_header_str, HeaderPeeler, MessageExtractError, Span,
+    extract_header, extract_header_str, parse_text_token, HeaderPeeler, MessageExtractError, Span,
 };
 use swimos_utilities::format::comma_sep;
 use thiserror::Error;
@@ -122,12 +122,12 @@ pub enum HeaderExtractionError {
 
 /// Try to interpret an array of bytes as a warp envelope, without allocating.
 pub fn peel_envelope_header_str(input: &str) -> Result<RawEnvelope<'_>, MessageExtractError> {
-    try_extract_header_str(input, EnvelopeHeaderPeeler::default())
+    extract_header_str(input, EnvelopeHeaderPeeler::default())
 }
 
 /// Try to interpret an array of bytes as a warp envelope, without allocating.
 pub fn peel_envelope_header(input: &[u8]) -> Result<RawEnvelope<'_>, MessageExtractError> {
-    try_extract_header(input, EnvelopeHeaderPeeler::default())
+    extract_header(input, EnvelopeHeaderPeeler::default())
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -150,12 +150,12 @@ where
 {
     match (node_uri, lane_uri) {
         (Some(node_uri), Some(lane_uri)) => {
-            let node_uri_text = if let Ok(node_uri_text) = parse_text(Span::new(node_uri)) {
+            let node_uri_text = if let Ok(node_uri_text) = parse_text_token(Span::new(node_uri)) {
                 node_uri_text
             } else {
                 return Err(HeaderExtractionError::InvalidString(node_uri.to_string()));
             };
-            let lane_uri_text = if let Ok(lane_uri_text) = parse_text(Span::new(lane_uri)) {
+            let lane_uri_text = if let Ok(lane_uri_text) = parse_text_token(Span::new(lane_uri)) {
                 lane_uri_text
             } else {
                 return Err(HeaderExtractionError::InvalidString(node_uri.to_string()));

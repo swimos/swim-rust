@@ -11,11 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-use super::Span;
+use super::{separator, AttrBody, EventOrEnd, IncrementalReconParser, ItemsKind, RecBody, Span};
 use crate::hasher::HashError;
-use crate::parser::record::{AttrBody, EventOrEnd, ItemsKind, RecBody};
-use crate::parser::tokens::separator;
-use crate::parser::IncrementalReconParser;
 use nom::branch::alt;
 use nom::bytes::complete::is_not;
 use nom::character::streaming as char_str;

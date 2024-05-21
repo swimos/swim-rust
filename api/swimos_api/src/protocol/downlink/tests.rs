@@ -19,7 +19,7 @@ use bytes::{Buf, Bytes, BytesMut};
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_form::Form;
 use swimos_model::Text;
-use swimos_recon::printer::print_recon_compact;
+use swimos_recon::print_recon_compact;
 use tokio_util::codec::{Decoder, Encoder};
 
 use super::{DownlinkNotification, DownlinkNotificationEncoder, EVENT, LINKED, SYNCED, UNLINKED};

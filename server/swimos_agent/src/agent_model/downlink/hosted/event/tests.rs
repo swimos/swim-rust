@@ -18,7 +18,7 @@ use futures::SinkExt;
 use parking_lot::Mutex;
 use swimos_api::protocol::downlink::{DownlinkNotification, DownlinkNotificationEncoder};
 use swimos_model::{address::Address, Text};
-use swimos_recon::printer::print_recon_compact;
+use swimos_recon::print_recon_compact;
 use swimos_utilities::{
     io::byte_channel::{self, ByteWriter},
     non_zero_usize, trigger,

@@ -41,10 +41,7 @@ use swimos_messages::protocol::{
     ResponseMessage,
 };
 use swimos_model::{BytesStr, Text};
-use swimos_recon::{
-    parser::{parse_recognize, Span},
-    printer::print_recon_compact,
-};
+use swimos_recon::{parser::parse_recognize, print_recon_compact};
 use swimos_utilities::{
     future::retryable::RetryStrategy,
     io::byte_channel::{ByteReader, ByteWriter},
@@ -515,7 +512,7 @@ impl RemoteReceiver {
         self.expect_envelope(lane, |envelope| {
             if let Notification::Event(body) = envelope {
                 let body_str = std::str::from_utf8(body.as_ref()).expect("Corrupted body.");
-                let message = parse_recognize::<MapMessage<Text, i32>>(Span::new(body_str), false)
+                let message = parse_recognize::<MapMessage<Text, i32>>(body_str, false)
                     .expect("Invalid map mesage.");
                 f(message)
             } else {

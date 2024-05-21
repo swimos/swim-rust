@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use super::record::ParseIterator;
 use super::tokens::{complete, streaming, string_literal};
 use super::Span;
-use crate::parser::record::ParseIterator;
 use crate::parser::ParseError;
 use either::Either;
 use nom::IResult;
@@ -1399,13 +1399,11 @@ fn complex_slot_with_comments() {
 }
 
 fn value_from_string(rep: &str) -> Result<Value, ParseError> {
-    let span = Span::new(rep);
-    super::parse_recognize(span, false)
+    super::parse_recognize(rep, false)
 }
 
 fn value_from_string_with_comments(rep: &str) -> Result<Value, ParseError> {
-    let span = Span::new(rep);
-    super::parse_recognize(span, true)
+    super::parse_recognize(rep, true)
 }
 
 #[test]

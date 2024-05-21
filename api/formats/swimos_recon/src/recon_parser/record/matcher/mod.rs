@@ -75,22 +75,16 @@ pub trait HeaderPeeler<'a>: Clone {
 }
 
 /// Run an implementation of [`HeaderPeeler`] against an array of bytes.
-pub fn try_extract_header<'a, P>(
-    bytes: &'a [u8],
-    peeler: P,
-) -> Result<P::Output, MessageExtractError>
+pub fn extract_header<'a, P>(bytes: &'a [u8], peeler: P) -> Result<P::Output, MessageExtractError>
 where
     P: HeaderPeeler<'a>,
 {
     let text = std::str::from_utf8(bytes)?;
-    try_extract_header_str(text, peeler)
+    extract_header_str(text, peeler)
 }
 
 /// Run an implementation of [`HeaderPeeler`] against a string.
-pub fn try_extract_header_str<'a, P>(
-    text: &'a str,
-    peeler: P,
-) -> Result<P::Output, MessageExtractError>
+pub fn extract_header_str<'a, P>(text: &'a str, peeler: P) -> Result<P::Output, MessageExtractError>
 where
     P: HeaderPeeler<'a>,
 {

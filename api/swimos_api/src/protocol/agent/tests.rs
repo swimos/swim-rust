@@ -18,7 +18,7 @@ use swimos_form::{
     structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
     Form,
 };
-use swimos_recon::printer::print_recon_compact;
+use swimos_recon::print_recon_compact;
 use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 

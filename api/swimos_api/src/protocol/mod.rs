@@ -17,7 +17,7 @@ use std::fmt::Write;
 use swimos_form::structural::{read::recognizer::Recognizer, write::StructuralWritable};
 use swimos_recon::{
     parser::{AsyncParseError, RecognizerDecoder},
-    printer::print_recon_compact,
+    print_recon_compact,
 };
 use tokio_util::codec::{Decoder, Encoder};
 

@@ -43,7 +43,7 @@ use swimos_model::{
     address::{Address, RelativeAddress},
     BytesStr,
 };
-use swimos_recon::printer::print_recon_compact;
+use swimos_recon::print_recon_compact;
 use swimos_utilities::{
     errors::Recoverable,
     future::retryable::{Quantity, RetryStrategy},

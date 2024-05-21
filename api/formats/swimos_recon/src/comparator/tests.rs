@@ -12,16 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::comparator::{compare_values, incremental_compare};
-use crate::parser::{ParseError, ParseIterator, Span};
+use crate::comparator::{compare_recon_values, incremental_compare};
+use crate::recon_parser::record::ParseIterator;
+use crate::recon_parser::{parse_recognize, ParseError, Span};
 use nom::error::ErrorKind;
 use std::borrow::Cow;
 use swimos_form::structural::read::event::{NumericValue, ReadEvent};
 use swimos_model::Value;
 
 fn value_from_string(rep: &str) -> Result<Value, ParseError> {
-    let span = Span::new(rep);
-    crate::parser::parse_recognize(span, false)
+    parse_recognize(rep, false)
 }
 
 #[test]
@@ -29,7 +29,7 @@ fn cmp_simple() {
     let first = "@name(a: 1, b: 2)";
     let second = "@name(a: 1, b: 2)";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -38,7 +38,7 @@ fn cmp_simple() {
     let first = "\"test\"";
     let second = "test";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -50,7 +50,7 @@ fn cmp_complex() {
     let first = "{a:2}";
     let second = "{ a: 2 }";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -59,7 +59,7 @@ fn cmp_complex() {
     let first = "@tag(){}:1";
     let second = "@tag{}:1";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -68,7 +68,7 @@ fn cmp_complex() {
     let first = "@name(a: 1, b: 2)";
     let second = "@name({a: 1, b: 2})";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -77,7 +77,7 @@ fn cmp_complex() {
     let first = "@first(1)@second(2)";
     let second = "@first(1)@second(2) {}";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -86,7 +86,7 @@ fn cmp_complex() {
     let first = "{ @inner(0), after }";
     let second = "{ @inner(0) {}, after }";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -95,7 +95,7 @@ fn cmp_complex() {
     let first = "@outer(@inner)";
     let second = "@outer(@inner {})";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -104,7 +104,7 @@ fn cmp_complex() {
     let first = "@foo({one: 1, two: @bar(1,2,3), three: 3, four: {@baz({1,2})}})";
     let second = "@foo(one: 1, two: @bar({1,2,3}), three: 3, four: {@baz(1,2)})";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -113,7 +113,7 @@ fn cmp_complex() {
     let first = "@foo(1,2)";
     let second = "@foo({1,2})";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -122,7 +122,7 @@ fn cmp_complex() {
     let first = "@foo({one: 1, two: @bar(1,2,3)})";
     let second = "@foo(one: 1, two: @bar({1,2,3}))";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -131,7 +131,7 @@ fn cmp_complex() {
     let first = "@name(@foo,@bar)";
     let second = "@name({@foo, @bar})";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -140,7 +140,7 @@ fn cmp_complex() {
     let first = "@name(1, @foo@bar)";
     let second = "@name({1, @foo@bar})";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -149,7 +149,7 @@ fn cmp_complex() {
     let first = "@name(@foo@bar({@bar, 1, @baz()}), @bar@foo()@baz)";
     let second = "@name({@foo@bar(@bar, 1, @baz()), @bar@foo()@baz})";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -158,7 +158,7 @@ fn cmp_complex() {
     let first = "@foo(1, @bar(2,3), 4, 5)";
     let second = "@foo(1, @bar({2,3}), 4, 5)";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -167,7 +167,7 @@ fn cmp_complex() {
     let first = "@name(a: @foo)";
     let second = "@name({a: @foo})";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -176,7 +176,7 @@ fn cmp_complex() {
     let first = "@name(b: @foo@bar@baz, @foo(1,2), @bar@baz))";
     let second = "@name({b: @foo@bar@baz, @foo({1,2}), @bar@baz})";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -185,7 +185,7 @@ fn cmp_complex() {
     let first = "@name(b: )";
     let second = "@name({b: })";
 
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let result_1 = value_from_string(first).unwrap();
     let result_2 = value_from_string(second).unwrap();
@@ -326,34 +326,34 @@ fn cmp_early_termination_complex() {
 fn cmp_invalid_eq() {
     let first = ":5";
     let second = ":5";
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let first = ")10";
     let second = ")10";
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 
     let first = "@foo}20";
     let second = "@foo}20";
-    assert!(compare_values(first, second));
+    assert!(compare_recon_values(first, second));
 }
 
 #[test]
 fn cmp_invalid_not_eq() {
     let first = ":5, 30";
     let second = ":10, 30";
-    assert!(!compare_values(first, second));
+    assert!(!compare_recon_values(first, second));
 
     let first = ")15";
     let second = ")20";
-    assert!(!compare_values(first, second));
+    assert!(!compare_recon_values(first, second));
 
     let first = "@foo-30";
     let second = "@foo-35";
-    assert!(!compare_values(first, second));
+    assert!(!compare_recon_values(first, second));
 
     let first = "@foo(1, 2, 3){-}";
     let second = "@foo({1, 2, 3}){-}";
-    assert!(!compare_values(first, second));
+    assert!(!compare_recon_values(first, second));
 }
 
 #[test]

@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use swimos_api::protocol::map::MapMessage;
 use swimos_model::Value;
-use swimos_recon::parser::parse_value;
+use swimos_recon::parser::parse_recognize;
 use swimos_utilities::routing::route_uri::RouteUri;
 
 use crate::{
@@ -226,6 +226,10 @@ fn parse_link() {
     );
 }
 
+fn parse_value(body: &str) -> Value {
+    parse_recognize(body, false).unwrap()
+}
+
 #[test]
 fn parse_command() {
     let host: Host = "localhost:8080".parse().unwrap();
@@ -318,7 +322,7 @@ fn parse_command() {
         }
     );
 
-    let expected_value = parse_value("@complex {1, 2, 3}", false).unwrap();
+    let expected_value = parse_value("@complex {1, 2, 3}");
 
     let cmd = to_controller(
         super::parse_app_command(
@@ -590,7 +594,7 @@ fn parse_map_command() {
         }
     );
 
-    let expected_value = parse_value("@complex {1, 2, 3}", false).unwrap();
+    let expected_value = parse_value("@complex {1, 2, 3}");
 
     let cmd = to_controller(
         super::parse_app_command(

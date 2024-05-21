@@ -15,7 +15,7 @@
 use bytes::{Buf, Bytes, BytesMut};
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_form::Form;
-use swimos_recon::printer::print_recon_compact;
+use swimos_recon::print_recon_compact;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::protocol::map::{DROP, TAKE};

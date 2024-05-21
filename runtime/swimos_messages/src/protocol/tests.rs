@@ -29,7 +29,7 @@ use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_form::structural::write::StructuralWritable;
 use swimos_form::Form;
 use swimos_model::{BytesStr, Text};
-use swimos_recon::printer::print_recon_compact;
+use swimos_recon::print_recon_compact;
 use swimos_utilities::io::byte_channel;
 use swimos_utilities::non_zero_usize;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};

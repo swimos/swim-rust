@@ -39,7 +39,7 @@ use swimos_api::protocol::{
 };
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_model::{address::Address, Text};
-use swimos_recon::printer::print_recon_compact;
+use swimos_recon::print_recon_compact;
 use swimos_utilities::{
     io::byte_channel::{self, ByteReader, ByteWriter},
     non_zero_usize,

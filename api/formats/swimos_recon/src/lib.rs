@@ -12,7 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod comparator;
-pub mod hasher;
-pub mod parser;
-pub mod printer;
+mod comparator;
+mod hasher;
+mod printer;
+mod recon_parser;
+
+pub use comparator::compare_recon_values;
+pub use hasher::{recon_hash, HashError};
+pub use printer::{print_recon, print_recon_compact, print_recon_pretty};
+
+pub mod parser {
+    pub use crate::recon_parser::{
+        extract_header, extract_header_str, parse_recognize, parse_recon_document,
+        parse_text_token, AsyncParseError, HeaderPeeler, MessageExtractError, ParseError,
+        RecognizerDecoder, Span,
+    };
+}

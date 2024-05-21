@@ -14,9 +14,7 @@
 
 use tokio::fs::File;
 
-use crate::parser::async_parser::AsyncParseError;
-use crate::parser::Span;
-use crate::parser::{ParseError, RecognizerDecoder};
+use crate::recon_parser::{parse_recognize, ParseError, RecognizerDecoder};
 use bytes::{BufMut, BytesMut};
 use std::fmt::Debug;
 use std::path::PathBuf;
@@ -24,6 +22,8 @@ use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_form::Form;
 use swimos_model::{Attr, Item, Value};
 use tokio_util::codec::Decoder;
+
+use super::AsyncParseError;
 
 fn test_data_path() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -93,7 +93,7 @@ async fn recognize_decode_complete() {
 
     assert!(buffer.is_empty());
 
-    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE), false).unwrap();
+    let expected = parse_recognize::<Example>(COMPLETE, false).unwrap();
 
     assert_complete(result, expected);
 }
@@ -117,7 +117,7 @@ async fn recognize_decode_two_parts() {
     buffer.put_slice(SECOND_PART.as_bytes());
     let result = decoder.decode(&mut buffer);
 
-    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE), false).unwrap();
+    let expected = parse_recognize::<Example>(COMPLETE, false).unwrap();
 
     assert_complete(result, expected);
 }
@@ -154,7 +154,7 @@ async fn recognize_decode_complete_eof() {
 
     assert!(buffer.is_empty());
 
-    let expected = crate::parser::parse_recognize::<Example>(Span::new(COMPLETE), false).unwrap();
+    let expected = parse_recognize::<Example>(COMPLETE, false).unwrap();
 
     assert_complete(result, expected);
 }

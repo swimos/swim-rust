@@ -50,7 +50,7 @@ impl<'a, T: StructuralWritable, S: PrintStrategy + Copy> Display for ReconPrint<
     }
 }
 
-pub struct StructurePrinter<'a, 'b, S> {
+struct StructurePrinter<'a, 'b, S> {
     strategy: S,
     fmt: &'a mut Formatter<'b>,
     has_attr: bool,
@@ -74,7 +74,7 @@ impl<'a, 'b, S: Debug> Debug for StructurePrinter<'a, 'b, S> {
 }
 
 impl<'a, 'b, S> StructurePrinter<'a, 'b, S> {
-    pub fn new(fmt: &'a mut Formatter<'b>, strategy: S) -> Self {
+    fn new(fmt: &'a mut Formatter<'b>, strategy: S) -> Self {
         StructurePrinter {
             fmt,
             has_attr: false,
@@ -839,7 +839,7 @@ where
 }
 
 /// Padding used by the print strategies to customise the output format of Recon.
-pub enum Padding<'a> {
+enum Padding<'a> {
     /// Simple padding that writes only a string slice.
     Simple(&'a str),
     /// Complex padding that writes a string slice as a prefix followed by `n`
@@ -876,7 +876,7 @@ impl<'a> Display for Padding<'a> {
     }
 }
 
-pub trait PrintStrategy: Debug {
+trait PrintStrategy: Debug {
     fn attr_padding(&self) -> Padding;
 
     fn attr_body_padding(&self) -> Padding;

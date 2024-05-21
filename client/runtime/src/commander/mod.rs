@@ -22,7 +22,7 @@ use ratchet::{
 };
 use swimos_api::net::{BadUrl, SchemeHostPort};
 use swimos_form::structural::write::StructuralWritable;
-use swimos_recon::printer::print_recon_compact;
+use swimos_recon::print_recon_compact;
 use thiserror::Error;
 use tokio::net::TcpStream;
 

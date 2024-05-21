@@ -23,7 +23,7 @@ use swimos_form::structural::write::StructuralWritable;
 use swimos_model::address::RelativeAddress;
 use swimos_model::{BytesStr, Text};
 use swimos_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
-use swimos_recon::printer::print_recon_compact;
+use swimos_recon::print_recon_compact;
 use thiserror::Error;
 use tokio::io::AsyncRead;
 use tokio_util::codec::{Decoder, Encoder, FramedRead};
