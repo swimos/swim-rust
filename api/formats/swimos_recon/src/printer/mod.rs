@@ -26,16 +26,23 @@ use swimos_model::bigint::{BigInt, BigUint};
 use swimos_model::write_string_literal;
 
 /// Print an inline Recon representation of [`StructuralWritable`] value.
+///
+/// # Arguments
+/// * `value` - The value to print.
 pub fn print_recon<T: StructuralWritable>(value: &T) -> impl Display + '_ {
     ReconPrint(value, StandardPrint)
 }
 
-/// Print a compact Recon representation of [`StructuralWritable`] value.
+/// Print a compact Recon representation of [`StructuralWritable`] value. The compact representation omits all possible spaces.
+/// # Arguments
+/// * `value` - The value to print.
 pub fn print_recon_compact<T: StructuralWritable>(value: &T) -> impl Display + '_ {
     ReconPrint(value, CompactPrint)
 }
 
-/// Print a pretty Recon representation of [`StructuralWritable`] value.
+/// Print a pretty Recon representation of [`StructuralWritable`] value. The pretty representation splits records over lines and indents their items.
+/// # Arguments
+/// * `value` - The value to print.
 pub fn print_recon_pretty<T: StructuralWritable>(value: &T) -> impl Display + '_ {
     ReconPrint(value, PrettyPrint::new())
 }

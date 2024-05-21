@@ -12,6 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Utilities for working with the Recon markup format.
+//!
+//! This create provides a number of utilities for working with the Recon markup format.
+//! These consist of:
+//!
+//! - Recon parser.
+//! - Recon printer that will format types that support the [`swimos_form::Form`] trait to strings.
+//! - Comparator for Recon strings that does not require them to be deserialized.
+//! - Hash function for Recon strings (that will produce the same hash for strings that represent equal values).
+
 mod comparator;
 mod hasher;
 mod printer;
@@ -21,10 +31,16 @@ pub use comparator::compare_recon_values;
 pub use hasher::{recon_hash, HashError};
 pub use printer::{print_recon, print_recon_compact, print_recon_pretty};
 
+/// Recon format parsers.
+///
+/// - Parser that expects a single recon value, with or without comments.
+/// - Parser for Recon configuration files where the file contains the contents of a Recon record, with or without comments.
+/// - Extractors to parse only the first attribute of a Recon record, leaving the remainder as an uninterpreted string.
 pub mod parser {
     pub use crate::recon_parser::{
-        extract_header, extract_header_str, parse_recognize, parse_recon_document,
-        parse_text_token, AsyncParseError, HeaderPeeler, MessageExtractError, ParseError,
-        RecognizerDecoder, Span,
+        extract_header, extract_header_str, parse_recognize, parse_text_token, HeaderPeeler,
+        MessageExtractError, ParseError, Span,
     };
+    #[cfg(feature = "async_parser")]
+    pub use crate::recon_parser::{parse_recon_document, AsyncParseError, RecognizerDecoder};
 }

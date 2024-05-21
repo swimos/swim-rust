@@ -88,6 +88,7 @@ pub fn parse_recognize_with<R: Recognizer>(
 /// Create a [`Recognizer`] state machine for a type, and feed the stream of [`ReadEvent`]s,
 /// produced by parsing a Recon string, into it.
 ///
+/// # Arguments
 /// * `input` - The input to parse.
 /// * `allow_comments` - Boolean flag indicating whether or not the parsing should fail on comments.
 pub fn parse_recognize<'a, T: RecognizerReadable>(
@@ -100,6 +101,9 @@ pub fn parse_recognize<'a, T: RecognizerReadable>(
 
 /// Attempt to parse a text token from entirety of the input (either an identifier or the content of
 /// a string literal).
+///
+/// # Arguments
+/// * `input` - The input to parse.
 pub fn parse_text_token(input: Span<'_>) -> Result<Cow<'_, str>, ParseError> {
     let mut text_parser = terminated(
         delimited(

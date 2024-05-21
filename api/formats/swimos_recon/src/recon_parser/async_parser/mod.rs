@@ -307,7 +307,7 @@ impl<R> RecognizerDecoder<R> {
 
 impl<R: Recognizer> RecognizerDecoder<R> {
     /// Reset the decoder to its initial state.
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.parser.reset();
         self.recognizer.reset();
         self.location = LocationTracker::default();

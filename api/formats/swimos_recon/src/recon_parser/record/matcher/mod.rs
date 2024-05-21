@@ -75,6 +75,10 @@ pub trait HeaderPeeler<'a>: Clone {
 }
 
 /// Run an implementation of [`HeaderPeeler`] against an array of bytes.
+///
+/// # Arguments
+/// * `bytes` - The bytes to run the peeler against (assuming they contain valid UTF-8).
+/// * `peeler` - The peeler to use to interpret the header attribute.
 pub fn extract_header<'a, P>(bytes: &'a [u8], peeler: P) -> Result<P::Output, MessageExtractError>
 where
     P: HeaderPeeler<'a>,
@@ -84,6 +88,9 @@ where
 }
 
 /// Run an implementation of [`HeaderPeeler`] against a string.
+/// # Arguments
+/// * `text` - The text to run the peeler against.
+/// * `peeler` - The peeler to use to interpret the header attribute.
 pub fn extract_header_str<'a, P>(text: &'a str, peeler: P) -> Result<P::Output, MessageExtractError>
 where
     P: HeaderPeeler<'a>,

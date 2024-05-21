@@ -21,6 +21,12 @@ use std::hash::{Hash, Hasher};
 #[cfg(test)]
 mod tests;
 
+/// Add the Recon hash for a string (if it contains valid Recon). Recon strings that represent the same
+/// Recon value will have the same hash.
+///
+/// # Arguments
+/// * `value` - The string to hash.
+/// * `hasher` - The hasher to contribute to.
 pub fn recon_hash<H: Hasher>(value: &str, hasher: &mut H) {
     let parse_iterator = HashParser::new();
 
@@ -29,6 +35,7 @@ pub fn recon_hash<H: Hasher>(value: &str, hasher: &mut H) {
     }
 }
 
+/// A Recon hash could not be computed for a string as it did not contain valid Recon.
 #[derive(Debug, PartialEq, Eq)]
 pub struct HashError(ParseError);
 
