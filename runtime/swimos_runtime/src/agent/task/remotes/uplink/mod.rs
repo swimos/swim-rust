@@ -15,7 +15,8 @@
 use std::collections::{HashMap, VecDeque};
 
 use bytes::{BufMut, Bytes, BytesMut};
-use swimos_api::{agent::UplinkKind, protocol::map::MapOperation};
+use swimos_agent_protocol::map::MapOperation;
+use swimos_api::agent::UplinkKind;
 use swimos_model::Text;
 use swimos_utilities::{io::byte_channel::ByteWriter, trigger::promise};
 use tokio_util::codec::Encoder;

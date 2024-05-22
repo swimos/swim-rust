@@ -19,19 +19,19 @@ use futures::{
     future::{BoxFuture, Either},
     FutureExt, SinkExt, StreamExt,
 };
+use swimos_agent_protocol::{
+    agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
+    map::{MapOperation, MapOperationEncoder},
+};
 use swimos_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::{AgentInitError, AgentTaskError, FrameIoError},
     lane::WarpLaneKind,
-    meta::{lane::LaneInfo, uplink::NodePulse},
-    protocol::{
-        agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
-        map::{MapOperation, MapOperationEncoder},
-        WithLengthBytesCodec,
-    },
 };
+use swimos_meta::{LaneInfo, NodePulse};
 use swimos_model::Text;
 use swimos_utilities::{
+    encoding::WithLengthBytesCodec,
     io::byte_channel::{ByteReader, ByteWriter},
     routing::route_uri::RouteUri,
     trigger,

@@ -23,14 +23,14 @@ use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
 use futures::{stream::BoxStream, FutureExt};
 use static_assertions::assert_obj_safe;
+use swimos_agent_protocol::{
+    agent::{AdHocCommand, AdHocCommandEncoder},
+    WithLenReconEncoder,
+};
 use swimos_api::{
     agent::AgentContext,
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError},
-    protocol::{
-        agent::{AdHocCommand, AdHocCommandEncoder},
-        WithLenReconEncoder,
-    },
 };
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_model::{address::Address, Text};

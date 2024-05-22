@@ -15,13 +15,11 @@
 use std::collections::{HashMap, HashSet};
 
 use bytes::BytesMut;
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::{
-        agent::{LaneResponse, LaneResponseDecoder},
-        map::{MapOperation, MapOperationDecoder},
-    },
+use swimos_agent_protocol::{
+    agent::{LaneResponse, LaneResponseDecoder},
+    map::{MapOperation, MapOperationDecoder},
 };
+use swimos_api::agent::AgentConfig;
 use swimos_utilities::routing::route_uri::RouteUri;
 use tokio_util::codec::Decoder;
 

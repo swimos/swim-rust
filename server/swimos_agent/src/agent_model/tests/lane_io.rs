@@ -15,15 +15,17 @@
 use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
 use std::fmt::Write;
-use swimos_api::protocol::{
+use swimos_agent_protocol::{
     agent::{
         LaneRequest, LaneRequestEncoder, LaneResponse, MapLaneResponse, MapLaneResponseDecoder,
         ValueLaneResponseDecoder,
     },
     map::{MapMessage, MapMessageEncoder, MapOperation, MapOperationEncoder},
-    WithLengthBytesCodec,
 };
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::{
+    encoding::WithLengthBytesCodec,
+    io::byte_channel::{ByteReader, ByteWriter},
+};
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, BytesMut};
-use swimos_api::protocol::map::MapOperation;
+use swimos_agent_protocol::map::MapOperation;
 use tokio_util::codec::Encoder;
 
 #[cfg(test)]

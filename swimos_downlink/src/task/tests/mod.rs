@@ -20,13 +20,12 @@ use futures::{SinkExt, StreamExt};
 use tokio::time::{timeout, Duration};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
+use swimos_agent_protocol::downlink::{
+    DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation, DownlinkOperationDecoder,
+};
 use swimos_api::{
     downlink::{Downlink, DownlinkConfig},
     error::DownlinkTaskError,
-    protocol::downlink::{
-        DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation,
-        DownlinkOperationDecoder,
-    },
 };
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_model::address::Address;

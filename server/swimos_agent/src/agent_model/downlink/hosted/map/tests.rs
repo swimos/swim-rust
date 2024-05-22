@@ -32,7 +32,7 @@ use futures::{
     Sink, SinkExt, Stream, StreamExt,
 };
 use parking_lot::Mutex;
-use swimos_api::protocol::{
+use swimos_agent_protocol::{
     downlink::{DownlinkNotification, DownlinkNotificationEncoder},
     map::{MapMessage, MapMessageEncoder, MapOperation, MapOperationDecoder, MapOperationEncoder},
 };

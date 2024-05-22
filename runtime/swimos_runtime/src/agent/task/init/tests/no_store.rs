@@ -13,20 +13,19 @@
 // limitations under the License.
 
 use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
+use swimos_agent_protocol::{
+    agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
+    map::{MapMessageDecoder, RawMapOperation, RawMapOperationDecoder, RawMapOperationEncoder},
+};
 use swimos_api::{
     agent::{LaneConfig, StoreConfig, UplinkKind},
     error::OpenStoreError,
-    lane::WarpLaneKind,
-    meta::lane::LaneKind,
-    protocol::{
-        agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
-        map::{MapMessageDecoder, RawMapOperation, RawMapOperationDecoder, RawMapOperationEncoder},
-        WithLengthBytesCodec,
-    },
+    lane::{LaneKind, WarpLaneKind},
     store::{StoreDisabled, StoreKind},
 };
 use swimos_model::Text;
 use swimos_utilities::{
+    encoding::WithLengthBytesCodec,
     io::byte_channel::{ByteReader, ByteWriter},
     trigger,
 };

@@ -22,10 +22,10 @@ use super::super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
 use super::*;
 use futures::future::{join3, join4};
 use futures::{SinkExt, StreamExt};
-use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
-use swimos_api::protocol::downlink::{
+use swimos_agent_protocol::downlink::{
     DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
 };
+use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_form::Form;
 use swimos_messages::protocol::{

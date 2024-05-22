@@ -15,7 +15,7 @@
 use std::{convert::Infallible, num::NonZeroUsize, time::Duration};
 
 use futures_util::{future::join, SinkExt, StreamExt};
-use swimos_api::protocol::downlink::{
+use swimos_agent_protocol::downlink::{
     DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
 };
 use swimos_messages::protocol::{

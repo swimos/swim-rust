@@ -23,20 +23,20 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swimos_agent_protocol::agent::{
+    LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder,
+};
+use swimos_agent_protocol::map::{MapOperation, MapOperationDecoder};
 use swimos_api::agent::{AgentContext, HttpLaneRequestChannel, LaneConfig};
 use swimos_api::downlink::DownlinkKind;
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swimos_api::lane::WarpLaneKind;
-use swimos_api::protocol::agent::{
-    LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder,
-};
-use swimos_api::protocol::map::{MapOperation, MapOperationDecoder};
-use swimos_api::protocol::WithLengthBytesCodec;
 use swimos_api::store::StoreKind;
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_model::time::Timestamp;
 use swimos_model::Text;
 use swimos_runtime::agent::reporting::UplinkReporter;
+use swimos_utilities::encoding::WithLengthBytesCodec;
 use swimos_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swimos_utilities::uri_forest::UriForest;
 use swimos_utilities::{non_zero_usize, trigger};

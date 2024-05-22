@@ -15,7 +15,7 @@
 use std::{collections::HashMap, num::NonZeroUsize, time::Duration};
 
 use futures::{future::join, SinkExt, StreamExt};
-use swimos_api::protocol::{
+use swimos_agent_protocol::{
     agent::{
         LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder, StoreInitMessage,
         StoreInitMessageEncoder, StoreInitialized, StoreInitializedCodec,
@@ -24,10 +24,12 @@ use swimos_api::protocol::{
         MapMessage, MapMessageDecoder, MapMessageEncoder, MapOperationEncoder,
         RawMapOperationDecoder,
     },
-    WithLenReconEncoder, WithLengthBytesCodec,
+    WithLenReconEncoder,
 };
 use swimos_model::Text;
-use swimos_utilities::{io::byte_channel::byte_channel, non_zero_usize};
+use swimos_utilities::{
+    encoding::WithLengthBytesCodec, io::byte_channel::byte_channel, non_zero_usize,
+};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 use crate::{

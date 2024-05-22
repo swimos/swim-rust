@@ -19,16 +19,15 @@ use std::{
 
 use bytes::BytesMut;
 use futures::{ready, SinkExt, Stream, StreamExt};
-use swimos_api::{
-    agent::HttpLaneRequest,
-    error::FrameIoError,
-    protocol::{
-        agent::{LaneRequest, LaneRequestDecoder},
-        map::{MapMessage, MapMessageDecoder, RawMapOperationDecoder},
-        WithLengthBytesCodec,
-    },
+use swimos_agent_protocol::{
+    agent::{LaneRequest, LaneRequestDecoder},
+    map::{MapMessage, MapMessageDecoder, RawMapOperationDecoder},
 };
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_api::{agent::HttpLaneRequest, error::FrameIoError};
+use swimos_utilities::{
+    encoding::WithLengthBytesCodec,
+    io::byte_channel::{ByteReader, ByteWriter},
+};
 use tokio::sync::mpsc;
 use tokio_util::codec::{BytesCodec, FramedRead, FramedWrite};
 

@@ -18,10 +18,8 @@ use bytes::BytesMut;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::agent::{LaneResponse, ValueLaneResponseDecoder},
-};
+use swimos_agent_protocol::agent::{LaneResponse, ValueLaneResponseDecoder};
+use swimos_api::agent::AgentConfig;
 use swimos_utilities::routing::route_uri::RouteUri;
 
 use crate::lanes::supply::{Supply, SupplyLaneSync};

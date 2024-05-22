@@ -23,16 +23,16 @@ use crate::{
     task::IntrospectionMessage,
 };
 use futures::StreamExt;
+use swimos_agent_protocol::{
+    agent::{LaneResponse, LaneResponseDecoder},
+    WithLenRecognizerDecoder,
+};
 use swimos_api::{
     agent::LaneConfig,
-    lane::WarpLaneKind,
-    meta::{lane::LaneKind, uplink::LanePulse},
-    protocol::{
-        agent::{LaneResponse, LaneResponseDecoder},
-        WithLenRecognizerDecoder,
-    },
+    lane::{LaneKind, WarpLaneKind},
 };
 use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_meta::LanePulse;
 use swimos_runtime::agent::reporting::UplinkReporter;
 use swimos_utilities::io::byte_channel::ByteReader;
 use tokio::sync::mpsc;

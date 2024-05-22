@@ -28,14 +28,14 @@ use futures::{
     Future, SinkExt, Stream, StreamExt, TryStreamExt,
 };
 use rand::Rng;
+use swimos_agent_protocol::{
+    agent::{AdHocCommand, AdHocCommandEncoder},
+    WithLenReconEncoder,
+};
 use swimos_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError},
     net::SchemeHostPort,
-    protocol::{
-        agent::{AdHocCommand, AdHocCommandEncoder},
-        WithLenReconEncoder,
-    },
 };
 use swimos_form::structural::write::StructuralWritable;
 use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};

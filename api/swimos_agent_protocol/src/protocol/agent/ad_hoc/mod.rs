@@ -14,9 +14,10 @@
 
 use bytes::{Buf, BufMut, BytesMut};
 use swimos_model::{address::Address, BytesStr, Text, TryFromUtf8Bytes};
+use swimos_utilities::encoding::WithLengthBytesCodec;
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::error::FrameIoError;
+use swimos_api::error::FrameIoError;
 
 #[cfg(test)]
 mod tests;
@@ -56,6 +57,12 @@ impl<E> AdHocCommandEncoder<E> {
     }
 }
 
+impl AdHocCommandEncoder<WithLengthBytesCodec> {
+    pub fn bytes() -> Self {
+        AdHocCommandEncoder::new(WithLengthBytesCodec)
+    }
+}
+
 #[derive(Debug, Default)]
 enum DecoderState<S> {
     #[default]
@@ -84,6 +91,12 @@ impl<S, D> AdHocCommandDecoder<S, D> {
             body_decoder,
             state: Default::default(),
         }
+    }
+}
+
+impl<S> AdHocCommandDecoder<S, WithLengthBytesCodec> {
+    pub fn bytes() -> Self {
+        AdHocCommandDecoder::new(WithLengthBytesCodec)
     }
 }
 
@@ -223,7 +236,7 @@ fn try_extract_utf8<S: TryFromUtf8Bytes>(
     len: usize,
 ) -> Result<S, FrameIoError> {
     S::try_from_utf8_bytes(src.split_to(len).freeze()).map_err(|_| {
-        FrameIoError::BadFrame(crate::error::InvalidFrame::InvalidHeader {
+        FrameIoError::BadFrame(swimos_api::error::InvalidFrame::InvalidHeader {
             problem: Text::new("Ad-hoc message header contained invalid UTF8."),
         })
     })

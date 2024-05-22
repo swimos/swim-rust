@@ -16,7 +16,7 @@ use bytes::BytesMut;
 use frunk::{Coprod, Coproduct};
 use static_assertions::assert_impl_all;
 use std::{borrow::Borrow, cell::RefCell, collections::HashMap, hash::Hash, marker::PhantomData};
-use swimos_api::protocol::{agent::MapLaneResponseEncoder, map::MapMessage};
+use swimos_agent_protocol::{agent::MapLaneResponseEncoder, map::MapMessage};
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_recon::parser::RecognizerDecoder;
 use tokio_util::codec::{Decoder, Encoder};

@@ -15,20 +15,17 @@
 use std::{collections::HashMap, num::NonZeroUsize};
 
 use futures::{future::join, Future, StreamExt};
+use swimos_agent_protocol::{
+    agent::{LaneResponse, LaneResponseDecoder},
+    map::{MapOperation, MapOperationDecoder},
+    WithLenRecognizerDecoder,
+};
 use swimos_api::{
     agent::LaneConfig,
-    lane::WarpLaneKind,
-    meta::{
-        lane::{LaneInfo, LaneKind},
-        uplink::NodePulse,
-    },
-    protocol::{
-        agent::{LaneResponse, LaneResponseDecoder},
-        map::{MapOperation, MapOperationDecoder},
-        WithLenRecognizerDecoder,
-    },
+    lane::{LaneKind, WarpLaneKind},
 };
 use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_meta::{LaneInfo, NodePulse};
 use swimos_model::Text;
 use swimos_runtime::agent::reporting::UplinkReporter;
 use swimos_utilities::{

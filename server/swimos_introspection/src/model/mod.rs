@@ -21,7 +21,8 @@ use std::{
 };
 
 use parking_lot::Mutex;
-use swimos_api::meta::lane::{LaneInfo, LaneKind};
+use swimos_api::lane::LaneKind;
+use swimos_meta::LaneInfo;
 use swimos_model::Text;
 use swimos_runtime::agent::reporting::UplinkReportReader;
 

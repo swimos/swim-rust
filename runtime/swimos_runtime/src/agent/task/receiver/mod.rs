@@ -19,16 +19,14 @@ use std::{
 
 use bytes::{Bytes, BytesMut};
 use futures::{ready, Stream, StreamExt};
-use swimos_api::{
-    agent::UplinkKind,
-    protocol::{
-        agent::{
-            LaneResponse, MapLaneResponse, MapLaneResponseDecoder, MapStoreResponseDecoder,
-            StoreResponse, ValueLaneResponseDecoder, ValueStoreResponseDecoder,
-        },
-        map::MapOperation,
+use swimos_agent_protocol::{
+    agent::{
+        LaneResponse, MapLaneResponse, MapLaneResponseDecoder, MapStoreResponseDecoder,
+        StoreResponse, ValueLaneResponseDecoder, ValueStoreResponseDecoder,
     },
+    map::MapOperation,
 };
+use swimos_api::agent::UplinkKind;
 use swimos_utilities::io::byte_channel::ByteReader;
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;

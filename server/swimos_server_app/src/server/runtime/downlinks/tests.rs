@@ -27,14 +27,10 @@ use futures::{
     Future, FutureExt, SinkExt, StreamExt,
 };
 use parking_lot::Mutex;
-use swimos_api::{
-    downlink::DownlinkKind,
-    error::DownlinkRuntimeError,
-    net::SchemeHostPort,
-    protocol::downlink::{
-        DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
-    },
+use swimos_agent_protocol::downlink::{
+    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
 };
+use swimos_api::{downlink::DownlinkKind, error::DownlinkRuntimeError, net::SchemeHostPort};
 use swimos_messages::protocol::{
     Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder,
 };

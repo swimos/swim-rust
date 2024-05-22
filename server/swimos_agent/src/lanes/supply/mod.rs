@@ -19,7 +19,7 @@ use static_assertions::assert_impl_all;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
-use swimos_api::protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
+use swimos_agent_protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
 use swimos_form::structural::write::StructuralWritable;
 
 use crate::event_handler::EventHandlerError;

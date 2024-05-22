@@ -14,7 +14,7 @@
 
 use super::MapOperationReconEncoder;
 use bytes::{Bytes, BytesMut};
-use swimos_api::protocol::map::{MapOperation, RawMapOperation, RawMapOperationMut};
+use swimos_agent_protocol::map::{MapOperation, RawMapOperation, RawMapOperationMut};
 use tokio_util::codec::Encoder;
 
 #[test]

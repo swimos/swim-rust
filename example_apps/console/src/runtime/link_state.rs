@@ -14,7 +14,7 @@
 
 use std::{collections::BTreeMap, fmt::Debug};
 
-use swimos_api::protocol::map::{extract_header_str, MapMessage};
+use swimos_agent_protocol::map::{extract_header_str, MapMessage};
 use swimos_model::Value;
 use swimos_recon::{
     parser::{parse_recognize, MessageExtractError, ParseError},

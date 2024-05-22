@@ -18,21 +18,18 @@ use futures::{
     future::{join, join3, BoxFuture},
     FutureExt, SinkExt, StreamExt, TryFutureExt,
 };
+use swimos_agent_protocol::agent::{
+    LaneRequest, LaneRequestDecoder, LaneRequestEncoder, LaneResponse, LaneResponseEncoder,
+};
 use swimos_api::{
     agent::{LaneConfig, UplinkKind},
     error::StoreError,
-    lane::WarpLaneKind,
-    meta::lane::LaneKind,
-    protocol::{
-        agent::{
-            LaneRequest, LaneRequestDecoder, LaneRequestEncoder, LaneResponse, LaneResponseEncoder,
-        },
-        WithLengthBytesCodec,
-    },
+    lane::{LaneKind, WarpLaneKind},
     store::StoreDisabled,
 };
 use swimos_model::Text;
 use swimos_utilities::{
+    encoding::WithLengthBytesCodec,
     future::retryable::RetryStrategy,
     io::byte_channel::{self, byte_channel, ByteWriter},
     non_zero_usize, trigger,
@@ -152,8 +149,7 @@ impl<'a> Initializer<'a> for DummyInit {
             if let Some(err) = self.error {
                 Err(err)
             } else {
-                let mut framed =
-                    FramedWrite::new(writer, LaneRequestEncoder::new(WithLengthBytesCodec));
+                let mut framed = FramedWrite::new(writer, LaneRequestEncoder::value());
                 framed.send(LaneRequest::<&[u8]>::InitComplete).await?;
                 Ok(())
             }

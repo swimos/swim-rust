@@ -12,14 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::{FrameIoError, InvalidFrame};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+use swimos_api::error::{FrameIoError, InvalidFrame};
 use swimos_form::{
     structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
     Form,
 };
 use swimos_model::Text;
-use swimos_recon::parser::{AsyncParseError, RecognizerDecoder};
+use swimos_recon::{
+    parser::{AsyncParseError, RecognizerDecoder},
+    write_recon,
+};
 use tokio_util::codec::{Decoder, Encoder};
 
 mod parser;
@@ -428,8 +431,8 @@ impl<K: StructuralWritable, V: StructuralWritable> Encoder<MapOperation<K, V>>
                 dst.put_u64(0);
                 dst.put_u8(0);
                 dst.put_u64(0);
-                let key_len = super::write_recon(dst, &key);
-                let value_len = super::write_recon(dst, &value);
+                let key_len = write_recon(dst, &key);
+                let value_len = write_recon(dst, &value);
                 let total_len = key_len + value_len + LEN_SIZE + TAG_SIZE;
                 let mut rewound = &mut dst.as_mut()[body_len_offset..];
                 rewound.put_u64(u64::try_from(total_len).expect(OVERSIZE_KEY));
@@ -441,7 +444,7 @@ impl<K: StructuralWritable, V: StructuralWritable> Encoder<MapOperation<K, V>>
                 let body_len_offset = dst.remaining();
                 dst.put_u64(0);
                 dst.put_u8(REMOVE);
-                let key_len = super::write_recon(dst, &key);
+                let key_len = write_recon(dst, &key);
                 let total_len = key_len + TAG_SIZE;
                 let mut rewound = &mut dst.as_mut()[body_len_offset..];
                 rewound.put_u64(u64::try_from(total_len).expect(OVERSIZE_KEY));

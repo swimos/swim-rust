@@ -19,13 +19,13 @@ use std::future::Future;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
 
+use swimos_agent_protocol::downlink::DownlinkNotification;
+use swimos_agent_protocol::downlink::DownlinkNotificationEncoder;
+use swimos_agent_protocol::map::{MapMessage, MapMessageEncoder, MapOperationEncoder};
 use swimos_api::downlink::Downlink;
-use swimos_api::protocol::downlink::DownlinkNotificationEncoder;
-use swimos_api::protocol::map::{MapMessage, MapMessageEncoder, MapOperationEncoder};
 use swimos_api::{
     downlink::DownlinkConfig,
     error::{DownlinkTaskError, FrameIoError, InvalidFrame},
-    protocol::downlink::DownlinkNotification,
 };
 use swimos_form::structural::write::StructuralWritable;
 use swimos_form::Form;

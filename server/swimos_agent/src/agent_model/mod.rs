@@ -26,20 +26,20 @@ use futures::{
     StreamExt,
 };
 use futures::{Future, FutureExt};
+use swimos_agent_protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
+use swimos_agent_protocol::{agent::LaneRequest, map::MapMessage};
 use swimos_api::agent::{HttpLaneRequest, HttpLaneResponse, LaneConfig};
 use swimos_api::downlink::DownlinkKind;
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
-use swimos_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
-use swimos_api::protocol::WithLengthBytesCodec;
 pub use swimos_api::store::StoreKind;
 use swimos_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::{AgentInitError, AgentTaskError, FrameIoError},
-    protocol::{agent::LaneRequest, map::MapMessage},
 };
 use swimos_model::address::Address;
 use swimos_model::http::{Header, StandardHeaderName, StatusCode, Version};
 use swimos_model::Text;
+use swimos_utilities::encoding::WithLengthBytesCodec;
 use swimos_utilities::future::retryable::RetryStrategy;
 use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::routing::route_uri::RouteUri;

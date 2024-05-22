@@ -15,7 +15,7 @@
 use std::{convert::Infallible, fmt::Display};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use swimos_api::protocol::{
+use swimos_agent_protocol::{
     downlink::DownlinkOperation,
     map::{RawMapOperation, RawMapOperationMut},
 };

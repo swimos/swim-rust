@@ -25,8 +25,7 @@ use swimos_api::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
         StoreError,
     },
-    lane::WarpLaneKind,
-    meta::lane::LaneKind,
+    lane::{LaneKind, WarpLaneKind},
     net::SchemeHostPort,
     store::{NodePersistence, StoreKind},
 };

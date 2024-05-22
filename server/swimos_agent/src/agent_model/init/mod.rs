@@ -21,10 +21,11 @@ use futures::{
     stream::{unfold, BoxStream},
     FutureExt, SinkExt, Stream, StreamExt,
 };
-use swimos_api::protocol::agent::{
-    StoreInitMessage, StoreInitMessageDecoder, StoreInitialized, StoreInitializedCodec,
+use swimos_agent_protocol::{
+    agent::{StoreInitMessage, StoreInitMessageDecoder, StoreInitialized, StoreInitializedCodec},
+    map::MapMessage,
 };
-use swimos_api::{error::FrameIoError, protocol::map::MapMessage};
+use swimos_api::error::FrameIoError;
 use swimos_form::structural::read::{recognizer::RecognizerReadable, ReadError};
 use swimos_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swimos_utilities::future::try_last;

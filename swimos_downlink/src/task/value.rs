@@ -21,11 +21,11 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{info_span, trace, Instrument};
 
-use swimos_api::downlink::DownlinkConfig;
-use swimos_api::error::DownlinkTaskError;
-use swimos_api::protocol::downlink::{
+use swimos_agent_protocol::downlink::{
     DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
 };
+use swimos_api::downlink::DownlinkConfig;
+use swimos_api::error::DownlinkTaskError;
 use swimos_form::structural::write::StructuralWritable;
 use swimos_form::Form;
 use swimos_model::address::Address;

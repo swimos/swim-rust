@@ -23,11 +23,11 @@ use std::{
     sync::{atomic::AtomicU8, Arc},
     task::{Context, Poll},
 };
-use swimos_api::protocol::WithLenReconEncoder;
+use swimos_agent_protocol::downlink::{DownlinkNotification, ValueNotificationDecoder};
+use swimos_agent_protocol::WithLenReconEncoder;
 use swimos_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},
-    protocol::downlink::{DownlinkNotification, ValueNotificationDecoder},
 };
 use swimos_form::{
     structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},

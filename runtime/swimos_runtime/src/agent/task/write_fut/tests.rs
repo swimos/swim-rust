@@ -16,7 +16,7 @@ use std::num::NonZeroUsize;
 
 use bytes::{BufMut, BytesMut};
 use futures::StreamExt;
-use swimos_api::protocol::map::RawMapOperationMut;
+use swimos_agent_protocol::map::RawMapOperationMut;
 use swimos_messages::protocol::{Notification, Path, RawResponseMessageDecoder, ResponseMessage};
 use swimos_model::{BytesStr, Text};
 use swimos_utilities::{

@@ -15,8 +15,8 @@
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 
-use swimos_api::protocol::agent::StoreResponse;
-use swimos_api::protocol::map::MapOperation;
+use swimos_agent_protocol::agent::StoreResponse;
+use swimos_agent_protocol::map::MapOperation;
 
 use crate::map_storage::MapEventQueue;
 

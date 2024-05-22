@@ -16,6 +16,7 @@ use bytes::{Buf, BufMut, BytesMut};
 use std::{fmt::Write, mem::size_of};
 use swimos_form::{structural::read::recognizer::RecognizerReadable, Form};
 use swimos_recon::print_recon_compact;
+use swimos_utilities::encoding::WithLengthBytesCodec;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::protocol::{
@@ -23,7 +24,7 @@ use crate::protocol::{
         StoreInitMessage, StoreInitMessageDecoder, StoreInitMessageEncoder, StoreInitialized,
         StoreInitializedCodec, StoreResponse, StoreResponseEncoder, TAG_LEN,
     },
-    WithLenRecognizerDecoder, WithLengthBytesCodec,
+    WithLenRecognizerDecoder,
 };
 
 use super::StoreResponseDecoder;

@@ -19,10 +19,8 @@ use futures::{
     stream::SelectAll,
     Future, StreamExt,
 };
-use swimos_api::{
-    agent::UplinkKind,
-    protocol::{agent::LaneRequest, map::MapMessage},
-};
+use swimos_agent_protocol::{agent::LaneRequest, map::MapMessage};
+use swimos_api::agent::UplinkKind;
 use swimos_model::Text;
 use swimos_utilities::{
     io::byte_channel::{byte_channel, ByteReader},

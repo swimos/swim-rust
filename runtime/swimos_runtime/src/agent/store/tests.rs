@@ -21,20 +21,18 @@ use std::{
 use bytes::{BufMut, BytesMut};
 use futures::{future::join, StreamExt};
 use parking_lot::Mutex;
+use swimos_agent_protocol::{
+    agent::{LaneRequest, LaneRequestDecoder},
+    map::{MapMessage, MapMessageDecoder, MapOperation, RawMapOperationDecoder},
+};
+use swimos_api::store::NodePersistence;
 use swimos_api::{
     error::StoreError,
-    protocol::{
-        agent::{LaneRequest, LaneRequestDecoder},
-        map::MapMessage,
-        WithLengthBytesCodec,
-    },
     store::{KeyValue, RangeConsumer},
 };
-use swimos_api::{
-    protocol::map::{MapMessageDecoder, MapOperation, RawMapOperationDecoder},
-    store::NodePersistence,
+use swimos_utilities::{
+    encoding::WithLengthBytesCodec, io::byte_channel::byte_channel, non_zero_usize,
 };
-use swimos_utilities::{io::byte_channel::byte_channel, non_zero_usize};
 use tokio_util::codec::FramedRead;
 
 use crate::agent::store::{AgentPersistence, StorePersistence};

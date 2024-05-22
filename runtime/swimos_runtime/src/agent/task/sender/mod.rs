@@ -14,16 +14,13 @@
 
 use bytes::Bytes;
 use futures::SinkExt;
-use swimos_api::{
-    agent::UplinkKind,
-    protocol::{
-        agent::{LaneRequest, LaneRequestEncoder},
-        map::{extract_header, MapMessage, MapMessageEncoder, RawMapOperationEncoder},
-        WithLengthBytesCodec,
-    },
+use swimos_agent_protocol::{
+    agent::{LaneRequest, LaneRequestEncoder},
+    map::{extract_header, MapMessage, MapMessageEncoder, RawMapOperationEncoder},
 };
+use swimos_api::agent::UplinkKind;
 use swimos_recon::parser::MessageExtractError;
-use swimos_utilities::io::byte_channel::ByteWriter;
+use swimos_utilities::{encoding::WithLengthBytesCodec, io::byte_channel::ByteWriter};
 use thiserror::Error;
 use tokio_util::codec::{Encoder, FramedWrite};
 use uuid::Uuid;

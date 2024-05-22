@@ -20,13 +20,10 @@ use std::{
 
 use bytes::{BufMut, BytesMut};
 use futures::{stream::FuturesUnordered, Future, StreamExt};
+use swimos_agent_protocol::agent::{AdHocCommand, AdHocCommandDecoder};
 use swimos_api::{
     error::{AgentRuntimeError, DownlinkRuntimeError},
     net::SchemeHostPort,
-    protocol::{
-        agent::{AdHocCommand, AdHocCommandDecoder},
-        WithLengthBytesCodec,
-    },
 };
 use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
 use swimos_model::{
@@ -34,6 +31,7 @@ use swimos_model::{
     BytesStr, Text,
 };
 use swimos_utilities::{
+    encoding::WithLengthBytesCodec,
     errors::Recoverable,
     future::{retryable::RetryStrategy, UnionFuture4},
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},

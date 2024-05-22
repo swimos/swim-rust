@@ -15,7 +15,7 @@
 use std::marker::PhantomData;
 
 use static_assertions::assert_impl_all;
-use swimos_api::handlers::{FnHandler, NoHandler};
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::agent_lifecycle::AgentLifecycle;
 

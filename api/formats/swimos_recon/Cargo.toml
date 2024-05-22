@@ -6,7 +6,7 @@ edition = "2021"
 
 [features]
 default = []
-async_parser = ["futures", "tokio", "tokio-util", "bytes"]
+async_parser = ["futures", "tokio", "tokio-util"]
 
 [dependencies]
 base64 = { workspace = true }
@@ -20,7 +20,7 @@ ryu = "1.0"
 futures = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["io-util"], optional = true }
 tokio-util = { workspace = true, optional = true, features = ["codec"] }
-bytes = { workspace = true, optional = true }
+bytes = { workspace = true }
 smallvec = { workspace = true }
 thiserror = { workspace = true }
 

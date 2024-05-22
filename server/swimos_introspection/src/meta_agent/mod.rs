@@ -18,17 +18,16 @@ use std::{
 };
 
 use futures::{stream::unfold, SinkExt, Stream, StreamExt};
-use swimos_api::{
-    error::FrameIoError,
-    meta::uplink::WarpUplinkPulse,
-    protocol::{
-        agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
-        WithLenReconEncoder, WithLengthBytesCodec,
-    },
+use swimos_agent_protocol::{
+    agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
+    WithLenReconEncoder,
 };
+use swimos_api::error::FrameIoError;
 use swimos_form::structural::write::StructuralWritable;
+use swimos_meta::WarpUplinkPulse;
 use swimos_runtime::agent::reporting::{UplinkReportReader, UplinkSnapshot};
 use swimos_utilities::{
+    encoding::WithLengthBytesCodec,
     io::byte_channel::{ByteReader, ByteWriter},
     routing::route_uri::RouteUri,
     trigger,

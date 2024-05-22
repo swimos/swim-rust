@@ -19,7 +19,7 @@ use swimos_model::Text;
 use swimos_recon::parser::{AsyncParseError, RecognizerDecoder};
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::error::{FrameIoError, InvalidFrame};
+use swimos_api::error::{FrameIoError, InvalidFrame};
 
 #[cfg(test)]
 mod tests;

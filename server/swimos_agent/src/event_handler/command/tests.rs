@@ -15,13 +15,11 @@
 use std::collections::HashMap;
 
 use bytes::BytesMut;
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::{
-        agent::{AdHocCommand, AdHocCommandDecoder},
-        WithLenRecognizerDecoder,
-    },
+use swimos_agent_protocol::{
+    agent::{AdHocCommand, AdHocCommandDecoder},
+    WithLenRecognizerDecoder,
 };
+use swimos_api::agent::AgentConfig;
 use swimos_form::structural::read::recognizer::primitive::I32Recognizer;
 use swimos_model::{address::Address, BytesStr};
 use swimos_utilities::routing::route_uri::RouteUri;

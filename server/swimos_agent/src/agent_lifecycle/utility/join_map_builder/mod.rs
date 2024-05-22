@@ -14,7 +14,7 @@
 
 use std::marker::PhantomData;
 
-use swimos_api::handlers::FnHandler;
+use swimos_utilities::handlers::FnHandler;
 
 use crate::{
     lanes::join_map::lifecycle::{

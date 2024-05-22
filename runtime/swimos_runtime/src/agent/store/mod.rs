@@ -15,17 +15,16 @@
 use bytes::BytesMut;
 use futures::{future::BoxFuture, FutureExt, SinkExt};
 use std::fmt::Debug;
+use swimos_agent_protocol::{
+    agent::{StoreInitMessage, StoreInitMessageEncoder},
+    map::{MapMessage, MapMessageEncoder, MapOperation, RawMapOperationEncoder},
+};
 use swimos_api::{
     error::StoreError,
-    protocol::{
-        agent::{StoreInitMessage, StoreInitMessageEncoder},
-        map::{MapMessage, MapMessageEncoder, MapOperation, RawMapOperationEncoder},
-        WithLengthBytesCodec,
-    },
     store::{NodePersistence, RangeConsumer, StoreDisabled},
 };
 use swimos_model::Text;
-use swimos_utilities::io::byte_channel::ByteWriter;
+use swimos_utilities::{encoding::WithLengthBytesCodec, io::byte_channel::ByteWriter};
 use thiserror::Error;
 use tokio_util::codec::FramedWrite;
 

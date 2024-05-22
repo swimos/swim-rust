@@ -18,7 +18,7 @@ use std::{
 };
 
 use bytes::{BufMut, BytesMut};
-use swimos_api::protocol::map::{MapOperation, RawMapOperation, RawMapOperationMut};
+use swimos_agent_protocol::map::{MapOperation, RawMapOperation, RawMapOperationMut};
 
 use crate::error::InvalidKey;
 

@@ -15,26 +15,26 @@
 use std::collections::HashMap;
 
 use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
+use swimos_agent_protocol::{
+    agent::{
+        LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder, StoreInitMessage,
+        StoreInitMessageDecoder, StoreInitialized, StoreInitializedCodec,
+    },
+    map::{
+        MapMessage, MapMessageDecoder, MapOperation, MapOperationDecoder, RawMapOperationEncoder,
+    },
+    WithLenRecognizerDecoder,
+};
 use swimos_api::{
     agent::{LaneConfig, StoreConfig, UplinkKind},
     error::StoreError,
     lane::WarpLaneKind,
-    protocol::{
-        agent::{
-            LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder, StoreInitMessage,
-            StoreInitMessageDecoder, StoreInitialized, StoreInitializedCodec,
-        },
-        map::{
-            MapMessage, MapMessageDecoder, MapOperation, MapOperationDecoder,
-            RawMapOperationEncoder,
-        },
-        WithLenRecognizerDecoder, WithLengthBytesCodec,
-    },
     store::{NodePersistence, StoreKind},
 };
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_model::Text;
 use swimos_utilities::{
+    encoding::WithLengthBytesCodec,
     io::byte_channel::{self, ByteReader, ByteWriter},
     trigger,
 };

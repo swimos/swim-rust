@@ -15,10 +15,8 @@
 use std::num::NonZeroUsize;
 
 use bytes::{Bytes, BytesMut};
-use swimos_api::{
-    agent::UplinkKind,
-    protocol::map::{MapOperation, RawMapOperation},
-};
+use swimos_agent_protocol::map::{MapOperation, RawMapOperation};
+use swimos_api::agent::UplinkKind;
 use swimos_model::Text;
 use swimos_utilities::{
     io::byte_channel::{byte_channel, ByteReader},

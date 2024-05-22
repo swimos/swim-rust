@@ -15,17 +15,16 @@
 use std::{num::NonZeroUsize, pin::pin, time::Duration};
 
 use futures::{future::join, Future, SinkExt, StreamExt};
-use swimos_api::{
-    meta::uplink::WarpUplinkPulse,
-    protocol::{
-        agent::{LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder},
-        WithLenRecognizerDecoder, WithLengthBytesCodec,
-    },
+use swimos_agent_protocol::{
+    agent::{LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder},
+    WithLenRecognizerDecoder,
 };
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_form::Form;
+use swimos_meta::WarpUplinkPulse;
 use swimos_runtime::agent::reporting::{UplinkReporter, UplinkSnapshot};
 use swimos_utilities::{
+    encoding::WithLengthBytesCodec,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize, trigger,
 };

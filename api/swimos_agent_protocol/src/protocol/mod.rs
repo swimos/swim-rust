@@ -13,11 +13,10 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, BytesMut};
-use std::fmt::Write;
 use swimos_form::structural::{read::recognizer::Recognizer, write::StructuralWritable};
 use swimos_recon::{
     parser::{AsyncParseError, RecognizerDecoder},
-    print_recon_compact,
+    write_recon,
 };
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -49,25 +48,8 @@ fn consume_bounded<D: Decoder>(
     (new_remaining, rem, decode_result)
 }
 
-const RESERVE_INIT: usize = 256;
-const RESERVE_MULT: usize = 2;
 const TAG_SIZE: usize = std::mem::size_of::<u8>();
 const LEN_SIZE: usize = std::mem::size_of::<u64>();
-
-fn write_recon_body<T: StructuralWritable>(dst: &mut BytesMut, body: &T) -> usize {
-    let mut next_res = RESERVE_INIT.max(dst.remaining_mut().saturating_mul(RESERVE_MULT));
-    let body_offset = dst.remaining();
-    loop {
-        if write!(dst, "{}", print_recon_compact(body)).is_err() {
-            dst.truncate(body_offset);
-            dst.reserve(next_res);
-            next_res = next_res.saturating_mul(RESERVE_MULT);
-        } else {
-            break;
-        }
-    }
-    body_offset
-}
 
 /// Encodes a value as a Recon string following the length of the string as a 64 bit integer.
 #[derive(Debug, Clone, Copy, Default)]
@@ -89,49 +71,6 @@ fn write_recon_with_len<T: StructuralWritable>(dst: &mut BytesMut, body: &T) {
     let body_len = write_recon(dst, body);
     let mut rewound = &mut dst.as_mut()[body_len_offset..];
     rewound.put_u64(body_len as u64);
-}
-
-pub fn write_recon<T: StructuralWritable>(dst: &mut BytesMut, body: &T) -> usize {
-    let body_offset = write_recon_body(dst, body);
-    dst.remaining() - body_offset
-}
-
-/// Codec that will encode a type as a Recon string, writing the length (as a 64 bit unsigned
-/// integer) as a header.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct WithLengthBytesCodec;
-
-impl<B: AsRef<[u8]>> Encoder<B> for WithLengthBytesCodec {
-    type Error = std::io::Error;
-
-    fn encode(&mut self, item: B, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let bytes = item.as_ref();
-        dst.reserve(LEN_SIZE + bytes.len());
-        dst.put_u64(bytes.len() as u64);
-        dst.put(bytes);
-        Ok(())
-    }
-}
-
-impl Decoder for WithLengthBytesCodec {
-    type Item = BytesMut;
-
-    type Error = std::io::Error;
-
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        if src.remaining() < LEN_SIZE {
-            Ok(None)
-        } else {
-            let mut bytes = src.as_ref();
-            let len = bytes.get_u64() as usize;
-            if src.remaining() >= LEN_SIZE + len {
-                src.advance(LEN_SIZE);
-                Ok(Some(src.split_to(len)))
-            } else {
-                Ok(None)
-            }
-        }
-    }
 }
 
 enum WithLenRecognizerDecoderState<R: Recognizer> {

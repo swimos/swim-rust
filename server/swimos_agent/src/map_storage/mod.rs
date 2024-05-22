@@ -14,7 +14,7 @@
 
 use std::{borrow::Borrow, collections::HashMap, hash::Hash};
 
-use swimos_api::protocol::map::MapOperation;
+use swimos_agent_protocol::map::MapOperation;
 
 use crate::lanes::map::MapLaneEvent;
 

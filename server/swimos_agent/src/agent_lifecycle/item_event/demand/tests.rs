@@ -16,10 +16,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use bytes::BytesMut;
 use parking_lot::Mutex;
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::agent::{LaneResponse, ValueLaneResponseDecoder},
-};
+use swimos_agent_protocol::agent::{LaneResponse, ValueLaneResponseDecoder};
+use swimos_api::agent::AgentConfig;
 use swimos_form::structural::write::StructuralWritable;
 use swimos_model::Text;
 use swimos_recon::print_recon_compact;

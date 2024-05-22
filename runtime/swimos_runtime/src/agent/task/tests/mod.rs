@@ -22,19 +22,16 @@ use std::{
 
 use bytes::Bytes;
 use futures::{future::Either, ready, SinkExt, Stream, StreamExt};
-use swimos_api::{
-    agent::UplinkKind,
-    error::FrameIoError,
-    protocol::{
-        agent::{
-            LaneRequest, LaneRequestDecoder, LaneResponse, MapLaneResponse, MapLaneResponseEncoder,
-            MapStoreResponseEncoder, StoreResponse, ValueLaneResponseEncoder,
-            ValueStoreResponseEncoder,
-        },
-        map::{MapMessage, MapMessageDecoder, MapOperation, MapOperationDecoder},
-        WithLenRecognizerDecoder,
+use swimos_agent_protocol::{
+    agent::{
+        LaneRequest, LaneRequestDecoder, LaneResponse, MapLaneResponse, MapLaneResponseEncoder,
+        MapStoreResponseEncoder, StoreResponse, ValueLaneResponseEncoder,
+        ValueStoreResponseEncoder,
     },
+    map::{MapMessage, MapMessageDecoder, MapOperation, MapOperationDecoder},
+    WithLenRecognizerDecoder,
 };
+use swimos_api::{agent::UplinkKind, error::FrameIoError};
 use swimos_form::structural::read::recognizer::primitive::I32Recognizer;
 use swimos_messages::protocol::{
     Notification, Path, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,

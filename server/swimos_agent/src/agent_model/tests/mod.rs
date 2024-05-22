@@ -20,17 +20,17 @@ use futures::{
     Future, FutureExt, SinkExt, StreamExt,
 };
 use parking_lot::Mutex;
+use swimos_agent_protocol::{
+    agent::{AdHocCommand, AdHocCommandDecoder},
+    downlink::{DownlinkNotification, DownlinkNotificationEncoder},
+    map::{MapMessage, MapOperation},
+    WithLenRecognizerDecoder,
+};
 use swimos_api::{
     agent::{AgentConfig, AgentContext, AgentTask, HttpLaneRequest},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
     lane::WarpLaneKind,
-    protocol::{
-        agent::{AdHocCommand, AdHocCommandDecoder},
-        downlink::{DownlinkNotification, DownlinkNotificationEncoder},
-        map::{MapMessage, MapOperation},
-        WithLenRecognizerDecoder, WithLengthBytesCodec,
-    },
 };
 use swimos_form::structural::read::recognizer::{primitive::TextRecognizer, RecognizerReadable};
 use swimos_model::{
@@ -39,6 +39,7 @@ use swimos_model::{
     BytesStr, Text,
 };
 use swimos_utilities::{
+    encoding::WithLengthBytesCodec,
     future::retryable::RetryStrategy,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,

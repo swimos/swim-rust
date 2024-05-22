@@ -23,7 +23,7 @@ use lifecycle::{
     BasicEventDownlinkLifecycle, BasicValueDownlinkLifecycle, EventDownlinkLifecycle,
     ValueDownlinkLifecycle,
 };
-use swimos_api::protocol::map::MapMessage;
+use swimos_agent_protocol::map::MapMessage;
 
 pub mod lifecycle;
 

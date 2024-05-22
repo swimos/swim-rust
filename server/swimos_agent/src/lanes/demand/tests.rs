@@ -15,10 +15,8 @@
 use std::collections::HashMap;
 
 use bytes::BytesMut;
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::agent::{LaneResponse, ValueLaneResponseDecoder},
-};
+use swimos_agent_protocol::agent::{LaneResponse, ValueLaneResponseDecoder};
+use swimos_api::agent::AgentConfig;
 use swimos_utilities::routing::route_uri::RouteUri;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
