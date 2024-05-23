@@ -17,9 +17,8 @@ use std::{collections::HashMap, pin::pin};
 use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
 use swimos_agent_protocol::agent::{
-        LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder,
-        ValueLaneResponseEncoder,
-    };
+    LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder, ValueLaneResponseEncoder,
+};
 use swimos_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::AgentTaskError,

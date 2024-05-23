@@ -13,11 +13,14 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, Bytes};
-use swimos_utilities::encoding::consume_bounded;
 use std::fmt::Debug;
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
-use swimos_recon::{parser::{AsyncParseError, RecognizerDecoder}, WithLenReconEncoder};
+use swimos_recon::{
+    parser::{AsyncParseError, RecognizerDecoder},
+    WithLenReconEncoder,
+};
+use swimos_utilities::encoding::consume_bounded;
 use tokio_util::codec::{Decoder, Encoder};
 
 use swimos_api::error::{FrameIoError, InvalidFrame};
@@ -258,8 +261,7 @@ where
                     }
                 }
                 DownlinkNotificationDecoderState::ReadingBody { remaining } => {
-                    let (consumed, decode_result) =
-                        consume_bounded(*remaining, src, body_decoder);
+                    let (consumed, decode_result) = consume_bounded(*remaining, src, body_decoder);
                     *remaining -= consumed;
                     match decode_result {
                         Ok(Some(result)) => {
@@ -279,7 +281,10 @@ where
                                 break Err(e.into());
                             } else {
                                 src.clear();
-                                *state = DownlinkNotificationDecoderState::Discarding { remaining: *remaining - rem, error: Some(e.into()) }
+                                *state = DownlinkNotificationDecoderState::Discarding {
+                                    remaining: *remaining - rem,
+                                    error: Some(e.into()),
+                                }
                             }
                         }
                     }

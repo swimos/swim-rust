@@ -81,8 +81,7 @@ fn round_trip_request(request: LaneRequest<Example>) {
     assert!(encoder.encode(with_bytes, &mut buffer).is_ok());
 
     let decoder = WithLenRecognizerDecoder::new(Example::make_recognizer());
-    let mut decoder =
-        LaneRequestDecoder::new(decoder);
+    let mut decoder = LaneRequestDecoder::new(decoder);
     match decoder.decode(&mut buffer) {
         Ok(Some(restored)) => {
             assert_eq!(restored, request);

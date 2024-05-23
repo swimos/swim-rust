@@ -13,16 +13,16 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, BytesMut};
-use swimos_utilities::encoding::WithLengthBytesCodec;
 use std::{fmt::Write, mem::size_of};
 use swimos_form::{structural::read::recognizer::RecognizerReadable, Form};
 use swimos_recon::{print_recon_compact, WithLenRecognizerDecoder};
+use swimos_utilities::encoding::WithLengthBytesCodec;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::protocol::agent::{
-        StoreInitMessage, StoreInitMessageDecoder, StoreInitMessageEncoder, StoreInitialized,
-        StoreInitializedCodec, StoreResponse, StoreResponseEncoder, TAG_LEN,
-    };
+    StoreInitMessage, StoreInitMessageDecoder, StoreInitMessageEncoder, StoreInitialized,
+    StoreInitializedCodec, StoreResponse, StoreResponseEncoder, TAG_LEN,
+};
 
 use super::StoreResponseDecoder;
 

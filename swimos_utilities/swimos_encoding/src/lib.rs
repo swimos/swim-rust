@@ -79,4 +79,3 @@ pub fn consume_bounded<D: Decoder>(
     }
     (consumed, decode_result)
 }
-

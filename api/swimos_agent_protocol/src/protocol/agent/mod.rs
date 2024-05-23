@@ -24,9 +24,9 @@ use uuid::Uuid;
 use swimos_api::error::{FrameIoError, InvalidFrame};
 
 use super::map::{
-        MapMessageEncoder, MapOperation, MapOperationEncoder, RawMapOperationDecoder,
-        RawMapOperationEncoder,
-    };
+    MapMessageEncoder, MapOperation, MapOperationEncoder, RawMapOperationDecoder,
+    RawMapOperationEncoder,
+};
 
 mod ad_hoc;
 mod store;

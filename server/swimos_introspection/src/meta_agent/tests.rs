@@ -15,7 +15,9 @@
 use std::{num::NonZeroUsize, pin::pin, time::Duration};
 
 use futures::{future::join, Future, SinkExt, StreamExt};
-use swimos_agent_protocol::agent::{LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder};
+use swimos_agent_protocol::agent::{
+    LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder,
+};
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_form::Form;
 use swimos_meta::WarpUplinkPulse;

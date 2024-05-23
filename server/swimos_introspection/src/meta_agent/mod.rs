@@ -18,7 +18,9 @@ use std::{
 };
 
 use futures::{stream::unfold, SinkExt, Stream, StreamExt};
-use swimos_agent_protocol::agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder};
+use swimos_agent_protocol::agent::{
+    LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder,
+};
 use swimos_api::error::FrameIoError;
 use swimos_form::structural::write::StructuralWritable;
 use swimos_meta::WarpUplinkPulse;

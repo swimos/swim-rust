@@ -22,14 +22,14 @@
 //! - Comparator for Recon strings that does not require them to be deserialized.
 //! - Hash function for Recon strings (that will produce the same hash for strings that represent equal values).
 
-mod encoding;
 mod comparator;
+mod encoding;
 mod hasher;
 mod printer;
 mod recon_parser;
 
-pub use encoding::{write_recon, WithLenRecognizerDecoder, WithLenReconEncoder};
 pub use comparator::compare_recon_values;
+pub use encoding::{write_recon, WithLenRecognizerDecoder, WithLenReconEncoder};
 pub use hasher::{recon_hash, HashError};
 pub use printer::{print_recon, print_recon_compact, print_recon_pretty};
 

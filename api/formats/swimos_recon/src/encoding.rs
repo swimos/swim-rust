@@ -13,12 +13,15 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, BytesMut};
-use swimos_utilities::encoding::consume_bounded;
-use tokio_util::codec::{Decoder, Encoder};
 use std::fmt::Write;
 use swimos_form::structural::{read::recognizer::Recognizer, write::StructuralWritable};
+use swimos_utilities::encoding::consume_bounded;
+use tokio_util::codec::{Decoder, Encoder};
 
-use crate::{print_recon_compact, recon_parser::{AsyncParseError, RecognizerDecoder}};
+use crate::{
+    print_recon_compact,
+    recon_parser::{AsyncParseError, RecognizerDecoder},
+};
 
 const RESERVE_INIT: usize = 256;
 const RESERVE_MULT: usize = 2;
@@ -124,8 +127,7 @@ impl<R: Recognizer> Decoder for WithLenRecognizerDecoder<R> {
                     }
                 }
                 WithLenRecognizerDecoderState::ReadingBody { remaining } => {
-                    let (consumed, decode_result) =
-                        consume_bounded(*remaining, src, inner);
+                    let (consumed, decode_result) = consume_bounded(*remaining, src, inner);
                     *remaining -= consumed;
                     match decode_result {
                         Ok(Some(result)) => {
@@ -145,7 +147,10 @@ impl<R: Recognizer> Decoder for WithLenRecognizerDecoder<R> {
                                 break Err(e);
                             } else {
                                 src.clear();
-                                *state = WithLenRecognizerDecoderState::Discarding { remaining: *remaining - rem, error: Some(e) }
+                                *state = WithLenRecognizerDecoderState::Discarding {
+                                    remaining: *remaining - rem,
+                                    error: Some(e),
+                                }
                             }
                         }
                     }

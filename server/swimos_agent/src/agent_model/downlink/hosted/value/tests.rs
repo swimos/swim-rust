@@ -31,9 +31,8 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swimos_agent_protocol::downlink::{
-        DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation,
-        DownlinkOperationDecoder,
-    };
+    DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation, DownlinkOperationDecoder,
+};
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_model::{address::Address, Text};
 use swimos_recon::{print_recon_compact, WithLenRecognizerDecoder};

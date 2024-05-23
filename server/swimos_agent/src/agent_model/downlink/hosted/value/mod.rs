@@ -17,7 +17,6 @@ use futures::{
     ready, FutureExt, Sink, SinkExt, Stream, StreamExt,
 };
 use pin_project::pin_project;
-use swimos_recon::WithLenReconEncoder;
 use std::{
     cell::RefCell,
     pin::{pin, Pin},
@@ -34,6 +33,7 @@ use swimos_form::{
     Form,
 };
 use swimos_model::{address::Address, Text};
+use swimos_recon::WithLenReconEncoder;
 use swimos_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     sync::circular_buffer,

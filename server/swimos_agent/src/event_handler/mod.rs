@@ -31,7 +31,10 @@ use swimos_api::{
 };
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_model::{address::Address, Text};
-use swimos_recon::{parser::{AsyncParseError, RecognizerDecoder}, WithLenReconEncoder};
+use swimos_recon::{
+    parser::{AsyncParseError, RecognizerDecoder},
+    WithLenReconEncoder,
+};
 use swimos_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     never::Never,

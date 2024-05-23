@@ -21,7 +21,6 @@ use crate::{WithLenRecognizerDecoder, WithLenReconEncoder};
 
 #[test]
 fn with_len_recon_encoding() {
-
     let mut encoder = WithLenReconEncoder;
     let mut decoder = WithLenRecognizerDecoder::new(String::make_recognizer());
 
@@ -29,9 +28,11 @@ fn with_len_recon_encoding() {
 
     assert!(encoder.encode("hello".to_string(), &mut buffer).is_ok());
 
-    let restored = decoder.decode(&mut buffer).expect("Decoding failed.").expect("Incomplete.");
+    let restored = decoder
+        .decode(&mut buffer)
+        .expect("Decoding failed.")
+        .expect("Incomplete.");
     assert_eq!(restored, "hello");
-
 }
 
 fn put_str(s: &str) -> BytesMut {
@@ -50,12 +51,14 @@ fn put_strs(s: &str, t: &str) -> BytesMut {
     buffer
 }
 
-
 #[test]
 fn decode_with_padding() {
     let mut buffer = put_str("  @attr { a: 1}   ");
     let mut decoder = WithLenRecognizerDecoder::new(Value::make_recognizer());
-    let restored = decoder.decode(&mut buffer).expect("Decoding failed.").expect("Incomplete.");
+    let restored = decoder
+        .decode(&mut buffer)
+        .expect("Decoding failed.")
+        .expect("Incomplete.");
     let expected = Value::Record(vec![Attr::of("attr")], vec![Item::slot("a", 1)]);
     assert_eq!(restored, expected);
     assert!(buffer.is_empty());
@@ -65,14 +68,20 @@ fn decode_with_padding() {
 fn decode_twice() {
     let mut buffer = put_strs("  @attr { a: 1}   ", "{b:2, c:3}");
     let mut decoder = WithLenRecognizerDecoder::new(Value::make_recognizer());
-    
-    let restored1 = decoder.decode(&mut buffer).expect("Decoding failed.").expect("Incomplete.");
+
+    let restored1 = decoder
+        .decode(&mut buffer)
+        .expect("Decoding failed.")
+        .expect("Incomplete.");
     let expected1 = Value::Record(vec![Attr::of("attr")], vec![Item::slot("a", 1)]);
     assert_eq!(restored1, expected1);
 
-    let restored2 = decoder.decode(&mut buffer).expect("Decoding failed.").expect("Incomplete.");
+    let restored2 = decoder
+        .decode(&mut buffer)
+        .expect("Decoding failed.")
+        .expect("Incomplete.");
     let expected2 = Value::Record(vec![], vec![Item::slot("b", 2), Item::slot("c", 3)]);
     assert_eq!(restored2, expected2);
-    
+
     assert!(buffer.is_empty());
 }

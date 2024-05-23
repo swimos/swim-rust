@@ -324,7 +324,10 @@ impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapOperationDecod
                                 break Err(e.into());
                             } else {
                                 src.clear();
-                                *state =  MapOperationDecoderState::Discarding { remaining: *remaining - rem, error: Some(e) }
+                                *state = MapOperationDecoderState::Discarding {
+                                    remaining: *remaining - rem,
+                                    error: Some(e),
+                                }
                             }
                         }
                     }
@@ -374,7 +377,10 @@ impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapOperationDecod
                                 break Err(e.into());
                             } else {
                                 src.clear();
-                                *state =  MapOperationDecoderState::Discarding { remaining: *remaining - rem, error: Some(e) }
+                                *state = MapOperationDecoderState::Discarding {
+                                    remaining: *remaining - rem,
+                                    error: Some(e),
+                                }
                             }
                         }
                     }
