@@ -33,6 +33,6 @@ serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
-swimos_recon = { path = "../../api/formats/swimos_recon", features = ["async_parser"] }
+swimos_recon = { path = "../../api/formats/swimos_recon" }
 tokio = { workspace = true, features = ["rt", "test-util", "time"] }
 parking_lot = { workspace = true }

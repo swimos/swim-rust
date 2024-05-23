@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(feature = "async_parser")]
 mod async_parser;
 mod error;
 pub mod record;
@@ -120,5 +119,4 @@ pub fn parse_text_token(input: Span<'_>) -> Result<Cow<'_, str>, ParseError> {
     Ok(text)
 }
 
-#[cfg(feature = "async_parser")]
 pub use async_parser::{parse_recon_document, AsyncParseError, RecognizerDecoder};

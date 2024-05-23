@@ -21,5 +21,5 @@ either = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-swimos_recon = { path = "../api/formats/swimos_recon", features = ["async_parser"] }
+swimos_recon = { path = "../api/formats/swimos_recon" }
 tokio = { workspace = true, features = ["rt", "macros"] }

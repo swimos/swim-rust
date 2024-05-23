@@ -43,6 +43,5 @@ pub mod parser {
         extract_header, extract_header_str, parse_recognize, parse_text_token, HeaderPeeler,
         MessageExtractError, ParseError, Span,
     };
-    #[cfg(feature = "async_parser")]
     pub use crate::recon_parser::{parse_recon_document, AsyncParseError, RecognizerDecoder};
 }

@@ -6,7 +6,6 @@ edition = "2021"
 
 [features]
 default = []
-async_parser = ["futures", "tokio", "tokio-util"]
 
 [dependencies]
 base64 = { workspace = true }
@@ -18,9 +17,9 @@ nom = { workspace = true }
 nom_locate = { workspace = true }
 num-traits = { workspace = true }
 ryu = "1.0"
-futures = { workspace = true, optional = true }
-tokio = { workspace = true, features = ["io-util"], optional = true }
-tokio-util = { workspace = true, optional = true, features = ["codec"] }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["io-util"] }
+tokio-util = { workspace = true, features = ["codec"] }
 bytes = { workspace = true }
 smallvec = { workspace = true }
 thiserror = { workspace = true }

@@ -191,7 +191,6 @@ impl<'a> ParseEvents<'a> {
         }
     }
 
-    #[cfg(feature = "async_parser")]
     pub fn is_empty(&self) -> bool {
         matches!(self, ParseEvents::NoEvent | ParseEvents::End)
     }
@@ -371,7 +370,6 @@ impl IncrementalReconParser {
         }
     }
 
-    #[cfg(feature = "async_parser")]
     pub fn final_parser_and_reset(&mut self) -> Option<FinalSegmentParser> {
         let parser = self.final_parser();
         self.state.clear();
@@ -379,7 +377,6 @@ impl IncrementalReconParser {
         parser
     }
 
-    #[cfg(feature = "async_parser")]
     pub fn reset(&mut self) {
         self.state.clear();
         self.state.push(ParseState::Init);

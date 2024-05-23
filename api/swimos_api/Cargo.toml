@@ -9,7 +9,7 @@ futures = { workspace = true }
 swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "errors"] }
 swimos_model = { path = "../swimos_model" }
 swimos_form = { path = "../swimos_form" }
-swimos_recon = { path = "../formats/swimos_recon", features = ["async_parser"] }
+swimos_recon = { path = "../formats/swimos_recon" }
 thiserror = { workspace = true }
 bytes = { workspace = true }
 tokio = { workspace = true }

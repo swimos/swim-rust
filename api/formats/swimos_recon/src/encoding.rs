@@ -23,6 +23,9 @@ use crate::{print_recon_compact, recon_parser::{AsyncParseError, RecognizerDecod
 const RESERVE_INIT: usize = 256;
 const RESERVE_MULT: usize = 2;
 
+#[cfg(test)]
+mod tests;
+
 fn write_recon_body<T: StructuralWritable>(dst: &mut BytesMut, body: &T) -> usize {
     let mut next_res = RESERVE_INIT.max(dst.remaining_mut().saturating_mul(RESERVE_MULT));
     let body_offset = dst.remaining();

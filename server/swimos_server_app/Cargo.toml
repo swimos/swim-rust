@@ -38,7 +38,7 @@ pin-project = { workspace = true }
 percent-encoding = { workspace = true }
 
 [dev-dependencies]
-swimos_recon = { path = "../../api/formats/swimos_recon", features = ["async_parser"] }
+swimos_recon = { path = "../../api/formats/swimos_recon" }
 tokio = { workspace = true, features = ["rt", "macros", "test-util"] }
 swimos_form = { path = "../../api/swimos_form" }
 swimos_messages = { path = "../../runtime/swimos_messages" }
