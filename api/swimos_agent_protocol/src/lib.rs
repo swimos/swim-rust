@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod protocol;
+pub mod agent;
+pub mod downlink;
+pub mod map;
 
-pub use protocol::{agent, downlink, map};
+#[cfg(test)]
+mod tests;
 
 const TAG_SIZE: usize = std::mem::size_of::<u8>();
 const LEN_SIZE: usize = std::mem::size_of::<u64>();

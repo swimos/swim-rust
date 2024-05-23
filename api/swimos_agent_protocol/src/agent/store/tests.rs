@@ -19,7 +19,7 @@ use swimos_recon::{print_recon_compact, WithLenRecognizerDecoder};
 use swimos_utilities::encoding::WithLengthBytesCodec;
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::protocol::agent::{
+use crate::agent::{
     StoreInitMessage, StoreInitMessageDecoder, StoreInitMessageEncoder, StoreInitialized,
     StoreInitializedCodec, StoreResponse, StoreResponseEncoder, TAG_LEN,
 };

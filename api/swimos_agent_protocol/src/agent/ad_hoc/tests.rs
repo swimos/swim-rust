@@ -16,7 +16,7 @@ use bytes::BytesMut;
 use swimos_model::address::Address;
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::protocol::agent::ad_hoc::AdHocCommandDecoder;
+use crate::agent::ad_hoc::AdHocCommandDecoder;
 
 use super::{AdHocCommand, AdHocCommandEncoder};
 

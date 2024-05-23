@@ -18,7 +18,7 @@ use swimos_form::Form;
 use swimos_recon::print_recon_compact;
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::protocol::map::{DROP, TAKE};
+use crate::map::{DROP, TAKE};
 use crate::{LEN_SIZE, TAG_SIZE};
 
 use super::{

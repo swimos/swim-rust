@@ -15,7 +15,7 @@
 use bytes::BytesMut;
 use std::fmt::Write;
 
-use crate::protocol::map::MapMessage;
+use crate::map::MapMessage;
 
 #[test]
 fn peel_clear_header() {

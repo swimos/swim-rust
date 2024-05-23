@@ -22,7 +22,7 @@ use swimos_recon::{print_recon_compact, WithLenRecognizerDecoder};
 use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
-use crate::protocol::{
+use crate::{
     agent::{
         LaneRequestDecoder, LaneRequestEncoder, LaneResponse, MapLaneResponse,
         MapLaneResponseDecoder, MapLaneResponseEncoder, ValueLaneResponseDecoder,
