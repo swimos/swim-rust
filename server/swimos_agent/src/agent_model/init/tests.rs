@@ -24,9 +24,9 @@ use swimos_agent_protocol::{
         MapMessage, MapMessageDecoder, MapMessageEncoder, MapOperationEncoder,
         RawMapOperationDecoder,
     },
-    WithLenReconEncoder,
 };
 use swimos_model::Text;
+use swimos_recon::WithLenReconEncoder;
 use swimos_utilities::{
     encoding::WithLengthBytesCodec, io::byte_channel::byte_channel, non_zero_usize,
 };

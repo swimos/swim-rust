@@ -24,7 +24,6 @@ use swimos_agent_protocol::{
     agent::{AdHocCommand, AdHocCommandDecoder},
     downlink::{DownlinkNotification, DownlinkNotificationEncoder},
     map::{MapMessage, MapOperation},
-    WithLenRecognizerDecoder,
 };
 use swimos_api::{
     agent::{AgentConfig, AgentContext, AgentTask, HttpLaneRequest},
@@ -38,6 +37,7 @@ use swimos_model::{
     http::{HttpRequest, Method, StatusCode, Version},
     BytesStr, Text,
 };
+use swimos_recon::WithLenRecognizerDecoder;
 use swimos_utilities::{
     encoding::WithLengthBytesCodec,
     future::retryable::RetryStrategy,

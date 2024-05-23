@@ -42,13 +42,11 @@
 
 use bytes::{Buf, BufMut, BytesMut};
 use swimos_model::Text;
+use swimos_recon::WithLenReconEncoder;
 use swimos_utilities::encoding::WithLengthBytesCodec;
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::protocol::{
-    map::{MapOperation, MapOperationEncoder, RawMapOperationDecoder},
-    WithLenReconEncoder,
-};
+use crate::protocol::map::{MapOperation, MapOperationEncoder, RawMapOperationDecoder};
 use swimos_api::error::{FrameIoError, InvalidFrame};
 
 use super::{LaneResponse, COMMAND, EVENT, INITIALIZED, INIT_DONE, TAG_LEN};

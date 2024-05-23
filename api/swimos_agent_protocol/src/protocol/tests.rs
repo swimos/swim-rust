@@ -15,9 +15,8 @@
 use bytes::{Buf, BufMut, BytesMut};
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_model::Text;
+use swimos_recon::{WithLenRecognizerDecoder, WithLenReconEncoder};
 use tokio_util::codec::{Decoder, Encoder};
-
-use super::{WithLenRecognizerDecoder, WithLenReconEncoder};
 
 #[test]
 fn recognizer_decode_with_len() {

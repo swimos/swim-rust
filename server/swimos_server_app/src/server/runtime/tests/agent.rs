@@ -16,19 +16,17 @@ use std::{collections::HashMap, pin::pin};
 
 use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
-use swimos_agent_protocol::{
-    agent::{
+use swimos_agent_protocol::agent::{
         LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder,
         ValueLaneResponseEncoder,
-    },
-    WithLenRecognizerDecoder,
-};
+    };
 use swimos_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::AgentTaskError,
     lane::WarpLaneKind,
 };
 use swimos_form::{structural::read::recognizer::RecognizerReadable, Form};
+use swimos_recon::WithLenRecognizerDecoder;
 use swimos_utilities::{
     encoding::WithLengthBytesCodec,
     io::byte_channel::{ByteReader, ByteWriter},

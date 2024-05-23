@@ -17,6 +17,7 @@ use futures::{
     ready, FutureExt, Sink, SinkExt, Stream, StreamExt,
 };
 use pin_project::pin_project;
+use swimos_recon::WithLenReconEncoder;
 use std::{
     cell::RefCell,
     pin::{pin, Pin},
@@ -24,7 +25,6 @@ use std::{
     task::{Context, Poll},
 };
 use swimos_agent_protocol::downlink::{DownlinkNotification, ValueNotificationDecoder};
-use swimos_agent_protocol::WithLenReconEncoder;
 use swimos_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},

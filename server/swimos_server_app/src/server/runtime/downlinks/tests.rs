@@ -485,7 +485,7 @@ async fn verify_link_value_dl(id: Uuid, downlink: Io, socket: Io, node: &str) ->
     let mut sock_writer = FramedWrite::new(socket_tx, ResponseMessageEncoder);
     let mut sock_reader = FramedRead::new(socket_rx, RawRequestMessageDecoder);
 
-    let mut dl_writer = FramedWrite::new(&mut dl_tx, DownlinkOperationEncoder);
+    let mut dl_writer = FramedWrite::new(&mut dl_tx, DownlinkOperationEncoder::default());
     let mut dl_reader = FramedRead::new(&mut dl_rx, ValueNotificationDecoder::<i32>::default());
 
     let env = sock_reader

@@ -19,7 +19,7 @@ use swimos_recon::print_recon_compact;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::protocol::map::{DROP, TAKE};
-use crate::protocol::{LEN_SIZE, TAG_SIZE};
+use crate::{LEN_SIZE, TAG_SIZE};
 
 use super::{
     MapMessage, MapMessageDecoder, MapMessageEncoder, MapOperation, MapOperationDecoder,

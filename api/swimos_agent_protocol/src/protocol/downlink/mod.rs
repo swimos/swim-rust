@@ -16,7 +16,7 @@ use bytes::{Buf, BufMut, Bytes};
 use std::fmt::Debug;
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
-use swimos_recon::parser::{AsyncParseError, RecognizerDecoder};
+use swimos_recon::{parser::{AsyncParseError, RecognizerDecoder}, WithLenReconEncoder};
 use tokio_util::codec::{Decoder, Encoder};
 
 use swimos_api::error::{FrameIoError, InvalidFrame};
@@ -53,10 +53,9 @@ const SYNCED: u8 = 2;
 const EVENT: u8 = 3;
 const UNLINKED: u8 = 4;
 
-use super::{
-    map::{MapMessage, MapMessageDecoder, MapOperationDecoder},
-    LEN_SIZE, TAG_SIZE,
-};
+use crate::{LEN_SIZE, TAG_SIZE};
+
+use super::map::{MapMessage, MapMessageDecoder, MapOperationDecoder};
 
 impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEncoder {
     type Error = std::io::Error;
@@ -259,7 +258,7 @@ where
                 }
                 DownlinkNotificationDecoderState::ReadingBody { remaining } => {
                     let (new_remaining, rem, decode_result) =
-                        super::consume_bounded(remaining, src, body_decoder);
+                        crate::consume_bounded(remaining, src, body_decoder);
                     match decode_result {
                         Ok(Some(result)) => {
                             src.unsplit(rem);
@@ -317,7 +316,9 @@ where
         }
     }
 }
-pub struct DownlinkOperationEncoder;
+
+#[derive(Default)]
+pub struct DownlinkOperationEncoder(WithLenReconEncoder);
 
 impl<T> Encoder<DownlinkOperation<T>> for DownlinkOperationEncoder
 where
@@ -331,7 +332,7 @@ where
         dst: &mut bytes::BytesMut,
     ) -> Result<(), Self::Error> {
         let DownlinkOperation { body } = item;
-        super::write_recon_with_len(dst, &body);
+        self.0.encode(body, dst)?;
         Ok(())
     }
 }

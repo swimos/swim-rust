@@ -202,7 +202,7 @@ fn decode_recon_notification_twice() {
 fn encode_operation() {
     let content = "body";
     let mut buffer = BytesMut::new();
-    assert!(DownlinkOperationEncoder
+    assert!(DownlinkOperationEncoder::default()
         .encode(DownlinkOperation::new(Text::new("body")), &mut buffer)
         .is_ok());
 
@@ -217,7 +217,7 @@ fn encode_complex_operation() {
     let op = Message::CurrentValue(Text::new(content));
     let recon = format!("{}", print_recon_compact(&op));
     let mut buffer = BytesMut::new();
-    assert!(DownlinkOperationEncoder
+    assert!(DownlinkOperationEncoder::default()
         .encode(DownlinkOperation::new(op), &mut buffer)
         .is_ok());
 
@@ -230,7 +230,7 @@ fn encode_complex_operation() {
 fn decode_operation() {
     let content = "body";
     let mut buffer = BytesMut::new();
-    assert!(DownlinkOperationEncoder
+    assert!(DownlinkOperationEncoder::default()
         .encode(DownlinkOperation::new(Text::new("body")), &mut buffer)
         .is_ok());
 
@@ -253,7 +253,7 @@ fn decode_complex_operation() {
     let op = Message::CurrentValue(Text::new(content));
     let recon = format!("{}", print_recon_compact(&op));
     let mut buffer = BytesMut::new();
-    assert!(DownlinkOperationEncoder
+    assert!(DownlinkOperationEncoder::default()
         .encode(DownlinkOperation::new(op), &mut buffer)
         .is_ok());
 

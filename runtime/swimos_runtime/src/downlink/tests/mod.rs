@@ -238,7 +238,7 @@ async fn write_task_rescinds_stop_vote() {
             .send((rx, DownlinkOptions::empty()))
             .await
             .expect("Send failed.");
-        let mut sender = FramedWrite::new(tx, DownlinkOperationEncoder);
+        let mut sender = FramedWrite::new(tx, DownlinkOperationEncoder::default());
         sender
             .send(DownlinkOperation::new("a".to_string()))
             .await

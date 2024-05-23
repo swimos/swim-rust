@@ -23,7 +23,6 @@ use swimos_agent_protocol::{
     map::{
         MapMessage, MapMessageDecoder, MapOperation, MapOperationDecoder, RawMapOperationEncoder,
     },
-    WithLenRecognizerDecoder,
 };
 use swimos_api::{
     agent::{LaneConfig, StoreConfig, UplinkKind},
@@ -33,6 +32,7 @@ use swimos_api::{
 };
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_model::Text;
+use swimos_recon::WithLenRecognizerDecoder;
 use swimos_utilities::{
     encoding::WithLengthBytesCodec,
     io::byte_channel::{self, ByteReader, ByteWriter},

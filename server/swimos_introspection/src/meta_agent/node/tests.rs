@@ -18,7 +18,6 @@ use futures::{future::join, Future, StreamExt};
 use swimos_agent_protocol::{
     agent::{LaneResponse, LaneResponseDecoder},
     map::{MapOperation, MapOperationDecoder},
-    WithLenRecognizerDecoder,
 };
 use swimos_api::{
     agent::LaneConfig,
@@ -27,6 +26,7 @@ use swimos_api::{
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_meta::{LaneInfo, NodePulse};
 use swimos_model::Text;
+use swimos_recon::WithLenRecognizerDecoder;
 use swimos_runtime::agent::reporting::UplinkReporter;
 use swimos_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},

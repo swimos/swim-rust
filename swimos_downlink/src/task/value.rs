@@ -64,7 +64,7 @@ where
         input,
         lifecycle,
         handle,
-        FramedWrite::new(output, DownlinkOperationEncoder),
+        FramedWrite::new(output, DownlinkOperationEncoder::default()),
     )
     .instrument(info_span!("Downlink io task.", %path))
     .await

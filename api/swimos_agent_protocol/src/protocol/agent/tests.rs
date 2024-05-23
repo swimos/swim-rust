@@ -18,7 +18,7 @@ use swimos_form::{
     structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
     Form,
 };
-use swimos_recon::print_recon_compact;
+use swimos_recon::{print_recon_compact, WithLenRecognizerDecoder};
 use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
@@ -29,7 +29,6 @@ use crate::protocol::{
         ValueLaneResponseEncoder,
     },
     map::{MapOperation, MapOperationEncoder},
-    WithLenRecognizerDecoder,
 };
 
 use super::LaneRequest;
@@ -81,8 +80,9 @@ fn round_trip_request(request: LaneRequest<Example>) {
     let mut buffer = BytesMut::new();
     assert!(encoder.encode(with_bytes, &mut buffer).is_ok());
 
+    let decoder = WithLenRecognizerDecoder::new(Example::make_recognizer());
     let mut decoder =
-        LaneRequestDecoder::new(WithLenRecognizerDecoder::new(Example::make_recognizer()));
+        LaneRequestDecoder::new(decoder);
     match decoder.decode(&mut buffer) {
         Ok(Some(restored)) => {
             assert_eq!(restored, request);

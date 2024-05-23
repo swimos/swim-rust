@@ -29,7 +29,6 @@ use swimos_agent_protocol::{
         ValueStoreResponseEncoder,
     },
     map::{MapMessage, MapMessageDecoder, MapOperation, MapOperationDecoder},
-    WithLenRecognizerDecoder,
 };
 use swimos_api::{agent::UplinkKind, error::FrameIoError};
 use swimos_form::structural::read::recognizer::primitive::I32Recognizer;
@@ -38,7 +37,7 @@ use swimos_messages::protocol::{
     ResponseMessage,
 };
 use swimos_model::{BytesStr, Text};
-use swimos_recon::{parser::parse_recognize, print_recon_compact};
+use swimos_recon::{parser::parse_recognize, print_recon_compact, WithLenRecognizerDecoder};
 use swimos_utilities::{
     future::retryable::RetryStrategy,
     io::byte_channel::{ByteReader, ByteWriter},

@@ -28,10 +28,7 @@ use futures::{
     Future, SinkExt, Stream, StreamExt, TryStreamExt,
 };
 use rand::Rng;
-use swimos_agent_protocol::{
-    agent::{AdHocCommand, AdHocCommandEncoder},
-    WithLenReconEncoder,
-};
+use swimos_agent_protocol::agent::{AdHocCommand, AdHocCommandEncoder};
 use swimos_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError},
@@ -43,7 +40,7 @@ use swimos_model::{
     address::{Address, RelativeAddress},
     BytesStr,
 };
-use swimos_recon::print_recon_compact;
+use swimos_recon::{print_recon_compact, WithLenReconEncoder};
 use swimos_utilities::{
     errors::Recoverable,
     future::retryable::{Quantity, RetryStrategy},

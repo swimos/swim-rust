@@ -16,19 +16,17 @@ use std::fmt::Debug;
 
 use bytes::{Buf, BufMut, BytesMut};
 use swimos_model::Text;
+use swimos_recon::WithLenReconEncoder;
 use swimos_utilities::encoding::WithLengthBytesCodec;
 use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
 use swimos_api::error::{FrameIoError, InvalidFrame};
 
-use super::{
-    map::{
+use super::map::{
         MapMessageEncoder, MapOperation, MapOperationEncoder, RawMapOperationDecoder,
         RawMapOperationEncoder,
-    },
-    WithLenReconEncoder,
-};
+    };
 
 mod ad_hoc;
 mod store;

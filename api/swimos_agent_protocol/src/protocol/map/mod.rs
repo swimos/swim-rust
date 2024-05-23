@@ -108,7 +108,8 @@ const CLEAR: u8 = 2;
 const TAKE: u8 = 3;
 const DROP: u8 = 4;
 
-use super::{LEN_SIZE, TAG_SIZE};
+const LEN_SIZE: usize = std::mem::size_of::<u64>();
+const TAG_SIZE: usize = std::mem::size_of::<u8>();
 
 const OVERSIZE_KEY: &str = "Key too large.";
 const OVERSIZE_RECORD: &str = "Record too large.";
@@ -301,7 +302,7 @@ impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapOperationDecod
                     value_size,
                 } => {
                     let (new_remaining, rem, decode_result) =
-                        super::consume_bounded(remaining, src, key_recognizer);
+                        crate::consume_bounded(remaining, src, key_recognizer);
                     match decode_result {
                         Ok(Some(result)) => {
                             src.unsplit(rem);
@@ -355,7 +356,7 @@ impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapOperationDecod
                 }
                 MapOperationDecoderState::ReadingValue { key, remaining } => {
                     let (new_remaining, rem, decode_result) =
-                        super::consume_bounded(remaining, src, value_recognizer);
+                        crate::consume_bounded(remaining, src, value_recognizer);
                     match decode_result {
                         Ok(Some(value)) => {
                             src.unsplit(rem);
