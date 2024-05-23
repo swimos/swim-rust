@@ -30,11 +30,12 @@ use parking_lot::Mutex;
 use swimos_agent_protocol::downlink::{
     DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
 };
-use swimos_api::{downlink::DownlinkKind, error::DownlinkRuntimeError, net::SchemeHostPort};
+use swimos_api::{downlink::DownlinkKind, error::DownlinkRuntimeError};
 use swimos_messages::protocol::{
     Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder,
 };
 use swimos_model::{address::RelativeAddress, Text};
+use swimos_net::SchemeHostPort;
 use swimos_remote::net::dns::{DnsFut, DnsResolver};
 use swimos_remote::{AttachClient, LinkError};
 use swimos_runtime::{

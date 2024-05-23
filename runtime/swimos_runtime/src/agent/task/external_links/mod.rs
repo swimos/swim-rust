@@ -21,15 +21,13 @@ use std::{
 use bytes::{BufMut, BytesMut};
 use futures::{stream::FuturesUnordered, Future, StreamExt};
 use swimos_agent_protocol::agent::{AdHocCommand, AdHocCommandDecoder};
-use swimos_api::{
-    error::{AgentRuntimeError, DownlinkRuntimeError},
-    net::SchemeHostPort,
-};
+use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError};
 use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
 use swimos_model::{
     address::{Address, RelativeAddress},
     BytesStr, Text,
 };
+use swimos_net::SchemeHostPort;
 use swimos_utilities::{
     encoding::WithLengthBytesCodec,
     errors::Recoverable,

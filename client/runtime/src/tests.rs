@@ -26,7 +26,7 @@ use futures_util::FutureExt;
 use ratchet::{
     Message, NegotiatedExtension, NoExt, NoExtProvider, Role, WebSocket, WebSocketConfig,
 };
-use swimos_api::net::{Scheme, SchemeHostPort};
+use swimos_net::{Scheme, SchemeHostPort};
 use tokio::io::{duplex, AsyncWriteExt};
 use tokio::spawn;
 use tokio::sync::mpsc::unbounded_channel;

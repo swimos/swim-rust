@@ -18,6 +18,7 @@ swimos_tls = { path = "../../runtime/swimos_tls" }
 swimos_http = { path = "../../runtime/swimos_http" }
 swimos_introspection = { path = "../swimos_introspection" }
 swimos_remote = { path = "../../runtime/swimos_remote" }
+swimos_net = { path = "../../runtime/swimos_net" }
 bytes = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tokio-util = { workspace = true, features = ["codec"] }

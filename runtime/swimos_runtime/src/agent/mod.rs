@@ -26,10 +26,10 @@ use swimos_api::{
         StoreError,
     },
     lane::{LaneKind, WarpLaneKind},
-    net::SchemeHostPort,
     store::{NodePersistence, StoreKind},
 };
 use swimos_model::{address::RelativeAddress, Text};
+use swimos_net::SchemeHostPort;
 use swimos_utilities::{
     future::retryable::RetryStrategy,
     io::byte_channel::{ByteReader, ByteWriter},

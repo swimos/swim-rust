@@ -12,6 +12,7 @@ tokio-rustls = { workspace = true }
 rustls-pemfile = { workspace = true }
 swimos_api = { path = "../../api/swimos_api" }
 swimos_remote = { path = "../../runtime/swimos_remote" }
+swimos_net = { path = "../../runtime/swimos_net" }
 tokio = { workspace = true }
 thiserror = { workspace = true }
 futures = { workspace = true }

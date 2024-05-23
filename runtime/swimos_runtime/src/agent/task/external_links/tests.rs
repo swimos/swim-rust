@@ -32,7 +32,6 @@ use swimos_agent_protocol::agent::{AdHocCommand, AdHocCommandEncoder};
 use swimos_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError},
-    net::SchemeHostPort,
 };
 use swimos_form::structural::write::StructuralWritable;
 use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
@@ -40,6 +39,7 @@ use swimos_model::{
     address::{Address, RelativeAddress},
     BytesStr,
 };
+use swimos_net::SchemeHostPort;
 use swimos_recon::{print_recon_compact, WithLenReconEncoder};
 use swimos_utilities::{
     errors::Recoverable,
