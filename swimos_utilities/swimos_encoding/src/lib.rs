@@ -54,3 +54,29 @@ impl Decoder for WithLengthBytesCodec {
         }
     }
 }
+
+pub type DecoderResult<D> = Result<Option<<D as Decoder>::Item>, <D as Decoder>::Error>;
+
+pub fn consume_bounded<D: Decoder>(
+    remaining: usize,
+    src: &mut BytesMut,
+    decoder: &mut D,
+) -> (usize, DecoderResult<D>) {
+    let to_split = remaining.min(src.remaining());
+    let rem = src.split_off(to_split);
+    let buf_remaining = src.remaining();
+    let end_of_message = remaining <= buf_remaining;
+    let decode_result = if end_of_message {
+        decoder.decode_eof(src)
+    } else {
+        decoder.decode(src)
+    };
+    let consumed = buf_remaining - src.remaining();
+    if remaining == consumed {
+        *src = rem;
+    } else {
+        src.unsplit(rem);
+    }
+    (consumed, decode_result)
+}
+

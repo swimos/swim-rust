@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, BytesMut};
+use swimos_utilities::encoding::consume_bounded;
 use tokio_util::codec::{Decoder, Encoder};
 use std::fmt::Write;
 use swimos_form::structural::{read::recognizer::Recognizer, write::StructuralWritable};
@@ -40,28 +41,6 @@ fn write_recon_body<T: StructuralWritable>(dst: &mut BytesMut, body: &T) -> usiz
 pub fn write_recon<T: StructuralWritable>(dst: &mut BytesMut, body: &T) -> usize {
     let body_offset = write_recon_body(dst, body);
     dst.remaining() - body_offset
-}
-
-type DecoderResult<D> = Result<Option<<D as Decoder>::Item>, <D as Decoder>::Error>;
-
-fn consume_bounded<D: Decoder>(
-    remaining: &mut usize,
-    src: &mut BytesMut,
-    decoder: &mut D,
-) -> (usize, BytesMut, DecoderResult<D>) {
-    let to_split = (*remaining).min(src.remaining());
-    let rem = src.split_off(to_split);
-    let buf_remaining = src.remaining();
-    let end_of_message = *remaining <= buf_remaining;
-    let decode_result = if end_of_message {
-        decoder.decode_eof(src)
-    } else {
-        decoder.decode(src)
-    };
-    let new_remaining = src.remaining();
-    let consumed = buf_remaining - new_remaining;
-    *remaining -= consumed;
-    (new_remaining, rem, decode_result)
 }
 
 const LEN_SIZE: usize = std::mem::size_of::<u64>();
@@ -142,11 +121,11 @@ impl<R: Recognizer> Decoder for WithLenRecognizerDecoder<R> {
                     }
                 }
                 WithLenRecognizerDecoderState::ReadingBody { remaining } => {
-                    let (new_remaining, rem, decode_result) =
-                        consume_bounded(remaining, src, inner);
+                    let (consumed, decode_result) =
+                        consume_bounded(*remaining, src, inner);
+                    *remaining -= consumed;
                     match decode_result {
                         Ok(Some(result)) => {
-                            src.unsplit(rem);
                             *state = WithLenRecognizerDecoderState::AfterBody {
                                 value: Some(result),
                                 remaining: *remaining,
@@ -156,17 +135,14 @@ impl<R: Recognizer> Decoder for WithLenRecognizerDecoder<R> {
                             break Ok(None);
                         }
                         Err(e) => {
-                            *remaining -= new_remaining;
-                            src.unsplit(rem);
-                            src.advance(new_remaining);
-                            if *remaining == 0 {
+                            let rem = src.remaining();
+                            if rem >= *remaining {
+                                src.advance(*remaining);
                                 *state = WithLenRecognizerDecoderState::ReadingHeader;
                                 break Err(e);
                             } else {
-                                *state = WithLenRecognizerDecoderState::Discarding {
-                                    error: Some(e),
-                                    remaining: *remaining,
-                                }
+                                src.clear();
+                                *state = WithLenRecognizerDecoderState::Discarding { remaining: *remaining - rem, error: Some(e) }
                             }
                         }
                     }

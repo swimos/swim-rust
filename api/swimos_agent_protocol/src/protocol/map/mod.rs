@@ -23,6 +23,7 @@ use swimos_recon::{
     parser::{AsyncParseError, RecognizerDecoder},
     write_recon,
 };
+use swimos_utilities::encoding::consume_bounded;
 use tokio_util::codec::{Decoder, Encoder};
 
 mod parser;
@@ -301,11 +302,11 @@ impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapOperationDecod
                     remaining,
                     value_size,
                 } => {
-                    let (new_remaining, rem, decode_result) =
-                        crate::consume_bounded(remaining, src, key_recognizer);
+                    let (consumed, decode_result) =
+                        consume_bounded(*remaining, src, key_recognizer);
+                    *remaining -= consumed;
                     match decode_result {
                         Ok(Some(result)) => {
-                            src.unsplit(rem);
                             *state = MapOperationDecoderState::AfterKey {
                                 key: Some(result),
                                 remaining: *remaining,
@@ -316,17 +317,14 @@ impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapOperationDecod
                             break Ok(None);
                         }
                         Err(e) => {
-                            *remaining -= new_remaining;
-                            src.unsplit(rem);
-                            src.advance(new_remaining);
-                            if *remaining == 0 {
+                            let rem = src.remaining();
+                            if rem >= *remaining {
+                                src.advance(*remaining);
                                 *state = MapOperationDecoderState::ReadingHeader;
                                 break Err(e.into());
                             } else {
-                                *state = MapOperationDecoderState::Discarding {
-                                    error: Some(e),
-                                    remaining: *remaining + value_size.unwrap_or_default(),
-                                }
+                                src.clear();
+                                *state =  MapOperationDecoderState::Discarding { remaining: *remaining - rem, error: Some(e) }
                             }
                         }
                     }
@@ -355,11 +353,11 @@ impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapOperationDecod
                     }
                 }
                 MapOperationDecoderState::ReadingValue { key, remaining } => {
-                    let (new_remaining, rem, decode_result) =
-                        crate::consume_bounded(remaining, src, value_recognizer);
+                    let (consumed, decode_result) =
+                        consume_bounded(*remaining, src, value_recognizer);
+                    *remaining -= consumed;
                     match decode_result {
                         Ok(Some(value)) => {
-                            src.unsplit(rem);
                             *state = MapOperationDecoderState::AfterValue {
                                 key_value: key.take().map(move |k| (k, value)),
                                 remaining: *remaining,
@@ -369,17 +367,14 @@ impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapOperationDecod
                             break Ok(None);
                         }
                         Err(e) => {
-                            *remaining -= new_remaining;
-                            src.unsplit(rem);
-                            src.advance(new_remaining);
-                            if *remaining == 0 {
+                            let rem = src.remaining();
+                            if rem >= *remaining {
+                                src.advance(*remaining);
                                 *state = MapOperationDecoderState::ReadingHeader;
                                 break Err(e.into());
                             } else {
-                                *state = MapOperationDecoderState::Discarding {
-                                    error: Some(e),
-                                    remaining: *remaining,
-                                }
+                                src.clear();
+                                *state =  MapOperationDecoderState::Discarding { remaining: *remaining - rem, error: Some(e) }
                             }
                         }
                     }

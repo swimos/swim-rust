@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, Bytes};
+use swimos_utilities::encoding::consume_bounded;
 use std::fmt::Debug;
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
@@ -257,11 +258,11 @@ where
                     }
                 }
                 DownlinkNotificationDecoderState::ReadingBody { remaining } => {
-                    let (new_remaining, rem, decode_result) =
-                        crate::consume_bounded(remaining, src, body_decoder);
+                    let (consumed, decode_result) =
+                        consume_bounded(*remaining, src, body_decoder);
+                    *remaining -= consumed;
                     match decode_result {
                         Ok(Some(result)) => {
-                            src.unsplit(rem);
                             *state = DownlinkNotificationDecoderState::AfterBody {
                                 message: Some(DownlinkNotification::Event { body: result }),
                                 remaining: *remaining,
@@ -271,17 +272,14 @@ where
                             break Ok(None);
                         }
                         Err(e) => {
-                            *remaining -= new_remaining;
-                            src.unsplit(rem);
-                            src.advance(new_remaining);
-                            if *remaining == 0 {
+                            let rem = src.remaining();
+                            if rem >= *remaining {
+                                src.advance(*remaining);
                                 *state = DownlinkNotificationDecoderState::ReadingHeader;
                                 break Err(e.into());
                             } else {
-                                *state = DownlinkNotificationDecoderState::Discarding {
-                                    error: Some(e.into()),
-                                    remaining: *remaining,
-                                }
+                                src.clear();
+                                *state = DownlinkNotificationDecoderState::Discarding { remaining: *remaining - rem, error: Some(e.into()) }
                             }
                         }
                     }
