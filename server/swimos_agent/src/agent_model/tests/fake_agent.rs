@@ -19,8 +19,8 @@ use std::{
 
 use bytes::{Bytes, BytesMut};
 use swimos_agent_protocol::{
-    agent::{LaneResponse, MapLaneResponse, MapLaneResponseEncoder, ValueLaneResponseEncoder},
-    map::{MapMessage, MapOperation},
+    encoding::{MapLaneResponseEncoder, ValueLaneResponseEncoder},
+    LaneResponse, MapLaneResponse, MapMessage, MapOperation,
 };
 use swimos_api::agent::HttpLaneRequest;
 use swimos_api::lane::WarpLaneKind;

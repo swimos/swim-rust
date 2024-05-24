@@ -18,7 +18,7 @@ use std::{
 };
 
 use bytes::BytesMut;
-use swimos_agent_protocol::map::MapMessage;
+use swimos_agent_protocol::MapMessage;
 use swimos_api::agent::AgentConfig;
 use swimos_model::{address::Address, Text};
 use swimos_utilities::routing::route_uri::RouteUri;

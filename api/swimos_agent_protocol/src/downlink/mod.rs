@@ -28,27 +28,6 @@ use swimos_api::error::{FrameIoError, InvalidFrame};
 #[cfg(test)]
 mod tests;
 
-/// Message type for communication from the runtime to a downlink subscriber.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum DownlinkNotification<T> {
-    Linked,
-    Synced,
-    Event { body: T },
-    Unlinked,
-}
-
-/// Message type for communication from a downlink subscriber to the runtime.
-#[derive(Debug, PartialEq, Eq)]
-pub struct DownlinkOperation<T> {
-    pub body: T,
-}
-
-impl<T> DownlinkOperation<T> {
-    pub fn new(body: T) -> Self {
-        DownlinkOperation { body }
-    }
-}
-
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DownlinkNotificationEncoder;
 
@@ -57,9 +36,12 @@ const SYNCED: u8 = 2;
 const EVENT: u8 = 3;
 const UNLINKED: u8 = 4;
 
-use crate::{LEN_SIZE, TAG_SIZE};
+use crate::{
+    model::{DownlinkNotification, DownlinkOperation},
+    MapMessage, LEN_SIZE, TAG_SIZE,
+};
 
-use super::map::{MapMessage, MapMessageDecoder, MapOperationDecoder};
+use super::map::MapMessageDecoder;
 
 impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEncoder {
     type Error = std::io::Error;
@@ -96,7 +78,7 @@ impl<T: AsRef<[u8]>> Encoder<DownlinkNotification<T>> for DownlinkNotificationEn
 }
 
 #[derive(Debug)]
-pub enum DownlinkNotificationDecoderState<T> {
+enum DownlinkNotificationDecoderState<T> {
     ReadingHeader,
     ReadingBody {
         remaining: usize,
@@ -118,23 +100,13 @@ impl<T> Default for DownlinkNotificationDecoderState<T> {
 }
 
 #[derive(Debug)]
-pub struct DownlinkNotificationDecoder<T, D> {
+struct DownlinkNotificationDecoder<T, D> {
     state: DownlinkNotificationDecoderState<T>,
     body_decoder: D,
 }
 
-impl<T, D> DownlinkNotificationDecoder<T, D> {
-    pub fn new(body_decoder: D) -> DownlinkNotificationDecoder<T, D> {
-        DownlinkNotificationDecoder {
-            state: Default::default(),
-            body_decoder,
-        }
-    }
-}
-
-type MsgDecoder<K, V> = MapMessageDecoder<MapOperationDecoder<K, V>>;
-
-type MapNotDecoderInner<K, V> = DownlinkNotificationDecoder<MapMessage<K, V>, MsgDecoder<K, V>>;
+type MapNotDecoderInner<K, V> =
+    DownlinkNotificationDecoder<MapMessage<K, V>, MapMessageDecoder<K, V>>;
 type ValueNotDecoderInner<T> =
     DownlinkNotificationDecoder<T, RecognizerDecoder<<T as RecognizerReadable>::Rec>>;
 

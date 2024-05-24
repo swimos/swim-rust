@@ -12,12 +12,67 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod agent;
-pub mod downlink;
-pub mod map;
+mod ad_hoc;
+mod downlink;
+mod lane;
+mod map;
+mod store;
+
+mod model;
+
+pub use model::{
+    AdHocCommand, DownlinkNotification, DownlinkOperation, LaneRequest, LaneResponse,
+    MapLaneResponse, MapMessage, MapOperation, MapStoreResponse, StoreInitMessage,
+    StoreInitialized, StoreResponse,
+};
+pub mod encoding {
+
+    pub use crate::downlink::{
+        DownlinkNotificationEncoder, DownlinkOperationDecoder, DownlinkOperationEncoder,
+        MapNotificationDecoder, ValueNotificationDecoder,
+    };
+
+    pub use crate::lane::{
+        MapLaneRequestDecoder, MapLaneRequestEncoder, MapLaneResponseDecoder,
+        MapLaneResponseEncoder, RawMapLaneRequestDecoder, RawMapLaneRequestEncoder,
+        RawMapLaneResponseDecoder, RawMapLaneResponseEncoder, RawValueLaneRequestDecoder,
+        RawValueLaneRequestEncoder, RawValueLaneResponseDecoder, RawValueLaneResponseEncoder,
+        ValueLaneRequestDecoder, ValueLaneRequestEncoder, ValueLaneResponseDecoder,
+        ValueLaneResponseEncoder,
+    };
+
+    pub use crate::map::{
+        MapMessageDecoder, MapMessageEncoder, MapOperationDecoder, MapOperationEncoder,
+        RawMapMessageDecoder, RawMapMessageEncoder, RawMapOperationDecoder, RawMapOperationEncoder,
+    };
+
+    pub use crate::ad_hoc::{
+        AdHocCommandDecoder, AdHocCommandEncoder, RawAdHocCommandDecoder, RawAdHocCommandEncoder,
+    };
+    pub use crate::store::{
+        MapInitDecoder, MapStoreResponseEncoder, RawMapInitDecoder, RawMapInitEncoder,
+        RawMapStoreResponseDecoder, RawValueInitDecoder, RawValueInitEncoder,
+        RawValueStoreResponseDecoder, StoreInitializedCodec, ValueInitDecoder,
+        ValueStoreResponseEncoder,
+    };
+}
+
+pub mod peeling {
+    pub use crate::map::{extract_header, extract_header_str};
+}
 
 #[cfg(test)]
 mod tests;
 
 const TAG_SIZE: usize = std::mem::size_of::<u8>();
 const LEN_SIZE: usize = std::mem::size_of::<u64>();
+
+const COMMAND: u8 = 0;
+const SYNC: u8 = 1;
+const SYNC_COMPLETE: u8 = 2;
+const EVENT: u8 = 3;
+const INIT_DONE: u8 = 4;
+const INITIALIZED: u8 = 5;
+
+const TAG_LEN: usize = 1;
+const ID_LEN: usize = std::mem::size_of::<u128>();

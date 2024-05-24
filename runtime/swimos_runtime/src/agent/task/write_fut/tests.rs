@@ -16,7 +16,7 @@ use std::num::NonZeroUsize;
 
 use bytes::{BufMut, BytesMut};
 use futures::StreamExt;
-use swimos_agent_protocol::map::RawMapOperationMut;
+use swimos_agent_protocol::MapOperation;
 use swimos_messages::protocol::{Notification, Path, RawResponseMessageDecoder, ResponseMessage};
 use swimos_model::{BytesStr, Text};
 use swimos_utilities::{
@@ -31,6 +31,7 @@ use crate::{agent::task::remotes::RemoteSender, backpressure::MapBackpressure};
 use super::{SpecialAction, WriteAction, WriteTask};
 
 type Reader = FramedRead<ByteReader, RawResponseMessageDecoder>;
+type RawMapOperationMut = MapOperation<BytesMut, BytesMut>;
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 const ADDR: Uuid = Uuid::from_u128(5);

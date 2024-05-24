@@ -16,7 +16,7 @@ use std::num::ParseIntError;
 use std::{borrow::Cow, time::Duration};
 
 use std::collections::HashMap;
-use swimos_agent_protocol::map::MapMessage;
+use swimos_agent_protocol::MapMessage;
 use swimos_model::Value;
 use swimos_recon::parser::parse_recognize;
 

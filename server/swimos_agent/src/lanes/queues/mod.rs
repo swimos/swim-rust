@@ -15,8 +15,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 
-use swimos_agent_protocol::agent::LaneResponse;
-use swimos_agent_protocol::map::MapOperation;
+use swimos_agent_protocol::{LaneResponse, MapOperation};
 use uuid::Uuid;
 
 use crate::event_queue::{to_operation, EventQueue};

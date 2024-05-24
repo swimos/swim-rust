@@ -20,7 +20,7 @@ use std::{
 };
 
 use http::Uri;
-use swimos_agent_protocol::map::MapMessage;
+use swimos_agent_protocol::MapMessage;
 use swimos_model::Value;
 use swimos_utilities::routing::route_uri::RouteUri;
 

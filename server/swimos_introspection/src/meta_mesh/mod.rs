@@ -22,10 +22,10 @@ use futures::{FutureExt, SinkExt, StreamExt, TryFutureExt};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
-use swimos_agent_protocol::agent::{
-    LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder,
+use swimos_agent_protocol::encoding::{
+    MapLaneResponseEncoder, RawValueLaneRequestDecoder, ValueLaneResponseEncoder,
 };
-use swimos_agent_protocol::map::{MapOperation, MapOperationEncoder};
+use swimos_agent_protocol::{LaneRequest, LaneResponse, MapOperation};
 use swimos_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
 use swimos_api::error::{AgentTaskError, FrameIoError};
 use swimos_api::lane::WarpLaneKind;
@@ -36,7 +36,6 @@ use swimos_form::structural::write::{StructuralWritable, StructuralWriter};
 use swimos_form::Form;
 use swimos_model::Text;
 use swimos_runtime::downlink::Io;
-use swimos_utilities::encoding::WithLengthBytesCodec;
 use swimos_utilities::routing::route_uri::RouteUri;
 use swimos_utilities::trigger;
 use swimos_utilities::uri_forest::{UriForest, UriPart};
@@ -219,18 +218,12 @@ async fn run_task(
     let (nodes_tx, nodes_rx) = nodes_io;
     let (nodes_count_tx, nodes_count_rx) = nodes_count_io;
 
-    let nodes_input = FramedRead::new(nodes_rx, LaneRequestDecoder::new(WithLengthBytesCodec));
-    let mut nodes_output =
-        FramedWrite::new(nodes_tx, LaneResponseEncoder::new(MapOperationEncoder));
+    let nodes_input = FramedRead::new(nodes_rx, RawValueLaneRequestDecoder::default());
+    let mut nodes_output = FramedWrite::new(nodes_tx, ValueLaneResponseEncoder::default());
 
-    let nodes_count_input = FramedRead::new(
-        nodes_count_rx,
-        LaneRequestDecoder::new(WithLengthBytesCodec),
-    );
-    let mut nodes_count_output = FramedWrite::new(
-        nodes_count_tx,
-        LaneResponseEncoder::new(MapOperationEncoder),
-    );
+    let nodes_count_input = FramedRead::new(nodes_count_rx, RawValueLaneRequestDecoder::default());
+    let mut nodes_count_output =
+        FramedWrite::new(nodes_count_tx, MapLaneResponseEncoder::default());
 
     let mut request_stream = select(
         nodes_input.map(Either::Left),

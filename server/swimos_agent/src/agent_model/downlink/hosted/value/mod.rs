@@ -23,7 +23,8 @@ use std::{
     sync::{atomic::AtomicU8, Arc},
     task::{Context, Poll},
 };
-use swimos_agent_protocol::downlink::{DownlinkNotification, ValueNotificationDecoder};
+use swimos_agent_protocol::encoding::ValueNotificationDecoder;
+use swimos_agent_protocol::DownlinkNotification;
 use swimos_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},

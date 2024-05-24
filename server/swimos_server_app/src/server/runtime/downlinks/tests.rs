@@ -27,9 +27,8 @@ use futures::{
     Future, FutureExt, SinkExt, StreamExt,
 };
 use parking_lot::Mutex;
-use swimos_agent_protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
-};
+use swimos_agent_protocol::encoding::{DownlinkOperationEncoder, ValueNotificationDecoder};
+use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_api::{downlink::DownlinkKind, error::DownlinkRuntimeError};
 use swimos_messages::protocol::{
     Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder,

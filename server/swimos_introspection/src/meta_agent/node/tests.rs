@@ -16,17 +16,15 @@ use std::{collections::HashMap, num::NonZeroUsize};
 
 use futures::{future::join, Future, StreamExt};
 use swimos_agent_protocol::{
-    agent::{LaneResponse, LaneResponseDecoder},
-    map::{MapOperation, MapOperationDecoder},
+    encoding::{MapLaneResponseDecoder, ValueLaneResponseDecoder},
+    LaneResponse, MapOperation,
 };
 use swimos_api::{
     agent::LaneConfig,
     lane::{LaneKind, WarpLaneKind},
 };
-use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_meta::{LaneInfo, NodePulse};
 use swimos_model::Text;
-use swimos_recon::WithLenRecognizerDecoder;
 use swimos_runtime::agent::reporting::UplinkReporter;
 use swimos_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
@@ -62,7 +60,7 @@ struct TestContext {
 
 const SYNC_ID: Uuid = Uuid::from_u128(9727474);
 
-type RespDecoder = LaneResponseDecoder<MapOperationDecoder<Text, LaneInfo>>;
+type RespDecoder = MapLaneResponseDecoder<Text, LaneInfo>;
 
 struct LaneReceiver {
     reader: FramedRead<ByteReader, RespDecoder>,
@@ -71,10 +69,7 @@ struct LaneReceiver {
 impl LaneReceiver {
     fn new(reader: ByteReader) -> Self {
         LaneReceiver {
-            reader: FramedRead::new(
-                reader,
-                LaneResponseDecoder::new(MapOperationDecoder::default()),
-            ),
+            reader: FramedRead::new(reader, MapLaneResponseDecoder::default()),
         }
     }
 
@@ -383,8 +378,7 @@ async fn provide_node(
     }
 }
 
-type PulseDec =
-    LaneResponseDecoder<WithLenRecognizerDecoder<<NodePulse as RecognizerReadable>::Rec>>;
+type PulseDec = ValueLaneResponseDecoder<NodePulse>;
 
 struct PulseLaneReader<'a> {
     inner: FramedRead<&'a mut ByteReader, PulseDec>,
@@ -393,12 +387,7 @@ struct PulseLaneReader<'a> {
 impl<'a> PulseLaneReader<'a> {
     fn new(reader: &'a mut ByteReader) -> Self {
         PulseLaneReader {
-            inner: FramedRead::new(
-                reader,
-                LaneResponseDecoder::new(WithLenRecognizerDecoder::new(
-                    NodePulse::make_recognizer(),
-                )),
-            ),
+            inner: FramedRead::new(reader, ValueLaneResponseDecoder::default()),
         }
     }
 

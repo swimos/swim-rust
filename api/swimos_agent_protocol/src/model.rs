@@ -1,0 +1,212 @@
+// Copyright 2015-2023 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use bytes::BytesMut;
+use swimos_form::Form;
+use swimos_model::{address::Address, BytesStr, Text};
+use uuid::Uuid;
+
+/// Message type for communication between the agent runtime and agent implementation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaneRequest<T> {
+    /// A command to alter the state of the lane.
+    Command(T),
+    /// Indicates that the lane initialization phase is complete.
+    InitComplete,
+    /// Request a synchronization with the lane (responses will be tagged with the provided ID).
+    Sync(Uuid),
+}
+
+/// Message type for communication from the agent implementation to the agent runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaneResponse<T> {
+    /// An event to be broadcast to all uplinks.
+    StandardEvent(T),
+    /// Indicates that the lane has been initialized.
+    Initialized,
+    /// An event to be sent to a specific uplink.
+    SyncEvent(Uuid, T),
+    /// Signal that an uplink has a consistent view of a lane.
+    Synced(Uuid),
+}
+
+impl<T> LaneResponse<T> {
+    pub fn synced(id: Uuid) -> Self {
+        LaneResponse::Synced(id)
+    }
+
+    pub fn event(body: T) -> Self {
+        LaneResponse::StandardEvent(body)
+    }
+
+    pub fn sync_event(id: Uuid, body: T) -> Self {
+        LaneResponse::SyncEvent(id, body)
+    }
+}
+
+/// An operation that can be applied to a map lane. This type is used by map uplinks and downlinks
+/// to describe alterations to the lane.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Form)]
+pub enum MapOperation<K, V> {
+    #[form(tag = "update")]
+    Update {
+        key: K,
+        #[form(body)]
+        value: V,
+    },
+    #[form(tag = "remove")]
+    Remove {
+        #[form(header)]
+        key: K,
+    },
+    #[form(tag = "clear")]
+    Clear,
+}
+
+/// Representation of map lane messages (used to form the body of Recon messages when operating)
+/// on downlinks. This extends [`MapOperation`] with `Take` (retain the first `n` items) and `Drop`
+/// (remove the first `n` items). We never use these internally but must support them for communicating
+/// with other implementations.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Form, Hash)]
+pub enum MapMessage<K, V> {
+    #[form(tag = "update")]
+    Update {
+        key: K,
+        #[form(body)]
+        value: V,
+    },
+    #[form(tag = "remove")]
+    Remove {
+        #[form(header)]
+        key: K,
+    },
+    #[form(tag = "clear")]
+    Clear,
+    #[form(tag = "take")]
+    Take(#[form(header_body)] u64),
+    #[form(tag = "drop")]
+    Drop(#[form(header_body)] u64),
+}
+
+pub type RawMapOperationMut = MapOperation<BytesMut, BytesMut>;
+
+pub type MapLaneResponse<K, V> = LaneResponse<MapOperation<K, V>>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoreInitMessage<T> {
+    /// A command to alter the state of the lane.
+    Command(T),
+    /// Indicates that the lane initialization phase is complete.
+    InitComplete,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoreInitialized;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoreResponse<T> {
+    pub message: T,
+}
+
+impl<T> StoreResponse<T> {
+    pub fn new(message: T) -> Self {
+        StoreResponse { message }
+    }
+}
+
+pub type MapStoreResponse<K, V> = StoreResponse<MapOperation<K, V>>;
+
+impl<T> From<StoreResponse<T>> for LaneResponse<T> {
+    fn from(response: StoreResponse<T>) -> Self {
+        let StoreResponse { message } = response;
+        LaneResponse::StandardEvent(message)
+    }
+}
+
+/// Message type for agents to send ad hoc commands to the runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AdHocCommand<S, T> {
+    pub address: Address<S>,
+    pub command: T,
+    pub overwrite_permitted: bool,
+}
+
+impl<S, T> AdHocCommand<S, T> {
+    /// #Arguments
+    /// * `address` - The target lane for the the command.
+    /// * `command` - The body of the command message.
+    /// * `overwrite_permitted` - Controls the behaviour of command handling in the case of back-pressure.
+    /// If this is true, the command maybe be overwritten by a subsequent command to the same target (and so
+    /// will never be sent). If false, the command will be queued instead.
+    pub fn new(address: Address<S>, command: T, overwrite_permitted: bool) -> Self {
+        AdHocCommand {
+            address,
+            command,
+            overwrite_permitted,
+        }
+    }
+}
+
+impl<K, V> From<MapOperation<K, V>> for MapMessage<K, V> {
+    fn from(op: MapOperation<K, V>) -> Self {
+        match op {
+            MapOperation::Update { key, value } => MapMessage::Update { key, value },
+            MapOperation::Remove { key } => MapMessage::Remove { key },
+            MapOperation::Clear => MapMessage::Clear,
+        }
+    }
+}
+
+impl<T1, T2> PartialEq<AdHocCommand<&str, T1>> for AdHocCommand<Text, T2>
+where
+    T2: PartialEq<T1>,
+{
+    fn eq(&self, other: &AdHocCommand<&str, T1>) -> bool {
+        self.address == other.address
+            && self.command == other.command
+            && self.overwrite_permitted == other.overwrite_permitted
+    }
+}
+
+impl<T1, T2> PartialEq<AdHocCommand<&str, T1>> for AdHocCommand<BytesStr, T2>
+where
+    T2: PartialEq<T1>,
+{
+    fn eq(&self, other: &AdHocCommand<&str, T1>) -> bool {
+        self.address == other.address
+            && self.command == other.command
+            && self.overwrite_permitted == other.overwrite_permitted
+    }
+}
+
+/// Message type for communication from the runtime to a downlink subscriber.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum DownlinkNotification<T> {
+    Linked,
+    Synced,
+    Event { body: T },
+    Unlinked,
+}
+
+/// Message type for communication from a downlink subscriber to the runtime.
+#[derive(Debug, PartialEq, Eq)]
+pub struct DownlinkOperation<T> {
+    pub body: T,
+}
+
+impl<T> DownlinkOperation<T> {
+    pub fn new(body: T) -> Self {
+        DownlinkOperation { body }
+    }
+}

@@ -26,6 +26,7 @@ use futures_util::FutureExt;
 use ratchet::{
     Message, NegotiatedExtension, NoExt, NoExtProvider, Role, WebSocket, WebSocketConfig,
 };
+use swimos_agent_protocol::MapMessage;
 use swimos_net::{Scheme, SchemeHostPort};
 use tokio::io::{duplex, AsyncWriteExt};
 use tokio::spawn;
@@ -37,7 +38,6 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use fixture::{MockClientConnections, MockWs, Server, WsAction};
-use swimos_agent_protocol::map::MapMessage;
 use swimos_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
 use swimos_api::error::DownlinkTaskError;
 use swimos_downlink::lifecycle::{

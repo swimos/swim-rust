@@ -21,9 +21,8 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swimos_agent_protocol::{
-    agent::{AdHocCommand, AdHocCommandDecoder},
-    downlink::{DownlinkNotification, DownlinkNotificationEncoder},
-    map::{MapMessage, MapOperation},
+    encoding::{AdHocCommandDecoder, DownlinkNotificationEncoder},
+    AdHocCommand, DownlinkNotification, MapMessage, MapOperation,
 };
 use swimos_api::{
     agent::{AgentConfig, AgentContext, AgentTask, HttpLaneRequest},
@@ -31,13 +30,11 @@ use swimos_api::{
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
     lane::WarpLaneKind,
 };
-use swimos_form::structural::read::recognizer::{primitive::TextRecognizer, RecognizerReadable};
 use swimos_model::{
     address::Address,
     http::{HttpRequest, Method, StatusCode, Version},
     BytesStr, Text,
 };
-use swimos_recon::WithLenRecognizerDecoder;
 use swimos_utilities::{
     encoding::WithLengthBytesCodec,
     future::retryable::RetryStrategy,
@@ -139,8 +136,7 @@ fn make_uri() -> RouteUri {
     RouteUri::try_from(NODE_URI).expect("Bad URI.")
 }
 
-type CommandReceiver =
-    FramedRead<ByteReader, AdHocCommandDecoder<BytesStr, WithLenRecognizerDecoder<TextRecognizer>>>;
+type CommandReceiver = FramedRead<ByteReader, AdHocCommandDecoder<BytesStr, Text>>;
 
 struct TestContext {
     test_event_rx: UnboundedReceiverStream<TestEvent>,
@@ -707,7 +703,7 @@ async fn trigger_ad_hoc_command() {
             ad_hoc_rx
                 .await
                 .expect("Ad hoc command channel not registered."),
-            AdHocCommandDecoder::new(WithLenRecognizerDecoder::new(Text::make_recognizer())),
+            AdHocCommandDecoder::default(),
         );
 
         let n = AD_HOC_CMD_VALUE;

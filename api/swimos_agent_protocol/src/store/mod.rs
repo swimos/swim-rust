@@ -41,67 +41,29 @@
 //! changes which are persisted by the runtime.
 
 use bytes::{Buf, BufMut, BytesMut};
+use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
-use swimos_recon::WithLenReconEncoder;
+use swimos_recon::{parser::RecognizerDecoder, WithLenReconEncoder};
 use swimos_utilities::encoding::WithLengthBytesCodec;
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::map::{MapOperation, MapOperationEncoder, RawMapOperationDecoder};
+use crate::{
+    map::{
+        MapMessageDecoder, MapOperationEncoder, RawMapMessageDecoder, RawMapMessageEncoder,
+        RawMapOperationDecoder,
+    },
+    MapMessage, MapOperation, StoreInitMessage, StoreInitialized, StoreResponse,
+};
 use swimos_api::error::{FrameIoError, InvalidFrame};
 
-use super::{LaneResponse, COMMAND, EVENT, INITIALIZED, INIT_DONE, TAG_LEN};
+use crate::{COMMAND, EVENT, INITIALIZED, INIT_DONE, TAG_LEN};
 
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StoreInitMessage<T> {
-    /// A command to alter the state of the lane.
-    Command(T),
-    /// Indicates that the lane initialization phase is complete.
-    InitComplete,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StoreInitialized;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StoreResponse<T> {
-    pub message: T,
-}
-
-impl<T> StoreResponse<T> {
-    pub fn new(message: T) -> Self {
-        StoreResponse { message }
-    }
-}
-
-pub type MapStoreResponse<K, V> = StoreResponse<MapOperation<K, V>>;
-
-impl<T> From<StoreResponse<T>> for LaneResponse<T> {
-    fn from(response: StoreResponse<T>) -> Self {
-        let StoreResponse { message } = response;
-        LaneResponse::StandardEvent(message)
-    }
-}
-
 #[derive(Debug, Clone, Copy, Default)]
-pub struct StoreInitMessageEncoder<Inner> {
+struct StoreInitMessageEncoder<Inner> {
     inner: Inner,
-}
-
-impl<Inner> StoreInitMessageEncoder<Inner> {
-    pub fn new(inner: Inner) -> Self {
-        StoreInitMessageEncoder { inner }
-    }
-}
-
-impl StoreInitMessageEncoder<WithLengthBytesCodec> {
-    pub fn value() -> Self {
-        StoreInitMessageEncoder {
-            inner: WithLengthBytesCodec,
-        }
-    }
 }
 
 impl<T, Inner> Encoder<StoreInitMessage<T>> for StoreInitMessageEncoder<Inner>
@@ -135,13 +97,13 @@ enum StoreInitMessageDecoderState {
 }
 
 #[derive(Debug, Default)]
-pub struct StoreInitMessageDecoder<D> {
+struct StoreInitMessageDecoder<D> {
     state: StoreInitMessageDecoderState,
     inner: D,
 }
 
 impl<D> StoreInitMessageDecoder<D> {
-    pub fn new(decoder: D) -> Self {
+    fn new(decoder: D) -> Self {
         StoreInitMessageDecoder {
             state: Default::default(),
             inner: decoder,
@@ -244,12 +206,6 @@ pub struct StoreResponseEncoder<Inner> {
     inner: Inner,
 }
 
-impl<Inner> StoreResponseEncoder<Inner> {
-    pub fn new(inner: Inner) -> Self {
-        StoreResponseEncoder { inner }
-    }
-}
-
 impl<T, Inner> Encoder<StoreResponse<T>> for StoreResponseEncoder<Inner>
 where
     Inner: Encoder<T>,
@@ -274,18 +230,9 @@ enum StoreResponseDecoderState {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct StoreResponseDecoder<Inner> {
+struct StoreResponseDecoder<Inner> {
     state: StoreResponseDecoderState,
     inner: Inner,
-}
-
-impl<Inner> StoreResponseDecoder<Inner> {
-    pub fn new(inner: Inner) -> Self {
-        StoreResponseDecoder {
-            state: Default::default(),
-            inner,
-        }
-    }
 }
 
 impl<Inner> Decoder for StoreResponseDecoder<Inner>
@@ -327,8 +274,170 @@ where
     }
 }
 
-pub type ValueStoreResponseEncoder = StoreResponseEncoder<WithLenReconEncoder>;
-pub type ValueStoreResponseDecoder = StoreResponseDecoder<WithLengthBytesCodec>;
+#[derive(Default, Debug)]
+pub struct ValueStoreResponseEncoder {
+    inner: StoreResponseEncoder<WithLenReconEncoder>,
+}
 
-pub type MapStoreResponseEncoder = StoreResponseEncoder<MapOperationEncoder>;
-pub type MapStoreResponseDecoder = StoreResponseDecoder<RawMapOperationDecoder>;
+impl<T: StructuralWritable> Encoder<StoreResponse<T>> for ValueStoreResponseEncoder {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: StoreResponse<T>, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        self.inner.encode(item, dst)
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct RawValueStoreResponseDecoder {
+    inner: StoreResponseDecoder<WithLengthBytesCodec>,
+}
+
+impl Decoder for RawValueStoreResponseDecoder {
+    type Item = StoreResponse<BytesMut>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct MapStoreResponseEncoder {
+    inner: StoreResponseEncoder<MapOperationEncoder>,
+}
+
+impl<K: StructuralWritable, V: StructuralWritable> Encoder<StoreResponse<MapOperation<K, V>>>
+    for MapStoreResponseEncoder
+{
+    type Error = std::io::Error;
+
+    fn encode(
+        &mut self,
+        item: StoreResponse<MapOperation<K, V>>,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
+        self.inner.encode(item, dst)
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct RawMapStoreResponseDecoder {
+    inner: StoreResponseDecoder<RawMapOperationDecoder>,
+}
+
+impl Decoder for RawMapStoreResponseDecoder {
+    type Item = StoreResponse<MapOperation<BytesMut, BytesMut>>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct RawValueInitEncoder {
+    inner: StoreInitMessageEncoder<WithLengthBytesCodec>,
+}
+
+impl<B: AsRef<[u8]>> Encoder<StoreInitMessage<B>> for RawValueInitEncoder {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: StoreInitMessage<B>, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        self.inner.encode(item, dst)
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct RawMapInitEncoder {
+    inner: StoreInitMessageEncoder<RawMapMessageEncoder>,
+}
+
+impl<K: AsRef<[u8]>, V: AsRef<[u8]>> Encoder<StoreInitMessage<MapMessage<K, V>>>
+    for RawMapInitEncoder
+{
+    type Error = std::io::Error;
+
+    fn encode(
+        &mut self,
+        item: StoreInitMessage<MapMessage<K, V>>,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
+        self.inner.encode(item, dst)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct RawValueInitDecoder {
+    inner: StoreInitMessageDecoder<WithLengthBytesCodec>,
+}
+
+impl Decoder for RawValueInitDecoder {
+    type Item = StoreInitMessage<BytesMut>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}
+
+pub struct ValueInitDecoder<T: RecognizerReadable> {
+    inner: StoreInitMessageDecoder<RecognizerDecoder<T::Rec>>,
+}
+
+impl<T: RecognizerReadable> Default for ValueInitDecoder<T> {
+    fn default() -> Self {
+        Self {
+            inner: StoreInitMessageDecoder::new(RecognizerDecoder::new(T::make_recognizer())),
+        }
+    }
+}
+
+impl<T: RecognizerReadable> Decoder for ValueInitDecoder<T> {
+    type Item = StoreInitMessage<T>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct RawMapInitDecoder {
+    inner: StoreInitMessageDecoder<RawMapMessageDecoder>,
+}
+
+impl Decoder for RawMapInitDecoder {
+    type Item = StoreInitMessage<MapMessage<BytesMut, BytesMut>>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}
+
+pub struct MapInitDecoder<K: RecognizerReadable, V: RecognizerReadable> {
+    inner: StoreInitMessageDecoder<MapMessageDecoder<K, V>>,
+}
+
+impl<K: RecognizerReadable, V: RecognizerReadable> Default for MapInitDecoder<K, V> {
+    fn default() -> Self {
+        Self {
+            inner: StoreInitMessageDecoder::new(MapMessageDecoder::default()),
+        }
+    }
+}
+
+impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapInitDecoder<K, V> {
+    type Item = StoreInitMessage<MapMessage<K, V>>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}

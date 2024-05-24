@@ -12,12 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::{Buf, BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 use swimos_api::error::{FrameIoError, InvalidFrame};
-use swimos_form::{
-    structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
-    Form,
-};
+use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
 use swimos_recon::{
     parser::{AsyncParseError, RecognizerDecoder},
@@ -32,27 +29,7 @@ mod tests;
 
 pub use parser::{extract_header, extract_header_str};
 
-/// An operation that can be applied to a map lane. This type is used by map uplinks and downlinks
-/// to describe alterations to the lane.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Form)]
-pub enum MapOperation<K, V> {
-    #[form(tag = "update")]
-    Update {
-        key: K,
-        #[form(body)]
-        value: V,
-    },
-    #[form(tag = "remove")]
-    Remove {
-        #[form(header)]
-        key: K,
-    },
-    #[form(tag = "clear")]
-    Clear,
-}
-
-pub type RawMapOperation = MapOperation<Bytes, BytesMut>;
-pub type RawMapOperationMut = MapOperation<BytesMut, BytesMut>;
+use crate::{model::RawMapOperationMut, MapMessage, MapOperation};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MapOperationEncoder;
@@ -460,67 +437,20 @@ impl<K: StructuralWritable, V: StructuralWritable> Encoder<MapOperation<K, V>>
     }
 }
 
-/// Representation of map lane messages (used to form the body of Recon messages when operating)
-/// on downlinks. This extends [`MapOperation`] with `Take` (retain the first `n` items) and `Drop`
-/// (remove the first `n` items). We never use these internally but must support them for communicating
-/// with other implementations.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Form, Hash)]
-pub enum MapMessage<K, V> {
-    #[form(tag = "update")]
-    Update {
-        key: K,
-        #[form(body)]
-        value: V,
-    },
-    #[form(tag = "remove")]
-    Remove {
-        #[form(header)]
-        key: K,
-    },
-    #[form(tag = "clear")]
-    Clear,
-    #[form(tag = "take")]
-    Take(#[form(header_body)] u64),
-    #[form(tag = "drop")]
-    Drop(#[form(header_body)] u64),
-}
-
-impl<K, V> From<MapOperation<K, V>> for MapMessage<K, V> {
-    fn from(op: MapOperation<K, V>) -> Self {
-        match op {
-            MapOperation::Update { key, value } => MapMessage::Update { key, value },
-            MapOperation::Remove { key } => MapMessage::Remove { key },
-            MapOperation::Clear => MapMessage::Clear,
-        }
-    }
-}
+#[derive(Debug, Default, Clone, Copy)]
+struct MessageEncoder<Inner>(Inner);
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct MapMessageEncoder<Inner>(Inner);
+struct MessageDecoder<Inner>(Inner);
 
-impl<Inner> MapMessageEncoder<Inner> {
-    pub fn new(inner: Inner) -> Self {
-        MapMessageEncoder(inner)
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct MapMessageDecoder<Inner>(Inner);
-
-impl<Inner> MapMessageDecoder<Inner> {
-    pub fn new(inner: Inner) -> Self {
-        MapMessageDecoder(inner)
-    }
-}
-
-impl<K, V, Inner> Encoder<MapMessage<K, V>> for MapMessageEncoder<Inner>
+impl<K, V, Inner> Encoder<MapMessage<K, V>> for MessageEncoder<Inner>
 where
     Inner: Encoder<MapOperation<K, V>>,
 {
     type Error = Inner::Error;
 
     fn encode(&mut self, item: MapMessage<K, V>, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let MapMessageEncoder(inner) = self;
+        let MessageEncoder(inner) = self;
         match item {
             MapMessage::Update { key, value } => {
                 inner.encode(MapOperation::Update { key, value }, dst)
@@ -545,7 +475,7 @@ where
     }
 }
 
-impl<K, V, Inner> Decoder for MapMessageDecoder<Inner>
+impl<K, V, Inner> Decoder for MessageDecoder<Inner>
 where
     Inner: Decoder<Item = MapOperation<K, V>, Error = FrameIoError>,
 {
@@ -554,7 +484,7 @@ where
     type Error = FrameIoError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let MapMessageDecoder(inner) = self;
+        let MessageDecoder(inner) = self;
         if src.remaining() < TAG_SIZE + LEN_SIZE {
             src.reserve(TAG_SIZE + LEN_SIZE);
             return Ok(None);
@@ -586,5 +516,68 @@ where
                 Ok(result.map(Into::into))
             }
         }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct RawMapMessageEncoder {
+    inner: MessageEncoder<RawMapOperationEncoder>,
+}
+
+impl<K: AsRef<[u8]>, V: AsRef<[u8]>> Encoder<MapMessage<K, V>> for RawMapMessageEncoder {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: MapMessage<K, V>, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        self.inner.encode(item, dst)
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct RawMapMessageDecoder {
+    inner: MessageDecoder<RawMapOperationDecoder>,
+}
+
+impl Decoder for RawMapMessageDecoder {
+    type Item = MapMessage<BytesMut, BytesMut>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MapMessageEncoder {
+    inner: MessageEncoder<MapOperationEncoder>,
+}
+
+impl<K: StructuralWritable, V: StructuralWritable> Encoder<MapMessage<K, V>> for MapMessageEncoder {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: MapMessage<K, V>, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        self.inner.encode(item, dst)
+    }
+}
+
+pub struct MapMessageDecoder<K: RecognizerReadable, V: RecognizerReadable> {
+    inner: MessageDecoder<MapOperationDecoder<K, V>>,
+}
+
+impl<K: RecognizerReadable, V: RecognizerReadable> Default for MapMessageDecoder<K, V> {
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+        }
+    }
+}
+
+impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapMessageDecoder<K, V> {
+    type Item = MapMessage<K, V>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
     }
 }

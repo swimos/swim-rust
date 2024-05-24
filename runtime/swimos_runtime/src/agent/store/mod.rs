@@ -16,15 +16,15 @@ use bytes::BytesMut;
 use futures::{future::BoxFuture, FutureExt, SinkExt};
 use std::fmt::Debug;
 use swimos_agent_protocol::{
-    agent::{StoreInitMessage, StoreInitMessageEncoder},
-    map::{MapMessage, MapMessageEncoder, MapOperation, RawMapOperationEncoder},
+    encoding::{RawMapInitEncoder, RawValueInitEncoder},
+    MapMessage, MapOperation, StoreInitMessage,
 };
 use swimos_api::{
     error::StoreError,
     store::{NodePersistence, RangeConsumer, StoreDisabled},
 };
 use swimos_model::Text;
-use swimos_utilities::{encoding::WithLengthBytesCodec, io::byte_channel::ByteWriter};
+use swimos_utilities::io::byte_channel::ByteWriter;
 use thiserror::Error;
 use tokio_util::codec::FramedWrite;
 
@@ -87,9 +87,6 @@ struct ValueInit<'a, S, Id> {
     store_id: Id,
 }
 
-type ValueInitEncoder = StoreInitMessageEncoder<WithLengthBytesCodec>;
-type MapInitEncoder = StoreInitMessageEncoder<MapMessageEncoder<RawMapOperationEncoder>>;
-
 impl<'a, S> Initializer<'a> for ValueInit<'a, S, S::LaneId>
 where
     S: NodePersistence + Send + Sync + 'static,
@@ -100,7 +97,7 @@ where
     {
         async move {
             let ValueInit { store, store_id } = *self;
-            let mut writer = FramedWrite::new(channel, ValueInitEncoder::default());
+            let mut writer = FramedWrite::new(channel, RawValueInitEncoder::default());
             let mut buffer = BytesMut::new();
             if store.get_value(store_id, &mut buffer)?.is_some() {
                 writer.send(StoreInitMessage::Command(buffer)).await?;
@@ -128,7 +125,7 @@ where
     {
         async move {
             let MapInit { store, store_id } = *self;
-            let mut writer = FramedWrite::new(channel, MapInitEncoder::default());
+            let mut writer = FramedWrite::new(channel, RawMapInitEncoder::default());
             let mut it = store.read_map(store_id)?;
             while let Some((key, value)) = it.consume_next()? {
                 writer
@@ -269,7 +266,7 @@ impl<'a> Initializer<'a> for NoValueInit {
         'a: 'b,
     {
         async move {
-            let mut writer = FramedWrite::new(channel, ValueInitEncoder::default());
+            let mut writer = FramedWrite::new(channel, RawValueInitEncoder::default());
             writer.send(StoreInitMessage::<&[u8]>::InitComplete).await?;
             Ok(())
         }
@@ -283,7 +280,7 @@ impl<'a> Initializer<'a> for NoMapInit {
         'a: 'b,
     {
         async move {
-            let mut writer = FramedWrite::new(channel, MapInitEncoder::default());
+            let mut writer = FramedWrite::new(channel, RawMapInitEncoder::default());
             writer
                 .send(StoreInitMessage::<MapMessage<&[u8], &[u8]>>::InitComplete)
                 .await?;

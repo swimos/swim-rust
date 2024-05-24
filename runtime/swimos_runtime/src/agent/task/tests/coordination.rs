@@ -35,7 +35,7 @@ use futures::{
 };
 use http::Uri;
 use std::fmt::Debug;
-use swimos_agent_protocol::{agent::LaneRequest, map::MapMessage};
+use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::{
     agent::{HttpLaneRequest, UplinkKind},
     lane::WarpLaneKind,

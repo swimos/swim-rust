@@ -14,7 +14,7 @@
 
 use bytes::BytesMut;
 use std::{collections::HashMap, fmt::Debug};
-use swimos_agent_protocol::agent::{StoreResponse, ValueStoreResponseDecoder};
+use swimos_agent_protocol::{encoding::RawValueStoreResponseDecoder, StoreResponse};
 use swimos_api::agent::AgentConfig;
 use swimos_utilities::routing::route_uri::RouteUri;
 use tokio_util::codec::Decoder;
@@ -88,7 +88,7 @@ fn value_store_write_to_buffer_dirty() {
     assert_eq!(result, WriteResult::Done);
     assert!(!store.has_data_to_write());
 
-    let mut decoder = ValueStoreResponseDecoder::default();
+    let mut decoder = RawValueStoreResponseDecoder::default();
     let content = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")

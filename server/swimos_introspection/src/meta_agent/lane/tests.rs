@@ -23,14 +23,12 @@ use crate::{
     task::IntrospectionMessage,
 };
 use futures::StreamExt;
-use swimos_agent_protocol::agent::{LaneResponse, LaneResponseDecoder};
+use swimos_agent_protocol::{encoding::ValueLaneResponseDecoder, LaneResponse};
 use swimos_api::{
     agent::LaneConfig,
     lane::{LaneKind, WarpLaneKind},
 };
-use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_meta::LanePulse;
-use swimos_recon::WithLenRecognizerDecoder;
 use swimos_runtime::agent::reporting::UplinkReporter;
 use swimos_utilities::io::byte_channel::ByteReader;
 use tokio::sync::mpsc;
@@ -118,8 +116,7 @@ async fn provide_lane(
     }
 }
 
-type PulseDec =
-    LaneResponseDecoder<WithLenRecognizerDecoder<<LanePulse as RecognizerReadable>::Rec>>;
+type PulseDec = ValueLaneResponseDecoder<LanePulse>;
 
 struct PulseLaneReader<'a> {
     inner: FramedRead<&'a mut ByteReader, PulseDec>,
@@ -128,12 +125,7 @@ struct PulseLaneReader<'a> {
 impl<'a> PulseLaneReader<'a> {
     fn new(reader: &'a mut ByteReader) -> Self {
         PulseLaneReader {
-            inner: FramedRead::new(
-                reader,
-                LaneResponseDecoder::new(WithLenRecognizerDecoder::new(
-                    LanePulse::make_recognizer(),
-                )),
-            ),
+            inner: FramedRead::new(reader, ValueLaneResponseDecoder::default()),
         }
     }
 

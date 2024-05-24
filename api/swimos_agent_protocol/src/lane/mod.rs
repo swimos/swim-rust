@@ -14,108 +14,32 @@
 
 use std::fmt::Debug;
 
+use crate::{
+    map::{RawMapMessageDecoder, RawMapMessageEncoder},
+    LaneRequest, LaneResponse, MapLaneResponse, MapMessage, MapOperation, COMMAND, EVENT, ID_LEN,
+    INITIALIZED, INIT_DONE, SYNC, SYNC_COMPLETE, TAG_LEN,
+};
 use bytes::{Buf, BufMut, BytesMut};
+use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
-use swimos_recon::WithLenReconEncoder;
+use swimos_recon::{WithLenRecognizerDecoder, WithLenReconEncoder};
 use swimos_utilities::encoding::WithLengthBytesCodec;
 use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
 use swimos_api::error::{FrameIoError, InvalidFrame};
 
-use super::map::{
-    MapMessageEncoder, MapOperation, MapOperationEncoder, RawMapOperationDecoder,
-    RawMapOperationEncoder,
-};
+use crate::map::{MapMessageDecoder, MapOperationDecoder};
 
-mod ad_hoc;
-mod store;
+use super::map::{
+    MapMessageEncoder, MapOperationEncoder, RawMapOperationDecoder, RawMapOperationEncoder,
+};
 #[cfg(test)]
 mod tests;
 
-pub use ad_hoc::{AdHocCommand, AdHocCommandDecoder, AdHocCommandEncoder};
-pub use store::{
-    MapStoreResponse, MapStoreResponseDecoder, MapStoreResponseEncoder, StoreInitMessage,
-    StoreInitMessageDecoder, StoreInitMessageEncoder, StoreInitialized, StoreInitializedCodec,
-    StoreResponse, StoreResponseDecoder, StoreResponseEncoder, ValueStoreResponseDecoder,
-    ValueStoreResponseEncoder,
-};
-
-/// Message type for communication between the agent runtime and agent implementation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LaneRequest<T> {
-    /// A command to alter the state of the lane.
-    Command(T),
-    /// Indicates that the lane initialization phase is complete.
-    InitComplete,
-    /// Request a synchronization with the lane (responses will be tagged with the provided ID).
-    Sync(Uuid),
-}
-
-/// Message type for communication from the agent implementation to the agent runtime.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LaneResponse<T> {
-    /// An event to be broadcast to all uplinks.
-    StandardEvent(T),
-    /// Indicates that the lane has been initialized.
-    Initialized,
-    /// An event to be sent to a specific uplink.
-    SyncEvent(Uuid, T),
-    /// Signal that an uplink has a consistent view of a lane.
-    Synced(Uuid),
-}
-
-impl<T> LaneResponse<T> {
-    pub fn synced(id: Uuid) -> Self {
-        LaneResponse::Synced(id)
-    }
-
-    pub fn event(body: T) -> Self {
-        LaneResponse::StandardEvent(body)
-    }
-
-    pub fn sync_event(id: Uuid, body: T) -> Self {
-        LaneResponse::SyncEvent(id, body)
-    }
-}
-
-pub type MapLaneResponse<K, V> = LaneResponse<MapOperation<K, V>>;
-
-const COMMAND: u8 = 0;
-const SYNC: u8 = 1;
-const SYNC_COMPLETE: u8 = 2;
-const EVENT: u8 = 3;
-const INIT_DONE: u8 = 4;
-const INITIALIZED: u8 = 5;
-
-const TAG_LEN: usize = 1;
-const ID_LEN: usize = std::mem::size_of::<u128>();
-
 #[derive(Debug, Clone, Copy, Default)]
-pub struct LaneRequestEncoder<Inner> {
+struct LaneRequestEncoder<Inner> {
     inner: Inner,
-}
-
-impl<Inner> LaneRequestEncoder<Inner> {
-    pub fn new(inner: Inner) -> Self {
-        LaneRequestEncoder { inner }
-    }
-}
-
-impl LaneRequestEncoder<WithLengthBytesCodec> {
-    pub fn value() -> Self {
-        LaneRequestEncoder {
-            inner: WithLengthBytesCodec,
-        }
-    }
-}
-
-impl LaneRequestEncoder<MapMessageEncoder<RawMapOperationEncoder>> {
-    pub fn map() -> Self {
-        LaneRequestEncoder {
-            inner: Default::default(),
-        }
-    }
 }
 
 impl<T, Inner> Encoder<LaneRequest<T>> for LaneRequestEncoder<Inner>
@@ -154,13 +78,13 @@ enum LaneRequestDecoderState {
 }
 
 #[derive(Debug, Default)]
-pub struct LaneRequestDecoder<D> {
+struct LaneRequestDecoder<D> {
     state: LaneRequestDecoderState,
     inner: D,
 }
 
 impl<D> LaneRequestDecoder<D> {
-    pub fn new(decoder: D) -> Self {
+    fn new(decoder: D) -> Self {
         LaneRequestDecoder {
             state: Default::default(),
             inner: decoder,
@@ -231,14 +155,8 @@ where
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct LaneResponseEncoder<Inner> {
+struct LaneResponseEncoder<Inner> {
     inner: Inner,
-}
-
-impl<Inner> LaneResponseEncoder<Inner> {
-    pub fn new(inner: Inner) -> Self {
-        LaneResponseEncoder { inner }
-    }
 }
 
 impl<T, Inner> Encoder<LaneResponse<T>> for LaneResponseEncoder<Inner>
@@ -284,13 +202,13 @@ enum LaneResponseDecoderState {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct LaneResponseDecoder<Inner> {
+struct LaneResponseDecoder<Inner> {
     state: LaneResponseDecoderState,
     inner: Inner,
 }
 
 impl<Inner> LaneResponseDecoder<Inner> {
-    pub fn new(inner: Inner) -> Self {
+    fn new(inner: Inner) -> Self {
         LaneResponseDecoder {
             state: Default::default(),
             inner,
@@ -371,8 +289,276 @@ where
     }
 }
 
-pub type ValueLaneResponseEncoder = LaneResponseEncoder<WithLenReconEncoder>;
-pub type ValueLaneResponseDecoder = LaneResponseDecoder<WithLengthBytesCodec>;
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ValueLaneResponseEncoder {
+    inner: LaneResponseEncoder<WithLenReconEncoder>,
+}
 
-pub type MapLaneResponseEncoder = LaneResponseEncoder<MapOperationEncoder>;
-pub type MapLaneResponseDecoder = LaneResponseDecoder<RawMapOperationDecoder>;
+impl<T: StructuralWritable> Encoder<LaneResponse<T>> for ValueLaneResponseEncoder {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: LaneResponse<T>, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        self.inner.encode(item, dst)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RawValueLaneResponseEncoder {
+    inner: LaneResponseEncoder<WithLengthBytesCodec>,
+}
+
+impl<T: AsRef<[u8]>> Encoder<LaneResponse<T>> for RawValueLaneResponseEncoder {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: LaneResponse<T>, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        self.inner.encode(item, dst)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MapLaneResponseEncoder {
+    inner: LaneResponseEncoder<MapOperationEncoder>,
+}
+
+impl<K: StructuralWritable, V: StructuralWritable> Encoder<MapLaneResponse<K, V>>
+    for MapLaneResponseEncoder
+{
+    type Error = std::io::Error;
+
+    fn encode(
+        &mut self,
+        item: MapLaneResponse<K, V>,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
+        self.inner.encode(item, dst)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RawMapLaneResponseEncoder {
+    inner: LaneResponseEncoder<RawMapOperationEncoder>,
+}
+
+impl<K: AsRef<[u8]>, V: AsRef<[u8]>> Encoder<MapLaneResponse<K, V>> for RawMapLaneResponseEncoder {
+    type Error = std::io::Error;
+
+    fn encode(
+        &mut self,
+        item: MapLaneResponse<K, V>,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
+        self.inner.encode(item, dst)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RawValueLaneResponseDecoder {
+    inner: LaneResponseDecoder<WithLengthBytesCodec>,
+}
+
+impl Decoder for RawValueLaneResponseDecoder {
+    type Item = LaneResponse<BytesMut>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}
+
+pub struct ValueLaneResponseDecoder<T: RecognizerReadable> {
+    inner: LaneResponseDecoder<WithLenRecognizerDecoder<T::Rec>>,
+}
+
+impl<T: RecognizerReadable> Default for ValueLaneResponseDecoder<T> {
+    fn default() -> Self {
+        Self {
+            inner: LaneResponseDecoder::new(WithLenRecognizerDecoder::new(T::make_recognizer())),
+        }
+    }
+}
+
+impl<T: RecognizerReadable> Decoder for ValueLaneResponseDecoder<T> {
+    type Item = LaneResponse<T>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RawMapLaneResponseDecoder {
+    inner: LaneResponseDecoder<RawMapOperationDecoder>,
+}
+
+impl Decoder for RawMapLaneResponseDecoder {
+    type Item = LaneResponse<MapOperation<BytesMut, BytesMut>>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}
+
+pub struct MapLaneResponseDecoder<K: RecognizerReadable, V: RecognizerReadable> {
+    inner: LaneResponseDecoder<MapOperationDecoder<K, V>>,
+}
+
+impl<K: RecognizerReadable, V: RecognizerReadable> Default for MapLaneResponseDecoder<K, V> {
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+        }
+    }
+}
+
+impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapLaneResponseDecoder<K, V> {
+    type Item = LaneResponse<MapOperation<K, V>>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct RawValueLaneRequestEncoder {
+    inner: LaneRequestEncoder<WithLengthBytesCodec>,
+}
+
+impl<T: AsRef<[u8]>> Encoder<LaneRequest<T>> for RawValueLaneRequestEncoder {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: LaneRequest<T>, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        self.inner.encode(item, dst)
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct RawMapLaneRequestEncoder {
+    inner: LaneRequestEncoder<RawMapMessageEncoder>,
+}
+
+impl<K: AsRef<[u8]>, V: AsRef<[u8]>> Encoder<LaneRequest<MapMessage<K, V>>>
+    for RawMapLaneRequestEncoder
+{
+    type Error = std::io::Error;
+
+    fn encode(
+        &mut self,
+        item: LaneRequest<MapMessage<K, V>>,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
+        self.inner.encode(item, dst)
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ValueLaneRequestEncoder {
+    inner: LaneRequestEncoder<WithLenReconEncoder>,
+}
+
+impl<T: StructuralWritable> Encoder<LaneRequest<T>> for ValueLaneRequestEncoder {
+    type Error = std::io::Error;
+
+    fn encode(&mut self, item: LaneRequest<T>, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        self.inner.encode(item, dst)
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MapLaneRequestEncoder {
+    inner: LaneRequestEncoder<MapMessageEncoder>,
+}
+
+impl<K: StructuralWritable, V: StructuralWritable> Encoder<LaneRequest<MapMessage<K, V>>>
+    for MapLaneRequestEncoder
+{
+    type Error = std::io::Error;
+
+    fn encode(
+        &mut self,
+        item: LaneRequest<MapMessage<K, V>>,
+        dst: &mut BytesMut,
+    ) -> Result<(), Self::Error> {
+        self.inner.encode(item, dst)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct RawValueLaneRequestDecoder {
+    inner: LaneRequestDecoder<WithLengthBytesCodec>,
+}
+
+impl Decoder for RawValueLaneRequestDecoder {
+    type Item = LaneRequest<BytesMut>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}
+
+pub struct ValueLaneRequestDecoder<T: RecognizerReadable> {
+    inner: LaneRequestDecoder<WithLenRecognizerDecoder<T::Rec>>,
+}
+
+impl<T: RecognizerReadable> Default for ValueLaneRequestDecoder<T> {
+    fn default() -> Self {
+        Self {
+            inner: LaneRequestDecoder::new(WithLenRecognizerDecoder::new(T::make_recognizer())),
+        }
+    }
+}
+
+impl<T: RecognizerReadable> Decoder for ValueLaneRequestDecoder<T> {
+    type Item = LaneRequest<T>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct RawMapLaneRequestDecoder {
+    inner: LaneRequestDecoder<RawMapMessageDecoder>,
+}
+
+impl Decoder for RawMapLaneRequestDecoder {
+    type Item = LaneRequest<MapMessage<BytesMut, BytesMut>>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}
+
+pub struct MapLaneRequestDecoder<K: RecognizerReadable, V: RecognizerReadable> {
+    inner: LaneRequestDecoder<MapMessageDecoder<K, V>>,
+}
+
+impl<K: RecognizerReadable, V: RecognizerReadable> Default for MapLaneRequestDecoder<K, V> {
+    fn default() -> Self {
+        Self {
+            inner: LaneRequestDecoder::new(MapMessageDecoder::default()),
+        }
+    }
+}
+
+impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapLaneRequestDecoder<K, V> {
+    type Item = LaneRequest<MapMessage<K, V>>;
+
+    type Error = FrameIoError;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        self.inner.decode(src)
+    }
+}

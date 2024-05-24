@@ -21,7 +21,8 @@ use futures::{
     future::{ready, BoxFuture},
     FutureExt, StreamExt,
 };
-use swimos_agent_protocol::downlink::{DownlinkNotification, ValueNotificationDecoder};
+use swimos_agent_protocol::encoding::ValueNotificationDecoder;
+use swimos_agent_protocol::DownlinkNotification;
 use swimos_api::{downlink::DownlinkKind, error::FrameIoError};
 use swimos_form::structural::read::{recognizer::RecognizerReadable, StructuralReadable};
 use swimos_model::{address::Address, Text};

@@ -14,7 +14,7 @@
 
 use std::num::NonZeroUsize;
 
-use swimos_agent_protocol::downlink::DownlinkNotification;
+use swimos_agent_protocol::DownlinkNotification;
 use swimos_api::downlink::DownlinkConfig;
 use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
 

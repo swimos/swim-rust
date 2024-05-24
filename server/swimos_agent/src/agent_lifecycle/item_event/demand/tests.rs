@@ -16,7 +16,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use bytes::BytesMut;
 use parking_lot::Mutex;
-use swimos_agent_protocol::agent::{LaneResponse, ValueLaneResponseDecoder};
+use swimos_agent_protocol::{encoding::RawValueLaneResponseDecoder, LaneResponse};
 use swimos_api::agent::AgentConfig;
 use swimos_form::structural::write::StructuralWritable;
 use swimos_model::Text;
@@ -181,7 +181,7 @@ where
     let mut buffer = BytesMut::new();
     assert_eq!(lane.write_to_buffer(&mut buffer), WriteResult::Done);
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
     let msg = decoder
         .decode(&mut buffer)
         .expect("Decode failed.")

@@ -17,7 +17,7 @@ use std::cell::{Cell, RefCell};
 use bytes::BytesMut;
 use futures::{Stream, StreamExt};
 use static_assertions::assert_impl_all;
-use swimos_agent_protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
+use swimos_agent_protocol::{encoding::ValueLaneResponseEncoder, LaneResponse};
 use swimos_api::error::FrameIoError;
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_recon::parser::AsyncParseError;

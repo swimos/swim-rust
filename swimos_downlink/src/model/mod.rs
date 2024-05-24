@@ -16,6 +16,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
 
+use swimos_agent_protocol::MapMessage;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::model::lifecycle::{BasicMapDownlinkLifecycle, MapDownlinkLifecycle};
@@ -23,7 +24,6 @@ use lifecycle::{
     BasicEventDownlinkLifecycle, BasicValueDownlinkLifecycle, EventDownlinkLifecycle,
     ValueDownlinkLifecycle,
 };
-use swimos_agent_protocol::map::MapMessage;
 
 pub mod lifecycle;
 

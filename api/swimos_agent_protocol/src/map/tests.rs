@@ -256,15 +256,15 @@ fn decode_remove_operation() {
 
 fn encode_message<K: StructuralWritable, V: StructuralWritable>(op: MapMessage<K, V>) -> Bytes {
     let mut buffer = BytesMut::new();
-    let mut encoder = MapMessageEncoder::new(MapOperationEncoder);
+    let mut encoder = MapMessageEncoder::default();
     assert!(encoder.encode(op, &mut buffer).is_ok());
     buffer.freeze()
 }
 
 fn round_trip_message<K: Form, V: Form>(op: MapMessage<K, V>) -> MapMessage<K, V> {
     let mut buffer = BytesMut::new();
-    let mut encoder = MapMessageEncoder::new(MapOperationEncoder);
-    let mut decoder = MapMessageDecoder::new(MapOperationDecoder::<K, V>::default());
+    let mut encoder = MapMessageEncoder::default();
+    let mut decoder = MapMessageDecoder::default();
     assert!(encoder.encode(op, &mut buffer).is_ok());
     let result = decoder.decode(&mut buffer);
     assert!(buffer.is_empty());

@@ -30,7 +30,7 @@ use ratchet::{
     CloseCode, CloseReason, NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry,
     WebSocketConfig,
 };
-use swimos_agent_protocol::map::MapMessage;
+use swimos_agent_protocol::MapMessage;
 use swimos_form::Form;
 use swimos_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swimos_recon::{parser::parse_recognize, print_recon_compact};

@@ -20,9 +20,8 @@ use futures::{SinkExt, StreamExt};
 use tokio::time::{timeout, Duration};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use swimos_agent_protocol::downlink::{
-    DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation, DownlinkOperationDecoder,
-};
+use swimos_agent_protocol::encoding::{DownlinkNotificationEncoder, DownlinkOperationDecoder};
+use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_api::{
     downlink::{Downlink, DownlinkConfig},
     error::DownlinkTaskError,

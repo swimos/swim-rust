@@ -16,10 +16,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use bytes::BytesMut;
-use swimos_agent_protocol::{
-    agent::{MapStoreResponse, MapStoreResponseDecoder},
-    map::MapOperation,
-};
+use swimos_agent_protocol::{encoding::RawMapStoreResponseDecoder, MapOperation, MapStoreResponse};
 use swimos_api::agent::AgentConfig;
 use swimos_model::Text;
 use swimos_recon::parser::parse_recognize;
@@ -149,7 +146,7 @@ fn write_to_buffer_one_update() {
     let result = store.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapStoreResponseDecoder::default();
+    let mut decoder = RawMapStoreResponseDecoder::default();
     let MapStoreResponse { message } = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -177,7 +174,7 @@ fn write_to_buffer_one_remove() {
     let result = store.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapStoreResponseDecoder::default();
+    let mut decoder = RawMapStoreResponseDecoder::default();
     let MapStoreResponse { message } = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -204,7 +201,7 @@ fn write_to_buffer_clear() {
     let result = store.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapStoreResponseDecoder::default();
+    let mut decoder = RawMapStoreResponseDecoder::default();
     let MapStoreResponse { message } = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -221,7 +218,7 @@ struct Operations {
 fn consume_events(store: &MapStore<i32, Text>) -> Operations {
     let mut events = vec![];
 
-    let mut decoder = MapStoreResponseDecoder::default();
+    let mut decoder = RawMapStoreResponseDecoder::default();
     let mut buffer = BytesMut::new();
 
     loop {

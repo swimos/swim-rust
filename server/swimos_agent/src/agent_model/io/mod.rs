@@ -20,20 +20,16 @@ use std::{
 use bytes::BytesMut;
 use futures::{ready, SinkExt, Stream, StreamExt};
 use swimos_agent_protocol::{
-    agent::{LaneRequest, LaneRequestDecoder},
-    map::{MapMessage, MapMessageDecoder, RawMapOperationDecoder},
+    encoding::{RawMapLaneRequestDecoder, RawValueLaneRequestDecoder},
+    LaneRequest, MapMessage,
 };
 use swimos_api::{agent::HttpLaneRequest, error::FrameIoError};
-use swimos_utilities::{
-    encoding::WithLengthBytesCodec,
-    io::byte_channel::{ByteReader, ByteWriter},
-};
+use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio::sync::mpsc;
 use tokio_util::codec::{BytesCodec, FramedRead, FramedWrite};
 
-type ValueLaneReader = FramedRead<ByteReader, LaneRequestDecoder<WithLengthBytesCodec>>;
-type MapLaneReader =
-    FramedRead<ByteReader, LaneRequestDecoder<MapMessageDecoder<RawMapOperationDecoder>>>;
+type ValueLaneReader = FramedRead<ByteReader, RawValueLaneRequestDecoder>;
+type MapLaneReader = FramedRead<ByteReader, RawMapLaneRequestDecoder>;
 
 /// Used internally by the agent model for writing to items.
 pub struct ItemWriter {

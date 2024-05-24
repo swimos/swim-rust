@@ -15,7 +15,7 @@
 use std::{collections::HashMap, fmt::Debug};
 
 use bytes::BytesMut;
-use swimos_agent_protocol::agent::{LaneResponse, ValueLaneResponseDecoder};
+use swimos_agent_protocol::{encoding::RawValueLaneResponseDecoder, LaneResponse};
 use swimos_api::agent::AgentConfig;
 use swimos_utilities::routing::route_uri::RouteUri;
 use tokio_util::codec::Decoder;
@@ -93,7 +93,7 @@ fn write_to_buffer_dirty() {
     assert_eq!(result, WriteResult::Done);
     assert!(!lane.store.has_data_to_write());
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
     let content = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -120,7 +120,7 @@ fn write_to_buffer_with_sync_while_clean() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
     let first = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -152,7 +152,7 @@ fn write_to_buffer_with_multiple_syncs_while_clean() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::DataStillAvailable);
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
 
     let frames = std::iter::repeat_with(|| {
         decoder
@@ -210,7 +210,7 @@ fn write_to_buffer_with_sync_while_dirty() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::DataStillAvailable);
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
     let frames = std::iter::repeat_with(|| {
         decoder
             .decode(&mut buffer)
@@ -404,7 +404,7 @@ fn value_lane_sync_event_handler() {
     let result = agent.lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
 
     let frames = std::iter::repeat_with(|| {
         decoder

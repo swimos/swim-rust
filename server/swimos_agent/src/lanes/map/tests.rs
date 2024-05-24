@@ -16,10 +16,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use bytes::BytesMut;
-use swimos_agent_protocol::{
-    agent::{MapLaneResponse, MapLaneResponseDecoder},
-    map::MapOperation,
-};
+use swimos_agent_protocol::{encoding::RawMapLaneResponseDecoder, MapLaneResponse, MapOperation};
 use swimos_api::agent::AgentConfig;
 use swimos_model::Text;
 use swimos_recon::parser::parse_recognize;
@@ -149,7 +146,7 @@ fn write_to_buffer_one_update() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapLaneResponseDecoder::default();
+    let mut decoder = RawMapLaneResponseDecoder::default();
     let content = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -180,7 +177,7 @@ fn write_to_buffer_one_remove() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapLaneResponseDecoder::default();
+    let mut decoder = RawMapLaneResponseDecoder::default();
     let content = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -210,7 +207,7 @@ fn write_to_buffer_clear() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapLaneResponseDecoder::default();
+    let mut decoder = RawMapLaneResponseDecoder::default();
     let content = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -235,7 +232,7 @@ fn consume_events(lane: &MapLane<i32, Text>) -> Operations {
     let mut sync_pending = HashMap::new();
     let mut sync = HashMap::new();
 
-    let mut decoder = MapLaneResponseDecoder::default();
+    let mut decoder = RawMapLaneResponseDecoder::default();
     let mut buffer = BytesMut::new();
 
     loop {

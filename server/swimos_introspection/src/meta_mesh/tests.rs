@@ -23,10 +23,8 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swimos_agent_protocol::agent::{
-    LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder,
-};
-use swimos_agent_protocol::map::{MapOperation, MapOperationDecoder};
+use swimos_agent_protocol::encoding::{MapLaneResponseDecoder, RawValueLaneRequestEncoder};
+use swimos_agent_protocol::{LaneRequest, LaneResponse, MapOperation};
 use swimos_api::agent::{AgentContext, HttpLaneRequestChannel, LaneConfig};
 use swimos_api::downlink::DownlinkKind;
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
@@ -36,7 +34,6 @@ use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_model::time::Timestamp;
 use swimos_model::Text;
 use swimos_runtime::agent::reporting::UplinkReporter;
-use swimos_utilities::encoding::WithLengthBytesCodec;
 use swimos_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swimos_utilities::uri_forest::UriForest;
 use swimos_utilities::{non_zero_usize, trigger};
@@ -45,7 +42,7 @@ use uuid::Uuid;
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(128);
 
-type ResponseDecoder<T> = LaneResponseDecoder<MapOperationDecoder<Text, T>>;
+type ResponseDecoder<T> = MapLaneResponseDecoder<Text, T>;
 
 struct MockAgentContext;
 
@@ -93,7 +90,7 @@ struct LaneChannel<D>
 where
     D: RecognizerReadable,
 {
-    sender: FramedWrite<ByteWriter, LaneRequestEncoder<WithLengthBytesCodec>>,
+    sender: FramedWrite<ByteWriter, RawValueLaneRequestEncoder>,
     receiver: FramedRead<ByteReader, ResponseDecoder<D>>,
 }
 
@@ -106,10 +103,7 @@ where
     fn new(sender: ByteWriter, receiver: ByteReader) -> LaneChannel<D> {
         LaneChannel {
             sender: FramedWrite::new(sender, Default::default()),
-            receiver: FramedRead::new(
-                receiver,
-                LaneResponseDecoder::new(MapOperationDecoder::default()),
-            ),
+            receiver: FramedRead::new(receiver, MapLaneResponseDecoder::default()),
         }
     }
 

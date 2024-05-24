@@ -23,38 +23,39 @@ use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
 use crate::{
-    agent::{
-        LaneRequestDecoder, LaneRequestEncoder, LaneResponse, MapLaneResponse,
-        MapLaneResponseDecoder, MapLaneResponseEncoder, ValueLaneResponseDecoder,
-        ValueLaneResponseEncoder,
+    lane::{
+        LaneRequestDecoder, LaneResponse, MapLaneResponse, MapLaneResponseEncoder,
+        RawMapLaneResponseDecoder, RawValueLaneRequestEncoder, RawValueLaneResponseDecoder,
+        ValueLaneResponseEncoder, SYNC,
     },
-    map::{MapOperation, MapOperationEncoder},
+    map::MapOperationEncoder,
+    MapOperation,
 };
 
 use super::LaneRequest;
 
 #[test]
 fn encode_sync_lane_request() {
-    let mut encoder = LaneRequestEncoder::value();
+    let mut encoder = RawValueLaneRequestEncoder::default();
     let mut buffer = BytesMut::new();
     let request: LaneRequest<&[u8]> = LaneRequest::Sync(Uuid::from_u128(67));
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
     assert_eq!(buffer.remaining(), 17);
-    assert_eq!(buffer.get_u8(), super::SYNC);
+    assert_eq!(buffer.get_u8(), SYNC);
     assert_eq!(buffer.get_u128(), 67);
 }
 
 #[test]
 fn encode_command_lane_request() {
-    let mut encoder = LaneRequestEncoder::value();
+    let mut encoder = RawValueLaneRequestEncoder::default();
     let mut buffer = BytesMut::new();
     let content = b"body";
     let request = LaneRequest::Command(content);
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
     assert_eq!(buffer.remaining(), 9 + content.len());
-    assert_eq!(buffer.get_u8(), super::COMMAND);
+    assert_eq!(buffer.get_u8(), crate::lane::COMMAND);
     assert_eq!(buffer.get_u64(), content.len() as u64);
     assert_eq!(buffer.as_ref(), content);
 }
@@ -76,7 +77,7 @@ fn round_trip_request(request: LaneRequest<Example>) {
         LaneRequest::InitComplete => LaneRequest::InitComplete,
     };
 
-    let mut encoder = LaneRequestEncoder::value();
+    let mut encoder = RawValueLaneRequestEncoder::default();
     let mut buffer = BytesMut::new();
     assert!(encoder.encode(with_bytes, &mut buffer).is_ok());
 
@@ -114,7 +115,7 @@ fn encode_sync_value_lane_response() {
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
     assert!(buffer.remaining() > 25);
-    assert_eq!(buffer.get_u8(), super::SYNC);
+    assert_eq!(buffer.get_u8(), crate::lane::SYNC);
     assert_eq!(buffer.get_u128(), 563883);
     let len = buffer.get_u64() as usize;
     assert_eq!(buffer.remaining(), len);
@@ -128,7 +129,7 @@ fn encode_synced_lane_response() {
     let request = LaneResponse::<Example>::synced(Uuid::from_u128(563883));
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
-    assert_eq!(buffer.get_u8(), super::SYNC_COMPLETE);
+    assert_eq!(buffer.get_u8(), crate::lane::SYNC_COMPLETE);
     assert_eq!(buffer.get_u128(), 563883);
     assert_eq!(buffer.remaining(), 0);
 }
@@ -140,7 +141,7 @@ fn encode_initialized_lane_response() {
     let request = LaneResponse::<Example>::Initialized;
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
-    assert_eq!(buffer.get_u8(), super::INITIALIZED);
+    assert_eq!(buffer.get_u8(), crate::lane::INITIALIZED);
     assert_eq!(buffer.remaining(), 0);
 }
 
@@ -152,7 +153,7 @@ fn encode_event_value_lane_response() {
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
     assert!(buffer.remaining() > 9);
-    assert_eq!(buffer.get_u8(), super::EVENT);
+    assert_eq!(buffer.get_u8(), crate::lane::EVENT);
     let len = buffer.get_u64() as usize;
     assert_eq!(buffer.remaining(), len);
     assert_eq!(buffer.as_ref(), b"@Example{a:6,b:234}");
@@ -181,7 +182,7 @@ fn round_trip_value_response(response: LaneResponse<Example>) {
     let mut buffer = BytesMut::new();
     assert!(encoder.encode(response, &mut buffer).is_ok());
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
     match decoder.decode(&mut buffer) {
         Ok(Some(restored)) => {
             assert_eq!(restored, with_bytes);
@@ -220,7 +221,7 @@ fn encode_sync_complete_map_lane_response() {
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
     assert_eq!(buffer.remaining(), 17);
-    assert_eq!(buffer.get_u8(), super::SYNC_COMPLETE);
+    assert_eq!(buffer.get_u8(), crate::lane::SYNC_COMPLETE);
     let id = buffer.get_u128();
     assert_eq!(id, 7574);
 }
@@ -248,7 +249,7 @@ fn encode_sync_event_map_lane_response() {
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
     assert!(buffer.remaining() > 17);
-    assert_eq!(buffer.get_u8(), super::SYNC);
+    assert_eq!(buffer.get_u8(), crate::lane::SYNC);
     let id = buffer.get_u128();
     assert_eq!(id, 85874);
 
@@ -270,7 +271,7 @@ fn encode_event_map_lane_response() {
     assert!(encoder.encode(request, &mut buffer).is_ok());
 
     assert!(buffer.remaining() > 1);
-    assert_eq!(buffer.get_u8(), super::EVENT);
+    assert_eq!(buffer.get_u8(), crate::lane::EVENT);
 
     assert_eq!(buffer.freeze(), exp_op);
 }
@@ -308,7 +309,7 @@ fn round_trip_map_response(response: MapLaneResponse<i32, Example>) {
     let mut buffer = BytesMut::new();
     assert!(encoder.encode(response, &mut buffer).is_ok());
 
-    let mut decoder = MapLaneResponseDecoder::default();
+    let mut decoder = RawMapLaneResponseDecoder::default();
     match decoder.decode(&mut buffer) {
         Ok(Some(restored)) => {
             assert_eq!(restored, expected);
@@ -358,7 +359,7 @@ fn decoder_sequential_value_responses() {
     assert!(encoder.encode(response1, &mut buffer).is_ok());
     assert!(encoder.encode(response2, &mut buffer).is_ok());
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
     match decoder.decode(&mut buffer) {
         Ok(Some(restored)) => {
             assert_eq!(restored, with_bytes1);

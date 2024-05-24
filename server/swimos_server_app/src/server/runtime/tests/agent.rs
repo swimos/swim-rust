@@ -16,18 +16,20 @@ use std::{collections::HashMap, pin::pin};
 
 use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
-use swimos_agent_protocol::agent::{
-    LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder, ValueLaneResponseEncoder,
+use swimos_agent_protocol::{
+    encoding::{
+        RawValueLaneRequestDecoder, RawValueLaneResponseEncoder, ValueLaneRequestDecoder,
+        ValueLaneResponseEncoder,
+    },
+    LaneRequest, LaneResponse,
 };
 use swimos_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::AgentTaskError,
     lane::WarpLaneKind,
 };
-use swimos_form::{structural::read::recognizer::RecognizerReadable, Form};
-use swimos_recon::WithLenRecognizerDecoder;
+use swimos_form::Form;
 use swimos_utilities::{
-    encoding::WithLengthBytesCodec,
     io::byte_channel::{ByteReader, ByteWriter},
     routing::route_uri::RouteUri,
 };
@@ -103,7 +105,7 @@ pub async fn run_lane_initializer(tx: &mut ByteWriter, rx: &mut ByteReader) {
     if stream.next().await.is_some() {
         panic!("Unexpected initial value.")
     } else {
-        let mut writer = FramedWrite::new(tx, LaneResponseEncoder::new(WithLengthBytesCodec));
+        let mut writer = FramedWrite::new(tx, RawValueLaneResponseEncoder::default());
         writer
             .send(LaneResponse::<BytesMut>::Initialized)
             .await
@@ -112,7 +114,7 @@ pub async fn run_lane_initializer(tx: &mut ByteWriter, rx: &mut ByteReader) {
 }
 
 fn init_stream(reader: &mut ByteReader) -> impl Stream<Item = BytesMut> + '_ {
-    let framed = FramedRead::new(reader, LaneRequestDecoder::new(WithLengthBytesCodec));
+    let framed = FramedRead::new(reader, RawValueLaneRequestDecoder::default());
     unfold(Some(framed), |maybe_framed| async move {
         if let Some(mut framed) = maybe_framed {
             match framed.next().await {
@@ -134,8 +136,7 @@ async fn run_agent(
     context: Box<dyn AgentContext + Send>,
 ) -> Result<(), AgentTaskError> {
     events.send(AgentEvent::Started).expect("Channel stopped.");
-    let decoder =
-        LaneRequestDecoder::new(WithLenRecognizerDecoder::new(TestMessage::make_recognizer()));
+    let decoder = ValueLaneRequestDecoder::<TestMessage>::default();
     let encoder = ValueLaneResponseEncoder::default();
 
     let mut input = FramedRead::new(rx, decoder);

@@ -23,7 +23,7 @@ use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
 use futures::{stream::BoxStream, FutureExt};
 use static_assertions::assert_obj_safe;
-use swimos_agent_protocol::agent::{AdHocCommand, AdHocCommandEncoder};
+use swimos_agent_protocol::{encoding::AdHocCommandEncoder, AdHocCommand};
 use swimos_api::{
     agent::AgentContext,
     downlink::DownlinkKind,
@@ -31,10 +31,7 @@ use swimos_api::{
 };
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_model::{address::Address, Text};
-use swimos_recon::{
-    parser::{AsyncParseError, RecognizerDecoder},
-    WithLenReconEncoder,
-};
+use swimos_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swimos_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     never::Never,
@@ -205,7 +202,7 @@ impl<'a, Context> ActionContext<'a, Context> {
         T: StructuralWritable,
     {
         let ActionContext { ad_hoc_buffer, .. } = self;
-        let mut encoder = AdHocCommandEncoder::new(WithLenReconEncoder);
+        let mut encoder = AdHocCommandEncoder::default();
         let cmd = AdHocCommand::new(address, command, overwrite_permitted);
         encoder
             .encode(cmd, ad_hoc_buffer)

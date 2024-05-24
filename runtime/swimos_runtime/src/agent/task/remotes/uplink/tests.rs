@@ -15,7 +15,7 @@
 use std::num::NonZeroUsize;
 
 use bytes::{Bytes, BytesMut};
-use swimos_agent_protocol::map::{MapOperation, RawMapOperation};
+use swimos_agent_protocol::MapOperation;
 use swimos_api::agent::UplinkKind;
 use swimos_model::Text;
 use swimos_utilities::{
@@ -550,12 +550,12 @@ fn map_lane_sync_consumes_buffer() {
             let first = queue.pop();
             let second = queue.pop();
             let third = queue.pop();
-            assert!(matches!(first, Some(RawMapOperation::Clear)));
+            assert!(matches!(first, Some(MapOperation::Clear)));
             assert!(
-                matches!(second, Some(RawMapOperation::Update { key, value }) if key.as_ref() == KEY1_STR && value.as_ref() == VAL1)
+                matches!(second, Some(MapOperation::Update { key, value }) if key.as_ref() == KEY1_STR && value.as_ref() == VAL1)
             );
             assert!(
-                matches!(third, Some(RawMapOperation::Update { key, value }) if key.as_ref() == KEY2_STR && value.as_ref() == VAL2)
+                matches!(third, Some(MapOperation::Update { key, value }) if key.as_ref() == KEY2_STR && value.as_ref() == VAL2)
             );
             assert!(queue.pop().is_none());
         }

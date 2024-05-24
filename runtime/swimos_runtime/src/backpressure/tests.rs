@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use bytes::{Bytes, BytesMut};
-use swimos_agent_protocol::downlink::DownlinkOperation;
+use swimos_agent_protocol::DownlinkOperation;
 
 use crate::backpressure::{BackpressureStrategy, SupplyBackpressure};
 

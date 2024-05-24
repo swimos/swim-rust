@@ -20,11 +20,11 @@ use std::{
 use bytes::{Bytes, BytesMut};
 use futures::{ready, Stream, StreamExt};
 use swimos_agent_protocol::{
-    agent::{
-        LaneResponse, MapLaneResponse, MapLaneResponseDecoder, MapStoreResponseDecoder,
-        StoreResponse, ValueLaneResponseDecoder, ValueStoreResponseDecoder,
+    encoding::{
+        RawMapLaneResponseDecoder, RawMapStoreResponseDecoder, RawValueLaneResponseDecoder,
+        RawValueStoreResponseDecoder,
     },
-    map::MapOperation,
+    LaneResponse, MapLaneResponse, MapOperation, StoreResponse,
 };
 use swimos_api::agent::UplinkKind;
 use swimos_utilities::io::byte_channel::ByteReader;
@@ -189,22 +189,22 @@ pub enum ResponseReceiver<I> {
         item_id: u64,
         store_id: Option<I>,
         uplink: ValueOrSupply,
-        reader: FramedRead<ByteReader, ValueLaneResponseDecoder>,
+        reader: FramedRead<ByteReader, RawValueLaneResponseDecoder>,
     },
     MapLane {
         item_id: u64,
         store_id: Option<I>,
-        reader: FramedRead<ByteReader, MapLaneResponseDecoder>,
+        reader: FramedRead<ByteReader, RawMapLaneResponseDecoder>,
     },
     ValueStore {
         item_id: u64,
         store_id: I,
-        reader: FramedRead<ByteReader, ValueStoreResponseDecoder>,
+        reader: FramedRead<ByteReader, RawValueStoreResponseDecoder>,
     },
     MapStore {
         item_id: u64,
         store_id: I,
-        reader: FramedRead<ByteReader, MapStoreResponseDecoder>,
+        reader: FramedRead<ByteReader, RawMapStoreResponseDecoder>,
     },
 }
 

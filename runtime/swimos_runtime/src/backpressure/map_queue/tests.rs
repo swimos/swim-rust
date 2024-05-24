@@ -16,8 +16,10 @@ use std::collections::hash_map::RandomState;
 
 use bytes::{BufMut, BytesMut};
 
+use crate::backpressure::{RawMapOperation, RawMapOperationMut};
+
 use super::MapOperationQueue;
-use swimos_agent_protocol::map::{MapOperation, RawMapOperation, RawMapOperationMut};
+use swimos_agent_protocol::MapOperation;
 
 impl<S> MapOperationQueue<S> {
     pub fn len(&self) -> usize {

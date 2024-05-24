@@ -14,7 +14,7 @@
 
 use std::time::Duration;
 
-use swimos_agent_protocol::map::MapMessage;
+use swimos_agent_protocol::MapMessage;
 use swimos_model::Value;
 use swimos_recon::parser::parse_recognize;
 use swimos_utilities::routing::route_uri::RouteUri;

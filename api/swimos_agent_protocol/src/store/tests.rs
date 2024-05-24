@@ -16,21 +16,18 @@ use bytes::{Buf, BufMut, BytesMut};
 use std::{fmt::Write, mem::size_of};
 use swimos_form::{structural::read::recognizer::RecognizerReadable, Form};
 use swimos_recon::{print_recon_compact, WithLenRecognizerDecoder};
-use swimos_utilities::encoding::WithLengthBytesCodec;
 use tokio_util::codec::{Decoder, Encoder};
 
-use crate::agent::{
-    StoreInitMessage, StoreInitMessageDecoder, StoreInitMessageEncoder, StoreInitialized,
-    StoreInitializedCodec, StoreResponse, StoreResponseEncoder, TAG_LEN,
+use crate::store::{
+    RawValueInitEncoder, RawValueStoreResponseDecoder, StoreInitMessage, StoreInitMessageDecoder,
+    StoreInitialized, StoreInitializedCodec, StoreResponse, ValueStoreResponseEncoder, TAG_LEN,
 };
-
-use super::StoreResponseDecoder;
 
 const LEN_SIZE: usize = size_of::<u64>();
 
 #[test]
 fn encode_command_store_request() {
-    let mut encoder = StoreInitMessageEncoder::value();
+    let mut encoder = RawValueInitEncoder::default();
     let mut buffer = BytesMut::new();
     let content = b"body";
     let message = StoreInitMessage::Command(content);
@@ -44,7 +41,7 @@ fn encode_command_store_request() {
 
 #[test]
 fn encode_init_store_request() {
-    let mut encoder = StoreInitMessageEncoder::value();
+    let mut encoder = RawValueInitEncoder::default();
     let mut buffer = BytesMut::new();
     let message: StoreInitMessage<&[u8]> = StoreInitMessage::InitComplete;
     assert!(encoder.encode(message, &mut buffer).is_ok());
@@ -69,7 +66,7 @@ fn round_trip_message(request: StoreInitMessage<Example>) {
         StoreInitMessage::InitComplete => StoreInitMessage::InitComplete,
     };
 
-    let mut encoder = StoreInitMessageEncoder::value();
+    let mut encoder = RawValueInitEncoder::default();
     let mut buffer = BytesMut::new();
     assert!(encoder.encode(with_bytes, &mut buffer).is_ok());
 
@@ -125,9 +122,9 @@ fn decode_store_initialized() {
 
 #[test]
 fn encode_store_response() {
-    let mut encoder = StoreResponseEncoder::new(WithLengthBytesCodec);
+    let mut encoder = ValueStoreResponseEncoder::default();
     let mut buffer = BytesMut::new();
-    let content = b"body";
+    let content = "body";
     let response = StoreResponse::new(content);
 
     assert!(encoder.encode(response, &mut buffer).is_ok());
@@ -135,12 +132,12 @@ fn encode_store_response() {
     assert_eq!(buffer.remaining(), TAG_LEN + LEN_SIZE + content.len());
     assert_eq!(buffer.get_u8(), super::EVENT);
     assert_eq!(buffer.get_u64(), content.len() as u64);
-    assert_eq!(buffer.as_ref(), content);
+    assert_eq!(buffer.as_ref(), content.as_bytes());
 }
 
 #[test]
 fn decode_store_response() {
-    let mut decoder = StoreResponseDecoder::new(WithLengthBytesCodec);
+    let mut decoder = RawValueStoreResponseDecoder::default();
     let mut buffer = BytesMut::new();
     let content = b"body";
 

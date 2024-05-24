@@ -20,8 +20,8 @@ use futures::{
     FutureExt, SinkExt, StreamExt,
 };
 use swimos_agent_protocol::{
-    agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
-    map::{MapOperation, MapOperationEncoder},
+    encoding::{MapLaneResponseEncoder, RawValueLaneRequestDecoder},
+    LaneRequest, LaneResponse, MapOperation,
 };
 use swimos_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
@@ -31,7 +31,6 @@ use swimos_api::{
 use swimos_meta::{LaneInfo, NodePulse};
 use swimos_model::Text;
 use swimos_utilities::{
-    encoding::WithLengthBytesCodec,
     io::byte_channel::{ByteReader, ByteWriter},
     routing::route_uri::RouteUri,
     trigger,
@@ -174,8 +173,8 @@ async fn run_lanes_descriptor_lane(
     let (tx, rx) = lanes_io;
 
     let mut input =
-        FramedRead::new(rx, LaneRequestDecoder::new(WithLengthBytesCodec)).take_until(shutdown_rx);
-    let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(MapOperationEncoder));
+        FramedRead::new(rx, RawValueLaneRequestDecoder::default()).take_until(shutdown_rx);
+    let mut output = FramedWrite::new(tx, MapLaneResponseEncoder::default());
 
     let mut snapshot = if let Some(s) = handle.new_snapshot() {
         s

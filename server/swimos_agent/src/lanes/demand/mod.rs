@@ -19,7 +19,7 @@ use std::{
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
-use swimos_agent_protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
+use swimos_agent_protocol::{encoding::ValueLaneResponseEncoder, LaneResponse};
 use swimos_form::structural::write::StructuralWritable;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;

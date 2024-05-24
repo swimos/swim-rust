@@ -26,7 +26,7 @@ use futures::stream::SelectAll;
 use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
 pub use interpretation::MapInterpretation;
 pub use interpretation::NoInterpretation;
-use swimos_agent_protocol::downlink::{DownlinkNotification, DownlinkNotificationEncoder};
+use swimos_agent_protocol::{encoding::DownlinkNotificationEncoder, DownlinkNotification};
 use swimos_messages::protocol::{
     Notification, Operation, Path, RawRequestMessage, RawRequestMessageEncoder,
     RawResponseMessageDecoder, ResponseMessage,

@@ -22,8 +22,7 @@ use futures::{
     FutureExt, SinkExt, Stream, StreamExt,
 };
 use swimos_agent_protocol::{
-    agent::{StoreInitMessage, StoreInitMessageDecoder, StoreInitialized, StoreInitializedCodec},
-    map::MapMessage,
+    encoding::StoreInitializedCodec, MapMessage, StoreInitMessage, StoreInitialized,
 };
 use swimos_api::error::FrameIoError;
 use swimos_form::structural::read::{recognizer::RecognizerReadable, ReadError};
@@ -45,21 +44,21 @@ mod tests;
 /// A stream that will consume command messages from the channel for a lane until an `InitComplete`
 /// message is received. It is invalid to receive a `Sync` message while the lane is initializing
 /// so this will result in the stream failing with an error.
-fn init_stream<'a, D>(
+fn init_stream<'a, D, M>(
     reader: &'a mut ByteReader,
     decoder: D,
-) -> impl Stream<Item = Result<D::Item, FrameIoError>> + 'a
+) -> impl Stream<Item = Result<M, FrameIoError>> + 'a
 where
-    D: Decoder + 'a,
+    D: Decoder<Item = StoreInitMessage<M>> + 'a,
     FrameIoError: From<D::Error>,
 {
-    let framed = FramedRead::new(reader, StoreInitMessageDecoder::new(decoder));
+    let framed = FramedRead::new(reader, decoder);
     unfold(Some(framed), |maybe_framed| async move {
         if let Some(mut framed) = maybe_framed {
             match framed.next().await {
                 Some(Ok(StoreInitMessage::Command(body))) => Some((Ok(body), Some(framed))),
                 Some(Ok(StoreInitMessage::InitComplete)) => None,
-                Some(Err(e)) => Some((Err(e), None)),
+                Some(Err(e)) => Some((Err(e.into()), None)),
                 None => Some((Err(FrameIoError::InvalidTermination), None)),
             }
         } else {
@@ -115,15 +114,15 @@ impl<'a, Agent> InitializedItem<'a, Agent> {
 /// * `decoder` - Decoder to interpret the command messages from the runtime, during the
 /// initialization process.
 /// * `init` - Initializer to consume the incoming command and assemble the initial state of the lane.
-pub async fn run_item_initializer<'a, Agent, D>(
+pub async fn run_item_initializer<'a, Agent, D, M>(
     item_kind: ItemKind,
     name: &'a str,
     io: (ByteWriter, ByteReader),
     decoder: D,
-    init: Box<dyn ItemInitializer<Agent, D::Item> + Send + 'static>,
+    init: Box<dyn ItemInitializer<Agent, M> + Send + 'static>,
 ) -> Result<InitializedItem<'a, Agent>, FrameIoError>
 where
-    D: Decoder + Send,
+    D: Decoder<Item = StoreInitMessage<M>> + Send,
     FrameIoError: From<D::Error>,
 {
     let (mut tx, mut rx) = io;

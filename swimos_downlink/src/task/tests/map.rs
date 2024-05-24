@@ -18,10 +18,11 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
+use swimos_agent_protocol::MapMessage;
 
-use swimos_agent_protocol::downlink::DownlinkNotification;
-use swimos_agent_protocol::downlink::DownlinkNotificationEncoder;
-use swimos_agent_protocol::map::{MapMessage, MapMessageEncoder, MapOperationEncoder};
+use swimos_agent_protocol::encoding::DownlinkNotificationEncoder;
+use swimos_agent_protocol::encoding::MapMessageEncoder;
+use swimos_agent_protocol::DownlinkNotification;
 use swimos_api::downlink::Downlink;
 use swimos_api::{
     downlink::DownlinkConfig,
@@ -71,7 +72,7 @@ impl TestMapWriter {
             DownlinkNotification::Synced => DownlinkNotification::Synced,
             DownlinkNotification::Unlinked => DownlinkNotification::Unlinked,
             DownlinkNotification::Event { body } => {
-                let mut encoder = MapMessageEncoder::new(MapOperationEncoder);
+                let mut encoder = MapMessageEncoder::default();
                 let mut buf = BytesMut::new();
                 encoder
                     .encode(body, &mut buf)
