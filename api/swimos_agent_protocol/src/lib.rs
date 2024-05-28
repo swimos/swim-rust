@@ -12,6 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS Agent Protocol
+//! 
+//! This crate defines the protocol used to communicate between the Swim runtime and implementations of agents.
+//! 
+//! The root module contains types describing the messages that can be sent on the various types of
+//! channel between the runtime and the agent. Each message type has encoders and decoders in the [`encoding`]
+//! module. Encoders/decoders whose name starts with 'Raw' send and receive raw arrays of bytes as the content
+//! of the message. Otherwise, the body should be any type that can be serialized to Recon, using the 
+//! [`swimos_form::Form`] trait.
+
 mod ad_hoc;
 mod downlink;
 mod lane;
@@ -27,6 +37,12 @@ pub use model::{
 };
 pub mod encoding {
 
+    /// # The protocol used by the runtime to communicate with downlinks.
+    /// 
+    /// 1) [`crate::DownlinkNotification`] messages are sent by the runtime to downlinks to inform them that the state
+    /// of the link has changed or a new event has been received.
+    /// 2) [`crate::DownlinkOperation`] messages are sent to the runtime by the downlink to instruct it to send a 
+    /// command to the remote lane.
     pub mod downlink {
         pub use crate::downlink::{
             DownlinkNotificationEncoder, DownlinkOperationDecoder, DownlinkOperationEncoder,
@@ -34,6 +50,30 @@ pub mod encoding {
         };
     }
 
+    /// # The protocol used by the runtime to communicate with lanes.
+    /// 
+    /// There are two phases to the communication between the runtime and the agent.
+    ///
+    /// 1. Initialization
+    /// 2. Agent running.
+    /// 
+    /// During the initialization phase:
+    ///
+    /// 1. The runtime sends one or more [`crate::LaneRequest`] commands which transmit
+    /// the state of the lane to the agent.
+    /// 2. The runtime sends a single [`crate::LaneRequest::InitComplete`] message.
+    /// 3. The lane responds with the [`crate::LaneResponse::Initialized`] message.
+    /// 4. Both parties switch to the protocol for the Agent Running phase.
+    /// 
+    /// During the agent running phase:
+    /// 1) [`crate::LaneRequest::Command`] messages are sent by the runtime to lane to inform the lane of commands
+    /// received, addressed to that lane. The lane is not require to respond.
+    /// 2) Each time the state of the lane changes (whether in response to a received command or otherwise) it must
+    /// notify the runtime of the change using [`crate::LaneResponse::StandardEvent`] message.
+    /// 3) [`crate::LaneRequest::Sync`] messages are sent by the runtime to the lane to request its state. The lane
+    /// must respond with 0 or more [`crate::LaneResponse::SyncEvent`] messages, labelled with the same ID as provided
+    /// in the request. After all such messages are sent, it must send a [`crate::LaneResponse::Synced`] message with
+    /// the same ID.
     pub mod lane {
         pub use crate::lane::{
             MapLaneRequestDecoder, MapLaneRequestEncoder, MapLaneResponseDecoder,
@@ -53,6 +93,10 @@ pub mod encoding {
         };
     }
 
+    /// # The protocol used by the agents to send ad hoc messages to lanes on other agents.
+    /// 
+    /// [`crate::AdHocCommand`] messages are sent by agents to the runtime to instruct it to send an ad hoc
+    /// command to an arbitrary lane endpoint.
     pub mod ad_hoc {
         pub use crate::ad_hoc::{
             AdHocCommandDecoder, AdHocCommandEncoder, RawAdHocCommandDecoder,
@@ -60,7 +104,7 @@ pub mod encoding {
         };
     }
 
-    /// Protocol used by the runtime to communicate with stores.
+    /// # The protocol used by the runtime to communicate with stores.
     ///
     /// TODO Non-transient lanes also implicitly contain a store. They should
     /// ultimately use the initialization component of this protocol. Currently,
