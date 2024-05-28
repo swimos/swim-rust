@@ -16,7 +16,7 @@ use std::{collections::HashMap, num::NonZeroUsize};
 
 use futures::{future::join, Future, StreamExt};
 use swimos_agent_protocol::{
-    encoding::{MapLaneResponseDecoder, ValueLaneResponseDecoder},
+    encoding::lane::{MapLaneResponseDecoder, ValueLaneResponseDecoder},
     LaneResponse, MapOperation,
 };
 use swimos_api::{

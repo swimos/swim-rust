@@ -15,7 +15,9 @@
 use std::{convert::Infallible, num::NonZeroUsize, time::Duration};
 
 use futures_util::{future::join, SinkExt, StreamExt};
-use swimos_agent_protocol::encoding::{DownlinkOperationEncoder, ValueNotificationDecoder};
+use swimos_agent_protocol::encoding::downlink::{
+    DownlinkOperationEncoder, ValueNotificationDecoder,
+};
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_messages::protocol::{
     Operation, Path, RawRequestMessageDecoder, RawResponseMessageEncoder, RequestMessage,

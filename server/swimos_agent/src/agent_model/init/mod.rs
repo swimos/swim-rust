@@ -22,7 +22,7 @@ use futures::{
     FutureExt, SinkExt, Stream, StreamExt,
 };
 use swimos_agent_protocol::{
-    encoding::StoreInitializedCodec, MapMessage, StoreInitMessage, StoreInitialized,
+    encoding::store::StoreInitializedCodec, MapMessage, StoreInitMessage, StoreInitialized,
 };
 use swimos_api::error::FrameIoError;
 use swimos_form::structural::read::{recognizer::RecognizerReadable, ReadError};

@@ -23,7 +23,7 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swimos_agent_protocol::encoding::{MapLaneResponseDecoder, RawValueLaneRequestEncoder};
+use swimos_agent_protocol::encoding::lane::{MapLaneResponseDecoder, RawValueLaneRequestEncoder};
 use swimos_agent_protocol::{LaneRequest, LaneResponse, MapOperation};
 use swimos_api::agent::{AgentContext, HttpLaneRequestChannel, LaneConfig};
 use swimos_api::downlink::DownlinkKind;

@@ -26,7 +26,7 @@ use futures::{
     StreamExt,
 };
 use futures::{Future, FutureExt};
-use swimos_agent_protocol::encoding::{RawMapInitDecoder, RawValueInitDecoder};
+use swimos_agent_protocol::encoding::store::{RawMapInitDecoder, RawValueInitDecoder};
 use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::agent::{HttpLaneRequest, HttpLaneResponse, LaneConfig};
 use swimos_api::downlink::DownlinkKind;

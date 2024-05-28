@@ -23,10 +23,11 @@ use std::{
 use bytes::Bytes;
 use futures::{future::Either, ready, SinkExt, Stream, StreamExt};
 use swimos_agent_protocol::{
-    encoding::{
-        MapLaneRequestDecoder, MapLaneResponseEncoder, MapStoreResponseEncoder,
-        ValueLaneRequestDecoder, ValueLaneResponseEncoder, ValueStoreResponseEncoder,
+    encoding::lane::{
+        MapLaneRequestDecoder, MapLaneResponseEncoder, ValueLaneRequestDecoder,
+        ValueLaneResponseEncoder,
     },
+    encoding::store::{MapStoreResponseEncoder, ValueStoreResponseEncoder},
     LaneRequest, LaneResponse, MapLaneResponse, MapMessage, MapOperation, StoreResponse,
 };
 use swimos_api::{agent::UplinkKind, error::FrameIoError};

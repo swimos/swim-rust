@@ -30,7 +30,9 @@ use futures::{
     Sink, SinkExt, Stream, StreamExt,
 };
 use parking_lot::Mutex;
-use swimos_agent_protocol::encoding::{DownlinkNotificationEncoder, DownlinkOperationDecoder};
+use swimos_agent_protocol::encoding::downlink::{
+    DownlinkNotificationEncoder, DownlinkOperationDecoder,
+};
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_model::{address::Address, Text};

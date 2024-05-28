@@ -21,7 +21,7 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swimos_agent_protocol::{
-    encoding::{AdHocCommandDecoder, DownlinkNotificationEncoder},
+    encoding::{ad_hoc::AdHocCommandDecoder, downlink::DownlinkNotificationEncoder},
     AdHocCommand, DownlinkNotification, MapMessage, MapOperation,
 };
 use swimos_api::{

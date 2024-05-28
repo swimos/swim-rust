@@ -20,10 +20,8 @@ use std::{
 use bytes::{Bytes, BytesMut};
 use futures::{ready, Stream, StreamExt};
 use swimos_agent_protocol::{
-    encoding::{
-        RawMapLaneResponseDecoder, RawMapStoreResponseDecoder, RawValueLaneResponseDecoder,
-        RawValueStoreResponseDecoder,
-    },
+    encoding::lane::{RawMapLaneResponseDecoder, RawValueLaneResponseDecoder},
+    encoding::store::{RawMapStoreResponseDecoder, RawValueStoreResponseDecoder},
     LaneResponse, MapLaneResponse, MapOperation, StoreResponse,
 };
 use swimos_api::agent::UplinkKind;

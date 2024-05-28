@@ -15,7 +15,7 @@
 use std::convert::Infallible;
 
 use bytes::{BufMut, Bytes, BytesMut};
-use swimos_agent_protocol::encoding::RawMapMessageEncoder;
+use swimos_agent_protocol::encoding::map::RawMapMessageEncoder;
 use swimos_agent_protocol::peeling::extract_header;
 use swimos_recon::parser::MessageExtractError;
 use tokio_util::codec::Encoder;

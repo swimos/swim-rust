@@ -23,7 +23,7 @@ use crate::{
     task::IntrospectionMessage,
 };
 use futures::StreamExt;
-use swimos_agent_protocol::{encoding::ValueLaneResponseDecoder, LaneResponse};
+use swimos_agent_protocol::{encoding::lane::ValueLaneResponseDecoder, LaneResponse};
 use swimos_api::{
     agent::LaneConfig,
     lane::{LaneKind, WarpLaneKind},

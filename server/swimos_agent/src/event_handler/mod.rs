@@ -23,7 +23,7 @@ use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
 use futures::{stream::BoxStream, FutureExt};
 use static_assertions::assert_obj_safe;
-use swimos_agent_protocol::{encoding::AdHocCommandEncoder, AdHocCommand};
+use swimos_agent_protocol::{encoding::ad_hoc::AdHocCommandEncoder, AdHocCommand};
 use swimos_api::{
     agent::AgentContext,
     downlink::DownlinkKind,

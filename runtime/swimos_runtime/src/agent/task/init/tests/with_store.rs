@@ -16,11 +16,11 @@ use std::collections::HashMap;
 
 use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use swimos_agent_protocol::{
-    encoding::{
-        MapInitDecoder, MapLaneRequestDecoder, RawMapLaneResponseEncoder,
-        RawValueLaneResponseEncoder, StoreInitializedCodec, ValueInitDecoder,
+    encoding::lane::{
+        MapLaneRequestDecoder, RawMapLaneResponseEncoder, RawValueLaneResponseEncoder,
         ValueLaneRequestDecoder,
     },
+    encoding::store::{MapInitDecoder, StoreInitializedCodec, ValueInitDecoder},
     LaneRequest, LaneResponse, MapMessage, MapOperation, StoreInitMessage, StoreInitialized,
 };
 use swimos_api::{

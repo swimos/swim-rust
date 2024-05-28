@@ -19,7 +19,7 @@ use std::{
 
 use bytes::{Bytes, BytesMut};
 use swimos_agent_protocol::{
-    encoding::{MapLaneResponseEncoder, ValueLaneResponseEncoder},
+    encoding::lane::{MapLaneResponseEncoder, ValueLaneResponseEncoder},
     LaneResponse, MapLaneResponse, MapMessage, MapOperation,
 };
 use swimos_api::agent::HttpLaneRequest;

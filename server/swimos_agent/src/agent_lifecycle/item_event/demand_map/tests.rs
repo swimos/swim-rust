@@ -21,7 +21,7 @@ use std::{
 
 use bytes::BytesMut;
 use parking_lot::Mutex;
-use swimos_agent_protocol::{encoding::MapLaneResponseDecoder, LaneResponse, MapOperation};
+use swimos_agent_protocol::{encoding::lane::MapLaneResponseDecoder, LaneResponse, MapOperation};
 use swimos_api::agent::AgentConfig;
 use swimos_form::Form;
 use swimos_model::Text;

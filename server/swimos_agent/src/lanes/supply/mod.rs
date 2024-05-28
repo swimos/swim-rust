@@ -20,7 +20,7 @@ use swimos_agent_protocol::LaneResponse;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
-use swimos_agent_protocol::encoding::ValueLaneResponseEncoder;
+use swimos_agent_protocol::encoding::lane::ValueLaneResponseEncoder;
 use swimos_form::structural::write::StructuralWritable;
 
 use crate::event_handler::EventHandlerError;

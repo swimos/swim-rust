@@ -27,7 +27,7 @@ use futures::{
 use pin_project::pin_project;
 use std::hash::Hash;
 use swimos_agent_protocol::{
-    encoding::{MapNotificationDecoder, MapOperationEncoder},
+    encoding::{downlink::MapNotificationDecoder, map::MapOperationEncoder},
     DownlinkNotification, MapMessage, MapOperation,
 };
 use swimos_api::{

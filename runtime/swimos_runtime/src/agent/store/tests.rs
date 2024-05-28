@@ -22,7 +22,7 @@ use bytes::{BufMut, BytesMut};
 use futures::{future::join, StreamExt};
 use parking_lot::Mutex;
 use swimos_agent_protocol::{
-    encoding::{RawMapLaneRequestDecoder, RawValueLaneRequestDecoder},
+    encoding::lane::{RawMapLaneRequestDecoder, RawValueLaneRequestDecoder},
     LaneRequest, MapMessage, MapOperation,
 };
 use swimos_api::store::NodePersistence;

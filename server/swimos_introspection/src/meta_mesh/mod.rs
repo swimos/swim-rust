@@ -22,7 +22,7 @@ use futures::{FutureExt, SinkExt, StreamExt, TryFutureExt};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
-use swimos_agent_protocol::encoding::{
+use swimos_agent_protocol::encoding::lane::{
     MapLaneResponseEncoder, RawValueLaneRequestDecoder, ValueLaneResponseEncoder,
 };
 use swimos_agent_protocol::{LaneRequest, LaneResponse, MapOperation};

@@ -16,7 +16,7 @@ use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
 use std::fmt::Write;
 use swimos_agent_protocol::{
-    encoding::{
+    encoding::lane::{
         MapLaneRequestEncoder, RawMapLaneResponseDecoder, RawValueLaneRequestEncoder,
         RawValueLaneResponseDecoder,
     },

@@ -15,7 +15,7 @@
 use bytes::Bytes;
 use futures::SinkExt;
 use swimos_agent_protocol::{
-    encoding::{RawMapLaneRequestEncoder, RawValueLaneRequestEncoder},
+    encoding::lane::{RawMapLaneRequestEncoder, RawValueLaneRequestEncoder},
     peeling::extract_header,
     LaneRequest, MapMessage,
 };

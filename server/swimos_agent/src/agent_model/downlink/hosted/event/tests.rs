@@ -16,7 +16,7 @@ use std::{num::NonZeroUsize, sync::Arc};
 
 use futures::SinkExt;
 use parking_lot::Mutex;
-use swimos_agent_protocol::encoding::DownlinkNotificationEncoder;
+use swimos_agent_protocol::encoding::downlink::DownlinkNotificationEncoder;
 use swimos_agent_protocol::DownlinkNotification;
 use swimos_model::{address::Address, Text};
 use swimos_recon::print_recon_compact;

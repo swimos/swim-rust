@@ -19,7 +19,7 @@ use swimos_agent_protocol::LaneResponse;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
-use swimos_agent_protocol::encoding::RawValueLaneResponseDecoder;
+use swimos_agent_protocol::encoding::lane::RawValueLaneResponseDecoder;
 use swimos_api::agent::AgentConfig;
 use swimos_utilities::routing::route_uri::RouteUri;
 

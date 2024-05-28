@@ -33,7 +33,10 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swimos_agent_protocol::{
-    encoding::{DownlinkNotificationEncoder, MapMessageEncoder, MapOperationDecoder},
+    encoding::{
+        downlink::DownlinkNotificationEncoder,
+        map::{MapMessageEncoder, MapOperationDecoder},
+    },
     DownlinkNotification, MapMessage, MapOperation,
 };
 use swimos_model::{address::Address, Text};

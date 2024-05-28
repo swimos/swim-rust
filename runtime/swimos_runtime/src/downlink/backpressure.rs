@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_agent_protocol::encoding::{DownlinkOperationDecoder, RawMapOperationDecoder};
+use swimos_agent_protocol::encoding::{
+    downlink::DownlinkOperationDecoder, map::RawMapOperationDecoder,
+};
 use tokio_util::codec::Decoder;
 
 use crate::backpressure::{BackpressureStrategy, MapBackpressure, ValueBackpressure};

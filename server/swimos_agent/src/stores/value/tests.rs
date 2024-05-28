@@ -14,7 +14,7 @@
 
 use bytes::BytesMut;
 use std::{collections::HashMap, fmt::Debug};
-use swimos_agent_protocol::{encoding::RawValueStoreResponseDecoder, StoreResponse};
+use swimos_agent_protocol::{encoding::store::RawValueStoreResponseDecoder, StoreResponse};
 use swimos_api::agent::AgentConfig;
 use swimos_utilities::routing::route_uri::RouteUri;
 use tokio_util::codec::Decoder;

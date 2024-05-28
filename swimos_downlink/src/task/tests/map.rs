@@ -20,8 +20,8 @@ use std::hash::Hash;
 use std::num::NonZeroUsize;
 use swimos_agent_protocol::MapMessage;
 
-use swimos_agent_protocol::encoding::DownlinkNotificationEncoder;
-use swimos_agent_protocol::encoding::MapMessageEncoder;
+use swimos_agent_protocol::encoding::downlink::DownlinkNotificationEncoder;
+use swimos_agent_protocol::encoding::map::MapMessageEncoder;
 use swimos_agent_protocol::DownlinkNotification;
 use swimos_api::downlink::Downlink;
 use swimos_api::{

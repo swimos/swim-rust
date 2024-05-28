@@ -15,7 +15,7 @@
 use bytes::{Bytes, BytesMut};
 use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
 use swimos_agent_protocol::{
-    encoding::{
+    encoding::lane::{
         RawMapLaneRequestDecoder, RawMapLaneResponseEncoder, RawValueLaneRequestDecoder,
         RawValueLaneResponseEncoder,
     },

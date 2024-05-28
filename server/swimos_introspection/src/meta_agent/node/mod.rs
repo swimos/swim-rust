@@ -20,7 +20,7 @@ use futures::{
     FutureExt, SinkExt, StreamExt,
 };
 use swimos_agent_protocol::{
-    encoding::{MapLaneResponseEncoder, RawValueLaneRequestDecoder},
+    encoding::lane::{MapLaneResponseEncoder, RawValueLaneRequestDecoder},
     LaneRequest, LaneResponse, MapOperation,
 };
 use swimos_api::{

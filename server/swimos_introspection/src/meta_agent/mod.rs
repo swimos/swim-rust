@@ -19,7 +19,7 @@ use std::{
 
 use futures::{stream::unfold, SinkExt, Stream, StreamExt};
 use swimos_agent_protocol::{
-    encoding::{RawValueLaneRequestDecoder, ValueLaneResponseEncoder},
+    encoding::lane::{RawValueLaneRequestDecoder, ValueLaneResponseEncoder},
     LaneRequest, LaneResponse,
 };
 use swimos_api::error::FrameIoError;

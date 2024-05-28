@@ -16,7 +16,7 @@ use bytes::BytesMut;
 use futures::{future::BoxFuture, FutureExt, SinkExt};
 use std::fmt::Debug;
 use swimos_agent_protocol::{
-    encoding::{RawMapInitEncoder, RawValueInitEncoder},
+    encoding::store::{RawMapInitEncoder, RawValueInitEncoder},
     MapMessage, MapOperation, StoreInitMessage,
 };
 use swimos_api::{

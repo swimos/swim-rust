@@ -27,34 +27,47 @@ pub use model::{
 };
 pub mod encoding {
 
-    pub use crate::downlink::{
-        DownlinkNotificationEncoder, DownlinkOperationDecoder, DownlinkOperationEncoder,
-        MapNotificationDecoder, ValueNotificationDecoder,
-    };
+    pub mod downlink {
+        pub use crate::downlink::{
+            DownlinkNotificationEncoder, DownlinkOperationDecoder, DownlinkOperationEncoder,
+            MapNotificationDecoder, ValueNotificationDecoder,
+        };
+    }
 
-    pub use crate::lane::{
-        MapLaneRequestDecoder, MapLaneRequestEncoder, MapLaneResponseDecoder,
-        MapLaneResponseEncoder, RawMapLaneRequestDecoder, RawMapLaneRequestEncoder,
-        RawMapLaneResponseDecoder, RawMapLaneResponseEncoder, RawValueLaneRequestDecoder,
-        RawValueLaneRequestEncoder, RawValueLaneResponseDecoder, RawValueLaneResponseEncoder,
-        ValueLaneRequestDecoder, ValueLaneRequestEncoder, ValueLaneResponseDecoder,
-        ValueLaneResponseEncoder,
-    };
+    pub mod lane {
+        pub use crate::lane::{
+            MapLaneRequestDecoder, MapLaneRequestEncoder, MapLaneResponseDecoder,
+            MapLaneResponseEncoder, RawMapLaneRequestDecoder, RawMapLaneRequestEncoder,
+            RawMapLaneResponseDecoder, RawMapLaneResponseEncoder, RawValueLaneRequestDecoder,
+            RawValueLaneRequestEncoder, RawValueLaneResponseDecoder, RawValueLaneResponseEncoder,
+            ValueLaneRequestDecoder, ValueLaneRequestEncoder, ValueLaneResponseDecoder,
+            ValueLaneResponseEncoder,
+        };
+    }
 
-    pub use crate::map::{
-        MapMessageDecoder, MapMessageEncoder, MapOperationDecoder, MapOperationEncoder,
-        RawMapMessageDecoder, RawMapMessageEncoder, RawMapOperationDecoder, RawMapOperationEncoder,
-    };
+    pub mod map {
+        pub use crate::map::{
+            MapMessageDecoder, MapMessageEncoder, MapOperationDecoder, MapOperationEncoder,
+            RawMapMessageDecoder, RawMapMessageEncoder, RawMapOperationDecoder,
+            RawMapOperationEncoder,
+        };
+    }
 
-    pub use crate::ad_hoc::{
-        AdHocCommandDecoder, AdHocCommandEncoder, RawAdHocCommandDecoder, RawAdHocCommandEncoder,
-    };
-    pub use crate::store::{
-        MapInitDecoder, MapStoreResponseEncoder, RawMapInitDecoder, RawMapInitEncoder,
-        RawMapStoreResponseDecoder, RawValueInitDecoder, RawValueInitEncoder,
-        RawValueStoreResponseDecoder, StoreInitializedCodec, ValueInitDecoder,
-        ValueStoreResponseEncoder,
-    };
+    pub mod ad_hoc {
+        pub use crate::ad_hoc::{
+            AdHocCommandDecoder, AdHocCommandEncoder, RawAdHocCommandDecoder,
+            RawAdHocCommandEncoder,
+        };
+    }
+
+    pub mod store {
+        pub use crate::store::{
+            MapInitDecoder, MapStoreResponseEncoder, RawMapInitDecoder, RawMapInitEncoder,
+            RawMapStoreResponseDecoder, RawValueInitDecoder, RawValueInitEncoder,
+            RawValueStoreResponseDecoder, StoreInitializedCodec, ValueInitDecoder,
+            ValueStoreResponseEncoder,
+        };
+    }
 }
 
 pub mod peeling {

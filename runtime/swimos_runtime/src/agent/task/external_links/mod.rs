@@ -20,7 +20,7 @@ use std::{
 
 use bytes::{BufMut, BytesMut};
 use futures::{stream::FuturesUnordered, Future, StreamExt};
-use swimos_agent_protocol::encoding::RawAdHocCommandDecoder;
+use swimos_agent_protocol::encoding::ad_hoc::RawAdHocCommandDecoder;
 use swimos_agent_protocol::AdHocCommand;
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError};
 use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};

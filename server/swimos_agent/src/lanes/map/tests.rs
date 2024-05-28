@@ -16,7 +16,9 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use bytes::BytesMut;
-use swimos_agent_protocol::{encoding::RawMapLaneResponseDecoder, MapLaneResponse, MapOperation};
+use swimos_agent_protocol::{
+    encoding::lane::RawMapLaneResponseDecoder, MapLaneResponse, MapOperation,
+};
 use swimos_api::agent::AgentConfig;
 use swimos_model::Text;
 use swimos_recon::parser::parse_recognize;

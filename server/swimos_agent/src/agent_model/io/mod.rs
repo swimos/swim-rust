@@ -20,7 +20,7 @@ use std::{
 use bytes::BytesMut;
 use futures::{ready, SinkExt, Stream, StreamExt};
 use swimos_agent_protocol::{
-    encoding::{RawMapLaneRequestDecoder, RawValueLaneRequestDecoder},
+    encoding::lane::{RawMapLaneRequestDecoder, RawValueLaneRequestDecoder},
     LaneRequest, MapMessage,
 };
 use swimos_api::{agent::HttpLaneRequest, error::FrameIoError};

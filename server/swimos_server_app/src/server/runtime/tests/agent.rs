@@ -17,7 +17,7 @@ use std::{collections::HashMap, pin::pin};
 use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
 use swimos_agent_protocol::{
-    encoding::{
+    encoding::lane::{
         RawValueLaneRequestDecoder, RawValueLaneResponseEncoder, ValueLaneRequestDecoder,
         ValueLaneResponseEncoder,
     },

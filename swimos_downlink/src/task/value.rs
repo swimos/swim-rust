@@ -21,7 +21,9 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{info_span, trace, Instrument};
 
-use swimos_agent_protocol::encoding::{DownlinkOperationEncoder, ValueNotificationDecoder};
+use swimos_agent_protocol::encoding::downlink::{
+    DownlinkOperationEncoder, ValueNotificationDecoder,
+};
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_api::downlink::DownlinkConfig;
 use swimos_api::error::DownlinkTaskError;

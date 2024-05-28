@@ -17,10 +17,13 @@ use std::{collections::HashMap, num::NonZeroUsize, time::Duration};
 use bytes::BytesMut;
 use futures::{future::join, SinkExt, StreamExt};
 use swimos_agent_protocol::{
-    encoding::{
-        MapLaneRequestEncoder, RawMapInitDecoder, RawMapInitEncoder, RawMapLaneResponseDecoder,
-        RawValueInitDecoder, RawValueInitEncoder, RawValueLaneResponseDecoder,
-        StoreInitializedCodec, ValueLaneRequestEncoder,
+    encoding::lane::{
+        MapLaneRequestEncoder, RawMapLaneResponseDecoder, RawValueLaneResponseDecoder,
+        ValueLaneRequestEncoder,
+    },
+    encoding::store::{
+        RawMapInitDecoder, RawMapInitEncoder, RawValueInitDecoder, RawValueInitEncoder,
+        StoreInitializedCodec,
     },
     LaneRequest, LaneResponse, MapMessage, StoreInitMessage, StoreInitialized,
 };

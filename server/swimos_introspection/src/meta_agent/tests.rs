@@ -16,7 +16,7 @@ use std::{num::NonZeroUsize, pin::pin, time::Duration};
 
 use futures::{future::join, Future, SinkExt, StreamExt};
 use swimos_agent_protocol::{
-    encoding::{RawValueLaneRequestEncoder, ValueLaneResponseDecoder},
+    encoding::lane::{RawValueLaneRequestEncoder, ValueLaneResponseDecoder},
     LaneRequest, LaneResponse,
 };
 use swimos_form::Form;

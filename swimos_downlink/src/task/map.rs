@@ -19,7 +19,7 @@ use futures::{FutureExt, Sink, SinkExt, StreamExt};
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
 use std::mem;
-use swimos_agent_protocol::encoding::{DownlinkOperationEncoder, MapNotificationDecoder};
+use swimos_agent_protocol::encoding::downlink::{DownlinkOperationEncoder, MapNotificationDecoder};
 use swimos_agent_protocol::MapMessage;
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_api::downlink::DownlinkConfig;

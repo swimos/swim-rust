@@ -16,7 +16,7 @@ use std::fmt::Display;
 
 use crate::model::lifecycle::EventDownlinkLifecycle;
 use futures::StreamExt;
-use swimos_agent_protocol::{encoding::ValueNotificationDecoder, DownlinkNotification};
+use swimos_agent_protocol::{encoding::downlink::ValueNotificationDecoder, DownlinkNotification};
 use swimos_api::downlink::DownlinkConfig;
 use swimos_api::error::DownlinkTaskError;
 use swimos_form::Form;

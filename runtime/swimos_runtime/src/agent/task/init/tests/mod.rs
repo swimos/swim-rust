@@ -18,7 +18,7 @@ use futures::{
     future::{join, join3, BoxFuture},
     FutureExt, SinkExt, StreamExt, TryFutureExt,
 };
-use swimos_agent_protocol::encoding::{
+use swimos_agent_protocol::encoding::lane::{
     RawValueLaneRequestDecoder, RawValueLaneRequestEncoder, RawValueLaneResponseEncoder,
 };
 use swimos_agent_protocol::{LaneRequest, LaneResponse};
