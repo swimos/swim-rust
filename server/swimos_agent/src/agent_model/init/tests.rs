@@ -22,8 +22,8 @@ use swimos_agent_protocol::{
         ValueLaneRequestEncoder,
     },
     encoding::store::{
-        RawMapStoreInitDecoder, RawMapStoreInitEncoder, RawValueStoreInitDecoder, RawValueStoreInitEncoder,
-        StoreInitializedCodec,
+        RawMapStoreInitDecoder, RawMapStoreInitEncoder, RawValueStoreInitDecoder,
+        RawValueStoreInitEncoder, StoreInitializedCodec,
     },
     LaneRequest, LaneResponse, MapMessage, StoreInitMessage, StoreInitialized,
 };

@@ -19,8 +19,9 @@ use swimos_recon::{print_recon_compact, WithLenRecognizerDecoder};
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::store::{
-    RawValueStoreInitEncoder, RawValueStoreResponseDecoder, StoreInitMessage, StoreInitMessageDecoder,
-    StoreInitialized, StoreInitializedCodec, StoreResponse, ValueStoreResponseEncoder, TAG_LEN,
+    RawValueStoreInitEncoder, RawValueStoreResponseDecoder, StoreInitMessage,
+    StoreInitMessageDecoder, StoreInitialized, StoreInitializedCodec, StoreResponse,
+    ValueStoreResponseEncoder, TAG_LEN,
 };
 
 const LEN_SIZE: usize = size_of::<u64>();
