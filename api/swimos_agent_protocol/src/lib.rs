@@ -120,16 +120,16 @@ pub mod encoding {
     ///
     /// During the initialization phase:
     ///
-    /// 1. The runtime sends one or more [`StoreInitMessage`] commands which transmit
+    /// 1. The runtime sends one or more [`crate::StoreInitMessage`] commands which transmit
     /// the state of the item to the agent.
-    /// 2. The runtime sends a single [`StoreInitMessage`] `InitComplete` message.
-    /// 3. The store or lane responds with the [`StoreInitialized`] message.
+    /// 2. The runtime sends a single [`crate::StoreInitMessage`] `InitComplete` message.
+    /// 3. The store or lane responds with the [`crate::StoreInitialized`] message.
     /// 4. Both parties switch to the protocol for the Agent Running phase.
     ///
     /// During the agent running phase:
     ///
     /// 1. The runtime does not send messages to the agent and may drop the channel.
-    /// 2. The store or land sends [`StoreResponse`] messages each time its state
+    /// 2. The store or land sends [`crate::StoreResponse`] messages each time its state
     /// changes which are persisted by the runtime.
     pub mod store {
         pub use crate::store::{
