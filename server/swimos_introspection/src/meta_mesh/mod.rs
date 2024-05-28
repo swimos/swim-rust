@@ -22,9 +22,7 @@ use futures::{FutureExt, SinkExt, StreamExt, TryFutureExt};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
-use swimos_agent_protocol::encoding::lane::{
-    MapLaneResponseEncoder, RawValueLaneRequestDecoder, ValueLaneResponseEncoder,
-};
+use swimos_agent_protocol::encoding::lane::{MapLaneResponseEncoder, RawValueLaneRequestDecoder};
 use swimos_agent_protocol::{LaneRequest, LaneResponse, MapOperation};
 use swimos_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
 use swimos_api::error::{AgentTaskError, FrameIoError};
@@ -219,7 +217,7 @@ async fn run_task(
     let (nodes_count_tx, nodes_count_rx) = nodes_count_io;
 
     let nodes_input = FramedRead::new(nodes_rx, RawValueLaneRequestDecoder::default());
-    let mut nodes_output = FramedWrite::new(nodes_tx, ValueLaneResponseEncoder::default());
+    let mut nodes_output = FramedWrite::new(nodes_tx, MapLaneResponseEncoder::default());
 
     let nodes_count_input = FramedRead::new(nodes_count_rx, RawValueLaneRequestDecoder::default());
     let mut nodes_count_output =
