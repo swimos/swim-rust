@@ -12,34 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Protocol used by the runtime to communicate with stores.
-//!
-//! TODO Non-transient lanes also implicitly contain a store. They should
-//! ultimately use the initialization component of this protocol. Currently,
-//! they have initialization messages built into the lane protocol.
-//!
-//! There are two phases to the communication between the runtime and the agent.
-//!
-//! 1. Initialization
-//! 2. Agent running.
-//!
-//! The initialization phase occurs when the agent is starting. After all items
-//! complete this phase, the agent running phase starts.
-//!
-//! During the initialization phase:
-//!
-//! 1. The runtime sends one or more [`StoreInitMessage`] commands which transmit
-//! the state of the item to the agent.
-//! 2. The runtime sends a single [`StoreInitMessage`] `InitComplete` message.
-//! 3. The store or lane responds with the [`StoreInitialized`] message.
-//! 4. Both parties switch to the protocol for the Agent Running phase.
-//!
-//! During the agent running phase:
-//!
-//! 1. The runtime does not send messages to the agent and may drop the channel.
-//! 2. The store or land sends [`StoreResponse`] messages each time its state
-//! changes which are persisted by the runtime.
-
 use bytes::{Buf, BufMut, BytesMut};
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
@@ -337,11 +309,11 @@ impl Decoder for RawMapStoreResponseDecoder {
 }
 
 #[derive(Default, Debug)]
-pub struct RawValueInitEncoder {
+pub struct RawValueStoreInitEncoder {
     inner: StoreInitMessageEncoder<WithLengthBytesCodec>,
 }
 
-impl<B: AsRef<[u8]>> Encoder<StoreInitMessage<B>> for RawValueInitEncoder {
+impl<B: AsRef<[u8]>> Encoder<StoreInitMessage<B>> for RawValueStoreInitEncoder {
     type Error = std::io::Error;
 
     fn encode(&mut self, item: StoreInitMessage<B>, dst: &mut BytesMut) -> Result<(), Self::Error> {
@@ -350,12 +322,12 @@ impl<B: AsRef<[u8]>> Encoder<StoreInitMessage<B>> for RawValueInitEncoder {
 }
 
 #[derive(Default, Debug)]
-pub struct RawMapInitEncoder {
+pub struct RawMapStoreInitEncoder {
     inner: StoreInitMessageEncoder<RawMapMessageEncoder>,
 }
 
 impl<K: AsRef<[u8]>, V: AsRef<[u8]>> Encoder<StoreInitMessage<MapMessage<K, V>>>
-    for RawMapInitEncoder
+    for RawMapStoreInitEncoder
 {
     type Error = std::io::Error;
 
@@ -369,11 +341,11 @@ impl<K: AsRef<[u8]>, V: AsRef<[u8]>> Encoder<StoreInitMessage<MapMessage<K, V>>>
 }
 
 #[derive(Debug, Default)]
-pub struct RawValueInitDecoder {
+pub struct RawValueStoreInitDecoder {
     inner: StoreInitMessageDecoder<WithLengthBytesCodec>,
 }
 
-impl Decoder for RawValueInitDecoder {
+impl Decoder for RawValueStoreInitDecoder {
     type Item = StoreInitMessage<BytesMut>;
 
     type Error = FrameIoError;
@@ -383,11 +355,11 @@ impl Decoder for RawValueInitDecoder {
     }
 }
 
-pub struct ValueInitDecoder<T: RecognizerReadable> {
+pub struct ValueStoreInitDecoder<T: RecognizerReadable> {
     inner: StoreInitMessageDecoder<RecognizerDecoder<T::Rec>>,
 }
 
-impl<T: RecognizerReadable> Default for ValueInitDecoder<T> {
+impl<T: RecognizerReadable> Default for ValueStoreInitDecoder<T> {
     fn default() -> Self {
         Self {
             inner: StoreInitMessageDecoder::new(RecognizerDecoder::new(T::make_recognizer())),
@@ -395,7 +367,7 @@ impl<T: RecognizerReadable> Default for ValueInitDecoder<T> {
     }
 }
 
-impl<T: RecognizerReadable> Decoder for ValueInitDecoder<T> {
+impl<T: RecognizerReadable> Decoder for ValueStoreInitDecoder<T> {
     type Item = StoreInitMessage<T>;
 
     type Error = FrameIoError;
@@ -406,11 +378,11 @@ impl<T: RecognizerReadable> Decoder for ValueInitDecoder<T> {
 }
 
 #[derive(Debug, Default)]
-pub struct RawMapInitDecoder {
+pub struct RawMapStoreInitDecoder {
     inner: StoreInitMessageDecoder<RawMapMessageDecoder>,
 }
 
-impl Decoder for RawMapInitDecoder {
+impl Decoder for RawMapStoreInitDecoder {
     type Item = StoreInitMessage<MapMessage<BytesMut, BytesMut>>;
 
     type Error = FrameIoError;
@@ -420,11 +392,11 @@ impl Decoder for RawMapInitDecoder {
     }
 }
 
-pub struct MapInitDecoder<K: RecognizerReadable, V: RecognizerReadable> {
+pub struct MapStoreInitDecoder<K: RecognizerReadable, V: RecognizerReadable> {
     inner: StoreInitMessageDecoder<MapMessageDecoder<K, V>>,
 }
 
-impl<K: RecognizerReadable, V: RecognizerReadable> Default for MapInitDecoder<K, V> {
+impl<K: RecognizerReadable, V: RecognizerReadable> Default for MapStoreInitDecoder<K, V> {
     fn default() -> Self {
         Self {
             inner: StoreInitMessageDecoder::new(MapMessageDecoder::default()),
@@ -432,7 +404,7 @@ impl<K: RecognizerReadable, V: RecognizerReadable> Default for MapInitDecoder<K,
     }
 }
 
-impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapInitDecoder<K, V> {
+impl<K: RecognizerReadable, V: RecognizerReadable> Decoder for MapStoreInitDecoder<K, V> {
     type Item = StoreInitMessage<MapMessage<K, V>>;
 
     type Error = FrameIoError;

@@ -26,7 +26,7 @@ use futures::{
     StreamExt,
 };
 use futures::{Future, FutureExt};
-use swimos_agent_protocol::encoding::store::{RawMapInitDecoder, RawValueInitDecoder};
+use swimos_agent_protocol::encoding::store::{RawMapStoreInitDecoder, RawValueStoreInitDecoder};
 use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::agent::{HttpLaneRequest, HttpLaneResponse, LaneConfig};
 use swimos_api::downlink::DownlinkKind;
@@ -822,7 +822,7 @@ where
                 ItemKind::Lane(kind),
                 name,
                 io,
-                RawValueInitDecoder::default(),
+                RawValueStoreInitDecoder::default(),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -842,7 +842,7 @@ where
                 ItemKind::Store(StoreKind::Value),
                 name,
                 io,
-                RawValueInitDecoder::default(),
+                RawValueStoreInitDecoder::default(),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -869,7 +869,7 @@ where
                 ItemKind::Lane(kind),
                 name,
                 io,
-                RawMapInitDecoder::default(),
+                RawMapStoreInitDecoder::default(),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -889,7 +889,7 @@ where
                 ItemKind::Store(StoreKind::Map),
                 name,
                 io,
-                RawMapInitDecoder::default(),
+                RawMapStoreInitDecoder::default(),
                 init,
             );
             item_init_tasks.push(init_task.boxed());

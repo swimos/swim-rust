@@ -60,11 +60,38 @@ pub mod encoding {
         };
     }
 
+    /// Protocol used by the runtime to communicate with stores.
+    ///
+    /// TODO Non-transient lanes also implicitly contain a store. They should
+    /// ultimately use the initialization component of this protocol. Currently,
+    /// they have initialization messages built into the lane protocol.
+    ///
+    /// There are two phases to the communication between the runtime and the agent.
+    ///
+    /// 1. Initialization
+    /// 2. Agent running.
+    ///
+    /// The initialization phase occurs when the agent is starting. After all items
+    /// complete this phase, the agent running phase starts.
+    ///
+    /// During the initialization phase:
+    ///
+    /// 1. The runtime sends one or more [`StoreInitMessage`] commands which transmit
+    /// the state of the item to the agent.
+    /// 2. The runtime sends a single [`StoreInitMessage`] `InitComplete` message.
+    /// 3. The store or lane responds with the [`StoreInitialized`] message.
+    /// 4. Both parties switch to the protocol for the Agent Running phase.
+    ///
+    /// During the agent running phase:
+    ///
+    /// 1. The runtime does not send messages to the agent and may drop the channel.
+    /// 2. The store or land sends [`StoreResponse`] messages each time its state
+    /// changes which are persisted by the runtime.
     pub mod store {
         pub use crate::store::{
-            MapInitDecoder, MapStoreResponseEncoder, RawMapInitDecoder, RawMapInitEncoder,
-            RawMapStoreResponseDecoder, RawValueInitDecoder, RawValueInitEncoder,
-            RawValueStoreResponseDecoder, StoreInitializedCodec, ValueInitDecoder,
+            MapStoreInitDecoder, MapStoreResponseEncoder, RawMapStoreInitDecoder, RawMapStoreInitEncoder,
+            RawMapStoreResponseDecoder, RawValueStoreInitDecoder, RawValueStoreInitEncoder,
+            RawValueStoreResponseDecoder, StoreInitializedCodec, ValueStoreInitDecoder,
             ValueStoreResponseEncoder,
         };
     }

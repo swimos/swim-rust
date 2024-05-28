@@ -20,7 +20,7 @@ use swimos_agent_protocol::{
         MapLaneRequestDecoder, RawMapLaneResponseEncoder, RawValueLaneResponseEncoder,
         ValueLaneRequestDecoder,
     },
-    encoding::store::{MapInitDecoder, StoreInitializedCodec, ValueInitDecoder},
+    encoding::store::{MapStoreInitDecoder, StoreInitializedCodec, ValueStoreInitDecoder},
     LaneRequest, LaneResponse, MapMessage, MapOperation, StoreInitMessage, StoreInitialized,
 };
 use swimos_api::{
@@ -444,7 +444,7 @@ async fn with_store_init_value_store(
     output: &mut ByteWriter,
     expected: i32,
 ) {
-    let mut framed_in = FramedRead::new(input, ValueInitDecoder::<i32>::default());
+    let mut framed_in = FramedRead::new(input, ValueStoreInitDecoder::<i32>::default());
     match framed_in.next().await {
         Some(Ok(StoreInitMessage::Command(n))) => {
             assert_eq!(n, expected);
@@ -600,7 +600,7 @@ impl TestInit for MapStoreInit {
     }
 }
 
-type StoreMapReqDecoder = MapInitDecoder<i32, i32>;
+type StoreMapReqDecoder = MapStoreInitDecoder<i32, i32>;
 
 async fn with_store_init_map_store(
     input: &mut ByteReader,

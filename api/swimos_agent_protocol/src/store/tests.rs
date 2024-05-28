@@ -19,7 +19,7 @@ use swimos_recon::{print_recon_compact, WithLenRecognizerDecoder};
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::store::{
-    RawValueInitEncoder, RawValueStoreResponseDecoder, StoreInitMessage, StoreInitMessageDecoder,
+    RawValueStoreInitEncoder, RawValueStoreResponseDecoder, StoreInitMessage, StoreInitMessageDecoder,
     StoreInitialized, StoreInitializedCodec, StoreResponse, ValueStoreResponseEncoder, TAG_LEN,
 };
 
@@ -27,7 +27,7 @@ const LEN_SIZE: usize = size_of::<u64>();
 
 #[test]
 fn encode_command_store_request() {
-    let mut encoder = RawValueInitEncoder::default();
+    let mut encoder = RawValueStoreInitEncoder::default();
     let mut buffer = BytesMut::new();
     let content = b"body";
     let message = StoreInitMessage::Command(content);
@@ -41,7 +41,7 @@ fn encode_command_store_request() {
 
 #[test]
 fn encode_init_store_request() {
-    let mut encoder = RawValueInitEncoder::default();
+    let mut encoder = RawValueStoreInitEncoder::default();
     let mut buffer = BytesMut::new();
     let message: StoreInitMessage<&[u8]> = StoreInitMessage::InitComplete;
     assert!(encoder.encode(message, &mut buffer).is_ok());
@@ -66,7 +66,7 @@ fn round_trip_message(request: StoreInitMessage<Example>) {
         StoreInitMessage::InitComplete => StoreInitMessage::InitComplete,
     };
 
-    let mut encoder = RawValueInitEncoder::default();
+    let mut encoder = RawValueStoreInitEncoder::default();
     let mut buffer = BytesMut::new();
     assert!(encoder.encode(with_bytes, &mut buffer).is_ok());
 
