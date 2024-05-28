@@ -23,8 +23,7 @@ use crate::{LEN_SIZE, TAG_SIZE};
 
 use super::{
     MapMessage, MapMessageDecoder, MapMessageEncoder, MapOperation, MapOperationDecoder,
-    MapOperationEncoder, RawMapOperationDecoder, RawMapOperationEncoder, RawMapOperationMut, CLEAR,
-    REMOVE, UPDATE,
+    MapOperationEncoder, RawMapOperationDecoder, RawMapOperationEncoder, CLEAR, REMOVE, UPDATE,
 };
 
 fn encode_raw_operation(op: MapOperation<&[u8], &[u8]>) -> Bytes {
@@ -41,7 +40,7 @@ fn encode_operation<K: StructuralWritable, V: StructuralWritable>(op: MapOperati
 
 fn round_trip<K: StructuralWritable, V: StructuralWritable>(
     op: MapOperation<K, V>,
-) -> RawMapOperationMut {
+) -> MapOperation<BytesMut, BytesMut> {
     let mut buffer = BytesMut::new();
     assert!(MapOperationEncoder.encode(op, &mut buffer).is_ok());
     let result = RawMapOperationDecoder.decode(&mut buffer);
@@ -58,7 +57,7 @@ fn round_trip<K: StructuralWritable, V: StructuralWritable>(
 }
 
 fn round_trip_raw<K: RecognizerReadable, V: RecognizerReadable>(
-    op: RawMapOperationMut,
+    op: MapOperation<BytesMut, BytesMut>,
 ) -> MapOperation<K, V> {
     let mut buffer = BytesMut::new();
     assert!(RawMapOperationEncoder.encode(op, &mut buffer).is_ok());
@@ -200,7 +199,7 @@ fn decode_update_operation() {
     let mut value = BytesMut::new();
     key.extend_from_slice(KEY.as_bytes());
     value.extend_from_slice(VALUE.as_bytes());
-    let raw = RawMapOperationMut::Update { key, value };
+    let raw = MapOperation::Update { key, value };
     let restored = round_trip_raw::<String, String>(raw);
     assert_eq!(
         restored,
@@ -233,7 +232,7 @@ fn decode_update_operation() {
 
 #[test]
 fn decode_remove_operation() {
-    let raw = RawMapOperationMut::Remove {
+    let raw = MapOperation::Remove {
         key: BytesMut::from(KEY.as_bytes()),
     };
     let restored = round_trip_raw::<String, String>(raw);

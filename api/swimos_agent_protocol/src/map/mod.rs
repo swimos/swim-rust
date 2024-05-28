@@ -29,7 +29,7 @@ mod tests;
 
 pub use parser::{extract_header, extract_header_str};
 
-use crate::{model::RawMapOperationMut, MapMessage, MapOperation};
+use crate::{MapMessage, MapOperation};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MapOperationEncoder;
@@ -131,7 +131,7 @@ impl<K: AsRef<[u8]>, V: AsRef<[u8]>> Encoder<MapOperation<K, V>> for RawMapOpera
 }
 
 impl Decoder for RawMapOperationDecoder {
-    type Item = RawMapOperationMut;
+    type Item = MapOperation<BytesMut, BytesMut>;
 
     type Error = FrameIoError;
 
@@ -167,7 +167,7 @@ impl Decoder for RawMapOperationDecoder {
 
                 let key = frame.split_to(key_len);
 
-                Ok(Some(RawMapOperationMut::Update { key, value: frame }))
+                Ok(Some(MapOperation::Update { key, value: frame }))
             }
             REMOVE => {
                 if total_len < TAG_SIZE {
@@ -183,12 +183,12 @@ impl Decoder for RawMapOperationDecoder {
                 let mut frame = src.split_to(total_len);
                 frame.advance(TAG_SIZE);
 
-                Ok(Some(RawMapOperationMut::Remove { key: frame }))
+                Ok(Some(MapOperation::Remove { key: frame }))
             }
             CLEAR => {
                 if total_len == TAG_SIZE {
                     src.advance(LEN_SIZE + TAG_SIZE);
-                    Ok(Some(RawMapOperationMut::Clear))
+                    Ok(Some(MapOperation::Clear))
                 } else {
                     Err(FrameIoError::BadFrame(InvalidFrame::InvalidHeader {
                         problem: Text::from(format!("{}{}", BAD_RECORD_SIZE, total_len)),

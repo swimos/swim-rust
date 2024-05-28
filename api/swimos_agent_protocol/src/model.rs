@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::BytesMut;
 use swimos_form::Form;
 use swimos_model::{address::Address, BytesStr, Text};
 use uuid::Uuid;
@@ -99,10 +98,9 @@ pub enum MapMessage<K, V> {
     Drop(#[form(header_body)] u64),
 }
 
-pub type RawMapOperationMut = MapOperation<BytesMut, BytesMut>;
-
 pub type MapLaneResponse<K, V> = LaneResponse<MapOperation<K, V>>;
 
+/// Message type used by the runtime the initialize the state of a store when an agent starts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StoreInitMessage<T> {
     /// A command to alter the state of the lane.
@@ -111,9 +109,11 @@ pub enum StoreInitMessage<T> {
     InitComplete,
 }
 
+/// The message sent to the runtime by a store when it has been successfully initialized.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreInitialized;
 
+/// Message type for an agent to notify the runtime of a change to the state of store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreResponse<T> {
     pub message: T,

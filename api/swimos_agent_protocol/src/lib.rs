@@ -35,6 +35,8 @@ pub use model::{
     MapLaneResponse, MapMessage, MapOperation, MapStoreResponse, StoreInitMessage,
     StoreInitialized, StoreResponse,
 };
+
+/// Tokio encoders and decoders for the agent protocols.
 pub mod encoding {
 
     /// # The protocol used by the runtime to communicate with downlinks.
@@ -85,6 +87,7 @@ pub mod encoding {
         };
     }
 
+    /// # The encoding used for map like lanes and stores, shared between the other protocols in this module.
     pub mod map {
         pub use crate::map::{
             MapMessageDecoder, MapMessageEncoder, MapOperationDecoder, MapOperationEncoder,
@@ -141,6 +144,7 @@ pub mod encoding {
     }
 }
 
+/// Utility functions to parse the header of the Recon representation of a [`MapMessage`].
 pub mod peeling {
     pub use crate::map::{extract_header, extract_header_str};
 }
