@@ -18,8 +18,8 @@ use std::{collections::HashMap, num::NonZeroUsize};
 use futures::StreamExt;
 use futures::{stream::select, Future};
 use parking_lot::RwLock;
+use swimos_api::agent::LaneKind;
 use swimos_api::error::{IntrospectionStopped, LaneIntrospectionError, NodeIntrospectionError};
-use swimos_api::lane::LaneKind;
 use swimos_model::time::Timestamp;
 use swimos_model::Text;
 use swimos_runtime::agent::{

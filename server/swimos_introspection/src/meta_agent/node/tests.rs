@@ -19,10 +19,7 @@ use swimos_agent_protocol::{
     encoding::lane::{MapLaneResponseDecoder, ValueLaneResponseDecoder},
     LaneResponse, MapOperation,
 };
-use swimos_api::{
-    agent::LaneConfig,
-    lane::{LaneKind, WarpLaneKind},
-};
+use swimos_api::agent::{LaneConfig, LaneKind, WarpLaneKind};
 use swimos_meta::{LaneInfo, NodePulse};
 use swimos_model::Text;
 use swimos_runtime::agent::reporting::UplinkReporter;

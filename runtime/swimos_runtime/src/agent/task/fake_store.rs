@@ -21,7 +21,7 @@ use bytes::BufMut;
 use parking_lot::Mutex;
 use swimos_api::{
     error::StoreError,
-    store::{KeyValue, NodePersistence, RangeConsumer},
+    persistence::{KeyValue, NodePersistence, RangeConsumer},
 };
 use swimos_form::structural::write::StructuralWritable;
 use swimos_model::Text;

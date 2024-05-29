@@ -12,11 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! # SwimOS API
-//!
-//! This crate provides the API for implementing components that can be executed by the SwimOS runtime.
+use std::fmt::{Display, Formatter};
 
-pub mod agent;
-pub mod downlink;
-pub mod error;
-pub mod persistence;
+/// Kinds of stores that can be persisted in the state of an agent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StoreKind {
+    /// A store containing a single value.
+    Value,
+    /// A store consisting of a map from keys to values.
+    Map,
+}
+
+impl Display for StoreKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StoreKind::Value => write!(f, "Value"),
+            StoreKind::Map => write!(f, "Map"),
+        }
+    }
+}

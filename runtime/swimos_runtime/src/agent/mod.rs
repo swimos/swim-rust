@@ -19,14 +19,14 @@ use futures::{
 use swimos_api::{
     agent::{
         Agent, AgentConfig, AgentContext, HttpLaneRequest, HttpLaneRequestChannel, LaneConfig,
+        LaneKind, StoreKind, WarpLaneKind,
     },
     downlink::DownlinkKind,
     error::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
         StoreError,
     },
-    lane::{LaneKind, WarpLaneKind},
-    store::{NodePersistence, StoreKind},
+    persistence::NodePersistence,
 };
 use swimos_model::{address::RelativeAddress, Text};
 use swimos_net::SchemeHostPort;

@@ -25,10 +25,9 @@ use swimos_agent_protocol::{
     AdHocCommand, DownlinkNotification, MapMessage, MapOperation,
 };
 use swimos_api::{
-    agent::{AgentConfig, AgentContext, AgentTask, HttpLaneRequest},
+    agent::{AgentConfig, AgentContext, AgentTask, HttpLaneRequest, WarpLaneKind},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    lane::WarpLaneKind,
 };
 use swimos_model::{
     address::Address,
@@ -1261,7 +1260,7 @@ impl AgentContext for DlTestContext {
     fn add_store(
         &self,
         _name: &str,
-        _kind: swimos_api::store::StoreKind,
+        _kind: swimos_api::agent::StoreKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
         panic!("Unexpected call.");
     }

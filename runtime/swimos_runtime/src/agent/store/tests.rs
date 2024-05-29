@@ -25,10 +25,10 @@ use swimos_agent_protocol::{
     encoding::lane::{RawMapLaneRequestDecoder, RawValueLaneRequestDecoder},
     LaneRequest, MapMessage, MapOperation,
 };
-use swimos_api::store::NodePersistence;
+use swimos_api::persistence::NodePersistence;
 use swimos_api::{
     error::StoreError,
-    store::{KeyValue, RangeConsumer},
+    persistence::{KeyValue, RangeConsumer},
 };
 use swimos_utilities::{io::byte_channel::byte_channel, non_zero_usize};
 use tokio_util::codec::FramedRead;

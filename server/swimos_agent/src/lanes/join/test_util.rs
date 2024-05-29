@@ -17,11 +17,9 @@ use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 use futures::{future::BoxFuture, FutureExt};
 use parking_lot::Mutex;
 use swimos_api::{
-    agent::{AgentContext, HttpLaneRequestChannel, LaneConfig},
+    agent::{AgentContext, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind},
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    lane::WarpLaneKind,
-    store::StoreKind,
 };
 use swimos_model::{address::Address, Text};
 use swimos_utilities::{

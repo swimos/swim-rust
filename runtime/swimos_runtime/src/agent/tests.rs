@@ -16,10 +16,9 @@ use std::{collections::HashMap, time::Duration};
 
 use futures::{future::BoxFuture, Future, FutureExt};
 use swimos_api::{
-    agent::{Agent, AgentConfig, AgentContext, AgentInitResult, LaneConfig},
+    agent::{Agent, AgentConfig, AgentContext, AgentInitResult, LaneConfig, WarpLaneKind},
     error::{AgentInitError, AgentTaskError},
-    lane::WarpLaneKind,
-    store::StoreDisabled,
+    persistence::StoreDisabled,
 };
 use swimos_form::structural::read::ReadError;
 use swimos_model::Text;

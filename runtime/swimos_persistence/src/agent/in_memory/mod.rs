@@ -23,7 +23,7 @@ use futures::{
     FutureExt,
 };
 use parking_lot::Mutex;
-use swimos_api::store::{NodePersistence, PlanePersistence};
+use swimos_api::persistence::{NodePersistence, PlanePersistence};
 use swimos_store::{KeyValue, RangeConsumer, StoreError};
 use tokio::sync::oneshot;
 

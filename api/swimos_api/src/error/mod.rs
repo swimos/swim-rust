@@ -24,7 +24,7 @@ use swimos_utilities::{
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 
-use crate::store::StoreKind;
+use crate::agent::StoreKind;
 
 mod introspection;
 

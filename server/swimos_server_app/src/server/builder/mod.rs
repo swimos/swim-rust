@@ -21,7 +21,7 @@ use ratchet::{
     deflate::{DeflateConfig, DeflateExtProvider},
     NoExtProvider, WebSocketStream,
 };
-use swimos_api::{agent::Agent, error::StoreError, store::StoreDisabled};
+use swimos_api::{agent::Agent, error::StoreError, persistence::StoreDisabled};
 use swimos_remote::net::plain::TokioPlainTextNetworking;
 use swimos_remote::net::{dns::Resolver, ExternalConnections};
 use swimos_tls::{

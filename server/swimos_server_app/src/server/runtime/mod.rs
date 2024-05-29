@@ -30,7 +30,7 @@ use swimos_api::agent::{Agent, BoxAgent, HttpLaneRequest};
 use swimos_api::error::{
     AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError, IntrospectionStopped,
 };
-use swimos_api::store::PlanePersistence;
+use swimos_api::persistence::PlanePersistence;
 use swimos_introspection::route::{lane_pattern, mesh_pattern, node_pattern};
 use swimos_introspection::{init_introspection, IntrospectionResolver, MetaMeshAgent};
 use swimos_introspection::{IntrospectionConfig, LaneMetaAgent, NodeMetaAgent};

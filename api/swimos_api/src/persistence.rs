@@ -13,31 +13,13 @@
 // limitations under the License.
 
 use crate::error::StoreError;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::Debug;
 
 use bytes::BytesMut;
 use futures::{
     future::{ready, BoxFuture},
     FutureExt,
 };
-
-/// Kinds of stores that can be persisted in the state of an agent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum StoreKind {
-    /// A store containing a single value.
-    Value,
-    /// A store consisting of a map from keys to values.
-    Map,
-}
-
-impl Display for StoreKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            StoreKind::Value => write!(f, "Value"),
-            StoreKind::Map => write!(f, "Map"),
-        }
-    }
-}
 
 /// Defines that operations that must be provided for a store implementation that allows
 /// a Swim agent to persist its state.

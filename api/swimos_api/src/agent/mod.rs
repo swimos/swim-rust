@@ -37,9 +37,13 @@ use crate::{
     error::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
     },
-    lane::WarpLaneKind,
-    store::StoreKind,
 };
+
+mod lane;
+mod store;
+
+pub use lane::{LaneKind, LaneKindParseErr, LaneKindRecognizer, WarpLaneKind};
+pub use store::StoreKind;
 
 /// Indicates the sub-protocol that a lane uses to communicate its state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -31,7 +31,6 @@ use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::agent::{HttpLaneRequest, HttpLaneResponse, LaneConfig};
 use swimos_api::downlink::DownlinkKind;
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
-pub use swimos_api::store::StoreKind;
 use swimos_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::{AgentInitError, AgentTaskError, FrameIoError},
@@ -74,7 +73,7 @@ pub use init::{
     ItemInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,
     ValueStoreInitializer,
 };
-pub use swimos_api::lane::WarpLaneKind;
+pub use swimos_api::agent::{StoreKind, WarpLaneKind};
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
