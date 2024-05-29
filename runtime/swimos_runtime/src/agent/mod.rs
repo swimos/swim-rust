@@ -18,10 +18,9 @@ use futures::{
 };
 use swimos_api::{
     agent::{
-        Agent, AgentConfig, AgentContext, HttpLaneRequest, HttpLaneRequestChannel, LaneConfig,
-        LaneKind, StoreKind, WarpLaneKind,
+        Agent, AgentConfig, AgentContext, DownlinkKind, HttpLaneRequest, HttpLaneRequestChannel,
+        LaneConfig, LaneKind, StoreKind, WarpLaneKind,
     },
-    downlink::DownlinkKind,
     error::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
         StoreError,

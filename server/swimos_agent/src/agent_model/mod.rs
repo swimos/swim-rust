@@ -28,8 +28,8 @@ use futures::{
 use futures::{Future, FutureExt};
 use swimos_agent_protocol::encoding::store::{RawMapStoreInitDecoder, RawValueStoreInitDecoder};
 use swimos_agent_protocol::{LaneRequest, MapMessage};
+use swimos_api::agent::DownlinkKind;
 use swimos_api::agent::{HttpLaneRequest, HttpLaneResponse, LaneConfig};
-use swimos_api::downlink::DownlinkKind;
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swimos_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},

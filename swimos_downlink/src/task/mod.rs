@@ -18,8 +18,9 @@ use crate::model::lifecycle::{
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::hash::Hash;
-use swimos_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
+use swimos_api::agent::DownlinkKind;
 use swimos_api::error::DownlinkTaskError;
+use swimos_client_api::{Downlink, DownlinkConfig};
 
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_form::Form;

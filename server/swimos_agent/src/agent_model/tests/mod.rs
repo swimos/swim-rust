@@ -25,8 +25,7 @@ use swimos_agent_protocol::{
     AdHocCommand, DownlinkNotification, MapMessage, MapOperation,
 };
 use swimos_api::{
-    agent::{AgentConfig, AgentContext, AgentTask, HttpLaneRequest, WarpLaneKind},
-    downlink::DownlinkKind,
+    agent::{AgentConfig, AgentContext, AgentTask, DownlinkKind, HttpLaneRequest, WarpLaneKind},
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
 };
 use swimos_model::{

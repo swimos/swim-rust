@@ -25,8 +25,7 @@ use futures::{stream::BoxStream, FutureExt};
 use static_assertions::assert_obj_safe;
 use swimos_agent_protocol::{encoding::ad_hoc::AdHocCommandEncoder, AdHocCommand};
 use swimos_api::{
-    agent::AgentContext,
-    downlink::DownlinkKind,
+    agent::{AgentContext, DownlinkKind},
     error::{AgentRuntimeError, DownlinkRuntimeError},
 };
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};

@@ -31,7 +31,7 @@ use swimos_agent_protocol::{
     DownlinkNotification, MapMessage, MapOperation,
 };
 use swimos_api::{
-    downlink::DownlinkKind,
+    agent::DownlinkKind,
     error::{AgentRuntimeError, FrameIoError},
 };
 use swimos_form::{

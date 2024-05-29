@@ -31,7 +31,7 @@ use std::{
 use futures::{stream::FuturesUnordered, Future, FutureExt, StreamExt};
 pub use pending::{DlKey, PendingDownlinks};
 use swimos_api::{
-    downlink::DownlinkKind,
+    agent::DownlinkKind,
     error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError},
 };
 use swimos_model::{address::RelativeAddress, Text};

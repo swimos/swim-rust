@@ -1,0 +1,21 @@
+[package]
+name = "swimos_client_api"
+version = "0.1.0"
+authors = ["Swim Inc. developers info@swim.ai"]
+edition = "2021"
+
+[dependencies]
+futures = { workspace = true }
+swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "errors"] }
+swimos_model = { path = "../swimos_model" }
+swimos_form = { path = "../swimos_form" }
+swimos_recon = { path = "../formats/swimos_recon" }
+swimos_api = { path = "../swimos_api" }
+thiserror = { workspace = true }
+bytes = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true, features = ["codec"] }
+static_assertions = { workspace = true }
+uuid = { workspace = true }
+http = { workspace = true }
+url = { workspace = true }

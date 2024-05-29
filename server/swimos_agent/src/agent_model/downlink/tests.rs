@@ -22,10 +22,10 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swimos_api::{
+    agent::DownlinkKind,
     agent::{
         AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
     },
-    downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
 };
 use swimos_model::{address::Address, Text};

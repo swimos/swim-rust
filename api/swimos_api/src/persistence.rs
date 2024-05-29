@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS Persistence API
+//!
+//! Implement the [`PlanePersistence`] trait to provide a store that a SwimOS server can used to
+//! persist its state between executions.
+
 use crate::error::StoreError;
 use std::fmt::Debug;
 
@@ -20,7 +25,6 @@ use futures::{
     future::{ready, BoxFuture},
     FutureExt,
 };
-
 /// Defines that operations that must be provided for a store implementation that allows
 /// a Swim agent to persist its state.
 pub trait NodePersistence {

@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS Agent API
+//!
+//! Implement the [`Agent`] trait to provide a new kind of agent that can be executed by the SwimOS runtime.
+//! The canonical Rust implementation of this trait can be found in the `swimos_agent` crate.
+
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
@@ -32,16 +37,15 @@ use swimos_utilities::{
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::{
-    downlink::DownlinkKind,
-    error::{
-        AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
-    },
+use crate::error::{
+    AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
 };
 
+mod downlink;
 mod lane;
 mod store;
 
+pub use downlink::DownlinkKind;
 pub use lane::{LaneKind, LaneKindParseErr, LaneKindRecognizer, WarpLaneKind};
 pub use store::StoreKind;
 

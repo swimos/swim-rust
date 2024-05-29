@@ -26,9 +26,8 @@ use std::sync::Arc;
 use swimos_agent_protocol::encoding::lane::{MapLaneResponseDecoder, RawValueLaneRequestEncoder};
 use swimos_agent_protocol::{LaneRequest, LaneResponse, MapOperation};
 use swimos_api::agent::{
-    AgentContext, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
+    AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
 };
-use swimos_api::downlink::DownlinkKind;
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_model::time::Timestamp;

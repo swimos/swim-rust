@@ -26,7 +26,7 @@ use std::{
 use swimos_agent_protocol::encoding::downlink::ValueNotificationDecoder;
 use swimos_agent_protocol::DownlinkNotification;
 use swimos_api::{
-    downlink::DownlinkKind,
+    agent::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},
 };
 use swimos_form::{
