@@ -30,7 +30,7 @@ use hyper::{
     body::to_bytes, client::conn::http1, header::HeaderValue, Body, Request, Response, Uri,
 };
 use ratchet::{CloseReason, Message, NoExt, NoExtProvider, WebSocket, WebSocketConfig};
-use swimos_api::agent::{HttpLaneRequest, HttpLaneResponse};
+use swimos_api::agent::{HttpLaneRequest, RawHttpLaneResponse};
 use swimos_model::{
     http::{StatusCode, Version},
     Text,
@@ -318,7 +318,7 @@ async fn fake_plane(responses: HashMap<Text, FindResponse>, mut find_rx: mpsc::R
                 let (_, response_tx) = request.into_parts();
                 match provision {
                     Provision::Immediate => {
-                        let response = HttpLaneResponse {
+                        let response = RawHttpLaneResponse {
                             status_code: StatusCode::OK,
                             version: Version::HTTP_1_1,
                             headers: vec![],
@@ -331,7 +331,7 @@ async fn fake_plane(responses: HashMap<Text, FindResponse>, mut find_rx: mpsc::R
                     }
                     Provision::Delay => {
                         tokio::time::sleep(2 * REQ_TIMEOUT).await;
-                        let response = HttpLaneResponse {
+                        let response = RawHttpLaneResponse {
                             status_code: StatusCode::OK,
                             version: Version::HTTP_1_1,
                             headers: vec![],

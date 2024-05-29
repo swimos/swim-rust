@@ -29,7 +29,7 @@ use futures::{Future, FutureExt};
 use swimos_agent_protocol::encoding::store::{RawMapStoreInitDecoder, RawValueStoreInitDecoder};
 use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::agent::DownlinkKind;
-use swimos_api::agent::{HttpLaneRequest, HttpLaneResponse, LaneConfig};
+use swimos_api::agent::{HttpLaneRequest, LaneConfig, RawHttpLaneResponse};
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swimos_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
@@ -1469,7 +1469,7 @@ fn not_found(lane_name: &str, request: HttpLaneRequest) {
         lane_name
     ));
     let content_len = Header::new(StandardHeaderName::ContentLength, payload.len().to_string());
-    let response = HttpLaneResponse {
+    let response = RawHttpLaneResponse {
         status_code: StatusCode::NOT_FOUND,
         version: Version::HTTP_1_1,
         headers: vec![content_len],

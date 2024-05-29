@@ -104,6 +104,7 @@ pub enum LaneKind {
     Http,
 }
 
+#[doc(hidden)]
 pub struct LaneKindRecognizer;
 
 impl Recognizer for LaneKindRecognizer {
@@ -175,6 +176,7 @@ impl LaneKind {
     }
 }
 
+/// Error type indicating that a string did not represent a valid [`LaneKind`].
 #[derive(Debug, PartialEq, Eq)]
 pub struct LaneKindParseErr;
 

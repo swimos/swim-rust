@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS API error types
+
 use std::io;
 use std::{error::Error, sync::Arc};
 
