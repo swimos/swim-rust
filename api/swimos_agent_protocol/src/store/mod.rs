@@ -15,7 +15,7 @@
 use bytes::{Buf, BufMut, BytesMut};
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
-use swimos_recon::{parser::RecognizerDecoder, WithLenReconEncoder};
+use swimos_recon::{WithLenRecognizerDecoder, WithLenReconEncoder};
 use swimos_utilities::encoding::WithLengthBytesCodec;
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -356,13 +356,15 @@ impl Decoder for RawValueStoreInitDecoder {
 }
 
 pub struct ValueStoreInitDecoder<T: RecognizerReadable> {
-    inner: StoreInitMessageDecoder<RecognizerDecoder<T::Rec>>,
+    inner: StoreInitMessageDecoder<WithLenRecognizerDecoder<T::Rec>>,
 }
 
 impl<T: RecognizerReadable> Default for ValueStoreInitDecoder<T> {
     fn default() -> Self {
         Self {
-            inner: StoreInitMessageDecoder::new(RecognizerDecoder::new(T::make_recognizer())),
+            inner: StoreInitMessageDecoder::new(
+                WithLenRecognizerDecoder::new(T::make_recognizer()),
+            ),
         }
     }
 }
