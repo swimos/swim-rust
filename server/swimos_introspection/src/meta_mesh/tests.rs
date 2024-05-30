@@ -30,8 +30,7 @@ use swimos_api::agent::{
 };
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swimos_form::read::RecognizerReadable;
-use swimos_model::time::Timestamp;
-use swimos_model::Text;
+use swimos_model::{Text, Timestamp};
 use swimos_runtime::agent::reporting::UplinkReporter;
 use swimos_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swimos_utilities::uri_forest::UriForest;

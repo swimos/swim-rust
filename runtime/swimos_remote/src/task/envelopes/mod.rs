@@ -17,7 +17,7 @@ use swimos_messages::protocol::{
     BytesRequestMessage, BytesResponseMessage, Notification, Operation, Path, RequestMessage,
     ResponseMessage,
 };
-use swimos_model::{escape_if_needed, identifier::is_identifier};
+use swimos_model::{identifier::is_identifier, literal::escape_if_needed};
 use tokio_util::codec::Encoder;
 
 use crate::error::NoSuchAgent;

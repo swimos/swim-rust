@@ -17,7 +17,7 @@ use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
 
-use super::write_string_literal;
+use crate::literal::write_string_literal;
 use crate::{Item, Value};
 
 /// An attribute that can be applied to a record ['Value']. A key value pair where the key is

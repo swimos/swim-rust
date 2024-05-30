@@ -24,7 +24,7 @@ use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
-use super::write_string_literal;
+use crate::literal::write_string_literal;
 use crate::{num, Attr, Item};
 
 /// The core Swim model type. A recursive data type that can be represented in text as a Recon

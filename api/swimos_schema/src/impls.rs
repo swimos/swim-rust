@@ -23,10 +23,7 @@ use crate::ValueSchema;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 use std::mem::size_of;
-use swimos_model::time::Timestamp;
-use swimos_model::Blob;
-use swimos_model::Text;
-use swimos_model::ValueKind;
+use swimos_model::{Blob, Text, Timestamp, ValueKind};
 
 impl ValueSchema for Blob {
     fn schema() -> StandardSchema {

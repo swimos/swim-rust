@@ -15,8 +15,7 @@
 use std::hash::Hash;
 use swimos_form::Form;
 use swimos_form::Tag;
-use swimos_model::time::Timestamp;
-use swimos_model::{Text, Value};
+use swimos_model::{Text, Timestamp, Value};
 
 /// The significance level associated with a [`LogEntry`].
 #[derive(Tag, Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Hash)]

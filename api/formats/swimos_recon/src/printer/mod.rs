@@ -23,7 +23,7 @@ use swimos_form::write::{
     StructuralWriter,
 };
 use swimos_model::bigint::{BigInt, BigUint};
-use swimos_model::write_string_literal;
+use swimos_model::literal::write_string_literal;
 
 /// Print an inline Recon representation of [`StructuralWritable`] value.
 ///

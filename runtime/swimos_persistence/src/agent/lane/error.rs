@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::fmt::{Display, Formatter};
-use swimos_model::time::Timestamp;
+use swimos_model::Timestamp;
 use swimos_store::StoreError;
 
 #[derive(Debug)]

@@ -29,7 +29,7 @@ use swimos_utilities::future::retryable::strategy::Quantity;
 
 #[doc(hidden)]
 pub use swimos_form_derive::StructuralWritable;
-use swimos_model::time::Timestamp;
+use swimos_model::Timestamp;
 use swimos_utilities::routing::route_uri::RouteUri;
 
 pub use crate::structural::write::to_model::ValueInterpreter;

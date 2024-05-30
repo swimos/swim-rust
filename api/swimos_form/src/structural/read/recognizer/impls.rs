@@ -38,7 +38,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::time::Duration;
-use swimos_model::time::Timestamp;
+use swimos_model::Timestamp;
 use swimos_model::{Text, ValueKind};
 use swimos_utilities::future::retryable::strategy::{
     DEFAULT_EXPONENTIAL_MAX_BACKOFF, DEFAULT_EXPONENTIAL_MAX_INTERVAL, DEFAULT_IMMEDIATE_RETRIES,
