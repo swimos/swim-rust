@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS Introspection model
+//!
+//! Model types for the lanes of the meta-agents of the SwimOS introspection system.
+
 mod meta;
 
 pub use meta::lane::LaneInfo;

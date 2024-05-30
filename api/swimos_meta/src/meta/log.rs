@@ -18,7 +18,7 @@ use swimos_form::Tag;
 use swimos_model::time::Timestamp;
 use swimos_model::{Text, Value};
 
-/// A corresponding level associated with a `LogEntry`.
+/// The significance level associated with a [`LogEntry`].
 #[derive(Tag, Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Hash)]
 pub enum LogLevel {
     /// Fine-grained informational events.
@@ -35,6 +35,7 @@ pub enum LogLevel {
     Fail,
 }
 
+/// A single log entry.
 #[derive(Clone, Debug, Form)]
 pub struct LogEntry {
     /// Timestamp of when this entry was created.
