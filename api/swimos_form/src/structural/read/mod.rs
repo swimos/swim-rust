@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Contains the [`StructuralReadable`] trait that defines the functionality to deserialize into
+//! the SwimOS model.
+
 mod event;
 mod from_model;
 mod recognizer;

@@ -20,15 +20,14 @@ use swimos_model::Text;
 mod bridge;
 #[doc(hidden)]
 pub mod generic;
+
 pub mod read;
+
 #[macro_use]
 pub mod write;
 mod tags;
 
 use std::str::FromStr;
-#[doc(hidden)]
-#[allow(unused_imports)]
-pub use swimos_form_derive::Tag;
 
 /// A tag for a field in a form. When deriving the `Form` trait, a field that is annotated with
 /// `#[form(tag)]` will be converted into a string and replace the original structure's name.

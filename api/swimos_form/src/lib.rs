@@ -16,8 +16,8 @@
 //!
 //! This crate contains the [`Form`] trait that describes how a type can be transformed to and from
 //! the SwimOS serialization model (described in [`swimos_model`]). This trait is implemented for most
-//! common primitive types and common standard library collections such as [`Vec`],
-//! [`std::collections::HashMap`] and [`std::collections::BTreeMap`].
+//! common primitive types and common standard library collections such as [`Vec`] and
+//! [`std::collections::HashMap`].
 //!
 //! A derivation macro is provided that can automatically generate implementations for straightforward
 //! struct and enum types. For instructions on how to use this, see the the [`Form`] trait or the SwimOS
@@ -341,3 +341,7 @@ pub trait Form: StructuralReadable + StructuralWritable {
 }
 
 impl<T: StructuralReadable + StructuralWritable> Form for T {}
+
+#[doc(hidden)]
+#[allow(unused_imports)]
+pub use swimos_form_derive::Tag;
