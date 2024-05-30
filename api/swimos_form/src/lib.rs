@@ -12,6 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS serialization
+//! 
+//! This crate contains the [`Form`] trait that describes how a type can be transformed to and from
+//! the SwimOS serialization model (described in [`swim_model`]). This trait is implemented for most
+//! common primitive types and common standard library collections such as [`Vec`], 
+//! [`std::collections::HashMap`] and [`std::collections::BTreeMap`].
+//! 
+//! A derivation macro is provided that can automatically generate implementations for straightforward
+//! struct and enum types. For instructions on how to use this, see the the [`Form`] trait or the SwimOS
+//! documentation.
+
 #![allow(clippy::match_wild_err_arm)]
 #[doc(hidden)]
 #[allow(unused_imports)]
