@@ -22,9 +22,9 @@ use either::Either;
 use rmp::decode::{read_str_len, ValueReadError};
 use rmp::Marker;
 
-use swimos_form::structural::read::event::ReadEvent;
-use swimos_form::structural::read::recognizer::Recognizer;
-use swimos_form::structural::read::{ReadError, StructuralReadable};
+use swimos_form::read::ReadEvent;
+use swimos_form::read::Recognizer;
+use swimos_form::read::{ReadError, StructuralReadable};
 use swimos_model::bigint::{BigInt, BigUint, Sign};
 
 use crate::{BIG_INT_EXT, BIG_UINT_EXT};

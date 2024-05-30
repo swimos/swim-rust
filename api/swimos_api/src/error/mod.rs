@@ -17,7 +17,7 @@
 use std::io;
 use std::{error::Error, sync::Arc};
 
-use swimos_form::structural::read::ReadError;
+use swimos_form::read::ReadError;
 use swimos_model::{address::RelativeAddress, Text};
 use swimos_recon::parser::AsyncParseError;
 use swimos_utilities::{

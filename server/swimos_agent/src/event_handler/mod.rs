@@ -28,7 +28,7 @@ use swimos_api::{
     agent::{AgentContext, DownlinkKind},
     error::{AgentRuntimeError, DownlinkRuntimeError},
 };
-use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
+use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_model::{address::Address, Text};
 use swimos_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swimos_utilities::{

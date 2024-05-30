@@ -34,7 +34,7 @@ use swimos_api::{
     agent::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError},
 };
-use swimos_form::structural::write::StructuralWritable;
+use swimos_form::write::StructuralWritable;
 use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
 use swimos_model::{
     address::{Address, RelativeAddress},

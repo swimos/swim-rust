@@ -16,7 +16,7 @@ use super::Span;
 use nom::error::ErrorKind;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use swimos_form::structural::read::ReadError;
+use swimos_form::read::ReadError;
 
 /// Error that can occur when parsing into a structurally readable type.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -82,7 +82,7 @@ mod tests {
 
     use super::ParseError;
     use nom::error::ErrorKind;
-    use swimos_form::structural::read::ReadError;
+    use swimos_form::read::ReadError;
 
     #[test]
     fn parse_error_display() {

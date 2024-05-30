@@ -28,7 +28,7 @@ use ratchet::{
     Message, NegotiatedExtension, NoExt, NoExtProvider, Role, WebSocket, WebSocketConfig,
 };
 use swimos_api::persistence::StoreDisabled;
-use swimos_form::structural::write::StructuralWritable;
+use swimos_form::write::StructuralWritable;
 use swimos_model::address::RelativeAddress;
 use swimos_net::{Scheme, SchemeHostPort};
 use swimos_recon::print_recon_compact;

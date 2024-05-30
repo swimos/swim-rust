@@ -24,7 +24,7 @@ use swimos_agent_protocol::MapMessage;
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_api::error::DownlinkTaskError;
 use swimos_client_api::DownlinkConfig;
-use swimos_form::structural::write::StructuralWritable;
+use swimos_form::write::StructuralWritable;
 use swimos_model::address::Address;
 use swimos_model::Text;
 use swimos_recon::print_recon;

@@ -34,10 +34,7 @@ use swimos_api::{
     agent::DownlinkKind,
     error::{AgentRuntimeError, FrameIoError},
 };
-use swimos_form::{
-    structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
-    Form,
-};
+use swimos_form::{read::RecognizerReadable, write::StructuralWritable, Form};
 use swimos_model::{address::Address, Text};
 use swimos_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},

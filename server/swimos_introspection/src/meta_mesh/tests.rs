@@ -29,7 +29,7 @@ use swimos_api::agent::{
     AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
 };
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_form::read::RecognizerReadable;
 use swimos_model::time::Timestamp;
 use swimos_model::Text;
 use swimos_runtime::agent::reporting::UplinkReporter;

@@ -24,7 +24,7 @@ use rmp::encode::{
     write_sint, write_str, write_u64, ValueWriteError,
 };
 
-use swimos_form::structural::write::{
+use swimos_form::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };

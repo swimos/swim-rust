@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, BytesMut};
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_form::read::RecognizerReadable;
 use swimos_model::Text;
 use swimos_recon::{WithLenRecognizerDecoder, WithLenReconEncoder};
 use tokio_util::codec::{Decoder, Encoder};

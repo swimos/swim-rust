@@ -13,11 +13,11 @@ error[E0277]: the trait bound `B: AsRef<str>` is not satisfied
 24 |         a: B,
    |            ^ the trait `AsRef<str>` is not implemented for `B`
 
-error[E0277]: the trait bound `B: swimos_form::structural::Tag` is not satisfied
+error[E0277]: the trait bound `B: swimos_form::Tag` is not satisfied
   --> src/tests/derive/form/tag_no_to_string.rs:21:14
    |
 21 |     #[derive(Form)]
-   |              ^^^^ the trait `swimos_form::structural::Tag` is not implemented for `B`, which is required by `TagRecognizer<B>: Recognizer`
+   |              ^^^^ the trait `swimos_form::Tag` is not implemented for `B`, which is required by `TagRecognizer<B>: Recognizer`
    |
    = help: the trait `Recognizer` is implemented for `TagRecognizer<T>`
    = note: required for `TagRecognizer<B>` to implement `Recognizer`
@@ -31,21 +31,21 @@ note: required by a bound in `feed_field`
    |        ^^^^^^^^^^ required by this bound in `feed_field`
    = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `B: swimos_form::structural::Tag` is not satisfied
+error[E0277]: the trait bound `B: swimos_form::Tag` is not satisfied
   --> src/tests/derive/form/tag_no_to_string.rs:21:14
    |
 21 |     #[derive(Form)]
-   |              ^^^^ the trait `swimos_form::structural::Tag` is not implemented for `B`, which is required by `TagRecognizer<B>: Recognizer`
+   |              ^^^^ the trait `swimos_form::Tag` is not implemented for `B`, which is required by `TagRecognizer<B>: Recognizer`
    |
    = help: the trait `Recognizer` is implemented for `TagRecognizer<T>`
    = note: required for `TagRecognizer<B>` to implement `Recognizer`
    = note: this error originates in the derive macro `Form` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: the trait bound `B: swimos_form::structural::Tag` is not satisfied
+error[E0277]: the trait bound `B: swimos_form::Tag` is not satisfied
   --> src/tests/derive/form/tag_no_to_string.rs:21:14
    |
 21 |     #[derive(Form)]
-   |              ^^^^ the trait `swimos_form::structural::Tag` is not implemented for `B`, which is required by `TagRecognizer<B>: Default`
+   |              ^^^^ the trait `swimos_form::Tag` is not implemented for `B`, which is required by `TagRecognizer<B>: Default`
    |
    = help: the trait `Default` is implemented for `TagRecognizer<T>`
    = note: required for `TagRecognizer<B>` to implement `Default`

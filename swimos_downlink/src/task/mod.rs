@@ -22,7 +22,7 @@ use swimos_api::agent::DownlinkKind;
 use swimos_api::error::DownlinkTaskError;
 use swimos_client_api::{Downlink, DownlinkConfig};
 
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_form::read::RecognizerReadable;
 use swimos_form::Form;
 use swimos_model::address::Address;
 use swimos_model::Text;

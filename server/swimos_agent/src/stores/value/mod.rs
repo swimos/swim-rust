@@ -17,7 +17,7 @@ use std::cell::{Cell, RefCell};
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
 use swimos_agent_protocol::{encoding::store::ValueStoreResponseEncoder, StoreResponse};
-use swimos_form::structural::write::StructuralWritable;
+use swimos_form::write::StructuralWritable;
 use tokio_util::codec::Encoder;
 
 use crate::{

@@ -16,7 +16,7 @@ use crate::downlink::{
     DownlinkOperation, DownlinkOperationDecoder, DownlinkOperationEncoder, ValueNotificationDecoder,
 };
 use bytes::{Buf, Bytes, BytesMut};
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_form::read::RecognizerReadable;
 use swimos_form::Form;
 use swimos_model::Text;
 use swimos_recon::print_recon_compact;

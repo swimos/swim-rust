@@ -12,18 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod event;
-pub mod from_model;
-pub mod recognizer;
+mod event;
+mod from_model;
+mod recognizer;
 
 use std::borrow::Cow;
 use swimos_model::bigint::{BigInt, BigUint};
 
-pub mod error;
+mod error;
 
-use crate::structural::read::event::ReadEvent;
-use crate::structural::read::recognizer::{Recognizer, RecognizerReadable};
-pub use error::ReadError;
+pub use error::{ExpectedEvent, ReadError};
+pub use event::{NumericValue, ReadEvent};
+pub use recognizer::*;
 
 #[doc(hidden)]
 pub use swimos_form_derive::StructuralReadable;

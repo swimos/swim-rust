@@ -25,7 +25,7 @@ use nom::error::ErrorKind;
 use nom::sequence::{pair, preceded};
 use nom::{Finish, IResult, Parser};
 use std::borrow::Cow;
-use swimos_form::structural::read::event::ReadEvent;
+use swimos_form::read::ReadEvent;
 
 mod hash;
 pub mod matcher;

@@ -23,7 +23,7 @@ use swimos_api::{
     error::StoreError,
     persistence::{KeyValue, NodePersistence, RangeConsumer},
 };
-use swimos_form::structural::write::StructuralWritable;
+use swimos_form::write::StructuralWritable;
 use swimos_model::Text;
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;

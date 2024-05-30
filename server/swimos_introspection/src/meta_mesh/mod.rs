@@ -26,10 +26,8 @@ use swimos_agent_protocol::encoding::lane::{MapLaneResponseEncoder, RawValueLane
 use swimos_agent_protocol::{LaneRequest, LaneResponse, MapOperation};
 use swimos_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult, WarpLaneKind};
 use swimos_api::error::{AgentTaskError, FrameIoError};
-use swimos_form::structural::read::event::ReadEvent;
-use swimos_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
-use swimos_form::structural::read::ReadError;
-use swimos_form::structural::write::{StructuralWritable, StructuralWriter};
+use swimos_form::read::{ReadError, ReadEvent, Recognizer, RecognizerReadable};
+use swimos_form::write::{StructuralWritable, StructuralWriter};
 use swimos_form::Form;
 use swimos_model::Text;
 use swimos_runtime::downlink::Io;

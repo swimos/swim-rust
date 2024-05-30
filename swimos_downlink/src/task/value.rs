@@ -27,7 +27,7 @@ use swimos_agent_protocol::encoding::downlink::{
 };
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_api::error::DownlinkTaskError;
-use swimos_form::structural::write::StructuralWritable;
+use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
 use swimos_model::address::Address;
 use swimos_model::Text;

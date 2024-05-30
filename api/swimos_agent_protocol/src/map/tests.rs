@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use bytes::{Buf, Bytes, BytesMut};
-use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_form::Form;
+use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_recon::print_recon_compact;
 use tokio_util::codec::{Decoder, Encoder};
 

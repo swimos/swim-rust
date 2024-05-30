@@ -23,7 +23,7 @@ use swimos_agent_protocol::{
     DownlinkNotification, MapMessage, MapOperation,
 };
 use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
-use swimos_form::{structural::read::recognizer::RecognizerReadable, Form};
+use swimos_form::{read::RecognizerReadable, Form};
 use swimos_messages::protocol::{
     AgentMessageDecoder, MessageDecodeError, Operation, Path, RequestMessage, ResponseMessage,
     ResponseMessageEncoder,

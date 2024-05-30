@@ -17,12 +17,10 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use swimos_form::structural::{
+use swimos_form::{
     read::{
-        error::ExpectedEvent,
-        event::ReadEvent,
-        recognizer::{Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody},
-        ReadError,
+        ExpectedEvent, ReadError, ReadEvent, Recognizer, RecognizerReadable, SimpleAttrBody,
+        SimpleRecBody,
     },
     write::{PrimitiveWriter, StructuralWritable, StructuralWriter},
     Tag,

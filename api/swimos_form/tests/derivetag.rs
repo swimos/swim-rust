@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::str::FromStr;
-use swimos_form::structural::Tag;
+use swimos_form::Tag;
 use swimos_model::Text;
 
 const EMPTY: [&str; 0] = [];

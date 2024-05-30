@@ -20,7 +20,7 @@ use swimos_api::{
     error::{AgentInitError, AgentTaskError},
     persistence::StoreDisabled,
 };
-use swimos_form::structural::read::ReadError;
+use swimos_form::read::ReadError;
 use swimos_model::Text;
 use swimos_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},

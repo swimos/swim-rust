@@ -23,7 +23,7 @@ use swimos_agent_protocol::{
     LaneRequest, LaneResponse,
 };
 use swimos_api::error::FrameIoError;
-use swimos_form::structural::write::StructuralWritable;
+use swimos_form::write::StructuralWritable;
 use swimos_meta::WarpUplinkPulse;
 use swimos_runtime::agent::reporting::{UplinkReportReader, UplinkSnapshot};
 use swimos_utilities::{

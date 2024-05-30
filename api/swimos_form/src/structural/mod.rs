@@ -18,6 +18,7 @@ mod tests;
 use swimos_model::Text;
 
 mod bridge;
+#[doc(hidden)]
 pub mod generic;
 pub mod read;
 #[macro_use]
@@ -34,7 +35,7 @@ pub use swimos_form_derive::Tag;
 ///
 /// ```
 /// use swimos_form::Form;
-/// use swimos_form::structural::Tag;
+/// use swimos_form::Tag;
 /// use swimos_model::{Attr, Item, Value};
 /// use swimos_model::time::Timestamp;
 ///
