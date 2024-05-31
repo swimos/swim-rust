@@ -15,6 +15,7 @@
 use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
+use std::sync::OnceLock;
 
 use futures::future::BoxFuture;
 use futures::Stream;
@@ -29,7 +30,7 @@ use tokio::sync::mpsc;
 
 use crate::net::{Listener, ListenerError};
 use crate::FindNode;
-use lazy_static::lazy_static;
+
 
 #[cfg(feature = "tls")]
 use {
@@ -162,12 +163,14 @@ impl From<WebSocketConfig> for RatchetClient {
     }
 }
 
-lazy_static! {
-    pub static ref PROTOCOLS: HashSet<&'static str> = {
+static PROTOCOLS: OnceLock<HashSet<&'static str>> = OnceLock::new();
+
+pub fn protocols() -> &'static HashSet<&'static str> {
+    PROTOCOLS.get_or_init(|| {
         let mut s = HashSet::new();
         s.insert("warp0");
         s
-    };
+    })
 }
 
 impl WebsocketClient for RatchetClient {
@@ -184,7 +187,7 @@ impl WebsocketClient for RatchetClient {
     {
         let config = self.0;
         Box::pin(async move {
-            let subprotocols = ProtocolRegistry::new(PROTOCOLS.iter().copied())?;
+            let subprotocols = ProtocolRegistry::new(protocols().iter().copied())?;
             let socket = ratchet::subscribe_with(config, socket, addr, provider, subprotocols)
                 .await?
                 .into_websocket();
