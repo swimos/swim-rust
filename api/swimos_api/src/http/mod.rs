@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! A model of HTTP requests and responses.
+
 mod header;
 
 mod method;
