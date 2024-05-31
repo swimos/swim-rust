@@ -18,8 +18,8 @@ use bytes::BytesMut;
 use swimos_agent_protocol::encoding::ad_hoc::AdHocCommandDecoder;
 use swimos_agent_protocol::AdHocCommand;
 use swimos_api::agent::AgentConfig;
-use swimos_model::{address::Address, BytesStr};
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_model::address::Address;
+use swimos_utilities::{encoding::BytesStr, routing::route_uri::RouteUri};
 use tokio_util::codec::Decoder;
 
 use crate::{

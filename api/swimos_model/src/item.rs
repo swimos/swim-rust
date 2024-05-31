@@ -17,18 +17,18 @@ use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::hash::Hash;
 
-/// An item that may occur in the body of record ['Value'].
+/// An item that may occur in the body of record [`Value`].
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Item {
-    /// An item consisting of a single ['Value'].
+    /// An item consisting of a single [`Value``].
     ValueItem(Value),
 
-    /// An item that is a key value pair where both are ['Value']s.
+    /// An item that is a key value pair where both are [`Value``]s.
     Slot(Value, Value),
 }
 
 impl Item {
-    /// Create an ['Item'] from anything that can be converted to one.
+    /// Create an [`Item``] from anything that can be converted to one.
     ///
     /// #Examples
     ///
@@ -43,7 +43,7 @@ impl Item {
         item.into()
     }
 
-    /// Create a slot ['Item'] from a pair of things that can be converted to ['Value']s.
+    /// Create a slot [`Item`] from a pair of things that can be converted to [`Value`]s.
     ///
     /// #Examples
     ///

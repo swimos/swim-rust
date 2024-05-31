@@ -14,6 +14,7 @@
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures::Stream;
+use swimos_utilities::encoding::BytesStr;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Write};
 use std::str::Utf8Error;
@@ -21,7 +22,7 @@ use swimos_form::read::ReadError;
 use swimos_form::read::{Recognizer, RecognizerReadable};
 use swimos_form::write::StructuralWritable;
 use swimos_model::address::RelativeAddress;
-use swimos_model::{BytesStr, Text};
+use swimos_model::Text;
 use swimos_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swimos_recon::print_recon_compact;
 use thiserror::Error;

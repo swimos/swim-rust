@@ -25,14 +25,11 @@ use swimos_agent_protocol::AdHocCommand;
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError};
 use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
 use swimos_model::{
-    address::{Address, RelativeAddress},
-    BytesStr, Text,
+    address::{Address, RelativeAddress}, Text,
 };
 use swimos_net::SchemeHostPort;
 use swimos_utilities::{
-    errors::Recoverable,
-    future::{retryable::RetryStrategy, UnionFuture4},
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    encoding::BytesStr, errors::Recoverable, future::{retryable::RetryStrategy, UnionFuture4}, io::byte_channel::{byte_channel, ByteReader, ByteWriter}
 };
 use tokio::{
     io::AsyncWriteExt,

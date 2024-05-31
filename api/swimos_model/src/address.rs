@@ -14,7 +14,9 @@
 
 use std::fmt::{Debug, Display};
 
-use crate::{BytesStr, Text};
+use swimos_utilities::encoding::BytesStr;
+
+use crate::Text;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RelativeAddress<T> {

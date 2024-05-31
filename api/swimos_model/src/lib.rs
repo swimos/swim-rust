@@ -12,17 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod address;
-pub mod http;
-pub mod identifier;
-pub mod literal;
+//! # SwimOS Model
+//!
+//! Model types used by the SwimOS runtime and Swim applications.
 
+/// Types to describe the addresses of local and remote lanes.
+pub mod address;
+/// A model of HTTP requests and responses.
+pub mod http;
+/// Functions to define an identifier for the SwimOS model.
+pub mod identifier;
+/// Functions to encode string literals.
+pub mod literal;
+/// Convenience macros to create [`Value`] instances.
+#[doc(hidden)]
 #[macro_use]
-pub mod macros;
+mod macros;
 
 mod attr;
 mod blob;
-mod bytes_str;
 mod item;
 mod num;
 mod text;
@@ -34,7 +42,6 @@ mod tests;
 
 pub use attr::Attr;
 pub use blob::Blob;
-pub use bytes_str::{BytesStr, TryFromUtf8Bytes};
 pub use item::Item;
 pub use num_bigint as bigint;
 pub use text::Text;

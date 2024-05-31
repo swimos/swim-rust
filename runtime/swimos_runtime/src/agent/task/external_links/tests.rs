@@ -36,17 +36,11 @@ use swimos_api::{
 };
 use swimos_form::write::StructuralWritable;
 use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
-use swimos_model::{
-    address::{Address, RelativeAddress},
-    BytesStr,
-};
+use swimos_model::address::{Address, RelativeAddress};
 use swimos_net::SchemeHostPort;
 use swimos_recon::print_recon_compact;
 use swimos_utilities::{
-    errors::Recoverable,
-    future::retryable::{Quantity, RetryStrategy},
-    io::byte_channel::{self, ByteReader, ByteWriter},
-    non_zero_usize, trigger,
+    encoding::BytesStr, errors::Recoverable, future::retryable::{Quantity, RetryStrategy}, io::byte_channel::{self, ByteReader, ByteWriter}, non_zero_usize, trigger
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::codec::{Decoder, FramedRead, FramedWrite};

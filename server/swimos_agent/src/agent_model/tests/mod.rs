@@ -31,10 +31,10 @@ use swimos_api::{
 use swimos_model::{
     address::Address,
     http::{HttpRequest, Method, StatusCode, Version},
-    BytesStr, Text,
+    Text,
 };
 use swimos_utilities::{
-    encoding::WithLengthBytesCodec,
+    encoding::{BytesStr, WithLengthBytesCodec},
     future::retryable::RetryStrategy,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,

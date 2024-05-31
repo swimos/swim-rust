@@ -20,8 +20,8 @@ use std::hash::Hash;
 use crate::literal::write_string_literal;
 use crate::{Item, Value};
 
-/// An attribute that can be applied to a record ['Value']. A key value pair where the key is
-/// a ['String'] and the value can be any ['Value'].
+/// An attribute that can be applied to a record [`Value`]. A key value pair where the key is
+/// a [`String`] and the value can be any [`Value`].
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Attr {
     pub name: Text,
@@ -29,7 +29,7 @@ pub struct Attr {
 }
 
 impl Attr {
-    /// Create an ['Attr'] from anything that can be converted to one.
+    /// Create an [`Attr`] from anything that can be converted to one.
     ///
     /// #Examples
     ///

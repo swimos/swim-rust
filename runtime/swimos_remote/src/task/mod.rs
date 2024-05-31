@@ -40,12 +40,10 @@ use swimos_messages::protocol::{
     ResponseMessage,
 };
 use swimos_messages::warp::{peel_envelope_header_str, RawEnvelope};
-use swimos_model::{address::RelativeAddress, BytesStr, Text};
+use swimos_model::{address::RelativeAddress, Text};
 use swimos_recon::parser::MessageExtractError;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
-    multi_reader::MultiReader,
-    trigger,
+    encoding::BytesStr, io::byte_channel::{ByteReader, ByteWriter}, multi_reader::MultiReader, trigger
 };
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
