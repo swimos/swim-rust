@@ -19,9 +19,9 @@ use std::hash::Hash;
 use std::{cell::RefCell, collections::HashMap};
 
 use bytes::BytesMut;
+use swimos_api::address::Address;
 use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
-use swimos_api::address::Address;
 use swimos_model::Text;
 use uuid::Uuid;
 

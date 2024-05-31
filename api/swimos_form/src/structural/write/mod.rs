@@ -23,8 +23,8 @@ use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
-use swimos_model::{BigInt, BigUint};
 use swimos_model::{Attr, Blob, Item, Text, Value};
+use swimos_model::{BigInt, BigUint};
 use swimos_utilities::future::retryable::strategy::Quantity;
 
 #[doc(hidden)]

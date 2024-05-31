@@ -16,7 +16,7 @@ use bytes::BytesMut;
 use parking_lot::Mutex;
 use swimos_api::{
     agent::{response_channel, AgentConfig},
-    http::{Header, HttpResponse, StandardHeaderName, StatusCode}
+    http::{Header, HttpResponse, StandardHeaderName, StatusCode},
 };
 use swimos_recon::print_recon_compact;
 use swimos_utilities::routing::route_uri::RouteUri;

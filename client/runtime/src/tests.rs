@@ -38,7 +38,11 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use fixture::{MockClientConnections, MockWs, Server, WsAction};
-use swimos_api::{address::{Address, RelativeAddress}, agent::DownlinkKind, error::DownlinkTaskError};
+use swimos_api::{
+    address::{Address, RelativeAddress},
+    agent::DownlinkKind,
+    error::DownlinkTaskError,
+};
 use swimos_client_api::{Downlink, DownlinkConfig};
 use swimos_downlink::lifecycle::{
     BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle, MapDownlinkLifecycle,

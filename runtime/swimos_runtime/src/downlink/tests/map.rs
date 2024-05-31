@@ -24,7 +24,7 @@ use swimos_agent_protocol::{
 };
 use swimos_api::{
     address::RelativeAddress,
-    error::{DownlinkTaskError, FrameIoError, InvalidFrame}
+    error::{DownlinkTaskError, FrameIoError, InvalidFrame},
 };
 use swimos_form::{read::RecognizerReadable, Form};
 use swimos_messages::protocol::{

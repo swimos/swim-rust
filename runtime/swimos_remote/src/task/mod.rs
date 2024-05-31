@@ -33,7 +33,7 @@ use ratchet::{
     SplittableExtension, WebSocket, WebSocketStream,
 };
 use smallvec::SmallVec;
-use swimos_api::{agent::HttpLaneRequest, error::DownlinkFailureReason, address::RelativeAddress};
+use swimos_api::{address::RelativeAddress, agent::HttpLaneRequest, error::DownlinkFailureReason};
 use swimos_messages::protocol::{
     BytesRequestMessage, BytesResponseMessage, Path, RawRequestMessageDecoder,
     RawRequestMessageEncoder, RawResponseMessageDecoder, RawResponseMessageEncoder, RequestMessage,
@@ -43,7 +43,10 @@ use swimos_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swimos_model::Text;
 use swimos_recon::parser::MessageExtractError;
 use swimos_utilities::{
-    encoding::BytesStr, io::byte_channel::{ByteReader, ByteWriter}, multi_reader::MultiReader, trigger
+    encoding::BytesStr,
+    io::byte_channel::{ByteReader, ByteWriter},
+    multi_reader::MultiReader,
+    trigger,
 };
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};

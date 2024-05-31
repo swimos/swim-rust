@@ -16,8 +16,8 @@ use crate::schema::{
     as_big_int, as_f64, as_i64, as_u64, combine_orderings, float_endpoint_to_slot,
     int_endpoint_to_slot,
 };
-use std::cmp::Ordering;
 use num_bigint::ToBigInt;
+use std::cmp::Ordering;
 use swimos_model::BigInt;
 use swimos_model::{Attr, Value};
 

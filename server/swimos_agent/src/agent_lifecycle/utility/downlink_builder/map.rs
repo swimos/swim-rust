@@ -16,8 +16,8 @@ use std::borrow::Borrow;
 
 use std::hash::Hash;
 use std::marker::PhantomData;
-use swimos_form::Form;
 use swimos_api::address::Address;
+use swimos_form::Form;
 use swimos_model::Text;
 use swimos_utilities::handlers::{BorrowHandler, FnHandler};
 

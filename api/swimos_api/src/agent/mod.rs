@@ -36,10 +36,10 @@ use swimos_utilities::{
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::http::{HttpRequest, HttpResponse};
 use crate::error::{
     AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
 };
+use crate::http::{HttpRequest, HttpResponse};
 
 mod downlink;
 mod lane;

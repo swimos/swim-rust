@@ -16,7 +16,6 @@ use std::fmt::{Debug, Display, Formatter};
 
 use bytes::Bytes;
 
-
 #[derive(Default, PartialEq, Eq, Clone)]
 pub struct BytesStr(Bytes);
 
@@ -113,4 +112,3 @@ impl TryFromUtf8Bytes for String {
         Ok(std::str::from_utf8(bytes.as_ref())?.to_string())
     }
 }
-

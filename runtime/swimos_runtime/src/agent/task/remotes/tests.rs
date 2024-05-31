@@ -19,7 +19,10 @@ use futures::StreamExt;
 use swimos_messages::protocol::{BytesResponseMessage, Path, RawResponseMessageDecoder};
 use swimos_model::Text;
 use swimos_utilities::{
-    encoding::BytesStr, io::byte_channel::{byte_channel, ByteReader}, non_zero_usize, trigger::promise
+    encoding::BytesStr,
+    io::byte_channel::{byte_channel, ByteReader},
+    non_zero_usize,
+    trigger::promise,
 };
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;

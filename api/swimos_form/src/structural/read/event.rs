@@ -18,9 +18,9 @@ use num_bigint::ToBigInt;
 use num_traits::ToPrimitive;
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
-use swimos_model::{BigInt, BigUint};
 use swimos_model::Text;
 use swimos_model::ValueKind;
+use swimos_model::{BigInt, BigUint};
 
 /// Reading a serialized representation of a record in the Swim data model produces
 /// a stream of these events. An event is either a token, a notification that an

@@ -19,11 +19,11 @@ use swimos_agent_protocol::encoding::downlink::{
     DownlinkOperationEncoder, ValueNotificationDecoder,
 };
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
+use swimos_api::address::RelativeAddress;
 use swimos_messages::protocol::{
     Operation, Path, RawRequestMessageDecoder, RawResponseMessageEncoder, RequestMessage,
     ResponseMessage,
 };
-use swimos_api::address::RelativeAddress;
 use swimos_model::Text;
 use swimos_utilities::{io::byte_channel::byte_channel, non_zero_usize};
 use tokio::sync::mpsc;

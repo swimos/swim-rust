@@ -15,5 +15,5 @@
 mod bytes_str;
 mod codec;
 
-pub use codec::{DecoderResult, WithLengthBytesCodec, consume_bounded};
 pub use bytes_str::{BytesStr, TryFromUtf8Bytes};
+pub use codec::{consume_bounded, DecoderResult, WithLengthBytesCodec};

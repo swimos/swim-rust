@@ -18,8 +18,8 @@ use super::*;
 use num_traits::FloatConst;
 use regex::Regex;
 use std::collections::HashMap;
-use swimos_model::{BigInt, BigUint};
 use swimos_model::Blob;
+use swimos_model::{BigInt, BigUint};
 
 #[test]
 fn non_empty_string() {

@@ -21,10 +21,7 @@ use std::{cell::RefCell, marker::PhantomData};
 
 use std::hash::Hash;
 use swimos_agent_protocol::MapOperation;
-use swimos_api::{
-    address::Address,
-    agent::DownlinkKind
-};
+use swimos_api::{address::Address, agent::DownlinkKind};
 use swimos_form::{read::RecognizerReadable, Form};
 use swimos_model::Text;
 use swimos_utilities::{sync::circular_buffer, trigger};

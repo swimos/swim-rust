@@ -20,7 +20,9 @@ use swimos_agent_protocol::MapOperation;
 use swimos_messages::protocol::{Notification, Path, RawResponseMessageDecoder, ResponseMessage};
 use swimos_model::Text;
 use swimos_utilities::{
-    encoding::BytesStr, io::byte_channel::{byte_channel, ByteReader}, non_zero_usize
+    encoding::BytesStr,
+    io::byte_channel::{byte_channel, ByteReader},
+    non_zero_usize,
 };
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;

@@ -17,7 +17,7 @@ use std::{collections::HashMap, sync::Arc};
 use parking_lot::Mutex;
 use swimos_api::{
     agent::{response_channel, AgentConfig},
-    http::{HttpResponse, StatusCode, Uri}
+    http::{HttpResponse, StatusCode, Uri},
 };
 use swimos_utilities::routing::route_uri::RouteUri;
 

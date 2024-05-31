@@ -26,7 +26,7 @@ use swimos_utilities::{
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 
-use crate::{agent::StoreKind, address::RelativeAddress};
+use crate::{address::RelativeAddress, agent::StoreKind};
 
 mod introspection;
 

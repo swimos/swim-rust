@@ -37,7 +37,7 @@ use http::Uri;
 use std::fmt::Debug;
 use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::{
-    agent::{HttpLaneRequest, UplinkKind, WarpLaneKind}, 
+    agent::{HttpLaneRequest, UplinkKind, WarpLaneKind},
     http::{HttpRequest, HttpResponse, Method, StatusCode, Version},
 };
 use swimos_model::Text;

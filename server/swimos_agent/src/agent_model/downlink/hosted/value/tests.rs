@@ -34,8 +34,8 @@ use swimos_agent_protocol::encoding::downlink::{
     DownlinkNotificationEncoder, DownlinkOperationDecoder,
 };
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
-use swimos_form::read::RecognizerReadable;
 use swimos_api::address::Address;
+use swimos_form::read::RecognizerReadable;
 use swimos_model::Text;
 use swimos_recon::{print_recon_compact, WithLenRecognizerDecoder};
 use swimos_utilities::{

@@ -31,7 +31,6 @@ use tokio::sync::mpsc;
 use crate::net::{Listener, ListenerError};
 use crate::FindNode;
 
-
 #[cfg(feature = "tls")]
 use {
     crate::error::tls::TlsError, crate::ws::tls::build_x509_certificate, std::path::Path,

@@ -17,7 +17,7 @@ use mime::Mime;
 use std::marker::PhantomData;
 use swimos_api::{
     agent::{HttpResponseSender, RawHttpLaneResponse},
-    http::{Header, HttpResponse, StatusCode, Uri, Version}
+    http::{Header, HttpResponse, StatusCode, Uri, Version},
 };
 use swimos_utilities::handlers::{FnHandler, NoHandler};
 use tracing::debug;

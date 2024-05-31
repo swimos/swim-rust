@@ -21,7 +21,6 @@ use crate::protocol::{
 use bytes::{Buf, Bytes, BytesMut};
 use futures::future::join;
 use futures::{SinkExt, StreamExt};
-use swimos_utilities::encoding::BytesStr;
 use std::fmt::Debug;
 use std::fmt::Write;
 use std::io::ErrorKind;
@@ -31,6 +30,7 @@ use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
 use swimos_model::Text;
 use swimos_recon::print_recon_compact;
+use swimos_utilities::encoding::BytesStr;
 use swimos_utilities::io::byte_channel;
 use swimos_utilities::non_zero_usize;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};

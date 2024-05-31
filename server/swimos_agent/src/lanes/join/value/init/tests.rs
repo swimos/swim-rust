@@ -24,7 +24,7 @@ use std::{
 use bytes::BytesMut;
 use swimos_api::{
     address::Address,
-    agent::{AgentConfig, DownlinkKind}
+    agent::{AgentConfig, DownlinkKind},
 };
 use swimos_utilities::routing::route_uri::RouteUri;
 

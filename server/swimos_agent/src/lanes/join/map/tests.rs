@@ -21,7 +21,7 @@ use bytes::BytesMut;
 use futures::stream::FuturesUnordered;
 use swimos_api::{
     address::Address,
-    agent::{AgentConfig, DownlinkKind}
+    agent::{AgentConfig, DownlinkKind},
 };
 use swimos_utilities::routing::route_uri::RouteUri;
 

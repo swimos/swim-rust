@@ -28,7 +28,7 @@ use swimos_agent_protocol::encoding::downlink::{
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_api::{
     address::RelativeAddress,
-    error::{DownlinkTaskError, FrameIoError, InvalidFrame}
+    error::{DownlinkTaskError, FrameIoError, InvalidFrame},
 };
 use swimos_form::read::RecognizerReadable;
 use swimos_form::Form;
