@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use crate::MultiReader;
-use swimos_byte_channel::byte_channel;
 use bytes::Bytes;
 use futures_util::future::join;
 use futures_util::Stream;
@@ -22,6 +21,7 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
+use swimos_byte_channel::byte_channel;
 use swimos_form::read::RecognizerReadable;
 use swimos_messages::protocol::{
     AgentMessageDecoder, Operation, Path, RawRequestMessageEncoder, RequestMessage,

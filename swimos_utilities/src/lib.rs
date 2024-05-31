@@ -43,7 +43,7 @@ pub use swimos_multi_reader as multi_reader;
 pub mod io {
 
     #[cfg(feature = "io")]
-    pub use swimos_io::*;
+    pub use swimos_fs as fs;
 
     #[cfg(feature = "buf_channel")]
     pub use swimos_byte_channel as byte_channel;

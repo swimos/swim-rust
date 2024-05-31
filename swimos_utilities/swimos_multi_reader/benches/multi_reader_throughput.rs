@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_byte_channel::byte_channel;
-use swimos_byte_channel::{ByteReader, ByteWriter};
 use bytes::Bytes;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use futures::stream::SelectAll;
@@ -25,6 +23,8 @@ use rand::SeedableRng;
 use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swimos_byte_channel::byte_channel;
+use swimos_byte_channel::{ByteReader, ByteWriter};
 use swimos_form::read::RecognizerReadable;
 use swimos_messages::protocol::{
     AgentMessageDecoder, MessageDecodeError, Operation, Path, RawRequestMessageEncoder,

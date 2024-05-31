@@ -13,7 +13,7 @@ multi_reader = ["swimos_multi_reader"]
 collections = ["rtree"]
 errors = ["swimos_errors"]
 future = ["swimos_future"]
-io = ["buf_channel", "swimos_io"]
+io = ["buf_channel", "swimos_fs"]
 rtree = ["swimos_rtree"]
 sync = ["future", "trigger", "swimos_sync"]
 text = ["swimos_route", "swimos_format"]
@@ -31,7 +31,7 @@ swimos_errors = { path = "./swimos_errors", optional = true }
 swimos_format = { path = "./swimos_format", optional = true }
 swimos_trigger = { path = "./swimos_trigger", optional = true }
 swimos_future = { path = "./swimos_future", optional = true }
-swimos_io = { path = "./swimos_io", optional = true }
+swimos_fs = { path = "./swimos_fs", optional = true }
 swimos_route = { path = "./swimos_route", optional = true }
 swimos_rtree = { path = "./swimos_rtree", optional = true }
 swimos_sync = { path = "./swimos_sync", optional = true }
