@@ -43,6 +43,8 @@
 //! Note that the attributes and items of a record are always ordered, although the order may not always be
 //! significant, for example if a record, consisting only of slots, is used to represent a map.
 //!
+//! The [`record`] and [`macro@value`] macros can be used to simplify the creation of [`Value`] instances.
+//!
 //! ## Using the model
 //!
 //! The use the model for serialization or deserialization, a format supporting the SwimOS model is required.
