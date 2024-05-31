@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use byte_channel::byte_channel;
-use byte_channel::{ByteReader, ByteWriter};
+use swimos_byte_channel::byte_channel;
+use swimos_byte_channel::{ByteReader, ByteWriter};
 use bytes::Bytes;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use futures::stream::SelectAll;

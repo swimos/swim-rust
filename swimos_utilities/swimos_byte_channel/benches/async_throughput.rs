@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use byte_channel::byte_channel;
+use swimos_byte_channel::byte_channel;
 
 use bytes::{Bytes, BytesMut};
 use criterion::{

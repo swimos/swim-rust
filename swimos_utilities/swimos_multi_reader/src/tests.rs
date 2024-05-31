@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use crate::MultiReader;
-use byte_channel::byte_channel;
+use swimos_byte_channel::byte_channel;
 use bytes::Bytes;
 use futures_util::future::join;
 use futures_util::Stream;

@@ -46,7 +46,7 @@ pub mod io {
     pub use swimos_io::*;
 
     #[cfg(feature = "buf_channel")]
-    pub use byte_channel;
+    pub use swimos_byte_channel as byte_channel;
 }
 
 #[cfg(feature = "text")]

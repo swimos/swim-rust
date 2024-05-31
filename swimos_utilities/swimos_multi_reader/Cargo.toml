@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 bytes = { workspace = true }
-byte_channel = { path = "../byte_channel" }
+swimos_byte_channel = { path = "../swimos_byte_channel" }
 parking_lot = { workspace = true }
 waker-fn = "1.1.0"
 slab = { workspace = true }
