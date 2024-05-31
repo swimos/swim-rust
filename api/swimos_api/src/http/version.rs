@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use lazy_static::lazy_static;
-use std::{collections::HashMap, fmt::Formatter};
+use std::{collections::HashMap, fmt::Formatter, sync::OnceLock};
 use thiserror::Error;
 
 /// An HTTP version number. (At this time, Swim only supports HTTP 1.1).
@@ -70,8 +69,10 @@ impl From<Version> for http::Version {
     }
 }
 
-lazy_static! {
-    static ref VERSIONS: HashMap<http::Version, Version> = {
+static VERSIONS: OnceLock<HashMap<http::Version, Version>> = OnceLock::new();
+
+fn versions() -> &'static HashMap<http::Version, Version> {
+    VERSIONS.get_or_init(|| {
         let mut m = HashMap::new();
         m.insert(http::Version::HTTP_09, Version::HTTP_0_9);
         m.insert(http::Version::HTTP_10, Version::HTTP_1_0);
@@ -79,14 +80,14 @@ lazy_static! {
         m.insert(http::Version::HTTP_2, Version::HTTP_2_0);
         m.insert(http::Version::HTTP_3, Version::HTTP_3_0);
         m
-    };
+    })
 }
 
 impl TryFrom<http::Version> for Version {
     type Error = UnsupportedVersion;
 
     fn try_from(value: http::Version) -> Result<Self, Self::Error> {
-        VERSIONS
+        versions()
             .get(&value)
             .copied()
             .ok_or_else(|| UnsupportedVersion(format!("{:?}", value)))

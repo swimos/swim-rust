@@ -15,8 +15,10 @@
 use std::{borrow::Cow, cell::RefCell, marker::PhantomData};
 
 use bytes::Bytes;
-use swimos_api::agent::{HttpLaneRequest, HttpResponseSender, RawHttpLaneResponse};
-use swimos_model::http::{Header, HttpRequest, StatusCode, SupportedMethod, Version};
+use swimos_api::{
+    agent::{HttpLaneRequest, HttpResponseSender, RawHttpLaneResponse},
+    http::{Header, HttpRequest, StatusCode, SupportedMethod, Version},
+};
 use tracing::debug;
 
 use crate::{

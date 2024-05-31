@@ -40,9 +40,8 @@ use pin_project::pin_project;
 use ratchet::{
     Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream,
 };
-use swimos_api::agent::HttpLaneRequest;
+use swimos_api::{agent::HttpLaneRequest, http::HttpRequest};
 use swimos_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
-use swimos_model::http::HttpRequest;
 use swimos_net::Scheme;
 use swimos_remote::{
     net::{Listener, ListenerError, ListenerResult},

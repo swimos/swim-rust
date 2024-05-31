@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use lazy_static::lazy_static;
-use std::{collections::HashMap, fmt::Formatter};
+use std::{collections::HashMap, fmt::Formatter, sync::OnceLock};
 use thiserror::Error;
 
 /// Model describing the method of an HTTP request.
@@ -59,8 +58,9 @@ impl From<Method> for http::Method {
     }
 }
 
-lazy_static! {
-    static ref METHODS: HashMap<http::Method, Method> = {
+static METHODS: OnceLock<HashMap<http::Method, Method>> = OnceLock::new();
+fn methods() -> &'static HashMap<http::Method, Method> {
+    METHODS.get_or_init(|| {
         let mut m = HashMap::new();
         m.insert(http::Method::GET, Method::GET);
         m.insert(http::Method::HEAD, Method::HEAD);
@@ -70,14 +70,14 @@ lazy_static! {
         m.insert(http::Method::OPTIONS, Method::OPTIONS);
         m.insert(http::Method::TRACE, Method::TRACE);
         m
-    };
+    })
 }
 
 impl TryFrom<http::Method> for Method {
     type Error = UnsupportedMethod;
 
     fn try_from(value: http::Method) -> Result<Self, Self::Error> {
-        METHODS
+        methods()
             .get(&value)
             .copied()
             .ok_or_else(|| UnsupportedMethod(value.to_string()))

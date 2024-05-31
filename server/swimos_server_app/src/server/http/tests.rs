@@ -30,11 +30,11 @@ use hyper::{
     body::to_bytes, client::conn::http1, header::HeaderValue, Body, Request, Response, Uri,
 };
 use ratchet::{CloseReason, Message, NoExt, NoExtProvider, WebSocket, WebSocketConfig};
-use swimos_api::agent::{HttpLaneRequest, RawHttpLaneResponse};
-use swimos_model::{
+use swimos_api::{
+    agent::{HttpLaneRequest, RawHttpLaneResponse},
     http::{StatusCode, Version},
-    Text,
 };
+use swimos_model::Text;
 use swimos_net::Scheme;
 use swimos_remote::{
     net::{Listener, ListenerResult},

@@ -54,11 +54,11 @@ use swimos_api::agent::{
 use swimos_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
 use swimos_api::persistence::StoreDisabled;
 use swimos_api::{
+    http::{Header, HttpResponse, StandardHeaderName, StatusCode, Version},
     agent::{StoreKind, UplinkKind, WarpLaneKind},
     error::AgentRuntimeError,
 };
 use swimos_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
-use swimos_model::http::{Header, HttpResponse, StandardHeaderName, StatusCode, Version};
 use swimos_model::Text;
 use swimos_recon::parser::MessageExtractError;
 use swimos_utilities::encoding::BytesStr;

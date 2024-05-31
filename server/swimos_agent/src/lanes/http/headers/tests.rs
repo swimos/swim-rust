@@ -15,7 +15,7 @@
 use std::collections::HashSet;
 
 use mime::Mime;
-use swimos_model::http::{Header, StandardHeaderName};
+use swimos_api::http::{Header, StandardHeaderName};
 use swimos_utilities::format::join;
 
 use super::Headers;

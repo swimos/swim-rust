@@ -25,3 +25,5 @@
 pub mod agent;
 pub mod error;
 pub mod persistence;
+/// A model of HTTP requests and responses.
+pub mod http;

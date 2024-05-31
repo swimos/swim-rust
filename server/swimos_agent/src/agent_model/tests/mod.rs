@@ -27,12 +27,9 @@ use swimos_agent_protocol::{
 use swimos_api::{
     agent::{AgentConfig, AgentContext, AgentTask, DownlinkKind, HttpLaneRequest, WarpLaneKind},
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-};
-use swimos_model::{
-    address::Address,
     http::{HttpRequest, Method, StatusCode, Version},
-    Text,
 };
+use swimos_model::{address::Address, Text};
 use swimos_utilities::{
     encoding::{BytesStr, WithLengthBytesCodec},
     future::retryable::RetryStrategy,

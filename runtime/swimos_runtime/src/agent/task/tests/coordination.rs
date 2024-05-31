@@ -36,11 +36,11 @@ use futures::{
 use http::Uri;
 use std::fmt::Debug;
 use swimos_agent_protocol::{LaneRequest, MapMessage};
-use swimos_api::agent::{HttpLaneRequest, UplinkKind, WarpLaneKind};
-use swimos_model::{
+use swimos_api::{
+    agent::{HttpLaneRequest, UplinkKind, WarpLaneKind}, 
     http::{HttpRequest, HttpResponse, Method, StatusCode, Version},
-    Text,
 };
+use swimos_model::Text;
 use swimos_utilities::{
     io::byte_channel::byte_channel,
     trigger::{self, promise},
