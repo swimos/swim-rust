@@ -90,6 +90,7 @@ pub enum Value {
     Data(Blob),
 }
 
+/// The kinds of data that can be represented as a [`Value`].
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum ValueKind {
     Extant,

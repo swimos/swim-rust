@@ -14,6 +14,11 @@
 
 use std::{borrow::Cow, fmt::Formatter};
 
+/// Format a string as a Recon string literal, escaping it where necessary.
+///
+/// # Arguments
+/// * `literal` - The string to format as a literal.
+/// * `f` - The output formatter.
 pub fn write_string_literal(literal: &str, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
     if crate::identifier::is_identifier(literal) {
         f.write_str(literal)
@@ -24,6 +29,11 @@ pub fn write_string_literal(literal: &str, f: &mut Formatter<'_>) -> Result<(), 
     }
 }
 
+/// Escape a string so that it can be written as a Recon string literal. If the string does not
+/// require escapes a reference to the original string will be returned an no data will be copied.
+///
+/// # Arguments
+/// * `text` - The string to escape.
 pub fn escape_if_needed(text: &str) -> Cow<str> {
     if needs_escape(text) {
         Cow::Owned(escape_text(text))
