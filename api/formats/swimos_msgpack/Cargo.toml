@@ -12,6 +12,7 @@ swimos_model = { path = "../../swimos_model" }
 bytes = { workspace = true }
 byteorder = "1.4"
 rmp = "0.8"
+num-bigint = { workspace = true }
 
 [dev-dependencies]
 

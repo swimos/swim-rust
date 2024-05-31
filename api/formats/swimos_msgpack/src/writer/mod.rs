@@ -19,6 +19,7 @@ use std::io;
 use std::io::Write;
 
 use byteorder::WriteBytesExt;
+use num_bigint::Sign;
 use rmp::encode::{
     write_array_len, write_bin, write_bool, write_ext_meta, write_f64, write_map_len, write_nil,
     write_sint, write_str, write_u64, ValueWriteError,
@@ -28,7 +29,7 @@ use swimos_form::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use swimos_model::bigint::{BigInt, BigUint, Sign};
+use swimos_model::{BigInt, BigUint};
 
 use crate::{BIG_INT_EXT, BIG_UINT_EXT};
 

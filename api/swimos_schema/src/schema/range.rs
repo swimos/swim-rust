@@ -17,7 +17,8 @@ use crate::schema::{
     int_endpoint_to_slot,
 };
 use std::cmp::Ordering;
-use swimos_model::bigint::{BigInt, ToBigInt};
+use num_bigint::ToBigInt;
+use swimos_model::BigInt;
 use swimos_model::{Attr, Value};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -16,7 +16,7 @@ use std::borrow::Cow;
 use swimos_form::read::StructuralReadable;
 use swimos_form::read::{NumericValue, ReadEvent};
 use swimos_form::read::{Recognizer, RecognizerReadable};
-use swimos_model::bigint::{BigInt, BigUint};
+use swimos_model::{BigInt, BigUint};
 use swimos_model::{Attr, Blob, Item, Text, Value};
 
 fn run_recognizer<'a, T, I>(rep: I) -> T

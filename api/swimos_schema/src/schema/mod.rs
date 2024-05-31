@@ -23,12 +23,13 @@ use crate::schema::range::{
 };
 use crate::schema::slot::SlotSchema;
 use crate::schema::text::TextSchema;
+use num_bigint::ToBigInt;
 use num_traits::{Signed, ToPrimitive};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
-use swimos_model::bigint::{BigInt, ToBigInt};
+use swimos_model::BigInt;
 use swimos_model::{Attr, Item, ToValue, Value, ValueKind};
 
 pub mod attr;

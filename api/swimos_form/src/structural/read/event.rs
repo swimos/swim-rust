@@ -14,10 +14,11 @@
 
 use crate::structural::read::error::ExpectedEvent;
 use crate::structural::read::ReadError;
+use num_bigint::ToBigInt;
 use num_traits::ToPrimitive;
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
-use swimos_model::bigint::{BigInt, BigUint, ToBigInt};
+use swimos_model::{BigInt, BigUint};
 use swimos_model::Text;
 use swimos_model::ValueKind;
 

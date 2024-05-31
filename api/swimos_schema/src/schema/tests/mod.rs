@@ -18,7 +18,7 @@ use super::*;
 use num_traits::FloatConst;
 use regex::Regex;
 use std::collections::HashMap;
-use swimos_model::bigint::{BigInt, BigUint};
+use swimos_model::{BigInt, BigUint};
 use swimos_model::Blob;
 
 #[test]

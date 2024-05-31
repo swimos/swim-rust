@@ -25,9 +25,10 @@ use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::ops::Neg;
 use swimos_form::read::NumericValue;
-use swimos_model::bigint::{BigInt, BigUint, ParseBigIntError, Sign};
+use swimos_model::{BigInt, BigUint};
 use swimos_model::identifier::{is_identifier_char, is_identifier_start};
 use swimos_model::Text;
+use num_bigint::{ParseBigIntError, Sign};
 
 fn unwrap_span(span: Span<'_>) -> &str {
     &span

@@ -73,7 +73,7 @@ mod tests;
 pub use attr::Attr;
 pub use blob::Blob;
 pub use item::Item;
-pub use num_bigint as bigint;
+pub use num_bigint::{BigInt, BigUint};
 pub use text::Text;
 pub use time::Timestamp;
 pub use value::{ReconstructFromValue, ToValue, Value, ValueKind};

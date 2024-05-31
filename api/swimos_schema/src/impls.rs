@@ -15,7 +15,7 @@
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
-use swimos_model::bigint::{BigInt, BigUint};
+use swimos_model::{BigInt, BigUint};
 
 use crate::schema::slot::SlotSchema;
 use crate::schema::{ItemSchema, StandardSchema};

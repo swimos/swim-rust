@@ -9,6 +9,7 @@ swimos_model = { path = "../swimos_model" }
 swimos_schema_derive = { path = "../swimos_schema_derive" }
 num-traits = { workspace = true }
 regex = "1.3.6"
+num-bigint = { workspace = true }
 
 [dev-dependencies]
 swimos_form = { path = "../swimos_form" }

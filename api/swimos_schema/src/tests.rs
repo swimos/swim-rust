@@ -15,7 +15,7 @@
 #![allow(clippy::eq_op)]
 
 use num_traits::Float;
-use swimos_model::bigint::BigInt;
+use swimos_model::BigInt;
 
 use crate::schema::attr::AttrSchema;
 use crate::schema::slot::SlotSchema;

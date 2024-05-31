@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::bigint::{BigInt, BigUint, ToBigInt};
 use crate::Blob;
 use crate::Text;
 use either::Either;
+use num_bigint::{BigInt, BigUint, ToBigInt};
 use num_traits::Signed;
 use num_traits::ToPrimitive;
 use std::cmp::Ordering;

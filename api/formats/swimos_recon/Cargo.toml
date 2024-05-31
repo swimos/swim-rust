@@ -23,6 +23,7 @@ tokio-util = { workspace = true, features = ["codec"] }
 bytes = { workspace = true }
 smallvec = { workspace = true }
 thiserror = { workspace = true }
+num-bigint = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["io-util", "macros", "rt", "fs"] }

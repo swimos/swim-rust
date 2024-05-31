@@ -20,7 +20,7 @@ mod from_model;
 mod recognizer;
 
 use std::borrow::Cow;
-use swimos_model::bigint::{BigInt, BigUint};
+use swimos_model::{BigInt, BigUint};
 
 mod error;
 

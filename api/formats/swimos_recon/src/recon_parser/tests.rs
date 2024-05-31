@@ -21,7 +21,7 @@ use nom::IResult;
 use std::borrow::Cow;
 use std::ops::{Add, Neg, Sub};
 use swimos_form::read::{NumericValue, ReadEvent};
-use swimos_model::bigint::{BigInt, BigUint};
+use swimos_model::{BigInt, BigUint};
 use swimos_model::{Attr, Item, Text, Value};
 
 fn span(input: &str) -> Span<'_> {
