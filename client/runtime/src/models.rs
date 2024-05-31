@@ -15,8 +15,7 @@
 use fnv::FnvHashMap;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
-use swimos_api::agent::DownlinkKind;
-use swimos_model::address::RelativeAddress;
+use swimos_api::{address::RelativeAddress, agent::DownlinkKind};
 use swimos_model::Text;
 use swimos_remote::AttachClient;
 use swimos_runtime::downlink::failure::{

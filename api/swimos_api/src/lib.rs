@@ -27,3 +27,5 @@ pub mod error;
 pub mod persistence;
 /// A model of HTTP requests and responses.
 pub mod http;
+/// Types to describe the addresses of local and remote lanes.
+pub mod address;

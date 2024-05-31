@@ -23,7 +23,7 @@ use futures::{Future, FutureExt, Stream, StreamExt};
 use swimos_form::read::RecognizerReadable;
 use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
-use swimos_model::address::Address;
+use swimos_api::address::Address;
 use swimos_utilities::routing::route_uri::RouteUri;
 use tokio::time::Instant;
 

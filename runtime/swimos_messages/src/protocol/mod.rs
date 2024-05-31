@@ -21,7 +21,7 @@ use std::str::Utf8Error;
 use swimos_form::read::ReadError;
 use swimos_form::read::{Recognizer, RecognizerReadable};
 use swimos_form::write::StructuralWritable;
-use swimos_model::address::RelativeAddress;
+use swimos_api::address::RelativeAddress;
 use swimos_model::Text;
 use swimos_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swimos_recon::print_recon_compact;

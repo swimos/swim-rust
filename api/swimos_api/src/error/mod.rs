@@ -18,7 +18,7 @@ use std::io;
 use std::{error::Error, sync::Arc};
 
 use swimos_form::read::ReadError;
-use swimos_model::{address::RelativeAddress, Text};
+use swimos_model::Text;
 use swimos_recon::parser::AsyncParseError;
 use swimos_utilities::{
     errors::Recoverable, routing::route_pattern::UnapplyError, trigger::promise,
@@ -26,7 +26,7 @@ use swimos_utilities::{
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 
-use crate::agent::StoreKind;
+use crate::{agent::StoreKind, address::RelativeAddress};
 
 mod introspection;
 

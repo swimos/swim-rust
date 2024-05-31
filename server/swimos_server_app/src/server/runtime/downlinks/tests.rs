@@ -31,11 +31,15 @@ use swimos_agent_protocol::encoding::downlink::{
     DownlinkOperationEncoder, ValueNotificationDecoder,
 };
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
-use swimos_api::{agent::DownlinkKind, error::DownlinkRuntimeError};
+use swimos_api::{
+    address::RelativeAddress,
+    agent::DownlinkKind, 
+    error::DownlinkRuntimeError
+};
 use swimos_messages::protocol::{
     Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder,
 };
-use swimos_model::{address::RelativeAddress, Text};
+use swimos_model::Text;
 use swimos_net::SchemeHostPort;
 use swimos_remote::net::dns::{DnsFut, DnsResolver};
 use swimos_remote::{AttachClient, LinkError};

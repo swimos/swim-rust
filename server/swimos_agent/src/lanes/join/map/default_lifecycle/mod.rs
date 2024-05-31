@@ -14,7 +14,7 @@
 
 use std::collections::HashSet;
 
-use swimos_model::address::Address;
+use swimos_api::address::Address;
 
 use crate::{
     event_handler::{ConstHandler, UnitHandler},

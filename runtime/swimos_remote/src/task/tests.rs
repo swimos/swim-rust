@@ -28,7 +28,8 @@ use swimos_messages::protocol::{
     Path, RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
     RawResponseMessageEncoder, RequestMessage, ResponseMessage,
 };
-use swimos_model::{address::RelativeAddress, Text};
+use swimos_api::address::RelativeAddress;
+use swimos_model::Text;
 use swimos_utilities::{
     encoding::BytesStr, io::byte_channel::{self, byte_channel, ByteReader, ByteWriter}, non_zero_usize, trigger
 };

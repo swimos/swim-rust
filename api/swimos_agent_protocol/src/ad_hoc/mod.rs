@@ -16,12 +16,12 @@ use std::fmt::Debug;
 
 use bytes::{Buf, BufMut, BytesMut};
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
-use swimos_model::{address::Address, Text};
+use swimos_model::Text;
 use swimos_recon::{WithLenRecognizerDecoder, WithLenReconEncoder};
 use swimos_utilities::encoding::{TryFromUtf8Bytes, WithLengthBytesCodec};
 use tokio_util::codec::{Decoder, Encoder};
 
-use swimos_api::error::FrameIoError;
+use swimos_api::{address::Address, error::FrameIoError};
 
 use crate::AdHocCommand;
 

@@ -32,11 +32,11 @@ use swimos_api::agent::DownlinkKind;
 use swimos_api::agent::{HttpLaneRequest, LaneConfig, RawHttpLaneResponse};
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
 use swimos_api::{
+    address::Address,
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::{AgentInitError, AgentTaskError, FrameIoError},
     http::{Header, StandardHeaderName, StatusCode, Version},
 };
-use swimos_model::address::Address;
 use swimos_model::Text;
 use swimos_utilities::future::retryable::RetryStrategy;
 use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};

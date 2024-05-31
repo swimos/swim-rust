@@ -25,11 +25,12 @@ use swimos_agent_protocol::{
     AdHocCommand, DownlinkNotification, MapMessage, MapOperation,
 };
 use swimos_api::{
+    address::Address,
     agent::{AgentConfig, AgentContext, AgentTask, DownlinkKind, HttpLaneRequest, WarpLaneKind},
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
     http::{HttpRequest, Method, StatusCode, Version},
 };
-use swimos_model::{address::Address, Text};
+use swimos_model::Text;
 use swimos_utilities::{
     encoding::{BytesStr, WithLengthBytesCodec},
     future::retryable::RetryStrategy,

@@ -17,6 +17,7 @@ use futures::{
     FutureExt,
 };
 use swimos_api::{
+    address::RelativeAddress,
     agent::{
         Agent, AgentConfig, AgentContext, DownlinkKind, HttpLaneRequest, HttpLaneRequestChannel,
         LaneConfig, LaneKind, StoreKind, WarpLaneKind,
@@ -27,7 +28,7 @@ use swimos_api::{
     },
     persistence::NodePersistence,
 };
-use swimos_model::{address::RelativeAddress, Text};
+use swimos_model::Text;
 use swimos_net::SchemeHostPort;
 use swimos_utilities::{
     future::retryable::RetryStrategy,

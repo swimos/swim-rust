@@ -23,7 +23,7 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use swimos_client_api::DownlinkConfig;
-use swimos_model::address::RelativeAddress;
+use swimos_api::address::RelativeAddress;
 use swimos_model::Text;
 use swimos_net::Scheme;
 use swimos_remote::AttachClient;

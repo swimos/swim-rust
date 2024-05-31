@@ -17,8 +17,11 @@ use std::{
     net::SocketAddr,
 };
 
-use swimos_api::agent::DownlinkKind;
-use swimos_model::{address::RelativeAddress, Text};
+use swimos_api::{
+    address::RelativeAddress,
+    agent::DownlinkKind
+};
+use swimos_model::Text;
 use swimos_runtime::agent::{CommanderRequest, DownlinkRequest};
 use tracing::debug;
 

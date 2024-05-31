@@ -16,7 +16,8 @@ use std::any::{Any, TypeId};
 use std::hash::Hash;
 
 use swimos_form::Form;
-use swimos_model::{address::Address, Text};
+use swimos_api::address::Address;
+use swimos_model::Text;
 
 use crate::event_handler::{DowncastError, EventHandler, JoinLaneInitializer};
 use crate::lanes::JoinLaneKind;

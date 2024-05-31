@@ -16,8 +16,6 @@
 //!
 //! Model types used by the SwimOS runtime and Swim applications.
 
-/// Types to describe the addresses of local and remote lanes.
-pub mod address;
 /// Functions to define an identifier for the SwimOS model.
 pub mod identifier;
 /// Functions to encode string literals.

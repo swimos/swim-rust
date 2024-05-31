@@ -39,7 +39,8 @@ use swimos_agent_protocol::{
     },
     DownlinkNotification, MapMessage, MapOperation,
 };
-use swimos_model::{address::Address, Text};
+use swimos_api::address::Address;
+use swimos_model::Text;
 use swimos_utilities::{
     io::byte_channel::{self, ByteReader, ByteWriter},
     non_zero_usize, trigger,

@@ -25,9 +25,8 @@ use swimos_agent_protocol::encoding::downlink::{
     DownlinkNotificationEncoder, DownlinkOperationDecoder,
 };
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
-use swimos_api::error::DownlinkTaskError;
+use swimos_api::{address::Address, error::DownlinkTaskError};
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
-use swimos_model::address::Address;
 use swimos_recon::parser::parse_recognize;
 use swimos_recon::print_recon_compact;
 use swimos_utilities::{

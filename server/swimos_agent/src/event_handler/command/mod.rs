@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use swimos_form::write::StructuralWritable;
-use swimos_model::address::Address;
+use swimos_api::address::Address;
 
 use crate::meta::AgentMetadata;
 

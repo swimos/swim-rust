@@ -25,11 +25,12 @@ use futures::{stream::BoxStream, FutureExt};
 use static_assertions::assert_obj_safe;
 use swimos_agent_protocol::{encoding::ad_hoc::AdHocCommandEncoder, AdHocCommand};
 use swimos_api::{
+    address::Address,
     agent::{AgentContext, DownlinkKind},
     error::{AgentRuntimeError, DownlinkRuntimeError},
 };
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
-use swimos_model::{address::Address, Text};
+use swimos_model::Text;
 use swimos_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swimos_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},

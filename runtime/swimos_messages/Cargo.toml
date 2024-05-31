@@ -10,6 +10,7 @@ futures = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
 swimos_model = { path = "../../api/swimos_model" }
+swimos_api = { path = "../../api/swimos_api" }
 swimos_form = { path = "../../api/swimos_form" }
 swimos_recon = { path = "../../api/formats/swimos_recon" }
 swimos_utilities = { path = "../../swimos_utilities", features = ["algebra"] }
