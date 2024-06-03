@@ -109,10 +109,6 @@ pub mod encoding {
 
     /// # The protocol used by the runtime to communicate with stores.
     ///
-    /// TODO Non-transient lanes also implicitly contain a store. They should
-    /// ultimately use the initialization component of this protocol. Currently,
-    /// they have initialization messages built into the lane protocol.
-    ///
     /// There are two phases to the communication between the runtime and the agent.
     ///
     /// 1. Initialization
@@ -135,6 +131,11 @@ pub mod encoding {
     /// 2. The store or land sends [`crate::StoreResponse`] messages each time its state
     /// changes which are persisted by the runtime.
     pub mod store {
+
+        // TODO Non-transient lanes also implicitly contain a store. They should
+        // ultimately use the initialization component of this protocol. Currently,
+        // they have initialization messages built into the lane protocol.
+
         pub use crate::store::{
             MapStoreInitDecoder, MapStoreResponseEncoder, RawMapStoreInitDecoder,
             RawMapStoreInitEncoder, RawMapStoreResponseDecoder, RawValueStoreInitDecoder,
