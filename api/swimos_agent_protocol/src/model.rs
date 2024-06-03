@@ -58,17 +58,20 @@ impl<T> LaneResponse<T> {
 /// to describe alterations to the lane.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Form)]
 pub enum MapOperation<K, V> {
+    /// Update the value associated with a key in the map (or insert an entry if they key does not exist).
     #[form(tag = "update")]
     Update {
         key: K,
         #[form(body)]
         value: V,
     },
+    /// Remove an entry from the map, by key (does nothing if there is no such entry).
     #[form(tag = "remove")]
     Remove {
         #[form(header)]
         key: K,
     },
+    /// Remove all entries in the map.
     #[form(tag = "clear")]
     Clear,
 }
@@ -79,21 +82,29 @@ pub enum MapOperation<K, V> {
 /// with other implementations.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Form, Hash)]
 pub enum MapMessage<K, V> {
+    /// Update the value associated with a key in the map (or insert an entry if they key does not exist).
     #[form(tag = "update")]
     Update {
         key: K,
         #[form(body)]
         value: V,
     },
+    /// Remove an entry from the map, by key (does nothing if there is no such entry).
     #[form(tag = "remove")]
     Remove {
         #[form(header)]
         key: K,
     },
+    /// Remove all entries in the map.
     #[form(tag = "clear")]
     Clear,
+    /// Retain only the first `n` entries in the map, the remainder are removed. The ordering
+    /// used to determine 'first' is the Recon order of the keys. If there are fewer than `n`
+    /// entries in the map, this does nothing.
     #[form(tag = "take")]
     Take(#[form(header_body)] u64),
+    /// Remove the first `n` entries in the map. The ordering used to determine 'first' is the
+    /// Recon order of the keys. If there are fewer than `n` entries in the map, it is cleared.
     #[form(tag = "drop")]
     Drop(#[form(header_body)] u64),
 }
