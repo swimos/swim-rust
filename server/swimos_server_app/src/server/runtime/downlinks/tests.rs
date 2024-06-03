@@ -27,10 +27,10 @@ use futures::{
     Future, FutureExt, SinkExt, StreamExt,
 };
 use parking_lot::Mutex;
+use rustls::ServerName;
 use swimos_api::{
     downlink::DownlinkKind,
     error::DownlinkRuntimeError,
-    net::SchemeHostPort,
     protocol::downlink::{
         DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
     },
@@ -163,8 +163,8 @@ struct Endpoints {
 }
 
 fn check_hosts(actual: &str, expected: &str) {
-    let actual = actual.parse::<SchemeHostPort>().expect("Invalid host.");
-    let expected = expected.parse::<SchemeHostPort>().expect("Invalid host.");
+    let actual = ServerName::try_from(actual).expect("Invalid host.");
+    let expected = ServerName::try_from(expected).expect("Invalid host.");
     assert_eq!(actual, expected);
 }
 
@@ -265,7 +265,7 @@ impl FakeServerTask {
                     responder,
                     ..
                 }))) => {
-                    check_hosts(host.as_str(), URL);
+                    check_hosts(host.as_str(), HOST);
                     let result = if sock_addrs.iter().any(|a| a == &addr) {
                         Ok(EstablishedClient {
                             tx: attach_tx.clone(),

@@ -140,14 +140,13 @@ where
                         match key {
                             CommanderKey::Remote(shp) => {
                                 debug!(remote = %shp, "Handling request for remote command channel.");
-                                let host_str: Text = shp.to_string().into();
                                 let SchemeHostPort(scheme, host_name, port) = shp.clone();
-                                if pending.push_remote_cmd(host_str.clone(), request) {
+                                if pending.push_remote_cmd(host_name.clone().into(), request) {
                                     tasks.push(
-                                        dns.resolve(host_name, port)
+                                        dns.resolve(host_name.clone(), port)
                                             .map(move |result| Event::Resolved {
                                                 scheme,
-                                                host: host_str,
+                                                host: host_name.into(),
                                                 result,
                                             })
                                             .boxed(),
@@ -178,14 +177,13 @@ where
                         } = &request;
                         if let Some(shp) = remote.clone() {
                             debug!(remote = %shp, node = %address.node, lane = %address.lane, kind = ?kind, "Handling request for downlink to remote lane.");
-                            let host_str: Text = shp.to_string().into();
                             let SchemeHostPort(scheme, host_name, port) = shp;
-                            if pending.push_remote(host_str.clone(), request) {
+                            if pending.push_remote(host_name.clone().into(), request) {
                                 tasks.push(
-                                    dns.resolve(host_name, port)
+                                    dns.resolve(host_name.clone(), port)
                                         .map(move |result| Event::Resolved {
                                             scheme,
-                                            host: host_str,
+                                            host: host_name.into(),
                                             result,
                                         })
                                         .boxed(),
