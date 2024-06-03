@@ -31,7 +31,7 @@ use swimos_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swimos_model::Value;
 use swimos_recon::{parser::MessageExtractError, print_recon_compact};
 use swimos_utilities::{
-    routing::route_uri::{InvalidRouteUri, RouteUri},
+    routing::{InvalidRouteUri, RouteUri},
     trigger,
 };
 use tokio::{net::TcpStream, sync::mpsc as tmpsc, task::block_in_place};

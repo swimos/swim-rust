@@ -42,10 +42,8 @@ pub mod api {
 }
 
 pub mod route {
-    pub use swimos_utilities::routing::route_pattern::{
-        ApplyError, ParseError, RoutePattern, UnapplyError,
-    };
-    pub use swimos_utilities::routing::route_uri::RouteUri;
+    pub use swimos_utilities::routing::RouteUri;
+    pub use swimos_utilities::routing::{ApplyError, ParseError, RoutePattern, UnapplyError};
 }
 
 pub mod io {

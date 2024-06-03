@@ -59,7 +59,7 @@ use swimos_api::{
 };
 use swimos_model::Text;
 use swimos_recon::print_recon_compact;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use futures::future::BoxFuture;
 use swimos_api::{

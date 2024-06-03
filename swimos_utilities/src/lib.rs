@@ -60,7 +60,7 @@ pub use swimos_trigger as trigger;
 
 #[cfg(feature = "sync")]
 pub mod sync {
-    pub use swimos_sync::circular_buffer;
+    pub use swimos_sync as circular_buffer;
 }
 
 #[cfg(feature = "test-util")]

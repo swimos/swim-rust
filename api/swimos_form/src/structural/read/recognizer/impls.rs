@@ -45,7 +45,7 @@ use swimos_utilities::future::retryable::strategy::{
     DEFAULT_INTERVAL_DELAY, DEFAULT_INTERVAL_RETRIES,
 };
 use swimos_utilities::future::retryable::{Quantity, RetryStrategy};
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use super::BodyStage;
 use super::FirstOf;

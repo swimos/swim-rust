@@ -31,7 +31,7 @@ use swimos_form::write::{StructuralWritable, StructuralWriter};
 use swimos_form::Form;
 use swimos_model::Text;
 use swimos_runtime::downlink::Io;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 use swimos_utilities::trigger;
 use swimos_utilities::uri_forest::{UriForest, UriPart};
 use tokio_util::codec::{FramedRead, FramedWrite};

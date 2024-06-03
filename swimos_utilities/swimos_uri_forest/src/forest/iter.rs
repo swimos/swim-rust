@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::TreeNode;
+use super::TreeNode;
 use smol_str::SmolStr;
 use std::collections::{HashMap, VecDeque};
 

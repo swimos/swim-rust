@@ -33,7 +33,7 @@ use swimos_model::Text;
 use swimos_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
-    routing::route_uri::RouteUri,
+    routing::RouteUri,
 };
 
 use crate::{

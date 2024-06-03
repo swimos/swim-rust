@@ -17,7 +17,7 @@ use std::collections::HashSet;
 use swimos_api::agent::{Agent, BoxAgent};
 use swimos_introspection::route::{lane_pattern, node_pattern};
 use swimos_model::Text;
-use swimos_utilities::routing::route_pattern::RoutePattern;
+use swimos_utilities::routing::RoutePattern;
 
 use crate::{error::AmbiguousRoutes, util::AgentExt};
 
@@ -133,7 +133,7 @@ mod tests {
 
     use futures::future::BoxFuture;
     use swimos_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
-    use swimos_utilities::routing::{route_pattern::RoutePattern, route_uri::RouteUri};
+    use swimos_utilities::routing::{RoutePattern, RouteUri};
 
     use crate::error::AmbiguousRoutes;
 

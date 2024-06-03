@@ -31,7 +31,7 @@ use swimos_utilities::{
     future::retryable::RetryStrategy,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
-    routing::route_uri::RouteUri,
+    routing::RouteUri,
     trigger,
 };
 use tokio::sync::mpsc;

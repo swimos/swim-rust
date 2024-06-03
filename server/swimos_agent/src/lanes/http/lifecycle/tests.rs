@@ -19,7 +19,7 @@ use swimos_api::{
     http::{Header, HttpResponse, StandardHeaderName, StatusCode},
 };
 use swimos_recon::print_recon_compact;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,

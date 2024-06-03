@@ -184,7 +184,7 @@ mod test_support {
     };
     use swimos_utilities::{
         io::byte_channel::{ByteReader, ByteWriter},
-        routing::route_uri::RouteUri,
+        routing::RouteUri,
     };
 
     use crate::{

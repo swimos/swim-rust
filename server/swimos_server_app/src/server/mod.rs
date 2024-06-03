@@ -15,7 +15,7 @@
 use std::net::SocketAddr;
 
 use futures::future::BoxFuture;
-use swimos_utilities::{routing::route_uri::RouteUri, trigger};
+use swimos_utilities::{routing::RouteUri, trigger};
 
 mod builder;
 mod error;

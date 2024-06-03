@@ -99,7 +99,7 @@ impl RouteUri {
     }
 
     /// Returns an iterator that will yield each segment in the path.
-    pub fn path_iter(&self) -> PathSegmentIterator<'_> {
+    pub fn path_iter(&self) -> impl Iterator<Item = &str> {
         PathSegmentIterator(self.path())
     }
 }

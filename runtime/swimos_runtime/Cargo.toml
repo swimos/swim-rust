@@ -24,7 +24,6 @@ swimos_agent_protocol = { path = "../../api/swimos_agent_protocol" }
 swimos_meta = { path = "../../api/swimos_meta" }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_form = { path = "../../api/swimos_form" }
-swimos_tracing = { path = "../../swimos_utilities/swimos_tracing" }
 swimos_recon = { path = "../../api/formats/swimos_recon" }
 swimos_messages = { path = "../swimos_messages" }
 swimos_net = { path = "../swimos_net" }

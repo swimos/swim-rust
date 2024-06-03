@@ -26,7 +26,7 @@ use swimos_runtime::agent::{
     NodeReporting, UplinkReporterRegistration,
 };
 use swimos_utilities::uri_forest::UriForest;
-use swimos_utilities::{routing::route_uri::RouteUri, trigger};
+use swimos_utilities::{routing::RouteUri, trigger};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
 use tracing::info;

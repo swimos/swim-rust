@@ -22,7 +22,7 @@ use swimos_agent_protocol::{
 use swimos_api::agent::AgentConfig;
 use swimos_model::Text;
 use swimos_recon::parser::parse_recognize;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 
 use crate::{

@@ -12,5 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod route_pattern;
-pub mod route_uri;
+mod route_pattern;
+mod route_uri;
+
+pub use route_pattern::{ApplyError, ParseError, RoutePattern, UnapplyError};
+pub use route_uri::{InvalidRouteUri, RouteUri};

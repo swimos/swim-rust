@@ -15,13 +15,13 @@
 use swimos_num::non_zero_usize;
 
 use crate::rectangles::{Point2D, Point3D};
-use crate::{
-    BoxBounded, ChildrenSizeError, DuplicateLabelError, Label, RTree, RTreeError, Rect,
-    SplitStrategy,
-};
+use crate::tree::ChildrenSizeError;
+use crate::{BoxBounded, Label, Rect, SplitStrategy};
 use std::fs;
 use std::ops::Sub;
 use std::sync::{Arc, Mutex};
+
+use super::{DuplicateLabelError, RTree, RTreeError};
 
 fn test_tree<B: BoxBounded, L: Label>(mut tree: RTree<L, B>, entries: Vec<(L, B)>, path: String) {
     assert_eq!(
