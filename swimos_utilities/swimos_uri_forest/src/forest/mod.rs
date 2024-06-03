@@ -431,7 +431,7 @@ where
 }
 
 #[derive(Debug, PartialEq)]
-struct TreeNode<D> {
+pub(crate) struct TreeNode<D> {
     data: Option<D>,
     descendants: HashMap<SmolStr, TreeNode<D>>,
 }
