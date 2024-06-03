@@ -12,9 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS Utilities
+//!
+//! Collects together a number of utility crates that can be individually enabled by features.
+
 #![allow(clippy::match_wild_err_arm)]
 
+/// Wrappers around closure types to server as event handlers.
 pub mod handlers;
+
+/// Provides a canonical uninhabited type [`never::Never`].
 pub mod never;
 
 #[cfg(feature = "algebra")]
