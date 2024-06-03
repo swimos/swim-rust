@@ -87,7 +87,7 @@ pub mod encoding {
         };
     }
 
-    /// # The encoding used for map like lanes and stores, shared between the other protocols in this module.
+    /// The encoding used for map like lanes and stores, shared between the other protocols in this module.
     pub mod map {
         pub use crate::map::{
             MapMessageDecoder, MapMessageEncoder, MapOperationDecoder, MapOperationEncoder,
@@ -96,7 +96,7 @@ pub mod encoding {
         };
     }
 
-    /// # The protocol used by the agents to send ad hoc messages to lanes on other agents.
+    /// The protocol used by the agents to send ad hoc messages to lanes on other agents.
     ///
     /// [`crate::AdHocCommand`] messages are sent by agents to the runtime to instruct it to send an ad hoc
     /// command to an arbitrary lane endpoint.
