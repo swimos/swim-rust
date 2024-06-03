@@ -29,7 +29,7 @@ use crate::AdHocCommand;
 mod tests;
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct CommandEncoder<E> {
+struct CommandEncoder<E> {
     body_encoder: E,
 }
 
