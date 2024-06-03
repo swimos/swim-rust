@@ -20,6 +20,7 @@ console-views = { path = "console_views" }
 http = { workspace = true }
 rand = { workspace = true }
 duration-str = "0.5"
+thiserror = { workspace = true} 
 
 [target.'cfg(windows)'.dependencies]
 cursive = { version = "0.20", default-features = false, features = ["crossterm-backend"] }

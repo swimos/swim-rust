@@ -116,10 +116,6 @@ where
         EventQueue::push(self, action)
     }
 
-    fn is_empty(&self) -> bool {
-        EventQueue::is_empty(self)
-    }
-
     type Output<'a> = StoreResponse<MapOperation<K, &'a V>>
     where
         Self: 'a,

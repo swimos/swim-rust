@@ -555,6 +555,10 @@ where
     let mut awaiting_synced: Vec<DownlinkSender> = vec![];
     let mut awaiting_linked: Vec<DownlinkSender> = vec![];
     let mut registered: Vec<DownlinkSender> = vec![];
+    // Track whether any events have been received while syncing the downlink. While this isn't the
+    // nicest thing to have, it's required to distinguish between communicating with a stateless
+    // lane and a downlink syncing with a lane that has a type which may be optional.
+    let mut sync_event = false;
 
     let result: Result<(), H::Report> = loop {
         let (event, is_active) = match task_state.as_mut().as_pin_mut() {
@@ -653,7 +657,17 @@ where
                     trace!("Entering Synced state.");
                     dl_state = ReadTaskDlState::Synced;
                     if is_active {
-                        if I::SINGLE_FRAME_STATE {
+                        // `sync_event` will be false if we're communicating with a stateless lane
+                        // as no event envelope will have been sent. However, it's valid Recon for
+                        // an empty event envelope to be sent (consider Option::None) and this must
+                        // still be sent to the downlink task.
+                        //
+                        // If we're linked to a stateless lane, then `sync_current` cannot be used
+                        // as we will not have received an event envelope as it will dispatch one
+                        // with the empty buffer and this may cause the downlink task's decoder to
+                        // fail due to reading an extant read event. Therefore, delegate the operation to
+                        // `sync_only` which will not send an event notification.
+                        if I::SINGLE_FRAME_STATE && sync_event {
                             sync_current(&mut awaiting_synced, &mut registered, &current).await;
                         } else {
                             sync_only(&mut awaiting_synced, &mut registered).await;
@@ -669,8 +683,11 @@ where
                     break Ok(());
                 }
                 Notification::Event(bytes) => {
+                    sync_event = true;
+
                     trace!("Updating the current value.");
                     current.clear();
+
                     if let Err(e) = interpretation.interpret_frame_data(bytes, &mut current) {
                         if let BadFrameResponse::Abort(report) = failure_handler.failed_with(e) {
                             break Err(report);

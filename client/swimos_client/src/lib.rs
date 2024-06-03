@@ -15,6 +15,7 @@
 #[cfg(not(feature = "deflate"))]
 use ratchet::NoExtProvider;
 use ratchet::WebSocketStream;
+use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use swimos_remote::ws::RatchetClient;
 
@@ -28,12 +29,12 @@ pub use runtime::{CommandError, Commander, RemotePath};
 use std::sync::Arc;
 pub use swimos_api::downlink::DownlinkConfig;
 pub use swimos_downlink::lifecycle::{
-    BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle, MapDownlinkLifecycle,
-    ValueDownlinkLifecycle,
+    BasicEventDownlinkLifecycle, BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle,
+    EventDownlinkLifecycle, MapDownlinkLifecycle, ValueDownlinkLifecycle,
 };
 use swimos_downlink::{
-    ChannelError, DownlinkTask, MapDownlinkHandle, MapDownlinkModel, MapKey, MapValue,
-    NotYetSyncedError, ValueDownlinkModel, ValueDownlinkSet,
+    ChannelError, DownlinkTask, EventDownlinkModel, MapDownlinkHandle, MapDownlinkModel, MapKey,
+    MapValue, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkSet,
 };
 use swimos_form::Form;
 use swimos_remote::net::dns::Resolver;
@@ -228,6 +229,24 @@ impl ClientHandle {
         ValueDownlinkBuilder {
             handle: self,
             lifecycle: BasicValueDownlinkLifecycle::default(),
+            path,
+            options: DownlinkOptions::SYNC,
+            runtime_config: Default::default(),
+            downlink_config: Default::default(),
+        }
+    }
+
+    /// Returns an event downlink builder initialised with the default options.
+    ///
+    /// # Arguments
+    /// * `path` - The path of the downlink top open.
+    pub fn event_downlink<T>(
+        &self,
+        path: RemotePath,
+    ) -> EventDownlinkBuilder<'_, BasicEventDownlinkLifecycle<T>> {
+        EventDownlinkBuilder {
+            handle: self,
+            lifecycle: BasicEventDownlinkLifecycle::default(),
             path,
             options: DownlinkOptions::SYNC,
             runtime_config: Default::default(),
@@ -446,7 +465,7 @@ impl<'h, L> MapDownlinkBuilder<'h, L> {
         } = self;
 
         let (tx, rx) = mpsc::channel(downlink_config.buffer_size.get());
-        let task = DownlinkTask::new(MapDownlinkModel::new(rx, lifecycle, true));
+        let task = DownlinkTask::new(MapDownlinkModel::new(rx, lifecycle));
         let stop_rx = handle
             .inner
             .run_downlink(path, runtime_config, downlink_config, options, task)
@@ -492,6 +511,97 @@ impl<K, V> MapDownlinkView<K, V> {
         self.inner.drop(n).await
     }
 
+    /// Returns a receiver that completes with the result of downlink's internal task.
+    pub fn stop_notification(&self) -> promise::Receiver<Result<(), DownlinkRuntimeError>> {
+        self.stop_rx.clone()
+    }
+}
+
+/// A builder for value downlinks.
+pub struct EventDownlinkBuilder<'h, L> {
+    handle: &'h ClientHandle,
+    lifecycle: L,
+    path: RemotePath,
+    options: DownlinkOptions,
+    runtime_config: DownlinkRuntimeConfig,
+    downlink_config: DownlinkConfig,
+}
+
+impl<'h, L> EventDownlinkBuilder<'h, L> {
+    /// Sets a new lifecycle that to be used.
+    pub fn lifecycle<NL>(self, lifecycle: NL) -> EventDownlinkBuilder<'h, NL> {
+        let EventDownlinkBuilder {
+            handle,
+            path,
+            options,
+            runtime_config,
+            downlink_config,
+            ..
+        } = self;
+        EventDownlinkBuilder {
+            handle,
+            lifecycle,
+            path,
+            options,
+            runtime_config,
+            downlink_config,
+        }
+    }
+
+    /// Sets link options for the downlink.
+    pub fn options(mut self, options: DownlinkOptions) -> Self {
+        self.options = options;
+        self
+    }
+
+    /// Sets a new downlink runtime configuration.
+    pub fn runtime_config(mut self, config: DownlinkRuntimeConfig) -> Self {
+        self.runtime_config = config;
+        self
+    }
+
+    /// Sets a new downlink configuration.
+    pub fn downlink_config(mut self, config: DownlinkConfig) -> Self {
+        self.downlink_config = config;
+        self
+    }
+
+    /// Attempts to open the downlink.
+    pub async fn open<T>(self) -> Result<EventDownlinkView<T>, Arc<DownlinkRuntimeError>>
+    where
+        L: EventDownlinkLifecycle<T> + Sync + 'static,
+        T: Send + Sync + Form + Clone + 'static,
+        T::Rec: Send,
+    {
+        let EventDownlinkBuilder {
+            handle,
+            lifecycle,
+            path,
+            options,
+            runtime_config,
+            downlink_config,
+        } = self;
+        let task = DownlinkTask::new(EventDownlinkModel::new(lifecycle));
+        let stop_rx = handle
+            .inner
+            .run_downlink(path, runtime_config, downlink_config, options, task)
+            .await?;
+
+        Ok(EventDownlinkView {
+            _type: Default::default(),
+            stop_rx,
+        })
+    }
+}
+
+/// An event downlink handle which provides the functionality to await the downlink terminating.
+#[derive(Debug, Clone)]
+pub struct EventDownlinkView<T> {
+    _type: PhantomData<T>,
+    stop_rx: promise::Receiver<Result<(), DownlinkRuntimeError>>,
+}
+
+impl<T> EventDownlinkView<T> {
     /// Returns a receiver that completes with the result of downlink's internal task.
     pub fn stop_notification(&self) -> promise::Receiver<Result<(), DownlinkRuntimeError>> {
         self.stop_rx.clone()

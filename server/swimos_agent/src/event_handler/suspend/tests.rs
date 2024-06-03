@@ -28,7 +28,7 @@ use swimos_api::agent::AgentConfig;
 use swimos_utilities::{routing::route_uri::RouteUri, trigger};
 use tokio::{sync::mpsc, time::Instant};
 
-use super::{HandlerFuture, Spawner, Suspend};
+use super::{HandlerFuture, Suspend};
 
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
@@ -42,14 +42,6 @@ fn make_meta<'a>(
     route_params: &'a HashMap<String, String>,
 ) -> AgentMetadata<'a> {
     AgentMetadata::new(uri, route_params, &CONFIG)
-}
-
-struct NoSpawn;
-
-impl<Context> Spawner<Context> for NoSpawn {
-    fn spawn_suspend(&self, _: HandlerFuture<Context>) {
-        panic!("No suspended futures expected.");
-    }
 }
 
 struct DummyAgent;

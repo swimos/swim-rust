@@ -28,7 +28,7 @@ mod tests;
 const DEFAULT_START_BUDGET: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(64) };
 
 thread_local! {
-    static TASK_BUDGET: Cell<Option<usize>> = Cell::new(None);
+    static TASK_BUDGET: Cell<Option<usize>> = const { Cell::new(None) };
 }
 
 #[inline]

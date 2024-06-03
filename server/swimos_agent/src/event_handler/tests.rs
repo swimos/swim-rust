@@ -32,10 +32,7 @@ use crate::{
     test_context::dummy_context,
 };
 
-use super::{
-    join, ActionContext, Decode, HandlerAction, HandlerFuture, Modification, SideEffect, Spawner,
-    StepResult,
-};
+use super::{join, ActionContext, Decode, HandlerAction, Modification, SideEffect, StepResult};
 
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
@@ -49,14 +46,6 @@ fn make_meta<'a>(
     route_params: &'a HashMap<String, String>,
 ) -> AgentMetadata<'a> {
     AgentMetadata::new(uri, route_params, &CONFIG)
-}
-
-struct NoSpawn;
-
-impl<Context> Spawner<Context> for NoSpawn {
-    fn spawn_suspend(&self, _: HandlerFuture<Context>) {
-        panic!("No suspended futures expected.");
-    }
 }
 
 struct DummyAgent;
