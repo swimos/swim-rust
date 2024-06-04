@@ -78,8 +78,7 @@ pub enum MapOperation<K, V> {
 
 /// Representation of map lane messages (used to form the body of Recon messages when operating)
 /// on downlinks. This extends [`MapOperation`] with `Take` (retain the first `n` items) and `Drop`
-/// (remove the first `n` items). We never use these internally but must support them for communicating
-/// with other implementations.
+/// (remove the first `n` items).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Form, Hash)]
 pub enum MapMessage<K, V> {
     /// Update the value associated with a key in the map (or insert an entry if they key does not exist).
