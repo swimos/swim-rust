@@ -12,8 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # Utilities for building Tokio encoders and decoders.
+//!
+//! Provides types and functions to use to implement [`tokio_util::codec::Encoder`]s and
+//! [`tokio_util::codec::Decoder`]s.
+
 mod bytes_str;
 mod codec;
 
 pub use bytes_str::{BytesStr, TryFromUtf8Bytes};
-pub use codec::{consume_bounded, DecoderResult, WithLengthBytesCodec};
+pub use codec::{consume_bounded, WithLengthBytesCodec};

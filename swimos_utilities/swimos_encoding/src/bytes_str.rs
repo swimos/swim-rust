@@ -16,11 +16,17 @@ use std::fmt::{Debug, Display, Formatter};
 
 use bytes::Bytes;
 
+/// As string based on a sub-range within a [`Bytes`] buffer. The bytes are guaranteed to contain valid
+/// UTF-8. The purpose of this type is to allow a [`tokio_util::codec::Decoder`]s to return a string from
+/// its input buffer without performing a copy or an allocation and without a lifetime dependency on the
+/// buffer.
 #[derive(Default, PartialEq, Eq, Clone)]
 pub struct BytesStr(Bytes);
 
 impl BytesStr {
-    pub fn new(bytes: Bytes) -> Result<Self, Bytes> {
+    /// Attempt to wrap a buffer as a bytes string. If the buffer does not contain only valid UTF-8, the
+    /// raw buffer is returned instead.
+    pub fn try_wrap(bytes: Bytes) -> Result<Self, Bytes> {
         if std::str::from_utf8(bytes.as_ref()).is_ok() {
             Ok(BytesStr(bytes))
         } else {
@@ -28,6 +34,7 @@ impl BytesStr {
         }
     }
 
+    /// Create a bytes string from a static string (which is guaranteed to be valid).
     pub const fn from_static_str(content: &'static str) -> BytesStr {
         BytesStr(Bytes::from_static(content.as_bytes()))
     }
@@ -97,6 +104,8 @@ impl PartialEq<String> for BytesStr {
     }
 }
 
+/// Trait for types that can be created from a buffer that potentially contains UTF-8. This duplicates
+/// the standard library [`TryFrom`] but allows us to implement it for types we do not control.
 pub trait TryFromUtf8Bytes: Sized {
     fn try_from_utf8_bytes(bytes: Bytes) -> Result<Self, std::str::Utf8Error>;
 }
