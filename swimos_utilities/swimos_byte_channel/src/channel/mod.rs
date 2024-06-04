@@ -40,6 +40,7 @@ pub fn byte_channel(buffer_size: NonZeroUsize) -> (ByteWriter, ByteReader) {
     )
 }
 
+/// Determine if two byte channel end-points form a connected channel.
 pub fn are_connected(tx: &ByteWriter, rx: &ByteReader) -> bool {
     Arc::ptr_eq(&tx.inner, &rx.inner)
 }
@@ -154,6 +155,7 @@ impl AsyncWrite for Conduit {
     }
 }
 
+/// The read end of a byte channel. This should be used via [`AsyncWrite`].
 #[derive(Debug)]
 pub struct ByteReader {
     inner: Arc<Mutex<Conduit>>,
@@ -191,12 +193,15 @@ impl AsyncRead for ByteReader {
     }
 }
 
+/// The write end of a byte channel. This should be used via [`AsyncWrite`].
 #[derive(Debug)]
 pub struct ByteWriter {
     inner: Arc<Mutex<Conduit>>,
 }
 
 impl ByteWriter {
+
+    /// Determine if the channel is closed (the corresponding [`ByteReader`] has been dropped).
     pub fn is_closed(&self) -> bool {
         self.inner.lock().closed
     }
