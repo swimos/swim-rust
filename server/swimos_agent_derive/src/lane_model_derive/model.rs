@@ -17,7 +17,7 @@ use macro_utilities::{attributes::consume_attributes, NameTransform, TypeLevelNa
 use proc_macro2::Literal;
 use std::{collections::HashSet, hash::Hash};
 use swimos_utilities::{
-    errors::{Validation, ValidationItExt, Errors},
+    errors::{Errors, Validation, ValidationItExt},
     format::comma_sep,
 };
 use syn::{

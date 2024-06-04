@@ -20,8 +20,8 @@ use crate::structural::read::DeriveStructuralReadable;
 use crate::structural::write::DeriveStructuralWritable;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
-use swimos_utilities::errors::Validation;
 use swimos_utilities::errors::Errors;
+use swimos_utilities::errors::Validation;
 use syn::{Data, DeriveInput, Generics};
 
 pub mod model;

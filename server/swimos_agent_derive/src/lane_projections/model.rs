@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use proc_macro2::{Span, TokenStream};
-use swimos_utilities::errors::{Validation, ValidationItExt, Errors};
+use swimos_utilities::errors::{Errors, Validation, ValidationItExt};
 use syn::{Generics, Ident, Item, ItemStruct, Type};
 
 /// Model of a the components of a struct type required to generate projection functions

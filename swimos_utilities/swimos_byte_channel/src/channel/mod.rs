@@ -200,7 +200,6 @@ pub struct ByteWriter {
 }
 
 impl ByteWriter {
-
     /// Determine if the channel is closed (the corresponding [`ByteReader`] has been dropped).
     pub fn is_closed(&self) -> bool {
         self.inner.lock().closed
