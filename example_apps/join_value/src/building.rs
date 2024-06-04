@@ -48,7 +48,6 @@ impl BuildingLifecycle {
             .get_parameter("name")
             .and_then(move |building_name: Option<String>| {
                 let building_name = building_name.expect("Missing building name URI parameter");
-                println!("Registering room: {building_name} -> {room_id}");
                 context.add_downlink(
                     BuildingAgent::LIGHTS,
                     room_id,
