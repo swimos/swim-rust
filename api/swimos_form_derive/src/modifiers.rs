@@ -21,7 +21,7 @@ use macro_utilities::{
     TypeLevelNameTransform, TypeLevelNameTransformConsumer,
 };
 use quote::ToTokens;
-use swimos_utilities::errors::validation::{Validation, ValidationItExt};
+use swimos_utilities::errors::{Validation, ValidationItExt};
 use swimos_utilities::errors::Errors;
 
 /// Fold the attributes present on some syntactic element, accumulating errors.

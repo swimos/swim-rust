@@ -31,7 +31,7 @@ use crate::structural::{
     build_derive_structural_writable,
 };
 use crate::tag::build_derive_tag;
-use swimos_utilities::errors::validation::Validation;
+use swimos_utilities::errors::Validation;
 use swimos_utilities::errors::Errors;
 
 mod modifiers;

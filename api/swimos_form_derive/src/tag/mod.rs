@@ -19,7 +19,7 @@ use macro_utilities::{combine_name_transform, NameTransform, NameTransformConsum
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::fmt::{Display, Formatter};
-use swimos_utilities::errors::validation::{Validation, ValidationItExt};
+use swimos_utilities::errors::{Validation, ValidationItExt};
 use swimos_utilities::errors::Errors;
 
 /// Model for an enumeration where all variants have no fields.

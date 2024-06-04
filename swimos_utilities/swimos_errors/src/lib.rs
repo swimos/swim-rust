@@ -14,7 +14,8 @@
 
 mod accumulator;
 mod recoverable;
-pub mod validation;
+mod validation;
 
+pub use validation::{Append, Validation, ValidationItExt, validate2, validate3};
 pub use accumulator::Errors;
 pub use recoverable::Recoverable;

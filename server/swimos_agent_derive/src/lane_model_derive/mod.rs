@@ -14,7 +14,7 @@
 
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens, TokenStreamExt};
-use swimos_utilities::errors::{validation::Validation, Errors};
+use swimos_utilities::errors::{Validation, Errors};
 use syn::{parse_quote, DeriveInput, Ident};
 
 mod attributes;

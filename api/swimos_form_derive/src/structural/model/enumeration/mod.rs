@@ -20,7 +20,7 @@ use macro_utilities::attr_names::FORM_NAME;
 use macro_utilities::attributes::consume_attributes;
 use quote::ToTokens;
 use std::collections::HashSet;
-use swimos_utilities::errors::validation::{Validation, ValidationItExt};
+use swimos_utilities::errors::{Validation, ValidationItExt};
 use swimos_utilities::errors::Errors;
 use syn::{Attribute, DataEnum, Ident};
 

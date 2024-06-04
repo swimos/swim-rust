@@ -30,7 +30,7 @@ use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::collections::HashSet;
 use std::ops::Add;
-use swimos_utilities::errors::validation::{validate2, Validation, ValidationItExt};
+use swimos_utilities::errors::{validate2, Validation, ValidationItExt};
 use swimos_utilities::errors::Errors;
 use swimos_utilities::format::comma_sep;
 use syn::{Attribute, Fields, Ident};
