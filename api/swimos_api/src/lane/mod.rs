@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use std::fmt::{Display, Formatter};
 
 use swimos_form::structural::Tag;
@@ -61,7 +64,10 @@ impl WarpLaneKind {
 
     pub fn uplink_kind(&self) -> UplinkKind {
         match self {
-            WarpLaneKind::Map | WarpLaneKind::DemandMap | WarpLaneKind::JoinMap => UplinkKind::Map,
+            WarpLaneKind::Map
+            | WarpLaneKind::DemandMap
+            | WarpLaneKind::JoinMap
+            | WarpLaneKind::JoinValue => UplinkKind::Map,
             WarpLaneKind::Supply => UplinkKind::Supply,
             WarpLaneKind::Spatial => todo!("Spatial uplinks not supported."),
             _ => UplinkKind::Value,
