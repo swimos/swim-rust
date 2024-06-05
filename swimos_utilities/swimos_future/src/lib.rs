@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Futures Combinators
+//!
+//! Additional combinators for [`std::future::Future`]s that express transformations that are not
+//! available in the [`futures`] crate.
+
 mod combinators;
 mod retry_strategy;
 mod union;

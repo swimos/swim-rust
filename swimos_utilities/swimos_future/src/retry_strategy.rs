@@ -23,8 +23,8 @@ const DEFAULT_IMMEDIATE_RETRIES: NonZeroUsize = non_zero_usize!(16);
 const DEFAULT_INTERVAL_RETRIES: NonZeroUsize = non_zero_usize!(8);
 const DEFAULT_INTERVAL_DELAY: u64 = 10;
 
-/// The retry strategy that a ['RetryableRequest`] uses to determine when to perform the next
-/// request.
+/// A strategy that determines how many times, and at what interval, a fallible process should be
+/// attempted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RetryStrategy {
     /// A retry with a defined delay in between the requests.

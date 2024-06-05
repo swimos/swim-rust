@@ -66,6 +66,7 @@ impl<Str: TryStream> Stream for StopAfterError<Str> {
     }
 }
 
+/// A future that will trigger a notification whenever the future it wraps returns [`Poll::Pending`].
 #[pin_project]
 pub struct NotifyOnBlocked<F> {
     #[pin]
@@ -74,6 +75,9 @@ pub struct NotifyOnBlocked<F> {
 }
 
 impl<F> NotifyOnBlocked<F> {
+    /// # Arguments
+    /// * `inner` - The future to wrap.
+    /// * `notify`- This will be notified whenever the wrapped future returns [`Poll::Pending`].
     pub fn new(inner: F, notify: Arc<Notify>) -> NotifyOnBlocked<F> {
         NotifyOnBlocked { inner, notify }
     }
