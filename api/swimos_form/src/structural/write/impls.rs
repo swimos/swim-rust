@@ -22,7 +22,7 @@ const NONE_TAG: &str = "none";
 use crate::structural::write::{
     BodyWriter, HeaderWriter, RecordBodyKind, StructuralWritable, StructuralWriter,
 };
-use swimos_utilities::future::retryable::RetryStrategy;
+use swimos_utilities::future::RetryStrategy;
 
 impl StructuralWritable for RetryStrategy {
     fn num_attributes(&self) -> usize {
@@ -31,31 +31,32 @@ impl StructuralWritable for RetryStrategy {
 
     fn write_with<W: StructuralWriter>(&self, writer: W) -> Result<W::Repr, W::Error> {
         match self {
-            RetryStrategy::Immediate(strat) => {
-                let header_writer = writer.record(1)?;
-                let mut body_writer = header_writer
-                    .write_extant_attr(IMMEDIATE_TAG)?
-                    .complete_header(RecordBodyKind::MapLike, 1)?;
-                body_writer = body_writer.write_slot(&RETRIES_TAG, &strat.retry)?;
-                body_writer.done()
-            }
-            RetryStrategy::Interval(strat) => {
-                let header_writer = writer.record(1)?;
-                let mut body_writer = header_writer
-                    .write_extant_attr(INTERVAL_TAG)?
-                    .complete_header(RecordBodyKind::MapLike, 2)?;
-                body_writer = body_writer.write_slot(&DELAY_TAG, &strat.delay)?;
-                body_writer = body_writer.write_slot(&RETRIES_TAG, &strat.retry)?;
-                body_writer.done()
-            }
+            RetryStrategy::Interval(strat) => match &strat.delay {
+                Some(delay) => {
+                    let header_writer = writer.record(1)?;
+                    let mut body_writer = header_writer
+                        .write_extant_attr(INTERVAL_TAG)?
+                        .complete_header(RecordBodyKind::MapLike, 2)?;
+                    body_writer = body_writer.write_slot(&DELAY_TAG, delay)?;
+                    body_writer = body_writer.write_slot(&RETRIES_TAG, &strat.retry)?;
+                    body_writer.done()
+                }
+                _ => {
+                    let header_writer = writer.record(1)?;
+                    let mut body_writer = header_writer
+                        .write_extant_attr(IMMEDIATE_TAG)?
+                        .complete_header(RecordBodyKind::MapLike, 1)?;
+                    body_writer = body_writer.write_slot(&RETRIES_TAG, &strat.retry)?;
+                    body_writer.done()
+                }
+            },
             RetryStrategy::Exponential(strat) => {
                 let header_writer = writer.record(1)?;
                 let mut body_writer = header_writer
                     .write_extant_attr(EXPONENTIAL_TAG)?
                     .complete_header(RecordBodyKind::MapLike, 2)?;
-                body_writer =
-                    body_writer.write_slot(&MAX_INTERVAL_TAG, &strat.get_max_interval())?;
-                body_writer = body_writer.write_slot(&MAX_BACKOFF_TAG, &strat.get_max_backoff())?;
+                body_writer = body_writer.write_slot(&MAX_INTERVAL_TAG, &strat.max_interval)?;
+                body_writer = body_writer.write_slot(&MAX_BACKOFF_TAG, &strat.max_backoff)?;
                 body_writer.done()
             }
             RetryStrategy::None(_) => writer
@@ -68,32 +69,32 @@ impl StructuralWritable for RetryStrategy {
 
     fn write_into<W: StructuralWriter>(self, writer: W) -> Result<W::Repr, W::Error> {
         match self {
-            RetryStrategy::Immediate(strat) => {
-                let header_writer = writer.record(1)?;
-                let mut body_writer = header_writer
-                    .write_extant_attr(IMMEDIATE_TAG)?
-                    .complete_header(RecordBodyKind::MapLike, 1)?;
-                body_writer = body_writer.write_slot_into(RETRIES_TAG, strat.retry)?;
-                body_writer.done()
-            }
-            RetryStrategy::Interval(strat) => {
-                let header_writer = writer.record(1)?;
-                let mut body_writer = header_writer
-                    .write_extant_attr(INTERVAL_TAG)?
-                    .complete_header(RecordBodyKind::MapLike, 2)?;
-                body_writer = body_writer.write_slot_into(DELAY_TAG, strat.delay)?;
-                body_writer = body_writer.write_slot_into(RETRIES_TAG, strat.retry)?;
-                body_writer.done()
-            }
+            RetryStrategy::Interval(strat) => match &strat.delay {
+                Some(delay) => {
+                    let header_writer = writer.record(1)?;
+                    let mut body_writer = header_writer
+                        .write_extant_attr(INTERVAL_TAG)?
+                        .complete_header(RecordBodyKind::MapLike, 2)?;
+                    body_writer = body_writer.write_slot_into(DELAY_TAG, delay)?;
+                    body_writer = body_writer.write_slot_into(RETRIES_TAG, strat.retry)?;
+                    body_writer.done()
+                }
+                _ => {
+                    let header_writer = writer.record(1)?;
+                    let mut body_writer = header_writer
+                        .write_extant_attr(IMMEDIATE_TAG)?
+                        .complete_header(RecordBodyKind::MapLike, 1)?;
+                    body_writer = body_writer.write_slot_into(RETRIES_TAG, strat.retry)?;
+                    body_writer.done()
+                }
+            },
             RetryStrategy::Exponential(strat) => {
                 let header_writer = writer.record(1)?;
                 let mut body_writer = header_writer
                     .write_extant_attr(EXPONENTIAL_TAG)?
                     .complete_header(RecordBodyKind::MapLike, 2)?;
-                body_writer =
-                    body_writer.write_slot_into(MAX_INTERVAL_TAG, strat.get_max_interval())?;
-                body_writer =
-                    body_writer.write_slot_into(MAX_BACKOFF_TAG, strat.get_max_backoff())?;
+                body_writer = body_writer.write_slot_into(MAX_INTERVAL_TAG, strat.max_interval)?;
+                body_writer = body_writer.write_slot_into(MAX_BACKOFF_TAG, strat.max_backoff)?;
                 body_writer.done()
             }
             RetryStrategy::None(_) => writer

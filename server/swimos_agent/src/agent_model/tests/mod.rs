@@ -33,7 +33,7 @@ use swimos_api::{
 use swimos_model::Text;
 use swimos_utilities::{
     encoding::{BytesStr, WithLengthBytesCodec},
-    future::retryable::RetryStrategy,
+    future::RetryStrategy,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
     routing::RouteUri,

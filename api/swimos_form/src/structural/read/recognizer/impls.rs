@@ -40,11 +40,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use swimos_model::Timestamp;
 use swimos_model::{Text, ValueKind};
-use swimos_utilities::future::retryable::strategy::{
-    DEFAULT_EXPONENTIAL_MAX_BACKOFF, DEFAULT_EXPONENTIAL_MAX_INTERVAL, DEFAULT_IMMEDIATE_RETRIES,
-    DEFAULT_INTERVAL_DELAY, DEFAULT_INTERVAL_RETRIES,
-};
-use swimos_utilities::future::retryable::{Quantity, RetryStrategy};
+use swimos_utilities::future::{ExponentialStrategy, IntervalStrategy, Quantity, RetryStrategy};
 use swimos_utilities::routing::RouteUri;
 
 use super::BodyStage;
@@ -222,9 +218,14 @@ impl Recognizer for RetryStrategyRecognizer {
                         }
                         ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                     },
-                    ReadEvent::EndRecord => Some(Ok(RetryStrategy::immediate(
-                        retries.unwrap_or(DEFAULT_IMMEDIATE_RETRIES),
-                    ))),
+                    ReadEvent::EndRecord => {
+                        let strat = if let Some(retries) = retries {
+                            RetryStrategy::immediate(retries)
+                        } else {
+                            RetryStrategy::default_immediate()
+                        };
+                        Some(Ok(strat))
+                    }
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
                         ExpectedEvent::EndOfRecord,
@@ -251,10 +252,16 @@ impl Recognizer for RetryStrategyRecognizer {
                         }
                         ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                     },
-                    ReadEvent::EndRecord => Some(Ok(RetryStrategy::interval(
-                        delay.unwrap_or_else(|| Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
-                        retries.unwrap_or(Quantity::Finite(DEFAULT_INTERVAL_RETRIES)),
-                    ))),
+                    ReadEvent::EndRecord => {
+                        let mut strat = IntervalStrategy::default_interval();
+                        strat.delay = delay;
+                        match retries {
+                            Some(Quantity::Finite(n)) => strat.retry = Quantity::Finite(n.get()),
+                            Some(Quantity::Infinite) => strat.retry = Quantity::Infinite,
+                            _ => {}
+                        }
+                        Some(Ok(RetryStrategy::Interval(strat)))
+                    }
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
                         ExpectedEvent::EndOfRecord,
@@ -282,10 +289,16 @@ impl Recognizer for RetryStrategyRecognizer {
                         }
                         ow => Some(Err(ReadError::UnexpectedField(Text::new(ow)))),
                     },
-                    ReadEvent::EndRecord => Some(Ok(RetryStrategy::exponential(
-                        max_interval.unwrap_or(DEFAULT_EXPONENTIAL_MAX_INTERVAL),
-                        max_backoff.unwrap_or(Quantity::Finite(DEFAULT_EXPONENTIAL_MAX_BACKOFF)),
-                    ))),
+                    ReadEvent::EndRecord => {
+                        let mut strat = ExponentialStrategy::default();
+                        if let Some(interval) = max_interval {
+                            strat.max_interval = interval
+                        };
+                        if let Some(backoff) = max_backoff {
+                            strat.max_backoff = backoff
+                        };
+                        Some(Ok(RetryStrategy::Exponential(strat)))
+                    }
                     ow => Some(Err(ow.kind_error(ExpectedEvent::Or(vec![
                         ExpectedEvent::ValueEvent(ValueKind::Text),
                         ExpectedEvent::EndOfRecord,

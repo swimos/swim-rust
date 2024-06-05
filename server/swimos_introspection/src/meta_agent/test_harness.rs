@@ -28,7 +28,7 @@ use swimos_api::{
 };
 use swimos_runtime::agent::UplinkReporterRegistration;
 use swimos_utilities::{
-    future::retryable::RetryStrategy,
+    future::RetryStrategy,
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
     routing::RouteUri,

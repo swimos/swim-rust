@@ -38,7 +38,7 @@ use swimos_api::{
     http::{Header, StandardHeaderName, StatusCode, Version},
 };
 use swimos_model::Text;
-use swimos_utilities::future::retryable::RetryStrategy;
+use swimos_utilities::future::RetryStrategy;
 use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::routing::RouteUri;
 use tokio::io::AsyncWriteExt;

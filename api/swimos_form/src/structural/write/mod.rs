@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use swimos_model::{Attr, Blob, Item, Text, Value};
 use swimos_model::{BigInt, BigUint};
-use swimos_utilities::future::retryable::strategy::Quantity;
+use swimos_utilities::future::Quantity;
 
 #[doc(hidden)]
 pub use swimos_form_derive::StructuralWritable;

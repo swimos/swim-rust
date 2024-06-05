@@ -32,7 +32,7 @@ use swimos_net::SchemeHostPort;
 use swimos_utilities::{
     encoding::BytesStr,
     errors::Recoverable,
-    future::{retryable::RetryStrategy, UnionFuture4},
+    future::{RetryStrategy, UnionFuture4},
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
 };
 use tokio::{

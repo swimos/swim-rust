@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //! # File System Utilities
-//! 
+//!
 //! Utility types and functions for interacting with the local filesystem.
 
 mod fs;

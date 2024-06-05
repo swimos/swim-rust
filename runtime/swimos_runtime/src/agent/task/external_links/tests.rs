@@ -42,7 +42,7 @@ use swimos_recon::print_recon_compact;
 use swimos_utilities::{
     encoding::BytesStr,
     errors::Recoverable,
-    future::retryable::{Quantity, RetryStrategy},
+    future::{Quantity, RetryStrategy},
     io::byte_channel::{self, ByteReader, ByteWriter},
     non_zero_usize, trigger,
 };

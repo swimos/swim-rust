@@ -39,7 +39,7 @@ use swimos_model::Text;
 use swimos_recon::{parser::parse_recognize, print_recon_compact};
 use swimos_utilities::{
     encoding::BytesStr,
-    future::retryable::RetryStrategy,
+    future::RetryStrategy,
     io::byte_channel::{ByteReader, ByteWriter},
     non_zero_usize,
     trigger::promise,
