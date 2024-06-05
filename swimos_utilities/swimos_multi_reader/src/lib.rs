@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # Stream Aggregator
+//! 
+//! Provides an aggregator that combines a collection of [futures::Stream]s of the same type
+//! into a single [futures::Stream].
+//! 
+//! Additional streams can be added after initial construction.
+
 mod reader;
 
 pub use reader::MultiReader;
