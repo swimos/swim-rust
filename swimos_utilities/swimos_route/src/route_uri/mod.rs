@@ -104,6 +104,7 @@ impl RouteUri {
     }
 }
 
+/// Error type that is produced by an attempt to parse an invalid [`RouteUri`] from a string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvalidRouteUri(String);
 
