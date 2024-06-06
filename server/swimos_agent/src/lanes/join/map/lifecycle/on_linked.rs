@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_api::handlers::{FnHandler, NoHandler};
 use swimos_model::address::Address;
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,

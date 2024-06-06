@@ -14,8 +14,8 @@
 
 use std::borrow::Borrow;
 
-use swimos_api::handlers::{BorrowHandler, NoHandler};
 use swimos_model::address::Address;
+use swimos_utilities::handlers::{BorrowHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,

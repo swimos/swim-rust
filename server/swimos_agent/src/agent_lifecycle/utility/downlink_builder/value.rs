@@ -14,9 +14,9 @@
 
 use std::{borrow::Borrow, marker::PhantomData};
 
-use swimos_api::handlers::{BorrowHandler, FnHandler};
 use swimos_form::Form;
 use swimos_model::{address::Address, Text};
+use swimos_utilities::handlers::{BorrowHandler, FnHandler};
 
 use crate::{
     agent_model::downlink::{hosted::ValueDownlinkHandle, OpenValueDownlinkAction},

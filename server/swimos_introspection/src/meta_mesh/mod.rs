@@ -22,14 +22,11 @@ use futures::{FutureExt, SinkExt, StreamExt, TryFutureExt};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
+use swimos_agent_protocol::encoding::lane::{MapLaneResponseEncoder, RawValueLaneRequestDecoder};
+use swimos_agent_protocol::{LaneRequest, LaneResponse, MapOperation};
 use swimos_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
 use swimos_api::error::{AgentTaskError, FrameIoError};
 use swimos_api::lane::WarpLaneKind;
-use swimos_api::protocol::agent::{
-    LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder,
-};
-use swimos_api::protocol::map::{MapOperation, MapOperationEncoder};
-use swimos_api::protocol::WithLengthBytesCodec;
 use swimos_form::structural::read::event::ReadEvent;
 use swimos_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
 use swimos_form::structural::read::ReadError;
@@ -219,18 +216,12 @@ async fn run_task(
     let (nodes_tx, nodes_rx) = nodes_io;
     let (nodes_count_tx, nodes_count_rx) = nodes_count_io;
 
-    let nodes_input = FramedRead::new(nodes_rx, LaneRequestDecoder::new(WithLengthBytesCodec));
-    let mut nodes_output =
-        FramedWrite::new(nodes_tx, LaneResponseEncoder::new(MapOperationEncoder));
+    let nodes_input = FramedRead::new(nodes_rx, RawValueLaneRequestDecoder::default());
+    let mut nodes_output = FramedWrite::new(nodes_tx, MapLaneResponseEncoder::default());
 
-    let nodes_count_input = FramedRead::new(
-        nodes_count_rx,
-        LaneRequestDecoder::new(WithLengthBytesCodec),
-    );
-    let mut nodes_count_output = FramedWrite::new(
-        nodes_count_tx,
-        LaneResponseEncoder::new(MapOperationEncoder),
-    );
+    let nodes_count_input = FramedRead::new(nodes_count_rx, RawValueLaneRequestDecoder::default());
+    let mut nodes_count_output =
+        FramedWrite::new(nodes_count_tx, MapLaneResponseEncoder::default());
 
     let mut request_stream = select(
         nodes_input.map(Either::Left),

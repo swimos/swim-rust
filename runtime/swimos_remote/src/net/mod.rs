@@ -19,7 +19,7 @@ use futures::future::BoxFuture;
 use futures::stream::BoxStream;
 use futures::Stream;
 use std::io;
-use swimos_api::net::Scheme;
+use swimos_net::Scheme;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use thiserror::Error;

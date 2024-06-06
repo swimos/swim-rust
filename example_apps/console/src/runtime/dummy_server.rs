@@ -30,10 +30,10 @@ use ratchet::{
     CloseCode, CloseReason, NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry,
     WebSocketConfig,
 };
-use swimos_api::protocol::map::MapMessage;
+use swimos_agent_protocol::MapMessage;
 use swimos_form::Form;
 use swimos_messages::warp::{peel_envelope_header_str, RawEnvelope};
-use swimos_recon::{parser::parse_value, printer::print_recon_compact};
+use swimos_recon::{parser::parse_recognize, print_recon_compact};
 use swimos_utilities::trigger;
 use thiserror::Error;
 use tokio::{
@@ -619,7 +619,7 @@ where
                                     ));
                                 }
                                 LaneMessage::Command(body) => {
-                                    if let Ok(v) = parse_value(&body, false) {
+                                    if let Ok(v) = parse_recognize(body.as_str(), false) {
                                         if let Ok(update) = L::Event::try_from_value(&v) {
                                             let event = format!(
                                                 "@event(node:\"{}\",lane:{}) {}",

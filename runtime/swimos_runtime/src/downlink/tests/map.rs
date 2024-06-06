@@ -18,13 +18,11 @@ use futures::{
 };
 use std::fmt::Debug;
 use std::future::Future;
-use swimos_api::{
-    error::{DownlinkTaskError, FrameIoError, InvalidFrame},
-    protocol::{
-        downlink::{DownlinkNotification, MapNotificationDecoder},
-        map::{MapMessage, MapOperation, MapOperationEncoder},
-    },
+use swimos_agent_protocol::{
+    encoding::downlink::MapNotificationDecoder, encoding::map::MapOperationEncoder,
+    DownlinkNotification, MapMessage, MapOperation,
 };
+use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
 use swimos_form::{structural::read::recognizer::RecognizerReadable, Form};
 use swimos_messages::protocol::{
     AgentMessageDecoder, MessageDecodeError, Operation, Path, RequestMessage, ResponseMessage,

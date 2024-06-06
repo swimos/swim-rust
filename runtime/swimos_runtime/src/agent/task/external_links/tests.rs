@@ -28,14 +28,11 @@ use futures::{
     Future, SinkExt, Stream, StreamExt, TryStreamExt,
 };
 use rand::Rng;
+use swimos_agent_protocol::encoding::ad_hoc::AdHocCommandEncoder;
+use swimos_agent_protocol::AdHocCommand;
 use swimos_api::{
     downlink::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError},
-    net::SchemeHostPort,
-    protocol::{
-        agent::{AdHocCommand, AdHocCommandEncoder},
-        WithLenReconEncoder,
-    },
 };
 use swimos_form::structural::write::StructuralWritable;
 use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
@@ -43,7 +40,8 @@ use swimos_model::{
     address::{Address, RelativeAddress},
     BytesStr,
 };
-use swimos_recon::printer::print_recon_compact;
+use swimos_net::SchemeHostPort;
+use swimos_recon::print_recon_compact;
 use swimos_utilities::{
     errors::Recoverable,
     future::retryable::{Quantity, RetryStrategy},
@@ -171,7 +169,7 @@ async fn replace_channel() {
     }
 }
 
-type CommandSender = FramedWrite<ByteWriter, AdHocCommandEncoder<WithLenReconEncoder>>;
+type CommandSender = FramedWrite<ByteWriter, AdHocCommandEncoder>;
 
 const ADDRS: &[(Option<&str>, &str, &str)] = &[
     (Some("ws://localhost:8080"), "/node", "lane"),

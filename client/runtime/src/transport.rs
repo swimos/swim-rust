@@ -24,7 +24,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swimos_api::net::{Scheme, SchemeHostPort};
+use swimos_net::{Scheme, SchemeHostPort};
 use swimos_remote::net::ClientConnections;
 use swimos_remote::ws::WebsocketClient;
 use swimos_remote::{AttachClient, RemoteTask};

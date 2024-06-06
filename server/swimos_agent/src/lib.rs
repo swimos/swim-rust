@@ -31,8 +31,8 @@ mod test_context;
 pub use agent_model::AgentSpec;
 
 pub mod model {
+    pub use swimos_agent_protocol::{MapMessage, MapOperation};
     pub use swimos_api::agent::HttpLaneRequest;
-    pub use swimos_api::protocol::map::{MapMessage, MapOperation};
     pub use swimos_model::Text;
 }
 

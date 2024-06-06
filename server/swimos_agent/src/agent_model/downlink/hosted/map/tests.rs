@@ -32,9 +32,12 @@ use futures::{
     Sink, SinkExt, Stream, StreamExt,
 };
 use parking_lot::Mutex;
-use swimos_api::protocol::{
-    downlink::{DownlinkNotification, DownlinkNotificationEncoder},
-    map::{MapMessage, MapMessageEncoder, MapOperation, MapOperationDecoder, MapOperationEncoder},
+use swimos_agent_protocol::{
+    encoding::{
+        downlink::DownlinkNotificationEncoder,
+        map::{MapMessageEncoder, MapOperationDecoder},
+    },
+    DownlinkNotification, MapMessage, MapOperation,
 };
 use swimos_model::{address::Address, Text};
 use swimos_utilities::{
@@ -235,11 +238,9 @@ type State = RefCell<MapDlState<i32, Text>>;
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
-type MsgEncoder = MapMessageEncoder<MapOperationEncoder>;
-
 struct Writer {
     sender: FramedWrite<ByteWriter, DownlinkNotificationEncoder>,
-    encoder: MsgEncoder,
+    encoder: MapMessageEncoder,
     buffer: BytesMut,
 }
 

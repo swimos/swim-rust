@@ -19,16 +19,15 @@ use futures::{FutureExt, Sink, SinkExt, StreamExt};
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
 use std::mem;
+use swimos_agent_protocol::encoding::downlink::{DownlinkOperationEncoder, MapNotificationDecoder};
+use swimos_agent_protocol::MapMessage;
+use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_api::downlink::DownlinkConfig;
 use swimos_api::error::DownlinkTaskError;
-use swimos_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, MapNotificationDecoder,
-};
-use swimos_api::protocol::map::MapMessage;
 use swimos_form::structural::write::StructuralWritable;
 use swimos_model::address::Address;
 use swimos_model::Text;
-use swimos_recon::printer::print_recon;
+use swimos_recon::print_recon;
 use swimos_utilities::future::immediate_or_join;
 use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio::select;
@@ -65,7 +64,7 @@ where
         config,
         input,
         lifecycle,
-        FramedWrite::new(output, DownlinkOperationEncoder),
+        FramedWrite::new(output, DownlinkOperationEncoder::default()),
         actions,
         MapNotificationDecoder::default(),
     )

@@ -15,7 +15,7 @@ json = ["agent", "swimos_agent/json"]
 swimos_utilities = { path = "../swimos_utilities", features = ["io", "text"] }
 swimos_api = { path = "../api/swimos_api" }
 swimos_model = { path = "../api/swimos_model" }
-swimos_recon = { path = "../api/formats/swimos_recon", features = ["async_parser"] }
+swimos_recon = { path = "../api/formats/swimos_recon" }
 swimos_server_app = { path = "../server/swimos_server_app", optional = true }
 swimos_agent = { path = "../server/swimos_agent", optional = true }
 swimos_agent_derive = { path = "../server/swimos_agent_derive", optional = true }

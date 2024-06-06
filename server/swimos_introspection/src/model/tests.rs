@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_api::meta::lane::LaneKind;
+use swimos_api::lane::LaneKind;
 use swimos_model::Text;
 use swimos_runtime::agent::reporting::{UplinkReporter, UplinkSnapshot};
 

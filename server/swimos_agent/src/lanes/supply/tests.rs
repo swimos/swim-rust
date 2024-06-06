@@ -15,13 +15,12 @@
 use std::collections::HashMap;
 
 use bytes::BytesMut;
+use swimos_agent_protocol::LaneResponse;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::agent::{LaneResponse, ValueLaneResponseDecoder},
-};
+use swimos_agent_protocol::encoding::lane::RawValueLaneResponseDecoder;
+use swimos_api::agent::AgentConfig;
 use swimos_utilities::routing::route_uri::RouteUri;
 
 use crate::lanes::supply::{Supply, SupplyLaneSync};
@@ -145,7 +144,7 @@ fn supply_lane_sync_handler() {
 }
 
 fn read_buffer(buffer: &mut BytesMut) -> Vec<LaneResponse<i32>> {
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
     let mut results = vec![];
     while !buffer.is_empty() {
         let mut r = decoder.decode(buffer).expect("Decode failed.");

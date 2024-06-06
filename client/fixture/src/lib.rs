@@ -13,11 +13,11 @@ use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::ops::DerefMut;
 use std::sync::Arc;
-use swimos_api::net::Scheme;
 use swimos_form::Form;
 use swimos_model::{Text, Value};
-use swimos_recon::parser::{parse_recognize, Span};
-use swimos_recon::printer::print_recon;
+use swimos_net::Scheme;
+use swimos_recon::parser::parse_recognize;
+use swimos_recon::print_recon;
 use swimos_remote::net::dns::{BoxDnsResolver, DnsResolver};
 use swimos_remote::net::{
     ClientConnections, ConnResult, ConnectionError, IoResult, Listener, ListenerError,
@@ -286,7 +286,7 @@ impl Lane {
         let read = String::from_utf8(buf.to_vec()).unwrap();
         buf.clear();
 
-        parse_recognize::<Envelope>(Span::new(&read), false).unwrap()
+        parse_recognize::<Envelope>(read.as_str(), false).unwrap()
     }
 
     pub async fn write(&mut self, env: Envelope) {

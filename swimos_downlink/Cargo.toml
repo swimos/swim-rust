@@ -14,11 +14,12 @@ bytes = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
 swimos_api = { path = "../api/swimos_api" }
+swimos_agent_protocol = { path = "../api/swimos_agent_protocol" }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
 either = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-swimos_recon = { path = "../api/formats/swimos_recon", features = ["async_parser"] }
+swimos_recon = { path = "../api/formats/swimos_recon" }
 tokio = { workspace = true, features = ["rt", "macros"] }

@@ -20,19 +20,15 @@ use std::{
 
 use bytes::{BufMut, BytesMut};
 use futures::{stream::FuturesUnordered, Future, StreamExt};
-use swimos_api::{
-    error::{AgentRuntimeError, DownlinkRuntimeError},
-    net::SchemeHostPort,
-    protocol::{
-        agent::{AdHocCommand, AdHocCommandDecoder},
-        WithLengthBytesCodec,
-    },
-};
+use swimos_agent_protocol::encoding::ad_hoc::RawAdHocCommandDecoder;
+use swimos_agent_protocol::AdHocCommand;
+use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError};
 use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
 use swimos_model::{
     address::{Address, RelativeAddress},
     BytesStr, Text,
 };
+use swimos_net::SchemeHostPort;
 use swimos_utilities::{
     errors::Recoverable,
     future::{retryable::RetryStrategy, UnionFuture4},
@@ -272,7 +268,7 @@ impl AdHocOutput {
     }
 }
 
-type AdHocReader = FramedRead<ByteReader, AdHocCommandDecoder<BytesStr, WithLengthBytesCodec>>;
+type AdHocReader = FramedRead<ByteReader, RawAdHocCommandDecoder<BytesStr>>;
 
 #[derive(Debug)]
 enum LinksTaskEvent {

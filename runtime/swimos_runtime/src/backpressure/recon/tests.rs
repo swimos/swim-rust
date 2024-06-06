@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::backpressure::{RawMapOperation, RawMapOperationMut};
+
 use super::MapOperationReconEncoder;
 use bytes::{Bytes, BytesMut};
-use swimos_api::protocol::map::{MapOperation, RawMapOperation, RawMapOperationMut};
+use swimos_agent_protocol::MapOperation;
 use tokio_util::codec::Encoder;
 
 #[test]

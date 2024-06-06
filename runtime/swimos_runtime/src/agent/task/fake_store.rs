@@ -25,7 +25,7 @@ use swimos_api::{
 };
 use swimos_form::structural::write::StructuralWritable;
 use swimos_model::Text;
-use swimos_recon::printer::print_recon_compact;
+use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
 
 #[derive(Debug, Default)]

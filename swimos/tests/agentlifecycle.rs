@@ -60,7 +60,7 @@ use swimos_model::http::{
     Header, HttpRequest, HttpResponse, Method, StandardHeaderName, StatusCode, Version,
 };
 use swimos_model::Text;
-use swimos_recon::printer::print_recon_compact;
+use swimos_recon::print_recon_compact;
 use swimos_utilities::routing::route_uri::RouteUri;
 
 use futures::future::BoxFuture;
