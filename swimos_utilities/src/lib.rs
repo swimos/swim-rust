@@ -18,10 +18,10 @@
 
 #![allow(clippy::match_wild_err_arm)]
 
-/// Wrappers around closure types to server as event handlers.
+/// Wrappers around closure types to server as event handlers
 pub mod handlers;
 
-/// Provides a canonical uninhabited type [`never::Never`].
+/// Provides a canonical uninhabited type [`never::Never`]
 pub mod never;
 
 #[cfg(feature = "algebra")]

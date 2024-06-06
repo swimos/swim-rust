@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! # Utilities for building Tokio encoders and decoders.
+//! # Utilities for building Tokio encoders and decoders
 //!
 //! Provides types and functions to use to implement [`tokio_util::codec::Encoder`]s and
 //! [`tokio_util::codec::Decoder`]s.
