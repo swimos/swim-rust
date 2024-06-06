@@ -239,5 +239,5 @@ async fn remove_remote() {
         .expect("Timed out.")
         .expect("Reason promised dropped.");
 
-    assert_eq!(*result, DisconnectionReason::RemoteTimedOut);
+    assert_eq!(result, DisconnectionReason::RemoteTimedOut);
 }

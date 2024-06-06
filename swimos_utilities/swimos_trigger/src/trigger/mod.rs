@@ -34,6 +34,7 @@ struct TriggerInner {
     waiters: Mutex<Slab<Waker>>,
 }
 
+/// The sending party of a trigger.
 #[derive(Debug)]
 pub struct Sender {
     inner: Option<Weak<TriggerInner>>,
@@ -41,6 +42,7 @@ pub struct Sender {
 
 impl Error for TriggerError {}
 
+/// A receiving party of a trigger.
 #[derive(Clone, Debug)]
 pub struct Receiver {
     inner: Arc<TriggerInner>,
@@ -48,7 +50,7 @@ pub struct Receiver {
 }
 
 impl Receiver {
-    /// Determine if two triggers are the same.
+    /// Determine if two [`Receiver`]s are connected to the same [`Sender`].
     pub fn same_receiver(this: &Self, other: &Self) -> bool {
         Arc::ptr_eq(&this.inner, &other.inner)
     }
@@ -99,6 +101,7 @@ impl Drop for Sender {
     }
 }
 
+/// An error generated if the [`Sender`] was dropped before it was triggered.
 #[derive(Debug, PartialEq, Eq)]
 pub struct TriggerError;
 
@@ -139,6 +142,7 @@ impl Future for Receiver {
 }
 
 impl Receiver {
+    /// Check if the [`Sender`] has been dropped (regardless of whether it has been triggered).
     pub fn check_state(&self) -> Option<Result<(), TriggerError>> {
         let Receiver { inner, .. } = self;
         let flag = inner.flag.load(Ordering::Acquire);

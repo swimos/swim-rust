@@ -600,10 +600,7 @@ impl RemoteReceiver {
         if !lanes.is_empty() {
             panic!("Some lanes were not unlinked: {:?}", lanes);
         }
-        let reason = completion_rx
-            .await
-            .map(|arc| *arc)
-            .unwrap_or(DisconnectionReason::Failed);
+        let reason = completion_rx.await.unwrap_or(DisconnectionReason::Failed);
 
         assert_eq!(
             reason,

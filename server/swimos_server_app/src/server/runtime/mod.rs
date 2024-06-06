@@ -1037,7 +1037,7 @@ async fn attach_agent(
         Ok(true) => {
             if provider.send(Ok((in_tx, out_rx))).is_ok() {
                 if let Ok(reason) = disconnect_rx.await {
-                    *reason
+                    reason
                 } else {
                     DisconnectionReason::Failed
                 }
@@ -1077,7 +1077,7 @@ async fn attach_link_remote(
                 info!("Downlink request dropped before satisfied.");
                 DisconnectionReason::Failed
             } else if let Ok(reason) = disconnect_rx.await {
-                *reason
+                reason
             } else {
                 DisconnectionReason::Failed
             }
