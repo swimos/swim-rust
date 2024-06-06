@@ -1,17 +1,8 @@
-trigger: ["main", "byte-routing"]
-pr: ["main", "byte-routing"]
-
-schedules:
-  - cron: "0 0 * * *"
-    displayName: Nightly code coverage run
-    branches:
-      include:
-        - main
-        - byte-routing
-
+trigger: [ "main" ]
+pr: [ "main" ]
 
 variables:
-    RUSTFLAGS: -Dwarnings
+  RUSTFLAGS: -Dwarnings
 
 jobs:
   - job: Code_coverage
