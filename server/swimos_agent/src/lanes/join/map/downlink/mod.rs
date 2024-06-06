@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::{collections::HashSet, hash::Hash};
-use swimos_api::protocol::map::MapMessage;
+use swimos_agent_protocol::MapMessage;
 use swimos_model::{address::Address, Text};
 
 use crate::{

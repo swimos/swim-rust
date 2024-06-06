@@ -14,8 +14,9 @@
 
 use std::num::NonZeroUsize;
 
+use swimos_agent_protocol::DownlinkNotification;
+use swimos_api::downlink::DownlinkConfig;
 use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
-use swimos_api::{downlink::DownlinkConfig, protocol::downlink::DownlinkNotification};
 
 use swimos_utilities::non_zero_usize;
 use tokio::sync::mpsc;

@@ -21,16 +21,17 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{info_span, trace, Instrument};
 
+use swimos_agent_protocol::encoding::downlink::{
+    DownlinkOperationEncoder, ValueNotificationDecoder,
+};
+use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_api::downlink::DownlinkConfig;
 use swimos_api::error::DownlinkTaskError;
-use swimos_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
-};
 use swimos_form::structural::write::StructuralWritable;
 use swimos_form::Form;
 use swimos_model::address::Address;
 use swimos_model::Text;
-use swimos_recon::printer::print_recon;
+use swimos_recon::print_recon;
 use swimos_utilities::future::{immediate_or_join, race};
 use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 
@@ -64,7 +65,7 @@ where
         input,
         lifecycle,
         handle,
-        FramedWrite::new(output, DownlinkOperationEncoder),
+        FramedWrite::new(output, DownlinkOperationEncoder::default()),
     )
     .instrument(info_span!("Downlink io task.", %path))
     .await

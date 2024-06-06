@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use swimos_api::handlers::{FnHandler, NoHandler};
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,

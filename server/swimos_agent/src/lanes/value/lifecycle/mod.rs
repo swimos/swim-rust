@@ -14,7 +14,7 @@
 
 use std::{borrow::Borrow, marker::PhantomData};
 
-use swimos_api::handlers::{BorrowHandler, NoHandler};
+use swimos_utilities::handlers::{BorrowHandler, NoHandler};
 
 use crate::agent_lifecycle::utility::HandlerContext;
 

@@ -26,16 +26,15 @@ use futures::{
     StreamExt,
 };
 use futures::{Future, FutureExt};
+use swimos_agent_protocol::encoding::store::{RawMapStoreInitDecoder, RawValueStoreInitDecoder};
+use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::agent::{HttpLaneRequest, HttpLaneResponse, LaneConfig};
 use swimos_api::downlink::DownlinkKind;
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
-use swimos_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
-use swimos_api::protocol::WithLengthBytesCodec;
 pub use swimos_api::store::StoreKind;
 use swimos_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::{AgentInitError, AgentTaskError, FrameIoError},
-    protocol::{agent::LaneRequest, map::MapMessage},
 };
 use swimos_model::address::Address;
 use swimos_model::http::{Header, StandardHeaderName, StatusCode, Version};
@@ -819,8 +818,13 @@ where
         if lane_conf.transient {
             lane_io.insert((Text::new(name), kind), io);
         } else if let Some(init) = item_model.init_value_like_item(name) {
-            let init_task =
-                run_item_initializer(ItemKind::Lane(kind), name, io, WithLengthBytesCodec, init);
+            let init_task = run_item_initializer(
+                ItemKind::Lane(kind),
+                name,
+                io,
+                RawValueStoreInitDecoder::default(),
+                init,
+            );
             item_init_tasks.push(init_task.boxed());
         } else {
             lane_io.insert((Text::new(name), kind), io);
@@ -838,7 +842,7 @@ where
                 ItemKind::Store(StoreKind::Value),
                 name,
                 io,
-                WithLengthBytesCodec,
+                RawValueStoreInitDecoder::default(),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -865,7 +869,7 @@ where
                 ItemKind::Lane(kind),
                 name,
                 io,
-                MapMessageDecoder::new(RawMapOperationDecoder),
+                RawMapStoreInitDecoder::default(),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -885,7 +889,7 @@ where
                 ItemKind::Store(StoreKind::Map),
                 name,
                 io,
-                MapMessageDecoder::new(RawMapOperationDecoder),
+                RawMapStoreInitDecoder::default(),
                 init,
             );
             item_init_tasks.push(init_task.boxed());

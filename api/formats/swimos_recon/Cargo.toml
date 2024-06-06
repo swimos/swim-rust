@@ -6,21 +6,21 @@ edition = "2021"
 
 [features]
 default = []
-async_parser = ["futures", "tokio", "tokio-util", "bytes"]
 
 [dependencies]
 base64 = { workspace = true }
 either = { workspace = true }
 swimos_form = { path = "../../swimos_form" }
 swimos_model = { path = "../../swimos_model" }
+swimos_utilities = { path = "../../../swimos_utilities", features = ["encoding"] }
 nom = { workspace = true }
 nom_locate = { workspace = true }
 num-traits = { workspace = true }
 ryu = "1.0"
-futures = { workspace = true, optional = true }
-tokio = { workspace = true, features = ["io-util"], optional = true }
-tokio-util = { workspace = true, optional = true, features = ["codec"] }
-bytes = { workspace = true, optional = true }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["io-util"] }
+tokio-util = { workspace = true, features = ["codec"] }
+bytes = { workspace = true }
 smallvec = { workspace = true }
 thiserror = { workspace = true }
 

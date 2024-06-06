@@ -14,11 +14,11 @@
 
 use std::{collections::BTreeMap, fmt::Debug};
 
-use swimos_api::protocol::map::{extract_header_str, MapMessage};
+use swimos_agent_protocol::{peeling::extract_header_str, MapMessage};
 use swimos_model::Value;
 use swimos_recon::{
-    parser::{parse_value, MessageExtractError, ParseError},
-    printer::print_recon,
+    parser::{parse_recognize, MessageExtractError, ParseError},
+    print_recon,
 };
 
 #[derive(Debug)]
@@ -92,12 +92,12 @@ impl LinkState for MapLink {
     fn update(&mut self, data: &str) -> Result<(), LinkStateError> {
         match extract_header_str(data)? {
             MapMessage::Update { key, value } => {
-                let k = parse_value(key, false)?;
-                let v = parse_value(value, false)?;
+                let k = parse_recognize(key, false)?;
+                let v = parse_recognize(value, false)?;
                 self.state.insert(k, v);
             }
             MapMessage::Remove { key } => {
-                let k = parse_value(key, false)?;
+                let k = parse_recognize(key, false)?;
                 self.state.remove(&k);
             }
             MapMessage::Clear => {

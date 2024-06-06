@@ -16,9 +16,9 @@ use std::borrow::Borrow;
 
 use std::hash::Hash;
 use std::marker::PhantomData;
-use swimos_api::handlers::{BorrowHandler, FnHandler};
 use swimos_form::Form;
 use swimos_model::{address::Address, Text};
+use swimos_utilities::handlers::{BorrowHandler, FnHandler};
 
 use crate::downlink_lifecycle::map::on_synced::{OnMapSynced, OnMapSyncedShared};
 use crate::downlink_lifecycle::map::{StatefulMapLifecycle, StatelessMapLifecycle};

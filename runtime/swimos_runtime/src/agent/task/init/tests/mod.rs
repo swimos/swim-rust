@@ -18,17 +18,14 @@ use futures::{
     future::{join, join3, BoxFuture},
     FutureExt, SinkExt, StreamExt, TryFutureExt,
 };
+use swimos_agent_protocol::encoding::lane::{
+    RawValueLaneRequestDecoder, RawValueLaneRequestEncoder, RawValueLaneResponseEncoder,
+};
+use swimos_agent_protocol::{LaneRequest, LaneResponse};
 use swimos_api::{
     agent::{LaneConfig, UplinkKind},
     error::StoreError,
-    lane::WarpLaneKind,
-    meta::lane::LaneKind,
-    protocol::{
-        agent::{
-            LaneRequest, LaneRequestDecoder, LaneRequestEncoder, LaneResponse, LaneResponseEncoder,
-        },
-        WithLengthBytesCodec,
-    },
+    lane::{LaneKind, WarpLaneKind},
     store::StoreDisabled,
 };
 use swimos_model::Text;
@@ -152,8 +149,7 @@ impl<'a> Initializer<'a> for DummyInit {
             if let Some(err) = self.error {
                 Err(err)
             } else {
-                let mut framed =
-                    FramedWrite::new(writer, LaneRequestEncoder::new(WithLengthBytesCodec));
+                let mut framed = FramedWrite::new(writer, RawValueLaneRequestEncoder::default());
                 framed.send(LaneRequest::<&[u8]>::InitComplete).await?;
                 Ok(())
             }
@@ -182,10 +178,8 @@ async fn run_initializer_success() {
         );
 
         let test_task = async {
-            let mut framed_read =
-                FramedRead::new(rx_in, LaneRequestDecoder::new(WithLengthBytesCodec));
-            let mut framed_write =
-                FramedWrite::new(tx_out, LaneResponseEncoder::new(WithLengthBytesCodec));
+            let mut framed_read = FramedRead::new(rx_in, RawValueLaneRequestDecoder::default());
+            let mut framed_write = FramedWrite::new(tx_out, RawValueLaneResponseEncoder::default());
 
             assert!(matches!(
                 framed_read.next().await,
@@ -250,10 +244,8 @@ async fn run_initializer_bad_response() {
         );
 
         let test_task = async {
-            let mut framed_read =
-                FramedRead::new(rx_in, LaneRequestDecoder::new(WithLengthBytesCodec));
-            let mut framed_write =
-                FramedWrite::new(tx_out, LaneResponseEncoder::new(WithLengthBytesCodec));
+            let mut framed_read = FramedRead::new(rx_in, RawValueLaneRequestDecoder::default());
+            let mut framed_write = FramedWrite::new(tx_out, RawValueLaneResponseEncoder::default());
 
             assert!(matches!(
                 framed_read.next().await,
@@ -291,8 +283,7 @@ async fn run_initializer_timeout() {
         );
 
         let test_task = async {
-            let mut framed_read =
-                FramedRead::new(rx_in, LaneRequestDecoder::new(WithLengthBytesCodec));
+            let mut framed_read = FramedRead::new(rx_in, RawValueLaneRequestDecoder::default());
 
             assert!(matches!(
                 framed_read.next().await,

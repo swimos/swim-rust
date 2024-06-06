@@ -52,6 +52,9 @@ fn feed<T, E: Into<MsgPackReadError>>(maybe: Option<Result<T, E>>) -> Result<(),
 }
 
 /// Attempt to read a [`StructuralReadable`] type from MessagePack data in a buffer.
+///
+/// # Arguments
+/// * `input` - The buffer containing the MessagePack data.
 pub fn read_from_msg_pack<T: StructuralReadable, R: Buf>(
     input: &mut R,
 ) -> Result<T, MsgPackReadError> {
@@ -179,9 +182,11 @@ where
     })
 }
 
+/// Reading MessagePack data can fail if the bytes do not constitute valid MessagePack or the buffer contains
+/// an incomplete record.
 #[derive(Debug, PartialEq)]
 pub enum MsgPackReadError {
-    /// The parsed strucuture was not valid for the target type.
+    /// The parsed structure was not valid for the target type.
     Structure(ReadError),
     /// The MessagePack data contained invalid UTF8 in a string.
     StringDecode(Utf8Error),

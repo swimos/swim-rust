@@ -14,8 +14,8 @@
 
 use std::{hash::Hash, marker::PhantomData};
 
-use swimos_api::handlers::{FnHandler, NoHandler};
 use swimos_form::Form;
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
     event_handler::{ActionContext, BoxJoinLaneInit},

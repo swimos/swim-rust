@@ -27,18 +27,16 @@ use futures::{
     Future, FutureExt, SinkExt, StreamExt,
 };
 use parking_lot::Mutex;
-use swimos_api::{
-    downlink::DownlinkKind,
-    error::DownlinkRuntimeError,
-    net::SchemeHostPort,
-    protocol::downlink::{
-        DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
-    },
+use swimos_agent_protocol::encoding::downlink::{
+    DownlinkOperationEncoder, ValueNotificationDecoder,
 };
+use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
+use swimos_api::{downlink::DownlinkKind, error::DownlinkRuntimeError};
 use swimos_messages::protocol::{
     Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder,
 };
 use swimos_model::{address::RelativeAddress, Text};
+use swimos_net::SchemeHostPort;
 use swimos_remote::net::dns::{DnsFut, DnsResolver};
 use swimos_remote::{AttachClient, LinkError};
 use swimos_runtime::{
@@ -489,7 +487,7 @@ async fn verify_link_value_dl(id: Uuid, downlink: Io, socket: Io, node: &str) ->
     let mut sock_writer = FramedWrite::new(socket_tx, ResponseMessageEncoder);
     let mut sock_reader = FramedRead::new(socket_rx, RawRequestMessageDecoder);
 
-    let mut dl_writer = FramedWrite::new(&mut dl_tx, DownlinkOperationEncoder);
+    let mut dl_writer = FramedWrite::new(&mut dl_tx, DownlinkOperationEncoder::default());
     let mut dl_reader = FramedRead::new(&mut dl_rx, ValueNotificationDecoder::<i32>::default());
 
     let env = sock_reader

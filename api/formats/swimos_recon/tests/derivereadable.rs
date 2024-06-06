@@ -16,11 +16,10 @@ use std::sync::Arc;
 use swimos_form::structural::read::StructuralReadable;
 use swimos_form::structural::Tag;
 use swimos_model::Value;
-use swimos_recon::parser::{parse_recognize, Span};
+use swimos_recon::parser::parse_recognize;
 
 fn run_recognizer<T: StructuralReadable>(rep: &str) -> T {
-    let span = Span::new(rep);
-    parse_recognize(span, false).unwrap()
+    parse_recognize(rep, false).unwrap()
 }
 
 #[test]
@@ -592,8 +591,7 @@ fn derive_empty_enum() {
     #[derive(StructuralReadable, PartialEq, Eq, Debug)]
     enum Empty {}
 
-    let span = Span::new("");
-    assert!(parse_recognize::<Empty>(span, false).is_err());
+    assert!(parse_recognize::<Empty>("", false).is_err());
 }
 
 #[test]

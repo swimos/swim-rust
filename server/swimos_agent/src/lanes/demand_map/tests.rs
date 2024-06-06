@@ -15,13 +15,8 @@
 use std::collections::{HashMap, HashSet};
 
 use bytes::BytesMut;
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::{
-        agent::{LaneResponse, LaneResponseDecoder},
-        map::{MapOperation, MapOperationDecoder},
-    },
-};
+use swimos_agent_protocol::{encoding::lane::MapLaneResponseDecoder, LaneResponse, MapOperation};
+use swimos_api::agent::AgentConfig;
 use swimos_utilities::routing::route_uri::RouteUri;
 use tokio_util::codec::Decoder;
 
@@ -127,7 +122,7 @@ where
         }
     }
 
-    let mut decoder = LaneResponseDecoder::new(MapOperationDecoder::<i32, i32>::default());
+    let mut decoder = MapLaneResponseDecoder::<i32, i32>::default();
     let mut responses = vec![];
     loop {
         if let Some(response) = decoder.decode(&mut buffer).expect("Decode failed.") {

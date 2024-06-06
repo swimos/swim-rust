@@ -20,7 +20,7 @@ use std::{
     time::Duration,
 };
 
-use swimos_api::meta::uplink::WarpUplinkPulse;
+use swimos_meta::WarpUplinkPulse;
 
 #[cfg(test)]
 mod tests;

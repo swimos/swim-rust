@@ -15,9 +15,5 @@
 pub mod agent;
 pub mod downlink;
 pub mod error;
-pub mod handlers;
 pub mod lane;
-pub mod meta;
-pub mod net;
-pub mod protocol;
 pub mod store;

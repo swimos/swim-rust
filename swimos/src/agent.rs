@@ -224,8 +224,7 @@ pub mod agent_model {
         MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer, ValueStoreInitializer,
         WriteResult,
     };
-    pub use swimos_api::lane::WarpLaneKind;
-    pub use swimos_api::meta::lane::LaneKind;
+    pub use swimos_api::lane::{LaneKind, WarpLaneKind};
     pub use swimos_api::store::StoreKind;
 
     pub mod downlink {

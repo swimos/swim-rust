@@ -22,29 +22,21 @@ use std::{
 
 use bytes::Bytes;
 use futures::{future::Either, ready, SinkExt, Stream, StreamExt};
-use swimos_api::{
-    agent::UplinkKind,
-    error::FrameIoError,
-    protocol::{
-        agent::{
-            LaneRequest, LaneRequestDecoder, LaneResponse, MapLaneResponse, MapLaneResponseEncoder,
-            MapStoreResponseEncoder, StoreResponse, ValueLaneResponseEncoder,
-            ValueStoreResponseEncoder,
-        },
-        map::{MapMessage, MapMessageDecoder, MapOperation, MapOperationDecoder},
-        WithLenRecognizerDecoder,
+use swimos_agent_protocol::{
+    encoding::lane::{
+        MapLaneRequestDecoder, MapLaneResponseEncoder, ValueLaneRequestDecoder,
+        ValueLaneResponseEncoder,
     },
+    encoding::store::{MapStoreResponseEncoder, ValueStoreResponseEncoder},
+    LaneRequest, LaneResponse, MapLaneResponse, MapMessage, MapOperation, StoreResponse,
 };
-use swimos_form::structural::read::recognizer::primitive::I32Recognizer;
+use swimos_api::{agent::UplinkKind, error::FrameIoError};
 use swimos_messages::protocol::{
     Notification, Path, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,
     ResponseMessage,
 };
 use swimos_model::{BytesStr, Text};
-use swimos_recon::{
-    parser::{parse_recognize, Span},
-    printer::print_recon_compact,
-};
+use swimos_recon::{parser::parse_recognize, print_recon_compact};
 use swimos_utilities::{
     future::retryable::RetryStrategy,
     io::byte_channel::{ByteReader, ByteWriter},
@@ -381,17 +373,14 @@ impl MapStoreSender {
     }
 }
 
-type ValueDecoder = LaneRequestDecoder<WithLenRecognizerDecoder<I32Recognizer>>;
-type MapDecoder = LaneRequestDecoder<MapMessageDecoder<MapOperationDecoder<Text, i32>>>;
-
 enum LaneReader {
     Value {
         name: Text,
-        read: FramedRead<ByteReader, ValueDecoder>,
+        read: FramedRead<ByteReader, ValueLaneRequestDecoder<i32>>,
     },
     Map {
         name: Text,
-        read: FramedRead<ByteReader, MapDecoder>,
+        read: FramedRead<ByteReader, MapLaneRequestDecoder<Text, i32>>,
     },
 }
 
@@ -401,14 +390,11 @@ impl LaneReader {
         match kind {
             UplinkKind::Value | UplinkKind::Supply => LaneReader::Value {
                 name,
-                read: FramedRead::new(
-                    io,
-                    LaneRequestDecoder::new(WithLenRecognizerDecoder::new(I32Recognizer)),
-                ),
+                read: FramedRead::new(io, ValueLaneRequestDecoder::default()),
             },
             UplinkKind::Map => LaneReader::Map {
                 name,
-                read: FramedRead::new(io, LaneRequestDecoder::new(Default::default())),
+                read: FramedRead::new(io, MapLaneRequestDecoder::default()),
             },
         }
     }
@@ -515,7 +501,7 @@ impl RemoteReceiver {
         self.expect_envelope(lane, |envelope| {
             if let Notification::Event(body) = envelope {
                 let body_str = std::str::from_utf8(body.as_ref()).expect("Corrupted body.");
-                let message = parse_recognize::<MapMessage<Text, i32>>(Span::new(body_str), false)
+                let message = parse_recognize::<MapMessage<Text, i32>>(body_str, false)
                     .expect("Invalid map mesage.");
                 f(message)
             } else {

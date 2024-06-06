@@ -16,9 +16,8 @@ use bytes::BytesMut;
 use frunk::{prelude::HList, HCons, HList, HNil};
 use mime::Mime;
 use std::fmt::Debug;
-use swimos_api::protocol::write_recon;
 use swimos_form::Form;
-use swimos_recon::parser::parse_into;
+use swimos_recon::{parser::parse_recognize, write_recon};
 use thiserror::Error;
 
 use super::content_type::{recon, RECON_SUBTYPE};
@@ -116,7 +115,7 @@ impl<T: Form> HttpLaneCodec<T> for Recon {
             Ok(body) => body,
             Err(e) => return Err(CodecError::EncodingError(Box::new(e))),
         };
-        parse_into(body, true).map_err(|e| CodecError::EncodingError(Box::new(e)))
+        parse_recognize(body, true).map_err(|e| CodecError::EncodingError(Box::new(e)))
     }
 }
 

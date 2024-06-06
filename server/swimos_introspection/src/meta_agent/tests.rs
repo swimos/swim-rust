@@ -15,15 +15,12 @@
 use std::{num::NonZeroUsize, pin::pin, time::Duration};
 
 use futures::{future::join, Future, SinkExt, StreamExt};
-use swimos_api::{
-    meta::uplink::WarpUplinkPulse,
-    protocol::{
-        agent::{LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder},
-        WithLenRecognizerDecoder, WithLengthBytesCodec,
-    },
+use swimos_agent_protocol::{
+    encoding::lane::{RawValueLaneRequestEncoder, ValueLaneResponseDecoder},
+    LaneRequest, LaneResponse,
 };
-use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_form::Form;
+use swimos_meta::WarpUplinkPulse;
 use swimos_runtime::agent::reporting::{UplinkReporter, UplinkSnapshot};
 use swimos_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
@@ -82,7 +79,7 @@ where
 
 pub struct LaneSender {
     sync_id: Uuid,
-    writer: FramedWrite<ByteWriter, LaneRequestEncoder<WithLengthBytesCodec>>,
+    writer: FramedWrite<ByteWriter, RawValueLaneRequestEncoder>,
 }
 
 const SYNC_ID: Uuid = Uuid::from_u128(747473);
@@ -101,8 +98,7 @@ impl LaneSender {
     }
 }
 
-type RespDecoder =
-    LaneResponseDecoder<WithLenRecognizerDecoder<<PulseWithDuration as RecognizerReadable>::Rec>>;
+type RespDecoder = ValueLaneResponseDecoder<PulseWithDuration>;
 
 struct LaneReceiver {
     reader: FramedRead<ByteReader, RespDecoder>,
@@ -127,12 +123,7 @@ impl PulseWithDuration {
 impl LaneReceiver {
     fn new(reader: ByteReader) -> Self {
         LaneReceiver {
-            reader: FramedRead::new(
-                reader,
-                LaneResponseDecoder::new(WithLenRecognizerDecoder::new(
-                    PulseWithDuration::make_recognizer(),
-                )),
-            ),
+            reader: FramedRead::new(reader, ValueLaneResponseDecoder::default()),
         }
     }
 

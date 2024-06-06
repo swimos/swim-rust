@@ -22,10 +22,11 @@ use super::super::{AttachAction, DownlinkOptions, ValueDownlinkRuntime};
 use super::*;
 use futures::future::{join3, join4};
 use futures::{SinkExt, StreamExt};
-use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
-use swimos_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
+use swimos_agent_protocol::encoding::downlink::{
+    DownlinkOperationEncoder, ValueNotificationDecoder,
 };
+use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
+use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_form::Form;
 use swimos_messages::protocol::{
@@ -89,7 +90,7 @@ async fn run_fake_downlink(
     let mut state = State::Unlinked;
     let mut read = FramedRead::new(rx_in, ValueNotificationDecoder::default());
 
-    let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);
+    let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder::default());
 
     let mut current = Text::default();
 
@@ -794,7 +795,7 @@ async fn run_simple_fake_downlink(
     let mut state = State::Unlinked;
     let mut read = FramedRead::new(rx_in, ValueNotificationDecoder::default());
 
-    let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder);
+    let mut write = FramedWrite::new(tx_out, DownlinkOperationEncoder::default());
 
     while let Some(message) = read.next().await.transpose()? {
         assert!(event_tx.send(message.clone()).is_ok());

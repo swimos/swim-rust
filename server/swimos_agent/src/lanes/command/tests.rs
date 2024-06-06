@@ -15,10 +15,8 @@
 use std::collections::HashMap;
 
 use bytes::BytesMut;
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::agent::{LaneResponse, ValueLaneResponseDecoder},
-};
+use swimos_agent_protocol::{encoding::lane::RawValueLaneResponseDecoder, LaneResponse};
+use swimos_api::agent::AgentConfig;
 use swimos_utilities::routing::route_uri::RouteUri;
 use tokio_util::codec::Decoder;
 
@@ -57,7 +55,7 @@ fn write_command_to_buffer() {
 
     assert!(matches!(result, WriteResult::Done));
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
     let content = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")

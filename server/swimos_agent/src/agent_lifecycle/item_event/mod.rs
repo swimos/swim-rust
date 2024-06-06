@@ -14,7 +14,7 @@
 
 use std::fmt::Debug;
 
-use swimos_api::handlers::NoHandler;
+use swimos_utilities::handlers::NoHandler;
 
 use crate::event_handler::{EventHandler, UnitHandler};
 

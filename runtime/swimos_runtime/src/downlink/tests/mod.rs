@@ -15,9 +15,10 @@
 use std::{convert::Infallible, num::NonZeroUsize, time::Duration};
 
 use futures_util::{future::join, SinkExt, StreamExt};
-use swimos_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
+use swimos_agent_protocol::encoding::downlink::{
+    DownlinkOperationEncoder, ValueNotificationDecoder,
 };
+use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_messages::protocol::{
     Operation, Path, RawRequestMessageDecoder, RawResponseMessageEncoder, RequestMessage,
     ResponseMessage,
@@ -238,7 +239,7 @@ async fn write_task_rescinds_stop_vote() {
             .send((rx, DownlinkOptions::empty()))
             .await
             .expect("Send failed.");
-        let mut sender = FramedWrite::new(tx, DownlinkOperationEncoder);
+        let mut sender = FramedWrite::new(tx, DownlinkOperationEncoder::default());
         sender
             .send(DownlinkOperation::new("a".to_string()))
             .await

@@ -14,7 +14,7 @@
 
 use std::{borrow::Borrow, marker::PhantomData};
 
-use swimos_api::handlers::{BorrowHandler, FnHandler};
+use swimos_utilities::handlers::{BorrowHandler, FnHandler};
 
 use crate::{
     lanes::join_value::lifecycle::{
