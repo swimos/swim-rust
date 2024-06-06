@@ -23,7 +23,7 @@ use std::sync::{
 
 pub use event::{EventDownlinkHandle, HostedEventDownlinkFactory};
 pub use map::{HostedMapDownlinkFactory, MapDlState, MapDownlinkHandle};
-use swimos_utilities::io::byte_channel::ByteWriter;
+use swimos_utilities::byte_channel::ByteWriter;
 pub use value::{HostedValueDownlinkFactory, ValueDownlinkHandle};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -183,7 +183,7 @@ mod test_support {
         error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
     };
     use swimos_utilities::{
-        io::byte_channel::{ByteReader, ByteWriter},
+        byte_channel::{ByteReader, ByteWriter},
         routing::RouteUri,
     };
 

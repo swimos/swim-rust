@@ -34,9 +34,8 @@ use swimos_form::{read::RecognizerReadable, write::StructuralWritable, Form};
 use swimos_model::Text;
 use swimos_recon::WithLenReconEncoder;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
-    sync::circular_buffer,
-    trigger,
+    byte_channel::{ByteReader, ByteWriter},
+    circular_buffer, trigger,
 };
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};

@@ -10,7 +10,7 @@ rocks = ["rocksdb", "swimos_store/rocks"]
 [dependencies]
 swimos_store = { path = "../../swimos_store" }
 rocksdb = { workspace = true, optional = true }
-swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "future"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["io", "circular_buffer", "future"] }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_form = { path = "../../api/swimos_form" }
 swimos_api = { path = "../../api/swimos_api" }

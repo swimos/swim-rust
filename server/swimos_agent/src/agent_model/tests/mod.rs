@@ -32,12 +32,12 @@ use swimos_api::{
 };
 use swimos_model::Text;
 use swimos_utilities::{
+    byte_channel::{byte_channel, ByteReader, ByteWriter},
+    circular_buffer,
     encoding::{BytesStr, WithLengthBytesCodec},
     future::RetryStrategy,
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
     routing::RouteUri,
-    sync::circular_buffer,
     trigger::trigger,
 };
 use tokio::sync::{mpsc, oneshot};

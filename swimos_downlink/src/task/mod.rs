@@ -25,7 +25,7 @@ use swimos_form::read::RecognizerReadable;
 use swimos_form::Form;
 use swimos_model::Text;
 
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 
 use tracing::{info_span, Instrument};
 

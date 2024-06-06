@@ -37,7 +37,7 @@ use swimos_messages::protocol::{
     ResponseMessageEncoder,
 };
 use swimos_model::Text;
-use swimos_utilities::io::byte_channel::{self, ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{self, ByteReader, ByteWriter};
 use swimos_utilities::trigger;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;

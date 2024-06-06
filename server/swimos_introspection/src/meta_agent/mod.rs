@@ -27,7 +27,7 @@ use swimos_form::write::StructuralWritable;
 use swimos_meta::WarpUplinkPulse;
 use swimos_runtime::agent::reporting::{UplinkReportReader, UplinkSnapshot};
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
     routing::RouteUri,
     trigger,
 };

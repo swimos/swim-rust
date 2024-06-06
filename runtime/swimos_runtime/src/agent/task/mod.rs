@@ -61,9 +61,9 @@ use swimos_api::{
 use swimos_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
 use swimos_model::Text;
 use swimos_recon::parser::MessageExtractError;
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::encoding::BytesStr;
 use swimos_utilities::future::{immediate_or_join, StopAfterError};
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::trigger::{self, promise};
 
 mod external_links;

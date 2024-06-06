@@ -37,10 +37,8 @@ pub use swimos_errors as errors;
 pub use swimos_future as future;
 
 #[cfg(feature = "rtree")]
-pub mod collections {
-    #[doc(inline)]
-    pub use swimos_rtree as rtree;
-}
+#[doc(inline)]
+pub use swimos_rtree as rtree;
 
 #[cfg(feature = "time")]
 #[doc(inline)]
@@ -50,17 +48,13 @@ pub use swimos_time as time;
 #[doc(inline)]
 pub use swimos_multi_reader as multi_reader;
 
-#[cfg(any(feature = "io", feature = "buf_channel"))]
-pub mod io {
+#[cfg(feature = "io")]
+#[doc(inline)]
+pub use swimos_fs as fs;
 
-    #[cfg(feature = "io")]
-    #[doc(inline)]
-    pub use swimos_fs as fs;
-
-    #[cfg(feature = "buf_channel")]
-    #[doc(inline)]
-    pub use swimos_byte_channel as byte_channel;
-}
+#[cfg(feature = "buf_channel")]
+#[doc(inline)]
+pub use swimos_byte_channel as byte_channel;
 
 #[cfg(feature = "text")]
 #[doc(inline)]
@@ -74,11 +68,9 @@ pub use swimos_format as format;
 #[doc(inline)]
 pub use swimos_trigger as trigger;
 
-#[cfg(feature = "sync")]
-pub mod sync {
-    #[doc(inline)]
-    pub use swimos_sync as circular_buffer;
-}
+#[cfg(feature = "circular_buffer")]
+#[doc(inline)]
+pub use swimos_sync as circular_buffer;
 
 #[cfg(feature = "test-util")]
 #[doc(inline)]

@@ -22,7 +22,7 @@ use swimos_agent_protocol::{
     },
     LaneRequest, LaneResponse, MapLaneResponse, MapMessage, MapOperation,
 };
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 

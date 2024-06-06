@@ -33,7 +33,7 @@ use swimos_messages::protocol::{
 };
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{self, ByteReader, ByteWriter},
+    byte_channel::{self, ByteReader, ByteWriter},
     trigger::{self, promise},
 };
 use tokio::{

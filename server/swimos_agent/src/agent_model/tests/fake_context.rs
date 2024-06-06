@@ -28,7 +28,7 @@ use swimos_api::{
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
 };
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
 };
 use tokio::sync::{mpsc, oneshot};

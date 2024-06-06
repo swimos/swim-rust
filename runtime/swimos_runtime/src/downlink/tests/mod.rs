@@ -25,7 +25,7 @@ use swimos_messages::protocol::{
     ResponseMessage,
 };
 use swimos_model::Text;
-use swimos_utilities::{io::byte_channel::byte_channel, non_zero_usize};
+use swimos_utilities::{byte_channel::byte_channel, non_zero_usize};
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;

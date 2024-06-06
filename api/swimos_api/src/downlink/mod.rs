@@ -17,7 +17,7 @@ use std::num::NonZeroUsize;
 use futures::future::BoxFuture;
 use swimos_model::{address::Address, Text};
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
     non_zero_usize,
 };
 

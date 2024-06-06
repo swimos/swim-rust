@@ -28,8 +28,8 @@ use swimos_api::{
 };
 use swimos_runtime::agent::UplinkReporterRegistration;
 use swimos_utilities::{
+    byte_channel::{byte_channel, ByteReader, ByteWriter},
     future::RetryStrategy,
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
     routing::RouteUri,
     trigger,

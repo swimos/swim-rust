@@ -57,7 +57,7 @@ use swimos_model::Text;
 use swimos_remote::ws::RatchetError;
 use swimos_remote::AttachClient;
 use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
-use swimos_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swimos_utilities::trigger::{promise, trigger};
 use swimos_utilities::{non_zero_usize, trigger};
 

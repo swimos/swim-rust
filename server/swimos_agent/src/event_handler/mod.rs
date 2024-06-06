@@ -33,7 +33,7 @@ use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
 use swimos_recon::parser::{AsyncParseError, RecognizerDecoder};
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
     never::Never,
     routing::RouteUri,
 };

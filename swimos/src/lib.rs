@@ -48,7 +48,7 @@ pub mod route {
 
 pub mod io {
     pub mod channels {
-        pub use swimos_utilities::io::byte_channel::{
+        pub use swimos_utilities::byte_channel::{
             are_connected, byte_channel, ByteReader, ByteWriter,
         };
     }

@@ -33,7 +33,7 @@ use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError}
 use swimos_form::read::RecognizerReadable;
 use swimos_model::{Text, Timestamp};
 use swimos_runtime::agent::reporting::UplinkReporter;
-use swimos_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swimos_utilities::{non_zero_usize, trigger};
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;

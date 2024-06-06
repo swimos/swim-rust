@@ -39,10 +39,8 @@ use swimos_form::read::RecognizerReadable;
 use swimos_model::Text;
 use swimos_recon::{print_recon_compact, WithLenRecognizerDecoder};
 use swimos_utilities::{
-    io::byte_channel::{self, ByteReader, ByteWriter},
-    non_zero_usize,
-    sync::circular_buffer,
-    trigger,
+    byte_channel::{self, ByteReader, ByteWriter},
+    circular_buffer, non_zero_usize, trigger,
 };
 use tokio::{io::AsyncWriteExt, task::yield_now};
 use tokio_util::codec::{FramedRead, FramedWrite};

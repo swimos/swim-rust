@@ -32,7 +32,7 @@ use swimos_form::write::StructuralWritable;
 use swimos_net::{Scheme, SchemeHostPort};
 use swimos_recon::print_recon_compact;
 use swimos_remote::{AttachClient, LinkError};
-use swimos_utilities::{io::byte_channel::byte_channel, non_zero_usize, routing::RoutePattern};
+use swimos_utilities::{byte_channel::byte_channel, non_zero_usize, routing::RoutePattern};
 
 use swimos_messages::warp::{peel_envelope_header, RawEnvelope};
 use tokio::{

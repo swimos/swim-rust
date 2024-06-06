@@ -43,8 +43,8 @@ use swimos_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swimos_model::Text;
 use swimos_recon::parser::MessageExtractError;
 use swimos_utilities::{
+    byte_channel::{ByteReader, ByteWriter},
     encoding::BytesStr,
-    io::byte_channel::{ByteReader, ByteWriter},
     multi_reader::MultiReader,
     trigger,
 };

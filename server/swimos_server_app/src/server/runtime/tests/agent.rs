@@ -29,7 +29,7 @@ use swimos_api::{
 };
 use swimos_form::Form;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
     routing::RouteUri,
 };
 use tokio::sync::mpsc;

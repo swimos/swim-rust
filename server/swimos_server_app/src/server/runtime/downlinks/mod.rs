@@ -47,7 +47,7 @@ use swimos_runtime::{
     },
 };
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter},
+    byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter},
     trigger,
 };
 use tokio::{

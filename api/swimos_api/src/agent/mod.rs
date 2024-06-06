@@ -28,8 +28,8 @@ use std::{
 use bytes::Bytes;
 use futures::{future::BoxFuture, ready, Future, FutureExt};
 use swimos_utilities::{
+    byte_channel::{ByteReader, ByteWriter},
     future::RetryStrategy,
-    io::byte_channel::{ByteReader, ByteWriter},
     non_zero_usize,
     routing::RouteUri,
 };

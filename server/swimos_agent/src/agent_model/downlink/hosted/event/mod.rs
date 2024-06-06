@@ -27,7 +27,7 @@ use swimos_api::{address::Address, agent::DownlinkKind, error::FrameIoError};
 use swimos_form::read::{RecognizerReadable, StructuralReadable};
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
     trigger,
 };
 use tokio_util::codec::FramedRead;

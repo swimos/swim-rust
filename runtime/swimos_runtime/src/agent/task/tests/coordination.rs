@@ -42,7 +42,7 @@ use swimos_api::{
 };
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::byte_channel,
+    byte_channel::byte_channel,
     trigger::{self, promise},
 };
 use tokio::sync::{mpsc, oneshot};

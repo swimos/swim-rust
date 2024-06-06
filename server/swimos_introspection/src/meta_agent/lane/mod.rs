@@ -22,7 +22,7 @@ use swimos_api::{
 use swimos_meta::LanePulse;
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
     routing::RouteUri,
     trigger,
 };

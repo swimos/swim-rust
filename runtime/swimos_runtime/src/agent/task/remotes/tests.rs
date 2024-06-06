@@ -19,8 +19,8 @@ use futures::StreamExt;
 use swimos_messages::protocol::{BytesResponseMessage, Path, RawResponseMessageDecoder};
 use swimos_model::Text;
 use swimos_utilities::{
+    byte_channel::{byte_channel, ByteReader},
     encoding::BytesStr,
-    io::byte_channel::{byte_channel, ByteReader},
     non_zero_usize,
     trigger::promise,
 };

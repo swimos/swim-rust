@@ -35,9 +35,9 @@ use swimos_messages::protocol::{
     RawResponseMessageDecoder, ResponseMessage,
 };
 use swimos_model::Text;
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::encoding::BytesStr;
 use swimos_utilities::future::{immediate_or_join, immediate_or_start, SecondaryResult};
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Instant};

@@ -22,7 +22,7 @@ use swimos_api::{
     },
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
 };
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 
 use crate::{
     agent_model::downlink::handlers::BoxDownlinkChannel,

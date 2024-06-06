@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Immutable R-tree implementation.
-//!
-//! The module provides traits for implementing custom 2D and 3D objects that can be stored in the R-tree.
 use num::traits::Pow;
 use std::borrow::Borrow;
 use std::collections::hash_map;

@@ -41,7 +41,7 @@ use swimos_model::Text;
 use swimos_remote::net::ClientConnections;
 use swimos_remote::AttachClient;
 use swimos_runtime::downlink::{AttachAction, DownlinkOptions, DownlinkRuntimeConfig};
-use swimos_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swimos_utilities::trigger;
 use swimos_utilities::trigger::promise;
 

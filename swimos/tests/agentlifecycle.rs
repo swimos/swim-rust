@@ -66,7 +66,7 @@ use swimos_api::{
     agent::{AgentContext, LaneConfig},
     error::AgentRuntimeError,
 };
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 
 use swimos_agent::event_handler::ActionContext;
 

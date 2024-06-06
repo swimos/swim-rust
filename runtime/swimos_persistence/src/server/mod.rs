@@ -29,7 +29,7 @@ use swimos_store::{Keyspace, Keyspaces, StoreBuilder, StoreError};
 use crate::plane::{open_plane, PlaneStore, SwimPlaneStore};
 use integer_encoding::FixedInt;
 pub use swimos_store::nostore::NoStore;
-use swimos_utilities::io::fs::Dir;
+use swimos_utilities::fs::Dir;
 
 /// Unique lane identifier keyspace. The name is `default` as either the Rust RocksDB crate or
 /// Rocks DB itself has an issue in using merge operators under a non-default column family.
