@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures_util::Stream;
+use futures::Stream;
 use slab::Slab;
 use smallvec::{smallvec, SmallVec};
 use std::pin::Pin;

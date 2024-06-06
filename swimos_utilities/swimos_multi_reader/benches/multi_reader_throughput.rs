@@ -14,9 +14,9 @@
 
 use bytes::Bytes;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use futures::future::join;
 use futures::stream::SelectAll;
-use futures_util::future::join;
-use futures_util::{SinkExt, Stream, StreamExt};
+use futures::{SinkExt, Stream, StreamExt};
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;

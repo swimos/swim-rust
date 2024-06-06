@@ -14,9 +14,9 @@
 
 use crate::MultiReader;
 use bytes::Bytes;
-use futures_util::future::join;
-use futures_util::Stream;
-use futures_util::{SinkExt, StreamExt};
+use futures::future::join;
+use futures::Stream;
+use futures::{SinkExt, StreamExt};
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};

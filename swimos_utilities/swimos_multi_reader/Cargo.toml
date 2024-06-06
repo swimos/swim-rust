@@ -10,7 +10,7 @@ parking_lot = { workspace = true }
 waker-fn = "1.1.0"
 slab = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
-futures-util = { workspace = true }
+futures = { workspace = true }
 smallvec = { workspace = true }
 
 [dev-dependencies]
