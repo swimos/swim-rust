@@ -58,42 +58,52 @@ impl<T> LaneResponse<T> {
 /// to describe alterations to the lane.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Form)]
 pub enum MapOperation<K, V> {
+    /// Update the value associated with a key in the map (or insert an entry if they key does not exist).
     #[form(tag = "update")]
     Update {
         key: K,
         #[form(body)]
         value: V,
     },
+    /// Remove an entry from the map, by key (does nothing if there is no such entry).
     #[form(tag = "remove")]
     Remove {
         #[form(header)]
         key: K,
     },
+    /// Remove all entries in the map.
     #[form(tag = "clear")]
     Clear,
 }
 
 /// Representation of map lane messages (used to form the body of Recon messages when operating)
 /// on downlinks. This extends [`MapOperation`] with `Take` (retain the first `n` items) and `Drop`
-/// (remove the first `n` items). We never use these internally but must support them for communicating
-/// with other implementations.
+/// (remove the first `n` items).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Form, Hash)]
 pub enum MapMessage<K, V> {
+    /// Update the value associated with a key in the map (or insert an entry if they key does not exist).
     #[form(tag = "update")]
     Update {
         key: K,
         #[form(body)]
         value: V,
     },
+    /// Remove an entry from the map, by key (does nothing if there is no such entry).
     #[form(tag = "remove")]
     Remove {
         #[form(header)]
         key: K,
     },
+    /// Remove all entries in the map.
     #[form(tag = "clear")]
     Clear,
+    /// Retain only the first `n` entries in the map, the remainder are removed. The ordering
+    /// used to determine 'first' is the Recon order of the keys. If there are fewer than `n`
+    /// entries in the map, this does nothing.
     #[form(tag = "take")]
     Take(#[form(header_body)] u64),
+    /// Remove the first `n` entries in the map. The ordering used to determine 'first' is the
+    /// Recon order of the keys. If there are fewer than `n` entries in the map, it is cleared.
     #[form(tag = "drop")]
     Drop(#[form(header_body)] u64),
 }
@@ -148,7 +158,8 @@ impl<S, T> AdHocCommand<S, T> {
     /// * `command` - The body of the command message.
     /// * `overwrite_permitted` - Controls the behaviour of command handling in the case of back-pressure.
     /// If this is true, the command maybe be overwritten by a subsequent command to the same target (and so
-    /// will never be sent). If false, the command will be queued instead.
+    /// will never be sent). If false, the command will be queued instead. This is a user specifiable parameter
+    /// in the API.
     pub fn new(address: Address<S>, command: T, overwrite_permitted: bool) -> Self {
         AdHocCommand {
             address,
