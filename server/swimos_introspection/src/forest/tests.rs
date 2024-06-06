@@ -14,12 +14,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::{
-    forest::{
-        iter::{PathSegmentIterator, UriPart},
-        TreeNode,
-    },
-    UriForest,
+use crate::forest::{
+    iter::{PathSegmentIterator, UriPart},
+    TreeNode, UriForest,
 };
 
 #[test]

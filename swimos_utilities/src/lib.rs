@@ -84,10 +84,6 @@ pub mod sync {
 #[doc(inline)]
 pub use swimos_test_util as test_util;
 
-#[cfg(feature = "uri_forest")]
-#[doc(inline)]
-pub use swimos_uri_forest as uri_forest;
-
 #[doc(inline)]
 pub use swimos_num::non_zero_usize;
 

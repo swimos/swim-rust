@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::forest::UriForest;
 use std::sync::Arc;
 use std::{collections::HashMap, num::NonZeroUsize};
 
@@ -25,7 +26,6 @@ use swimos_runtime::agent::{
     reporting::{UplinkReportReader, UplinkReporter},
     NodeReporting, UplinkReporterRegistration,
 };
-use swimos_utilities::uri_forest::UriForest;
 use swimos_utilities::{routing::RouteUri, trigger};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
@@ -33,6 +33,7 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::model::{AgentIntrospectionHandle, AgentIntrospectionUpdater, LaneView};
+use crate::MetaMeshAgent;
 
 /// Requests that can be made by to the introspection task.
 pub enum IntrospectionMessage {
@@ -96,16 +97,18 @@ impl From<UplinkReporterRegistration> for IntrospectionMessage {
 pub fn init_introspection(
     stopping: trigger::Receiver,
     channel_size: NonZeroUsize,
-    agents: Arc<RwLock<UriForest<AgentMeta>>>,
 ) -> (
     IntrospectionResolver,
+    MetaMeshAgent,
     impl Future<Output = ()> + Send + 'static,
 ) {
+    let agents = Arc::new(RwLock::new(UriForest::new()));
     let (msg_tx, msg_rx) = mpsc::unbounded_channel();
     let (reg_tx, reg_rx) = mpsc::channel(channel_size.get());
-    let task = introspection_task(stopping, msg_rx, reg_rx, agents);
+    let task = introspection_task(stopping, msg_rx, reg_rx, agents.clone());
+    let meta_agent = MetaMeshAgent::new(agents);
     let resolver = IntrospectionResolver::new(msg_tx, reg_tx);
-    (resolver, task)
+    (resolver, meta_agent, task)
 }
 
 #[derive(Debug)]

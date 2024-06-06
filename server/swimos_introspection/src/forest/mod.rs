@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod iter;
+mod iter;
 #[cfg(test)]
 mod tests;
 
@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::iter::Peekable;
 
-use self::iter::{PathSegmentIterator, UriForestIterator, UriPartIterator};
+pub use self::iter::{PathSegmentIterator, UriForestIterator, UriPart, UriPartIterator};
 
 static_assertions::assert_impl_all!(UriForest<()>: Send, Sync);
 

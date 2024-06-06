@@ -15,7 +15,10 @@
 #[cfg(test)]
 mod tests;
 
-use crate::task::AgentMeta;
+use crate::{
+    forest::{UriForest, UriPart},
+    task::AgentMeta,
+};
 use futures::future::{BoxFuture, Either};
 use futures::stream::select;
 use futures::{FutureExt, SinkExt, StreamExt, TryFutureExt};
@@ -33,7 +36,6 @@ use swimos_model::Text;
 use swimos_runtime::downlink::Io;
 use swimos_utilities::routing::RouteUri;
 use swimos_utilities::trigger;
-use swimos_utilities::uri_forest::{UriForest, UriPart};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 pub struct MetaMeshAgent {
