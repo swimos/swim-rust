@@ -21,7 +21,7 @@ use std::{
 };
 
 use bytes::BytesMut;
-use swimos_api::protocol::map::MapMessage;
+use swimos_agent_protocol::MapMessage;
 use swimos_form::{structural::write::StructuralWritable, Form};
 use swimos_model::{address::Address, Text};
 use uuid::Uuid;

@@ -18,15 +18,13 @@ use std::{
 };
 
 use futures::{stream::unfold, SinkExt, Stream, StreamExt};
-use swimos_api::{
-    error::FrameIoError,
-    meta::uplink::WarpUplinkPulse,
-    protocol::{
-        agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
-        WithLenReconEncoder, WithLengthBytesCodec,
-    },
+use swimos_agent_protocol::{
+    encoding::lane::{RawValueLaneRequestDecoder, ValueLaneResponseEncoder},
+    LaneRequest, LaneResponse,
 };
+use swimos_api::error::FrameIoError;
 use swimos_form::structural::write::StructuralWritable;
+use swimos_meta::WarpUplinkPulse;
 use swimos_runtime::agent::reporting::{UplinkReportReader, UplinkSnapshot};
 use swimos_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
@@ -109,8 +107,8 @@ where
     let (tx, rx) = pulse_io;
 
     let mut input =
-        FramedRead::new(rx, LaneRequestDecoder::new(WithLengthBytesCodec)).take_until(shutdown_rx);
-    let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(WithLenReconEncoder));
+        FramedRead::new(rx, RawValueLaneRequestDecoder::default()).take_until(shutdown_rx);
+    let mut output = FramedWrite::new(tx, ValueLaneResponseEncoder::default());
 
     let mut previous = Instant::now();
     let mut accumulate = |report: UplinkSnapshot| {

@@ -14,17 +14,18 @@
 
 use std::{collections::HashMap, num::NonZeroUsize, time::Duration};
 
+use bytes::BytesMut;
 use futures::{future::join, SinkExt, StreamExt};
-use swimos_api::protocol::{
-    agent::{
-        LaneRequest, LaneRequestEncoder, LaneResponse, LaneResponseDecoder, StoreInitMessage,
-        StoreInitMessageEncoder, StoreInitialized, StoreInitializedCodec,
+use swimos_agent_protocol::{
+    encoding::lane::{
+        MapLaneRequestEncoder, RawMapLaneResponseDecoder, RawValueLaneResponseDecoder,
+        ValueLaneRequestEncoder,
     },
-    map::{
-        MapMessage, MapMessageDecoder, MapMessageEncoder, MapOperationEncoder,
-        RawMapOperationDecoder,
+    encoding::store::{
+        RawMapStoreInitDecoder, RawMapStoreInitEncoder, RawValueStoreInitDecoder,
+        RawValueStoreInitEncoder, StoreInitializedCodec,
     },
-    WithLenReconEncoder, WithLengthBytesCodec,
+    LaneRequest, LaneResponse, MapMessage, StoreInitMessage, StoreInitialized,
 };
 use swimos_model::Text;
 use swimos_utilities::{io::byte_channel::byte_channel, non_zero_usize};
@@ -68,7 +69,7 @@ async fn init_value_lane() {
     let init = ValueLaneInitializer::new(VALUE_LANE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = WithLengthBytesCodec;
+    let decoder = RawValueStoreInitDecoder::default();
     let init_task = run_item_initializer(
         ItemKind::VALUE_LANE,
         "value_lane",
@@ -78,9 +79,8 @@ async fn init_value_lane() {
     );
 
     let runtime_task = async move {
-        let mut writer = FramedWrite::new(&mut in_tx, LaneRequestEncoder::new(WithLenReconEncoder));
-        let mut reader =
-            FramedRead::new(&mut out_rx, LaneResponseDecoder::new(WithLengthBytesCodec));
+        let mut writer = FramedWrite::new(&mut in_tx, ValueLaneRequestEncoder::default());
+        let mut reader = FramedRead::new(&mut out_rx, RawValueLaneResponseDecoder::default());
 
         writer
             .send(LaneRequest::Command(46))
@@ -124,7 +124,7 @@ async fn init_value_store() {
     let init = ValueStoreInitializer::new(VALUE_STORE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = WithLengthBytesCodec;
+    let decoder = RawValueStoreInitDecoder::default();
     let init_task = run_item_initializer(
         ItemKind::VALUE_STORE,
         "value_store",
@@ -134,18 +134,15 @@ async fn init_value_store() {
     );
 
     let runtime_task = async move {
-        let mut writer = FramedWrite::new(
-            &mut in_tx,
-            StoreInitMessageEncoder::new(WithLenReconEncoder),
-        );
+        let mut writer = FramedWrite::new(&mut in_tx, RawValueStoreInitEncoder::default());
         let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec);
 
         writer
-            .send(StoreInitMessage::Command(46))
+            .send(StoreInitMessage::Command(b"46"))
             .await
             .expect("Sending value failed.");
         writer
-            .send(StoreInitMessage::<i32>::InitComplete)
+            .send(StoreInitMessage::<&[u8]>::InitComplete)
             .await
             .expect("Completing init failed.");
 
@@ -182,8 +179,8 @@ async fn init_value_lane_no_data() {
     let init = ValueLaneInitializer::new(VALUE_LANE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = WithLengthBytesCodec;
-    let init_task = run_item_initializer(
+    let decoder = RawValueStoreInitDecoder::default();
+    let init_task = run_item_initializer::<_, RawValueStoreInitDecoder, BytesMut>(
         ItemKind::VALUE_LANE,
         "value_lane",
         (out_tx, in_rx),
@@ -192,9 +189,8 @@ async fn init_value_lane_no_data() {
     );
 
     let runtime_task = async move {
-        let mut writer = FramedWrite::new(&mut in_tx, LaneRequestEncoder::new(WithLenReconEncoder));
-        let mut reader =
-            FramedRead::new(&mut out_rx, LaneResponseDecoder::new(WithLengthBytesCodec));
+        let mut writer = FramedWrite::new(&mut in_tx, ValueLaneRequestEncoder::default());
+        let mut reader = FramedRead::new(&mut out_rx, RawValueLaneResponseDecoder::default());
 
         writer
             .send(LaneRequest::<i32>::InitComplete)
@@ -234,8 +230,8 @@ async fn init_value_store_no_data() {
     let init = ValueStoreInitializer::new(VALUE_STORE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = WithLengthBytesCodec;
-    let init_task = run_item_initializer(
+    let decoder = RawValueStoreInitDecoder::default();
+    let init_task = run_item_initializer::<_, RawValueStoreInitDecoder, BytesMut>(
         ItemKind::VALUE_STORE,
         "value_store",
         (out_tx, in_rx),
@@ -244,14 +240,11 @@ async fn init_value_store_no_data() {
     );
 
     let runtime_task = async move {
-        let mut writer = FramedWrite::new(
-            &mut in_tx,
-            StoreInitMessageEncoder::new(WithLenReconEncoder),
-        );
+        let mut writer = FramedWrite::new(&mut in_tx, RawValueStoreInitEncoder::default());
         let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec);
 
         writer
-            .send(StoreInitMessage::<i32>::InitComplete)
+            .send(StoreInitMessage::<&[u8]>::InitComplete)
             .await
             .expect("Completing init failed.");
 
@@ -288,7 +281,7 @@ async fn init_map_lane() {
     let init = MapLaneInitializer::new(MAP_LANE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = MapMessageDecoder::new(RawMapOperationDecoder);
+    let decoder = RawMapStoreInitDecoder::default();
     let init_task = run_item_initializer(
         ItemKind::MAP_LANE,
         "map_lane",
@@ -298,14 +291,8 @@ async fn init_map_lane() {
     );
 
     let runtime_task = async move {
-        let mut writer = FramedWrite::new(
-            &mut in_tx,
-            LaneRequestEncoder::new(MapMessageEncoder::new(MapOperationEncoder)),
-        );
-        let mut reader = FramedRead::new(
-            &mut out_rx,
-            LaneResponseDecoder::new(RawMapOperationDecoder),
-        );
+        let mut writer = FramedWrite::new(&mut in_tx, MapLaneRequestEncoder::default());
+        let mut reader = FramedRead::new(&mut out_rx, RawMapLaneResponseDecoder::default());
 
         writer
             .send(LaneRequest::Command(MapMessage::Update {
@@ -371,7 +358,7 @@ async fn init_map_store() {
     let init = MapStoreInitializer::new(MAP_STORE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = MapMessageDecoder::new(RawMapOperationDecoder);
+    let decoder = RawMapStoreInitDecoder::default();
     let init_task = run_item_initializer(
         ItemKind::MAP_STORE,
         "map_store",
@@ -381,35 +368,32 @@ async fn init_map_store() {
     );
 
     let runtime_task = async move {
-        let mut writer = FramedWrite::new(
-            &mut in_tx,
-            StoreInitMessageEncoder::new(MapMessageEncoder::new(MapOperationEncoder)),
-        );
+        let mut writer = FramedWrite::new(&mut in_tx, RawMapStoreInitEncoder::default());
         let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec);
 
         writer
             .send(StoreInitMessage::Command(MapMessage::Update {
-                key: Text::new("a"),
-                value: 1,
+                key: b"a",
+                value: b"1",
             }))
             .await
             .expect("Sending value failed.");
         writer
             .send(StoreInitMessage::Command(MapMessage::Update {
-                key: Text::new("b"),
-                value: 2,
+                key: b"b",
+                value: b"2",
             }))
             .await
             .expect("Sending value failed.");
         writer
             .send(StoreInitMessage::Command(MapMessage::Update {
-                key: Text::new("c"),
-                value: 3,
+                key: b"c",
+                value: b"3",
             }))
             .await
             .expect("Sending value failed.");
         writer
-            .send(StoreInitMessage::<MapMessage<Text, i32>>::InitComplete)
+            .send(StoreInitMessage::<MapMessage<&[u8], &[u8]>>::InitComplete)
             .await
             .expect("Completing init failed.");
 
@@ -451,7 +435,7 @@ async fn init_map_lane_no_data() {
     let init = MapLaneInitializer::new(MAP_LANE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = MapMessageDecoder::new(RawMapOperationDecoder);
+    let decoder = RawMapStoreInitDecoder::default();
     let init_task = run_item_initializer(
         ItemKind::MAP_LANE,
         "map_lane",
@@ -461,14 +445,8 @@ async fn init_map_lane_no_data() {
     );
 
     let runtime_task = async move {
-        let mut writer = FramedWrite::new(
-            &mut in_tx,
-            LaneRequestEncoder::new(MapMessageEncoder::new(MapOperationEncoder)),
-        );
-        let mut reader = FramedRead::new(
-            &mut out_rx,
-            LaneResponseDecoder::new(RawMapOperationDecoder),
-        );
+        let mut writer = FramedWrite::new(&mut in_tx, MapLaneRequestEncoder::default());
+        let mut reader = FramedRead::new(&mut out_rx, RawMapLaneResponseDecoder::default());
 
         writer
             .send(LaneRequest::<MapMessage<Text, i32>>::InitComplete)
@@ -509,7 +487,7 @@ async fn init_map_store_no_data() {
     let init = MapStoreInitializer::new(MAP_STORE);
     let (mut in_tx, in_rx) = byte_channel(BUFFER_SIZE);
     let (out_tx, mut out_rx) = byte_channel(BUFFER_SIZE);
-    let decoder = MapMessageDecoder::new(RawMapOperationDecoder);
+    let decoder = RawMapStoreInitDecoder::default();
     let init_task = run_item_initializer(
         ItemKind::MAP_STORE,
         "map_store",
@@ -519,14 +497,11 @@ async fn init_map_store_no_data() {
     );
 
     let runtime_task = async move {
-        let mut writer = FramedWrite::new(
-            &mut in_tx,
-            StoreInitMessageEncoder::new(MapMessageEncoder::new(MapOperationEncoder)),
-        );
+        let mut writer = FramedWrite::new(&mut in_tx, RawMapStoreInitEncoder::default());
         let mut reader = FramedRead::new(&mut out_rx, StoreInitializedCodec);
 
         writer
-            .send(StoreInitMessage::<MapMessage<Text, i32>>::InitComplete)
+            .send(StoreInitMessage::<MapMessage<&[u8], &[u8]>>::InitComplete)
             .await
             .expect("Completing init failed.");
 

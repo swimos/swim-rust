@@ -26,16 +26,23 @@ use swimos_model::bigint::{BigInt, BigUint};
 use swimos_model::write_string_literal;
 
 /// Print an inline Recon representation of [`StructuralWritable`] value.
+///
+/// # Arguments
+/// * `value` - The value to print.
 pub fn print_recon<T: StructuralWritable>(value: &T) -> impl Display + '_ {
     ReconPrint(value, StandardPrint)
 }
 
-/// Print a compact Recon representation of [`StructuralWritable`] value.
+/// Print a compact Recon representation of [`StructuralWritable`] value. The compact representation omits all possible spaces.
+/// # Arguments
+/// * `value` - The value to print.
 pub fn print_recon_compact<T: StructuralWritable>(value: &T) -> impl Display + '_ {
     ReconPrint(value, CompactPrint)
 }
 
-/// Print a pretty Recon representation of [`StructuralWritable`] value.
+/// Print a pretty Recon representation of [`StructuralWritable`] value. The pretty representation splits records over lines and indents their items.
+/// # Arguments
+/// * `value` - The value to print.
 pub fn print_recon_pretty<T: StructuralWritable>(value: &T) -> impl Display + '_ {
     ReconPrint(value, PrettyPrint::new())
 }
@@ -50,7 +57,7 @@ impl<'a, T: StructuralWritable, S: PrintStrategy + Copy> Display for ReconPrint<
     }
 }
 
-pub struct StructurePrinter<'a, 'b, S> {
+struct StructurePrinter<'a, 'b, S> {
     strategy: S,
     fmt: &'a mut Formatter<'b>,
     has_attr: bool,
@@ -74,7 +81,7 @@ impl<'a, 'b, S: Debug> Debug for StructurePrinter<'a, 'b, S> {
 }
 
 impl<'a, 'b, S> StructurePrinter<'a, 'b, S> {
-    pub fn new(fmt: &'a mut Formatter<'b>, strategy: S) -> Self {
+    fn new(fmt: &'a mut Formatter<'b>, strategy: S) -> Self {
         StructurePrinter {
             fmt,
             has_attr: false,
@@ -839,7 +846,7 @@ where
 }
 
 /// Padding used by the print strategies to customise the output format of Recon.
-pub enum Padding<'a> {
+enum Padding<'a> {
     /// Simple padding that writes only a string slice.
     Simple(&'a str),
     /// Complex padding that writes a string slice as a prefix followed by `n`
@@ -876,7 +883,7 @@ impl<'a> Display for Padding<'a> {
     }
 }
 
-pub trait PrintStrategy: Debug {
+trait PrintStrategy: Debug {
     fn attr_padding(&self) -> Padding;
 
     fn attr_body_padding(&self) -> Padding;

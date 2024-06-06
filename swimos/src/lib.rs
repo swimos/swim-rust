@@ -40,7 +40,7 @@ pub mod api {
     }
 
     pub mod handlers {
-        pub use swimos_api::handlers::NoHandler;
+        pub use swimos_utilities::handlers::NoHandler;
     }
 }
 

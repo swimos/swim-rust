@@ -15,10 +15,7 @@
 use std::{convert::Infallible, fmt::Display};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use swimos_api::protocol::{
-    downlink::DownlinkOperation,
-    map::{RawMapOperation, RawMapOperationMut},
-};
+use swimos_agent_protocol::{DownlinkOperation, MapOperation};
 use tokio_util::codec::Encoder;
 
 use map_queue::MapOperationQueue;
@@ -29,6 +26,9 @@ pub mod recon;
 use recon::MapOperationReconEncoder;
 
 use crate::error::InvalidKey;
+
+type RawMapOperation = MapOperation<Bytes, BytesMut>;
+type RawMapOperationMut = MapOperation<BytesMut, BytesMut>;
 
 #[cfg(test)]
 mod tests;

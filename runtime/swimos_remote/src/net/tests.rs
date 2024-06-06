@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_api::net::{BadUrl, SchemeHostPort};
+use swimos_net::{BadUrl, SchemeHostPort};
 
 use crate::net::Scheme;
 

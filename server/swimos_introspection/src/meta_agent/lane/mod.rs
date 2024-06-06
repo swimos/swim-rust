@@ -19,8 +19,8 @@ use swimos_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::{AgentInitError, AgentTaskError},
     lane::WarpLaneKind,
-    meta::uplink::LanePulse,
 };
+use swimos_meta::LanePulse;
 use swimos_model::Text;
 use swimos_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},

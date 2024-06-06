@@ -14,6 +14,7 @@
 
 #![allow(clippy::match_wild_err_arm)]
 
+pub mod handlers;
 pub mod never;
 
 #[cfg(feature = "algebra")]
@@ -69,3 +70,6 @@ pub use swimos_test_util as test_util;
 pub use swimos_uri_forest as uri_forest;
 
 pub use swimos_num::non_zero_usize;
+
+#[cfg(feature = "encoding")]
+pub use swimos_encoding as encoding;

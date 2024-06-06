@@ -16,8 +16,8 @@ use bytes::{Bytes, BytesMut};
 use mime::Mime;
 use std::marker::PhantomData;
 use swimos_api::agent::{HttpLaneResponse, HttpResponseSender};
-use swimos_api::handlers::{FnHandler, NoHandler};
 use swimos_model::http::{Header, HttpResponse, StatusCode, Uri, Version};
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 use tracing::debug;
 
 use crate::event_handler::EventHandlerError;

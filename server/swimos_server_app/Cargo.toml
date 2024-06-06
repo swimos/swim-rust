@@ -18,11 +18,13 @@ swimos_tls = { path = "../../runtime/swimos_tls" }
 swimos_http = { path = "../../runtime/swimos_http" }
 swimos_introspection = { path = "../swimos_introspection" }
 swimos_remote = { path = "../../runtime/swimos_remote" }
+swimos_net = { path = "../../runtime/swimos_net" }
 bytes = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tokio-util = { workspace = true, features = ["codec"] }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_api = { path = "../../api/swimos_api" }
+swimos_agent_protocol = { path = "../../api/swimos_agent_protocol" }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
@@ -37,7 +39,7 @@ pin-project = { workspace = true }
 percent-encoding = { workspace = true }
 
 [dev-dependencies]
-swimos_recon = { path = "../../api/formats/swimos_recon", features = ["async_parser"] }
+swimos_recon = { path = "../../api/formats/swimos_recon" }
 tokio = { workspace = true, features = ["rt", "macros", "test-util"] }
 swimos_form = { path = "../../api/swimos_form" }
 swimos_messages = { path = "../../runtime/swimos_messages" }

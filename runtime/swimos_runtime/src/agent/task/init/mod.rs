@@ -19,11 +19,11 @@ use futures::{
     stream::FuturesUnordered,
     Future, FutureExt, Stream, StreamExt, TryFutureExt,
 };
+use swimos_agent_protocol::encoding::store::StoreInitializedCodec;
 use swimos_api::{
     agent::{LaneConfig, StoreConfig, UplinkKind},
     error::{AgentRuntimeError, OpenStoreError, StoreError},
     lane::WarpLaneKind,
-    protocol::agent::StoreInitializedCodec,
     store::{StoreDisabled, StoreKind},
 };
 use swimos_model::Text;

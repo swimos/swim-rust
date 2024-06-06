@@ -26,9 +26,9 @@ use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::store::StoreKind;
 
-use self::introspection::{LaneIntrospectionError, NodeIntrospectionError};
+mod introspection;
 
-pub mod introspection;
+pub use introspection::{IntrospectionStopped, LaneIntrospectionError, NodeIntrospectionError};
 
 /// Indicates that an agent or downlink failed to read a frame from a byte stream.
 #[derive(Error, Debug)]

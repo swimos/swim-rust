@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 swimos_utilities = { path = "../../swimos_utilities", features = ["trigger"] }
 swimos_api = { path = "../../api/swimos_api" }
+swimos_agent_protocol = { path = "../../api/swimos_agent_protocol" }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_form = { path = "../../api/swimos_form" }
 swimos_recon = { path = "../../api/formats/swimos_recon" }

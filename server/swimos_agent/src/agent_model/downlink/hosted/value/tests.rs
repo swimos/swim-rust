@@ -30,16 +30,13 @@ use futures::{
     Sink, SinkExt, Stream, StreamExt,
 };
 use parking_lot::Mutex;
-use swimos_api::protocol::{
-    downlink::{
-        DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation,
-        DownlinkOperationDecoder,
-    },
-    WithLenRecognizerDecoder,
+use swimos_agent_protocol::encoding::downlink::{
+    DownlinkNotificationEncoder, DownlinkOperationDecoder,
 };
+use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_model::{address::Address, Text};
-use swimos_recon::printer::print_recon_compact;
+use swimos_recon::{print_recon_compact, WithLenRecognizerDecoder};
 use swimos_utilities::{
     io::byte_channel::{self, ByteReader, ByteWriter},
     non_zero_usize,

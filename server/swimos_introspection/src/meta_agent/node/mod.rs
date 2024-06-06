@@ -19,17 +19,16 @@ use futures::{
     future::{BoxFuture, Either},
     FutureExt, SinkExt, StreamExt,
 };
+use swimos_agent_protocol::{
+    encoding::lane::{MapLaneResponseEncoder, RawValueLaneRequestDecoder},
+    LaneRequest, LaneResponse, MapOperation,
+};
 use swimos_api::{
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::{AgentInitError, AgentTaskError, FrameIoError},
     lane::WarpLaneKind,
-    meta::{lane::LaneInfo, uplink::NodePulse},
-    protocol::{
-        agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
-        map::{MapOperation, MapOperationEncoder},
-        WithLengthBytesCodec,
-    },
 };
+use swimos_meta::{LaneInfo, NodePulse};
 use swimos_model::Text;
 use swimos_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
@@ -174,8 +173,8 @@ async fn run_lanes_descriptor_lane(
     let (tx, rx) = lanes_io;
 
     let mut input =
-        FramedRead::new(rx, LaneRequestDecoder::new(WithLengthBytesCodec)).take_until(shutdown_rx);
-    let mut output = FramedWrite::new(tx, LaneResponseEncoder::new(MapOperationEncoder));
+        FramedRead::new(rx, RawValueLaneRequestDecoder::default()).take_until(shutdown_rx);
+    let mut output = FramedWrite::new(tx, MapLaneResponseEncoder::default());
 
     let mut snapshot = if let Some(s) = handle.new_snapshot() {
         s

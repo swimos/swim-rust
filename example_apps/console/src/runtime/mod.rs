@@ -29,7 +29,7 @@ use ratchet::{
 };
 use swimos_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swimos_model::Value;
-use swimos_recon::{parser::MessageExtractError, printer::print_recon_compact};
+use swimos_recon::{parser::MessageExtractError, print_recon_compact};
 use swimos_utilities::{
     routing::route_uri::{InvalidRouteUri, RouteUri},
     trigger,

@@ -10,7 +10,7 @@ json = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
 futures = { workspace = true }
-swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "sync"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "sync", "encoding"] }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_form = { path = "../../api/swimos_form" }
 swimos_recon = { path = "../../api/formats/swimos_recon" }
@@ -19,6 +19,7 @@ bytes = { workspace = true }
 tokio = { workspace = true, features = ["macros", "time"] }
 tokio-util = { workspace = true, features = ["codec"] }
 swimos_api = { path = "../../api/swimos_api" }
+swimos_agent_protocol = { path = "../../api/swimos_agent_protocol" }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
 frunk = { workspace = true }
@@ -32,6 +33,6 @@ serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
-swimos_recon = { path = "../../api/formats/swimos_recon", features = ["async_parser"] }
+swimos_recon = { path = "../../api/formats/swimos_recon" }
 tokio = { workspace = true, features = ["rt", "test-util", "time"] }
 parking_lot = { workspace = true }

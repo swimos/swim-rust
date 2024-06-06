@@ -25,12 +25,11 @@ use swimos_api::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
         StoreError,
     },
-    lane::WarpLaneKind,
-    meta::lane::LaneKind,
-    net::SchemeHostPort,
+    lane::{LaneKind, WarpLaneKind},
     store::{NodePersistence, StoreKind},
 };
 use swimos_model::{address::RelativeAddress, Text};
+use swimos_net::SchemeHostPort;
 use swimos_utilities::{
     future::retryable::RetryStrategy,
     io::byte_channel::{ByteReader, ByteWriter},

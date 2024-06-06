@@ -21,7 +21,7 @@ use std::{cell::RefCell, collections::VecDeque};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
-use swimos_api::protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
+use swimos_agent_protocol::{encoding::lane::ValueLaneResponseEncoder, LaneResponse};
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use tokio_util::codec::Encoder;
 use uuid::Uuid;

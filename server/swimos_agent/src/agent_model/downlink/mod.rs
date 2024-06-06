@@ -20,7 +20,8 @@ mod tests;
 use std::{cell::RefCell, marker::PhantomData};
 
 use std::hash::Hash;
-use swimos_api::{downlink::DownlinkKind, protocol::map::MapOperation};
+use swimos_agent_protocol::MapOperation;
+use swimos_api::downlink::DownlinkKind;
 use swimos_form::{structural::read::recognizer::RecognizerReadable, Form};
 use swimos_model::{address::Address, Text};
 use swimos_utilities::{sync::circular_buffer, trigger};

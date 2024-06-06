@@ -21,7 +21,7 @@ use futures::{
 };
 use rustls::KeyLogFile;
 use rustls_pemfile::Item;
-use swimos_api::net::Scheme;
+use swimos_net::Scheme;
 use swimos_remote::net::{
     BoxListenerStream, ConnResult, IoResult, Listener, ListenerError, ListenerResult,
     ServerConnections,

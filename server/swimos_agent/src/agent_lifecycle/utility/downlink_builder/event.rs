@@ -14,9 +14,9 @@
 
 use std::marker::PhantomData;
 
-use swimos_api::handlers::FnHandler;
 use swimos_form::structural::read::recognizer::RecognizerReadable;
 use swimos_model::{address::Address, Text};
+use swimos_utilities::handlers::FnHandler;
 
 use crate::{
     agent_model::downlink::{hosted::EventDownlinkHandle, OpenEventDownlinkAction},

@@ -20,18 +20,18 @@ use futures::{SinkExt, StreamExt};
 use tokio::time::{timeout, Duration};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
+use swimos_agent_protocol::encoding::downlink::{
+    DownlinkNotificationEncoder, DownlinkOperationDecoder,
+};
+use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_api::{
     downlink::{Downlink, DownlinkConfig},
     error::DownlinkTaskError,
-    protocol::downlink::{
-        DownlinkNotification, DownlinkNotificationEncoder, DownlinkOperation,
-        DownlinkOperationDecoder,
-    },
 };
 use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
 use swimos_model::address::Address;
-use swimos_recon::parser::{parse_recognize, Span};
-use swimos_recon::printer::print_recon_compact;
+use swimos_recon::parser::parse_recognize;
+use swimos_recon::print_recon_compact;
 use swimos_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
@@ -81,8 +81,7 @@ impl TestReader {
         let op = inner.next().await.transpose()?;
         if let Some(DownlinkOperation { body }) = op {
             let body_str = std::str::from_utf8(body.as_ref())?;
-            let input = Span::new(body_str);
-            if let Ok(v) = parse_recognize(input, false) {
+            if let Ok(v) = parse_recognize(body_str, false) {
                 Ok(Some(v))
             } else {
                 Err(ReadFailed)

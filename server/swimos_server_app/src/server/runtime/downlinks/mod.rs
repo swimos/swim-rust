@@ -18,6 +18,7 @@ mod pending;
 mod tests;
 
 pub use connector::{downlink_task_connector, DlTaskRequest, DownlinksConnector, ServerConnector};
+use swimos_net::{Scheme, SchemeHostPort};
 use tracing::{debug, error, info, trace, warn};
 
 use std::{
@@ -29,7 +30,6 @@ use std::{
 
 use futures::{stream::FuturesUnordered, Future, FutureExt, StreamExt};
 pub use pending::{DlKey, PendingDownlinks};
-use swimos_api::net::{Scheme, SchemeHostPort};
 use swimos_api::{
     downlink::DownlinkKind,
     error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError},

@@ -16,15 +16,12 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use bytes::BytesMut;
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::{
-        agent::{MapLaneResponse, MapLaneResponseDecoder},
-        map::MapOperation,
-    },
+use swimos_agent_protocol::{
+    encoding::lane::RawMapLaneResponseDecoder, MapLaneResponse, MapOperation,
 };
+use swimos_api::agent::AgentConfig;
 use swimos_model::Text;
-use swimos_recon::parser::{parse_recognize, Span};
+use swimos_recon::parser::parse_recognize;
 use swimos_utilities::routing::route_uri::RouteUri;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
@@ -151,7 +148,7 @@ fn write_to_buffer_one_update() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapLaneResponseDecoder::default();
+    let mut decoder = RawMapLaneResponseDecoder::default();
     let content = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -182,7 +179,7 @@ fn write_to_buffer_one_remove() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapLaneResponseDecoder::default();
+    let mut decoder = RawMapLaneResponseDecoder::default();
     let content = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -212,7 +209,7 @@ fn write_to_buffer_clear() {
     let result = lane.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapLaneResponseDecoder::default();
+    let mut decoder = RawMapLaneResponseDecoder::default();
     let content = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -237,7 +234,7 @@ fn consume_events(lane: &MapLane<i32, Text>) -> Operations {
     let mut sync_pending = HashMap::new();
     let mut sync = HashMap::new();
 
-    let mut decoder = MapLaneResponseDecoder::default();
+    let mut decoder = RawMapLaneResponseDecoder::default();
     let mut buffer = BytesMut::new();
 
     loop {
@@ -284,14 +281,13 @@ fn interpret(op: MapOperation<BytesMut, BytesMut>) -> MapOperation<i32, Text> {
         MapOperation::Update { key, value } => {
             let key_str = std::str::from_utf8(key.as_ref()).expect("Bad key bytes.");
             let val_str = std::str::from_utf8(value.as_ref()).expect("Bad value bytes.");
-            let key = parse_recognize::<i32>(Span::new(key_str), false).expect("Bad key recon.");
-            let value =
-                parse_recognize::<Text>(Span::new(val_str), false).expect("Bad value recon.");
+            let key = parse_recognize::<i32>(key_str, false).expect("Bad key recon.");
+            let value = parse_recognize::<Text>(val_str, false).expect("Bad value recon.");
             MapOperation::Update { key, value }
         }
         MapOperation::Remove { key } => {
             let key_str = std::str::from_utf8(key.as_ref()).expect("Bad key bytes.");
-            let key = parse_recognize::<i32>(Span::new(key_str), false).expect("Bad key recon.");
+            let key = parse_recognize::<i32>(key_str, false).expect("Bad key recon.");
             MapOperation::Remove { key }
         }
         MapOperation::Clear => MapOperation::Clear,
