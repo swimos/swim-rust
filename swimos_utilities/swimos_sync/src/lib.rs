@@ -13,7 +13,7 @@
 // limitations under the License.
 
 //! # Synchronization Channels
-//! 
+//!
 //! This crate contains asynchronous channels to communicate between tasks or threads.
 
 mod circular_buffer;

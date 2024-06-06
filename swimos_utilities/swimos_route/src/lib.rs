@@ -13,15 +13,15 @@
 // limitations under the License.
 
 //! # SwimOS routes
-//! 
+//!
 //! A route is a URI with no authority that specified the location of a single SwimOS agent instance.
 //! It does not specify the host on which the agent can be found and this information must be retrieved
 //! from a routing table or provided separately.
-//! 
+//!
 //! This crate contains:
-//! 
+//!
 //! - A type to represent a [route URI](`RouteUri``).
-//! - [Route patterns](`RoutePattern`) that can be used to extract components from the path of a 
+//! - [Route patterns](`RoutePattern`) that can be used to extract components from the path of a
 //! route URI.
 
 mod route_pattern;

@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # Time Utility
+//!
+//! Utility types and functions for working with timestamps and durations.
+
 mod instant;
 
 pub use instant::AtomicInstant;
