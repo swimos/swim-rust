@@ -23,7 +23,7 @@ pub enum Item {
     /// An item consisting of a single [`Value`].
     ValueItem(Value),
 
-    /// An item that is a key value pair where both are [`Value`]s.
+    /// An item that is a key-value pair where both are [`Value`]s.
     Slot(Value, Value),
 }
 
