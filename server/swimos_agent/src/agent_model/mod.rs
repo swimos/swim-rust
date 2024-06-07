@@ -120,7 +120,7 @@ impl ItemKind {
 }
 
 bitflags! {
-    #[derive(Default)]
+    #[derive(Default, Copy, Clone, Hash, Debug, PartialEq, Eq)]
     pub struct ItemFlags: u8 {
         /// The state of the item should not be persisted.
         const TRANSIENT = 0b01;

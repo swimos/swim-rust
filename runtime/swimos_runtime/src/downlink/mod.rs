@@ -54,13 +54,14 @@ mod tests;
 bitflags! {
     /// Flags that a downlink consumer can set to instruct the downlink runtime how it wishes
     /// to be driven.
+    #[derive(Debug, Copy, Clone)]
     pub struct DownlinkOptions: u8 {
         /// The consumer needs to be synchronized with the remote lane.
         const SYNC = 0b01;
         /// If the connection fails, it should be restarted and the consumer passed to the new
         /// connection.
         const KEEP_LINKED = 0b10;
-        const DEFAULT = Self::SYNC.bits | Self::KEEP_LINKED.bits;
+        const DEFAULT = Self::SYNC.bits() | Self::KEEP_LINKED.bits();
     }
 }
 
@@ -72,7 +73,7 @@ bitflags! {
         /// A new consumer that needs to be synced has joined why a write was pending.
         const NEEDS_SYNC = 0b10;
         /// When the task starts it does not need to be flushed.
-        const INIT = Self::FLUSHED.bits;
+        const INIT = Self::FLUSHED.bits();
     }
 }
 
