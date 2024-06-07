@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 swimos_runtime = { path = "../../runtime/swimos_runtime" }
 swimos_remote = { path = "../../runtime/swimos_remote" }
-swimos_net = { path = "../../runtime/swimos_net" }
 swimos_api = { path = "../../api/swimos_api" }
 ratchet = { features = ["deflate", "split"], workspace = true }
 swimos_recon = { path = "../../api/formats/swimos_recon" }

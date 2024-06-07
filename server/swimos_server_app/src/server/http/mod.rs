@@ -42,9 +42,8 @@ use ratchet::{
 };
 use swimos_api::{agent::HttpLaneRequest, http::HttpRequest};
 use swimos_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
-use swimos_net::Scheme;
 use swimos_remote::{
-    net::{Listener, ListenerError, ListenerResult},
+    net::{Listener, ListenerError, ListenerResult, Scheme},
     ws::{protocols, RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture},
 };
 use swimos_remote::{AgentResolutionError, FindNode, NoSuchAgent};

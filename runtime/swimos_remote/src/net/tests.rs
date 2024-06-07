@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_net::{BadUrl, SchemeHostPort};
-
-use crate::net::Scheme;
+use crate::net::{BadUrl, Scheme, SchemeHostPort};
 
 #[test]
 fn parse_insecure_warp_url() {

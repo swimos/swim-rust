@@ -17,10 +17,9 @@ use std::{net::SocketAddr, sync::Arc};
 use futures::{future::BoxFuture, FutureExt};
 use rustls::{OwnedTrustAnchor, RootCertStore, ServerName};
 
-use swimos_net::Scheme;
 use swimos_remote::net::{
     dns::{BoxDnsResolver, DnsResolver, Resolver},
-    ClientConnections, ConnResult, ConnectionError, IoResult,
+    ClientConnections, ConnResult, ConnectionError, IoResult, Scheme,
 };
 use tokio::net::TcpStream;
 use tokio_rustls::{TlsConnector, TlsStream};

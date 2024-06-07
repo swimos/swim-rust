@@ -15,12 +15,11 @@ use std::ops::DerefMut;
 use std::sync::Arc;
 use swimos_form::Form;
 use swimos_model::{Text, Value};
-use swimos_net::Scheme;
 use swimos_recon::parser::parse_recognize;
 use swimos_recon::print_recon;
 use swimos_remote::net::dns::{BoxDnsResolver, DnsResolver};
 use swimos_remote::net::{
-    ClientConnections, ConnResult, ConnectionError, IoResult, Listener, ListenerError,
+    ClientConnections, ConnResult, ConnectionError, IoResult, Listener, ListenerError, Scheme,
 };
 use swimos_remote::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
 use swimos_remote::FindNode;

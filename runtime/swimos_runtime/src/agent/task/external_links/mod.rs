@@ -28,7 +28,7 @@ use swimos_api::{
 };
 use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
 use swimos_model::Text;
-use swimos_net::SchemeHostPort;
+use swimos_remote::net::SchemeHostPort;
 use swimos_utilities::{
     byte_channel::{byte_channel, ByteReader, ByteWriter},
     encoding::BytesStr,

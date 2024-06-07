@@ -35,9 +35,8 @@ use swimos_api::{
     http::{StatusCode, Version},
 };
 use swimos_model::Text;
-use swimos_net::Scheme;
 use swimos_remote::{
-    net::{Listener, ListenerResult},
+    net::{Listener, ListenerResult, Scheme},
     AgentResolutionError, FindNode, NoSuchAgent, NodeConnectionRequest,
 };
 use swimos_utilities::non_zero_usize;

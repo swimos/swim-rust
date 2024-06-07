@@ -37,8 +37,8 @@ use swimos_api::{
 };
 use swimos_form::write::StructuralWritable;
 use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
-use swimos_net::SchemeHostPort;
 use swimos_recon::print_recon_compact;
+use swimos_remote::net::SchemeHostPort;
 use swimos_utilities::{
     byte_channel::{self, ByteReader, ByteWriter},
     encoding::BytesStr,

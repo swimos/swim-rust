@@ -21,8 +21,8 @@ use ratchet::{
     CloseCode, CloseReason, NoExt, NoExtProvider, ProtocolRegistry, WebSocket, WebSocketConfig,
 };
 use swimos_form::write::StructuralWritable;
-use swimos_net::{BadUrl, SchemeHostPort};
 use swimos_recon::print_recon_compact;
+use swimos_remote::net::{BadUrl, SchemeHostPort};
 use thiserror::Error;
 use tokio::net::TcpStream;
 

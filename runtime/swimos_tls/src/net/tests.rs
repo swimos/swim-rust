@@ -15,9 +15,8 @@
 use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 
 use futures::{future::join, StreamExt};
-use swimos_net::Scheme;
 use swimos_remote::net::{
-    dns::Resolver, ClientConnections, ConnectionError, Listener, ListenerError,
+    dns::Resolver, ClientConnections, ConnectionError, Listener, ListenerError, Scheme,
 };
 
 use crate::{

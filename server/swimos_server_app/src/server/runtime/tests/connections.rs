@@ -24,10 +24,9 @@ use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use ratchet::{
     ExtensionProvider, NegotiatedExtension, Role, WebSocket, WebSocketConfig, WebSocketStream,
 };
-use swimos_net::Scheme;
 use swimos_remote::net::dns::{DnsFut, DnsResolver};
 use swimos_remote::net::{
-    ConnectionError, ExternalConnections, Listener, ListenerError, ListenerResult,
+    ConnectionError, ExternalConnections, Listener, ListenerError, ListenerResult, Scheme,
 };
 use swimos_remote::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
 use swimos_remote::FindNode;

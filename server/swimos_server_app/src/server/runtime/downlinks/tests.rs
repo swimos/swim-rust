@@ -36,8 +36,10 @@ use swimos_messages::protocol::{
     Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder,
 };
 use swimos_model::Text;
-use swimos_net::SchemeHostPort;
-use swimos_remote::net::dns::{DnsFut, DnsResolver};
+use swimos_remote::net::{
+    dns::{DnsFut, DnsResolver},
+    SchemeHostPort,
+};
 use swimos_remote::{AttachClient, LinkError};
 use swimos_runtime::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},

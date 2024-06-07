@@ -25,8 +25,7 @@ use std::task::{Context, Poll};
 use swimos_api::address::RelativeAddress;
 use swimos_client_api::DownlinkConfig;
 use swimos_model::Text;
-use swimos_net::Scheme;
-use swimos_remote::AttachClient;
+use swimos_remote::{net::Scheme, AttachClient};
 use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use tokio::sync::mpsc;
 

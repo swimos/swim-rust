@@ -24,10 +24,9 @@ use futures::future::Either;
 use futures::TryFutureExt;
 use futures::{future::BoxFuture, FutureExt};
 pub use server::{RustlsListener, RustlsServerNetworking};
-use swimos_net::Scheme;
 use swimos_remote::net::plain::TokioPlainTextNetworking;
 use swimos_remote::net::{
-    dns::BoxDnsResolver, ClientConnections, ConnResult, IoResult, ServerConnections,
+    dns::BoxDnsResolver, ClientConnections, ConnResult, IoResult, Scheme, ServerConnections,
 };
 
 use crate::{

@@ -24,8 +24,10 @@ use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swimos_net::{Scheme, SchemeHostPort};
-use swimos_remote::ws::WebsocketClient;
+use swimos_remote::{
+    net::{Scheme, SchemeHostPort},
+    ws::WebsocketClient,
+};
 use tokio::sync::{mpsc, oneshot, Notify};
 use tokio::task::{JoinError, JoinHandle};
 use tracing::{debug, error, info, trace};

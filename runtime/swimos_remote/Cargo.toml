@@ -18,7 +18,6 @@ swimos_api = { path = "../../api/swimos_api" }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_recon = { path = "../../api/formats/swimos_recon" }
 swimos_messages = { path = "../swimos_messages" }
-swimos_net = { path = "../swimos_net" }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 tokio-stream = { workspace = true, features = ["sync"] }
