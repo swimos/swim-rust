@@ -25,9 +25,9 @@ use ratchet::{
 };
 use swimos_api::address::RelativeAddress;
 use swimos_messages::protocol::{
-    path_from_static_strs, BytesRequestMessage, BytesResponseMessage, Notification, Operation,
-    RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
-    RawResponseMessageEncoder, RequestMessage, ResponseMessage,
+    BytesRequestMessage, BytesResponseMessage, Notification, Operation, RawRequestMessageDecoder,
+    RawRequestMessageEncoder, RawResponseMessageDecoder, RawResponseMessageEncoder, RequestMessage,
+    ResponseMessage,
 };
 use swimos_model::Text;
 use swimos_utilities::{
@@ -61,6 +61,13 @@ const LANE: &str = "lane";
 
 const DL_NODE: &str = "/remote";
 const DL_LANE: &str = "remote_lane";
+
+fn path_from_static_strs(node: &'static str, lane: &'static str) -> RelativeAddress<BytesStr> {
+    RelativeAddress {
+        node: BytesStr::from_static_str(node),
+        lane: BytesStr::from_static_str(lane),
+    }
+}
 
 fn agent_path() -> RelativeAddress<BytesStr> {
     path_from_static_strs(NODE, LANE)

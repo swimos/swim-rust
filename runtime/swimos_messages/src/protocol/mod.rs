@@ -108,13 +108,6 @@ where
     }
 }
 
-pub fn path_from_static_strs(node: &'static str, lane: &'static str) -> RelativeAddress<BytesStr> {
-    RelativeAddress {
-        node: BytesStr::from_static_str(node),
-        lane: BytesStr::from_static_str(lane),
-    }
-}
-
 /// Type of messages that can be sent to an agent/from a downlink..
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RequestMessage<P, T> {

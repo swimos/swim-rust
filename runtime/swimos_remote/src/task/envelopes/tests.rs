@@ -15,8 +15,7 @@
 use bytes::{Bytes, BytesMut};
 use swimos_api::address::RelativeAddress;
 use swimos_messages::protocol::{
-    path_from_static_strs, BytesRequestMessage, BytesResponseMessage, RequestMessage,
-    ResponseMessage,
+    BytesRequestMessage, BytesResponseMessage, RequestMessage, ResponseMessage,
 };
 use swimos_model::Text;
 use swimos_utilities::encoding::BytesStr;
@@ -30,6 +29,13 @@ use super::ReconEncoder;
 const ID: Uuid = Uuid::from_u128(7474834);
 const NODE: &str = "/node";
 const LANE: &str = "lane";
+
+fn path_from_static_strs(node: &'static str, lane: &'static str) -> RelativeAddress<BytesStr> {
+    RelativeAddress {
+        node: BytesStr::from_static_str(node),
+        lane: BytesStr::from_static_str(lane),
+    }
+}
 
 fn path() -> RelativeAddress<BytesStr> {
     path_from_static_strs(NODE, LANE)
