@@ -27,7 +27,7 @@ use swimos_agent_protocol::encoding::downlink::{
 };
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_form::read::RecognizerReadable;
 use swimos_form::Form;
 use swimos_messages::protocol::{
     AgentMessageDecoder, MessageDecodeError, Operation, Path, RequestMessage, ResponseMessage,

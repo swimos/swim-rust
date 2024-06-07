@@ -24,12 +24,11 @@ use std::num::NonZeroUsize;
 use std::sync::{Arc, OnceLock};
 use swimos_agent_protocol::encoding::lane::{MapLaneResponseDecoder, RawValueLaneRequestEncoder};
 use swimos_agent_protocol::{LaneRequest, LaneResponse, MapOperation};
-use swimos_api::agent::{AgentContext, HttpLaneRequestChannel, LaneConfig};
-use swimos_api::downlink::DownlinkKind;
+use swimos_api::agent::{
+    AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
+};
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
-use swimos_api::lane::WarpLaneKind;
-use swimos_api::store::StoreKind;
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_form::read::RecognizerReadable;
 use swimos_model::time::Timestamp;
 use swimos_model::Text;
 use swimos_runtime::agent::reporting::UplinkReporter;

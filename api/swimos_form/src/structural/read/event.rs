@@ -72,6 +72,7 @@ impl<'a> ReadEvent<'a> {
     }
 }
 
+/// A numeric value constituent of a [`ReadEvent`].
 #[derive(Debug, Clone)]
 pub enum NumericValue {
     Int(i64),

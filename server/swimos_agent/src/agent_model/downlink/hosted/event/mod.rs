@@ -23,8 +23,8 @@ use futures::{
 };
 use swimos_agent_protocol::encoding::downlink::ValueNotificationDecoder;
 use swimos_agent_protocol::DownlinkNotification;
-use swimos_api::{downlink::DownlinkKind, error::FrameIoError};
-use swimos_form::structural::read::{recognizer::RecognizerReadable, StructuralReadable};
+use swimos_api::{agent::DownlinkKind, error::FrameIoError};
+use swimos_form::read::{RecognizerReadable, StructuralReadable};
 use swimos_model::{address::Address, Text};
 use swimos_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},

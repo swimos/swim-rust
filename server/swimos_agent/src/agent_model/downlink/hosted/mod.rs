@@ -176,11 +176,11 @@ mod test_support {
     use bytes::BytesMut;
     use futures::future::BoxFuture;
     use swimos_api::{
-        agent::{AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig},
-        downlink::DownlinkKind,
+        agent::DownlinkKind,
+        agent::{
+            AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
+        },
         error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-        lane::WarpLaneKind,
-        store::StoreKind,
     };
     use swimos_utilities::{
         io::byte_channel::{ByteReader, ByteWriter},

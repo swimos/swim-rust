@@ -17,11 +17,10 @@ use std::collections::HashMap;
 use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use swimos_api::{
-    agent::{AgentContext, HttpLaneRequestChannel, LaneConfig},
-    downlink::DownlinkKind,
+    agent::{
+        AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
+    },
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    lane::WarpLaneKind,
-    store::StoreKind,
 };
 use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 

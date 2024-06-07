@@ -18,7 +18,7 @@ use crate::recon_parser::{parse_recognize, ParseError, RecognizerDecoder};
 use bytes::{BufMut, BytesMut};
 use std::fmt::Debug;
 use std::path::PathBuf;
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_form::read::RecognizerReadable;
 use swimos_form::Form;
 use swimos_model::{Attr, Item, Value};
 use tokio_util::codec::Decoder;

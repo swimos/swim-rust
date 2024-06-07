@@ -22,7 +22,7 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_form::read::RecognizerReadable;
 use swimos_messages::protocol::{
     AgentMessageDecoder, Operation, Path, RawRequestMessageEncoder, RequestMessage,
 };

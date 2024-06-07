@@ -15,7 +15,7 @@
 use std::fmt::Debug;
 
 use bytes::{Buf, BufMut, BytesMut};
-use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
+use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_model::{address::Address, Text, TryFromUtf8Bytes};
 use swimos_recon::{WithLenRecognizerDecoder, WithLenReconEncoder};
 use swimos_utilities::encoding::WithLengthBytesCodec;

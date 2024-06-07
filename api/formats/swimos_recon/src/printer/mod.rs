@@ -18,7 +18,7 @@ mod tests;
 use base64::display::Base64Display;
 use std::borrow::Cow;
 use std::fmt::{Debug, Display, Formatter};
-use swimos_form::structural::write::{
+use swimos_form::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };

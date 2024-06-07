@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS API error types
+
 use std::io;
 use std::{error::Error, sync::Arc};
 
-use swimos_form::structural::read::ReadError;
+use swimos_form::read::ReadError;
 use swimos_model::{address::RelativeAddress, Text};
 use swimos_recon::parser::AsyncParseError;
 use swimos_utilities::{
@@ -24,7 +26,7 @@ use swimos_utilities::{
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 
-use crate::store::StoreKind;
+use crate::agent::StoreKind;
 
 mod introspection;
 

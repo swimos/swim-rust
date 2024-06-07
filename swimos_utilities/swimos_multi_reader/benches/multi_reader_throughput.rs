@@ -25,8 +25,7 @@ use rand::SeedableRng;
 use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swimos_form::structural::read::from_model::ValueMaterializer;
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_form::read::RecognizerReadable;
 use swimos_messages::protocol::{
     AgentMessageDecoder, MessageDecodeError, Operation, Path, RawRequestMessageEncoder,
     RequestMessage,
@@ -142,7 +141,8 @@ criterion_group!(benches, multi_reader_benchmark);
 criterion_main!(benches);
 
 type Writer = FramedWrite<ByteWriter, RawRequestMessageEncoder>;
-type Reader = FramedRead<ByteReader, AgentMessageDecoder<Value, ValueMaterializer>>;
+type Reader =
+    FramedRead<ByteReader, AgentMessageDecoder<Value, <Value as RecognizerReadable>::Rec>>;
 
 fn create_channels(n: usize) -> (Vec<Writer>, Vec<Reader>) {
     let mut writers = Vec::new();

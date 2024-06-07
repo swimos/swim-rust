@@ -26,13 +26,10 @@ use std::{
 use swimos_agent_protocol::encoding::downlink::ValueNotificationDecoder;
 use swimos_agent_protocol::DownlinkNotification;
 use swimos_api::{
-    downlink::DownlinkKind,
+    agent::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},
 };
-use swimos_form::{
-    structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
-    Form,
-};
+use swimos_form::{read::RecognizerReadable, write::StructuralWritable, Form};
 use swimos_model::{address::Address, Text};
 use swimos_recon::WithLenReconEncoder;
 use swimos_utilities::{

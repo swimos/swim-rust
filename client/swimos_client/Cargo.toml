@@ -15,6 +15,7 @@ runtime = { path = "../runtime" }
 swimos_utilities = { path = "../../swimos_utilities", features = ["trigger"] }
 swimos_downlink = { path = "../../swimos_downlink" }
 swimos_api = { path = "../../api/swimos_api" }
+swimos_client_api = { path = "../../api/swimos_client_api" }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_form = { path = "../../api/swimos_form" }
 swimos_runtime = { path = "../../runtime/swimos_runtime" }

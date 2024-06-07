@@ -14,7 +14,7 @@
 
 use crate::reader::MsgPackReadError;
 use rmp::Marker;
-use swimos_form::structural::read::ReadError;
+use swimos_form::read::ReadError;
 
 const INVALID_UTF8: [u8; 2] = [0xc3, 0x28];
 

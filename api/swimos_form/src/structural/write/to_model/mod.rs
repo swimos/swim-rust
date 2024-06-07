@@ -25,7 +25,7 @@ use swimos_model::bigint::{BigInt, BigUint};
 use swimos_model::{Attr, Blob, Item, Text, Value};
 
 /// [`StructuralWriter`] that constructs [`Value`] instances representing the
-/// strucuture that is described.
+/// structure that is described.
 #[derive(Default)]
 pub struct ValueInterpreter(Option<RecordBuilder>);
 

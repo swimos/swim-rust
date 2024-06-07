@@ -16,9 +16,8 @@ use std::{collections::HashMap, time::Duration};
 
 use futures::{future::BoxFuture, FutureExt};
 use swimos_api::{
-    agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
+    agent::{Agent, AgentConfig, AgentContext, AgentInitResult, WarpLaneKind},
     error::{AgentInitError, AgentTaskError},
-    lane::WarpLaneKind,
 };
 use swimos_meta::LanePulse;
 use swimos_model::Text;

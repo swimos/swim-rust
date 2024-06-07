@@ -17,7 +17,7 @@ use crate::recon_parser::record::ParseIterator;
 use crate::recon_parser::{parse_recognize, ParseError, Span};
 use nom::error::ErrorKind;
 use std::borrow::Cow;
-use swimos_form::structural::read::event::{NumericValue, ReadEvent};
+use swimos_form::read::{NumericValue, ReadEvent};
 use swimos_model::Value;
 
 fn value_from_string(rep: &str) -> Result<Value, ParseError> {

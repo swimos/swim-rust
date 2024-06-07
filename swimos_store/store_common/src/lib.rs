@@ -39,7 +39,7 @@ pub trait Store:
     fn engine_info(&self) -> EngineInfo;
 }
 
-pub use swimos_api::store::{KeyValue, RangeConsumer};
+pub use swimos_api::persistence::{KeyValue, RangeConsumer};
 
 /// Information regarding a delegate store engine that is useful for displaying along with debug
 /// information or an error report.

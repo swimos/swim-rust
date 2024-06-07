@@ -18,7 +18,7 @@ use bytes::BytesMut;
 use parking_lot::Mutex;
 use swimos_agent_protocol::{encoding::lane::RawValueLaneResponseDecoder, LaneResponse};
 use swimos_api::agent::AgentConfig;
-use swimos_form::structural::write::StructuralWritable;
+use swimos_form::write::StructuralWritable;
 use swimos_model::Text;
 use swimos_recon::print_recon_compact;
 use swimos_utilities::routing::route_uri::RouteUri;

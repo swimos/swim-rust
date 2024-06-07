@@ -19,8 +19,7 @@ use std::sync::Arc;
 
 use bytes::BytesMut;
 use futures::stream::FuturesUnordered;
-use swimos_api::agent::AgentConfig;
-use swimos_api::downlink::DownlinkKind;
+use swimos_api::agent::{AgentConfig, DownlinkKind};
 use swimos_model::address::Address;
 use swimos_utilities::routing::route_uri::RouteUri;
 

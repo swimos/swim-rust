@@ -6,13 +6,12 @@ edition = "2021"
 
 [dependencies]
 futures = { workspace = true }
-swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "errors"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["io", "errors", "trigger"] }
 swimos_model = { path = "../swimos_model" }
 swimos_form = { path = "../swimos_form" }
 swimos_recon = { path = "../formats/swimos_recon" }
 thiserror = { workspace = true }
 bytes = { workspace = true }
 tokio = { workspace = true }
-tokio-util = { workspace = true, features = ["codec"] }
 static_assertions = { workspace = true }
 http = { workspace = true }

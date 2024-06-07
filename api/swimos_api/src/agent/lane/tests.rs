@@ -1,5 +1,6 @@
 use crate::agent::UplinkKind;
-use crate::lane::WarpLaneKind;
+
+use super::WarpLaneKind;
 
 // spatial lanes are omitted as they are unimplemented
 const LANE_KINDS: [WarpLaneKind; 8] = [

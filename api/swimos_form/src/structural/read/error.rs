@@ -21,40 +21,69 @@ use swimos_model::Text;
 use swimos_model::ValueKind;
 use swimos_utilities::format as print;
 
+/// Enumeration of possible deserialization events for error reporting.
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum ExpectedEvent {
+    /// A value with the specified kind.
     ValueEvent(ValueKind),
+    /// An attribute, possibly with a specific name.
     Attribute(Option<Text>),
+    /// A record body.
     RecordBody,
+    /// A slot.
     Slot,
+    /// The end of a record.
     EndOfRecord,
+    /// The end of an attribute.
     EndOfAttribute,
+    /// Any one of a number of specified events.
     Or(Vec<ExpectedEvent>),
 }
 
+/// Errors that can occur deserializing from the SwimOS model.
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum ReadError {
+    /// The deserialization stream contained a valid event but of an unexpected kind.
     UnexpectedKind {
+        /// The kind that was encountered.
         actual: ValueKind,
+        /// The kind that was expected (or [`None`] if no event was expected).
         expected: Option<ExpectedEvent>,
     },
+    /// The stream terminated before deserialization was complete.
     ReaderUnderflow,
+    /// An invalid slot was encountered in the input.
     DoubleSlot,
+    /// Deserialization complete but more input is still available.
     ReaderOverflow,
+    /// A record was not terminated correctly.
     IncompleteRecord,
+    /// One or more required slots were not present in the input.
     MissingFields(Vec<Text>),
+    /// An unexpected attribute occurred in the input.
     UnexpectedAttribute(Text),
+    /// The deserialization state became corrupted.
     InconsistentState,
+    /// An unexpected item occurred in a record.
     UnexpectedItem,
+    /// An unexpected slot occurred in a record.
     UnexpectedSlot,
+    /// Two fields with the same name occurred in a record.
     DuplicateField(Text),
+    /// An unexpected field occurred in a record.
     UnexpectedField(Text),
+    /// A numeric value was outside of the expected range for the type being deserialized.
     NumberOutOfRange,
+    /// A tag attribute was required for the type being deserialized but was absent.
     MissingTag,
+    /// The content of a string component of the input was not valid for the type being deserialized.
     Malformatted {
+        /// The invalid string.
         text: Text,
+        /// A message describing the problem.
         message: Text,
     },
+    /// A custom error message.
     Message(Text),
 }
 

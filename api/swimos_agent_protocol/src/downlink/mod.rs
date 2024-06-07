@@ -14,7 +14,7 @@
 
 use bytes::{Buf, BufMut, Bytes};
 use std::fmt::Debug;
-use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
+use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
 use swimos_recon::{
     parser::{AsyncParseError, RecognizerDecoder},

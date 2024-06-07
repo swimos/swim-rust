@@ -11,6 +11,7 @@ deflate = ["ratchet/deflate"]
 fixture = { path = "../fixture" }
 swimos_downlink = { path = "../../swimos_downlink" }
 swimos_api = { path = "../../api/swimos_api" }
+swimos_client_api = { path = "../../api/swimos_client_api" }
 swimos_agent_protocol = { path = "../../api/swimos_agent_protocol" }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_recon = { path = "../../api/formats/swimos_recon" }

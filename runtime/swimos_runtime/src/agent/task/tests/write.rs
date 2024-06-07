@@ -20,8 +20,8 @@ use futures::{
     Future, StreamExt,
 };
 use swimos_api::{
-    agent::UplinkKind,
-    store::{NodePersistence, StoreDisabled, StoreKind},
+    agent::{StoreKind, UplinkKind},
+    persistence::{NodePersistence, StoreDisabled},
 };
 use swimos_messages::protocol::Notification;
 use swimos_model::Text;

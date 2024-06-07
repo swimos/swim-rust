@@ -109,7 +109,7 @@ impl<'a> ToTokens for DeriveTag<UnitEnum<'a>> {
                 const VARIANT_NAMES: [&str; #num_vars] = [#(#literals),*];
 
                 #[automatically_derived]
-                impl #root::structural::Tag for #name {
+                impl #root::Tag for #name {
 
                     const VARIANTS: &'static [&'static str] = &VARIANT_NAMES;
                 }

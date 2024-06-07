@@ -24,9 +24,8 @@ use swimos_agent_protocol::{
     LaneRequest, LaneResponse,
 };
 use swimos_api::{
-    agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
+    agent::{Agent, AgentConfig, AgentContext, AgentInitResult, WarpLaneKind},
     error::AgentTaskError,
-    lane::WarpLaneKind,
 };
 use swimos_form::Form;
 use swimos_utilities::{

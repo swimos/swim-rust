@@ -31,10 +31,10 @@ use rand::Rng;
 use swimos_agent_protocol::encoding::ad_hoc::AdHocCommandEncoder;
 use swimos_agent_protocol::AdHocCommand;
 use swimos_api::{
-    downlink::DownlinkKind,
+    agent::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError},
 };
-use swimos_form::structural::write::StructuralWritable;
+use swimos_form::write::StructuralWritable;
 use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
 use swimos_model::{
     address::{Address, RelativeAddress},

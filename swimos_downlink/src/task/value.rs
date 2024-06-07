@@ -14,6 +14,7 @@
 
 use either::Either;
 use std::fmt::Display;
+use swimos_client_api::DownlinkConfig;
 
 use futures::{Sink, SinkExt, StreamExt};
 use tokio::sync::mpsc;
@@ -25,9 +26,8 @@ use swimos_agent_protocol::encoding::downlink::{
     DownlinkOperationEncoder, ValueNotificationDecoder,
 };
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
-use swimos_api::downlink::DownlinkConfig;
 use swimos_api::error::DownlinkTaskError;
-use swimos_form::structural::write::StructuralWritable;
+use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
 use swimos_model::address::Address;
 use swimos_model::Text;
