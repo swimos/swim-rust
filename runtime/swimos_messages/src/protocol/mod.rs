@@ -190,17 +190,18 @@ impl<P, T, U> ResponseMessage<P, T, U> {
     }
 }
 
-/// An agent message where the body is uninterpreted (represented as raw bytes).
+/// An request message where the body is uninterpreted (represented as raw bytes).
 pub type RawRequestMessage<'a, P> = RequestMessage<P, &'a [u8]>;
+/// A request message where the path and body are taken directly from the input buffer, without copying or interpretation.
 pub type BytesRequestMessage = RequestMessage<BytesStr, Bytes>;
-
+/// A response message where the path and body are taken directly from the input buffer, without copying or interpretation.
 pub type BytesResponseMessage = ResponseMessage<BytesStr, Bytes, Bytes>;
 
 /// Tokio [`Encoder`] to encode a [`RawRequestMessage`] as a byte stream.
 #[derive(Debug, Default)]
 pub struct RawRequestMessageEncoder;
 
-/// Tokio [`Encoder`] to encode a [`RawResponseMessage`] as a byte stream.
+/// Tokio [`Encoder`] to encode a raw response message as a byte stream.
 #[derive(Debug, Default)]
 pub struct RawResponseMessageEncoder;
 
@@ -485,21 +486,21 @@ enum RequestState<P, T> {
 
 /// Tokio [`Decoder`] that can read an [`RequestMessage`] from a stream of bytes, using a
 /// [`RecognizerDecoder`] to interpret the body.
-pub struct AgentMessageDecoder<T, R> {
+pub struct RequestMessageDecoder<T, R> {
     state: RequestState<Text, T>,
     recognizer: RecognizerDecoder<R>,
 }
 
-impl<T: Debug, R> Debug for AgentMessageDecoder<T, R> {
+impl<T: Debug, R> Debug for RequestMessageDecoder<T, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AgentMessageDecoder")
+        f.debug_struct("RequestMessageDecoder")
             .field("state", &self.state)
             .field("recognizer", &"...")
             .finish()
     }
 }
 
-/// Tokio [`Decoder`] that can read an [`RawResponseMessage`] from a stream of bytes.
+/// Tokio [`Decoder`] that can read an raw response message from a stream of bytes.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct RawResponseMessageDecoder;
 
@@ -507,9 +508,9 @@ pub struct RawResponseMessageDecoder;
 #[derive(Default, Debug, Clone, Copy)]
 pub struct RawRequestMessageDecoder;
 
-impl<T, R> AgentMessageDecoder<T, R> {
+impl<T, R> RequestMessageDecoder<T, R> {
     pub fn new(recognizer: R) -> Self {
-        AgentMessageDecoder {
+        RequestMessageDecoder {
             state: RequestState::ReadingHeader,
             recognizer: RecognizerDecoder::new(recognizer),
         }
@@ -518,14 +519,19 @@ impl<T, R> AgentMessageDecoder<T, R> {
 
 const HEADER_INIT_LEN: usize = 32;
 
+/// Error type for the protocol decoders.
 #[derive(Error, Debug)]
 pub enum MessageDecodeError {
+    /// There was an IO error reading from the channel.
     #[error("Error reading from the source: {0}")]
     Io(#[from] std::io::Error),
+    /// A lane name in a frame contained invalid UTF-8.
     #[error("Invalid lane name: {0}")]
     LaneName(#[from] Utf8Error),
+    /// The kind of a frame was invalid.
     #[error("Unexpecetd message tag code: {0}")]
     UnexpectedCode(u64),
+    /// The body of a frame could not be deserialized.
     #[error("Invalid message body: {0}")]
     Body(#[from] AsyncParseError),
 }
@@ -544,7 +550,7 @@ impl MessageDecodeError {
     }
 }
 
-impl<T, R> Decoder for AgentMessageDecoder<T, R>
+impl<T, R> Decoder for RequestMessageDecoder<T, R>
 where
     R: Recognizer<Target = T>,
 {
@@ -552,7 +558,7 @@ where
     type Error = MessageDecodeError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let AgentMessageDecoder {
+        let RequestMessageDecoder {
             state, recognizer, ..
         } = self;
         loop {

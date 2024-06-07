@@ -28,7 +28,7 @@ use swimos_byte_channel::byte_channel;
 use swimos_byte_channel::{ByteReader, ByteWriter};
 use swimos_form::read::RecognizerReadable;
 use swimos_messages::protocol::{
-    AgentMessageDecoder, MessageDecodeError, Operation, RawRequestMessageEncoder, RequestMessage,
+    MessageDecodeError, Operation, RawRequestMessageEncoder, RequestMessage, RequestMessageDecoder,
 };
 use uuid::Uuid;
 
@@ -142,7 +142,7 @@ criterion_main!(benches);
 
 type Writer = FramedWrite<ByteWriter, RawRequestMessageEncoder>;
 type Reader =
-    FramedRead<ByteReader, AgentMessageDecoder<Value, <Value as RecognizerReadable>::Rec>>;
+    FramedRead<ByteReader, RequestMessageDecoder<Value, <Value as RecognizerReadable>::Rec>>;
 
 fn create_channels(n: usize) -> (Vec<Writer>, Vec<Reader>) {
     let mut writers = Vec::new();
@@ -159,7 +159,8 @@ fn create_framed_channel() -> (Writer, Reader) {
     let (writer, reader) = byte_channel(NonZeroUsize::new(256).unwrap());
 
     let framed_writer = FramedWrite::new(writer, RawRequestMessageEncoder);
-    let framed_reader = FramedRead::new(reader, AgentMessageDecoder::new(Value::make_recognizer()));
+    let framed_reader =
+        FramedRead::new(reader, RequestMessageDecoder::new(Value::make_recognizer()));
 
     (framed_writer, framed_reader)
 }

@@ -12,5 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS Runtime Internal Messaging Protocol
+//!
+//! Encodes the protocol used to communicate between external sockets and agent runtime components.
+
+/// Message types and Tokio encoders and decoders.
 pub mod protocol;
+/// Utilities to strip the header fields from Warp frames.
 pub mod warp;

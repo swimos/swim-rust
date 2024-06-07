@@ -28,7 +28,7 @@ use swimos_api::{
 };
 use swimos_form::{read::RecognizerReadable, Form};
 use swimos_messages::protocol::{
-    AgentMessageDecoder, MessageDecodeError, Operation, RequestMessage, ResponseMessage,
+    MessageDecodeError, Operation, RequestMessage, RequestMessageDecoder, ResponseMessage,
     ResponseMessageEncoder,
 };
 use swimos_model::Text;
@@ -195,7 +195,7 @@ struct SyncedTestContext {
 struct TestSender(FramedWrite<ByteWriter, ResponseMessageEncoder>);
 
 type MsgDecoder<K, V> =
-    AgentMessageDecoder<MapOperation<K, V>, <MapOperation<K, V> as RecognizerReadable>::Rec>;
+    RequestMessageDecoder<MapOperation<K, V>, <MapOperation<K, V> as RecognizerReadable>::Rec>;
 struct TestReceiver<K: RecognizerReadable, V: RecognizerReadable>(
     FramedRead<ByteReader, MsgDecoder<K, V>>,
 );

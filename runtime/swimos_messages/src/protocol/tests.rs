@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use crate::protocol::{
-    AgentMessageDecoder, BytesResponseMessage, MessageDecodeError, RawRequestMessage,
-    RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage, ResponseMessage,
+    BytesResponseMessage, MessageDecodeError, RawRequestMessage, RawRequestMessageEncoder,
+    RawResponseMessageDecoder, RequestMessage, RequestMessageDecoder, ResponseMessage,
     ResponseMessageEncoder, COMMAND, EVENT, HEADER_INIT_LEN, LINK, LINKED, OP_MASK, OP_SHIFT, SYNC,
     SYNCED, UNLINK, UNLINKED,
 };
@@ -205,7 +205,7 @@ where
     P: AsRef<str>,
     T: RecognizerReadable + Debug,
 {
-    let mut decoder = AgentMessageDecoder::<T, _>::new(T::make_recognizer());
+    let mut decoder = RequestMessageDecoder::<T, _>::new(T::make_recognizer());
     let mut encoder = RawRequestMessageEncoder;
 
     let mut buffer = BytesMut::new();
@@ -325,7 +325,7 @@ async fn multiple_frames() {
     let (tx, rx) = byte_channel::byte_channel(CHANNEL_SIZE);
 
     let mut framed_write = FramedWrite::new(tx, RawRequestMessageEncoder);
-    let decoder = AgentMessageDecoder::<Example, _>::new(Example::make_recognizer());
+    let decoder = RequestMessageDecoder::<Example, _>::new(Example::make_recognizer());
 
     let mut framed_read = FramedRead::new(rx, decoder);
 
@@ -666,7 +666,7 @@ fn decode_command_frame_twice() {
         second_as_text.as_bytes(),
     );
 
-    let mut decoder = AgentMessageDecoder::<Example2, _>::new(Example2::make_recognizer());
+    let mut decoder = RequestMessageDecoder::<Example2, _>::new(Example2::make_recognizer());
     let mut encoder = RawRequestMessageEncoder;
 
     let mut buffer = BytesMut::new();

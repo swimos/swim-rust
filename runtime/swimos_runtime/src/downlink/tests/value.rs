@@ -33,7 +33,7 @@ use swimos_api::{
 use swimos_form::read::RecognizerReadable;
 use swimos_form::Form;
 use swimos_messages::protocol::{
-    AgentMessageDecoder, MessageDecodeError, Operation, RequestMessage, ResponseMessage,
+    MessageDecodeError, Operation, RequestMessage, RequestMessageDecoder, ResponseMessage,
     ResponseMessageEncoder,
 };
 use swimos_model::Text;
@@ -228,7 +228,7 @@ where
 
 struct TestSender(FramedWrite<ByteWriter, ResponseMessageEncoder>);
 
-type MsgDecoder<T> = AgentMessageDecoder<T, <T as RecognizerReadable>::Rec>;
+type MsgDecoder<T> = RequestMessageDecoder<T, <T as RecognizerReadable>::Rec>;
 struct TestReceiver<M: RecognizerReadable>(FramedRead<ByteReader, MsgDecoder<M>>);
 
 impl TestSender {

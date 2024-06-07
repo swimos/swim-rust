@@ -25,7 +25,7 @@ use swimos_api::address::RelativeAddress;
 use swimos_byte_channel::byte_channel;
 use swimos_form::read::RecognizerReadable;
 use swimos_messages::protocol::{
-    AgentMessageDecoder, Operation, RawRequestMessageEncoder, RequestMessage,
+    Operation, RawRequestMessageEncoder, RequestMessage, RequestMessageDecoder,
 };
 use swimos_model::{Text, Value};
 use tokio::time::timeout;
@@ -40,7 +40,7 @@ async fn test_single_message_single_stream() {
 
     multi_reader.add(FramedRead::new(
         first_reader,
-        AgentMessageDecoder::new(Value::make_recognizer()),
+        RequestMessageDecoder::new(Value::make_recognizer()),
     ));
 
     let write = async move {
@@ -93,7 +93,7 @@ async fn test_multiple_messages_single_stream() {
 
     multi_reader.add(FramedRead::new(
         first_reader,
-        AgentMessageDecoder::new(Value::make_recognizer()),
+        RequestMessageDecoder::new(Value::make_recognizer()),
     ));
 
     let write = async move {
@@ -182,11 +182,11 @@ async fn test_single_message_multiple_streams() {
 
     multi_reader.add(FramedRead::new(
         first_reader,
-        AgentMessageDecoder::new(Value::make_recognizer()),
+        RequestMessageDecoder::new(Value::make_recognizer()),
     ));
     multi_reader.add(FramedRead::new(
         second_reader,
-        AgentMessageDecoder::new(Value::make_recognizer()),
+        RequestMessageDecoder::new(Value::make_recognizer()),
     ));
 
     let write = async move {
@@ -260,15 +260,15 @@ async fn test_multiple_messages_multiple_streams() {
 
     multi_reader.add(FramedRead::new(
         first_reader,
-        AgentMessageDecoder::new(Value::make_recognizer()),
+        RequestMessageDecoder::new(Value::make_recognizer()),
     ));
     multi_reader.add(FramedRead::new(
         second_reader,
-        AgentMessageDecoder::new(Value::make_recognizer()),
+        RequestMessageDecoder::new(Value::make_recognizer()),
     ));
     multi_reader.add(FramedRead::new(
         third_reader,
-        AgentMessageDecoder::new(Value::make_recognizer()),
+        RequestMessageDecoder::new(Value::make_recognizer()),
     ));
 
     let write = async move {
@@ -382,11 +382,11 @@ async fn test_replace_stream() {
 
     multi_reader.add(FramedRead::new(
         first_reader,
-        AgentMessageDecoder::new(Value::make_recognizer()),
+        RequestMessageDecoder::new(Value::make_recognizer()),
     ));
     multi_reader.add(FramedRead::new(
         second_reader,
-        AgentMessageDecoder::new(Value::make_recognizer()),
+        RequestMessageDecoder::new(Value::make_recognizer()),
     ));
 
     let write = async move {
@@ -462,7 +462,7 @@ async fn test_replace_stream() {
 
         multi_reader.add(FramedRead::new(
             third_reader,
-            AgentMessageDecoder::new(Value::make_recognizer()),
+            RequestMessageDecoder::new(Value::make_recognizer()),
         ));
 
         let message = multi_reader.next().await.unwrap().unwrap();
@@ -506,7 +506,7 @@ async fn test_512_streams() {
 
         multi_reader.add(FramedRead::new(
             reader,
-            AgentMessageDecoder::new(Value::make_recognizer()),
+            RequestMessageDecoder::new(Value::make_recognizer()),
         ));
     }
 
