@@ -7,6 +7,7 @@ edition = "2021"
 [features]
 default = []
 rocks_store = ["swimos_persistence/rocks", "rocksdb"]
+trust_dns = ["swimos_runtime/trust_dns"]
 
 [dependencies]
 futures = { workspace = true }
