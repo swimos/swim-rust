@@ -120,7 +120,6 @@ impl Listener<DuplexStream> for TestListener {
 }
 
 async fn run_server(rx: mpsc::Receiver<DuplexStream>, find_tx: mpsc::Sender<FindNode>) {
-    println!("Server start");
     let listener = TestListener { rx };
 
     let config = HttpConfig {

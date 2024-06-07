@@ -1,9 +1,4 @@
-use std::{
-    collections::HashSet,
-    pin::Pin,
-    task::{Context, Poll},
-};
-
+use base64::{engine::general_purpose::STANDARD, Engine};
 use bytes::{Bytes, BytesMut};
 use futures::{ready, Future, FutureExt};
 use http::{header::HeaderName, HeaderMap, HeaderValue, Method};
@@ -17,6 +12,11 @@ use ratchet::{
     WebSocketStream,
 };
 use sha1::{Digest, Sha1};
+use std::{
+    collections::HashSet,
+    pin::Pin,
+    task::{Context, Poll},
+};
 use thiserror::Error;
 
 const UPGRADE_STR: &str = "Upgrade";
@@ -120,7 +120,7 @@ where
     Digest::update(&mut digest, key);
     Digest::update(&mut digest, ACCEPT_KEY);
 
-    let sec_websocket_accept = base64::encode(digest.finalize());
+    let sec_websocket_accept = STANDARD.encode(digest.finalize());
     let mut builder = Response::builder()
         .status(http::StatusCode::SWITCHING_PROTOCOLS)
         .header(http::header::SEC_WEBSOCKET_ACCEPT, sec_websocket_accept)

@@ -15,6 +15,8 @@
 mod derive;
 
 use super::*;
+use base64::engine::general_purpose::URL_SAFE;
+use base64::Engine;
 use num_traits::FloatConst;
 use regex::Regex;
 use std::collections::HashMap;
@@ -7444,7 +7446,7 @@ fn compare_layout_layout_non_exhaustive() {
 
 #[test]
 fn blob_schema() {
-    let encoded = base64::encode_config("swimming", base64::URL_SAFE);
+    let encoded = URL_SAFE.encode("swimming");
     let schema = StandardSchema::binary_length(encoded.len());
     let blob = Blob::from_encoded(Vec::from(encoded.as_bytes()));
 
