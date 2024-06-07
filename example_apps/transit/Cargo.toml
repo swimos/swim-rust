@@ -12,7 +12,6 @@ tokio-util = { workspace = true, features = ["io"] }
 example-util = { path = "../example_util" }
 serde = { workspace = true, features = ["derive"] }
 csv = "1.2"
-serde-xml-rs = "0.6"
 thiserror = { workspace = true }
 percent-encoding = { workspace = true }
 reqwest = { workspace = true, features = ["rustls-tls", "gzip"] }

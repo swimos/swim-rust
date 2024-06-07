@@ -22,4 +22,3 @@ tokio = { workspace = true, features = ["macros", "rt"] }
 uuid = { workspace = true, features = ["v4"] }
 swimos_utilities = { path = "../../swimos_utilities", features = ["buf_channel"] }
 rand = { workspace = true }
-swimos_api = { path = "../../api/swimos_api" }

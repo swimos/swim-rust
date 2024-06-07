@@ -7,7 +7,6 @@ edition = "2021"
 default = []
 tls = ["swimos_tls"]
 deflate = ["runtime/deflate"]
-trust_dns = ["swimos_runtime/trust_dns"]
 
 [dependencies]
 swimos_tls = { path = "../../runtime/swimos_tls", optional = true }
