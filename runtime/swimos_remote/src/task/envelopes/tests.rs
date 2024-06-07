@@ -17,7 +17,8 @@ use swimos_messages::protocol::{
     path_from_static_strs, BytesRequestMessage, BytesResponseMessage, Path, RequestMessage,
     ResponseMessage,
 };
-use swimos_model::{BytesStr, Text};
+use swimos_model::Text;
+use swimos_utilities::encoding::BytesStr;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 

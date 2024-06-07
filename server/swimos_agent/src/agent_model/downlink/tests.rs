@@ -22,13 +22,14 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swimos_api::{
+    address::Address,
     agent::DownlinkKind,
     agent::{
         AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
     },
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
 };
-use swimos_model::{address::Address, Text};
+use swimos_model::Text;
 use swimos_utilities::{
     io::byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,

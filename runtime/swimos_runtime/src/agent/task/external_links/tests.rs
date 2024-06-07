@@ -31,18 +31,16 @@ use rand::Rng;
 use swimos_agent_protocol::encoding::ad_hoc::AdHocCommandEncoder;
 use swimos_agent_protocol::AdHocCommand;
 use swimos_api::{
+    address::{Address, RelativeAddress},
     agent::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError},
 };
 use swimos_form::write::StructuralWritable;
 use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
-use swimos_model::{
-    address::{Address, RelativeAddress},
-    BytesStr,
-};
 use swimos_net::SchemeHostPort;
 use swimos_recon::print_recon_compact;
 use swimos_utilities::{
+    encoding::BytesStr,
     errors::Recoverable,
     future::retryable::{Quantity, RetryStrategy},
     io::byte_channel::{self, ByteReader, ByteWriter},

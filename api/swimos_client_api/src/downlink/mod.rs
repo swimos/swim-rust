@@ -15,8 +15,9 @@
 use std::num::NonZeroUsize;
 
 use futures::future::BoxFuture;
+use swimos_api::address::Address;
 use swimos_api::{agent::DownlinkKind, error::DownlinkTaskError};
-use swimos_model::{address::Address, Text};
+use swimos_model::Text;
 use swimos_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     non_zero_usize,

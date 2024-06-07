@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swimos_api::address::Address;
 use swimos_form::Form;
-use swimos_model::{address::Address, BytesStr, Text};
+use swimos_model::Text;
+use swimos_utilities::encoding::BytesStr;
 use uuid::Uuid;
 
 /// Message type for communication between the agent runtime and agent implementation.

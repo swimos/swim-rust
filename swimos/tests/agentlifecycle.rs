@@ -52,12 +52,10 @@ use swimos_agent::reexport::bytes::BytesMut;
 use swimos_agent::reexport::uuid::Uuid;
 use swimos_agent::stores::{MapStore, ValueStore};
 use swimos_api::agent::DownlinkKind;
-use swimos_api::agent::{
-    AgentConfig, HttpLaneRequest, HttpResponseReceiver, StoreKind, WarpLaneKind,
-};
 use swimos_api::error::{DownlinkRuntimeError, OpenStoreError};
-use swimos_model::http::{
-    Header, HttpRequest, HttpResponse, Method, StandardHeaderName, StatusCode, Version,
+use swimos_api::{
+    agent::{AgentConfig, HttpLaneRequest, HttpResponseReceiver, StoreKind, WarpLaneKind},
+    http::{Header, HttpRequest, HttpResponse, Method, StandardHeaderName, StatusCode, Version},
 };
 use swimos_model::Text;
 use swimos_recon::print_recon_compact;

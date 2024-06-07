@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::bigint::{BigInt, BigUint, ToBigInt};
 use crate::Blob;
 use crate::Text;
 use either::Either;
+use num_bigint::{BigInt, BigUint, ToBigInt};
 use num_traits::Signed;
 use num_traits::ToPrimitive;
 use std::cmp::Ordering;
@@ -24,7 +24,7 @@ use std::fmt::{Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
-use super::write_string_literal;
+use crate::literal::write_string_literal;
 use crate::{num, Attr, Item};
 
 /// The core Swim model type. A recursive data type that can be represented in text as a Recon
@@ -90,6 +90,7 @@ pub enum Value {
     Data(Blob),
 }
 
+/// The kinds of data that can be represented as a [`Value`].
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum ValueKind {
     Extant,

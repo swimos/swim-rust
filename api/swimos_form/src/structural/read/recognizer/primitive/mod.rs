@@ -19,9 +19,9 @@ use crate::structural::read::ReadError;
 use num_traits::ToPrimitive;
 use std::convert::TryFrom;
 use std::num::NonZeroUsize;
-use swimos_model::bigint::{BigInt, BigUint};
 use swimos_model::Text;
 use swimos_model::ValueKind;
+use swimos_model::{BigInt, BigUint};
 
 #[derive(Debug)]
 pub struct UnitRecognizer;

@@ -41,6 +41,7 @@ pub struct NodePulse {
     pub uplinks: WarpUplinkPulse,
 }
 
+/// Accumulated metric associated with a lane.
 #[derive(Default, Form, Clone, PartialEq, Eq, Debug)]
 pub struct LanePulse {
     /// Accumulated WARP uplink pulse.

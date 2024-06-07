@@ -14,8 +14,9 @@
 
 use std::marker::PhantomData;
 
+use swimos_api::address::Address;
 use swimos_form::read::RecognizerReadable;
-use swimos_model::{address::Address, Text};
+use swimos_model::Text;
 use swimos_utilities::handlers::FnHandler;
 
 use crate::{

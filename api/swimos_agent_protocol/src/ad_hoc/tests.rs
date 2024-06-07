@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use bytes::BytesMut;
-use swimos_model::address::Address;
+use swimos_api::address::Address;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::ad_hoc::{RawAdHocCommandDecoder, RawAdHocCommandEncoder};

@@ -12,20 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Types to describe the addresses of local and remote lanes.
+
 use std::fmt::{Debug, Display};
 
-use crate::{BytesStr, Text};
+use swimos_utilities::encoding::BytesStr;
 
+use swimos_model::Text;
+
+/// An address of a Swim lane, omitting the host to which it belongs.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RelativeAddress<T> {
+    /// The node URI of the agent that contains the lane.
     pub node: T,
+    /// The name of the lane.
     pub lane: T,
 }
 
+/// A fully qualified address of a Swim lane.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Address<T> {
+    /// The host at which the lane can be found. If absent this will be inferred from the routing mesh.
     pub host: Option<T>,
+    /// The node URI of the agent that contains the lane.
     pub node: T,
+    /// The name of the lane.
     pub lane: T,
 }
 

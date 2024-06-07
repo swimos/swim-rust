@@ -31,10 +31,11 @@ use std::{
 use futures::{stream::FuturesUnordered, Future, FutureExt, StreamExt};
 pub use pending::{DlKey, PendingDownlinks};
 use swimos_api::{
+    address::RelativeAddress,
     agent::DownlinkKind,
     error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError},
 };
-use swimos_model::{address::RelativeAddress, Text};
+use swimos_model::Text;
 use swimos_remote::net::dns::DnsResolver;
 use swimos_remote::{AttachClient, LinkError};
 use swimos_runtime::downlink::{IdentifiedAddress, NoInterpretation};

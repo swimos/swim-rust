@@ -26,14 +26,16 @@ use swimos_agent_protocol::encoding::downlink::{
     DownlinkOperationEncoder, ValueNotificationDecoder,
 };
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
-use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
+use swimos_api::{
+    address::RelativeAddress,
+    error::{DownlinkTaskError, FrameIoError, InvalidFrame},
+};
 use swimos_form::read::RecognizerReadable;
 use swimos_form::Form;
 use swimos_messages::protocol::{
     AgentMessageDecoder, MessageDecodeError, Operation, Path, RequestMessage, ResponseMessage,
     ResponseMessageEncoder,
 };
-use swimos_model::address::RelativeAddress;
 use swimos_model::Text;
 use swimos_utilities::io::byte_channel::{self, ByteReader, ByteWriter};
 use swimos_utilities::trigger;

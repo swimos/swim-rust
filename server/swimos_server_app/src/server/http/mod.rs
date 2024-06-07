@@ -40,13 +40,12 @@ use pin_project::pin_project;
 use ratchet::{
     Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream,
 };
-use swimos_api::agent::HttpLaneRequest;
+use swimos_api::{agent::HttpLaneRequest, http::HttpRequest};
 use swimos_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
-use swimos_model::http::HttpRequest;
 use swimos_net::Scheme;
 use swimos_remote::{
     net::{Listener, ListenerError, ListenerResult},
-    ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture, PROTOCOLS},
+    ws::{protocols, RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture},
 };
 use swimos_remote::{AgentResolutionError, FindNode, NoSuchAgent};
 use tokio::{
@@ -477,7 +476,7 @@ where
             request_timeout,
         } = self;
         let result =
-            swimos_http::negotiate_upgrade(&request, &PROTOCOLS, extension_provider.as_ref())
+            swimos_http::negotiate_upgrade(&request, protocols(), extension_provider.as_ref())
                 .transpose();
         // If the request in a websocket upgrade, perform the upgrade, otherwise attempt to delegate
         // the request to an HTTP lane on an agent.
@@ -611,7 +610,7 @@ impl WebsocketClient for HyperWebsockets {
 
         let config = *config;
         Box::pin(async move {
-            let subprotocols = ProtocolRegistry::new(PROTOCOLS.iter().copied())?;
+            let subprotocols = ProtocolRegistry::new(protocols().iter().copied())?;
             let socket =
                 ratchet::subscribe_with(config.websockets, socket, addr, provider, subprotocols)
                     .await?

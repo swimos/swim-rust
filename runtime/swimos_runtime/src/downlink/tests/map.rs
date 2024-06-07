@@ -22,13 +22,16 @@ use swimos_agent_protocol::{
     encoding::downlink::MapNotificationDecoder, encoding::map::MapOperationEncoder,
     DownlinkNotification, MapMessage, MapOperation,
 };
-use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
+use swimos_api::{
+    address::RelativeAddress,
+    error::{DownlinkTaskError, FrameIoError, InvalidFrame},
+};
 use swimos_form::{read::RecognizerReadable, Form};
 use swimos_messages::protocol::{
     AgentMessageDecoder, MessageDecodeError, Operation, Path, RequestMessage, ResponseMessage,
     ResponseMessageEncoder,
 };
-use swimos_model::{address::RelativeAddress, Text};
+use swimos_model::Text;
 use swimos_utilities::{
     io::byte_channel::{self, ByteReader, ByteWriter},
     trigger::{self, promise},

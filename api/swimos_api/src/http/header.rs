@@ -19,8 +19,7 @@ use std::{
 };
 
 use bytes::Bytes;
-
-use crate::BytesStr;
+use swimos_utilities::encoding::BytesStr;
 
 /// Model for the name of an HTTP header. The representation of this type will either be an enumeration
 /// of the standard header names or a general ASCII string for custom headers.

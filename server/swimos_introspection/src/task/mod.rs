@@ -20,8 +20,7 @@ use futures::{stream::select, Future};
 use parking_lot::RwLock;
 use swimos_api::agent::LaneKind;
 use swimos_api::error::{IntrospectionStopped, LaneIntrospectionError, NodeIntrospectionError};
-use swimos_model::time::Timestamp;
-use swimos_model::Text;
+use swimos_model::{Text, Timestamp};
 use swimos_runtime::agent::{
     reporting::{UplinkReportReader, UplinkReporter},
     NodeReporting, UplinkReporterRegistration,

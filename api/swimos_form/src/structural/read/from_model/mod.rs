@@ -46,7 +46,7 @@ impl RecordBuilder {
     }
 }
 
-/// [`Recognizer``] implementation for the [`Value`] type.
+/// [`Recognizer`] implementation for the [`Value`] type.
 #[derive(Default, Debug)]
 pub struct ValueMaterializer {
     stack: Vec<RecordBuilder>,
@@ -308,7 +308,7 @@ impl Recognizer for ValueMaterializer {
     }
 }
 
-/// [`Recognizer``] implementation for the [`Value`] type when it occurs in an attribute body.
+/// [`Recognizer`] implementation for the [`Value`] type when it occurs in an attribute body.
 #[derive(Debug)]
 pub struct AttrBodyMaterializer {
     inner: ValueMaterializer,
@@ -373,7 +373,7 @@ impl Recognizer for AttrBodyMaterializer {
     }
 }
 
-/// [`Recognizer``] implementation for the [`Value`] type when it occurs as a delegated field.
+/// [`Recognizer`] implementation for the [`Value`] type when it occurs as a delegated field.
 #[derive(Debug, Default)]
 pub struct DelegateBodyMaterializer {
     inner: ValueMaterializer,

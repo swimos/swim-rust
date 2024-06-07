@@ -20,7 +20,7 @@ use futures::future::pending;
 use futures::future::BoxFuture;
 use futures::Future;
 use std::collections::HashMap;
-use swimos_model::time::Timestamp;
+use swimos_model::Timestamp;
 use swimos_store::StoreError;
 use swimos_utilities::trigger;
 use tokio::time::{sleep, Duration};

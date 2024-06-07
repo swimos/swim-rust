@@ -29,8 +29,10 @@ use swimos_agent::lanes::{
 };
 use swimos_agent::reexport::bytes::Bytes;
 use swimos_agent::stores::{MapStore, ValueStore};
-use swimos_api::agent::{HttpLaneRequest, StoreKind, WarpLaneKind};
-use swimos_model::http::{HttpRequest, Uri};
+use swimos_api::{
+    agent::{HttpLaneRequest, StoreKind, WarpLaneKind},
+    http::{HttpRequest, Uri},
+};
 
 const SYNC_ID: Uuid = Uuid::from_u128(85883);
 

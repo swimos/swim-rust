@@ -14,7 +14,7 @@
 
 use std::borrow::Borrow;
 
-use swimos_model::address::Address;
+use swimos_api::address::Address;
 use swimos_utilities::handlers::{BorrowHandler, NoHandler};
 
 use crate::{

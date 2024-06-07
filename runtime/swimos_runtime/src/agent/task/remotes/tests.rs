@@ -17,8 +17,9 @@ use std::{num::NonZeroUsize, time::Duration};
 use bytes::{Bytes, BytesMut};
 use futures::StreamExt;
 use swimos_messages::protocol::{BytesResponseMessage, Path, RawResponseMessageDecoder};
-use swimos_model::{BytesStr, Text};
+use swimos_model::Text;
 use swimos_utilities::{
+    encoding::BytesStr,
     io::byte_channel::{byte_channel, ByteReader},
     non_zero_usize,
     trigger::promise,

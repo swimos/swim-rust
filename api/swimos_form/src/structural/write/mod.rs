@@ -23,13 +23,13 @@ use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
-use swimos_model::bigint::{BigInt, BigUint};
 use swimos_model::{Attr, Blob, Item, Text, Value};
+use swimos_model::{BigInt, BigUint};
 use swimos_utilities::future::retryable::strategy::Quantity;
 
 #[doc(hidden)]
 pub use swimos_form_derive::StructuralWritable;
-use swimos_model::time::Timestamp;
+use swimos_model::Timestamp;
 use swimos_utilities::routing::route_uri::RouteUri;
 
 pub use crate::structural::write::to_model::ValueInterpreter;

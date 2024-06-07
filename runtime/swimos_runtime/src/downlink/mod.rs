@@ -29,12 +29,13 @@ pub use interpretation::NoInterpretation;
 use swimos_agent_protocol::{
     encoding::downlink::DownlinkNotificationEncoder, DownlinkNotification,
 };
+use swimos_api::address::RelativeAddress;
 use swimos_messages::protocol::{
     Notification, Operation, Path, RawRequestMessage, RawRequestMessageEncoder,
     RawResponseMessageDecoder, ResponseMessage,
 };
-use swimos_model::address::RelativeAddress;
-use swimos_model::{BytesStr, Text};
+use swimos_model::Text;
+use swimos_utilities::encoding::BytesStr;
 use swimos_utilities::future::{immediate_or_join, immediate_or_start, SecondaryResult};
 use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::trigger;

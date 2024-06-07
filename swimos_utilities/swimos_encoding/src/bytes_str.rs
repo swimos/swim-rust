@@ -16,8 +16,6 @@ use std::fmt::{Debug, Display, Formatter};
 
 use bytes::Bytes;
 
-use crate::Text;
-
 #[derive(Default, PartialEq, Eq, Clone)]
 pub struct BytesStr(Bytes);
 
@@ -112,11 +110,5 @@ impl TryFromUtf8Bytes for BytesStr {
 impl TryFromUtf8Bytes for String {
     fn try_from_utf8_bytes(bytes: Bytes) -> Result<Self, std::str::Utf8Error> {
         Ok(std::str::from_utf8(bytes.as_ref())?.to_string())
-    }
-}
-
-impl TryFromUtf8Bytes for Text {
-    fn try_from_utf8_bytes(bytes: Bytes) -> Result<Self, std::str::Utf8Error> {
-        Ok(Text::new(std::str::from_utf8(bytes.as_ref())?))
     }
 }

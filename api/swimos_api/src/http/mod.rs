@@ -12,13 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_model::ValueKind;
-use swimos_schema::ValueSchema;
+//! A model of HTTP requests and responses.
 
-fn main() {
-    #[derive(ValueSchema)]
-    #[form(schema(all_items(of_kind(ValueKind::ThisIsntValid))))]
-    struct S {
-        a: i32,
-    }
-}
+mod header;
+
+mod method;
+mod request;
+mod response;
+mod status_code;
+mod version;
+
+pub use header::{Header, HeaderName, HeaderValue, StandardHeaderName};
+pub use http::Uri;
+pub use method::{Method, SupportedMethod, UnsupportedMethod};
+pub use request::{HttpRequest, InvalidRequest};
+pub use response::{HttpResponse, InvalidResponse};
+pub use status_code::{InvalidStatusCode, StatusCode};
+pub use version::{UnsupportedVersion, Version};

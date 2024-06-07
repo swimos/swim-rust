@@ -16,8 +16,10 @@ use std::collections::HashMap;
 
 use bytes::{Bytes, BytesMut};
 use mime::Mime;
-use swimos_api::agent::{AgentConfig, HttpLaneRequest, HttpResponseReceiver};
-use swimos_model::http::{Header, HttpRequest, Method, StandardHeaderName, StatusCode, Version};
+use swimos_api::{
+    agent::{AgentConfig, HttpLaneRequest, HttpResponseReceiver},
+    http::{Header, HttpRequest, Method, StandardHeaderName, StatusCode, Version},
+};
 use swimos_utilities::routing::route_uri::RouteUri;
 
 use crate::event_handler::{EventHandler, Modification, ModificationFlags, StepResult};

@@ -23,13 +23,15 @@ use ratchet::{
     CloseCode, CloseReason, Message, NegotiatedExtension, NoExt, NoExtDecoder, Receiver, Role,
     WebSocket, WebSocketConfig,
 };
+use swimos_api::address::RelativeAddress;
 use swimos_messages::protocol::{
     path_from_static_strs, BytesRequestMessage, BytesResponseMessage, Notification, Operation,
     Path, RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
     RawResponseMessageEncoder, RequestMessage, ResponseMessage,
 };
-use swimos_model::{address::RelativeAddress, BytesStr, Text};
+use swimos_model::Text;
 use swimos_utilities::{
+    encoding::BytesStr,
     io::byte_channel::{self, byte_channel, ByteReader, ByteWriter},
     non_zero_usize, trigger,
 };
