@@ -21,10 +21,11 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 use std::time::Duration;
+use swimos_api::address::RelativeAddress;
 use swimos_byte_channel::byte_channel;
 use swimos_form::read::RecognizerReadable;
 use swimos_messages::protocol::{
-    AgentMessageDecoder, Operation, Path, RawRequestMessageEncoder, RequestMessage,
+    AgentMessageDecoder, Operation, RawRequestMessageEncoder, RequestMessage,
 };
 use swimos_model::{Text, Value};
 use tokio::time::timeout;
@@ -49,7 +50,7 @@ async fn test_single_message_single_stream() {
         first_framed
             .send(RequestMessage {
                 origin: Uuid::from_u128(1),
-                path: Path::new(
+                path: RelativeAddress::new(
                     Text::new("node_1").to_string(),
                     Text::new("lane_1").to_string(),
                 ),
@@ -67,7 +68,7 @@ async fn test_single_message_single_stream() {
             message,
             RequestMessage {
                 origin: Uuid::from_u128(1),
-                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
+                path: RelativeAddress::new(Text::new("node_1"), Text::new("lane_1")),
                 envelope: Operation::Link,
             }
         );
@@ -102,7 +103,7 @@ async fn test_multiple_messages_single_stream() {
         first_framed
             .send(RequestMessage {
                 origin: Uuid::from_u128(1),
-                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
+                path: RelativeAddress::new(Text::new("node_1"), Text::new("lane_1")),
                 envelope,
             })
             .await
@@ -112,7 +113,7 @@ async fn test_multiple_messages_single_stream() {
         first_framed
             .send(RequestMessage {
                 origin: Uuid::from_u128(2),
-                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
+                path: RelativeAddress::new(Text::new("node_2"), Text::new("lane_2")),
                 envelope,
             })
             .await
@@ -122,7 +123,7 @@ async fn test_multiple_messages_single_stream() {
         first_framed
             .send(RequestMessage {
                 origin: Uuid::from_u128(3),
-                path: Path::new(Text::new("node_3"), Text::new("lane_3")),
+                path: RelativeAddress::new(Text::new("node_3"), Text::new("lane_3")),
                 envelope,
             })
             .await
@@ -137,7 +138,7 @@ async fn test_multiple_messages_single_stream() {
             message,
             RequestMessage {
                 origin: Uuid::from_u128(1),
-                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
+                path: RelativeAddress::new(Text::new("node_1"), Text::new("lane_1")),
                 envelope: Operation::Link,
             }
         );
@@ -146,7 +147,7 @@ async fn test_multiple_messages_single_stream() {
             message,
             RequestMessage {
                 origin: Uuid::from_u128(2),
-                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
+                path: RelativeAddress::new(Text::new("node_2"), Text::new("lane_2")),
                 envelope: Operation::Link,
             }
         );
@@ -155,7 +156,7 @@ async fn test_multiple_messages_single_stream() {
             message,
             RequestMessage {
                 origin: Uuid::from_u128(3),
-                path: Path::new(Text::new("node_3"), Text::new("lane_3")),
+                path: RelativeAddress::new(Text::new("node_3"), Text::new("lane_3")),
                 envelope: Operation::Link,
             }
         );
@@ -196,7 +197,7 @@ async fn test_single_message_multiple_streams() {
         first_framed
             .send(RequestMessage {
                 origin: Uuid::from_u128(1),
-                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
+                path: RelativeAddress::new(Text::new("node_1"), Text::new("lane_1")),
                 envelope,
             })
             .await
@@ -207,7 +208,7 @@ async fn test_single_message_multiple_streams() {
         second_framed
             .send(RequestMessage {
                 origin: Uuid::from_u128(2),
-                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
+                path: RelativeAddress::new(Text::new("node_2"), Text::new("lane_2")),
                 envelope,
             })
             .await
@@ -223,7 +224,7 @@ async fn test_single_message_multiple_streams() {
             message,
             RequestMessage {
                 origin: Uuid::from_u128(1),
-                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
+                path: RelativeAddress::new(Text::new("node_1"), Text::new("lane_1")),
                 envelope: Operation::Sync,
             }
         );
@@ -232,7 +233,7 @@ async fn test_single_message_multiple_streams() {
             message,
             RequestMessage {
                 origin: Uuid::from_u128(2),
-                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
+                path: RelativeAddress::new(Text::new("node_2"), Text::new("lane_2")),
                 envelope: Operation::Sync,
             }
         );
@@ -279,7 +280,7 @@ async fn test_multiple_messages_multiple_streams() {
         first_framed
             .send(RequestMessage {
                 origin: Uuid::from_u128(1),
-                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
+                path: RelativeAddress::new(Text::new("node_1"), Text::new("lane_1")),
                 envelope,
             })
             .await
@@ -290,7 +291,7 @@ async fn test_multiple_messages_multiple_streams() {
         second_framed
             .send(RequestMessage {
                 origin: Uuid::from_u128(2),
-                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
+                path: RelativeAddress::new(Text::new("node_2"), Text::new("lane_2")),
                 envelope,
             })
             .await
@@ -300,7 +301,7 @@ async fn test_multiple_messages_multiple_streams() {
         first_framed
             .send(RequestMessage {
                 origin: Uuid::from_u128(3),
-                path: Path::new(Text::new("node_3"), Text::new("lane_3")),
+                path: RelativeAddress::new(Text::new("node_3"), Text::new("lane_3")),
                 envelope,
             })
             .await
@@ -310,7 +311,7 @@ async fn test_multiple_messages_multiple_streams() {
         second_framed
             .send(RequestMessage {
                 origin: Uuid::from_u128(4),
-                path: Path::text("node_4", "lane_4"),
+                path: RelativeAddress::text("node_4", "lane_4"),
                 envelope,
             })
             .await
@@ -327,7 +328,7 @@ async fn test_multiple_messages_multiple_streams() {
             message,
             RequestMessage {
                 origin: Uuid::from_u128(1),
-                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
+                path: RelativeAddress::new(Text::new("node_1"), Text::new("lane_1")),
                 envelope: Operation::Link,
             }
         );
@@ -336,7 +337,7 @@ async fn test_multiple_messages_multiple_streams() {
             message,
             RequestMessage {
                 origin: Uuid::from_u128(2),
-                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
+                path: RelativeAddress::new(Text::new("node_2"), Text::new("lane_2")),
                 envelope: Operation::Link,
             }
         );
@@ -345,7 +346,7 @@ async fn test_multiple_messages_multiple_streams() {
             message,
             RequestMessage {
                 origin: Uuid::from_u128(3),
-                path: Path::new(Text::new("node_3"), Text::new("lane_3")),
+                path: RelativeAddress::new(Text::new("node_3"), Text::new("lane_3")),
                 envelope: Operation::Link,
             }
         );
@@ -355,7 +356,7 @@ async fn test_multiple_messages_multiple_streams() {
             message,
             RequestMessage {
                 origin: Uuid::from_u128(4),
-                path: Path::text("node_4", "lane_4"),
+                path: RelativeAddress::text("node_4", "lane_4"),
                 envelope,
             }
         );
@@ -397,7 +398,7 @@ async fn test_replace_stream() {
         first_framed
             .send(RequestMessage {
                 origin: Uuid::from_u128(1),
-                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
+                path: RelativeAddress::new(Text::new("node_1"), Text::new("lane_1")),
                 envelope,
             })
             .await
@@ -407,7 +408,7 @@ async fn test_replace_stream() {
         second_framed
             .send(RequestMessage {
                 origin: Uuid::from_u128(2),
-                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
+                path: RelativeAddress::new(Text::new("node_2"), Text::new("lane_2")),
                 envelope,
             })
             .await
@@ -419,7 +420,7 @@ async fn test_replace_stream() {
         third_framed
             .send(RequestMessage {
                 origin: Uuid::from_u128(3),
-                path: Path::new(Text::new("node_3"), Text::new("lane_3")),
+                path: RelativeAddress::new(Text::new("node_3"), Text::new("lane_3")),
                 envelope,
             })
             .await
@@ -429,7 +430,7 @@ async fn test_replace_stream() {
         second_framed
             .send(RequestMessage {
                 origin: Uuid::from_u128(4),
-                path: Path::text("node_4", "lane_4"),
+                path: RelativeAddress::text("node_4", "lane_4"),
                 envelope,
             })
             .await
@@ -445,7 +446,7 @@ async fn test_replace_stream() {
             message,
             RequestMessage {
                 origin: Uuid::from_u128(1),
-                path: Path::new(Text::new("node_1"), Text::new("lane_1")),
+                path: RelativeAddress::new(Text::new("node_1"), Text::new("lane_1")),
                 envelope: Operation::Link,
             }
         );
@@ -454,7 +455,7 @@ async fn test_replace_stream() {
             message,
             RequestMessage {
                 origin: Uuid::from_u128(2),
-                path: Path::new(Text::new("node_2"), Text::new("lane_2")),
+                path: RelativeAddress::new(Text::new("node_2"), Text::new("lane_2")),
                 envelope: Operation::Link,
             }
         );
@@ -469,7 +470,7 @@ async fn test_replace_stream() {
             message,
             RequestMessage {
                 origin: Uuid::from_u128(3),
-                path: Path::new(Text::new("node_3"), Text::new("lane_3")),
+                path: RelativeAddress::new(Text::new("node_3"), Text::new("lane_3")),
                 envelope: Operation::Link,
             }
         );
@@ -478,7 +479,7 @@ async fn test_replace_stream() {
             message,
             RequestMessage {
                 origin: Uuid::from_u128(4),
-                path: Path::text("node_4", "lane_4"),
+                path: RelativeAddress::text("node_4", "lane_4"),
                 envelope: Operation::Link,
             }
         );
@@ -515,7 +516,7 @@ async fn test_512_streams() {
             writer
                 .send(RequestMessage {
                     origin: Uuid::from_u128(idx as u128),
-                    path: Path::new(format!("node_{}", idx), format!("lane_{}", idx)),
+                    path: RelativeAddress::new(format!("node_{}", idx), format!("lane_{}", idx)),
                     envelope,
                 })
                 .await
@@ -530,7 +531,7 @@ async fn test_512_streams() {
                 message,
                 RequestMessage {
                     origin: Uuid::from_u128(idx),
-                    path: Path::new(
+                    path: RelativeAddress::new(
                         format!("node_{}", idx).into(),
                         format!("lane_{}", idx).into()
                     ),

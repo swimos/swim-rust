@@ -26,7 +26,7 @@ use ratchet::{
 use swimos_api::address::RelativeAddress;
 use swimos_messages::protocol::{
     path_from_static_strs, BytesRequestMessage, BytesResponseMessage, Notification, Operation,
-    Path, RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
+    RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
     RawResponseMessageEncoder, RequestMessage, ResponseMessage,
 };
 use swimos_model::Text;
@@ -62,11 +62,11 @@ const LANE: &str = "lane";
 const DL_NODE: &str = "/remote";
 const DL_LANE: &str = "remote_lane";
 
-fn agent_path() -> Path<BytesStr> {
+fn agent_path() -> RelativeAddress<BytesStr> {
     path_from_static_strs(NODE, LANE)
 }
 
-fn dl_path() -> Path<BytesStr> {
+fn dl_path() -> RelativeAddress<BytesStr> {
     path_from_static_strs(DL_NODE, DL_LANE)
 }
 
@@ -814,7 +814,11 @@ impl DlSender {
 
     async fn send(&mut self, node: &str, lane: &str, body: &str) {
         self.0
-            .send(RequestMessage::command(DL_ID, Path::new(node, lane), body))
+            .send(RequestMessage::command(
+                DL_ID,
+                RelativeAddress::new(node, lane),
+                body,
+            ))
             .await
             .expect("Send failed.");
     }
@@ -829,7 +833,7 @@ impl AgentSender {
         self.0
             .send(ResponseMessage::<_, _, &[u8]>::event(
                 AGENT_ID,
-                Path::new(node, lane),
+                RelativeAddress::new(node, lane),
                 body,
             ))
             .await

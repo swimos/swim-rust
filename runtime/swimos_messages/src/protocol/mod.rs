@@ -108,10 +108,8 @@ where
     }
 }
 
-pub type Path<P> = RelativeAddress<P>;
-
-pub fn path_from_static_strs(node: &'static str, lane: &'static str) -> Path<BytesStr> {
-    Path {
+pub fn path_from_static_strs(node: &'static str, lane: &'static str) -> RelativeAddress<BytesStr> {
+    RelativeAddress {
         node: BytesStr::from_static_str(node),
         lane: BytesStr::from_static_str(lane),
     }
@@ -121,7 +119,7 @@ pub fn path_from_static_strs(node: &'static str, lane: &'static str) -> Path<Byt
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RequestMessage<P, T> {
     pub origin: Uuid,
-    pub path: Path<P>,
+    pub path: RelativeAddress<P>,
     pub envelope: Operation<T>,
 }
 
@@ -129,12 +127,12 @@ pub struct RequestMessage<P, T> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResponseMessage<P, T, U> {
     pub origin: Uuid,
-    pub path: Path<P>,
+    pub path: RelativeAddress<P>,
     pub envelope: Notification<T, U>,
 }
 
 impl<P, T> RequestMessage<P, T> {
-    pub fn link(source: Uuid, path: Path<P>) -> Self {
+    pub fn link(source: Uuid, path: RelativeAddress<P>) -> Self {
         RequestMessage {
             origin: source,
             path,
@@ -142,7 +140,7 @@ impl<P, T> RequestMessage<P, T> {
         }
     }
 
-    pub fn sync(source: Uuid, path: Path<P>) -> Self {
+    pub fn sync(source: Uuid, path: RelativeAddress<P>) -> Self {
         RequestMessage {
             origin: source,
             path,
@@ -150,7 +148,7 @@ impl<P, T> RequestMessage<P, T> {
         }
     }
 
-    pub fn unlink(source: Uuid, path: Path<P>) -> Self {
+    pub fn unlink(source: Uuid, path: RelativeAddress<P>) -> Self {
         RequestMessage {
             origin: source,
             path,
@@ -158,7 +156,7 @@ impl<P, T> RequestMessage<P, T> {
         }
     }
 
-    pub fn command(source: Uuid, path: Path<P>, body: T) -> Self {
+    pub fn command(source: Uuid, path: RelativeAddress<P>, body: T) -> Self {
         RequestMessage {
             origin: source,
             path,
@@ -175,7 +173,7 @@ impl<P, T> RequestMessage<P, T> {
 }
 
 impl<P, T, U> ResponseMessage<P, T, U> {
-    pub fn linked(target: Uuid, path: Path<P>) -> Self {
+    pub fn linked(target: Uuid, path: RelativeAddress<P>) -> Self {
         ResponseMessage {
             origin: target,
             path,
@@ -183,7 +181,7 @@ impl<P, T, U> ResponseMessage<P, T, U> {
         }
     }
 
-    pub fn synced(target: Uuid, path: Path<P>) -> Self {
+    pub fn synced(target: Uuid, path: RelativeAddress<P>) -> Self {
         ResponseMessage {
             origin: target,
             path,
@@ -191,7 +189,7 @@ impl<P, T, U> ResponseMessage<P, T, U> {
         }
     }
 
-    pub fn unlinked(target: Uuid, path: Path<P>, body: Option<U>) -> Self {
+    pub fn unlinked(target: Uuid, path: RelativeAddress<P>, body: Option<U>) -> Self {
         ResponseMessage {
             origin: target,
             path,
@@ -199,7 +197,7 @@ impl<P, T, U> ResponseMessage<P, T, U> {
         }
     }
 
-    pub fn event(target: Uuid, path: Path<P>, body: T) -> Self {
+    pub fn event(target: Uuid, path: RelativeAddress<P>, body: T) -> Self {
         ResponseMessage {
             origin: target,
             path,
@@ -255,7 +253,7 @@ where
     ) -> Result<(), Self::Error> {
         let RequestMessage {
             origin: source,
-            path: Path { node, lane },
+            path: RelativeAddress { node, lane },
             envelope,
         } = item;
         let node_str = node.as_ref();
@@ -330,7 +328,7 @@ where
     ) -> Result<(), Self::Error> {
         let ResponseMessage {
             origin: source,
-            path: Path { node, lane },
+            path: RelativeAddress { node, lane },
             envelope,
         } = item;
         let node_str = node.as_ref();
@@ -414,7 +412,7 @@ where
     ) -> Result<(), Self::Error> {
         let ResponseMessage {
             origin: source,
-            path: Path { node, lane },
+            path: RelativeAddress { node, lane },
             envelope,
         } = item;
         let node_str = node.as_ref();
@@ -490,7 +488,7 @@ enum RequestState<P, T> {
     ReadingHeader,
     ReadingBody {
         source: Uuid,
-        path: Path<P>,
+        path: RelativeAddress<P>,
         remaining: usize,
     },
     AfterBody {
@@ -508,7 +506,7 @@ enum ResponseState<P, T, U> {
     ReadingBody {
         is_event: bool,
         source: Uuid,
-        path: Path<P>,
+        path: RelativeAddress<P>,
         remaining: usize,
     },
     AfterBody {
@@ -632,7 +630,7 @@ where
                     src.advance(node_len);
                     let lane = Text::new(std::str::from_utf8(&src.as_ref()[0..lane_len])?);
                     src.advance(lane_len);
-                    let path = Path::new(node, lane);
+                    let path = RelativeAddress::new(node, lane);
                     match tag {
                         LINK => {
                             break Ok(Some(RequestMessage {
@@ -794,7 +792,7 @@ where
                     src.advance(node_len);
                     let lane = Text::new(std::str::from_utf8(&src.as_ref()[0..lane_len])?);
                     src.advance(lane_len);
-                    let path = Path::new(node, lane);
+                    let path = RelativeAddress::new(node, lane);
                     match tag {
                         LINKED => {
                             break Ok(Some(ResponseMessage {
@@ -980,7 +978,7 @@ impl Decoder for RawResponseMessageDecoder {
         let lane = BytesStr::try_from(lane_bytes)
             .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
 
-        let path = Path::new(node, lane);
+        let path = RelativeAddress::new(node, lane);
         let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
         match tag {
             LINKED => Ok(Some(BytesResponseMessage::linked(target, path))),
@@ -1031,7 +1029,7 @@ impl Decoder for RawRequestMessageDecoder {
         let lane = BytesStr::try_from(lane_bytes)
             .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
 
-        let path = Path::new(node, lane);
+        let path = RelativeAddress::new(node, lane);
         let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
         match tag {
             LINK => Ok(Some(RequestMessage::link(origin, path))),

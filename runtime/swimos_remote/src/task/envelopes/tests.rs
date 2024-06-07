@@ -13,8 +13,9 @@
 // limitations under the License.
 
 use bytes::{Bytes, BytesMut};
+use swimos_api::address::RelativeAddress;
 use swimos_messages::protocol::{
-    path_from_static_strs, BytesRequestMessage, BytesResponseMessage, Path, RequestMessage,
+    path_from_static_strs, BytesRequestMessage, BytesResponseMessage, RequestMessage,
     ResponseMessage,
 };
 use swimos_model::Text;
@@ -30,7 +31,7 @@ const ID: Uuid = Uuid::from_u128(7474834);
 const NODE: &str = "/node";
 const LANE: &str = "lane";
 
-fn path() -> Path<BytesStr> {
+fn path() -> RelativeAddress<BytesStr> {
     path_from_static_strs(NODE, LANE)
 }
 

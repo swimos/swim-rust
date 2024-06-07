@@ -23,12 +23,12 @@ use rand::SeedableRng;
 use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swimos_api::address::RelativeAddress;
 use swimos_byte_channel::byte_channel;
 use swimos_byte_channel::{ByteReader, ByteWriter};
 use swimos_form::read::RecognizerReadable;
 use swimos_messages::protocol::{
-    AgentMessageDecoder, MessageDecodeError, Operation, Path, RawRequestMessageEncoder,
-    RequestMessage,
+    AgentMessageDecoder, MessageDecodeError, Operation, RawRequestMessageEncoder, RequestMessage,
 };
 use uuid::Uuid;
 
@@ -188,7 +188,10 @@ async fn write(mut writers: Vec<Writer>, message_count: usize, writers_order: Wr
                     for i in 0..message_count {
                         let msg: RequestMessage<String, Bytes> = RequestMessage {
                             origin: Uuid::from_u128(i as u128),
-                            path: Path::new(format!("node_{}", i), format!("lane_{}", i)),
+                            path: RelativeAddress::new(
+                                format!("node_{}", i),
+                                format!("lane_{}", i),
+                            ),
                             envelope: Operation::Link,
                         };
                         writer.send(msg).await.unwrap();
@@ -204,7 +207,7 @@ async fn write(mut writers: Vec<Writer>, message_count: usize, writers_order: Wr
         for writer in &mut writers {
             let msg: RequestMessage<String, Bytes> = RequestMessage {
                 origin: Uuid::from_u128(i as u128),
-                path: Path::new(format!("node_{}", i), format!("lane_{}", i)),
+                path: RelativeAddress::new(format!("node_{}", i), format!("lane_{}", i)),
                 envelope: Operation::Link,
             };
             writer.send(msg).await.unwrap();

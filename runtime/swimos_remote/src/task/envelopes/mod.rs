@@ -13,8 +13,9 @@
 // limitations under the License.
 
 use bytes::{BufMut, BytesMut};
+use swimos_api::address::RelativeAddress;
 use swimos_messages::protocol::{
-    BytesRequestMessage, BytesResponseMessage, Notification, Operation, Path, RequestMessage,
+    BytesRequestMessage, BytesResponseMessage, Notification, Operation, RequestMessage,
     ResponseMessage,
 };
 use swimos_model::{identifier::is_identifier, literal::escape_if_needed};
@@ -52,7 +53,7 @@ impl Encoder<BytesRequestMessage> for ReconEncoder {
 
     fn encode(&mut self, item: BytesRequestMessage, dst: &mut BytesMut) -> Result<(), Self::Error> {
         let RequestMessage {
-            path: Path { node, lane },
+            path: RelativeAddress { node, lane },
             envelope,
             ..
         } = item;
@@ -91,7 +92,7 @@ impl Encoder<BytesResponseMessage> for ReconEncoder {
         dst: &mut BytesMut,
     ) -> Result<(), Self::Error> {
         let ResponseMessage {
-            path: Path { node, lane },
+            path: RelativeAddress { node, lane },
             envelope,
             ..
         } = item;

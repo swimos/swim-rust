@@ -35,9 +35,8 @@ use ratchet::{
 use smallvec::SmallVec;
 use swimos_api::{address::RelativeAddress, agent::HttpLaneRequest, error::DownlinkFailureReason};
 use swimos_messages::protocol::{
-    BytesRequestMessage, BytesResponseMessage, Path, RawRequestMessageDecoder,
-    RawRequestMessageEncoder, RawResponseMessageDecoder, RawResponseMessageEncoder, RequestMessage,
-    ResponseMessage,
+    BytesRequestMessage, BytesResponseMessage, RawRequestMessageDecoder, RawRequestMessageEncoder,
+    RawResponseMessageDecoder, RawResponseMessageEncoder, RequestMessage, ResponseMessage,
 };
 use swimos_messages::warp::{peel_envelope_header_str, RawEnvelope};
 use swimos_model::Text;
@@ -721,7 +720,7 @@ impl IncomingTask {
                                 }
                             },
                             Some(Either::Right(response)) => {
-                                let Path { node, lane } = response.path.clone();
+                                let RelativeAddress { node, lane } = response.path.clone();
                                 if let Some(node_map) = client_subscriptions.get_mut(node.as_ref())
                                 {
                                     if let Some(senders) = node_map.get_mut(lane.as_ref()) {
@@ -865,19 +864,19 @@ fn interpret_envelope(
             node_uri, lane_uri, ..
         } => Some(Either::Left(RequestMessage::link(
             id,
-            Path::new(node_uri, lane_uri),
+            RelativeAddress::new(node_uri, lane_uri),
         ))),
         RawEnvelope::Sync {
             node_uri, lane_uri, ..
         } => Some(Either::Left(RequestMessage::sync(
             id,
-            Path::new(node_uri, lane_uri),
+            RelativeAddress::new(node_uri, lane_uri),
         ))),
         RawEnvelope::Unlink {
             node_uri, lane_uri, ..
         } => Some(Either::Left(RequestMessage::unlink(
             id,
-            Path::new(node_uri, lane_uri),
+            RelativeAddress::new(node_uri, lane_uri),
         ))),
         RawEnvelope::Command {
             node_uri,
@@ -885,20 +884,20 @@ fn interpret_envelope(
             body,
         } => Some(Either::Left(RequestMessage::command(
             id,
-            Path::new(node_uri, lane_uri),
+            RelativeAddress::new(node_uri, lane_uri),
             *body,
         ))),
         RawEnvelope::Linked {
             node_uri, lane_uri, ..
         } => Some(Either::Right(ResponseMessage::linked(
             id,
-            Path::new(node_uri, lane_uri),
+            RelativeAddress::new(node_uri, lane_uri),
         ))),
         RawEnvelope::Synced {
             node_uri, lane_uri, ..
         } => Some(Either::Right(ResponseMessage::synced(
             id,
-            Path::new(node_uri, lane_uri),
+            RelativeAddress::new(node_uri, lane_uri),
         ))),
         RawEnvelope::Unlinked {
             node_uri,
@@ -908,7 +907,7 @@ fn interpret_envelope(
             let unlinked_body = if body.is_empty() { Some(*body) } else { None };
             Some(Either::Right(ResponseMessage::unlinked(
                 id,
-                Path::new(node_uri, lane_uri),
+                RelativeAddress::new(node_uri, lane_uri),
                 unlinked_body,
             )))
         }
@@ -918,7 +917,7 @@ fn interpret_envelope(
             body,
         } => Some(Either::Right(ResponseMessage::event(
             id,
-            Path::new(node_uri, lane_uri),
+            RelativeAddress::new(node_uri, lane_uri),
             *body,
         ))),
         _ => None,

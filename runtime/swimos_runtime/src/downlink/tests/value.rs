@@ -33,7 +33,7 @@ use swimos_api::{
 use swimos_form::read::RecognizerReadable;
 use swimos_form::Form;
 use swimos_messages::protocol::{
-    AgentMessageDecoder, MessageDecodeError, Operation, Path, RequestMessage, ResponseMessage,
+    AgentMessageDecoder, MessageDecodeError, Operation, RequestMessage, ResponseMessage,
     ResponseMessageEncoder,
 };
 use swimos_model::Text;
@@ -239,7 +239,7 @@ impl TestSender {
     async fn link(&mut self) {
         self.send(ResponseMessage::linked(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
         ))
         .await;
     }
@@ -247,7 +247,7 @@ impl TestSender {
     async fn sync(&mut self) {
         self.send(ResponseMessage::synced(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
         ))
         .await;
     }
@@ -257,14 +257,20 @@ impl TestSender {
     }
 
     async fn update(&mut self, message: Message) {
-        let message =
-            ResponseMessage::event(REMOTE_ADDR, Path::new(REMOTE_NODE, REMOTE_LANE), message);
+        let message = ResponseMessage::event(
+            REMOTE_ADDR,
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
+            message,
+        );
         self.send(message).await;
     }
 
     async fn update_text(&mut self, message: Text) {
-        let message: ResponseMessage<&str, Text, &[u8]> =
-            ResponseMessage::event(REMOTE_ADDR, Path::new(REMOTE_NODE, REMOTE_LANE), message);
+        let message: ResponseMessage<&str, Text, &[u8]> = ResponseMessage::event(
+            REMOTE_ADDR,
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
+            message,
+        );
         assert!(self.0.send(message).await.is_ok());
     }
 

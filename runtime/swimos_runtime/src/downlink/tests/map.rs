@@ -28,7 +28,7 @@ use swimos_api::{
 };
 use swimos_form::{read::RecognizerReadable, Form};
 use swimos_messages::protocol::{
-    AgentMessageDecoder, MessageDecodeError, Operation, Path, RequestMessage, ResponseMessage,
+    AgentMessageDecoder, MessageDecodeError, Operation, RequestMessage, ResponseMessage,
     ResponseMessageEncoder,
 };
 use swimos_model::Text;
@@ -208,7 +208,7 @@ impl TestSender {
     async fn link(&mut self) {
         self.send(ResponseMessage::linked(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
         ))
         .await;
     }
@@ -216,7 +216,7 @@ impl TestSender {
     async fn sync(&mut self) {
         self.send(ResponseMessage::synced(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
         ))
         .await;
     }
@@ -228,7 +228,7 @@ impl TestSender {
     async fn update(&mut self, key: i32, value: Record) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Update { key, value },
         );
         self.send(message).await;
@@ -237,7 +237,7 @@ impl TestSender {
     async fn remove(&mut self, key: i32) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Remove { key },
         );
         self.send(message).await;
@@ -246,7 +246,7 @@ impl TestSender {
     async fn clear(&mut self) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Clear,
         );
         self.send(message).await;
@@ -255,7 +255,7 @@ impl TestSender {
     async fn take(&mut self, n: u64) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Take(n),
         );
         self.send(message).await;
@@ -264,15 +264,18 @@ impl TestSender {
     async fn drop(&mut self, n: u64) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Drop(n),
         );
         self.send(message).await;
     }
 
     async fn update_text(&mut self, message: Text) {
-        let message: ResponseMessage<&str, Text, &[u8]> =
-            ResponseMessage::event(REMOTE_ADDR, Path::new(REMOTE_NODE, REMOTE_LANE), message);
+        let message: ResponseMessage<&str, Text, &[u8]> = ResponseMessage::event(
+            REMOTE_ADDR,
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
+            message,
+        );
         assert!(self.0.send(message).await.is_ok());
     }
 
