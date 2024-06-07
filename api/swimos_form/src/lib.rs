@@ -24,8 +24,7 @@
 //! documentation.
 
 #![allow(clippy::match_wild_err_arm)]
-#[doc(hidden)]
-#[allow(unused_imports)]
+
 pub use swimos_form_derive::Form;
 
 use read::{ReadError, StructuralReadable};
@@ -342,6 +341,4 @@ pub trait Form: StructuralReadable + StructuralWritable {
 
 impl<T: StructuralReadable + StructuralWritable> Form for T {}
 
-#[doc(hidden)]
-#[allow(unused_imports)]
 pub use swimos_form_derive::Tag;

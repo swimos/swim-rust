@@ -12,7 +12,7 @@ ratchet = { features = ["deflate", "split"], workspace = true }
 swimos_recon = { path = "../../api/formats/swimos_recon" }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_form = { path = "../../api/swimos_form" }
-tokio-util = { version = "0.6.8", features = ["codec"] }
+tokio-util = { workspace = true, features = ["codec"] }
 futures = { workspace = true }
 futures-util = { workspace = true }
 bytes = { workspace = true }

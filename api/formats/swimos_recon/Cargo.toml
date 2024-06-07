@@ -16,7 +16,7 @@ swimos_utilities = { path = "../../../swimos_utilities", features = ["encoding"]
 nom = { workspace = true }
 nom_locate = { workspace = true }
 num-traits = { workspace = true }
-ryu = "1.0"
+ryu = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["io-util"] }
 tokio-util = { workspace = true, features = ["codec"] }

@@ -10,9 +10,8 @@ either = { workspace = true }
 swimos_form = { path = "../../swimos_form" }
 swimos_model = { path = "../../swimos_model" }
 bytes = { workspace = true }
-byteorder = "1.4"
-rmp = "0.8"
-num-bigint = { workspace = true }
+byteorder = { workspace = true }
+rmp = { workspace = true }
 
 [dev-dependencies]
 
