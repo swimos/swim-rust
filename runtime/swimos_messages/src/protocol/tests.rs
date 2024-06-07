@@ -13,10 +13,10 @@
 // limitations under the License.
 
 use crate::protocol::{
-    AgentMessageDecoder, BytesResponseMessage, ClientMessageDecoder, MessageDecodeError,
-    RawRequestMessage, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,
-    ResponseMessage, ResponseMessageEncoder, COMMAND, EVENT, HEADER_INIT_LEN, LINK, LINKED,
-    OP_MASK, OP_SHIFT, SYNC, SYNCED, UNLINK, UNLINKED,
+    AgentMessageDecoder, BytesResponseMessage, MessageDecodeError, RawRequestMessage,
+    RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage, ResponseMessage,
+    ResponseMessageEncoder, COMMAND, EVENT, HEADER_INIT_LEN, LINK, LINKED, OP_MASK, OP_SHIFT, SYNC,
+    SYNCED, UNLINK, UNLINKED,
 };
 use bytes::{Buf, Bytes, BytesMut};
 use futures::future::join;
@@ -198,17 +198,6 @@ fn check_result_rawresponse(
     }
 }
 
-fn check_result_response<P: Eq + Debug, T: Eq + Debug>(
-    result: Result<Option<ResponseMessage<P, T, Bytes>>, MessageDecodeError>,
-    expected: ResponseMessage<P, T, Bytes>,
-) {
-    match result {
-        Ok(Some(msg)) => assert_eq!(msg, expected),
-        Ok(_) => panic!("Incomplete."),
-        Err(e) => panic!("Failed: {}", e),
-    }
-}
-
 fn round_trip<P, T>(
     frame: RequestMessage<P, &[u8]>,
 ) -> Result<Option<RequestMessage<Text, T>>, MessageDecodeError>
@@ -239,29 +228,6 @@ where
     T: StructuralWritable,
 {
     let mut decoder = RawResponseMessageDecoder;
-    let mut encoder = ResponseMessageEncoder;
-
-    let mut buffer = BytesMut::new();
-    assert!(encoder.encode(frame, &mut buffer).is_ok());
-
-    let result = decoder.decode(&mut buffer);
-
-    if result.is_ok() {
-        assert!(buffer.is_empty());
-    }
-
-    result
-}
-
-fn round_trip_response<P, T, U>(
-    frame: ResponseMessage<P, T, U>,
-) -> Result<Option<ResponseMessage<Text, T, Bytes>>, MessageDecodeError>
-where
-    P: AsRef<str>,
-    U: AsRef<[u8]>,
-    T: StructuralWritable + RecognizerReadable,
-{
-    let mut decoder = ClientMessageDecoder::<T, _>::new(T::make_recognizer());
     let mut encoder = ResponseMessageEncoder;
 
     let mut buffer = BytesMut::new();
@@ -667,97 +633,6 @@ fn decode_event_frame() {
     check_result_rawresponse(
         result,
         BytesResponseMessage::event(id, bytes_path(node, lane), expected_body.freeze()),
-    );
-}
-
-#[test]
-fn decode_client_linked_frame() {
-    let id = make_addr();
-    let node = "my_node";
-    let lane = "lane";
-
-    let frame = ResponseMessage::<_, Example, Bytes>::linked(id, RelativeAddress::new(node, lane));
-    let result = round_trip_response(frame);
-
-    check_result_response(
-        result,
-        ResponseMessage::<_, Example, Bytes>::linked(id, RelativeAddress::text(node, lane)),
-    );
-}
-
-#[test]
-fn decode_client_synced_frame() {
-    let id = make_addr();
-    let node = "my_node";
-    let lane = "lane";
-
-    let frame = ResponseMessage::<_, Example, Bytes>::synced(id, RelativeAddress::new(node, lane));
-    let result = round_trip_response(frame);
-
-    check_result_response(
-        result,
-        ResponseMessage::<_, Example, Bytes>::synced(id, RelativeAddress::text(node, lane)),
-    );
-}
-
-#[test]
-fn decode_client_unlinked_frame() {
-    let id = make_addr();
-    let node = "my_node";
-    let lane = "lane";
-
-    let frame =
-        ResponseMessage::<_, Example, Bytes>::unlinked(id, RelativeAddress::new(node, lane), None);
-    let result = round_trip_response(frame);
-
-    check_result_response(
-        result,
-        ResponseMessage::<_, Example, Bytes>::unlinked(id, RelativeAddress::text(node, lane), None),
-    );
-}
-
-#[test]
-fn decode_client_unlinked_frame_with_body() {
-    let id = make_addr();
-    let node = "my_node";
-    let lane = "lane";
-    let body = "Gone";
-
-    let frame = ResponseMessage::<_, Example, _>::unlinked(
-        id,
-        RelativeAddress::new(node, lane),
-        Some(body.as_bytes()),
-    );
-    let result = round_trip_response(frame);
-
-    let expected_body = Bytes::copy_from_slice(body.as_bytes());
-    check_result_response(
-        result,
-        ResponseMessage::<_, Example, Bytes>::unlinked(
-            id,
-            RelativeAddress::text(node, lane),
-            Some(expected_body),
-        ),
-    );
-}
-
-#[test]
-fn decode_client_event_frame() {
-    let id = make_addr();
-    let node = "my_node";
-    let lane = "lane";
-    let body = Example {
-        first: 1,
-        second: 2,
-    };
-
-    let frame =
-        ResponseMessage::<_, Example, Bytes>::event(id, RelativeAddress::new(node, lane), body);
-    let result = round_trip_response(frame);
-
-    check_result_response(
-        result,
-        ResponseMessage::<_, Example, Bytes>::event(id, RelativeAddress::text(node, lane), body),
     );
 }
 

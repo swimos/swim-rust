@@ -19,7 +19,7 @@ pub use header::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum EnvelopeKind {
+enum EnvelopeKind {
     Auth,
     DeAuth,
     Link,
