@@ -15,32 +15,22 @@
 use std::num::NonZeroUsize;
 
 use futures::future::BoxFuture;
+use swimos_api::{agent::DownlinkKind, error::DownlinkTaskError};
 use swimos_model::{address::Address, Text};
 use swimos_utilities::{
     io::byte_channel::{ByteReader, ByteWriter},
     non_zero_usize,
 };
 
-use crate::error::DownlinkTaskError;
-
-/// Indicates the kind of the downlink.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DownlinkKind {
-    /// Accepts single values and maintains an internal state.
-    Value,
-    /// Accepts single values but has no state.
-    Event,
-    /// Accepts key-value pairs and maintains a state as a map.
-    Map,
-    /// Accepts map updates but does not maintain any state.
-    MapEvent,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// General downlink configuration parameters.
 pub struct DownlinkConfig {
+    /// If this is set, lifecycle events will be called for events before the downlink is synchronized with the remote lane.
+    /// (default: false).
     pub events_when_not_synced: bool,
+    /// If this is set, the downlink will stop if it enters the unlinked state (default: true).
     pub terminate_on_unlinked: bool,
+    /// The size of the channel to send commands to the downlinks.
     pub buffer_size: NonZeroUsize,
 }
 

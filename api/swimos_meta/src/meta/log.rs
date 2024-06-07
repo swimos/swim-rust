@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use std::hash::Hash;
-use swimos_form::structural::Tag;
 use swimos_form::Form;
+use swimos_form::Tag;
 use swimos_model::time::Timestamp;
 use swimos_model::{Text, Value};
 

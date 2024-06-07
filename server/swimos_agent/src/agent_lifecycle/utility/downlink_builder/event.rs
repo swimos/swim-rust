@@ -14,7 +14,7 @@
 
 use std::marker::PhantomData;
 
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_form::read::RecognizerReadable;
 use swimos_model::{address::Address, Text};
 use swimos_utilities::handlers::FnHandler;
 

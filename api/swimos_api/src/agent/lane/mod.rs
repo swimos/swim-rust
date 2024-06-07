@@ -20,12 +20,10 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use swimos_form::structural::{
+use swimos_form::{
     read::{
-        error::ExpectedEvent,
-        event::ReadEvent,
-        recognizer::{Recognizer, RecognizerReadable, SimpleAttrBody, SimpleRecBody},
-        ReadError,
+        ExpectedEvent, ReadError, ReadEvent, Recognizer, RecognizerReadable, SimpleAttrBody,
+        SimpleRecBody,
     },
     write::{PrimitiveWriter, StructuralWritable, StructuralWriter},
     Tag,
@@ -110,6 +108,7 @@ pub enum LaneKind {
     Http,
 }
 
+#[doc(hidden)]
 pub struct LaneKindRecognizer;
 
 impl Recognizer for LaneKindRecognizer {
@@ -181,6 +180,7 @@ impl LaneKind {
     }
 }
 
+/// Error type indicating that a string did not represent a valid [`LaneKind`].
 #[derive(Debug, PartialEq, Eq)]
 pub struct LaneKindParseErr;
 

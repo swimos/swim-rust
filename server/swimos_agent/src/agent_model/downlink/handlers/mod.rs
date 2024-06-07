@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use futures::future::BoxFuture;
-use swimos_api::downlink::DownlinkKind;
+use swimos_api::agent::DownlinkKind;
 use swimos_model::{address::Address, Text};
 use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use thiserror::Error;

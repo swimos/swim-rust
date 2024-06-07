@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use std::sync::Arc;
-use swimos_form::structural::read::StructuralReadable;
-use swimos_form::structural::Tag;
+use swimos_form::read::StructuralReadable;
+use swimos_form::Tag;
 use swimos_model::Value;
 use swimos_recon::parser::parse_recognize;
 

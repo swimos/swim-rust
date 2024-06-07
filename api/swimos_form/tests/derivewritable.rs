@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::borrow::Cow;
-use swimos_form::structural::write::{
+use swimos_form::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };

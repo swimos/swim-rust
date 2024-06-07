@@ -14,7 +14,7 @@
 
 use bytes::{Buf, BufMut, BytesMut};
 use std::fmt::Write;
-use swimos_form::structural::{read::recognizer::Recognizer, write::StructuralWritable};
+use swimos_form::{read::Recognizer, write::StructuralWritable};
 use swimos_utilities::encoding::consume_bounded;
 use tokio_util::codec::{Decoder, Encoder};
 

@@ -23,10 +23,9 @@ use swimos_agent_protocol::encoding::lane::{
 };
 use swimos_agent_protocol::{LaneRequest, LaneResponse};
 use swimos_api::{
-    agent::{LaneConfig, UplinkKind},
+    agent::{LaneConfig, LaneKind, UplinkKind, WarpLaneKind},
     error::StoreError,
-    lane::{LaneKind, WarpLaneKind},
-    store::StoreDisabled,
+    persistence::StoreDisabled,
 };
 use swimos_model::Text;
 use swimos_utilities::{

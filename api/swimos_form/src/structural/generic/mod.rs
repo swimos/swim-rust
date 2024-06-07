@@ -17,5 +17,4 @@ pub mod coproduct;
 /// A representation of the header of a Recon record as a heterogeneous list. This is used in
 /// the derive macro for [`crate::structural::write::StructuralWritable`] and should not
 /// generally be used in hand written code.
-#[doc(hidden)]
 pub mod header;

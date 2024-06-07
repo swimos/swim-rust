@@ -27,7 +27,7 @@ use runtime::{
 };
 pub use runtime::{CommandError, Commander, RemotePath};
 use std::sync::Arc;
-pub use swimos_api::downlink::DownlinkConfig;
+pub use swimos_client_api::DownlinkConfig;
 pub use swimos_downlink::lifecycle::{
     BasicEventDownlinkLifecycle, BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle,
     EventDownlinkLifecycle, MapDownlinkLifecycle, ValueDownlinkLifecycle,

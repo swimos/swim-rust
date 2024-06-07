@@ -87,7 +87,7 @@ pub fn build_head_attribute(
         Label::Foreign(_new_ident, ty, _old_ident) => {
             quote! {
                 {
-                    let enumerated = <#ty as swimos_form::structural::Tag>::VARIANTS;
+                    let enumerated = <#ty as swimos_form::Tag>::VARIANTS;
                     let len = enumerated.len();
 
                     let attr_schemas = enumerated.into_iter().fold(Vec::with_capacity(len), |mut vec, variant| {

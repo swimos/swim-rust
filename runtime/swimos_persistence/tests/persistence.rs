@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use bytes::BytesMut;
-use swimos_api::store::{NodePersistence, PlanePersistence};
+use swimos_api::persistence::{NodePersistence, PlanePersistence};
 use swimos_store::{RangeConsumer, StoreError};
 
 const STORE_FAILURE: &str = "Creating store failed.";

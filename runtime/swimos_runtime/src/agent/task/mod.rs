@@ -52,9 +52,11 @@ use swimos_api::agent::{
     HttpLaneRequest, HttpLaneRequestChannel, HttpResponseSender, LaneConfig, StoreConfig,
 };
 use swimos_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
-use swimos_api::lane::WarpLaneKind;
-use swimos_api::store::{StoreDisabled, StoreKind};
-use swimos_api::{agent::UplinkKind, error::AgentRuntimeError};
+use swimos_api::persistence::StoreDisabled;
+use swimos_api::{
+    agent::{StoreKind, UplinkKind, WarpLaneKind},
+    error::AgentRuntimeError,
+};
 use swimos_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
 use swimos_model::http::{Header, HttpResponse, StandardHeaderName, StatusCode, Version};
 use swimos_model::{BytesStr, Text};

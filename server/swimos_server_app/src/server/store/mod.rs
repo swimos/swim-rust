@@ -14,7 +14,7 @@
 
 use swimos_api::{
     error::StoreError,
-    store::{PlanePersistence, StoreDisabled},
+    persistence::{PlanePersistence, StoreDisabled},
 };
 
 pub trait ServerPersistence {

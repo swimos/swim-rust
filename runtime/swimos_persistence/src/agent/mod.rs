@@ -22,7 +22,7 @@ use std::sync::Arc;
 use bytes::BytesMut;
 use futures::future::{ready, BoxFuture};
 use futures::FutureExt;
-use swimos_api::store::{NodePersistence, PlanePersistence};
+use swimos_api::persistence::{NodePersistence, PlanePersistence};
 use swimos_model::Text;
 
 use crate::plane::PlaneStore;

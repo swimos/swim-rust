@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Contains the [`StructuralWritable`] trait that defines the functionality to serialize a type
+//! that supports the SwimOS model.
+
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
@@ -29,11 +32,11 @@ pub use swimos_form_derive::StructuralWritable;
 use swimos_model::time::Timestamp;
 use swimos_utilities::routing::route_uri::RouteUri;
 
-use crate::structural::write::to_model::ValueInterpreter;
-pub mod impls;
+pub use crate::structural::write::to_model::ValueInterpreter;
+mod impls;
 #[cfg(test)]
 mod tests;
-pub mod to_model;
+mod to_model;
 
 /// Trait for types that can describe their structure using a [`StructuralWriter`].
 /// Each writer is an interpreter which could, for example, realize the structure

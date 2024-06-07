@@ -17,11 +17,10 @@ use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 use futures::{future::BoxFuture, FutureExt};
 use parking_lot::Mutex;
 use swimos_api::{
-    agent::{AgentContext, HttpLaneRequestChannel, LaneConfig},
-    downlink::DownlinkKind,
+    agent::{
+        AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
+    },
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    lane::WarpLaneKind,
-    store::StoreKind,
 };
 use swimos_model::{address::Address, Text};
 use swimos_utilities::{

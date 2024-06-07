@@ -25,7 +25,7 @@ use swimos_agent_protocol::{
     encoding::store::StoreInitializedCodec, MapMessage, StoreInitMessage, StoreInitialized,
 };
 use swimos_api::error::FrameIoError;
-use swimos_form::structural::read::{recognizer::RecognizerReadable, ReadError};
+use swimos_form::read::{ReadError, RecognizerReadable};
 use swimos_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swimos_utilities::future::try_last;
 use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
