@@ -21,6 +21,7 @@ mod tests;
 pub mod rocks;
 
 use crate::engine::RocksOpts;
+use crate::KeyspaceName;
 use std::fmt::{Debug, Formatter};
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -28,7 +29,6 @@ use swimos_store::{Keyspace, Keyspaces, StoreBuilder, StoreError};
 
 use crate::plane::{open_plane, PlaneStore, SwimPlaneStore};
 use integer_encoding::FixedInt;
-pub use swimos_store::nostore::NoStore;
 use swimos_utilities::fs::Dir;
 
 /// A Swim server store which will create plane stores on demand.
@@ -180,14 +180,6 @@ const VALUE_LANE_KS: &str = "value_lanes";
 /// Map lane store keyspace.
 const MAP_LANE_KS: &str = "map_lanes";
 
-/// An enumeration over the keyspaces that exist in a store.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum KeyspaceName {
-    Lane,
-    Value,
-    Map,
-}
-
 impl Keyspace for KeyspaceName {
     fn name(&self) -> &str {
         match self {
@@ -200,13 +192,6 @@ impl Keyspace for KeyspaceName {
 
 impl StoreKey {
     pub const MAP_KEY_PREFIX_SIZE: usize = ID_LEN + 2 * TAG_LEN + SIZE_LEN;
-
-    pub fn keyspace_name(&self) -> KeyspaceName {
-        match self {
-            StoreKey::Map { .. } => KeyspaceName::Map,
-            StoreKey::Value { .. } => KeyspaceName::Value,
-        }
-    }
 
     pub fn write_into<W>(&self, mut writer: W) -> Result<(), std::io::Error>
     where

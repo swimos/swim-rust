@@ -12,10 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod agent;
+mod agent;
 pub(crate) mod engine;
-pub mod plane;
+mod plane;
 mod server;
 
+pub use agent::StoreWrapper;
 pub use engine::*;
-pub use server::*;
+pub use plane::SwimPlaneStore;
+pub use server::{
+    rocks::{default_db_opts, default_keyspaces},
+    ServerStore, SwimStore,
+};
+
+/// An enumeration over the keyspaces that exist in a store.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum KeyspaceName {
+    Lane,
+    Value,
+    Map,
+}

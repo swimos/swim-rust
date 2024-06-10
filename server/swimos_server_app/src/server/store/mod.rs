@@ -69,8 +69,8 @@ pub mod rocks {
 
     use swimos_api::error::StoreError;
     use swimos_rocks_store::{
-        agent::StoreWrapper, plane::SwimPlaneStore, rocks::default_keyspaces, RocksEngine,
-        RocksOpts, ServerStore, SwimStore,
+        default_keyspaces, RocksEngine, RocksOpts, ServerStore, StoreWrapper, SwimPlaneStore,
+        SwimStore,
     };
 
     use super::ServerPersistence;

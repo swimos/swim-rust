@@ -15,16 +15,12 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use swimos_store::{deserialize_u64, serialize_u64, KeyspaceByteEngine, StoreError, MAX_ID_SIZE};
-use tokio::sync::oneshot;
 
 use crate::KeyspaceName;
-
-pub type KeyRequest = (String, oneshot::Sender<u64>);
 
 /// The lane keyspace's counter key.
 pub const COUNTER_KEY: &str = "counter";
 pub const COUNTER_BYTES: &[u8] = COUNTER_KEY.as_bytes();
-pub const INCONSISTENT_KEYSPACE: &str = "Inconsistent keyspace";
 
 const INIT_FAILURE: &str = "Failed to initialise keystore";
 
@@ -119,9 +115,7 @@ pub mod rocks {
 
 #[cfg(test)]
 mod tests {
-    use crate::server::keystore::{
-        format_key, KeyStore, COUNTER_BYTES, COUNTER_KEY, INCONSISTENT_KEYSPACE,
-    };
+    use crate::server::keystore::{format_key, KeyStore, COUNTER_BYTES, COUNTER_KEY};
     use crate::server::mock::MockStore;
     use crate::KeyspaceName;
     use std::sync::Arc;
@@ -148,7 +142,7 @@ mod tests {
         let opt = delegate
             .get_keyspace(KeyspaceName::Lane, COUNTER_BYTES)
             .unwrap()
-            .expect(INCONSISTENT_KEYSPACE);
+            .expect("Inconsistent keyspace");
 
         assert_eq!(deserialize_u64(opt).unwrap(), 1);
         assert_counters(&delegate, lane_uri, 1, 1);

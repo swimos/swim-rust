@@ -12,10 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{
-    server::{KEY, MAP_TAG, UBOUND, VAL_TAG},
-    StoreKey,
-};
+use crate::server::{StoreKey, KEY, MAP_TAG, UBOUND, VAL_TAG};
 use integer_encoding::FixedInt;
 
 #[test]

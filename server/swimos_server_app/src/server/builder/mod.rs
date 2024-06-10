@@ -278,7 +278,7 @@ where
 
 #[cfg(feature = "rocks_store")]
 const _: () = {
-    use swimos_rocks_store::{rocks::default_db_opts, RocksOpts};
+    use swimos_rocks_store::{default_db_opts, RocksOpts};
     impl ServerBuilder {
         pub fn enable_rocks_store(mut self) -> Self {
             self.store_options = StoreConfig::RockStore {

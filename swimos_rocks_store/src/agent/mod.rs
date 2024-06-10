@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod lane;
 pub mod mock;
 
 use std::fmt::{Debug, Formatter};
