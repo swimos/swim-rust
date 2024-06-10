@@ -18,7 +18,7 @@ use crate::plane::PlaneStore;
 use crate::server::{StoreEngine, StoreKey};
 use swimos_model::Text;
 use swimos_store::nostore::NoRange;
-use swimos_store::{EngineInfo, Keyspace, KeyspaceResolver, StoreError};
+use swimos_store::{Keyspace, KeyspaceResolver, StoreError};
 
 #[derive(Clone, Debug)]
 pub struct MockPlaneStore;
@@ -41,24 +41,6 @@ impl PlaneStore for MockPlaneStore {
         I: Into<Text>,
     {
         MockNodeStore::mock()
-    }
-
-    fn get_prefix_range<F, K, V>(
-        &self,
-        _prefix: StoreKey,
-        _map_fn: F,
-    ) -> Result<Option<Vec<(K, V)>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
-        Ok(None)
-    }
-
-    fn engine_info(&self) -> EngineInfo {
-        EngineInfo {
-            path: "".to_string(),
-            kind: "Mock".to_string(),
-        }
     }
 
     fn node_id_of<I>(&self, _lane: I) -> Result<u64, StoreError>

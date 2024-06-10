@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::{RocksEngine, RocksOpts};
+use crate::engine::{RocksEngine, RocksOpts};
 use integer_encoding::VarInt;
 use rocksdb::{MergeOperands, Options, SliceTransform};
 use std::collections::HashMap;

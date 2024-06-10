@@ -153,3 +153,17 @@ impl PlanePersistence for StoreDisabled {
         ready(Ok(StoreDisabled)).boxed()
     }
 }
+
+pub trait ServerPersistence {
+    type PlaneStore: PlanePersistence + Clone + Send + Sync + 'static;
+
+    fn open_plane(&self, name: &str) -> Result<Self::PlaneStore, StoreError>;
+}
+
+impl ServerPersistence for StoreDisabled {
+    type PlaneStore = StoreDisabled;
+
+    fn open_plane(&self, _name: &str) -> Result<Self::PlaneStore, StoreError> {
+        Ok(Self)
+    }
+}

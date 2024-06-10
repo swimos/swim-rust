@@ -13,17 +13,12 @@
 // limitations under the License.
 
 mod agent;
-pub(crate) mod engine;
+mod engine;
 mod plane;
 mod server;
 
-pub use agent::StoreWrapper;
-pub use engine::*;
-pub use plane::SwimPlaneStore;
-pub use server::{
-    rocks::{default_db_opts, default_keyspaces},
-    ServerStore, SwimStore,
-};
+pub use engine::RocksOpts;
+pub use server::{create_rocks_store, default_db_opts};
 
 /// An enumeration over the keyspaces that exist in a store.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

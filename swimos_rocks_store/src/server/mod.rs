@@ -20,16 +20,23 @@ mod tests;
 
 pub mod rocks;
 
+use crate::agent::StoreWrapper;
 use crate::engine::RocksOpts;
 use crate::KeyspaceName;
+use rocks::default_keyspaces;
 use std::fmt::{Debug, Formatter};
 use std::io::{self, Write};
 use std::path::PathBuf;
+use swimos_api::persistence::ServerPersistence;
 use swimos_store::{Keyspace, Keyspaces, StoreBuilder, StoreError};
 
 use crate::plane::{open_plane, PlaneStore, SwimPlaneStore};
 use integer_encoding::FixedInt;
 use swimos_utilities::fs::Dir;
+
+pub use rocks::default_db_opts;
+
+use crate::engine::RocksEngine;
 
 /// A Swim server store which will create plane stores on demand.
 ///
@@ -108,15 +115,6 @@ where
             builder,
             keyspaces,
         })
-    }
-}
-
-impl ServerStore<RocksOpts> {
-    pub fn transient_default(prefix: &str) -> io::Result<ServerStore<RocksOpts>> {
-        let db_opts = rocks::default_db_opts();
-        let keyspaces = rocks::default_keyspaces();
-
-        Self::transient(db_opts, keyspaces, prefix)
     }
 }
 
@@ -250,27 +248,6 @@ impl StoreKey {
             .expect("Writing into a Vec should be infallible.");
         bytes
     }
-
-    pub fn extract_map_key(bytes: &[u8]) -> Result<&[u8], StoreError> {
-        match bytes {
-            b @ [1, ..] if b.len() >= ID_LEN + 2 * TAG_LEN + SIZE_LEN => {
-                let mut rem = &b[ID_LEN + TAG_LEN..];
-                if rem[0] != 1 {
-                    return Err(StoreError::Decoding("Invalid map key.".to_string()));
-                }
-                let len = u64::decode_fixed(&rem[TAG_LEN..SIZE_LEN + TAG_LEN]);
-                rem = &rem[SIZE_LEN + TAG_LEN..];
-                if rem.len() != len as usize {
-                    Err(StoreError::Decoding("Inconsistent key length.".to_string()))
-                } else {
-                    Ok(rem)
-                }
-            }
-            _ => Err(StoreError::Decoding(
-                "Bytes do not contain a map key.".to_string(),
-            )),
-        }
-    }
 }
 
 pub trait StoreEngine {
@@ -282,4 +259,35 @@ pub trait StoreEngine {
 
     /// Delete a key-value pair by its store key from the delegate store.
     fn delete(&self, key: StoreKey) -> Result<(), StoreError>;
+}
+
+struct RocksServerPersistence {
+    inner: ServerStore<RocksOpts>,
+}
+
+const PREFIX: &str = "swimos_store";
+
+impl ServerPersistence for RocksServerPersistence {
+    type PlaneStore = StoreWrapper<SwimPlaneStore<RocksEngine>>;
+
+    fn open_plane(&self, name: &str) -> Result<Self::PlaneStore, StoreError> {
+        let RocksServerPersistence { inner } = self;
+        let store = inner.plane_store(name)?;
+        Ok(StoreWrapper(store))
+    }
+}
+
+pub fn create_rocks_store(
+    path: Option<PathBuf>,
+    options: RocksOpts,
+) -> Result<impl ServerPersistence + Send + Sync + 'static, StoreError> {
+    let keyspaces = default_keyspaces();
+
+    let server_store = match path {
+        Some(base_path) => ServerStore::new(options, keyspaces, base_path),
+        _ => ServerStore::transient(options, keyspaces, PREFIX),
+    }?;
+    Ok(RocksServerPersistence {
+        inner: server_store,
+    })
 }

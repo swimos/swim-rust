@@ -16,7 +16,7 @@ use crate::agent::{NodeStore, SwimNodeStore};
 use crate::plane::mock::MockPlaneStore;
 use crate::server::{StoreEngine, StoreKey};
 use swimos_store::nostore::NoRange;
-use swimos_store::{EngineInfo, StoreError};
+use swimos_store::StoreError;
 
 #[derive(Clone, Debug)]
 pub struct MockNodeStore {
@@ -44,26 +44,8 @@ impl NodeStore for MockNodeStore {
         Ok(NoRange)
     }
 
-    fn engine_info(&self) -> EngineInfo {
-        EngineInfo {
-            path: "".to_string(),
-            kind: "Mock".to_string(),
-        }
-    }
-
     fn lane_id_of(&self, _lane: &str) -> Result<u64, StoreError> {
         Ok(0)
-    }
-
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        _prefix: StoreKey,
-        _map_fn: F,
-    ) -> Result<Option<Vec<(K, V)>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
-        Ok(None)
     }
 
     fn delete_map(&self, _lane_id: u64) -> Result<(), StoreError> {

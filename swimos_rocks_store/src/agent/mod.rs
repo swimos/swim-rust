@@ -26,7 +26,7 @@ use swimos_model::Text;
 use crate::plane::PlaneStore;
 use crate::server::{StoreEngine, StoreKey};
 
-use swimos_store::{EngineInfo, RangeConsumer, StoreError};
+use swimos_store::{RangeConsumer, StoreError};
 
 /// A trait for defining store engines which open stores for nodes.
 ///
@@ -52,23 +52,7 @@ pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static {
     /// * `prefix` - Common prefix for the records to read.
     fn ranged_snapshot_consumer(&self, prefix: StoreKey) -> Result<Self::RangeCon<'_>, StoreError>;
 
-    /// Returns information about the delegate store
-    fn engine_info(&self) -> EngineInfo;
-
     fn lane_id_of(&self, lane: &str) -> Result<u64, StoreError>;
-
-    /// Executes a ranged snapshot read prefixed by a lane key and deserialize each key-value pair
-    /// using `map_fn`.
-    ///
-    /// Returns an optional snapshot iterator if entries were found that will yield deserialized
-    /// key-value pairs.
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        prefix: StoreKey,
-        map_fn: F,
-    ) -> Result<Option<Vec<(K, V)>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
 
     /// Delete all values for a map lane.
     fn delete_map(&self, lane_id: u64) -> Result<(), StoreError>;
@@ -136,24 +120,9 @@ impl<D: PlaneStore> NodeStore for SwimNodeStore<D> {
         self.delegate.ranged_snapshot_consumer(prefix)
     }
 
-    fn engine_info(&self) -> EngineInfo {
-        self.delegate.engine_info()
-    }
-
     fn lane_id_of(&self, lane: &str) -> Result<u64, StoreError> {
         let node_id = format!("{}/{}", self.node_uri, lane);
         self.delegate.node_id_of(node_id)
-    }
-
-    fn load_ranged_snapshot<F, K, V>(
-        &self,
-        prefix: StoreKey,
-        map_fn: F,
-    ) -> Result<Option<Vec<(K, V)>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
-        self.delegate.get_prefix_range(prefix, map_fn)
     }
 
     fn delete_map(&self, lane_id: u64) -> Result<(), StoreError> {

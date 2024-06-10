@@ -21,7 +21,11 @@ use ratchet::{
     deflate::{DeflateConfig, DeflateExtProvider},
     NoExtProvider, WebSocketStream,
 };
-use swimos_api::{agent::Agent, error::StoreError, persistence::StoreDisabled};
+use swimos_api::{
+    agent::Agent,
+    error::StoreError,
+    persistence::{ServerPersistence, StoreDisabled},
+};
 use swimos_remote::net::plain::TokioPlainTextNetworking;
 use swimos_remote::net::{dns::Resolver, ExternalConnections};
 use swimos_tls::{
@@ -39,7 +43,7 @@ use crate::{
 use super::{
     http::HyperWebsockets,
     runtime::{SwimServer, Transport},
-    store::{in_memory::InMemoryPersistence, ServerPersistence},
+    store::in_memory::InMemoryPersistence,
     BoxServer,
 };
 
@@ -213,7 +217,7 @@ where
     match store_config {
         #[cfg(feature = "rocks_store")]
         StoreConfig::RockStore { path, options } => {
-            let store = super::store::rocks::create_rocks_store(path, options)?;
+            let store = swimos_rocks_store::create_rocks_store(path, options)?;
             Ok(with_websockets(bind_to, routes, networking, config, store))
         }
         StoreConfig::InMemory => Ok(with_websockets(

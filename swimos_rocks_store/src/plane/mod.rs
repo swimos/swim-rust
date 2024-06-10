@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use swimos_model::Text;
-use swimos_store::{EngineInfo, KeyValue, KeyspaceByteEngine, RangeConsumer, Store, StoreError};
+use swimos_store::{KeyValue, KeyspaceByteEngine, RangeConsumer, Store, StoreError};
 
 use crate::agent::{NodeStore, SwimNodeStore};
 use crate::server::keystore::KeyStore;
@@ -65,24 +65,8 @@ pub trait PlaneStore: StoreEngine + Sized + Debug + Send + Sync + Clone + 'stati
     where
         I: Into<Text>;
 
-    /// Executes a ranged snapshot read prefixed by a lane key and deserialize each key-value pair
-    /// using `map_fn`.
-    ///
-    /// Returns an optional snapshot iterator if entries were found that will yield deserialized
-    /// key-value pairs.
-    fn get_prefix_range<F, K, V>(
-        &self,
-        prefix: StoreKey,
-        map_fn: F,
-    ) -> Result<Option<Vec<(K, V)>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>;
-
     /// Delete all values for a map lane.
     fn delete_map(&self, lane_id: u64) -> Result<(), StoreError>;
-
-    /// Returns information about the delegate store
-    fn engine_info(&self) -> EngineInfo;
 
     fn node_id_of<I>(&self, node: I) -> Result<u64, StoreError>
     where
@@ -171,27 +155,6 @@ where
         I: Into<Text>,
     {
         SwimNodeStore::new(self.clone(), node)
-    }
-
-    fn get_prefix_range<F, K, V>(
-        &self,
-        prefix: StoreKey,
-        map_fn: F,
-    ) -> Result<Option<Vec<(K, V)>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-    {
-        let namespace = match &prefix {
-            StoreKey::Map { .. } => KeyspaceName::Map,
-            StoreKey::Value { .. } => KeyspaceName::Value,
-        };
-
-        self.delegate
-            .get_prefix_range(namespace, prefix.serialize_as_bytes().as_slice(), map_fn)
-    }
-
-    fn engine_info(&self) -> EngineInfo {
-        self.delegate.engine_info()
     }
 
     fn node_id_of<I>(&self, lane: I) -> Result<u64, StoreError>
