@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use std::collections::HashSet;
-use std::fmt::{Debug, Formatter};
+use std::fmt::Debug;
 use std::net::SocketAddr;
 use std::sync::OnceLock;
 
@@ -31,18 +31,9 @@ use tokio::sync::mpsc;
 use crate::net::{Listener, ListenerError};
 use crate::FindNode;
 
-#[cfg(feature = "tls")]
-use {
-    crate::error::tls::TlsError, crate::ws::tls::build_x509_certificate, std::path::Path,
-    tokio_native_tls::native_tls::Certificate, tokio_native_tls::TlsStream,
-};
-
 mod swimos_ratchet;
 
 mod switcher;
-
-#[cfg(feature = "tls")]
-pub mod tls;
 
 #[derive(Debug, Error)]
 #[error("{0}")]
@@ -53,55 +44,11 @@ impl Recoverable for RatchetError {
     }
 }
 
-#[cfg(feature = "tls")]
-pub type WebSocketDef<E> = WebSocket<StreamSwitcher<TcpStream, TlsStream<TcpStream>>, E>;
-#[cfg(not(feature = "tls"))]
 pub type WebSocketDef<E> = WebSocket<TcpStream, E>;
 
-#[cfg(feature = "tls")]
-pub type StreamDef = StreamSwitcher<TcpStream, TlsStream<TcpStream>>;
-#[cfg(not(feature = "tls"))]
 pub type StreamDef = TcpStream;
 
 pub type WsOpenFuture<'l, Sock, Ext, Error> = BoxFuture<'l, Result<WebSocket<Sock, Ext>, Error>>;
-
-#[derive(Clone)]
-pub enum Protocol {
-    PlainText,
-    #[cfg(feature = "tls")]
-    Tls(Certificate),
-}
-
-impl PartialEq for Protocol {
-    fn eq(&self, other: &Self) -> bool {
-        #[allow(clippy::match_like_matches_macro)]
-        match (self, other) {
-            (Protocol::PlainText, Protocol::PlainText) => true,
-            #[cfg(feature = "tls")]
-            (Protocol::Tls(_), Protocol::Tls(_)) => true,
-            #[cfg(feature = "tls")]
-            _ => false,
-        }
-    }
-}
-
-impl Protocol {
-    #[cfg(feature = "tls")]
-    pub fn tls(path: impl AsRef<Path>) -> Result<Protocol, TlsError> {
-        let cert = build_x509_certificate(path)?;
-        Ok(Protocol::Tls(cert))
-    }
-}
-
-impl Debug for Protocol {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::PlainText => write!(f, "PlainText"),
-            #[cfg(feature = "tls")]
-            Self::Tls(_) => write!(f, "Tls"),
-        }
-    }
-}
 
 /// Trait for adapters that will negotiate a client websocket connection over an duplex connection.
 pub trait WebsocketClient {

@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod error;
-pub mod net;
-mod task;
-pub mod ws;
+mod config;
+mod errors;
+mod maybe;
+mod net;
 
-pub use error::{AgentResolutionError, NoSuchAgent};
-pub use task::{AttachClient, FindNode, LinkError, NodeConnectionRequest, RemoteTask};
-
-#[cfg(feature = "tls")]
-pub mod tls;
+pub use config::{
+    CertChain, CertFormat, CertificateFile, ClientConfig, PrivateKey, ServerConfig, TlsConfig,
+};
+pub use errors::TlsError;
+pub use maybe::MaybeTlsStream;
+pub use net::{RustlsClientNetworking, RustlsListener, RustlsNetworking, RustlsServerNetworking};

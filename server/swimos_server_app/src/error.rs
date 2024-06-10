@@ -19,7 +19,7 @@ use std::{
 
 use swimos_api::error::StoreError;
 use swimos_remote::net::ConnectionError;
-use swimos_tls::TlsError;
+use swimos_remote::tls::TlsError;
 use thiserror::Error;
 
 use swimos_utilities::{format::comma_sep, routing::RoutePattern};

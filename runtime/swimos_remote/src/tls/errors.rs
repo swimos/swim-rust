@@ -12,13 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod error;
-pub mod net;
-mod task;
-pub mod ws;
+use rustls::client::InvalidDnsNameError;
+use thiserror::Error;
 
-pub use error::{AgentResolutionError, NoSuchAgent};
-pub use task::{AttachClient, FindNode, LinkError, NodeConnectionRequest, RemoteTask};
-
-#[cfg(feature = "tls")]
-pub mod tls;
+#[derive(Debug, Error)]
+pub enum TlsError {
+    #[error("Error reading PEM file: {0}")]
+    InvalidPem(std::io::Error),
+    #[error("The provided input did not contain a valid private key.")]
+    InvalidPrivateKey,
+    #[error("Invalid certificate: {0}")]
+    BadCertificate(#[from] webpki::Error),
+    #[error("Invalid DNS host name: {0}")]
+    BadHostName(#[from] InvalidDnsNameError),
+    #[error("TLS handshake failed: {0}")]
+    HandshakeFailed(std::io::Error),
+}
