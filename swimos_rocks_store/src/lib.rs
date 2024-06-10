@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod engine;
+pub mod agent;
+pub(crate) mod engine;
+pub mod plane;
+mod server;
 
 pub use engine::*;
+pub use server::*;

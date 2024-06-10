@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::engine::RocksOpts;
 use crate::server::keystore::rocks::incrementing_merge_operator;
 use crate::server::keystore::COUNTER_KEY;
 use crate::server::{LANE_KS, MAP_LANE_KS, VALUE_LANE_KS};
 use rocksdb::{Options, SliceTransform};
 use std::mem::size_of;
-use swimos_rocks_store::RocksOpts;
 use swimos_store::{KeyspaceDef, Keyspaces};
 
 const PREFIX_BLOOM_RATIO: f64 = 0.2;

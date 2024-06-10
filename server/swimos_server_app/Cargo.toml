@@ -6,7 +6,7 @@ edition = "2021"
 
 [features]
 default = ["rocks_store"]
-rocks_store = ["swimos_rocks_store", "swimos_persistence"]
+rocks_store = ["swimos_rocks_store"]
 trust_dns = ["swimos_runtime/trust_dns"]
 
 [dependencies]
@@ -30,7 +30,6 @@ uuid = { workspace = true }
 thiserror = { workspace = true }
 rand = { workspace = true }
 url = { workspace = true }
-swimos_persistence = { path = "../../runtime/swimos_persistence", optional = true }
 swimos_store = { path = "../../swimos_store" }
 swimos_rocks_store = { path = "../../swimos_rocks_store", optional = true}
 parking_lot = { workspace = true }

@@ -20,10 +20,10 @@ mod tests;
 
 pub mod rocks;
 
+use crate::engine::RocksOpts;
 use std::fmt::{Debug, Formatter};
 use std::io::{self, Write};
 use std::path::PathBuf;
-use swimos_rocks_store::RocksOpts;
 use swimos_store::{Keyspace, Keyspaces, StoreBuilder, StoreError};
 
 use crate::plane::{open_plane, PlaneStore, SwimPlaneStore};

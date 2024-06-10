@@ -68,11 +68,10 @@ pub mod rocks {
     use std::path::PathBuf;
 
     use swimos_api::error::StoreError;
-    use swimos_persistence::{
-        agent::StoreWrapper, plane::SwimPlaneStore, rocks::default_keyspaces, ServerStore,
-        SwimStore,
+    use swimos_rocks_store::{
+        agent::StoreWrapper, plane::SwimPlaneStore, rocks::default_keyspaces, RocksEngine,
+        RocksOpts, ServerStore, SwimStore,
     };
-    use swimos_rocks_store::{RocksEngine, RocksOpts};
 
     use super::ServerPersistence;
 
