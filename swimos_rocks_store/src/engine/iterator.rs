@@ -13,8 +13,8 @@
 // limitations under the License.
 
 use rocksdb::{DBIteratorWithThreadMode, DBRawIterator, DBWithThreadMode, SingleThreaded};
-use store_common::{EngineIterator, EnginePrefixIterator, IteratorKey, KeyValue, KvBytes};
-use store_common::{RangeConsumer, StoreError};
+use swimos_store::{EngineIterator, EnginePrefixIterator, IteratorKey, KeyValue, KvBytes};
+use swimos_store::{RangeConsumer, StoreError};
 
 pub struct RocksPrefixIterator<'p> {
     delegate: DBIteratorWithThreadMode<'p, DBWithThreadMode<SingleThreaded>>,

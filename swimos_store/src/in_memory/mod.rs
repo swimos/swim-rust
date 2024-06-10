@@ -17,6 +17,7 @@ use std::{
     sync::Arc,
 };
 
+use crate::{KeyValue, RangeConsumer, StoreError};
 use bytes::{BufMut, BytesMut};
 use futures::{
     future::{ready, BoxFuture},
@@ -24,7 +25,6 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swimos_api::persistence::{NodePersistence, PlanePersistence};
-use swimos_store::{KeyValue, RangeConsumer, StoreError};
 use tokio::sync::oneshot;
 
 #[cfg(test)]

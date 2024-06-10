@@ -18,46 +18,18 @@ pub mod mock;
 #[cfg(test)]
 mod tests;
 
-#[cfg(feature = "rocks")]
 pub mod rocks;
 
 use std::fmt::{Debug, Formatter};
 use std::io::{self, Write};
 use std::path::PathBuf;
+use swimos_rocks_store::RocksOpts;
 use swimos_store::{Keyspace, Keyspaces, StoreBuilder, StoreError};
 
 use crate::plane::{open_plane, PlaneStore, SwimPlaneStore};
 use integer_encoding::FixedInt;
 pub use swimos_store::nostore::NoStore;
 use swimos_utilities::fs::Dir;
-
-/// Unique lane identifier keyspace. The name is `default` as either the Rust RocksDB crate or
-/// Rocks DB itself has an issue in using merge operators under a non-default column family.
-///
-/// See: https://github.com/rust-rocksdb/rust-rocksdb/issues/29
-pub(crate) const LANE_KS: &str = "default";
-/// Value lane store keyspace.
-pub(crate) const VALUE_LANE_KS: &str = "value_lanes";
-/// Map lane store keyspace.
-pub(crate) const MAP_LANE_KS: &str = "map_lanes";
-
-/// An enumeration over the keyspaces that exist in a store.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum KeyspaceName {
-    Lane,
-    Value,
-    Map,
-}
-
-impl Keyspace for KeyspaceName {
-    fn name(&self) -> &str {
-        match self {
-            KeyspaceName::Lane => LANE_KS,
-            KeyspaceName::Value => VALUE_LANE_KS,
-            KeyspaceName::Map => MAP_LANE_KS,
-        }
-    }
-}
 
 /// A Swim server store which will create plane stores on demand.
 ///
@@ -139,9 +111,8 @@ where
     }
 }
 
-#[cfg(feature = "rocks")]
-impl ServerStore<rocks::RocksOpts> {
-    pub fn transient_default(prefix: &str) -> io::Result<ServerStore<rocks::RocksOpts>> {
+impl ServerStore<RocksOpts> {
+    pub fn transient_default(prefix: &str) -> io::Result<ServerStore<RocksOpts>> {
         let db_opts = rocks::default_db_opts();
         let keyspaces = rocks::default_keyspaces();
 
@@ -198,6 +169,34 @@ const MAP_TAG: u8 = 1;
 
 const KEY: u8 = 1;
 const UBOUND: u8 = 2;
+
+/// Unique lane identifier keyspace. The name is `default` as either the Rust RocksDB crate or
+/// Rocks DB itself has an issue in using merge operators under a non-default column family.
+///
+/// See: https://github.com/rust-rocksdb/rust-rocksdb/issues/29
+const LANE_KS: &str = "default";
+/// Value lane store keyspace.
+const VALUE_LANE_KS: &str = "value_lanes";
+/// Map lane store keyspace.
+const MAP_LANE_KS: &str = "map_lanes";
+
+/// An enumeration over the keyspaces that exist in a store.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum KeyspaceName {
+    Lane,
+    Value,
+    Map,
+}
+
+impl Keyspace for KeyspaceName {
+    fn name(&self) -> &str {
+        match self {
+            KeyspaceName::Lane => LANE_KS,
+            KeyspaceName::Value => VALUE_LANE_KS,
+            KeyspaceName::Map => MAP_LANE_KS,
+        }
+    }
+}
 
 impl StoreKey {
     pub const MAP_KEY_PREFIX_SIZE: usize = ID_LEN + 2 * TAG_LEN + SIZE_LEN;

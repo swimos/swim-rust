@@ -5,21 +5,21 @@ edition = "2021"
 
 [features]
 default = []
-rocks = ["rocksdb", "swimos_store/rocks"]
 
 [dependencies]
-swimos_store = { path = "../../swimos_store" }
-rocksdb = { workspace = true, optional = true }
 swimos_utilities = { path = "../../swimos_utilities", features = ["io", "circular_buffer", "future"] }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_form = { path = "../../api/swimos_form" }
 swimos_api = { path = "../../api/swimos_api" }
+swimos_store = { path = "../../swimos_store"}
+swimos_rocks_store = { path = "../../swimos_rocks_store"}
 tokio = { workspace = true, features = ["sync"] }
 futures = { workspace = true }
 futures-util = { workspace = true }
 bytes = { workspace = true }
 integer-encoding = { workspace = true }
 parking_lot = { workspace = true }
+rocksdb = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util", "time"] }

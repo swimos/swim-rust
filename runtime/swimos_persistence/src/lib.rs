@@ -16,8 +16,3 @@ pub mod agent;
 pub mod plane;
 mod server;
 pub use server::*;
-
-pub mod engine {
-    #[cfg(feature = "rocks")]
-    pub use swimos_store::rocks;
-}

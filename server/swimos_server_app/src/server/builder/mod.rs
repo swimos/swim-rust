@@ -63,7 +63,7 @@ enum StoreConfig {
     #[cfg(feature = "rocks_store")]
     RockStore {
         path: Option<std::path::PathBuf>,
-        options: crate::RocksOpts,
+        options: swimos_rocks_store::RocksOpts,
     },
 }
 
@@ -279,6 +279,7 @@ where
 #[cfg(feature = "rocks_store")]
 const _: () = {
     use swimos_persistence::rocks::default_db_opts;
+    use swimos_rocks_store::RocksOpts;
     impl ServerBuilder {
         pub fn enable_rocks_store(mut self) -> Self {
             self.store_options = StoreConfig::RockStore {
@@ -304,7 +305,7 @@ const _: () = {
             self
         }
 
-        pub fn modify_rocks_opts<F: FnOnce(&mut crate::RocksOpts)>(mut self, f: F) -> Self {
+        pub fn modify_rocks_opts<F: FnOnce(&mut RocksOpts)>(mut self, f: F) -> Self {
             match &mut self.store_options {
                 StoreConfig::RockStore { options, .. } => {
                     f(options);

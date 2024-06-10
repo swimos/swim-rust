@@ -1,10 +1,10 @@
 [package]
-name = "rocks_store"
+name = "swimos_rocks_store"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-store_common = { path = "../store_common" }
+swimos_store = { path = "../swimos_store" }
 rocksdb = { workspace = true }
 
 [dev-dependencies]

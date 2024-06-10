@@ -35,7 +35,7 @@ pub mod in_memory {
     use std::collections::{hash_map::Entry, HashMap};
 
     use parking_lot::Mutex;
-    use swimos_persistence::agent::in_memory::InMemoryPlanePersistence;
+    use swimos_store::in_memory::InMemoryPlanePersistence;
 
     use super::ServerPersistence;
 
@@ -69,11 +69,10 @@ pub mod rocks {
 
     use swimos_api::error::StoreError;
     use swimos_persistence::{
-        agent::StoreWrapper,
-        plane::SwimPlaneStore,
-        rocks::{default_keyspaces, RocksDatabase, RocksOpts},
-        ServerStore, SwimStore,
+        agent::StoreWrapper, plane::SwimPlaneStore, rocks::default_keyspaces, ServerStore,
+        SwimStore,
     };
+    use swimos_rocks_store::{RocksEngine, RocksOpts};
 
     use super::ServerPersistence;
 
@@ -84,7 +83,7 @@ pub mod rocks {
     const PREFIX: &str = "swimos_store";
 
     impl ServerPersistence for RocksServerPersistence {
-        type PlaneStore = StoreWrapper<SwimPlaneStore<RocksDatabase>>;
+        type PlaneStore = StoreWrapper<SwimPlaneStore<RocksEngine>>;
 
         fn open_plane(&self, name: &str) -> Result<Self::PlaneStore, StoreError> {
             let RocksServerPersistence { inner } = self;
@@ -95,7 +94,7 @@ pub mod rocks {
 
     pub fn create_rocks_store(
         path: Option<PathBuf>,
-        options: crate::RocksOpts,
+        options: RocksOpts,
     ) -> Result<impl ServerPersistence + Send + Sync + 'static, StoreError> {
         let keyspaces = default_keyspaces();
 

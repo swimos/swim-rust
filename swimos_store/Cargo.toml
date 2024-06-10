@@ -5,8 +5,15 @@ edition = "2021"
 
 [features]
 default = []
-rocks = ["rocks_store"]
 
 [dependencies]
-rocks_store = { path = "rocks_store", optional = true }
-store_common = { path = "store_common" }
+swimos_api = { path = "../api/swimos_api" }
+thiserror = { workspace = true }
+integer-encoding = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+parking_lot = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+swimos_utilities = { path = "../swimos_utilities", features = ["future"]}

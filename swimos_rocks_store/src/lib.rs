@@ -12,20 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod config;
-pub mod error;
-mod plane;
-mod server;
-mod util;
+mod engine;
 
-pub use self::{
-    config::{RemoteConnectionsConfig, SwimServerConfig},
-    server::{BoxServer, Server, ServerBuilder, ServerHandle},
-    util::AgentExt,
-};
-
-pub mod introspection {
-    pub use swimos_introspection::IntrospectionConfig;
-}
-
-pub use ratchet::deflate::DeflateConfig;
+pub use engine::*;

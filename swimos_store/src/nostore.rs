@@ -15,7 +15,7 @@
 use std::borrow::Borrow;
 use std::path::{Path, PathBuf};
 
-use store_common::{
+use crate::{
     ByteEngine, EngineInfo, EngineIterator, EnginePrefixIterator, IteratorKey, KeyValue, Keyspace,
     KeyspaceByteEngine, KeyspaceResolver, Keyspaces, KvBytes, RangeConsumer, Store, StoreBuilder,
     StoreError,

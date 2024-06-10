@@ -283,7 +283,6 @@ where
     }
 }
 
-#[cfg(feature = "rocks")]
 mod rocks {
 
     const PLANE_NAME: &str = "plane";
@@ -381,7 +380,7 @@ mod rocks {
 
 mod in_memory {
     use super::*;
-    use swimos_persistence::agent::in_memory::InMemoryPlanePersistence;
+    use swimos_store::in_memory::InMemoryPlanePersistence;
 
     fn in_memory_factory() -> Result<impl PlanePersistence + Send + Sync + 'static, StoreError> {
         Ok(InMemoryPlanePersistence::default())

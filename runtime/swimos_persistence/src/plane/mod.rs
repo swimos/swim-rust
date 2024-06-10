@@ -23,7 +23,8 @@ use swimos_store::{EngineInfo, KeyValue, KeyspaceByteEngine, RangeConsumer, Stor
 
 use crate::agent::{NodeStore, SwimNodeStore};
 use crate::server::keystore::KeyStore;
-use crate::server::{KeyspaceName, StoreEngine, StoreKey};
+use crate::server::{StoreEngine, StoreKey};
+use crate::KeyspaceName;
 use swimos_store::{Keyspaces, StoreBuilder};
 
 pub mod mock;

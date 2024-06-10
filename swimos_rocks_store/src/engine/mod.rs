@@ -17,14 +17,14 @@ mod tests;
 
 mod iterator;
 
-pub use crate::iterator::{RocksIterator, RocksPrefixIterator, RocksRawPrefixIterator};
+pub use iterator::{RocksIterator, RocksPrefixIterator, RocksRawPrefixIterator};
 
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, ReadOptions};
 use rocksdb::{Options, DB};
 use std::path::Path;
 use std::sync::Arc;
-use store_common::EnginePrefixIterator;
-use store_common::{
+use swimos_store::EnginePrefixIterator;
+use swimos_store::{
     serialize_u64, EngineInfo, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces, Store,
     StoreBuilder, StoreError, MAX_ID_SIZE,
 };

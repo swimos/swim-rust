@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::server::KeyspaceName;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use swimos_store::{deserialize_u64, serialize_u64, KeyspaceByteEngine, StoreError, MAX_ID_SIZE};
 use tokio::sync::oneshot;
+
+use crate::KeyspaceName;
 
 pub type KeyRequest = (String, oneshot::Sender<u64>);
 
@@ -89,16 +90,13 @@ pub fn format_key<I: ToString>(uri: I) -> String {
     format!("{}/{}", LANE_PREFIX, uri.to_string())
 }
 
-#[cfg(feature = "rocks")]
 pub mod rocks {
     use crate::server::keystore::INITIAL;
     use rocksdb::MergeOperands;
     use swimos_store::{deserialize_u64, serialize_u64_vec};
 
-    #[cfg(feature = "rocks")]
     const DESERIALIZATION_FAILURE: &str = "Failed to deserialize key";
 
-    #[cfg(feature = "rocks")]
     #[allow(clippy::unnecessary_wraps)]
     pub fn incrementing_merge_operator(
         _new_key: &[u8],
@@ -125,7 +123,7 @@ mod tests {
         format_key, KeyStore, COUNTER_BYTES, COUNTER_KEY, INCONSISTENT_KEYSPACE,
     };
     use crate::server::mock::MockStore;
-    use crate::server::KeyspaceName;
+    use crate::KeyspaceName;
     use std::sync::Arc;
     use swimos_store::{deserialize_u64, Keyspace, KeyspaceByteEngine};
 

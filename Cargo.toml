@@ -8,6 +8,7 @@ members = [
     "macro_utilities",
     "runtime/swimos_*",
     "swimos_store",
+    "swimos_rocks_store",
     "swimos_utilities",
     "swimos_utilities/swimos_*",
     "swimos_downlink",

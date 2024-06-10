@@ -18,7 +18,7 @@ use rocksdb::{MergeOperands, Options, SliceTransform};
 use std::collections::HashMap;
 use std::mem::size_of;
 use std::ops::{Deref, Range};
-use store_common::{
+use swimos_store::{
     deserialize_u64, serialize_u64_vec, EngineIterator, Keyspace, KeyspaceByteEngine, KeyspaceDef,
     KeyspaceResolver, Keyspaces, StoreBuilder, StoreError,
 };
