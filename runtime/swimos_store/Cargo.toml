@@ -7,7 +7,7 @@ edition = "2021"
 default = []
 
 [dependencies]
-swimos_api = { path = "../api/swimos_api" }
+swimos_api = { path = "../../api/swimos_api" }
 thiserror = { workspace = true }
 integer-encoding = { workspace = true }
 bytes = { workspace = true }
@@ -16,4 +16,4 @@ parking_lot = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
-swimos_utilities = { path = "../swimos_utilities", features = ["future"]}
+swimos_utilities = { path = "../../swimos_utilities", features = ["future"]}

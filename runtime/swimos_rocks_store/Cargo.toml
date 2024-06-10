@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-swimos_model = { path = "../api/swimos_model" }
+swimos_model = { path = "../../api/swimos_model" }
 swimos_store = { path = "../swimos_store" }
 rocksdb = { workspace = true }
 futures = { workspace = true }
-swimos_utilities = { path = "../swimos_utilities", features = ["io", "circular_buffer", "future"] }
-swimos_form = { path = "../api/swimos_form" }
-swimos_api = { path = "../api/swimos_api" }
+swimos_utilities = { path = "../../swimos_utilities", features = ["io", "circular_buffer", "future"] }
+swimos_form = { path = "../../api/swimos_form" }
+swimos_api = { path = "../../api/swimos_api" }
 tokio = { workspace = true, features = ["sync"] }
 futures-util = { workspace = true }
 bytes = { workspace = true }
