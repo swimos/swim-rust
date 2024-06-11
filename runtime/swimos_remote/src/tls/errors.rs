@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use rustls::client::InvalidDnsNameError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -23,8 +22,8 @@ pub enum TlsError {
     InvalidPrivateKey,
     #[error("Invalid certificate: {0}")]
     BadCertificate(#[from] webpki::Error),
-    #[error("Invalid DNS host name: {0}")]
-    BadHostName(#[from] InvalidDnsNameError),
+    #[error("Invalid DNS host name.")]
+    BadHostName,
     #[error("TLS handshake failed: {0}")]
     HandshakeFailed(std::io::Error),
 }

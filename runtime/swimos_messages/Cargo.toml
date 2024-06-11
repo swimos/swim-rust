@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 bytes = { workspace = true }
 futures = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["sync"]}
 tokio-util = { workspace = true, features = ["codec"] }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_api = { path = "../../api/swimos_api" }

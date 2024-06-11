@@ -16,8 +16,8 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 
 use crate::dns::{DnsResolver, Resolver};
-use crate::net::Scheme;
-use crate::net::{IoResult, Listener};
+use crate::net::Listener;
+use crate::net::{ConnectionError, Scheme};
 use futures::future::BoxFuture;
 use futures::task::{Context, Poll};
 use futures::FutureExt;
@@ -26,10 +26,8 @@ use pin_project::pin_project;
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
-use thiserror::Error;
-
-use super::{ClientConnections, ConnResult, ListenerResult, ServerConnections};
 use crate::dns::BoxDnsResolver;
+use crate::net::{ClientConnections, ConnResult, ListenerResult, ServerConnections};
 
 /// Implementation of [`ExternalConnections`] using [`TcpListener`] and [`TcpStream`] from Tokio.
 #[derive(Debug, Clone)]
@@ -49,9 +47,7 @@ async fn bind_to(addr: SocketAddr) -> ConnResult<(SocketAddr, TcpListener)> {
     Ok((addr, listener))
 }
 
-#[derive(Debug, Error)]
-#[error("TLS connections are not supported.")]
-pub struct NoTls;
+const NO_TLS: &str = "TLS connections are not supported.";
 
 impl ClientConnections for TokioPlainTextNetworking {
     type ClientSocket = TcpStream;
@@ -65,7 +61,7 @@ impl ClientConnections for TokioPlainTextNetworking {
         async move {
             match scheme {
                 Scheme::Ws => Ok(TcpStream::connect(addr).await?),
-                Scheme::Wss => Err(super::ConnectionError::BadParameter(Box::new(NoTls))),
+                Scheme::Wss => Err(ConnectionError::BadParameter(NO_TLS.to_string())),
             }
         }
         .boxed()
@@ -75,7 +71,11 @@ impl ClientConnections for TokioPlainTextNetworking {
         Box::new(self.resolver.clone())
     }
 
-    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+    fn lookup(
+        &self,
+        host: String,
+        port: u16,
+    ) -> BoxFuture<'static, std::io::Result<Vec<SocketAddr>>> {
         self.resolver.resolve(host, port)
     }
 }
@@ -96,12 +96,6 @@ impl ServerConnections for TokioPlainTextNetworking {
 #[pin_project]
 #[derive(Debug)]
 pub struct WithPeer(#[pin] TcpListener);
-
-impl WithPeer {
-    pub fn new(listener: TcpListener) -> Self {
-        WithPeer(listener)
-    }
-}
 
 impl Stream for WithPeer {
     type Item = ListenerResult<(TcpStream, Scheme, SocketAddr)>;

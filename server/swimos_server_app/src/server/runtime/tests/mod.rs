@@ -30,13 +30,13 @@ use ratchet::{
 use swimos_api::{address::RelativeAddress, persistence::StoreDisabled};
 use swimos_form::write::StructuralWritable;
 use swimos_recon::print_recon_compact;
-use swimos_remote::{
-    net::{Scheme, SchemeHostPort},
-    AttachClient, LinkError,
-};
+use swimos_remote::net::{Scheme, SchemeHostPort};
 use swimos_utilities::{byte_channel::byte_channel, non_zero_usize, routing::RoutePattern};
 
-use swimos_messages::warp::{peel_envelope_header, RawEnvelope};
+use swimos_messages::{
+    remote_protocol::{AttachClient, LinkError},
+    warp::{peel_envelope_header, RawEnvelope},
+};
 use tokio::{
     io::{duplex, DuplexStream},
     sync::{

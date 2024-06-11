@@ -23,19 +23,15 @@ use http::{uri::InvalidUri, Uri};
 use thiserror::Error;
 
 use futures::future::BoxFuture;
-use futures::stream::BoxStream;
 use futures::Stream;
 use std::io;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::dns::BoxDnsResolver;
 
-pub mod plain;
-
 #[cfg(test)]
 mod tests;
 
-pub type IoResult<T> = io::Result<T>;
 pub type ConnResult<T> = Result<T, ConnectionError>;
 
 /// Error to indicate why attempting to open a new connection failed.
@@ -53,7 +49,7 @@ pub enum ConnectionError {
     NegotiationFailed(#[source] Box<dyn std::error::Error + Send + Sync>),
     /// A connection parameter was invalid (for example, requesting a secure connection when TLS is not enabled).
     #[error("Negotiating a new connection failed: {0}")]
-    BadParameter(#[source] Box<dyn std::error::Error + Send + Sync>),
+    BadParameter(String),
 }
 
 /// Errors that can be generated when listening for incoming connections. Particularly, this
@@ -102,9 +98,6 @@ where
     fn into_stream(self) -> Self::AcceptStream;
 }
 
-pub type BoxListenerStream<Socket> =
-    BoxStream<'static, ListenerResult<(Socket, Scheme, SocketAddr)>>;
-
 /// Provides all networking functionality required for a Warp client (DNS resolution and opening sockets).
 pub trait ClientConnections: Clone + Send + Sync + 'static {
     type ClientSocket: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static;
@@ -116,7 +109,11 @@ pub trait ClientConnections: Clone + Send + Sync + 'static {
     ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
-    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
+    fn lookup(
+        &self,
+        host: String,
+        port: u16,
+    ) -> BoxFuture<'static, std::io::Result<Vec<SocketAddr>>>;
 }
 
 impl<C> ClientConnections for Arc<C>
@@ -138,7 +135,11 @@ where
         (**self).dns_resolver()
     }
 
-    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+    fn lookup(
+        &self,
+        host: String,
+        port: u16,
+    ) -> BoxFuture<'static, std::io::Result<Vec<SocketAddr>>> {
         (**self).lookup(host, port)
     }
 }
@@ -188,7 +189,11 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
     ) -> BoxFuture<'_, ConnResult<Self::Socket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
-    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>>;
+    fn lookup(
+        &self,
+        host: String,
+        port: u16,
+    ) -> BoxFuture<'static, std::io::Result<Vec<SocketAddr>>>;
 }
 
 impl<C> ExternalConnections for C
@@ -219,7 +224,11 @@ where
         <Self as ClientConnections>::dns_resolver(self)
     }
 
-    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+    fn lookup(
+        &self,
+        host: String,
+        port: u16,
+    ) -> BoxFuture<'static, std::io::Result<Vec<SocketAddr>>> {
         <Self as ClientConnections>::lookup(self, host, port)
     }
 }

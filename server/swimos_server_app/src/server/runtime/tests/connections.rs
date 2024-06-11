@@ -24,12 +24,12 @@ use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use ratchet::{
     ExtensionProvider, NegotiatedExtension, Role, WebSocket, WebSocketConfig, WebSocketStream,
 };
+use swimos_messages::remote_protocol::FindNode;
 use swimos_remote::dns::{DnsFut, DnsResolver};
 use swimos_remote::net::{
     ConnectionError, ExternalConnections, Listener, ListenerError, ListenerResult, Scheme,
 };
 use swimos_remote::websocket::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
-use swimos_remote::FindNode;
 use tokio::{
     io::{self, DuplexStream},
     sync::{mpsc, oneshot},

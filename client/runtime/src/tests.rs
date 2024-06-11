@@ -27,6 +27,7 @@ use ratchet::{
     Message, NegotiatedExtension, NoExt, NoExtProvider, Role, WebSocket, WebSocketConfig,
 };
 use swimos_agent_protocol::MapMessage;
+use swimos_messages::remote_protocol::AttachClient;
 use swimos_remote::net::{Scheme, SchemeHostPort};
 use tokio::io::{duplex, AsyncWriteExt};
 use tokio::spawn;
@@ -55,7 +56,6 @@ use swimos_form::Form;
 use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
 use swimos_model::Text;
 use swimos_remote::websocket::RatchetError;
-use swimos_remote::AttachClient;
 use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use swimos_utilities::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swimos_utilities::trigger::{promise, trigger};

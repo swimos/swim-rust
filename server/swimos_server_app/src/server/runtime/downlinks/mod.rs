@@ -18,6 +18,7 @@ mod pending;
 mod tests;
 
 pub use connector::{downlink_task_connector, DlTaskRequest, DownlinksConnector, ServerConnector};
+use swimos_messages::remote_protocol::{AttachClient, LinkError};
 use tracing::{debug, error, info, trace, warn};
 
 use std::{
@@ -37,7 +38,6 @@ use swimos_api::{
 use swimos_model::Text;
 use swimos_remote::dns::DnsResolver;
 use swimos_remote::net::{Scheme, SchemeHostPort};
-use swimos_remote::{AttachClient, LinkError};
 use swimos_runtime::downlink::{IdentifiedAddress, NoInterpretation};
 use swimos_runtime::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},

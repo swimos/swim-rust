@@ -38,8 +38,8 @@ use swimos_downlink::{
 };
 use swimos_form::Form;
 use swimos_remote::dns::Resolver;
-use swimos_remote::net::plain::TokioPlainTextNetworking;
 use swimos_remote::net::ClientConnections;
+use swimos_remote::plain::TokioPlainTextNetworking;
 use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 #[cfg(feature = "tls")]
 use swimos_tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};

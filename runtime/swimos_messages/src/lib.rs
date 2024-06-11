@@ -18,5 +18,6 @@
 
 /// Message types and Tokio encoders and decoders.
 pub mod protocol;
+pub mod remote_protocol;
 /// Utilities to strip the header fields from Warp frames.
 pub mod warp;

@@ -13,14 +13,13 @@
 // limitations under the License.
 
 pub mod dns;
-mod error;
 pub mod net;
 mod task;
 mod ws;
 
-pub use error::{AgentResolutionError, NoSuchAgent};
-pub use task::{AttachClient, FindNode, LinkError, NodeConnectionRequest, RemoteTask};
+pub use task::RemoteTask;
 
+pub mod plain;
 #[cfg(feature = "tls")]
 pub mod tls;
 

@@ -14,15 +14,14 @@
 
 use bytes::{Bytes, BytesMut};
 use swimos_api::address::RelativeAddress;
-use swimos_messages::protocol::{
-    BytesRequestMessage, BytesResponseMessage, RequestMessage, ResponseMessage,
+use swimos_messages::{
+    protocol::{BytesRequestMessage, BytesResponseMessage, RequestMessage, ResponseMessage},
+    remote_protocol::NoSuchAgent,
 };
 use swimos_model::Text;
 use swimos_utilities::encoding::BytesStr;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
-
-use crate::NoSuchAgent;
 
 use super::ReconEncoder;
 

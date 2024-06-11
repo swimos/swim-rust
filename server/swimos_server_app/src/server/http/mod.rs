@@ -43,11 +43,11 @@ use ratchet::{
 };
 use swimos_api::{agent::HttpLaneRequest, http::HttpRequest};
 use swimos_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
+use swimos_messages::remote_protocol::{AgentResolutionError, FindNode, NoSuchAgent};
 use swimos_remote::{
     net::{Listener, ListenerError, ListenerResult, Scheme},
     websocket::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture, WARP},
 };
-use swimos_remote::{AgentResolutionError, FindNode, NoSuchAgent};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::mpsc,

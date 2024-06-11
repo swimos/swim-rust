@@ -20,8 +20,8 @@ mod tests;
 use std::net::SocketAddr;
 
 use crate::dns::BoxDnsResolver;
-use crate::net::plain::TokioPlainTextNetworking;
-use crate::net::{ClientConnections, ConnResult, IoResult, Scheme, ServerConnections};
+use crate::net::{ClientConnections, ConnResult, Scheme, ServerConnections};
+use crate::plain::TokioPlainTextNetworking;
 pub use client::RustlsClientNetworking;
 use futures::future::Either;
 use futures::TryFutureExt;
@@ -93,7 +93,11 @@ impl ClientConnections for RustlsNetworking {
         self.client.dns_resolver()
     }
 
-    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+    fn lookup(
+        &self,
+        host: String,
+        port: u16,
+    ) -> BoxFuture<'static, std::io::Result<Vec<SocketAddr>>> {
         self.client.lookup(host, port)
     }
 }

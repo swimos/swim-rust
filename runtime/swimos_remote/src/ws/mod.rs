@@ -17,6 +17,7 @@ use std::net::SocketAddr;
 
 use futures::future::BoxFuture;
 use futures::Stream;
+use swimos_messages::remote_protocol::FindNode;
 use swimos_utilities::errors::Recoverable;
 
 use ratchet::{ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream};
@@ -25,7 +26,6 @@ use tokio::sync::mpsc;
 
 use crate::net::{Listener, ListenerError};
 use crate::websocket::WARP;
-use crate::FindNode;
 
 #[derive(Debug, Error)]
 #[error("{0}")]

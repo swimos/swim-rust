@@ -14,14 +14,15 @@
 
 use bytes::{BufMut, BytesMut};
 use swimos_api::address::RelativeAddress;
-use swimos_messages::protocol::{
-    BytesRequestMessage, BytesResponseMessage, Notification, Operation, RequestMessage,
-    ResponseMessage,
+use swimos_messages::{
+    protocol::{
+        BytesRequestMessage, BytesResponseMessage, Notification, Operation, RequestMessage,
+        ResponseMessage,
+    },
+    remote_protocol::NoSuchAgent,
 };
 use swimos_model::{identifier::is_identifier, literal::escape_if_needed};
 use tokio_util::codec::Encoder;
-
-use crate::error::NoSuchAgent;
 
 #[cfg(test)]
 mod tests;

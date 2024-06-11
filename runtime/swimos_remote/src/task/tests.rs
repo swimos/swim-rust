@@ -24,10 +24,15 @@ use ratchet::{
     WebSocket, WebSocketConfig,
 };
 use swimos_api::address::RelativeAddress;
-use swimos_messages::protocol::{
-    BytesRequestMessage, BytesResponseMessage, Notification, Operation, RawRequestMessageDecoder,
-    RawRequestMessageEncoder, RawResponseMessageDecoder, RawResponseMessageEncoder, RequestMessage,
-    ResponseMessage,
+use swimos_messages::{
+    protocol::{
+        BytesRequestMessage, BytesResponseMessage, Notification, Operation,
+        RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
+        RawResponseMessageEncoder, RequestMessage, ResponseMessage,
+    },
+    remote_protocol::{
+        AgentResolutionError, AttachClient, FindNode, NoSuchAgent, NodeConnectionRequest,
+    },
 };
 use swimos_model::Text;
 use swimos_utilities::{
@@ -43,10 +48,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
-use crate::{
-    error::AgentResolutionError, task::OutgoingKind, AttachClient, FindNode, NoSuchAgent,
-    NodeConnectionRequest,
-};
+use crate::task::OutgoingKind;
 
 use super::{InputError, OutgoingTaskMessage, RegisterIncoming};
 

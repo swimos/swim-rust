@@ -34,10 +34,12 @@ use swimos_api::{address::RelativeAddress, persistence::PlanePersistence};
 use swimos_introspection::route::{lane_pattern, mesh_pattern, node_pattern};
 use swimos_introspection::{init_introspection, IntrospectionResolver};
 use swimos_introspection::{IntrospectionConfig, LaneMetaAgent, NodeMetaAgent};
+use swimos_messages::remote_protocol::{
+    AgentResolutionError, AttachClient, FindNode, LinkError, NoSuchAgent, NodeConnectionRequest,
+};
 use swimos_model::Text;
 use swimos_remote::{
     net::{BadUrl, Scheme},
-    AgentResolutionError, AttachClient, FindNode, LinkError, NoSuchAgent, NodeConnectionRequest,
     RemoteTask,
 };
 use swimos_runtime::agent::{
@@ -1166,13 +1168,13 @@ impl From<NewClientError> for DownlinkRuntimeError {
                     }
                     ConnectionError::NegotiationFailed(err) => {
                         DownlinkFailureReason::TlsConnectionFailed {
-                            error: err.into(),
+                            message: err.to_string(),
                             recoverable: true,
                         }
                     }
                     ConnectionError::BadParameter(err) => {
                         DownlinkFailureReason::TlsConnectionFailed {
-                            error: err.into(),
+                            message: err.to_string(),
                             recoverable: false,
                         }
                     }

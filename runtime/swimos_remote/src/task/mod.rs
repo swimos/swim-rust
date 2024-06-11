@@ -33,12 +33,18 @@ use ratchet::{
     SplittableExtension, WebSocket, WebSocketStream,
 };
 use smallvec::SmallVec;
-use swimos_api::{address::RelativeAddress, agent::HttpLaneRequest, error::DownlinkFailureReason};
-use swimos_messages::protocol::{
-    BytesRequestMessage, BytesResponseMessage, RawRequestMessageDecoder, RawRequestMessageEncoder,
-    RawResponseMessageDecoder, RawResponseMessageEncoder, RequestMessage, ResponseMessage,
-};
+use swimos_api::address::RelativeAddress;
 use swimos_messages::warp::{peel_envelope_header_str, RawEnvelope};
+use swimos_messages::{
+    protocol::{
+        BytesRequestMessage, BytesResponseMessage, RawRequestMessageDecoder,
+        RawRequestMessageEncoder, RawResponseMessageDecoder, RawResponseMessageEncoder,
+        RequestMessage, ResponseMessage,
+    },
+    remote_protocol::{
+        AgentResolutionError, AttachClient, FindNode, LinkError, NoSuchAgent, NodeConnectionRequest,
+    },
+};
 use swimos_model::Text;
 use swimos_recon::parser::MessageExtractError;
 use swimos_utilities::{
@@ -55,80 +61,11 @@ use uuid::Uuid;
 
 use tracing::{debug, error, info, info_span, trace, warn, Instrument};
 
-use crate::error::AgentResolutionError;
-use crate::NoSuchAgent;
-
 use self::envelopes::ReconEncoder;
 
 mod envelopes;
 #[cfg(test)]
 mod tests;
-
-#[derive(Debug, Error)]
-pub enum LinkError {
-    #[error("No endpoint with address: {0}")]
-    NoEndpoint(RelativeAddress<Text>),
-}
-
-impl From<LinkError> for DownlinkFailureReason {
-    fn from(err: LinkError) -> Self {
-        match err {
-            LinkError::NoEndpoint(addr) => DownlinkFailureReason::UnresolvableLocal(addr),
-        }
-    }
-}
-
-/// Message to attach a new client to a socket.
-#[derive(Debug)]
-pub enum AttachClient {
-    /// Attach a send only client.
-    OneWay {
-        agent_id: Uuid,
-        path: Option<RelativeAddress<Text>>,
-        receiver: ByteReader,
-        done: oneshot::Sender<Result<(), LinkError>>,
-    },
-    /// Attach a two way (downlink) client.
-    AttachDownlink {
-        downlink_id: Uuid,
-        path: RelativeAddress<Text>,
-        sender: ByteWriter,
-        receiver: ByteReader,
-        done: oneshot::Sender<Result<(), LinkError>>,
-    },
-}
-
-/// Message type sent by the socket management task to find an agent node.
-pub struct FindNode {
-    pub node: Text,
-    pub lane: Option<Text>,
-    pub request: NodeConnectionRequest,
-}
-
-pub enum NodeConnectionRequest {
-    Warp {
-        source: Uuid,
-        promise: oneshot::Sender<Result<(ByteWriter, ByteReader), AgentResolutionError>>,
-    },
-    Http {
-        promise: oneshot::Sender<Result<mpsc::Sender<HttpLaneRequest>, AgentResolutionError>>,
-    },
-}
-
-impl NodeConnectionRequest {
-    pub fn fail(self, err: AgentResolutionError) -> Result<(), AgentResolutionError> {
-        match self {
-            NodeConnectionRequest::Warp { promise, .. } => match promise.send(Err(err)) {
-                Err(Err(e)) => Err(e),
-                _ => Ok(()),
-            },
-            NodeConnectionRequest::Http { promise } => match promise.send(Err(err)) {
-                Err(Err(e)) => Err(e),
-                _ => Ok(()),
-            },
-        }
-    }
-}
 
 /// A task that manages a socket connection. Incoming envelopes are routed to the appropriate
 /// downlink or agent. Agents will be resolved externally where required.

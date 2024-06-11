@@ -24,6 +24,7 @@ use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use swimos_messages::remote_protocol::AttachClient;
 use swimos_remote::{
     net::{Scheme, SchemeHostPort},
     websocket::WebsocketClient,
@@ -41,7 +42,6 @@ use swimos_api::{address::Address, agent::DownlinkKind, error::DownlinkFailureRe
 use swimos_client_api::{Downlink, DownlinkConfig};
 use swimos_model::Text;
 use swimos_remote::net::ClientConnections;
-use swimos_remote::AttachClient;
 use swimos_runtime::downlink::{AttachAction, DownlinkOptions, DownlinkRuntimeConfig};
 use swimos_utilities::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swimos_utilities::trigger;

@@ -34,11 +34,11 @@ use swimos_api::{
     agent::{HttpLaneRequest, RawHttpLaneResponse},
     http::{StatusCode, Version},
 };
-use swimos_model::Text;
-use swimos_remote::{
-    net::{Listener, ListenerResult, Scheme},
+use swimos_messages::remote_protocol::{
     AgentResolutionError, FindNode, NoSuchAgent, NodeConnectionRequest,
 };
+use swimos_model::Text;
+use swimos_remote::net::{Listener, ListenerResult, Scheme};
 use swimos_utilities::non_zero_usize;
 use tokio::{io::DuplexStream, sync::mpsc};
 use tokio_stream::wrappers::ReceiverStream;

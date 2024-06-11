@@ -18,7 +18,7 @@ use futures::{future::BoxFuture, FutureExt};
 use rustls::{OwnedTrustAnchor, RootCertStore, ServerName};
 
 use crate::dns::{BoxDnsResolver, DnsResolver, Resolver};
-use crate::net::{ClientConnections, ConnResult, ConnectionError, IoResult, Scheme};
+use crate::net::{ClientConnections, ConnResult, ConnectionError, Scheme};
 use tokio::net::TcpStream;
 use tokio_rustls::{TlsConnector, TlsStream};
 
@@ -93,9 +93,8 @@ impl ClientConnections for RustlsClientNetworking {
             .boxed(),
             Scheme::Wss => {
                 let domain = if let Some(host_name) = host {
-                    ServerName::try_from(host_name).map_err(|err| {
-                        ConnectionError::BadParameter(Box::new(TlsError::BadHostName(err)))
-                    })
+                    ServerName::try_from(host_name)
+                        .map_err(|err| ConnectionError::BadParameter(err.to_string()))
                 } else {
                     Ok(ServerName::IpAddress(addr.ip()))
                 };
@@ -118,7 +117,11 @@ impl ClientConnections for RustlsClientNetworking {
         Box::new(self.resolver.clone())
     }
 
-    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+    fn lookup(
+        &self,
+        host: String,
+        port: u16,
+    ) -> BoxFuture<'static, std::io::Result<Vec<SocketAddr>>> {
         self.resolver.resolve(host, port)
     }
 }

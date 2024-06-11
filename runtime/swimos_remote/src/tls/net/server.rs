@@ -14,13 +14,10 @@
 
 use std::{net::SocketAddr, sync::Arc};
 
-use crate::net::{
-    BoxListenerStream, ConnResult, IoResult, Listener, ListenerError, ListenerResult, Scheme,
-    ServerConnections,
-};
+use crate::net::{ConnResult, Listener, ListenerError, ListenerResult, Scheme, ServerConnections};
 use futures::{
     future::{BoxFuture, Either},
-    stream::{unfold, FuturesUnordered},
+    stream::{unfold, BoxStream, FuturesUnordered},
     Future, FutureExt, Stream, StreamExt, TryStreamExt,
 };
 use rustls::KeyLogFile;
@@ -131,6 +128,8 @@ pub struct RustlsListener {
     acceptor: TlsAcceptor,
 }
 
+type BoxListenerStream<Socket> = BoxStream<'static, ListenerResult<(Socket, Scheme, SocketAddr)>>;
+
 impl Listener<TlsStream<TcpStream>> for RustlsListener {
     type AcceptStream = BoxListenerStream<TlsStream<TcpStream>>;
 
@@ -167,7 +166,10 @@ where
     async fn next_pending(
         &mut self,
     ) -> Option<
-        Either<IoResult<(TcpStream, SocketAddr)>, TlsResult<(TlsStream<TcpStream>, SocketAddr)>>,
+        Either<
+            std::io::Result<(TcpStream, SocketAddr)>,
+            TlsResult<(TlsStream<TcpStream>, SocketAddr)>,
+        >,
     > {
         let AcceptState { listener, pending } = self;
         tokio::select! {
