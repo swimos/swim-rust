@@ -26,7 +26,7 @@ use swimos_api::address::RelativeAddress;
 use swimos_client_api::DownlinkConfig;
 use swimos_messages::remote_protocol::AttachClient;
 use swimos_model::Text;
-use swimos_remote::net::Scheme;
+use swimos_remote::Scheme;
 use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use tokio::sync::mpsc;
 

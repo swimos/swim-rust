@@ -27,11 +27,11 @@ use swimos_api::{
     persistence::{ServerPersistence, StoreDisabled},
 };
 use swimos_remote::dns::Resolver;
-use swimos_remote::net::ExternalConnections;
 use swimos_remote::plain::TokioPlainTextNetworking;
 use swimos_remote::tls::{
     ClientConfig, RustlsClientNetworking, RustlsNetworking, RustlsServerNetworking, TlsConfig,
 };
+use swimos_remote::ExternalConnections;
 use swimos_utilities::routing::RoutePattern;
 
 use crate::{

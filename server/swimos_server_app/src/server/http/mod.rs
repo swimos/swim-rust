@@ -45,8 +45,8 @@ use swimos_api::{agent::HttpLaneRequest, http::HttpRequest};
 use swimos_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
 use swimos_messages::remote_protocol::{AgentResolutionError, FindNode, NoSuchAgent};
 use swimos_remote::{
-    net::{Listener, ListenerError, ListenerResult, Scheme},
     websocket::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture, WARP},
+    Listener, ListenerError, ListenerResult, Scheme,
 };
 use tokio::{
     io::{AsyncRead, AsyncWrite},

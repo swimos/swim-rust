@@ -28,7 +28,7 @@ use ratchet::{
 };
 use swimos_agent_protocol::MapMessage;
 use swimos_messages::remote_protocol::AttachClient;
-use swimos_remote::net::{Scheme, SchemeHostPort};
+use swimos_remote::{Scheme, SchemeHostPort};
 use tokio::io::{duplex, AsyncWriteExt};
 use tokio::spawn;
 use tokio::sync::mpsc::unbounded_channel;

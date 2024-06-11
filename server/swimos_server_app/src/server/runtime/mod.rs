@@ -38,10 +38,7 @@ use swimos_messages::remote_protocol::{
     AgentResolutionError, AttachClient, FindNode, LinkError, NoSuchAgent, NodeConnectionRequest,
 };
 use swimos_model::Text;
-use swimos_remote::{
-    net::{BadUrl, Scheme},
-    RemoteTask,
-};
+use swimos_remote::{BadUrl, RemoteTask, Scheme};
 use swimos_runtime::agent::{
     AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteChannels, AgentRouteTask,
     CombinedAgentConfig, DisconnectionReason, LinkRequest,
@@ -49,8 +46,8 @@ use swimos_runtime::agent::{
 use swimos_runtime::downlink::Io;
 use swimos_utilities::routing::RouteUri;
 
-use swimos_remote::net::{ConnectionError, ExternalConnections, ListenerError};
 use swimos_remote::websocket::{RatchetError, Websockets};
+use swimos_remote::{ConnectionError, ExternalConnections, ListenerError};
 use swimos_utilities::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
 use swimos_utilities::routing::RoutePattern;
 use swimos_utilities::trigger::{self, promise};

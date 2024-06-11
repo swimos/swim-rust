@@ -37,7 +37,7 @@ use swimos_api::{
 };
 use swimos_model::Text;
 use swimos_remote::dns::DnsResolver;
-use swimos_remote::net::{Scheme, SchemeHostPort};
+use swimos_remote::{Scheme, SchemeHostPort};
 use swimos_runtime::downlink::{IdentifiedAddress, NoInterpretation};
 use swimos_runtime::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},

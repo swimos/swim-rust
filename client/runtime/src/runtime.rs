@@ -25,10 +25,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swimos_messages::remote_protocol::AttachClient;
-use swimos_remote::{
-    net::{Scheme, SchemeHostPort},
-    websocket::WebsocketClient,
-};
+use swimos_remote::{websocket::WebsocketClient, Scheme, SchemeHostPort};
 use tokio::sync::{mpsc, oneshot, Notify};
 use tokio::task::{JoinError, JoinHandle};
 use tracing::{debug, error, info, trace};
@@ -41,7 +38,7 @@ use crate::transport::{Transport, TransportHandle};
 use swimos_api::{address::Address, agent::DownlinkKind, error::DownlinkFailureReason};
 use swimos_client_api::{Downlink, DownlinkConfig};
 use swimos_model::Text;
-use swimos_remote::net::ClientConnections;
+use swimos_remote::ClientConnections;
 use swimos_runtime::downlink::{AttachAction, DownlinkOptions, DownlinkRuntimeConfig};
 use swimos_utilities::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swimos_utilities::trigger;

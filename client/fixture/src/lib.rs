@@ -19,10 +19,10 @@ use swimos_model::{Text, Value};
 use swimos_recon::parser::parse_recognize;
 use swimos_recon::print_recon;
 use swimos_remote::dns::{BoxDnsResolver, DnsResolver};
-use swimos_remote::net::{
+use swimos_remote::websocket::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
+use swimos_remote::{
     ClientConnections, ConnResult, ConnectionError, Listener, ListenerError, Scheme,
 };
-use swimos_remote::websocket::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
 use tokio::io::{AsyncRead, AsyncWrite, DuplexStream};
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;

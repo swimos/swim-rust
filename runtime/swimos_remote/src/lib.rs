@@ -13,15 +13,19 @@
 // limitations under the License.
 
 pub mod dns;
-pub mod net;
+mod net;
+pub mod plain;
 mod task;
+#[cfg(feature = "tls")]
+pub mod tls;
 mod ws;
 
 pub use task::RemoteTask;
 
-pub mod plain;
-#[cfg(feature = "tls")]
-pub mod tls;
+pub use net::{
+    BadUrl, ClientConnections, ConnResult, ConnectionError, ExternalConnections, Listener,
+    ListenerError, ListenerResult, Scheme, SchemeHostPort, ServerConnections,
+};
 
 pub mod websocket {
 

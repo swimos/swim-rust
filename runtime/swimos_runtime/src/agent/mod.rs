@@ -29,7 +29,7 @@ use swimos_api::{
     persistence::NodePersistence,
 };
 use swimos_model::Text;
-use swimos_remote::net::SchemeHostPort;
+use swimos_remote::SchemeHostPort;
 use swimos_utilities::{
     byte_channel::{ByteReader, ByteWriter},
     future::RetryStrategy,
