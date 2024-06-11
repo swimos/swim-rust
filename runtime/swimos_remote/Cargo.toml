@@ -15,7 +15,7 @@ bytes = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["sync", "macros"] }
 tokio-util = { workspace = true, features = ["codec"] }
 swimos_utilities = { path = "../../swimos_utilities", features = ["io", "buf_channel", "multi_reader"] }
 swimos_api = { path = "../../api/swimos_api" }
@@ -39,4 +39,4 @@ tokio-rustls = { workspace = true, optional = true }
 rustls-pemfile = { workspace = true, optional = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["rt"] }

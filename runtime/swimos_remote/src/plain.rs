@@ -29,7 +29,8 @@ use tokio::net::{TcpListener, TcpStream};
 use crate::dns::BoxDnsResolver;
 use crate::net::{ClientConnections, ConnResult, ListenerResult, ServerConnections};
 
-/// Implementation of [`ExternalConnections`] using [`TcpListener`] and [`TcpStream`] from Tokio.
+/// Implementation of [`ServerConnections`] and [`ClientConnections`], using [`TcpListener`] 
+/// and [`TcpStream`] from Tokio.
 #[derive(Debug, Clone)]
 pub struct TokioPlainTextNetworking {
     resolver: Arc<Resolver>,
