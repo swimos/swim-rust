@@ -59,7 +59,7 @@ where
 /// A resolver which will use the operating system's `getaddrinfo` function to resolve the provided
 /// host to an IP address and map the results to a `SocketAddr`.
 #[derive(Clone, Debug)]
-pub struct GetAddressInfoResolver;
+struct GetAddressInfoResolver;
 
 impl DnsResolver for GetAddressInfoResolver {
     type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
@@ -73,23 +73,22 @@ impl DnsResolver for GetAddressInfoResolver {
 }
 
 #[derive(Debug, Clone)]
-pub enum Resolver {
+pub struct Resolver {
     #[cfg(not(feature = "trust-dns"))]
-    GetAddressInfo(GetAddressInfoResolver),
+    inner: GetAddressInfoResolver,
     #[cfg(feature = "trust-dns")]
-    TrustDns(trust_dns_impl::TrustDnsResolver),
+    inner: trust_dns_impl::TrustDnsResolver,
 }
 
 impl Resolver {
+    #[cfg(feature = "trust-dns")]
     pub async fn new() -> Resolver {
-        #[cfg(feature = "trust-dns")]
-        {
-            Resolver::TrustDns(trust_dns_impl::TrustDnsResolver::new().await)
-        }
-        #[cfg(not(feature = "trust-dns"))]
-        {
-            Resolver::GetAddressInfo(GetAddressInfoResolver)
-        }
+        Resolver { inner: trust_dns_impl::TrustDnsResolver::new().await }
+    }
+
+    #[cfg(not(feature = "trust-dns"))]
+    pub async fn new() -> Resolver {
+        Resolver { inner: GetAddressInfoResolver }
     }
 }
 
@@ -97,12 +96,7 @@ impl DnsResolver for Resolver {
     type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
     fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {
-        match self {
-            #[cfg(not(feature = "trust-dns"))]
-            Resolver::GetAddressInfo(resolver) => resolver.resolve(host, port).boxed(),
-            #[cfg(feature = "trust-dns")]
-            Resolver::TrustDns(resolver) => resolver.resolve(host, port).boxed(),
-        }
+        self.inner.resolve(host, port).boxed()
     }
 }
 
