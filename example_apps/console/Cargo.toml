@@ -20,11 +20,11 @@ bytes = { workspace = true }
 console-views = { path = "console_views" }
 http = { workspace = true }
 rand = { workspace = true }
-duration-str = "0.5"
-thiserror = { workspace = true} 
+duration-str = { workspace = true }
+thiserror = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-cursive = { version = "0.20", default-features = false, features = ["crossterm-backend"] }
+cursive = { workspace = true, features = ["crossterm-backend"] }
 
 [target.'cfg(unix)'.dependencies]
-cursive = { version = "0.20", default-features = false, features = ["termion-backend"] }
+cursive = { workspace = true, features = ["termion-backend"] }

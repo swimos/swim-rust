@@ -11,8 +11,8 @@ tokio-stream = { workspace = true, features = ["io-util"] }
 tokio-util = { workspace = true, features = ["io"] }
 example-util = { path = "../example_util" }
 serde = { workspace = true, features = ["derive"] }
-csv = "1.2"
-serde-xml-rs = "0.6"
+csv = { workspace = true }
+serde-xml-rs = { workspace = true }
 thiserror = { workspace = true }
 percent-encoding = { workspace = true }
 reqwest = { workspace = true, features = ["rustls-tls", "gzip"] }
@@ -22,4 +22,4 @@ transit-model = { path = "transit-model" }
 futures = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-axum = { version = "0.6.20", features = ["tokio", "http1"] }
+axum = { workspace = true, features = ["tokio", "http1"] }

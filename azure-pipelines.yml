@@ -1,5 +1,5 @@
-trigger: ["main", "byte-routing"]
-pr: ["main", "byte-routing"]
+trigger: [ "main" ]
+pr: [ "main" ]
 
 variables:
   RUSTFLAGS: -Dwarnings
