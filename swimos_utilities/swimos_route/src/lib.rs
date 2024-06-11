@@ -20,7 +20,7 @@
 //!
 //! This crate contains:
 //!
-//! - A type to represent a [route URI](`RouteUri``).
+//! - A type to represent a [route URI](`RouteUri`).
 //! - [Route patterns](`RoutePattern`) that can be used to extract components from the path of a
 //! route URI.
 

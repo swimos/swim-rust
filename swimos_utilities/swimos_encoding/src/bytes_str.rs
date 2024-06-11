@@ -16,7 +16,7 @@ use std::fmt::{Debug, Display, Formatter};
 
 use bytes::Bytes;
 
-/// As string based on a sub-range within a [`Bytes`] buffer. The bytes are guaranteed to contain valid
+/// A string based on a sub-range within a [`Bytes`] buffer. The bytes are guaranteed to contain valid
 /// UTF-8. The purpose of this type is to allow a [`tokio_util::codec::Decoder`]s to return a string from
 /// its input buffer without performing a copy or an allocation and without a lifetime dependency on the
 /// buffer.
