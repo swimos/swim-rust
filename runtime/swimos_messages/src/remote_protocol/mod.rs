@@ -21,6 +21,7 @@ use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
+/// Error type produced when a node cannot be resolved locally.
 #[derive(Debug, Error)]
 pub enum LinkError {
     #[error("No endpoint with address: {0}")]
@@ -62,17 +63,27 @@ pub struct FindNode {
     pub request: NodeConnectionRequest,
 }
 
+/// A request to connect to open a connection to an endpoint on a node.
 pub enum NodeConnectionRequest {
+    /// Request an uplink from a Warp lane.
     Warp {
+        /// The ID of the source of the request.
         source: Uuid,
+        /// Promise to satisfy with a bidirectional channel attached to the uplink.
         promise: oneshot::Sender<Result<(ByteWriter, ByteReader), AgentResolutionError>>,
     },
+    /// Open a channel to make HTTP requests to a lane.
     Http {
+        /// Promise to be satisfied with a channel to make HTTP requests to the lane.
         promise: oneshot::Sender<Result<mpsc::Sender<HttpLaneRequest>, AgentResolutionError>>,
     },
 }
 
 impl NodeConnectionRequest {
+    /// Fail a request for a channel.
+    ///
+    /// # Arguments
+    /// * `err` - The reason for the failure.
     pub fn fail(self, err: AgentResolutionError) -> Result<(), AgentResolutionError> {
         match self {
             NodeConnectionRequest::Warp { promise, .. } => match promise.send(Err(err)) {

@@ -29,7 +29,7 @@ use tokio::net::{TcpListener, TcpStream};
 use crate::dns::BoxDnsResolver;
 use crate::net::{ClientConnections, ConnResult, ListenerResult, ServerConnections};
 
-/// Implementation of [`ServerConnections`] and [`ClientConnections`], using [`TcpListener`] 
+/// Implementation of [`ServerConnections`] and [`ClientConnections`], using [`TcpListener`]
 /// and [`TcpStream`] from Tokio.
 #[derive(Debug, Clone)]
 pub struct TokioPlainTextNetworking {

@@ -16,8 +16,9 @@
 //!
 //! Encodes the protocol used to communicate between external sockets and agent runtime components.
 
-/// Message types and Tokio encoders and decoders.
+/// Message types between the runtime and agents with Tokio encoders and decoders.
 pub mod protocol;
+/// Message types between the runtime and tasks managing sockets.
 pub mod remote_protocol;
 /// Utilities to strip the header fields from Warp frames.
 pub mod warp;
