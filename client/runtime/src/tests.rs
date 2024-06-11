@@ -54,7 +54,7 @@ use swimos_downlink::{
 use swimos_form::Form;
 use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
 use swimos_model::Text;
-use swimos_remote::ws::RatchetError;
+use swimos_remote::websocket::RatchetError;
 use swimos_remote::AttachClient;
 use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use swimos_utilities::byte_channel::{byte_channel, ByteReader, ByteWriter};

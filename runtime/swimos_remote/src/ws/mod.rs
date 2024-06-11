@@ -12,28 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashSet;
 use std::fmt::Debug;
 use std::net::SocketAddr;
-use std::sync::OnceLock;
 
 use futures::future::BoxFuture;
 use futures::Stream;
 use swimos_utilities::errors::Recoverable;
-use tokio::net::TcpStream;
 
 use ratchet::{ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream};
-pub use swimos_ratchet::*;
-pub use switcher::StreamSwitcher;
 use thiserror::Error;
 use tokio::sync::mpsc;
 
 use crate::net::{Listener, ListenerError};
+use crate::websocket::WARP;
 use crate::FindNode;
-
-mod swimos_ratchet;
-
-mod switcher;
 
 #[derive(Debug, Error)]
 #[error("{0}")]
@@ -43,10 +35,6 @@ impl Recoverable for RatchetError {
         true
     }
 }
-
-pub type WebSocketDef<E> = WebSocket<TcpStream, E>;
-
-pub type StreamDef = TcpStream;
 
 pub type WsOpenFuture<'l, Sock, Ext, Error> = BoxFuture<'l, Result<WebSocket<Sock, Ext>, Error>>;
 
@@ -109,16 +97,6 @@ impl From<WebSocketConfig> for RatchetClient {
     }
 }
 
-static PROTOCOLS: OnceLock<HashSet<&'static str>> = OnceLock::new();
-
-pub fn protocols() -> &'static HashSet<&'static str> {
-    PROTOCOLS.get_or_init(|| {
-        let mut s = HashSet::new();
-        s.insert("warp0");
-        s
-    })
-}
-
 impl WebsocketClient for RatchetClient {
     fn open_connection<'a, Sock, Provider>(
         &self,
@@ -133,7 +111,7 @@ impl WebsocketClient for RatchetClient {
     {
         let config = self.0;
         Box::pin(async move {
-            let subprotocols = ProtocolRegistry::new(protocols().iter().copied())?;
+            let subprotocols = ProtocolRegistry::new([WARP])?;
             let socket = ratchet::subscribe_with(config, socket, addr, provider, subprotocols)
                 .await?
                 .into_websocket();

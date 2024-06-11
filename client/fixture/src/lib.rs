@@ -21,7 +21,7 @@ use swimos_remote::dns::{BoxDnsResolver, DnsResolver};
 use swimos_remote::net::{
     ClientConnections, ConnResult, ConnectionError, IoResult, Listener, ListenerError, Scheme,
 };
-use swimos_remote::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
+use swimos_remote::websocket::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
 use swimos_remote::FindNode;
 use tokio::io::{AsyncRead, AsyncWrite, DuplexStream};
 use tokio::sync::mpsc;

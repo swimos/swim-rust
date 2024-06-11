@@ -83,12 +83,16 @@ pub struct Resolver {
 impl Resolver {
     #[cfg(feature = "trust-dns")]
     pub async fn new() -> Resolver {
-        Resolver { inner: trust_dns_impl::TrustDnsResolver::new().await }
+        Resolver {
+            inner: trust_dns_impl::TrustDnsResolver::new().await,
+        }
     }
 
     #[cfg(not(feature = "trust-dns"))]
     pub async fn new() -> Resolver {
-        Resolver { inner: GetAddressInfoResolver }
+        Resolver {
+            inner: GetAddressInfoResolver,
+        }
     }
 }
 

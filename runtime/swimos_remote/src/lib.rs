@@ -16,10 +16,19 @@ pub mod dns;
 mod error;
 pub mod net;
 mod task;
-pub mod ws;
+mod ws;
 
 pub use error::{AgentResolutionError, NoSuchAgent};
 pub use task::{AttachClient, FindNode, LinkError, NodeConnectionRequest, RemoteTask};
 
 #[cfg(feature = "tls")]
 pub mod tls;
+
+pub mod websocket {
+
+    pub use super::ws::{
+        RatchetClient, RatchetError, WebsocketClient, WebsocketServer, Websockets, WsOpenFuture,
+    };
+
+    pub const WARP: &str = "warp0";
+}

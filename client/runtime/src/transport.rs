@@ -25,7 +25,7 @@ use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 use swimos_remote::net::{ClientConnections, Scheme, SchemeHostPort};
-use swimos_remote::ws::WebsocketClient;
+use swimos_remote::websocket::WebsocketClient;
 use swimos_remote::{AttachClient, RemoteTask};
 use swimos_utilities::trigger;
 use tokio::select;

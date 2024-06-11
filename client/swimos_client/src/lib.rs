@@ -17,7 +17,7 @@ use ratchet::NoExtProvider;
 use ratchet::WebSocketStream;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
-use swimos_remote::ws::RatchetClient;
+use swimos_remote::websocket::RatchetClient;
 
 use futures_util::future::BoxFuture;
 #[cfg(feature = "deflate")]

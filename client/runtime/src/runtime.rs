@@ -26,7 +26,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use swimos_remote::{
     net::{Scheme, SchemeHostPort},
-    ws::WebsocketClient,
+    websocket::WebsocketClient,
 };
 use tokio::sync::{mpsc, oneshot, Notify};
 use tokio::task::{JoinError, JoinHandle};

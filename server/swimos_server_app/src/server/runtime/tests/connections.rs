@@ -28,7 +28,7 @@ use swimos_remote::dns::{DnsFut, DnsResolver};
 use swimos_remote::net::{
     ConnectionError, ExternalConnections, Listener, ListenerError, ListenerResult, Scheme,
 };
-use swimos_remote::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
+use swimos_remote::websocket::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
 use swimos_remote::FindNode;
 use tokio::{
     io::{self, DuplexStream},

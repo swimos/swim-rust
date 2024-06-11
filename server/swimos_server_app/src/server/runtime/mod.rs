@@ -48,7 +48,7 @@ use swimos_runtime::downlink::Io;
 use swimos_utilities::routing::RouteUri;
 
 use swimos_remote::net::{ConnectionError, ExternalConnections, ListenerError};
-use swimos_remote::ws::{RatchetError, Websockets};
+use swimos_remote::websocket::{RatchetError, Websockets};
 use swimos_utilities::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
 use swimos_utilities::routing::RoutePattern;
 use swimos_utilities::trigger::{self, promise};
