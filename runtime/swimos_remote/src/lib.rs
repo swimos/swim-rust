@@ -12,10 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS Transport Layer
+//!
+//! This crate provides the transport layer for SwimOS (bidirectional web-socket connections over
+//! TCP sockets). It consists of:
+//!
+//! - An abstraction over DNS to allow for the resolution of remote hosts of Swim agents.
+//! - A networking abstraction with basic implementation for unencrypted traffic over TCP sockets.
+//! - An optional implementation of the networking abstraction using TLS encryption.
+//! - Bindings to use the [`ratchet`] web-socket library on top of the networking abstraction.
+//! - A Tokio task to manage a bidirectional web-socket and handle communication with the core SwimOS runtime.
+
+/// DNS support for resolving remote hosts.
 pub mod dns;
 mod net;
+
+/// Basic networking support, without TLS support.
 pub mod plain;
 mod task;
+/// Networking support with TLS provided by the [`rustls`] crate.
 #[cfg(feature = "tls")]
 pub mod tls;
 mod ws;
@@ -27,11 +42,13 @@ pub use net::{
     ListenerError, ListenerResult, Scheme, SchemeHostPort, ServerConnections,
 };
 
+/// Bindings to use the [`ratchet`] web-sockets crate with the networking abstraction in this crate.
 pub mod websocket {
 
     pub use super::ws::{
         RatchetClient, RatchetError, WebsocketClient, WebsocketServer, Websockets, WsOpenFuture,
     };
 
+    /// The name of the Warp protocol for negotiation web-socket connections.
     pub const WARP: &str = "warp0";
 }

@@ -5,7 +5,7 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [features]
-default = ["rocks_store"]
+default = []
 rocks_store = ["swimos_rocks_store"]
 trust_dns = ["swimos_runtime/trust_dns"]
 
