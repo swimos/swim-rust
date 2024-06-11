@@ -5,7 +5,7 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-num = "0.4"
+num = { workspace = true }
 swimos_num = { path = "../swimos_num" }
 
 [dev-dependencies]

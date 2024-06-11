@@ -18,12 +18,11 @@ use crate::model::AgentIntrospectionUpdater;
 use crate::task::AgentMeta;
 use futures::future::{join, BoxFuture};
 use futures::{SinkExt, StreamExt};
-use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
 use std::fmt::Debug;
 use std::future::Future;
 use std::num::NonZeroUsize;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use swimos_agent_protocol::encoding::lane::{MapLaneResponseDecoder, RawValueLaneRequestEncoder};
 use swimos_agent_protocol::{LaneRequest, LaneResponse, MapOperation};
 use swimos_api::agent::{
@@ -196,7 +195,7 @@ fn push_uri(forest: &mut UriForest<AgentMeta>, reporter: &UplinkReporter, path: 
     );
 }
 
-static NOW: OnceCell<Timestamp> = OnceCell::new();
+static NOW: OnceLock<Timestamp> = OnceLock::new();
 
 #[tokio::test]
 async fn count_lanes_empty() {

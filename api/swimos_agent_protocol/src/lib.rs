@@ -87,7 +87,7 @@ pub mod encoding {
         };
     }
 
-    /// # The encoding used for map like lanes and stores, shared between the other protocols in this module.
+    /// The encoding used for map like lanes and stores, shared between the other protocols in this module.
     pub mod map {
         pub use crate::map::{
             MapMessageDecoder, MapMessageEncoder, MapOperationDecoder, MapOperationEncoder,
@@ -96,7 +96,7 @@ pub mod encoding {
         };
     }
 
-    /// # The protocol used by the agents to send ad hoc messages to lanes on other agents.
+    /// The protocol used by the agents to send ad hoc messages to lanes on other agents.
     ///
     /// [`crate::AdHocCommand`] messages are sent by agents to the runtime to instruct it to send an ad hoc
     /// command to an arbitrary lane endpoint.
@@ -108,10 +108,6 @@ pub mod encoding {
     }
 
     /// # The protocol used by the runtime to communicate with stores.
-    ///
-    /// TODO Non-transient lanes also implicitly contain a store. They should
-    /// ultimately use the initialization component of this protocol. Currently,
-    /// they have initialization messages built into the lane protocol.
     ///
     /// There are two phases to the communication between the runtime and the agent.
     ///
@@ -135,6 +131,11 @@ pub mod encoding {
     /// 2. The store or land sends [`crate::StoreResponse`] messages each time its state
     /// changes which are persisted by the runtime.
     pub mod store {
+
+        // TODO Non-transient lanes also implicitly contain a store. They should
+        // ultimately use the initialization component of this protocol. Currently,
+        // they have initialization messages built into the lane protocol.
+
         pub use crate::store::{
             MapStoreInitDecoder, MapStoreResponseEncoder, RawMapStoreInitDecoder,
             RawMapStoreInitEncoder, RawMapStoreResponseDecoder, RawValueStoreInitDecoder,

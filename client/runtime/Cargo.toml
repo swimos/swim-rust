@@ -27,7 +27,7 @@ bytes = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "sync"] }
 tokio-util = { workspace = true, features = ["codec"] }
 url = { workspace = true }
-fnv = "1.0.7"
+fnv = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 tracing = { workspace = true }

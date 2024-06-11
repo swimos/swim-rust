@@ -328,7 +328,7 @@ pub enum EventHandlerError {
 }
 
 bitflags! {
-
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub struct ModificationFlags: u8 {
         /// The lane has data to write.
         const DIRTY = 0b01;

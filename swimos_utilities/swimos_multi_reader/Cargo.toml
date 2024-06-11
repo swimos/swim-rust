@@ -7,7 +7,7 @@ edition = "2021"
 bytes = { workspace = true }
 swimos_byte_channel = { path = "../swimos_byte_channel" }
 parking_lot = { workspace = true }
-waker-fn = "1.1.0"
+waker-fn = { workspace = true }
 slab = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
 futures = { workspace = true }

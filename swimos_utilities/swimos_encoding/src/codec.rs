@@ -58,7 +58,7 @@ impl Decoder for WithLengthBytesCodec {
 type DecoderResult<D> = Result<Option<<D as Decoder>::Item>, <D as Decoder>::Error>;
 
 /// Feed a bounded number of bytes into a [`Decoder`]. If the input buffer contains more bytes than
-/// the limit, the decoder is passed the limited prefix and [`Decoder::decode_eof`] is called, rather tha
+/// the limit, the decoder is passed the limited prefix and [`Decoder::decode_eof`] is called, rather than
 /// [`Decoder::decode`]. This is useful when [`Decoder`]s are composed and some subset of the input of
 /// one encoder is delegated to another.
 ///

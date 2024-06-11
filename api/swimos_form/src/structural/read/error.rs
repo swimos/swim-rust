@@ -56,7 +56,7 @@ pub enum ReadError {
     DoubleSlot,
     /// Deserialization complete but more input is still available.
     ReaderOverflow,
-    /// A record did not terminate correctly.
+    /// A record was not terminated correctly.
     IncompleteRecord,
     /// One or more required slots were not present in the input.
     MissingFields(Vec<Text>),

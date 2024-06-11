@@ -176,7 +176,7 @@ impl<'a> ItemSpec<'a> {
 
 bitflags! {
 
-    #[derive(Default)]
+    #[derive(Default, Debug, Copy, Clone)]
     pub struct ItemFlags: u8 {
         /// The state of the lane should not be persisted.
         const TRANSIENT = 0b01;
