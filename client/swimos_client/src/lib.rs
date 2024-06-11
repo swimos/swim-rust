@@ -37,7 +37,7 @@ use swimos_downlink::{
     MapValue, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkSet,
 };
 use swimos_form::Form;
-use swimos_remote::net::dns::Resolver;
+use swimos_remote::dns::Resolver;
 use swimos_remote::net::plain::TokioPlainTextNetworking;
 use swimos_remote::net::ClientConnections;
 use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};

@@ -15,7 +15,7 @@
 use std::net::SocketAddr;
 use std::pin::Pin;
 
-use crate::net::dns::{DnsResolver, Resolver};
+use crate::dns::{DnsResolver, Resolver};
 use crate::net::Scheme;
 use crate::net::{IoResult, Listener};
 use futures::future::BoxFuture;
@@ -28,8 +28,8 @@ use tokio::net::{TcpListener, TcpStream};
 
 use thiserror::Error;
 
-use super::dns::BoxDnsResolver;
 use super::{ClientConnections, ConnResult, ListenerResult, ServerConnections};
+use crate::dns::BoxDnsResolver;
 
 /// Implementation of [`ExternalConnections`] using [`TcpListener`] and [`TcpStream`] from Tokio.
 #[derive(Debug, Clone)]

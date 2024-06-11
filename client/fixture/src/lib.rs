@@ -17,7 +17,7 @@ use swimos_form::Form;
 use swimos_model::{Text, Value};
 use swimos_recon::parser::parse_recognize;
 use swimos_recon::print_recon;
-use swimos_remote::net::dns::{BoxDnsResolver, DnsResolver};
+use swimos_remote::dns::{BoxDnsResolver, DnsResolver};
 use swimos_remote::net::{
     ClientConnections, ConnResult, ConnectionError, IoResult, Listener, ListenerError, Scheme,
 };

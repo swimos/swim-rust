@@ -28,9 +28,8 @@ use futures::Stream;
 use std::io;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use self::dns::BoxDnsResolver;
+use crate::dns::BoxDnsResolver;
 
-pub mod dns;
 pub mod plain;
 
 #[cfg(test)]

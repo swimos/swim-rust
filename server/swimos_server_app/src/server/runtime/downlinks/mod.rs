@@ -35,7 +35,8 @@ use swimos_api::{
     error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError},
 };
 use swimos_model::Text;
-use swimos_remote::net::{dns::DnsResolver, Scheme, SchemeHostPort};
+use swimos_remote::dns::DnsResolver;
+use swimos_remote::net::{Scheme, SchemeHostPort};
 use swimos_remote::{AttachClient, LinkError};
 use swimos_runtime::downlink::{IdentifiedAddress, NoInterpretation};
 use swimos_runtime::{

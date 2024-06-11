@@ -14,9 +14,8 @@
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 
-use crate::net::{
-    dns::Resolver, ClientConnections, ConnectionError, Listener, ListenerError, Scheme,
-};
+use crate::dns::Resolver;
+use crate::net::{ClientConnections, ConnectionError, Listener, ListenerError, Scheme};
 use futures::{future::join, StreamExt};
 
 use crate::tls::{

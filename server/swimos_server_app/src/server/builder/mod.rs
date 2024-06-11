@@ -26,8 +26,9 @@ use swimos_api::{
     error::StoreError,
     persistence::{ServerPersistence, StoreDisabled},
 };
+use swimos_remote::dns::Resolver;
 use swimos_remote::net::plain::TokioPlainTextNetworking;
-use swimos_remote::net::{dns::Resolver, ExternalConnections};
+use swimos_remote::net::ExternalConnections;
 use swimos_remote::tls::{
     ClientConfig, RustlsClientNetworking, RustlsNetworking, RustlsServerNetworking, TlsConfig,
 };

@@ -17,10 +17,8 @@ use std::{net::SocketAddr, sync::Arc};
 use futures::{future::BoxFuture, FutureExt};
 use rustls::{OwnedTrustAnchor, RootCertStore, ServerName};
 
-use crate::net::{
-    dns::{BoxDnsResolver, DnsResolver, Resolver},
-    ClientConnections, ConnResult, ConnectionError, IoResult, Scheme,
-};
+use crate::dns::{BoxDnsResolver, DnsResolver, Resolver};
+use crate::net::{ClientConnections, ConnResult, ConnectionError, IoResult, Scheme};
 use tokio::net::TcpStream;
 use tokio_rustls::{TlsConnector, TlsStream};
 

@@ -24,7 +24,7 @@ use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use ratchet::{
     ExtensionProvider, NegotiatedExtension, Role, WebSocket, WebSocketConfig, WebSocketStream,
 };
-use swimos_remote::net::dns::{DnsFut, DnsResolver};
+use swimos_remote::dns::{DnsFut, DnsResolver};
 use swimos_remote::net::{
     ConnectionError, ExternalConnections, Listener, ListenerError, ListenerResult, Scheme,
 };
@@ -209,7 +209,7 @@ impl ExternalConnections for TestConnections {
         self.resolve(host, port)
     }
 
-    fn dns_resolver(&self) -> swimos_remote::net::dns::BoxDnsResolver {
+    fn dns_resolver(&self) -> swimos_remote::dns::BoxDnsResolver {
         Box::new(self.clone())
     }
 }

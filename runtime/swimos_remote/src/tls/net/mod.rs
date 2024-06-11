@@ -19,10 +19,9 @@ mod tests;
 
 use std::net::SocketAddr;
 
+use crate::dns::BoxDnsResolver;
 use crate::net::plain::TokioPlainTextNetworking;
-use crate::net::{
-    dns::BoxDnsResolver, ClientConnections, ConnResult, IoResult, Scheme, ServerConnections,
-};
+use crate::net::{ClientConnections, ConnResult, IoResult, Scheme, ServerConnections};
 pub use client::RustlsClientNetworking;
 use futures::future::Either;
 use futures::TryFutureExt;
