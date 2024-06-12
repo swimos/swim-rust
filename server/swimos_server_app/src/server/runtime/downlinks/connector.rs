@@ -14,7 +14,7 @@
 
 use std::num::NonZeroUsize;
 
-use swimos_remote::AttachClient;
+use swimos_messages::remote_protocol::AttachClient;
 use swimos_runtime::agent::LinkRequest;
 use swimos_utilities::trigger;
 use tokio::sync::mpsc;

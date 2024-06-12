@@ -17,7 +17,8 @@ use std::num::NonZeroUsize;
 use bytes::{BufMut, BytesMut};
 use futures::StreamExt;
 use swimos_agent_protocol::MapOperation;
-use swimos_messages::protocol::{Notification, Path, RawResponseMessageDecoder, ResponseMessage};
+use swimos_api::address::RelativeAddress;
+use swimos_messages::protocol::{Notification, RawResponseMessageDecoder, ResponseMessage};
 use swimos_model::Text;
 use swimos_utilities::{
     byte_channel::{byte_channel, ByteReader},
@@ -56,8 +57,8 @@ fn make_task(action: WriteAction, content: Option<&[u8]>) -> (WriteTask, Reader)
 const BODY: &str = "body";
 const BODY_BYTES: &[u8] = BODY.as_bytes();
 
-fn make_path() -> Path<BytesStr> {
-    Path::new(BytesStr::from(NODE), BytesStr::from(LANE))
+fn make_path() -> RelativeAddress<BytesStr> {
+    RelativeAddress::new(BytesStr::from(NODE), BytesStr::from(LANE))
 }
 
 #[tokio::test]

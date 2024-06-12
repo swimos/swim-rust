@@ -17,7 +17,7 @@ use ratchet::NoExtProvider;
 use ratchet::WebSocketStream;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
-use swimos_remote::ws::RatchetClient;
+use swimos_remote::websocket::RatchetClient;
 
 use futures_util::future::BoxFuture;
 #[cfg(feature = "deflate")]
@@ -37,12 +37,12 @@ use swimos_downlink::{
     MapValue, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkSet,
 };
 use swimos_form::Form;
-use swimos_remote::net::dns::Resolver;
-use swimos_remote::net::plain::TokioPlainTextNetworking;
-use swimos_remote::net::ClientConnections;
-use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
+use swimos_remote::dns::Resolver;
+use swimos_remote::plain::TokioPlainTextNetworking;
 #[cfg(feature = "tls")]
-use swimos_tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
+use swimos_remote::tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
+use swimos_remote::ClientConnections;
+use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use swimos_utilities::trigger;
 use swimos_utilities::trigger::promise;
 use tokio::sync::mpsc;

@@ -21,8 +21,7 @@ use swimos_agent_protocol::encoding::downlink::{
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_api::address::RelativeAddress;
 use swimos_messages::protocol::{
-    Operation, Path, RawRequestMessageDecoder, RawResponseMessageEncoder, RequestMessage,
-    ResponseMessage,
+    Operation, RawRequestMessageDecoder, RawResponseMessageEncoder, RequestMessage, ResponseMessage,
 };
 use swimos_model::Text;
 use swimos_utilities::{byte_channel::byte_channel, non_zero_usize};
@@ -141,7 +140,7 @@ async fn read_task_rescinds_vote_to_stop() {
         msg_sender
             .send(ResponseMessage::<_, String, String>::linked(
                 REMOTE_ADDR,
-                Path::new(REMOTE_NODE, REMOTE_LANE),
+                RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
             ))
             .await
             .expect("Send failed.");

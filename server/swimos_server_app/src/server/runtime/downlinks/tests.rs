@@ -32,13 +32,16 @@ use swimos_agent_protocol::encoding::downlink::{
 };
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
 use swimos_api::{address::RelativeAddress, agent::DownlinkKind, error::DownlinkRuntimeError};
-use swimos_messages::protocol::{
-    Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder,
+use swimos_messages::{
+    protocol::{
+        Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage,
+        ResponseMessageEncoder,
+    },
+    remote_protocol::{AttachClient, LinkError},
 };
 use swimos_model::Text;
-use swimos_net::SchemeHostPort;
-use swimos_remote::net::dns::{DnsFut, DnsResolver};
-use swimos_remote::{AttachClient, LinkError};
+use swimos_remote::dns::{DnsFut, DnsResolver};
+use swimos_remote::SchemeHostPort;
 use swimos_runtime::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
     downlink::{DownlinkOptions, DownlinkRuntimeConfig, Io},

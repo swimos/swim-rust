@@ -83,11 +83,8 @@ pub enum DownlinkFailureReason {
     UnresolvableLocal(RelativeAddress<Text>),
     #[error("Connection to the remote host failed: {0}")]
     ConnectionFailed(Arc<std::io::Error>),
-    #[error("Failed to negotiate a TLS connection: {error}")]
-    TlsConnectionFailed {
-        error: Arc<dyn std::error::Error + Send + Sync>,
-        recoverable: bool,
-    },
+    #[error("Failed to negotiate a TLS connection: {message}")]
+    TlsConnectionFailed { message: String, recoverable: bool },
     #[error("Could not negotiate a websocket connection: {0}")]
     WebsocketNegotiationFailed(String),
     #[error("The remote client stopped while the downlink was starting.")]

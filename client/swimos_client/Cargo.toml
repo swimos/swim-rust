@@ -5,12 +5,11 @@ edition = "2021"
 
 [features]
 default = []
-tls = ["swimos_tls"]
+tls = ["swimos_remote/tls"]
 deflate = ["runtime/deflate"]
 trust_dns = ["swimos_runtime/trust_dns"]
 
 [dependencies]
-swimos_tls = { path = "../../runtime/swimos_tls", optional = true }
 runtime = { path = "../runtime" }
 swimos_utilities = { path = "../../swimos_utilities", features = ["trigger"] }
 swimos_downlink = { path = "../../swimos_downlink" }

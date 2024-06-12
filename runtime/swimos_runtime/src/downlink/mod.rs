@@ -31,7 +31,7 @@ use swimos_agent_protocol::{
 };
 use swimos_api::address::RelativeAddress;
 use swimos_messages::protocol::{
-    Notification, Operation, Path, RawRequestMessage, RawRequestMessageEncoder,
+    Notification, Operation, RawRequestMessage, RawRequestMessageEncoder,
     RawResponseMessageDecoder, ResponseMessage,
 };
 use swimos_model::Text;
@@ -242,7 +242,7 @@ impl ValueDownlinkRuntime {
             output,
             producer_rx,
             identity,
-            Path::new(path.node.clone(), path.lane.clone()),
+            RelativeAddress::new(path.node.clone(), path.lane.clone()),
             config,
             ValueBackpressure::default(),
             write_vote,
@@ -379,7 +379,7 @@ where
             output,
             producer_rx,
             identity,
-            Path::new(path.node.clone(), path.lane.clone()),
+            RelativeAddress::new(path.node.clone(), path.lane.clone()),
             config,
             MapBackpressure::default(),
             write_vote,
@@ -853,11 +853,11 @@ async fn flush_all(senders: &mut Vec<DownlinkSender>) {
 struct RequestSender {
     sender: FramedWrite<ByteWriter, RawRequestMessageEncoder>,
     identity: Uuid,
-    path: Path<Text>,
+    path: RelativeAddress<Text>,
 }
 
 impl RequestSender {
-    fn new(writer: ByteWriter, identity: Uuid, path: Path<Text>) -> Self {
+    fn new(writer: ByteWriter, identity: Uuid, path: RelativeAddress<Text>) -> Self {
         RequestSender {
             sender: FramedWrite::new(writer, RawRequestMessageEncoder),
             identity,
@@ -947,7 +947,7 @@ async fn write_task<B: DownlinkBackpressure>(
     output: ByteWriter,
     producers: mpsc::Receiver<(ByteReader, DownlinkOptions)>,
     identity: Uuid,
-    path: Path<Text>,
+    path: RelativeAddress<Text>,
     config: DownlinkRuntimeConfig,
     mut backpressure: B,
     stop_voter: Voter,

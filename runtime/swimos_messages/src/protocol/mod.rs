@@ -13,21 +13,19 @@
 // limitations under the License.
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use futures::Stream;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Write};
 use std::str::Utf8Error;
 use swimos_api::address::RelativeAddress;
 use swimos_form::read::ReadError;
-use swimos_form::read::{Recognizer, RecognizerReadable};
+use swimos_form::read::Recognizer;
 use swimos_form::write::StructuralWritable;
 use swimos_model::Text;
 use swimos_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::encoding::BytesStr;
 use thiserror::Error;
-use tokio::io::AsyncRead;
-use tokio_util::codec::{Decoder, Encoder, FramedRead};
+use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
 
 #[cfg(test)]
@@ -62,12 +60,12 @@ where
     T: AsRef<[u8]>,
     U: AsRef<[u8]>,
 {
-    pub fn debug_formatter(&self) -> NotificationDebugFormatter<'_, T, U> {
+    pub fn debug_formatter(&self) -> impl Debug + '_ {
         NotificationDebugFormatter(self)
     }
 }
 
-pub struct NotificationDebugFormatter<'a, T, U>(&'a Notification<T, U>);
+struct NotificationDebugFormatter<'a, T, U>(&'a Notification<T, U>);
 
 impl<'a, T, U> Debug for NotificationDebugFormatter<'a, T, U>
 where
@@ -108,20 +106,11 @@ where
     }
 }
 
-pub type Path<P> = RelativeAddress<P>;
-
-pub fn path_from_static_strs(node: &'static str, lane: &'static str) -> Path<BytesStr> {
-    Path {
-        node: BytesStr::from_static_str(node),
-        lane: BytesStr::from_static_str(lane),
-    }
-}
-
 /// Type of messages that can be sent to an agent/from a downlink..
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RequestMessage<P, T> {
     pub origin: Uuid,
-    pub path: Path<P>,
+    pub path: RelativeAddress<P>,
     pub envelope: Operation<T>,
 }
 
@@ -129,12 +118,12 @@ pub struct RequestMessage<P, T> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResponseMessage<P, T, U> {
     pub origin: Uuid,
-    pub path: Path<P>,
+    pub path: RelativeAddress<P>,
     pub envelope: Notification<T, U>,
 }
 
 impl<P, T> RequestMessage<P, T> {
-    pub fn link(source: Uuid, path: Path<P>) -> Self {
+    pub fn link(source: Uuid, path: RelativeAddress<P>) -> Self {
         RequestMessage {
             origin: source,
             path,
@@ -142,7 +131,7 @@ impl<P, T> RequestMessage<P, T> {
         }
     }
 
-    pub fn sync(source: Uuid, path: Path<P>) -> Self {
+    pub fn sync(source: Uuid, path: RelativeAddress<P>) -> Self {
         RequestMessage {
             origin: source,
             path,
@@ -150,7 +139,7 @@ impl<P, T> RequestMessage<P, T> {
         }
     }
 
-    pub fn unlink(source: Uuid, path: Path<P>) -> Self {
+    pub fn unlink(source: Uuid, path: RelativeAddress<P>) -> Self {
         RequestMessage {
             origin: source,
             path,
@@ -158,24 +147,17 @@ impl<P, T> RequestMessage<P, T> {
         }
     }
 
-    pub fn command(source: Uuid, path: Path<P>, body: T) -> Self {
+    pub fn command(source: Uuid, path: RelativeAddress<P>, body: T) -> Self {
         RequestMessage {
             origin: source,
             path,
             envelope: Operation::Command(body),
         }
     }
-
-    pub fn body(&self) -> Option<&T> {
-        match &self.envelope {
-            Operation::Command(body) => Some(body),
-            _ => None,
-        }
-    }
 }
 
 impl<P, T, U> ResponseMessage<P, T, U> {
-    pub fn linked(target: Uuid, path: Path<P>) -> Self {
+    pub fn linked(target: Uuid, path: RelativeAddress<P>) -> Self {
         ResponseMessage {
             origin: target,
             path,
@@ -183,7 +165,7 @@ impl<P, T, U> ResponseMessage<P, T, U> {
         }
     }
 
-    pub fn synced(target: Uuid, path: Path<P>) -> Self {
+    pub fn synced(target: Uuid, path: RelativeAddress<P>) -> Self {
         ResponseMessage {
             origin: target,
             path,
@@ -191,7 +173,7 @@ impl<P, T, U> ResponseMessage<P, T, U> {
         }
     }
 
-    pub fn unlinked(target: Uuid, path: Path<P>, body: Option<U>) -> Self {
+    pub fn unlinked(target: Uuid, path: RelativeAddress<P>, body: Option<U>) -> Self {
         ResponseMessage {
             origin: target,
             path,
@@ -199,7 +181,7 @@ impl<P, T, U> ResponseMessage<P, T, U> {
         }
     }
 
-    pub fn event(target: Uuid, path: Path<P>, body: T) -> Self {
+    pub fn event(target: Uuid, path: RelativeAddress<P>, body: T) -> Self {
         ResponseMessage {
             origin: target,
             path,
@@ -208,19 +190,18 @@ impl<P, T, U> ResponseMessage<P, T, U> {
     }
 }
 
-/// An agent message where the body is uninterpreted (represented as raw bytes).
+/// An request message where the body is uninterpreted (represented as raw bytes).
 pub type RawRequestMessage<'a, P> = RequestMessage<P, &'a [u8]>;
+/// A request message where the path and body are taken directly from the input buffer, without copying or interpretation.
 pub type BytesRequestMessage = RequestMessage<BytesStr, Bytes>;
-
-/// An agent message where the body is uninterpreted (represented as raw bytes).
-pub type RawResponseMessage<'a, P> = ResponseMessage<P, &'a [u8], &'a [u8]>;
+/// A response message where the path and body are taken directly from the input buffer, without copying or interpretation.
 pub type BytesResponseMessage = ResponseMessage<BytesStr, Bytes, Bytes>;
 
 /// Tokio [`Encoder`] to encode a [`RawRequestMessage`] as a byte stream.
 #[derive(Debug, Default)]
 pub struct RawRequestMessageEncoder;
 
-/// Tokio [`Encoder`] to encode a [`RawResponseMessage`] as a byte stream.
+/// Tokio [`Encoder`] to encode a raw response message as a byte stream.
 #[derive(Debug, Default)]
 pub struct RawResponseMessageEncoder;
 
@@ -255,7 +236,7 @@ where
     ) -> Result<(), Self::Error> {
         let RequestMessage {
             origin: source,
-            path: Path { node, lane },
+            path: RelativeAddress { node, lane },
             envelope,
         } = item;
         let node_str = node.as_ref();
@@ -330,7 +311,7 @@ where
     ) -> Result<(), Self::Error> {
         let ResponseMessage {
             origin: source,
-            path: Path { node, lane },
+            path: RelativeAddress { node, lane },
             envelope,
         } = item;
         let node_str = node.as_ref();
@@ -414,7 +395,7 @@ where
     ) -> Result<(), Self::Error> {
         let ResponseMessage {
             origin: source,
-            path: Path { node, lane },
+            path: RelativeAddress { node, lane },
             envelope,
         } = item;
         let node_str = node.as_ref();
@@ -490,7 +471,7 @@ enum RequestState<P, T> {
     ReadingHeader,
     ReadingBody {
         source: Uuid,
-        path: Path<P>,
+        path: RelativeAddress<P>,
         remaining: usize,
     },
     AfterBody {
@@ -503,48 +484,23 @@ enum RequestState<P, T> {
     },
 }
 
-enum ResponseState<P, T, U> {
-    ReadingHeader,
-    ReadingBody {
-        is_event: bool,
-        source: Uuid,
-        path: Path<P>,
-        remaining: usize,
-    },
-    AfterBody {
-        message: Option<ResponseMessage<P, T, U>>,
-        remaining: usize,
-    },
-    Discarding {
-        error: Option<AsyncParseError>,
-        remaining: usize,
-    },
-}
-
 /// Tokio [`Decoder`] that can read an [`RequestMessage`] from a stream of bytes, using a
 /// [`RecognizerDecoder`] to interpret the body.
-pub struct AgentMessageDecoder<T, R> {
+pub struct RequestMessageDecoder<T, R> {
     state: RequestState<Text, T>,
     recognizer: RecognizerDecoder<R>,
 }
 
-impl<T: Debug, R> Debug for AgentMessageDecoder<T, R> {
+impl<T: Debug, R> Debug for RequestMessageDecoder<T, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AgentMessageDecoder")
+        f.debug_struct("RequestMessageDecoder")
             .field("state", &self.state)
             .field("recognizer", &"...")
             .finish()
     }
 }
 
-/// Tokio [`Decoder`] that can read an [`ResponseMessage`] from a stream of bytes, using a
-/// [`RecognizerDecoder`] to interpret the body.
-pub struct ClientMessageDecoder<T, R> {
-    state: ResponseState<Text, T, Bytes>,
-    recognizer: RecognizerDecoder<R>,
-}
-
-/// Tokio [`Decoder`] that can read an [`RawResponseMessage`] from a stream of bytes.
+/// Tokio [`Decoder`] that can read an raw response message from a stream of bytes.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct RawResponseMessageDecoder;
 
@@ -552,19 +508,10 @@ pub struct RawResponseMessageDecoder;
 #[derive(Default, Debug, Clone, Copy)]
 pub struct RawRequestMessageDecoder;
 
-impl<T, R> AgentMessageDecoder<T, R> {
+impl<T, R> RequestMessageDecoder<T, R> {
     pub fn new(recognizer: R) -> Self {
-        AgentMessageDecoder {
+        RequestMessageDecoder {
             state: RequestState::ReadingHeader,
-            recognizer: RecognizerDecoder::new(recognizer),
-        }
-    }
-}
-
-impl<T, R> ClientMessageDecoder<T, R> {
-    pub fn new(recognizer: R) -> Self {
-        ClientMessageDecoder {
-            state: ResponseState::ReadingHeader,
             recognizer: RecognizerDecoder::new(recognizer),
         }
     }
@@ -572,14 +519,19 @@ impl<T, R> ClientMessageDecoder<T, R> {
 
 const HEADER_INIT_LEN: usize = 32;
 
+/// Error type for the protocol decoders.
 #[derive(Error, Debug)]
 pub enum MessageDecodeError {
+    /// There was an IO error reading from the channel.
     #[error("Error reading from the source: {0}")]
     Io(#[from] std::io::Error),
+    /// A lane name in a frame contained invalid UTF-8.
     #[error("Invalid lane name: {0}")]
     LaneName(#[from] Utf8Error),
+    /// The kind of a frame was invalid.
     #[error("Unexpecetd message tag code: {0}")]
     UnexpectedCode(u64),
+    /// The body of a frame could not be deserialized.
     #[error("Invalid message body: {0}")]
     Body(#[from] AsyncParseError),
 }
@@ -598,7 +550,7 @@ impl MessageDecodeError {
     }
 }
 
-impl<T, R> Decoder for AgentMessageDecoder<T, R>
+impl<T, R> Decoder for RequestMessageDecoder<T, R>
 where
     R: Recognizer<Target = T>,
 {
@@ -606,7 +558,7 @@ where
     type Error = MessageDecodeError;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let AgentMessageDecoder {
+        let RequestMessageDecoder {
             state, recognizer, ..
         } = self;
         loop {
@@ -632,7 +584,7 @@ where
                     src.advance(node_len);
                     let lane = Text::new(std::str::from_utf8(&src.as_ref()[0..lane_len])?);
                     src.advance(lane_len);
-                    let path = Path::new(node, lane);
+                    let path = RelativeAddress::new(node, lane);
                     match tag {
                         LINK => {
                             break Ok(Some(RequestMessage {
@@ -760,196 +712,6 @@ where
     }
 }
 
-impl<T, R> Decoder for ClientMessageDecoder<T, R>
-where
-    R: Recognizer<Target = T>,
-{
-    type Item = ResponseMessage<Text, T, Bytes>;
-    type Error = MessageDecodeError;
-
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let ClientMessageDecoder {
-            state, recognizer, ..
-        } = self;
-        loop {
-            match state {
-                ResponseState::ReadingHeader => {
-                    if src.remaining() < HEADER_INIT_LEN {
-                        src.reserve(HEADER_INIT_LEN);
-                        break Ok(None);
-                    }
-                    let mut header = &src.as_ref()[0..HEADER_INIT_LEN];
-                    let source = header.get_u128();
-                    let id = Uuid::from_u128(source);
-                    let node_len = header.get_u32() as usize;
-                    let lane_len = header.get_u32() as usize;
-                    let body_len_and_tag = header.get_u64();
-                    let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
-                    if src.remaining() < HEADER_INIT_LEN + node_len + lane_len {
-                        src.reserve(node_len + lane_len);
-                        break Ok(None);
-                    }
-                    src.advance(HEADER_INIT_LEN);
-                    let node = Text::new(std::str::from_utf8(&src.as_ref()[0..node_len])?);
-                    src.advance(node_len);
-                    let lane = Text::new(std::str::from_utf8(&src.as_ref()[0..lane_len])?);
-                    src.advance(lane_len);
-                    let path = Path::new(node, lane);
-                    match tag {
-                        LINKED => {
-                            break Ok(Some(ResponseMessage {
-                                origin: id,
-                                path,
-                                envelope: Notification::Linked,
-                            }));
-                        }
-                        SYNCED => {
-                            break Ok(Some(ResponseMessage {
-                                origin: id,
-                                path,
-                                envelope: Notification::Synced,
-                            }));
-                        }
-                        UNLINKED => {
-                            let body_len = (body_len_and_tag & !OP_MASK) as usize;
-                            *state = ResponseState::ReadingBody {
-                                is_event: false,
-                                source: id,
-                                path,
-                                remaining: body_len,
-                            };
-                        }
-                        EVENT => {
-                            let body_len = (body_len_and_tag & !OP_MASK) as usize;
-                            *state = ResponseState::ReadingBody {
-                                is_event: true,
-                                source: id,
-                                path,
-                                remaining: body_len,
-                            };
-                        }
-                        _ => {
-                            break Err(MessageDecodeError::UnexpectedCode(tag));
-                        }
-                    }
-                }
-                ResponseState::ReadingBody {
-                    is_event,
-                    source,
-                    path,
-                    remaining,
-                } if *is_event => {
-                    let to_split = (*remaining).min(src.remaining());
-                    let rem = src.split_off(to_split);
-                    let buf_remaining = src.remaining();
-                    let end_of_message = *remaining <= buf_remaining;
-                    let decode_result = recognizer.decode(src);
-                    let new_remaining = src.remaining();
-                    let consumed = buf_remaining - new_remaining;
-                    *remaining -= consumed;
-                    match decode_result {
-                        Ok(Some(result)) => {
-                            src.unsplit(rem);
-                            *state = ResponseState::AfterBody {
-                                message: Some(ResponseMessage {
-                                    origin: *source,
-                                    path: std::mem::take(path),
-                                    envelope: Notification::Event(result),
-                                }),
-                                remaining: *remaining,
-                            }
-                        }
-                        Ok(None) => {
-                            if end_of_message {
-                                let eof_result = recognizer.decode_eof(src)?;
-                                let final_remaining = src.remaining();
-                                let consumed = new_remaining - final_remaining;
-                                *remaining -= consumed;
-                                src.unsplit(rem);
-                                let result = if let Some(result) = eof_result {
-                                    Ok(Some(ResponseMessage {
-                                        origin: *source,
-                                        path: std::mem::take(path),
-                                        envelope: Notification::Event(result),
-                                    }))
-                                } else {
-                                    Err(MessageDecodeError::incomplete())
-                                };
-                                *state = ResponseState::ReadingHeader;
-                                break result;
-                            } else {
-                                break Ok(None);
-                            }
-                        }
-                        Err(e) => {
-                            *remaining -= new_remaining;
-                            src.unsplit(rem);
-                            src.advance(new_remaining);
-                            if *remaining == 0 {
-                                *state = ResponseState::ReadingHeader;
-                                break Err(e.into());
-                            } else {
-                                *state = ResponseState::Discarding {
-                                    error: Some(e),
-                                    remaining: *remaining,
-                                }
-                            }
-                        }
-                    }
-                }
-                ResponseState::ReadingBody {
-                    source,
-                    path,
-                    remaining,
-                    ..
-                } => {
-                    if *remaining > src.remaining() {
-                        src.reserve(*remaining - src.remaining());
-                        break Ok(None);
-                    } else {
-                        let body = if *remaining == 0 {
-                            None
-                        } else {
-                            Some(src.split_to(*remaining).freeze())
-                        };
-                        let result = Ok(Some(ResponseMessage::unlinked(
-                            *source,
-                            std::mem::take(path),
-                            body,
-                        )));
-                        *state = ResponseState::ReadingHeader;
-                        break result;
-                    }
-                }
-                ResponseState::AfterBody { message, remaining } => {
-                    if src.remaining() >= *remaining {
-                        src.advance(*remaining);
-                        let result = message.take();
-                        *state = ResponseState::ReadingHeader;
-                        break Ok(result);
-                    } else {
-                        *remaining -= src.remaining();
-                        src.clear();
-                        break Ok(None);
-                    }
-                }
-                ResponseState::Discarding { error, remaining } => {
-                    if src.remaining() >= *remaining {
-                        src.advance(*remaining);
-                        let err = error.take().unwrap_or(AsyncParseError::UnconsumedInput);
-                        *state = ResponseState::ReadingHeader;
-                        break Err(err.into());
-                    } else {
-                        *remaining -= src.remaining();
-                        src.clear();
-                        break Ok(None);
-                    }
-                }
-            }
-        }
-    }
-}
-
 impl Decoder for RawResponseMessageDecoder {
     type Item = ResponseMessage<BytesStr, Bytes, Bytes>;
     type Error = std::io::Error;
@@ -980,7 +742,7 @@ impl Decoder for RawResponseMessageDecoder {
         let lane = BytesStr::try_from(lane_bytes)
             .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
 
-        let path = Path::new(node, lane);
+        let path = RelativeAddress::new(node, lane);
         let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
         match tag {
             LINKED => Ok(Some(BytesResponseMessage::linked(target, path))),
@@ -1031,7 +793,7 @@ impl Decoder for RawRequestMessageDecoder {
         let lane = BytesStr::try_from(lane_bytes)
             .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidData))?;
 
-        let path = Path::new(node, lane);
+        let path = RelativeAddress::new(node, lane);
         let tag = (body_len_and_tag & OP_MASK) >> OP_SHIFT;
         match tag {
             LINK => Ok(Some(RequestMessage::link(origin, path))),
@@ -1043,15 +805,4 @@ impl Decoder for RawRequestMessageDecoder {
             }
         }
     }
-}
-
-pub fn read_messages<R, T>(
-    reader: R,
-) -> impl Stream<Item = Result<RequestMessage<Text, T>, MessageDecodeError>>
-where
-    R: AsyncRead + Unpin,
-    T: RecognizerReadable,
-{
-    let decoder = AgentMessageDecoder::<T, _>::new(T::make_recognizer());
-    FramedRead::new(reader, decoder)
 }

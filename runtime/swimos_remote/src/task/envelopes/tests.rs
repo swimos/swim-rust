@@ -13,16 +13,15 @@
 // limitations under the License.
 
 use bytes::{Bytes, BytesMut};
-use swimos_messages::protocol::{
-    path_from_static_strs, BytesRequestMessage, BytesResponseMessage, Path, RequestMessage,
-    ResponseMessage,
+use swimos_api::address::RelativeAddress;
+use swimos_messages::{
+    protocol::{BytesRequestMessage, BytesResponseMessage, RequestMessage, ResponseMessage},
+    remote_protocol::NoSuchAgent,
 };
 use swimos_model::Text;
 use swimos_utilities::encoding::BytesStr;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
-
-use crate::NoSuchAgent;
 
 use super::ReconEncoder;
 
@@ -30,7 +29,14 @@ const ID: Uuid = Uuid::from_u128(7474834);
 const NODE: &str = "/node";
 const LANE: &str = "lane";
 
-fn path() -> Path<BytesStr> {
+fn path_from_static_strs(node: &'static str, lane: &'static str) -> RelativeAddress<BytesStr> {
+    RelativeAddress {
+        node: BytesStr::from_static_str(node),
+        lane: BytesStr::from_static_str(lane),
+    }
+}
+
+fn path() -> RelativeAddress<BytesStr> {
     path_from_static_strs(NODE, LANE)
 }
 

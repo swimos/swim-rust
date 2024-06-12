@@ -34,8 +34,7 @@ static_assertions::assert_impl_all!(UriForest<()>: Send, Sync);
 ///
 /// # Internal representation:
 /// From running the following:
-/// ```
-/// use swimos_uri_forest::UriForest;
+/// ```ignore
 /// let mut forest = UriForest::new();
 ///
 /// forest.insert("/listener", ());

@@ -14,8 +14,9 @@
 
 use bytes::BytesMut;
 use futures::SinkExt;
+use swimos_api::address::RelativeAddress;
 use swimos_messages::protocol::RawResponseMessageEncoder;
-use swimos_messages::protocol::{Notification, Path, ResponseMessage};
+use swimos_messages::protocol::{Notification, ResponseMessage};
 use swimos_model::Text;
 use swimos_utilities::byte_channel::ByteWriter;
 use tokio_util::codec::FramedWrite;
@@ -89,7 +90,7 @@ impl RemoteSender {
 
         let message: ResponseMessage<&str, &BytesMut, &[u8]> = ResponseMessage {
             origin: *identity,
-            path: Path::new(node.as_str(), lane.as_str()),
+            path: RelativeAddress::new(node.as_str(), lane.as_str()),
             envelope: notification,
         };
         sender.send(message).await?;

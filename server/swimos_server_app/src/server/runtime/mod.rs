@@ -29,16 +29,16 @@ use swimos_api::agent::{Agent, BoxAgent, HttpLaneRequest};
 use swimos_api::error::{
     AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError, IntrospectionStopped,
 };
+use swimos_api::persistence::ServerPersistence;
 use swimos_api::{address::RelativeAddress, persistence::PlanePersistence};
 use swimos_introspection::route::{lane_pattern, mesh_pattern, node_pattern};
 use swimos_introspection::{init_introspection, IntrospectionResolver};
 use swimos_introspection::{IntrospectionConfig, LaneMetaAgent, NodeMetaAgent};
-use swimos_model::Text;
-use swimos_net::{BadUrl, Scheme};
-use swimos_remote::{
+use swimos_messages::remote_protocol::{
     AgentResolutionError, AttachClient, FindNode, LinkError, NoSuchAgent, NodeConnectionRequest,
-    RemoteTask,
 };
+use swimos_model::Text;
+use swimos_remote::{BadWarpUrl, RemoteTask, Scheme};
 use swimos_runtime::agent::{
     AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteChannels, AgentRouteTask,
     CombinedAgentConfig, DisconnectionReason, LinkRequest,
@@ -46,8 +46,8 @@ use swimos_runtime::agent::{
 use swimos_runtime::downlink::Io;
 use swimos_utilities::routing::RouteUri;
 
-use swimos_remote::net::{ConnectionError, ExternalConnections, ListenerError};
-use swimos_remote::ws::{RatchetError, Websockets};
+use swimos_remote::websocket::{RatchetError, Websockets};
+use swimos_remote::{ConnectionError, ExternalConnections, ListenerError};
 use swimos_utilities::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
 use swimos_utilities::routing::RoutePattern;
 use swimos_utilities::trigger::{self, promise};
@@ -66,7 +66,6 @@ use self::downlinks::{DownlinkConnectionTask, ServerConnector};
 use self::ids::{IdIssuer, IdKind};
 
 use super::error::UnresolvableRoute;
-use super::store::ServerPersistence;
 use super::{Server, ServerError};
 
 mod downlinks;
@@ -1134,7 +1133,7 @@ enum NewClientError {
     #[error("Invalid host URL.")]
     InvalidUrl(#[from] url::ParseError),
     #[error("URL {0} is not valid warp address.")]
-    BadWarpUrl(#[from] BadUrl),
+    BadWarpUrl(#[from] BadWarpUrl),
     #[error("Failed to open a remote connection.")]
     OpeningSocketFailed {
         errors: Vec<(SocketAddr, ConnectionError)>,
@@ -1166,13 +1165,13 @@ impl From<NewClientError> for DownlinkRuntimeError {
                     }
                     ConnectionError::NegotiationFailed(err) => {
                         DownlinkFailureReason::TlsConnectionFailed {
-                            error: err.into(),
+                            message: err.to_string(),
                             recoverable: true,
                         }
                     }
                     ConnectionError::BadParameter(err) => {
                         DownlinkFailureReason::TlsConnectionFailed {
-                            error: err.into(),
+                            message: err.to_string(),
                             recoverable: false,
                         }
                     }

@@ -13,10 +13,11 @@
 // limitations under the License.
 
 use std::{
+    collections::HashSet,
     marker::PhantomData,
     net::SocketAddr,
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, OnceLock},
     task::{Context, Poll},
     time::{Duration, Instant},
 };
@@ -42,12 +43,11 @@ use ratchet::{
 };
 use swimos_api::{agent::HttpLaneRequest, http::HttpRequest};
 use swimos_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
-use swimos_net::Scheme;
+use swimos_messages::remote_protocol::{AgentResolutionError, FindNode, NoSuchAgent};
 use swimos_remote::{
-    net::{Listener, ListenerError, ListenerResult},
-    ws::{protocols, RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture},
+    websocket::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture, WARP},
+    Listener, ListenerError, ListenerResult, Scheme,
 };
-use swimos_remote::{AgentResolutionError, FindNode, NoSuchAgent};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::mpsc,
@@ -449,6 +449,16 @@ where
     }
 }
 
+static PROTOCOLS: OnceLock<HashSet<&'static str>> = OnceLock::new();
+
+fn warp_protocol() -> &'static HashSet<&'static str> {
+    PROTOCOLS.get_or_init(|| {
+        let mut s = HashSet::new();
+        s.insert(WARP);
+        s
+    })
+}
+
 impl<Ext, Sock> Service<Request<Body>> for UpgradeService<Ext, Sock>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + 'static,
@@ -476,7 +486,7 @@ where
             request_timeout,
         } = self;
         let result =
-            swimos_http::negotiate_upgrade(&request, protocols(), extension_provider.as_ref())
+            swimos_http::negotiate_upgrade(&request, warp_protocol(), extension_provider.as_ref())
                 .transpose();
         // If the request in a websocket upgrade, perform the upgrade, otherwise attempt to delegate
         // the request to an HTTP lane on an agent.
@@ -610,7 +620,7 @@ impl WebsocketClient for HyperWebsockets {
 
         let config = *config;
         Box::pin(async move {
-            let subprotocols = ProtocolRegistry::new(protocols().iter().copied())?;
+            let subprotocols = ProtocolRegistry::new([WARP])?;
             let socket =
                 ratchet::subscribe_with(config.websockets, socket, addr, provider, subprotocols)
                     .await?
