@@ -18,6 +18,8 @@ tokio = { workspace = true, features = ["rt-multi-thread", "test-util", "macros"
 futures = { workspace = true, features = ["io-compat", "compat"] }
 criterion = { workspace = true, features = ["async_tokio"] }
 rand = { workspace = true }
+swimos_api = { path = "../../api/swimos_api" }
+swimos_runtime = { path = "../../runtime/swimos_runtime" }
 swimos_messages = { path = "../../runtime/swimos_messages" }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_form = { path = "../../api/swimos_form" }
