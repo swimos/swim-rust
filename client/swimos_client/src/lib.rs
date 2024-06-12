@@ -39,10 +39,10 @@ use swimos_downlink::{
 use swimos_form::Form;
 use swimos_remote::dns::Resolver;
 use swimos_remote::plain::TokioPlainTextNetworking;
+#[cfg(feature = "tls")]
+use swimos_remote::tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
 use swimos_remote::ClientConnections;
 use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
-#[cfg(feature = "tls")]
-use swimos_tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
 use swimos_utilities::trigger;
 use swimos_utilities::trigger::promise;
 use tokio::sync::mpsc;
