@@ -36,7 +36,7 @@ use std::str::FromStr;
 /// use swimos_form::Form;
 /// use swimos_form::Tag;
 /// use swimos_model::{Attr, Item, Value};
-/// use swimos_model::time::Timestamp;
+/// use swimos_model::Timestamp;
 ///
 /// #[derive(Tag, Clone)]
 /// #
