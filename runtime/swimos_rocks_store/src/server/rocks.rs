@@ -38,6 +38,7 @@ pub fn default_keyspaces() -> Keyspaces<RocksOpts> {
     Keyspaces::new(vec![lane_def, value_def, map_def])
 }
 
+/// Default RocksDB parameters.
 pub fn default_db_opts() -> RocksOpts {
     let mut rock_opts = Options::default();
     rock_opts.create_if_missing(true);

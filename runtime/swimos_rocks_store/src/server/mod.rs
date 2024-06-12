@@ -277,7 +277,13 @@ impl ServerPersistence for RocksServerPersistence {
     }
 }
 
-pub fn create_rocks_store(
+/// Open a RocksDB persistence store from a path in the local filesystem. If the specified database does
+/// not exist it will be crated.
+///
+/// # Arguments
+/// * `path` - The filesystem path to the database. If none is specified, a new database will be created in a temporary directory.
+/// * `options` - Configuration options for the database.
+pub fn open_rocks_store(
     path: Option<PathBuf>,
     options: RocksOpts,
 ) -> Result<impl ServerPersistence + Send + Sync + 'static, StoreError> {

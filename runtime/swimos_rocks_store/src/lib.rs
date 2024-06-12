@@ -12,13 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! RocksDB Persistence
+//!
+//! An implementation of the [server persistence interface](swimos_api::persistence::ServerPersistence)
+//! using RocksDB as the persistence store.
+
 mod agent;
 mod engine;
 mod plane;
 mod server;
 
 pub use engine::RocksOpts;
-pub use server::{create_rocks_store, default_db_opts};
+pub use server::{default_db_opts, open_rocks_store};
 
 /// An enumeration over the keyspaces that exist in a store.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
