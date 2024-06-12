@@ -27,7 +27,7 @@ use swimos_agent_protocol::DownlinkNotification;
 use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
 use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
-use swimos_utilities::io::byte_channel::ByteWriter;
+use swimos_utilities::byte_channel::ByteWriter;
 use swimos_utilities::non_zero_usize;
 use tokio::sync::mpsc;
 use tokio_util::codec::{Encoder, FramedWrite};

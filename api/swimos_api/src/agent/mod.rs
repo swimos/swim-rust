@@ -27,12 +27,11 @@ use std::{
 
 use bytes::Bytes;
 use futures::{future::BoxFuture, ready, Future, FutureExt};
-use swimos_model::http::{HttpRequest, HttpResponse};
 use swimos_utilities::{
-    future::retryable::RetryStrategy,
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
+    future::RetryStrategy,
     non_zero_usize,
-    routing::route_uri::RouteUri,
+    routing::RouteUri,
 };
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
@@ -40,6 +39,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::error::{
     AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
 };
+use crate::http::{HttpRequest, HttpResponse};
 
 mod downlink;
 mod lane;

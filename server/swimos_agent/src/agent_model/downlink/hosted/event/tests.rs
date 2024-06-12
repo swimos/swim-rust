@@ -18,10 +18,11 @@ use futures::SinkExt;
 use parking_lot::Mutex;
 use swimos_agent_protocol::encoding::downlink::DownlinkNotificationEncoder;
 use swimos_agent_protocol::DownlinkNotification;
-use swimos_model::{address::Address, Text};
+use swimos_api::address::Address;
+use swimos_model::Text;
 use swimos_recon::print_recon_compact;
 use swimos_utilities::{
-    io::byte_channel::{self, ByteWriter},
+    byte_channel::{self, ByteWriter},
     non_zero_usize, trigger,
 };
 use tokio::io::AsyncWriteExt;

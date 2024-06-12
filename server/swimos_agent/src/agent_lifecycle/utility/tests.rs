@@ -18,7 +18,7 @@ use bytes::BytesMut;
 use futures::{future::ready, stream::FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use swimos_api::agent::AgentConfig;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use crate::{
     event_handler::{ActionContext, BoxEventHandler, HandlerAction, StepResult},

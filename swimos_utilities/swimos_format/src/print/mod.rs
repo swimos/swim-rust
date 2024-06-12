@@ -38,19 +38,26 @@ where
 }
 
 /// Format a sequence, placing separator between successive elements.
-pub fn join<'a, T>(value: &'a T, sep: &'a str) -> impl Display + 'a
+///
+/// # Arguments
+/// * `values` - The sequence of values.
+/// * `sep` - The separator to insert.
+pub fn join<'a, T>(values: &'a T, sep: &'a str) -> impl Display + 'a
 where
     &'a T: IntoIterator + 'a,
     <&'a T as IntoIterator>::Item: Display + 'a,
 {
-    Joined(value, sep)
+    Joined(values, sep)
 }
 
 /// Print out a sequence with commas between the elements.
-pub fn comma_sep<'a, T>(value: &'a T) -> impl Display + 'a
+///
+/// # Arguments
+/// * `values` - The sequence of values.
+pub fn comma_sep<'a, T>(values: &'a T) -> impl Display + 'a
 where
     &'a T: IntoIterator + 'a,
     <&'a T as IntoIterator>::Item: Display + 'a,
 {
-    join(value, ", ")
+    join(values, ", ")
 }

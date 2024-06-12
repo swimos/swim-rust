@@ -14,7 +14,8 @@
 
 use std::hash::Hash;
 
-use swimos_model::{address::Address, Text};
+use swimos_api::address::Address;
+use swimos_model::Text;
 
 use crate::{
     downlink_lifecycle::{

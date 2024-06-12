@@ -27,7 +27,7 @@ use swimos_agent_protocol::{encoding::lane::ValueLaneResponseDecoder, LaneRespon
 use swimos_api::agent::{LaneConfig, LaneKind, WarpLaneKind};
 use swimos_meta::LanePulse;
 use swimos_runtime::agent::reporting::UplinkReporter;
-use swimos_utilities::io::byte_channel::ByteReader;
+use swimos_utilities::byte_channel::ByteReader;
 use tokio::sync::mpsc;
 use tokio_util::codec::FramedRead;
 

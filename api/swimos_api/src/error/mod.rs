@@ -18,15 +18,13 @@ use std::io;
 use std::{error::Error, sync::Arc};
 
 use swimos_form::read::ReadError;
-use swimos_model::{address::RelativeAddress, Text};
+use swimos_model::Text;
 use swimos_recon::parser::AsyncParseError;
-use swimos_utilities::{
-    errors::Recoverable, routing::route_pattern::UnapplyError, trigger::promise,
-};
+use swimos_utilities::{errors::Recoverable, routing::UnapplyError, trigger::promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 
-use crate::agent::StoreKind;
+use crate::{address::RelativeAddress, agent::StoreKind};
 
 mod introspection;
 
@@ -85,11 +83,8 @@ pub enum DownlinkFailureReason {
     UnresolvableLocal(RelativeAddress<Text>),
     #[error("Connection to the remote host failed: {0}")]
     ConnectionFailed(Arc<std::io::Error>),
-    #[error("Failed to negotiate a TLS connection: {error}")]
-    TlsConnectionFailed {
-        error: Arc<dyn std::error::Error + Send + Sync>,
-        recoverable: bool,
-    },
+    #[error("Failed to negotiate a TLS connection: {message}")]
+    TlsConnectionFailed { message: String, recoverable: bool },
     #[error("Could not negotiate a websocket connection: {0}")]
     WebsocketNegotiationFailed(String),
     #[error("The remote client stopped while the downlink was starting.")]

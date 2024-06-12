@@ -19,9 +19,11 @@ use std::sync::Arc;
 
 use bytes::BytesMut;
 use futures::stream::FuturesUnordered;
-use swimos_api::agent::{AgentConfig, DownlinkKind};
-use swimos_model::address::Address;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_api::{
+    address::Address,
+    agent::{AgentConfig, DownlinkKind},
+};
+use swimos_utilities::routing::RouteUri;
 
 use crate::event_handler::{
     ActionContext, BoxJoinLaneInit, EventHandlerError, HandlerAction, Modification,

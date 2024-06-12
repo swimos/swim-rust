@@ -17,10 +17,7 @@ use macro_utilities::{
     attributes::NestedMetaConsumer, CaseConvention, NameTransform, NameTransformConsumer,
     Transformation, TypeLevelNameTransformConsumer,
 };
-use swimos_utilities::errors::{
-    validation::{Validation, ValidationItExt},
-    Errors,
-};
+use swimos_utilities::errors::{Errors, Validation, ValidationItExt};
 use syn::{parse_quote, Field, NestedMeta};
 
 use super::model::ItemFlags;

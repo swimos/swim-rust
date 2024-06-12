@@ -17,8 +17,8 @@ use swimos_form::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use swimos_model::bigint::{BigInt, BigUint};
 use swimos_model::{Attr, Item, Value};
+use swimos_model::{BigInt, BigUint};
 
 #[derive(Default, Debug, PartialEq, Eq)]
 struct Validator {

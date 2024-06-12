@@ -30,7 +30,7 @@ use swimos_api::{
     error::StoreError,
     persistence::{KeyValue, RangeConsumer},
 };
-use swimos_utilities::{io::byte_channel::byte_channel, non_zero_usize};
+use swimos_utilities::{byte_channel::byte_channel, non_zero_usize};
 use tokio_util::codec::FramedRead;
 
 use crate::agent::store::{AgentPersistence, StorePersistence};

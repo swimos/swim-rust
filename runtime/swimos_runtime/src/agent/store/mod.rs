@@ -24,7 +24,7 @@ use swimos_api::{
     persistence::{NodePersistence, RangeConsumer, StoreDisabled},
 };
 use swimos_model::Text;
-use swimos_utilities::io::byte_channel::ByteWriter;
+use swimos_utilities::byte_channel::ByteWriter;
 use thiserror::Error;
 use tokio_util::codec::FramedWrite;
 

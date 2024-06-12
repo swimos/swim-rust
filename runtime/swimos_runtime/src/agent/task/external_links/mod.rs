@@ -22,17 +22,18 @@ use bytes::{BufMut, BytesMut};
 use futures::{stream::FuturesUnordered, Future, StreamExt};
 use swimos_agent_protocol::encoding::ad_hoc::RawAdHocCommandDecoder;
 use swimos_agent_protocol::AdHocCommand;
-use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError};
-use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
-use swimos_model::{
+use swimos_api::{
     address::{Address, RelativeAddress},
-    BytesStr, Text,
+    error::{AgentRuntimeError, DownlinkRuntimeError},
 };
-use swimos_net::SchemeHostPort;
+use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
+use swimos_model::Text;
+use swimos_remote::SchemeHostPort;
 use swimos_utilities::{
+    byte_channel::{byte_channel, ByteReader, ByteWriter},
+    encoding::BytesStr,
     errors::Recoverable,
-    future::{retryable::RetryStrategy, UnionFuture4},
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    future::{RetryStrategy, UnionFuture4},
 };
 use tokio::{
     io::AsyncWriteExt,

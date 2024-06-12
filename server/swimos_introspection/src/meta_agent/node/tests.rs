@@ -24,7 +24,7 @@ use swimos_meta::{LaneInfo, NodePulse};
 use swimos_model::Text;
 use swimos_runtime::agent::reporting::UplinkReporter;
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize, trigger,
 };
 use tokio::sync::mpsc;

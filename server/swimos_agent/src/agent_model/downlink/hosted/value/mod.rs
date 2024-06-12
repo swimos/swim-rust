@@ -26,16 +26,16 @@ use std::{
 use swimos_agent_protocol::encoding::downlink::ValueNotificationDecoder;
 use swimos_agent_protocol::DownlinkNotification;
 use swimos_api::{
+    address::Address,
     agent::DownlinkKind,
     error::{DownlinkFailureReason, DownlinkRuntimeError, FrameIoError},
 };
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable, Form};
-use swimos_model::{address::Address, Text};
+use swimos_model::Text;
 use swimos_recon::WithLenReconEncoder;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
-    sync::circular_buffer,
-    trigger,
+    byte_channel::{ByteReader, ByteWriter},
+    circular_buffer, trigger,
 };
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};

@@ -14,4 +14,5 @@ thiserror = { workspace = true }
 bytes = { workspace = true }
 tokio = { workspace = true }
 static_assertions = { workspace = true }
+uuid = { workspace = true }
 http = { workspace = true }

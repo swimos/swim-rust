@@ -18,10 +18,7 @@ use std::{
 };
 
 use proc_macro2::Span;
-use swimos_utilities::errors::{
-    validation::{Validation, ValidationItExt},
-    Errors,
-};
+use swimos_utilities::errors::{Errors, Validation, ValidationItExt};
 use syn::{
     parse_quote, AngleBracketedGenericArguments, Attribute, AttributeArgs, Binding, FnArg,
     GenericArgument, GenericParam, Ident, ImplItem, ImplItemMethod, Item, Lit, Meta, NestedMeta,

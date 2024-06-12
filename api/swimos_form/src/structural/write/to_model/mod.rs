@@ -21,8 +21,8 @@ use crate::structural::write::{
 };
 use std::borrow::Cow;
 use std::convert::Infallible;
-use swimos_model::bigint::{BigInt, BigUint};
 use swimos_model::{Attr, Blob, Item, Text, Value};
+use swimos_model::{BigInt, BigUint};
 
 /// [`StructuralWriter`] that constructs [`Value`] instances representing the
 /// structure that is described.

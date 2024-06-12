@@ -12,4 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod circular_buffer;
+//! # Synchronization Channels
+//!
+//! This crate contains asynchronous channels to communicate between tasks or threads.
+
+mod circular_buffer;
+
+pub use circular_buffer::{channel, watch_channel, Receiver, Recv, Sender};

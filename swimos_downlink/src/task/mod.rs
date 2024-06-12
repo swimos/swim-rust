@@ -18,16 +18,14 @@ use crate::model::lifecycle::{
 use futures::future::BoxFuture;
 use futures::FutureExt;
 use std::hash::Hash;
-use swimos_api::agent::DownlinkKind;
-use swimos_api::error::DownlinkTaskError;
+use swimos_api::{address::Address, agent::DownlinkKind, error::DownlinkTaskError};
 use swimos_client_api::{Downlink, DownlinkConfig};
 
 use swimos_form::read::RecognizerReadable;
 use swimos_form::Form;
-use swimos_model::address::Address;
 use swimos_model::Text;
 
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 
 use tracing::{info_span, Instrument};
 

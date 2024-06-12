@@ -29,8 +29,8 @@ use swimos_api::{
 };
 use swimos_model::Text;
 use swimos_utilities::{
-    future::retryable::RetryStrategy,
-    io::byte_channel::{self, byte_channel, ByteWriter},
+    byte_channel::{self, byte_channel, ByteWriter},
+    future::RetryStrategy,
     non_zero_usize, trigger,
 };
 use tokio::sync::mpsc;

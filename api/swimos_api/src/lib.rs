@@ -22,6 +22,8 @@
 //! to add new storage implementations to allow a Swim server to maintain an external persistent state that can
 //! outlive a single execution of the server process.
 
+pub mod address;
 pub mod agent;
 pub mod error;
+pub mod http;
 pub mod persistence;

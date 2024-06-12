@@ -14,7 +14,7 @@
 
 use crate::MsgPackWriteError;
 use std::io::ErrorKind;
-use swimos_model::bigint::{BigInt, BigUint};
+use swimos_model::{BigInt, BigUint};
 
 #[test]
 fn msgpack_write_err_display() {

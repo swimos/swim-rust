@@ -13,6 +13,7 @@
 // limitations under the License.
 
 mod config;
+mod forest;
 mod meta_agent;
 mod meta_mesh;
 mod model;

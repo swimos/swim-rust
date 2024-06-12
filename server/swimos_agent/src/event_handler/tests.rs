@@ -18,7 +18,7 @@ use std::{cell::RefCell, collections::HashMap};
 use bytes::BytesMut;
 use swimos_api::agent::AgentConfig;
 use swimos_recon::parser::AsyncParseError;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use crate::event_handler::check_step::{check_is_complete, check_is_continue};
 use crate::event_handler::{GetParameter, ModificationFlags};

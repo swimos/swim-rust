@@ -14,8 +14,8 @@
 
 use crate::structural::write::to_model::ValueInterpreter;
 use crate::structural::write::StructuralWritable;
-use swimos_model::bigint::{BigInt, BigUint};
 use swimos_model::{Attr, Blob, Item, Value};
+use swimos_model::{BigInt, BigUint};
 
 fn check_value(v: Value) {
     assert_eq!(v.write_with_infallible(ValueInterpreter::default()), v);

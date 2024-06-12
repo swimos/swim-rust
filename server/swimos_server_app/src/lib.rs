@@ -29,6 +29,3 @@ pub mod introspection {
 }
 
 pub use ratchet::deflate::DeflateConfig;
-
-#[cfg(feature = "rocks_store")]
-pub use swimos_persistence::rocks::RocksOpts;

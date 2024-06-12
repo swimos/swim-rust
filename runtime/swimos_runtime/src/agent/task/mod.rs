@@ -48,6 +48,7 @@ use futures::{
     stream::SelectAll,
     Stream, StreamExt,
 };
+use swimos_api::address::RelativeAddress;
 use swimos_api::agent::{
     HttpLaneRequest, HttpLaneRequestChannel, HttpResponseSender, LaneConfig, StoreConfig,
 };
@@ -56,13 +57,14 @@ use swimos_api::persistence::StoreDisabled;
 use swimos_api::{
     agent::{StoreKind, UplinkKind, WarpLaneKind},
     error::AgentRuntimeError,
+    http::{Header, HttpResponse, StandardHeaderName, StatusCode, Version},
 };
-use swimos_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
-use swimos_model::http::{Header, HttpResponse, StandardHeaderName, StatusCode, Version};
-use swimos_model::{BytesStr, Text};
+use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
+use swimos_model::Text;
 use swimos_recon::parser::MessageExtractError;
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::encoding::BytesStr;
 use swimos_utilities::future::{immediate_or_join, StopAfterError};
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::trigger::{self, promise};
 
 mod external_links;
@@ -378,7 +380,10 @@ pub struct AgentRuntimeTask<Store = StoreDisabled> {
 #[derive(Debug, Clone)]
 enum RwCoordinationMessage {
     /// An envelope was received for an unknown lane (and so the write task should issue an appropriate error response).
-    UnknownLane { origin: Uuid, path: Path<Text> },
+    UnknownLane {
+        origin: Uuid,
+        path: RelativeAddress<Text>,
+    },
     /// An envelope that was invalid for the subprotocol used by the specified lane was received.
     BadEnvelope {
         origin: Uuid,
@@ -920,7 +925,7 @@ async fn read_task(
                         flush_lane(&mut lanes, &mut needs_flush).await;
                     }
                     if let Some(lane_tx) = lanes.get_mut(id) {
-                        let Path { lane, .. } = path;
+                        let RelativeAddress { lane, .. } = path;
                         let origin: Uuid = origin;
                         match envelope {
                             Operation::Link => {
@@ -1019,7 +1024,7 @@ async fn read_task(
                         let send_err = write_tx.send(WriteTaskMessage::Coord(
                             RwCoordinationMessage::UnknownLane {
                                 origin,
-                                path: Path::text(path.node.as_str(), path.lane.as_str()),
+                                path: RelativeAddress::text(path.node.as_str(), path.lane.as_str()),
                             },
                         ));
                         join(flush, send_err).await.1

@@ -19,7 +19,7 @@ use swimos_agent_protocol::MapOperation;
 use swimos_api::agent::UplinkKind;
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteReader},
+    byte_channel::{byte_channel, ByteReader},
     non_zero_usize,
     trigger::promise,
 };

@@ -23,7 +23,7 @@ use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt};
 use std::borrow::Cow;
 use std::ops::Add;
-use swimos_utilities::errors::validation::Validation;
+use swimos_utilities::errors::Validation;
 use syn::{Field, Ident, Meta, NestedMeta, Type};
 
 /// Describes how to extract a field from a struct.

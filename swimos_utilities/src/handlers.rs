@@ -26,6 +26,9 @@ pub struct FnMutHandler<F>(pub F);
 #[derive(Clone, Copy, Default, Debug)]
 pub struct FnHandler<F>(pub F);
 
+/// Wraps a [`Fn`] instance that borrows its input in an arbitrary way to use as an event handler.
+/// For example, if an event produces a value of type [`String`], this type can write a closure
+/// that will take `&str` as a parameter rather than `&String`, avoiding a double indirection.
 pub struct BorrowHandler<F, B: ?Sized>(F, PhantomData<fn(B)>);
 
 impl<F: Clone, B: ?Sized> Clone for BorrowHandler<F, B> {

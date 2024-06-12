@@ -28,7 +28,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::option::Option::None;
 use std::sync::Arc;
-use swimos_model::bigint::{BigInt, BigUint};
+use swimos_model::{BigInt, BigUint};
 use swimos_model::{Blob, Text, Value, ValueKind};
 
 /// [`Recognizer`] implementations for config types.
