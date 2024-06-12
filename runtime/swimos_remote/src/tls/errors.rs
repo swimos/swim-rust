@@ -14,16 +14,22 @@
 
 use thiserror::Error;
 
+/// Error type indicating that establishing a TLS connection failed.
 #[derive(Debug, Error)]
 pub enum TlsError {
+    /// A certificate PEM file was invalid.
     #[error("Error reading PEM file: {0}")]
     InvalidPem(std::io::Error),
+    /// The provided private key is invalid.
     #[error("The provided input did not contain a valid private key.")]
     InvalidPrivateKey,
+    /// Certificate validation failed.
     #[error("Invalid certificate: {0}")]
     BadCertificate(#[from] webpki::Error),
+    /// The provided host name was invalid.
     #[error("Invalid DNS host name.")]
     BadHostName,
+    /// Performing the TLS handshake failed.
     #[error("TLS handshake failed: {0}")]
     HandshakeFailed(std::io::Error),
 }

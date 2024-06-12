@@ -20,7 +20,7 @@ mod tests;
 use std::net::SocketAddr;
 
 use crate::dns::BoxDnsResolver;
-use crate::net::{ClientConnections, ConnResult, Scheme, ServerConnections};
+use crate::net::{ClientConnections, ConnectionResult, Scheme, ServerConnections};
 use crate::plain::TokioPlainTextNetworking;
 pub use client::RustlsClientNetworking;
 use futures::future::Either;
@@ -51,7 +51,7 @@ fn load_cert_file(file: CertificateFile) -> Result<Vec<rustls::Certificate>, Tls
 /// Combined implementation of [`ClientConnections`] and [`ServerConnections`] that wraps
 /// [`RustlsClientNetworking`], [`RustlsServerNetworking`] and [`TokioPlainTextNetworking`]. The server part is adapted to
 /// produce [`MaybeTlsStream`] connections so that there is a unified client/server socket type,
-/// inducing an implementation of [`super::ExternalConnections`].
+/// inducing an implementation of [`crate::ExternalConnections`].
 #[derive(Clone)]
 pub struct RustlsNetworking {
     client: RustlsClientNetworking,
@@ -85,7 +85,7 @@ impl ClientConnections for RustlsNetworking {
         scheme: Scheme,
         host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
+    ) -> BoxFuture<'_, ConnectionResult<Self::ClientSocket>> {
         self.client.try_open(scheme, host, addr)
     }
 
@@ -110,7 +110,7 @@ impl ServerConnections for RustlsNetworking {
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
+    ) -> BoxFuture<'static, ConnectionResult<(SocketAddr, Self::ListenerType)>> {
         match &self.server {
             Either::Left(plain_text_server) => plain_text_server
                 .bind(addr)

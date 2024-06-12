@@ -32,7 +32,8 @@ use crate::dns::BoxDnsResolver;
 #[cfg(test)]
 mod tests;
 
-pub type ConnResult<T> = Result<T, ConnectionError>;
+#[doc(hidden)]
+pub type ConnectionResult<T> = Result<T, ConnectionError>;
 
 /// Error to indicate why attempting to open a new connection failed.
 #[derive(Debug, Error)]
@@ -85,6 +86,7 @@ impl From<std::io::Error> for ListenerError {
     }
 }
 
+#[doc(hidden)]
 pub type ListenerResult<T> = Result<T, ListenerError>;
 
 /// Trait for servers that listen for incoming remote connections. This is primarily used to
@@ -106,7 +108,7 @@ pub trait ClientConnections: Clone + Send + Sync + 'static {
         scheme: Scheme,
         host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>>;
+    ) -> BoxFuture<'_, ConnectionResult<Self::ClientSocket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
     fn lookup(
@@ -127,7 +129,7 @@ where
         scheme: Scheme,
         host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
+    ) -> BoxFuture<'_, ConnectionResult<Self::ClientSocket>> {
         (**self).try_open(scheme, host, addr)
     }
 
@@ -152,7 +154,7 @@ pub trait ServerConnections: Clone + Send + Sync + 'static {
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>>;
+    ) -> BoxFuture<'static, ConnectionResult<(SocketAddr, Self::ListenerType)>>;
 }
 
 impl<C> ServerConnections for Arc<C>
@@ -166,7 +168,7 @@ where
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
+    ) -> BoxFuture<'static, ConnectionResult<(SocketAddr, Self::ListenerType)>> {
         (**self).bind(addr)
     }
 }
@@ -180,13 +182,13 @@ pub trait ExternalConnections: Clone + Send + Sync + 'static {
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>>;
+    ) -> BoxFuture<'static, ConnectionResult<(SocketAddr, Self::ListenerType)>>;
     fn try_open(
         &self,
         scheme: Scheme,
         host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'_, ConnResult<Self::Socket>>;
+    ) -> BoxFuture<'_, ConnectionResult<Self::Socket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
     fn lookup(
@@ -207,7 +209,7 @@ where
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
+    ) -> BoxFuture<'static, ConnectionResult<(SocketAddr, Self::ListenerType)>> {
         <Self as ServerConnections>::bind(self, addr)
     }
 
@@ -216,7 +218,7 @@ where
         scheme: Scheme,
         host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'_, ConnResult<Self::Socket>> {
+    ) -> BoxFuture<'_, ConnectionResult<Self::Socket>> {
         <Self as ClientConnections>::try_open(self, scheme, host, addr)
     }
 
@@ -233,10 +235,11 @@ where
     }
 }
 
+/// Error type indicating that host URL is not valid for the Warp protocol.
 #[derive(Debug, PartialEq, Eq, Error)]
-pub enum BadUrl {
+pub enum BadWarpUrl {
     #[error("Malformed URL: {0}")]
-    BadUrl(String),
+    MalformedUrl(String),
     #[error("A WARP URL must have a scheme.")]
     MissingScheme,
     #[error("{0} is not a valid WARP scheme.")]
@@ -245,9 +248,9 @@ pub enum BadUrl {
     NoHost,
 }
 
-impl From<InvalidUri> for BadUrl {
+impl From<InvalidUri> for BadWarpUrl {
     fn from(value: InvalidUri) -> Self {
-        BadUrl::BadUrl(value.to_string())
+        BadWarpUrl::MalformedUrl(value.to_string())
     }
 }
 
@@ -259,13 +262,13 @@ pub enum Scheme {
 }
 
 impl TryFrom<&str> for Scheme {
-    type Error = BadUrl;
+    type Error = BadWarpUrl;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "ws" | "swimos" | "warp" => Ok(Scheme::Ws),
             "wss" | "swims" | "warps" => Ok(Scheme::Wss),
-            _ => Err(BadUrl::BadScheme(value.to_owned())),
+            _ => Err(BadWarpUrl::BadScheme(value.to_owned())),
         }
     }
 }
@@ -331,15 +334,16 @@ impl Display for SchemeHostPort {
 }
 
 impl FromStr for SchemeHostPort {
-    type Err = BadUrl;
+    type Err = BadWarpUrl;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let uri = s.parse::<Uri>()?;
 
         let scheme = if let Some(scheme_part) = uri.scheme_str() {
-            Scheme::try_from(scheme_part).map_err(|_| BadUrl::BadScheme(scheme_part.to_string()))?
+            Scheme::try_from(scheme_part)
+                .map_err(|_| BadWarpUrl::BadScheme(scheme_part.to_string()))?
         } else {
-            return Err(BadUrl::MissingScheme);
+            return Err(BadWarpUrl::MissingScheme);
         };
 
         match (uri.host(), uri.port_u16()) {
@@ -354,7 +358,7 @@ impl FromStr for SchemeHostPort {
                     default_port,
                 ))
             }
-            _ => Err(BadUrl::NoHost),
+            _ => Err(BadWarpUrl::NoHost),
         }
     }
 }

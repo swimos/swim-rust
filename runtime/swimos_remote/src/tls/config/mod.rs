@@ -18,7 +18,7 @@ pub enum CertFormat {
     Der,
 }
 
-/// An (unvalidated)) TLS certificate (or list of certificates for a PEM file).
+/// An unvalidated TLS certificate (or list of certificates for a PEM file).
 pub struct CertificateFile {
     pub format: CertFormat,
     pub body: Vec<u8>,
@@ -41,7 +41,7 @@ impl CertificateFile {
 /// A chain of TLS certificates (starting with the server certificate and ending with the CA).
 pub struct CertChain(pub Vec<CertificateFile>);
 
-/// An (unvalidated) private key for a server.
+/// An unvalidated private key for a server.
 pub struct PrivateKey {
     pub format: CertFormat,
     pub body: Vec<u8>,

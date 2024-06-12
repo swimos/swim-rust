@@ -27,7 +27,7 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::dns::BoxDnsResolver;
-use crate::net::{ClientConnections, ConnResult, ListenerResult, ServerConnections};
+use crate::net::{ClientConnections, ConnectionResult, ListenerResult, ServerConnections};
 
 /// Implementation of [`ServerConnections`] and [`ClientConnections`], using [`TcpListener`]
 /// and [`TcpStream`] from Tokio.
@@ -42,7 +42,7 @@ impl TokioPlainTextNetworking {
     }
 }
 
-async fn bind_to(addr: SocketAddr) -> ConnResult<(SocketAddr, TcpListener)> {
+async fn bind_to(addr: SocketAddr) -> ConnectionResult<(SocketAddr, TcpListener)> {
     let listener = TcpListener::bind(addr).await?;
     let addr = listener.local_addr()?;
     Ok((addr, listener))
@@ -58,7 +58,7 @@ impl ClientConnections for TokioPlainTextNetworking {
         scheme: Scheme,
         _host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, ConnResult<Self::ClientSocket>> {
+    ) -> BoxFuture<'static, ConnectionResult<Self::ClientSocket>> {
         async move {
             match scheme {
                 Scheme::Ws => Ok(TcpStream::connect(addr).await?),
@@ -89,16 +89,18 @@ impl ServerConnections for TokioPlainTextNetworking {
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
+    ) -> BoxFuture<'static, ConnectionResult<(SocketAddr, Self::ListenerType)>> {
         bind_to(addr).boxed()
     }
 }
 
+/// Wrapper around [`TcpListener`] that attaches the [`Scheme`] used for the incoming connection
+/// to the stream and peer address.
 #[pin_project]
 #[derive(Debug)]
-pub struct WithPeer(#[pin] TcpListener);
+pub struct WithScheme(#[pin] TcpListener);
 
-impl Stream for WithPeer {
+impl Stream for WithScheme {
     type Item = ListenerResult<(TcpStream, Scheme, SocketAddr)>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -110,9 +112,9 @@ impl Stream for WithPeer {
 }
 
 impl Listener<TcpStream> for TcpListener {
-    type AcceptStream = WithPeer;
+    type AcceptStream = WithScheme;
 
     fn into_stream(self) -> Self::AcceptStream {
-        WithPeer(self)
+        WithScheme(self)
     }
 }

@@ -14,7 +14,9 @@
 
 use std::{net::SocketAddr, sync::Arc};
 
-use crate::net::{ConnResult, Listener, ListenerError, ListenerResult, Scheme, ServerConnections};
+use crate::net::{
+    ConnectionResult, Listener, ListenerError, ListenerResult, Scheme, ServerConnections,
+};
 use futures::{
     future::{BoxFuture, Either},
     stream::{unfold, BoxStream, FuturesUnordered},
@@ -40,7 +42,7 @@ pub struct RustlsServerNetworking {
 async fn accept_tls(
     acceptor: TlsAcceptor,
     addr: SocketAddr,
-) -> ConnResult<(SocketAddr, RustlsListener)> {
+) -> ConnectionResult<(SocketAddr, RustlsListener)> {
     let listener = TcpListener::bind(addr).await?;
     let bound_to = listener.local_addr()?;
     Ok((bound_to, RustlsListener { listener, acceptor }))
@@ -50,7 +52,7 @@ impl RustlsServerNetworking {
     pub fn make_listener(
         &self,
         addr: SocketAddr,
-    ) -> impl Future<Output = ConnResult<(SocketAddr, RustlsListener)>> + Send + 'static {
+    ) -> impl Future<Output = ConnectionResult<(SocketAddr, RustlsListener)>> + Send + 'static {
         let RustlsServerNetworking { acceptor } = self;
         let acc = acceptor.clone();
         accept_tls(acc, addr)
@@ -116,7 +118,7 @@ impl ServerConnections for RustlsServerNetworking {
     fn bind(
         &self,
         addr: SocketAddr,
-    ) -> BoxFuture<'static, ConnResult<(SocketAddr, Self::ListenerType)>> {
+    ) -> BoxFuture<'static, ConnectionResult<(SocketAddr, Self::ListenerType)>> {
         self.make_listener(addr).boxed()
     }
 }

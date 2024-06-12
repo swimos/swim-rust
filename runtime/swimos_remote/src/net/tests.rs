@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::net::{BadUrl, Scheme, SchemeHostPort};
+use crate::net::{BadWarpUrl, Scheme, SchemeHostPort};
 
 #[test]
 fn parse_insecure_warp_url() {
@@ -51,11 +51,11 @@ fn parse_secure_warp_url() {
 #[test]
 fn parse_unqualified_warp_url() {
     let result = "localhost:8080".parse::<SchemeHostPort>();
-    assert_eq!(result, Err(BadUrl::MissingScheme));
+    assert_eq!(result, Err(BadWarpUrl::MissingScheme));
 }
 
 #[test]
 fn parse_bad_warp_url_scheme() {
     let result = "ftp://localhost:8080".parse::<SchemeHostPort>();
-    assert_eq!(result, Err(BadUrl::BadScheme("ftp".to_string())));
+    assert_eq!(result, Err(BadWarpUrl::BadScheme("ftp".to_string())));
 }

@@ -25,7 +25,7 @@ use tokio::{
 };
 use tokio_rustls::TlsStream;
 
-/// Either a simple, unencrypted [`tokio::TcpStream`] or a [`TlsStream`].
+/// Either a simple, unencrypted [`TcpStream`] or a [`TlsStream`].
 #[pin_project(project = MaybeTlsProj)]
 pub enum MaybeTlsStream {
     Plain(#[pin] TcpStream),

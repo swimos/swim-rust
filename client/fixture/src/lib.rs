@@ -21,7 +21,7 @@ use swimos_recon::print_recon;
 use swimos_remote::dns::{BoxDnsResolver, DnsResolver};
 use swimos_remote::websocket::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
 use swimos_remote::{
-    ClientConnections, ConnResult, ConnectionError, Listener, ListenerError, Scheme,
+    ClientConnections, ConnectionError, ConnectionResult, Listener, ListenerError, Scheme,
 };
 use tokio::io::{AsyncRead, AsyncWrite, DuplexStream};
 use tokio::sync::mpsc;
@@ -71,7 +71,7 @@ impl ClientConnections for MockClientConnections {
         _scheme: Scheme,
         _host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
+    ) -> BoxFuture<'_, ConnectionResult<Self::ClientSocket>> {
         async move {
             self.inner
                 .lock()

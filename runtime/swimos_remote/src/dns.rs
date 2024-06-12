@@ -31,7 +31,10 @@ pub trait DnsResolver {
     fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture;
 }
 
+#[doc(hidden)]
 pub type DnsFut = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
+
+#[doc(hidden)]
 pub type BoxDnsResolver = Box<dyn DnsResolver<ResolveFuture = DnsFut> + Send + 'static>;
 
 impl<R> DnsResolver for Box<R>
@@ -72,6 +75,8 @@ impl DnsResolver for GetAddressInfoResolver {
     }
 }
 
+/// The default DNS resolver. If the `trust-dns` feature flag is enabled, this will use the `trust_dns`
+/// implementation, otherwise it will use the operating system's built-in DNS support.
 #[derive(Debug, Clone)]
 pub struct Resolver {
     #[cfg(not(feature = "trust-dns"))]

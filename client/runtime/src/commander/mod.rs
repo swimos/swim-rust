@@ -22,7 +22,7 @@ use ratchet::{
 };
 use swimos_form::write::StructuralWritable;
 use swimos_recon::print_recon_compact;
-use swimos_remote::{BadUrl, SchemeHostPort};
+use swimos_remote::{BadWarpUrl, SchemeHostPort};
 use thiserror::Error;
 use tokio::net::TcpStream;
 
@@ -31,7 +31,7 @@ pub enum CommandError {
     #[error("Failed to send command: {0}")]
     Ratchet(#[from] ratchet::Error),
     #[error("Invalid URL: {0}")]
-    Url(#[from] BadUrl),
+    Url(#[from] BadWarpUrl),
 }
 
 impl From<std::io::Error> for CommandError {

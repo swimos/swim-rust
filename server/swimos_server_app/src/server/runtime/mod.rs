@@ -38,7 +38,7 @@ use swimos_messages::remote_protocol::{
     AgentResolutionError, AttachClient, FindNode, LinkError, NoSuchAgent, NodeConnectionRequest,
 };
 use swimos_model::Text;
-use swimos_remote::{BadUrl, RemoteTask, Scheme};
+use swimos_remote::{BadWarpUrl, RemoteTask, Scheme};
 use swimos_runtime::agent::{
     AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteChannels, AgentRouteTask,
     CombinedAgentConfig, DisconnectionReason, LinkRequest,
@@ -1133,7 +1133,7 @@ enum NewClientError {
     #[error("Invalid host URL.")]
     InvalidUrl(#[from] url::ParseError),
     #[error("URL {0} is not valid warp address.")]
-    BadWarpUrl(#[from] BadUrl),
+    BadWarpUrl(#[from] BadWarpUrl),
     #[error("Failed to open a remote connection.")]
     OpeningSocketFailed {
         errors: Vec<(SocketAddr, ConnectionError)>,

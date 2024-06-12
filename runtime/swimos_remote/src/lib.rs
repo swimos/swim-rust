@@ -38,9 +38,11 @@ mod ws;
 pub use task::RemoteTask;
 
 pub use net::{
-    BadUrl, ClientConnections, ConnResult, ConnectionError, ExternalConnections, Listener,
-    ListenerError, ListenerResult, Scheme, SchemeHostPort, ServerConnections,
+    BadWarpUrl, ClientConnections, ConnectionError, ExternalConnections, Listener, ListenerError,
+    Scheme, SchemeHostPort, ServerConnections,
 };
+#[doc(hidden)]
+pub use net::{ConnectionResult, ListenerResult};
 
 /// Bindings to use the [`ratchet`] web-sockets crate with the networking abstraction in this crate.
 pub mod websocket {

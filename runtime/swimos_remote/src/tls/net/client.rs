@@ -18,7 +18,7 @@ use futures::{future::BoxFuture, FutureExt};
 use rustls::{OwnedTrustAnchor, RootCertStore, ServerName};
 
 use crate::dns::{BoxDnsResolver, DnsResolver, Resolver};
-use crate::net::{ClientConnections, ConnResult, ConnectionError, Scheme};
+use crate::net::{ClientConnections, ConnectionError, ConnectionResult, Scheme};
 use tokio::net::TcpStream;
 use tokio_rustls::{TlsConnector, TlsStream};
 
@@ -84,7 +84,7 @@ impl ClientConnections for RustlsClientNetworking {
         scheme: Scheme,
         host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
+    ) -> BoxFuture<'_, ConnectionResult<Self::ClientSocket>> {
         match scheme {
             Scheme::Ws => async move {
                 let stream = TcpStream::connect(addr).await?;
