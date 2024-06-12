@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::parser::Span;
+use base64::{engine::general_purpose::STANDARD, Engine};
 use either::Either;
 use nom::branch::alt;
 use nom::combinator::{map, map_res, opt, peek, recognize};
@@ -333,7 +334,7 @@ macro_rules! token_mod {
             }
 
             pub fn blob(input: Span<'_>) -> IResult<Span<'_>, Vec<u8>> {
-                map_res(base64_literal, |span| base64::decode(*span))(input)
+                map_res(base64_literal, |span| STANDARD.decode(*span))(input)
             }
 
             pub fn comments(input: Span<'_>) -> IResult<Span<'_>, Vec<Span<'_>>> {
