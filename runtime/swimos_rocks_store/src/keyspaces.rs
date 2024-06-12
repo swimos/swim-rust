@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swimos_api::error::StoreError;
 use swimos_api::persistence::RangeConsumer;
-
-use crate::StoreError;
 
 /// A handle to a portion of logically partitioned data.
 pub trait Keyspace {
@@ -97,30 +96,6 @@ pub trait KeyspaceByteEngine: Send + Sync + 'static {
         key: &[u8],
         step: u64,
     ) -> Result<(), StoreError>;
-
-    /// Execute a ranged read on the store, seeking by `prefix` and deserializing results with
-    /// `map_fn`.
-    ///
-    /// Returns `Ok(None)` if no records matched `prefix` or `Ok(Some)` if matches were found.
-    ///
-    /// # Example:
-    /// Given a store engine that stores records for map lanes where the format of
-    /// `/node_uri/lane_uri/key` is used as the key. One could execute a ranged read on the store
-    /// engine with a prefix of `/node_1/lane_1/` to load all of the keys and values for that
-    /// lane.
-    ///
-    /// # Errors
-    /// Errors if an error is encountered when attempting to execute the ranged read on the
-    /// store engine or if the `map_fn` fails to deserialize a key or value.
-    fn get_prefix_range<F, K, V, S>(
-        &self,
-        _keyspace: S,
-        _prefix: &[u8],
-        _map_fn: F,
-    ) -> Result<Option<Vec<(K, V)>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace;
 
     /// Remove all entries from a keyspace with keys in the specified range [start, ubound).
     fn delete_key_range<S>(

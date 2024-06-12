@@ -22,13 +22,14 @@ pub mod rocks;
 
 use crate::agent::StoreWrapper;
 use crate::engine::RocksOpts;
-use crate::KeyspaceName;
+use crate::keyspaces::{Keyspace, Keyspaces};
+use crate::store::{KeyspaceName, StoreBuilder};
 use rocks::default_keyspaces;
 use std::fmt::{Debug, Formatter};
 use std::io::{self, Write};
 use std::path::PathBuf;
+use swimos_api::error::StoreError;
 use swimos_api::persistence::ServerPersistence;
-use swimos_store::{Keyspace, Keyspaces, StoreBuilder, StoreError};
 
 use crate::plane::{open_plane, PlaneStore, SwimPlaneStore};
 use integer_encoding::FixedInt;

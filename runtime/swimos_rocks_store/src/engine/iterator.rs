@@ -12,39 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use rocksdb::{DBIteratorWithThreadMode, DBRawIterator, DBWithThreadMode, SingleThreaded};
-use swimos_store::{EngineIterator, EnginePrefixIterator, IteratorKey, KeyValue, KvBytes};
-use swimos_store::{RangeConsumer, StoreError};
-
-pub struct RocksPrefixIterator<'p> {
-    delegate: DBIteratorWithThreadMode<'p, DBWithThreadMode<SingleThreaded>>,
-}
-
-impl<'p> From<DBIteratorWithThreadMode<'p, DBWithThreadMode<SingleThreaded>>>
-    for RocksPrefixIterator<'p>
-{
-    fn from(delegate: DBIteratorWithThreadMode<'p, DBWithThreadMode<SingleThreaded>>) -> Self {
-        RocksPrefixIterator { delegate }
-    }
-}
-
-impl<'d> EnginePrefixIterator for RocksPrefixIterator<'d> {
-    fn next(&mut self) -> Option<Result<KvBytes, StoreError>> {
-        self.delegate
-            .next()
-            .map(|r| r.map_err(|e| StoreError::Delegate(Box::new(e))))
-    }
-}
-
-pub struct RocksIterator<'d> {
-    iter: DBRawIterator<'d>,
-}
-
-impl<'d> From<DBRawIterator<'d>> for RocksIterator<'d> {
-    fn from(iter: DBRawIterator<'d>) -> Self {
-        RocksIterator { iter }
-    }
-}
+use rocksdb::DBRawIterator;
+use swimos_api::{
+    error::StoreError,
+    persistence::{KeyValue, RangeConsumer},
+};
 
 pub struct RocksRawPrefixIterator<'d> {
     first: bool,
@@ -72,37 +44,5 @@ impl<'d> RangeConsumer for RocksRawPrefixIterator<'d> {
         } else {
             Ok(None)
         }
-    }
-}
-
-impl<'d> EngineIterator for RocksIterator<'d> {
-    fn seek_to(&mut self, key: IteratorKey) -> Result<bool, StoreError> {
-        match key {
-            IteratorKey::Start => self.iter.seek_to_first(),
-            IteratorKey::End => self.iter.seek_to_last(),
-            IteratorKey::ToKey(key) => self.iter.seek(key),
-        }
-        self.valid()
-    }
-
-    fn seek_next(&mut self) {
-        self.iter.next();
-    }
-
-    fn key(&self) -> Option<&[u8]> {
-        self.iter.key()
-    }
-
-    fn value(&self) -> Option<&[u8]> {
-        self.iter.value()
-    }
-
-    fn valid(&self) -> Result<bool, StoreError> {
-        if !self.iter.valid() {
-            self.iter
-                .status()
-                .map_err(|e| StoreError::Delegate(Box::new(e)))?;
-        }
-        Ok(self.iter.valid())
     }
 }

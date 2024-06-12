@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swimos_api::error::StoreError;
+
 use crate::agent::{NodeStore, SwimNodeStore};
+use crate::nostore::NoRange;
 use crate::plane::mock::MockPlaneStore;
 use crate::server::{StoreEngine, StoreKey};
-use swimos_store::nostore::NoRange;
-use swimos_store::StoreError;
 
 #[derive(Clone, Debug)]
 pub struct MockNodeStore {

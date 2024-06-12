@@ -16,10 +16,12 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use swimos_api::error::StoreError;
+
+use crate::keyspaces::{Keyspace, KeyspaceByteEngine};
+use crate::nostore::NoRange;
 use crate::server::keystore::STEP;
-use swimos_store::{
-    deserialize_u64, nostore::NoRange, serialize_u64_vec, Keyspace, KeyspaceByteEngine, StoreError,
-};
+use crate::utils::{deserialize_u64, serialize_u64_vec};
 
 type Keyspaces = HashMap<String, HashMap<Vec<u8>, Vec<u8>>>;
 
@@ -117,30 +119,6 @@ impl KeyspaceByteEngine for MockStore {
                 Ok(())
             }
         }
-    }
-
-    fn get_prefix_range<F, K, V, S>(
-        &self,
-        keyspace: S,
-        prefix: &[u8],
-        map_fn: F,
-    ) -> Result<Option<Vec<(K, V)>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
-    {
-        let mut guard = self.values.lock().unwrap();
-        let keyspace = guard
-            .get_mut(keyspace.name())
-            .ok_or(StoreError::KeyspaceNotFound)?;
-        keyspace
-            .iter()
-            .filter(|(k, _)| k.starts_with(prefix))
-            .try_fold(None, |acc, (k, v)| {
-                let mut acc_vec: Vec<(K, V)> = acc.unwrap_or_default();
-                acc_vec.push(map_fn(k, v)?);
-                Ok(Some(acc_vec))
-            })
     }
 
     fn delete_key_range<S>(

@@ -19,16 +19,14 @@
 
 mod agent;
 mod engine;
+mod iterator;
+mod keyspaces;
+#[cfg(test)]
+mod nostore;
 mod plane;
 mod server;
+mod store;
+mod utils;
 
 pub use engine::RocksOpts;
 pub use server::{default_db_opts, open_rocks_store};
-
-/// An enumeration over the keyspaces that exist in a store.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum KeyspaceName {
-    Lane,
-    Value,
-    Map,
-}

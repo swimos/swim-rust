@@ -14,11 +14,12 @@
 
 use crate::agent::mock::MockNodeStore;
 use crate::agent::SwimNodeStore;
+use crate::keyspaces::{Keyspace, KeyspaceResolver};
+use crate::nostore::NoRange;
 use crate::plane::PlaneStore;
 use crate::server::{StoreEngine, StoreKey};
+use swimos_api::error::StoreError;
 use swimos_model::Text;
-use swimos_store::nostore::NoRange;
-use swimos_store::{Keyspace, KeyspaceResolver, StoreError};
 
 #[derive(Clone, Debug)]
 pub struct MockPlaneStore;

@@ -13,15 +13,12 @@
 // limitations under the License.
 
 use crate::engine::{RocksEngine, RocksOpts};
-use integer_encoding::VarInt;
+use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceDef, Keyspaces};
+use crate::store::StoreBuilder;
+use crate::utils::{deserialize_u64, serialize_u64_vec};
 use rocksdb::{MergeOperands, Options, SliceTransform};
-use std::collections::HashMap;
 use std::mem::size_of;
-use std::ops::{Deref, Range};
-use swimos_store::{
-    deserialize_u64, serialize_u64_vec, EngineIterator, Keyspace, KeyspaceByteEngine, KeyspaceDef,
-    KeyspaceResolver, Keyspaces, StoreBuilder, StoreError,
-};
+use std::ops::Deref;
 use tempdir::TempDir;
 
 impl Deref for TransientDatabase {
@@ -89,14 +86,6 @@ fn default_db() -> TransientDatabase {
     TransientDatabase::new(Keyspaces::new(keyspaces))
 }
 
-fn assert_keyspaces_empty(db: &TransientDatabase, spaces: &[KeyspaceName]) {
-    for key_space in spaces {
-        let resolved = db.resolve_keyspace(key_space).unwrap();
-        let iter = db.iterator(resolved).unwrap();
-        assert_eq!(Ok(false), iter.valid())
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 enum KeyspaceName {
     Value,
@@ -122,71 +111,6 @@ fn get_keyspace() {
     let value = b"test_value";
 
     assert!(db.put_keyspace(KeyspaceName::Value, key, value).is_ok());
-    assert_keyspaces_empty(&db, &[KeyspaceName::Lane, KeyspaceName::Map]);
-}
-
-fn format_key(id: i32) -> String {
-    format!("key/{}", id)
-}
-
-fn populate_keyspace(
-    db: &TransientDatabase,
-    space: KeyspaceName,
-    range: Range<i32>,
-    clone_to: &mut HashMap<String, i32>,
-) {
-    for i in range {
-        let key = format_key(i);
-        clone_to.insert(key.clone(), i);
-        let value = i.encode_var_vec();
-        assert!(db
-            .put_keyspace(space, key.as_bytes(), value.as_slice())
-            .is_ok());
-    }
-}
-
-#[test]
-fn engine_iterator() {
-    let db = default_db();
-    let range = 0..100;
-    let mut expected = HashMap::new();
-
-    populate_keyspace(&db, KeyspaceName::Value, range.clone(), &mut expected);
-
-    let resolved = db.resolve_keyspace(&KeyspaceName::Value).unwrap();
-    let mut iter = db.iterator(resolved).unwrap();
-
-    assert_eq!(iter.seek_first(), Ok(true));
-
-    for _ in range {
-        let valid = iter.valid().expect("Invalid iterator");
-        if valid {
-            match (iter.key(), iter.value()) {
-                (Some(key), Some(value)) => {
-                    let key = String::from_utf8(key.to_vec()).unwrap();
-                    let (value, _) = i32::decode_var(value).unwrap();
-
-                    match expected.remove(&key) {
-                        Some(expected_value) => {
-                            assert_eq!(expected_value, value)
-                        }
-                        None => {
-                            panic!("Unexpected key: {:?}", key)
-                        }
-                    }
-                }
-                e => {
-                    panic!("Inconsistent state: {:?}", e);
-                }
-            }
-            iter.seek_next();
-        } else {
-            panic!("Invalid iterator");
-        }
-    }
-
-    assert!(expected.is_empty());
-    assert_keyspaces_empty(&db, &[KeyspaceName::Lane, KeyspaceName::Map]);
 }
 
 #[test]
@@ -228,82 +152,4 @@ pub fn delete_missing() {
     let db = default_db();
     let get_result = db.delete_keyspace(KeyspaceName::Value, b"key_a");
     assert!(matches!(get_result, Ok(())));
-}
-
-fn map_fn<'a>(key: &'a [u8], value: &'a [u8]) -> Result<(String, String), StoreError> {
-    let k = String::from_utf8(key.to_vec()).unwrap();
-    let v = String::from_utf8(value.to_vec()).unwrap();
-
-    Ok((k, v))
-}
-
-#[test]
-pub fn empty_range() {
-    let db = default_db();
-    let result = db.get_prefix_range(KeyspaceName::Value, b"prefix", map_fn);
-    match result {
-        Ok(ss) => {
-            assert!(ss.is_none());
-        }
-        Err(e) => panic!("{:?}", e),
-    }
-}
-
-#[test]
-pub fn prefix_range() {
-    let db = default_db();
-    let prefix = "/foo/bar";
-    let limit = 256;
-
-    let format = |i| format!("{}/{}", prefix, i);
-    let mut expected = HashMap::with_capacity(limit);
-
-    // In range records
-    for i in 0..limit {
-        let key = format(i);
-        let value = i.to_string();
-        let result = db.put_keyspace(
-            KeyspaceName::Value,
-            key.as_bytes(),
-            i.to_string().as_bytes(),
-        );
-
-        assert!(result.is_ok());
-
-        expected.insert(key, value);
-    }
-
-    // Out of range records
-    for i in 0..limit {
-        let key = format!("/foo/{}", i);
-        let value = i.to_string();
-        let result = db.put_keyspace(KeyspaceName::Value, key.as_bytes(), value.as_bytes());
-
-        assert!(result.is_ok());
-    }
-
-    let result = db.get_prefix_range(KeyspaceName::Value, prefix.as_bytes(), map_fn);
-    assert!(matches!(result, Ok(Some(_))));
-
-    let result = result.unwrap().unwrap();
-    let mut iter = result.into_iter();
-
-    for i in 0..limit {
-        match iter.next() {
-            Some((key, value)) => match expected.remove(&key) {
-                Some(expected_value) => {
-                    assert_eq!(expected_value, value);
-                }
-                None => {
-                    panic!("Missing key: `{}`", format(i));
-                }
-            },
-            None => {
-                panic!("Missing key: `{}`", format(i));
-            }
-        }
-    }
-
-    assert!(iter.next().is_none());
-    assert!(expected.is_empty());
 }
