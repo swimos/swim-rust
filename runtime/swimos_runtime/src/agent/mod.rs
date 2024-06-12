@@ -294,7 +294,6 @@ impl AgentContext for AgentRuntimeContext {
     }
 }
 
-
 /// Reasons that a remote connected to an agent runtime task could be disconnected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisconnectionReason {

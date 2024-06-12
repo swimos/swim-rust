@@ -45,7 +45,8 @@ use tracing::{debug, error, trace};
 use uuid::Uuid;
 
 use crate::{
-    agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest}, Io,
+    agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
+    Io,
 };
 
 use super::{AdHocChannelRequest, ExternalLinkRequest};

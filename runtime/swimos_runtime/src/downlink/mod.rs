@@ -25,8 +25,7 @@ use bytes::{Bytes, BytesMut};
 use futures::future::{join, select, Either};
 use futures::stream::SelectAll;
 use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
-pub use interpretation::MapInterpretation;
-pub use interpretation::NoInterpretation;
+use interpretation::MapInterpretation;
 use swimos_agent_protocol::{
     encoding::downlink::DownlinkNotificationEncoder, DownlinkNotification,
 };
@@ -46,6 +45,8 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 use tracing::{error, info, info_span, trace, warn, Instrument};
 use uuid::Uuid;
+
+pub use interpretation::NoInterpretation;
 
 mod backpressure;
 pub mod failure;
