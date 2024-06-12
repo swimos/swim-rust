@@ -19,7 +19,7 @@ use crate::{
         task::{external_links, AdHocChannelRequest, ExternalLinkRequest},
         CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest,
     },
-    downlink::{DownlinkOptions, Io},
+    downlink::DownlinkOptions, Io,
 };
 use bytes::Bytes;
 use futures::{

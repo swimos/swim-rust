@@ -43,7 +43,6 @@ use swimos_runtime::agent::{
     AgentAttachmentRequest, AgentExecError, AgentRouteDescriptor, AgentRouteChannels, AgentRouteTask,
     CombinedAgentConfig, DisconnectionReason, LinkRequest,
 };
-use swimos_runtime::downlink::Io;
 use swimos_utilities::routing::RouteUri;
 
 use swimos_remote::websocket::{RatchetError, Websockets};
@@ -61,6 +60,7 @@ use crate::config::SwimServerConfig;
 use crate::plane::PlaneModel;
 use crate::server::runtime::downlinks::DlTaskRequest;
 use crate::server::ServerHandle;
+use crate::Io;
 
 use self::downlinks::{DownlinkConnectionTask, ServerConnector};
 use self::ids::{IdIssuer, IdKind};

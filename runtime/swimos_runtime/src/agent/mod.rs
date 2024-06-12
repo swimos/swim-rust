@@ -49,7 +49,7 @@ use std::{
     time::Duration,
 };
 
-use crate::downlink::DownlinkOptions;
+use crate::{downlink::DownlinkOptions, Io};
 
 use self::{
     reporting::{UplinkReportReader, UplinkReporter},
@@ -294,8 +294,6 @@ impl AgentContext for AgentRuntimeContext {
     }
 }
 
-/// Ends of two independent channels (for example the input and output channels of an agent).
-type Io = (ByteWriter, ByteReader);
 
 /// Reasons that a remote connected to an agent runtime task could be disconnected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -18,9 +18,14 @@
 //! the Warp protocol only and are entirely decoupled from the state and user defined behaviour
 //! of the the agents/downlinks.
 
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
+
 /// The agent runtime task.
 pub mod agent;
 mod backpressure;
 /// The downlink runtime task.
 pub mod downlink;
 mod timeout_coord;
+
+/// Ends of two independent channels (for example the input and output channels of an agent).
+type Io = (ByteWriter, ByteReader);

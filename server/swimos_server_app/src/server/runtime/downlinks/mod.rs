@@ -43,7 +43,7 @@ use swimos_runtime::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
     downlink::{
         failure::{AlwaysAbortStrategy, AlwaysIgnoreStrategy, ReportStrategy},
-        AttachAction, DownlinkRuntimeConfig, Io, MapDownlinkRuntime, ValueDownlinkRuntime,
+        AttachAction, DownlinkRuntimeConfig, MapDownlinkRuntime, ValueDownlinkRuntime,
     },
 };
 use swimos_utilities::{
@@ -56,7 +56,7 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::server::runtime::downlinks::pending::Waiting;
+use crate::{server::runtime::downlinks::pending::Waiting, Io};
 
 use super::{
     ids::{IdIssuer, IdKind},

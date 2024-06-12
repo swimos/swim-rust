@@ -18,6 +18,7 @@ use std::time::Duration;
 
 use crate::downlink::failure::BadFrameResponse;
 use crate::timeout_coord::{VoteResult, Voter};
+use crate::Io;
 use backpressure::DownlinkBackpressure;
 use bitflags::bitflags;
 use bytes::{Bytes, BytesMut};
@@ -77,8 +78,6 @@ bitflags! {
         const INIT = Self::FLUSHED.bits();
     }
 }
-
-pub type Io = (ByteWriter, ByteReader);
 
 impl WriteTaskState {
     /// If a new consumer needs to be synced, set the appropriate state bit.
