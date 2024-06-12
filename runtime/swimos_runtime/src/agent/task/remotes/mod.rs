@@ -20,7 +20,7 @@ use swimos_utilities::{byte_channel::ByteWriter, trigger::promise};
 use tracing::debug;
 use uuid::Uuid;
 
-use crate::{agent::DisconnectionReason, error::InvalidKey};
+use crate::{agent::DisconnectionReason, backpressure::InvalidKey};
 pub use sender::RemoteSender;
 pub use uplink::UplinkResponse;
 

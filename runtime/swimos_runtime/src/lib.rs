@@ -15,5 +15,4 @@
 pub mod agent;
 mod backpressure;
 pub mod downlink;
-pub mod error;
 mod timeout_coord;

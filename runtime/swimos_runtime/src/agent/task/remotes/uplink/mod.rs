@@ -29,9 +29,8 @@ use crate::{
     },
     backpressure::{
         recon::MapOperationReconEncoder, BackpressureStrategy, MapBackpressure, SupplyBackpressure,
-        ValueBackpressure,
+        ValueBackpressure, InvalidKey
     },
-    error::InvalidKey,
 };
 
 #[cfg(test)]
