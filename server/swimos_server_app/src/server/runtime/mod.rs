@@ -40,7 +40,7 @@ use swimos_messages::remote_protocol::{
 use swimos_model::Text;
 use swimos_remote::{BadWarpUrl, RemoteTask, Scheme};
 use swimos_runtime::agent::{
-    AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteChannels, AgentRouteTask,
+    AgentAttachmentRequest, AgentExecError, AgentRouteDescriptor, AgentRouteChannels, AgentRouteTask,
     CombinedAgentConfig, DisconnectionReason, LinkRequest,
 };
 use swimos_runtime::downlink::Io;
@@ -907,7 +907,7 @@ impl Agents {
 
                     let route_task = AgentRouteTask::new(
                         agent,
-                        AgentRoute {
+                        AgentRouteDescriptor {
                             identity: id,
                             route: route_uri,
                             route_params,

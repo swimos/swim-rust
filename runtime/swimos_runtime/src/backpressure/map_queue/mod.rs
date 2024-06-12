@@ -20,7 +20,7 @@ use std::{
 use bytes::{BufMut, BytesMut};
 use swimos_agent_protocol::MapOperation;
 
-use super::{key::ReconKey, RawMapOperation, RawMapOperationMut, InvalidKey};
+use super::{key::ReconKey, InvalidKey, RawMapOperation, RawMapOperationMut};
 
 #[cfg(test)]
 mod tests;

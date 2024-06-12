@@ -60,6 +60,8 @@ use self::{
     },
 };
 
+/// Describes the metrics the the agent runtime task reports as it runs. These are subscribed to by the
+/// introspection API to report on the internal state of server application.
 pub mod reporting;
 mod store;
 mod task;
@@ -69,26 +71,40 @@ mod tests;
 use task::AgentRuntimeRequest;
 use tracing::{error, info_span, Instrument};
 
+/// A message type that can be sent to the agent runtime to request a link to one of its lanes.
 #[derive(Debug)]
 pub enum LinkRequest {
+    /// A request to open a downlink to one of the lanes.
     Downlink(DownlinkRequest),
+    /// A request to open a one way connection to send commands to a lane.
     Commander(CommanderRequest),
 }
 
+/// A description of an endpoint to which commands can be sent.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum CommanderKey {
+    /// An endpoint on an explicit remote host.
     Remote(SchemeHostPort),
+    /// An endpoint that is locally resolved.
     Local(RelativeAddress<Text>),
 }
 
+/// A request to the runtime to open a channel to send commands to a remote lane.
 #[derive(Debug)]
 pub struct CommanderRequest {
+    /// The ID of the agent making the request.
     pub agent_id: Uuid,
+    /// The target end point for the channel.
     pub key: CommanderKey,
+    /// A promise to be satisfied with the channel.
     pub promise: oneshot::Sender<Result<ByteWriter, DownlinkRuntimeError>>,
 }
 
 impl CommanderRequest {
+    /// # Arguments
+    /// * `agent_id` - The ID of the agent making the request.
+    /// * `key` - The target end point for the channel.
+    /// * `promise` - A promise to be satisfied with the channel.
     pub fn new(
         agent_id: Uuid,
         key: CommanderKey,
@@ -102,31 +118,28 @@ impl CommanderRequest {
     }
 }
 
+/// A request to the runtime to open a downlink to a lane on another agent.
 #[derive(Debug)]
 pub struct DownlinkRequest {
+    /// An explicit host for the agent, if defined.
     pub remote: Option<SchemeHostPort>,
+    /// The node URI and name of the lane.
     pub address: RelativeAddress<Text>,
+    /// The kind of the downlink to open.
     pub kind: DownlinkKind,
+    /// Configuration parameters for the downlink.
     pub options: DownlinkOptions,
+    /// A promise to be satisfied with a channel to the downlink.
     pub promise: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
 }
 
 impl DownlinkRequest {
-    pub fn replace_promise(
-        &self,
-        replacement: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
-    ) -> Self {
-        DownlinkRequest {
-            remote: self.remote.clone(),
-            address: self.address.clone(),
-            kind: self.kind,
-            options: self.options,
-            promise: replacement,
-        }
-    }
-}
-
-impl DownlinkRequest {
+    /// # Arguments
+    ///
+    /// * `remote` - An explicit host for the agent, if defined.
+    /// * `kind` - The kind of the downlink to open.
+    /// * `options` - Configuration parameters for the downlink.
+    /// * `promise` - A promise to be satisfied with a channel to the downlink.
     pub fn new(
         remote: Option<SchemeHostPort>,
         address: RelativeAddress<Text>,
@@ -140,6 +153,21 @@ impl DownlinkRequest {
             kind,
             options,
             promise,
+        }
+    }
+}
+
+impl DownlinkRequest {
+    fn replace_promise(
+        &self,
+        replacement: oneshot::Sender<Result<Io, DownlinkRuntimeError>>,
+    ) -> Self {
+        DownlinkRequest {
+            remote: self.remote.clone(),
+            address: self.address.clone(),
+            kind: self.kind,
+            options: self.options,
+            promise: replacement,
         }
     }
 }
@@ -338,19 +366,23 @@ pub enum AgentAttachmentRequest {
 
 /// A request from an agent to register a new lane for metadata reporting.
 pub struct UplinkReporterRegistration {
+    /// The ID of the agent making the request.
     pub agent_id: Uuid,
+    /// The name of the lane.
     pub lane_name: Text,
+    /// The kind of the lane.
     pub kind: LaneKind,
+    /// Receiver for the uplink statistics.
     pub reader: UplinkReportReader,
 }
 
 impl UplinkReporterRegistration {
-    pub fn new(
-        agent_id: Uuid,
-        lane_name: Text,
-        kind: LaneKind,
-        reader: UplinkReportReader,
-    ) -> Self {
+    /// # Arguments
+    /// * `agent_id` - The ID of the agent making the request.
+    /// * `lane_name` - The name of the lane.
+    /// * `kind` - The kind of the lane.
+    /// * `reader` - Receiver for the uplink statistics.
+    fn new(agent_id: Uuid, lane_name: Text, kind: LaneKind, reader: UplinkReportReader) -> Self {
         UplinkReporterRegistration {
             agent_id,
             lane_name,
@@ -415,16 +447,13 @@ impl NodeReporting {
 }
 
 impl AgentAttachmentRequest {
-    pub fn downlink(id: Uuid, io: Io, completion: promise::Sender<DisconnectionReason>) -> Self {
-        AgentAttachmentRequest::TwoWay {
-            id,
-            io,
-            completion,
-            on_attached: None,
-        }
-    }
-
-    /// Constructs a request with a trigger that will be called when the registration completes.
+    /// Constructs a downlink request with a trigger that will be called when the request is completed.
+    ///
+    /// # Arguments
+    /// * `id` - The ID of the remote endpoint requesting the downlink.
+    /// * `io` - The bidirectional channel.
+    /// * `completion` - Called for when the downlink closes.
+    /// * `on_attached` - Called when the request is completed.
     pub fn with_confirmation(
         id: Uuid,
         io: Io,
@@ -439,6 +468,13 @@ impl AgentAttachmentRequest {
         }
     }
 
+    /// Constructs a request to open a one way channel to send commands to the agent.
+    ///
+    /// # Arguments
+    /// * `id` - The ID of the remote endpoint requesting the channel.
+    /// * `io` - The reader to receive the commands.
+    /// * `on_attached` - Called when the channel is established.
+    ///
     pub fn commander(id: Uuid, io: ByteReader, on_attached: trigger::Sender) -> Self {
         AgentAttachmentRequest::OneWay {
             id,
@@ -522,18 +558,24 @@ pub enum AgentExecError {
     PersistenceFailure(#[from] StoreError),
 }
 
-pub struct AgentRoute {
+/// Descriptor of an agent route.
+pub struct AgentRouteDescriptor {
+    /// The unique ID of the agent instance.
     pub identity: Uuid,
+    /// The route URI of the instance.
     pub route: RouteUri,
+    /// Parameters extracted from the route URI of the instance.
     pub route_params: HashMap<String, String>,
 }
 
+/// All configuration parameters associated with an agent instance.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CombinedAgentConfig {
     pub agent_config: AgentConfig,
     pub runtime_config: AgentRuntimeConfig,
 }
 
+/// Channels used by an agent instance to communicate with the runtime.
 pub struct AgentRouteChannels {
     attachment_rx: mpsc::Receiver<AgentAttachmentRequest>,
     http_rx: mpsc::Receiver<HttpLaneRequest>,
@@ -558,6 +600,8 @@ impl AgentRouteChannels {
     }
 }
 
+/// The agent runtime task. This mediates between the the user defined agent state and event handlers
+/// and the other entities within the Swim server application.
 pub struct AgentRouteTask<'a, A> {
     agent: &'a A,
     identity: Uuid,
@@ -584,7 +628,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
     /// * `reporting` - Uplink metrics reporters.
     pub fn new(
         agent: &'a A,
-        identity: AgentRoute,
+        identity: AgentRouteDescriptor,
         channels: AgentRouteChannels,
         stopping: trigger::Receiver,
         config: CombinedAgentConfig,
@@ -605,6 +649,7 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         }
     }
 
+    /// Run the agent task without persistence.
     pub fn run_agent(self) -> impl Future<Output = Result<(), AgentExecError>> + Send + 'static {
         let AgentRouteTask {
             agent,
@@ -675,6 +720,10 @@ impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
         }
     }
 
+    /// Run the agent task with persistence support.
+    ///
+    /// # Arguments
+    /// * `store_fut` - A future that will resolve to the persistence implementation.
     pub fn run_agent_with_store<Store, Fut>(
         self,
         store_fut: Fut,

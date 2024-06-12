@@ -12,7 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! SwimOS Agent & Downlink Runtime
+//!
+//! Tokio tasks describing the core IO loops for agents and downlinks. These tasks implement
+//! the Warp protocol only and are entirely decoupled from the state and user defined behaviour
+//! of the the agents/downlinks.
+
+/// The agent runtime task.
 pub mod agent;
 mod backpressure;
+/// The downlink runtime task.
 pub mod downlink;
 mod timeout_coord;

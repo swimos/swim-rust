@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{convert::Infallible, fmt::{Display, Formatter}};
+use std::{
+    convert::Infallible,
+    fmt::{Display, Formatter},
+};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use swimos_agent_protocol::{DownlinkOperation, MapOperation};
-use tokio_util::codec::Encoder;
 use std::str::Utf8Error;
+use swimos_agent_protocol::{DownlinkOperation, MapOperation};
 use thiserror::Error;
+use tokio_util::codec::Encoder;
 
 use map_queue::MapOperationQueue;
 mod key;
@@ -26,7 +29,6 @@ mod map_queue;
 pub mod recon;
 
 use recon::MapOperationReconEncoder;
-
 
 type RawMapOperation = MapOperation<Bytes, BytesMut>;
 type RawMapOperationMut = MapOperation<BytesMut, BytesMut>;

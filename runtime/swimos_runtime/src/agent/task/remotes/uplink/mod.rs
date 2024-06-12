@@ -28,8 +28,8 @@ use crate::{
         DisconnectionReason,
     },
     backpressure::{
-        recon::MapOperationReconEncoder, BackpressureStrategy, MapBackpressure, SupplyBackpressure,
-        ValueBackpressure, InvalidKey
+        recon::MapOperationReconEncoder, BackpressureStrategy, InvalidKey, MapBackpressure,
+        SupplyBackpressure, ValueBackpressure,
     },
 };
 
