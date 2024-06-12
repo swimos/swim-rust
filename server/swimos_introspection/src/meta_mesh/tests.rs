@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::forest::UriForest;
 use crate::meta_mesh::{run_task, NodeInfo, NodeInfoCount, NodeInfoList};
 use crate::model::AgentIntrospectionUpdater;
 use crate::task::AgentMeta;
@@ -31,8 +32,7 @@ use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError}
 use swimos_form::read::RecognizerReadable;
 use swimos_model::{Text, Timestamp};
 use swimos_runtime::agent::reporting::UplinkReporter;
-use swimos_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
-use swimos_utilities::uri_forest::UriForest;
+use swimos_utilities::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swimos_utilities::{non_zero_usize, trigger};
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;

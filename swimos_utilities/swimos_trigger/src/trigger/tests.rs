@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::TriggerError;
+use crate::trigger::TriggerError;
 use futures::task::{waker_ref, ArcWake};
 use std::future::Future;
 use std::pin::pin;

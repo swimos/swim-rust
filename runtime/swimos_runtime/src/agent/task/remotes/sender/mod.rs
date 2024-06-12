@@ -17,7 +17,7 @@ use futures::SinkExt;
 use swimos_messages::protocol::RawResponseMessageEncoder;
 use swimos_messages::protocol::{Notification, Path, ResponseMessage};
 use swimos_model::Text;
-use swimos_utilities::io::byte_channel::ByteWriter;
+use swimos_utilities::byte_channel::ByteWriter;
 use tokio_util::codec::FramedWrite;
 use tracing::trace;
 use uuid::Uuid;

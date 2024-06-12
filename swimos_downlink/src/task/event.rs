@@ -22,7 +22,7 @@ use swimos_client_api::DownlinkConfig;
 use swimos_form::Form;
 use swimos_model::Text;
 use swimos_recon::print_recon;
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use tokio_util::codec::FramedRead;
 use tracing::{info_span, trace, Instrument};
 

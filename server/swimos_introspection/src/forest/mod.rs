@@ -16,13 +16,12 @@ mod iter;
 #[cfg(test)]
 mod tests;
 
-use crate::iter::PathSegmentIterator;
 use smol_str::SmolStr;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::iter::Peekable;
 
-pub use crate::iter::{UriForestIterator, UriPart, UriPartIterator};
+pub use self::iter::{PathSegmentIterator, UriForestIterator, UriPart, UriPartIterator};
 
 static_assertions::assert_impl_all!(UriForest<()>: Send, Sync);
 
@@ -432,7 +431,7 @@ where
 }
 
 #[derive(Debug, PartialEq)]
-struct TreeNode<D> {
+pub(crate) struct TreeNode<D> {
     data: Option<D>,
     descendants: HashMap<SmolStr, TreeNode<D>>,
 }

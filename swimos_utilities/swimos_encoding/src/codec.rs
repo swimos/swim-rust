@@ -15,8 +15,8 @@
 use bytes::{Buf, BufMut, BytesMut};
 use tokio_util::codec::{Decoder, Encoder};
 
-/// Codec that will encode a type as a UTF-8 string, writing the length (as a 64 bit unsigned
-/// integer) as a header.
+/// Codec that will encode the length of an array of bytes, as a 64bit unsigned integer, followed by
+/// its contents.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct WithLengthBytesCodec;
 
@@ -55,8 +55,20 @@ impl Decoder for WithLengthBytesCodec {
     }
 }
 
-pub type DecoderResult<D> = Result<Option<<D as Decoder>::Item>, <D as Decoder>::Error>;
+type DecoderResult<D> = Result<Option<<D as Decoder>::Item>, <D as Decoder>::Error>;
 
+/// Feed a bounded number of bytes into a [`Decoder`]. If the input buffer contains more bytes than
+/// the limit, the decoder is passed the limited prefix and [`Decoder::decode_eof`] is called, rather than
+/// [`Decoder::decode`]. This is useful when [`Decoder`]s are composed and some subset of the input of
+/// one encoder is delegated to another.
+///
+/// The return value is the number of bytes yet to be consumed (which will be non-zero if the buffer
+/// contained less than the limit) and the result of the decode operation.
+///
+/// # Arguments
+/// * `remaining` - The remaining number of bytes to pass to the decoder.
+/// * `src` - The input buffer.
+/// * `decoder` - The decoder to which to feed the input.
 pub fn consume_bounded<D: Decoder>(
     remaining: usize,
     src: &mut BytesMut,

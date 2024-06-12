@@ -44,7 +44,7 @@ use swimos_runtime::{
     downlink::{DownlinkOptions, DownlinkRuntimeConfig, Io},
 };
 use swimos_utilities::{
-    io::byte_channel::{are_connected, ByteReader, ByteWriter},
+    byte_channel::{are_connected, ByteReader, ByteWriter},
     non_zero_usize, trigger,
 };
 use tokio::sync::{mpsc, oneshot};

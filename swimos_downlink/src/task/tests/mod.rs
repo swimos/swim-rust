@@ -30,7 +30,7 @@ use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_recon::parser::parse_recognize;
 use swimos_recon::print_recon_compact;
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
 };
 

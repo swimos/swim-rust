@@ -16,7 +16,7 @@ swimos_agent_protocol = { path = "../../api/swimos_agent_protocol" }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_recon = { path = "../../api/formats/swimos_recon" }
 swimos_form = { path = "../../api/swimos_form" }
-swimos_utilities = { path = "../../swimos_utilities", features = ["byte_channel", "trigger", "algebra"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["buf_channel", "trigger", "algebra"] }
 swimos_runtime = { path = "../../runtime/swimos_runtime" }
 swimos_remote = { path = "../../runtime/swimos_remote" }
 swimos_net = { path = "../../runtime/swimos_net" }

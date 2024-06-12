@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 use swimos_agent_protocol::encoding::lane::RawValueLaneResponseDecoder;
 use swimos_api::agent::AgentConfig;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use crate::lanes::supply::{Supply, SupplyLaneSync};
 use crate::{

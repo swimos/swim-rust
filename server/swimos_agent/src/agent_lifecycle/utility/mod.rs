@@ -24,7 +24,7 @@ use swimos_api::address::Address;
 use swimos_form::read::RecognizerReadable;
 use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 use tokio::time::Instant;
 
 use crate::agent_model::downlink::hosted::{

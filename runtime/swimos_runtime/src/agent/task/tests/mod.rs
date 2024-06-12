@@ -38,9 +38,9 @@ use swimos_messages::protocol::{
 use swimos_model::Text;
 use swimos_recon::{parser::parse_recognize, print_recon_compact};
 use swimos_utilities::{
+    byte_channel::{ByteReader, ByteWriter},
     encoding::BytesStr,
-    future::retryable::RetryStrategy,
-    io::byte_channel::{ByteReader, ByteWriter},
+    future::RetryStrategy,
     non_zero_usize,
     trigger::promise,
 };
@@ -600,10 +600,7 @@ impl RemoteReceiver {
         if !lanes.is_empty() {
             panic!("Some lanes were not unlinked: {:?}", lanes);
         }
-        let reason = completion_rx
-            .await
-            .map(|arc| *arc)
-            .unwrap_or(DisconnectionReason::Failed);
+        let reason = completion_rx.await.unwrap_or(DisconnectionReason::Failed);
 
         assert_eq!(
             reason,

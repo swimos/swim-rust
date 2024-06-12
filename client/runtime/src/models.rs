@@ -25,7 +25,7 @@ use swimos_runtime::downlink::{
     AttachAction, DownlinkRuntimeConfig, IdentifiedAddress, MapDownlinkRuntime, NoInterpretation,
     ValueDownlinkRuntime,
 };
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::trigger;
 use tokio::sync::mpsc;
 use uuid::Uuid;

@@ -59,14 +59,14 @@ use swimos_api::{
 };
 use swimos_model::Text;
 use swimos_recon::print_recon_compact;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use futures::future::BoxFuture;
 use swimos_api::{
     agent::{AgentContext, LaneConfig},
     error::AgentRuntimeError,
 };
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 
 use swimos_agent::event_handler::ActionContext;
 

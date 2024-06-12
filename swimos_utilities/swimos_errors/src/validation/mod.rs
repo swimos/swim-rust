@@ -270,6 +270,8 @@ pub fn validate3<T1, T2, T3, E: Semigroup>(
     first.and_then(|v1| second.and_then(move |v2| third.map(move |v3| (v1, v2, v3))))
 }
 
+/// An extension trait for [`Iterator`] that adds combinators to apply a process returning [`Validation`]s
+/// across all of the elements of the iterator, accumulating the errors.
 pub trait ValidationItExt: Iterator {
     /// Apply a validating fold operation over an iterator, accumulating the errors.
     fn validate_fold<R, E, F>(

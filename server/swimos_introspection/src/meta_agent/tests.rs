@@ -23,7 +23,7 @@ use swimos_form::Form;
 use swimos_meta::WarpUplinkPulse;
 use swimos_runtime::agent::reporting::{UplinkReporter, UplinkSnapshot};
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize, trigger,
 };
 use tokio::{sync::mpsc, time::Instant};

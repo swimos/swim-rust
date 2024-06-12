@@ -25,7 +25,7 @@ use swimos_agent_protocol::{encoding::lane::MapLaneResponseDecoder, LaneResponse
 use swimos_api::agent::AgentConfig;
 use swimos_form::Form;
 use swimos_model::Text;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
 

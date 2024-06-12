@@ -21,7 +21,7 @@ use bytes::BytesMut;
 use swimos_agent_protocol::MapMessage;
 use swimos_api::{address::Address, agent::AgentConfig};
 use swimos_model::Text;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use crate::{
     agent_lifecycle::utility::HandlerContext,

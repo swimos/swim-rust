@@ -66,7 +66,7 @@ impl HeaderName {
 
 impl HeaderValue {
     pub fn new(bytes: Bytes) -> Self {
-        HeaderValue(match BytesStr::new(bytes) {
+        HeaderValue(match BytesStr::try_wrap(bytes) {
             Ok(bytes_str) => HeaderValueInner::StringHeader(bytes_str),
             Err(bytes) => HeaderValueInner::BytesHeader(bytes),
         })

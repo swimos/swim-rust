@@ -20,9 +20,7 @@ use std::{error::Error, sync::Arc};
 use swimos_form::read::ReadError;
 use swimos_model::Text;
 use swimos_recon::parser::AsyncParseError;
-use swimos_utilities::{
-    errors::Recoverable, routing::route_pattern::UnapplyError, trigger::promise,
-};
+use swimos_utilities::{errors::Recoverable, routing::UnapplyError, trigger::promise};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 

@@ -17,33 +17,28 @@ use std::num::NonZeroUsize;
 use std::time::Duration;
 use swimos_num::non_zero_usize;
 
-macro_rules! non_zero_usize {
-    (0) => {
-        compile_error!("Must be non-zero")
-    };
-    ($n:literal) => {
-        unsafe { std::num::NonZeroUsize::new_unchecked($n) }
-    };
-}
+const DEFAULT_EXPONENTIAL_MAX_INTERVAL: Duration = Duration::from_secs(16);
+const DEFAULT_EXPONENTIAL_MAX_BACKOFF: Duration = Duration::from_secs(300);
+const DEFAULT_IMMEDIATE_RETRIES: NonZeroUsize = non_zero_usize!(16);
+const DEFAULT_INTERVAL_RETRIES: NonZeroUsize = non_zero_usize!(8);
+const DEFAULT_INTERVAL_DELAY: u64 = 10;
 
-pub const DEFAULT_EXPONENTIAL_MAX_INTERVAL: Duration = Duration::from_secs(16);
-pub const DEFAULT_EXPONENTIAL_MAX_BACKOFF: Duration = Duration::from_secs(300);
-pub const DEFAULT_IMMEDIATE_RETRIES: NonZeroUsize = non_zero_usize!(16);
-pub const DEFAULT_INTERVAL_RETRIES: NonZeroUsize = non_zero_usize!(8);
-pub const DEFAULT_INTERVAL_DELAY: u64 = 10;
-
-/// The retry strategy that a ['RetryableRequest`] uses to determine when to perform the next
-/// request.
+/// A strategy that determines how many times, and at what interval, a fallible process should be
+/// attempted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RetryStrategy {
-    /// An immediate retry with no sleep time in between the requests.
-    Immediate(IntervalStrategy),
     /// A retry with a defined delay in between the requests.
     Interval(IntervalStrategy),
     /// A truncated exponential retry strategy.
     Exponential(ExponentialStrategy),
     /// Only attempt the request once
     None(IntervalStrategy),
+}
+
+impl Default for RetryStrategy {
+    fn default() -> Self {
+        RetryStrategy::Exponential(ExponentialStrategy::default())
+    }
 }
 
 /// Interval strategy parameters with either a defined number of retries to attempt or an indefinite
@@ -55,27 +50,44 @@ pub struct IntervalStrategy {
     pub delay: Option<Duration>,
 }
 
+impl IntervalStrategy {
+    pub fn default_immediate() -> Self {
+        IntervalStrategy {
+            retry: Quantity::Finite(DEFAULT_IMMEDIATE_RETRIES.get()),
+            delay: None,
+        }
+    }
+
+    pub fn default_interval() -> Self {
+        IntervalStrategy {
+            retry: Quantity::Finite(DEFAULT_INTERVAL_RETRIES.get()),
+            delay: Some(Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
+        }
+    }
+}
+
 /// Truncated exponential retry strategy parameters.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExponentialStrategy {
     /// The maximum interval between a retry, generated intervals will be truncated to this duration
     /// if they exceed it.
-    max_interval: Duration,
+    pub max_interval: Duration,
     /// The maximum backoff time that the strategy will run for. Typically 32 or 64 seconds.
-    max_backoff: Quantity<Duration>,
+    pub max_backoff: Quantity<Duration>,
     /// The time that the first request was attempted.
     start: Option<std::time::Instant>,
     /// The current retry number.
     retry_no: u64,
 }
 
-impl ExponentialStrategy {
-    pub fn get_max_interval(&self) -> Duration {
-        self.max_interval
-    }
-
-    pub fn get_max_backoff(&self) -> Quantity<Duration> {
-        self.max_backoff
+impl Default for ExponentialStrategy {
+    fn default() -> Self {
+        Self {
+            start: None,
+            max_interval: DEFAULT_EXPONENTIAL_MAX_INTERVAL,
+            max_backoff: Quantity::Finite(DEFAULT_EXPONENTIAL_MAX_BACKOFF),
+            retry_no: 0,
+        }
     }
 }
 
@@ -84,17 +96,6 @@ impl ExponentialStrategy {
 pub enum Quantity<T> {
     Finite(T),
     Infinite,
-}
-
-impl Default for RetryStrategy {
-    fn default() -> Self {
-        RetryStrategy::Exponential(ExponentialStrategy {
-            start: None,
-            max_interval: DEFAULT_EXPONENTIAL_MAX_INTERVAL,
-            max_backoff: Quantity::Finite(DEFAULT_EXPONENTIAL_MAX_BACKOFF),
-            retry_no: 0,
-        })
-    }
 }
 
 impl RetryStrategy {
@@ -121,17 +122,14 @@ impl RetryStrategy {
     /// Builds an immediate retry strategy that will attempt (`retries`) requests with no delay
     /// in between the requests.
     pub fn immediate(retries: NonZeroUsize) -> RetryStrategy {
-        RetryStrategy::Immediate(IntervalStrategy {
+        RetryStrategy::Interval(IntervalStrategy {
             retry: Quantity::Finite(retries.get()),
             delay: None,
         })
     }
 
     pub fn default_immediate() -> RetryStrategy {
-        RetryStrategy::Immediate(IntervalStrategy {
-            retry: Quantity::Finite(DEFAULT_IMMEDIATE_RETRIES.get()),
-            delay: None,
-        })
+        RetryStrategy::Interval(IntervalStrategy::default_immediate())
     }
 
     /// Builds an interval retry strategy that will attempt (`retries`) requests with `delay`
@@ -152,10 +150,7 @@ impl RetryStrategy {
     }
 
     pub fn default_interval() -> RetryStrategy {
-        RetryStrategy::Immediate(IntervalStrategy {
-            retry: Quantity::Finite(DEFAULT_INTERVAL_RETRIES.get()),
-            delay: Some(Duration::from_secs(DEFAULT_INTERVAL_DELAY)),
-        })
+        RetryStrategy::Interval(IntervalStrategy::default_interval())
     }
 
     /// No retry strategy. Only the initial request is attempted.
@@ -210,10 +205,6 @@ impl Iterator for RetryStrategy {
 
                 Some(Some(sleep_time))
             }
-            RetryStrategy::Immediate(strategy) => match strategy.retry {
-                Quantity::Finite(ref mut retry) => decrement_retries(retry, Some(None)),
-                Quantity::Infinite => Some(None),
-            },
             RetryStrategy::Interval(strategy) => match strategy.retry {
                 Quantity::Finite(ref mut retry) => decrement_retries(retry, Some(strategy.delay)),
                 Quantity::Infinite => Some(strategy.delay),
@@ -228,7 +219,7 @@ impl Iterator for RetryStrategy {
 
 #[cfg(test)]
 mod tests {
-    use crate::retryable::strategy::{Quantity, RetryStrategy};
+    use crate::retry_strategy::{Quantity, RetryStrategy};
     use std::{num::NonZeroUsize, time::Duration};
 
     #[tokio::test]

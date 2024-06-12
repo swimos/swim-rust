@@ -21,7 +21,7 @@ use swimos_api::agent::AgentConfig;
 use swimos_form::write::StructuralWritable;
 use swimos_model::Text;
 use swimos_recon::print_recon_compact;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 
 use crate::{

@@ -20,8 +20,8 @@ use swimos_agent_protocol::MapOperation;
 use swimos_messages::protocol::{Notification, Path, RawResponseMessageDecoder, ResponseMessage};
 use swimos_model::Text;
 use swimos_utilities::{
+    byte_channel::{byte_channel, ByteReader},
     encoding::BytesStr,
-    io::byte_channel::{byte_channel, ByteReader},
     non_zero_usize,
 };
 use tokio_util::codec::FramedRead;

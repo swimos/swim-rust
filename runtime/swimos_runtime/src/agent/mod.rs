@@ -31,10 +31,10 @@ use swimos_api::{
 use swimos_model::Text;
 use swimos_net::SchemeHostPort;
 use swimos_utilities::{
-    future::retryable::RetryStrategy,
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
+    future::RetryStrategy,
     non_zero_usize,
-    routing::route_uri::RouteUri,
+    routing::RouteUri,
     trigger::{self, promise},
 };
 use thiserror::Error;

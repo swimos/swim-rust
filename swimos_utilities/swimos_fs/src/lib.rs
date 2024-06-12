@@ -12,4 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod fs;
+//! # File System Utilities
+//!
+//! Utility types and functions for interacting with the local filesystem.
+
+mod fs;
+
+pub use fs::Dir;

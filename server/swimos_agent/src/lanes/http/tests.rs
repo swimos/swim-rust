@@ -20,7 +20,7 @@ use swimos_api::{
     agent::{AgentConfig, HttpLaneRequest, HttpResponseReceiver},
     http::{Header, HttpRequest, Method, StandardHeaderName, StatusCode, Version},
 };
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use crate::event_handler::{EventHandler, Modification, ModificationFlags, StepResult};
 use crate::lanes::http::model::MethodAndPayload;

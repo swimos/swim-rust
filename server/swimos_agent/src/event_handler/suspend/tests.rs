@@ -25,7 +25,7 @@ use bytes::BytesMut;
 use futures::{stream::FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use swimos_api::agent::AgentConfig;
-use swimos_utilities::{routing::route_uri::RouteUri, trigger};
+use swimos_utilities::{routing::RouteUri, trigger};
 use tokio::{sync::mpsc, time::Instant};
 
 use super::{HandlerFuture, Suspend};

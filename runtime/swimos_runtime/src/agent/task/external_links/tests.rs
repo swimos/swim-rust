@@ -40,10 +40,10 @@ use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMess
 use swimos_net::SchemeHostPort;
 use swimos_recon::print_recon_compact;
 use swimos_utilities::{
+    byte_channel::{self, ByteReader, ByteWriter},
     encoding::BytesStr,
     errors::Recoverable,
-    future::retryable::{Quantity, RetryStrategy},
-    io::byte_channel::{self, ByteReader, ByteWriter},
+    future::{Quantity, RetryStrategy},
     non_zero_usize, trigger,
 };
 use tokio::sync::{mpsc, oneshot};

@@ -42,7 +42,7 @@ use swimos_agent_protocol::{
 use swimos_api::address::Address;
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{self, ByteReader, ByteWriter},
+    byte_channel::{self, ByteReader, ByteWriter},
     non_zero_usize, trigger,
 };
 use tokio::{io::AsyncWriteExt, sync::mpsc};

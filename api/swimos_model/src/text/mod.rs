@@ -26,7 +26,7 @@ use std::iter::FromIterator;
 use std::str;
 use std::str::FromStr;
 use swimos_utilities::encoding::TryFromUtf8Bytes;
-use swimos_utilities::routing::route_uri::{InvalidRouteUri, RouteUri};
+use swimos_utilities::routing::{InvalidRouteUri, RouteUri};
 
 const SMALL_SIZE: usize = 3 * std::mem::size_of::<usize>();
 

@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::iter::{PathSegmentIterator, UriPart};
-use crate::{TreeNode, UriForest};
 use std::collections::{HashMap, HashSet};
+
+use crate::forest::{
+    iter::{PathSegmentIterator, UriPart},
+    TreeNode, UriForest,
+};
 
 #[test]
 fn iters() {

@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # Text Formatting Utilities
+//!
+//! Utility functions to use in implementing [`std::fmt::Display`].
+
 mod print;
 
 pub use print::{comma_sep, join};

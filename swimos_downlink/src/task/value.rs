@@ -31,8 +31,8 @@ use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
 use swimos_model::Text;
 use swimos_recon::print_recon;
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::future::{immediate_or_join, race};
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 
 use crate::model::lifecycle::ValueDownlinkLifecycle;
 use crate::model::ValueDownlinkSet;

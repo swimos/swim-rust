@@ -379,7 +379,7 @@ impl From<NotYetSyncedError> for ValueDownlinkOperationError {
 #[derive(Debug, Clone)]
 pub struct ValueDownlinkView<T> {
     tx: mpsc::Sender<ValueDownlinkSet<T>>,
-    stop_rx: promise::Receiver<Result<(), DownlinkRuntimeError>>,
+    stop_rx: promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>>,
 }
 
 impl<T> ValueDownlinkView<T> {
@@ -390,7 +390,7 @@ impl<T> ValueDownlinkView<T> {
     }
 
     /// Returns a receiver that completes with the result of downlink's internal task.
-    pub fn stop_notification(&self) -> promise::Receiver<Result<(), DownlinkRuntimeError>> {
+    pub fn stop_notification(&self) -> promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>> {
         self.stop_rx.clone()
     }
 }
@@ -482,7 +482,7 @@ impl<'h, L> MapDownlinkBuilder<'h, L> {
 #[derive(Debug, Clone)]
 pub struct MapDownlinkView<K, V> {
     inner: MapDownlinkHandle<K, V>,
-    stop_rx: promise::Receiver<Result<(), DownlinkRuntimeError>>,
+    stop_rx: promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>>,
 }
 
 impl<K, V> MapDownlinkView<K, V> {
@@ -512,7 +512,7 @@ impl<K, V> MapDownlinkView<K, V> {
     }
 
     /// Returns a receiver that completes with the result of downlink's internal task.
-    pub fn stop_notification(&self) -> promise::Receiver<Result<(), DownlinkRuntimeError>> {
+    pub fn stop_notification(&self) -> promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>> {
         self.stop_rx.clone()
     }
 }
@@ -598,12 +598,12 @@ impl<'h, L> EventDownlinkBuilder<'h, L> {
 #[derive(Debug, Clone)]
 pub struct EventDownlinkView<T> {
     _type: PhantomData<T>,
-    stop_rx: promise::Receiver<Result<(), DownlinkRuntimeError>>,
+    stop_rx: promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>>,
 }
 
 impl<T> EventDownlinkView<T> {
     /// Returns a receiver that completes with the result of downlink's internal task.
-    pub fn stop_notification(&self) -> promise::Receiver<Result<(), DownlinkRuntimeError>> {
+    pub fn stop_notification(&self) -> promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>> {
         self.stop_rx.clone()
     }
 }

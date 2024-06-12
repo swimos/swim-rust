@@ -15,7 +15,6 @@
 use futures::future::{join, Either};
 use futures::stream::{unfold, FuturesUnordered};
 use futures::{FutureExt, Stream, StreamExt};
-use parking_lot::RwLock;
 use ratchet::{ExtensionProvider, SplittableExtension, WebSocket, WebSocketStream};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -32,7 +31,7 @@ use swimos_api::error::{
 };
 use swimos_api::{address::RelativeAddress, persistence::PlanePersistence};
 use swimos_introspection::route::{lane_pattern, mesh_pattern, node_pattern};
-use swimos_introspection::{init_introspection, IntrospectionResolver, MetaMeshAgent};
+use swimos_introspection::{init_introspection, IntrospectionResolver};
 use swimos_introspection::{IntrospectionConfig, LaneMetaAgent, NodeMetaAgent};
 use swimos_model::Text;
 use swimos_net::{BadUrl, Scheme};
@@ -45,14 +44,13 @@ use swimos_runtime::agent::{
     CombinedAgentConfig, DisconnectionReason, LinkRequest,
 };
 use swimos_runtime::downlink::Io;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use swimos_remote::net::{ConnectionError, ExternalConnections, ListenerError};
 use swimos_remote::ws::{RatchetError, Websockets};
-use swimos_utilities::io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
-use swimos_utilities::routing::route_pattern::RoutePattern;
+use swimos_utilities::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter};
+use swimos_utilities::routing::RoutePattern;
 use swimos_utilities::trigger::{self, promise};
-use swimos_utilities::uri_forest::UriForest;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinError;
@@ -1037,7 +1035,7 @@ async fn attach_agent(
         Ok(true) => {
             if provider.send(Ok((in_tx, out_rx))).is_ok() {
                 if let Ok(reason) = disconnect_rx.await {
-                    *reason
+                    reason
                 } else {
                     DisconnectionReason::Failed
                 }
@@ -1077,7 +1075,7 @@ async fn attach_link_remote(
                 info!("Downlink request dropped before satisfied.");
                 DisconnectionReason::Failed
             } else if let Ok(reason) = disconnect_rx.await {
-                *reason
+                reason
             } else {
                 DisconnectionReason::Failed
             }
@@ -1241,10 +1239,8 @@ fn start_introspection(
     stopping: trigger::Receiver,
     routes: &mut Routes,
 ) -> IntrospectionResolver {
-    let agents = Arc::new(RwLock::new(UriForest::new()));
-    let (resolver, task) =
-        init_introspection(stopping, config.registration_channel_size, agents.clone());
-    let mesh_meta = MetaMeshAgent::new(agents);
+    let (resolver, mesh_meta, task) =
+        init_introspection(stopping, config.registration_channel_size);
     let node_meta = NodeMetaAgent::new(config, resolver.clone());
     let lane_meta = LaneMetaAgent::new(config, resolver.clone());
 

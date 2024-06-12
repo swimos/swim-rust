@@ -41,14 +41,14 @@ use swimos_model::Text;
 use swimos_remote::net::ClientConnections;
 use swimos_remote::AttachClient;
 use swimos_runtime::downlink::{AttachAction, DownlinkOptions, DownlinkRuntimeConfig};
-use swimos_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swimos_utilities::trigger;
 use swimos_utilities::trigger::promise;
 
 pub type BoxedDownlink = Box<dyn Downlink + Send + Sync + 'static>;
 type ByteChannel = (ByteWriter, ByteReader);
 type CallbackResult =
-    Result<promise::Receiver<Result<(), DownlinkRuntimeError>>, Arc<DownlinkRuntimeError>>;
+    Result<promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>>, Arc<DownlinkRuntimeError>>;
 pub type DownlinkCallback = oneshot::Sender<CallbackResult>;
 
 impl Debug for DownlinkRegistrationRequest {
@@ -172,7 +172,7 @@ enum RuntimeEvent {
         kind: DownlinkKind,
         address: RemotePath,
         result: Result<(), DownlinkRuntimeError>,
-        tx: promise::Sender<Result<(), DownlinkRuntimeError>>,
+        tx: promise::Sender<Result<(), Arc<DownlinkRuntimeError>>>,
     },
     /// A downlink runtime has completed.
     DownlinkRuntimeComplete {
@@ -662,7 +662,7 @@ async fn runtime_task<Net, Ws, Provider>(
                     }
                 }
 
-                let _r = tx.provide(result);
+                let _r = tx.provide(result.map_err(Arc::new));
             }
             RuntimeEvent::Shutdown => {
                 for peer in peers.values_mut() {

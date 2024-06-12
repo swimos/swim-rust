@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use bytes::BytesMut;
 use swimos_model::Text;
-use swimos_utilities::{io::byte_channel::ByteWriter, trigger::promise};
+use swimos_utilities::{byte_channel::ByteWriter, trigger::promise};
 use tracing::debug;
 use uuid::Uuid;
 

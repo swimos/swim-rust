@@ -27,8 +27,8 @@ use swimos_agent_protocol::{
 use swimos_api::error::FrameIoError;
 use swimos_form::read::{ReadError, RecognizerReadable};
 use swimos_recon::parser::{AsyncParseError, ParseError, RecognizerDecoder};
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::future::try_last;
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
 
 use crate::item::{MapItem, ValueItem};

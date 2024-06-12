@@ -27,7 +27,7 @@ use swimos_remote::net::{dns::Resolver, ExternalConnections};
 use swimos_tls::{
     ClientConfig, RustlsClientNetworking, RustlsNetworking, RustlsServerNetworking, TlsConfig,
 };
-use swimos_utilities::routing::route_pattern::RoutePattern;
+use swimos_utilities::routing::RoutePattern;
 
 use crate::{
     config::SwimServerConfig,

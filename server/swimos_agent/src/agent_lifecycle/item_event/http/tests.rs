@@ -19,7 +19,7 @@ use swimos_api::{
     agent::{response_channel, AgentConfig},
     http::{HttpResponse, StatusCode, Uri},
 };
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use crate::agent_lifecycle::item_event::{HLeaf, HttpBranch};
 use crate::lanes::http::Request;

@@ -19,7 +19,7 @@ use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 
 use macro_utilities::{attributes::consume_attributes, to_compile_errors};
-use swimos_utilities::errors::{validation::Validation, Errors};
+use swimos_utilities::errors::{Errors, Validation};
 use syn::{parse_macro_input, parse_quote, AttributeArgs, DeriveInput, Item};
 
 mod agent_lifecycle;

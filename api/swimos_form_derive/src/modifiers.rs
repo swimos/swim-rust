@@ -21,8 +21,8 @@ use macro_utilities::{
     TypeLevelNameTransform, TypeLevelNameTransformConsumer,
 };
 use quote::ToTokens;
-use swimos_utilities::errors::validation::{Validation, ValidationItExt};
 use swimos_utilities::errors::Errors;
+use swimos_utilities::errors::{Validation, ValidationItExt};
 
 /// Fold the attributes present on some syntactic element, accumulating errors.
 pub fn fold_attr_meta<'a, It, S, F>(path: Symbol, attrs: It, init: S, mut f: F) -> SynValidation<S>

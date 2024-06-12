@@ -12,19 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use byte_channel::byte_channel;
-use byte_channel::{ByteReader, ByteWriter};
 use bytes::Bytes;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use futures::future::join;
 use futures::stream::SelectAll;
-use futures_util::future::join;
-use futures_util::{SinkExt, Stream, StreamExt};
+use futures::{SinkExt, Stream, StreamExt};
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::time::Duration;
+use swimos_byte_channel::byte_channel;
+use swimos_byte_channel::{ByteReader, ByteWriter};
 use swimos_form::read::RecognizerReadable;
 use swimos_messages::protocol::{
     AgentMessageDecoder, MessageDecodeError, Operation, Path, RawRequestMessageEncoder,
