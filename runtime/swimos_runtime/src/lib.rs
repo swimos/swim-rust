@@ -13,7 +13,7 @@
 // limitations under the License.
 
 pub mod agent;
-pub mod backpressure;
+mod backpressure;
 pub mod downlink;
 pub mod error;
 mod timeout_coord;
