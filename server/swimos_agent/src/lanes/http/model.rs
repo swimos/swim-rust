@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_model::http::{Header, HttpResponse, StatusCode, Uri, Version};
+use swimos_api::http::{Header, HttpResponse, StatusCode, Uri, Version};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MethodAndPayload<PostT, PutT = PostT> {

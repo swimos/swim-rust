@@ -14,10 +14,7 @@
 
 use bytes::{Buf, Bytes, BytesMut};
 use std::fmt::Write;
-use swimos_form::{
-    structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
-    Form,
-};
+use swimos_form::{read::RecognizerReadable, write::StructuralWritable, Form};
 use swimos_recon::{print_recon_compact, WithLenRecognizerDecoder};
 use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;

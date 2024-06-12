@@ -20,11 +20,11 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use futures::stream::unfold;
 use futures::{Future, FutureExt, Stream, StreamExt};
-use swimos_form::structural::read::recognizer::RecognizerReadable;
-use swimos_form::structural::write::StructuralWritable;
+use swimos_api::address::Address;
+use swimos_form::read::RecognizerReadable;
+use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
-use swimos_model::address::Address;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 use tokio::time::Instant;
 
 use crate::agent_model::downlink::hosted::{

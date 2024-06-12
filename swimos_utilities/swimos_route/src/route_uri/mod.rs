@@ -99,11 +99,12 @@ impl RouteUri {
     }
 
     /// Returns an iterator that will yield each segment in the path.
-    pub fn path_iter(&self) -> PathSegmentIterator<'_> {
+    pub fn path_iter(&self) -> impl Iterator<Item = &str> {
         PathSegmentIterator(self.path())
     }
 }
 
+/// Error type that is produced by an attempt to parse an invalid [`RouteUri`] from a string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvalidRouteUri(String);
 

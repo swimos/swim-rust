@@ -20,9 +20,9 @@ use either::Either;
 use nom::IResult;
 use std::borrow::Cow;
 use std::ops::{Add, Neg, Sub};
-use swimos_form::structural::read::event::{NumericValue, ReadEvent};
-use swimos_model::bigint::{BigInt, BigUint};
+use swimos_form::read::{NumericValue, ReadEvent};
 use swimos_model::{Attr, Item, Text, Value};
+use swimos_model::{BigInt, BigUint};
 
 fn span(input: &str) -> Span<'_> {
     Span::new(input)

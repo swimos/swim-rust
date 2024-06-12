@@ -24,15 +24,14 @@ use swimos_agent_protocol::{
     LaneRequest, LaneResponse, MapOperation,
 };
 use swimos_api::{
-    agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
+    agent::{Agent, AgentConfig, AgentContext, AgentInitResult, WarpLaneKind},
     error::{AgentInitError, AgentTaskError, FrameIoError},
-    lane::WarpLaneKind,
 };
 use swimos_meta::{LaneInfo, NodePulse};
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
-    routing::route_uri::RouteUri,
+    byte_channel::{ByteReader, ByteWriter},
+    routing::RouteUri,
     trigger,
 };
 use tokio_util::codec::{FramedRead, FramedWrite};

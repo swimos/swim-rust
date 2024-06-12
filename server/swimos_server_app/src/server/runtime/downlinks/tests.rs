@@ -31,20 +31,23 @@ use swimos_agent_protocol::encoding::downlink::{
     DownlinkOperationEncoder, ValueNotificationDecoder,
 };
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
-use swimos_api::{downlink::DownlinkKind, error::DownlinkRuntimeError};
-use swimos_messages::protocol::{
-    Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage, ResponseMessageEncoder,
+use swimos_api::{address::RelativeAddress, agent::DownlinkKind, error::DownlinkRuntimeError};
+use swimos_messages::{
+    protocol::{
+        Operation, RawRequestMessageDecoder, RequestMessage, ResponseMessage,
+        ResponseMessageEncoder,
+    },
+    remote_protocol::{AttachClient, LinkError},
 };
-use swimos_model::{address::RelativeAddress, Text};
-use swimos_net::SchemeHostPort;
-use swimos_remote::net::dns::{DnsFut, DnsResolver};
-use swimos_remote::{AttachClient, LinkError};
+use swimos_model::Text;
+use swimos_remote::dns::{DnsFut, DnsResolver};
+use swimos_remote::SchemeHostPort;
 use swimos_runtime::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
     downlink::{DownlinkOptions, DownlinkRuntimeConfig, Io},
 };
 use swimos_utilities::{
-    io::byte_channel::{are_connected, ByteReader, ByteWriter},
+    byte_channel::{are_connected, ByteReader, ByteWriter},
     non_zero_usize, trigger,
 };
 use tokio::sync::{mpsc, oneshot};

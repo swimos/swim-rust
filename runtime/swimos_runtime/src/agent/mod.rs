@@ -17,24 +17,24 @@ use futures::{
     FutureExt,
 };
 use swimos_api::{
+    address::RelativeAddress,
     agent::{
-        Agent, AgentConfig, AgentContext, HttpLaneRequest, HttpLaneRequestChannel, LaneConfig,
+        Agent, AgentConfig, AgentContext, DownlinkKind, HttpLaneRequest, HttpLaneRequestChannel,
+        LaneConfig, LaneKind, StoreKind, WarpLaneKind,
     },
-    downlink::DownlinkKind,
     error::{
         AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
         StoreError,
     },
-    lane::{LaneKind, WarpLaneKind},
-    store::{NodePersistence, StoreKind},
+    persistence::NodePersistence,
 };
-use swimos_model::{address::RelativeAddress, Text};
-use swimos_net::SchemeHostPort;
+use swimos_model::Text;
+use swimos_remote::SchemeHostPort;
 use swimos_utilities::{
-    future::retryable::RetryStrategy,
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
+    future::RetryStrategy,
     non_zero_usize,
-    routing::route_uri::RouteUri,
+    routing::RouteUri,
     trigger::{self, promise},
 };
 use thiserror::Error;

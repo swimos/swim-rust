@@ -19,12 +19,12 @@ use base64::display::Base64Display;
 use base64::engine::general_purpose::STANDARD;
 use std::borrow::Cow;
 use std::fmt::{Debug, Display, Formatter};
-use swimos_form::structural::write::{
+use swimos_form::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use swimos_model::bigint::{BigInt, BigUint};
-use swimos_model::write_string_literal;
+use swimos_model::literal::write_string_literal;
+use swimos_model::{BigInt, BigUint};
 
 /// Print an inline Recon representation of [`StructuralWritable`] value.
 ///

@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::structural::read::event::ReadEvent;
-use crate::structural::read::recognizer::{
+use crate::structural::read::ReadError;
+use crate::structural::read::ReadEvent;
+use crate::structural::read::{
     FirstOf, NamedFieldsRecognizer, Recognizer, RecognizerReadable, SimpleAttrBody,
 };
-use crate::structural::read::ReadError;
 use crate::structural::write::{BodyWriter, HeaderWriter};
 use crate::structural::write::{
     PrimitiveWriter, RecordBodyKind, StructuralWritable, StructuralWriter,

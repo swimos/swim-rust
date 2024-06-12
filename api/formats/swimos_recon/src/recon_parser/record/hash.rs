@@ -22,7 +22,7 @@ use nom::sequence::preceded;
 use nom::{Finish, IResult, Parser};
 use smallvec::SmallVec;
 use std::hash::{Hash, Hasher};
-use swimos_form::structural::read::event::ReadEvent;
+use swimos_form::read::ReadEvent;
 
 const AVG_NESTED_ATTR_COUNT: usize = 4;
 

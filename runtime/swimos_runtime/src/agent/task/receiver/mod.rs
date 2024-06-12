@@ -25,7 +25,7 @@ use swimos_agent_protocol::{
     LaneResponse, MapLaneResponse, MapOperation, StoreResponse,
 };
 use swimos_api::agent::UplinkKind;
-use swimos_utilities::io::byte_channel::ByteReader;
+use swimos_utilities::byte_channel::ByteReader;
 use tokio_util::codec::FramedRead;
 use uuid::Uuid;
 

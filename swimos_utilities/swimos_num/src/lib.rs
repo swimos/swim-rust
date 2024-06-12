@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # Numeric Helper Macros
+
 pub mod num {
+
+    /// Safely create a non-zero usize constant.
     #[macro_export]
     macro_rules! non_zero_usize {
         (0) => {

@@ -18,11 +18,11 @@ use std::{
 };
 
 use swimos_api::error::StoreError;
-use swimos_remote::net::ConnectionError;
-use swimos_tls::TlsError;
+use swimos_remote::tls::TlsError;
+use swimos_remote::ConnectionError;
 use thiserror::Error;
 
-use swimos_utilities::{format::comma_sep, routing::route_pattern::RoutePattern};
+use swimos_utilities::{format::comma_sep, routing::RoutePattern};
 
 /// Indicates that the routes specified for plane are ambiguous (overlap with each other).
 #[derive(Debug)]
@@ -97,7 +97,7 @@ pub enum ServerBuilderError {
 #[cfg(test)]
 mod tests {
     use swimos_introspection::route::{lane_pattern, node_pattern};
-    use swimos_utilities::routing::route_pattern::RoutePattern;
+    use swimos_utilities::routing::RoutePattern;
 
     use super::AmbiguousRoutes;
 

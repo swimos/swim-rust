@@ -30,16 +30,17 @@ use swimos_agent_protocol::{
     encoding::store::{MapStoreResponseEncoder, ValueStoreResponseEncoder},
     LaneRequest, LaneResponse, MapLaneResponse, MapMessage, MapOperation, StoreResponse,
 };
-use swimos_api::{agent::UplinkKind, error::FrameIoError};
+use swimos_api::{address::RelativeAddress, agent::UplinkKind, error::FrameIoError};
 use swimos_messages::protocol::{
-    Notification, Path, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,
+    Notification, RawRequestMessageEncoder, RawResponseMessageDecoder, RequestMessage,
     ResponseMessage,
 };
-use swimos_model::{BytesStr, Text};
+use swimos_model::Text;
 use swimos_recon::{parser::parse_recognize, print_recon_compact};
 use swimos_utilities::{
-    future::retryable::RetryStrategy,
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
+    encoding::BytesStr,
+    future::RetryStrategy,
     non_zero_usize,
     trigger::promise,
 };
@@ -458,7 +459,7 @@ impl RemoteReceiver {
                 assert_eq!(origin, self.expected_agent);
                 assert_eq!(
                     path,
-                    Path::new(
+                    RelativeAddress::new(
                         BytesStr::from(self.expected_node.as_str()),
                         BytesStr::from(lane)
                     )
@@ -599,10 +600,7 @@ impl RemoteReceiver {
         if !lanes.is_empty() {
             panic!("Some lanes were not unlinked: {:?}", lanes);
         }
-        let reason = completion_rx
-            .await
-            .map(|arc| *arc)
-            .unwrap_or(DisconnectionReason::Failed);
+        let reason = completion_rx.await.unwrap_or(DisconnectionReason::Failed);
 
         assert_eq!(
             reason,
@@ -628,28 +626,28 @@ impl RemoteSender {
 
     async fn link(&mut self, lane: &str) {
         let RemoteSender { node, rid, inner } = self;
-        let path = Path::new(node.as_str(), lane);
+        let path = RelativeAddress::new(node.as_str(), lane);
         let msg: RequestMessage<&str, &[u8]> = RequestMessage::link(*rid, path);
         assert!(inner.send(msg).await.is_ok());
     }
 
     async fn unlink(&mut self, lane: &str) {
         let RemoteSender { node, rid, inner } = self;
-        let path = Path::new(node.as_str(), lane);
+        let path = RelativeAddress::new(node.as_str(), lane);
         let msg: RequestMessage<&str, &[u8]> = RequestMessage::unlink(*rid, path);
         assert!(inner.send(msg).await.is_ok());
     }
 
     async fn sync(&mut self, lane: &str) {
         let RemoteSender { node, rid, inner } = self;
-        let path = Path::new(node.as_str(), lane);
+        let path = RelativeAddress::new(node.as_str(), lane);
         let msg: RequestMessage<&str, &[u8]> = RequestMessage::sync(*rid, path);
         assert!(inner.send(msg).await.is_ok());
     }
 
     async fn value_command(&mut self, lane: &str, n: i32) {
         let RemoteSender { node, rid, inner } = self;
-        let path = Path::new(node.as_str(), lane);
+        let path = RelativeAddress::new(node.as_str(), lane);
         let body = format!("{}", n);
         let msg: RequestMessage<&str, &[u8]> = RequestMessage::command(*rid, path, body.as_bytes());
         assert!(inner.send(msg).await.is_ok());
@@ -657,7 +655,7 @@ impl RemoteSender {
 
     async fn map_command(&mut self, lane: &str, key: &str, value: i32) {
         let RemoteSender { node, rid, inner } = self;
-        let path = Path::new(node.as_str(), lane);
+        let path = RelativeAddress::new(node.as_str(), lane);
         let body = format!("@update(key:\"{}\") {}", key, value);
         let msg: RequestMessage<&str, &[u8]> = RequestMessage::command(*rid, path, body.as_bytes());
         assert!(inner.send(msg).await.is_ok());

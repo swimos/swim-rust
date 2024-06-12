@@ -18,7 +18,7 @@ mod pending;
 mod tests;
 
 pub use connector::{downlink_task_connector, DlTaskRequest, DownlinksConnector, ServerConnector};
-use swimos_net::{Scheme, SchemeHostPort};
+use swimos_messages::remote_protocol::{AttachClient, LinkError};
 use tracing::{debug, error, info, trace, warn};
 
 use std::{
@@ -31,12 +31,13 @@ use std::{
 use futures::{stream::FuturesUnordered, Future, FutureExt, StreamExt};
 pub use pending::{DlKey, PendingDownlinks};
 use swimos_api::{
-    downlink::DownlinkKind,
+    address::RelativeAddress,
+    agent::DownlinkKind,
     error::{AgentRuntimeError, DownlinkFailureReason, DownlinkRuntimeError},
 };
-use swimos_model::{address::RelativeAddress, Text};
-use swimos_remote::net::dns::DnsResolver;
-use swimos_remote::{AttachClient, LinkError};
+use swimos_model::Text;
+use swimos_remote::dns::DnsResolver;
+use swimos_remote::{Scheme, SchemeHostPort};
 use swimos_runtime::downlink::{IdentifiedAddress, NoInterpretation};
 use swimos_runtime::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
@@ -46,7 +47,7 @@ use swimos_runtime::{
     },
 };
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter},
+    byte_channel::{byte_channel, BudgetedFutureExt, ByteReader, ByteWriter},
     trigger,
 };
 use tokio::{

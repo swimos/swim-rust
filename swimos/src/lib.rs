@@ -15,8 +15,7 @@
 pub use swimos_model as model;
 
 pub mod api {
-    pub use swimos_api::agent::{Agent, UplinkKind};
-    pub use swimos_api::downlink::{Downlink, DownlinkKind};
+    pub use swimos_api::agent::{Agent, DownlinkKind, UplinkKind};
 
     pub mod agent {
         pub use swimos_api::agent::{
@@ -32,8 +31,6 @@ pub mod api {
     }
 
     pub mod downlink {
-        pub use swimos_api::downlink::DownlinkConfig;
-
         pub mod error {
             pub use swimos_api::error::DownlinkTaskError;
         }
@@ -45,15 +42,13 @@ pub mod api {
 }
 
 pub mod route {
-    pub use swimos_utilities::routing::route_pattern::{
-        ApplyError, ParseError, RoutePattern, UnapplyError,
-    };
-    pub use swimos_utilities::routing::route_uri::RouteUri;
+    pub use swimos_utilities::routing::RouteUri;
+    pub use swimos_utilities::routing::{ApplyError, ParseError, RoutePattern, UnapplyError};
 }
 
 pub mod io {
     pub mod channels {
-        pub use swimos_utilities::io::byte_channel::{
+        pub use swimos_utilities::byte_channel::{
             are_connected, byte_channel, ByteReader, ByteWriter,
         };
     }

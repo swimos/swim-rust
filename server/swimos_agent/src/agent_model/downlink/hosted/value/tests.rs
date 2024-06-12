@@ -34,14 +34,13 @@ use swimos_agent_protocol::encoding::downlink::{
     DownlinkNotificationEncoder, DownlinkOperationDecoder,
 };
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
-use swimos_form::structural::read::recognizer::RecognizerReadable;
-use swimos_model::{address::Address, Text};
+use swimos_api::address::Address;
+use swimos_form::read::RecognizerReadable;
+use swimos_model::Text;
 use swimos_recon::{print_recon_compact, WithLenRecognizerDecoder};
 use swimos_utilities::{
-    io::byte_channel::{self, ByteReader, ByteWriter},
-    non_zero_usize,
-    sync::circular_buffer,
-    trigger,
+    byte_channel::{self, ByteReader, ByteWriter},
+    circular_buffer, non_zero_usize, trigger,
 };
 use tokio::{io::AsyncWriteExt, task::yield_now};
 use tokio_util::codec::{FramedRead, FramedWrite};

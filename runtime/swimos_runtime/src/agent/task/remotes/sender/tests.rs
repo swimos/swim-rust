@@ -17,7 +17,7 @@ use futures::StreamExt;
 use swimos_messages::protocol::{Notification, RawResponseMessageDecoder, ResponseMessage};
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteReader},
+    byte_channel::{byte_channel, ByteReader},
     non_zero_usize,
 };
 use tokio_util::codec::FramedRead;

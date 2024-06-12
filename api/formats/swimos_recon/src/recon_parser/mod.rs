@@ -27,9 +27,9 @@ use nom::sequence::{delimited, terminated};
 use nom::Finish;
 use nom_locate::LocatedSpan;
 use std::borrow::Cow;
-use swimos_form::structural::read::event::ReadEvent;
-use swimos_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
-use swimos_form::structural::read::ReadError;
+use swimos_form::read::ReadError;
+use swimos_form::read::ReadEvent;
+use swimos_form::read::{Recognizer, RecognizerReadable};
 
 pub use record::matcher::{extract_header, extract_header_str, HeaderPeeler, MessageExtractError};
 

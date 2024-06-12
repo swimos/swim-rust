@@ -28,20 +28,19 @@ use futures::{
 use futures::{Future, FutureExt};
 use swimos_agent_protocol::encoding::store::{RawMapStoreInitDecoder, RawValueStoreInitDecoder};
 use swimos_agent_protocol::{LaneRequest, MapMessage};
-use swimos_api::agent::{HttpLaneRequest, HttpLaneResponse, LaneConfig};
-use swimos_api::downlink::DownlinkKind;
+use swimos_api::agent::DownlinkKind;
+use swimos_api::agent::{HttpLaneRequest, LaneConfig, RawHttpLaneResponse};
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
-pub use swimos_api::store::StoreKind;
 use swimos_api::{
+    address::Address,
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::{AgentInitError, AgentTaskError, FrameIoError},
+    http::{Header, StandardHeaderName, StatusCode, Version},
 };
-use swimos_model::address::Address;
-use swimos_model::http::{Header, StandardHeaderName, StatusCode, Version};
 use swimos_model::Text;
-use swimos_utilities::future::retryable::RetryStrategy;
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::future::RetryStrategy;
+use swimos_utilities::routing::RouteUri;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace};
@@ -74,7 +73,7 @@ pub use init::{
     ItemInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,
     ValueStoreInitializer,
 };
-pub use swimos_api::lane::WarpLaneKind;
+pub use swimos_api::agent::{StoreKind, WarpLaneKind};
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1470,7 +1469,7 @@ fn not_found(lane_name: &str, request: HttpLaneRequest) {
         lane_name
     ));
     let content_len = Header::new(StandardHeaderName::ContentLength, payload.len().to_string());
-    let response = HttpLaneResponse {
+    let response = RawHttpLaneResponse {
         status_code: StatusCode::NOT_FOUND,
         version: Version::HTTP_1_1,
         headers: vec![content_len],

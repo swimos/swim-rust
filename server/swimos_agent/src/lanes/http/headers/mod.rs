@@ -15,7 +15,7 @@
 use std::str::FromStr;
 
 use mime::Mime;
-use swimos_model::http::{Header, HeaderValue, StandardHeaderName};
+use swimos_api::http::{Header, HeaderValue, StandardHeaderName};
 use tracing::warn;
 
 #[cfg(test)]
@@ -118,7 +118,7 @@ pub fn content_type_header(mime: &Mime) -> Header {
 }
 
 ///Add a content-length header to a [`swimos_model::http::HttpResponse`].
-pub fn add_content_len_header<B: AsRef<[u8]>>(request: &mut swimos_model::http::HttpResponse<B>) {
+pub fn add_content_len_header<B: AsRef<[u8]>>(request: &mut swimos_api::http::HttpResponse<B>) {
     let len = request.payload.as_ref().len();
     let header = Header {
         name: StandardHeaderName::ContentLength.into(),

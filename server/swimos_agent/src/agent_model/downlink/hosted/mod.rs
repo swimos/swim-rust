@@ -23,7 +23,7 @@ use std::sync::{
 
 pub use event::{EventDownlinkHandle, HostedEventDownlinkFactory};
 pub use map::{HostedMapDownlinkFactory, MapDlState, MapDownlinkHandle};
-use swimos_utilities::io::byte_channel::ByteWriter;
+use swimos_utilities::byte_channel::ByteWriter;
 pub use value::{HostedValueDownlinkFactory, ValueDownlinkHandle};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -176,15 +176,15 @@ mod test_support {
     use bytes::BytesMut;
     use futures::future::BoxFuture;
     use swimos_api::{
-        agent::{AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig},
-        downlink::DownlinkKind,
+        agent::DownlinkKind,
+        agent::{
+            AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
+        },
         error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-        lane::WarpLaneKind,
-        store::StoreKind,
     };
     use swimos_utilities::{
-        io::byte_channel::{ByteReader, ByteWriter},
-        routing::route_uri::RouteUri,
+        byte_channel::{ByteReader, ByteWriter},
+        routing::RouteUri,
     };
 
     use crate::{

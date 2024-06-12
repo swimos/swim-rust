@@ -15,7 +15,7 @@
 use crate::recon_parser::{record::ParseIterator, Span};
 use smallvec::SmallVec;
 use std::iter::Peekable;
-use swimos_form::structural::read::event::ReadEvent;
+use swimos_form::read::ReadEvent;
 
 #[cfg(test)]
 mod tests;

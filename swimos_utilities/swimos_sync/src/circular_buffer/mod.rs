@@ -55,6 +55,7 @@ pub fn channel<T: Send>(capacity: NonZeroUsize) -> (Sender<T>, Receiver<T>) {
     (Sender(inner.clone()), Receiver(inner))
 }
 
+/// Create a circular buffer channel with a single entry.
 pub fn watch_channel<T: Send>() -> (Sender<T>, Receiver<T>) {
     channel(unsafe { NonZeroUsize::new_unchecked(1) })
 }
@@ -192,6 +193,7 @@ where
     }
 }
 
+/// The future type returned by the [`Receiver::recv`] method.
 #[derive(Debug)]
 pub struct Recv<'a, T>(&'a mut Receiver<T>);
 

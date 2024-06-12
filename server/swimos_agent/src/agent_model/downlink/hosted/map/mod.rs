@@ -31,16 +31,14 @@ use swimos_agent_protocol::{
     DownlinkNotification, MapMessage, MapOperation,
 };
 use swimos_api::{
-    downlink::DownlinkKind,
+    address::Address,
+    agent::DownlinkKind,
     error::{AgentRuntimeError, FrameIoError},
 };
-use swimos_form::{
-    structural::{read::recognizer::RecognizerReadable, write::StructuralWritable},
-    Form,
-};
-use swimos_model::{address::Address, Text};
+use swimos_form::{read::RecognizerReadable, write::StructuralWritable, Form};
+use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
     trigger,
 };
 use tokio::sync::mpsc;

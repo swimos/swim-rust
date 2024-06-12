@@ -29,10 +29,10 @@ use swimos_agent::lanes::{
 };
 use swimos_agent::reexport::bytes::Bytes;
 use swimos_agent::stores::{MapStore, ValueStore};
-use swimos_api::agent::HttpLaneRequest;
-use swimos_api::lane::WarpLaneKind;
-use swimos_api::store::StoreKind;
-use swimos_model::http::{HttpRequest, Uri};
+use swimos_api::{
+    agent::{HttpLaneRequest, StoreKind, WarpLaneKind},
+    http::{HttpRequest, Uri},
+};
 
 const SYNC_ID: Uuid = Uuid::from_u128(85883);
 
@@ -700,8 +700,7 @@ fn two_general_http_lanes() {
 }
 
 mod isolated {
-    use swimos_api::lane::WarpLaneKind;
-    use swimos_api::store::StoreKind;
+    use swimos_api::agent::{StoreKind, WarpLaneKind};
 
     use crate::check_agent;
 

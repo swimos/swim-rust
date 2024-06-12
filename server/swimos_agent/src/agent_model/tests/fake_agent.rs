@@ -22,9 +22,10 @@ use swimos_agent_protocol::{
     encoding::lane::{MapLaneResponseEncoder, ValueLaneResponseEncoder},
     LaneResponse, MapLaneResponse, MapMessage, MapOperation,
 };
-use swimos_api::agent::HttpLaneRequest;
-use swimos_api::lane::WarpLaneKind;
-use swimos_model::http::{HttpRequest, HttpResponse, StatusCode, SupportedMethod, Version};
+use swimos_api::{
+    agent::{HttpLaneRequest, WarpLaneKind},
+    http::{HttpRequest, HttpResponse, StatusCode, SupportedMethod, Version},
+};
 use tokio::sync::mpsc;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;

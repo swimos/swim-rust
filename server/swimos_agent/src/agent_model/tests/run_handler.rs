@@ -21,7 +21,7 @@ use bytes::BytesMut;
 use parking_lot::Mutex;
 use swimos_api::agent::AgentConfig;
 use swimos_model::Text;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use crate::{
     agent_lifecycle::item_event::ItemEvent,

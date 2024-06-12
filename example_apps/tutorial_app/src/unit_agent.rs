@@ -22,7 +22,7 @@ use swimos::{
         lanes::{CommandLane, MapLane, ValueLane},
         lifecycle, projections, AgentLaneModel,
     },
-    model::time::Timestamp,
+    model::Timestamp,
 };
 use tutorial_app_model::{Counter, HistoryItem, Message};
 

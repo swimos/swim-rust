@@ -20,15 +20,16 @@ use nom::combinator::{map, map_res, opt, peek, recognize};
 use nom::multi::{many0_count, many1_count};
 use nom::sequence::{delimited, pair, preceded, tuple};
 use nom::IResult;
+use num_bigint::{ParseBigIntError, Sign};
 use num_traits::Num;
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
 use std::ops::Neg;
-use swimos_form::structural::read::event::NumericValue;
-use swimos_model::bigint::{BigInt, BigUint, ParseBigIntError, Sign};
+use swimos_form::read::NumericValue;
 use swimos_model::identifier::{is_identifier_char, is_identifier_start};
 use swimos_model::Text;
+use swimos_model::{BigInt, BigUint};
 
 fn unwrap_span(span: Span<'_>) -> &str {
     &span

@@ -13,7 +13,8 @@
 // limitations under the License.
 
 use futures::FutureExt;
-use swimos_model::{address::Address, Text};
+use swimos_api::address::Address;
+use swimos_model::Text;
 use tokio::sync::mpsc;
 
 use crate::{

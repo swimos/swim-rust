@@ -15,7 +15,7 @@
 use swimos_form::Form;
 use swimos_model::Text;
 
-use swimos_api::lane::LaneKind;
+use swimos_api::agent::LaneKind;
 
 /// Lane information metadata that can be retrieved when syncing to
 /// `/swimos:meta:node/percent-encoded-nodeuri/lanes`.

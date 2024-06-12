@@ -24,14 +24,13 @@ use swimos_agent_protocol::{
     LaneRequest, LaneResponse, MapMessage, MapOperation, StoreInitMessage, StoreInitialized,
 };
 use swimos_api::{
-    agent::{LaneConfig, StoreConfig, UplinkKind},
+    agent::{LaneConfig, StoreConfig, StoreKind, UplinkKind, WarpLaneKind},
     error::StoreError,
-    lane::WarpLaneKind,
-    store::{NodePersistence, StoreKind},
+    persistence::NodePersistence,
 };
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{self, ByteReader, ByteWriter},
+    byte_channel::{self, ByteReader, ByteWriter},
     trigger,
 };
 use tokio::sync::{mpsc, oneshot};

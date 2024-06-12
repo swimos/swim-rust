@@ -20,6 +20,7 @@ use std::{
 use futures::Future;
 use pin_project::pin_project;
 
+/// Runs any one of three possible types of future, all of which produce the same output type.
 #[derive(Debug, Clone, Copy)]
 #[pin_project(project = Union3Proj)]
 pub enum UnionFuture3<F1, F2, F3> {
@@ -28,6 +29,7 @@ pub enum UnionFuture3<F1, F2, F3> {
     Third(#[pin] F3),
 }
 
+/// Runs any one of four possible types of future, all of which produce the same output type.
 #[derive(Debug, Clone, Copy)]
 #[pin_project(project = Union4Proj)]
 pub enum UnionFuture4<F1, F2, F3, F4> {

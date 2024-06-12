@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_form::{structural::Tag, Form};
-use swimos_model::time::Timestamp;
-use swimos_model::{Attr, Item, Text, Value};
+use swimos_form::{Form, Tag};
+use swimos_model::{Attr, Item, Text, Timestamp, Value};
 
 #[test]
 fn test_transmute() {

@@ -12,101 +12,70 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{borrow::Cow, fmt::Formatter};
+//! # SwimOS Model
+//!
+//! This model is a generic representation of the SwimOS serialization model. Any valid
+//! serialized record can be deserialized as an instance of the [`Value`] type in this
+//! crate.
+//!
+//! ## The Value type
+//!
+//! A SwimOS [`Value`] can be of any one of the following kinds.
+//!
+//! - An absent value (represented as [`Value::Extant`]).
+//! - A primitive value from the following set:
+//!  1. Booleans, represented as [`Value::BooleanValue`]
+//!  2. Integers. When deserializing, an appropriate Rust integer type will be chosen, depending on this size of the integer.
+//!  3. 64bit floating point numbers, represented as [`Value::Float64Value`].
+//!  4. UTF-8 Strings, represented as [`Value::Text`].
+//!  5. Arrays of bytes (represented as [`Value::Data`]).
+//! - A record consisting of an list of attributes ([`Attr`]) and  and list of items ([`Item`]). This is
+//! represented as [`Value::Record`].
+//!
+//! An attribute is a labelled (with a UTF-8 String) [`Value`].
+//!
+//! An item is one of:
+//!
+//! - A value item which is an instance of [`Value`]. This is represented as [`Item::ValueItem`].
+//! - A slot item which is a pair of two [`Value`]s, the first of which is interpreted as a key. This
+//! is represented as [`Item::Slot`].
+//!
+//! Note that the attributes and items of a record are always ordered, although the order may not always be
+//! significant, for example if a record, consisting only of slots, is used to represent a map.
+//!
+//! The [`record`] and [`macro@value`] macros can be used to simplify the creation of [`Value`] instances.
+//!
+//! ## Using the model
+//!
+//! The use the model for serialization or deserialization, a format supporting the SwimOS model is required.
+//! The default format used by SwimsOS is the Recon markup language, an example of which can be found in the
+//! `swimos_recon` crate.
+//!
 
-pub mod address;
-mod attr;
-pub use num_bigint as bigint;
-mod blob;
-mod bytes_str;
-pub mod http;
+/// Functions to define an identifier for the SwimOS model.
 pub mod identifier;
-mod item;
+/// Functions to encode string literals.
+pub mod literal;
+/// Convenience macros to create [`Value`] instances.
+#[doc(hidden)]
 #[macro_use]
-pub mod macros;
+mod macros;
+
+mod attr;
+mod blob;
+mod item;
 mod num;
+mod text;
+mod time;
+mod value;
+
 #[cfg(test)]
 mod tests;
-mod text;
-pub mod time;
-mod value;
 
 pub use attr::Attr;
 pub use blob::Blob;
-pub use bytes_str::{BytesStr, TryFromUtf8Bytes};
 pub use item::Item;
+pub use num_bigint::{BigInt, BigUint};
 pub use text::Text;
+pub use time::Timestamp;
 pub use value::{ReconstructFromValue, ToValue, Value, ValueKind};
-
-pub fn write_string_literal(literal: &str, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-    if identifier::is_identifier(literal) {
-        f.write_str(literal)
-    } else if needs_escape(literal) {
-        write!(f, "\"{}\"", escape_text(literal))
-    } else {
-        write!(f, "\"{}\"", literal)
-    }
-}
-
-pub fn escape_if_needed(text: &str) -> Cow<str> {
-    if needs_escape(text) {
-        Cow::Owned(escape_text(text))
-    } else {
-        Cow::Borrowed(text)
-    }
-}
-
-static DIGITS: [char; 16] = [
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f',
-];
-
-fn escape_text(text: &str) -> String {
-    let mut output = Vec::with_capacity(text.len());
-    for c in text.chars() {
-        match c {
-            '"' => {
-                output.push('\\');
-                output.push('\"');
-            }
-            '\\' => {
-                output.push('\\');
-                output.push('\\');
-            }
-            '\r' => {
-                output.push('\\');
-                output.push('r');
-            }
-            '\n' => {
-                output.push('\\');
-                output.push('n');
-            }
-            '\t' => {
-                output.push('\\');
-                output.push('t');
-            }
-            '\u{08}' => {
-                output.push('\\');
-                output.push('b');
-            }
-            '\u{0c}' => {
-                output.push('\\');
-                output.push('f');
-            }
-            cp if cp < '\u{20}' => {
-                let n = cp as usize;
-                output.push('\\');
-                output.push('u');
-                output.push(DIGITS[(n >> 12) & 0xf]);
-                output.push(DIGITS[(n >> 8) & 0xf]);
-                output.push(DIGITS[(n >> 4) & 0xf]);
-                output.push(DIGITS[n & 0xf]);
-            }
-            _ => output.push(c),
-        }
-    }
-    output.iter().collect()
-}
-
-fn needs_escape(text: &str) -> bool {
-    text.chars().any(|c| c < '\u{20}' || c == '"' || c == '\\')
-}

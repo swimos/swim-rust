@@ -12,37 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::collections::HashSet;
-use std::fmt::{Debug, Formatter};
+use std::fmt::Debug;
 use std::net::SocketAddr;
 
 use futures::future::BoxFuture;
 use futures::Stream;
+use swimos_messages::remote_protocol::FindNode;
 use swimos_utilities::errors::Recoverable;
-use tokio::net::TcpStream;
 
 use ratchet::{ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream};
-pub use swimos_ratchet::*;
-pub use switcher::StreamSwitcher;
 use thiserror::Error;
 use tokio::sync::mpsc;
 
 use crate::net::{Listener, ListenerError};
-use crate::FindNode;
-use lazy_static::lazy_static;
-
-#[cfg(feature = "tls")]
-use {
-    crate::error::tls::TlsError, crate::ws::tls::build_x509_certificate, std::path::Path,
-    tokio_native_tls::native_tls::Certificate, tokio_native_tls::TlsStream,
-};
-
-mod swimos_ratchet;
-
-mod switcher;
-
-#[cfg(feature = "tls")]
-pub mod tls;
+use crate::websocket::WARP;
 
 #[derive(Debug, Error)]
 #[error("{0}")]
@@ -53,55 +36,7 @@ impl Recoverable for RatchetError {
     }
 }
 
-#[cfg(feature = "tls")]
-pub type WebSocketDef<E> = WebSocket<StreamSwitcher<TcpStream, TlsStream<TcpStream>>, E>;
-#[cfg(not(feature = "tls"))]
-pub type WebSocketDef<E> = WebSocket<TcpStream, E>;
-
-#[cfg(feature = "tls")]
-pub type StreamDef = StreamSwitcher<TcpStream, TlsStream<TcpStream>>;
-#[cfg(not(feature = "tls"))]
-pub type StreamDef = TcpStream;
-
 pub type WsOpenFuture<'l, Sock, Ext, Error> = BoxFuture<'l, Result<WebSocket<Sock, Ext>, Error>>;
-
-#[derive(Clone)]
-pub enum Protocol {
-    PlainText,
-    #[cfg(feature = "tls")]
-    Tls(Certificate),
-}
-
-impl PartialEq for Protocol {
-    fn eq(&self, other: &Self) -> bool {
-        #[allow(clippy::match_like_matches_macro)]
-        match (self, other) {
-            (Protocol::PlainText, Protocol::PlainText) => true,
-            #[cfg(feature = "tls")]
-            (Protocol::Tls(_), Protocol::Tls(_)) => true,
-            #[cfg(feature = "tls")]
-            _ => false,
-        }
-    }
-}
-
-impl Protocol {
-    #[cfg(feature = "tls")]
-    pub fn tls(path: impl AsRef<Path>) -> Result<Protocol, TlsError> {
-        let cert = build_x509_certificate(path)?;
-        Ok(Protocol::Tls(cert))
-    }
-}
-
-impl Debug for Protocol {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::PlainText => write!(f, "PlainText"),
-            #[cfg(feature = "tls")]
-            Self::Tls(_) => write!(f, "Tls"),
-        }
-    }
-}
 
 /// Trait for adapters that will negotiate a client websocket connection over an duplex connection.
 pub trait WebsocketClient {
@@ -162,14 +97,6 @@ impl From<WebSocketConfig> for RatchetClient {
     }
 }
 
-lazy_static! {
-    pub static ref PROTOCOLS: HashSet<&'static str> = {
-        let mut s = HashSet::new();
-        s.insert("warp0");
-        s
-    };
-}
-
 impl WebsocketClient for RatchetClient {
     fn open_connection<'a, Sock, Provider>(
         &self,
@@ -184,7 +111,7 @@ impl WebsocketClient for RatchetClient {
     {
         let config = self.0;
         Box::pin(async move {
-            let subprotocols = ProtocolRegistry::new(PROTOCOLS.iter().copied())?;
+            let subprotocols = ProtocolRegistry::new([WARP])?;
             let socket = ratchet::subscribe_with(config, socket, addr, provider, subprotocols)
                 .await?
                 .into_websocket();

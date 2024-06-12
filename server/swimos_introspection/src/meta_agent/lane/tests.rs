@@ -24,13 +24,10 @@ use crate::{
 };
 use futures::StreamExt;
 use swimos_agent_protocol::{encoding::lane::ValueLaneResponseDecoder, LaneResponse};
-use swimos_api::{
-    agent::LaneConfig,
-    lane::{LaneKind, WarpLaneKind},
-};
+use swimos_api::agent::{LaneConfig, LaneKind, WarpLaneKind};
 use swimos_meta::LanePulse;
 use swimos_runtime::agent::reporting::UplinkReporter;
-use swimos_utilities::io::byte_channel::ByteReader;
+use swimos_utilities::byte_channel::ByteReader;
 use tokio::sync::mpsc;
 use tokio_util::codec::FramedRead;
 

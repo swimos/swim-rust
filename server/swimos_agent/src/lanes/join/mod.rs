@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_model::address::Address;
+use swimos_api::address::Address;
 
 use crate::{agent_lifecycle::utility::HandlerContext, event_handler::HandlerAction};
 

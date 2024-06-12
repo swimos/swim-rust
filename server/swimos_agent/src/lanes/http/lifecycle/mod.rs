@@ -15,8 +15,10 @@
 use bytes::{Bytes, BytesMut};
 use mime::Mime;
 use std::marker::PhantomData;
-use swimos_api::agent::{HttpLaneResponse, HttpResponseSender};
-use swimos_model::http::{Header, HttpResponse, StatusCode, Uri, Version};
+use swimos_api::{
+    agent::{HttpResponseSender, RawHttpLaneResponse},
+    http::{Header, HttpResponse, StatusCode, Uri, Version},
+};
 use swimos_utilities::handlers::{FnHandler, NoHandler};
 use tracing::debug;
 
@@ -550,8 +552,8 @@ where
     }
 }
 
-fn not_supported() -> HttpLaneResponse {
-    HttpLaneResponse {
+fn not_supported() -> RawHttpLaneResponse {
+    RawHttpLaneResponse {
         status_code: StatusCode::METHOD_NOT_ALLOWED,
         version: Version::HTTP_1_1,
         headers: vec![],
@@ -563,7 +565,7 @@ fn response_to_bytes<T, Codec>(
     codec: &Codec,
     content_type: Option<&Mime>,
     response: HttpResponse<T>,
-) -> HttpLaneResponse
+) -> RawHttpLaneResponse
 where
     Codec: HttpLaneCodec<T>,
 {
@@ -594,8 +596,8 @@ where
     response
 }
 
-fn server_error() -> HttpLaneResponse {
-    HttpLaneResponse {
+fn server_error() -> RawHttpLaneResponse {
+    RawHttpLaneResponse {
         status_code: StatusCode::INTERNAL_SERVER_ERROR,
         version: Version::HTTP_1_1,
         headers: vec![],
@@ -603,8 +605,8 @@ fn server_error() -> HttpLaneResponse {
     }
 }
 
-fn bad_content_type() -> HttpLaneResponse {
-    HttpLaneResponse {
+fn bad_content_type() -> RawHttpLaneResponse {
+    RawHttpLaneResponse {
         status_code: StatusCode::UNSUPPORTED_MEDIA_TYPE,
         version: Version::HTTP_1_1,
         headers: vec![],
@@ -612,7 +614,7 @@ fn bad_content_type() -> HttpLaneResponse {
     }
 }
 
-fn empty_response_to_bytes(response: HttpResponse<()>) -> HttpLaneResponse {
+fn empty_response_to_bytes(response: HttpResponse<()>) -> RawHttpLaneResponse {
     response.map(|_| Bytes::new())
 }
 
@@ -620,7 +622,7 @@ fn discard_to_bytes<T, Codec>(
     codec: &Codec,
     content_type: Option<&Mime>,
     response: HttpResponse<T>,
-) -> HttpLaneResponse
+) -> RawHttpLaneResponse
 where
     Codec: HttpLaneCodec<T>,
 {

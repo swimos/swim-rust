@@ -34,6 +34,11 @@ pub struct Negotiated<'a, Ext> {
 
 /// Attempt to negotiate a websocket upgrade on a hyper request. If [`Ok(None)`] is returned,
 /// no upgrade was requested. If an error is returned an upgrade was requested but it failed.
+///
+/// # Arguments
+/// * `request` - The HTTP request.
+/// * `protocols` - The supported protocols for the negotiation.
+/// * `extension_provider` - The extension provider (for example compression support).
 pub fn negotiate_upgrade<'a, T, E>(
     request: &Request<T>,
     protocols: &'a HashSet<&str>,
@@ -185,10 +190,13 @@ fn trim(bytes: &[u8]) -> &[u8] {
 /// Reasons that a websocket upgrade request could fail.
 #[derive(Debug, Error, Clone, Copy)]
 pub enum UpgradeError<ExtErr: std::error::Error> {
+    /// An invalid websocket version was specified.
     #[error("Invalid websocket version specified.")]
     InvalidWebsocketVersion,
+    /// No websocket key was provided.
     #[error("No websocket key provided.")]
     NoKey,
+    /// The headers provided for the websocket extension were not valid.
     #[error("Invalid extension headers: {0}")]
     ExtensionError(ExtErr),
 }

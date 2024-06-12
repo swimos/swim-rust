@@ -30,16 +30,15 @@ use hyper::{
     body::to_bytes, client::conn::http1, header::HeaderValue, Body, Request, Response, Uri,
 };
 use ratchet::{CloseReason, Message, NoExt, NoExtProvider, WebSocket, WebSocketConfig};
-use swimos_api::agent::{HttpLaneRequest, HttpLaneResponse};
-use swimos_model::{
+use swimos_api::{
+    agent::{HttpLaneRequest, RawHttpLaneResponse},
     http::{StatusCode, Version},
-    Text,
 };
-use swimos_net::Scheme;
-use swimos_remote::{
-    net::{Listener, ListenerResult},
+use swimos_messages::remote_protocol::{
     AgentResolutionError, FindNode, NoSuchAgent, NodeConnectionRequest,
 };
+use swimos_model::Text;
+use swimos_remote::{Listener, ListenerResult, Scheme};
 use swimos_utilities::non_zero_usize;
 use tokio::{io::DuplexStream, sync::mpsc};
 use tokio_stream::wrappers::ReceiverStream;
@@ -317,7 +316,7 @@ async fn fake_plane(responses: HashMap<Text, FindResponse>, mut find_rx: mpsc::R
                 let (_, response_tx) = request.into_parts();
                 match provision {
                     Provision::Immediate => {
-                        let response = HttpLaneResponse {
+                        let response = RawHttpLaneResponse {
                             status_code: StatusCode::OK,
                             version: Version::HTTP_1_1,
                             headers: vec![],
@@ -330,7 +329,7 @@ async fn fake_plane(responses: HashMap<Text, FindResponse>, mut find_rx: mpsc::R
                     }
                     Provision::Delay => {
                         tokio::time::sleep(2 * REQ_TIMEOUT).await;
-                        let response = HttpLaneResponse {
+                        let response = RawHttpLaneResponse {
                             status_code: StatusCode::OK,
                             version: Version::HTTP_1_1,
                             headers: vec![],

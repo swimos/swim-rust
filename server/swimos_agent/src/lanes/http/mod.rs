@@ -15,8 +15,10 @@
 use std::{borrow::Cow, cell::RefCell, marker::PhantomData};
 
 use bytes::Bytes;
-use swimos_api::agent::{HttpLaneRequest, HttpLaneResponse, HttpResponseSender};
-use swimos_model::http::{Header, HttpRequest, StatusCode, SupportedMethod, Version};
+use swimos_api::{
+    agent::{HttpLaneRequest, HttpResponseSender, RawHttpLaneResponse},
+    http::{Header, HttpRequest, StatusCode, SupportedMethod, Version},
+};
 use tracing::debug;
 
 use crate::{
@@ -220,9 +222,9 @@ where
     }
 }
 
-fn bad_request(status_code: StatusCode, message: Option<String>) -> HttpLaneResponse {
+fn bad_request(status_code: StatusCode, message: Option<String>) -> RawHttpLaneResponse {
     let payload = message.map(Bytes::from).unwrap_or_default();
-    HttpLaneResponse {
+    RawHttpLaneResponse {
         status_code,
         version: Version::HTTP_1_1,
         headers: vec![],
@@ -234,7 +236,7 @@ fn try_decode_payload<T, Codec>(
     headers: &[Header],
     codec: &Codec,
     payload: &[u8],
-) -> Result<T, HttpLaneResponse>
+) -> Result<T, RawHttpLaneResponse>
 where
     Codec: HttpLaneCodec<T>,
 {

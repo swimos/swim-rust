@@ -13,9 +13,9 @@
 // limitations under the License.
 
 use futures::future::BoxFuture;
-use swimos_api::downlink::DownlinkKind;
-use swimos_model::{address::Address, Text};
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_api::{address::Address, agent::DownlinkKind};
+use swimos_model::Text;
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use thiserror::Error;
 
 use crate::event_handler::BoxEventHandler;

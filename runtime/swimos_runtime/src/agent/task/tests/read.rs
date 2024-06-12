@@ -23,7 +23,7 @@ use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::agent::UplinkKind;
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteReader},
+    byte_channel::{byte_channel, ByteReader},
     trigger,
 };
 use tokio::sync::mpsc;

@@ -11,9 +11,8 @@ either = { workspace = true }
 num-bigint = { workspace = true }
 base64 = { workspace = true }
 http = { workspace = true }
-swimos_utilities = { path = "../../swimos_utilities", features = ["text"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["text", "encoding"] }
 num-traits = { workspace = true }
 thiserror = { workspace = true }
-lazy_static = { workspace = true }
 
 [dev-dependencies]

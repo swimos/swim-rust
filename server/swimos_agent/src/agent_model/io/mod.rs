@@ -24,7 +24,7 @@ use swimos_agent_protocol::{
     LaneRequest, MapMessage,
 };
 use swimos_api::{agent::HttpLaneRequest, error::FrameIoError};
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use tokio::sync::mpsc;
 use tokio_util::codec::{BytesCodec, FramedRead, FramedWrite};
 

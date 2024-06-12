@@ -22,15 +22,18 @@ use swimos_agent_protocol::{
     encoding::downlink::MapNotificationDecoder, encoding::map::MapOperationEncoder,
     DownlinkNotification, MapMessage, MapOperation,
 };
-use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
-use swimos_form::{structural::read::recognizer::RecognizerReadable, Form};
+use swimos_api::{
+    address::RelativeAddress,
+    error::{DownlinkTaskError, FrameIoError, InvalidFrame},
+};
+use swimos_form::{read::RecognizerReadable, Form};
 use swimos_messages::protocol::{
-    AgentMessageDecoder, MessageDecodeError, Operation, Path, RequestMessage, ResponseMessage,
+    MessageDecodeError, Operation, RequestMessage, RequestMessageDecoder, ResponseMessage,
     ResponseMessageEncoder,
 };
-use swimos_model::{address::RelativeAddress, Text};
+use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{self, ByteReader, ByteWriter},
+    byte_channel::{self, ByteReader, ByteWriter},
     trigger::{self, promise},
 };
 use tokio::{
@@ -192,7 +195,7 @@ struct SyncedTestContext {
 struct TestSender(FramedWrite<ByteWriter, ResponseMessageEncoder>);
 
 type MsgDecoder<K, V> =
-    AgentMessageDecoder<MapOperation<K, V>, <MapOperation<K, V> as RecognizerReadable>::Rec>;
+    RequestMessageDecoder<MapOperation<K, V>, <MapOperation<K, V> as RecognizerReadable>::Rec>;
 struct TestReceiver<K: RecognizerReadable, V: RecognizerReadable>(
     FramedRead<ByteReader, MsgDecoder<K, V>>,
 );
@@ -205,7 +208,7 @@ impl TestSender {
     async fn link(&mut self) {
         self.send(ResponseMessage::linked(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
         ))
         .await;
     }
@@ -213,7 +216,7 @@ impl TestSender {
     async fn sync(&mut self) {
         self.send(ResponseMessage::synced(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
         ))
         .await;
     }
@@ -225,7 +228,7 @@ impl TestSender {
     async fn update(&mut self, key: i32, value: Record) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Update { key, value },
         );
         self.send(message).await;
@@ -234,7 +237,7 @@ impl TestSender {
     async fn remove(&mut self, key: i32) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Remove { key },
         );
         self.send(message).await;
@@ -243,7 +246,7 @@ impl TestSender {
     async fn clear(&mut self) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Clear,
         );
         self.send(message).await;
@@ -252,7 +255,7 @@ impl TestSender {
     async fn take(&mut self, n: u64) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Take(n),
         );
         self.send(message).await;
@@ -261,15 +264,18 @@ impl TestSender {
     async fn drop(&mut self, n: u64) {
         let message = ResponseMessage::event(
             REMOTE_ADDR,
-            Path::new(REMOTE_NODE, REMOTE_LANE),
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
             MapMessage::Drop(n),
         );
         self.send(message).await;
     }
 
     async fn update_text(&mut self, message: Text) {
-        let message: ResponseMessage<&str, Text, &[u8]> =
-            ResponseMessage::event(REMOTE_ADDR, Path::new(REMOTE_NODE, REMOTE_LANE), message);
+        let message: ResponseMessage<&str, Text, &[u8]> = ResponseMessage::event(
+            REMOTE_ADDR,
+            RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
+            message,
+        );
         assert!(self.0.send(message).await.is_ok());
     }
 

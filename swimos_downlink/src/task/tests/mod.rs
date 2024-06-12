@@ -17,6 +17,7 @@ use std::num::NonZeroUsize;
 
 use futures::future::join;
 use futures::{SinkExt, StreamExt};
+use swimos_client_api::{Downlink, DownlinkConfig};
 use tokio::time::{timeout, Duration};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
@@ -24,16 +25,12 @@ use swimos_agent_protocol::encoding::downlink::{
     DownlinkNotificationEncoder, DownlinkOperationDecoder,
 };
 use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
-use swimos_api::{
-    downlink::{Downlink, DownlinkConfig},
-    error::DownlinkTaskError,
-};
-use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
-use swimos_model::address::Address;
+use swimos_api::{address::Address, error::DownlinkTaskError};
+use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_recon::parser::parse_recognize;
 use swimos_recon::print_recon_compact;
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
 };
 

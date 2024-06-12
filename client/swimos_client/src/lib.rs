@@ -17,7 +17,7 @@ use ratchet::NoExtProvider;
 use ratchet::WebSocketStream;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
-use swimos_remote::ws::RatchetClient;
+use swimos_remote::websocket::RatchetClient;
 
 use futures_util::future::BoxFuture;
 #[cfg(feature = "deflate")]
@@ -27,7 +27,7 @@ use runtime::{
 };
 pub use runtime::{CommandError, Commander, RemotePath};
 use std::sync::Arc;
-pub use swimos_api::downlink::DownlinkConfig;
+pub use swimos_client_api::DownlinkConfig;
 pub use swimos_downlink::lifecycle::{
     BasicEventDownlinkLifecycle, BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle,
     EventDownlinkLifecycle, MapDownlinkLifecycle, ValueDownlinkLifecycle,
@@ -37,12 +37,12 @@ use swimos_downlink::{
     MapValue, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkSet,
 };
 use swimos_form::Form;
-use swimos_remote::net::dns::Resolver;
-use swimos_remote::net::plain::TokioPlainTextNetworking;
-use swimos_remote::net::ClientConnections;
-use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
+use swimos_remote::dns::Resolver;
+use swimos_remote::plain::TokioPlainTextNetworking;
 #[cfg(feature = "tls")]
-use swimos_tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
+use swimos_remote::tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
+use swimos_remote::ClientConnections;
+use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use swimos_utilities::trigger;
 use swimos_utilities::trigger::promise;
 use tokio::sync::mpsc;
@@ -379,7 +379,7 @@ impl From<NotYetSyncedError> for ValueDownlinkOperationError {
 #[derive(Debug, Clone)]
 pub struct ValueDownlinkView<T> {
     tx: mpsc::Sender<ValueDownlinkSet<T>>,
-    stop_rx: promise::Receiver<Result<(), DownlinkRuntimeError>>,
+    stop_rx: promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>>,
 }
 
 impl<T> ValueDownlinkView<T> {
@@ -390,7 +390,7 @@ impl<T> ValueDownlinkView<T> {
     }
 
     /// Returns a receiver that completes with the result of downlink's internal task.
-    pub fn stop_notification(&self) -> promise::Receiver<Result<(), DownlinkRuntimeError>> {
+    pub fn stop_notification(&self) -> promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>> {
         self.stop_rx.clone()
     }
 }
@@ -482,7 +482,7 @@ impl<'h, L> MapDownlinkBuilder<'h, L> {
 #[derive(Debug, Clone)]
 pub struct MapDownlinkView<K, V> {
     inner: MapDownlinkHandle<K, V>,
-    stop_rx: promise::Receiver<Result<(), DownlinkRuntimeError>>,
+    stop_rx: promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>>,
 }
 
 impl<K, V> MapDownlinkView<K, V> {
@@ -512,7 +512,7 @@ impl<K, V> MapDownlinkView<K, V> {
     }
 
     /// Returns a receiver that completes with the result of downlink's internal task.
-    pub fn stop_notification(&self) -> promise::Receiver<Result<(), DownlinkRuntimeError>> {
+    pub fn stop_notification(&self) -> promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>> {
         self.stop_rx.clone()
     }
 }
@@ -598,12 +598,12 @@ impl<'h, L> EventDownlinkBuilder<'h, L> {
 #[derive(Debug, Clone)]
 pub struct EventDownlinkView<T> {
     _type: PhantomData<T>,
-    stop_rx: promise::Receiver<Result<(), DownlinkRuntimeError>>,
+    stop_rx: promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>>,
 }
 
 impl<T> EventDownlinkView<T> {
     /// Returns a receiver that completes with the result of downlink's internal task.
-    pub fn stop_notification(&self) -> promise::Receiver<Result<(), DownlinkRuntimeError>> {
+    pub fn stop_notification(&self) -> promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>> {
         self.stop_rx.clone()
     }
 }

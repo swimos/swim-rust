@@ -18,16 +18,15 @@ futures-util = { workspace = true }
 http = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt", "macros"] }
 tokio-util = { workspace = true, features = ["codec"] }
-swimos_utilities = { path = "../../swimos_utilities", features = ["sync", "errors", "future", "io", "encoding"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["circular_buffer", "errors", "future", "io", "encoding"] }
 swimos_api = { path = "../../api/swimos_api" }
 swimos_agent_protocol = { path = "../../api/swimos_agent_protocol" }
 swimos_meta = { path = "../../api/swimos_meta" }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_form = { path = "../../api/swimos_form" }
-swimos_tracing = { path = "../../swimos_utilities/swimos_tracing" }
 swimos_recon = { path = "../../api/formats/swimos_recon" }
 swimos_messages = { path = "../swimos_messages" }
-swimos_net = { path = "../swimos_net" }
+swimos_remote = { path = "../swimos_remote" }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 tokio-stream = { workspace = true, features = ["sync"] }

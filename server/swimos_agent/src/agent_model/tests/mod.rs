@@ -25,23 +25,19 @@ use swimos_agent_protocol::{
     AdHocCommand, DownlinkNotification, MapMessage, MapOperation,
 };
 use swimos_api::{
-    agent::{AgentConfig, AgentContext, AgentTask, HttpLaneRequest},
-    downlink::DownlinkKind,
-    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    lane::WarpLaneKind,
-};
-use swimos_model::{
     address::Address,
+    agent::{AgentConfig, AgentContext, AgentTask, DownlinkKind, HttpLaneRequest, WarpLaneKind},
+    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
     http::{HttpRequest, Method, StatusCode, Version},
-    BytesStr, Text,
 };
+use swimos_model::Text;
 use swimos_utilities::{
-    encoding::WithLengthBytesCodec,
-    future::retryable::RetryStrategy,
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    byte_channel::{byte_channel, ByteReader, ByteWriter},
+    circular_buffer,
+    encoding::{BytesStr, WithLengthBytesCodec},
+    future::RetryStrategy,
     non_zero_usize,
-    routing::route_uri::RouteUri,
-    sync::circular_buffer,
+    routing::RouteUri,
     trigger::trigger,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -1261,7 +1257,7 @@ impl AgentContext for DlTestContext {
     fn add_store(
         &self,
         _name: &str,
-        _kind: swimos_api::store::StoreKind,
+        _kind: swimos_api::agent::StoreKind,
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
         panic!("Unexpected call.");
     }

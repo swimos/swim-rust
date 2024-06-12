@@ -18,11 +18,11 @@ use bytes::Bytes;
 use futures::future::join;
 use futures::Future;
 use http::Uri;
-use swimos_api::agent::{HttpLaneRequest, HttpResponseReceiver};
-use swimos_model::{
+use swimos_api::{
+    agent::{HttpLaneRequest, HttpResponseReceiver},
     http::{HttpRequest, HttpResponse, Method, StatusCode, Version},
-    Text,
 };
+use swimos_model::Text;
 use swimos_utilities::{non_zero_usize, trigger};
 use tokio::sync::{mpsc, oneshot};
 

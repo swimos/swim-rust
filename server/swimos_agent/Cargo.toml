@@ -10,11 +10,10 @@ json = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
 futures = { workspace = true }
-swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "sync", "encoding"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "circular_buffer", "encoding"] }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_form = { path = "../../api/swimos_form" }
 swimos_recon = { path = "../../api/formats/swimos_recon" }
-swimos_downlink = { path = "../../swimos_downlink" }
 bytes = { workspace = true }
 tokio = { workspace = true, features = ["macros", "time"] }
 tokio-util = { workspace = true, features = ["codec"] }

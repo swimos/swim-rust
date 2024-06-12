@@ -14,7 +14,7 @@
 
 use std::fmt::Debug;
 use std::sync::Arc;
-use swimos_model::bigint::{BigInt, BigUint};
+use swimos_model::{BigInt, BigUint};
 
 use swimos_form::Form;
 use swimos_model::{Attr, Blob, Item, Value};

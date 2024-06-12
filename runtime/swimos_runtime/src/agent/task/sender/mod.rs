@@ -21,7 +21,7 @@ use swimos_agent_protocol::{
 };
 use swimos_api::agent::UplinkKind;
 use swimos_recon::parser::MessageExtractError;
-use swimos_utilities::io::byte_channel::ByteWriter;
+use swimos_utilities::byte_channel::ByteWriter;
 use thiserror::Error;
 use tokio_util::codec::{Encoder, FramedWrite};
 use uuid::Uuid;

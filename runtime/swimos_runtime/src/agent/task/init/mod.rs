@@ -21,14 +21,13 @@ use futures::{
 };
 use swimos_agent_protocol::encoding::store::StoreInitializedCodec;
 use swimos_api::{
-    agent::{LaneConfig, StoreConfig, UplinkKind},
+    agent::{LaneConfig, StoreConfig, StoreKind, UplinkKind, WarpLaneKind},
     error::{AgentRuntimeError, OpenStoreError, StoreError},
-    lane::WarpLaneKind,
-    store::{StoreDisabled, StoreKind},
+    persistence::StoreDisabled,
 };
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{self, ByteReader, ByteWriter},
+    byte_channel::{self, ByteReader, ByteWriter},
     trigger,
 };
 use tokio::sync::{mpsc, oneshot};

@@ -17,15 +17,15 @@ use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 use futures::{future::BoxFuture, FutureExt};
 use parking_lot::Mutex;
 use swimos_api::{
-    agent::{AgentContext, HttpLaneRequestChannel, LaneConfig},
-    downlink::DownlinkKind,
+    address::Address,
+    agent::{
+        AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
+    },
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    lane::WarpLaneKind,
-    store::StoreKind,
 };
-use swimos_model::{address::Address, Text};
+use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
 };
 

@@ -51,24 +51,22 @@ use swimos_agent::model::MapMessage;
 use swimos_agent::reexport::bytes::BytesMut;
 use swimos_agent::reexport::uuid::Uuid;
 use swimos_agent::stores::{MapStore, ValueStore};
-use swimos_api::agent::{AgentConfig, HttpLaneRequest, HttpResponseReceiver};
-use swimos_api::downlink::DownlinkKind;
+use swimos_api::agent::DownlinkKind;
 use swimos_api::error::{DownlinkRuntimeError, OpenStoreError};
-use swimos_api::lane::WarpLaneKind;
-use swimos_api::store::StoreKind;
-use swimos_model::http::{
-    Header, HttpRequest, HttpResponse, Method, StandardHeaderName, StatusCode, Version,
+use swimos_api::{
+    agent::{AgentConfig, HttpLaneRequest, HttpResponseReceiver, StoreKind, WarpLaneKind},
+    http::{Header, HttpRequest, HttpResponse, Method, StandardHeaderName, StatusCode, Version},
 };
 use swimos_model::Text;
 use swimos_recon::print_recon_compact;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use futures::future::BoxFuture;
 use swimos_api::{
     agent::{AgentContext, LaneConfig},
     error::AgentRuntimeError,
 };
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 
 use swimos_agent::event_handler::ActionContext;
 

@@ -20,7 +20,7 @@ use crate::{
     INITIALIZED, INIT_DONE, SYNC, SYNC_COMPLETE, TAG_LEN,
 };
 use bytes::{Buf, BufMut, BytesMut};
-use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
+use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
 use swimos_recon::{WithLenRecognizerDecoder, WithLenReconEncoder};
 use swimos_utilities::encoding::WithLengthBytesCodec;

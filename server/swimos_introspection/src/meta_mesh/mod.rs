@@ -15,7 +15,10 @@
 #[cfg(test)]
 mod tests;
 
-use crate::task::AgentMeta;
+use crate::{
+    forest::{UriForest, UriPart},
+    task::AgentMeta,
+};
 use futures::future::{BoxFuture, Either};
 use futures::stream::select;
 use futures::{FutureExt, SinkExt, StreamExt, TryFutureExt};
@@ -24,19 +27,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use swimos_agent_protocol::encoding::lane::{MapLaneResponseEncoder, RawValueLaneRequestDecoder};
 use swimos_agent_protocol::{LaneRequest, LaneResponse, MapOperation};
-use swimos_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
+use swimos_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult, WarpLaneKind};
 use swimos_api::error::{AgentTaskError, FrameIoError};
-use swimos_api::lane::WarpLaneKind;
-use swimos_form::structural::read::event::ReadEvent;
-use swimos_form::structural::read::recognizer::{Recognizer, RecognizerReadable};
-use swimos_form::structural::read::ReadError;
-use swimos_form::structural::write::{StructuralWritable, StructuralWriter};
+use swimos_form::read::{ReadError, ReadEvent, Recognizer, RecognizerReadable};
+use swimos_form::write::{StructuralWritable, StructuralWriter};
 use swimos_form::Form;
 use swimos_model::Text;
 use swimos_runtime::downlink::Io;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 use swimos_utilities::trigger;
-use swimos_utilities::uri_forest::{UriForest, UriPart};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 pub struct MetaMeshAgent {

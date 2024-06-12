@@ -37,15 +37,12 @@ use http::Uri;
 use std::fmt::Debug;
 use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::{
-    agent::{HttpLaneRequest, UplinkKind},
-    lane::WarpLaneKind,
-};
-use swimos_model::{
+    agent::{HttpLaneRequest, UplinkKind, WarpLaneKind},
     http::{HttpRequest, HttpResponse, Method, StatusCode, Version},
-    Text,
 };
+use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::byte_channel,
+    byte_channel::byte_channel,
     trigger::{self, promise},
 };
 use tokio::sync::{mpsc, oneshot};

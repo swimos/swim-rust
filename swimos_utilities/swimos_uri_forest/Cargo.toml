@@ -1,8 +1,0 @@
-[package]
-name = "swimos_uri_forest"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-static_assertions = { workspace = true }
-smol_str = { workspace = true }

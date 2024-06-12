@@ -20,13 +20,13 @@ use futures::{
     Future, StreamExt,
 };
 use swimos_api::{
-    agent::UplinkKind,
-    store::{NodePersistence, StoreDisabled, StoreKind},
+    agent::{StoreKind, UplinkKind},
+    persistence::{NodePersistence, StoreDisabled},
 };
 use swimos_messages::protocol::Notification;
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteWriter},
+    byte_channel::{byte_channel, ByteWriter},
     trigger::{self, promise},
 };
 use tokio::{sync::mpsc, time::Instant};
