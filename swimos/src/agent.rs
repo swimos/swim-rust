@@ -156,7 +156,7 @@ pub use swimos_agent_derive::{lifecycle, projections, AgentLaneModel};
 /// For [`crate::agent::lanes::HttpLane`], the constraints on the type parameters are determined by the
 /// codec that is selected for the lane (using the appropriate type parameter). By default, this is the
 /// [`crate::agent::lanes::http::DefaultCodec`]. This codec always requires that type parameters implement
-/// [`crate::form::Form`] and, if the 'json' feature is active, that the they are Serde serializable.
+/// [`crate::form::Form`] and, if the 'json' feature is active, that they are Serde serializable.
 ///
 /// The supported store types are:
 ///
