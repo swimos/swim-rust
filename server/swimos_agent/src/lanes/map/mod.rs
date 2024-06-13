@@ -61,7 +61,7 @@ pub struct MapLane<K, V> {
 assert_impl_all!(MapLane<(), ()>: Send);
 
 impl<K, V> MapLane<K, V> {
-    /// #Arguments
+    /// # Arguments
     /// * `id` - The ID of the lane. This should be unique within an agent.
     /// * `init` - The initial contents of the map.
     pub fn new(id: u64, init: HashMap<K, V>) -> Self {

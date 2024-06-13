@@ -77,7 +77,7 @@ async fn run_fake_downlink(
     let (tx_in, rx_in) = byte_channel::byte_channel(BUFFER_SIZE);
     let (tx_out, rx_out) = byte_channel::byte_channel(BUFFER_SIZE);
     if sub
-        .send(AttachAction::new(rx_out, tx_in, options))
+        .send(AttachAction::new((tx_in, rx_out), options))
         .await
         .is_err()
     {
@@ -956,7 +956,7 @@ async fn run_simple_fake_downlink(
     let (tx_in, rx_in) = byte_channel::byte_channel(BUFFER_SIZE);
     let (tx_out, rx_out) = byte_channel::byte_channel(BUFFER_SIZE);
     if sub
-        .send(AttachAction::new(rx_out, tx_in, options))
+        .send(AttachAction::new((tx_in, rx_out), options))
         .await
         .is_err()
     {

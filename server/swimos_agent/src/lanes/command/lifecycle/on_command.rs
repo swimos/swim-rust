@@ -27,7 +27,7 @@ pub trait OnCommand<T, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `value` - The command value.
     fn on_command<'a>(&'a self, value: &T) -> Self::OnCommandHandler<'a>;
 }
@@ -40,7 +40,7 @@ pub trait OnCommandShared<T, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `value` - The command value.

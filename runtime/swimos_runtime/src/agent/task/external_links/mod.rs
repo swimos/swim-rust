@@ -332,7 +332,7 @@ impl ReportFailed for NoReport {
 /// A task that manages the external links opened by the agent, including the establishment of
 /// downlinks and sending of ad hoc commands.
 ///
-/// #Arguments
+/// # Arguments
 /// * `identity` - The unique ID of this agent instance.
 /// * `open_requests` - Requests for the agent implementation to create a channel for sending ad-hoc commands.
 /// * `state` - The state of the task. For agent initialization this should be empty. This is then passed from

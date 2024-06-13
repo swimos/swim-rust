@@ -76,7 +76,7 @@ pub struct InitTaskConfig {
 }
 
 impl AgentInitTask {
-    /// #Arguments
+    /// # Arguments
     /// * `identity` - Unique ID of the agent.
     /// * `requests` - Channel for requests to open new lanes and downlinks.
     /// * `link_requests` - Channel for request to the runtime to open new external links.
@@ -107,7 +107,7 @@ impl<Store> AgentInitTask<Store>
 where
     Store: AgentPersistence + Send + Sync,
 {
-    /// #Arguments
+    /// # Arguments
     /// * `identity` - Unique ID of the agent.
     /// * `requests` - Channel for requests to open new lanes and downlinks.
     /// * `link_requests` - Channel for request to the runtime to open external links.

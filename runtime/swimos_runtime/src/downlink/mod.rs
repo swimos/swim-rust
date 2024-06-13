@@ -49,6 +49,7 @@ use uuid::Uuid;
 pub use interpretation::NoInterpretation;
 
 mod backpressure;
+/// Strategies for handling invalid envelopes.
 pub mod failure;
 mod interpretation;
 #[cfg(test)]
@@ -64,6 +65,7 @@ bitflags! {
         /// If the connection fails, it should be restarted and the consumer passed to the new
         /// connection.
         const KEEP_LINKED = 0b10;
+        /// By default, all options are enabled.
         const DEFAULT = Self::SYNC.bits() | Self::KEEP_LINKED.bits();
     }
 }
@@ -82,6 +84,9 @@ bitflags! {
 
 impl WriteTaskState {
     /// If a new consumer needs to be synced, set the appropriate state bit.
+    ///
+    /// # Arguments
+    /// * `options` - The option flags.
     pub fn set_needs_sync(&mut self, options: DownlinkOptions) {
         if options.contains(DownlinkOptions::SYNC) {
             *self |= WriteTaskState::NEEDS_SYNC;
@@ -91,18 +96,16 @@ impl WriteTaskState {
 
 /// A request to attach a new consumer to the downlink runtime.
 pub struct AttachAction {
-    input: ByteReader,
-    output: ByteWriter,
+    io: Io,
     options: DownlinkOptions,
 }
 
 impl AttachAction {
-    pub fn new(input: ByteReader, output: ByteWriter, options: DownlinkOptions) -> Self {
-        AttachAction {
-            input,
-            output,
-            options,
-        }
+    /// # Arguments
+    /// * `io` - Bidirectional channel to communicate with the downlink runtime.
+    /// * `options` - Option flags for the downlink.
+    pub fn new(io: Io, options: DownlinkOptions) -> Self {
+        AttachAction { io, options }
     }
 }
 
@@ -180,7 +183,7 @@ where
 }
 
 impl ValueDownlinkRuntime {
-    /// #Arguments
+    /// # Arguments
     /// * `requests` - The channel through which new consumers connect to the runtime.
     /// * `io` - Byte channels through which messages are received from and sent to the remote lane.
     /// * `stopping` - Trigger to instruct the runtime to stop.
@@ -210,6 +213,7 @@ impl ValueDownlinkRuntime {
         }
     }
 
+    /// Run the downlink task.
     pub async fn run(self) {
         let ValueDownlinkRuntime {
             requests,
@@ -259,7 +263,7 @@ impl ValueDownlinkRuntime {
 }
 
 impl<H> MapDownlinkRuntime<H, MapInterpretation> {
-    /// #Arguments
+    /// # Arguments
     /// * `requests` - The channel through which new consumers connect to the runtime.
     /// * `io` - Byte channels through which messages are received from and sent to the remote lane.
     /// * `stopping` - Trigger to instruct the runtime to stop.
@@ -296,7 +300,7 @@ impl<H> MapDownlinkRuntime<H, MapInterpretation> {
 }
 
 impl<I, H> MapDownlinkRuntime<H, I> {
-    /// #Arguments
+    /// # Arguments
     /// * `requests` - The channel through which new consumers connect to the runtime.
     /// * `io` - Byte channels through which messages are received from and sent to the remote lane.
     /// * `stopping` - Trigger to instruct the runtime to stop.
@@ -335,8 +339,11 @@ impl<I, H> MapDownlinkRuntime<H, I> {
     }
 }
 
+/// Identity labels for a downlink runtime.
 pub struct IdentifiedAddress {
+    /// The unique routing ID of the downlink.
     pub identity: Uuid,
+    /// The address to which the downlink is attached.
     pub address: RelativeAddress<Text>,
 }
 
@@ -345,6 +352,7 @@ where
     I: DownlinkInterpretation,
     H: BadFrameStrategy<I::Error>,
 {
+    /// Run the downlink runtime task.
     pub async fn run(self) {
         let MapDownlinkRuntime {
             requests,
@@ -409,8 +417,7 @@ async fn attach_task<F>(
 {
     let mut stream = ReceiverStream::new(rx).take_until(combined_stop);
     while let Some(AttachAction {
-        input,
-        output,
+        io: (output, input),
         options,
     }) = stream.next().await
     {

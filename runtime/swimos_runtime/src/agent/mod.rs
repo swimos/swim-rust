@@ -399,7 +399,7 @@ pub struct NodeReporting {
 }
 
 impl NodeReporting {
-    /// #Arguments
+    /// # Arguments
     /// * `agent_id` - The unique ID of the agent that will hold this context.
     /// * `aggregate_reporter` - Used to report the aggregated values for all lanes.
     /// * `lane_registrations` - Used by the agent to register a new lane for reporting.
@@ -580,7 +580,7 @@ pub struct AgentRouteChannels {
 }
 
 impl AgentRouteChannels {
-    /// #Arguments
+    /// # Arguments
     /// * `attachment_rx` - Channel for making requests to attach remotes to the agent task.
     /// * `http_rx` - Channel for routing HTTP requests to the agent.
     /// * `link_tx` - Channel to request external links from the runtime.
@@ -616,7 +616,7 @@ pub struct AgentRouteTask<'a, A> {
 impl<'a, A: Agent + 'static> AgentRouteTask<'a, A> {
     /// Run an agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `agent` - The agent instance.
     /// * `identity` - Routing identify of the agent instance.
     /// * `channels` - Channels over which the runtime communicates with the agent.

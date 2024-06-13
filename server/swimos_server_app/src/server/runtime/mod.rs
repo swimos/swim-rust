@@ -40,8 +40,8 @@ use swimos_messages::remote_protocol::{
 use swimos_model::Text;
 use swimos_remote::{BadWarpUrl, RemoteTask, Scheme};
 use swimos_runtime::agent::{
-    AgentAttachmentRequest, AgentExecError, AgentRouteDescriptor, AgentRouteChannels, AgentRouteTask,
-    CombinedAgentConfig, DisconnectionReason, LinkRequest,
+    AgentAttachmentRequest, AgentExecError, AgentRouteChannels, AgentRouteDescriptor,
+    AgentRouteTask, CombinedAgentConfig, DisconnectionReason, LinkRequest,
 };
 use swimos_utilities::routing::RouteUri;
 

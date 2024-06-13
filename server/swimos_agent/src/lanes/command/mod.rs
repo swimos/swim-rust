@@ -93,7 +93,7 @@ pub struct DoCommand<Context, T> {
 }
 
 impl<Context, T> DoCommand<Context, T> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent context to the lane.
     /// * `command` - The command to feed.
     pub fn new(projection: fn(&Context) -> &CommandLane<T>, command: T) -> Self {

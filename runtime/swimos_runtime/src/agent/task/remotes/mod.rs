@@ -47,7 +47,7 @@ pub struct RemoteTracker {
 }
 
 impl RemoteTracker {
-    /// #Arguments
+    /// # Arguments
     /// * `identity` - The routing address of the agent to be included in outgoing messages.
     /// * `node` - The node URI of the agent to be included in outgoing messages.
     pub fn new(identity: Uuid, node: Text) -> Self {
@@ -77,7 +77,7 @@ impl RemoteTracker {
     }
 
     /// Insert a new remote.
-    /// #Arguments
+    /// # Arguments
     /// * `remote_id` - The routing ID of the remote.
     /// * `writer` - The channel for the remote.
     /// * `completion` - Promise that must be satisfied if the remote is closed.

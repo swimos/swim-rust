@@ -35,7 +35,7 @@ pub trait OnStartShared<Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     fn on_start<'a>(

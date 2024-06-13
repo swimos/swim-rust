@@ -57,7 +57,7 @@ pub trait PlaneStore: StoreEngine + Sized + Debug + Send + Sync + Clone + 'stati
 
     /// Executes a ranged snapshot read prefixed by a lane key.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `prefix` - Common prefix for the records to read.
     fn ranged_snapshot_consumer(&self, prefix: StoreKey) -> Result<Self::RangeCon<'_>, StoreError>;
 

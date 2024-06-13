@@ -48,7 +48,7 @@ pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static {
 
     /// Executes a ranged snapshot read prefixed by a lane key.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `prefix` - Common prefix for the records to read.
     fn ranged_snapshot_consumer(&self, prefix: StoreKey) -> Result<Self::RangeCon<'_>, StoreError>;
 

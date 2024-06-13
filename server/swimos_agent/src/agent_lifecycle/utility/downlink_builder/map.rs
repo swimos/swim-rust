@@ -238,7 +238,7 @@ where
     }
     /// Add a state that can be shared between the event handlers for the downlink.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `state` - The value of the state.
     pub fn with_state<State: Send>(
         self,

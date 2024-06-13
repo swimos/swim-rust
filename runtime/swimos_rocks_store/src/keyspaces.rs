@@ -59,7 +59,7 @@ pub trait KeyspaceByteEngine: Send + Sync + 'static {
         Self: 'a;
 
     /// Read a range of records from a specific keyspace, with a shared prefix.
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `keyspace` - The keyspace to query.
     /// * `prefix` - The shared keyspace.
