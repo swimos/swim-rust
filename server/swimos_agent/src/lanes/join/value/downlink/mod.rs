@@ -229,7 +229,12 @@ where
             let lane = projection(context);
             let mut guard = lane.keys.borrow_mut();
             if let Some(state) = state.take() {
-                guard.insert(key, Link::new(state));
+                match guard.get_mut(&key) {
+                    Some(link) => link.status = state,
+                    None => {
+                        guard.insert(key, Link::new(state));
+                    }
+                }
             } else {
                 guard.remove(&key);
             }
@@ -351,11 +356,6 @@ where
         } = self;
         if let Some((key, value)) = key_value.take() {
             let lane: &JoinValueLane<K, V> = projection(context);
-            let mut key_guard = lane.keys.borrow_mut();
-
-            if let Some(link) = key_guard.get_mut(&key) {
-                link.status = DownlinkStatus::Linked;
-            }
             lane.inner.update(key, value);
 
             StepResult::Complete {

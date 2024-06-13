@@ -527,8 +527,8 @@ where
                     .remove(&key)
                     .and_then(|mut state| state.stop_tx.take());
                 if let Some(trigger) = trigger {
-                    trigger.trigger();
                     lane.inner.remove(&key);
+                    trigger.trigger();
                 }
 
                 StepResult::done(())
