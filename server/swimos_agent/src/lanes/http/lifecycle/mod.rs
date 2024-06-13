@@ -24,7 +24,7 @@ use tracing::debug;
 
 use crate::event_handler::EventHandlerError;
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{ActionContext, HandlerAction, StepResult},
     meta::AgentMetadata,
 };

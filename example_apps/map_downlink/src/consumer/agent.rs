@@ -14,7 +14,7 @@
 
 use example_util::format_map;
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     agent_model::downlink::hosted::MapDownlinkHandle,
     event_handler::{EventHandler, HandlerAction, HandlerActionExt},
     lanes::{CommandLane, ValueLane},

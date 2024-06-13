@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use swimos::agent::agent_lifecycle::utility::HandlerContext;
+use swimos::agent::agent_lifecycle::HandlerContext;
 use swimos::agent::event_handler::{EventHandler, HandlerActionExt};
 use swimos::agent::lanes::{CommandLane, JoinValueLane};
 use swimos::agent::projections;

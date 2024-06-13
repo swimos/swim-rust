@@ -57,7 +57,7 @@ impl<T> Default for DemandLaneInner<T> {
 /// sent on all uplinks attached to it.
 ///
 /// A demand lane can be cued to produce a value by executing an instance of [`Cue`] (which can be
-/// constructed using the [`crate::agent_lifecycle::utility::HandlerContext`]).
+/// constructed using the [`crate::agent_lifecycle::HandlerContext`]).
 #[derive(Debug)]
 pub struct DemandLane<T> {
     id: u64,

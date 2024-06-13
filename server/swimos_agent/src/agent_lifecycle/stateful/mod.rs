@@ -25,7 +25,7 @@ use super::{
     utility::HandlerContext,
 };
 
-/// An implementation of [AgentLifecycle] with a common state that is shared bewteen all of the
+/// An implementation of [AgentLifecycle] with a common state that is shared between all of the
 /// lifecycle event handlers.
 ///
 /// # Type Parameters

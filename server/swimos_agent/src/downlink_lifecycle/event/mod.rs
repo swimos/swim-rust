@@ -17,7 +17,7 @@ use std::marker::PhantomData;
 use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     lifecycle_fn::{LiftShared, WithHandlerContext},
 };
 

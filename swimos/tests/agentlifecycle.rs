@@ -20,14 +20,14 @@ use parking_lot::Mutex;
 use swimos::agent::lifecycle;
 use swimos::agent::{
     agent_lifecycle::{
-        item_event::ItemEvent, on_start::OnStart, on_stop::OnStop, utility::HandlerContext,
+        item_event::ItemEvent, on_start::OnStart, on_stop::OnStop, HandlerContext,
     },
     event_handler::{EventHandler, StepResult},
     lanes::{CommandLane, MapLane, ValueLane},
     AgentLaneModel,
 };
 use swimos_agent::agent_lifecycle::on_init::OnInit;
-use swimos_agent::agent_lifecycle::utility::{JoinMapContext, JoinValueContext};
+use swimos_agent::agent_lifecycle::{JoinMapContext, JoinValueContext};
 use swimos_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
 use swimos_agent::agent_model::WriteResult;
 use swimos_agent::event_handler::{

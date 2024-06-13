@@ -54,7 +54,7 @@
 //!
 //!  ```no_run
 //! use swimos::agent::{AgentLaneModel, lifecycle};
-//! use swimos::agent::agent_lifecycle::utility::HandlerContext;
+//! use swimos::agent::agent_lifecycle::HandlerContext;
 //! use swimos::agent::event_handler::EventHandler;
 //! use swimos::agent::lanes::ValueLane;
 //!

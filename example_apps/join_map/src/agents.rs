@@ -1,5 +1,5 @@
 use swimos::{
-    agent::agent_lifecycle::utility::HandlerContext,
+    agent::agent_lifecycle::HandlerContext,
     agent::event_handler::{EventHandler, HandlerActionExt},
     agent::lanes::{JoinMapLane, MapLane},
     agent::projections,

@@ -16,7 +16,7 @@ use std::{borrow::Borrow, marker::PhantomData};
 
 use swimos_utilities::handlers::{BorrowHandler, NoHandler};
 
-use crate::agent_lifecycle::utility::HandlerContext;
+use crate::agent_lifecycle::HandlerContext;
 
 use self::{
     on_event::{OnEvent, OnEventShared},

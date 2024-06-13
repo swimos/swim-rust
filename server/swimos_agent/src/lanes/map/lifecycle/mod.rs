@@ -16,7 +16,7 @@ use std::{borrow::Borrow, collections::HashMap, marker::PhantomData};
 
 use swimos_utilities::handlers::{BorrowHandler, FnHandler, NoHandler};
 
-use crate::agent_lifecycle::utility::HandlerContext;
+use crate::agent_lifecycle::HandlerContext;
 
 use self::{
     on_clear::{OnClear, OnClearShared},

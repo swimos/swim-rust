@@ -14,7 +14,7 @@
 
 use swimos_api::address::Address;
 
-use crate::{agent_lifecycle::utility::HandlerContext, event_handler::HandlerAction};
+use crate::{agent_lifecycle::HandlerContext, event_handler::HandlerAction};
 
 pub mod map;
 #[cfg(test)]

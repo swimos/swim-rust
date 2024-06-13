@@ -47,7 +47,7 @@ mod tests;
 /// that is sent on all uplinks attached to it.
 ///
 /// A demand lane can be cued to produce a value by executing an instance of [`CueKey`] (which can be
-/// constructed using the [`crate::agent_lifecycle::utility::HandlerContext`]).
+/// constructed using the [`crate::agent_lifecycle::HandlerContext`]).
 #[derive(Debug)]
 pub struct DemandMapLane<K, V> {
     id: u64,

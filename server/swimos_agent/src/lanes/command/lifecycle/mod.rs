@@ -91,7 +91,7 @@ where
     fn on_command<'a>(
         &'a self,
         shared: &'a Shared,
-        handler_context: crate::agent_lifecycle::utility::HandlerContext<Context>,
+        handler_context: crate::agent_lifecycle::HandlerContext<Context>,
         value: &T,
     ) -> Self::OnCommandHandler<'a> {
         self.on_command.on_command(shared, handler_context, value)
