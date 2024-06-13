@@ -1530,7 +1530,7 @@ impl IdCollector for HashSet<u64> {
 /// * `handler` - The initial event handler that starts the chain. This could be a lifecycle event or triggered
 /// by an incoming message from the runtime.
 /// * `items` - Mapping between item IDs (returned by the handler to indicate that it has changed the state of
-/// an item) an the item names (which are used by the lifecycle to identify the items).
+/// an item) and the item names (which are used by the lifecycle to identify the items).
 /// * `collector` - Collects the IDs of lanes with state changes.
 fn run_handler<Context, Lifecycle, Handler, Collector>(
     action_context: &mut ActionContext<Context>,
