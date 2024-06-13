@@ -40,7 +40,7 @@ use crate::ValueDownlinkModel;
 
 /// Task to drive a value downlink, calling lifecyle events at appropriate points.
 ///
-/// #Arguments
+/// # Arguments
 ///
 /// * `model` - The downlink model, providing the lifecycle and a stream of values to set.
 /// * `path` - The path of the lane to which the downlink is attached.

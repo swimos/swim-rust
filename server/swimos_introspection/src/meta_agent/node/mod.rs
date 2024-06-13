@@ -160,7 +160,7 @@ async fn run_task(
 /// A lane that will return information on all of the lanes of an agent, as a map, when a Sync
 /// request is sent to the lane.
 ///
-/// #Arguments
+/// # Arguments
 /// * `shutdown_rx` - Shutdown signal for when the agent is stopping.
 /// * `handle` - Introspection handle used to refresh the view of the lanes.
 /// * lanes_io` - The input and output channels for the lane.

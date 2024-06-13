@@ -57,7 +57,7 @@ pub trait ItemEvent<Context> {
     /// Create the handler for an item, if it exists. It is the responsibility of the items to keep track
     /// of which what events need to be triggered. If the item does not exist or no event is pending, no
     /// handler will be returned.
-    /// #Arguments
+    /// # Arguments
     /// * `context` - The context of the agent (allowing access to the items).
     /// * `item_name` - The name of the item.
     fn item_event<'a>(
@@ -79,7 +79,7 @@ pub trait ItemEventShared<Context, Shared> {
     /// Create the handler for an item, if it exists. It is the responsibility of the items to keep track
     /// of which what events need to be triggered. If the item does not exist or no event is pending, no
     /// handler will be returned.
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `context` - The context of the agent (allowing access to the items).

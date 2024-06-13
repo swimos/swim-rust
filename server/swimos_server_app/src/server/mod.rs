@@ -73,7 +73,7 @@ impl ServerHandle {
 
     /// Attempt to start an agent instance in the server.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `route` - The node URI of the agent.
     pub async fn start_agent(&self, route: RouteUri) -> Result<(), UnresolvableRoute> {
         let (response_tx, response_rx) = oneshot::channel();

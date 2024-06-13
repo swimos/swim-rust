@@ -29,7 +29,7 @@ use swimos_utilities::{
 };
 use tokio::sync::mpsc;
 
-use crate::agent::{AgentExecError, AgentRoute, AgentRouteChannels};
+use crate::agent::{AgentExecError, AgentRouteChannels, AgentRouteDescriptor};
 
 use super::AgentRouteTask;
 
@@ -123,7 +123,7 @@ where
 async fn test_agent_failure() {
     with_timeout(async {
         let agent = TestAgent::Running;
-        let identity = AgentRoute {
+        let identity = AgentRouteDescriptor {
             identity: Uuid::from_u128(1),
             route: "/node".parse().unwrap(),
             route_params: HashMap::new(),
@@ -156,7 +156,7 @@ async fn test_agent_failure() {
 async fn test_agent_failure_with_store() {
     with_timeout(async {
         let agent = TestAgent::Running;
-        let identity = AgentRoute {
+        let identity = AgentRouteDescriptor {
             identity: Uuid::from_u128(1),
             route: "/node".parse().unwrap(),
             route_params: HashMap::new(),
@@ -191,7 +191,7 @@ async fn test_agent_failure_with_store() {
 async fn test_agent_init_failure() {
     with_timeout(async {
         let agent = TestAgent::Init;
-        let identity = AgentRoute {
+        let identity = AgentRouteDescriptor {
             identity: Uuid::from_u128(1),
             route: "/node".parse().unwrap(),
             route_params: HashMap::new(),

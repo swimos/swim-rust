@@ -28,7 +28,7 @@ pub trait OnDelete<Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `http_context` - Metadata associated with the HTTP request.
     fn on_delete(&self, http_context: HttpRequestContext) -> Self::OnDeleteHandler<'_>;
 }
@@ -41,7 +41,7 @@ pub trait OnDeleteShared<Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `http_context` - Metadata associated with the HTTP request.

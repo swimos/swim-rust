@@ -12,33 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::borrow::Borrow;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use crate::{
-    ByteEngine, EngineInfo, EngineIterator, EnginePrefixIterator, IteratorKey, KeyValue, Keyspace,
-    KeyspaceByteEngine, KeyspaceResolver, Keyspaces, KvBytes, RangeConsumer, Store, StoreBuilder,
-    StoreError,
-};
+use swimos_api::error::StoreError;
+use swimos_api::persistence::{KeyValue, RangeConsumer};
+
+use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
+use crate::store::{Store, StoreBuilder};
 
 /// A delegate store database that does nothing.
 #[derive(Debug, Clone)]
-pub struct NoStore {
-    path: PathBuf,
-}
+pub struct NoStore;
 
-impl Store for NoStore {
-    fn path(&self) -> &Path {
-        self.path.borrow()
-    }
-
-    fn engine_info(&self) -> EngineInfo {
-        EngineInfo {
-            path: "No store".to_string(),
-            kind: "NoStore".to_string(),
-        }
-    }
-}
+impl Store for NoStore {}
 
 impl KeyspaceResolver for NoStore {
     type ResolvedKeyspace = ();
@@ -102,19 +88,6 @@ impl KeyspaceByteEngine for NoStore {
         Ok(())
     }
 
-    fn get_prefix_range<F, K, V, S>(
-        &self,
-        _keyspace: S,
-        _prefix: &[u8],
-        _map_fn: F,
-    ) -> Result<Option<Vec<(K, V)>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
-    {
-        Ok(None)
-    }
-
     fn delete_key_range<S>(
         &self,
         _keyspace: S,
@@ -137,53 +110,6 @@ impl StoreBuilder for NoStoreOpts {
     where
         I: AsRef<Path>,
     {
-        Ok(NoStore {
-            path: PathBuf::from("No store".to_string()),
-        })
-    }
-}
-
-impl ByteEngine for NoStore {
-    /// Put operation does nothing and that always succeeds.
-    fn put(&self, _key: &[u8], _value: &[u8]) -> Result<(), StoreError> {
-        Ok(())
-    }
-
-    /// Get operation does nothing and always returns `Ok(None)`.
-    fn get(&self, _key: &[u8]) -> Result<Option<Vec<u8>>, StoreError> {
-        Ok(None)
-    }
-
-    /// Delete operation does nothing and always returns `Ok(())`.
-    fn delete(&self, _key: &[u8]) -> Result<(), StoreError> {
-        Ok(())
-    }
-}
-
-pub struct NoStoreEngineIterator;
-impl EngineIterator for NoStoreEngineIterator {
-    fn seek_to(&mut self, _key: IteratorKey) -> Result<bool, StoreError> {
-        Ok(true)
-    }
-
-    fn seek_next(&mut self) {}
-
-    fn key(&self) -> Option<&[u8]> {
-        None
-    }
-
-    fn value(&self) -> Option<&[u8]> {
-        None
-    }
-
-    fn valid(&self) -> Result<bool, StoreError> {
-        Ok(true)
-    }
-}
-
-pub struct NoStoreEnginePrefixIterator;
-impl EnginePrefixIterator for NoStoreEnginePrefixIterator {
-    fn next(&mut self) -> Option<Result<KvBytes, StoreError>> {
-        None
+        Ok(NoStore)
     }
 }

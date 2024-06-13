@@ -30,7 +30,7 @@ use crate::EventDownlinkModel;
 
 /// Task to drive an event downlink, calling lifecyle events at appropriate points.
 ///
-/// #Arguments
+/// # Arguments
 ///
 /// * `model` - The downlink model, providing the lifecycle and a stream of values to set.
 /// * `path` - The path of the lane to which the downlink is attached.

@@ -196,7 +196,7 @@ pub trait AgentContext: Sync {
     fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>>;
 
     /// Add a new lane endpoint to the runtime for this agent.
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the lane.
     /// * `land_kind` - Kind of the lane, determining the protocol that the runtime uses
     /// to communicate with the lane.
@@ -214,7 +214,7 @@ pub trait AgentContext: Sync {
     ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>>;
 
     /// Open a downlink to a lane on another agent.
-    /// #Arguments
+    /// # Arguments
     /// * `config` - The configuration for the downlink.
     /// * `host` - The host containing the node.
     /// * `node` - The node URI for the agent.
@@ -228,7 +228,7 @@ pub trait AgentContext: Sync {
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>>;
 
     /// Add a new named store that will persist a (possibly compound) value in the agent state.
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the store.
     /// * `kind` - The kind of the store.
     fn add_store(
@@ -270,7 +270,7 @@ pub type AgentInitResult = Result<AgentTask, AgentInitError>;
 pub trait Agent {
     /// Running an agent results in future that will perform the initialization of the agent and
     /// then yield another future that will actually run the agent.
-    /// #Arguments
+    /// # Arguments
     /// * `route` - The node URI of this agent instance.
     /// * `route_params` - Parameters extracted from the route URI.
     /// * `config` - Configuration parameters for the agent.

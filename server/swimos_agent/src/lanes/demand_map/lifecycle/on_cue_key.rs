@@ -25,7 +25,7 @@ pub trait OnCueKey<K, V, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `key` - The key to cue.
     fn on_cue_key(&self, key: K) -> Self::OnCueKeyHandler<'_>;
 }
@@ -38,7 +38,7 @@ pub trait OnCueKeyShared<K, V, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `key` - The key to cue.

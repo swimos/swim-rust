@@ -182,7 +182,7 @@ where
     Ext::Extension: Send,
     FC: Fn(Sock, UpgradeService<Ext, Sock>) -> Con + Copy + Send + 'static,
 {
-    /// #Arguments
+    /// # Arguments
     /// * `listener_stream` - A listener that produced a stream of incoming connections.
     /// * `extension_provider` - Extension provider to use when negotiating websocket connections.
     /// * `resolver` - Agent resolver for forwarding requests to HTTP lanes.
@@ -572,7 +572,7 @@ pub struct HyperWebsockets {
 }
 
 impl HyperWebsockets {
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `config` - HTTP server configuration.
     /// will handle concurrently.
@@ -693,7 +693,7 @@ fn unavailable() -> Response<Body> {
 
 /// Delegate an HTTP request to an HTTP lane on an agent (if it exists).
 ///
-/// #Arguments
+/// # Arguments
 /// * `request` - The HTTP request.
 /// * `timeout` - Timeout the request if the agent does not produce a response within this duration.
 /// * `resolver` - Resolver to find the agent to handle the request.

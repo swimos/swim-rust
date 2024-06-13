@@ -108,7 +108,7 @@ impl<'a, Agent> InitializedItem<'a, Agent> {
 
 /// Run the initialization process for a lane.
 ///
-/// #Arguments
+/// # Arguments
 /// * `name` - The name of the lane.
 /// * `io` - Channels for communication with the runtime.
 /// * `decoder` - Decoder to interpret the command messages from the runtime, during the
