@@ -10,7 +10,6 @@ tls = ["rustls", "webpki", "webpki-roots", "tokio-rustls", "rustls-pemfile"]
 
 [dependencies]
 ratchet = { workspace = true, features = ["deflate", "split"] }
-ratchet_fixture = { workspace = true }
 bytes = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
