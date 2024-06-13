@@ -242,7 +242,7 @@ where
 ///
 /// It should not generally be necessary to implement this trait in user code.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the handler executes. Typically, this will be a struct type where
 /// each field is a lane of an agent.
 pub trait HandlerAction<Context> {

@@ -30,7 +30,7 @@ pub mod on_cue_key;
 
 /// Trait for the lifecycle of a demand-map lane.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `K` - The type of the keys of the map.
 /// * `V` - The type of the values of the map.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
@@ -42,7 +42,7 @@ pub trait DemandMapLaneLifecycle<K, V, Context>:
 /// Trait for the lifecycle of a demand-map lane where the lifecycle has access to some shared state (shared
 /// with all other lifecycles in the agent).
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `K` - The type of the keys of the map.
 /// * `V` - The type of the values of the map.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
@@ -66,7 +66,7 @@ type LifecycleType<Context, Shared, K, V> = fn(Context, Shared, K) -> (K, V);
 
 /// A lifecycle for a demand-map lane with some shared state (shard with other lifecycles in the same agent).
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context for the event handlers (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
 /// * `K` - The type of the keys of the map.

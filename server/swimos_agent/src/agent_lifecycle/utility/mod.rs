@@ -707,6 +707,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 }
 
+/// Context passed to agent methods used to construct lifecycles for [`JoinValueLane`]s.
 pub struct JoinValueContext<Agent, K, V> {
     _type: PhantomData<fn(&Agent, K, V)>,
 }
@@ -732,6 +733,7 @@ where
     }
 }
 
+/// Context passed to agent methods used to construct lifecycles for [`JoinMapLane`]s.
 pub struct JoinMapContext<Agent, L, K, V> {
     _type: PhantomData<fn(&Agent, L, K, V)>,
 }

@@ -14,7 +14,10 @@
 
 use self::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop};
 
+#[doc(hidden)]
 pub mod item_event;
+/// The `on_init` event is called when an agent starts. It's behaviour is defined by the [`on_init::OnInit`]
+/// trait.
 pub mod on_init;
 pub mod on_start;
 pub mod on_stop;
@@ -23,7 +26,7 @@ pub mod stateless;
 pub mod utility;
 
 /// Trait for agent lifecycles.
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context in which the lifecycle events run (provides access to the lanes of the agent).
 pub trait AgentLifecycle<Context>:
     OnInit<Context> + OnStart<Context> + OnStop<Context> + ItemEvent<Context>

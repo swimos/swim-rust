@@ -34,7 +34,7 @@ pub mod on_event;
 
 /// Trait for the lifecycle of an event downlink.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `T` - The type of the events.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait EventDownlinkLifecycle<T, Context>:
@@ -57,7 +57,7 @@ impl<LC, T, Context> EventDownlinkLifecycle<T, Context> for LC where
 
 /// A lifecycle for an event downlink where the individual event handlers can share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `State` - The type of the shared state.
 /// * `T` - The type of the downlink.
@@ -410,7 +410,7 @@ where
 
 /// A lifecycle for an event downlink where the individual event handlers do not share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `T` - The type of the downlink.
 pub trait StatelessEventLifecycle<Context, T>: EventDownlinkLifecycle<T, Context> {
@@ -463,7 +463,7 @@ pub trait StatelessEventLifecycle<Context, T>: EventDownlinkLifecycle<T, Context
 
 /// A lifecycle for an event downlink where the individual event handlers have shared state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `Shared` - The type of the shared state.
 /// * `T` - The type of the downlink.
@@ -511,7 +511,7 @@ pub trait StatefulEventLifecycle<Context, Shared, T>: EventDownlinkLifecycle<T, 
 
 /// A lifecycle for an event downlink where the individual event handlers dno not share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `T` - The type of the downlink.
 /// * `FLinked` - The type of the 'on_linked' handler.

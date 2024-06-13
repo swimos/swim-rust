@@ -42,7 +42,7 @@ pub mod on_update;
 
 /// Trait for the lifecycle of a map downlink.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `K` - The type of the keys of the downlink.
 /// * `V` - The type of the values of the downlink.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
@@ -70,7 +70,7 @@ impl<LC, K, V, Context> MapDownlinkLifecycle<K, V, Context> for LC where
 
 /// A lifecycle for a map downlink where the individual event handlers do not share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `K` - The type of the keys for the map.
 /// * `V` - The type of the values for the map.
@@ -142,7 +142,7 @@ pub trait StatelessMapLifecycle<Context, K, V>: MapDownlinkLifecycle<K, V, Conte
 
 /// A lifecycle for a map downlink where the individual event handlers have shared state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `Shared` - The type of the shared state.
 /// * `K` - The type of the keys for the map.
@@ -209,7 +209,7 @@ pub trait StatefulMapLifecycle<Context, Shared, K, V>: MapDownlinkLifecycle<K, V
 
 /// A lifecycle for a map downlink where the event handlers do not share state..
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `K` - The type of the keys of the downlink.
 /// * `V` - The type of the values of the downlink.
@@ -260,7 +260,7 @@ impl<Context, K, V> Default for StatelessMapDownlinkLifecycle<Context, K, V> {
 
 /// A lifecycle for a map downlink where the individual event handlers can share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `State` - The type of the shared state.
 /// * `K` - The type of the keys of the downlink.

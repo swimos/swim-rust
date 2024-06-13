@@ -23,7 +23,7 @@ use super::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::
 
 /// An implementation of [AgentLifecycle] with no shared state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers run (provides access to the agent lanes).
 /// * `FInit` - Initializer called before any event handlers run.
 /// * `FStart` - The `on_start` event handler.

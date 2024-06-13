@@ -42,7 +42,7 @@ pub mod on_unlinked;
 /// All implementations of this interface must be [`Clone`] as it needs to be duplicated for each
 /// entry in the join value lane map.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `K` - The key type of the join value lane.
 /// * `V` - The value type of the join value lane.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
@@ -66,7 +66,7 @@ impl<K, V, Context, L> JoinValueLaneLifecycle<K, V, Context> for L where
 
 /// A lifecycle for an join value downlink where the individual event handlers do not share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `K` - The key type of the join value lane.
 /// * `V` - THe value type of the join value lane.
@@ -120,7 +120,7 @@ pub trait StatelessJoinValueLifecycle<Context, K, V>:
 
 /// A lifecycle for an join value downlink where the individual event handlers have shared state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `Shared` - The type of the shared state.
 /// * `K` - The key type of the join value lane.
@@ -169,7 +169,7 @@ pub trait StatefulJoinValueLifecycle<Context, Shared, K, V>:
 
 /// A lifecycle for a join value downlink where the event handlers do not share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `K` - The type of the keys of the join value lane.
 /// * `V` - The type of the values of the join value lane.
@@ -196,7 +196,7 @@ pub struct StatelessJoinValueLaneLifecycle<
 
 /// A lifecycle for a join value downlink where the event handlers can share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `State` - The type of the shared state.
 /// * `K` - The type of the keys of the join value lane.

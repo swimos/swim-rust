@@ -36,7 +36,7 @@ pub mod on_set;
 
 /// Trait for the lifecycle of a value downlink.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `T` - The type of the state of the lane.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait ValueDownlinkLifecycle<T, Context>:
@@ -61,7 +61,7 @@ impl<LC, T, Context> ValueDownlinkLifecycle<T, Context> for LC where
 
 /// A lifecycle for a value downlink where the individual event handlers can share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `State` - The type of the shared state.
 /// * `T` - The type of the downlink.
@@ -580,7 +580,7 @@ where
 
 /// A lifecycle for a value downlink where the individual event handlers do not share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `T` - The type of the downlink.
 pub trait StatelessValueLifecycle<Context, T>: ValueDownlinkLifecycle<T, Context> {
@@ -647,7 +647,7 @@ pub trait StatelessValueLifecycle<Context, T>: ValueDownlinkLifecycle<T, Context
 
 /// A lifecycle for a value downlink where the individual event handlers have shared state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `Shared` - The type of the shared state.
 /// * `T` - The type of the downlink.
@@ -709,7 +709,7 @@ pub trait StatefulValueLifecycle<Context, Shared, T>: ValueDownlinkLifecycle<T, 
 
 /// A lifecycle for a value downlink where the individual event handlers do not share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `T` - The type of the downlink.
 /// * `FLinked` - The type of the 'on_linked' handler.
