@@ -52,6 +52,7 @@ mod tests;
 
 pub use downlink::{AfterClosed, JoinValueLaneUpdate};
 pub use init::LifecycleInitializer;
+use swimos_utilities::trigger;
 
 /// Model of a join value lane. This is conceptually similar to a [`super::super::MapLane`] only, rather
 /// than the state being modified directly, it is populated through a series of downlinks associated with
@@ -63,7 +64,26 @@ pub use init::LifecycleInitializer;
 #[derive(Debug)]
 pub struct JoinValueLane<K, V> {
     inner: MapLane<K, V>,
-    keys: RefCell<HashMap<K, DownlinkStatus>>,
+    keys: RefCell<HashMap<K, Link>>,
+}
+
+#[derive(Debug)]
+struct Link {
+    status: DownlinkStatus,
+    stop_tx: Option<trigger::Sender>,
+}
+
+impl Link {
+    fn new(status: DownlinkStatus) -> Link {
+        Link {
+            status,
+            stop_tx: None,
+        }
+    }
+
+    fn set_stop_tx(&mut self, stop_tx: Option<trigger::Sender>) {
+        self.stop_tx = stop_tx;
+    }
 }
 
 impl<K, V> JoinValueLane<K, V> {
@@ -117,8 +137,13 @@ where
 /// [`HandlerAction`] that attempts to add a new downlink to a [`JoinValueLane`].
 struct AddDownlinkAction<Context, K, V, LC> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,
-    key: Option<K>,
+    state: AddDownlinkActionState<K>,
     inner: Option<OpenEventDownlinkAction<V, JoinValueDownlink<K, V, LC, Context>>>,
+}
+
+enum AddDownlinkActionState<K> {
+    Starting(K),
+    Stepping(K),
 }
 
 impl<Context, K, V, LC> AddDownlinkAction<Context, K, V, LC>
@@ -132,7 +157,7 @@ where
         lifecycle: LC,
     ) -> Self {
         let dl_lifecycle = JoinValueDownlink::new(projection, key.clone(), lane.clone(), lifecycle);
-        let inner = OpenEventDownlinkAction::new(
+        let action = OpenEventDownlinkAction::new(
             lane,
             dl_lifecycle,
             SimpleDownlinkConfig {
@@ -143,8 +168,8 @@ where
         );
         AddDownlinkAction {
             projection,
-            key: Some(key),
-            inner: Some(inner),
+            state: AddDownlinkActionState::Starting(key),
+            inner: Some(action),
         }
     }
 }
@@ -167,22 +192,34 @@ where
     ) -> StepResult<Self::Completion> {
         let AddDownlinkAction {
             projection,
-            key,
+            state,
             inner,
         } = self;
         if let Some(inner) = inner {
-            if let Some(key) = key.take() {
-                let lane = projection(context);
-                let mut guard = lane.keys.borrow_mut();
-                if let Entry::Vacant(e) = guard.entry(key) {
-                    e.insert(DownlinkStatus::Pending);
-                    inner.step(action_context, meta, context).map(|_| ())
-                } else {
-                    self.inner = None;
-                    StepResult::done(())
+            let lane = projection(context);
+            let mut guard = lane.keys.borrow_mut();
+
+            match state {
+                AddDownlinkActionState::Starting(key) => {
+                    if let Entry::Vacant(entry) = guard.entry(key.clone()) {
+                        let link = entry.insert(Link::new(DownlinkStatus::Pending));
+                        let result = inner.step(action_context, meta, context).map(|handle| {
+                            link.set_stop_tx(handle.into_stop_rx());
+                        });
+                        *state = AddDownlinkActionState::Stepping(key.clone());
+                        result
+                    } else {
+                        self.inner = None;
+                        StepResult::done(())
+                    }
                 }
-            } else {
-                inner.step(action_context, meta, context).map(|_| ())
+                AddDownlinkActionState::Stepping(key) => {
+                    inner.step(action_context, meta, context).map(|handle| {
+                        if let Some(link) = guard.get_mut(key) {
+                            link.set_stop_tx(handle.into_stop_rx())
+                        }
+                    })
+                }
             }
         } else {
             StepResult::after_done()
@@ -446,5 +483,57 @@ where
 
     fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
         JoinValueLaneGetMap::new(projection)
+    }
+}
+
+pub struct JoinValueRemoveDownlink<C, K, V> {
+    projection: fn(&C) -> &JoinValueLane<K, V>,
+    key: Option<K>,
+}
+
+impl<C, K, V> JoinValueRemoveDownlink<C, K, V> {
+    pub fn new(
+        projection: fn(&C) -> &JoinValueLane<K, V>,
+        key: K,
+    ) -> JoinValueRemoveDownlink<C, K, V> {
+        JoinValueRemoveDownlink {
+            projection,
+            key: Some(key),
+        }
+    }
+}
+
+impl<C, K, V> HandlerAction<C> for JoinValueRemoveDownlink<C, K, V>
+where
+    C: 'static,
+    K: Clone + Send + Eq + PartialEq + Hash + 'static,
+    V: 'static,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let JoinValueRemoveDownlink { projection, key } = self;
+
+        match key.take() {
+            Some(key) => {
+                let lane = projection(context);
+                let mut key_guard = lane.keys.borrow_mut();
+                let trigger = key_guard
+                    .remove(&key)
+                    .and_then(|mut state| state.stop_tx.take());
+                if let Some(trigger) = trigger {
+                    trigger.trigger();
+                    lane.inner.remove(&key);
+                }
+
+                StepResult::done(())
+            }
+            None => StepResult::after_done(),
+        }
     }
 }

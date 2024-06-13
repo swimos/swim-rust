@@ -48,8 +48,8 @@ use crate::item::{
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::demand::{Cue, DemandLane};
 use crate::lanes::demand_map::CueKey;
-use crate::lanes::join_map::JoinMapAddDownlink;
-use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
+use crate::lanes::join_map::{JoinMapAddDownlink, JoinMapRemoveDownlink};
+use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane, JoinValueRemoveDownlink};
 use crate::lanes::supply::{Supply, SupplyLane};
 use crate::lanes::{DemandMapLane, JoinMapLane};
 
@@ -649,7 +649,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     ///
     /// # Arguments
     /// * `lane` - Projection to the lane.
-    /// * `key - The key for the downlink.
+    /// * `key` - The key for the downlink.
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane_uri` - The lane to downlink from.
@@ -670,12 +670,30 @@ impl<Agent: 'static> HandlerContext<Agent> {
         JoinValueAddDownlink::new(lane, key, address)
     }
 
+    /// Removes a downlink from a Join Value lane. Removing any associated value associated with
+    /// 'key' in the underlying map.
+    ///
+    /// # Arguments
+    /// * `lane` - Projection to the lane.
+    /// * `key` - The key for the downlink.
+    pub fn remove_downlink<K, V>(
+        &self,
+        lane: fn(&Agent) -> &JoinValueLane<K, V>,
+        key: K,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        K: Clone + Send + Eq + PartialEq + Hash + 'static,
+        V: 'static,
+    {
+        JoinValueRemoveDownlink::new(lane, key)
+    }
+
     /// Add a downlink to a Join Map lane. All key-value pairs received on the downlink will be set into the
     /// map state of the lane.
     ///
     /// # Arguments
     /// * `lane` - Projection to the lane.
-    /// * `link_key - A key to identify the link.
+    /// * `link_key` - A key to identify the link.
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane_uri` - The lane to downlink from.
@@ -696,6 +714,25 @@ impl<Agent: 'static> HandlerContext<Agent> {
     {
         let address = Address::text(host, node, lane_uri);
         JoinMapAddDownlink::new(lane, link_key, address)
+    }
+
+    /// Removes a downlink from a Join Map lane. Removing any associated entries in the underlying
+    /// map.
+    ///
+    /// # Arguments
+    /// * `lane` - Projection to the lane.
+    /// * `link_key` - A key to identify the link.
+    pub fn remove_map_downlink<L, K, V>(
+        &self,
+        lane: fn(&Agent) -> &JoinMapLane<L, K, V>,
+        link_key: L,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        L: Send + Eq + Hash + 'static,
+        K: Eq + Hash + Clone + 'static,
+        V: 'static,
+    {
+        JoinMapRemoveDownlink::new(lane, link_key)
     }
 
     /// Causes the agent to stop. If this is encountered during the `on_start` event of an agent it will

@@ -112,9 +112,14 @@ where
         self.inner.borrow_mut().with_entry(key, f)
     }
 
-    /// Remove and entry from the map.
+    /// Remove an entry from the map.
     pub fn remove(&self, key: &K) {
         self.inner.borrow_mut().remove(key)
+    }
+
+    /// Remove an entry from the map without propagating the change.
+    pub fn remove_local(&self, key: &K) {
+        self.inner.borrow_mut().remove_local(key)
     }
 
     /// Clear the map.

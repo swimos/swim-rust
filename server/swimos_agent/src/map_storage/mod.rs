@@ -125,6 +125,11 @@ where
         }
     }
 
+    pub fn remove_local(&mut self, key: &K) {
+        let MapStoreInner { content, .. } = self;
+        content.remove(key);
+    }
+
     pub fn clear(&mut self) {
         let MapStoreInner {
             content,
