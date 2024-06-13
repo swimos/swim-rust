@@ -60,7 +60,7 @@ use self::{
     },
 };
 
-/// Describes the metrics the the agent runtime task reports as it runs. These are subscribed to by the
+/// Describes the metrics the agent runtime task reports as it runs. These are subscribed to by the
 /// introspection API to report on the internal state of server application.
 pub mod reporting;
 mod store;
@@ -137,6 +137,7 @@ impl DownlinkRequest {
     /// # Arguments
     ///
     /// * `remote` - An explicit host for the agent, if defined.
+    /// * `address` - The containing node URI a and name of the lane to link to.
     /// * `kind` - The kind of the downlink to open.
     /// * `options` - Configuration parameters for the downlink.
     /// * `promise` - A promise to be satisfied with a channel to the downlink.
@@ -597,7 +598,7 @@ impl AgentRouteChannels {
     }
 }
 
-/// The agent runtime task. This mediates between the the user defined agent state and event handlers
+/// The agent runtime task. This mediates between the user defined agent state and event handlers
 /// and the other entities within the Swim server application.
 pub struct AgentRouteTask<'a, A> {
     agent: &'a A,
