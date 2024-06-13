@@ -224,7 +224,7 @@ impl<Context, T: Debug> Debug for History<Context, T> {
 }
 
 impl<Context, T> History<Context, T> {
-    /// #Arguments
+    /// # Arguments
     /// * `max_size` - The maximum size of the window to accumulate in the history.
     pub fn new(max_size: usize) -> Self {
         History {

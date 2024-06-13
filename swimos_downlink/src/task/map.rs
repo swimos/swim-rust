@@ -37,7 +37,7 @@ use tracing::{error, info_span, trace, Instrument};
 
 /// Task to drive a map downlink, calling lifecycle events at appropriate points.
 ///
-/// #Arguments
+/// # Arguments
 ///
 /// * `model` - The downlink model, providing the lifecycle and a stream of actions.
 /// * `path` - The path of the lane to which the downlink is attached.

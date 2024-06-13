@@ -44,7 +44,7 @@ use swimos_remote::dns::{DnsFut, DnsResolver};
 use swimos_remote::SchemeHostPort;
 use swimos_runtime::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
-    downlink::{DownlinkOptions, DownlinkRuntimeConfig, Io},
+    downlink::{DownlinkOptions, DownlinkRuntimeConfig},
 };
 use swimos_utilities::{
     byte_channel::{are_connected, ByteReader, ByteWriter},
@@ -56,7 +56,7 @@ use uuid::Uuid;
 
 use crate::server::runtime::{ClientRegistration, EstablishedClient, NewClientError};
 
-use super::{downlink_task_connector, DlTaskRequest, DownlinkConnectionTask, ServerConnector};
+use super::{downlink_task_connector, DlTaskRequest, DownlinkConnectionTask, Io, ServerConnector};
 
 struct TestContext {
     connector: ServerConnector,

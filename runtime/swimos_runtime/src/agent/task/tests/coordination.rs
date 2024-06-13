@@ -526,6 +526,17 @@ async fn immediate_shutdown() {
     assert_eq!(map_lanes.remove(MAP_LANE), Some(BTreeMap::new()));
 }
 
+impl AgentAttachmentRequest {
+    fn downlink(id: Uuid, io: Io, completion: promise::Sender<DisconnectionReason>) -> Self {
+        AgentAttachmentRequest::TwoWay {
+            id,
+            io,
+            completion,
+            on_attached: None,
+        }
+    }
+}
+
 async fn attach_remote(
     remote_id: Uuid,
     att_tx: &mpsc::Sender<AgentAttachmentRequest>,

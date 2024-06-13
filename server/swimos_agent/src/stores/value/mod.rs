@@ -51,7 +51,7 @@ pub struct ValueStore<T> {
 assert_impl_all!(ValueStore<()>: Send);
 
 impl<T> ValueStore<T> {
-    /// #Arguments
+    /// # Arguments
     /// * `id` - The ID of the store. This should be unique in an agent.
     /// * `init` - The initial value of the store.
     pub fn new(id: u64, init: T) -> Self {
@@ -175,7 +175,7 @@ pub struct ValueStoreGet<C, T> {
 }
 
 impl<C, T> ValueStoreGet<C, T> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent context to the store.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueStore<T>) -> Self {
         ValueStoreGet {
@@ -192,7 +192,7 @@ pub struct ValueStoreSet<C, T> {
 }
 
 impl<C, T> ValueStoreSet<C, T> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent context to the store.
     /// * `value` - The new value for the store.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueStore<T>, value: T) -> Self {

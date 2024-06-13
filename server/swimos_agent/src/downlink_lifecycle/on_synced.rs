@@ -29,7 +29,7 @@ pub trait OnSynced<T, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `value` - The synced value.
     fn on_synced<'a>(&'a self, value: &T) -> Self::OnSyncedHandler<'a>;
 }
@@ -42,7 +42,7 @@ pub trait OnSyncedShared<T, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `value` - The synced value.

@@ -15,9 +15,9 @@
 pub mod in_memory {
     use std::collections::{hash_map::Entry, HashMap};
 
+    use crate::in_memory_store::InMemoryPlanePersistence;
     use parking_lot::Mutex;
     use swimos_api::persistence::ServerPersistence;
-    use swimos_store::in_memory::InMemoryPlanePersistence;
 
     #[derive(Debug, Default)]
     /// A store implementation that mains agent state transiently in memory. State will persist across

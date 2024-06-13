@@ -34,7 +34,7 @@ pub struct LanesModel<'a> {
 }
 
 impl<'a> LanesModel<'a> {
-    /// #Arguments
+    /// # Arguments
     /// * `agent_type` - The name of the target of the derive macro.
     /// * `lanes` - Description of each lane in the agent (the name of the corresponding field
     /// and the lane kind with types).
@@ -252,7 +252,7 @@ impl<'a> WarpLaneModel<'a> {
 }
 
 impl<'a> ItemModel<'a> {
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the field in the struct (mapped to the name of the lane in the agent).
     /// * `kind` - The kind of the lane, along with any types.
     /// * `flags` - Modifiers applied to the lane.

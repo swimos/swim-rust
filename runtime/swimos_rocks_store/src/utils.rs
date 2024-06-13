@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::StoreError;
 use integer_encoding::VarInt;
+use swimos_api::error::StoreError;
 
 pub const MAX_ID_SIZE: usize = 10;
 
@@ -36,7 +36,7 @@ pub fn deserialize_u64<B: AsRef<[u8]>>(bytes: B) -> Result<u64, StoreError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{deserialize_u64, serialize_u64, MAX_ID_SIZE};
+    use crate::utils::{deserialize_u64, serialize_u64, MAX_ID_SIZE};
 
     fn round_trip(n: u64) {
         let mut buf = [0u8; MAX_ID_SIZE];

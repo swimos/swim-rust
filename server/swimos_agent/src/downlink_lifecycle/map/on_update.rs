@@ -28,7 +28,7 @@ pub trait OnDownlinkUpdate<K, V, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `key` - The key that has been updated.
     /// * `map` - The current state of the map.
     /// * `previous` - The previous value, if any.
@@ -50,7 +50,7 @@ pub trait OnDownlinkUpdateShared<K, V, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `key` - The key that has been updated.

@@ -14,10 +14,9 @@
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use crate::RangeConsumer;
 use bytes::BytesMut;
 use futures::future::join;
-use swimos_api::persistence::{NodePersistence, PlanePersistence};
+use swimos_api::persistence::{NodePersistence, PlanePersistence, RangeConsumer};
 use swimos_utilities::future::NotifyOnBlocked;
 use tokio::sync::Notify;
 

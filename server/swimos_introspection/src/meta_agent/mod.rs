@@ -49,7 +49,7 @@ type Io = (ByteWriter, ByteReader);
 
 /// Run a lane that emits events on a fixed schedule, computed from an [`UplinkReportReader`].
 ///
-/// #Arguments
+/// # Arguments
 /// * `shutdown_rx` - Shutdown signal for when the agent is stopping.
 /// * `pulse_interval` - Interval on which to emit events.
 /// * `reporter_reader` - Reader to produce uplink statistics snapshots for the events.

@@ -67,7 +67,7 @@ pub trait WebsocketServer: Send + Sync {
     /// Create a stream that will negotiate websocket connections on a stream of incoming duplex connections.
     /// This will typically be a TCP listener.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `listener` - The stream of incoming connections.
     /// * `provider` - Provider of websocket extensions.
     /// * `find_nodes` - Channel used to find running agents.
