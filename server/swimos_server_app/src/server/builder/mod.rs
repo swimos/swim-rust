@@ -218,7 +218,7 @@ where
     match store_config {
         #[cfg(feature = "rocks_store")]
         StoreConfig::RockStore { path, options } => {
-            let store = swimos_rocks_store::create_rocks_store(path, options)?;
+            let store = swimos_rocks_store::open_rocks_store(path, options)?;
             Ok(with_websockets(bind_to, routes, networking, config, store))
         }
         StoreConfig::InMemory => Ok(with_websockets(
