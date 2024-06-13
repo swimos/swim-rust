@@ -16,7 +16,7 @@
 //!
 //! Tokio tasks describing the core IO loops for agents and downlinks. These tasks implement
 //! the Warp protocol only and are entirely decoupled from the state and user defined behaviour
-//! of the the agents/downlinks.
+//! of the agents/downlinks.
 
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 

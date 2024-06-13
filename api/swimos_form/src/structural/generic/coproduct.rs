@@ -45,7 +45,7 @@ impl Coproduct for CNil {
 }
 
 /// A non-empty coproduct. In general, we should have `T: Coproduct`, however, this makes it
-/// impossible to implement traits for general co-products due the the potentially unbounded
+/// impossible to implement traits for general co-products due potentially unbounded
 /// recursion.
 pub enum CCons<H, T> {
     Head(H),

@@ -39,7 +39,7 @@ struct UplinkCounters {
     command_count: AtomicU64,
 }
 
-/// A snapshot taken from an the uplink counters.
+/// A snapshot taken from the uplink counters.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct UplinkSnapshot {
     pub link_count: u64,

@@ -183,7 +183,7 @@ bitflags! {
     }
 }
 
-/// Description of an item (its name the the kind of the item, along with types).
+/// Description of an item (its name the kind of the item, along with types).
 #[derive(Clone)]
 pub struct ItemModel<'a> {
     pub name: &'a Ident,
@@ -227,7 +227,7 @@ impl<'a> ItemModel<'a> {
     }
 }
 
-/// Description of an lane (its name the the kind of the lane, along with types).
+/// Description of an lane (its name the kind of the lane, along with types).
 #[derive(Clone)]
 pub struct WarpLaneModel<'a> {
     pub name: &'a Ident,
@@ -236,7 +236,7 @@ pub struct WarpLaneModel<'a> {
     pub transform: NameTransform,
 }
 
-/// Description of an HTTP lane (its name the the kind of the lane, along with types).
+/// Description of an HTTP lane (its name the kind of the lane, along with types).
 #[derive(Clone)]
 pub struct HttpLaneModel<'a> {
     pub name: &'a Ident,
