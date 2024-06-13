@@ -752,7 +752,7 @@ where
                 let mut key_guard = lane.link_tracker.borrow_mut();
                 let trigger = key_guard.links.remove(&key).and_then(|link| {
                     for k in link.keys {
-                        lane.inner.remove_local(&k)
+                        lane.inner.remove(&k)
                     }
                     link.stop_tx
                 });
