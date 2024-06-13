@@ -75,6 +75,11 @@ impl<D> UriForest<D> {
         }
     }
 
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.trees.is_empty()
+    }
+
     /// Inserts 'uri' into this forest and associates 'node_data' with it.
     pub fn insert(&mut self, uri: &str, node_data: D) {
         let UriForest { trees } = self;
@@ -137,37 +142,6 @@ impl<D> UriForest<D> {
         }
     }
 
-    /// Returns an optional reference to the data associated at 'uri'
-    pub fn get(&self, uri: &str) -> Option<&D> {
-        let UriForest { trees } = self;
-        let mut segment_iter = PathSegmentIterator::new(uri).peekable();
-
-        match segment_iter.next() {
-            Some(segment) => {
-                match trees.get(segment) {
-                    Some(root) => {
-                        let mut current_node = root;
-                        while let Some(segment) = segment_iter.next() {
-                            match (current_node.get_descendant(segment), segment_iter.peek()) {
-                                (Some(descendant), Some(_)) => {
-                                    // We found a matching node and there is another segment to come in
-                                    // the path. Update the cursor and carry on.
-                                    current_node = descendant;
-                                }
-                                (Some(node), None) => return node.data.as_ref(),
-                                (None, Some(_)) => return None,
-                                (None, None) => return None,
-                            }
-                        }
-                        current_node.data.as_ref()
-                    }
-                    None => None,
-                }
-            }
-            None => None,
-        }
-    }
-
     /// Returns an optional mutable reference to the data associated at 'uri'
     pub fn get_mut(&mut self, uri: &str) -> Option<&mut D> {
         let UriForest { trees } = self;
@@ -203,6 +177,7 @@ impl<D> UriForest<D> {
     }
 
     /// Returns whether this URI forest contains 'uri'.
+    #[cfg(test)]
     pub fn contains_uri(&self, uri: &str) -> bool {
         let UriForest { trees } = self;
         let mut segment_iter = PathSegmentIterator::new(uri).peekable();
@@ -250,49 +225,6 @@ impl<D> UriForest<D> {
     pub fn uri_iter(&self) -> UriForestIterator<'_, D> {
         let UriForest { trees } = self;
         UriForestIterator::new("".to_string(), trees)
-    }
-
-    /// Returns all URIs in this URI forest that are prefixed by 'uri'.
-    pub fn prefix_iter(&self, uri: &str) -> UriForestIterator<'_, D> {
-        let UriForest { trees } = self;
-        let mut segment_iter = PathSegmentIterator::new(uri).peekable();
-
-        match segment_iter.next() {
-            Some(segment) => {
-                match trees.get(segment) {
-                    Some(root) => {
-                        let mut current_node = root;
-                        while let Some(segment) = segment_iter.next() {
-                            match (current_node.get_descendant(segment), segment_iter.peek()) {
-                                (Some(descendant), Some(_)) => {
-                                    // We found a matching node and there is another segment to come
-                                    // in the path. Update the cursor and carry on until we reach
-                                    // the end of the prefix
-                                    current_node = descendant;
-                                }
-                                (Some(node), None) => {
-                                    return UriForestIterator::new(
-                                        uri.to_string(),
-                                        &node.descendants,
-                                    )
-                                }
-                                (None, Some(_)) => return UriForestIterator::empty(),
-                                (None, None) => return UriForestIterator::empty(),
-                            }
-                        }
-
-                        return UriForestIterator::new(uri.to_string(), &current_node.descendants);
-                    }
-                    None => UriForestIterator::empty(),
-                }
-            }
-            None => UriForestIterator::empty(),
-        }
-    }
-
-    /// Returns whether this URI forest is empty.
-    pub fn is_empty(&self) -> bool {
-        self.trees.is_empty()
     }
 
     /// Returns an iterator that yields URI parts; either a leaf item containing node data or a
@@ -459,6 +391,7 @@ impl<D> TreeNode<D> {
         self.descendants.get_mut(segment)
     }
 
+    #[cfg(test)]
     fn get_descendant(&self, segment: &str) -> Option<&TreeNode<D>> {
         self.descendants.get(segment)
     }

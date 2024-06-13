@@ -61,15 +61,6 @@ pub struct UriForestIterator<'l, D> {
 }
 
 impl<'l, D> UriForestIterator<'l, D> {
-    pub(crate) fn empty() -> UriForestIterator<'l, D> {
-        UriForestIterator {
-            prefix: "".to_string(),
-            visit: VecDeque::default(),
-            uri_stack: VecDeque::default(),
-            op_stack: VecDeque::default(),
-        }
-    }
-
     pub(crate) fn new(
         prefix: String,
         nodes: &'l HashMap<SmolStr, TreeNode<D>>,

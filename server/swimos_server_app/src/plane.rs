@@ -15,7 +15,7 @@
 use std::collections::HashSet;
 
 use swimos_api::agent::{Agent, BoxAgent};
-use swimos_introspection::route::{lane_pattern, node_pattern};
+use swimos_introspection::{lane_pattern, node_pattern};
 use swimos_model::Text;
 use swimos_utilities::routing::RoutePattern;
 
