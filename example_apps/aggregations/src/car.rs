@@ -1,3 +1,17 @@
+// Copyright 2015-2023 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use std::mem::replace;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -39,13 +53,12 @@ impl CarLifecycle {
     pub fn on_start(&self, context: HandlerContext<CarAgent>) -> impl EventHandler<CarAgent> {
         let area = self.area.clone();
 
-        let speed_handler = context.schedule_repeatedly(Duration::from_secs(10), move || {
+        let speed_handler = context.schedule_repeatedly(Duration::from_secs(5), move || {
             let mut rng = rand::rngs::OsRng::default();
             Some(context.set_value(CarAgent::SPEED, rng.gen_range(10..=30)))
         });
-
         let car_handler = move |car_id: u64| {
-            context.schedule_repeatedly(Duration::from_secs(5), move || {
+            context.schedule_repeatedly(Duration::from_secs(1), move || {
                 let area = area.clone();
                 let car_id = car_id.clone();
 
@@ -54,21 +67,21 @@ impl CarLifecycle {
 
                 let handler = if old_area != *assigned_area {
                     // deregister this car with its current area
-                    let register_handler = context.send_command(
+                    let deregister_handler = context.send_command(
                         None,
                         format!("/area/{old_area:?}"),
                         "deregister".to_string(),
                         car_id.clone(),
                     );
                     // register this car with its new assigned area
-                    let deregister_handler = context.send_command(
+                    let register_handler = context.send_command(
                         None,
                         format!("/area/{:?}", *assigned_area),
                         "register".to_string(),
                         car_id,
                     );
 
-                    Some(register_handler.followed_by(deregister_handler))
+                    Some(deregister_handler.followed_by(register_handler))
                 } else {
                     // noop handler as the car didn't switch area
                     None
