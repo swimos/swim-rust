@@ -52,7 +52,7 @@ pub struct JoinMapDownlink<L, K, V, LC, Context> {
 }
 
 impl<L, K, V, LC, Context> JoinMapDownlink<L, K, V, LC, Context> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent to the join value lane.
     /// * `link_key` - A key to identify the link.
     /// * `lane` - Address of the remote lane to which the downlink will be attached.

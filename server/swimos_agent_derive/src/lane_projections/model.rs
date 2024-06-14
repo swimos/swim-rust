@@ -26,7 +26,7 @@ pub struct AgentFields<'a> {
 }
 
 impl<'a> AgentFields<'a> {
-    /// #Arguments
+    /// # Arguments
     /// * `agent_name` - The name of the struct type.
     /// * `generics` - The generic parameters of the struct (for application to the new impl block).
     /// * `fields` - Required information about each field (name and type).

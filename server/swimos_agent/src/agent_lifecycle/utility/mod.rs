@@ -115,7 +115,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Send a command to a lane (either on a remote host or locally to an agent on the same plane).
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `host` - The target remote host or [`None`] for an agent in the same plane.
     /// * `node` - The target node hosting the lane.
     /// * `lane` - The name of the target lane.
@@ -143,7 +143,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 
     /// Get the value of a parameter extracted from the route URI of the agent instance.
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the parameter.
     pub fn get_parameter<'a>(
         &self,
@@ -154,7 +154,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that will get the value of a value lane store of the agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the value lane.
     pub fn get_value<Item, T>(
         &self,
@@ -169,7 +169,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that will set a new value into value lane or store of the agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the value lane.
     /// * `value` - The value to set.
     pub fn set_value<Item, T>(
@@ -186,7 +186,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that will update an entry in a map lane or store of the agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the map lane.
     /// * `key - The key to update.
     /// * `value` - The new value.
@@ -206,7 +206,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that will transform the value in an entry of a map lane or store of the agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the map lane.
     /// * `key - The key to update.
     /// * `f` - A function to apple to the entry in the map.
@@ -228,7 +228,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that will remove an entry from a map lane or store of the agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the map lane.
     /// * `key - The key to remove.
     pub fn remove<Item, K, V>(
@@ -246,7 +246,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that will clear a map lane or store of the agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the map lane.
     pub fn clear<Item, K, V>(
         &self,
@@ -262,7 +262,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that replaces the entire contents of a map lane or store.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the map lane.
     /// * `entries` - The new entries for the lane.
     pub fn replace_map<Item, K, V, I>(
@@ -287,7 +287,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// Create an event handler that will attempt to get an entry from a map-like item of the agent.
     /// This includes map lanes and stores and join lanes.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the map lane.
     /// * `key - The key to fetch.
     pub fn get_entry<Item, K, V>(
@@ -306,7 +306,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// Create an event handler that will attempt to get the entire contents of a map-like item of the
     /// agent. This includes map lanes and stores and join lanes.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the map lane.
     pub fn get_map<Item, K, V>(
         &self,
@@ -322,7 +322,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that will send a command to a command lane of the agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the value lane.
     /// * `value` - The value of the command.
     pub fn command<T>(
@@ -338,7 +338,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that will cue a demand lane to produce a value.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the demand lane.
     pub fn cue<T>(
         &self,
@@ -352,7 +352,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that will cue a key on a demand-map lane to produce a value.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the demand-map lane.
     /// * `key` - The key to cue.
     pub fn cue_key<K, V>(
@@ -369,7 +369,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Create an event handler that will supply an event to a supply lane.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the supply lane.
     /// * `value` - The value to supply.
     pub fn supply<V>(
@@ -510,7 +510,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Open a value downlink to a lane on another agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane` - The lane to downlink from.
@@ -534,7 +534,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Open an event downlink to a lane on another agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane` - The lane to downlink from.
@@ -558,7 +558,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
 
     /// Open a map downlink to a lane on another agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane` - The lane to downlink from.
@@ -583,7 +583,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 
     /// Create a builder to construct a request to open an event downlink.
-    /// #Arguments
+    /// # Arguments
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane` - The lane to downlink from.
@@ -603,7 +603,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 
     /// Create a builder to construct a request to open a value downlink.
-    /// #Arguments
+    /// # Arguments
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane` - The lane to downlink from.
@@ -623,7 +623,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 
     /// Create a builder to construct a request to open a map downlink.
-    /// #Arguments
+    /// # Arguments
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane` - The lane to downlink from.
@@ -647,7 +647,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// Add a downlink to a Join Value lane. All values received on the downlink will be set into the map
     /// state of the lane, using the provided key.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the lane.
     /// * `key - The key for the downlink.
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
@@ -673,7 +673,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// Add a downlink to a Join Map lane. All key-value pairs received on the downlink will be set into the
     /// map state of the lane.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - Projection to the lane.
     /// * `link_key - A key to identify the link.
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).

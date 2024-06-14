@@ -20,7 +20,7 @@
 //! [`std::collections::HashMap`].
 //!
 //! A derivation macro is provided that can automatically generate implementations for straightforward
-//! struct and enum types. For instructions on how to use this, see the the [`Form`] trait or the SwimOS
+//! struct and enum types. For instructions on how to use this, see the [`Form`] trait or the SwimOS
 //! documentation.
 
 #![allow(clippy::match_wild_err_arm)]

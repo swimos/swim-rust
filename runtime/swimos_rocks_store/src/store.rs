@@ -12,20 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod in_memory;
-mod iterator;
-mod keyspaces;
-pub mod nostore;
-mod utils;
-
-pub use iterator::*;
-pub use keyspaces::*;
-pub use utils::*;
-
 use std::fmt::Debug;
 use std::path::Path;
 
-pub type KvBytes = (Box<[u8]>, Box<[u8]>);
+/// An enumeration over the keyspaces that exist in a store.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum KeyspaceName {
+    Lane,
+    Value,
+    Map,
+}
 
 pub use swimos_api::error::StoreError;
 /// A Swim server store.
@@ -34,14 +30,9 @@ pub use swimos_api::error::StoreError;
 pub trait Store:
     KeyspaceByteEngine + KeyspaceByteEngine + KeyspaceResolver + Send + Sync + Clone + Debug + 'static
 {
-    /// Returns a reference to the path that the delegate byte engine is operating from.
-    fn path(&self) -> &Path;
-
-    /// Returns information about the store engine.
-    fn engine_info(&self) -> EngineInfo;
 }
 
-pub use swimos_api::persistence::{KeyValue, RangeConsumer};
+use crate::keyspaces::{KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
 
 /// Information regarding a delegate store engine that is useful for displaying along with debug
 /// information or an error report.
@@ -51,18 +42,6 @@ pub struct EngineInfo {
     pub path: String,
     /// The type of store engine: RocksDB/NoStore etc.
     pub kind: String,
-}
-
-/// A storage engine for server stores that handles byte arrays.
-pub trait ByteEngine: 'static {
-    /// Put a key-value pair into this store.
-    fn put(&self, key: &[u8], value: &[u8]) -> Result<(), StoreError>;
-
-    /// Get an entry from this store by its key.
-    fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, StoreError>;
-
-    /// Delete a value from this store by its key.
-    fn delete(&self, key: &[u8]) -> Result<(), StoreError>;
 }
 
 pub trait StoreBuilder: Sized + Clone {

@@ -50,7 +50,7 @@ pub struct ValueLane<T> {
 assert_impl_all!(ValueLane<()>: Send);
 
 impl<T> ValueLane<T> {
-    /// #Arguments
+    /// # Arguments
     /// * `id` - The ID of the lane. This should be unique in an agent.
     /// * `init` - The initial value of the lane.
     pub fn new(id: u64, init: T) -> Self {
@@ -144,7 +144,7 @@ pub struct ValueLaneGet<C, T> {
 }
 
 impl<C, T> ValueLaneGet<C, T> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent context to the lane.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>) -> Self {
         ValueLaneGet {
@@ -167,7 +167,7 @@ pub struct ValueLaneSync<C, T> {
 }
 
 impl<C, T> ValueLaneSet<C, T> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent context to the lane.
     /// * `value` - The new value for the lane.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>, value: T) -> Self {
@@ -179,7 +179,7 @@ impl<C, T> ValueLaneSet<C, T> {
 }
 
 impl<C, T> ValueLaneSync<C, T> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent context to the lane.
     /// * `id` - The ID of the remote that requested the sync.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>, id: Uuid) -> Self {

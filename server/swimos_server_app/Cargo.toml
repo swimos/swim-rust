@@ -30,7 +30,6 @@ uuid = { workspace = true }
 thiserror = { workspace = true }
 rand = { workspace = true }
 url = { workspace = true }
-swimos_store = { path = "../../runtime/swimos_store" }
 swimos_rocks_store = { path = "../../runtime/swimos_rocks_store", optional = true}
 parking_lot = { workspace = true }
 hyper = { workspace = true, features = ["server", "runtime", "tcp", "http1", "backports"] }
