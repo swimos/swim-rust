@@ -48,7 +48,7 @@ pub struct MapStore<K, V> {
 assert_impl_all!(MapStore<(), ()>: Send);
 
 impl<K, V> MapStore<K, V> {
-    /// #Arguments
+    /// # Arguments
     /// * `id` - The ID of the store. This should be unique within an agent.
     /// * `init` - The initial contents of the map.
     pub fn new(id: u64, init: HashMap<K, V>) -> Self {

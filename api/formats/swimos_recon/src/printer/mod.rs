@@ -16,6 +16,7 @@
 mod tests;
 
 use base64::display::Base64Display;
+use base64::engine::general_purpose::STANDARD;
 use std::borrow::Cow;
 use std::fmt::{Debug, Display, Formatter};
 use swimos_form::write::{
@@ -224,34 +225,18 @@ where
     fn write_blob_vec(self, blob: Vec<u8>) -> Result<Self::Repr, Self::Error> {
         let StructurePrinter { fmt, has_attr, .. } = self;
         if has_attr {
-            write!(
-                fmt,
-                " %{}",
-                Base64Display::with_config(blob.as_slice(), base64::STANDARD)
-            )
+            write!(fmt, " %{}", Base64Display::new(blob.as_slice(), &STANDARD))
         } else {
-            write!(
-                fmt,
-                "%{}",
-                Base64Display::with_config(blob.as_slice(), base64::STANDARD)
-            )
+            write!(fmt, "%{}", Base64Display::new(blob.as_slice(), &STANDARD))
         }
     }
 
     fn write_blob(self, value: &[u8]) -> Result<Self::Repr, Self::Error> {
         let StructurePrinter { fmt, has_attr, .. } = self;
         if has_attr {
-            write!(
-                fmt,
-                " %{}",
-                Base64Display::with_config(value, base64::STANDARD)
-            )
+            write!(fmt, " %{}", Base64Display::new(value, &STANDARD))
         } else {
-            write!(
-                fmt,
-                "%{}",
-                Base64Display::with_config(value, base64::STANDARD)
-            )
+            write!(fmt, "%{}", Base64Display::new(value, &STANDARD))
         }
     }
 }
@@ -612,7 +597,7 @@ where
             strategy,
             ..
         } = self;
-        let rep = Base64Display::with_config(blob.as_slice(), base64::STANDARD);
+        let rep = Base64Display::new(blob.as_slice(), &STANDARD);
         if delegated {
             if has_attr {
                 write!(fmt, " %{}{})", &rep, strategy.attr_body_padding())
@@ -638,7 +623,7 @@ where
             strategy,
             ..
         } = self;
-        let rep = Base64Display::with_config(value, base64::STANDARD);
+        let rep = Base64Display::new(value, &STANDARD);
         if delegated {
             if has_attr {
                 write!(fmt, " %{}{})", &rep, strategy.attr_body_padding())

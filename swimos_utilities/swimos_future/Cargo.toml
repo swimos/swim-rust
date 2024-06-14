@@ -8,7 +8,6 @@ edition = "2021"
 either = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }
-tokio-util = { workspace = true, features = ["codec"] }
 pin-project = { workspace = true }
 swimos_trigger = { path = "../swimos_trigger" }
 rand = { workspace = true }
@@ -16,5 +15,4 @@ swimos_num = { path = "../swimos_num" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["sync", "time", "rt", "macros"] }
-tokio-stream = { workspace = true }
 parking_lot = { workspace = true }

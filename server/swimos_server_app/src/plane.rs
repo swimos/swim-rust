@@ -119,7 +119,7 @@ impl PlaneBuilder {
     /// Add a new route to the builder. This does not check that the route is not ambiguous
     /// with respect to the already added routes.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `pattern` - The route pattern for matching the node URI of incoming envelopes.
     /// * `agent` - The agent type to be started each time the route matches.
     pub fn add_route<A: Agent + Send + 'static>(&mut self, pattern: RoutePattern, agent: A) {

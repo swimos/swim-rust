@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use crate::engine::RocksOpts;
+use crate::keyspaces::{KeyspaceDef, Keyspaces};
 use crate::server::keystore::rocks::incrementing_merge_operator;
 use crate::server::keystore::COUNTER_KEY;
 use crate::server::{LANE_KS, MAP_LANE_KS, VALUE_LANE_KS};
 use rocksdb::{Options, SliceTransform};
 use std::mem::size_of;
-use swimos_store::{KeyspaceDef, Keyspaces};
 
 const PREFIX_BLOOM_RATIO: f64 = 0.2;
 
@@ -38,6 +38,7 @@ pub fn default_keyspaces() -> Keyspaces<RocksOpts> {
     Keyspaces::new(vec![lane_def, value_def, map_def])
 }
 
+/// Default RocksDB parameters.
 pub fn default_db_opts() -> RocksOpts {
     let mut rock_opts = Options::default();
     rock_opts.create_if_missing(true);

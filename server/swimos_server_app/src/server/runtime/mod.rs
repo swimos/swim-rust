@@ -40,10 +40,9 @@ use swimos_messages::remote_protocol::{
 use swimos_model::Text;
 use swimos_remote::{BadWarpUrl, RemoteTask, Scheme};
 use swimos_runtime::agent::{
-    AgentAttachmentRequest, AgentExecError, AgentRoute, AgentRouteChannels, AgentRouteTask,
-    CombinedAgentConfig, DisconnectionReason, LinkRequest,
+    AgentAttachmentRequest, AgentExecError, AgentRouteChannels, AgentRouteDescriptor,
+    AgentRouteTask, CombinedAgentConfig, DisconnectionReason, LinkRequest,
 };
-use swimos_runtime::downlink::Io;
 use swimos_utilities::routing::RouteUri;
 
 use swimos_remote::websocket::{RatchetError, Websockets};
@@ -61,6 +60,7 @@ use crate::config::SwimServerConfig;
 use crate::plane::PlaneModel;
 use crate::server::runtime::downlinks::DlTaskRequest;
 use crate::server::ServerHandle;
+use crate::Io;
 
 use self::downlinks::{DownlinkConnectionTask, ServerConnector};
 use self::ids::{IdIssuer, IdKind};
@@ -907,7 +907,7 @@ impl Agents {
 
                     let route_task = AgentRouteTask::new(
                         agent,
-                        AgentRoute {
+                        AgentRouteDescriptor {
                             identity: id,
                             route: route_uri,
                             route_params,

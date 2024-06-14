@@ -91,7 +91,7 @@ impl AgentIntrospectionUpdater {
 impl AgentIntrospectionUpdater {
     /// Add a new lane for the agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the lane.
     /// * `kind` - The kind of the lane.
     /// * `report_reader` - Reader for uplink statistics snapshots for the lane.

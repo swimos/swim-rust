@@ -91,7 +91,7 @@ impl From<UplinkReporterRegistration> for IntrospectionMessage {
 ///
 /// Returns the task and a resolver used to interact with it externally.
 ///
-/// #Arguments
+/// # Arguments
 /// * `stopping` - Signal that the server is stopping.
 /// * `channel_size` - Size of the channel use to register new lanes.
 pub fn init_introspection(
@@ -308,7 +308,7 @@ impl IntrospectionResolver {
 
     /// Register a new agent instance for introspection.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `agent_id` - The unique ID of the agent.
     /// * `route_uri` - The node URI of the agent.
     /// * `name` - The name of the agent; usually the struct name.
@@ -340,7 +340,7 @@ impl IntrospectionResolver {
 
     /// Remove a stopped agent from the intorspectio registry.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `agent_id` - The unique ID of the agent.
     pub fn close_agent(&self, agent_id: Uuid) -> Result<(), IntrospectionStopped> {
         let IntrospectionResolver { queries, .. } = self;
@@ -356,7 +356,7 @@ impl IntrospectionResolver {
 
     /// Attempt to resolve an introspection handle for a running agent instance.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `node_uri` - The node URI of the agent.
     pub async fn resolve_agent(
         &self,
@@ -373,7 +373,7 @@ impl IntrospectionResolver {
 
     /// Attempt to resolve an introspection view of a lane of a running agent instance.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `node_uri` - The node URI of the host agent.
     /// * `lane_name` - The name of the lane.
