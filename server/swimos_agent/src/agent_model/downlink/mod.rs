@@ -40,10 +40,8 @@ use crate::{
     meta::AgentMetadata,
 };
 
-pub use self::hosted::{
-    EventDownlinkFactory, EventDownlinkHandle, MapDownlinkFactory, MapDownlinkHandle,
-    ValueDownlinkFactory, ValueDownlinkHandle,
-};
+use self::hosted::{EventDownlinkFactory, MapDownlinkFactory, ValueDownlinkFactory};
+pub use self::hosted::{EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle};
 
 struct Inner<LC> {
     address: Address<Text>,
