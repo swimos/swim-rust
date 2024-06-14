@@ -81,7 +81,10 @@ impl<Context, K, V, LC> StatelessMapDownlinkBuilder<Context, K, V, LC>
 where
     LC: StatelessMapLifecycle<Context, K, V>,
 {
-    /// Specify a new event handler to be executed when the downlink enters the linked state.
+    /// Specify a handler for the `on_linked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
         f: F,
@@ -103,7 +106,10 @@ where
         }
     }
 
-    /// Specify a new event handler to be executed when the downlink enters the synced state.
+    /// Specify a handler for the `on_synced` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_synced<F>(
         self,
         f: F,
@@ -125,7 +131,10 @@ where
         }
     }
 
-    /// Specify a new event handler to be executed when the downlink enters the unlinked state.
+    /// Specify a handler for the `on_unlinked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
         f: F,
@@ -147,7 +156,10 @@ where
         }
     }
 
-    /// Specify a new event handler to be executed when the downlink fails.
+    /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
+    /// 
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_failed<F>(
         self,
         f: F,
@@ -170,6 +182,9 @@ where
     }
 
     /// Specify a new event handler to be executed when an entry in the map is updated.
+    /// 
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_update<F, B>(
         self,
         f: F,
@@ -194,6 +209,9 @@ where
     }
 
     /// Specify a new event handler to be executed when an entry in the map is removed.
+    /// 
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_remove<F>(
         self,
         f: F,
@@ -216,6 +234,9 @@ where
     }
 
     /// Specify a new event handler to be executed when the map is cleared.
+    /// 
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_clear<F>(
         self,
         f: F,
@@ -236,10 +257,10 @@ where
             inner: inner.on_clear(f),
         }
     }
-    /// Add a state that can be shared between the event handlers for the downlink.
+    /// Augment the lifecycle with some state that is shared between the event handlers.
     ///
     /// # Arguments
-    /// * `state` - The value of the state.
+    /// * `shared` - The shared state.
     pub fn with_state<State: Send>(
         self,
         state: State,
@@ -287,7 +308,10 @@ impl<Context, K, V, State, LC> StatefulMapDownlinkBuilder<Context, K, V, State, 
 where
     LC: StatefulMapLifecycle<Context, State, K, V>,
 {
-    /// Specify a new event handler to be executed when the downlink enters the linked state.
+    /// Specify a handler for the `on_linked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
         f: F,
@@ -309,7 +333,10 @@ where
         }
     }
 
-    /// Specify a new event handler to be executed when the downlink enters the synced state.
+    /// Specify a handler for the `on_synced` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_synced<F>(
         self,
         f: F,
@@ -331,7 +358,10 @@ where
         }
     }
 
-    /// Specify a new event handler to be executed when the downlink enters the unlinked state.
+    /// Specify a handler for the `on_linked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
         f: F,
@@ -353,7 +383,10 @@ where
         }
     }
 
-    /// Specify a new event handler to be executed when the downlink enters the unlinked state.
+    /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
+    /// 
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_failed<F>(
         self,
         f: F,
@@ -376,6 +409,9 @@ where
     }
 
     /// Specify a new event handler to be executed when an entry in the map is updated.
+    /// 
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_update<F, B>(
         self,
         f: F,
@@ -400,6 +436,9 @@ where
     }
 
     /// Specify a new event handler to be executed when an entry in the map is removed.
+    /// 
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_remove<F>(
         self,
         f: F,
@@ -422,6 +461,9 @@ where
     }
 
     /// Specify a new event handler to be executed when the map is cleared.
+    /// 
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_clear<F>(
         self,
         f: F,
