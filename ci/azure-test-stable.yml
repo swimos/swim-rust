@@ -8,9 +8,9 @@ jobs:
 
         ${{ if parameters.cross }}:
           MacOS:
-            vmImage: macOS-12
+            vmImage: macOS-14
           Windows:
-            vmImage: windows-2019
+            vmImage: windows-2022
     pool:
       vmImage: $(vmImage)
 
