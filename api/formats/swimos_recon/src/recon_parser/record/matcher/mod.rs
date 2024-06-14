@@ -43,14 +43,14 @@ pub trait HeaderPeeler<'a>: Clone {
 
     /// Provide the name of the tag attribute.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the tag. Note that this has a more restrictive lifetime as may
     /// have been unescaped by the parser.
     fn tag(self, name: &str) -> Result<Self, Self::Error>;
 
     /// Feed a slot from the body of the attribute.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the slot. Note that this has a more restrictive lifetime as may
     /// have been unescaped by the parser.
     /// * `value` - Span of the input containing the Recon of the value of the slot.
@@ -58,7 +58,7 @@ pub trait HeaderPeeler<'a>: Clone {
 
     /// Feed a value item from the body of the attribute.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `value` - Span of the input containing the Recon of the item
     fn feed_header_value(self, value: Span<'a>) -> Result<Self, Self::Error>;
 
@@ -68,7 +68,7 @@ pub trait HeaderPeeler<'a>: Clone {
 
     /// Attempt to interpret the attribute.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `body` - The remainder of the input span. Note that this is entirely uninterpreted and
     /// so may not contain valid Recon.
     fn done(self, body: Span<'a>) -> Result<Self::Output, Self::Error>;

@@ -18,15 +18,16 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use swimos_model::Text;
-use swimos_store::{KeyValue, KeyspaceByteEngine, RangeConsumer, Store, StoreError};
-
 use crate::agent::{NodeStore, SwimNodeStore};
+use crate::keyspaces::{KeyspaceByteEngine, Keyspaces};
 use crate::server::keystore::KeyStore;
 use crate::server::{StoreEngine, StoreKey};
-use crate::KeyspaceName;
-use swimos_store::{Keyspaces, StoreBuilder};
+use crate::store::{KeyspaceName, Store, StoreBuilder};
+use swimos_api::error::StoreError;
+use swimos_api::persistence::{KeyValue, RangeConsumer};
+use swimos_model::Text;
 
+#[cfg(test)]
 pub mod mock;
 
 const STORE_DIR: &str = "store";
@@ -56,7 +57,7 @@ pub trait PlaneStore: StoreEngine + Sized + Debug + Send + Sync + Clone + 'stati
 
     /// Executes a ranged snapshot read prefixed by a lane key.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `prefix` - Common prefix for the records to read.
     fn ranged_snapshot_consumer(&self, prefix: StoreKey) -> Result<Self::RangeCon<'_>, StoreError>;
 

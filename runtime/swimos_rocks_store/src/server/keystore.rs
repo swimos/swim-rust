@@ -14,9 +14,12 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use swimos_store::{deserialize_u64, serialize_u64, KeyspaceByteEngine, StoreError, MAX_ID_SIZE};
 
-use crate::KeyspaceName;
+use swimos_api::error::StoreError;
+
+use crate::keyspaces::KeyspaceByteEngine;
+use crate::store::KeyspaceName;
+use crate::utils::{deserialize_u64, serialize_u64, MAX_ID_SIZE};
 
 /// The lane keyspace's counter key.
 pub const COUNTER_KEY: &str = "counter";
@@ -87,9 +90,11 @@ pub fn format_key<I: ToString>(uri: I) -> String {
 }
 
 pub mod rocks {
-    use crate::server::keystore::INITIAL;
+    use crate::{
+        server::keystore::INITIAL,
+        utils::{deserialize_u64, serialize_u64_vec},
+    };
     use rocksdb::MergeOperands;
-    use swimos_store::{deserialize_u64, serialize_u64_vec};
 
     const DESERIALIZATION_FAILURE: &str = "Failed to deserialize key";
 
@@ -115,11 +120,12 @@ pub mod rocks {
 
 #[cfg(test)]
 mod tests {
+    use crate::keyspaces::{Keyspace, KeyspaceByteEngine};
     use crate::server::keystore::{format_key, KeyStore, COUNTER_BYTES, COUNTER_KEY};
     use crate::server::mock::MockStore;
-    use crate::KeyspaceName;
+    use crate::store::KeyspaceName;
+    use crate::utils::deserialize_u64;
     use std::sync::Arc;
-    use swimos_store::{deserialize_u64, Keyspace, KeyspaceByteEngine};
 
     fn keyspaces() -> Vec<String> {
         vec![

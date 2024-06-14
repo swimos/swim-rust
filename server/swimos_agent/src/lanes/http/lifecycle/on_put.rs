@@ -28,7 +28,7 @@ pub trait OnPut<T, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `http_context` - Metadata associated with the HTTP request.
     /// * `value` - The value put to the lane.
     fn on_put(&self, http_context: HttpRequestContext, value: T) -> Self::OnPutHandler<'_>;
@@ -42,7 +42,7 @@ pub trait OnPutShared<T, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `http_context` - Metadata associated with the HTTP request.

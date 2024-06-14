@@ -58,7 +58,7 @@ pub trait Downlink {
     /// Create a task that will manage the state of the downlink and service anything that is
     /// observing it/ pushing data to it.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `path` - The path to the lane to which the downlink should be attached.
     /// * `config` - Configuration parameters for the downlink task.
     /// * `input` - Byte channel on which updates will be received from the runtime.

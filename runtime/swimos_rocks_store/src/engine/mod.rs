@@ -17,17 +17,17 @@ mod tests;
 
 mod iterator;
 
-pub use iterator::{RocksIterator, RocksPrefixIterator, RocksRawPrefixIterator};
+pub use iterator::RocksRawPrefixIterator;
 
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, ReadOptions};
 use rocksdb::{Options, DB};
 use std::path::Path;
 use std::sync::Arc;
-use swimos_store::EnginePrefixIterator;
-use swimos_store::{
-    serialize_u64, EngineInfo, Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces, Store,
-    StoreBuilder, StoreError, MAX_ID_SIZE,
-};
+use swimos_api::error::StoreError;
+
+use crate::keyspaces::{Keyspace, KeyspaceByteEngine, KeyspaceResolver, Keyspaces};
+use crate::store::{Store, StoreBuilder};
+use crate::utils::{serialize_u64, MAX_ID_SIZE};
 
 /// A Rocks database engine.
 ///
@@ -37,45 +37,12 @@ pub struct RocksEngine {
     pub(crate) delegate: Arc<DB>,
 }
 
+impl Store for RocksEngine {}
+
 impl RocksEngine {
     pub fn new(delegate: DB) -> RocksEngine {
         RocksEngine {
             delegate: Arc::new(delegate),
-        }
-    }
-
-    /// Returns an iterator over the entire store.
-    pub fn iterator<'a: 'b, 'b>(
-        &'a self,
-        space: &'b <Self as KeyspaceResolver>::ResolvedKeyspace,
-    ) -> Result<RocksIterator<'b>, StoreError> {
-        let mut iter = self.delegate.raw_iterator_cf(space);
-        iter.seek_to_first();
-
-        Ok(iter.into())
-    }
-
-    /// Returns an iterator for all of the elements in the keyspace `space` that have keys that are
-    /// prefixed by `prefix` and with the default iterator options.
-    pub fn prefix_iterator<'a: 'b, 'b>(
-        &'a self,
-        space: &'b <Self as KeyspaceResolver>::ResolvedKeyspace,
-        prefix: &'b [u8],
-    ) -> Result<RocksPrefixIterator<'b>, StoreError> {
-        let it = self.delegate.prefix_iterator_cf(space, prefix);
-        Ok(it.into())
-    }
-}
-
-impl Store for RocksEngine {
-    fn path(&self) -> &Path {
-        self.delegate.path()
-    }
-
-    fn engine_info(&self) -> EngineInfo {
-        EngineInfo {
-            path: self.path().to_string_lossy().to_string(),
-            kind: "RocksDB".to_string(),
         }
     }
 }
@@ -199,40 +166,6 @@ impl KeyspaceByteEngine for RocksEngine {
         exec_keyspace(&self.delegate, keyspace, move |delegate, keyspace| {
             delegate.merge_cf(keyspace, key, value)
         })
-    }
-
-    fn get_prefix_range<F, K, V, S>(
-        &self,
-        keyspace: S,
-        prefix: &[u8],
-        map_fn: F,
-    ) -> Result<Option<Vec<(K, V)>>, StoreError>
-    where
-        F: for<'i> Fn(&'i [u8], &'i [u8]) -> Result<(K, V), StoreError>,
-        S: Keyspace,
-    {
-        let resolved = self
-            .resolve_keyspace(&keyspace)
-            .ok_or(StoreError::KeyspaceNotFound)?;
-        let mut it = self.prefix_iterator(resolved, prefix)?;
-        let mut data = Vec::new();
-
-        loop {
-            match it.next() {
-                Some(Ok((key, value))) => {
-                    let mapped = map_fn(key.as_ref(), value.as_ref())?;
-                    data.push(mapped);
-                }
-                Some(Err(e)) => return Err(e),
-                _ => break,
-            }
-        }
-
-        if data.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(data))
-        }
     }
 
     fn delete_key_range<S>(

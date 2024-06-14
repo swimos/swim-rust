@@ -26,7 +26,7 @@ pub trait OnConsumeEvent<T, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `value` - The event value.
     fn on_event(&self, value: T) -> Self::OnEventHandler<'_>;
 }
@@ -39,7 +39,7 @@ pub trait OnConsumeEventShared<T, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `value` - The event value.

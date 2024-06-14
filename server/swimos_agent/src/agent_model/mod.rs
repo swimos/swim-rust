@@ -183,14 +183,14 @@ pub trait AgentSpec: Sized + Send {
     /// for a value lane. There will be no handler if the lane does not exist or does not
     /// accept commands.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - The name of the lane.
     /// * `body` - The content of the command.
     fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler>;
 
     /// Create an initializer that will consume the state of a value-like item, as reported by the runtime.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - The name of the item.
     fn init_value_like_item(&self, item: &str) -> Option<ValueLikeInitializer<Self>>
     where
@@ -198,7 +198,7 @@ pub trait AgentSpec: Sized + Send {
 
     /// Create an initializer that will consume the state of a map-like item, as reported by the runtime.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `item` - The name of the item.
     fn init_map_like_item(&self, item: &str) -> Option<MapLikeInitializer<Self>>
     where
@@ -207,7 +207,7 @@ pub trait AgentSpec: Sized + Send {
     /// Create a handler that will update the state of the agent when a command is received
     /// for a map lane. There will be no handler if the lane does not exist or does not
     /// accept commands.
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - The name of the lane.
     /// * `body` - The content of the command.
     fn on_map_command(
@@ -219,7 +219,7 @@ pub trait AgentSpec: Sized + Send {
     /// Create a handler that will update the state of an agent when a request is made to
     /// sync with a lane. There will be no handler if the lane does not exist.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - The name of the lane.
     /// * `id` - The ID of the remote that requested the sync.
     fn on_sync(&self, lane: &str, id: Uuid) -> Option<Self::OnSyncHandler>;
@@ -228,7 +228,7 @@ pub trait AgentSpec: Sized + Send {
     /// made to a lane. If no HTTP lane exists with the specified name the request will
     /// be returned as an error (so that the caller can handle it will a 404 response).
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - The name of the lane.
     /// * `request` - The HTTP request.
     fn on_http_request(
@@ -556,7 +556,7 @@ where
     /// Initialize the agent, performing the initial setup for all of the lanes (including triggering the
     /// `on_start` event).
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `route` - The node URI for the agent instance.
     /// * `route_params` - Parameters extracted from the route URI.
     /// * `config` - Agent specific configuration parameters.
@@ -921,7 +921,7 @@ where
     /// Core event loop for the agent that routes incoming data from the runtime to the lanes and
     /// state changes from the lanes to the runtime.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `_context` - Context through which to communicate with the runtime.
     async fn run_agent(
         self,
@@ -1521,7 +1521,7 @@ impl IdCollector for HashSet<u64> {
 /// heuristics to prevent this (for example terminating with an error if the same event handler gets executed
 /// some number of times in a single chain) but this will likely add a bit of overhead.
 ///
-/// #Arguments
+/// # Arguments
 ///
 /// * `meta` - Agent instance metadata (which can be requested by the event handler).
 /// * `context` - The context within which the event handler is running. This provides access to the lanes of the
@@ -1530,7 +1530,7 @@ impl IdCollector for HashSet<u64> {
 /// * `handler` - The initial event handler that starts the chain. This could be a lifecycle event or triggered
 /// by an incoming message from the runtime.
 /// * `items` - Mapping between item IDs (returned by the handler to indicate that it has changed the state of
-/// an item) an the item names (which are used by the lifecycle to identify the items).
+/// an item) and the item names (which are used by the lifecycle to identify the items).
 /// * `collector` - Collects the IDs of lanes with state changes.
 fn run_handler<Context, Lifecycle, Handler, Collector>(
     action_context: &mut ActionContext<Context>,

@@ -51,7 +51,7 @@ pub trait HttpLaneCodecSupport: Default + Debug + Clone {
 pub trait HttpLaneCodec<T>: HttpLaneCodecSupport {
     /// Attempt to encode the payload for an HTTP response/request.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `content_type` - The content type to use.
     /// * `value` - The payload to encode.
     /// * `buffer` - Buffer into which to encode the payload.
@@ -64,7 +64,7 @@ pub trait HttpLaneCodec<T>: HttpLaneCodecSupport {
 
     /// Attempt to decode a payload from an HTTP request/response.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `content_type` - The content type inferred from the headers.
     /// * `buffer` - The raw payload bytes.
     fn decode(&self, content_type: &Mime, buffer: &[u8]) -> Result<T, CodecError>;

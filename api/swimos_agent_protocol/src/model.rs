@@ -155,8 +155,8 @@ pub struct AdHocCommand<S, T> {
 }
 
 impl<S, T> AdHocCommand<S, T> {
-    /// #Arguments
-    /// * `address` - The target lane for the the command.
+    /// # Arguments
+    /// * `address` - The target lane for the command.
     /// * `command` - The body of the command message.
     /// * `overwrite_permitted` - Controls the behaviour of command handling in the case of back-pressure.
     /// If this is true, the command maybe be overwritten by a subsequent command to the same target (and so

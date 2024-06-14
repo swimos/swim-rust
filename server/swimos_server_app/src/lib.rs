@@ -14,6 +14,7 @@
 
 mod config;
 pub mod error;
+mod in_memory_store;
 mod plane;
 mod server;
 mod util;
@@ -29,3 +30,6 @@ pub mod introspection {
 }
 
 pub use ratchet::deflate::DeflateConfig;
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
+
+type Io = (ByteWriter, ByteReader);

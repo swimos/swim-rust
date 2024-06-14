@@ -33,9 +33,11 @@ use swimos_form::read::{ReadError, ReadEvent, Recognizer, RecognizerReadable};
 use swimos_form::write::{StructuralWritable, StructuralWriter};
 use swimos_form::Form;
 use swimos_model::Text;
-use swimos_runtime::downlink::Io;
-use swimos_utilities::routing::RouteUri;
 use swimos_utilities::trigger;
+use swimos_utilities::{
+    byte_channel::{ByteReader, ByteWriter},
+    routing::RouteUri,
+};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 pub struct MetaMeshAgent {
@@ -204,6 +206,8 @@ impl RecognizerReadable for NodeInfo {
         }
     }
 }
+
+type Io = (ByteWriter, ByteReader);
 
 async fn run_task(
     shutdown_rx: trigger::Receiver,

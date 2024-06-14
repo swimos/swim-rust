@@ -27,7 +27,7 @@ use syn::Meta;
 /// The interpreted parts will be returned in a vector along with an vector of errors for
 /// any failures.
 ///
-/// #Arguments
+/// # Arguments
 ///
 /// * `tag` - The expected name of the attribute.
 /// * `attributes` - The attributes to process.
