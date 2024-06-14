@@ -14,7 +14,7 @@
 
 use swimos_api::error::DownlinkRuntimeError;
 
-use crate::{agent_model::downlink::handlers::BoxDownlinkChannel, meta::AgentMetadata};
+use crate::{agent_model::downlink::BoxDownlinkChannel, meta::AgentMetadata};
 
 use super::{ActionContext, DownlinkSpawner, HandlerAction, StepResult};
 

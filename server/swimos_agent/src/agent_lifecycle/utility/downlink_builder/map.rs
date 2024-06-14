@@ -26,7 +26,7 @@ use crate::downlink_lifecycle::map::{StatefulMapLifecycle, StatelessMapLifecycle
 use crate::downlink_lifecycle::on_failed::{OnFailed, OnFailedShared};
 use crate::lifecycle_fn::{WithHandlerContext, WithHandlerContextBorrow};
 use crate::{
-    agent_model::downlink::{hosted::MapDownlinkHandle, OpenMapDownlinkAction},
+    agent_model::downlink::{MapDownlinkHandle, OpenMapDownlinkAction},
     config::MapDownlinkConfig,
     downlink_lifecycle::{
         map::{

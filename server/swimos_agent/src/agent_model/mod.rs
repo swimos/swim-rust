@@ -67,7 +67,7 @@ use io::{ItemWriter, LaneReader};
 
 use bitflags::bitflags;
 
-use self::downlink::handlers::{BoxDownlinkChannel, DownlinkChannelError, DownlinkChannelEvent};
+use self::downlink::{BoxDownlinkChannel, DownlinkChannelError, DownlinkChannelEvent};
 use self::init::{run_item_initializer, InitializedItem};
 pub use init::{
     ItemInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,

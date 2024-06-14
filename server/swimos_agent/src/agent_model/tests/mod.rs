@@ -46,7 +46,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
 use crate::{
-    agent_model::{downlink::hosted::HostedValueDownlinkFactory, HostedDownlinkEvent},
+    agent_model::{downlink::ValueDownlinkFactory, HostedDownlinkEvent},
     config::SimpleDownlinkConfig,
     downlink_lifecycle::{
         on_failed::OnFailed,
@@ -70,7 +70,7 @@ use self::{
 };
 
 use super::{
-    downlink::handlers::{DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent},
+    downlink::{DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent},
     AgentModel, HostedDownlink, ItemModelFactory,
 };
 
@@ -1143,7 +1143,7 @@ async fn run_value_downlink() {
         let state: RefCell<Option<i32>> = Default::default();
 
         let lc = TestState::default();
-        let fac = HostedValueDownlinkFactory::<i32, _, _>::new(
+        let fac = ValueDownlinkFactory::<i32, _, _>::new(
             Address::text(None, "/node", "lane"),
             lc.clone(),
             state,
@@ -1288,7 +1288,7 @@ async fn reconnect_value_downlink() {
 
         let lc = TestState::default();
         let addr = Address::text(None, "/node", "lane");
-        let fac = HostedValueDownlinkFactory::<i32, _, _>::new(
+        let fac = ValueDownlinkFactory::<i32, _, _>::new(
             addr.clone(),
             lc.clone(),
             state,

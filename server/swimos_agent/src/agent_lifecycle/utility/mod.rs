@@ -27,9 +27,7 @@ use swimos_form::Form;
 use swimos_utilities::routing::RouteUri;
 use tokio::time::Instant;
 
-use crate::agent_model::downlink::hosted::{
-    EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle,
-};
+use crate::agent_model::downlink::{EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle};
 use crate::agent_model::downlink::{
     OpenEventDownlinkAction, OpenMapDownlinkAction, OpenValueDownlinkAction,
 };

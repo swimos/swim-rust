@@ -21,10 +21,10 @@ use std::sync::{
     Arc, Weak,
 };
 
-pub use event::{EventDownlinkHandle, HostedEventDownlinkFactory};
-pub use map::{HostedMapDownlinkFactory, MapDownlinkHandle};
+pub use event::{EventDownlinkFactory, EventDownlinkHandle};
+pub use map::{MapDownlinkFactory, MapDownlinkHandle};
 use swimos_utilities::byte_channel::ByteWriter;
-pub use value::{HostedValueDownlinkFactory, ValueDownlinkHandle};
+pub use value::{ValueDownlinkFactory, ValueDownlinkHandle};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DlState {
@@ -188,7 +188,7 @@ mod test_support {
     };
 
     use crate::{
-        agent_model::downlink::handlers::BoxDownlinkChannel,
+        agent_model::downlink::BoxDownlinkChannel,
         event_handler::{
             ActionContext, BoxEventHandler, DownlinkSpawner, HandlerFuture, Spawner, StepResult,
         },

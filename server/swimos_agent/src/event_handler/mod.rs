@@ -41,10 +41,7 @@ use thiserror::Error;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{
-    agent_model::downlink::{
-        handlers::BoxDownlinkChannel,
-        hosted::{MapDownlinkHandle, ValueDownlinkHandle},
-    },
+    agent_model::downlink::{BoxDownlinkChannel, MapDownlinkHandle, ValueDownlinkHandle},
     lanes::JoinLaneKind,
     meta::AgentMetadata,
 };

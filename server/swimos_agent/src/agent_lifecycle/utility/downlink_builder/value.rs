@@ -20,7 +20,7 @@ use swimos_model::Text;
 use swimos_utilities::handlers::{BorrowHandler, FnHandler};
 
 use crate::{
-    agent_model::downlink::{hosted::ValueDownlinkHandle, OpenValueDownlinkAction},
+    agent_model::downlink::{OpenValueDownlinkAction, ValueDownlinkHandle},
     config::SimpleDownlinkConfig,
     downlink_lifecycle::{
         on_failed::{OnFailed, OnFailedShared},

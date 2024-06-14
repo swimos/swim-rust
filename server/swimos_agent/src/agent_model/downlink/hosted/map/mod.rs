@@ -46,7 +46,7 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::handlers::{
+    agent_model::downlink::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
     },
     config::MapDownlinkConfig,
@@ -233,7 +233,7 @@ impl<K, V> MapDlState<K, V> {
     }
 }
 
-pub struct HostedMapDownlinkFactory<K, V, LC> {
+pub struct MapDownlinkFactory<K, V, LC> {
     address: Address<Text>,
     state: MapDlState<K, V>,
     lifecycle: LC,
@@ -243,7 +243,7 @@ pub struct HostedMapDownlinkFactory<K, V, LC> {
     op_rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
 }
 
-impl<K, V, LC> HostedMapDownlinkFactory<K, V, LC>
+impl<K, V, LC> MapDownlinkFactory<K, V, LC>
 where
     K: Hash + Eq + Ord + Clone + Form + Send + 'static,
     V: Form + Send + 'static,
@@ -257,7 +257,7 @@ where
         stop_rx: trigger::Receiver,
         op_rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
     ) -> Self {
-        HostedMapDownlinkFactory {
+        MapDownlinkFactory {
             address,
             state: MapDlState::default(),
             lifecycle,
@@ -277,7 +277,7 @@ where
     where
         LC: MapDownlinkLifecycle<K, V, Context> + 'static,
     {
-        let HostedMapDownlinkFactory {
+        let MapDownlinkFactory {
             address,
             state,
             lifecycle,

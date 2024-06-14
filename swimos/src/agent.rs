@@ -228,7 +228,7 @@ pub mod agent_model {
 
     pub mod downlink {
         pub mod hosted {
-            pub use swimos_agent::agent_model::downlink::hosted::{
+            pub use swimos_agent::agent_model::downlink::{
                 EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle,
             };
         }

@@ -20,7 +20,7 @@ use swimos_model::Text;
 use swimos_utilities::handlers::FnHandler;
 
 use crate::{
-    agent_model::downlink::{hosted::EventDownlinkHandle, OpenEventDownlinkAction},
+    agent_model::downlink::{EventDownlinkHandle, OpenEventDownlinkAction},
     config::SimpleDownlinkConfig,
     downlink_lifecycle::{
         event::{

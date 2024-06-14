@@ -45,11 +45,11 @@ use swimos_utilities::{
 use tokio::{io::AsyncWriteExt, task::yield_now};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use super::{HostedValueDownlinkFactory, SimpleDownlinkConfig};
+use super::{SimpleDownlinkConfig, ValueDownlinkFactory};
 use crate::{
     agent_model::downlink::{
-        handlers::{BoxDownlinkChannel, DownlinkChannelEvent},
         hosted::{value::ValueWriteStream, ValueDownlinkHandle},
+        BoxDownlinkChannel, DownlinkChannelEvent,
     },
     downlink_lifecycle::{
         on_failed::OnFailed,
@@ -193,8 +193,7 @@ fn make_hosted_input(context: &FakeAgent, config: SimpleDownlinkConfig) -> TestC
     let (stop_tx, stop_rx) = trigger::trigger();
 
     let (write_tx, write_rx) = circular_buffer::channel(OUT_CHAN_SIZE);
-    let fac =
-        HostedValueDownlinkFactory::new(address, lc, State::default(), config, stop_rx, write_rx);
+    let fac = ValueDownlinkFactory::new(address, lc, State::default(), config, stop_rx, write_rx);
     let chan = fac.create(context, out_tx, in_rx);
 
     TestContext {

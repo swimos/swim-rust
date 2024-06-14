@@ -48,7 +48,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::{handlers::BoxDownlinkChannel, OpenMapDownlinkAction, OpenValueDownlinkAction};
+use super::{BoxDownlinkChannel, OpenMapDownlinkAction, OpenValueDownlinkAction};
 
 struct TestAgent;
 

@@ -26,7 +26,7 @@ use swimos::agent::{
 };
 use swimos_agent::agent_lifecycle::on_init::OnInit;
 use swimos_agent::agent_lifecycle::{JoinMapContext, JoinValueContext};
-use swimos_agent::agent_model::downlink::handlers::BoxDownlinkChannel;
+use swimos_agent::agent_model::downlink::BoxDownlinkChannel;
 use swimos_agent::agent_model::WriteResult;
 use swimos_agent::event_handler::{
     BoxJoinLaneInit, HandlerAction, HandlerFuture, Modification, Spawner,
