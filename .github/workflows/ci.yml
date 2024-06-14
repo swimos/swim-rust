@@ -62,4 +62,4 @@ jobs:
           toolchain: 1.78.0
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: clippy --all-features --all-targets --workspace -- -D warnings
+      - run: cargo clippy --all-features --all-targets --workspace -- -D warnings
