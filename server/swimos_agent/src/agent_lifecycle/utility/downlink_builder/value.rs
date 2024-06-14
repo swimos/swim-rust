@@ -91,6 +91,11 @@ impl<Context, T, LC> StatelessValueDownlinkBuilder<Context, T, LC>
 where
     LC: StatelessValueLifecycle<Context, T>,
 {
+
+    /// Specify a handler for the `on_linked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
         handler: F,
@@ -112,6 +117,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_synced` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_synced<F, B>(
         self,
         handler: F,
@@ -135,6 +144,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_unlinked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
         handler: F,
@@ -156,6 +169,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
+    /// 
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_failed<F>(
         self,
         handler: F,
@@ -177,6 +194,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_event` event, called when the downlink receives a new value.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_event<F, B>(
         self,
         handler: F,
@@ -200,6 +221,11 @@ where
         }
     }
 
+    /// Specify a handler for the `on_set` event, called when the downlink receives a new value.
+    /// This differs from `on_event` in that the previous value is also provided to the event handler.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_set<F, B>(
         self,
         handler: F,
@@ -223,6 +249,10 @@ where
         }
     }
 
+    /// Augment the lifecycle with some state that is shared between the event handlers.
+    ///
+    /// # Arguments
+    /// * `shared` - The shared state.
     pub fn with_shared_state<Shared: Send>(
         self,
         shared: Shared,
@@ -268,6 +298,10 @@ impl<Context, T, State, LC> StatefulValueDownlinkBuilder<Context, T, State, LC>
 where
     LC: StatefulValueLifecycle<Context, State, T>,
 {
+    /// Specify a handler for the `on_linked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
         handler: F,
@@ -289,6 +323,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_synced` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_synced<F, B>(
         self,
         handler: F,
@@ -312,6 +350,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_unlinked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
         handler: F,
@@ -333,6 +375,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
+    /// 
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_failed<F>(
         self,
         handler: F,
@@ -354,6 +400,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_event` event, called when the downlink receives a new value.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_event<F, B>(
         self,
         handler: F,
@@ -377,6 +427,11 @@ where
         }
     }
 
+    /// Specify a handler for the `on_set` event, called when the downlink receives a new value.
+    /// This differs from `on_event` in that the previous value is also provided to the event handler.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_set<F, B>(
         self,
         handler: F,

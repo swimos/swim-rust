@@ -91,6 +91,10 @@ where
     LC: StatelessEventLifecycle<Context, T>,
 {
     
+    /// Specify a handler for the `on_linked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
         handler: F,
@@ -112,6 +116,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_synced` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_synced<F>(
         self,
         handler: F,
@@ -133,6 +141,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_unlinked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
         handler: F,
@@ -204,7 +216,7 @@ where
         }
     }
 
-     /// Augment the lifecycle with some state that is shared between the event handlers.
+    /// Augment the lifecycle with some state that is shared between the event handlers.
     ///
     /// # Arguments
     /// * `shared` - The shared state.
