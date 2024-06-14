@@ -19,9 +19,7 @@ use std::{collections::HashMap, sync::Arc};
 use parking_lot::Mutex;
 use swimos::agent::lifecycle;
 use swimos::agent::{
-    agent_lifecycle::{
-        item_event::ItemEvent, on_start::OnStart, on_stop::OnStop, HandlerContext,
-    },
+    agent_lifecycle::{item_event::ItemEvent, on_start::OnStart, on_stop::OnStop, HandlerContext},
     event_handler::{EventHandler, StepResult},
     lanes::{CommandLane, MapLane, ValueLane},
     AgentLaneModel,

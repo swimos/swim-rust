@@ -157,7 +157,7 @@ where
     }
 
     /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
-    /// 
+    ///
     /// # Arguments
     /// * `handler` - The event handler.
     pub fn on_failed<F>(
@@ -182,7 +182,7 @@ where
     }
 
     /// Specify a new event handler to be executed when an entry in the map is updated.
-    /// 
+    ///
     /// # Arguments
     /// * `handler` - The event handler.
     pub fn on_update<F, B>(
@@ -209,7 +209,7 @@ where
     }
 
     /// Specify a new event handler to be executed when an entry in the map is removed.
-    /// 
+    ///
     /// # Arguments
     /// * `handler` - The event handler.
     pub fn on_remove<F>(
@@ -234,7 +234,7 @@ where
     }
 
     /// Specify a new event handler to be executed when the map is cleared.
-    /// 
+    ///
     /// # Arguments
     /// * `handler` - The event handler.
     pub fn on_clear<F>(
@@ -384,7 +384,7 @@ where
     }
 
     /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
-    /// 
+    ///
     /// # Arguments
     /// * `handler` - The event handler.
     pub fn on_failed<F>(
@@ -409,7 +409,7 @@ where
     }
 
     /// Specify a new event handler to be executed when an entry in the map is updated.
-    /// 
+    ///
     /// # Arguments
     /// * `handler` - The event handler.
     pub fn on_update<F, B>(
@@ -436,7 +436,7 @@ where
     }
 
     /// Specify a new event handler to be executed when an entry in the map is removed.
-    /// 
+    ///
     /// # Arguments
     /// * `handler` - The event handler.
     pub fn on_remove<F>(
@@ -461,7 +461,7 @@ where
     }
 
     /// Specify a new event handler to be executed when the map is cleared.
-    /// 
+    ///
     /// # Arguments
     /// * `handler` - The event handler.
     pub fn on_clear<F>(

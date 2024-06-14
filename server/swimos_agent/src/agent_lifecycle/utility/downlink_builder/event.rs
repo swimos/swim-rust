@@ -90,7 +90,6 @@ impl<Context, T, LC> StatelessEventDownlinkBuilder<Context, T, LC>
 where
     LC: StatelessEventLifecycle<Context, T>,
 {
-    
     /// Specify a handler for the `on_linked` event.
     ///
     /// # Arguments
@@ -167,7 +166,7 @@ where
     }
 
     /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
-    /// 
+    ///
     /// # Arguments
     /// * `handler` - The event handler.
     pub fn on_failed<F>(
@@ -341,7 +340,7 @@ where
     }
 
     /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
-    /// 
+    ///
     /// # Arguments
     /// * `handler` - The event handler.
     pub fn on_failed<F>(
