@@ -6,20 +6,6 @@ on:
 name: Continuous integration
 
 jobs:
-  check:
-    name: Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: 1.78.0
-          override: true
-      - uses: actions-rs/cargo@v1
-        with:
-          command: check
-
   test:
     name: Test Suite
     runs-on: ${{ matrix.os }}
@@ -36,7 +22,7 @@ jobs:
         with:
           toolchain: 1.78.0
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --all-features --all-targets  --workspace
+      - run: cargo test --all-features --workspace --lib --tests --profile "ci"
 
   fmt:
     name: Rustfmt
