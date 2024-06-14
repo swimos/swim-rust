@@ -55,7 +55,7 @@ impl CarLifecycle {
 
         let speed_handler = context.schedule_repeatedly(Duration::from_secs(5), move || {
             let mut rng = rand::rngs::OsRng::default();
-            Some(context.set_value(CarAgent::SPEED, rng.gen_range(10..=30)))
+            Some(context.set_value(CarAgent::SPEED, rng.gen_range(10..=70)))
         });
         let car_handler = move |car_id: u64| {
             context.schedule_repeatedly(Duration::from_secs(1), move || {
