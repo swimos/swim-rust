@@ -89,8 +89,7 @@ pub enum WriteResult {
     RequiresEvent,
 }
 
-pub type InitFn<Agent> = Box<dyn FnOnce(&Agent) + Send + 'static>;
-
+/// Enumerates the kinds of items that agents can have (excluding HTTP lanes).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum ItemKind {
     Lane(WarpLaneKind),
@@ -98,6 +97,7 @@ pub enum ItemKind {
 }
 
 impl ItemKind {
+    /// Whether an item is map like and so uses the map protocol to communicate with the runtime.
     pub fn map_like(&self) -> bool {
         match self {
             ItemKind::Lane(ty) => ty.map_like(),
@@ -106,6 +106,7 @@ impl ItemKind {
         }
     }
 
+    /// Whether an item is a lane (as opposed to a store) and so should be publicly exposed by the runtime.
     pub fn is_lane(&self) -> bool {
         matches!(self, ItemKind::Lane(_))
     }
@@ -119,6 +120,7 @@ impl ItemKind {
 }
 
 bitflags! {
+    /// Flags to instruct the runtime on how to handle a lane.
     #[derive(Default, Copy, Clone, Hash, Debug, PartialEq, Eq)]
     pub struct ItemFlags: u8 {
         /// The state of the item should not be persisted.
@@ -126,6 +128,7 @@ bitflags! {
     }
 }
 
+/// Type information about an item of an agent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ItemDescriptor {
     WarpLane {
@@ -139,10 +142,14 @@ pub enum ItemDescriptor {
     Http,
 }
 
+/// Full description of an item of an agent.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ItemSpec {
+    /// Unique (within the agent) ID of the item.
     pub id: u64,
+    /// The name of them item (use in the Warp address for lanes).
     pub lifecycle_name: &'static str,
+    /// Type information for the item.
     pub descriptor: ItemDescriptor,
 }
 
@@ -156,9 +163,9 @@ impl ItemSpec {
     }
 }
 
-pub type MapLikeInitializer<T> =
+type MapLikeInitializer<T> =
     Box<dyn ItemInitializer<T, MapMessage<BytesMut, BytesMut>> + Send + 'static>;
-pub type ValueLikeInitializer<T> = Box<dyn ItemInitializer<T, BytesMut> + Send + 'static>;
+type ValueLikeInitializer<T> = Box<dyn ItemInitializer<T, BytesMut> + Send + 'static>;
 
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
@@ -261,15 +268,21 @@ where
     }
 }
 
-pub trait LifecycleFac<ItemModel>: Send + Sync {
+/// A factory for creating [`AgentLifecycle`]s.
+/// An agent route may need to create an agent instance multiple times (for parameterized routes or
+/// in cases where the agent is stopped and restarted). Therefore, a route is registered with a
+/// factory rather then a single instance of the lifecycle.
+pub trait LifecycleFactory<ItemModel>: Send + Sync {
     type LifecycleType: AgentLifecycle<ItemModel> + Send;
 
+    /// Create an instance of the agent type.
     fn create(&self) -> Self::LifecycleType;
 }
 
+/// A lifecycle factory that creates clones of a provided instance.
 struct CloneableLifecycle<LC>(LC);
 
-impl<ItemModel, LC> LifecycleFac<ItemModel> for CloneableLifecycle<LC>
+impl<ItemModel, LC> LifecycleFactory<ItemModel> for CloneableLifecycle<LC>
 where
     LC: Send + Sync + Clone + AgentLifecycle<ItemModel>,
 {
@@ -282,7 +295,7 @@ where
 
 struct FnLifecycleFac<F>(F);
 
-impl<ItemModel, F, LC> LifecycleFac<ItemModel> for FnLifecycleFac<F>
+impl<ItemModel, F, LC> LifecycleFactory<ItemModel> for FnLifecycleFac<F>
 where
     F: Fn() -> LC + Send + Sync,
     LC: Send + AgentLifecycle<ItemModel>,
@@ -299,7 +312,7 @@ where
 /// for  example, when the agent starts or stops or when the state of a lane changes.
 pub struct AgentModel<ItemModel, Lifecycle> {
     item_model_fac: Arc<dyn ItemModelFactory<ItemModel = ItemModel>>,
-    lifecycle_fac: Arc<dyn LifecycleFac<ItemModel, LifecycleType = Lifecycle>>,
+    lifecycle_fac: Arc<dyn LifecycleFactory<ItemModel, LifecycleType = Lifecycle>>,
 }
 
 impl<ItemModel, Lifecycle> Clone for AgentModel<ItemModel, Lifecycle> {
