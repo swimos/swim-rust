@@ -28,8 +28,10 @@ use crate::{
     lifecycle_fn::{WithHandlerContext, WithHandlerContextBorrow},
 };
 
+/// Builder type for constructing [`JoinValueLaneLifecycle`]s where the event handlers do not
+/// share state.
 #[derive(Debug)]
-pub struct StatelessJoinValueLaneBuilder<
+pub struct StatelessJoinValueLifecycleBuilder<
     Context,
     K,
     V,
@@ -39,7 +41,7 @@ pub struct StatelessJoinValueLaneBuilder<
     inner: LC,
 }
 
-impl<Context, K, V, LC: Default> Default for StatelessJoinValueLaneBuilder<Context, K, V, LC> {
+impl<Context, K, V, LC: Default> Default for StatelessJoinValueLifecycleBuilder<Context, K, V, LC> {
     fn default() -> Self {
         Self {
             _type: Default::default(),
@@ -48,8 +50,9 @@ impl<Context, K, V, LC: Default> Default for StatelessJoinValueLaneBuilder<Conte
     }
 }
 
+/// Builder type for constructing [`JoinValueLaneLifecycle`]s where the event handlers have shared state.
 #[derive(Debug)]
-pub struct StatefulJoinValueLaneBuilder<
+pub struct StatefulJoinValueLifecycleBuilder<
     Context,
     State,
     K,
@@ -60,29 +63,37 @@ pub struct StatefulJoinValueLaneBuilder<
     inner: LC,
 }
 
-impl<Context, K, V, LC> StatelessJoinValueLaneBuilder<Context, K, V, LC>
+impl<Context, K, V, LC> StatelessJoinValueLifecycleBuilder<Context, K, V, LC>
 where
     LC: StatelessJoinValueLifecycle<Context, K, V> + 'static,
 {
+    /// Specify a handler for the `on_linked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
         handler: F,
-    ) -> StatelessJoinValueLaneBuilder<Context, K, V, LC::WithOnLinked<WithHandlerContext<F>>>
+    ) -> StatelessJoinValueLifecycleBuilder<Context, K, V, LC::WithOnLinked<WithHandlerContext<F>>>
     where
         F: Clone,
         WithHandlerContext<F>: OnJoinValueLinked<K, Context>,
     {
-        let StatelessJoinValueLaneBuilder { inner, .. } = self;
-        StatelessJoinValueLaneBuilder {
+        let StatelessJoinValueLifecycleBuilder { inner, .. } = self;
+        StatelessJoinValueLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_linked(handler),
         }
     }
 
+    /// Specify a handler for the `on_synced` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_synced<F, B>(
         self,
         handler: F,
-    ) -> StatelessJoinValueLaneBuilder<
+    ) -> StatelessJoinValueLifecycleBuilder<
         Context,
         K,
         V,
@@ -94,134 +105,170 @@ where
         F: Clone,
         WithHandlerContextBorrow<F, B>: OnJoinValueSynced<K, V, Context>,
     {
-        let StatelessJoinValueLaneBuilder { inner, .. } = self;
-        StatelessJoinValueLaneBuilder {
+        let StatelessJoinValueLifecycleBuilder { inner, .. } = self;
+        StatelessJoinValueLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_synced(handler),
         }
     }
 
+    /// Specify a handler for the `on_unlinked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
         handler: F,
-    ) -> StatelessJoinValueLaneBuilder<Context, K, V, LC::WithOnUnlinked<WithHandlerContext<F>>>
+    ) -> StatelessJoinValueLifecycleBuilder<Context, K, V, LC::WithOnUnlinked<WithHandlerContext<F>>>
     where
         F: Clone,
         WithHandlerContext<F>: OnJoinValueUnlinked<K, Context>,
     {
-        let StatelessJoinValueLaneBuilder { inner, .. } = self;
-        StatelessJoinValueLaneBuilder {
+        let StatelessJoinValueLifecycleBuilder { inner, .. } = self;
+        StatelessJoinValueLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_unlinked(handler),
         }
     }
 
+    /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_failed<F>(
         self,
         handler: F,
-    ) -> StatelessJoinValueLaneBuilder<Context, K, V, LC::WithOnFailed<WithHandlerContext<F>>>
+    ) -> StatelessJoinValueLifecycleBuilder<Context, K, V, LC::WithOnFailed<WithHandlerContext<F>>>
     where
         F: Clone,
         WithHandlerContext<F>: OnJoinValueFailed<K, Context>,
     {
-        let StatelessJoinValueLaneBuilder { inner, .. } = self;
-        StatelessJoinValueLaneBuilder {
+        let StatelessJoinValueLifecycleBuilder { inner, .. } = self;
+        StatelessJoinValueLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_failed(handler),
         }
     }
 
+    /// Augment the lifecycle with some state that is shared between the event handlers.
+    ///
+    /// # Arguments
+    /// * `state` - The shared state.
     pub fn with_shared_state<State: Send + Clone>(
         self,
         state: State,
-    ) -> StatefulJoinValueLaneBuilder<Context, State, K, V, LC::WithShared<State>> {
-        StatefulJoinValueLaneBuilder {
+    ) -> StatefulJoinValueLifecycleBuilder<Context, State, K, V, LC::WithShared<State>> {
+        StatefulJoinValueLifecycleBuilder {
             _type: PhantomData,
             inner: self.inner.with_shared_state(state),
         }
     }
 
+    /// Complete the lifecycle.
     pub fn done(self) -> impl JoinValueLaneLifecycle<K, V, Context> + Send + 'static {
         self.inner
     }
 }
 
-impl<Context, State, K, V> StatefulJoinValueLaneBuilder<Context, State, K, V> {
+impl<Context, State, K, V> StatefulJoinValueLifecycleBuilder<Context, State, K, V> {
     pub fn new(state: State) -> Self {
-        StatefulJoinValueLaneBuilder {
+        StatefulJoinValueLifecycleBuilder {
             _type: PhantomData,
             inner: StatefulJoinValueLaneLifecycle::new(state),
         }
     }
 }
 
-impl<Context, State, K, V, LC> StatefulJoinValueLaneBuilder<Context, State, K, V, LC>
+impl<Context, State, K, V, LC> StatefulJoinValueLifecycleBuilder<Context, State, K, V, LC>
 where
     LC: StatefulJoinValueLifecycle<Context, State, K, V> + 'static,
     State: Send + 'static,
 {
+    /// Specify a handler for the `on_linked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
         handler: F,
-    ) -> StatefulJoinValueLaneBuilder<Context, State, K, V, LC::WithOnLinked<FnHandler<F>>>
+    ) -> StatefulJoinValueLifecycleBuilder<Context, State, K, V, LC::WithOnLinked<FnHandler<F>>>
     where
         F: Clone,
         FnHandler<F>: OnJoinValueLinkedShared<K, Context, State>,
     {
-        let StatefulJoinValueLaneBuilder { inner, .. } = self;
-        StatefulJoinValueLaneBuilder {
+        let StatefulJoinValueLifecycleBuilder { inner, .. } = self;
+        StatefulJoinValueLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_linked(handler),
         }
     }
 
+    /// Specify a handler for the `on_synced` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_synced<F, B>(
         self,
         handler: F,
-    ) -> StatefulJoinValueLaneBuilder<Context, State, K, V, LC::WithOnSynced<BorrowHandler<F, B>>>
+    ) -> StatefulJoinValueLifecycleBuilder<
+        Context,
+        State,
+        K,
+        V,
+        LC::WithOnSynced<BorrowHandler<F, B>>,
+    >
     where
         B: ?Sized,
         V: Borrow<B>,
         F: Clone,
         BorrowHandler<F, B>: OnJoinValueSyncedShared<K, V, Context, State>,
     {
-        let StatefulJoinValueLaneBuilder { inner, .. } = self;
-        StatefulJoinValueLaneBuilder {
+        let StatefulJoinValueLifecycleBuilder { inner, .. } = self;
+        StatefulJoinValueLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_synced(handler),
         }
     }
 
+    /// Specify a handler for the `on_unlinked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
         handler: F,
-    ) -> StatefulJoinValueLaneBuilder<Context, State, K, V, LC::WithOnUnlinked<FnHandler<F>>>
+    ) -> StatefulJoinValueLifecycleBuilder<Context, State, K, V, LC::WithOnUnlinked<FnHandler<F>>>
     where
         F: Clone,
         FnHandler<F>: OnJoinValueUnlinkedShared<K, Context, State>,
     {
-        let StatefulJoinValueLaneBuilder { inner, .. } = self;
-        StatefulJoinValueLaneBuilder {
+        let StatefulJoinValueLifecycleBuilder { inner, .. } = self;
+        StatefulJoinValueLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_unlinked(handler),
         }
     }
 
+    /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_failed<F>(
         self,
         handler: F,
-    ) -> StatefulJoinValueLaneBuilder<Context, State, K, V, LC::WithOnFailed<FnHandler<F>>>
+    ) -> StatefulJoinValueLifecycleBuilder<Context, State, K, V, LC::WithOnFailed<FnHandler<F>>>
     where
         F: Clone,
         FnHandler<F>: OnJoinValueFailedShared<K, Context, State>,
     {
-        let StatefulJoinValueLaneBuilder { inner, .. } = self;
-        StatefulJoinValueLaneBuilder {
+        let StatefulJoinValueLifecycleBuilder { inner, .. } = self;
+        StatefulJoinValueLifecycleBuilder {
             _type: PhantomData,
             inner: inner.on_failed(handler),
         }
     }
 
+    /// Complete the lifecycle.
     pub fn done(self) -> impl JoinValueLaneLifecycle<K, V, Context> + Send + 'static {
         self.inner
     }

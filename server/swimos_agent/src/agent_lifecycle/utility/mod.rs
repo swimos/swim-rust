@@ -60,8 +60,12 @@ pub use self::downlink_builder::map::{StatefulMapDownlinkBuilder, StatelessMapDo
 pub use self::downlink_builder::value::{
     StatefulValueDownlinkBuilder, StatelessValueDownlinkBuilder,
 };
-use self::join_map_builder::StatelessJoinMapLaneBuilder;
-pub use self::join_value_builder::{StatefulJoinValueLaneBuilder, StatelessJoinValueLaneBuilder};
+pub use self::join_map_builder::{
+    StatefulJoinMapLifecycleBuilder, StatelessJoinMapLifecycleBuilder,
+};
+pub use self::join_value_builder::{
+    StatefulJoinValueLifecycleBuilder, StatelessJoinValueLifecycleBuilder,
+};
 
 mod downlink_builder;
 mod join_map_builder;
@@ -728,8 +732,8 @@ where
     V::Rec: Send,
 {
     /// Creates a builder to construct a lifecycle for the downlinks of a [`JoinValueLane`].
-    pub fn builder(&self) -> StatelessJoinValueLaneBuilder<Agent, K, V> {
-        StatelessJoinValueLaneBuilder::default()
+    pub fn builder(&self) -> StatelessJoinValueLifecycleBuilder<Agent, K, V> {
+        StatelessJoinValueLifecycleBuilder::default()
     }
 }
 
@@ -756,7 +760,7 @@ where
     V::BodyRec: Send,
 {
     /// Creates a builder to construct a lifecycle for the downlinks of a [`JoinMapLane`].
-    pub fn builder(&self) -> StatelessJoinMapLaneBuilder<Agent, L, K, V> {
-        StatelessJoinMapLaneBuilder::default()
+    pub fn builder(&self) -> StatelessJoinMapLifecycleBuilder<Agent, L, K, V> {
+        StatelessJoinMapLifecycleBuilder::default()
     }
 }
