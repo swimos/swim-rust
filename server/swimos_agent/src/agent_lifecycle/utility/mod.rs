@@ -20,12 +20,13 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use futures::stream::unfold;
 use futures::{Future, FutureExt, Stream, StreamExt};
+use tokio::time::Instant;
+
 use swimos_api::address::Address;
 use swimos_form::read::RecognizerReadable;
 use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
 use swimos_utilities::routing::RouteUri;
-use tokio::time::Instant;
 
 use crate::agent_model::downlink::hosted::{
     EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle,
@@ -43,13 +44,14 @@ use crate::event_handler::{
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
 use crate::item::{
-    MapLikeItem, MutableMapLikeItem, MutableValueLikeItem, TransformableMapLikeItem, ValueLikeItem,
+    JoinLikeItem, MapLikeItem, MutableMapLikeItem, MutableValueLikeItem, TransformableMapLikeItem,
+    ValueLikeItem,
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::demand::{Cue, DemandLane};
 use crate::lanes::demand_map::CueKey;
-use crate::lanes::join_map::{JoinMapAddDownlink, JoinMapRemoveDownlink};
-use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane, JoinValueRemoveDownlink};
+use crate::lanes::join_map::JoinMapAddDownlink;
+use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
 use crate::lanes::supply::{Supply, SupplyLane};
 use crate::lanes::{DemandMapLane, JoinMapLane};
 
@@ -670,22 +672,22 @@ impl<Agent: 'static> HandlerContext<Agent> {
         JoinValueAddDownlink::new(lane, key, address)
     }
 
-    /// Removes a downlink from a Join Value lane. Removing any associated value associated with
-    /// 'key' in the underlying map.
+    /// Removes a downlink from a Join lane. Removing any associated values the downlink holds in
+    /// the underlying map.
     ///
     /// # Arguments
     /// * `lane` - Projection to the lane.
-    /// * `key` - The key for the downlink.
-    pub fn remove_downlink<K, V>(
+    /// * `link_key` - The link key for the downlink.
+    pub fn remove_downlink<L, K>(
         &self,
-        lane: fn(&Agent) -> &JoinValueLane<K, V>,
-        key: K,
+        lane: fn(&Agent) -> &L,
+        link_key: K,
     ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
     where
         K: Clone + Send + Eq + PartialEq + Hash + 'static,
-        V: 'static,
+        L: JoinLikeItem<K>,
     {
-        JoinValueRemoveDownlink::new(lane, key)
+        L::remove_downlink_handler(lane, link_key)
     }
 
     /// Add a downlink to a Join Map lane. All key-value pairs received on the downlink will be set into the
@@ -714,25 +716,6 @@ impl<Agent: 'static> HandlerContext<Agent> {
     {
         let address = Address::text(host, node, lane_uri);
         JoinMapAddDownlink::new(lane, link_key, address)
-    }
-
-    /// Removes a downlink from a Join Map lane. Removing any associated entries in the underlying
-    /// map.
-    ///
-    /// # Arguments
-    /// * `lane` - Projection to the lane.
-    /// * `link_key` - A key to identify the link.
-    pub fn remove_map_downlink<L, K, V>(
-        &self,
-        lane: fn(&Agent) -> &JoinMapLane<L, K, V>,
-        link_key: L,
-    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
-    where
-        L: Send + Eq + Hash + 'static,
-        K: Eq + Hash + Clone + 'static,
-        V: 'static,
-    {
-        JoinMapRemoveDownlink::new(lane, link_key)
     }
 
     /// Causes the agent to stop. If this is encountered during the `on_start` event of an agent it will

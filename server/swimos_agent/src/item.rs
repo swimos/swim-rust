@@ -107,3 +107,14 @@ pub trait MutableValueLikeItem<T> {
 
     fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C>;
 }
+
+pub trait JoinLikeItem<L> {
+    type RemoveDownlinkHandler<C>: HandlerAction<C, Completion = ()> + Send + 'static
+    where
+        C: 'static;
+
+    fn remove_downlink_handler<C: 'static>(
+        projection: fn(&C) -> &Self,
+        link_key: L,
+    ) -> Self::RemoveDownlinkHandler<C>;
+}

@@ -28,7 +28,7 @@ use uuid::Uuid;
 use crate::agent_model::downlink::OpenEventDownlinkAction;
 use crate::config::SimpleDownlinkConfig;
 use crate::event_handler::{EventHandler, EventHandlerError, Modification};
-use crate::item::MapLikeItem;
+use crate::item::{JoinLikeItem, MapLikeItem};
 use crate::{
     agent_model::WriteResult,
     event_handler::{ActionContext, HandlerAction, StepResult},
@@ -137,13 +137,9 @@ where
 /// [`HandlerAction`] that attempts to add a new downlink to a [`JoinValueLane`].
 struct AddDownlinkAction<Context, K, V, LC> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,
-    state: AddDownlinkActionState<K>,
+    key: K,
+    started: bool,
     inner: Option<OpenEventDownlinkAction<V, JoinValueDownlink<K, V, LC, Context>>>,
-}
-
-enum AddDownlinkActionState<K> {
-    Starting(K),
-    Stepping(K),
 }
 
 impl<Context, K, V, LC> AddDownlinkAction<Context, K, V, LC>
@@ -168,7 +164,8 @@ where
         );
         AddDownlinkAction {
             projection,
-            state: AddDownlinkActionState::Starting(key),
+            key,
+            started: false,
             inner: Some(action),
         }
     }
@@ -192,34 +189,33 @@ where
     ) -> StepResult<Self::Completion> {
         let AddDownlinkAction {
             projection,
-            state,
+            key,
+            started,
             inner,
         } = self;
+
         if let Some(inner) = inner {
             let lane = projection(context);
             let mut guard = lane.keys.borrow_mut();
 
-            match state {
-                AddDownlinkActionState::Starting(key) => {
-                    if let Entry::Vacant(entry) = guard.entry(key.clone()) {
-                        let link = entry.insert(Link::new(DownlinkStatus::Pending));
-                        let result = inner.step(action_context, meta, context).map(|handle| {
-                            link.set_stop_tx(handle.into_stop_rx());
-                        });
-                        *state = AddDownlinkActionState::Stepping(key.clone());
-                        result
-                    } else {
-                        self.inner = None;
-                        StepResult::done(())
-                    }
-                }
-                AddDownlinkActionState::Stepping(key) => {
+            if !*started {
+                if let Entry::Vacant(entry) = guard.entry(key.clone()) {
+                    *started = true;
+
+                    let link = entry.insert(Link::new(DownlinkStatus::Pending));
                     inner.step(action_context, meta, context).map(|handle| {
-                        if let Some(link) = guard.get_mut(key) {
-                            link.set_stop_tx(handle.into_stop_rx())
-                        }
+                        link.set_stop_tx(handle.into_stop_rx());
                     })
+                } else {
+                    self.inner = None;
+                    StepResult::done(())
                 }
+            } else {
+                inner.step(action_context, meta, context).map(|handle| {
+                    if let Some(link) = guard.get_mut(key) {
+                        link.set_stop_tx(handle.into_stop_rx())
+                    }
+                })
             }
         } else {
             StepResult::after_done()
@@ -486,6 +482,7 @@ where
     }
 }
 
+/// An [`EventHandler`] that will remove a downlink from the lane.
 pub struct JoinValueRemoveDownlink<C, K, V> {
     projection: fn(&C) -> &JoinValueLane<K, V>,
     key: Option<K>,
@@ -535,5 +532,22 @@ where
             }
             None => StepResult::after_done(),
         }
+    }
+}
+
+impl<K, V> JoinLikeItem<K> for JoinValueLane<K, V>
+where
+    K: Clone + Send + Eq + PartialEq + Hash + 'static,
+    V: 'static,
+{
+    type RemoveDownlinkHandler<C> = JoinValueRemoveDownlink<C, K, V>
+    where
+        C: 'static;
+
+    fn remove_downlink_handler<C: 'static>(
+        projection: fn(&C) -> &Self,
+        link_key: K,
+    ) -> Self::RemoveDownlinkHandler<C> {
+        JoinValueRemoveDownlink::new(projection, link_key)
     }
 }

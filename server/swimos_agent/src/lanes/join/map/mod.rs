@@ -31,6 +31,7 @@ use swimos_form::{write::StructuralWritable, Form};
 use swimos_model::Text;
 use swimos_utilities::trigger;
 
+use crate::item::JoinLikeItem;
 use crate::{
     agent_model::{downlink::OpenEventDownlinkAction, WriteResult},
     config::SimpleDownlinkConfig,
@@ -353,13 +354,9 @@ type JoinMapStartAction<Context, L, K, V, LC> =
 /// [`HandlerAction`] that attempts to add a new downlink to a [`JoinMapLane`].
 struct AddDownlinkAction<Context, L, K, V, LC> {
     projection: fn(&Context) -> &JoinMapLane<L, K, V>,
-    state: AddDownlinkActionState<L>,
+    link_key: L,
+    started: bool,
     inner: Option<JoinMapStartAction<Context, L, K, V, LC>>,
-}
-
-enum AddDownlinkActionState<L> {
-    Starting(L),
-    Stepping(L),
 }
 
 impl<Context, L, K, V, LC> AddDownlinkAction<Context, L, K, V, LC>
@@ -385,7 +382,8 @@ where
         );
         AddDownlinkAction {
             projection,
-            state: AddDownlinkActionState::Starting(link_key),
+            link_key,
+            started: false,
             inner: Some(inner),
         }
     }
@@ -411,7 +409,8 @@ where
     ) -> StepResult<Self::Completion> {
         let AddDownlinkAction {
             projection,
-            state,
+            link_key,
+            started,
             inner,
         } = self;
 
@@ -419,30 +418,27 @@ where
             let lane = projection(context);
             let mut guard = lane.link_tracker.borrow_mut();
 
-            match state {
-                AddDownlinkActionState::Starting(link_key) => {
-                    match guard.links.entry(link_key.clone()) {
-                        Entry::Vacant(entry) => {
-                            let link = entry.insert(Link::default());
-                            let result = inner.step(action_context, meta, context).map(|handle| {
-                                link.set_stop_tx(handle.into_stop_rx());
-                            });
-                            *state = AddDownlinkActionState::Stepping(link_key.clone());
-                            result
-                        }
-                        Entry::Occupied(_) => {
-                            self.inner = None;
-                            StepResult::done(())
-                        }
+            if !*started {
+                match guard.links.entry(link_key.clone()) {
+                    Entry::Vacant(entry) => {
+                        *started = true;
+
+                        let link = entry.insert(Link::default());
+                        inner.step(action_context, meta, context).map(|handle| {
+                            link.set_stop_tx(handle.into_stop_rx());
+                        })
+                    }
+                    Entry::Occupied(_) => {
+                        self.inner = None;
+                        StepResult::done(())
                     }
                 }
-                AddDownlinkActionState::Stepping(link_key) => {
-                    inner.step(action_context, meta, context).map(|handle| {
-                        if let Some(link) = guard.links.get_mut(link_key) {
-                            link.set_stop_tx(handle.into_stop_rx())
-                        }
-                    })
-                }
+            } else {
+                inner.step(action_context, meta, context).map(|handle| {
+                    if let Some(link) = guard.links.get_mut(link_key) {
+                        link.set_stop_tx(handle.into_stop_rx())
+                    }
+                })
             }
         } else {
             StepResult::after_done()
@@ -712,6 +708,7 @@ where
     }
 }
 
+/// An [`EventHandler`] that will remove a downlink from the lane.
 pub struct JoinMapRemoveDownlink<L, C, K, V> {
     projection: fn(&C) -> &JoinMapLane<L, K, V>,
     key: Option<L>,
@@ -764,5 +761,23 @@ where
             }
             None => StepResult::after_done(),
         }
+    }
+}
+
+impl<L, K, V> JoinLikeItem<L> for JoinMapLane<L, K, V>
+where
+    L: Send + Eq + PartialEq + Hash + 'static,
+    K: Eq + Clone + Hash + 'static,
+    V: 'static,
+{
+    type RemoveDownlinkHandler<C> = JoinMapRemoveDownlink<L, C, K, V>
+    where
+        C: 'static;
+
+    fn remove_downlink_handler<C: 'static>(
+        projection: fn(&C) -> &Self,
+        link_key: L,
+    ) -> Self::RemoveDownlinkHandler<C> {
+        JoinMapRemoveDownlink::new(projection, link_key)
     }
 }
