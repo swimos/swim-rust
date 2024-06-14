@@ -22,7 +22,7 @@ use std::sync::{
 };
 
 pub use event::{EventDownlinkHandle, HostedEventDownlinkFactory};
-pub use map::{HostedMapDownlinkFactory, MapDlState, MapDownlinkHandle};
+pub use map::{HostedMapDownlinkFactory, MapDownlinkHandle};
 use swimos_utilities::byte_channel::ByteWriter;
 pub use value::{HostedValueDownlinkFactory, ValueDownlinkHandle};
 

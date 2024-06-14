@@ -39,7 +39,7 @@ use crate::{
 
 use self::hosted::{
     EventDownlinkHandle, HostedEventDownlinkFactory, HostedMapDownlinkFactory,
-    HostedValueDownlinkFactory, MapDlState, MapDownlinkHandle, ValueDownlinkHandle,
+    HostedValueDownlinkFactory, MapDownlinkHandle, ValueDownlinkHandle,
 };
 
 struct Inner<LC> {
@@ -240,18 +240,11 @@ where
     ) -> StepResult<Self::Completion> {
         let OpenMapDownlinkAction { inner, config, .. } = self;
         if let Some(Inner { address, lifecycle }) = inner.take() {
-            let state: RefCell<MapDlState<K, V>> = Default::default();
             let (tx, rx) = mpsc::unbounded_channel::<MapOperation<K, V>>();
             let (stop_tx, stop_rx) = trigger::trigger();
             let config = *config;
-            let fac = HostedMapDownlinkFactory::new(
-                address.clone(),
-                lifecycle,
-                state,
-                config,
-                stop_rx,
-                rx,
-            );
+            let fac =
+                HostedMapDownlinkFactory::new(address.clone(), lifecycle, config, stop_rx, rx);
             let handle = MapDownlinkHandle::new(address.clone(), tx, stop_tx, fac.dl_state());
 
             action_context.start_downlink(

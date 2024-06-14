@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::{
-    cell::RefCell,
     collections::HashMap,
     num::NonZeroUsize,
     ops::Deref,
@@ -66,7 +65,7 @@ use crate::{
     event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
 };
 
-use super::{HostedMapDownlinkFactory, MapDlState, MapWriteStream};
+use super::{HostedMapDownlinkFactory, MapWriteStream};
 
 struct FakeAgent;
 
@@ -235,8 +234,6 @@ impl OnDownlinkClear<i32, Text, FakeAgent> for FakeLifecycle {
     }
 }
 
-type State = RefCell<MapDlState<i32, Text>>;
-
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 struct Writer {
@@ -304,8 +301,7 @@ fn make_hosted_input(agent: &FakeAgent, config: MapDownlinkConfig) -> TestContex
 
     let (write_tx, write_rx) = mpsc::unbounded_channel();
 
-    let fac =
-        HostedMapDownlinkFactory::new(address, lc, State::default(), config, stop_rx, write_rx);
+    let fac = HostedMapDownlinkFactory::new(address, lc, config, stop_rx, write_rx);
 
     let chan = fac.create(agent, out_tx, in_rx);
     TestContext {
