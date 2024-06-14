@@ -108,11 +108,19 @@ pub trait MutableValueLikeItem<T> {
     fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C>;
 }
 
+/// Trait for abstracting over common functionality between Join Map and Join Value lanes.
 pub trait JoinLikeItem<L> {
+    /// Handler action for removing a downlink from a join lane.
     type RemoveDownlinkHandler<C>: HandlerAction<C, Completion = ()> + Send + 'static
     where
         C: 'static;
 
+    /// Create a handler that will remove a downlink from the lane and clear any entries in the
+    /// underlying map.
+    ///
+    /// # Arguments
+    /// * `projection`: a projection to the join lane.
+    /// * `link_key`: a key that signifies the downlink to remove.
     fn remove_downlink_handler<C: 'static>(
         projection: fn(&C) -> &Self,
         link_key: L,
