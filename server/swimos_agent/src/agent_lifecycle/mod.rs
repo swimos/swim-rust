@@ -30,7 +30,8 @@ pub mod on_stop;
 mod stateful;
 mod utility;
 
-/// Trait for agent lifecycles.
+/// This includes all of the required event handler traits to implement an agent lifecycle. It should not
+/// be implemented directly as it it has a blanket implementation for any type that can implement it.
 /// # Type Parameters
 /// * `Context` - The context in which the lifecycle events run (provides access to the lanes of the agent).
 pub trait AgentLifecycle<Context>:
