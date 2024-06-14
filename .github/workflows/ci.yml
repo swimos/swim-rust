@@ -21,7 +21,7 @@ jobs:
           command: check
 
   test:
-    name: Test Suite MSRV
+    name: Test Suite
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
