@@ -18,7 +18,7 @@ use swimos_utilities::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{agent_lifecycle::HandlerContext, lifecycle_fn::WithHandlerContextBorrow};
 
-use self::{
+pub use self::{
     on_event::{OnDownlinkEvent, OnDownlinkEventShared},
     on_set::{OnDownlinkSet, OnDownlinkSetShared},
 };
@@ -31,8 +31,8 @@ use super::{
 };
 use crate::lifecycle_fn::{LiftShared, WithHandlerContext};
 
-pub mod on_event;
-pub mod on_set;
+mod on_event;
+mod on_set;
 
 /// Trait for the lifecycle of a value downlink.
 ///
@@ -896,6 +896,7 @@ where
     }
 }
 
+#[doc(hidden)]
 pub type LiftedValueLifecycle<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv, FSet> =
     StatefulValueDownlinkLifecycle<
         Context,

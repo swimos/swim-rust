@@ -33,9 +33,7 @@ use tracing::error;
 use crate::event_handler::BoxEventHandler;
 use crate::{
     config::{MapDownlinkConfig, SimpleDownlinkConfig},
-    downlink_lifecycle::{
-        event::EventDownlinkLifecycle, map::MapDownlinkLifecycle, value::ValueDownlinkLifecycle,
-    },
+    downlink_lifecycle::{EventDownlinkLifecycle, MapDownlinkLifecycle, ValueDownlinkLifecycle},
     event_handler::{ActionContext, HandlerAction, StepResult, UnitHandler},
     meta::AgentMetadata,
 };

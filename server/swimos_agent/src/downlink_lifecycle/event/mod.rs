@@ -21,8 +21,6 @@ use crate::{
     lifecycle_fn::{LiftShared, WithHandlerContext},
 };
 
-use self::on_event::{OnConsumeEvent, OnConsumeEventShared};
-
 use super::{
     on_failed::{OnFailed, OnFailedShared},
     on_linked::{OnLinked, OnLinkedShared},
@@ -30,7 +28,9 @@ use super::{
     on_unlinked::{OnUnlinked, OnUnlinkedShared},
 };
 
-pub mod on_event;
+mod on_event;
+
+pub use on_event::{OnConsumeEvent, OnConsumeEventShared};
 
 /// Trait for the lifecycle of an event downlink.
 ///
@@ -667,6 +667,7 @@ where
     }
 }
 
+#[doc(hidden)]
 pub type LiftedEventLifecycle<Context, T, State, FLinked, FSynced, FUnlinked, FFailed, FEv> =
     StatefulEventDownlinkLifecycle<
         Context,

@@ -21,7 +21,7 @@ use crate::{
     lifecycle_fn::{LiftShared, WithHandlerContext, WithHandlerContextBorrow},
 };
 
-use self::{
+pub use self::{
     on_clear::{OnDownlinkClear, OnDownlinkClearShared},
     on_remove::{OnDownlinkRemove, OnDownlinkRemoveShared},
     on_synced::{OnMapSynced, OnMapSyncedShared},
@@ -35,10 +35,10 @@ use super::{
     on_unlinked::{OnUnlinked, OnUnlinkedShared},
 };
 
-pub mod on_clear;
-pub mod on_remove;
-pub mod on_synced;
-pub mod on_update;
+mod on_clear;
+mod on_remove;
+mod on_synced;
+mod on_update;
 
 /// Trait for the lifecycle of a map downlink.
 ///
@@ -630,6 +630,7 @@ where
     }
 }
 
+#[doc(hidden)]
 pub type LiftedMapLifecycle<
     Context,
     State,

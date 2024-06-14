@@ -21,22 +21,18 @@ use swimos_form::Form;
 use swimos_model::Text;
 use swimos_utilities::handlers::{BorrowHandler, FnHandler};
 
-use crate::downlink_lifecycle::map::on_synced::{OnMapSynced, OnMapSyncedShared};
-use crate::downlink_lifecycle::map::{StatefulMapLifecycle, StatelessMapLifecycle};
-use crate::downlink_lifecycle::on_failed::{OnFailed, OnFailedShared};
+use crate::downlink_lifecycle::{
+    OnFailed, OnFailedShared, OnMapSynced, OnMapSyncedShared, StatefulMapLifecycle,
+    StatelessMapLifecycle,
+};
 use crate::lifecycle_fn::{WithHandlerContext, WithHandlerContextBorrow};
 use crate::{
     agent_model::downlink::{MapDownlinkHandle, OpenMapDownlinkAction},
     config::MapDownlinkConfig,
     downlink_lifecycle::{
-        map::{
-            on_clear::{OnDownlinkClear, OnDownlinkClearShared},
-            on_remove::{OnDownlinkRemove, OnDownlinkRemoveShared},
-            on_update::{OnDownlinkUpdate, OnDownlinkUpdateShared},
-            StatelessMapDownlinkLifecycle,
-        },
-        on_linked::{OnLinked, OnLinkedShared},
-        on_unlinked::{OnUnlinked, OnUnlinkedShared},
+        OnDownlinkClear, OnDownlinkClearShared, OnDownlinkRemove, OnDownlinkRemoveShared,
+        OnDownlinkUpdate, OnDownlinkUpdateShared, OnLinked, OnLinkedShared, OnUnlinked,
+        OnUnlinkedShared, StatelessMapDownlinkLifecycle,
     },
     event_handler::HandlerAction,
 };

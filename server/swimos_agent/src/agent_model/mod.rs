@@ -57,6 +57,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
+/// Support for executing downlink lifecycles within agents.
 pub mod downlink;
 mod init;
 mod io;

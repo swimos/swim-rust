@@ -51,13 +51,8 @@ use crate::{
     agent_model::downlink::{BoxDownlinkChannel, DownlinkChannelEvent, MapDownlinkHandle},
     config::MapDownlinkConfig,
     downlink_lifecycle::{
-        map::{
-            on_clear::OnDownlinkClear, on_remove::OnDownlinkRemove, on_update::OnDownlinkUpdate,
-        },
-        on_failed::OnFailed,
-        on_linked::OnLinked,
-        on_synced::OnSynced,
-        on_unlinked::OnUnlinked,
+        OnDownlinkClear, OnDownlinkRemove, OnDownlinkUpdate, OnFailed, OnLinked, OnSynced,
+        OnUnlinked,
     },
     event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
 };

@@ -50,7 +50,7 @@ use crate::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
     },
     config::MapDownlinkConfig,
-    downlink_lifecycle::map::MapDownlinkLifecycle,
+    downlink_lifecycle::MapDownlinkLifecycle,
     event_handler::{BoxEventHandler, HandlerActionExt, Sequentially},
     event_queue::EventQueue,
 };

@@ -18,10 +18,7 @@ use swimos_api::address::Address;
 use swimos_model::Text;
 
 use crate::{
-    downlink_lifecycle::{
-        event::on_event::OnConsumeEvent, on_failed::OnFailed, on_linked::OnLinked,
-        on_synced::OnSynced, on_unlinked::OnUnlinked,
-    },
+    downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
     event_handler::{
         ActionContext, AndThen, AndThenContextual, ConstHandler, ContextualTrans, FollowedBy,
         HandlerAction, HandlerActionExt, HandlerTrans, Modification, StepResult,

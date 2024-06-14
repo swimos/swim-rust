@@ -32,9 +32,8 @@ use crate::agent_model::downlink::{
     OpenEventDownlinkAction, OpenMapDownlinkAction, OpenValueDownlinkAction,
 };
 use crate::config::{MapDownlinkConfig, SimpleDownlinkConfig};
-use crate::downlink_lifecycle::event::EventDownlinkLifecycle;
-use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
-use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
+use crate::downlink_lifecycle::ValueDownlinkLifecycle;
+use crate::downlink_lifecycle::{EventDownlinkLifecycle, MapDownlinkLifecycle};
 use crate::event_handler::{
     run_after, run_schedule, run_schedule_async, ConstHandler, EventHandler, GetParameter,
     HandlerActionExt, SendCommand, Sequentially, Stop, Suspend, UnitHandler,

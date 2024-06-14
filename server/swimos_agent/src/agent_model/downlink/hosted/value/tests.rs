@@ -52,11 +52,7 @@ use crate::{
         BoxDownlinkChannel, DownlinkChannelEvent,
     },
     downlink_lifecycle::{
-        on_failed::OnFailed,
-        on_linked::OnLinked,
-        on_synced::OnSynced,
-        on_unlinked::OnUnlinked,
-        value::{on_event::OnDownlinkEvent, on_set::OnDownlinkSet},
+        OnDownlinkEvent, OnDownlinkSet, OnFailed, OnLinked, OnSynced, OnUnlinked,
     },
     event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
 };

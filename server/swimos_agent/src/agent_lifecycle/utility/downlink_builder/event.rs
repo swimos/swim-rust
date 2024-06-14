@@ -23,15 +23,9 @@ use crate::{
     agent_model::downlink::{EventDownlinkHandle, OpenEventDownlinkAction},
     config::SimpleDownlinkConfig,
     downlink_lifecycle::{
-        event::{
-            on_event::{OnConsumeEvent, OnConsumeEventShared},
-            StatefulEventDownlinkLifecycle, StatefulEventLifecycle,
-            StatelessEventDownlinkLifecycle, StatelessEventLifecycle,
-        },
-        on_failed::{OnFailed, OnFailedShared},
-        on_linked::{OnLinked, OnLinkedShared},
-        on_synced::{OnSynced, OnSyncedShared},
-        on_unlinked::{OnUnlinked, OnUnlinkedShared},
+        OnConsumeEvent, OnConsumeEventShared, OnFailed, OnFailedShared, OnLinked, OnLinkedShared,
+        OnSynced, OnSyncedShared, OnUnlinked, OnUnlinkedShared, StatefulEventDownlinkLifecycle,
+        StatefulEventLifecycle, StatelessEventDownlinkLifecycle, StatelessEventLifecycle,
     },
     event_handler::HandlerAction,
     lifecycle_fn::WithHandlerContext,

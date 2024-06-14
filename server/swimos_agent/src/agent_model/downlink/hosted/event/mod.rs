@@ -38,7 +38,7 @@ use crate::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
     },
     config::SimpleDownlinkConfig,
-    downlink_lifecycle::event::EventDownlinkLifecycle,
+    downlink_lifecycle::EventDownlinkLifecycle,
     event_handler::{BoxEventHandler, HandlerActionExt},
 };
 
