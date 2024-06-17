@@ -27,7 +27,7 @@ pub mod state;
 pub mod stores;
 #[cfg(test)]
 mod test_context;
-
+#[cfg(test)]
 pub use agent_model::AgentSpec;
 
 pub mod model {
