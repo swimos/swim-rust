@@ -31,6 +31,7 @@ use super::{
 #[cfg(test)]
 mod tests;
 
+/// A [`Future`] that results in an [`EventHandler`].
 pub type HandlerFuture<Context> = BoxFuture<'static, BoxEventHandler<'static, Context>>;
 
 /// Trait for suspend handler futures into the task for an agent.
@@ -103,6 +104,16 @@ where
     }
 }
 
+/// Suspend an [`EventHandler`] to be executed after a fixed duration.
+///
+/// # Note
+///
+/// Suspended handlers must be [`Send`] as the task running the agent maybe moved to a different thread
+/// before the handler is executed.
+///
+/// # Arguments
+/// * `delay` - The duration to wait.
+/// * `handler` - The handler to run after the delay.
 pub fn run_after<Context, H>(
     delay: Duration,
     handler: H,
@@ -114,6 +125,17 @@ where
     Suspend::new(fut)
 }
 
+/// Schedule a sequence of [`EventHandler`]s to run on a schedule. For each pair of a delay and and
+/// [`EventHandler`] returned by the provided iterator, the handler is scheduled to run after the delay.
+/// The handlers are scheduled sequentially, not simultaneously.
+///
+/// # Note
+///
+/// Both the iterator and the handlers must be [`Send`] as the task running the agent could be moved while
+/// they are still in use.
+///
+/// # Arguments
+/// * `sequence` - An iterator returning a sequence of pairs of delays and handlers.
 pub fn run_schedule<Context, I, H>(schedule: I) -> impl EventHandler<Context> + Send + 'static
 where
     Context: 'static,
@@ -133,6 +155,17 @@ where
     }
 }
 
+/// Schedule a sequence of [`EventHandler`]s to run on a schedule. For each pair of a delay and and
+/// [`EventHandler`] returned by the provided async [`Stream`], the handler is scheduled to run after the delay.
+/// The handlers are scheduled sequentially, not simultaneously.
+///
+/// # Note
+///
+/// Both the stream and the handlers must be [`Send`] as the task running the agent could be moved while
+/// they are still in use.
+///
+/// # Arguments
+/// * `sequence` - A asynchronous stream returning a sequence of pairs of delays and handlers.
 pub fn run_schedule_async<Context, S, H>(
     mut schedule: S,
 ) -> impl EventHandler<Context> + Send + 'static

@@ -17,6 +17,7 @@ use std::{collections::HashMap, io::ErrorKind, sync::Arc, time::Duration};
 use bytes::Bytes;
 use futures::{
     future::{join, ready, BoxFuture},
+    stream::BoxStream,
     Future, FutureExt, StreamExt,
 };
 use parking_lot::Mutex;
@@ -41,7 +42,7 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::HostedDownlinkEvent,
-    event_handler::{BoxEventHandler, HandlerActionExt, UnitHandler, WriteStream},
+    event_handler::{BoxEventHandler, HandlerActionExt, UnitHandler},
 };
 
 use self::{
@@ -738,6 +739,8 @@ async fn trigger_ad_hoc_command() {
     let lane_events = test_event_rx.collect::<Vec<_>>().await;
     assert!(lane_events.is_empty());
 }
+
+type WriteStream = BoxStream<'static, Result<(), std::io::Error>>;
 
 struct TestDownlinkChannel {
     address: Address<Text>,

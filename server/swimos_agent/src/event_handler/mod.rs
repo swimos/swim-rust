@@ -21,7 +21,7 @@ use std::{
 
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
-use futures::{stream::BoxStream, FutureExt};
+use futures::FutureExt;
 use static_assertions::assert_obj_safe;
 use swimos_agent_protocol::{encoding::ad_hoc::AdHocCommandEncoder, AdHocCommand};
 use swimos_api::{
@@ -70,9 +70,12 @@ pub use handler_fn::{
 
 use self::register_downlink::RegisterHostedDownlink;
 
-pub type WriteStream = BoxStream<'static, Result<(), std::io::Error>>;
-
+/// Trait for contexts that can spawn a new task into the agent runtime to run the lifecycle for a downlink.
 pub trait DownlinkSpawner<Context> {
+    /// Spawn a new downlink runtime task into the agent runtime.
+    ///
+    /// # Arguments
+    /// * `dl_channel` - The downlink task.
     fn spawn_downlink(
         &self,
         dl_channel: BoxDownlinkChannel<Context>,
@@ -910,6 +913,7 @@ where
 /// An event handler that immediately returns a constant value.
 pub struct ConstHandler<T>(Option<T>);
 
+/// A handler that returns nothing.
 pub type UnitHandler = ConstHandler<()>;
 
 impl<T> From<T> for ConstHandler<T> {
@@ -1335,6 +1339,7 @@ pub enum DowncastError {
     },
 }
 
+#[doc(hidden)]
 pub trait JoinLaneInitializer<Context>: Send {
     fn try_create_action(
         &self,
@@ -1349,6 +1354,7 @@ pub trait JoinLaneInitializer<Context>: Send {
 
 static_assertions::assert_obj_safe!(JoinLaneInitializer<()>);
 
+#[doc(hidden)]
 pub type BoxJoinLaneInit<'a, Context> = Box<dyn JoinLaneInitializer<Context> + Send + 'a>;
 
 /// Causes the agent to stop. If this is encountered during the `on_start` event of an agent it will
