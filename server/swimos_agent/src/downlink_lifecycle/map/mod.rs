@@ -24,7 +24,6 @@ use crate::{
 pub use self::{
     on_clear::{OnDownlinkClear, OnDownlinkClearShared},
     on_remove::{OnDownlinkRemove, OnDownlinkRemoveShared},
-    on_synced::{OnMapSynced, OnMapSyncedShared},
     on_update::{OnDownlinkUpdate, OnDownlinkUpdateShared},
 };
 
@@ -33,11 +32,11 @@ use super::{
     on_linked::{OnLinked, OnLinkedShared},
     on_synced::OnSynced,
     on_unlinked::{OnUnlinked, OnUnlinkedShared},
+    OnSyncedShared,
 };
 
 mod on_clear;
 mod on_remove;
-mod on_synced;
 mod on_update;
 
 /// Trait for the lifecycle of a map downlink.
@@ -48,7 +47,7 @@ mod on_update;
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait MapDownlinkLifecycle<K, V, Context>:
     OnLinked<Context>
-    + OnMapSynced<K, V, Context>
+    + OnSynced<HashMap<K, V>, Context>
     + OnDownlinkUpdate<K, V, Context>
     + OnDownlinkRemove<K, V, Context>
     + OnDownlinkClear<K, V, Context>
@@ -59,7 +58,7 @@ pub trait MapDownlinkLifecycle<K, V, Context>:
 
 impl<LC, K, V, Context> MapDownlinkLifecycle<K, V, Context> for LC where
     LC: OnLinked<Context>
-        + OnMapSynced<K, V, Context>
+        + OnSynced<HashMap<K, V>, Context>
         + OnDownlinkUpdate<K, V, Context>
         + OnDownlinkRemove<K, V, Context>
         + OnDownlinkClear<K, V, Context>
@@ -81,7 +80,7 @@ pub trait StatelessMapLifecycle<Context, K, V>: MapDownlinkLifecycle<K, V, Conte
 
     type WithOnSynced<H>: StatelessMapLifecycle<Context, K, V>
     where
-        H: OnMapSynced<K, V, Context>;
+        H: OnSynced<HashMap<K, V>, Context>;
 
     type WithOnUnlinked<H>: StatelessMapLifecycle<Context, K, V>
     where
@@ -113,7 +112,7 @@ pub trait StatelessMapLifecycle<Context, K, V>: MapDownlinkLifecycle<K, V, Conte
 
     fn on_synced<F>(self, handler: F) -> Self::WithOnSynced<WithHandlerContext<F>>
     where
-        WithHandlerContext<F>: OnMapSynced<K, V, Context>;
+        WithHandlerContext<F>: OnSynced<HashMap<K, V>, Context>;
 
     fn on_unlinked<F>(self, handler: F) -> Self::WithOnUnlinked<WithHandlerContext<F>>
     where
@@ -154,7 +153,7 @@ pub trait StatefulMapLifecycle<Context, Shared, K, V>: MapDownlinkLifecycle<K, V
 
     type WithOnSynced<H>: StatefulMapLifecycle<Context, Shared, K, V>
     where
-        H: OnMapSyncedShared<K, V, Context, Shared>;
+        H: OnSyncedShared<HashMap<K, V>, Context, Shared>;
 
     type WithOnUnlinked<H>: StatefulMapLifecycle<Context, Shared, K, V>
     where
@@ -182,7 +181,7 @@ pub trait StatefulMapLifecycle<Context, Shared, K, V>: MapDownlinkLifecycle<K, V
 
     fn on_synced<F>(self, handler: F) -> Self::WithOnSynced<FnHandler<F>>
     where
-        FnHandler<F>: OnMapSyncedShared<K, V, Context, Shared>;
+        FnHandler<F>: OnSyncedShared<HashMap<K, V>, Context, Shared>;
 
     fn on_unlinked<F>(self, handler: F) -> Self::WithOnUnlinked<FnHandler<F>>
     where
@@ -439,7 +438,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
     >
 where
     FLinked: Send,
-    FSynced: OnMapSynced<K, V, Context>,
+    FSynced: OnSynced<HashMap<K, V>, Context>,
     FUnlinked: Send,
     FFailed: Send,
     FUpd: Send,
@@ -673,7 +672,7 @@ impl<Context, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FClr>
     >
 where
     FLinked: OnLinked<Context>,
-    FSynced: OnMapSynced<K, V, Context>,
+    FSynced: OnSynced<HashMap<K, V>, Context>,
     FUnlinked: OnUnlinked<Context>,
     FFailed: OnFailed<Context>,
     FUpd: OnDownlinkUpdate<K, V, Context>,
@@ -708,7 +707,7 @@ where
     FClr,
     >
     where
-        H: OnMapSynced<K, V, Context>;
+        H: OnSynced<HashMap<K, V>, Context>;
 
     type WithOnUnlinked<H> = StatelessMapDownlinkLifecycle<
     Context,
@@ -819,7 +818,7 @@ where
 
     fn on_synced<F>(self, handler: F) -> Self::WithOnSynced<WithHandlerContext<F>>
     where
-        WithHandlerContext<F>: OnMapSynced<K, V, Context>,
+        WithHandlerContext<F>: OnSynced<HashMap<K, V>, Context>,
     {
         StatelessMapDownlinkLifecycle {
             _type: PhantomData,
@@ -1043,7 +1042,7 @@ impl<Context, State, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FCl
 where
     State: Send,
     FLinked: Send,
-    FSynced: OnMapSyncedShared<K, V, Context, State>,
+    FSynced: OnSyncedShared<HashMap<K, V>, Context, State>,
     FUnlinked: Send,
     FFailed: Send,
     FUpd: Send,
@@ -1293,7 +1292,7 @@ impl<Context, Shared, K, V, FLinked, FSynced, FUnlinked, FFailed, FUpd, FRem, FC
 where
     Shared: Send,
     FLinked: OnLinkedShared<Context, Shared>,
-    FSynced: OnMapSyncedShared<K, V, Context, Shared>,
+    FSynced: OnSyncedShared<HashMap<K, V>, Context, Shared>,
     FUnlinked: OnUnlinkedShared<Context, Shared>,
     FFailed: OnFailedShared<Context, Shared>,
     FUpd: OnDownlinkUpdateShared<K, V, Context, Shared>,
@@ -1330,7 +1329,7 @@ where
     FClr,
     >
     where
-        H: OnMapSyncedShared<K, V, Context, Shared>;
+        H: OnSyncedShared<HashMap<K, V>, Context, Shared>;
 
     type WithOnUnlinked<H> = StatefulMapDownlinkLifecycle<
     Context,
@@ -1432,7 +1431,7 @@ where
 
     fn on_synced<F>(self, handler: F) -> Self::WithOnSynced<FnHandler<F>>
     where
-        FnHandler<F>: OnMapSyncedShared<K, V, Context, Shared>,
+        FnHandler<F>: OnSyncedShared<HashMap<K, V>, Context, Shared>,
     {
         StatefulMapDownlinkLifecycle {
             _type: PhantomData,

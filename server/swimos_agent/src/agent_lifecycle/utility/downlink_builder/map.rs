@@ -14,6 +14,7 @@
 
 use std::borrow::Borrow;
 
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use swimos_api::address::Address;
@@ -22,8 +23,7 @@ use swimos_model::Text;
 use swimos_utilities::handlers::{BorrowHandler, FnHandler};
 
 use crate::downlink_lifecycle::{
-    OnFailed, OnFailedShared, OnMapSynced, OnMapSyncedShared, StatefulMapLifecycle,
-    StatelessMapLifecycle,
+    OnFailed, OnFailedShared, OnSynced, OnSyncedShared, StatefulMapLifecycle, StatelessMapLifecycle,
 };
 use crate::lifecycle_fn::{WithHandlerContext, WithHandlerContextBorrow};
 use crate::{
@@ -111,7 +111,7 @@ where
         f: F,
     ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnSynced<WithHandlerContext<F>>>
     where
-        WithHandlerContext<F>: OnMapSynced<K, V, Context>,
+        WithHandlerContext<F>: OnSynced<HashMap<K, V>, Context>,
     {
         let StatelessMapDownlinkBuilder {
             address,
@@ -338,7 +338,7 @@ where
         f: F,
     ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnSynced<FnHandler<F>>>
     where
-        FnHandler<F>: OnMapSyncedShared<K, V, Context, State>,
+        FnHandler<F>: OnSyncedShared<HashMap<K, V>, Context, State>,
     {
         let StatefulMapDownlinkBuilder {
             address,
