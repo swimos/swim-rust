@@ -18,7 +18,7 @@ pub mod config;
 pub mod downlink_lifecycle;
 pub mod event_handler;
 mod event_queue;
-pub mod item;
+mod item;
 pub mod lanes;
 mod lifecycle_fn;
 mod map_storage;
@@ -26,9 +26,13 @@ pub mod meta;
 pub mod state;
 pub mod stores;
 #[cfg(test)]
+mod tests;
+#[cfg(test)]
 mod test_context;
 #[cfg(test)]
 pub use agent_model::AgentSpec;
+
+pub use item::AgentItem;
 
 pub mod model {
     pub use swimos_agent_protocol::{MapMessage, MapOperation};

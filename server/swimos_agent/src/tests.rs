@@ -17,38 +17,33 @@ use std::hash::Hash;
 use std::{collections::HashMap, sync::Arc};
 
 use parking_lot::Mutex;
-use swimos::agent::lifecycle;
-use swimos::agent::{
-    agent_lifecycle::{item_event::ItemEvent, on_start::OnStart, on_stop::OnStop, HandlerContext},
-    event_handler::{EventHandler, StepResult},
-    lanes::{CommandLane, MapLane, ValueLane},
-    AgentLaneModel,
+use crate::agent_lifecycle::on_init::OnInit;
+use crate::agent_lifecycle::on_start::OnStart;
+use crate::agent_lifecycle::on_stop::OnStop;
+use crate::agent_lifecycle::{item_event::ItemEvent, HandlerContext, JoinMapContext, JoinValueContext};
+use crate::agent_model::downlink::BoxDownlinkChannel;
+use crate::agent_model::WriteResult;
+use crate::event_handler::{
+    BoxJoinLaneInit, EventHandler, HandlerAction, HandlerFuture, Modification, Spawner, StepResult
 };
-use swimos_agent::agent_lifecycle::on_init::OnInit;
-use swimos_agent::agent_lifecycle::{JoinMapContext, JoinValueContext};
-use swimos_agent::agent_model::downlink::BoxDownlinkChannel;
-use swimos_agent::agent_model::WriteResult;
-use swimos_agent::event_handler::{
-    BoxJoinLaneInit, HandlerAction, HandlerFuture, Modification, Spawner,
+use crate::item::{AgentItem, MapItem};
+use crate::lanes::demand::Cue;
+use crate::lanes::demand_map::{CueKey, DemandMapLaneSync};
+use crate::lanes::http::lifecycle::HttpRequestContext;
+use crate::lanes::http::{HttpLaneAccept, Recon, Response, UnitResponse};
+use crate::lanes::join_map::lifecycle::JoinMapLaneLifecycle;
+use crate::lanes::join_map::JoinMapLaneUpdate;
+use crate::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
+use crate::lanes::join_value::{AfterClosed, JoinValueLaneUpdate};
+use crate::lanes::{
+    CommandLane, DemandLane, DemandMapLane, JoinMapLane, JoinValueLane, LaneItem, LinkClosedResponse, MapLane, SimpleHttpLane, ValueLane
 };
-use swimos_agent::item::{AgentItem, MapItem};
-use swimos_agent::lanes::demand::Cue;
-use swimos_agent::lanes::demand_map::{CueKey, DemandMapLaneSync};
-use swimos_agent::lanes::http::lifecycle::HttpRequestContext;
-use swimos_agent::lanes::http::{HttpLaneAccept, Recon, Response, UnitResponse};
-use swimos_agent::lanes::join_map::lifecycle::JoinMapLaneLifecycle;
-use swimos_agent::lanes::join_map::JoinMapLaneUpdate;
-use swimos_agent::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
-use swimos_agent::lanes::join_value::{AfterClosed, JoinValueLaneUpdate};
-use swimos_agent::lanes::{
-    DemandLane, DemandMapLane, JoinMapLane, JoinValueLane, LaneItem, LinkClosedResponse,
-    SimpleHttpLane,
-};
-use swimos_agent::meta::AgentMetadata;
-use swimos_agent::model::MapMessage;
-use swimos_agent::reexport::bytes::BytesMut;
-use swimos_agent::reexport::uuid::Uuid;
-use swimos_agent::stores::{MapStore, ValueStore};
+use crate::meta::AgentMetadata;
+use crate::model::MapMessage;
+use crate::reexport::bytes::BytesMut;
+use crate::reexport::uuid::Uuid;
+use crate::stores::{MapStore, ValueStore};
+use swimos_agent_derive::{lifecycle, AgentLaneModel};
 use swimos_api::agent::DownlinkKind;
 use swimos_api::error::{DownlinkRuntimeError, OpenStoreError};
 use swimos_api::{
@@ -66,7 +61,7 @@ use swimos_api::{
 };
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 
-use swimos_agent::event_handler::ActionContext;
+use crate::event_handler::ActionContext;
 
 struct NoSpawn;
 pub struct DummyAgentContext;
@@ -138,7 +133,7 @@ impl AgentContext for DummyAgentContext {
 }
 
 #[derive(AgentLaneModel)]
-#[agent(root(::swimos_agent))]
+#[agent(root(crate))]
 struct TestAgent {
     value: ValueLane<i32>,
     value2: ValueLane<i32>,
@@ -290,7 +285,7 @@ fn on_start_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_start]
         fn my_on_start(
@@ -321,7 +316,7 @@ fn on_stop_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_stop]
         fn my_on_stop(
@@ -352,7 +347,7 @@ fn on_start_and_stop_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_start]
         #[on_stop]
@@ -389,7 +384,7 @@ fn on_command_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_command(command)]
         fn my_on_command(
@@ -425,7 +420,7 @@ fn on_event_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_event(value)]
         fn my_on_event(
@@ -444,7 +439,7 @@ fn on_event_handler() {
     let template = TestLifecycle::default();
 
     let lifecycle = template.clone().into_lifecycle();
-
+    
     agent.value.set(TEST_VALUE);
     let handler = lifecycle
         .item_event(&agent, "value")
@@ -461,7 +456,7 @@ fn on_event_handler_store() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_event(value_store)]
         fn my_on_event(
@@ -497,7 +492,7 @@ fn on_set_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_set(value)]
         fn my_on_set(
@@ -537,7 +532,7 @@ fn on_set_handler_store() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_set(value_store)]
         fn my_on_set(
@@ -577,7 +572,7 @@ fn on_event_and_set_handlers() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_event(value)]
         fn my_on_event(
@@ -632,7 +627,7 @@ fn on_event_and_set_handlers_store() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_event(value_store)]
         fn my_on_event(
@@ -687,7 +682,7 @@ fn on_event_shared_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_event(value, value2)]
         fn my_on_event(
@@ -749,7 +744,7 @@ fn on_clear_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_clear(map)]
         fn my_on_clear(
@@ -785,7 +780,7 @@ fn on_clear_handler_store() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_clear(map_store)]
         fn my_on_clear(
@@ -821,7 +816,7 @@ fn on_remove_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_remove(map)]
         fn my_on_remove(
@@ -869,7 +864,7 @@ fn on_remove_handler_store() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_remove(map_store)]
         fn my_on_remove(
@@ -917,7 +912,7 @@ fn on_update_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_update(map)]
         fn my_on_update(
@@ -966,7 +961,7 @@ fn on_update_handler_store() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_update(map_store)]
         fn my_on_update(
@@ -1015,7 +1010,7 @@ fn all_handlers() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_start]
         fn my_on_start(
@@ -1141,7 +1136,7 @@ fn all_handlers() {
 }
 
 #[derive(AgentLaneModel)]
-#[agent(root(::swimos_agent))]
+#[agent(root(crate))]
 struct BorrowAgent {
     array: ValueLane<Vec<i32>>,
     string: CommandLane<String>,
@@ -1176,7 +1171,7 @@ fn on_command_borrow_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(BorrowLcInner);
 
-    #[lifecycle(BorrowAgent, agent_root(::swimos_agent))]
+    #[lifecycle(BorrowAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_command(string)]
         fn my_on_command(
@@ -1212,7 +1207,7 @@ fn on_event_borrow_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(BorrowLcInner);
 
-    #[lifecycle(BorrowAgent, agent_root(::swimos_agent))]
+    #[lifecycle(BorrowAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_event(array)]
         fn my_on_event(
@@ -1248,7 +1243,7 @@ fn on_set_borrow_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(BorrowLcInner);
 
-    #[lifecycle(BorrowAgent, agent_root(::swimos_agent))]
+    #[lifecycle(BorrowAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_set(array)]
         fn my_on_set(
@@ -1288,7 +1283,7 @@ fn on_update_borrow_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(BorrowLcInner);
 
-    #[lifecycle(BorrowAgent, agent_root(::swimos_agent))]
+    #[lifecycle(BorrowAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_update(map)]
         fn my_on_update(
@@ -1337,7 +1332,7 @@ fn on_update_handler_join_value() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_update(join_value)]
         fn my_on_update(
@@ -1383,7 +1378,7 @@ fn on_update_handler_join_map() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_update(join_map)]
         fn my_on_update(
@@ -1431,7 +1426,7 @@ fn on_remove_handler_join_value() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_remove(join_value)]
         fn my_on_remove(
@@ -1481,7 +1476,7 @@ fn on_remove_handler_join_map() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_remove(join_map)]
         fn my_on_remove(
@@ -1590,7 +1585,7 @@ fn register_join_value_lifecycle() {
     #[derive(Default, Clone)]
     struct TestLifecycle;
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[join_value_lifecycle(join_value)]
         fn register_lifecycle(
@@ -1627,7 +1622,7 @@ fn register_join_map_lifecycle() {
     #[derive(Default, Clone)]
     struct TestLifecycle;
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[join_map_lifecycle(join_map)]
         fn register_lifecycle(
@@ -1660,7 +1655,7 @@ fn register_join_map_lifecycle() {
 }
 
 #[derive(AgentLaneModel)]
-#[agent(root(::swimos_agent))]
+#[agent(root(crate))]
 struct TwoJoinValueAgent {
     join_value1: JoinValueLane<i32, Text>,
     join_value2: JoinValueLane<i32, i64>,
@@ -1671,7 +1666,7 @@ fn register_two_join_value_lifecycles() {
     #[derive(Default, Clone)]
     struct TestLifecycle;
 
-    #[lifecycle(TwoJoinValueAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TwoJoinValueAgent, agent_root(crate))]
     impl TestLifecycle {
         #[join_value_lifecycle(join_value1)]
         fn register_lifecycle1(
@@ -1714,7 +1709,7 @@ fn register_two_join_value_lifecycles() {
 }
 
 #[derive(AgentLaneModel)]
-#[agent(root(::swimos_agent))]
+#[agent(root(crate))]
 struct TwoJoinMapAgent {
     join_map1: JoinMapLane<Text, i32, Text>,
     join_map2: JoinMapLane<Text, i32, i64>,
@@ -1725,7 +1720,7 @@ fn register_two_join_map_lifecycles() {
     #[derive(Default, Clone)]
     struct TestLifecycle;
 
-    #[lifecycle(TwoJoinMapAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TwoJoinMapAgent, agent_root(crate))]
     impl TestLifecycle {
         #[join_map_lifecycle(join_map1)]
         fn register_lifecycle1(
@@ -1772,7 +1767,7 @@ fn on_cue_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_cue(demand)]
         fn my_on_cue(
@@ -1820,7 +1815,7 @@ fn keys_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[keys(demand_map)]
         fn my_keys(
@@ -1866,7 +1861,7 @@ fn on_cue_key_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_cue_key(demand_map)]
         fn my_cue_key(
@@ -1914,7 +1909,7 @@ fn both_demand_map_handlers() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[keys(demand_map)]
         fn my_keys(
@@ -2045,7 +2040,7 @@ fn on_get_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_get(http)]
         fn my_on_get(
@@ -2104,7 +2099,7 @@ fn on_post_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_post(http)]
         fn my_on_post(
@@ -2165,7 +2160,7 @@ fn on_put_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_put(http)]
         fn my_on_put(
@@ -2226,7 +2221,7 @@ fn on_delete_handler() {
     #[derive(Default, Clone)]
     struct TestLifecycle(LifecycleInner);
 
-    #[lifecycle(TestAgent, agent_root(::swimos_agent))]
+    #[lifecycle(TestAgent, agent_root(crate))]
     impl TestLifecycle {
         #[on_delete(http)]
         fn my_on_delete(

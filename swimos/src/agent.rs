@@ -236,7 +236,7 @@ pub mod agent_model {
 }
 
 pub mod item {
-    pub use swimos_agent::item::AgentItem;
+    pub use swimos_agent::AgentItem;
 }
 
 pub mod lanes {
