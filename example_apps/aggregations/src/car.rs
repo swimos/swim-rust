@@ -54,14 +54,12 @@ impl CarLifecycle {
         let area = self.area.clone();
 
         let speed_handler = context.schedule_repeatedly(Duration::from_secs(5), move || {
-            let mut rng = rand::rngs::OsRng::default();
+            let mut rng = rand::rngs::OsRng;
             Some(context.set_value(CarAgent::SPEED, rng.gen_range(10..=70)))
         });
-        let car_handler = move |car_id: u64| {
-            context.schedule_repeatedly(Duration::from_secs(1), move || {
+        let area_handler = move |car_id: u64| {
+            context.schedule_repeatedly(Duration::from_secs(5), move || {
                 let area = area.clone();
-                let car_id = car_id.clone();
-
                 let assigned_area = &mut *area.lock().expect("Mutex poisoned");
                 let old_area = replace(assigned_area, Area::random());
 
@@ -71,7 +69,7 @@ impl CarLifecycle {
                         None,
                         format!("/area/{old_area:?}"),
                         "deregister".to_string(),
-                        car_id.clone(),
+                        car_id,
                     );
                     // register this car with its new assigned area
                     let register_handler = context.send_command(
@@ -97,7 +95,7 @@ impl CarLifecycle {
                 let car_id = param.expect("Missing car_id URI parameter");
                 u64::from_str(car_id.as_str()).expect("Failed to parse car ID into u64")
             })
-            .and_then(car_handler)
+            .and_then(area_handler)
             .followed_by(speed_handler)
     }
 }

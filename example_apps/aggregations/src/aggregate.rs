@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
 use swimos::{
     agent::agent_lifecycle::utility::HandlerContext,
     agent::event_handler::EventHandler,
+    agent::event_handler::HandlerActionExt,
+    agent::lanes::ValueLane,
     agent::lanes::{CommandLane, JoinValueLane},
     agent::AgentLaneModel,
     agent::{lifecycle, projections},
@@ -24,6 +27,7 @@ use swimos::{
 #[projections]
 pub struct AggregateAgent {
     aggregated: JoinValueLane<String, f64>,
+    average_speed: ValueLane<f64>,
     register: CommandLane<String>,
 }
 
@@ -32,6 +36,21 @@ pub struct AggregateLifecycle;
 
 #[lifecycle(AggregateAgent)]
 impl AggregateLifecycle {
+    #[on_update(aggregated)]
+    fn aggregated(
+        &self,
+        context: HandlerContext<AggregateAgent>,
+        averages: &HashMap<String, f64>,
+        _key: String,
+        _prev: Option<f64>,
+        _new_value: &f64,
+    ) -> impl EventHandler<AggregateAgent> {
+        let averages = averages.clone();
+        context
+            .effect(move || averages.values().sum::<f64>() / averages.len() as f64)
+            .and_then(move |average: f64| context.set_value(AggregateAgent::AVERAGE_SPEED, average))
+    }
+
     #[on_command(register)]
     pub fn register(
         &self,

@@ -64,7 +64,6 @@ impl Area {
 pub struct AreaAgent {
     register: CommandLane<u64>,
     deregister: CommandLane<u64>,
-    // car_id -> speed
     cars: JoinValueLane<u64, u64>,
     average_speed: ValueLane<f64>,
 }

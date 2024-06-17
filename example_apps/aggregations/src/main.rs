@@ -43,10 +43,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         AreaAgent::default,
         AreaLifecycle::default().into_lifecycle(),
     );
-    let aggregate_agent = AgentModel::new(
-        AggregateAgent::default,
-        AggregateLifecycle::default().into_lifecycle(),
-    );
+    let aggregate_agent =
+        AgentModel::new(AggregateAgent::default, AggregateLifecycle.into_lifecycle());
 
     let server = ServerBuilder::with_plane_name("Example Plane")
         .add_route(RoutePattern::parse_str("/cars/:car_id")?, car_agent)
