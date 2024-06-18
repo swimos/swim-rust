@@ -19,6 +19,7 @@ use swimos_api::{address::Address, agent::AgentConfig};
 use swimos_model::Text;
 use swimos_utilities::routing::RouteUri;
 
+use crate::lanes::join_value::Link;
 use crate::{
     agent_lifecycle::HandlerContext,
     downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
@@ -250,7 +251,7 @@ where
 fn state_for(lane: &JoinValueLane<i32, String>, key: i32) -> Option<DownlinkStatus> {
     let JoinValueLane { keys, .. } = lane;
     let guard = keys.borrow();
-    guard.get(&key).copied()
+    guard.get(&key).map(|link| link.status)
 }
 
 fn set_state_for(
@@ -261,7 +262,7 @@ fn set_state_for(
 ) {
     let JoinValueLane { inner, keys } = lane;
     let mut guard = keys.borrow_mut();
-    guard.insert(key, status);
+    guard.insert(key, Link::new(status));
     if let Some(value) = value {
         inner.update(key, value);
     } else {

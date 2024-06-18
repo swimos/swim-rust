@@ -355,4 +355,9 @@ impl EventDownlinkHandle {
     pub fn is_linked(&self) -> bool {
         matches!(self.observer.get(), DlState::Linked | DlState::Synced)
     }
+
+    /// Consumes this handle and returns the stop handle, if it exists.
+    pub fn into_stop_rx(self) -> Option<trigger::Sender> {
+        self.stop_tx
+    }
 }

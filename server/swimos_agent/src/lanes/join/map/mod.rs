@@ -21,12 +21,17 @@ use std::{
 };
 
 use bytes::BytesMut;
+use uuid::Uuid;
+
+pub use downlink::{AfterClosed, JoinMapLaneUpdate};
+pub use init::LifecycleInitializer;
 use swimos_agent_protocol::MapMessage;
 use swimos_api::address::Address;
 use swimos_form::{write::StructuralWritable, Form};
 use swimos_model::Text;
-use uuid::Uuid;
+use swimos_utilities::trigger;
 
+use crate::item::JoinLikeItem;
 use crate::{
     agent_model::{downlink::OpenEventDownlinkAction, WriteResult},
     config::SimpleDownlinkConfig,
@@ -40,9 +45,9 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use self::{downlink::JoinMapDownlink, lifecycle::JoinMapLaneLifecycle};
-
 use super::DownlinkStatus;
+
+use self::{downlink::JoinMapDownlink, lifecycle::JoinMapLaneLifecycle};
 
 mod default_lifecycle;
 mod downlink;
@@ -50,9 +55,6 @@ mod init;
 pub mod lifecycle;
 #[cfg(test)]
 mod tests;
-
-pub use downlink::{AfterClosed, JoinMapLaneUpdate};
-pub use init::LifecycleInitializer;
 
 /// Model of a join map lane. This is conceptually similar to a [map lane](`super::super::MapLane`) only, rather than
 /// the state being modified directly, it is populated through a series of map downlinks Each map downlink is
@@ -70,10 +72,17 @@ pub struct JoinMapLane<L, K, V> {
     link_tracker: RefCell<Links<L, K>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Link<K> {
     status: DownlinkStatus,
     keys: HashSet<K>,
+    stop_tx: Option<trigger::Sender>,
+}
+
+impl<K> Link<K> {
+    fn set_stop_tx(&mut self, stop_tx: Option<trigger::Sender>) {
+        self.stop_tx = stop_tx;
+    }
 }
 
 impl<K> Default for Link<K> {
@@ -81,6 +90,7 @@ impl<K> Default for Link<K> {
         Self {
             status: DownlinkStatus::Pending,
             keys: Default::default(),
+            stop_tx: None,
         }
     }
 }
@@ -93,22 +103,12 @@ struct Links<L, K> {
 
 impl<L, K> Links<L, K>
 where
-    L: Clone + Hash + Eq,
+    L: Hash + Eq,
     K: Clone + Hash + Eq,
 {
-    fn add_link(&mut self, link: L) -> bool {
-        let Links { links, .. } = self;
-        if let Entry::Vacant(e) = links.entry(link) {
-            e.insert(Default::default());
-            true
-        } else {
-            false
-        }
-    }
-
     fn insert(&mut self, link: L, key: K) -> bool {
         let Links { links, ownership } = self;
-        if let Some(Link { status, keys }) = links.get_mut(&link) {
+        if let Some(Link { status, keys, .. }) = links.get_mut(&link) {
             if *status == DownlinkStatus::Linked {
                 keys.insert(key.clone());
                 if let Some(old_link) = ownership.remove(&key) {
@@ -350,10 +350,12 @@ where
 
 type JoinMapStartAction<Context, L, K, V, LC> =
     OpenEventDownlinkAction<MapMessage<K, V>, JoinMapDownlink<L, K, V, LC, Context>>;
+
 /// [`HandlerAction`] that attempts to add a new downlink to a [`JoinMapLane`].
 struct AddDownlinkAction<Context, L, K, V, LC> {
     projection: fn(&Context) -> &JoinMapLane<L, K, V>,
-    link_key: Option<L>,
+    link_key: L,
+    started: bool,
     inner: Option<JoinMapStartAction<Context, L, K, V, LC>>,
 }
 
@@ -380,7 +382,8 @@ where
         );
         AddDownlinkAction {
             projection,
-            link_key: Some(link_key),
+            link_key,
+            started: false,
             inner: Some(inner),
         }
     }
@@ -407,20 +410,35 @@ where
         let AddDownlinkAction {
             projection,
             link_key,
+            started,
             inner,
         } = self;
+
         if let Some(inner) = inner {
-            if let Some(link_key) = link_key.take() {
-                let lane = projection(context);
-                let mut guard = lane.link_tracker.borrow_mut();
-                if guard.add_link(link_key) {
-                    inner.step(action_context, meta, context).map(|_| ())
-                } else {
-                    self.inner = None;
-                    StepResult::done(())
+            let lane = projection(context);
+            let mut guard = lane.link_tracker.borrow_mut();
+
+            if !*started {
+                match guard.links.entry(link_key.clone()) {
+                    Entry::Vacant(entry) => {
+                        *started = true;
+
+                        let link = entry.insert(Link::default());
+                        inner.step(action_context, meta, context).map(|handle| {
+                            link.set_stop_tx(handle.into_stop_rx());
+                        })
+                    }
+                    Entry::Occupied(_) => {
+                        self.inner = None;
+                        StepResult::done(())
+                    }
                 }
             } else {
-                inner.step(action_context, meta, context).map(|_| ())
+                inner.step(action_context, meta, context).map(|handle| {
+                    if let Some(link) = guard.links.get_mut(link_key) {
+                        link.set_stop_tx(handle.into_stop_rx())
+                    }
+                })
             }
         } else {
             StepResult::after_done()
@@ -687,5 +705,79 @@ where
 
     fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
         JoinMapLaneGetMap::new(projection)
+    }
+}
+
+/// An [`EventHandler`] that will remove a downlink from the lane.
+pub struct JoinMapRemoveDownlink<L, C, K, V> {
+    projection: fn(&C) -> &JoinMapLane<L, K, V>,
+    key: Option<L>,
+}
+
+impl<L, C, K, V> JoinMapRemoveDownlink<L, C, K, V> {
+    pub fn new(
+        projection: fn(&C) -> &JoinMapLane<L, K, V>,
+        key: L,
+    ) -> JoinMapRemoveDownlink<L, C, K, V> {
+        JoinMapRemoveDownlink {
+            projection,
+            key: Some(key),
+        }
+    }
+}
+
+impl<L, C, K, V> HandlerAction<C> for JoinMapRemoveDownlink<L, C, K, V>
+where
+    C: 'static,
+    L: Send + Eq + PartialEq + Hash + 'static,
+    K: Eq + Clone + Hash + 'static,
+    V: 'static,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let JoinMapRemoveDownlink { projection, key } = self;
+
+        match key.take() {
+            Some(key) => {
+                let lane = projection(context);
+                let mut key_guard = lane.link_tracker.borrow_mut();
+                let trigger = key_guard.links.remove(&key).and_then(|link| {
+                    for k in link.keys {
+                        lane.inner.remove(&k)
+                    }
+                    link.stop_tx
+                });
+
+                if let Some(trigger) = trigger {
+                    trigger.trigger();
+                }
+                StepResult::done(())
+            }
+            None => StepResult::after_done(),
+        }
+    }
+}
+
+impl<L, K, V> JoinLikeItem<L> for JoinMapLane<L, K, V>
+where
+    L: Send + Eq + PartialEq + Hash + 'static,
+    K: Eq + Clone + Hash + 'static,
+    V: 'static,
+{
+    type RemoveDownlinkHandler<C> = JoinMapRemoveDownlink<L, C, K, V>
+    where
+        C: 'static;
+
+    fn remove_downlink_handler<C: 'static>(
+        projection: fn(&C) -> &Self,
+        link_key: L,
+    ) -> Self::RemoveDownlinkHandler<C> {
+        JoinMapRemoveDownlink::new(projection, link_key)
     }
 }

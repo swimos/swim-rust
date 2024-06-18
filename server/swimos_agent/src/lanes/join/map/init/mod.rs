@@ -23,7 +23,6 @@ use crate::event_handler::{DowncastError, EventHandler, JoinLaneInitializer};
 use crate::lanes::JoinLaneKind;
 
 use super::AddDownlinkAction;
-//use super::AddDownlinkAction;
 use super::{lifecycle::JoinMapLaneLifecycle, JoinMapLane};
 
 /// Uses a [`JoinMapLaneLifecycle`] to create a handler action that will open a new downlink

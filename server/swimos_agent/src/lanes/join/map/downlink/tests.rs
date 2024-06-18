@@ -261,7 +261,7 @@ where
 fn state_for(
     lane: &JoinMapLane<String, i32, String>,
     link_key: &str,
-) -> (Option<Link<i32>>, HashSet<i32>) {
+) -> (Option<(DownlinkStatus, HashSet<i32>)>, HashSet<i32>) {
     let JoinMapLane { link_tracker, .. } = lane;
     let guard = link_tracker.borrow();
     let owned = guard
@@ -269,7 +269,11 @@ fn state_for(
         .iter()
         .filter_map(|(k, v)| if v == link_key { Some(*k) } else { None })
         .collect();
-    (guard.links.get(link_key).cloned(), owned)
+    let state = guard
+        .links
+        .get(link_key)
+        .map(|link| (link.status, link.keys.clone()));
+    (state, owned)
 }
 
 fn set_state_for(
@@ -321,7 +325,7 @@ fn run_on_linked() {
     } else {
         panic!("Events incorrect: {:?}", events);
     }
-    if let (Some(Link { status, keys }), owned) = state_for(&agent.lane, "link") {
+    if let (Some((status, keys)), owned) = state_for(&agent.lane, "link") {
         assert_eq!(status, DownlinkStatus::Linked);
         assert!(keys.is_empty());
         assert!(owned.is_empty());
@@ -519,7 +523,7 @@ fn run_update_linked() {
     assert_eq!(value, Some("a".to_string()));
     let (state, owned) = state_for(&agent.lane, "link");
     let expected = [1].into_iter().collect();
-    if let Some(Link { status, keys }) = state {
+    if let Some((status, keys)) = state {
         assert_eq!(status, DownlinkStatus::Linked);
         assert_eq!(keys, expected);
     }
@@ -569,7 +573,7 @@ fn run_remove_linked() {
 
     let (state, owned) = state_for(&agent.lane, "link");
     let expected = [2].into_iter().collect();
-    if let Some(Link { status, keys }) = state {
+    if let Some((status, keys)) = state {
         assert_eq!(status, DownlinkStatus::Linked);
         assert_eq!(keys, expected);
     }
@@ -618,7 +622,7 @@ fn run_clear_linked() {
     assert!(value.is_none());
     let (state, owned) = state_for(&agent.lane, "link");
 
-    if let Some(Link { status, keys }) = state {
+    if let Some((status, keys)) = state {
         assert_eq!(status, DownlinkStatus::Linked);
         assert!(keys.is_empty());
     }
@@ -669,7 +673,7 @@ fn run_take_linked() {
     let expected = [1].into_iter().collect();
     let (state, owned) = state_for(&agent.lane, "link");
 
-    if let Some(Link { status, keys }) = state {
+    if let Some((status, keys)) = state {
         assert_eq!(status, DownlinkStatus::Linked);
         assert_eq!(keys, expected);
     }
@@ -720,7 +724,7 @@ fn run_drop_linked() {
     let expected = [2].into_iter().collect();
     let (state, owned) = state_for(&agent.lane, "link");
 
-    if let Some(Link { status, keys }) = state {
+    if let Some((status, keys)) = state {
         assert_eq!(status, DownlinkStatus::Linked);
         assert_eq!(keys, expected);
     }
@@ -779,7 +783,7 @@ fn run_on_synced() {
 
     let (state, owned) = state_for(&agent.lane, "link");
 
-    if let Some(Link { status, keys }) = state {
+    if let Some((status, keys)) = state {
         assert_eq!(status, DownlinkStatus::Linked);
         assert_eq!(keys, expected);
     }

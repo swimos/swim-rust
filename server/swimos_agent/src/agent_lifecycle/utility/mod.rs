@@ -20,12 +20,13 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use futures::stream::unfold;
 use futures::{Future, FutureExt, Stream, StreamExt};
+use tokio::time::Instant;
+
 use swimos_api::address::Address;
 use swimos_form::read::RecognizerReadable;
 use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
 use swimos_utilities::routing::RouteUri;
-use tokio::time::Instant;
 
 use crate::agent_model::downlink::{EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle};
 use crate::agent_model::downlink::{
@@ -40,7 +41,8 @@ use crate::event_handler::{
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
 use crate::item::{
-    MapLikeItem, MutableMapLikeItem, MutableValueLikeItem, TransformableMapLikeItem, ValueLikeItem,
+    JoinLikeItem, MapLikeItem, MutableMapLikeItem, MutableValueLikeItem, TransformableMapLikeItem,
+    ValueLikeItem,
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::demand::{Cue, DemandLane};
@@ -718,7 +720,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     ///
     /// # Arguments
     /// * `lane` - Projection to the lane.
-    /// * `key - The key for the downlink.
+    /// * `key` - The key for the downlink.
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane_uri` - The lane to downlink from.
@@ -739,12 +741,30 @@ impl<Agent: 'static> HandlerContext<Agent> {
         JoinValueAddDownlink::new(lane, key, address)
     }
 
+    /// Removes a downlink from a Join lane. Removing any associated values the downlink holds in
+    /// the underlying map.
+    ///
+    /// # Arguments
+    /// * `lane` - Projection to the lane.
+    /// * `link_key` - The link key for the downlink.
+    pub fn remove_downlink<L, K>(
+        &self,
+        lane: fn(&Agent) -> &L,
+        link_key: K,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        K: Clone + Send + Eq + PartialEq + Hash + 'static,
+        L: JoinLikeItem<K>,
+    {
+        L::remove_downlink_handler(lane, link_key)
+    }
+
     /// Add a downlink to a Join Map lane. All key-value pairs received on the downlink will be set into the
     /// map state of the lane.
     ///
     /// # Arguments
     /// * `lane` - Projection to the lane.
-    /// * `link_key - A key to identify the link.
+    /// * `link_key` - A key to identify the link.
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane_uri` - The lane to downlink from.

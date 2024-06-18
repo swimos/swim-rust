@@ -17,6 +17,7 @@ use std::hash::Hash;
 use swimos_api::address::Address;
 use swimos_model::Text;
 
+use crate::lanes::join_value::Link;
 use crate::{
     downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
     event_handler::{
@@ -225,7 +226,12 @@ where
             let lane = projection(context);
             let mut guard = lane.keys.borrow_mut();
             if let Some(state) = state.take() {
-                guard.insert(key, state);
+                match guard.get_mut(&key) {
+                    Some(link) => link.status = state,
+                    None => {
+                        guard.insert(key, Link::new(state));
+                    }
+                }
             } else {
                 guard.remove(&key);
             }
@@ -346,8 +352,9 @@ where
             key_value,
         } = self;
         if let Some((key, value)) = key_value.take() {
-            let lane = &projection(context).inner;
-            lane.update(key, value);
+            let lane: &JoinValueLane<K, V> = projection(context);
+            lane.inner.update(key, value);
+
             StepResult::Complete {
                 modified_item: Some(Modification::of(lane.id())),
                 result: (),
