@@ -22,7 +22,7 @@ mod item;
 pub mod lanes;
 mod lifecycle_fn;
 mod map_storage;
-pub mod meta;
+mod meta;
 pub mod state;
 pub mod stores;
 #[cfg(test)]
