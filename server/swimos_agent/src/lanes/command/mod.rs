@@ -62,7 +62,7 @@ impl<T> CommandLane<T> {
     }
 
     /// Execute a command against the lane.
-    pub fn command(&self, value: T) {
+    pub(crate) fn command(&self, value: T) {
         let CommandLane {
             prev_command,
             dirty,

@@ -394,21 +394,21 @@ pub struct Modification {
 }
 
 impl Modification {
-    pub fn of(item_id: u64) -> Self {
+    pub(crate) fn of(item_id: u64) -> Self {
         Modification {
             item_id,
             flags: ModificationFlags::all(),
         }
     }
 
-    pub fn no_trigger(item_id: u64) -> Self {
+    pub(crate) fn no_trigger(item_id: u64) -> Self {
         Modification {
             item_id,
             flags: ModificationFlags::complement(ModificationFlags::TRIGGER_HANDLER),
         }
     }
 
-    pub fn trigger_only(item_id: u64) -> Self {
+    pub(crate) fn trigger_only(item_id: u64) -> Self {
         Modification {
             item_id,
             flags: ModificationFlags::TRIGGER_HANDLER,

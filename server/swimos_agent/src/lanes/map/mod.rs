@@ -99,12 +99,12 @@ where
     K: Clone + Eq + Hash,
 {
     /// Update the value associated with a key.
-    pub fn update(&self, key: K, value: V) {
+    pub(crate) fn update(&self, key: K, value: V) {
         self.inner.borrow_mut().update(key, value)
     }
 
     /// Transform the value associated with a key.
-    pub fn with_entry<F>(&self, key: K, f: F) -> WithEntryResult
+    pub(crate) fn with_entry<F>(&self, key: K, f: F) -> WithEntryResult
     where
         V: Clone,
         F: FnOnce(Option<V>) -> Option<V>,
@@ -113,12 +113,12 @@ where
     }
 
     /// Remove and entry from the map.
-    pub fn remove(&self, key: &K) {
+    pub(crate) fn remove(&self, key: &K) {
         self.inner.borrow_mut().remove(key)
     }
 
     /// Clear the map.
-    pub fn clear(&self) {
+    pub(crate) fn clear(&self) {
         self.inner.borrow_mut().clear()
     }
 
@@ -141,7 +141,7 @@ where
     }
 
     /// Start a sync operation from the lane to the specified remote.
-    pub fn sync(&self, id: Uuid) {
+    pub(crate) fn sync(&self, id: Uuid) {
         let keys = self.get_map(|content| content.keys().cloned().collect());
         self.inner.borrow_mut().queue().sync(id, keys);
     }

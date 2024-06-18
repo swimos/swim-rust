@@ -69,11 +69,11 @@ impl<T> ValueLane<T> {
     }
 
     /// Update the state of the lane.
-    pub fn set(&self, value: T) {
+    pub(crate) fn set(&self, value: T) {
         self.store.set(value)
     }
 
-    pub fn sync(&self, id: Uuid) {
+    pub(crate) fn sync(&self, id: Uuid) {
         let ValueLane { sync_queue, .. } = self;
         sync_queue.borrow_mut().push_back(id);
     }
