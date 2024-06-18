@@ -86,7 +86,7 @@ impl<T> CommandLane<T> {
 
 const INFALLIBLE_SER: &str = "Serializing a command to recon should be infallible.";
 
-/// An [`EventHandler`] instance that feeds a command to the command lane.
+/// A [`HandlerAction`] that feeds a command to the command lane.
 pub struct DoCommand<Context, T> {
     projection: fn(&Context) -> &CommandLane<T>,
     command: Option<T>,

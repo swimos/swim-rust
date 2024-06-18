@@ -53,7 +53,7 @@ mod tests;
 pub use downlink::{AfterClosed, JoinValueLaneUpdate};
 pub use init::LifecycleInitializer;
 
-/// Model of a join value lane. This is conceptually similar to a [`super::super::MapLane`] only, rather
+/// Model of a join value lane. This is conceptually similar to a [map lane](`super::super::MapLane`) only, rather
 /// than the state being modified directly, it is populated through a series of downlinks associated with
 /// each key. Hence it maintains a view of the state of a number of remote values as a single map. In all
 /// other respects, it behaves as a read only map lane, having the same event handlers.

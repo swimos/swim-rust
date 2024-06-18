@@ -54,7 +54,7 @@ mod tests;
 pub use downlink::{AfterClosed, JoinMapLaneUpdate};
 pub use init::LifecycleInitializer;
 
-/// Model of a join map lane. This is conceptually similar to a [`super::super::MapLane`] only, rather than
+/// Model of a join map lane. This is conceptually similar to a [map lane](`super::super::MapLane`) only, rather than
 /// the state being modified directly, it is populated through a series of map downlinks Each map downlink is
 /// identified by a link key of type `L`.
 ///

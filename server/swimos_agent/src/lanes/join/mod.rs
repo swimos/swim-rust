@@ -27,11 +27,15 @@ enum DownlinkStatus {
     Linked,
 }
 
+/// The response type for join lane lifecycle events to handle closed downlinks.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum LinkClosedResponse {
+    /// Attempt to reinstate the link.
     Retry,
+    /// Abandon the link but leave any associated keys in the lane's map.
     #[default]
     Abandon,
+    /// Abandon the link and delete any associated keys in the map.
     Delete,
 }
 
@@ -65,8 +69,11 @@ where
     }
 }
 
+/// Enumeration of the varieties of join lanes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum JoinLaneKind {
+    /// Indicates a [join value lane](super::JoinValueLane).
     Value,
+    /// Indicates a [join map lane](super::JoinMapLane).
     Map,
 }
