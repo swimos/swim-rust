@@ -28,7 +28,7 @@ use crate::{
     lifecycle_fn::WithHandlerContext,
 };
 
-/// Builder type for constructing [`JoinMapLaneLifecycle`]s where the event handlers do not
+/// Builder type for constructing join map lane lifecycles where the event handlers do not
 /// share state.
 #[derive(Debug)]
 pub struct StatelessJoinMapLifecycleBuilder<
@@ -55,7 +55,7 @@ impl<Context, L, K, V, LC: Default> Default
 
 type JoinMapType<Context, State, L, K, V> = for<'a> fn(&'a Context, &'a State, L, K, V);
 
-/// Builder type for constructing [`JoinMapLaneLifecycle`]s where the event handlers have shared state.
+/// Builder type for constructing join map lane lifecycles where the event handlers have shared state.
 #[derive(Debug)]
 pub struct StatefulJoinMapLifecycleBuilder<
     Context,

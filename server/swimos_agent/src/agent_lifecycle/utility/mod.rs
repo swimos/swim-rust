@@ -418,8 +418,8 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// Run a (potentially infinite) sequence of [`EventHandler`]s on a schedule. For each pair of a duration
     /// and handler produced by the iterator the handler will be scheduled to run after the delay.
     /// This is the most general scheduling handler and it will often be possible to achieve simpler
-    /// schedule with [run_handlers_with_delay](HandlerAction::run_handlers_with_delay) and
-    /// [schedule_repeatedly](HandlerAction::schedule_repeatedly).
+    /// schedule with [run_handlers_with_delay](HandlerContext::run_handlers_with_delay) and
+    /// [schedule_repeatedly](HandlerContext::schedule_repeatedly).
     ///
     /// # Note
     ///

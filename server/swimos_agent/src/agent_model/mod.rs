@@ -308,7 +308,7 @@ where
     }
 }
 
-/// The complete model for an agent consisting of an implementation of [`AgentLaneModel`] to describe the lanes
+/// The complete model for an agent consisting of an implementation of [`AgentSpec`] to describe the lanes
 /// of the agent and an implementation of [`AgentLifecycle`] to describe the lifecycle events that will trigger,
 /// for  example, when the agent starts or stops or when the state of a lane changes.
 pub struct AgentModel<ItemModel, Lifecycle> {

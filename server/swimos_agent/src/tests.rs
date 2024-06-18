@@ -16,15 +16,16 @@ use std::collections::HashSet;
 use std::hash::Hash;
 use std::{collections::HashMap, sync::Arc};
 
-use parking_lot::Mutex;
 use crate::agent_lifecycle::on_init::OnInit;
 use crate::agent_lifecycle::on_start::OnStart;
 use crate::agent_lifecycle::on_stop::OnStop;
-use crate::agent_lifecycle::{item_event::ItemEvent, HandlerContext, JoinMapContext, JoinValueContext};
+use crate::agent_lifecycle::{
+    item_event::ItemEvent, HandlerContext, JoinMapContext, JoinValueContext,
+};
 use crate::agent_model::downlink::BoxDownlinkChannel;
 use crate::agent_model::WriteResult;
 use crate::event_handler::{
-    BoxJoinLaneInit, EventHandler, HandlerAction, HandlerFuture, Modification, Spawner, StepResult
+    BoxJoinLaneInit, EventHandler, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
 };
 use crate::item::{AgentItem, MapItem};
 use crate::lanes::demand::Cue;
@@ -36,13 +37,15 @@ use crate::lanes::join_map::JoinMapLaneUpdate;
 use crate::lanes::join_value::lifecycle::JoinValueLaneLifecycle;
 use crate::lanes::join_value::{AfterClosed, JoinValueLaneUpdate};
 use crate::lanes::{
-    CommandLane, DemandLane, DemandMapLane, JoinMapLane, JoinValueLane, LaneItem, LinkClosedResponse, MapLane, SimpleHttpLane, ValueLane
+    CommandLane, DemandLane, DemandMapLane, JoinMapLane, JoinValueLane, LaneItem,
+    LinkClosedResponse, MapLane, SimpleHttpLane, ValueLane,
 };
 use crate::meta::AgentMetadata;
 use crate::model::MapMessage;
 use crate::reexport::bytes::BytesMut;
 use crate::reexport::uuid::Uuid;
 use crate::stores::{MapStore, ValueStore};
+use parking_lot::Mutex;
 use swimos_agent_derive::{lifecycle, AgentLaneModel};
 use swimos_api::agent::DownlinkKind;
 use swimos_api::error::{DownlinkRuntimeError, OpenStoreError};
@@ -439,7 +442,7 @@ fn on_event_handler() {
     let template = TestLifecycle::default();
 
     let lifecycle = template.clone().into_lifecycle();
-    
+
     agent.value.set(TEST_VALUE);
     let handler = lifecycle
         .item_event(&agent, "value")

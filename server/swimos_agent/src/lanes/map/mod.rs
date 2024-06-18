@@ -170,7 +170,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will update the value of an entry in the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will update the value of an entry in the map.
 pub struct MapLaneUpdate<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     key_value: Option<(K, V)>,
@@ -214,7 +214,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will remove an entry from the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will remove an entry from the map.
 pub struct MapLaneRemove<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     key: Option<K>,
@@ -255,7 +255,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will clear the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will clear the map.
 pub struct MapLaneClear<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     done: bool,
@@ -297,7 +297,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will get an entry from the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
 pub struct MapLaneGet<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     key: K,
@@ -342,7 +342,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will read the entire state of a map lane.
+///  An [event handler](crate::event_handler::EventHandler)`] that will read the entire state of a map lane.
 pub struct MapLaneGetMap<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     done: bool,
@@ -381,7 +381,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will request a sync from the lane.
+///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
 pub struct MapLaneSync<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     id: Option<Uuid>,
@@ -528,7 +528,7 @@ where
     decode.and_then(ProjTransform::new(projection))
 }
 
-/// An [`EventHandler`] that will alter an entry in the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will alter an entry in the map.
 pub struct MapLaneWithEntry<C, K, V, F> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     key_and_f: Option<(K, F)>,

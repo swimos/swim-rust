@@ -542,7 +542,7 @@ impl<C, L, K, V> JoinMapAddDownlink<C, L, K, V> {
     }
 }
 
-/// An [`EventHandler`] that will get an entry from the map.
+///  An [event handler](crate::event_handler::EventHandler) that will get an entry from the map.
 pub struct JoinMapLaneGet<C, L, K, V> {
     projection: fn(&C) -> &JoinMapLane<L, K, V>,
     key: K,
@@ -587,7 +587,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will get an entry from the map.
+/// An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
 pub struct JoinMapLaneGetMap<C, L, K, V> {
     projection: fn(&C) -> &JoinMapLane<L, K, V>,
     done: bool,
@@ -626,7 +626,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will request a sync from the lane.
+///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
 pub struct JoinMapLaneSync<C, L, K, V> {
     projection: fn(&C) -> &JoinMapLane<L, K, V>,
     id: Option<Uuid>,

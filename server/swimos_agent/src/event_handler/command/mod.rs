@@ -22,7 +22,7 @@ use super::{ActionContext, HandlerAction, StepResult};
 #[cfg(test)]
 mod tests;
 
-/// A [`HandlerAction`] that will send a command to a remote lane.
+///  An [event handler](crate::event_handler::EventHandler) that will send a command to a remote lane.
 pub struct SendCommand<S, T> {
     body: Option<Body<S, T>>,
     overwrite_permitted: bool,

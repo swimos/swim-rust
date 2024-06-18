@@ -303,7 +303,7 @@ assert_obj_safe!(EventHandler<()>);
 /// A [`HandlerAction`] that is called by dynamic dispatch.
 pub type BoxHandlerAction<'a, Context, T> = Box<dyn HandlerAction<Context, Completion = T> + 'a>;
 
-/// An [`EventHandler`] that is called by dynamic dispatch.
+///  An [event handler](crate::event_handler::EventHandler) that is called by dynamic dispatch.
 pub type BoxEventHandler<'a, Context> = BoxHandlerAction<'a, Context, ()>;
 
 impl<Context, H> EventHandler<Context> for H where H: HandlerAction<Context, Completion = ()> {}
@@ -1032,8 +1032,8 @@ impl<Context, S: AsRef<str>> HandlerAction<Context> for GetParameter<S> {
     }
 }
 
-/// An event handler that will attempt to decode a [`StructuralReadable`] type from a buffer, immediately
-/// returning the result or an error.
+/// An event handler that will attempt to decode a [readable](`swimos_form::read::StructuralReadable`) type
+/// from a buffer, immediately returning the result or an error.
 pub struct Decode<T> {
     _target_type: PhantomData<fn() -> T>,
     buffer: BytesMut,

@@ -28,7 +28,7 @@ use crate::{
     lifecycle_fn::{WithHandlerContext, WithHandlerContextBorrow},
 };
 
-/// Builder type for constructing [`JoinValueLaneLifecycle`]s where the event handlers do not
+/// Builder type for constructing join value lane lifecycles where the event handlers do not
 /// share state.
 #[derive(Debug)]
 pub struct StatelessJoinValueLifecycleBuilder<
@@ -50,7 +50,7 @@ impl<Context, K, V, LC: Default> Default for StatelessJoinValueLifecycleBuilder<
     }
 }
 
-/// Builder type for constructing [`JoinValueLaneLifecycle`]s where the event handlers have shared state.
+/// Builder type for constructing join value lane lifecycles where the event handlers have shared state.
 #[derive(Debug)]
 pub struct StatefulJoinValueLifecycleBuilder<
     Context,

@@ -26,9 +26,9 @@ mod meta;
 pub mod state;
 pub mod stores;
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod test_context;
+#[cfg(test)]
+mod tests;
 #[cfg(test)]
 pub use agent_model::AgentSpec;
 
@@ -40,6 +40,7 @@ pub mod model {
     pub use swimos_model::Text;
 }
 
+#[doc(hidden)]
 pub mod reexport {
     pub mod coproduct {
         pub use frunk::coproduct::CNil;
