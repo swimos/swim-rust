@@ -16,7 +16,6 @@ use std::collections::HashMap;
 use swimos::{
     agent::agent_lifecycle::utility::HandlerContext,
     agent::event_handler::EventHandler,
-    agent::event_handler::HandlerActionExt,
     agent::lanes::ValueLane,
     agent::lanes::{CommandLane, JoinValueLane},
     agent::AgentLaneModel,
@@ -45,10 +44,8 @@ impl AggregateLifecycle {
         _prev: Option<f64>,
         _new_value: &f64,
     ) -> impl EventHandler<AggregateAgent> {
-        let averages = averages.clone();
-        context
-            .effect(move || averages.values().sum::<f64>() / averages.len() as f64)
-            .and_then(move |average: f64| context.set_value(AggregateAgent::AVERAGE_SPEED, average))
+        let average = averages.values().sum::<f64>() / averages.len() as f64;
+        context.set_value(AggregateAgent::AVERAGE_SPEED, average)
     }
 
     #[on_command(register)]

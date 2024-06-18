@@ -16,6 +16,7 @@ use std::error::Error;
 use std::str::FromStr;
 use std::time::Duration;
 
+use crate::area::Area;
 use crate::{
     aggregate::{AggregateAgent, AggregateLifecycle},
     area::{AreaAgent, AreaLifecycle},
@@ -38,23 +39,31 @@ mod car;
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     example_logging()?;
 
-    let car_agent = AgentModel::new(CarAgent::default, CarLifecycle::default().into_lifecycle());
-    let area_agent = AgentModel::new(
-        AreaAgent::default,
-        AreaLifecycle::default().into_lifecycle(),
-    );
+    let car_agent = AgentModel::new(CarAgent::default, CarLifecycle.into_lifecycle());
+    let area_agent = move |name| {
+        AgentModel::new(
+            AreaAgent::default,
+            AreaLifecycle::new(name).into_lifecycle(),
+        )
+    };
     let aggregate_agent =
         AgentModel::new(AggregateAgent::default, AggregateLifecycle.into_lifecycle());
 
-    let server = ServerBuilder::with_plane_name("Example Plane")
+    let mut builder = ServerBuilder::with_plane_name("Example Plane")
         .add_route(RoutePattern::parse_str("/cars/:car_id")?, car_agent)
-        .add_route(RoutePattern::parse_str("/area/:area")?, area_agent)
         .add_route(RoutePattern::parse_str("/aggregate")?, aggregate_agent)
         .update_config(|config| {
             config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
-        })
-        .build()
-        .await?;
+        });
+
+    for area in Area::universe() {
+        builder = builder.add_route(
+            RoutePattern::parse_str(format!("/area/{}", area).as_str())?,
+            area_agent(area),
+        );
+    }
+
+    let server = builder.build().await?;
 
     let (task, handle) = server.run();
     let _task = tokio::spawn(task);
