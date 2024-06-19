@@ -272,7 +272,8 @@ assert_obj_safe!(EventHandler<()>);
 pub type LocalBoxHandlerAction<'a, Context, T> =
     Box<dyn HandlerAction<Context, Completion = T> + 'a>;
 pub type LocalBoxEventHandler<'a, Context> = LocalBoxHandlerAction<'a, Context, ()>;
-pub type BoxHandlerAction<'a, Context, T> = Box<dyn HandlerAction<Context, Completion = T> + 'a>;
+pub type BoxHandlerAction<'a, Context, T> =
+    Box<dyn HandlerAction<Context, Completion = T> + Send + 'a>;
 pub type BoxEventHandler<'a, Context> = BoxHandlerAction<'a, Context, ()>;
 
 impl<Context, H> EventHandler<Context> for H where H: HandlerAction<Context, Completion = ()> {}
