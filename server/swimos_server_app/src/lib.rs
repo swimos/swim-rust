@@ -13,7 +13,7 @@
 // limitations under the License.
 
 mod config;
-pub mod error;
+mod error;
 mod in_memory_store;
 mod plane;
 mod server;
@@ -25,11 +25,9 @@ pub use self::{
     util::AgentExt,
 };
 
-pub mod introspection {
-    pub use swimos_introspection::IntrospectionConfig;
-}
-
 pub use ratchet::deflate::DeflateConfig;
+pub use swimos_introspection::IntrospectionConfig;
+pub use error::{AmbiguousRoutes, ServerBuilderError, ServerError};
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 
 type Io = (ByteWriter, ByteReader);
