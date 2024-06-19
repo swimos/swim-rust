@@ -20,7 +20,7 @@ use rand::seq::SliceRandom;
 
 use swimos::agent::event_handler::HandlerActionExt;
 use swimos::{
-    agent::agent_lifecycle::utility::HandlerContext,
+    agent::agent_lifecycle::HandlerContext,
     agent::event_handler::EventHandler,
     agent::lanes::{CommandLane, JoinValueLane, ValueLane},
     agent::lifecycle,
