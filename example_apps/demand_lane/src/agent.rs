@@ -15,7 +15,7 @@
 use std::time::Duration;
 
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerAction, HandlerActionExt},
     lanes::{DemandLane, ValueLane},
     lifecycle, projections, AgentLaneModel,

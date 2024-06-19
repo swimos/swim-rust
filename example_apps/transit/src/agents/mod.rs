@@ -16,7 +16,7 @@ use std::fmt::Display;
 
 use std::hash::Hash;
 use swimos::agent::{
-    agent_lifecycle::utility::JoinValueContext,
+    agent_lifecycle::JoinValueContext,
     lanes::{join_value::lifecycle::JoinValueLaneLifecycle, LinkClosedResponse},
 };
 use swimos_form::Form;

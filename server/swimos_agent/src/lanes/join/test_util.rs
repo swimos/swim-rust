@@ -29,7 +29,7 @@ use swimos_utilities::{
     non_zero_usize,
 };
 
-use crate::{agent_model::downlink::handlers::BoxDownlinkChannel, event_handler::DownlinkSpawner};
+use crate::{agent_model::downlink::BoxDownlinkChannel, event_handler::DownlinkSpawner};
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 

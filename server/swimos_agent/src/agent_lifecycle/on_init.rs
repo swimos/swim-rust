@@ -43,6 +43,8 @@ pub trait OnInit<Context>: Send {
     );
 }
 
+/// Pre-initialization function for a agent which has access to shared state with the event handlers for the
+/// agent. Allows for the initialization of the agent context before any event handlers run.
 pub trait OnInitShared<Context, Shared>: Send {
     fn initialize(
         &self,
@@ -105,6 +107,7 @@ where
     }
 }
 
+/// An initializer that does nothing.
 pub type InitNil = NoHandler;
 
 /// A heterogeneous list of initializers. This should be terminated with [`InitNil`]. Each

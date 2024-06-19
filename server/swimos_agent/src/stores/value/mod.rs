@@ -168,7 +168,7 @@ impl<T: StructuralWritable> StoreItem for ValueStore<T> {
     }
 }
 
-/// An [`EventHandler`] that will get the value of a value store.
+/// An [event handler](crate::event_handler::EventHandler) that will get the value of a value store.
 pub struct ValueStoreGet<C, T> {
     projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
     done: bool,
@@ -185,7 +185,7 @@ impl<C, T> ValueStoreGet<C, T> {
     }
 }
 
-/// An [`EventHandler`] that will set the value of a value store.
+///  An [event handler](crate::event_handler::EventHandler) that will set the value of a value store.
 pub struct ValueStoreSet<C, T> {
     projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
     value: Option<T>,

@@ -28,13 +28,10 @@ use swimos_utilities::{
 use tokio::io::AsyncWriteExt;
 use tokio_util::codec::FramedWrite;
 
-use super::{HostedEventDownlinkFactory, SimpleDownlinkConfig};
+use super::{EventDownlinkFactory, SimpleDownlinkConfig};
 use crate::{
-    agent_model::downlink::handlers::{BoxDownlinkChannel, DownlinkChannelEvent},
-    downlink_lifecycle::{
-        event::on_event::OnConsumeEvent, on_failed::OnFailed, on_linked::OnLinked,
-        on_synced::OnSynced, on_unlinked::OnUnlinked,
-    },
+    agent_model::downlink::{BoxDownlinkChannel, DownlinkChannelEvent},
+    downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
     event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
 };
 
@@ -146,7 +143,7 @@ fn make_hosted_input(config: SimpleDownlinkConfig) -> TestContext {
 
     let address = Address::new(None, Text::new("/node"), Text::new("lane"));
 
-    let fac = HostedEventDownlinkFactory::new(address, lc, config, stop_rx, false);
+    let fac = EventDownlinkFactory::new(address, lc, config, stop_rx, false);
 
     let chan = fac.create(rx);
     TestContext {

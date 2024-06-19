@@ -34,11 +34,11 @@ use tokio_util::codec::FramedRead;
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::handlers::{
+    agent_model::downlink::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
     },
     config::SimpleDownlinkConfig,
-    downlink_lifecycle::event::EventDownlinkLifecycle,
+    downlink_lifecycle::EventDownlinkLifecycle,
     event_handler::{BoxEventHandler, HandlerActionExt},
 };
 
@@ -47,7 +47,7 @@ use super::{DlState, DlStateObserver, DlStateTracker};
 #[cfg(test)]
 mod tests;
 
-pub struct HostedEventDownlinkFactory<T: RecognizerReadable, LC> {
+pub struct EventDownlinkFactory<T: RecognizerReadable, LC> {
     address: Address<Text>,
     lifecycle: LC,
     config: SimpleDownlinkConfig,
@@ -57,7 +57,7 @@ pub struct HostedEventDownlinkFactory<T: RecognizerReadable, LC> {
     _type: PhantomData<fn() -> T>,
 }
 
-impl<T, LC> HostedEventDownlinkFactory<T, LC>
+impl<T, LC> EventDownlinkFactory<T, LC>
 where
     T: StructuralReadable + Send + 'static,
     T::Rec: Send,
@@ -69,7 +69,7 @@ where
         stop_rx: trigger::Receiver,
         map_events: bool,
     ) -> Self {
-        HostedEventDownlinkFactory {
+        EventDownlinkFactory {
             address,
             lifecycle,
             config,
@@ -84,7 +84,7 @@ where
     where
         LC: EventDownlinkLifecycle<T, Context> + 'static,
     {
-        let HostedEventDownlinkFactory {
+        let EventDownlinkFactory {
             address,
             lifecycle,
             config,

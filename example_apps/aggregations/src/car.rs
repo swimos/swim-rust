@@ -19,7 +19,7 @@ use rand::Rng;
 
 use swimos::agent::stores::ValueStore;
 use swimos::{
-    agent::agent_lifecycle::utility::HandlerContext,
+    agent::agent_lifecycle::HandlerContext,
     agent::event_handler::{EventHandler, HandlerActionExt},
     agent::lanes::ValueLane,
     agent::{lifecycle, projections, AgentLaneModel},

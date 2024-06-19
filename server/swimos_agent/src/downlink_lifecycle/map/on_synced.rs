@@ -16,6 +16,7 @@ use std::collections::HashMap;
 
 use crate::downlink_lifecycle::on_synced::{OnSynced, OnSyncedShared};
 
+/// Lifecycle event for the `on_synced` event of a downlink, from an agent.
 pub trait OnMapSynced<K, V, Context>: OnSynced<HashMap<K, V>, Context> {}
 
 impl<K, V, Context, L> OnMapSynced<K, V, Context> for L where L: OnSynced<HashMap<K, V>, Context> {}

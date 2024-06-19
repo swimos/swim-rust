@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::{
-    cell::RefCell,
     collections::HashMap,
     num::NonZeroUsize,
     ops::Deref,
@@ -49,24 +48,16 @@ use tokio::{io::AsyncWriteExt, sync::mpsc};
 use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 
 use crate::{
-    agent_model::downlink::{
-        handlers::{BoxDownlinkChannel, DownlinkChannelEvent},
-        MapDownlinkHandle,
-    },
+    agent_model::downlink::{BoxDownlinkChannel, DownlinkChannelEvent, MapDownlinkHandle},
     config::MapDownlinkConfig,
     downlink_lifecycle::{
-        map::{
-            on_clear::OnDownlinkClear, on_remove::OnDownlinkRemove, on_update::OnDownlinkUpdate,
-        },
-        on_failed::OnFailed,
-        on_linked::OnLinked,
-        on_synced::OnSynced,
-        on_unlinked::OnUnlinked,
+        OnDownlinkClear, OnDownlinkRemove, OnDownlinkUpdate, OnFailed, OnLinked, OnSynced,
+        OnUnlinked,
     },
     event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
 };
 
-use super::{HostedMapDownlinkFactory, MapDlState, MapWriteStream};
+use super::{MapDownlinkFactory, MapWriteStream};
 
 struct FakeAgent;
 
@@ -235,8 +226,6 @@ impl OnDownlinkClear<i32, Text, FakeAgent> for FakeLifecycle {
     }
 }
 
-type State = RefCell<MapDlState<i32, Text>>;
-
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
 struct Writer {
@@ -304,8 +293,7 @@ fn make_hosted_input(agent: &FakeAgent, config: MapDownlinkConfig) -> TestContex
 
     let (write_tx, write_rx) = mpsc::unbounded_channel();
 
-    let fac =
-        HostedMapDownlinkFactory::new(address, lc, State::default(), config, stop_rx, write_rx);
+    let fac = MapDownlinkFactory::new(address, lc, config, stop_rx, write_rx);
 
     let chan = fac.create(agent, out_tx, in_rx);
     TestContext {

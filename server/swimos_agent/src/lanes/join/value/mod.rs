@@ -54,7 +54,7 @@ pub use downlink::{AfterClosed, JoinValueLaneUpdate};
 pub use init::LifecycleInitializer;
 use swimos_utilities::trigger;
 
-/// Model of a join value lane. This is conceptually similar to a [`super::super::MapLane`] only, rather
+/// Model of a join value lane. This is conceptually similar to a [map lane](`super::super::MapLane`) only, rather
 /// than the state being modified directly, it is populated through a series of downlinks associated with
 /// each key. Hence it maintains a view of the state of a number of remote values as a single map. In all
 /// other respects, it behaves as a read only map lane, having the same event handlers.
@@ -239,7 +239,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will get an entry from the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
 pub struct JoinValueLaneGet<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a JoinValueLane<K, V>,
     key: K,
@@ -284,7 +284,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will get an entry from the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
 pub struct JoinValueLaneGetMap<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a JoinValueLane<K, V>,
     done: bool,
@@ -323,7 +323,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will request a sync from the lane.
+///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
 pub struct JoinValueLaneSync<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a JoinValueLane<K, V>,
     id: Option<Uuid>,

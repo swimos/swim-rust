@@ -16,7 +16,7 @@ use futures::future::Either;
 use std::{cmp::Ordering, fmt::Debug};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     lanes::command::{
         lifecycle::{
             on_command::{OnCommand, OnCommandShared},

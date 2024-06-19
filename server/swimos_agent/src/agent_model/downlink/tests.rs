@@ -38,9 +38,7 @@ use swimos_utilities::{
 
 use crate::{
     config::{MapDownlinkConfig, SimpleDownlinkConfig},
-    downlink_lifecycle::{
-        map::StatefulMapDownlinkLifecycle, value::StatefulValueDownlinkLifecycle,
-    },
+    downlink_lifecycle::{StatefulMapDownlinkLifecycle, StatefulValueDownlinkLifecycle},
     event_handler::{
         ActionContext, BoxJoinLaneInit, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner,
         StepResult,
@@ -48,7 +46,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::{handlers::BoxDownlinkChannel, OpenMapDownlinkAction, OpenValueDownlinkAction};
+use super::{BoxDownlinkChannel, OpenMapDownlinkAction, OpenValueDownlinkAction};
 
 struct TestAgent;
 

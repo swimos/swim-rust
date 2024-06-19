@@ -14,16 +14,25 @@
 
 use self::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop};
 
+#[doc(hidden)]
 pub mod item_event;
+/// The `on_init` event is called when an agent starts. It is a simple function (rather than an event
+/// handler) and is guaranteed to run before any event handlers execute. The signature of the event is
+/// described by the [`on_init::OnInit`] trait.
 pub mod on_init;
+/// The `on_start` event handler is executed when an agent starts. The signature of the event is
+/// described by the [`on_start::OnStart`] trait.
 pub mod on_start;
+/// The `on_stop` event handler is executed when an agent stops. No more event handlers will be executed
+/// after execution of this handler stops. The signature of the event is described by the
+/// [`on_stop::OnStop`] trait.
 pub mod on_stop;
-pub mod stateful;
-pub mod stateless;
-pub mod utility;
+mod stateful;
+mod utility;
 
-/// Trait for agent lifecycles.
-/// #Type Parameters
+/// This includes all of the required event handler traits to implement an agent lifecycle. It should not
+/// be implemented directly as it it has a blanket implementation for any type that can implement it.
+/// # Type Parameters
 /// * `Context` - The context in which the lifecycle events run (provides access to the lanes of the agent).
 pub trait AgentLifecycle<Context>:
     OnInit<Context> + OnStart<Context> + OnStop<Context> + ItemEvent<Context>
@@ -34,3 +43,6 @@ impl<L, Context> AgentLifecycle<Context> for L where
     L: OnInit<Context> + OnStart<Context> + OnStop<Context> + ItemEvent<Context>
 {
 }
+
+pub use stateful::StatefulAgentLifecycle;
+pub use utility::*;

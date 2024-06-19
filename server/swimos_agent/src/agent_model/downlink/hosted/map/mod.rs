@@ -46,11 +46,11 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::handlers::{
+    agent_model::downlink::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
     },
     config::MapDownlinkConfig,
-    downlink_lifecycle::map::MapDownlinkLifecycle,
+    downlink_lifecycle::MapDownlinkLifecycle,
     event_handler::{BoxEventHandler, HandlerActionExt, Sequentially},
     event_queue::EventQueue,
 };
@@ -60,16 +60,13 @@ use super::{DlState, DlStateObserver, DlStateTracker, OutputWriter, RestartableO
 #[cfg(test)]
 mod tests;
 
-/// Internal state of a map downlink. For most purposes this uses the hashmap (for constant time
-/// accesses). To support the (infrequently used) take and drop operations, it will generate a
-/// separate ordered set of the keys which will then be kept up to date with the map.
 #[derive(Debug)]
-pub struct MapDlState<K, V> {
+struct MapDlStateInner<K, V> {
     map: HashMap<K, V>,
     order: Option<BTreeSet<K>>,
 }
 
-impl<K, V> Default for MapDlState<K, V> {
+impl<K, V> Default for MapDlStateInner<K, V> {
     fn default() -> Self {
         Self {
             map: Default::default(),
@@ -78,20 +75,35 @@ impl<K, V> Default for MapDlState<K, V> {
     }
 }
 
+/// Internal state of a map downlink. For most purposes this uses the hashmap (for constant time
+/// accesses). To support the (infrequently used) take and drop operations, it will generate a
+/// separate ordered set of the keys which will then be kept up to date with the map.
+#[derive(Debug)]
+struct MapDlState<K, V>(RefCell<MapDlStateInner<K, V>>);
+
+impl<K, V> Default for MapDlState<K, V> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
 /// Operations that need to be supported by the state store of a map downlink. The intention
 /// of this trait is to abstract over a self contained store a store contained within the field
 /// of an agent. In both cases, the store itself will a [`RefCell`] containing a [`MapDlState`].
-pub trait MapDlStateOps<K, V, Context>: Send {
-    fn clear(&self, context: &Context) -> HashMap<K, V>;
-
+impl<K, V> MapDlState<K, V> {
+    fn clear(&self) -> HashMap<K, V> {
+        self.0.replace(MapDlStateInner::default()).map
+    }
     // Perform an operation in a context with access to the state.
-    fn with<G, T>(&self, context: &Context, f: G) -> T
+    fn with<F, T>(&self, f: F) -> T
     where
-        G: FnOnce(&mut MapDlState<K, V>) -> T;
+        F: FnOnce(&mut MapDlStateInner<K, V>) -> T,
+    {
+        f(&mut *self.0.borrow_mut())
+    }
 
-    fn update<'a, LC>(
+    fn update<'a, LC, Context>(
         &self,
-        context: &Context,
         key: K,
         value: V,
         lifecycle: Option<&'a LC>,
@@ -100,7 +112,7 @@ pub trait MapDlStateOps<K, V, Context>: Send {
         K: Eq + Hash + Clone + Ord,
         LC: MapDownlinkLifecycle<K, V, Context>,
     {
-        self.with(context, move |MapDlState { map, order }| {
+        self.with(move |MapDlStateInner { map, order }| {
             let old = map.insert(key.clone(), value);
             match order {
                 Some(ord) if old.is_some() => {
@@ -113,9 +125,8 @@ pub trait MapDlStateOps<K, V, Context>: Send {
         })
     }
 
-    fn remove<'a, LC>(
+    fn remove<'a, LC, Context>(
         &self,
-        context: &Context,
         key: K,
         lifecycle: Option<&'a LC>,
     ) -> Option<BoxEventHandler<'a, Context>>
@@ -123,7 +134,7 @@ pub trait MapDlStateOps<K, V, Context>: Send {
         K: Eq + Hash + Ord,
         LC: MapDownlinkLifecycle<K, V, Context>,
     {
-        self.with(context, move |MapDlState { map, order }| {
+        self.with(move |MapDlStateInner { map, order }| {
             map.remove(&key).and_then(move |old| {
                 if let Some(ord) = order {
                     ord.remove(&key);
@@ -133,9 +144,8 @@ pub trait MapDlStateOps<K, V, Context>: Send {
         })
     }
 
-    fn drop<'a, LC>(
+    fn drop<'a, LC, Context>(
         &self,
-        context: &Context,
         n: usize,
         lifecycle: Option<&'a LC>,
     ) -> Option<BoxEventHandler<'a, Context>>
@@ -143,7 +153,7 @@ pub trait MapDlStateOps<K, V, Context>: Send {
         K: Eq + Hash + Ord + Clone,
         LC: MapDownlinkLifecycle<K, V, Context>,
     {
-        self.with(context, move |MapDlState { map, order }| {
+        self.with(move |MapDlStateInner { map, order }| {
             if n >= map.len() {
                 *order = None;
                 let old = std::mem::take(map);
@@ -179,9 +189,8 @@ pub trait MapDlStateOps<K, V, Context>: Send {
         })
     }
 
-    fn take<'a, LC>(
+    fn take<'a, LC, Context>(
         &self,
-        context: &Context,
         n: usize,
         lifecycle: Option<&'a LC>,
     ) -> Option<BoxEventHandler<'a, Context>>
@@ -189,7 +198,7 @@ pub trait MapDlStateOps<K, V, Context>: Send {
         K: Eq + Hash + Ord + Clone,
         LC: MapDownlinkLifecycle<K, V, Context>,
     {
-        self.with(context, move |MapDlState { map, order }| {
+        self.with(move |MapDlStateInner { map, order }| {
             let to_drop = map.len().saturating_sub(n);
             if to_drop > 0 {
                 let ord = order.get_or_insert_with(|| map.keys().cloned().collect());
@@ -224,42 +233,9 @@ pub trait MapDlStateOps<K, V, Context>: Send {
     }
 }
 
-impl<K, V, Context> MapDlStateOps<K, V, Context> for RefCell<MapDlState<K, V>>
-where
-    K: Send,
-    V: Send,
-{
-    fn clear(&self, _context: &Context) -> HashMap<K, V> {
-        self.replace(MapDlState::default()).map
-    }
-
-    fn with<F, T>(&self, _context: &Context, f: F) -> T
-    where
-        F: FnOnce(&mut MapDlState<K, V>) -> T,
-    {
-        f(&mut *self.borrow_mut())
-    }
-}
-
-impl<K, V, Context, F> MapDlStateOps<K, V, Context> for F
-where
-    F: for<'a> Fn(&'a Context) -> &'a RefCell<MapDlState<K, V>> + Send,
-{
-    fn clear(&self, context: &Context) -> HashMap<K, V> {
-        self(context).replace(MapDlState::default()).map
-    }
-
-    fn with<G, T>(&self, context: &Context, f: G) -> T
-    where
-        G: FnOnce(&mut MapDlState<K, V>) -> T,
-    {
-        f(&mut *self(context).borrow_mut())
-    }
-}
-
-pub struct HostedMapDownlinkFactory<K, V, LC, State> {
+pub struct MapDownlinkFactory<K, V, LC> {
     address: Address<Text>,
-    state: State,
+    state: MapDlState<K, V>,
     lifecycle: LC,
     config: MapDownlinkConfig,
     dl_state: Arc<AtomicU8>,
@@ -267,7 +243,7 @@ pub struct HostedMapDownlinkFactory<K, V, LC, State> {
     op_rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
 }
 
-impl<K, V, LC, State> HostedMapDownlinkFactory<K, V, LC, State>
+impl<K, V, LC> MapDownlinkFactory<K, V, LC>
 where
     K: Hash + Eq + Ord + Clone + Form + Send + 'static,
     V: Form + Send + 'static,
@@ -277,14 +253,13 @@ where
     pub fn new(
         address: Address<Text>,
         lifecycle: LC,
-        state: State,
         config: MapDownlinkConfig,
         stop_rx: trigger::Receiver,
         op_rx: mpsc::UnboundedReceiver<MapOperation<K, V>>,
     ) -> Self {
-        HostedMapDownlinkFactory {
+        MapDownlinkFactory {
             address,
-            state,
+            state: MapDlState::default(),
             lifecycle,
             config,
             dl_state: Default::default(),
@@ -300,10 +275,9 @@ where
         receiver: ByteReader,
     ) -> BoxDownlinkChannel<Context>
     where
-        State: MapDlStateOps<K, V, Context> + 'static,
         LC: MapDownlinkLifecycle<K, V, Context> + 'static,
     {
-        let HostedMapDownlinkFactory {
+        let MapDownlinkFactory {
             address,
             state,
             lifecycle,
@@ -336,11 +310,11 @@ type Writes<K, V> = OutputWriter<MapWriteStream<K, V>>;
 
 /// An implementation of [`DownlinkChannel`] to allow a map downlink to be driven by an agent
 /// task.
-pub struct HostedMapDownlink<K: RecognizerReadable, V: RecognizerReadable, LC, State> {
+pub struct HostedMapDownlink<K: RecognizerReadable, V: RecognizerReadable, LC> {
     address: Address<Text>,
     receiver: Option<FramedRead<ByteReader, MapNotificationDecoder<K, V>>>,
     write_stream: Writes<K, V>,
-    state: State,
+    state: MapDlState<K, V>,
     next: Option<Result<DownlinkNotification<MapMessage<K, V>>, FrameIoError>>,
     lifecycle: LC,
     config: MapDownlinkConfig,
@@ -354,7 +328,7 @@ impl<K: StructuralWritable, V: StructuralWritable> MapWriteStream<K, V> {
     }
 }
 
-impl<K, V, LC, State> HostedMapDownlink<K, V, LC, State>
+impl<K, V, LC> HostedMapDownlink<K, V, LC>
 where
     K: Hash + Eq + Ord + Clone + Form + Send + 'static,
     V: Form + Send + 'static,
@@ -446,9 +420,8 @@ where
     }
 }
 
-impl<K, V, LC, Context, State> DownlinkChannel<Context> for HostedMapDownlink<K, V, LC, State>
+impl<K, V, LC, Context> DownlinkChannel<Context> for HostedMapDownlink<K, V, LC>
 where
-    State: MapDlStateOps<K, V, Context>,
     K: Hash + Eq + Ord + Clone + Form + Send + 'static,
     V: Form + Send + 'static,
     K::Rec: Send,
@@ -469,7 +442,7 @@ where
         self.select_next().boxed()
     }
 
-    fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+    fn next_event(&mut self, _context: &Context) -> Option<BoxEventHandler<'_, Context>> {
         let HostedMapDownlink {
             address,
             receiver,
@@ -497,7 +470,7 @@ where
                 Ok(DownlinkNotification::Synced) => {
                     debug!(address = %address, "Downlink synced.");
                     dl_state.set(DlState::Synced);
-                    Some(state.with(context, |map| lifecycle.on_synced(&map.map).boxed()))
+                    Some(state.with(|map| lifecycle.on_synced(&map.map).boxed()))
                 }
                 Ok(DownlinkNotification::Event { body }) => {
                     let maybe_lifecycle =
@@ -511,21 +484,20 @@ where
                     match body {
                         MapMessage::Update { key, value } => {
                             trace!("Updating an entry.");
-                            state.update(context, key, value, maybe_lifecycle)
+                            state.update(key, value, maybe_lifecycle)
                         }
                         MapMessage::Remove { key } => {
                             trace!("Removing an entry.");
-                            state.remove(context, key, maybe_lifecycle)
+                            state.remove(key, maybe_lifecycle)
                         }
                         MapMessage::Clear => {
                             trace!("Clearing the map.");
-                            let old_map = state.clear(context);
+                            let old_map = state.clear();
                             maybe_lifecycle.map(|lifecycle| lifecycle.on_clear(old_map).boxed())
                         }
                         MapMessage::Take(n) => {
                             trace!("Retaining the first {} items.", n);
                             state.take(
-                                context,
                                 n.try_into()
                                     .expect("number to take does not fit into usize"),
                                 maybe_lifecycle,
@@ -534,7 +506,6 @@ where
                         MapMessage::Drop(n) => {
                             trace!("Dropping the first {} items.", n);
                             state.drop(
-                                context,
                                 n.try_into()
                                     .expect("number to drop does not fit into usize"),
                                 maybe_lifecycle,
@@ -550,7 +521,7 @@ where
                     } else {
                         dl_state.set(DlState::Unlinked);
                     }
-                    state.clear(context);
+                    state.clear();
                     Some(lifecycle.on_unlinked().boxed())
                 }
                 Err(_) => {
@@ -561,7 +532,7 @@ where
                     } else {
                         dl_state.set(DlState::Unlinked);
                     }
-                    state.clear(context);
+                    state.clear();
                     Some(lifecycle.on_failed().boxed())
                 }
             }
@@ -570,7 +541,7 @@ where
         }
     }
 
-    fn connect(&mut self, context: &Context, output: ByteWriter, input: ByteReader) {
+    fn connect(&mut self, _context: &Context, output: ByteWriter, input: ByteReader) {
         let HostedMapDownlink {
             receiver,
             write_stream,
@@ -581,7 +552,7 @@ where
         } = self;
         *receiver = Some(FramedRead::new(input, Default::default()));
         write_stream.restart(output);
-        state.clear(context);
+        state.clear();
         *next = None;
         dl_state.set(DlState::Unlinked);
     }
