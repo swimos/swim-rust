@@ -1,0 +1,9 @@
+[package]
+name = "time_series"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+swimos = { path = "../../swimos", features = ["server", "agent"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+example-util = { path = "../example_util" }
