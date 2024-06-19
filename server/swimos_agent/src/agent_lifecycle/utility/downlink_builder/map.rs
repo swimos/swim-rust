@@ -83,7 +83,7 @@ where
     /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
-        f: F,
+        handler: F,
     ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnLinked<WithHandlerContext<F>>>
     where
         WithHandlerContext<F>: OnLinked<Context>,
@@ -98,7 +98,7 @@ where
             _type: PhantomData,
             address,
             config,
-            inner: inner.on_linked(f),
+            inner: inner.on_linked(handler),
         }
     }
 
@@ -108,7 +108,7 @@ where
     /// * `handler` - The event handler.
     pub fn on_synced<F>(
         self,
-        f: F,
+        handler: F,
     ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnSynced<WithHandlerContext<F>>>
     where
         WithHandlerContext<F>: OnSynced<HashMap<K, V>, Context>,
@@ -123,7 +123,7 @@ where
             _type: PhantomData,
             address,
             config,
-            inner: inner.on_synced(f),
+            inner: inner.on_synced(handler),
         }
     }
 
@@ -133,7 +133,7 @@ where
     /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
-        f: F,
+        handler: F,
     ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnUnlinked<WithHandlerContext<F>>>
     where
         WithHandlerContext<F>: OnUnlinked<Context>,
@@ -148,7 +148,7 @@ where
             _type: PhantomData,
             address,
             config,
-            inner: inner.on_unlinked(f),
+            inner: inner.on_unlinked(handler),
         }
     }
 
@@ -158,7 +158,7 @@ where
     /// * `handler` - The event handler.
     pub fn on_failed<F>(
         self,
-        f: F,
+        handler: F,
     ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnFailed<WithHandlerContext<F>>>
     where
         WithHandlerContext<F>: OnFailed<Context>,
@@ -173,7 +173,7 @@ where
             _type: PhantomData,
             address,
             config,
-            inner: inner.on_failed(f),
+            inner: inner.on_failed(handler),
         }
     }
 
@@ -183,7 +183,7 @@ where
     /// * `handler` - The event handler.
     pub fn on_update<F, B>(
         self,
-        f: F,
+        handler: F,
     ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnUpdate<WithHandlerContextBorrow<F, B>>>
     where
         B: ?Sized,
@@ -200,7 +200,7 @@ where
             _type: PhantomData,
             address,
             config,
-            inner: inner.on_update(f),
+            inner: inner.on_update(handler),
         }
     }
 
@@ -210,7 +210,7 @@ where
     /// * `handler` - The event handler.
     pub fn on_remove<F>(
         self,
-        f: F,
+        handler: F,
     ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnRemove<WithHandlerContext<F>>>
     where
         WithHandlerContext<F>: OnDownlinkRemove<K, V, Context>,
@@ -225,7 +225,7 @@ where
             _type: PhantomData,
             address,
             config,
-            inner: inner.on_remove(f),
+            inner: inner.on_remove(handler),
         }
     }
 
@@ -235,7 +235,7 @@ where
     /// * `handler` - The event handler.
     pub fn on_clear<F>(
         self,
-        f: F,
+        handler: F,
     ) -> StatelessMapDownlinkBuilder<Context, K, V, LC::WithOnClear<WithHandlerContext<F>>>
     where
         WithHandlerContext<F>: OnDownlinkClear<K, V, Context>,
@@ -250,7 +250,7 @@ where
             _type: PhantomData,
             address,
             config,
-            inner: inner.on_clear(f),
+            inner: inner.on_clear(handler),
         }
     }
     /// Augment the lifecycle with some state that is shared between the event handlers.
@@ -310,7 +310,7 @@ where
     /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
-        f: F,
+        handler: F,
     ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnLinked<FnHandler<F>>>
     where
         FnHandler<F>: OnLinkedShared<Context, State>,
@@ -325,7 +325,7 @@ where
             _type: PhantomData,
             address,
             config,
-            inner: inner.on_linked(f),
+            inner: inner.on_linked(handler),
         }
     }
 
@@ -335,7 +335,7 @@ where
     /// * `handler` - The event handler.
     pub fn on_synced<F>(
         self,
-        f: F,
+        handler: F,
     ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnSynced<FnHandler<F>>>
     where
         FnHandler<F>: OnSyncedShared<HashMap<K, V>, Context, State>,
@@ -350,7 +350,7 @@ where
             _type: PhantomData,
             address,
             config,
-            inner: inner.on_synced(f),
+            inner: inner.on_synced(handler),
         }
     }
 
@@ -360,7 +360,7 @@ where
     /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
-        f: F,
+        handler: F,
     ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnUnlinked<FnHandler<F>>>
     where
         FnHandler<F>: OnUnlinkedShared<Context, State>,
@@ -375,7 +375,7 @@ where
             _type: PhantomData,
             address,
             config,
-            inner: inner.on_unlinked(f),
+            inner: inner.on_unlinked(handler),
         }
     }
 
@@ -385,7 +385,7 @@ where
     /// * `handler` - The event handler.
     pub fn on_failed<F>(
         self,
-        f: F,
+        handler: F,
     ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnFailed<FnHandler<F>>>
     where
         FnHandler<F>: OnFailedShared<Context, State>,
@@ -400,7 +400,7 @@ where
             _type: PhantomData,
             address,
             config,
-            inner: inner.on_failed(f),
+            inner: inner.on_failed(handler),
         }
     }
 
@@ -410,7 +410,7 @@ where
     /// * `handler` - The event handler.
     pub fn on_update<F, B>(
         self,
-        f: F,
+        handler: F,
     ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnUpdate<BorrowHandler<F, B>>>
     where
         B: ?Sized,
@@ -427,7 +427,7 @@ where
             _type: PhantomData,
             address,
             config,
-            inner: inner.on_update(f),
+            inner: inner.on_update(handler),
         }
     }
 
@@ -437,7 +437,7 @@ where
     /// * `handler` - The event handler.
     pub fn on_remove<F>(
         self,
-        f: F,
+        handler: F,
     ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnRemove<FnHandler<F>>>
     where
         FnHandler<F>: OnDownlinkRemoveShared<K, V, Context, State>,
@@ -452,7 +452,7 @@ where
             _type: PhantomData,
             address,
             config,
-            inner: inner.on_remove(f),
+            inner: inner.on_remove(handler),
         }
     }
 
@@ -462,7 +462,7 @@ where
     /// * `handler` - The event handler.
     pub fn on_clear<F>(
         self,
-        f: F,
+        handler: F,
     ) -> StatefulMapDownlinkBuilder<Context, K, V, State, LC::WithOnClear<FnHandler<F>>>
     where
         FnHandler<F>: OnDownlinkClearShared<K, V, Context, State>,
@@ -477,7 +477,7 @@ where
             _type: PhantomData,
             address,
             config,
-            inner: inner.on_clear(f),
+            inner: inner.on_clear(handler),
         }
     }
 }
