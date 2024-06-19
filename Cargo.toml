@@ -38,6 +38,7 @@ members = [
     "example_apps/tutorial_app/generator",
     "example_apps/join_map",
     "example_apps/join_value",
+    "example_apps/aggregations",
 ]
 
 exclude = [
