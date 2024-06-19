@@ -122,7 +122,7 @@ pub trait AgentRegistration {
     ///
     /// # Arguments
     /// * `pattern` - The route pattern at which the agent will be loaded.
-    /// * `agent` - The agent type.
+    /// * `agent` - The agent to register.
     fn register<A: Agent + Send + 'static>(&mut self, pattern: RoutePattern, agent: A);
 }
 

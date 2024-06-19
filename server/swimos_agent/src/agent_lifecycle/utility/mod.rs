@@ -439,9 +439,8 @@ impl<Agent: 'static> HandlerContext<Agent> {
         run_schedule(schedule)
     }
 
-    /// Schedule a (potentially infinite) sequence of [`EventHandler`]s to run on a schedule. For each pair of a
-    /// delay and and [`EventHandler`] returned by the provided async [`Stream`], the handler is scheduled to run
-    /// after the delay. The handlers are scheduled sequentially, not simultaneously.
+    /// Schedule a (potentially infinite) stream of [`EventHandler`]s to run. The handlers are scheduled sequentially,
+    /// not simultaneously.
     ///
     /// # Note
     ///
@@ -449,13 +448,13 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// while they are still in use.
     ///
     /// # Arguments
-    /// * `schedule` - A asynchronous stream returning a sequence of pairs of delays and handlers.
-    pub fn suspend_schedule<S, H>(&self, schedule: S) -> impl EventHandler<Agent> + Send + 'static
+    /// * `handlers` - A asynchronous stream of handlers.
+    pub fn suspend_schedule<S, H>(&self, handlers: S) -> impl EventHandler<Agent> + Send + 'static
     where
         S: Stream<Item = H> + Send + Unpin + 'static,
         H: EventHandler<Agent> + Send + 'static,
     {
-        run_schedule_async(schedule)
+        run_schedule_async(handlers)
     }
 
     /// Schedule a (potentially infinite) sequence of handlers to run with a fixed delay between them.
@@ -467,7 +466,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     ///
     /// # Arguments
     /// * `delay` - The fixed delay.
-    /// * `schedule` - An iterator returning a sequence of pairs of delays and handlers.
+    /// * `handlers` - An iterator returning a sequence of pairs of delays and handlers.
     pub fn run_handlers_with_delay<I, H>(
         &self,
         delay: Duration,
@@ -487,8 +486,8 @@ impl<Agent: 'static> HandlerContext<Agent> {
     ///
     /// # Note
     ///
-    /// All of the iterator, the futures and the handlers must be [`Send`] as the task running the agent
-    /// could be moved to another thread while they are still in use.
+    /// The iterator, futures and handlers must be [`Send`] as the task running the agent could be moved
+    /// to another thread while they are still in use.
     ///
     /// # Arguments
     /// * `delay` - The fixed delay.
@@ -570,7 +569,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     /// Suspend a future to be executed by the agent task.
     /// # Note
     ///
-    /// The future must be[`Send`] as the task running the agent could be moved to another thread while it
+    /// The future must be [`Send`] as the task running the agent could be moved to another thread while it
     /// is still in use.
     pub fn suspend_effect<Fut>(&self, future: Fut) -> impl EventHandler<Agent> + Send + 'static
     where

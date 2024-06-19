@@ -362,7 +362,7 @@ where
     }
 }
 
-///  An [event handler](crate::event_handler::EventHandler)`] that will alter an entry in the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that may alter an entry in the map.
 pub struct MapStoreWithEntry<C, K, V, F> {
     projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
     key_and_f: Option<(K, F)>,

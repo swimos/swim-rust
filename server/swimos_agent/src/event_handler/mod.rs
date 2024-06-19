@@ -105,7 +105,7 @@ where
 }
 
 /// The context type passed to every call to [`HandlerAction::step`] that provides access to the
-/// underlying. Some of the methods on this type are not intended for use in use supplied handler
+/// underlying. Some of the methods on this type are not intended for use in user supplied handler
 /// implementations and so can only be used from this crate.
 pub struct ActionContext<'a, Context> {
     spawner: &'a dyn Spawner<Context>,
@@ -347,10 +347,10 @@ pub enum EventHandlerError {
     /// Handlers can only be used once. If a handler is stepped after it produces its value, this error will be raised.
     #[error("Event handler stepped after completion.")]
     SteppedAfterComplete,
-    /// An incoming command messages was invalid for the lane it was targetting.
+    /// An incoming command message was invalid for the lane it was targetting.
     #[error("Invalid incoming message: {0}")]
     BadCommand(AsyncParseError),
-    /// An incoming command messages was incomplete and could not be deserialized.
+    /// An incoming command message was incomplete and could not be deserialized.
     #[error("An incoming message was incomplete.")]
     IncompleteCommand,
     /// An error occurred in the agent runtime which prevented this handler from producing its result.
@@ -359,7 +359,7 @@ pub enum EventHandlerError {
     /// A handler requested a join lane lifecycle with different type parameters than were used to register it.
     #[error("Invalid key or value type for a join lane lifecycle.")]
     BadJoinLifecycle(DowncastError),
-    /// The `on_cue`` lifecycle handler is mandatory for demand lanes. If it is not defined this error will be raised.
+    /// The `on_cue` lifecycle handler is mandatory for demand lanes. If it is not defined this error will be raised.
     #[error("The cue operation for a demand lane was undefined.")]
     DemandCueUndefined,
     /// If a GET request is made to a HTTP lane but it does not handle it, this error is raised. (This will not
