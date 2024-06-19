@@ -256,7 +256,7 @@ where
 /// Indication that the downlink task has completed some unit of work.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DownlinkChannelEvent {
-    /// An change has occurred to the state of the downlink (either an event or a change to
+    /// A change has occurred to the state of the downlink (either an event or a change to
     /// the linked/synced/unlinked state). This indicates that the consumer should attempt
     /// to call `next_event` to consume the generated event handler. These two steps are
     /// necessarily separate to avoid holding a borrow across an await point so that the task
@@ -282,7 +282,7 @@ pub enum DownlinkChannelError {
 
 /// Allows a downlink to be driven by an agent task, without any knowledge of the types used
 /// internally by the downlink. A [`DownlinkChannel`] is essentially a stream of event handlers.
-/// However, the operation to get the next handler is split across two methods(on to wait for
+/// However, the operation to get the next handler is split across two methods (one to wait for
 /// an incoming message and the other to create an event handler, where appropriate). This split
 /// is necessary to avoid holding a reference to the downlink lifecycle across an await point.
 /// Otherwise, we would need to add a bound that the lifecycles must be [`Sync`] which
@@ -292,7 +292,7 @@ pub enum DownlinkChannelError {
 ///
 /// * `Context` - The context within which the event handlers must be run (typically an agent type).
 pub trait DownlinkChannel<Context> {
-    /// Attach the downlink to it's input and output streams. This can be called multiple times
+    /// Attach the downlink to its input and output streams. This can be called multiple times
     /// if the downlink restarts.
     fn connect(&mut self, context: &Context, output: ByteWriter, input: ByteReader);
 

@@ -14,7 +14,7 @@
 
 //! # Agent Model and Lifecycle Definition API
 //!
-//! This crate provides a framework for building agent implementations that can be executed by the
+//! This crate provides a framework for building agent implementations that are executed by the
 //! SwimOS runtime. Typically, the proc macros defined in the `swimos_agent_derive` crate will be used
 //! to generate [agent specifications](`agent_model::AgentSpec`) and [agent lifecycles](`agent_lifecycle::AgentLifecycle`).
 //!
@@ -31,7 +31,7 @@
 //! to be used with different behaviour on separate agent routes.
 
 /// Defines the [agent lifecycle](`agent_lifecycle::AgentLifecycle`) trait, use to specify lifecycles that can be associated with an
-/// agent specification..
+/// agent specification.
 pub mod agent_lifecycle;
 
 /// Defines the [agent specification](`agent_model::AgentSpec`) trait used to specify the structure of an agent it terms of lanes
@@ -51,7 +51,7 @@ mod event_queue;
 mod item;
 
 /// Defines the lane types that can be included in agent specifications. Lanes are exposed externally by the runtime,
-/// using the Warp protocol (or HTTP in the case of [HTTP lanes](`lanes::HttpLane`)). The states of lanes may be stored
+/// using the WARP protocol (or HTTP in the case of [HTTP lanes](`lanes::HttpLane`)). The states of lanes may be stored
 /// persistently by the runtime.
 pub mod lanes;
 

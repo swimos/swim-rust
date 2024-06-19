@@ -354,7 +354,7 @@ where
         }
     }
 
-    /// Specify a handler for the `on_linked` event.
+    /// Specify a handler for the `on_unlinked` event.
     ///
     /// # Arguments
     /// * `handler` - The event handler.

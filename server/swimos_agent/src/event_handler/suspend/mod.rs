@@ -135,7 +135,7 @@ where
 /// they are still in use.
 ///
 /// # Arguments
-/// * `sequence` - An iterator returning a sequence of pairs of delays and handlers.
+/// * `schedule` - An iterator returning a sequence of pairs of delays and handlers.
 pub fn run_schedule<Context, I, H>(schedule: I) -> impl EventHandler<Context> + Send + 'static
 where
     Context: 'static,
@@ -155,9 +155,8 @@ where
     }
 }
 
-/// Schedule a sequence of [`EventHandler`]s to run on a schedule. For each pair of a delay and and
-/// [`EventHandler`] returned by the provided async [`Stream`], the handler is scheduled to run after the delay.
-/// The handlers are scheduled sequentially, not simultaneously.
+/// Schedule a async stream of [`EventHandler`]s to run. The handlers are scheduled sequentially,
+/// not simultaneously.
 ///
 /// # Note
 ///
@@ -165,7 +164,7 @@ where
 /// they are still in use.
 ///
 /// # Arguments
-/// * `sequence` - A asynchronous stream returning a sequence of pairs of delays and handlers.
+/// * `schedule` - A asynchronous stream returning a sequence of handlers.
 pub fn run_schedule_async<Context, S, H>(
     mut schedule: S,
 ) -> impl EventHandler<Context> + Send + 'static
