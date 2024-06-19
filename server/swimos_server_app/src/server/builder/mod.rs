@@ -37,8 +37,8 @@ use swimos_utilities::routing::RoutePattern;
 use crate::{
     config::SwimServerConfig,
     error::ServerBuilderError,
-    IntrospectionConfig,
     plane::{PlaneBuilder, PlaneModel},
+    IntrospectionConfig,
 };
 
 use super::{
