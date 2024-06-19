@@ -24,14 +24,14 @@ use static_assertions::assert_obj_safe;
 use crate::meta::AgentMetadata;
 
 use super::{
-    ActionContext, BoxEventHandler, EventHandler, HandlerAction, HandlerActionExt, StepResult,
+    ActionContext, EventHandler, HandlerAction, HandlerActionExt, LocalBoxEventHandler, StepResult,
     UnitHandler,
 };
 
 #[cfg(test)]
 mod tests;
 
-pub type HandlerFuture<Context> = BoxFuture<'static, BoxEventHandler<'static, Context>>;
+pub type HandlerFuture<Context> = BoxFuture<'static, LocalBoxEventHandler<'static, Context>>;
 
 /// Trait for suspend handler futures into the task for an agent.
 pub trait Spawner<Context> {
@@ -64,7 +64,7 @@ pub struct Suspend<Fut> {
 }
 
 impl<F> Suspend<F> {
-    /// #Arguments
+    /// # Arguments
     /// * `future` - The future to be suspended.
     pub fn new(future: F) -> Self {
         Suspend {
@@ -91,7 +91,7 @@ where
             action_context.spawn_suspend(
                 future
                     .map(|h| {
-                        let boxed: BoxEventHandler<Context> = Box::new(h);
+                        let boxed: LocalBoxEventHandler<Context> = Box::new(h);
                         boxed
                     })
                     .boxed(),
@@ -143,7 +143,7 @@ where
 {
     Suspend::new(async move {
         match schedule.next().await {
-            Some(h) => Either::Left(run_schedule_async(schedule).boxed().followed_by(h)),
+            Some(h) => Either::Left(run_schedule_async(schedule).boxed_local().followed_by(h)),
             None => Either::Right(UnitHandler::default()),
         }
     })

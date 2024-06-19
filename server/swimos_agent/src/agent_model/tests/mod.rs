@@ -56,7 +56,7 @@ use crate::{
         value::{on_event::OnDownlinkEvent, on_set::OnDownlinkSet},
     },
     event_handler::{
-        BoxEventHandler, HandlerActionExt, SideEffect, StepResult, UnitHandler, WriteStream,
+        HandlerActionExt, LocalBoxEventHandler, SideEffect, StepResult, UnitHandler, WriteStream,
     },
     meta::AgentMetadata,
     test_context::dummy_context,
@@ -809,10 +809,13 @@ impl DownlinkChannel<TestDlAgent> for TestDownlinkChannel {
         .boxed()
     }
 
-    fn next_event(&mut self, _context: &TestDlAgent) -> Option<BoxEventHandler<'_, TestDlAgent>> {
+    fn next_event(
+        &mut self,
+        _context: &TestDlAgent,
+    ) -> Option<LocalBoxEventHandler<'_, TestDlAgent>> {
         if self.ready {
             self.ready = false;
-            Some(UnitHandler::default().boxed())
+            Some(UnitHandler::default().boxed_local())
         } else {
             None
         }
@@ -1047,7 +1050,7 @@ impl TestState {
 struct FakeAgent;
 
 impl OnLinked<FakeAgent> for TestState {
-    type OnLinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnLinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -1056,12 +1059,12 @@ impl OnLinked<FakeAgent> for TestState {
             let mut guard = self.0.lock();
             guard.dl_state = DlState::Linked;
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnUnlinked<FakeAgent> for TestState {
-    type OnUnlinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnUnlinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -1070,12 +1073,12 @@ impl OnUnlinked<FakeAgent> for TestState {
             let mut guard = self.0.lock();
             guard.dl_state = DlState::Unlinked;
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnFailed<FakeAgent> for TestState {
-    type OnFailedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnFailedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -1085,7 +1088,7 @@ impl OnFailed<FakeAgent> for TestState {
 }
 
 impl OnSynced<i32, FakeAgent> for TestState {
-    type OnSyncedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnSyncedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -1096,12 +1099,12 @@ impl OnSynced<i32, FakeAgent> for TestState {
             guard.value = Some(n);
             guard.dl_state = DlState::Synced;
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnDownlinkEvent<i32, FakeAgent> for TestState {
-    type OnEventHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnEventHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -1111,7 +1114,7 @@ impl OnDownlinkEvent<i32, FakeAgent> for TestState {
             let mut guard = self.0.lock();
             guard.value = Some(n);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
@@ -1384,7 +1387,7 @@ fn make_meta<'a>(
     AgentMetadata::new(uri, route_params, &CONFIG)
 }
 
-fn run_handler(mut event_handler: BoxEventHandler<'_, FakeAgent>) {
+fn run_handler(mut event_handler: LocalBoxEventHandler<'_, FakeAgent>) {
     let uri = make_uri();
     let params = HashMap::new();
     let meta = make_meta(&uri, &params);

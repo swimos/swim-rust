@@ -61,7 +61,7 @@ pub struct MapLane<K, V> {
 assert_impl_all!(MapLane<(), ()>: Send);
 
 impl<K, V> MapLane<K, V> {
-    /// #Arguments
+    /// # Arguments
     /// * `id` - The ID of the lane. This should be unique within an agent.
     /// * `init` - The initial contents of the map.
     pub fn new(id: u64, init: HashMap<K, V>) -> Self {
@@ -112,7 +112,7 @@ where
         self.inner.borrow_mut().with_entry(key, f)
     }
 
-    /// Remove and entry from the map.
+    /// Remove an entry from the map.
     pub fn remove(&self, key: &K) {
         self.inner.borrow_mut().remove(key)
     }

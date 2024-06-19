@@ -148,7 +148,7 @@ pub trait HeaderWriter: Sized {
     type Body: BodyWriter;
 
     /// Write an attribute into the header.
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the attribute.
     /// * `value` - The value whose structure will be used for the value of the attribute.
     fn write_attr<V: StructuralWritable>(
@@ -159,18 +159,18 @@ pub trait HeaderWriter: Sized {
 
     /// Delegate the remainder of the process to another value (its attributes will be appended
     /// to those already described).
-    /// #Arguments
+    /// # Arguments
     /// * `value` - The value whose structure will be used for the remainder of the process.
     fn delegate<V: StructuralWritable>(self, value: &V) -> Result<Self::Repr, Self::Error>;
 
     /// Delegate the remainder of the process to another value (its attributes will be appended
     /// to those already described), consuming it.
-    /// #Arguments
+    /// # Arguments
     /// * `value` - The value whose structure will be used for the remainder of the process.
     fn delegate_into<V: StructuralWritable>(self, value: V) -> Result<Self::Repr, Self::Error>;
 
     /// Write an attribute into the header, consuming the value.
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the attribute.
     /// * `value` - The value whose structure will be used for the value of the attribute.
     fn write_attr_into<L: Label, V: StructuralWritable>(
@@ -214,7 +214,7 @@ pub trait HeaderWriter: Sized {
     }
     /// Transform this writer into another which can be used to describe the items.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `kind` - Description of the contents of the body. If an incorrect value is provided,
     /// implementations may return an error but should not panic.
     /// * `num_items` - The number of items in the record. If an incorrect number is provided,

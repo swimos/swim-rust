@@ -39,7 +39,7 @@ struct UplinkCounters {
     command_count: AtomicU64,
 }
 
-/// A snapshot taken from an [`UplinkCounters`].
+/// A snapshot taken from the uplink counters.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct UplinkSnapshot {
     pub link_count: u64,
@@ -91,7 +91,7 @@ pub struct UplinkReporter {
     counters: Arc<UplinkCounters>,
 }
 
-/// A cosumer attached to an [`UplinkReporter`]. When the corresponding reporter is dropped, this
+/// A consumer attached to an [`UplinkReporter`]. When the corresponding reporter is dropped, this
 /// will become invalidated and all future snapshot calls will return nothing.
 #[derive(Debug, Clone)]
 pub struct UplinkReportReader {

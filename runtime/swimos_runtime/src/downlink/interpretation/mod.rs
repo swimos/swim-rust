@@ -94,6 +94,8 @@ impl DownlinkInterpretation for MapInterpretation {
     }
 }
 
+/// Interpretation for map downlinks that does not interpret the events at all and passes through
+/// the frame unmodified.
 pub struct NoInterpretation;
 impl DownlinkInterpretation for NoInterpretation {
     type Error = Infallible;

@@ -100,7 +100,7 @@ pub fn fail_upgrade<ExtErr: std::error::Error>(error: UpgradeError<ExtErr>) -> R
 
 /// Upgrade a hyper request to a websocket, based on a successful negotiation.
 ///
-/// #Arguments
+/// # Arguments
 /// * `request` - The hyper HTTP request.
 /// * `negotiated` - Negotiated parameters for the websocket connection.
 /// * `config` - Websocket configuration parameters.

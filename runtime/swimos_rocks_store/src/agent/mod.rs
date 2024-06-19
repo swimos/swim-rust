@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
 pub mod mock;
 
 use std::fmt::{Debug, Formatter};
@@ -20,13 +21,12 @@ use std::sync::Arc;
 use bytes::BytesMut;
 use futures::future::{ready, BoxFuture};
 use futures::FutureExt;
-use swimos_api::persistence::{NodePersistence, PlanePersistence};
+use swimos_api::error::StoreError;
+use swimos_api::persistence::{NodePersistence, PlanePersistence, RangeConsumer};
 use swimos_model::Text;
 
 use crate::plane::PlaneStore;
 use crate::server::{StoreEngine, StoreKey};
-
-use swimos_store::{RangeConsumer, StoreError};
 
 /// A trait for defining store engines which open stores for nodes.
 ///
@@ -48,7 +48,7 @@ pub trait NodeStore: StoreEngine + Send + Sync + Clone + Debug + 'static {
 
     /// Executes a ranged snapshot read prefixed by a lane key.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `prefix` - Common prefix for the records to read.
     fn ranged_snapshot_consumer(&self, prefix: StoreKey) -> Result<Self::RangeCon<'_>, StoreError>;
 

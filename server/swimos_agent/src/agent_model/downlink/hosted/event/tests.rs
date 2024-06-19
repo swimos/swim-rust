@@ -35,7 +35,7 @@ use crate::{
         event::on_event::OnConsumeEvent, on_failed::OnFailed, on_linked::OnLinked,
         on_synced::OnSynced, on_unlinked::OnUnlinked,
     },
-    event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
+    event_handler::{HandlerActionExt, LocalBoxEventHandler, SideEffect},
 };
 
 struct FakeAgent;
@@ -55,7 +55,7 @@ struct FakeLifecycle {
 }
 
 impl OnLinked<FakeAgent> for FakeLifecycle {
-    type OnLinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnLinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -64,12 +64,12 @@ impl OnLinked<FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             state.lock().push(TestEvent::Linked);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnUnlinked<FakeAgent> for FakeLifecycle {
-    type OnUnlinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnUnlinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -78,12 +78,12 @@ impl OnUnlinked<FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             state.lock().push(TestEvent::Unlinked);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnFailed<FakeAgent> for FakeLifecycle {
-    type OnFailedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnFailedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -92,12 +92,12 @@ impl OnFailed<FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             state.lock().push(TestEvent::Failed);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnSynced<(), FakeAgent> for FakeLifecycle {
-    type OnSyncedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnSyncedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -106,12 +106,12 @@ impl OnSynced<(), FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             state.lock().push(TestEvent::Synced);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnConsumeEvent<i32, FakeAgent> for FakeLifecycle {
-    type OnEventHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnEventHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -120,7 +120,7 @@ impl OnConsumeEvent<i32, FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             state.lock().push(TestEvent::Event(value));
         })
-        .boxed()
+        .boxed_local()
     }
 }
 

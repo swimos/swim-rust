@@ -101,15 +101,15 @@ impl ConsumerLifecycle {
                     ),
                 })
                 .discard()
-                .boxed(),
+                .boxed_local(),
             Instruction::CloseLink => handle
                 .with_mut(|h| {
                     if let Some(h) = h.as_mut() {
                         h.stop();
                     }
                 })
-                .boxed(),
-            Instruction::Stop => context.stop().boxed(),
+                .boxed_local(),
+            Instruction::Stop => context.stop().boxed_local(),
         };
         context
             .effect(move || println!("{}", msg))

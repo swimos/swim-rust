@@ -178,7 +178,7 @@ where
 }
 
 impl<Context, Shared, K, V, F> RegisterJoinValue<Context, Shared, K, V, F> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent type to the lane.
     /// * `lifecycle_fac` - A factory that will create lifecycle instances for each key of the
     /// join value lane.
@@ -243,7 +243,7 @@ where
 }
 
 impl<Context, Shared, L, K, V, F> RegisterJoinMap<Context, Shared, L, K, V, F> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent type to the lane.
     /// * `lifecycle_fac` - A factory that will create lifecycle instances for each key of the
     /// join map lane.

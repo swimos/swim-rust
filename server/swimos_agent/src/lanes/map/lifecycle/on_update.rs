@@ -27,7 +27,7 @@ pub trait OnUpdate<K, V, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `map` - The current contents of the map.
     /// * `key` - The key that was removed.
     /// * `prev_value` - The value that was replaced (if any).
@@ -49,7 +49,7 @@ pub trait OnUpdateShared<K, V, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `map` - The current contents of the map.

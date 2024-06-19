@@ -17,14 +17,16 @@ use std::{
     sync::Arc,
 };
 
-use crate::{KeyValue, RangeConsumer, StoreError};
 use bytes::{BufMut, BytesMut};
 use futures::{
     future::{ready, BoxFuture},
     FutureExt,
 };
 use parking_lot::Mutex;
-use swimos_api::persistence::{NodePersistence, PlanePersistence};
+use swimos_api::{
+    error::StoreError,
+    persistence::{KeyValue, NodePersistence, PlanePersistence, RangeConsumer},
+};
 use tokio::sync::oneshot;
 
 #[cfg(test)]

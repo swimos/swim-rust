@@ -29,6 +29,7 @@ use swimos_api::{
 };
 use swimos_utilities::routing::RouteUri;
 
+use crate::lanes::join_value::JoinValueRemoveDownlink;
 use crate::{
     event_handler::{
         ActionContext, BoxJoinLaneInit, EventHandlerError, HandlerAction, Modification, StepResult,
@@ -331,4 +332,55 @@ async fn open_downlink_from_registered() {
     .await;
 
     assert_eq!(count.load(Ordering::Relaxed), 1);
+}
+
+#[tokio::test]
+async fn stop_downlink() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let address = Address::text(None, REMOTE_NODE, REMOTE_LANE);
+
+    let handler = JoinValueAddDownlink::new(TestAgent::LANE, 12, address.clone());
+
+    let context = TestDownlinkContext::default();
+    let mut inits = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
+
+    let count = Arc::new(AtomicUsize::new(0));
+
+    let spawner = FuturesUnordered::new();
+    let mut action_context =
+        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
+    register_lifecycle(&mut action_context, &agent, count.clone());
+    assert!(spawner.is_empty());
+
+    run_with_futures(
+        &context,
+        &context,
+        &agent,
+        meta,
+        &mut inits,
+        &mut ad_hoc_buffer,
+        handler,
+    )
+    .await;
+
+    assert_eq!(count.load(Ordering::Relaxed), 1);
+
+    agent.lane.inner.update(12, "value".to_string());
+
+    let mut stop_handler = JoinValueRemoveDownlink::new(TestAgent::LANE, 12);
+    let result = stop_handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(()));
+
+    let guard = agent.lane.keys.borrow();
+    assert!(guard.is_empty());
+    assert!(agent.lane.inner.get(&12, |value| value.is_none()));
 }
