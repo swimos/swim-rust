@@ -18,11 +18,13 @@ use std::{
 };
 
 use bytes::BytesMut;
+
 use swimos_agent_protocol::MapMessage;
 use swimos_api::{address::Address, agent::AgentConfig};
 use swimos_model::Text;
 use swimos_utilities::routing::RouteUri;
 
+use crate::event_handler::LocalBoxHandlerAction;
 use crate::{
     agent_lifecycle::utility::HandlerContext,
     downlink_lifecycle::{
@@ -30,8 +32,8 @@ use crate::{
         on_synced::OnSynced, on_unlinked::OnUnlinked,
     },
     event_handler::{
-        BoxEventHandler, BoxHandlerAction, EventHandler, HandlerActionExt, Modification,
-        ModificationFlags, SideEffect, StepResult,
+        EventHandler, HandlerActionExt, LocalBoxEventHandler, Modification, ModificationFlags,
+        SideEffect, StepResult,
     },
     lanes::{
         join::DownlinkStatus,
@@ -114,7 +116,7 @@ impl TestLifecycle {
 }
 
 impl OnJoinMapLinked<String, TestAgent> for TestLifecycle {
-    type OnJoinMapLinkedHandler<'a> = BoxEventHandler<'a, TestAgent>
+    type OnJoinMapLinkedHandler<'a> = LocalBoxEventHandler<'a, TestAgent>
     where
         Self: 'a;
 
@@ -130,12 +132,12 @@ impl OnJoinMapLinked<String, TestAgent> for TestLifecycle {
                 remote: address,
             });
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnJoinMapSynced<String, i32, TestAgent> for TestLifecycle {
-    type OnJoinMapSyncedHandler<'a> = BoxEventHandler<'a, TestAgent>
+    type OnJoinMapSyncedHandler<'a> = LocalBoxEventHandler<'a, TestAgent>
     where
         Self: 'a;
 
@@ -154,12 +156,12 @@ impl OnJoinMapSynced<String, i32, TestAgent> for TestLifecycle {
                 keys,
             });
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnJoinMapUnlinked<String, i32, TestAgent> for TestLifecycle {
-    type OnJoinMapUnlinkedHandler<'a> = BoxHandlerAction<'a, TestAgent, LinkClosedResponse>
+    type OnJoinMapUnlinkedHandler<'a> = LocalBoxHandlerAction<'a, TestAgent, LinkClosedResponse>
     where
         Self: 'a;
 
@@ -182,12 +184,12 @@ impl OnJoinMapUnlinked<String, i32, TestAgent> for TestLifecycle {
                 });
             })
             .map(move |_| response)
-            .boxed()
+            .boxed_local()
     }
 }
 
 impl OnJoinMapFailed<String, i32, TestAgent> for TestLifecycle {
-    type OnJoinMapFailedHandler<'a> = BoxHandlerAction<'a, TestAgent, LinkClosedResponse>
+    type OnJoinMapFailedHandler<'a> = LocalBoxHandlerAction<'a, TestAgent, LinkClosedResponse>
     where
         Self: 'a;
 
@@ -210,7 +212,7 @@ impl OnJoinMapFailed<String, i32, TestAgent> for TestLifecycle {
                 });
             })
             .map(move |_| response)
-            .boxed()
+            .boxed_local()
     }
 }
 

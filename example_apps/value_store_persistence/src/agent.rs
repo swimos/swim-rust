@@ -84,10 +84,10 @@ impl ExampleLifecycle {
         cmd: &Instruction,
     ) -> impl EventHandler<ExampleAgent> {
         match *cmd {
-            Instruction::Wake => UnitHandler::default().boxed(),
-            Instruction::SetValue(n) => context.set_value(ExampleAgent::VALUE, n).boxed(),
-            Instruction::SetTemp(n) => context.set_value(ExampleAgent::TEMPORARY, n).boxed(),
-            Instruction::Stop => context.stop().boxed(),
+            Instruction::Wake => UnitHandler::default().boxed_local(),
+            Instruction::SetValue(n) => context.set_value(ExampleAgent::VALUE, n).boxed_local(),
+            Instruction::SetTemp(n) => context.set_value(ExampleAgent::TEMPORARY, n).boxed_local(),
+            Instruction::Stop => context.stop().boxed_local(),
         }
     }
 }

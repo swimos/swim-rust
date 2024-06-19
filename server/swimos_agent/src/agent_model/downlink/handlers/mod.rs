@@ -18,7 +18,7 @@ use swimos_model::Text;
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use thiserror::Error;
 
-use crate::event_handler::BoxEventHandler;
+use crate::event_handler::LocalBoxEventHandler;
 
 /// Indication that the downlink task has completed some unit of work.
 #[derive(Debug, PartialEq, Eq)]
@@ -77,7 +77,7 @@ pub trait DownlinkChannel<Context> {
 
     /// After a call to `await_ready` that does not return [`None`] this may return an event handler to
     /// be executed by the agent task. At any other time, it will return [`None`].
-    fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>>;
+    fn next_event(&mut self, context: &Context) -> Option<LocalBoxEventHandler<'_, Context>>;
 
     /// Flush any pending outputs.
     fn flush(&mut self) -> BoxFuture<'_, Result<(), std::io::Error>>;

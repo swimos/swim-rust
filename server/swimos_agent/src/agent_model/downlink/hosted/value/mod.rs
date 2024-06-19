@@ -46,7 +46,7 @@ use crate::{
     },
     config::SimpleDownlinkConfig,
     downlink_lifecycle::value::ValueDownlinkLifecycle,
-    event_handler::{BoxEventHandler, HandlerActionExt},
+    event_handler::{HandlerActionExt, LocalBoxEventHandler},
 };
 
 use super::{DlState, DlStateObserver, DlStateTracker, OutputWriter, RestartableOutput};
@@ -289,7 +289,7 @@ where
         self.select_next().boxed()
     }
 
-    fn next_event(&mut self, _context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+    fn next_event(&mut self, _context: &Context) -> Option<LocalBoxEventHandler<'_, Context>> {
         let HostedValueDownlink {
             address,
             receiver,
@@ -311,12 +311,12 @@ where
                     if dl_state.get() == DlState::Unlinked {
                         dl_state.set(DlState::Linked);
                     }
-                    Some(lifecycle.on_linked().boxed())
+                    Some(lifecycle.on_linked().boxed_local())
                 }
                 Ok(DownlinkNotification::Synced) => state.with(|maybe_value| {
                     debug!(address = %address, "Downlink synced.");
                     dl_state.set(DlState::Synced);
-                    maybe_value.map(|value| lifecycle.on_synced(value).boxed())
+                    maybe_value.map(|value| lifecycle.on_synced(value).boxed_local())
                 }),
                 Ok(DownlinkNotification::Event { body }) => {
                     trace!(address = %address, "Event received for downlink.");
@@ -325,7 +325,7 @@ where
                         let handler = lifecycle
                             .on_event(&body)
                             .followed_by(lifecycle.on_set(prev, &body))
-                            .boxed();
+                            .boxed_local();
                         Some(handler)
                     } else {
                         None
@@ -342,7 +342,7 @@ where
                     } else {
                         dl_state.set(DlState::Unlinked);
                     }
-                    Some(lifecycle.on_unlinked().boxed())
+                    Some(lifecycle.on_unlinked().boxed_local())
                 }
                 Err(_) => {
                     debug!(address = %address, "Downlink failed.");
@@ -353,7 +353,7 @@ where
                     } else {
                         dl_state.set(DlState::Unlinked);
                     }
-                    Some(lifecycle.on_failed().boxed())
+                    Some(lifecycle.on_failed().boxed_local())
                 }
             }
         } else {

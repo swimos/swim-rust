@@ -140,8 +140,10 @@ impl AreaLifecycle {
                     format!("/cars/{car_id}").as_str(),
                     "speed",
                 )
-                .boxed(),
-            Action::Deregister(car_id) => context.remove_downlink(AreaAgent::CARS, *car_id).boxed(),
+                .boxed_local(),
+            Action::Deregister(car_id) => context
+                .remove_downlink(AreaAgent::CARS, *car_id)
+                .boxed_local(),
         }
     }
     #[on_update(cars)]
