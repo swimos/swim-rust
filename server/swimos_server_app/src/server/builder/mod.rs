@@ -87,7 +87,7 @@ impl ServerBuilder {
         }
     }
 
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `addr` - The address to which the server will bind (default: 0.0.0.0:8080).
     pub fn set_bind_addr(mut self, addr: SocketAddr) -> Self {
@@ -97,7 +97,7 @@ impl ServerBuilder {
 
     /// Add a new route to the plane that the server will run.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `pattern` - The route pattern against which to match incoming envelopes.
     /// * `agent` - The agent definition.
@@ -119,7 +119,7 @@ impl ServerBuilder {
 
     /// Enable the deflate extension for websocket connections.
     ///  
-    /// #Arguments
+    /// # Arguments
     /// * `config` - Configuration parameters for the compression.
     pub fn configure_deflate_support(mut self, config: DeflateConfig) -> Self {
         self.deflate = Some(config);
@@ -145,7 +145,7 @@ impl ServerBuilder {
     }
 
     /// Configure the introspection system (this implicitly enables introspection).
-    /// #Arguments
+    /// # Arguments
     /// * `config` - Configuration parameters for the introspection system.
     pub fn configure_introspection(mut self, config: IntrospectionConfig) -> Self {
         self.introspection = Some(config);
@@ -218,7 +218,7 @@ where
     match store_config {
         #[cfg(feature = "rocks_store")]
         StoreConfig::RockStore { path, options } => {
-            let store = swimos_rocks_store::create_rocks_store(path, options)?;
+            let store = swimos_rocks_store::open_rocks_store(path, options)?;
             Ok(with_websockets(bind_to, routes, networking, config, store))
         }
         StoreConfig::InMemory => Ok(with_websockets(

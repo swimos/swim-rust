@@ -732,7 +732,7 @@ async fn attach_downlink(
     let (in_tx, in_rx) = byte_channel(pending.runtime_config.downlink_buffer_size);
     let (out_tx, out_rx) = byte_channel(pending.runtime_config.downlink_buffer_size);
     let result = attach
-        .send(AttachAction::new(out_rx, in_tx, pending.options))
+        .send(AttachAction::new((in_tx, out_rx), pending.options))
         .await
         .map(move |_| (out_tx, in_rx))
         .map_err(|_| DownlinkRuntimeError::new(DownlinkErrorKind::Terminated));

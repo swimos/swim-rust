@@ -64,7 +64,7 @@ pub struct Suspend<Fut> {
 }
 
 impl<F> Suspend<F> {
-    /// #Arguments
+    /// # Arguments
     /// * `future` - The future to be suspended.
     pub fn new(future: F) -> Self {
         Suspend {
