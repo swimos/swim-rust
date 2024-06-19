@@ -122,7 +122,7 @@ impl AreaLifecycle {
 impl AreaLifecycle {
     #[on_start]
     pub fn on_start(&self, context: HandlerContext<AreaAgent>) -> impl EventHandler<AreaAgent> {
-        context.send_command(None, "/aggregate", "register", self.area.to_string())
+        context.send_command(None, "/city", "register", self.area.to_string())
     }
 
     #[on_command(registrations)]
