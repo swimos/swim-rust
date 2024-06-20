@@ -17,6 +17,12 @@ pub use swimos_model as model;
 
 pub mod api {
     pub use swimos_api::agent::{Agent, DownlinkKind, UplinkKind};
+    pub use swimos_utilities::handlers::NoHandler;
+    
+    pub mod error {
+        pub use swimos_api::error::{AgentInitError, AgentRuntimeError, AgentTaskError};
+        pub use swimos_api::error::DownlinkTaskError;
+    }
 
     pub mod agent {
         pub use swimos_api::agent::{
@@ -25,21 +31,8 @@ pub mod api {
 
         #[cfg(feature = "server")]
         pub use swimos_server_app::AgentExt;
-
-        pub mod error {
-            pub use swimos_api::error::{AgentInitError, AgentRuntimeError, AgentTaskError};
-        }
     }
 
-    pub mod downlink {
-        pub mod error {
-            pub use swimos_api::error::DownlinkTaskError;
-        }
-    }
-
-    pub mod handlers {
-        pub use swimos_utilities::handlers::NoHandler;
-    }
 }
 
 pub mod route {
