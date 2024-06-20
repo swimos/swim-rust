@@ -20,7 +20,7 @@ use rand::seq::SliceRandom;
 
 use swimos::agent::event_handler::HandlerActionExt;
 use swimos::{
-    agent::agent_lifecycle::utility::HandlerContext,
+    agent::agent_lifecycle::HandlerContext,
     agent::event_handler::EventHandler,
     agent::lanes::{CommandLane, JoinValueLane, ValueLane},
     agent::lifecycle,
@@ -140,8 +140,10 @@ impl AreaLifecycle {
                     format!("/cars/{car_id}").as_str(),
                     "speed",
                 )
-                .boxed(),
-            Action::Deregister(car_id) => context.remove_downlink(AreaAgent::CARS, *car_id).boxed(),
+                .boxed_local(),
+            Action::Deregister(car_id) => context
+                .remove_downlink(AreaAgent::CARS, *car_id)
+                .boxed_local(),
         }
     }
     #[on_update(cars)]

@@ -24,7 +24,7 @@ fn serialize_value_key() {
     assert_eq!(bytes.len(), 9);
     assert_eq!(bytes[0], VAL_TAG);
 
-    assert_eq!(u64::decode_fixed(&bytes[1..]), lane_id)
+    assert_eq!(u64::decode_fixed(&bytes[1..]), Some(lane_id))
 }
 
 #[test]
@@ -40,9 +40,9 @@ fn serialize_map_key() {
     assert_eq!(bytes.len(), 26);
     assert_eq!(bytes[0], MAP_TAG);
 
-    assert_eq!(u64::decode_fixed(&bytes[1..9]), lane_id);
+    assert_eq!(u64::decode_fixed(&bytes[1..9]), Some(lane_id));
     assert_eq!(bytes[9], KEY);
-    assert_eq!(u64::decode_fixed(&bytes[10..18]), 8);
+    assert_eq!(u64::decode_fixed(&bytes[10..18]), Some(8));
 
     assert_eq!(&bytes[18..], key_bytes);
 }
@@ -56,7 +56,7 @@ fn serialize_map_lbound() {
     assert_eq!(bytes.len(), 9);
     assert_eq!(bytes[0], MAP_TAG);
 
-    assert_eq!(u64::decode_fixed(&bytes[1..9]), lane_id);
+    assert_eq!(u64::decode_fixed(&bytes[1..9]), Some(lane_id));
 }
 
 #[test]
@@ -67,6 +67,6 @@ fn serialize_map_ubound() {
     assert_eq!(bytes.len(), 10);
     assert_eq!(bytes[0], MAP_TAG);
 
-    assert_eq!(u64::decode_fixed(&bytes[1..9]), lane_id);
+    assert_eq!(u64::decode_fixed(&bytes[1..9]), Some(lane_id));
     assert_eq!(bytes[9], UBOUND);
 }

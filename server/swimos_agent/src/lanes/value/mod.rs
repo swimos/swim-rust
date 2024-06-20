@@ -69,11 +69,11 @@ impl<T> ValueLane<T> {
     }
 
     /// Update the state of the lane.
-    pub fn set(&self, value: T) {
+    pub(crate) fn set(&self, value: T) {
         self.store.set(value)
     }
 
-    pub fn sync(&self, id: Uuid) {
+    pub(crate) fn sync(&self, id: Uuid) {
         let ValueLane { sync_queue, .. } = self;
         sync_queue.borrow_mut().push_back(id);
     }
@@ -137,7 +137,7 @@ impl<T> ValueItem<T> for ValueLane<T> {
     }
 }
 
-/// An [`EventHandler`] that will get the value of a value lane.
+///  An [event handler](crate::event_handler::EventHandler)`] that will get the value of a value lane.
 pub struct ValueLaneGet<C, T> {
     projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
     done: bool,
@@ -154,13 +154,13 @@ impl<C, T> ValueLaneGet<C, T> {
     }
 }
 
-/// An [`EventHandler`] that will set the value of a value lane.
+///  An [event handler](crate::event_handler::EventHandler)`] that will set the value of a value lane.
 pub struct ValueLaneSet<C, T> {
     projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
     value: Option<T>,
 }
 
-/// An [`EventHandler`] that will request a sync from the lane.
+///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
 pub struct ValueLaneSync<C, T> {
     projection: for<'b> fn(&'b C) -> &'b ValueLane<T>,
     id: Option<Uuid>,

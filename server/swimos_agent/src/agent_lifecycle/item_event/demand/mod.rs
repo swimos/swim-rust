@@ -15,7 +15,7 @@
 use futures::future::Either;
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     lanes::demand::{
         lifecycle::{
             on_cue::{OnCue, OnCueShared},

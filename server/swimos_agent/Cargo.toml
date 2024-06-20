@@ -35,3 +35,4 @@ serde_json = { workspace = true, optional = true }
 swimos_recon = { path = "../../api/formats/swimos_recon" }
 tokio = { workspace = true, features = ["rt", "test-util", "time"] }
 parking_lot = { workspace = true }
+swimos_agent_derive = { path = "../swimos_agent_derive"}

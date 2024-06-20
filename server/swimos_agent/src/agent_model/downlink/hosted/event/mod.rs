@@ -34,12 +34,12 @@ use tokio_util::codec::FramedRead;
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::handlers::{
+    agent_model::downlink::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
     },
     config::SimpleDownlinkConfig,
-    downlink_lifecycle::event::EventDownlinkLifecycle,
-    event_handler::{BoxEventHandler, HandlerActionExt},
+    downlink_lifecycle::EventDownlinkLifecycle,
+    event_handler::{HandlerActionExt, LocalBoxEventHandler},
 };
 
 use super::{DlState, DlStateObserver, DlStateTracker};
@@ -47,7 +47,7 @@ use super::{DlState, DlStateObserver, DlStateTracker};
 #[cfg(test)]
 mod tests;
 
-pub struct HostedEventDownlinkFactory<T: RecognizerReadable, LC> {
+pub struct EventDownlinkFactory<T: RecognizerReadable, LC> {
     address: Address<Text>,
     lifecycle: LC,
     config: SimpleDownlinkConfig,
@@ -57,7 +57,7 @@ pub struct HostedEventDownlinkFactory<T: RecognizerReadable, LC> {
     _type: PhantomData<fn() -> T>,
 }
 
-impl<T, LC> HostedEventDownlinkFactory<T, LC>
+impl<T, LC> EventDownlinkFactory<T, LC>
 where
     T: StructuralReadable + Send + 'static,
     T::Rec: Send,
@@ -69,7 +69,7 @@ where
         stop_rx: trigger::Receiver,
         map_events: bool,
     ) -> Self {
-        HostedEventDownlinkFactory {
+        EventDownlinkFactory {
             address,
             lifecycle,
             config,
@@ -84,7 +84,7 @@ where
     where
         LC: EventDownlinkLifecycle<T, Context> + 'static,
     {
-        let HostedEventDownlinkFactory {
+        let EventDownlinkFactory {
             address,
             lifecycle,
             config,
@@ -230,7 +230,7 @@ where
         self.select_next().boxed()
     }
 
-    fn next_event(&mut self, _context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+    fn next_event(&mut self, _context: &Context) -> Option<LocalBoxEventHandler<'_, Context>> {
         let HostedEventDownlink {
             address,
             receiver,
@@ -251,17 +251,17 @@ where
                     if dl_state.get() == DlState::Unlinked {
                         dl_state.set(DlState::Linked);
                     }
-                    Some(lifecycle.on_linked().boxed())
+                    Some(lifecycle.on_linked().boxed_local())
                 }
                 Ok(DownlinkNotification::Synced) => {
                     debug!(address = %address, "Downlink synced.");
                     dl_state.set(DlState::Synced);
-                    Some(lifecycle.on_synced(&()).boxed())
+                    Some(lifecycle.on_synced(&()).boxed_local())
                 }
                 Ok(DownlinkNotification::Event { body }) => {
                     trace!(address = %address, "Event received for downlink.");
                     let handler = if dl_state.get() == DlState::Synced || *events_when_not_synced {
-                        let handler = lifecycle.on_event(body).boxed();
+                        let handler = lifecycle.on_event(body).boxed_local();
                         Some(handler)
                     } else {
                         None
@@ -276,7 +276,7 @@ where
                     } else {
                         dl_state.set(DlState::Unlinked);
                     }
-                    Some(lifecycle.on_unlinked().boxed())
+                    Some(lifecycle.on_unlinked().boxed_local())
                 }
                 Err(_) => {
                     debug!(address = %address, "Downlink failed.");
@@ -286,7 +286,7 @@ where
                     } else {
                         dl_state.set(DlState::Unlinked);
                     }
-                    Some(lifecycle.on_failed().boxed())
+                    Some(lifecycle.on_failed().boxed_local())
                 }
             }
         } else {

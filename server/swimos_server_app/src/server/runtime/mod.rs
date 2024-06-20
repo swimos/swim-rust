@@ -31,9 +31,8 @@ use swimos_api::error::{
 };
 use swimos_api::persistence::ServerPersistence;
 use swimos_api::{address::RelativeAddress, persistence::PlanePersistence};
-use swimos_introspection::route::{lane_pattern, mesh_pattern, node_pattern};
-use swimos_introspection::{init_introspection, IntrospectionResolver};
-use swimos_introspection::{IntrospectionConfig, LaneMetaAgent, NodeMetaAgent};
+use swimos_introspection::IntrospectionConfig;
+use swimos_introspection::{register_introspection, AgentRegistration, IntrospectionResolver};
 use swimos_messages::remote_protocol::{
     AgentResolutionError, AttachClient, FindNode, LinkError, NoSuchAgent, NodeConnectionRequest,
 };
@@ -997,6 +996,12 @@ impl Routes {
     }
 }
 
+impl AgentRegistration for Routes {
+    fn register<A: Agent + Send + 'static>(&mut self, pattern: RoutePattern, agent: A) {
+        self.append(pattern, agent)
+    }
+}
+
 struct ConnectionTerminated {
     connected_id: Uuid,
     agent_id: Uuid,
@@ -1238,14 +1243,7 @@ fn start_introspection(
     stopping: trigger::Receiver,
     routes: &mut Routes,
 ) -> IntrospectionResolver {
-    let (resolver, mesh_meta, task) =
-        init_introspection(stopping, config.registration_channel_size);
-    let node_meta = NodeMetaAgent::new(config, resolver.clone());
-    let lane_meta = LaneMetaAgent::new(config, resolver.clone());
-
-    routes.append(mesh_pattern(), mesh_meta);
-    routes.append(node_pattern(), node_meta);
-    routes.append(lane_pattern(), lane_meta);
+    let (resolver, task) = register_introspection(stopping, config, routes);
     tokio::spawn(task.with_budget_or_default(coop_budget));
     resolver
 }
