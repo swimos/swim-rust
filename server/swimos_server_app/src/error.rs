@@ -76,20 +76,27 @@ impl Display for AmbiguousRoutes {
 
 impl Error for AmbiguousRoutes {}
 
+/// Error type returned from the server task if it encounters a non-recoverable error.
 #[derive(Debug, Error)]
 pub enum ServerError {
+    /// A network connection failed and could not be re-established.
     #[error("The server network connection failed.")]
     Networking(#[from] ConnectionError),
+    /// The storage layer encountered a fatal error restoring or persisting the state of the agents.
     #[error("Opening the store for a plane failed.")]
     Persistence(#[from] StoreError),
 }
 
+/// Error type that is returned if a server cannot be started.
 #[derive(Debug, Error)]
 pub enum ServerBuilderError {
+    /// The specified agent routes are ambiguous (contain overlaps).
     #[error("The specified agent routes are invalid: {0}")]
     BadRoutes(#[from] AmbiguousRoutes),
+    /// The persistence store specified for the server could not be opened.
     #[error("Opening the store failed: {0}")]
     Persistence(#[from] StoreError),
+    /// The server TLS configuration is invalid.
     #[error("Invalid TLS configuration/certificate: {0}")]
     Tls(#[from] TlsError),
 }
