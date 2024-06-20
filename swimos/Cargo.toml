@@ -5,9 +5,9 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [features]
-default = ["agent"]
+default = []
 all = ["server", "agent", "json"]
-server = ["dep:swimos_server_app"]
+server = ["dep:swimos_server_app", "dep:swimos_remote"]
 agent = ["dep:swimos_agent", "dep:swimos_agent_derive"]
 json = ["agent", "swimos_agent/json"]
 
@@ -19,7 +19,7 @@ swimos_recon = { path = "../api/formats/swimos_recon" }
 swimos_server_app = { path = "../server/swimos_server_app", optional = true }
 swimos_agent = { path = "../server/swimos_agent", optional = true }
 swimos_agent_derive = { path = "../server/swimos_agent_derive", optional = true }
-swimos_remote = { path = "../runtime/swimos_remote" }
+swimos_remote = { path = "../runtime/swimos_remote", optional = true}
 
 [dev-dependencies]
 parking_lot = { workspace = true }
