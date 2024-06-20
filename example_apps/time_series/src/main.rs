@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let route = RoutePattern::parse_str("/example/:name}")?;
 
     let agent = AgentModel::from_fn(ExampleAgent::default, move || {
-        ExampleLifecycle::new(RetentionPolicy::Count { max: 5 }).into_lifecycle()
+        ExampleLifecycle::new(RetentionPolicy::count(5)).into_lifecycle()
     });
 
     let server = ServerBuilder::with_plane_name("Example Plane")

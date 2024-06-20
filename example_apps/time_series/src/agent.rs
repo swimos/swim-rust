@@ -59,12 +59,12 @@ impl ExampleLifecycle {
     pub fn on_update(
         &self,
         context: HandlerContext<ExampleAgent>,
-        map: &HashMap<u64, String>,
+        _map: &HashMap<u64, String>,
         key: u64,
         _prev: Option<String>,
         _new_value: &str,
     ) -> impl EventHandler<ExampleAgent> {
-        self.policy.on_event(context, key, map.clone())
+        self.policy.on_event(context, key)
     }
 }
 
@@ -74,6 +74,7 @@ impl ExampleLifecycle {
 pub enum RetentionPolicy {
     Count {
         max: usize,
+        keys: RefCell<VecDeque<u64>>,
     },
     Time {
         interval: u64,
@@ -84,7 +85,10 @@ pub enum RetentionPolicy {
 impl RetentionPolicy {
     #[allow(dead_code)]
     pub fn count(max: usize) -> RetentionPolicy {
-        RetentionPolicy::Count { max }
+        RetentionPolicy::Count {
+            max,
+            keys: RefCell::new(Default::default()),
+        }
     }
 
     #[allow(dead_code)]
@@ -99,16 +103,19 @@ impl RetentionPolicy {
         &self,
         context: HandlerContext<ExampleAgent>,
         key: u64,
-        map: HashMap<u64, String>,
     ) -> impl EventHandler<ExampleAgent> {
         match self {
-            RetentionPolicy::Count { max } => {
-                let drop = map.len().checked_sub(*max).unwrap_or_default();
+            RetentionPolicy::Count { max, keys } => {
+                let timestamps = &mut *keys.borrow_mut();
+                timestamps.push_front(key);
+
+                let drop = timestamps.len().checked_sub(*max).unwrap_or_default();
                 let handler = if drop > 0 {
-                    let keys = map
+                    let keys = timestamps
+                        .split_off(drop)
                         .into_iter()
                         .take(drop)
-                        .map(move |(key, _value)| context.remove(ExampleAgent::HISTORY, key));
+                        .map(move |key| context.remove(ExampleAgent::HISTORY, key));
                     Some(Sequentially::new(keys))
                 } else {
                     None
