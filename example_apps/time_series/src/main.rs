@@ -21,21 +21,29 @@ use swimos::{
     server::{Server, ServerBuilder},
 };
 
-use crate::agent::{ExampleAgent, ExampleLifecycle, RetentionPolicy};
+use crate::count::{CountAgent, CountLifecycle};
+use crate::time::{TimeAgent, TimeLifecycle};
 
-mod agent;
+mod count;
+mod time;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     example_logging()?;
-    let route = RoutePattern::parse_str("/example/:name}")?;
 
-    let agent = AgentModel::from_fn(ExampleAgent::default, move || {
-        ExampleLifecycle::new(RetentionPolicy::count(5)).into_lifecycle()
+    let count_route = RoutePattern::parse_str("/count/:name}")?;
+    let count_agent = AgentModel::from_fn(CountAgent::default, move || {
+        CountLifecycle::new(5).into_lifecycle()
+    });
+
+    let time_route = RoutePattern::parse_str("/time/:name}")?;
+    let time_agent = AgentModel::from_fn(TimeAgent::default, move || {
+        TimeLifecycle::new(13).into_lifecycle()
     });
 
     let server = ServerBuilder::with_plane_name("Example Plane")
-        .add_route(route, agent)
+        .add_route(count_route, count_agent)
+        .add_route(time_route, time_agent)
         .update_config(|config| {
             config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
         })
