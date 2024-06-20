@@ -24,38 +24,38 @@ use swimos::{
 
 #[derive(AgentLaneModel)]
 #[projections]
-pub struct AggregateAgent {
+pub struct CityAgent {
     aggregated: JoinValueLane<String, f64>,
     average_speed: ValueLane<f64>,
     register: CommandLane<String>,
 }
 
 #[derive(Clone, Default)]
-pub struct AggregateLifecycle;
+pub struct CityLifecycle;
 
-#[lifecycle(AggregateAgent)]
-impl AggregateLifecycle {
+#[lifecycle(CityAgent)]
+impl CityLifecycle {
     #[on_update(aggregated)]
     fn aggregated(
         &self,
-        context: HandlerContext<AggregateAgent>,
+        context: HandlerContext<CityAgent>,
         averages: &HashMap<String, f64>,
         _key: String,
         _prev: Option<f64>,
         _new_value: &f64,
-    ) -> impl EventHandler<AggregateAgent> {
+    ) -> impl EventHandler<CityAgent> {
         let average = averages.values().sum::<f64>() / averages.len() as f64;
-        context.set_value(AggregateAgent::AVERAGE_SPEED, average)
+        context.set_value(CityAgent::AVERAGE_SPEED, average)
     }
 
     #[on_command(register)]
     pub fn register(
         &self,
-        context: HandlerContext<AggregateAgent>,
+        context: HandlerContext<CityAgent>,
         area_id: &String,
-    ) -> impl EventHandler<AggregateAgent> {
+    ) -> impl EventHandler<CityAgent> {
         context.add_downlink(
-            AggregateAgent::AGGREGATED,
+            CityAgent::AGGREGATED,
             area_id.clone(),
             None,
             format!("/area/{}", area_id).as_str(),
