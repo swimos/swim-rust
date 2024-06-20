@@ -208,7 +208,7 @@ impl<'a, Context> ActionContext<'a, Context> {
                     };
                     Box::new(con.and_then(RegisterHostedDownlink::new).and_then(on_done))
                 }
-                Err(e) => on_done(Err(e)).boxed(),
+                Err(e) => on_done(Err(e)).boxed_local(),
             })
             .boxed();
         self.spawn_suspend(fut);
@@ -301,9 +301,16 @@ pub trait EventHandler<Context>: HandlerAction<Context, Completion = ()> {}
 assert_obj_safe!(EventHandler<()>);
 
 /// A [`HandlerAction`] that is called by dynamic dispatch.
-pub type BoxHandlerAction<'a, Context, T> = Box<dyn HandlerAction<Context, Completion = T> + 'a>;
-
+pub type LocalBoxHandlerAction<'a, Context, T> =
+    Box<dyn HandlerAction<Context, Completion = T> + 'a>;
 ///  An [event handler](crate::event_handler::EventHandler) that is called by dynamic dispatch.
+pub type LocalBoxEventHandler<'a, Context> = LocalBoxHandlerAction<'a, Context, ()>;
+
+/// A [`HandlerAction`] that is called by dynamic dispatch and has a `Send` bound.
+pub type BoxHandlerAction<'a, Context, T> =
+    Box<dyn HandlerAction<Context, Completion = T> + Send + 'a>;
+///  An [event handler](crate::event_handler::EventHandler) that is called by dynamic dispatch and
+/// has a `Send` bound.
 pub type BoxEventHandler<'a, Context> = BoxHandlerAction<'a, Context, ()>;
 
 impl<Context, H> EventHandler<Context> for H where H: HandlerAction<Context, Completion = ()> {}
@@ -1167,9 +1174,20 @@ pub trait HandlerActionExt<Context>: HandlerAction<Context> {
         Discard::new(self)
     }
 
-    fn boxed<'a>(self) -> BoxHandlerAction<'a, Context, Self::Completion>
+    /// `BoxHandlerAction` without the `Send` requirement.
+    fn boxed_local<'a>(self) -> LocalBoxHandlerAction<'a, Context, Self::Completion>
     where
         Self: Sized + 'a,
+    {
+        Box::new(self)
+    }
+
+    /// An owned dynamically typed [`HandlerAction`] where you can't statically type your handler
+    /// or need to add some indirection. For a boxed event handler without the `Send` requirement,
+    /// see [`HandlerActionExt::boxed_local`]
+    fn boxed<'a>(self) -> BoxHandlerAction<'a, Context, Self::Completion>
+    where
+        Self: Sized + Send + 'a,
     {
         Box::new(self)
     }

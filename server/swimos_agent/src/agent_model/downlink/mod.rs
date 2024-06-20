@@ -30,7 +30,7 @@ use thiserror::Error;
 use tokio::sync::mpsc;
 use tracing::error;
 
-use crate::event_handler::BoxEventHandler;
+use crate::event_handler::LocalBoxEventHandler;
 use crate::{
     config::{MapDownlinkConfig, SimpleDownlinkConfig},
     downlink_lifecycle::{EventDownlinkLifecycle, MapDownlinkLifecycle, ValueDownlinkLifecycle},
@@ -313,7 +313,7 @@ pub trait DownlinkChannel<Context> {
 
     /// After a call to `await_ready` that does not return [`None`] this may return an event handler to
     /// be executed by the agent task. At any other time, it will return [`None`].
-    fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>>;
+    fn next_event(&mut self, context: &Context) -> Option<LocalBoxEventHandler<'_, Context>>;
 
     /// Flush any pending outputs.
     fn flush(&mut self) -> BoxFuture<'_, Result<(), std::io::Error>>;

@@ -42,7 +42,7 @@ use uuid::Uuid;
 
 use crate::{
     agent_model::HostedDownlinkEvent,
-    event_handler::{BoxEventHandler, HandlerActionExt, UnitHandler},
+    event_handler::{HandlerActionExt, LocalBoxEventHandler, UnitHandler},
 };
 
 use self::{
@@ -794,10 +794,13 @@ impl DownlinkChannel<TestDlAgent> for TestDownlinkChannel {
         .boxed()
     }
 
-    fn next_event(&mut self, _context: &TestDlAgent) -> Option<BoxEventHandler<'_, TestDlAgent>> {
+    fn next_event(
+        &mut self,
+        _context: &TestDlAgent,
+    ) -> Option<LocalBoxEventHandler<'_, TestDlAgent>> {
         if self.ready {
             self.ready = false;
-            Some(UnitHandler::default().boxed())
+            Some(UnitHandler::default().boxed_local())
         } else {
             None
         }

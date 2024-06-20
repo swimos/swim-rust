@@ -683,7 +683,11 @@ fn sequentially_handler() {
     let effect1 = SideEffect::from(|| values.borrow_mut().push(1));
     let effect2 = SideEffect::from(|| values.borrow_mut().push(2));
 
-    let handlers = vec![effect1.boxed(), set.boxed(), effect2.boxed()];
+    let handlers = vec![
+        effect1.boxed_local(),
+        set.boxed_local(),
+        effect2.boxed_local(),
+    ];
 
     let mut handler = Sequentially::new(handlers);
 
