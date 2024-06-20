@@ -31,6 +31,8 @@ use crate::error::ServerError;
 
 use self::{error::UnresolvableRoute, runtime::StartAgentRequest};
 
+/// A handle used to interact with a running Swim server instance. This can be used to find the interface
+/// on which the server is listening, instruct the server to stop and explicitly start agents.
 pub struct ServerHandle {
     stop_trigger: Option<trigger::Sender>,
     addr: Option<SocketAddr>,
