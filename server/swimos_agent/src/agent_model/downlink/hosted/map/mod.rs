@@ -45,13 +45,14 @@ use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
+use crate::event_handler::LocalBoxEventHandler;
 use crate::{
     agent_model::downlink::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
     },
     config::MapDownlinkConfig,
     downlink_lifecycle::MapDownlinkLifecycle,
-    event_handler::{BoxEventHandler, HandlerActionExt, Sequentially},
+    event_handler::{HandlerActionExt, Sequentially},
     event_queue::EventQueue,
 };
 
@@ -497,7 +498,8 @@ where
                         MapMessage::Clear => {
                             trace!("Clearing the map.");
                             let old_map = state.clear();
-                            maybe_lifecycle.map(|lifecycle| lifecycle.on_clear(old_map).boxed_local())
+                            maybe_lifecycle
+                                .map(|lifecycle| lifecycle.on_clear(old_map).boxed_local())
                         }
                         MapMessage::Take(n) => {
                             trace!("Retaining the first {} items.", n);

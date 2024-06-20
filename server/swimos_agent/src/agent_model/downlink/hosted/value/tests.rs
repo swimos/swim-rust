@@ -1153,7 +1153,7 @@ impl TestState {
 }
 
 impl OnLinked<FakeAgent> for TestState {
-    type OnLinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnLinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
         where
             Self: 'a;
 
@@ -1167,7 +1167,7 @@ impl OnLinked<FakeAgent> for TestState {
 }
 
 impl OnUnlinked<FakeAgent> for TestState {
-    type OnUnlinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnUnlinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
         where
             Self: 'a;
 
@@ -1181,7 +1181,7 @@ impl OnUnlinked<FakeAgent> for TestState {
 }
 
 impl OnFailed<FakeAgent> for TestState {
-    type OnFailedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnFailedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
         where
             Self: 'a;
 
@@ -1191,7 +1191,7 @@ impl OnFailed<FakeAgent> for TestState {
 }
 
 impl OnSynced<i32, FakeAgent> for TestState {
-    type OnSyncedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnSyncedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
         where
             Self: 'a;
 
@@ -1207,7 +1207,7 @@ impl OnSynced<i32, FakeAgent> for TestState {
 }
 
 impl OnDownlinkEvent<i32, FakeAgent> for TestState {
-    type OnEventHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnEventHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
         where
             Self: 'a;
 

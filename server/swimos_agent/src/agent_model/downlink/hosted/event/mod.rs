@@ -39,7 +39,7 @@ use crate::{
     },
     config::SimpleDownlinkConfig,
     downlink_lifecycle::EventDownlinkLifecycle,
-    event_handler::{LocalBoxEventHandler, HandlerActionExt},
+    event_handler::{HandlerActionExt, LocalBoxEventHandler},
 };
 
 use super::{DlState, DlStateObserver, DlStateTracker};

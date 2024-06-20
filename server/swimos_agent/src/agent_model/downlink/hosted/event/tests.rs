@@ -32,7 +32,7 @@ use super::{EventDownlinkFactory, SimpleDownlinkConfig};
 use crate::{
     agent_model::downlink::{BoxDownlinkChannel, DownlinkChannelEvent},
     downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
-    event_handler::{LocalBoxEventHandler, HandlerActionExt, SideEffect},
+    event_handler::{HandlerActionExt, LocalBoxEventHandler, SideEffect},
 };
 
 struct FakeAgent;
