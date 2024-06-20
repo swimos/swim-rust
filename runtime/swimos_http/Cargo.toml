@@ -18,4 +18,4 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "time"] }
-hyper = { workspace = true, features = ["server", "tcp", "http1"] }
+hyper = { workspace = true, features = ["server", "http1"] }

@@ -17,7 +17,7 @@ swimos_runtime = { path = "../../runtime/swimos_runtime" }
 swimos_messages = { path = "../../runtime/swimos_messages" }
 swimos_http = { path = "../../runtime/swimos_http" }
 swimos_introspection = { path = "../swimos_introspection" }
-swimos_remote = { path = "../../runtime/swimos_remote", features = ["tls"]}
+swimos_remote = { path = "../../runtime/swimos_remote", features = ["tls"] }
 bytes = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tokio-util = { workspace = true, features = ["codec"] }
@@ -30,9 +30,9 @@ uuid = { workspace = true }
 thiserror = { workspace = true }
 rand = { workspace = true }
 url = { workspace = true }
-swimos_rocks_store = { path = "../../runtime/swimos_rocks_store", optional = true}
+swimos_rocks_store = { path = "../../runtime/swimos_rocks_store", optional = true }
 parking_lot = { workspace = true }
-hyper = { workspace = true, features = ["server", "runtime", "tcp", "http1", "backports"] }
+hyper = { workspace = true, features = ["server", "http1"] }
 pin-project = { workspace = true }
 percent-encoding = { workspace = true }
 
