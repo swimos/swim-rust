@@ -52,12 +52,12 @@ impl<T> Default for DemandLaneInner<T> {
     }
 }
 
-/// A lane that is a stateless analogue of [`super::value::ValueLane`]. Rather than maintaining
+/// A lane that is a stateless analogue of [a value lane](`super::value::ValueLane`). Rather than maintaining
 /// a persistent state that can be queried, a demand lane computes a value, on demand, that is
 /// sent on all uplinks attached to it.
 ///
 /// A demand lane can be cued to produce a value by executing an instance of [`Cue`] (which can be
-/// constructed using the [`crate::agent_lifecycle::utility::HandlerContext`]).
+/// constructed using the [handler context](`crate::agent_lifecycle::HandlerContext`)).
 #[derive(Debug)]
 pub struct DemandLane<T> {
     id: u64,

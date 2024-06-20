@@ -21,7 +21,7 @@ use swimos_api::agent::AgentConfig;
 use swimos_utilities::routing::RouteUri;
 
 use crate::{
-    event_handler::{ActionContext, BoxEventHandler, HandlerAction, StepResult},
+    event_handler::{ActionContext, HandlerAction, LocalBoxEventHandler, StepResult},
     meta::AgentMetadata,
     test_context::{no_downlink, DummyAgentContext},
 };
@@ -75,7 +75,7 @@ async fn suspend_repeatedly() {
     let context: HandlerContext<Fake> = HandlerContext::default();
 
     let mut i = 0;
-    let mut handler: BoxEventHandler<'static, Fake> =
+    let mut handler: LocalBoxEventHandler<'static, Fake> =
         Box::new(context.suspend_repeatedly(Duration::from_secs(1), move || {
             let n = i;
             i += 1;

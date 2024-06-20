@@ -22,7 +22,7 @@ use swimos_recon::print_recon_compact;
 use swimos_utilities::routing::RouteUri;
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{ActionContext, HandlerAction, StepResult},
     lanes::http::{
         content_type::recon,

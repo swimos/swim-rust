@@ -15,7 +15,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{join, Either, EventHandler, HandlerAction, HandlerActionExt, Sequentially},
     lanes::{CommandLane, DemandLane, MapLane, ValueLane},
     lifecycle, projections, AgentLaneModel,

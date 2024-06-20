@@ -62,7 +62,7 @@ impl<T> CommandLane<T> {
     }
 
     /// Execute a command against the lane.
-    pub fn command(&self, value: T) {
+    pub(crate) fn command(&self, value: T) {
         let CommandLane {
             prev_command,
             dirty,
@@ -86,7 +86,7 @@ impl<T> CommandLane<T> {
 
 const INFALLIBLE_SER: &str = "Serializing a command to recon should be infallible.";
 
-/// An [`EventHandler`] instance that feeds a command to the command lane.
+///  An [event handler](crate::event_handler::EventHandler) that feeds a command to the command lane.
 pub struct DoCommand<Context, T> {
     projection: fn(&Context) -> &CommandLane<T>,
     command: Option<T>,

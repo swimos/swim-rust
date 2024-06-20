@@ -12,18 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[doc(hidden)]
 pub mod command;
+#[doc(hidden)]
 pub mod demand;
+#[doc(hidden)]
 pub mod demand_map;
+#[doc(hidden)]
 pub mod http;
 mod join;
+#[doc(hidden)]
 pub mod map;
 mod queues;
-
+#[doc(hidden)]
 pub mod supply;
+#[doc(hidden)]
 pub mod value;
-
+#[doc(hidden)]
 pub use join::map as join_map;
+#[doc(hidden)]
 pub use join::value as join_value;
 pub use join::LinkClosedResponse;
 
@@ -31,6 +38,7 @@ use bytes::BytesMut;
 
 use crate::{agent_model::WriteResult, item::AgentItem};
 
+#[doc(inline)]
 pub use self::{
     command::CommandLane,
     demand::DemandLane,
