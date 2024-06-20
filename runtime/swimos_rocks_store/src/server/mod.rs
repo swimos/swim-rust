@@ -199,17 +199,17 @@ impl StoreKey {
         match self {
             StoreKey::Map { lane_id, key } => {
                 writer.write_all(&[MAP_TAG])?;
-                writer.write_all(lane_id.encode_fixed_light())?;
+                writer.write_all(&lane_id.encode_fixed_light())?;
                 if let Some(key) = key {
                     writer.write_all(&[KEY])?;
                     let len = u64::try_from(key.len()).expect("Length does not fit into u64");
-                    writer.write_all(len.encode_fixed_light())?;
+                    writer.write_all(&len.encode_fixed_light())?;
                     writer.write_all(key)?;
                 }
             }
             StoreKey::Value { lane_id } => {
                 writer.write_all(&[VAL_TAG])?;
-                writer.write_all(lane_id.encode_fixed_light())?;
+                writer.write_all(&lane_id.encode_fixed_light())?;
             }
         }
         Ok(())
@@ -238,7 +238,7 @@ impl StoreKey {
         W: Write,
     {
         writer.write_all(&[MAP_TAG])?;
-        writer.write_all(lane_id.encode_fixed_light())?;
+        writer.write_all(&lane_id.encode_fixed_light())?;
         writer.write_all(&[UBOUND])?;
         Ok(())
     }
