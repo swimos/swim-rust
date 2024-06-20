@@ -18,7 +18,7 @@ use swimos_api::address::Address;
 use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::HandlerAction,
     lifecycle_fn::{LiftShared, WithHandlerContext},
 };
@@ -42,7 +42,7 @@ pub mod on_unlinked;
 /// All implementations of this interface must be [`Clone`] as it needs to be duplicated for each
 /// entry in the join map lane map.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `L` - The type of the labels for links.
 /// * `K` - The key type of the join map lane.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
@@ -66,7 +66,7 @@ impl<L, K, Context, LC> JoinMapLaneLifecycle<L, K, Context> for LC where
 
 /// A lifecycle for an join map downlink where the individual event handlers do not share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `L` - The type of the labels for links.
 /// * `K` - The key type of the join map lane.
@@ -116,7 +116,7 @@ pub trait StatelessJoinMapLifecycle<Context, L, K>: JoinMapLaneLifecycle<L, K, C
 
 /// A lifecycle for an join map downlink where the individual event handlers have shared state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `Shared` - The type of the shared state.
 /// * `L` - The type of the labels for links.
@@ -163,7 +163,7 @@ pub trait StatefulJoinMapLifecycle<Context, Shared, L, K>:
 
 /// A lifecycle for a join map downlink where the event handlers do not share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `L` - The type of the labels for links.
 /// * `K` - The key type of the join map lane.
@@ -202,7 +202,7 @@ impl<Context, L, K> Default for StatelessJoinMapLaneLifecycle<Context, L, K> {
 
 /// A lifecycle for a join map downlink where the event handlers can share state.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `State` - The type of the shared state.
 /// * `L` - The type of the labels for links.

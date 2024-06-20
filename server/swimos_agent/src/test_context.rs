@@ -25,7 +25,7 @@ use swimos_api::{
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 
 use crate::{
-    agent_model::downlink::handlers::BoxDownlinkChannel,
+    agent_model::downlink::BoxDownlinkChannel,
     event_handler::{
         ActionContext, BoxJoinLaneInit, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner,
         StepResult,

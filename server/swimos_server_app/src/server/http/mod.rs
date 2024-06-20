@@ -152,7 +152,7 @@ where
 ///
 /// Only a fixed number of web-socket handshakes are permitted to be running at any one time.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `L` - The type of the listener for incoming connections.
 /// * `Sock` - The type of the connections produced by the listener.
 /// * `Ext` - The websocket extension provider for negotiating connections.

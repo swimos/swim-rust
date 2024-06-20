@@ -26,11 +26,8 @@ use swimos_utilities::routing::RouteUri;
 
 use crate::event_handler::LocalBoxHandlerAction;
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
-    downlink_lifecycle::{
-        event::on_event::OnConsumeEvent, on_failed::OnFailed, on_linked::OnLinked,
-        on_synced::OnSynced, on_unlinked::OnUnlinked,
-    },
+    agent_lifecycle::HandlerContext,
+    downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
     event_handler::{
         EventHandler, HandlerActionExt, LocalBoxEventHandler, Modification, ModificationFlags,
         SideEffect, StepResult,

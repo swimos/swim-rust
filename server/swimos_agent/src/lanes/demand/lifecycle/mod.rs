@@ -16,7 +16,7 @@ use std::marker::PhantomData;
 
 use swimos_utilities::handlers::{FnHandler, NoHandler};
 
-use crate::agent_lifecycle::utility::HandlerContext;
+use crate::agent_lifecycle::HandlerContext;
 
 use self::on_cue::{OnCue, OnCueShared};
 
@@ -24,7 +24,7 @@ pub mod on_cue;
 
 /// Trait for the lifecycle of a demand lane.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `T` - The type of the values of the lane.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait DemandLaneLifecycle<T, Context>: OnCue<T, Context> {}
@@ -32,7 +32,7 @@ pub trait DemandLaneLifecycle<T, Context>: OnCue<T, Context> {}
 /// Trait for the lifecycle of a demand lane where the lifecycle has access to some shared state (shared
 /// with all other lifecycles in the agent).
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `T` - The type of the values of the lane.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
@@ -47,7 +47,7 @@ impl<T, Context, Shared, L> DemandLaneLifecycleShared<T, Context, Shared> for L 
 
 /// A lifecycle for a demand lane with some shared state (shard with other lifecycles in the same agent).
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context for the event handlers (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
 /// * `T` - The type of the values of the lane,

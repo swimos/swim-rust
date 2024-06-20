@@ -17,7 +17,7 @@ use std::{borrow::Borrow, collections::HashMap};
 use swimos_utilities::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, MapUpdateBorrowFn, MapUpdateFn, UnitHandler},
 };
 

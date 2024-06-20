@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use swimos::agent::agent_lifecycle::utility::HandlerContext;
+use swimos::agent::agent_lifecycle::HandlerContext;
 use swimos::agent::event_handler::{EventHandler, HandlerActionExt};
 use swimos::agent::lanes::ValueLane;
 use swimos::agent::projections;

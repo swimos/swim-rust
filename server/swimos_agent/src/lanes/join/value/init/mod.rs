@@ -30,7 +30,7 @@ mod tests;
 
 /// Uses a [`JoinValueLaneLifecycle`] to create a handler action that will open a new downlink
 /// for a join value lane. The purposes of this is to hide the specific types of the lane behind
-/// the [`JoinValueInitializer`] trait so it can be stored inside the agent context (which has no
+/// the [`JoinLaneInitializer`] trait so it can be stored inside the agent context (which has no
 /// knowledge of the types).
 pub struct LifecycleInitializer<Context, K, V, F> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,

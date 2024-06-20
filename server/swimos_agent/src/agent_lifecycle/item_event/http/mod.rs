@@ -17,7 +17,7 @@ use std::{cmp::Ordering, fmt::Debug};
 use futures::future::Either;
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     lanes::http::{
         lifecycle::{
             HttpLaneLifecycle, HttpLaneLifecycleShared, HttpLifecycleHandler,
