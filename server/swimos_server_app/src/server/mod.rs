@@ -24,12 +24,12 @@ mod runtime;
 mod store;
 
 pub use builder::ServerBuilder;
-
+pub use error::UnresolvableRoute;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::error::ServerError;
 
-use self::{error::UnresolvableRoute, runtime::StartAgentRequest};
+use self::runtime::StartAgentRequest;
 
 /// A handle used to interact with a running Swim server instance. This can be used to find the interface
 /// on which the server is listening, instruct the server to stop and explicitly start agents.

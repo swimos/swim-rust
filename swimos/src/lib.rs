@@ -15,24 +15,37 @@
 #[doc(inline)]
 pub use swimos_model as model;
 
+/// Defines the low level API for implementing Swim agents.
 pub mod api {
     pub use swimos_api::agent::{Agent, DownlinkKind, UplinkKind};
     pub use swimos_utilities::handlers::NoHandler;
-    
+
+    pub mod address {
+        pub use swimos_api::address::{Address, RelativeAddress};
+    }
+
+    /// Error
     pub mod error {
-        pub use swimos_api::error::{AgentInitError, AgentRuntimeError, AgentTaskError};
-        pub use swimos_api::error::DownlinkTaskError;
+        pub use swimos_api::error::{
+            AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkFailureReason,
+            DownlinkRuntimeError, DownlinkTaskError, NodeIntrospectionError, OpenStoreError,
+            StoreError,
+        };
     }
 
     pub mod agent {
         pub use swimos_api::agent::{
-            AgentConfig, AgentContext, AgentInitResult, AgentTask, BoxAgent, LaneConfig,
+            AgentConfig, AgentContext, AgentInitResult, AgentTask, BoxAgent, DownlinkKind,
+            LaneConfig, StoreKind, WarpLaneKind,
         };
 
         #[cfg(feature = "server")]
         pub use swimos_server_app::AgentExt;
     }
+}
 
+pub mod utilities {
+    pub use swimos_utilities::future::{Quantity, RetryStrategy};
 }
 
 pub mod route {
@@ -48,15 +61,31 @@ pub mod io {
     }
     pub mod errors {
         pub use swimos_api::error::{FrameIoError, InvalidFrame};
-        pub use swimos_recon::parser::AsyncParseError;
+        pub use swimos_recon::parser::{AsyncParseError, ParseError};
     }
 }
 
 #[cfg(feature = "server")]
 pub mod server {
     pub use swimos_server_app::{
-        BoxServer, DeflateConfig, RemoteConnectionsConfig, Server, ServerBuilder, ServerHandle,
+        BoxServer, DeflateConfig, IntrospectionConfig, RemoteConnectionsConfig, Server,
+        ServerBuilder, ServerHandle, WindowBits,
     };
+
+    pub mod tls {
+        pub use swimos_remote::tls::{
+            CertChain, CertFormat, CertificateFile, ClientConfig, PrivateKey, ServerConfig,
+            TlsConfig,
+        };
+    }
+
+    pub mod errors {
+        pub use swimos_remote::tls::TlsError;
+        pub use swimos_remote::ConnectionError;
+        pub use swimos_server_app::{
+            AmbiguousRoutes, ServerBuilderError, ServerError, UnresolvableRoute,
+        };
+    }
 }
 
 #[cfg(feature = "agent")]
