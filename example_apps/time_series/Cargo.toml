@@ -7,3 +7,5 @@ edition = "2021"
 swimos = { path = "../../swimos", features = ["server", "agent"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 example-util = { path = "../example_util" }
+futures-util = { workspace = true }
+swimos_form = { path = "../../api/swimos_form" }

@@ -12,14 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
-use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use swimos::agent::event_handler::{ConstHandler, UnitHandler};
 use swimos::{
     agent::event_handler::Sequentially,
     agent::lanes::CommandLane,
@@ -50,6 +46,15 @@ impl ExampleLifecycle {
 
 #[lifecycle(ExampleAgent, no_clone)]
 impl ExampleLifecycle {
+    #[on_command(add)]
+    pub fn add(
+        &self,
+        context: HandlerContext<ExampleAgent>,
+        cmd: &str,
+    ) -> impl EventHandler<ExampleAgent> {
+        context.update(ExampleAgent::HISTORY, now(), cmd.to_string())
+    }
+
     #[on_update(history)]
     pub fn on_update(
         &self,
@@ -57,7 +62,7 @@ impl ExampleLifecycle {
         map: &HashMap<u64, String>,
         key: u64,
         _prev: Option<String>,
-        _new_value: &String,
+        _new_value: &str,
     ) -> impl EventHandler<ExampleAgent> {
         self.policy.on_event(context, key, map.clone())
     }
@@ -71,19 +76,25 @@ pub enum RetentionPolicy {
         max: usize,
     },
     Time {
-        start: u64,
         interval: u64,
         keys: RefCell<VecDeque<u64>>,
-    },
-    Recency {
-        start: u64,
-        max: u64,
-        keys: RefCell<VecDeque<u64>>,
-        scheduled: Arc<AtomicBool>,
     },
 }
 
 impl RetentionPolicy {
+    #[allow(dead_code)]
+    pub fn count(max: usize) -> RetentionPolicy {
+        RetentionPolicy::Count { max }
+    }
+
+    #[allow(dead_code)]
+    pub fn time(interval: u64) -> RetentionPolicy {
+        RetentionPolicy::Time {
+            interval,
+            keys: RefCell::new(Default::default()),
+        }
+    }
+
     fn on_event(
         &self,
         context: HandlerContext<ExampleAgent>,
@@ -104,18 +115,15 @@ impl RetentionPolicy {
                 };
                 handler.discard().boxed()
             }
-            RetentionPolicy::Time {
-                start,
-                interval,
-                keys,
-            } => {
+            RetentionPolicy::Time { interval, keys } => {
                 let timestamps = &mut *keys.borrow_mut();
                 timestamps.push_back(key);
 
                 let mut to_remove = Vec::new();
+                let start = now();
 
                 timestamps.retain(|timestamp| {
-                    if *start - *timestamp > *interval {
+                    if start - *timestamp > *interval {
                         to_remove.push(context.remove(ExampleAgent::HISTORY, *timestamp));
                         false
                     } else {
@@ -130,59 +138,6 @@ impl RetentionPolicy {
                 };
 
                 handler.discard().boxed()
-            }
-            RetentionPolicy::Recency {
-                keys,
-                scheduled,
-                max,
-                start,
-            } => {
-                let timestamps = &mut *keys.borrow_mut();
-                timestamps.push_back(key);
-
-                loop {
-                    let handler = if !scheduled.swap(true, Ordering::Acquire) {
-                        let handler = context
-                            .effect(move || {
-                                scheduled.store(false, Ordering::Release);
-
-                                let mut to_remove = Vec::new();
-
-                                timestamps.retain(|timestamp| {
-                                    if *start - *timestamp > *max {
-                                        to_remove.push(*timestamp);
-                                        false
-                                    } else {
-                                        true
-                                    }
-                                });
-
-                                to_remove
-                            })
-                            .and_then(|to_remove: Vec<u64>| {
-                                let handler = if to_remove.is_empty() {
-                                    None
-                                } else {
-                                    Some(Sequentially::new(to_remove.into_iter().map(
-                                        |timestamp| {
-                                            context.remove(ExampleAgent::HISTORY, timestamp)
-                                        },
-                                    )))
-                                };
-
-                                handler.discard().boxed()
-                            });
-
-                        Some(
-                            context
-                                .run_after(Duration::from_millis(*max), handler)
-                                .discard(),
-                        )
-                    } else {
-                        None
-                    };
-                    handler.boxed()
-                }
             }
         }
     }
