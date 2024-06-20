@@ -25,10 +25,10 @@ use super::{
     utility::HandlerContext,
 };
 
-/// An implementation of [AgentLifecycle] with a common state that is shared bewteen all of the
+/// An implementation of [AgentLifecycle] with a common state that is shared between all of the
 /// lifecycle event handlers.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context within which the event handlers run (provides access to the agent lanes).
 /// * `State` - The state shared between the event handlers.
 /// * `FStart` - The `on_start` event handler.

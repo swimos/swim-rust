@@ -20,7 +20,7 @@ use std::{cmp::Ordering, collections::HashMap};
 use frunk::{Coprod, Coproduct};
 use futures::future::Either;
 
-use crate::agent_lifecycle::utility::HandlerContext;
+use crate::agent_lifecycle::HandlerContext;
 use crate::item::MapItem;
 use crate::lanes::map::lifecycle::MapLaneLifecycleShared;
 use crate::lanes::map::{

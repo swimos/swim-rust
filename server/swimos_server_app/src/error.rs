@@ -96,7 +96,7 @@ pub enum ServerBuilderError {
 
 #[cfg(test)]
 mod tests {
-    use swimos_introspection::route::{lane_pattern, node_pattern};
+    use swimos_introspection::{lane_pattern, node_pattern};
     use swimos_utilities::routing::RoutePattern;
 
     use super::AmbiguousRoutes;

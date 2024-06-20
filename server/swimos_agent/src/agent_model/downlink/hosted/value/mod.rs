@@ -41,12 +41,12 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    agent_model::downlink::handlers::{
+    agent_model::downlink::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
     },
     config::SimpleDownlinkConfig,
-    downlink_lifecycle::value::ValueDownlinkLifecycle,
-    event_handler::{HandlerActionExt, LocalBoxEventHandler},
+    downlink_lifecycle::ValueDownlinkLifecycle,
+    event_handler::{LocalBoxEventHandler, HandlerActionExt},
 };
 
 use super::{DlState, DlStateObserver, DlStateTracker, OutputWriter, RestartableOutput};
@@ -86,7 +86,7 @@ impl<T: Send> ValueDlState<T> for RefCell<Option<T>> {
     }
 }
 
-pub struct HostedValueDownlinkFactory<T: RecognizerReadable, LC, State> {
+pub struct ValueDownlinkFactory<T: RecognizerReadable, LC, State> {
     address: Address<Text>,
     state: State,
     lifecycle: LC,
@@ -96,7 +96,7 @@ pub struct HostedValueDownlinkFactory<T: RecognizerReadable, LC, State> {
     watch_rx: circular_buffer::Receiver<T>,
 }
 
-impl<T, LC, State> HostedValueDownlinkFactory<T, LC, State>
+impl<T, LC, State> ValueDownlinkFactory<T, LC, State>
 where
     T: Form + Send + 'static,
     T::Rec: Send,
@@ -109,7 +109,7 @@ where
         stop_rx: trigger::Receiver,
         watch_rx: circular_buffer::Receiver<T>,
     ) -> Self {
-        HostedValueDownlinkFactory {
+        ValueDownlinkFactory {
             address,
             state,
             lifecycle,
@@ -130,7 +130,7 @@ where
         State: ValueDlState<T> + Send + 'static,
         LC: ValueDownlinkLifecycle<T, Context> + 'static,
     {
-        let HostedValueDownlinkFactory {
+        let ValueDownlinkFactory {
             address,
             state,
             lifecycle,

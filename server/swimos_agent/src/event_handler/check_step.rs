@@ -16,7 +16,11 @@ use std::fmt::Debug;
 
 use super::{Modification, ModificationFlags, StepResult};
 
-pub fn check_is_continue<T>(result: StepResult<T>, id: u64, expected_flags: ModificationFlags) {
+pub(crate) fn check_is_continue<T>(
+    result: StepResult<T>,
+    id: u64,
+    expected_flags: ModificationFlags,
+) {
     match result {
         StepResult::Continue {
             modified_item: Some(Modification { item_id, flags }),
@@ -28,7 +32,7 @@ pub fn check_is_continue<T>(result: StepResult<T>, id: u64, expected_flags: Modi
     }
 }
 
-pub fn check_is_complete<T: Eq + Debug>(
+pub(crate) fn check_is_complete<T: Eq + Debug>(
     result: StepResult<T>,
     id: u64,
     expected_value: &T,
