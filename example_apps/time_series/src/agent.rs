@@ -21,7 +21,7 @@ use swimos::{
     agent::lanes::CommandLane,
     agent::lanes::MapLane,
     agent::{
-        agent_lifecycle::utility::HandlerContext,
+        agent_lifecycle::HandlerContext,
         event_handler::{EventHandler, HandlerActionExt},
         lifecycle, projections, AgentLaneModel,
     },
