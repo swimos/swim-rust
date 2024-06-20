@@ -74,7 +74,6 @@ pub mod io {
         pub use swimos_api::error::{FrameIoError, InvalidFrame};
         pub use swimos_recon::parser::{AsyncParseError, ParseError};
     }
-
 }
 
 /// The core Swim server application runtime.

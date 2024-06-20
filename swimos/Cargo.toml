@@ -20,6 +20,7 @@ swimos_server_app = { path = "../server/swimos_server_app", optional = true }
 swimos_agent = { path = "../server/swimos_agent", optional = true }
 swimos_agent_derive = { path = "../server/swimos_agent_derive", optional = true }
 swimos_remote = { path = "../runtime/swimos_remote", optional = true}
+swimos_form = { path = "../api/swimos_form" }
 
 [dev-dependencies]
 parking_lot = { workspace = true }
