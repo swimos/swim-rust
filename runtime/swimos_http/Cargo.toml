@@ -11,7 +11,7 @@ hyper = { workspace = true }
 http = { workspace = true }
 httparse = { workspace = true }
 bytes = { workspace = true }
-sha1 = { workspace = true }
+sha-1 = { workspace = true }
 base64 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
