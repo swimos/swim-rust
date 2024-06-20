@@ -39,6 +39,7 @@ members = [
     "example_apps/join_map",
     "example_apps/join_value",
     "example_apps/aggregations",
+    "example_apps/time_series",
 ]
 
 exclude = [
