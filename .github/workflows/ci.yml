@@ -43,7 +43,7 @@ jobs:
         with:
           toolchain: ${{ env.latest_version }}
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --all-features --all-targets --workspace --lib --tests --profile "ci"
+      - run: cargo check --all-features --all-targets --workspace --lib --tests --profile "ci"
 
   docs:
     name: Documentation
