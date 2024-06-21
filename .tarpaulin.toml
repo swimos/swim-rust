@@ -1,4 +1,4 @@
-# Exclude example applications and derive macros
+[coverage]
 exclude = [
     "example_apps/example_util",
     "example_apps/console",
@@ -33,17 +33,8 @@ exclude = [
     "swimos_agent_derive",
 ]
 
-# Avoid `cfg(tarpaulin)`
 avoid-cfg-tarpaulin = true
-
-# Profile
 profile = "ci"
-
-# Ignore tests
 ignore-tests = true
-
-# Output format
 output = ["xml"]
-
-# Timeout (in seconds)
-timeout = 600
+timeout = "600s"
