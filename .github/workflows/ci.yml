@@ -78,7 +78,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Clang
-        run: sudo apt-get install -y clang
+        run: apt-get install -y clang
 
       - name: Set libclang path
         run: echo "LIBCLANG_PATH=$(llvm-config --libdir)" >> $GITHUB_ENV
