@@ -5,11 +5,12 @@ on:
 
 name: Continuous integration
 env:
-  rust_version: '1.78.0'
+  msrv_version: '1.74.1'
+  latest_version: '1.78.0'
 
 jobs:
-  test:
-    name: Test Suite
+  testlatest:
+    name: Test Latest
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -22,7 +23,25 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ env.rust_version }}
+          toolchain: ${{ env.latest_version }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --all-features --workspace --lib --tests --profile "ci"
+
+  testmsrv:
+    name: Test MSRV
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.msrv_version }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --all-features --workspace --lib --tests --profile "ci"
 
@@ -34,7 +53,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ env.rust_version }}
+          toolchain: ${{ env.latest_version }}
       - uses: Swatinem/rust-cache@v2
       - name: Build Documentation
         run: cargo doc --lib --no-deps --all-features --workspace
@@ -49,7 +68,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ env.rust_version }}
+          toolchain: ${{ env.latest_version }}
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
@@ -62,7 +81,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ env.rust_version }}
+          toolchain: ${{ env.latest_version }}
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-features --all-targets --workspace -- -D warnings
@@ -78,12 +97,12 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Clang
-        run: apt-get update && apt-get install -y clang
+        run: apt-get update && apt-get install -y llvm llvm-dev clang
 
       - name: Set libclang path
         run: echo "LIBCLANG_PATH=$(llvm-config --libdir)" >> $GITHUB_ENV
 
-      - name: Generate code coverage
+      - name: Generate code coveragez
         run: |
           cargo +nightly tarpaulin --ignore-tests -o xml -t 600 --exclude-files example_apps swimos_form_derive swimos_agent_derive swimos_server_app --avoid-cfg-tarpaulin --profile "ci"
 
