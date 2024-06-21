@@ -8,8 +8,8 @@ env:
   latest_version: '1.78.0'
 
 jobs:
-  testlatest:
-    name: Test Latest
+  test:
+    name: Test
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -25,6 +25,25 @@ jobs:
           toolchain: ${{ env.latest_version }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --all-features --workspace --lib --tests --profile "ci"
+
+  # Check step to ensure that all targets are valid as the test step doesn't run them.
+  check:
+    name: Check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.latest_version }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --all-features --all-targets --workspace --lib --tests --profile "ci"
 
   docs:
     name: Documentation
