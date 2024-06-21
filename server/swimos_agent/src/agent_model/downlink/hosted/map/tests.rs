@@ -54,7 +54,7 @@ use crate::{
         OnDownlinkClear, OnDownlinkRemove, OnDownlinkUpdate, OnFailed, OnLinked, OnSynced,
         OnUnlinked,
     },
-    event_handler::{BoxEventHandler, HandlerActionExt, SideEffect},
+    event_handler::{HandlerActionExt, LocalBoxEventHandler, SideEffect},
 };
 
 use super::{MapDownlinkFactory, MapWriteStream};
@@ -119,7 +119,7 @@ struct FakeLifecycle {
 }
 
 impl OnLinked<FakeAgent> for FakeLifecycle {
-    type OnLinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnLinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -127,12 +127,12 @@ impl OnLinked<FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             self.events.lock().push(Event::Linked);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnUnlinked<FakeAgent> for FakeLifecycle {
-    type OnUnlinkedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnUnlinkedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -140,12 +140,12 @@ impl OnUnlinked<FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             self.events.lock().push(Event::Unlinked);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnFailed<FakeAgent> for FakeLifecycle {
-    type OnFailedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnFailedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -153,12 +153,12 @@ impl OnFailed<FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             self.events.lock().push(Event::Failed);
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnSynced<HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
-    type OnSyncedHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnSyncedHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -167,12 +167,12 @@ impl OnSynced<HashMap<i32, Text>, FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             self.events.lock().push(Event::Synced(map));
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnDownlinkUpdate<i32, Text, FakeAgent> for FakeLifecycle {
-    type OnUpdateHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnUpdateHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -190,12 +190,12 @@ impl OnDownlinkUpdate<i32, Text, FakeAgent> for FakeLifecycle {
                 .lock()
                 .push(Event::Updated(key, new_value, previous, map));
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnDownlinkRemove<i32, Text, FakeAgent> for FakeLifecycle {
-    type OnRemoveHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnRemoveHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -209,12 +209,12 @@ impl OnDownlinkRemove<i32, Text, FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             self.events.lock().push(Event::Removed(key, removed, map));
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnDownlinkClear<i32, Text, FakeAgent> for FakeLifecycle {
-    type OnClearHandler<'a> = BoxEventHandler<'a, FakeAgent>
+    type OnClearHandler<'a> = LocalBoxEventHandler<'a, FakeAgent>
     where
         Self: 'a;
 
@@ -222,7 +222,7 @@ impl OnDownlinkClear<i32, Text, FakeAgent> for FakeLifecycle {
         SideEffect::from(move || {
             self.events.lock().push(Event::Cleared(map));
         })
-        .boxed()
+        .boxed_local()
     }
 }
 

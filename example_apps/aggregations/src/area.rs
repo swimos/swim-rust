@@ -122,7 +122,7 @@ impl AreaLifecycle {
 impl AreaLifecycle {
     #[on_start]
     pub fn on_start(&self, context: HandlerContext<AreaAgent>) -> impl EventHandler<AreaAgent> {
-        context.send_command(None, "/aggregate", "register", self.area.to_string())
+        context.send_command(None, "/city", "register", self.area.to_string())
     }
 
     #[on_command(registrations)]
@@ -140,8 +140,10 @@ impl AreaLifecycle {
                     format!("/cars/{car_id}").as_str(),
                     "speed",
                 )
-                .boxed(),
-            Action::Deregister(car_id) => context.remove_downlink(AreaAgent::CARS, *car_id).boxed(),
+                .boxed_local(),
+            Action::Deregister(car_id) => context
+                .remove_downlink(AreaAgent::CARS, *car_id)
+                .boxed_local(),
         }
     }
     #[on_update(cars)]

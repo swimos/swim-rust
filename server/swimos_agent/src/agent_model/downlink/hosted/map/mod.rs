@@ -45,13 +45,14 @@ use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
+use crate::event_handler::LocalBoxEventHandler;
 use crate::{
     agent_model::downlink::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
     },
     config::MapDownlinkConfig,
     downlink_lifecycle::MapDownlinkLifecycle,
-    event_handler::{BoxEventHandler, HandlerActionExt, Sequentially},
+    event_handler::{HandlerActionExt, Sequentially},
     event_queue::EventQueue,
 };
 
@@ -107,7 +108,7 @@ impl<K, V> MapDlState<K, V> {
         key: K,
         value: V,
         lifecycle: Option<&'a LC>,
-    ) -> Option<BoxEventHandler<'a, Context>>
+    ) -> Option<LocalBoxEventHandler<'a, Context>>
     where
         K: Eq + Hash + Clone + Ord,
         LC: MapDownlinkLifecycle<K, V, Context>,
@@ -121,7 +122,11 @@ impl<K, V> MapDlState<K, V> {
                 _ => {}
             }
             let new_value = &map[&key];
-            lifecycle.map(|lifecycle| lifecycle.on_update(key, &*map, old, new_value).boxed())
+            lifecycle.map(|lifecycle| {
+                lifecycle
+                    .on_update(key, &*map, old, new_value)
+                    .boxed_local()
+            })
         })
     }
 
@@ -129,7 +134,7 @@ impl<K, V> MapDlState<K, V> {
         &self,
         key: K,
         lifecycle: Option<&'a LC>,
-    ) -> Option<BoxEventHandler<'a, Context>>
+    ) -> Option<LocalBoxEventHandler<'a, Context>>
     where
         K: Eq + Hash + Ord,
         LC: MapDownlinkLifecycle<K, V, Context>,
@@ -139,7 +144,7 @@ impl<K, V> MapDlState<K, V> {
                 if let Some(ord) = order {
                     ord.remove(&key);
                 }
-                lifecycle.map(|lifecycle| lifecycle.on_remove(key, &*map, old).boxed())
+                lifecycle.map(|lifecycle| lifecycle.on_remove(key, &*map, old).boxed_local())
             })
         })
     }
@@ -148,7 +153,7 @@ impl<K, V> MapDlState<K, V> {
         &self,
         n: usize,
         lifecycle: Option<&'a LC>,
-    ) -> Option<BoxEventHandler<'a, Context>>
+    ) -> Option<LocalBoxEventHandler<'a, Context>>
     where
         K: Eq + Hash + Ord + Clone,
         LC: MapDownlinkLifecycle<K, V, Context>,
@@ -157,7 +162,7 @@ impl<K, V> MapDlState<K, V> {
             if n >= map.len() {
                 *order = None;
                 let old = std::mem::take(map);
-                lifecycle.map(move |lifecycle| lifecycle.on_clear(old).boxed())
+                lifecycle.map(move |lifecycle| lifecycle.on_clear(old).boxed_local())
             } else {
                 let ord = order.get_or_insert_with(|| map.keys().cloned().collect());
 
@@ -176,7 +181,7 @@ impl<K, V> MapDlState<K, V> {
                     if removed.is_empty() {
                         None
                     } else {
-                        Some(Sequentially::new(removed).boxed())
+                        Some(Sequentially::new(removed).boxed_local())
                     }
                 } else {
                     for k in to_remove {
@@ -193,7 +198,7 @@ impl<K, V> MapDlState<K, V> {
         &self,
         n: usize,
         lifecycle: Option<&'a LC>,
-    ) -> Option<BoxEventHandler<'a, Context>>
+    ) -> Option<LocalBoxEventHandler<'a, Context>>
     where
         K: Eq + Hash + Ord + Clone,
         LC: MapDownlinkLifecycle<K, V, Context>,
@@ -217,7 +222,7 @@ impl<K, V> MapDlState<K, V> {
                     if removed.is_empty() {
                         None
                     } else {
-                        Some(Sequentially::new(removed).boxed())
+                        Some(Sequentially::new(removed).boxed_local())
                     }
                 } else {
                     for k in to_remove {
@@ -442,7 +447,7 @@ where
         self.select_next().boxed()
     }
 
-    fn next_event(&mut self, _context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+    fn next_event(&mut self, _context: &Context) -> Option<LocalBoxEventHandler<'_, Context>> {
         let HostedMapDownlink {
             address,
             receiver,
@@ -465,12 +470,12 @@ where
                     if dl_state.get() == DlState::Unlinked {
                         dl_state.set(DlState::Linked);
                     }
-                    Some(lifecycle.on_linked().boxed())
+                    Some(lifecycle.on_linked().boxed_local())
                 }
                 Ok(DownlinkNotification::Synced) => {
                     debug!(address = %address, "Downlink synced.");
                     dl_state.set(DlState::Synced);
-                    Some(state.with(|map| lifecycle.on_synced(&map.map).boxed()))
+                    Some(state.with(|map| lifecycle.on_synced(&map.map).boxed_local()))
                 }
                 Ok(DownlinkNotification::Event { body }) => {
                     let maybe_lifecycle =
@@ -493,7 +498,8 @@ where
                         MapMessage::Clear => {
                             trace!("Clearing the map.");
                             let old_map = state.clear();
-                            maybe_lifecycle.map(|lifecycle| lifecycle.on_clear(old_map).boxed())
+                            maybe_lifecycle
+                                .map(|lifecycle| lifecycle.on_clear(old_map).boxed_local())
                         }
                         MapMessage::Take(n) => {
                             trace!("Retaining the first {} items.", n);
@@ -522,7 +528,7 @@ where
                         dl_state.set(DlState::Unlinked);
                     }
                     state.clear();
-                    Some(lifecycle.on_unlinked().boxed())
+                    Some(lifecycle.on_unlinked().boxed_local())
                 }
                 Err(_) => {
                     debug!(address = %address, "Downlink failed.");
@@ -533,7 +539,7 @@ where
                         dl_state.set(DlState::Unlinked);
                     }
                     state.clear();
-                    Some(lifecycle.on_failed().boxed())
+                    Some(lifecycle.on_failed().boxed_local())
                 }
             }
         } else {

@@ -39,6 +39,7 @@ members = [
     "example_apps/join_map",
     "example_apps/join_value",
     "example_apps/aggregations",
+    "example_apps/time_series",
 ]
 
 exclude = [
@@ -93,7 +94,7 @@ ratchet_fixture = "0.4"
 flate2 = "1.0.22"
 bitflags = "2.5"
 rocksdb = "0.22"
-integer-encoding = "3.0.4"
+integer-encoding = "4.0.0"
 rustls = "0.20"
 webpki = "0.22"
 webpki-roots = "0.22"

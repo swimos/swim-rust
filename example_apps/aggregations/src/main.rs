@@ -18,10 +18,10 @@ use std::time::Duration;
 
 use crate::area::Area;
 use crate::{
-    aggregate::{AggregateAgent, AggregateLifecycle},
     area::{AreaAgent, AreaLifecycle},
     car::CarAgent,
     car::CarLifecycle,
+    city::{CityAgent, CityLifecycle},
 };
 use example_util::{example_logging, manage_handle};
 use swimos::route::RouteUri;
@@ -31,9 +31,9 @@ use swimos::{
     server::{Server, ServerBuilder},
 };
 
-mod aggregate;
 mod area;
 mod car;
+mod city;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -46,12 +46,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
             AreaLifecycle::new(name).into_lifecycle(),
         )
     };
-    let aggregate_agent =
-        AgentModel::new(AggregateAgent::default, AggregateLifecycle.into_lifecycle());
+    let aggregate_agent = AgentModel::new(CityAgent::default, CityLifecycle.into_lifecycle());
 
     let mut builder = ServerBuilder::with_plane_name("Example Plane")
         .add_route(RoutePattern::parse_str("/cars/:car_id")?, car_agent)
-        .add_route(RoutePattern::parse_str("/aggregate")?, aggregate_agent)
+        .add_route(RoutePattern::parse_str("/city")?, aggregate_agent)
         .update_config(|config| {
             config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
         });

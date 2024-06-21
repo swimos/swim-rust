@@ -49,7 +49,7 @@ use uuid::Uuid;
 use crate::agent_lifecycle::item_event::ItemEvent;
 use crate::agent_model::io::LaneReadEvent;
 use crate::event_handler::{
-    ActionContext, BoxEventHandler, BoxJoinLaneInit, HandlerFuture, ModificationFlags,
+    ActionContext, BoxJoinLaneInit, HandlerFuture, LocalBoxEventHandler, ModificationFlags,
 };
 use crate::{
     agent_lifecycle::AgentLifecycle,
@@ -390,7 +390,7 @@ enum TaskEvent<ItemModel> {
         result: Result<bool, std::io::Error>,
     },
     SuspendedComplete {
-        handler: BoxEventHandler<'static, ItemModel>,
+        handler: LocalBoxEventHandler<'static, ItemModel>,
     },
     DownlinkReady {
         downlink_event: (HostedDownlink<ItemModel>, HostedDownlinkEvent),
@@ -536,7 +536,7 @@ impl<Context> HostedDownlink<Context> {
         }
     }
 
-    fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+    fn next_event(&mut self, context: &Context) -> Option<LocalBoxEventHandler<'_, Context>> {
         self.channel.next_event(context)
     }
 }
