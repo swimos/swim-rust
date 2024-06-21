@@ -31,7 +31,7 @@ smallvec = { workspace = true }
 url = { workspace = true }
 pin-project = { workspace = true }
 
-rustls = { workspace = true, optional = true, features = ["ring"] }
+rustls = { workspace = true, optional = true }
 webpki = { workspace = true, optional = true }
 webpki-roots = { workspace = true, optional = true }
 tokio-rustls = { workspace = true, optional = true }
