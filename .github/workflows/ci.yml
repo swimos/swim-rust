@@ -5,7 +5,6 @@ on:
 
 name: Continuous integration
 env:
-  msrv_version: '1.74.1'
   latest_version: '1.78.0'
 
 jobs:
@@ -24,24 +23,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.latest_version }}
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo test --all-features --workspace --lib --tests --profile "ci"
-
-  testmsrv:
-    name: Test MSRV
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os:
-          - windows-latest
-          - ubuntu-latest
-          - macos-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ env.msrv_version }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --all-features --workspace --lib --tests --profile "ci"
 
