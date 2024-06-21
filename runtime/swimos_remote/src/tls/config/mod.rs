@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use rustls::crypto::CryptoProvider;
+use std::sync::Arc;
+
 /// Supported certificate formats for TLS connections.
 pub enum CertFormat {
     Pem,
@@ -60,9 +63,11 @@ impl PrivateKey {
         Self::new(CertFormat::Pem, body)
     }
 }
-/// Combined TLS configuration (both server and client)/
+/// Combined TLS configuration (both server and client).
 pub struct TlsConfig {
+    /// Configuration parameters for a TLS client.
     pub client: ClientConfig,
+    /// Configuration parameters for a TLS server.
     pub server: ServerConfig,
 }
 
@@ -74,17 +79,26 @@ impl TlsConfig {
 
 /// Configuration parameters for a TLS server.
 pub struct ServerConfig {
+    /// A chain of TLS certificates (starting with the server certificate and ending with the CA).
     pub chain: CertChain,
+    /// An unvalidated private key for a server.
     pub key: PrivateKey,
+    /// Whether to enable a [`KeyLog`] implementation that opens a file whose name is given by the
+    /// `SSLKEYLOGFILE` environment variable, and writes keys into it. While this may be enabled,
+    /// if `SSLKEYLOGFILE` is not set, it will do nothing.
     pub enable_log_file: bool,
+    /// Process-wide [`CryptoProvider`] that must already have been installed as the default
+    /// provider.
+    pub provider: Arc<CryptoProvider>,
 }
 
 impl ServerConfig {
-    pub fn new(chain: CertChain, key: PrivateKey) -> Self {
+    pub fn new(chain: CertChain, key: PrivateKey, provider: Arc<CryptoProvider>) -> Self {
         ServerConfig {
             chain,
             key,
             enable_log_file: false,
+            provider,
         }
     }
 }
