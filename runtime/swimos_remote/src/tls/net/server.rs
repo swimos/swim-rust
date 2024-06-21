@@ -41,7 +41,7 @@ static PROVIDER: OnceLock<Arc<CryptoProvider>> = OnceLock::new();
 fn provider() -> Arc<CryptoProvider> {
     PROVIDER
         .get_or_init(|| {
-            let provider = rustls::crypto::aws_lc_rs::default_provider();
+            let provider = rustls::crypto::ring::default_provider();
             // This will fail if the provider has been initialised elsewhere unexpectedly.
             provider
                 .clone()
