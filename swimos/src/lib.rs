@@ -12,6 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS
+//! A framework for building real-time streaming applications that model the state of an external system.
+//! The state of a SwimOS application is split across a number of "agents", identified by  URI. Agents
+//! consists of some number of named "lanes", each of which is individually addressable. An external client
+//! of the application can modify the value of lanes, to update the model, and subscribe the changes to the
+//! state of those lanes. State updates are pushed to the clients so it is not necessary to poll for changes.
+//!
+//! ## Feature Flags
+//! This crate has a number of feature flags, none of which are enabled by default:
+//!
+//! 1. `agent` - The API for defining your own agents.
+//! 2. `server` - The SwimOS server, necessary for running a SwimOS application.
+//! 3. `json` - Enables JSON serialization support for HTTP lanes.
+
 #[doc(inline)]
 pub use swimos_model as model;
 
