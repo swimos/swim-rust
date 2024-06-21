@@ -66,7 +66,7 @@ jobs:
       - run: cargo clippy --all-features --all-targets --workspace -- -D warnings
 
   code_coverage:
-    name: coverage
+    name: Code Coverage
     runs-on: ubuntu-latest
     container:
       image: xd009642/tarpaulin:develop-nightly
@@ -77,7 +77,7 @@ jobs:
 
       - name: Generate code coverage
         run: |
-          cargo tarpaulin --ignore-tests -o xml -t 600 --exclude-files example_apps swimos_form_derive swimos_agent_derive swimos_server_app --avoid-cfg-tarpaulin --profile "ci"
+          cargo +nightly tarpaulin --ignore-tests -o xml -t 600 --exclude-files example_apps swimos_form_derive swimos_agent_derive swimos_server_app --avoid-cfg-tarpaulin --profile "ci"
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v2
