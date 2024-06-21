@@ -84,9 +84,9 @@ jobs:
       - name: Set libclang path
         run: echo "LIBCLANG_PATH=$(llvm-config --libdir)" >> $GITHUB_ENV
 
-      - name: Generate code coveragez
+      - name: Generate code coverage
         run: |
-          cargo +nightly tarpaulin --ignore-tests -o xml -t 600 --exclude-files example_apps swimos_form_derive swimos_agent_derive swimos_server_app --avoid-cfg-tarpaulin --profile "ci"
+          cargo +nightly tarpaulin --config .tarpaulin.toml
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v2

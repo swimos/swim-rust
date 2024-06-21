@@ -1,0 +1,49 @@
+exclude = [
+    "example_apps/example_util",
+    "example_apps/console",
+    "example_apps/console/console_views",
+    "example_apps/demand_lane",
+    "example_apps/demand_map_lane",
+    "example_apps/value_lane",
+    "example_apps/map_lane",
+    "example_apps/command_lane",
+    "example_apps/value_store",
+    "example_apps/map_store",
+    "example_apps/supply_lane",
+    "example_apps/value_lane_persistence",
+    "example_apps/map_lane_persistence",
+    "example_apps/value_store_persistence",
+    "example_apps/map_store_persistence",
+    "example_apps/event_downlink",
+    "example_apps/value_downlink",
+    "example_apps/map_downlink",
+    "example_apps/local_downlink",
+    "example_apps/http_lane",
+    "example_apps/transit",
+    "example_apps/transit/transit-model",
+    "example_apps/tutorial_app",
+    "example_apps/tutorial_app/model",
+    "example_apps/tutorial_app/generator",
+    "example_apps/join_map",
+    "example_apps/join_value",
+    "example_apps/aggregations",
+    "example_apps/time_series",
+    "swimos_form_derive",
+    "swimos_agent_derive",
+    "swimos_server_app"
+]
+
+# Avoid `cfg(tarpaulin)`
+avoid-cfg-tarpaulin = true
+
+# Profile
+profile = "ci"
+
+# Ignore tests
+ignore-tests = true
+
+# Output format
+output = ["xml"]
+
+# Timeout (in seconds)
+timeout = 600
