@@ -33,6 +33,7 @@ exclude = [
     "swimos_agent_derive",
 ]
 
+workspace = true
 avoid-cfg-tarpaulin = true
 profile = "ci"
 ignore-tests = true
