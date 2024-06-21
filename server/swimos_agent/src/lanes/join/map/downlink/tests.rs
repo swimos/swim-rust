@@ -18,20 +18,19 @@ use std::{
 };
 
 use bytes::BytesMut;
+
 use swimos_agent_protocol::MapMessage;
 use swimos_api::{address::Address, agent::AgentConfig};
 use swimos_model::Text;
 use swimos_utilities::routing::RouteUri;
 
+use crate::event_handler::LocalBoxHandlerAction;
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
-    downlink_lifecycle::{
-        event::on_event::OnConsumeEvent, on_failed::OnFailed, on_linked::OnLinked,
-        on_synced::OnSynced, on_unlinked::OnUnlinked,
-    },
+    agent_lifecycle::HandlerContext,
+    downlink_lifecycle::{OnConsumeEvent, OnFailed, OnLinked, OnSynced, OnUnlinked},
     event_handler::{
-        BoxEventHandler, BoxHandlerAction, EventHandler, HandlerActionExt, Modification,
-        ModificationFlags, SideEffect, StepResult,
+        EventHandler, HandlerActionExt, LocalBoxEventHandler, Modification, ModificationFlags,
+        SideEffect, StepResult,
     },
     lanes::{
         join::DownlinkStatus,
@@ -114,7 +113,7 @@ impl TestLifecycle {
 }
 
 impl OnJoinMapLinked<String, TestAgent> for TestLifecycle {
-    type OnJoinMapLinkedHandler<'a> = BoxEventHandler<'a, TestAgent>
+    type OnJoinMapLinkedHandler<'a> = LocalBoxEventHandler<'a, TestAgent>
     where
         Self: 'a;
 
@@ -130,12 +129,12 @@ impl OnJoinMapLinked<String, TestAgent> for TestLifecycle {
                 remote: address,
             });
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnJoinMapSynced<String, i32, TestAgent> for TestLifecycle {
-    type OnJoinMapSyncedHandler<'a> = BoxEventHandler<'a, TestAgent>
+    type OnJoinMapSyncedHandler<'a> = LocalBoxEventHandler<'a, TestAgent>
     where
         Self: 'a;
 
@@ -154,12 +153,12 @@ impl OnJoinMapSynced<String, i32, TestAgent> for TestLifecycle {
                 keys,
             });
         })
-        .boxed()
+        .boxed_local()
     }
 }
 
 impl OnJoinMapUnlinked<String, i32, TestAgent> for TestLifecycle {
-    type OnJoinMapUnlinkedHandler<'a> = BoxHandlerAction<'a, TestAgent, LinkClosedResponse>
+    type OnJoinMapUnlinkedHandler<'a> = LocalBoxHandlerAction<'a, TestAgent, LinkClosedResponse>
     where
         Self: 'a;
 
@@ -182,12 +181,12 @@ impl OnJoinMapUnlinked<String, i32, TestAgent> for TestLifecycle {
                 });
             })
             .map(move |_| response)
-            .boxed()
+            .boxed_local()
     }
 }
 
 impl OnJoinMapFailed<String, i32, TestAgent> for TestLifecycle {
-    type OnJoinMapFailedHandler<'a> = BoxHandlerAction<'a, TestAgent, LinkClosedResponse>
+    type OnJoinMapFailedHandler<'a> = LocalBoxHandlerAction<'a, TestAgent, LinkClosedResponse>
     where
         Self: 'a;
 
@@ -210,7 +209,7 @@ impl OnJoinMapFailed<String, i32, TestAgent> for TestLifecycle {
                 });
             })
             .map(move |_| response)
-            .boxed()
+            .boxed_local()
     }
 }
 
@@ -264,7 +263,7 @@ where
 fn state_for(
     lane: &JoinMapLane<String, i32, String>,
     link_key: &str,
-) -> (Option<Link<i32>>, HashSet<i32>) {
+) -> (Option<(DownlinkStatus, HashSet<i32>)>, HashSet<i32>) {
     let JoinMapLane { link_tracker, .. } = lane;
     let guard = link_tracker.borrow();
     let owned = guard
@@ -272,7 +271,11 @@ fn state_for(
         .iter()
         .filter_map(|(k, v)| if v == link_key { Some(*k) } else { None })
         .collect();
-    (guard.links.get(link_key).cloned(), owned)
+    let state = guard
+        .links
+        .get(link_key)
+        .map(|link| (link.status, link.keys.clone()));
+    (state, owned)
 }
 
 fn set_state_for(
@@ -324,7 +327,7 @@ fn run_on_linked() {
     } else {
         panic!("Events incorrect: {:?}", events);
     }
-    if let (Some(Link { status, keys }), owned) = state_for(&agent.lane, "link") {
+    if let (Some((status, keys)), owned) = state_for(&agent.lane, "link") {
         assert_eq!(status, DownlinkStatus::Linked);
         assert!(keys.is_empty());
         assert!(owned.is_empty());
@@ -522,7 +525,7 @@ fn run_update_linked() {
     assert_eq!(value, Some("a".to_string()));
     let (state, owned) = state_for(&agent.lane, "link");
     let expected = [1].into_iter().collect();
-    if let Some(Link { status, keys }) = state {
+    if let Some((status, keys)) = state {
         assert_eq!(status, DownlinkStatus::Linked);
         assert_eq!(keys, expected);
     }
@@ -572,7 +575,7 @@ fn run_remove_linked() {
 
     let (state, owned) = state_for(&agent.lane, "link");
     let expected = [2].into_iter().collect();
-    if let Some(Link { status, keys }) = state {
+    if let Some((status, keys)) = state {
         assert_eq!(status, DownlinkStatus::Linked);
         assert_eq!(keys, expected);
     }
@@ -621,7 +624,7 @@ fn run_clear_linked() {
     assert!(value.is_none());
     let (state, owned) = state_for(&agent.lane, "link");
 
-    if let Some(Link { status, keys }) = state {
+    if let Some((status, keys)) = state {
         assert_eq!(status, DownlinkStatus::Linked);
         assert!(keys.is_empty());
     }
@@ -672,7 +675,7 @@ fn run_take_linked() {
     let expected = [1].into_iter().collect();
     let (state, owned) = state_for(&agent.lane, "link");
 
-    if let Some(Link { status, keys }) = state {
+    if let Some((status, keys)) = state {
         assert_eq!(status, DownlinkStatus::Linked);
         assert_eq!(keys, expected);
     }
@@ -723,7 +726,7 @@ fn run_drop_linked() {
     let expected = [2].into_iter().collect();
     let (state, owned) = state_for(&agent.lane, "link");
 
-    if let Some(Link { status, keys }) = state {
+    if let Some((status, keys)) = state {
         assert_eq!(status, DownlinkStatus::Linked);
         assert_eq!(keys, expected);
     }
@@ -782,7 +785,7 @@ fn run_on_synced() {
 
     let (state, owned) = state_for(&agent.lane, "link");
 
-    if let Some(Link { status, keys }) = state {
+    if let Some((status, keys)) = state {
         assert_eq!(status, DownlinkStatus::Linked);
         assert_eq!(keys, expected);
     }

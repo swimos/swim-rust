@@ -34,35 +34,6 @@ fn iters() {
     forest.insert("/listener/1", ());
     forest.insert("/listener/2", ());
 
-    let uris = forest
-        .prefix_iter("/unit/1")
-        .map(|(uri, _)| uri)
-        .collect::<HashSet<String>>();
-
-    assert_eq!(
-        uris,
-        HashSet::from([
-            "/unit/1/cnt/2".to_string(),
-            "/unit/1/cnt/s/1".to_string(),
-            "/unit/1/blah".to_string(),
-        ])
-    );
-
-    let uris = forest
-        .prefix_iter("/unit/2")
-        .map(|(uri, _)| uri)
-        .collect::<HashSet<String>>();
-    assert_eq!(uris, HashSet::from(["/unit/2/cnt/1".to_string()]));
-
-    let uris = forest
-        .prefix_iter("/listener")
-        .map(|(uri, _)| uri)
-        .collect::<HashSet<String>>();
-    assert_eq!(
-        uris,
-        HashSet::from(["/listener/1".to_string(), "/listener/2".to_string()])
-    );
-
     let all_uris = forest
         .uri_iter()
         .map(|(uri, _)| uri)
@@ -78,56 +49,6 @@ fn iters() {
             "/unit/1/cnt/s/1".to_string(),
             "/listener/2".to_string(),
             "/listener/1".to_string()
-        ])
-    );
-}
-
-// Tests that path segments are entered and exited correctly in the iterator, particularly at
-// junction nodes - such as /cnt/s/1
-#[test]
-fn iters2() {
-    let mut forest = UriForest::new();
-
-    forest.insert("/unit/1/cnt/s/1/a/b/c/d/e/f/g", ());
-    forest.insert("/unit/1/cnt/s/1/2/3/4/5/6/7/8", ());
-    forest.insert("/unit/1/cnt/s/1/2/3", ());
-    forest.insert("/unit/1/cnt/2/h/i/j/k", ());
-    forest.insert("/unit/1/blah/", ());
-
-    let uris = forest
-        .prefix_iter("/unit/1")
-        .map(|(uri, _)| uri)
-        .collect::<HashSet<String>>();
-    assert_eq!(
-        uris,
-        HashSet::from([
-            "/unit/1/cnt/2/h/i/j/k".to_string(),
-            "/unit/1/cnt/s/1/2/3".to_string(),
-            "/unit/1/cnt/s/1/2/3/4/5/6/7/8".to_string(),
-            "/unit/1/cnt/s/1/a/b/c/d/e/f/g".to_string(),
-            "/unit/1/blah".to_string(),
-        ])
-    );
-}
-
-#[test]
-fn iter3() {
-    let mut forest = UriForest::new();
-
-    forest.insert("/unit/1/a/b/c", ());
-    forest.insert("/unit/1/a/d/e", ());
-    forest.insert("/unit/1/blah/", ());
-
-    let uris = forest
-        .prefix_iter("/unit/1")
-        .map(|(uri, _)| uri)
-        .collect::<HashSet<String>>();
-    assert_eq!(
-        uris,
-        HashSet::from([
-            "/unit/1/a/d/e".to_string(),
-            "/unit/1/a/b/c".to_string(),
-            "/unit/1/blah".to_string(),
         ])
     );
 }
@@ -315,10 +236,8 @@ fn get() {
     forest.insert("/unit/4/cnt/4", 4);
     forest.insert("/unit/5/cnt/5", 5);
 
-    assert_eq!(forest.get("/unit/3/cnt/3"), Some(&3));
     assert_eq!(forest.get_mut("/unit/3/cnt/3"), Some(&mut 3));
 
-    assert_eq!(forest.get("/unit/3/cnt/33"), None);
     assert_eq!(forest.get_mut("/unit/3/cnt/33"), None);
 }
 

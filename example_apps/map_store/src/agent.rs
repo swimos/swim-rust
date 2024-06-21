@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt},
     lanes::{CommandLane, ValueLane},
     lifecycle, projections,
@@ -85,7 +85,7 @@ impl ExampleLifecycle {
                 context
                     .get_value(ExampleAgent::LANE)
                     .and_then(move |v| context.update(ExampleAgent::SAVED, key, v))
-                    .boxed()
+                    .boxed_local()
             }
             Instruction::Restore(name) => {
                 let key = name.clone();
@@ -93,7 +93,7 @@ impl ExampleLifecycle {
                     .get_entry(ExampleAgent::SAVED, key)
                     .map(|maybe: Option<i32>| maybe.unwrap_or_default())
                     .and_then(move |v| context.set_value(ExampleAgent::LANE, v))
-                    .boxed()
+                    .boxed_local()
             }
         }
     }

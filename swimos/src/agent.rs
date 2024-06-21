@@ -54,7 +54,7 @@
 //!
 //!  ```no_run
 //! use swimos::agent::{AgentLaneModel, lifecycle};
-//! use swimos::agent::agent_lifecycle::utility::HandlerContext;
+//! use swimos::agent::agent_lifecycle::HandlerContext;
 //! use swimos::agent::event_handler::EventHandler;
 //! use swimos::agent::lanes::ValueLane;
 //!
@@ -228,7 +228,7 @@ pub mod agent_model {
 
     pub mod downlink {
         pub mod hosted {
-            pub use swimos_agent::agent_model::downlink::hosted::{
+            pub use swimos_agent::agent_model::downlink::{
                 EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle,
             };
         }
@@ -236,7 +236,7 @@ pub mod agent_model {
 }
 
 pub mod item {
-    pub use swimos_agent::item::AgentItem;
+    pub use swimos_agent::AgentItem;
 }
 
 pub mod lanes {

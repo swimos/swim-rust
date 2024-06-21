@@ -54,7 +54,7 @@ impl<T> Default for SupplyLaneInner<T> {
 /// A stateless lane that pushes events received directly to all uplinks attached to it.
 ///
 /// A Supply lane can push a value by executing an instance of [`Supply`] (which can be constructed
-/// using the [`crate::agent_lifecycle::utility::HandlerContext`]).
+/// using the [`crate::agent_lifecycle::HandlerContext`]).
 #[derive(Debug)]
 pub struct SupplyLane<T> {
     id: u64,

@@ -24,7 +24,7 @@ use tracing::debug;
 
 use crate::event_handler::EventHandlerError;
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{ActionContext, HandlerAction, StepResult},
     meta::AgentMetadata,
 };
@@ -52,7 +52,7 @@ mod tests;
 
 /// Trait for the lifecycle of an HTTP lane.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Get` - The type of the payloads of responses to GET requests to the lane.
 /// * `Post` - The type of the payloads of incoming POST requests.
 /// * `Put` - The type of the payloads of incoming PUT requests.
@@ -70,7 +70,7 @@ impl<Context, Get, Post, Put, LC> HttpLaneLifecycle<Get, Post, Put, Context> for
 /// Trait for the lifecycle of an HTTP lane where the lifecycle has access to some shared state (shared
 /// with all other lifecycles in the agent).
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Get` - The type of the payloads of responses to GET requests to the lane.
 /// * `Post` - The type of the payloads of incoming POST requests.
 /// * `Put` - The type of the payloads of incoming PUT requests.
@@ -138,7 +138,7 @@ type SharedHttpLifecycleType<Context, Shared, Get, Post, Put> =
 
 /// A lifecycle for an HTTP lane with some shared state (shard with other lifecycles in the same agent).
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context for the event handlers (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
 /// * `Get` - The type of the payloads of responses to GET requests to the lane.

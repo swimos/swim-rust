@@ -20,30 +20,29 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use futures::stream::unfold;
 use futures::{Future, FutureExt, Stream, StreamExt};
+use tokio::time::Instant;
+
 use swimos_api::address::Address;
 use swimos_form::read::RecognizerReadable;
 use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
 use swimos_utilities::routing::RouteUri;
-use tokio::time::Instant;
 
-use crate::agent_model::downlink::hosted::{
-    EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle,
-};
+use crate::agent_model::downlink::{EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle};
 use crate::agent_model::downlink::{
     OpenEventDownlinkAction, OpenMapDownlinkAction, OpenValueDownlinkAction,
 };
 use crate::config::{MapDownlinkConfig, SimpleDownlinkConfig};
-use crate::downlink_lifecycle::event::EventDownlinkLifecycle;
-use crate::downlink_lifecycle::map::MapDownlinkLifecycle;
-use crate::downlink_lifecycle::value::ValueDownlinkLifecycle;
+use crate::downlink_lifecycle::ValueDownlinkLifecycle;
+use crate::downlink_lifecycle::{EventDownlinkLifecycle, MapDownlinkLifecycle};
 use crate::event_handler::{
     run_after, run_schedule, run_schedule_async, ConstHandler, EventHandler, GetParameter,
     HandlerActionExt, SendCommand, Sequentially, Stop, Suspend, UnitHandler,
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
 use crate::item::{
-    MapLikeItem, MutableMapLikeItem, MutableValueLikeItem, TransformableMapLikeItem, ValueLikeItem,
+    JoinLikeItem, MapLikeItem, MutableMapLikeItem, MutableValueLikeItem, TransformableMapLikeItem,
+    ValueLikeItem,
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::demand::{Cue, DemandLane};
@@ -60,8 +59,12 @@ pub use self::downlink_builder::map::{StatefulMapDownlinkBuilder, StatelessMapDo
 pub use self::downlink_builder::value::{
     StatefulValueDownlinkBuilder, StatelessValueDownlinkBuilder,
 };
-use self::join_map_builder::StatelessJoinMapLaneBuilder;
-pub use self::join_value_builder::{StatefulJoinValueLaneBuilder, StatelessJoinValueLaneBuilder};
+pub use self::join_map_builder::{
+    StatefulJoinMapLifecycleBuilder, StatelessJoinMapLifecycleBuilder,
+};
+pub use self::join_value_builder::{
+    StatefulJoinValueLifecycleBuilder, StatelessJoinValueLifecycleBuilder,
+};
 
 mod downlink_builder;
 mod join_map_builder;
@@ -393,7 +396,16 @@ impl<Agent: 'static> HandlerContext<Agent> {
         Suspend::new(future)
     }
 
-    /// Schedule a handler to run after a fixed delay.
+    /// Suspend an [`EventHandler`] to be executed after a fixed duration.
+    ///
+    /// # Note
+    ///
+    /// Suspended handlers must be [`Send`] as the task running the agent maybe moved to another thread
+    /// before the handler is executed.
+    ///
+    /// # Arguments
+    /// * `delay` - The duration to wait.
+    /// * `handler` - The handler to run after the delay.
     pub fn run_after<H>(
         &self,
         delay: Duration,
@@ -405,11 +417,19 @@ impl<Agent: 'static> HandlerContext<Agent> {
         run_after(delay, handler)
     }
 
-    /// Run a (potentially infinite) sequence of handlers on a schedule. For each pair of a duration
+    /// Run a (potentially infinite) sequence of [`EventHandler`]s on a schedule. For each pair of a duration
     /// and handler produced by the iterator the handler will be scheduled to run after the delay.
     /// This is the most general scheduling handler and it will often be possible to achieve simpler
-    /// schedule with [run_handlers_with_delay](HandlerAction::run_handlers_with_delay) and
-    /// [schedule_repeatedly](HandlerAction::schedule_repeatedly).
+    /// schedule with [run_handlers_with_delay](HandlerContext::run_handlers_with_delay) and
+    /// [schedule_repeatedly](HandlerContext::schedule_repeatedly).
+    ///
+    /// # Note
+    ///
+    /// Both the iterator and the handlers must be [`Send`] as the task running the agent could be moved while
+    /// they are still in use.
+    ///
+    /// # Arguments
+    /// * `schedule` - An iterator returning a sequence of pairs of delays and handlers.
     pub fn run_schedule<I, H>(&self, schedule: I) -> impl EventHandler<Agent> + Send + 'static
     where
         I: IntoIterator<Item = (Duration, H)> + 'static,
@@ -419,16 +439,34 @@ impl<Agent: 'static> HandlerContext<Agent> {
         run_schedule(schedule)
     }
 
-    /// Run a (potentially infinite) sequence of futures (each resulting in an event handler).
-    pub fn suspend_schedule<S, H>(&self, schedule: S) -> impl EventHandler<Agent> + Send + 'static
+    /// Schedule a (potentially infinite) stream of [`EventHandler`]s to run. The handlers are scheduled sequentially,
+    /// not simultaneously.
+    ///
+    /// # Note
+    ///
+    /// Both the stream and the handlers must be [`Send`] as the task running the agent could be moved to another thread
+    /// while they are still in use.
+    ///
+    /// # Arguments
+    /// * `handlers` - A asynchronous stream of handlers.
+    pub fn suspend_schedule<S, H>(&self, handlers: S) -> impl EventHandler<Agent> + Send + 'static
     where
         S: Stream<Item = H> + Send + Unpin + 'static,
         H: EventHandler<Agent> + Send + 'static,
     {
-        run_schedule_async(schedule)
+        run_schedule_async(handlers)
     }
 
     /// Schedule a (potentially infinite) sequence of handlers to run with a fixed delay between them.
+    ///
+    /// # Note
+    ///
+    /// Both the iterator and the handlers must be [`Send`] as the task running the agent could be moved
+    /// to another thread while they are still in use.
+    ///
+    /// # Arguments
+    /// * `delay` - The fixed delay.
+    /// * `handlers` - An iterator returning a sequence of pairs of delays and handlers.
     pub fn run_handlers_with_delay<I, H>(
         &self,
         delay: Duration,
@@ -442,9 +480,18 @@ impl<Agent: 'static> HandlerContext<Agent> {
         self.run_schedule(handlers.into_iter().map(move |h| (delay, h)))
     }
 
-    /// Schedule a (potentially infinite) sequence of futures (each resulting in an event handler) to
+    /// Schedule a (potentially infinite) sequence of futures (each resulting in an [`EventHandler`]) to
     /// run with a fixed delay between them. The delay is computed when the future starts executing so if
     /// a futures takes longer than the delay to complete, the next will start immediately.
+    ///
+    /// # Note
+    ///
+    /// The iterator, futures and handlers must be [`Send`] as the task running the agent could be moved
+    /// to another thread while they are still in use.
+    ///
+    /// # Arguments
+    /// * `delay` - The fixed delay.
+    /// * `futures` - The sequence of event futures.
     pub fn suspend_handlers_with_delay<I, F, H>(
         &self,
         delay: Duration,
@@ -471,7 +518,17 @@ impl<Agent: 'static> HandlerContext<Agent> {
         self.suspend_schedule(stream.boxed())
     }
 
-    /// Schedule a sequence of handlers, generated by a closure, to execute with a fixed delay between them.
+    /// Schedule a (potentially infinite) sequence of handlers, generated by a closure, to run with a
+    /// fixed delay between them.
+    ///
+    /// # Note
+    ///
+    /// Both the closure and the handlers must be [`Send`] as the task running the agent could be moved
+    /// to another thread while they are still in use.
+    ///
+    /// # Arguments
+    /// * `delay` - The fixed delay.
+    /// * `f` - An closure generating the handlers.
     pub fn schedule_repeatedly<H, F>(
         &self,
         delay: Duration,
@@ -484,9 +541,18 @@ impl<Agent: 'static> HandlerContext<Agent> {
         self.run_handlers_with_delay(delay, std::iter::from_fn(f))
     }
 
-    /// Schedule a sequences of futures (each resulting in an event handler) to execute with a fixed delay
-    /// between them. The delay is computed when the future starts executing so if a futures takes longer
-    /// than the delay to complete, the next will start immediately.
+    /// Suspend a (potentially infinite) sequence of handlers, generated by a closure, to run with a
+    /// fixed delay between them. The closure generates a sequence of futures which can be awaited to
+    /// produce and [`EventHandler`] that is then executed.
+    ///
+    /// # Note
+    ///
+    /// Both the closure, the futures and the handlers must be [`Send`] as the task running the agent could
+    /// be moved to another thread while they are still in use.
+    ///
+    /// # Arguments
+    /// * `delay` - The fixed delay.
+    /// * `f` - An closure generating the futures.
     pub fn suspend_repeatedly<H, Fut, F>(
         &self,
         delay: Duration,
@@ -501,6 +567,10 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 
     /// Suspend a future to be executed by the agent task.
+    /// # Note
+    ///
+    /// The future must be [`Send`] as the task running the agent could be moved to another thread while it
+    /// is still in use.
     pub fn suspend_effect<Fut>(&self, future: Fut) -> impl EventHandler<Agent> + Send + 'static
     where
         Fut: Future<Output = ()> + Send + 'static,
@@ -649,7 +719,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     ///
     /// # Arguments
     /// * `lane` - Projection to the lane.
-    /// * `key - The key for the downlink.
+    /// * `key` - The key for the downlink.
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane_uri` - The lane to downlink from.
@@ -670,12 +740,30 @@ impl<Agent: 'static> HandlerContext<Agent> {
         JoinValueAddDownlink::new(lane, key, address)
     }
 
+    /// Removes a downlink from a Join lane. Removing any associated values the downlink holds in
+    /// the underlying map.
+    ///
+    /// # Arguments
+    /// * `lane` - Projection to the lane.
+    /// * `link_key` - The link key for the downlink.
+    pub fn remove_downlink<L, K>(
+        &self,
+        lane: fn(&Agent) -> &L,
+        link_key: K,
+    ) -> impl HandlerAction<Agent, Completion = ()> + Send + 'static
+    where
+        K: Clone + Send + Eq + PartialEq + Hash + 'static,
+        L: JoinLikeItem<K>,
+    {
+        L::remove_downlink_handler(lane, link_key)
+    }
+
     /// Add a downlink to a Join Map lane. All key-value pairs received on the downlink will be set into the
     /// map state of the lane.
     ///
     /// # Arguments
     /// * `lane` - Projection to the lane.
-    /// * `link_key - A key to identify the link.
+    /// * `link_key` - A key to identify the link.
     /// * `host` - The remote host at which the agent resides (a local agent if not specified).
     /// * `node` - The node URI of the agent.
     /// * `lane_uri` - The lane to downlink from.
@@ -707,6 +795,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 }
 
+/// Context passed to agent methods used to construct lifecycles for [`JoinValueLane`]s.
 pub struct JoinValueContext<Agent, K, V> {
     _type: PhantomData<fn(&Agent, K, V)>,
 }
@@ -727,11 +816,12 @@ where
     V::Rec: Send,
 {
     /// Creates a builder to construct a lifecycle for the downlinks of a [`JoinValueLane`].
-    pub fn builder(&self) -> StatelessJoinValueLaneBuilder<Agent, K, V> {
-        StatelessJoinValueLaneBuilder::default()
+    pub fn builder(&self) -> StatelessJoinValueLifecycleBuilder<Agent, K, V> {
+        StatelessJoinValueLifecycleBuilder::default()
     }
 }
 
+/// Context passed to agent methods used to construct lifecycles for [`JoinMapLane`]s.
 pub struct JoinMapContext<Agent, L, K, V> {
     _type: PhantomData<fn(&Agent, L, K, V)>,
 }
@@ -754,7 +844,7 @@ where
     V::BodyRec: Send,
 {
     /// Creates a builder to construct a lifecycle for the downlinks of a [`JoinMapLane`].
-    pub fn builder(&self) -> StatelessJoinMapLaneBuilder<Agent, L, K, V> {
-        StatelessJoinMapLaneBuilder::default()
+    pub fn builder(&self) -> StatelessJoinMapLifecycleBuilder<Agent, L, K, V> {
+        StatelessJoinMapLifecycleBuilder::default()
     }
 }

@@ -140,7 +140,7 @@ where
     }
 }
 
-/// [`LaneInitializer`] to construct the state of a value lane.
+/// [`ItemInitializer`] to construct the state of a value lane.
 pub struct ValueLaneInitializer<Agent, T> {
     projection: fn(&Agent) -> &ValueLane<T>,
 }
@@ -151,7 +151,7 @@ impl<Agent, T> ValueLaneInitializer<Agent, T> {
     }
 }
 
-/// [`LaneInitializer`] to construct the state of a value store.
+/// [`ItemInitializer`] to construct the state of a value store.
 pub struct ValueStoreInitializer<Agent, T> {
     projection: fn(&Agent) -> &ValueStore<T>,
 }
@@ -162,7 +162,7 @@ impl<Agent, T> ValueStoreInitializer<Agent, T> {
     }
 }
 
-/// [`LaneInitializer`] to construct the state of a map lane.
+/// [`ItemInitializer`] to construct the state of a map lane.
 pub struct MapLaneInitializer<Agent, K, V> {
     projection: fn(&Agent) -> &MapLane<K, V>,
 }
@@ -173,7 +173,7 @@ impl<Agent, K, V> MapLaneInitializer<Agent, K, V> {
     }
 }
 
-/// [`LaneInitializer`] to construct the state of a map store.
+/// [`ItemInitializer`] to construct the state of a map store.
 pub struct MapStoreInitializer<Agent, K, V> {
     projection: fn(&Agent) -> &MapStore<K, V>,
 }
