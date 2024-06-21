@@ -119,7 +119,7 @@ regex = "1.3.6"
 fnv = "1.0.7"
 cursive = { default-features = false, version = "0.20" }
 duration-str = "0.11.2"
-quick-xml = "0.31.0"
+quick-xml = "0.32.0"
 csv = "1.2"
 serde-xml-rs = "0.6"
 axum = "0.6.20"
