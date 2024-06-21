@@ -24,6 +24,21 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --all-features --workspace --lib --tests --profile "ci"
 
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.65
+      - uses: Swatinem/rust-cache@v2
+      - name: Build Documentation
+        run: cargo doc --lib --no-deps --all-features --workspace
+        env:
+          RUSTDOCFLAGS: --cfg docsrs -Dwarnings
+
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
@@ -49,3 +64,47 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-features --all-targets --workspace -- -D warnings
+
+  code_coverage:
+    name: Code Coverage
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.78.0
+
+      - name: Install sccache
+        uses: actions-rs/install@v0.1
+        with:
+          tool: sccache
+
+      - name: Install Tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Generate code coverage
+        run: cargo tarpaulin --ignore-tests -o xml -t 600 --exclude-files demos form_derive agent_derive --avoid-cfg-tarpaulin --profile "ci"
+
+      - name: Download the Codecov uploader and its keys
+        run: |
+          curl -Os https://uploader.codecov.io/latest/linux/codecov
+          curl -Os https://uploader.codecov.io/latest/linux/codecov.SHA256SUM
+          curl -Os https://uploader.codecov.io/latest/linux/codecov.SHA256SUM.sig
+
+      - name: Verify the signature of the SHA256SUM
+        run: |
+          echo ${{ secrets.CODECOV_PUBLIC_KEY }} | base64 --decode | gpg --import
+          gpg --verify codecov.SHA256SUM.sig codecov.SHA256SUM
+  
+      - name: Verify the integrity of the Codecov uploader
+        run: shasum -a 256 -c codecov.SHA256SUM
+
+      - name: Upload code coverage
+        run: |
+          set -ex
+          chmod +x codecov
+          ./codecov -t ${{ secrets.CODECOV_TOKEN }}
