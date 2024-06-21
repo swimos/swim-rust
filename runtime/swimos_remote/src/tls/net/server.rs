@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::sync::OnceLock;
 use std::{net::SocketAddr, sync::Arc};
 
 use crate::net::{
@@ -22,6 +23,7 @@ use futures::{
     stream::{unfold, BoxStream, FuturesUnordered},
     Future, FutureExt, Stream, StreamExt, TryStreamExt,
 };
+use rustls::crypto::CryptoProvider;
 use rustls::pki_types::PrivateKeyDer;
 use rustls::KeyLogFile;
 use rustls_pemfile::Item;
@@ -33,6 +35,22 @@ use crate::tls::{
     errors::TlsError,
     maybe::MaybeTlsStream,
 };
+
+static PROVIDER: OnceLock<Arc<CryptoProvider>> = OnceLock::new();
+
+fn provider() -> Arc<CryptoProvider> {
+    PROVIDER
+        .get_or_init(|| {
+            let provider = rustls::crypto::aws_lc_rs::default_provider();
+            // This will fail if the provider has been initialised elsewhere unexpectedly.
+            provider
+                .clone()
+                .install_default()
+                .expect("Crypto Provider has already been initialised elsewhere.");
+            Arc::new(provider)
+        })
+        .clone()
+}
 
 /// [`ServerConnections`] implementation that only supports secure connections.
 #[derive(Clone)]
@@ -92,11 +110,13 @@ impl TryFrom<ServerConfig> for RustlsServerNetworking {
                     _ => return Err(TlsError::InvalidPrivateKey),
                 }
             }
-            CertFormat::Der => PrivateKeyDer::try_from(body)
-                .map_err(|e| TlsError::BadCertificate(rustls::Error::General(e.to_string())))?,
+            CertFormat::Der => {
+                PrivateKeyDer::try_from(body).map_err(|_| TlsError::InvalidPrivateKey)?
+            }
         };
 
-        let mut config = rustls::ServerConfig::builder()
+        let mut config = rustls::ServerConfig::builder_with_provider(provider())
+            .with_safe_default_protocol_versions()?
             .with_no_client_auth()
             .with_single_cert(chain, server_key)
             .expect("Invalid certs or private key.");
