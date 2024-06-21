@@ -83,7 +83,7 @@ pub struct ServerConfig {
     pub chain: CertChain,
     /// An unvalidated private key for a server.
     pub key: PrivateKey,
-    /// Whether to enable a [`KeyLog`] implementation that opens a file whose name is given by the
+    /// Whether to enable a [`rustls::KeyLog`] implementation that opens a file whose name is given by the
     /// `SSLKEYLOGFILE` environment variable, and writes keys into it. While this may be enabled,
     /// if `SSLKEYLOGFILE` is not set, it will do nothing.
     pub enable_log_file: bool,
