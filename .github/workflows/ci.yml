@@ -97,6 +97,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Clang
+        # Required for rocksdb
         run: apt-get update && apt-get install -y llvm llvm-dev clang
 
       - name: Set libclang path
