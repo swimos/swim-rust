@@ -1,3 +1,4 @@
+# Exclude example applications and derive macros
 exclude = [
     "example_apps/example_util",
     "example_apps/console",
@@ -30,7 +31,6 @@ exclude = [
     "example_apps/time_series",
     "swimos_form_derive",
     "swimos_agent_derive",
-    "swimos_server_app"
 ]
 
 # Avoid `cfg(tarpaulin)`
