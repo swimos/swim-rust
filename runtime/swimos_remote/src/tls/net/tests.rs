@@ -17,6 +17,7 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 use crate::dns::Resolver;
 use crate::net::{ClientConnections, ConnectionError, Listener, ListenerError, Scheme};
 use futures::{future::join, StreamExt};
+use rustls::crypto::aws_lc_rs;
 
 use crate::tls::{
     CertChain, CertificateFile, ClientConfig, PrivateKey, RustlsClientNetworking,
@@ -46,18 +47,12 @@ fn make_server_config() -> ServerConfig {
         CertificateFile::der(ca_cert),
     ]);
 
-    let provider = rustls::crypto::aws_lc_rs::default_provider();
-    provider
-        .clone()
-        .install_default()
-        .expect("Crypto Provider has already been initialised elsewhere.");
-
     let key = PrivateKey::der(server_key);
     ServerConfig {
         chain,
         key,
         enable_log_file: false,
-        provider: Arc::new(provider),
+        provider: Arc::new(aws_lc_rs::default_provider()),
     }
 }
 
@@ -67,6 +62,7 @@ fn make_client_config() -> ClientConfig {
     ClientConfig {
         use_webpki_roots: true,
         custom_roots: vec![CertificateFile::der(ca_cert)],
+        provider: Arc::new(aws_lc_rs::default_provider()),
     }
 }
 

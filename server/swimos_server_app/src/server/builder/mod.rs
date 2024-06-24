@@ -21,6 +21,7 @@ use ratchet::{
     deflate::{DeflateConfig, DeflateExtProvider},
     NoExtProvider, WebSocketStream,
 };
+use rustls::crypto::aws_lc_rs;
 use swimos_api::{
     agent::Agent,
     error::StoreError,
@@ -188,8 +189,11 @@ impl ServerBuilder {
             let networking = RustlsNetworking::new_tls(client, server);
             Ok(with_store(bind_to, routes, networking, config)?)
         } else {
-            let client =
-                RustlsClientNetworking::try_from_config(resolver.clone(), ClientConfig::default())?;
+            let provider = Arc::new(aws_lc_rs::default_provider());
+            let client = RustlsClientNetworking::try_from_config(
+                resolver.clone(),
+                ClientConfig::new(Default::default(), provider),
+            )?;
             let server = TokioPlainTextNetworking::new(resolver);
             let networking = RustlsNetworking::new_plain_text(client, server);
             Ok(with_store(bind_to, routes, networking, config)?)

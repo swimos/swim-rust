@@ -47,6 +47,7 @@ impl RustlsClientNetworking {
         let ClientConfig {
             use_webpki_roots,
             custom_roots,
+            provider,
         } = config;
         let mut root_store = RootCertStore::empty();
         if use_webpki_roots {
@@ -59,7 +60,8 @@ impl RustlsClientNetworking {
             }
         }
 
-        let config = rustls::ClientConfig::builder()
+        let config = rustls::ClientConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()?
             .with_root_certificates(root_store)
             .with_no_client_auth();
 

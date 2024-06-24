@@ -87,8 +87,7 @@ pub struct ServerConfig {
     /// `SSLKEYLOGFILE` environment variable, and writes keys into it. While this may be enabled,
     /// if `SSLKEYLOGFILE` is not set, it will do nothing.
     pub enable_log_file: bool,
-    /// Process-wide [`CryptoProvider`] that must already have been installed as the default
-    /// provider.
+    /// [`CryptoProvider`] to use when building the [`rustls::ServerConfig`].
     pub provider: Arc<CryptoProvider>,
 }
 
@@ -107,22 +106,15 @@ impl ServerConfig {
 pub struct ClientConfig {
     pub use_webpki_roots: bool,
     pub custom_roots: Vec<CertificateFile>,
+    pub provider: Arc<CryptoProvider>,
 }
 
 impl ClientConfig {
-    pub fn new(custom_roots: Vec<CertificateFile>) -> Self {
+    pub fn new(custom_roots: Vec<CertificateFile>, provider: Arc<CryptoProvider>) -> Self {
         ClientConfig {
             use_webpki_roots: true,
             custom_roots,
-        }
-    }
-}
-
-impl Default for ClientConfig {
-    fn default() -> Self {
-        Self {
-            use_webpki_roots: true,
-            custom_roots: vec![],
+            provider,
         }
     }
 }
