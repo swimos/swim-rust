@@ -25,7 +25,7 @@ pub enum TlsError {
     InvalidPrivateKey,
     /// Certificate validation failed.
     #[error("Invalid certificate: {0}")]
-    BadCertificate(#[from] webpki::Error),
+    BadCertificate(#[from] rustls::Error),
     /// The provided host name was invalid.
     #[error("Invalid DNS host name.")]
     BadHostName,
