@@ -1,9 +1,42 @@
 [coverage]
-exclude-files = ["example_apps", "swimos_form_derive", "swimos_agent_derive"]
+exclude = [
+    "example-util",
+    "console",
+    "console-views",
+    "demand-lane",
+    "demand-map-lane",
+    "value-lane",
+    "map-lane",
+    "command-lane",
+    "value-store",
+    "map-store",
+    "supply-lane",
+    "value-lane-persistence",
+    "map-lane-persistence",
+    "value-store-persistence",
+    "map-store-persistence",
+    "event-downlink",
+    "value-downlink",
+    "map-downlink",
+    "local-downlink",
+    "http-lane",
+    "transit",
+    "transit-model",
+    "tutorial-app",
+    "tutorial-app-model",
+    "tutorial-app-generator",
+    "join_map",
+    "join_value",
+    "aggregations",
+    "time_series",
+    "swimos_form_derive",
+    "swimos_agent_derive",
+    "macro_utilities",
+]
 workspace = true
 avoid-cfg-tarpaulin = true
 profile = "ci"
 ignore-tests = true
 out = ["Xml"]
-timeout = "600s"
+timeout = 600
 all-features = true
