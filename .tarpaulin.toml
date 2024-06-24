@@ -33,11 +33,10 @@ exclude = [
     "swimos_agent_derive",
     "macro_utilities",
 ]
-
 workspace = true
 avoid-cfg-tarpaulin = true
 profile = "ci"
 ignore-tests = true
-output = ["xml"]
+out = ["Xml"]
 timeout = "600s"
 all-features = true
