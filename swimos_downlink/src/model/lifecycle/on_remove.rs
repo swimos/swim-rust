@@ -16,7 +16,7 @@ use crate::model::lifecycle::{MapRemoveFn, SharedMapRemoveFn};
 use futures::future::{ready, Ready};
 use std::collections::BTreeMap;
 use std::future::Future;
-use swimos_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
+use swimos_utilities::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
 /// Trait for event handlers to be called when a map downlink removes an entry.
 pub trait OnRemove<K, V>: Send {

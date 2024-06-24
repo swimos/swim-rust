@@ -23,8 +23,8 @@ use std::{
 
 use parking_lot::RwLock;
 use swimos_api::agent::HttpLaneRequest;
+use swimos_messages::remote_protocol::{AgentResolutionError, FindNode, NodeConnectionRequest};
 use swimos_model::Text;
-use swimos_remote::{AgentResolutionError, FindNode, NodeConnectionRequest};
 use swimos_utilities::{time::AtomicInstant, trigger};
 use tokio::{
     sync::{mpsc, oneshot},

@@ -90,7 +90,7 @@ The `HandlerContext`.
 The aid in the construction of event handlers, a factor type is provided in the form of:
 
 ```rust
-swimos::agent::agent_lifecycle::utility::HandlerContext<AgentType>
+swimos::agent::agent_lifecycle::HandlerContext<AgentType>
 ```
 
 This allows for the easier construction of event handlers that will run in the context of the `AgentType`. Typically, in

@@ -26,23 +26,21 @@ use futures::{
     StreamExt,
 };
 use futures::{Future, FutureExt};
-use swimos_api::agent::{HttpLaneRequest, HttpLaneResponse, LaneConfig};
-use swimos_api::downlink::DownlinkKind;
+use swimos_agent_protocol::encoding::store::{RawMapStoreInitDecoder, RawValueStoreInitDecoder};
+use swimos_agent_protocol::{LaneRequest, MapMessage};
+use swimos_api::agent::DownlinkKind;
+use swimos_api::agent::{HttpLaneRequest, LaneConfig, RawHttpLaneResponse};
 use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
-use swimos_api::protocol::map::{MapMessageDecoder, RawMapOperationDecoder};
-use swimos_api::protocol::WithLengthBytesCodec;
-pub use swimos_api::store::StoreKind;
 use swimos_api::{
+    address::Address,
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
     error::{AgentInitError, AgentTaskError, FrameIoError},
-    protocol::{agent::LaneRequest, map::MapMessage},
+    http::{Header, StandardHeaderName, StatusCode, Version},
 };
-use swimos_model::address::Address;
-use swimos_model::http::{Header, StandardHeaderName, StatusCode, Version};
 use swimos_model::Text;
-use swimos_utilities::future::retryable::RetryStrategy;
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::future::RetryStrategy;
+use swimos_utilities::routing::RouteUri;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace};
@@ -51,7 +49,7 @@ use uuid::Uuid;
 use crate::agent_lifecycle::item_event::ItemEvent;
 use crate::agent_model::io::LaneReadEvent;
 use crate::event_handler::{
-    ActionContext, BoxEventHandler, BoxJoinLaneInit, HandlerFuture, ModificationFlags,
+    ActionContext, BoxJoinLaneInit, HandlerFuture, LocalBoxEventHandler, ModificationFlags,
 };
 use crate::{
     agent_lifecycle::AgentLifecycle,
@@ -59,6 +57,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
+/// Support for executing downlink lifecycles within agents.
 pub mod downlink;
 mod init;
 mod io;
@@ -69,13 +68,13 @@ use io::{ItemWriter, LaneReader};
 
 use bitflags::bitflags;
 
-use self::downlink::handlers::{BoxDownlinkChannel, DownlinkChannelError, DownlinkChannelEvent};
+use self::downlink::{BoxDownlinkChannel, DownlinkChannelError, DownlinkChannelEvent};
 use self::init::{run_item_initializer, InitializedItem};
 pub use init::{
     ItemInitializer, MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer,
     ValueStoreInitializer,
 };
-pub use swimos_api::lane::WarpLaneKind;
+pub use swimos_api::agent::{StoreKind, WarpLaneKind};
 
 /// Response from a lane after it has written bytes to its outgoing buffer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,8 +90,7 @@ pub enum WriteResult {
     RequiresEvent,
 }
 
-pub type InitFn<Agent> = Box<dyn FnOnce(&Agent) + Send + 'static>;
-
+/// Enumerates the kinds of items that agents can have (excluding HTTP lanes).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum ItemKind {
     Lane(WarpLaneKind),
@@ -100,6 +98,7 @@ pub enum ItemKind {
 }
 
 impl ItemKind {
+    /// Whether an item is map like and so uses the map protocol to communicate with the runtime.
     pub fn map_like(&self) -> bool {
         match self {
             ItemKind::Lane(ty) => ty.map_like(),
@@ -108,6 +107,7 @@ impl ItemKind {
         }
     }
 
+    /// Whether an item is a lane (as opposed to a store) and so should be publicly exposed by the runtime.
     pub fn is_lane(&self) -> bool {
         matches!(self, ItemKind::Lane(_))
     }
@@ -121,13 +121,15 @@ impl ItemKind {
 }
 
 bitflags! {
-    #[derive(Default)]
+    /// Flags to instruct the runtime on how to handle a lane.
+    #[derive(Default, Copy, Clone, Hash, Debug, PartialEq, Eq)]
     pub struct ItemFlags: u8 {
         /// The state of the item should not be persisted.
         const TRANSIENT = 0b01;
     }
 }
 
+/// Type information about an item of an agent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ItemDescriptor {
     WarpLane {
@@ -141,10 +143,14 @@ pub enum ItemDescriptor {
     Http,
 }
 
+/// Full description of an item of an agent.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ItemSpec {
+    /// Unique (within the agent) ID of the item.
     pub id: u64,
+    /// The name of them item (use in the Warp address for lanes).
     pub lifecycle_name: &'static str,
+    /// Type information for the item.
     pub descriptor: ItemDescriptor,
 }
 
@@ -158,9 +164,9 @@ impl ItemSpec {
     }
 }
 
-pub type MapLikeInitializer<T> =
+type MapLikeInitializer<T> =
     Box<dyn ItemInitializer<T, MapMessage<BytesMut, BytesMut>> + Send + 'static>;
-pub type ValueLikeInitializer<T> = Box<dyn ItemInitializer<T, BytesMut> + Send + 'static>;
+type ValueLikeInitializer<T> = Box<dyn ItemInitializer<T, BytesMut> + Send + 'static>;
 
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
@@ -185,14 +191,14 @@ pub trait AgentSpec: Sized + Send {
     /// for a value lane. There will be no handler if the lane does not exist or does not
     /// accept commands.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - The name of the lane.
     /// * `body` - The content of the command.
     fn on_value_command(&self, lane: &str, body: BytesMut) -> Option<Self::ValCommandHandler>;
 
     /// Create an initializer that will consume the state of a value-like item, as reported by the runtime.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - The name of the item.
     fn init_value_like_item(&self, item: &str) -> Option<ValueLikeInitializer<Self>>
     where
@@ -200,7 +206,7 @@ pub trait AgentSpec: Sized + Send {
 
     /// Create an initializer that will consume the state of a map-like item, as reported by the runtime.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `item` - The name of the item.
     fn init_map_like_item(&self, item: &str) -> Option<MapLikeInitializer<Self>>
     where
@@ -209,7 +215,7 @@ pub trait AgentSpec: Sized + Send {
     /// Create a handler that will update the state of the agent when a command is received
     /// for a map lane. There will be no handler if the lane does not exist or does not
     /// accept commands.
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - The name of the lane.
     /// * `body` - The content of the command.
     fn on_map_command(
@@ -221,7 +227,7 @@ pub trait AgentSpec: Sized + Send {
     /// Create a handler that will update the state of an agent when a request is made to
     /// sync with a lane. There will be no handler if the lane does not exist.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - The name of the lane.
     /// * `id` - The ID of the remote that requested the sync.
     fn on_sync(&self, lane: &str, id: Uuid) -> Option<Self::OnSyncHandler>;
@@ -230,7 +236,7 @@ pub trait AgentSpec: Sized + Send {
     /// made to a lane. If no HTTP lane exists with the specified name the request will
     /// be returned as an error (so that the caller can handle it will a 404 response).
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane` - The name of the lane.
     /// * `request` - The HTTP request.
     fn on_http_request(
@@ -263,15 +269,21 @@ where
     }
 }
 
-pub trait LifecycleFac<ItemModel>: Send + Sync {
+/// A factory for creating [`AgentLifecycle`]s.
+/// An agent route may need to create an agent instance multiple times (for parameterized routes or
+/// in cases where the agent is stopped and restarted). Therefore, a route is registered with a
+/// factory rather then a single instance of the lifecycle.
+pub trait LifecycleFactory<ItemModel>: Send + Sync {
     type LifecycleType: AgentLifecycle<ItemModel> + Send;
 
+    /// Create an instance of the agent type.
     fn create(&self) -> Self::LifecycleType;
 }
 
+/// A lifecycle factory that creates clones of a provided instance.
 struct CloneableLifecycle<LC>(LC);
 
-impl<ItemModel, LC> LifecycleFac<ItemModel> for CloneableLifecycle<LC>
+impl<ItemModel, LC> LifecycleFactory<ItemModel> for CloneableLifecycle<LC>
 where
     LC: Send + Sync + Clone + AgentLifecycle<ItemModel>,
 {
@@ -284,7 +296,7 @@ where
 
 struct FnLifecycleFac<F>(F);
 
-impl<ItemModel, F, LC> LifecycleFac<ItemModel> for FnLifecycleFac<F>
+impl<ItemModel, F, LC> LifecycleFactory<ItemModel> for FnLifecycleFac<F>
 where
     F: Fn() -> LC + Send + Sync,
     LC: Send + AgentLifecycle<ItemModel>,
@@ -296,12 +308,12 @@ where
     }
 }
 
-/// The complete model for an agent consisting of an implementation of [`AgentLaneModel`] to describe the lanes
+/// The complete model for an agent consisting of an implementation of [`AgentSpec`] to describe the lanes
 /// of the agent and an implementation of [`AgentLifecycle`] to describe the lifecycle events that will trigger,
 /// for  example, when the agent starts or stops or when the state of a lane changes.
 pub struct AgentModel<ItemModel, Lifecycle> {
     item_model_fac: Arc<dyn ItemModelFactory<ItemModel = ItemModel>>,
-    lifecycle_fac: Arc<dyn LifecycleFac<ItemModel, LifecycleType = Lifecycle>>,
+    lifecycle_fac: Arc<dyn LifecycleFactory<ItemModel, LifecycleType = Lifecycle>>,
 }
 
 impl<ItemModel, Lifecycle> Clone for AgentModel<ItemModel, Lifecycle> {
@@ -378,7 +390,7 @@ enum TaskEvent<ItemModel> {
         result: Result<bool, std::io::Error>,
     },
     SuspendedComplete {
-        handler: BoxEventHandler<'static, ItemModel>,
+        handler: LocalBoxEventHandler<'static, ItemModel>,
     },
     DownlinkReady {
         downlink_event: (HostedDownlink<ItemModel>, HostedDownlinkEvent),
@@ -524,7 +536,7 @@ impl<Context> HostedDownlink<Context> {
         }
     }
 
-    fn next_event(&mut self, context: &Context) -> Option<BoxEventHandler<'_, Context>> {
+    fn next_event(&mut self, context: &Context) -> Option<LocalBoxEventHandler<'_, Context>> {
         self.channel.next_event(context)
     }
 }
@@ -558,7 +570,7 @@ where
     /// Initialize the agent, performing the initial setup for all of the lanes (including triggering the
     /// `on_start` event).
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `route` - The node URI for the agent instance.
     /// * `route_params` - Parameters extracted from the route URI.
     /// * `config` - Agent specific configuration parameters.
@@ -819,8 +831,13 @@ where
         if lane_conf.transient {
             lane_io.insert((Text::new(name), kind), io);
         } else if let Some(init) = item_model.init_value_like_item(name) {
-            let init_task =
-                run_item_initializer(ItemKind::Lane(kind), name, io, WithLengthBytesCodec, init);
+            let init_task = run_item_initializer(
+                ItemKind::Lane(kind),
+                name,
+                io,
+                RawValueStoreInitDecoder::default(),
+                init,
+            );
             item_init_tasks.push(init_task.boxed());
         } else {
             lane_io.insert((Text::new(name), kind), io);
@@ -838,7 +855,7 @@ where
                 ItemKind::Store(StoreKind::Value),
                 name,
                 io,
-                WithLengthBytesCodec,
+                RawValueStoreInitDecoder::default(),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -865,7 +882,7 @@ where
                 ItemKind::Lane(kind),
                 name,
                 io,
-                MapMessageDecoder::new(RawMapOperationDecoder),
+                RawMapStoreInitDecoder::default(),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -885,7 +902,7 @@ where
                 ItemKind::Store(StoreKind::Map),
                 name,
                 io,
-                MapMessageDecoder::new(RawMapOperationDecoder),
+                RawMapStoreInitDecoder::default(),
                 init,
             );
             item_init_tasks.push(init_task.boxed());
@@ -918,7 +935,7 @@ where
     /// Core event loop for the agent that routes incoming data from the runtime to the lanes and
     /// state changes from the lanes to the runtime.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `_context` - Context through which to communicate with the runtime.
     async fn run_agent(
         self,
@@ -1466,7 +1483,7 @@ fn not_found(lane_name: &str, request: HttpLaneRequest) {
         lane_name
     ));
     let content_len = Header::new(StandardHeaderName::ContentLength, payload.len().to_string());
-    let response = HttpLaneResponse {
+    let response = RawHttpLaneResponse {
         status_code: StatusCode::NOT_FOUND,
         version: Version::HTTP_1_1,
         headers: vec![content_len],
@@ -1518,7 +1535,7 @@ impl IdCollector for HashSet<u64> {
 /// heuristics to prevent this (for example terminating with an error if the same event handler gets executed
 /// some number of times in a single chain) but this will likely add a bit of overhead.
 ///
-/// #Arguments
+/// # Arguments
 ///
 /// * `meta` - Agent instance metadata (which can be requested by the event handler).
 /// * `context` - The context within which the event handler is running. This provides access to the lanes of the
@@ -1527,7 +1544,7 @@ impl IdCollector for HashSet<u64> {
 /// * `handler` - The initial event handler that starts the chain. This could be a lifecycle event or triggered
 /// by an incoming message from the runtime.
 /// * `items` - Mapping between item IDs (returned by the handler to indicate that it has changed the state of
-/// an item) an the item names (which are used by the lifecycle to identify the items).
+/// an item) and the item names (which are used by the lifecycle to identify the items).
 /// * `collector` - Collects the IDs of lanes with state changes.
 fn run_handler<Context, Lifecycle, Handler, Collector>(
     action_context: &mut ActionContext<Context>,

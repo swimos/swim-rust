@@ -21,16 +21,11 @@ use std::{
 
 use bytes::BytesMut;
 use parking_lot::Mutex;
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::{
-        agent::{LaneResponse, LaneResponseDecoder},
-        map::{MapOperation, MapOperationDecoder},
-    },
-};
+use swimos_agent_protocol::{encoding::lane::MapLaneResponseDecoder, LaneResponse, MapOperation};
+use swimos_api::agent::AgentConfig;
 use swimos_form::Form;
 use swimos_model::Text;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
@@ -329,7 +324,7 @@ fn check<K, V>(
         assert_eq!(lane.write_to_buffer(&mut buffer), WriteResult::Done);
     }
 
-    let mut decoder = LaneResponseDecoder::new(MapOperationDecoder::<K, V>::default());
+    let mut decoder = MapLaneResponseDecoder::<K, V>::default();
 
     let msg = decoder
         .decode(&mut buffer)

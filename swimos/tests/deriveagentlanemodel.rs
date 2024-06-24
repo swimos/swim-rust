@@ -29,10 +29,10 @@ use swimos_agent::lanes::{
 };
 use swimos_agent::reexport::bytes::Bytes;
 use swimos_agent::stores::{MapStore, ValueStore};
-use swimos_api::agent::HttpLaneRequest;
-use swimos_api::lane::WarpLaneKind;
-use swimos_api::store::StoreKind;
-use swimos_model::http::{HttpRequest, Uri};
+use swimos_api::{
+    agent::{HttpLaneRequest, StoreKind, WarpLaneKind},
+    http::{HttpRequest, Uri},
+};
 
 const SYNC_ID: Uuid = Uuid::from_u128(85883);
 
@@ -433,7 +433,7 @@ fn stores_and_lanes() {
 fn value_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoValueLanes {
-        #[lane(transient)]
+        #[item(transient)]
         first: ValueLane<i32>,
         second: ValueLane<i32>,
     }
@@ -448,7 +448,7 @@ fn value_lane_tagged_transient() {
 fn value_store_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoValueStores {
-        #[lane(transient)]
+        #[item(transient)]
         first: ValueStore<i32>,
         second: ValueStore<i32>,
     }
@@ -464,7 +464,7 @@ fn map_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoMapLanes {
         first: MapLane<i32, i32>,
-        #[lane(transient)]
+        #[item(transient)]
         second: MapLane<i32, i32>,
     }
 
@@ -479,7 +479,7 @@ fn map_store_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoMapStores {
         first: MapStore<i32, i32>,
-        #[lane(transient)]
+        #[item(transient)]
         second: MapStore<i32, i32>,
     }
 
@@ -493,7 +493,7 @@ fn map_store_tagged_transient() {
 fn command_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoCommandLanes {
-        #[lane(transient)]
+        #[item(transient)]
         first: CommandLane<i32>,
         second: CommandLane<i32>,
     }
@@ -508,7 +508,7 @@ fn command_lane_tagged_transient() {
 fn demand_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoDemandLanes {
-        #[lane(transient)]
+        #[item(transient)]
         first: DemandLane<i32>,
         second: DemandLane<i32>,
     }
@@ -523,7 +523,7 @@ fn demand_lane_tagged_transient() {
 fn supply_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoSupplyLanes {
-        #[lane(transient)]
+        #[item(transient)]
         first: SupplyLane<i32>,
         second: SupplyLane<i32>,
     }
@@ -538,7 +538,7 @@ fn supply_lane_tagged_transient() {
 fn demand_map_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoDemandMapLanes {
-        #[lane(transient)]
+        #[item(transient)]
         first: DemandMapLane<i32, i32>,
         second: DemandMapLane<i32, i32>,
     }
@@ -578,7 +578,7 @@ fn join_value_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoJoinValueLanes {
         first: JoinValueLane<i32, i32>,
-        #[lane(transient)]
+        #[item(transient)]
         second: JoinValueLane<i32, i32>,
     }
 
@@ -617,7 +617,7 @@ fn join_map_lane_tagged_transient() {
     #[derive(AgentLaneModel)]
     struct TwoJoinMapLanes {
         first: JoinMapLane<i32, i32, i32>,
-        #[lane(transient)]
+        #[item(transient)]
         second: JoinMapLane<i32, i32, i32>,
     }
 
@@ -700,8 +700,7 @@ fn two_general_http_lanes() {
 }
 
 mod isolated {
-    use swimos_api::lane::WarpLaneKind;
-    use swimos_api::store::StoreKind;
+    use swimos_api::agent::{StoreKind, WarpLaneKind};
 
     use crate::check_agent;
 
@@ -764,7 +763,7 @@ fn two_types_single_scope() {
 fn rename_lane() {
     #[derive(AgentLaneModel)]
     struct RenameExplicit {
-        #[lane(name = "renamed")]
+        #[item(name = "renamed")]
         first: ValueLane<i32>,
         second: ValueLane<i32>,
     }
@@ -779,7 +778,7 @@ fn rename_lane() {
 fn rename_lane_with_convention() {
     #[derive(AgentLaneModel)]
     struct RenameConvention {
-        #[lane(convention = "camel")]
+        #[item(convention = "camel")]
         first_lane: ValueLane<i32>,
         second_lane: ValueLane<i32>,
     }
@@ -813,7 +812,7 @@ fn override_top_level_convention() {
     #[agent(convention = "camel")]
     struct OverrideRename {
         first_lane: ValueLane<i32>,
-        #[lane(name = "renamed")]
+        #[item(name = "renamed")]
         second_lane: ValueLane<i32>,
         third_lane: ValueLane<i32>,
     }

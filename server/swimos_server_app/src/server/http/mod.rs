@@ -13,10 +13,11 @@
 // limitations under the License.
 
 use std::{
+    collections::HashSet,
     marker::PhantomData,
     net::SocketAddr,
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, OnceLock},
     task::{Context, Poll},
     time::{Duration, Instant},
 };
@@ -40,14 +41,13 @@ use pin_project::pin_project;
 use ratchet::{
     Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream,
 };
-use swimos_api::{agent::HttpLaneRequest, net::Scheme};
+use swimos_api::{agent::HttpLaneRequest, http::HttpRequest};
 use swimos_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
-use swimos_model::http::HttpRequest;
+use swimos_messages::remote_protocol::{AgentResolutionError, FindNode, NoSuchAgent};
 use swimos_remote::{
-    net::{Listener, ListenerError, ListenerResult},
-    ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture, PROTOCOLS},
+    websocket::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture, WARP},
+    Listener, ListenerError, ListenerResult, Scheme,
 };
-use swimos_remote::{AgentResolutionError, FindNode, NoSuchAgent};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::mpsc,
@@ -152,7 +152,7 @@ where
 ///
 /// Only a fixed number of web-socket handshakes are permitted to be running at any one time.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `L` - The type of the listener for incoming connections.
 /// * `Sock` - The type of the connections produced by the listener.
 /// * `Ext` - The websocket extension provider for negotiating connections.
@@ -182,7 +182,7 @@ where
     Ext::Extension: Send,
     FC: Fn(Sock, UpgradeService<Ext, Sock>) -> Con + Copy + Send + 'static,
 {
-    /// #Arguments
+    /// # Arguments
     /// * `listener_stream` - A listener that produced a stream of incoming connections.
     /// * `extension_provider` - Extension provider to use when negotiating websocket connections.
     /// * `resolver` - Agent resolver for forwarding requests to HTTP lanes.
@@ -449,6 +449,16 @@ where
     }
 }
 
+static PROTOCOLS: OnceLock<HashSet<&'static str>> = OnceLock::new();
+
+fn warp_protocol() -> &'static HashSet<&'static str> {
+    PROTOCOLS.get_or_init(|| {
+        let mut s = HashSet::new();
+        s.insert(WARP);
+        s
+    })
+}
+
 impl<Ext, Sock> Service<Request<Body>> for UpgradeService<Ext, Sock>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + 'static,
@@ -476,7 +486,7 @@ where
             request_timeout,
         } = self;
         let result =
-            swimos_http::negotiate_upgrade(&request, &PROTOCOLS, extension_provider.as_ref())
+            swimos_http::negotiate_upgrade(&request, warp_protocol(), extension_provider.as_ref())
                 .transpose();
         // If the request in a websocket upgrade, perform the upgrade, otherwise attempt to delegate
         // the request to an HTTP lane on an agent.
@@ -562,7 +572,7 @@ pub struct HyperWebsockets {
 }
 
 impl HyperWebsockets {
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `config` - HTTP server configuration.
     /// will handle concurrently.
@@ -610,7 +620,7 @@ impl WebsocketClient for HyperWebsockets {
 
         let config = *config;
         Box::pin(async move {
-            let subprotocols = ProtocolRegistry::new(PROTOCOLS.iter().copied())?;
+            let subprotocols = ProtocolRegistry::new([WARP])?;
             let socket =
                 ratchet::subscribe_with(config.websockets, socket, addr, provider, subprotocols)
                     .await?
@@ -683,7 +693,7 @@ fn unavailable() -> Response<Body> {
 
 /// Delegate an HTTP request to an HTTP lane on an agent (if it exists).
 ///
-/// #Arguments
+/// # Arguments
 /// * `request` - The HTTP request.
 /// * `timeout` - Timeout the request if the agent does not produce a response within this duration.
 /// * `resolver` - Resolver to find the agent to handle the request.

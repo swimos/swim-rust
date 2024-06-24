@@ -12,10 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod event;
-pub mod map;
-pub mod on_failed;
-pub mod on_linked;
-pub mod on_synced;
-pub mod on_unlinked;
-pub mod value;
+mod event;
+mod map;
+mod on_failed;
+mod on_linked;
+mod on_synced;
+mod on_unlinked;
+mod value;
+
+pub use event::*;
+pub use map::*;
+pub use on_failed::*;
+pub use on_linked::*;
+pub use on_synced::*;
+pub use on_unlinked::*;
+pub use value::*;

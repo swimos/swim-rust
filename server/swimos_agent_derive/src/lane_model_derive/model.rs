@@ -17,10 +17,7 @@ use macro_utilities::{attributes::consume_attributes, NameTransform, TypeLevelNa
 use proc_macro2::Literal;
 use std::{collections::HashSet, hash::Hash};
 use swimos_utilities::{
-    errors::{
-        validation::{Validation, ValidationItExt},
-        Errors,
-    },
+    errors::{Errors, Validation, ValidationItExt},
     format::comma_sep,
 };
 use syn::{
@@ -37,7 +34,7 @@ pub struct LanesModel<'a> {
 }
 
 impl<'a> LanesModel<'a> {
-    /// #Arguments
+    /// # Arguments
     /// * `agent_type` - The name of the target of the derive macro.
     /// * `lanes` - Description of each lane in the agent (the name of the corresponding field
     /// and the lane kind with types).
@@ -179,14 +176,14 @@ impl<'a> ItemSpec<'a> {
 
 bitflags! {
 
-    #[derive(Default)]
+    #[derive(Default, Debug, Copy, Clone)]
     pub struct ItemFlags: u8 {
         /// The state of the lane should not be persisted.
         const TRANSIENT = 0b01;
     }
 }
 
-/// Description of an item (its name the the kind of the item, along with types).
+/// Description of an item (its name the kind of the item, along with types).
 #[derive(Clone)]
 pub struct ItemModel<'a> {
     pub name: &'a Ident,
@@ -230,7 +227,7 @@ impl<'a> ItemModel<'a> {
     }
 }
 
-/// Description of an lane (its name the the kind of the lane, along with types).
+/// Description of an lane (its name the kind of the lane, along with types).
 #[derive(Clone)]
 pub struct WarpLaneModel<'a> {
     pub name: &'a Ident,
@@ -239,7 +236,7 @@ pub struct WarpLaneModel<'a> {
     pub transform: NameTransform,
 }
 
-/// Description of an HTTP lane (its name the the kind of the lane, along with types).
+/// Description of an HTTP lane (its name the kind of the lane, along with types).
 #[derive(Clone)]
 pub struct HttpLaneModel<'a> {
     pub name: &'a Ident,
@@ -255,7 +252,7 @@ impl<'a> WarpLaneModel<'a> {
 }
 
 impl<'a> ItemModel<'a> {
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the field in the struct (mapped to the name of the lane in the agent).
     /// * `kind` - The kind of the lane, along with any types.
     /// * `flags` - Modifiers applied to the lane.
@@ -356,7 +353,7 @@ const SUPPLY_LANE_NAME: &str = "SupplyLane";
 const HTTP_LANE_NAME: &str = "HttpLane";
 const SIMPLE_HTTP_LANE_NAME: &str = "SimpleHttpLane";
 
-const LANE_TAG: &str = "lane";
+const ITEM_TAG: &str = "item";
 
 fn extract_lane_model(field: &Field) -> Validation<ItemModel<'_>, Errors<syn::Error>> {
     if let (Some(fld_name), Type::Path(TypePath { qself: None, path })) = (&field.ident, &field.ty)
@@ -364,7 +361,7 @@ fn extract_lane_model(field: &Field) -> Validation<ItemModel<'_>, Errors<syn::Er
         if let Some(PathSegment { ident, arguments }) = path.segments.last() {
             let type_name = ident.to_string();
             let (item_attrs, errors) =
-                consume_attributes(LANE_TAG, &field.attrs, make_item_attr_consumer());
+                consume_attributes(ITEM_TAG, &field.attrs, make_item_attr_consumer());
             let modifiers = Validation::Validated(item_attrs, Errors::from(errors))
                 .and_then(|item_attrs| combine_item_attrs(field, item_attrs));
 

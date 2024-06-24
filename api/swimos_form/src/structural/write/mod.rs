@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Contains the [`StructuralWritable`] trait that defines the functionality to serialize a type
+//! that supports the SwimOS model.
+
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
@@ -20,20 +23,20 @@ use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
-use swimos_model::bigint::{BigInt, BigUint};
 use swimos_model::{Attr, Blob, Item, Text, Value};
-use swimos_utilities::future::retryable::strategy::Quantity;
+use swimos_model::{BigInt, BigUint};
+use swimos_utilities::future::Quantity;
 
 #[doc(hidden)]
 pub use swimos_form_derive::StructuralWritable;
-use swimos_model::time::Timestamp;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_model::Timestamp;
+use swimos_utilities::routing::RouteUri;
 
-use crate::structural::write::to_model::ValueInterpreter;
-pub mod impls;
+pub use crate::structural::write::to_model::ValueInterpreter;
+mod impls;
 #[cfg(test)]
 mod tests;
-pub mod to_model;
+mod to_model;
 
 /// Trait for types that can describe their structure using a [`StructuralWriter`].
 /// Each writer is an interpreter which could, for example, realize the structure
@@ -145,7 +148,7 @@ pub trait HeaderWriter: Sized {
     type Body: BodyWriter;
 
     /// Write an attribute into the header.
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the attribute.
     /// * `value` - The value whose structure will be used for the value of the attribute.
     fn write_attr<V: StructuralWritable>(
@@ -156,18 +159,18 @@ pub trait HeaderWriter: Sized {
 
     /// Delegate the remainder of the process to another value (its attributes will be appended
     /// to those already described).
-    /// #Arguments
+    /// # Arguments
     /// * `value` - The value whose structure will be used for the remainder of the process.
     fn delegate<V: StructuralWritable>(self, value: &V) -> Result<Self::Repr, Self::Error>;
 
     /// Delegate the remainder of the process to another value (its attributes will be appended
     /// to those already described), consuming it.
-    /// #Arguments
+    /// # Arguments
     /// * `value` - The value whose structure will be used for the remainder of the process.
     fn delegate_into<V: StructuralWritable>(self, value: V) -> Result<Self::Repr, Self::Error>;
 
     /// Write an attribute into the header, consuming the value.
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the attribute.
     /// * `value` - The value whose structure will be used for the value of the attribute.
     fn write_attr_into<L: Label, V: StructuralWritable>(
@@ -211,7 +214,7 @@ pub trait HeaderWriter: Sized {
     }
     /// Transform this writer into another which can be used to describe the items.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `kind` - Description of the contents of the body. If an incorrect value is provided,
     /// implementations may return an error but should not panic.
     /// * `num_items` - The number of items in the record. If an incorrect number is provided,

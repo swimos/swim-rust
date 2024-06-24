@@ -19,28 +19,25 @@ use futures::{FutureExt, Sink, SinkExt, StreamExt};
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
 use std::mem;
-use swimos_api::downlink::DownlinkConfig;
-use swimos_api::error::DownlinkTaskError;
-use swimos_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, MapNotificationDecoder,
-    ValueNotificationDecoder,
-};
-use swimos_api::protocol::map::MapMessage;
-use swimos_form::structural::write::StructuralWritable;
-use swimos_model::address::Address;
+use swimos_agent_protocol::encoding::downlink::{DownlinkOperationEncoder, MapNotificationDecoder};
+use swimos_agent_protocol::MapMessage;
+use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
+use swimos_api::{address::Address, error::DownlinkTaskError};
+use swimos_client_api::DownlinkConfig;
+use swimos_form::write::StructuralWritable;
 use swimos_model::Text;
-use swimos_recon::printer::print_recon;
+use swimos_recon::print_recon;
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::future::immediate_or_join;
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
-use tracing::{info_span, trace, Instrument};
+use tracing::{error, info_span, trace, Instrument};
 
 /// Task to drive a map downlink, calling lifecycle events at appropriate points.
 ///
-/// #Arguments
+/// # Arguments
 ///
 /// * `model` - The downlink model, providing the lifecycle and a stream of actions.
 /// * `path` - The path of the lane to which the downlink is attached.
@@ -60,35 +57,18 @@ where
     V::Rec: Send,
     LC: MapDownlinkLifecycle<K, V>,
 {
-    let MapDownlinkModel {
-        actions,
-        lifecycle,
-        remote,
-    } = model;
+    let MapDownlinkModel { actions, lifecycle } = model;
 
-    if remote {
-        run_io(
-            config,
-            input,
-            lifecycle,
-            FramedWrite::new(output, DownlinkOperationEncoder),
-            actions,
-            ValueNotificationDecoder::default(),
-        )
-        .instrument(info_span!("Downlink IO task.", %path))
-        .await
-    } else {
-        run_io(
-            config,
-            input,
-            lifecycle,
-            FramedWrite::new(output, DownlinkOperationEncoder),
-            actions,
-            MapNotificationDecoder::default(),
-        )
-        .instrument(info_span!("Downlink IO task.", %path))
-        .await
-    }
+    run_io(
+        config,
+        input,
+        lifecycle,
+        FramedWrite::new(output, DownlinkOperationEncoder::default()),
+        actions,
+        MapNotificationDecoder::default(),
+    )
+    .instrument(info_span!("Downlink IO task.", %path))
+    .await
 }
 
 /// The current state of the downlink.
@@ -141,6 +121,7 @@ where
     V::Rec: Send,
     LC: MapDownlinkLifecycle<K, V>,
     Snk: Sink<DownlinkOperation<MapMessage<K, V>>> + Unpin,
+    Snk::Error: Debug,
     D: Decoder<Item = DownlinkNotification<MapMessage<K, V>>, Error = E>,
     DownlinkTaskError: From<E>,
     E: Debug,
@@ -159,9 +140,7 @@ where
                     write = (&mut write_fut) => IoEvent::Write(write),
                     read_event = framed_read.next() => match read_event {
                         Some(Ok(notification)) => IoEvent::Read(notification),
-                        Some(Err(e)) => {
-                            break Err(e.into())
-                        } ,
+                        Some(Err(e)) => break Err(e.into()),
                         None => break Ok(()),
                     }
                 };
@@ -196,8 +175,8 @@ where
                         }
 
                         let op = DownlinkOperation::new(message);
-                        if framed.feed(op).await.is_err() {
-                            mode = Mode::Read;
+                        if let Err(e) = framed.feed(op).await {
+                            error!(error = ?e, "Failed to feed downlink frame. Transitioning to read-only mode");
                         }
                     }
                     IoEvent::Write(None) => mode = Mode::Read,

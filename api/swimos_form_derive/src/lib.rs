@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Derivation macros for the `Form` and `Tag` traits in the `swimos_form` crate.
+
 extern crate proc_macro;
 extern crate proc_macro2;
 #[macro_use]
@@ -29,17 +31,14 @@ use crate::structural::{
     build_derive_structural_writable,
 };
 use crate::tag::build_derive_tag;
-use swimos_utilities::errors::validation::Validation;
 use swimos_utilities::errors::Errors;
+use swimos_utilities::errors::Validation;
 
 mod modifiers;
 mod structural;
 mod tag;
 
-fn default_root() -> syn::Path {
-    parse_quote!(::swimos_form)
-}
-
+/// Derivation macro for the `swimos_form::Form` trait.
 #[proc_macro_derive(Form, attributes(form, form_root))]
 pub fn derive_form(input: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(input as DeriveInput);
@@ -49,6 +48,7 @@ pub fn derive_form(input: TokenStream) -> TokenStream {
         .into()
 }
 
+/// Derivation macro for the `swimos_form::Tag` trait.
 #[proc_macro_derive(Tag, attributes(form, form_root))]
 pub fn derive_tag(input: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(input as DeriveInput);
@@ -58,6 +58,7 @@ pub fn derive_tag(input: TokenStream) -> TokenStream {
         .into()
 }
 
+#[doc(hidden)]
 #[proc_macro_derive(StructuralWritable, attributes(form, form_root))]
 pub fn derive_structural_writable(input: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(input as DeriveInput);
@@ -67,6 +68,7 @@ pub fn derive_structural_writable(input: TokenStream) -> TokenStream {
         .into()
 }
 
+#[doc(hidden)]
 #[proc_macro_derive(StructuralReadable, attributes(form, form_root))]
 pub fn derive_structural_readable(input: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(input as DeriveInput);
@@ -108,4 +110,8 @@ fn extract_replace_root(attrs: &mut Vec<syn::Attribute>) -> Option<syn::Path> {
     } else {
         None
     }
+}
+
+fn default_root() -> syn::Path {
+    parse_quote!(::swimos_form)
 }

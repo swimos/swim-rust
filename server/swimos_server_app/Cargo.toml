@@ -6,7 +6,7 @@ edition = "2021"
 
 [features]
 default = []
-rocks_store = ["swimos_persistence/rocks", "rocksdb"]
+rocks_store = ["swimos_rocks_store"]
 trust_dns = ["swimos_runtime/trust_dns"]
 
 [dependencies]
@@ -14,30 +14,30 @@ futures = { workspace = true }
 ratchet = { workspace = true, features = ["deflate", "split"] }
 swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "text", "time"] }
 swimos_runtime = { path = "../../runtime/swimos_runtime" }
-swimos_tls = { path = "../../runtime/swimos_tls" }
+swimos_messages = { path = "../../runtime/swimos_messages" }
 swimos_http = { path = "../../runtime/swimos_http" }
 swimos_introspection = { path = "../swimos_introspection" }
-swimos_remote = { path = "../../runtime/swimos_remote" }
+swimos_remote = { path = "../../runtime/swimos_remote", features = ["tls"]}
 bytes = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tokio-util = { workspace = true, features = ["codec"] }
 swimos_model = { path = "../../api/swimos_model" }
 swimos_api = { path = "../../api/swimos_api" }
+swimos_agent_protocol = { path = "../../api/swimos_agent_protocol" }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
 rand = { workspace = true }
 url = { workspace = true }
-swimos_persistence = { path = "../../runtime/swimos_persistence" }
+swimos_rocks_store = { path = "../../runtime/swimos_rocks_store", optional = true}
 parking_lot = { workspace = true }
-rocksdb = { workspace = true, optional = true }
 hyper = { workspace = true, features = ["server", "runtime", "tcp", "http1", "backports"] }
 pin-project = { workspace = true }
 percent-encoding = { workspace = true }
 
 [dev-dependencies]
-swimos_recon = { path = "../../api/formats/swimos_recon", features = ["async_parser"] }
+swimos_recon = { path = "../../api/formats/swimos_recon" }
 tokio = { workspace = true, features = ["rt", "macros", "test-util"] }
 swimos_form = { path = "../../api/swimos_form" }
 swimos_messages = { path = "../../runtime/swimos_messages" }

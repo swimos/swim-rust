@@ -18,8 +18,8 @@ use std::{cell::RefCell, collections::HashMap};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
-use swimos_api::protocol::agent::MapStoreResponseEncoder;
-use swimos_form::structural::write::StructuralWritable;
+use swimos_agent_protocol::encoding::store::MapStoreResponseEncoder;
+use swimos_form::write::StructuralWritable;
 use tokio_util::codec::Encoder;
 
 use crate::agent_model::WriteResult;
@@ -48,7 +48,7 @@ pub struct MapStore<K, V> {
 assert_impl_all!(MapStore<(), ()>: Send);
 
 impl<K, V> MapStore<K, V> {
-    /// #Arguments
+    /// # Arguments
     /// * `id` - The ID of the store. This should be unique within an agent.
     /// * `init` - The initial contents of the map.
     pub fn new(id: u64, init: HashMap<K, V>) -> Self {
@@ -151,7 +151,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will update the value of an entry in the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will update the value of an entry in the map.
 pub struct MapStoreUpdate<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
     key_value: Option<(K, V)>,
@@ -195,7 +195,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will remove an entry from the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will remove an entry from the map.
 pub struct MapStoreRemove<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
     key: Option<K>,
@@ -236,7 +236,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will clear the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will clear the map.
 pub struct MapStoreClear<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
     done: bool,
@@ -278,7 +278,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will get an entry from the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
 pub struct MapStoreGet<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
     key: K,
@@ -323,7 +323,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will read the entire state of a map store.
+///  An [event handler](crate::event_handler::EventHandler)`] that will read the entire state of a map store.
 pub struct MapStoreGetMap<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
     done: bool,
@@ -362,7 +362,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will alter an entry in the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that may alter an entry in the map.
 pub struct MapStoreWithEntry<C, K, V, F> {
     projection: for<'a> fn(&'a C) -> &'a MapStore<K, V>,
     key_and_f: Option<(K, F)>,

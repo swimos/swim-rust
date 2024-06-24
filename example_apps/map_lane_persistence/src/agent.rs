@@ -14,7 +14,7 @@
 
 use example_util::format_map;
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{join3, EventHandler, HandlerActionExt},
     lanes::{CommandLane, MapLane},
     lifecycle, projections, AgentLaneModel,
@@ -24,7 +24,7 @@ use swimos::agent::{
 #[projections]
 pub struct ExampleAgent {
     map: MapLane<String, i32>,
-    #[lane(transient)]
+    #[item(transient)]
     temporary: MapLane<String, i32>,
     stop: CommandLane<()>,
 }

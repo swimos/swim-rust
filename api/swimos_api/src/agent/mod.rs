@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS Agent API
+//!
+//! Implement the [`Agent`] trait to provide a new kind of agent that can be executed by the SwimOS runtime.
+//! The canonical Rust implementation of this trait can be found in the `swimos_agent` crate.
+
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
@@ -22,24 +27,27 @@ use std::{
 
 use bytes::Bytes;
 use futures::{future::BoxFuture, ready, Future, FutureExt};
-use swimos_model::http::{HttpRequest, HttpResponse};
 use swimos_utilities::{
-    future::retryable::RetryStrategy,
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
+    future::RetryStrategy,
     non_zero_usize,
-    routing::route_uri::RouteUri,
+    routing::RouteUri,
 };
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
-use crate::{
-    downlink::DownlinkKind,
-    error::{
-        AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
-    },
-    lane::WarpLaneKind,
-    store::StoreKind,
+use crate::error::{
+    AgentInitError, AgentRuntimeError, AgentTaskError, DownlinkRuntimeError, OpenStoreError,
 };
+use crate::http::{HttpRequest, HttpResponse};
+
+mod downlink;
+mod lane;
+mod store;
+
+pub use downlink::DownlinkKind;
+pub use lane::{LaneKind, LaneKindParseErr, LaneKindRecognizer, WarpLaneKind};
+pub use store::StoreKind;
 
 /// Indicates the sub-protocol that a lane uses to communicate its state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,26 +110,28 @@ impl Default for StoreConfig {
     }
 }
 
-pub type HttpLaneResponse = HttpResponse<Bytes>;
+/// An HTTP response with an uninterpreted body.
+pub type RawHttpLaneResponse = HttpResponse<Bytes>;
 
 /// Send half of a single use channel for providing an HTTP response.
 #[derive(Debug)]
-pub struct HttpResponseSender(oneshot::Sender<HttpLaneResponse>);
+pub struct HttpResponseSender(oneshot::Sender<RawHttpLaneResponse>);
 
 impl HttpResponseSender {
-    pub fn send(self, response: HttpLaneResponse) -> Result<(), HttpLaneResponse> {
+    pub fn send(self, response: RawHttpLaneResponse) -> Result<(), RawHttpLaneResponse> {
         self.0.send(response)
     }
 }
 
 impl Future for HttpResponseReceiver {
-    type Output = Result<HttpLaneResponse, ()>;
+    type Output = Result<RawHttpLaneResponse, ()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Poll::Ready(ready!(self.as_mut().0.poll_unpin(cx)).map_err(|_| ()))
     }
 }
 
+/// Create a channel send back the response to an asynchronously executed HTTP request.
 pub fn response_channel() -> (HttpResponseSender, HttpResponseReceiver) {
     let (tx, rx) = oneshot::channel();
     (HttpResponseSender(tx), HttpResponseReceiver(rx))
@@ -129,14 +139,16 @@ pub fn response_channel() -> (HttpResponseSender, HttpResponseReceiver) {
 
 /// Receive half of a single use channel for providing an HTTP response.
 #[derive(Debug)]
-pub struct HttpResponseReceiver(oneshot::Receiver<HttpLaneResponse>);
+pub struct HttpResponseReceiver(oneshot::Receiver<RawHttpLaneResponse>);
 
+/// Error type indicating that an agent that made an HTTP request dropped it before the response
+/// was received.
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq, Default)]
 #[error("An HTTP request was dropped before a response was sent.")]
 pub struct ReceiveResponseError;
 
 impl HttpResponseReceiver {
-    pub fn try_recv(&mut self) -> Result<HttpLaneResponse, ReceiveResponseError> {
+    pub fn try_recv(&mut self) -> Result<RawHttpLaneResponse, ReceiveResponseError> {
         self.0.try_recv().map_err(|_| ReceiveResponseError)
     }
 }
@@ -174,6 +186,7 @@ impl HttpLaneRequest {
     }
 }
 
+/// A channel to make HTTP requests.
 pub type HttpLaneRequestChannel = mpsc::Receiver<HttpLaneRequest>;
 
 /// Trait for the context that is passed to an agent to allow it to interact with the runtime.
@@ -183,7 +196,7 @@ pub trait AgentContext: Sync {
     fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>>;
 
     /// Add a new lane endpoint to the runtime for this agent.
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the lane.
     /// * `land_kind` - Kind of the lane, determining the protocol that the runtime uses
     /// to communicate with the lane.
@@ -201,7 +214,7 @@ pub trait AgentContext: Sync {
     ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>>;
 
     /// Open a downlink to a lane on another agent.
-    /// #Arguments
+    /// # Arguments
     /// * `config` - The configuration for the downlink.
     /// * `host` - The host containing the node.
     /// * `node` - The node URI for the agent.
@@ -215,7 +228,7 @@ pub trait AgentContext: Sync {
     ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>>;
 
     /// Add a new named store that will persist a (possibly compound) value in the agent state.
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the store.
     /// * `kind` - The kind of the store.
     fn add_store(
@@ -257,7 +270,7 @@ pub type AgentInitResult = Result<AgentTask, AgentInitError>;
 pub trait Agent {
     /// Running an agent results in future that will perform the initialization of the agent and
     /// then yield another future that will actually run the agent.
-    /// #Arguments
+    /// # Arguments
     /// * `route` - The node URI of this agent instance.
     /// * `route_params` - Parameters extracted from the route URI.
     /// * `config` - Configuration parameters for the agent.
@@ -274,6 +287,7 @@ pub trait Agent {
 
 static_assertions::assert_obj_safe!(AgentContext, Agent);
 
+/// An [`Agent`] that can be run by dynamic dispatch.
 pub type BoxAgent = Box<dyn Agent + Send + 'static>;
 
 impl Agent for BoxAgent {

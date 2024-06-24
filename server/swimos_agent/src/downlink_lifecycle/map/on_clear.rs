@@ -14,10 +14,10 @@
 
 use std::collections::HashMap;
 
-use swimos_api::handlers::{FnHandler, NoHandler};
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, TakeFn, UnitHandler},
     lifecycle_fn::{LiftShared, WithHandlerContext},
 };
@@ -28,7 +28,7 @@ pub trait OnDownlinkClear<K, V, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `map` - The old state of the map.
     fn on_clear(&self, map: HashMap<K, V>) -> Self::OnClearHandler<'_>;
 }
@@ -41,7 +41,7 @@ pub trait OnDownlinkClearShared<K, V, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `map` - The old state of the map.

@@ -14,10 +14,10 @@
 
 use std::borrow::Borrow;
 
-use swimos_api::handlers::{BorrowHandler, FnHandler, NoHandler};
+use swimos_utilities::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventFn, EventHandler, UnitHandler},
 };
 
@@ -27,7 +27,7 @@ pub trait OnEvent<T, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `value` - The new value.
     fn on_event<'a>(&'a self, value: &T) -> Self::OnEventHandler<'a>;
 }
@@ -40,7 +40,7 @@ pub trait OnEventShared<T, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `existing` - The existing value, if it is defined.

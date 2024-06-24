@@ -2,12 +2,7 @@ error[E0599]: the method `as_value` exists for struct `S<Valid, Skipped>`, but i
   --> src/tests/derive/form/generic_no_default.rs:35:15
    |
 24 |     struct S<A, B> {
-   |     --------------
-   |     |
-   |     method `as_value` not found for this struct
-   |     doesn't satisfy `S<Valid, Skipped>: Form`
-   |     doesn't satisfy `S<Valid, Skipped>: StructuralReadable`
-   |     doesn't satisfy `S<Valid, Skipped>: StructuralWritable`
+   |     -------------- method `as_value` not found for this struct because it doesn't satisfy `S<Valid, Skipped>: Form`, `S<Valid, Skipped>: StructuralReadable` or `S<Valid, Skipped>: StructuralWritable`
 ...
 35 |     let _ = s.as_value();
    |               ^^^^^^^^ method cannot be called on `S<Valid, Skipped>` due to unsatisfied trait bounds
@@ -27,6 +22,9 @@ note: the traits `StructuralReadable` and `StructuralWritable` must be implement
    |
    | pub trait StructuralWritable {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: items from traits can only be used if the trait is implemented and in scope
+   = note: the following trait defines an item `as_value`, perhaps you need to implement it:
+           candidate #1: `Form`
 
 error[E0277]: the trait bound `B: Default` is not satisfied
   --> src/tests/derive/form/generic_no_default.rs:23:14

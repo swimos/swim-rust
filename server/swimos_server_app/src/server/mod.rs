@@ -15,7 +15,7 @@
 use std::net::SocketAddr;
 
 use futures::future::BoxFuture;
-use swimos_utilities::{routing::route_uri::RouteUri, trigger};
+use swimos_utilities::{routing::RouteUri, trigger};
 
 mod builder;
 mod error;
@@ -31,6 +31,8 @@ use crate::error::ServerError;
 
 use self::{error::UnresolvableRoute, runtime::StartAgentRequest};
 
+/// A handle used to interact with a running Swim server instance. This can be used to find the interface
+/// on which the server is listening, instruct the server to stop and explicitly start agents.
 pub struct ServerHandle {
     stop_trigger: Option<trigger::Sender>,
     addr: Option<SocketAddr>,
@@ -73,7 +75,7 @@ impl ServerHandle {
 
     /// Attempt to start an agent instance in the server.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `route` - The node URI of the agent.
     pub async fn start_agent(&self, route: RouteUri) -> Result<(), UnresolvableRoute> {
         let (response_tx, response_rx) = oneshot::channel();

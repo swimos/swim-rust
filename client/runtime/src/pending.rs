@@ -22,11 +22,11 @@ use futures_util::stream::FuturesUnordered;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use swimos_api::downlink::DownlinkConfig;
-use swimos_api::net::Scheme;
-use swimos_model::address::RelativeAddress;
+use swimos_api::address::RelativeAddress;
+use swimos_client_api::DownlinkConfig;
+use swimos_messages::remote_protocol::AttachClient;
 use swimos_model::Text;
-use swimos_remote::AttachClient;
+use swimos_remote::Scheme;
 use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
 use tokio::sync::mpsc;
 

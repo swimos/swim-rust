@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     lanes::http::{lifecycle::HttpRequestContext, Response, UnitResponse},
 };
 

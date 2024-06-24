@@ -15,7 +15,7 @@
 use crate::structural::bridge::RecognizerBridge;
 use crate::structural::generic::coproduct::{CCons, CNil, Unify};
 use crate::structural::read::error::ExpectedEvent;
-use crate::structural::read::event::{NumericValue, ReadEvent};
+use crate::structural::read::event::ReadEvent;
 use crate::structural::read::from_model::{
     AttrBodyMaterializer, DelegateBodyMaterializer, ValueMaterializer,
 };
@@ -23,25 +23,18 @@ use crate::structural::read::recognizer::primitive::DataRecognizer;
 use crate::structural::read::ReadError;
 use crate::structural::write::StructuralWritable;
 use crate::structural::Tag;
-use chrono::{LocalResult, TimeZone, Utc};
 use std::borrow::Borrow;
-use std::collections::HashMap;
-use std::fmt::Display;
-use std::hash::Hash;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::option::Option::None;
-use std::str::FromStr;
 use std::sync::Arc;
-use swimos_model::bigint::{BigInt, BigUint};
-use swimos_model::time::Timestamp;
+use swimos_model::{BigInt, BigUint};
 use swimos_model::{Blob, Text, Value, ValueKind};
-use swimos_utilities::routing::route_uri::RouteUri;
 
 /// [`Recognizer`] implementations for config types.
-pub mod impls;
+mod impls;
 /// [`Recognizer`] implementations for basic types.
-pub mod primitive;
+mod primitive;
 #[cfg(test)]
 mod tests;
 
@@ -212,225 +205,6 @@ impl RecognizerReadable for Box<[u8]> {
     }
 }
 
-impl RecognizerReadable for RouteUri {
-    type Rec = RouteUriRecognizer;
-    type AttrRec = SimpleAttrBody<RouteUriRecognizer>;
-    type BodyRec = SimpleRecBody<RouteUriRecognizer>;
-
-    fn make_recognizer() -> Self::Rec {
-        RouteUriRecognizer
-    }
-
-    fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(RouteUriRecognizer)
-    }
-
-    fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(RouteUriRecognizer)
-    }
-
-    fn is_simple() -> bool {
-        true
-    }
-}
-
-pub struct RouteUriRecognizer;
-
-impl Recognizer for RouteUriRecognizer {
-    type Target = RouteUri;
-
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        match input {
-            ReadEvent::TextValue(txt) => {
-                let result = RouteUri::from_str(txt.borrow());
-                let uri = result.map_err(move |_| ReadError::Malformatted {
-                    text: Text::from(txt),
-                    message: Text::new("Not a valid relative URI."),
-                });
-                Some(uri)
-            }
-            ow => Some(Err(
-                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text))
-            )),
-        }
-    }
-
-    fn reset(&mut self) {}
-}
-
-fn check_parse_time_result<T, V>(me: LocalResult<T>, ts: &V) -> Result<T, ReadError>
-where
-    V: Display,
-{
-    match me {
-        LocalResult::Single(val) => Ok(val),
-        _ => Err(ReadError::Message(
-            format!("Failed to parse timestamp: {}", ts).into(),
-        )),
-    }
-}
-
-impl RecognizerReadable for Timestamp {
-    type Rec = TimestampRecognizer;
-    type AttrRec = SimpleAttrBody<TimestampRecognizer>;
-    type BodyRec = SimpleRecBody<TimestampRecognizer>;
-
-    fn make_recognizer() -> Self::Rec {
-        TimestampRecognizer
-    }
-
-    fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(TimestampRecognizer)
-    }
-
-    fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(TimestampRecognizer)
-    }
-}
-
-#[derive(Debug)]
-pub struct TimestampRecognizer;
-
-impl Recognizer for TimestampRecognizer {
-    type Target = Timestamp;
-
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        match input {
-            ReadEvent::Number(NumericValue::Int(n)) => {
-                let result = check_parse_time_result(
-                    Utc.timestamp_opt(n / 1_000_000, (n % 1_000_000) as u32),
-                    &n,
-                )
-                .map(Timestamp::from)
-                .map_err(|_| ReadError::NumberOutOfRange);
-
-                Some(result)
-            }
-            ReadEvent::Number(NumericValue::UInt(n)) => {
-                let result = check_parse_time_result(
-                    Utc.timestamp_opt((n / 1_000_000) as i64, (n % 1_000_000) as u32),
-                    &n,
-                )
-                .map(Timestamp::from)
-                .map_err(|_| ReadError::NumberOutOfRange);
-                Some(result)
-            }
-            ow => Some(Err(
-                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::UInt64))
-            )),
-        }
-    }
-
-    fn reset(&mut self) {}
-}
-
-/// Recognizes a vector of values of the same type.
-#[derive(Debug)]
-pub struct VecRecognizer<T, R> {
-    is_attr_body: bool,
-    stage: BodyStage,
-    vector: Vec<T>,
-    rec: R,
-}
-
-impl<T, R: Recognizer<Target = T>> Recognizer for VecRecognizer<T, R> {
-    type Target = Vec<T>;
-
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        match self.stage {
-            BodyStage::Init => {
-                if matches!(&input, ReadEvent::StartBody) {
-                    self.stage = BodyStage::Between;
-                    None
-                } else {
-                    Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
-                }
-            }
-            BodyStage::Between => match &input {
-                ReadEvent::EndRecord if !self.is_attr_body => {
-                    Some(Ok(std::mem::take(&mut self.vector)))
-                }
-                ReadEvent::EndAttribute if self.is_attr_body => {
-                    Some(Ok(std::mem::take(&mut self.vector)))
-                }
-                _ => {
-                    self.stage = BodyStage::Item;
-                    match self.rec.feed_event(input)? {
-                        Ok(t) => {
-                            self.vector.push(t);
-                            self.rec.reset();
-                            self.stage = BodyStage::Between;
-                            None
-                        }
-                        Err(e) => Some(Err(e)),
-                    }
-                }
-            },
-            BodyStage::Item => match self.rec.feed_event(input)? {
-                Ok(t) => {
-                    self.vector.push(t);
-                    self.rec.reset();
-                    self.stage = BodyStage::Between;
-                    None
-                }
-                Err(e) => Some(Err(e)),
-            },
-        }
-    }
-
-    fn reset(&mut self) {
-        self.stage = BodyStage::Init;
-        self.vector.clear();
-        self.rec.reset();
-    }
-}
-
-impl<T, R> VecRecognizer<T, R> {
-    fn new(is_attr_body: bool, rec: R) -> Self {
-        let stage = if is_attr_body {
-            BodyStage::Between
-        } else {
-            BodyStage::Init
-        };
-        VecRecognizer {
-            is_attr_body,
-            stage,
-            vector: vec![],
-            rec,
-        }
-    }
-}
-
-pub type CollaspsibleRec<R> = FirstOf<R, SimpleAttrBody<R>>;
-
-impl<T: RecognizerReadable> RecognizerReadable for Vec<T> {
-    type Rec = VecRecognizer<T, T::Rec>;
-    type AttrRec = CollaspsibleRec<VecRecognizer<T, T::Rec>>;
-    type BodyRec = VecRecognizer<T, T::Rec>;
-
-    fn make_recognizer() -> Self::Rec {
-        VecRecognizer::new(false, T::make_recognizer())
-    }
-
-    fn make_attr_recognizer() -> Self::AttrRec {
-        FirstOf::new(
-            VecRecognizer::new(true, T::make_recognizer()),
-            SimpleAttrBody::new(VecRecognizer::new(false, T::make_recognizer())),
-        )
-    }
-
-    fn make_body_recognizer() -> Self::BodyRec {
-        Self::make_recognizer()
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum BodyStage {
-    Init,
-    Item,
-    Between,
-}
-
 type Selector<Flds> = for<'a> fn(&mut Flds, u32, ReadEvent<'a>) -> Option<Result<(), ReadError>>;
 
 struct Bitset(u32, u64);
@@ -470,8 +244,9 @@ enum BodyFieldState {
 
 /// A [`Recognizer`] that can be configured to recognize any type that can be represented as a
 /// record consisting of named fields. The `Flds` type is the state of the state machine that
-/// stores the value for each named field as it is encouted in the output. Another function is then
+/// stores the value for each named field as it is encountered in the output. Another function is then
 /// called to transform this state into the final result.
+#[doc(hidden)]
 pub struct NamedFieldsRecognizer<T, Flds> {
     is_attr_body: bool,
     state: BodyFieldState,
@@ -487,7 +262,7 @@ pub struct NamedFieldsRecognizer<T, Flds> {
 impl<T, Flds> NamedFieldsRecognizer<T, Flds> {
     /// Configure a recognizer.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `fields` - The state for the state machine.
     /// * `select_index` - Map the field names of the type to integer indicies.
@@ -518,7 +293,7 @@ impl<T, Flds> NamedFieldsRecognizer<T, Flds> {
 
     /// Configure a recognizer for the type unpacked into an attribute body.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `fields` - The state for the state machine.
     /// * `select_index` - Map the field names of the type to integer indicies.
@@ -630,10 +405,18 @@ impl<T, Flds> Recognizer for NamedFieldsRecognizer<T, Flds> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum BodyStage {
+    Init,
+    Item,
+    Between,
+}
+
 /// A [`Recognizer`] that can be configured to recognize any type that can be represented as a
 /// record consisting of a tuple of values. The `Flds` type is the state of the state machine that
-/// stores the value for each named field as it is encouted in the output. Another function is then
+/// stores the value for each named field as it is encountered in the output. Another function is then
 /// called to transform this state into the final result.
+#[doc(hidden)]
 pub struct OrdinalFieldsRecognizer<T, Flds> {
     is_attr_body: bool,
     state: BodyStage,
@@ -648,7 +431,7 @@ pub struct OrdinalFieldsRecognizer<T, Flds> {
 impl<T, Flds> OrdinalFieldsRecognizer<T, Flds> {
     /// Configure a recognizer.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `fields` - The state for the state machine.
     /// * `num_fields` - The total number of named fields in the representation.
@@ -676,7 +459,7 @@ impl<T, Flds> OrdinalFieldsRecognizer<T, Flds> {
 
     /// Configure a recognizer for the type unpacked into an attribute body.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `fields` - The state for the state machine.
     /// * `num_fields` - The total number of named fields in the representation.
@@ -753,6 +536,7 @@ impl<T, Flds> Recognizer for OrdinalFieldsRecognizer<T, Flds> {
 
 /// Wraps another [`Recognizer`] to recognize the same type as an attribute body (terminated by
 /// a final end attribute event).
+#[doc(hidden)]
 #[derive(Debug)]
 pub struct SimpleAttrBody<R: Recognizer> {
     after_content: bool,
@@ -807,6 +591,7 @@ impl<R: Recognizer> Recognizer for SimpleAttrBody<R> {
 /// Runs two [`Recognizer`]s in parallel returning the result of the first that completes
 /// successfully. If both complete with an error, the error from the recognizer that failed
 /// last is returned.
+#[doc(hidden)]
 #[derive(Debug)]
 pub struct FirstOf<R1, R2> {
     first_active: bool,
@@ -893,8 +678,9 @@ where
     }
 }
 
-/// A key to specify the field that has been encounted in the stream of events when reading
+/// A key to specify the field that has been encountered in the stream of events when reading
 /// a type with labelled body fields.
+#[doc(hidden)]
 #[derive(Clone, Copy)]
 pub enum LabelledFieldKey<'a> {
     /// The name of the tag when this is used to populate a field.
@@ -929,9 +715,10 @@ enum OrdinalStructState {
     BodyItem,
 }
 
-/// A key to specify the field that has been encounted in the stream of events when reading
+/// A key to specify the field that has been encountered in the stream of events when reading
 /// a type with un-labelled body fields.
 #[derive(Clone, Copy)]
+#[doc(hidden)]
 pub enum OrdinalFieldKey<'a> {
     /// The name of the tag when this is used to populate a field.
     Tag,
@@ -945,6 +732,7 @@ pub enum OrdinalFieldKey<'a> {
 
 /// Specifies whether the tag attribute for a record is expected to be a fixed string or should
 /// be used to populate one of the fields.
+#[doc(hidden)]
 pub enum TagSpec {
     Fixed(&'static str),
     Field,
@@ -953,6 +741,7 @@ pub enum TagSpec {
 /// This type is used to encode the standard encoding of Rust structs, with labelled fields, as
 /// generated by the derivation macro for [`RecognizerReadable`]. It should not generally be
 /// necessary to use this type explicitly.
+#[doc(hidden)]
 pub struct LabelledStructRecognizer<T, Flds> {
     tag: TagSpec,
     state: LabelledStructState,
@@ -964,6 +753,7 @@ pub struct LabelledStructRecognizer<T, Flds> {
 
 /// The derivation macro produces the functions that are used to populate this table to provide
 /// the specific parts of the implementation.
+#[doc(hidden)]
 pub struct LabelledVTable<T, Flds> {
     select_index: for<'a> fn(LabelledFieldKey<'a>) -> Option<u32>,
     select_recog: Selector<Flds>,
@@ -989,6 +779,7 @@ impl<T, Flds> LabelledVTable<T, Flds> {
 
 /// The derivation macro produces the functions that are used to populate this table to provide
 /// the specific parts of the implementation.
+#[doc(hidden)]
 pub struct OrdinalVTable<T, Flds> {
     select_index: for<'a> fn(OrdinalFieldKey<'a>) -> Option<u32>,
     select_recog: Selector<Flds>,
@@ -1013,7 +804,7 @@ impl<T, Flds> OrdinalVTable<T, Flds> {
 }
 
 impl<T, Flds> LabelledStructRecognizer<T, Flds> {
-    /// #Arguments
+    /// # Arguments
     /// * `tag` - The expected name of the first attribute or an inidcation that it should be used
     /// to populate a field.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
@@ -1040,7 +831,7 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
     /// of the record has already been read before this recognizers is called so the initial state
     /// is skipped.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
@@ -1063,7 +854,7 @@ impl<T, Flds> LabelledStructRecognizer<T, Flds> {
 }
 
 impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
-    /// #Arguments
+    /// # Arguments
     /// * `tag` - The expected name of the first attribute or an inidcation that it should be used
     /// to populate a field.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
@@ -1090,7 +881,7 @@ impl<T, Flds> OrdinalStructRecognizer<T, Flds> {
     /// of the record has already been read before this recognizers is called so the initial state
     /// is skipped.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
@@ -1274,6 +1065,7 @@ impl<T, Flds> Recognizer for LabelledStructRecognizer<T, Flds> {
 /// This type is used to encode the standard encoding of Rust structs, with unlabelled fields, as
 /// generated by the derivation macro for [`RecognizerReadable`]. It should not generally be
 /// necessary to use this type explicitly.
+#[doc(hidden)]
 pub struct OrdinalStructRecognizer<T, Flds> {
     tag: TagSpec,
     state: OrdinalStructState,
@@ -1435,6 +1227,7 @@ impl<T, Flds> Recognizer for OrdinalStructRecognizer<T, Flds> {
 /// This type is used to encode the newtype encoding of Rust structs, with labelled fields, as
 /// generated by the derivation macro for [`RecognizerReadable`]. It should not generally be
 /// necessary to use this type explicitly.
+#[doc(hidden)]
 pub struct LabelledNewtypeRecognizer<T, Flds> {
     fields: Flds,
     vtable: LabelledVTable<T, Flds>,
@@ -1479,6 +1272,7 @@ impl<T, Flds> Recognizer for LabelledNewtypeRecognizer<T, Flds> {
 /// This type is used to encode the newtype encoding of Rust structs, with unlabelled fields, as
 /// generated by the derivation macro for [`RecognizerReadable`]. It should not generally be
 /// necessary to use this type explicitly.
+#[doc(hidden)]
 pub struct OrdinalNewtypeRecognizer<T, Flds> {
     fields: Flds,
     vtable: OrdinalVTable<T, Flds>,
@@ -1548,132 +1342,6 @@ impl<T: RecognizerReadable> RecognizerReadable for Arc<T> {
     }
 }
 
-#[derive(Debug)]
-pub struct OptionRecognizer<R> {
-    inner: R,
-    reading_value: bool,
-}
-
-impl<R> OptionRecognizer<R> {
-    fn new(inner: R) -> Self {
-        OptionRecognizer {
-            inner,
-            reading_value: false,
-        }
-    }
-}
-
-impl<R: Recognizer> Recognizer for OptionRecognizer<R> {
-    type Target = Option<R::Target>;
-
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        let OptionRecognizer {
-            inner,
-            reading_value,
-        } = self;
-        if *reading_value {
-            inner.feed_event(input).map(|r| r.map(Option::Some))
-        } else {
-            match &input {
-                ReadEvent::Extant => {
-                    let r = inner.feed_event(ReadEvent::Extant);
-                    if matches!(&r, Some(Err(_))) {
-                        Some(Ok(None))
-                    } else {
-                        r.map(|r| r.map(Option::Some))
-                    }
-                }
-                _ => {
-                    *reading_value = true;
-                    inner.feed_event(input).map(|r| r.map(Option::Some))
-                }
-            }
-        }
-    }
-
-    fn try_flush(&mut self) -> Option<Result<Self::Target, ReadError>> {
-        match self.inner.try_flush() {
-            Some(Ok(r)) => Some(Ok(Some(r))),
-            _ => Some(Ok(None)),
-        }
-    }
-
-    fn reset(&mut self) {
-        self.reading_value = false;
-        self.inner.reset();
-    }
-}
-
-pub struct EmptyAttrRecognizer<T> {
-    seen_extant: bool,
-    _type: PhantomData<fn() -> Option<T>>,
-}
-
-impl<T> Default for EmptyAttrRecognizer<T> {
-    fn default() -> Self {
-        EmptyAttrRecognizer {
-            seen_extant: false,
-            _type: PhantomData,
-        }
-    }
-}
-
-impl<T> Recognizer for EmptyAttrRecognizer<T> {
-    type Target = Option<T>;
-
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        if matches!(&input, ReadEvent::EndAttribute) {
-            Some(Ok(None))
-        } else if !self.seen_extant && matches!(&input, ReadEvent::Extant) {
-            self.seen_extant = true;
-            None
-        } else {
-            Some(Err(input.kind_error(ExpectedEvent::EndOfAttribute)))
-        }
-    }
-
-    fn reset(&mut self) {
-        self.seen_extant = false;
-    }
-}
-
-pub struct EmptyBodyRecognizer<T> {
-    seen_start: bool,
-    _type: PhantomData<fn() -> Option<T>>,
-}
-
-impl<T> Default for EmptyBodyRecognizer<T> {
-    fn default() -> Self {
-        EmptyBodyRecognizer {
-            seen_start: false,
-            _type: PhantomData,
-        }
-    }
-}
-
-impl<T> Recognizer for EmptyBodyRecognizer<T> {
-    type Target = Option<T>;
-
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        if self.seen_start {
-            if matches!(input, ReadEvent::EndRecord) {
-                Some(Ok(None))
-            } else {
-                Some(Err(input.kind_error(ExpectedEvent::EndOfRecord)))
-            }
-        } else if matches!(input, ReadEvent::StartBody) {
-            self.seen_start = true;
-            None
-        } else {
-            Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
-        }
-    }
-
-    fn reset(&mut self) {
-        self.seen_start = false;
-    }
-}
-
 /// Runs another recognizer and then transforms its result by applying a function to it.
 pub struct MappedRecognizer<R, F> {
     inner: R,
@@ -1708,40 +1376,6 @@ where
     }
 }
 
-pub type MakeOption<T> = fn(T) -> Option<T>;
-
-impl<T: RecognizerReadable> RecognizerReadable for Option<T> {
-    type Rec = OptionRecognizer<T::Rec>;
-    type AttrRec = FirstOf<EmptyAttrRecognizer<T>, MappedRecognizer<T::AttrRec, MakeOption<T>>>;
-    type BodyRec = FirstOf<EmptyBodyRecognizer<T>, MappedRecognizer<T::BodyRec, MakeOption<T>>>;
-
-    fn make_recognizer() -> Self::Rec {
-        OptionRecognizer::new(T::make_recognizer())
-    }
-
-    fn make_attr_recognizer() -> Self::AttrRec {
-        FirstOf::new(
-            EmptyAttrRecognizer::default(),
-            MappedRecognizer::new(T::make_attr_recognizer(), Option::Some),
-        )
-    }
-
-    fn make_body_recognizer() -> Self::BodyRec {
-        FirstOf::new(
-            EmptyBodyRecognizer::default(),
-            MappedRecognizer::new(T::make_body_recognizer(), Option::Some),
-        )
-    }
-
-    fn on_absent() -> Option<Self> {
-        Some(None)
-    }
-
-    fn is_simple() -> bool {
-        T::is_simple()
-    }
-}
-
 impl RecognizerReadable for Value {
     type Rec = ValueMaterializer;
     type AttrRec = AttrBodyMaterializer;
@@ -1768,151 +1402,7 @@ impl RecognizerReadable for Value {
     }
 }
 
-#[derive(Debug)]
-enum MapStage {
-    Init,
-    Between,
-    Key,
-    Slot,
-    Value,
-}
-
-/// [`Recognizer`] for [`HashMap`]s encoded as key-value pairs in the slots of the record body.
-#[derive(Debug)]
-pub struct HashMapRecognizer<RK: Recognizer, RV: Recognizer> {
-    is_attr_body: bool,
-    stage: MapStage,
-    key: Option<RK::Target>,
-    map: HashMap<RK::Target, RV::Target>,
-    key_rec: RK,
-    val_rec: RV,
-}
-
-impl<RK: Recognizer, RV: Recognizer> HashMapRecognizer<RK, RV> {
-    fn new(key_rec: RK, val_rec: RV) -> Self {
-        HashMapRecognizer {
-            is_attr_body: false,
-            stage: MapStage::Init,
-            key: None,
-            map: HashMap::new(),
-            key_rec,
-            val_rec,
-        }
-    }
-
-    fn new_attr(key_rec: RK, val_rec: RV) -> Self {
-        HashMapRecognizer {
-            is_attr_body: true,
-            stage: MapStage::Between,
-            key: None,
-            map: HashMap::new(),
-            key_rec,
-            val_rec,
-        }
-    }
-}
-
-impl<K, V> RecognizerReadable for HashMap<K, V>
-where
-    K: Eq + Hash + RecognizerReadable,
-    V: RecognizerReadable,
-{
-    type Rec = HashMapRecognizer<K::Rec, V::Rec>;
-    type AttrRec = HashMapRecognizer<K::Rec, V::Rec>;
-    type BodyRec = HashMapRecognizer<K::Rec, V::Rec>;
-
-    fn make_recognizer() -> Self::Rec {
-        HashMapRecognizer::new(K::make_recognizer(), V::make_recognizer())
-    }
-
-    fn make_attr_recognizer() -> Self::AttrRec {
-        HashMapRecognizer::new_attr(K::make_recognizer(), V::make_recognizer())
-    }
-
-    fn make_body_recognizer() -> Self::BodyRec {
-        HashMapRecognizer::new(K::make_recognizer(), V::make_recognizer())
-    }
-}
-
-impl<RK, RV> Recognizer for HashMapRecognizer<RK, RV>
-where
-    RK: Recognizer,
-    RV: Recognizer,
-    RK::Target: Eq + Hash,
-{
-    type Target = HashMap<RK::Target, RV::Target>;
-
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        match self.stage {
-            MapStage::Init => {
-                if matches!(&input, ReadEvent::StartBody) {
-                    self.stage = MapStage::Between;
-                    None
-                } else {
-                    Some(Err(input.kind_error(ExpectedEvent::RecordBody)))
-                }
-            }
-            MapStage::Between => match &input {
-                ReadEvent::EndRecord if !self.is_attr_body => {
-                    Some(Ok(std::mem::take(&mut self.map)))
-                }
-                ReadEvent::EndAttribute if self.is_attr_body => {
-                    Some(Ok(std::mem::take(&mut self.map)))
-                }
-                _ => {
-                    self.stage = MapStage::Key;
-                    match self.key_rec.feed_event(input)? {
-                        Ok(t) => {
-                            self.key = Some(t);
-                            self.key_rec.reset();
-                            self.stage = MapStage::Slot;
-                            None
-                        }
-                        Err(e) => Some(Err(e)),
-                    }
-                }
-            },
-            MapStage::Key => match self.key_rec.feed_event(input)? {
-                Ok(t) => {
-                    self.key = Some(t);
-                    self.key_rec.reset();
-                    self.stage = MapStage::Slot;
-                    None
-                }
-                Err(e) => Some(Err(e)),
-            },
-            MapStage::Slot => {
-                if matches!(&input, ReadEvent::Slot) {
-                    self.stage = MapStage::Value;
-                    None
-                } else {
-                    Some(Err(input.kind_error(ExpectedEvent::Slot)))
-                }
-            }
-            MapStage::Value => match self.val_rec.feed_event(input)? {
-                Ok(v) => {
-                    if let Some(k) = self.key.take() {
-                        self.map.insert(k, v);
-                        self.val_rec.reset();
-                        self.stage = MapStage::Between;
-                        None
-                    } else {
-                        Some(Err(ReadError::InconsistentState))
-                    }
-                }
-                Err(e) => Some(Err(e)),
-            },
-        }
-    }
-
-    fn reset(&mut self) {
-        self.key = None;
-        self.stage = MapStage::Init;
-        self.key_rec.reset();
-        self.val_rec.reset();
-    }
-}
-
+#[doc(hidden)]
 pub fn feed_field<R>(
     name: &'static str,
     field: &mut Option<R::Target>,
@@ -1949,6 +1439,7 @@ enum DelegateStructState {
 /// This type is used to encode the standard encoding of Rust structs, where the body of the record
 /// is determined by one of the fields, generated by the derivation macro for
 /// [`RecognizerReadable`]. It should not generally be necessary to use this type explicitly.
+#[doc(hidden)]
 pub struct DelegateStructRecognizer<T, Flds> {
     tag: TagSpec,
     state: DelegateStructState,
@@ -1962,7 +1453,7 @@ pub struct DelegateStructRecognizer<T, Flds> {
 }
 
 impl<T, Flds> DelegateStructRecognizer<T, Flds> {
-    /// #Arguments
+    /// # Arguments
     /// * `tag` - The expected name of the first attribute or an inidcation that it should be used
     /// to populate a field.
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
@@ -1992,7 +1483,7 @@ impl<T, Flds> DelegateStructRecognizer<T, Flds> {
     /// of the record has already been read before this recognizers is called so the initial state
     /// is skipped.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `fields` - The state of the recognizer state machine (specified by the macro).
     /// * `num_fields` - The total numer of (non-skipped) fields that the recognizer expects.
     /// * `vtable` - Functions that are generated by the macro that determine how incoming events
@@ -2204,13 +1695,14 @@ where
 /// macro for [`RecognizerReadable`]. It should not generally be necessary to use this type
 /// explicitly. The type parameter `Var` is the type of a recognizer that can recognizer any of
 /// the variants of the enum.
+#[doc(hidden)]
 pub struct TaggedEnumRecognizer<Var> {
     select_var: fn(&str) -> Option<Var>,
     variant: Option<Var>,
 }
 
 impl<Var> TaggedEnumRecognizer<Var> {
-    /// #Arguments
+    /// # Arguments
     /// * `select_var` - A function that configures the wrapped recognizer to expect the
     /// representation of the appropriate variant, based on the name of the tag attribute.
     pub fn new(select_var: fn(&str) -> Option<Var>) -> Self {
@@ -2265,6 +1757,7 @@ enum UnitStructState {
 
 /// Simple [`Recognizer`] for unit structs and enum variants. This is used by the derive macros
 /// to avoid generating superfluous code in the degenerate case.
+#[doc(hidden)]
 pub struct UnitStructRecognizer<T> {
     tag: &'static str,
     state: UnitStructState,
@@ -2272,7 +1765,7 @@ pub struct UnitStructRecognizer<T> {
 }
 
 impl<T> UnitStructRecognizer<T> {
-    /// #Arguments
+    /// # Arguments
     /// * `tag` - The expected name of the tag attribute.
     /// * `on_done` - Factory to create an instance.
     pub fn new(tag: &'static str, on_done: fn() -> T) -> Self {
@@ -2284,7 +1777,7 @@ impl<T> UnitStructRecognizer<T> {
     }
 
     /// For an enum variant, the wrapping [`Recognizer`] will already have read the tag name.
-    /// #Arguments
+    /// # Arguments
     /// * `on_done` - Factory to create an instance.
     pub fn variant(on_done: fn() -> T) -> Self {
         UnitStructRecognizer {
@@ -2362,6 +1855,7 @@ impl<T> Recognizer for UnitStructRecognizer<T> {
 }
 
 /// A recognizer that always fails (used for uninhabited types).
+#[doc(hidden)]
 pub struct RecognizeNothing<T>(PhantomData<T>);
 
 impl<T> Default for RecognizeNothing<T> {
@@ -2382,97 +1876,7 @@ impl<T> Recognizer for RecognizeNothing<T> {
     fn reset(&mut self) {}
 }
 
-macro_rules! impl_readable_tuple {
-    ( $len:expr => ($([$idx:pat, $pname:ident, $vname:ident, $rname:ident])+)) => {
-        const _: () = {
-
-            type Builder<$($pname),+> = (($(Option<$pname>,)+), ($(<$pname as RecognizerReadable>::Rec,)+));
-
-            fn select_feed<$($pname: RecognizerReadable),+>(builder: &mut Builder<$($pname),+>, i: u32, input: ReadEvent<'_>) -> Option<Result<(), ReadError>> {
-                let (($($vname,)+), ($($rname,)+)) = builder;
-                match i {
-                    $(
-                        $idx => {
-                            let result = $rname.feed_event(input)?;
-                            match result {
-                                Ok(v) => {
-                                    *$vname = Some(v);
-                                    Some(Ok(()))
-                                },
-                                Err(e) => {
-                                    Some(Err(e))
-                                }
-                            }
-                        },
-                    )+
-                    _ => Some(Err(ReadError::InconsistentState))
-                }
-
-            }
-
-            fn on_done<$($pname: RecognizerReadable),+>(builder: &mut Builder<$($pname),+>) -> Result<($($pname,)+), ReadError> {
-                let (($($vname,)+), _) = builder;
-                if let ($(Some($vname),)+) = ($($vname.take(),)+) {
-                    Ok(($($vname,)+))
-                } else {
-                    Err(ReadError::IncompleteRecord)
-                }
-            }
-
-            fn reset<$($pname: RecognizerReadable),+>(builder: &mut Builder<$($pname),+>) {
-                let (($($vname,)+), ($($rname,)+)) = builder;
-
-                $(*$vname = None;)+
-                $($rname.reset();)+
-            }
-
-            impl<$($pname: RecognizerReadable),+> RecognizerReadable for ($($pname,)+) {
-                type Rec = OrdinalFieldsRecognizer<($($pname,)+), Builder<$($pname),+>>;
-                type AttrRec = FirstOf<SimpleAttrBody<Self::Rec>, Self::Rec>;
-                type BodyRec = Self::Rec;
-
-                fn make_recognizer() -> Self::Rec {
-                    OrdinalFieldsRecognizer::new(
-                        (Default::default(), ($(<$pname as RecognizerReadable>::make_recognizer(),)+)),
-                        $len,
-                        select_feed,
-                        on_done,
-                        reset,
-                    )
-                }
-
-                fn make_attr_recognizer() -> Self::AttrRec {
-                    let attr = OrdinalFieldsRecognizer::new_attr(
-                        (Default::default(), ($(<$pname as RecognizerReadable>::make_recognizer(),)+)),
-                        $len,
-                        select_feed,
-                        on_done,
-                        reset,
-                    );
-                    FirstOf::new(SimpleAttrBody::new(Self::make_recognizer()), attr)
-                }
-
-                fn make_body_recognizer() -> Self::BodyRec {
-                    Self::make_recognizer()
-                }
-            }
-        };
-    }
-}
-
-impl_readable_tuple! { 1 => ([0, T0, v0, r0]) }
-impl_readable_tuple! { 2 => ([0, T0, v0, r0] [1, T1, v1, r1]) }
-impl_readable_tuple! { 3 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2]) }
-impl_readable_tuple! { 4 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3]) }
-impl_readable_tuple! { 5 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4]) }
-impl_readable_tuple! { 6 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5]) }
-impl_readable_tuple! { 7 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6]) }
-impl_readable_tuple! { 8 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7]) }
-impl_readable_tuple! { 9 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7] [8, T8, v8, r8]) }
-impl_readable_tuple! { 10 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7] [8, T8, v8, r8] [9, T9, v9, r9]) }
-impl_readable_tuple! { 11 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7] [8, T8, v8, r8] [9, T9, v9, r9] [10, T10, v10, r10]) }
-impl_readable_tuple! { 12 => ([0, T0, v0, r0] [1, T1, v1, r1] [2, T2, v2, r2] [3, T3, v3, r3] [4, T4, v4, r4] [5, T5, v5, r5] [6, T6, v6, r6] [7, T7, v7, r7] [8, T8, v8, r8] [9, T9, v9, r9] [10, T10, v10, r10] [11, T11, v11, r11]) }
-
+#[doc(hidden)]
 pub struct TagRecognizer<T>(PhantomData<fn(&str) -> T>);
 
 impl<T: Tag> Default for TagRecognizer<T> {
@@ -2509,8 +1913,9 @@ enum HeaderState {
     End,
 }
 
-/// A key to specify the field that has been encounted in the stream of events when reading
+/// A key to specify the field that has been encountered in the stream of events when reading
 /// a header of a record.
+#[doc(hidden)]
 #[derive(Clone, Copy)]
 pub enum HeaderFieldKey<'a> {
     /// The first value inside the tag attribute.
@@ -2521,6 +1926,7 @@ pub enum HeaderFieldKey<'a> {
 
 /// The derivation macro produces the functions that are used to populate this table to provide
 /// the specific parts of the implementation.
+#[doc(hidden)]
 pub struct HeaderVTable<T, Flds> {
     select_index: for<'a> fn(HeaderFieldKey<'a>) -> Option<u32>,
     select_recog: Selector<Flds>,
@@ -2555,6 +1961,7 @@ impl<T, Flds> Copy for HeaderVTable<T, Flds> {}
 /// This type is used to recognize the header for types which lift fields into it. It is used
 /// by the derivation macro for [`RecognizerReadable`]. It should not generally be necessary to use
 /// this type explicitly.
+#[doc(hidden)]
 pub struct HeaderRecognizer<T, Flds> {
     has_body: bool,
     flattened: bool,
@@ -2567,12 +1974,13 @@ pub struct HeaderRecognizer<T, Flds> {
 
 /// Create a recognizer for the body of the header attribute of a record.
 ///
-/// #Arguments
-/// * `has_body` - Whehter there is a field lifted to be the body of the header.
+/// # Arguments
+/// * `has_body` - Whether there is a field lifted to be the body of the header.
 /// * `make_fields` - Factory to construct the state of the recognizer.
 /// * `num_slots` - The number of slots lifted into the header.
 /// * `vtable` - Functions that are generated by the macro that determine how incoming events
 /// modify the state.
+#[doc(hidden)]
 pub fn header_recognizer<T, Flds, MkFlds>(
     has_body: bool,
     make_fields: MkFlds,
@@ -2587,7 +1995,7 @@ where
     FirstOf::new(simple, flattened)
 }
 
-/// #Arguments
+/// # Arguments
 /// * `has_body` - Whehter there is a field lifted to be the body of the header.
 /// * `flattened` - Whether the record containing the fields has been flattened into the attribute
 /// body (and so does not have explicit record body delimiting).
@@ -2752,6 +2160,7 @@ impl<T, Flds> Recognizer for HeaderRecognizer<T, Flds> {
     }
 }
 
+#[doc(hidden)]
 pub fn take_fields<T: Default, U, V>(state: &mut (T, U, V)) -> Result<T, ReadError> {
     Ok(std::mem::take(&mut state.0))
 }
@@ -2766,6 +2175,7 @@ enum SimpleRecBodyState {
 /// Wraps another simple [`Recognizer`] to recognize the same type as the single item in the body
 /// of a record.
 #[derive(Debug)]
+#[doc(hidden)]
 pub struct SimpleRecBody<R: Recognizer> {
     state: SimpleRecBodyState,
     value: Option<R::Target>,

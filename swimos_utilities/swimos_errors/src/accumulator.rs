@@ -23,6 +23,7 @@ enum ErrorsInner<E> {
     Multiple(Vec<E>),
 }
 
+/// A list of errors. This type will only allocate if there is more than 1 error in the list.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Errors<E>(ErrorsInner<E>);
 

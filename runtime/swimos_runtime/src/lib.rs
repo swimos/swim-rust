@@ -12,8 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! SwimOS Agent & Downlink Runtime
+//!
+//! Tokio tasks describing the core IO loops for agents and downlinks. These tasks implement
+//! the Warp protocol only and are entirely decoupled from the state and user defined behaviour
+//! of the agents/downlinks.
+
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
+
+/// The agent runtime task.
 pub mod agent;
-pub mod backpressure;
+mod backpressure;
+/// The downlink runtime task.
 pub mod downlink;
-pub mod error;
 mod timeout_coord;
+
+/// Ends of two independent channels (for example the input and output channels of an agent).
+type Io = (ByteWriter, ByteReader);

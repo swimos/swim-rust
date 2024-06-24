@@ -26,7 +26,7 @@ use std::sync::Arc;
 mod tests;
 
 #[derive(Debug)]
-struct PromiseInner<T>(Arc<UnsafeCell<Option<Arc<T>>>>);
+struct PromiseInner<T>(Arc<UnsafeCell<Option<T>>>);
 
 unsafe impl<T: Send> Send for PromiseInner<T> {}
 unsafe impl<T: Sync> Sync for PromiseInner<T> {}
@@ -55,7 +55,7 @@ impl<T> Clone for Receiver<T> {
 }
 
 /// A promise allows a value to be provided, exactly once, at some time in the future.
-pub fn promise<T: Send + Sync>() -> (Sender<T>, Receiver<T>) {
+pub fn promise<T: Send + Sync + Clone>() -> (Sender<T>, Receiver<T>) {
     let data = Arc::new(UnsafeCell::new(None));
     let (tx, rx) = crate::trigger();
     (
@@ -79,10 +79,10 @@ impl<T: Send + Sync> Sender<T> {
             data: PromiseInner(data),
         } = self;
         unsafe {
-            *data.get() = Some(Arc::new(value));
+            *data.get() = Some(value);
             if trigger.trigger() {
                 Ok(())
-            } else if let Ok(value) = Arc::try_unwrap((*data.get()).take().unwrap()) {
+            } else if let Some(value) = (*data.get()).take() {
                 Err(value)
             } else {
                 unreachable!()
@@ -91,6 +91,7 @@ impl<T: Send + Sync> Sender<T> {
     }
 }
 
+/// An error generated if the [`Sender`] was dropped before it provided a value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PromiseError;
 
@@ -101,6 +102,7 @@ impl Display for PromiseError {
 }
 
 impl<T> Receiver<T> {
+    /// Determine if two [`Receiver`]s are connected to the same [`Sender`].
     pub fn same_promise(left: &Self, right: &Self) -> bool {
         crate::Receiver::same_receiver(&left.trigger, &right.trigger)
     }
@@ -108,8 +110,8 @@ impl<T> Receiver<T> {
 
 impl Error for PromiseError {}
 
-impl<T: Send + Sync> Future for Receiver<T> {
-    type Output = Result<Arc<T>, PromiseError>;
+impl<T: Send + Sync + Clone> Future for Receiver<T> {
+    type Output = Result<T, PromiseError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         if ready!(self.trigger.poll_unpin(cx)).is_ok() {

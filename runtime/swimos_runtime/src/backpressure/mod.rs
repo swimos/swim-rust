@@ -12,13 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{convert::Infallible, fmt::Display};
+use std::{
+    convert::Infallible,
+    fmt::{Display, Formatter},
+};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use swimos_api::protocol::{
-    downlink::DownlinkOperation,
-    map::{RawMapOperation, RawMapOperationMut},
-};
+use std::str::Utf8Error;
+use swimos_agent_protocol::{DownlinkOperation, MapOperation};
+use thiserror::Error;
 use tokio_util::codec::Encoder;
 
 use map_queue::MapOperationQueue;
@@ -28,7 +30,8 @@ pub mod recon;
 
 use recon::MapOperationReconEncoder;
 
-use crate::error::InvalidKey;
+type RawMapOperation = MapOperation<Bytes, BytesMut>;
+type RawMapOperationMut = MapOperation<BytesMut, BytesMut>;
 
 #[cfg(test)]
 mod tests;
@@ -209,5 +212,28 @@ impl BackpressureStrategy for MapBackpressure {
                 .encode(head, buffer)
                 .expect("Encoding should be unfallible.");
         }
+    }
+}
+
+/// Error indicating that the key for a map message contained invalid UTF8.
+#[derive(Debug, Error)]
+pub struct InvalidKey {
+    key_bytes: Bytes,
+    source: Utf8Error,
+}
+
+impl Display for InvalidKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "The key {:?}, contains invalid UTF8: {}.",
+            self.key_bytes, self.source
+        )
+    }
+}
+
+impl InvalidKey {
+    pub fn new(key_bytes: Bytes, source: Utf8Error) -> Self {
+        InvalidKey { key_bytes, source }
     }
 }

@@ -18,17 +18,9 @@ use quick_xml::DeError;
 use serde::{Deserialize, Deserializer, Serialize};
 use swimos::model::{Text, ValueKind};
 use swimos_form::{
-    structural::{
-        read::{
-            error::ExpectedEvent,
-            event::ReadEvent,
-            recognizer::{Recognizer, RecognizerReadable},
-            ReadError,
-        },
-        write::{StructuralWritable, StructuralWriter},
-        Tag,
-    },
-    Form,
+    read::{ExpectedEvent, ReadError, ReadEvent, Recognizer, RecognizerReadable},
+    write::{StructuralWritable, StructuralWriter},
+    Form, Tag,
 };
 use thiserror::Error;
 

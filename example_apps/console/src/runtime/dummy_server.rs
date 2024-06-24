@@ -14,7 +14,6 @@
 
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap},
-    net::SocketAddr,
     pin::pin,
     sync::Arc,
     time::Duration,
@@ -31,11 +30,12 @@ use ratchet::{
     CloseCode, CloseReason, NoExtDecoder, NoExtEncoder, NoExtProvider, ProtocolRegistry,
     WebSocketConfig,
 };
-use swimos_api::protocol::map::MapMessage;
+use swimos_agent_protocol::MapMessage;
 use swimos_form::Form;
 use swimos_messages::warp::{peel_envelope_header_str, RawEnvelope};
-use swimos_recon::{parser::parse_value, printer::print_recon_compact};
+use swimos_recon::{parser::parse_recognize, print_recon_compact};
 use swimos_utilities::trigger;
+use thiserror::Error;
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::{
@@ -159,7 +159,7 @@ impl Clone for LaneSpec {
 }
 
 enum Event {
-    NewConnection(TcpStream, SocketAddr),
+    NewConnection(TcpStream),
     TaskDone(Result<(), TaskError>),
 }
 
@@ -190,7 +190,7 @@ impl DummyServer {
                 _ = &mut stop_rx => break,
                 result = listener.accept() => {
                     match result {
-                        Ok((stream, bound_to)) => Event::NewConnection(stream, bound_to),
+                        Ok((stream, _)) => Event::NewConnection(stream),
                         Err(err) => {
                             use std::io;
                             match err.kind() {
@@ -215,7 +215,7 @@ impl DummyServer {
                 }
             };
             match event {
-                Event::NewConnection(stream, _) => {
+                Event::NewConnection(stream) => {
                     let subprotocols = ProtocolRegistry::new(vec!["warp0"]).unwrap();
                     let upgrader = ratchet::accept_with(
                         stream,
@@ -245,12 +245,17 @@ impl DummyServer {
     }
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 enum TaskError {
+    #[error("A web socket error occurred: {0}")]
     Ws(ratchet::Error),
+    #[error("Failed to accept an incoming connection: {0}")]
     AcceptErr(std::io::ErrorKind),
+    #[error("Received a binary web socket frame.")]
     BadMessageType,
+    #[error("Received a web socket frame containing invalid UTF-8.")]
     BadUtf8,
+    #[error("Received an invalid Warp envelope: {0}")]
     BadEnvelope(String),
 }
 
@@ -614,7 +619,7 @@ where
                                     ));
                                 }
                                 LaneMessage::Command(body) => {
-                                    if let Ok(v) = parse_value(&body, false) {
+                                    if let Ok(v) = parse_recognize(body.as_str(), false) {
                                         if let Ok(update) = L::Event::try_from_value(&v) {
                                             let event = format!(
                                                 "@event(node:\"{}\",lane:{}) {}",

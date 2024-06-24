@@ -21,7 +21,8 @@ use std::{
 };
 
 use parking_lot::Mutex;
-use swimos_api::meta::lane::{LaneInfo, LaneKind};
+use swimos_api::agent::LaneKind;
+use swimos_meta::LaneInfo;
 use swimos_model::Text;
 use swimos_runtime::agent::reporting::UplinkReportReader;
 
@@ -90,7 +91,7 @@ impl AgentIntrospectionUpdater {
 impl AgentIntrospectionUpdater {
     /// Add a new lane for the agent.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `name` - The name of the lane.
     /// * `kind` - The kind of the lane.
     /// * `report_reader` - Reader for uplink statistics snapshots for the lane.

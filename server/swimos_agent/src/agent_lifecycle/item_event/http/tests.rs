@@ -15,9 +15,11 @@
 use std::{collections::HashMap, sync::Arc};
 
 use parking_lot::Mutex;
-use swimos_api::agent::{response_channel, AgentConfig};
-use swimos_model::http::{HttpResponse, StatusCode, Uri};
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_api::{
+    agent::{response_channel, AgentConfig},
+    http::{HttpResponse, StatusCode, Uri},
+};
+use swimos_utilities::routing::RouteUri;
 
 use crate::agent_lifecycle::item_event::{HLeaf, HttpBranch};
 use crate::lanes::http::Request;

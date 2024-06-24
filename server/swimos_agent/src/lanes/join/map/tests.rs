@@ -19,10 +19,12 @@ use std::sync::Arc;
 
 use bytes::BytesMut;
 use futures::stream::FuturesUnordered;
-use swimos_api::agent::AgentConfig;
-use swimos_api::downlink::DownlinkKind;
-use swimos_model::address::Address;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_agent_protocol::MapMessage;
+use swimos_api::{
+    address::Address,
+    agent::{AgentConfig, DownlinkKind},
+};
+use swimos_utilities::routing::RouteUri;
 
 use crate::event_handler::{
     ActionContext, BoxJoinLaneInit, EventHandlerError, HandlerAction, Modification,
@@ -31,7 +33,7 @@ use crate::item::AgentItem;
 use crate::lanes::join::test_util::{TestDlContextInner, TestDownlinkContext};
 use crate::lanes::join_map::default_lifecycle::DefaultJoinMapLifecycle;
 use crate::lanes::join_map::{
-    AddDownlinkAction, JoinMapAddDownlink, JoinMapLaneGet, JoinMapLaneGetMap,
+    AddDownlinkAction, JoinMapAddDownlink, JoinMapLaneGet, JoinMapLaneGetMap, JoinMapRemoveDownlink,
 };
 use crate::test_context::{dummy_context, run_event_handlers, run_with_futures};
 use crate::{event_handler::StepResult, item::MapItem, meta::AgentMetadata};
@@ -323,4 +325,69 @@ async fn open_downlink_from_registered() {
     .await;
 
     assert_eq!(count.load(Ordering::Relaxed), 1);
+}
+
+#[tokio::test]
+async fn stop_downlink() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let address = Address::text(None, REMOTE_NODE, REMOTE_LANE);
+
+    let handler = JoinMapAddDownlink::new(TestAgent::LANE, "link".to_string(), address.clone());
+
+    let context = TestDownlinkContext::new(DownlinkKind::MapEvent);
+    let mut inits = HashMap::new();
+    let mut ad_hoc_buffer = BytesMut::new();
+
+    let count = Arc::new(AtomicUsize::new(0));
+
+    let spawner = FuturesUnordered::new();
+    let mut action_context =
+        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
+    register_lifecycle(&mut action_context, &agent, count.clone());
+    assert!(spawner.is_empty());
+
+    run_with_futures(
+        &context,
+        &context,
+        &agent,
+        meta,
+        &mut inits,
+        &mut ad_hoc_buffer,
+        handler,
+    )
+    .await;
+
+    assert_eq!(count.load(Ordering::Relaxed), 1);
+
+    agent.lane.update(
+        "link".to_string(),
+        MapMessage::Update {
+            key: 1,
+            value: 2.to_string(),
+        },
+        true,
+    );
+
+    let mut stop_handler = JoinMapRemoveDownlink::new(TestAgent::LANE, "link".to_string());
+    let result = stop_handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(()));
+
+    let guard = agent.lane.link_tracker.borrow();
+    assert!(guard.links.is_empty());
+
+    let mut get_map_handler = JoinMapLaneGetMap::new(TestAgent::LANE);
+    let result = get_map_handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(init()));
 }

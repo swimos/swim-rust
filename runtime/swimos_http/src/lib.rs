@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # Ratchet Hyper Integration
+//!
+//! An adapter to allow upgrading a Hyper HTTP connection to a websocket connection, using
+//! Ratchet.
+
 mod websocket;
 
 pub use websocket::{

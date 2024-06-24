@@ -13,13 +13,14 @@
 // limitations under the License.
 
 use futures::FutureExt;
-use swimos_model::{address::Address, Text};
+use swimos_api::address::Address;
+use swimos_model::Text;
 use tokio::sync::mpsc;
 
 use crate::{
     agent_lifecycle::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop},
     event_handler::{
-        ActionContext, BoxEventHandler, HandlerAction, SideEffect, Spawner, StepResult,
+        ActionContext, HandlerAction, LocalBoxEventHandler, SideEffect, Spawner, StepResult,
     },
     meta::AgentMetadata,
 };
@@ -128,7 +129,7 @@ impl HandlerAction<TestAgent> for LifecycleHandler {
                                     tx.send(LifecycleEvent::RanSuspendedConsequence)
                                         .expect("Channel closed.");
                                 });
-                                let boxed: BoxEventHandler<TestAgent> = Box::new(h);
+                                let boxed: LocalBoxEventHandler<TestAgent> = Box::new(h);
                                 boxed
                             };
                             action_context.spawn_suspend(fut.boxed());

@@ -19,11 +19,8 @@ use std::{
 };
 
 use bytes::BytesMut;
-use swimos_api::protocol::{
-    agent::{LaneResponse, MapLaneResponseEncoder},
-    map::MapOperation,
-};
-use swimos_form::structural::write::StructuralWritable;
+use swimos_agent_protocol::{encoding::lane::MapLaneResponseEncoder, LaneResponse, MapOperation};
+use swimos_form::write::StructuralWritable;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
@@ -45,12 +42,12 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
-/// A lane that is a stateless analogue of [`super::map::MapLane`]. Rather than maintaining
+/// A lane that is a stateless analogue of [a map lane](`super::map::MapLane`). Rather than maintaining
 /// a persistent state that can be queried, a demand lane computes a value from a key, on demand,
 /// that is sent on all uplinks attached to it.
 ///
 /// A demand lane can be cued to produce a value by executing an instance of [`CueKey`] (which can be
-/// constructed using the [`crate::agent_lifecycle::utility::HandlerContext`]).
+/// constructed using the [handler context](`crate::agent_lifecycle::HandlerContext`)).
 #[derive(Debug)]
 pub struct DemandMapLane<K, V> {
     id: u64,

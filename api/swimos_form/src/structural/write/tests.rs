@@ -16,7 +16,7 @@ use crate::structural::write::{RecordBodyKind, StructuralWritable};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
-use swimos_model::bigint::{BigInt, BigUint};
+use swimos_model::{BigInt, BigUint};
 use swimos_model::{Blob, Item, Text, Value};
 
 #[test]

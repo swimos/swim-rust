@@ -16,7 +16,7 @@ use crate::model::lifecycle::{MapUpdateFn, SharedMapUpdateFn};
 use futures::future::{ready, Ready};
 use std::collections::BTreeMap;
 use std::future::Future;
-use swimos_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
+use swimos_utilities::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
 /// Trait for event handlers to be called when a downlink updates a value.
 pub trait OnUpdate<K, V>: Send {

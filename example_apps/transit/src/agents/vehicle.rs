@@ -18,7 +18,7 @@ use std::{
 };
 
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt},
     lanes::{CommandLane, MapLane, ValueLane},
     lifecycle, projections, AgentLaneModel,

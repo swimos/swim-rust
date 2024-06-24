@@ -16,22 +16,21 @@ use std::{collections::HashMap, pin::pin};
 
 use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::unfold, FutureExt, SinkExt, Stream, StreamExt};
-use swimos_api::{
-    agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
-    error::AgentTaskError,
-    lane::WarpLaneKind,
-    protocol::{
-        agent::{
-            LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder,
-            ValueLaneResponseEncoder,
-        },
-        WithLenRecognizerDecoder, WithLengthBytesCodec,
+use swimos_agent_protocol::{
+    encoding::lane::{
+        RawValueLaneRequestDecoder, RawValueLaneResponseEncoder, ValueLaneRequestDecoder,
+        ValueLaneResponseEncoder,
     },
+    LaneRequest, LaneResponse,
 };
-use swimos_form::{structural::read::recognizer::RecognizerReadable, Form};
+use swimos_api::{
+    agent::{Agent, AgentConfig, AgentContext, AgentInitResult, WarpLaneKind},
+    error::AgentTaskError,
+};
+use swimos_form::Form;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
-    routing::route_uri::RouteUri,
+    byte_channel::{ByteReader, ByteWriter},
+    routing::RouteUri,
 };
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
@@ -105,7 +104,7 @@ pub async fn run_lane_initializer(tx: &mut ByteWriter, rx: &mut ByteReader) {
     if stream.next().await.is_some() {
         panic!("Unexpected initial value.")
     } else {
-        let mut writer = FramedWrite::new(tx, LaneResponseEncoder::new(WithLengthBytesCodec));
+        let mut writer = FramedWrite::new(tx, RawValueLaneResponseEncoder::default());
         writer
             .send(LaneResponse::<BytesMut>::Initialized)
             .await
@@ -114,7 +113,7 @@ pub async fn run_lane_initializer(tx: &mut ByteWriter, rx: &mut ByteReader) {
 }
 
 fn init_stream(reader: &mut ByteReader) -> impl Stream<Item = BytesMut> + '_ {
-    let framed = FramedRead::new(reader, LaneRequestDecoder::new(WithLengthBytesCodec));
+    let framed = FramedRead::new(reader, RawValueLaneRequestDecoder::default());
     unfold(Some(framed), |maybe_framed| async move {
         if let Some(mut framed) = maybe_framed {
             match framed.next().await {
@@ -136,8 +135,7 @@ async fn run_agent(
     context: Box<dyn AgentContext + Send>,
 ) -> Result<(), AgentTaskError> {
     events.send(AgentEvent::Started).expect("Channel stopped.");
-    let decoder =
-        LaneRequestDecoder::new(WithLenRecognizerDecoder::new(TestMessage::make_recognizer()));
+    let decoder = ValueLaneRequestDecoder::<TestMessage>::default();
     let encoder = ValueLaneResponseEncoder::default();
 
     let mut input = FramedRead::new(rx, decoder);

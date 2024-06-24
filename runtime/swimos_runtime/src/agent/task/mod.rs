@@ -22,7 +22,7 @@ use crate::agent::store::StoreInitError;
 use crate::agent::task::links::TriggerUnlink;
 use crate::agent::task::sender::LaneSendError;
 use crate::agent::task::write_fut::SpecialAction;
-use crate::error::InvalidKey;
+use crate::backpressure::InvalidKey;
 use crate::timeout_coord::{self, VoteResult};
 
 use self::external_links::{LinksTaskState, NoReport};
@@ -48,19 +48,23 @@ use futures::{
     stream::SelectAll,
     Stream, StreamExt,
 };
+use swimos_api::address::RelativeAddress;
 use swimos_api::agent::{
     HttpLaneRequest, HttpLaneRequestChannel, HttpResponseSender, LaneConfig, StoreConfig,
 };
 use swimos_api::error::{DownlinkRuntimeError, OpenStoreError, StoreError};
-use swimos_api::lane::WarpLaneKind;
-use swimos_api::store::{StoreDisabled, StoreKind};
-use swimos_api::{agent::UplinkKind, error::AgentRuntimeError};
-use swimos_messages::protocol::{Operation, Path, RawRequestMessageDecoder, RequestMessage};
-use swimos_model::http::{Header, HttpResponse, StandardHeaderName, StatusCode, Version};
-use swimos_model::{BytesStr, Text};
+use swimos_api::persistence::StoreDisabled;
+use swimos_api::{
+    agent::{StoreKind, UplinkKind, WarpLaneKind},
+    error::AgentRuntimeError,
+    http::{Header, HttpResponse, StandardHeaderName, StatusCode, Version},
+};
+use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
+use swimos_model::Text;
 use swimos_recon::parser::MessageExtractError;
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::encoding::BytesStr;
 use swimos_utilities::future::{immediate_or_join, StopAfterError};
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::trigger::{self, promise};
 
 mod external_links;
@@ -376,7 +380,10 @@ pub struct AgentRuntimeTask<Store = StoreDisabled> {
 #[derive(Debug, Clone)]
 enum RwCoordinationMessage {
     /// An envelope was received for an unknown lane (and so the write task should issue an appropriate error response).
-    UnknownLane { origin: Uuid, path: Path<Text> },
+    UnknownLane {
+        origin: Uuid,
+        path: RelativeAddress<Text>,
+    },
     /// An envelope that was invalid for the subprotocol used by the specified lane was received.
     BadEnvelope {
         origin: Uuid,
@@ -391,7 +398,7 @@ enum RwCoordinationMessage {
 
 impl AgentRuntimeTask {
     /// Create the agent runtime task.
-    /// #Arguments
+    /// # Arguments
     /// * `node` - The routing ID and node URI of this agent instance.
     /// * `init` - The initial lane and store endpoints for this agent.
     /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
@@ -423,7 +430,7 @@ where
     Store: AgentPersistence + Send + Sync + 'static,
 {
     /// Create the agent runtime task with a store implementation.
-    /// #Arguments
+    /// # Arguments
     /// * `node` - The routing ID and node URI of this agent instance.
     /// * `init` - The initial lane and store endpoints for this agent.
     /// * `attachment_rx` - Channel to accept requests to attach remote connections to the agent.
@@ -597,7 +604,7 @@ impl WriteTaskMessage {
 }
 
 /// The task that coordinates the attachment of new lanes and remotes to the read and write tasks.
-/// #Arguments
+/// # Arguments
 /// * `runtime` - Requests from the agent.
 /// * `attachment` - External requests to attach new remotes.
 /// * `read_tx` - Channel to communicate with the read task.
@@ -784,7 +791,7 @@ enum ReadTaskEvent {
 /// them on to the appropriate lanes. It also communicates with the write task to maintain uplinks
 /// and report on invalid envelopes.
 ///
-/// #Arguments
+/// # Arguments
 /// * `config` - Configuration parameters for the task.
 /// * `initial_endpoints` - Initial lane endpoints that were created in the agent initialization phase.
 /// * `reg_rx` - Channel for registering new lanes and remotes.
@@ -918,7 +925,7 @@ async fn read_task(
                         flush_lane(&mut lanes, &mut needs_flush).await;
                     }
                     if let Some(lane_tx) = lanes.get_mut(id) {
-                        let Path { lane, .. } = path;
+                        let RelativeAddress { lane, .. } = path;
                         let origin: Uuid = origin;
                         match envelope {
                             Operation::Link => {
@@ -1017,7 +1024,7 @@ async fn read_task(
                         let send_err = write_tx.send(WriteTaskMessage::Coord(
                             RwCoordinationMessage::UnknownLane {
                                 origin,
-                                path: Path::text(path.node.as_str(), path.lane.as_str()),
+                                path: RelativeAddress::text(path.node.as_str(), path.lane.as_str()),
                             },
                         ));
                         join(flush, send_err).await.1
@@ -1146,7 +1153,7 @@ impl<'a, S, W, I> WriteTaskEvents<'a, S, W, I>
 where
     I: Unpin + Copy,
 {
-    /// #Arguments
+    /// # Arguments
     /// * `inactive_timeout` - Time after which the task will vote to stop due to inactivity.
     /// * `remote_timeout` - Time after which a task with no links and no activity should be removed.
     /// * `timeout_delay` - Timer for the agent timeout (held on the stack of the write task to avoid
@@ -1710,7 +1717,7 @@ impl WriteTaskEndpoints {
 /// The write task of the agent runtime. This receives messages from the agent lanes and forwards them
 /// to linked remotes. It also receives messages from the read task to maintain the set of uplinks.
 ///
-/// #Arguments
+/// # Arguments
 /// * `configuration` - Configuration parameters for the task.
 /// * `initial_endpoints` - Initial lane and store endpoints that were created in the agent initialization phase.
 /// * `message_stream` - Channel for messages from the read and coordination tasks. This will terminate when the agent
@@ -2016,7 +2023,7 @@ enum HttpTaskEvent {
 
 /// A task that routes incoming HTTP requests to the HTTP lanes of the agent.
 ///
-/// #Arguments
+/// # Arguments
 /// * `stopping` - A signal that the agent is stopping and this task should stop immediately.
 /// * `config` - Configuration parameters for the agent runtime.
 /// * `requests` - Incoming HTTP requests.

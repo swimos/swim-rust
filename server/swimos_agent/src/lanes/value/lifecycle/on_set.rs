@@ -14,10 +14,10 @@
 
 use std::borrow::Borrow;
 
-use swimos_api::handlers::{BorrowHandler, FnHandler, NoHandler};
+use swimos_utilities::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, UnitHandler, UpdateBorrowFn, UpdateFn},
 };
 
@@ -27,7 +27,7 @@ pub trait OnSet<T, Context>: Send {
     type OnSetHandler<'a>: EventHandler<Context> + 'a
     where
         Self: 'a;
-    /// #Arguments
+    /// # Arguments
     /// * `existing` - The existing value, if it is defined.
     /// * `new_value` - The replacement value.
     fn on_set<'a>(&'a self, existing: Option<T>, new_value: &T) -> Self::OnSetHandler<'a>;
@@ -42,7 +42,7 @@ pub trait OnSetShared<T, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `existing` - The existing value, if it is defined.

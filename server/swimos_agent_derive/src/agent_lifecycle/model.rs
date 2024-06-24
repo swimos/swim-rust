@@ -18,10 +18,7 @@ use std::{
 };
 
 use proc_macro2::Span;
-use swimos_utilities::errors::{
-    validation::{Validation, ValidationItExt},
-    Errors,
-};
+use swimos_utilities::errors::{Errors, Validation, ValidationItExt};
 use syn::{
     parse_quote, AngleBracketedGenericArguments, Attribute, AttributeArgs, Binding, FnArg,
     GenericArgument, GenericParam, Ident, ImplItem, ImplItemMethod, Item, Lit, Meta, NestedMeta,
@@ -77,7 +74,7 @@ impl LifecycleArgs {
 /// the lanes of an agent. This function will return the path if the body is of the
 /// correct form.
 ///
-/// #Arguments
+/// # Arguments
 /// * `item` - The item to which the attribute is attached (for error reporting).
 /// * `args` - The attribute args.
 pub fn validate_attr_args(

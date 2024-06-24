@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt},
     lanes::{CommandLane, ValueLane},
     lifecycle, projections,
@@ -27,7 +27,7 @@ use crate::model::Instruction;
 #[projections]
 pub struct ExampleAgent {
     lane: ValueLane<i32>,
-    #[lane(transient)]
+    #[item(transient)]
     saved: ValueStore<i32>,
     command: CommandLane<Instruction>,
 }
@@ -83,11 +83,11 @@ impl ExampleLifecycle {
             Instruction::Save => context
                 .get_value(ExampleAgent::LANE)
                 .and_then(move |v| context.set_value(ExampleAgent::SAVED, v))
-                .boxed(),
+                .boxed_local(),
             Instruction::Restore => context
                 .get_value(ExampleAgent::SAVED)
                 .and_then(move |v| context.set_value(ExampleAgent::LANE, v))
-                .boxed(),
+                .boxed_local(),
         }
     }
 }
