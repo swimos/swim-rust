@@ -3,12 +3,6 @@
 <a href="https://www.swimos.org"><img src="https://docs.swimos.org/readme/marlin-blue.svg" align="left"></a>
 <br><br><br><br>
 
-## ⚠️🚧 Warning: Project is still under construction 👷 🚧
-
-This project is still in its early stages of development, meaning that it is not yet stable and is subject to frequent API changes.
-
-**USE AT YOUR OWN RISK!**
-
 ## Usage Guides
 
 [Implementing Swim Agents in Rust](docs/agent.md)
