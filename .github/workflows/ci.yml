@@ -5,7 +5,7 @@ on:
 
 name: Continuous integration
 env:
-  latest_version: '1.78.0'
+  latest_version: "1.78.0"
 
 jobs:
   test:
@@ -24,6 +24,7 @@ jobs:
         with:
           toolchain: ${{ env.latest_version }}
       - uses: Swatinem/rust-cache@v2
+
       - name: Install NASM for aws-lc-rs on Windows
         if: runner.os == 'Windows'
         uses: ilammy/setup-nasm@v1
@@ -56,6 +57,21 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.latest_version }}
+
+      - name: Install NASM for aws-lc-rs on Windows
+        if: runner.os == 'Windows'
+        uses: ilammy/setup-nasm@v1
+
+      - name: Install ninja-build tool for aws-lc-fips-sys on Windows
+        if: runner.os == 'Windows'
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      - name: Install golang for aws-lc-fips-sys on macos
+        if: runner.os == 'MacOS'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.2"
+
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --all-features --all-targets --workspace --lib --tests --profile "ci"
 
