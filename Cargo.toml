@@ -40,6 +40,7 @@ members = [
     "example_apps/join_value",
     "example_apps/aggregations",
     "example_apps/time_series",
+    "example_apps/devguide/2_2/*",
 ]
 
 exclude = [
