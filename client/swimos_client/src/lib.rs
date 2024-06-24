@@ -22,7 +22,6 @@ use swimos_remote::websocket::RatchetClient;
 use futures_util::future::BoxFuture;
 #[cfg(feature = "deflate")]
 use ratchet::deflate::{DeflateConfig, DeflateExtProvider};
-pub use runtime::RemotePath;
 use runtime::{
     start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, Transport, WebSocketConfig,
 };

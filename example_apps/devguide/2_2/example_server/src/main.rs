@@ -1,13 +1,14 @@
 use swimos::{
     agent::{
-        agent_lifecycle::utility::HandlerContext, agent_model::AgentModel,
-        event_handler::EventHandler, lanes::ValueLane, lifecycle, projections, AgentLaneModel,
+        agent_lifecycle::HandlerContext, agent_model::AgentModel, event_handler::EventHandler,
+        lanes::ValueLane, lifecycle, projections, AgentLaneModel,
     },
     route::RoutePattern,
     server::{Server, ServerBuilder, ServerHandle},
 };
 
 use std::{error::Error, time::Duration};
+
 #[derive(AgentLaneModel)]
 #[projections]
 pub struct ExampleAgent {

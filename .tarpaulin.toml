@@ -32,6 +32,8 @@ exclude = [
     "swimos_form_derive",
     "swimos_agent_derive",
     "macro_utilities",
+    "example_client_2_2",
+    "example_server_2_2"
 ]
 workspace = true
 avoid-cfg-tarpaulin = true
