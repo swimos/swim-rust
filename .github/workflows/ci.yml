@@ -1,0 +1,114 @@
+on:
+  pull_request:
+  push:
+    branches: main
+
+name: Continuous integration
+env:
+  latest_version: '1.78.0'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.latest_version }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --all-features --workspace --lib --tests --profile "ci"
+
+  # Check step to ensure that all targets are valid as the test step doesn't run them.
+  check:
+    name: Check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.latest_version }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --all-features --all-targets --workspace --lib --tests --profile "ci"
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.latest_version }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Build Documentation
+        run: cargo doc --lib --no-deps --all-features --workspace
+        env:
+          RUSTDOCFLAGS: --cfg docsrs -Dwarnings
+
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.latest_version }}
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.latest_version }}
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-features --all-targets --workspace -- -D warnings
+
+  code_coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    container:
+      image: xd009642/tarpaulin:develop-nightly
+      options: --security-opt seccomp=unconfined
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install Clang
+        # Required for rocksdb
+        run: apt-get update && apt-get install -y llvm llvm-dev clang
+
+      - name: Set libclang path
+        run: echo "LIBCLANG_PATH=$(llvm-config --libdir)" >> $GITHUB_ENV
+
+      - name: Generate code coverage
+        run: |
+          cargo +nightly tarpaulin --config .tarpaulin.toml
+
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v2
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          fail_ci_if_error: true
