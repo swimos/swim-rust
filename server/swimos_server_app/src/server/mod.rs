@@ -126,3 +126,57 @@ impl Server for BoxServer {
         self.0.run_box()
     }
 }
+
+#[cfg(feature = "signal")]
+pub mod wait {
+    use std::net::SocketAddr;
+
+    use tracing::debug;
+
+    use crate::ServerHandle;
+
+    use thiserror::Error;
+
+    /// Errors that can occur waiting for tha server to stop.
+    #[derive(Debug, Error, Clone, Copy)]
+    #[error("The Ctrl-C handler could not be installed.")]
+    pub struct RegistrationFailed;
+
+    /// Register a Ctrl-C handler that will stop a server instance.
+    ///
+    /// # Arguments
+    /// * `server` - The server to run.
+    /// * `bound` - If specified this will be called when the server has bound to a socket, with the address.
+    pub async fn start_and_await(
+        mut handle: ServerHandle,
+        bound: Option<Box<dyn FnOnce(SocketAddr) + Send>>,
+    ) -> Result<(), RegistrationFailed> {
+        
+        let wait_for_ctrl_c = async move {
+            let mut result = Ok(());
+            let mut shutdown_hook = Box::pin(async { tokio::signal::ctrl_c().await });
+
+            let print_addr = handle.bound_addr();
+
+            let maybe_addr = tokio::select! {
+                r = &mut shutdown_hook => {
+                    result = r;
+                    None
+                },
+                maybe_addr = print_addr => maybe_addr,
+            };
+
+            if let Some(addr) = maybe_addr {
+                if let Some(f) = bound {
+                    f(addr);
+                }
+                result = shutdown_hook.await;
+            }
+
+            debug!("Stopping server.");
+            handle.stop();
+            result
+        };
+        wait_for_ctrl_c.await.map_err(|_| RegistrationFailed)
+    }
+}

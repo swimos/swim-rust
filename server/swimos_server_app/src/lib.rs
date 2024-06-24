@@ -65,6 +65,9 @@ pub use self::{
     util::AgentExt,
 };
 
+#[cfg(feature = "signal")]
+pub use server::wait::{until_termination, RegistrationFailed};
+
 pub use error::{AmbiguousRoutes, ServerBuilderError, ServerError};
 pub use ratchet::deflate::{DeflateConfig, WindowBits};
 pub use swimos_introspection::IntrospectionConfig;

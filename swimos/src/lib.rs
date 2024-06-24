@@ -94,8 +94,8 @@ pub mod io {
 #[cfg(feature = "server")]
 pub mod server {
     pub use swimos_server_app::{
-        BoxServer, DeflateConfig, IntrospectionConfig, RemoteConnectionsConfig, Server,
-        ServerBuilder, ServerHandle, WindowBits,
+        start_and_await, BoxServer, DeflateConfig, IntrospectionConfig, RemoteConnectionsConfig,
+        Server, ServerBuilder, ServerHandle, WindowBits,
     };
 
     /// Configuration for TLS support in the server.
@@ -111,7 +111,7 @@ pub mod server {
         pub use swimos_remote::tls::TlsError;
         pub use swimos_remote::ConnectionError;
         pub use swimos_server_app::{
-            AmbiguousRoutes, ServerBuilderError, ServerError, UnresolvableRoute,
+            AmbiguousRoutes, RegistrationFailed, ServerBuilderError, ServerError, UnresolvableRoute,
         };
     }
 }
