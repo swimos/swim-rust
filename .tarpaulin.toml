@@ -38,5 +38,5 @@ avoid-cfg-tarpaulin = true
 profile = "ci"
 ignore-tests = true
 out = ["Xml"]
-timeout = 600
+timeout = "600s"
 all-features = true
