@@ -3,6 +3,22 @@
 <a href="https://www.swimos.org"><img src="https://docs.swimos.org/readme/marlin-blue.svg" align="left"></a>
 <br><br><br><br>
 
+The Swim Rust SDK contains software framework for building stateful applications that can be interacted
+with via multiplexed streaming APIs. It is built on top of the [Tokio asynchronous runtime](https://tokio.rs/)
+and a Tokio runtime is required for any Swim application.
+
+Each application consists of some number of stateful agents, each of which runs as a separate Tokio task
+and can be individually addressed by a URI. An agent may have both public and private state which can either
+be held solely in memory or, optionally, in persistent storage. The public state of the agent consists of a
+number of lanes, analogous to a field in a record. There are multiple kinds of lanes that, for example, lanes
+containing single values and those containing a map of key-value pairs.
+
+The state of any lane can be observed by establishing a link to it (either from another agent instance or a
+dedicated client). A established link will push all updates to the state of that lane to the subscriber and
+will also allow the subscriber to request changes to the state (for lane kinds that support this). Links
+operate over a web-socket connection and are multiplexed, meaning that links to multiple lanes on the same
+host can share a single web-socket connection.
+
 ## Usage Guides
 
 [Implementing Swim Agents in Rust](docs/agent.md)
@@ -14,22 +30,4 @@
 TODO
 ## Development
 
-### Dependencies
-[Formatting](https://github.com/rust-lang/rustfmt): `rustup component add rustfmt`<br>
-[Clippy](https://github.com/rust-lang/rust-clippy): `rustup component add clippy`<br>
-[Tarpaulin](https://github.com/xd009642/tarpaulin) `cargo install cargo-tarpaulin`<br>
-
-### Unit tests
-##### Basic: `cargo test`
-##### With coverage: `cargo tarpaulin --ignore-tests -o Html -t 300`
-
-### Lint
-##### Manual
-1) `cargo fmt --all -- --check`
-2) `cargo clippy --all-features --workspace --all-targets -- -D warnings`
-
-##### Automatic (before commit): 
-- Install hook: `sh ./install-commit-hook.sh`
-- Remove hook: `sh ./remove-commit-hook.sh`
-
-Note: The pre-commit hooks take a while to run all checks.
+See the [development guide](DEVELOPMENT.md);
