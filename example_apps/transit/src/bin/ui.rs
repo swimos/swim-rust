@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{error::Error, pin::pin, sync::Arc, time::Duration};
+use std::future::IntoFuture;
+use std::{error::Error, pin::pin, time::Duration};
 
 use clap::Parser;
 use futures::future::{select, Either};
-use tokio::sync::Notify;
+use tokio::net::TcpListener;
+
+use swimos_utilities::trigger::trigger;
 use transit::ui::ui_server_router;
 
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
@@ -32,19 +35,24 @@ async fn ui_server(
     shutdown_timeout: Duration,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let app = ui_server_router(port);
-    let server = axum::Server::try_bind(&"0.0.0.0:0".parse()?)?.serve(app.into_make_service());
-    let ui_addr = server.local_addr();
+    let (stop_tx, stop_rx) = trigger();
+
+    let listener = TcpListener::bind("0.0.0.0:0").await?;
+    let ui_addr = listener.local_addr()?;
     println!("UI bound to: {}", ui_addr);
-    let stop_tx = Arc::new(Notify::new());
-    let stop_rx = stop_tx.clone();
-    let server_task = pin!(server.with_graceful_shutdown(stop_rx.notified()));
+
+    let server =
+        axum::serve(listener, app.into_make_service()).with_graceful_shutdown(async move {
+            let _r = stop_rx.await;
+        });
+    let server_task = pin!(server.into_future());
     let shutdown_notified = pin!(async move {
         let _ = tokio::signal::ctrl_c().await;
     });
     match select(server_task, shutdown_notified).await {
         Either::Left((result, _)) => result?,
         Either::Right((_, server)) => {
-            stop_tx.notify_one();
+            assert!(stop_tx.trigger());
             tokio::time::timeout(shutdown_timeout, server).await??;
         }
     }
