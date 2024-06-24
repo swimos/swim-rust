@@ -147,7 +147,7 @@ pub mod wait {
     /// # Arguments
     /// * `server` - The server to run.
     /// * `bound` - If specified this will be called when the server has bound to a socket, with the address.
-    pub async fn start_and_await(
+    pub async fn until_termination(
         mut handle: ServerHandle,
         bound: Option<Box<dyn FnOnce(SocketAddr) + Send>>,
     ) -> Result<(), RegistrationFailed> {

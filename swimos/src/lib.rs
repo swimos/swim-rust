@@ -94,7 +94,7 @@ pub mod io {
 #[cfg(feature = "server")]
 pub mod server {
     pub use swimos_server_app::{
-        start_and_await, BoxServer, DeflateConfig, IntrospectionConfig, RemoteConnectionsConfig,
+        until_termination, BoxServer, DeflateConfig, IntrospectionConfig, RemoteConnectionsConfig,
         Server, ServerBuilder, ServerHandle, WindowBits,
     };
 

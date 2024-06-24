@@ -18,39 +18,24 @@ use std::{
     net::SocketAddr,
 };
 
-use swimos::server::ServerHandle;
+use swimos::server::{until_termination, ServerHandle};
 use tokio::{select, sync::oneshot};
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
 pub async fn manage_handle(handle: ServerHandle) {
-    manage_handle_report(handle, None).await
+    until_termination(handle, None).await.expect("Failed to register interrupt handler.");
 }
 pub async fn manage_handle_report(
-    mut handle: ServerHandle,
+    handle: ServerHandle,
     bound: Option<oneshot::Sender<SocketAddr>>,
 ) {
-    let mut shutdown_hook = Box::pin(async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to register interrupt handler.");
-    });
-    let print_addr = handle.bound_addr();
-
-    let maybe_addr = select! {
-        _ = &mut shutdown_hook => None,
-        maybe_addr = print_addr => maybe_addr,
-    };
-
-    if let Some(addr) = maybe_addr {
-        if let Some(tx) = bound {
+    let f = bound.map(|tx| {
+        let g: Box<dyn FnOnce(SocketAddr) + Send> = Box::new(move |addr| {
             let _ = tx.send(addr);
-        }
-        println!("Bound to: {}", addr);
-        shutdown_hook.await;
-    }
-
-    println!("Stopping server.");
-    handle.stop();
+        });
+        g
+    });
+    until_termination(handle, f).await.expect("Failed to register interrupt handler.");
 }
 
 struct FormatMap<'a, K, V>(&'a HashMap<K, V>);
