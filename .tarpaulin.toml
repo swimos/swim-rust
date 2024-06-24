@@ -1,0 +1,9 @@
+[coverage]
+exclude-files = ["example_apps", "swimos_form_derive", "swimos_agent_derive"]
+workspace = true
+avoid-cfg-tarpaulin = true
+profile = "ci"
+ignore-tests = true
+out = ["Xml"]
+timeout = "600s"
+all-features = true
