@@ -14,10 +14,10 @@
 
 use std::borrow::Borrow;
 
-use swimos_api::handlers::{BorrowHandler, FnHandler, NoHandler};
+use swimos_utilities::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, UnitHandler, UpdateBorrowFn, UpdateFn},
     lifecycle_fn::{LiftShared, WithHandlerContext, WithHandlerContextBorrow},
 };
@@ -28,7 +28,7 @@ pub trait OnDownlinkSet<T, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `previous` - The previous value.
     /// * `value` - The new value.
     fn on_set<'a>(&'a self, previous: Option<T>, new_value: &T) -> Self::OnSetHandler<'a>;
@@ -42,7 +42,7 @@ pub trait OnDownlinkSetShared<T, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `previous` - The previous value.

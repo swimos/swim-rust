@@ -18,7 +18,7 @@ use std::{cell::RefCell, collections::HashMap};
 use bytes::BytesMut;
 use swimos_api::agent::AgentConfig;
 use swimos_recon::parser::AsyncParseError;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use crate::event_handler::check_step::{check_is_complete, check_is_continue};
 use crate::event_handler::{GetParameter, ModificationFlags};
@@ -32,10 +32,7 @@ use crate::{
     test_context::dummy_context,
 };
 
-use super::{
-    join, ActionContext, Decode, HandlerAction, HandlerFuture, Modification, SideEffect, Spawner,
-    StepResult,
-};
+use super::{join, ActionContext, Decode, HandlerAction, Modification, SideEffect, StepResult};
 
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
@@ -49,14 +46,6 @@ fn make_meta<'a>(
     route_params: &'a HashMap<String, String>,
 ) -> AgentMetadata<'a> {
     AgentMetadata::new(uri, route_params, &CONFIG)
-}
-
-struct NoSpawn;
-
-impl<Context> Spawner<Context> for NoSpawn {
-    fn spawn_suspend(&self, _: HandlerFuture<Context>) {
-        panic!("No suspended futures expected.");
-    }
 }
 
 struct DummyAgent;
@@ -694,7 +683,11 @@ fn sequentially_handler() {
     let effect1 = SideEffect::from(|| values.borrow_mut().push(1));
     let effect2 = SideEffect::from(|| values.borrow_mut().push(2));
 
-    let handlers = vec![effect1.boxed(), set.boxed(), effect2.boxed()];
+    let handlers = vec![
+        effect1.boxed_local(),
+        set.boxed_local(),
+        effect2.boxed_local(),
+    ];
 
     let mut handler = Sequentially::new(handlers);
 

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos::model::time::Timestamp;
+use swimos::model::Timestamp;
 use swimos_form::Form;
 
 #[derive(Debug, PartialEq, Eq, Hash, Form, Clone, Copy)]

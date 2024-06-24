@@ -17,12 +17,12 @@ use std::{cell::Cell, collections::HashMap, time::Duration};
 use rand::Rng;
 use swimos::{
     agent::{
-        agent_lifecycle::utility::HandlerContext,
+        agent_lifecycle::HandlerContext,
         event_handler::{EventHandler, HandlerActionExt, Sequentially},
         lanes::{CommandLane, MapLane, ValueLane},
         lifecycle, projections, AgentLaneModel,
     },
-    model::time::Timestamp,
+    model::Timestamp,
 };
 use tutorial_app_model::{Counter, HistoryItem, Message};
 
@@ -31,7 +31,7 @@ use tutorial_app_model::{Counter, HistoryItem, Message};
 pub struct UnitAgent {
     publish: CommandLane<Message>,
     history: MapLane<usize, HistoryItem>,
-    #[lane(transient)]
+    #[item(transient)]
     histogram: MapLane<i64, Counter>,
     latest: ValueLane<Option<Message>>,
 }

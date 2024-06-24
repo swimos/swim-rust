@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
+
+use tests::impls::VecRecognizer;
+
 use crate::structural::read::event::{NumericValue, ReadEvent};
 use crate::structural::read::recognizer::primitive::I32Recognizer;
-use crate::structural::read::recognizer::{Recognizer, VecRecognizer};
+use crate::structural::read::recognizer::Recognizer;
 use crate::structural::read::ReadError;
 
 fn run_recognizer<R: Recognizer>(events: Vec<ReadEvent<'_>>, mut rec: R) -> R::Target {

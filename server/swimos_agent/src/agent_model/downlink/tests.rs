@@ -22,24 +22,23 @@ use futures::{
 };
 use parking_lot::Mutex;
 use swimos_api::{
-    agent::{AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig},
-    downlink::DownlinkKind,
+    address::Address,
+    agent::DownlinkKind,
+    agent::{
+        AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
+    },
     error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-    lane::WarpLaneKind,
-    store::StoreKind,
 };
-use swimos_model::{address::Address, Text};
+use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    byte_channel::{byte_channel, ByteReader, ByteWriter},
     non_zero_usize,
-    routing::route_uri::RouteUri,
+    routing::RouteUri,
 };
 
 use crate::{
     config::{MapDownlinkConfig, SimpleDownlinkConfig},
-    downlink_lifecycle::{
-        map::StatefulMapDownlinkLifecycle, value::StatefulValueDownlinkLifecycle,
-    },
+    downlink_lifecycle::{StatefulMapDownlinkLifecycle, StatefulValueDownlinkLifecycle},
     event_handler::{
         ActionContext, BoxJoinLaneInit, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner,
         StepResult,
@@ -47,7 +46,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::{handlers::BoxDownlinkChannel, OpenMapDownlinkAction, OpenValueDownlinkAction};
+use super::{BoxDownlinkChannel, OpenMapDownlinkAction, OpenValueDownlinkAction};
 
 struct TestAgent;
 

@@ -12,12 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS API
+//!
+//! This crate provides the API for implementing components that can be executed by the SwimOS runtime.
+//!
+//! - The [`agent`] module contains the [`agent::Agent`] trait that can be implemented to add new kinds of agent
+//! to the runtime. The canonical Rust implementation of this trait can be found in the `swimos_agent` crate.
+//! - The [`persistence`] module contains the [`persistence::PlanePersistence`] trait that can be implemented
+//! to add new storage implementations to allow a Swim server to maintain an external persistent state that can
+//! outlive a single execution of the server process.
+
+pub mod address;
 pub mod agent;
-pub mod downlink;
 pub mod error;
-pub mod handlers;
-pub mod lane;
-pub mod meta;
-pub mod net;
-pub mod protocol;
-pub mod store;
+pub mod http;
+pub mod persistence;

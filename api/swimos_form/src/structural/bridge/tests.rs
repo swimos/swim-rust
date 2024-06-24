@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::structural::read::recognizer::RecognizerReadable;
+use crate::structural::read::RecognizerReadable;
 use crate::structural::tests::GeneralType;
 use swimos_model::{Blob, Item, Text, Value};
 

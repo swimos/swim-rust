@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerActionExt},
     lanes::{CommandLane, ValueLane},
     lifecycle, projections, AgentLaneModel,
@@ -76,12 +76,12 @@ impl ExampleLifecycle {
         cmd: &Instruction,
     ) -> impl EventHandler<ExampleAgent> {
         match *cmd {
-            Instruction::Zero => context.set_value(ExampleAgent::LANE, 0).boxed(),
+            Instruction::Zero => context.set_value(ExampleAgent::LANE, 0).boxed_local(),
             Instruction::Add(n) => context
                 .get_value(ExampleAgent::LANE)
                 .and_then(move |v| context.set_value(ExampleAgent::LANE, v + n))
-                .boxed(),
-            Instruction::Stop => context.stop().boxed(),
+                .boxed_local(),
+            Instruction::Stop => context.stop().boxed_local(),
         }
     }
 }

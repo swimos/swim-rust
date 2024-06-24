@@ -15,6 +15,7 @@
 #[cfg(test)]
 mod tests;
 
+use bytes::Bytes;
 use http::uri::{InvalidUri, Uri};
 use std::borrow::{Borrow, BorrowMut, Cow};
 use std::cmp::Ordering;
@@ -24,7 +25,8 @@ use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::str;
 use std::str::FromStr;
-use swimos_utilities::routing::route_uri::{InvalidRouteUri, RouteUri};
+use swimos_utilities::encoding::TryFromUtf8Bytes;
+use swimos_utilities::routing::{InvalidRouteUri, RouteUri};
 
 const SMALL_SIZE: usize = 3 * std::mem::size_of::<usize>();
 
@@ -568,5 +570,11 @@ impl TryFrom<Text> for RouteUri {
             Text(TextInner::Large(string)) => RouteUri::try_from(string),
             Text(TextInner::Small(len, bytes)) => RouteUri::try_from(small_str(len, &bytes)),
         }
+    }
+}
+
+impl TryFromUtf8Bytes for Text {
+    fn try_from_utf8_bytes(bytes: Bytes) -> Result<Self, std::str::Utf8Error> {
+        Ok(Text::new(std::str::from_utf8(bytes.as_ref())?))
     }
 }

@@ -18,15 +18,14 @@ use std::{
 };
 
 use bytes::{Bytes, BytesMut};
-use swimos_api::lane::WarpLaneKind;
-use swimos_api::{
-    agent::HttpLaneRequest,
-    protocol::{
-        agent::{LaneResponse, MapLaneResponse, MapLaneResponseEncoder, ValueLaneResponseEncoder},
-        map::{MapMessage, MapOperation},
-    },
+use swimos_agent_protocol::{
+    encoding::lane::{MapLaneResponseEncoder, ValueLaneResponseEncoder},
+    LaneResponse, MapLaneResponse, MapMessage, MapOperation,
 };
-use swimos_model::http::{HttpRequest, HttpResponse, StatusCode, SupportedMethod, Version};
+use swimos_api::{
+    agent::{HttpLaneRequest, WarpLaneKind},
+    http::{HttpRequest, HttpResponse, StatusCode, SupportedMethod, Version},
+};
 use tokio::sync::mpsc;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;

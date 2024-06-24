@@ -21,10 +21,10 @@ use std::sync::{
     Arc, Weak,
 };
 
-pub use event::{EventDownlinkHandle, HostedEventDownlinkFactory};
-pub use map::{HostedMapDownlinkFactory, MapDlState, MapDownlinkHandle};
-use swimos_utilities::io::byte_channel::ByteWriter;
-pub use value::{HostedValueDownlinkFactory, ValueDownlinkHandle};
+pub use event::{EventDownlinkFactory, EventDownlinkHandle};
+pub use map::{MapDownlinkFactory, MapDownlinkHandle};
+use swimos_utilities::byte_channel::ByteWriter;
+pub use value::{ValueDownlinkFactory, ValueDownlinkHandle};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DlState {
@@ -176,21 +176,22 @@ mod test_support {
     use bytes::BytesMut;
     use futures::future::BoxFuture;
     use swimos_api::{
-        agent::{AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig},
-        downlink::DownlinkKind,
+        agent::DownlinkKind,
+        agent::{
+            AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
+        },
         error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
-        lane::WarpLaneKind,
-        store::StoreKind,
     };
     use swimos_utilities::{
-        io::byte_channel::{ByteReader, ByteWriter},
-        routing::route_uri::RouteUri,
+        byte_channel::{ByteReader, ByteWriter},
+        routing::RouteUri,
     };
 
     use crate::{
-        agent_model::downlink::handlers::BoxDownlinkChannel,
+        agent_model::downlink::BoxDownlinkChannel,
         event_handler::{
-            ActionContext, BoxEventHandler, DownlinkSpawner, HandlerFuture, Spawner, StepResult,
+            ActionContext, DownlinkSpawner, HandlerFuture, LocalBoxEventHandler, Spawner,
+            StepResult,
         },
         meta::AgentMetadata,
     };
@@ -268,7 +269,10 @@ mod test_support {
         AgentMetadata::new(uri, route_params, &CONFIG)
     }
 
-    pub fn run_handler<FakeAgent>(mut handler: BoxEventHandler<'_, FakeAgent>, agent: &FakeAgent) {
+    pub fn run_handler<FakeAgent>(
+        mut handler: LocalBoxEventHandler<'_, FakeAgent>,
+        agent: &FakeAgent,
+    ) {
         let uri = make_uri();
         let route_params = HashMap::new();
         let meta = make_meta(&uri, &route_params);

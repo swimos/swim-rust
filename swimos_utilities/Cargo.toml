@@ -6,23 +6,24 @@ edition = "2021"
 
 [features]
 default = []
-all = ["future", "errors", "sync", "collections", "time", "text", "rtree", "buf_channel", "algebra", "multi_reader", "uri_forest"]
+all = ["future", "errors", "circular_buffer", "collections", "time", "text", "rtree", "buf_channel", "algebra", "multi_reader", "encoding"]
 algebra = ["swimos_algebra"]
-buf_channel = ["byte_channel"]
+buf_channel = ["swimos_byte_channel"]
 multi_reader = ["swimos_multi_reader"]
 collections = ["rtree"]
 errors = ["swimos_errors"]
 future = ["swimos_future"]
-io = ["buf_channel", "swimos_io"]
+io = ["buf_channel", "swimos_fs"]
 rtree = ["swimos_rtree"]
-sync = ["future", "trigger", "swimos_sync"]
+circular_buffer = ["swimos_sync"]
+sync = ["future", "trigger", "circular_buffer"]
 text = ["swimos_route", "swimos_format"]
 time = ["swimos_time"]
 trigger = ["swimos_trigger"]
-uri_forest = ["swimos_uri_forest"]
+encoding = ["swimos_encoding"]
 
 [dependencies]
-byte_channel = { path = "./byte_channel", optional = true }
+swimos_byte_channel = { path = "./swimos_byte_channel", optional = true }
 swimos_multi_reader = { path = "./swimos_multi_reader", optional = true }
 swimos_algebra = { path = "./swimos_algebra", optional = true }
 swimos_num = { path = "./swimos_num" }
@@ -30,10 +31,10 @@ swimos_errors = { path = "./swimos_errors", optional = true }
 swimos_format = { path = "./swimos_format", optional = true }
 swimos_trigger = { path = "./swimos_trigger", optional = true }
 swimos_future = { path = "./swimos_future", optional = true }
-swimos_io = { path = "./swimos_io", optional = true }
+swimos_fs = { path = "./swimos_fs", optional = true }
 swimos_route = { path = "./swimos_route", optional = true }
 swimos_rtree = { path = "./swimos_rtree", optional = true }
 swimos_sync = { path = "./swimos_sync", optional = true }
 swimos_time = { path = "./swimos_time", optional = true }
-swimos_uri_forest = { path = "./swimos_uri_forest", optional = true }
+swimos_encoding = { path = "./swimos_encoding", optional = true }
 

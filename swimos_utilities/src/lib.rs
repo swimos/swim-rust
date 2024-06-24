@@ -12,60 +12,73 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! # SwimOS Utilities
+//!
+//! Collects together a number of utility crates that can be individually enabled by features.
+
 #![allow(clippy::match_wild_err_arm)]
 
+/// Wrappers around closure types to server as event handlers
+pub mod handlers;
+
+/// Provides a canonical uninhabited type [`never::Never`]
 pub mod never;
 
 #[cfg(feature = "algebra")]
-pub mod algebra {
-    pub use swimos_algebra::*;
-}
+#[doc(inline)]
+pub use swimos_algebra as algebra;
 
 #[cfg(feature = "errors")]
+#[doc(inline)]
 pub use swimos_errors as errors;
 
 #[cfg(feature = "future")]
+#[doc(inline)]
 pub use swimos_future as future;
 
 #[cfg(feature = "rtree")]
-pub mod collections {
-    pub use swimos_rtree as rtree;
-}
+#[doc(inline)]
+pub use swimos_rtree as rtree;
 
 #[cfg(feature = "time")]
+#[doc(inline)]
 pub use swimos_time as time;
 
 #[cfg(feature = "multi_reader")]
+#[doc(inline)]
 pub use swimos_multi_reader as multi_reader;
 
-#[cfg(any(feature = "io", feature = "buf_channel"))]
-pub mod io {
+#[cfg(feature = "io")]
+#[doc(inline)]
+pub use swimos_fs as fs;
 
-    #[cfg(feature = "io")]
-    pub use swimos_io::*;
-
-    #[cfg(feature = "buf_channel")]
-    pub use byte_channel;
-}
+#[cfg(feature = "buf_channel")]
+#[doc(inline)]
+pub use swimos_byte_channel as byte_channel;
 
 #[cfg(feature = "text")]
+#[doc(inline)]
 pub use swimos_route as routing;
 
 #[cfg(feature = "text")]
+#[doc(inline)]
 pub use swimos_format as format;
 
 #[cfg(feature = "trigger")]
+#[doc(inline)]
 pub use swimos_trigger as trigger;
 
-#[cfg(feature = "sync")]
-pub mod sync {
-    pub use swimos_sync::circular_buffer;
-}
+#[cfg(feature = "circular_buffer")]
+#[doc(inline)]
+pub use swimos_sync as circular_buffer;
 
 #[cfg(feature = "test-util")]
+#[doc(inline)]
 pub use swimos_test_util as test_util;
 
-#[cfg(feature = "uri_forest")]
-pub use swimos_uri_forest as uri_forest;
-
+#[doc(inline)]
 pub use swimos_num::non_zero_usize;
+
+#[cfg(feature = "encoding")]
+#[doc(inline)]
+pub use swimos_encoding as encoding;

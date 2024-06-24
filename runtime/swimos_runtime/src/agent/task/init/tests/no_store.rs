@@ -12,22 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bytes::{Bytes, BytesMut};
 use futures::{future::BoxFuture, FutureExt, SinkExt, StreamExt};
-use swimos_api::{
-    agent::{LaneConfig, StoreConfig, UplinkKind},
-    error::OpenStoreError,
-    lane::WarpLaneKind,
-    meta::lane::LaneKind,
-    protocol::{
-        agent::{LaneRequest, LaneRequestDecoder, LaneResponse, LaneResponseEncoder},
-        map::{MapMessageDecoder, RawMapOperation, RawMapOperationDecoder, RawMapOperationEncoder},
-        WithLengthBytesCodec,
+use swimos_agent_protocol::{
+    encoding::lane::{
+        RawMapLaneRequestDecoder, RawMapLaneResponseEncoder, RawValueLaneRequestDecoder,
+        RawValueLaneResponseEncoder,
     },
-    store::{StoreDisabled, StoreKind},
+    LaneRequest, LaneResponse, MapOperation,
+};
+use swimos_api::{
+    agent::{LaneConfig, LaneKind, StoreConfig, StoreKind, UplinkKind, WarpLaneKind},
+    error::OpenStoreError,
+    persistence::StoreDisabled,
 };
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{ByteReader, ByteWriter},
+    byte_channel::{ByteReader, ByteWriter},
     trigger,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -42,6 +43,8 @@ use crate::agent::{
     },
     AgentExecError, Io, LinkRequest,
 };
+
+type RawMapOperation = MapOperation<Bytes, BytesMut>;
 
 struct NoLanesInit;
 
@@ -89,12 +92,12 @@ struct SingleLaneInit {
 }
 
 async fn no_store_init_value(input: &mut ByteReader, output: &mut ByteWriter) {
-    let mut framed_in = FramedRead::new(input, LaneRequestDecoder::new(WithLengthBytesCodec));
+    let mut framed_in = FramedRead::new(input, RawValueLaneRequestDecoder::default());
     match framed_in.next().await {
         Some(Ok(LaneRequest::InitComplete)) => {}
         ow => panic!("Unexpected event: {:?}", ow),
     }
-    let mut framed_out = FramedWrite::new(output, LaneResponseEncoder::new(WithLengthBytesCodec));
+    let mut framed_out = FramedWrite::new(output, RawValueLaneResponseEncoder::default());
     framed_out
         .send(LaneResponse::<&[u8]>::Initialized)
         .await
@@ -102,15 +105,12 @@ async fn no_store_init_value(input: &mut ByteReader, output: &mut ByteWriter) {
 }
 
 async fn no_store_init_map(input: &mut ByteReader, output: &mut ByteWriter) {
-    let mut framed_in = FramedRead::new(
-        input,
-        LaneRequestDecoder::new(MapMessageDecoder::new(RawMapOperationDecoder)),
-    );
+    let mut framed_in = FramedRead::new(input, RawMapLaneRequestDecoder::default());
     match framed_in.next().await {
         Some(Ok(LaneRequest::InitComplete)) => {}
         ow => panic!("Unexpected event: {:?}", ow),
     }
-    let mut framed_out = FramedWrite::new(output, LaneResponseEncoder::new(RawMapOperationEncoder));
+    let mut framed_out = FramedWrite::new(output, RawMapLaneResponseEncoder::default());
     framed_out
         .send(LaneResponse::<RawMapOperation>::Initialized)
         .await

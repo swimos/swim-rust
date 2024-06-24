@@ -16,11 +16,12 @@ use std::{cell::RefCell, collections::VecDeque};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
+use swimos_agent_protocol::LaneResponse;
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
-use swimos_api::protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
-use swimos_form::structural::write::StructuralWritable;
+use swimos_agent_protocol::encoding::lane::ValueLaneResponseEncoder;
+use swimos_form::write::StructuralWritable;
 
 use crate::event_handler::EventHandlerError;
 use crate::{
@@ -53,7 +54,7 @@ impl<T> Default for SupplyLaneInner<T> {
 /// A stateless lane that pushes events received directly to all uplinks attached to it.
 ///
 /// A Supply lane can push a value by executing an instance of [`Supply`] (which can be constructed
-/// using the [`crate::agent_lifecycle::utility::HandlerContext`]).
+/// using the [`crate::agent_lifecycle::HandlerContext`]).
 #[derive(Debug)]
 pub struct SupplyLane<T> {
     id: u64,

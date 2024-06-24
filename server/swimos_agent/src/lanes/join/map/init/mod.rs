@@ -15,19 +15,19 @@
 use std::any::{Any, TypeId};
 use std::hash::Hash;
 
+use swimos_api::address::Address;
 use swimos_form::Form;
-use swimos_model::{address::Address, Text};
+use swimos_model::Text;
 
 use crate::event_handler::{DowncastError, EventHandler, JoinLaneInitializer};
 use crate::lanes::JoinLaneKind;
 
 use super::AddDownlinkAction;
-//use super::AddDownlinkAction;
 use super::{lifecycle::JoinMapLaneLifecycle, JoinMapLane};
 
 /// Uses a [`JoinMapLaneLifecycle`] to create a handler action that will open a new downlink
 /// for a join map lane. The purposes of this is to hide the specific types of the lane behind
-/// the [`JoinMapInitializer`] trait so it can be stored inside the agent context (which has no
+/// the [`JoinLaneInitializer`] trait so it can be stored inside the agent context (which has no
 /// knowledge of the types).
 pub struct LifecycleInitializer<Context, L, K, V, F> {
     projection: fn(&Context) -> &JoinMapLane<L, K, V>,

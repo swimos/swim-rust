@@ -17,7 +17,7 @@ use std::{collections::HashMap, sync::Arc};
 use parking_lot::Mutex;
 use swimos_api::agent::AgentConfig;
 use swimos_model::Text;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use crate::{
     agent_lifecycle::item_event::{tests::run_handler, HLeaf, ItemEvent, MapBranch, MapLeaf},

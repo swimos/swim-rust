@@ -16,7 +16,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use parking_lot::RwLock;
 use swimos_form::Form;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 use tokio::sync::mpsc;
 
 use crate::{

@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_api::handlers::{FnHandler, NoHandler};
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventConsumeFn, EventHandler, UnitHandler},
     lifecycle_fn::{LiftShared, WithHandlerContext},
 };
@@ -26,7 +26,7 @@ pub trait OnConsumeEvent<T, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `value` - The event value.
     fn on_event(&self, value: T) -> Self::OnEventHandler<'_>;
 }
@@ -39,7 +39,7 @@ pub trait OnConsumeEventShared<T, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `value` - The event value.

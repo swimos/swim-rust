@@ -14,10 +14,10 @@
 
 use std::collections::HashMap;
 
-use swimos_api::handlers::{FnHandler, NoHandler};
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, MapRemoveFn, UnitHandler},
     lifecycle_fn::{LiftShared, WithHandlerContext},
 };
@@ -28,7 +28,7 @@ pub trait OnDownlinkRemove<K, V, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `key` - The key that has been removed.
     /// * `map` - The current state of the map.
     /// * `removed` - The removed value.
@@ -48,7 +48,7 @@ pub trait OnDownlinkRemoveShared<K, V, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `key` - The key that has been remove.

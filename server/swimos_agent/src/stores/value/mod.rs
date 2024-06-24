@@ -16,8 +16,8 @@ use std::cell::{Cell, RefCell};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
-use swimos_api::protocol::agent::{StoreResponse, ValueStoreResponseEncoder};
-use swimos_form::structural::write::StructuralWritable;
+use swimos_agent_protocol::{encoding::store::ValueStoreResponseEncoder, StoreResponse};
+use swimos_form::write::StructuralWritable;
 use tokio_util::codec::Encoder;
 
 use crate::{
@@ -51,7 +51,7 @@ pub struct ValueStore<T> {
 assert_impl_all!(ValueStore<()>: Send);
 
 impl<T> ValueStore<T> {
-    /// #Arguments
+    /// # Arguments
     /// * `id` - The ID of the store. This should be unique in an agent.
     /// * `init` - The initial value of the store.
     pub fn new(id: u64, init: T) -> Self {
@@ -168,14 +168,14 @@ impl<T: StructuralWritable> StoreItem for ValueStore<T> {
     }
 }
 
-/// An [`EventHandler`] that will get the value of a value store.
+/// An [event handler](crate::event_handler::EventHandler) that will get the value of a value store.
 pub struct ValueStoreGet<C, T> {
     projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
     done: bool,
 }
 
 impl<C, T> ValueStoreGet<C, T> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent context to the store.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueStore<T>) -> Self {
         ValueStoreGet {
@@ -185,14 +185,14 @@ impl<C, T> ValueStoreGet<C, T> {
     }
 }
 
-/// An [`EventHandler`] that will set the value of a value store.
+///  An [event handler](crate::event_handler::EventHandler) that will set the value of a value store.
 pub struct ValueStoreSet<C, T> {
     projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
     value: Option<T>,
 }
 
 impl<C, T> ValueStoreSet<C, T> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent context to the store.
     /// * `value` - The new value for the store.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueStore<T>, value: T) -> Self {

@@ -12,24 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use byte_channel::byte_channel;
-use byte_channel::{ByteReader, ByteWriter};
 use bytes::Bytes;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use futures::future::join;
 use futures::stream::SelectAll;
-use futures_util::future::join;
-use futures_util::{SinkExt, Stream, StreamExt};
+use futures::{SinkExt, Stream, StreamExt};
 use rand::rngs::SmallRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use std::fmt::{Display, Formatter};
 use std::num::NonZeroUsize;
 use std::time::Duration;
-use swimos_form::structural::read::from_model::ValueMaterializer;
-use swimos_form::structural::read::recognizer::RecognizerReadable;
+use swimos_api::address::RelativeAddress;
+use swimos_byte_channel::byte_channel;
+use swimos_byte_channel::{ByteReader, ByteWriter};
+use swimos_form::read::RecognizerReadable;
 use swimos_messages::protocol::{
-    AgentMessageDecoder, MessageDecodeError, Operation, Path, RawRequestMessageEncoder,
-    RequestMessage,
+    MessageDecodeError, Operation, RawRequestMessageEncoder, RequestMessage, RequestMessageDecoder,
 };
 use uuid::Uuid;
 
@@ -142,7 +141,8 @@ criterion_group!(benches, multi_reader_benchmark);
 criterion_main!(benches);
 
 type Writer = FramedWrite<ByteWriter, RawRequestMessageEncoder>;
-type Reader = FramedRead<ByteReader, AgentMessageDecoder<Value, ValueMaterializer>>;
+type Reader =
+    FramedRead<ByteReader, RequestMessageDecoder<Value, <Value as RecognizerReadable>::Rec>>;
 
 fn create_channels(n: usize) -> (Vec<Writer>, Vec<Reader>) {
     let mut writers = Vec::new();
@@ -159,7 +159,8 @@ fn create_framed_channel() -> (Writer, Reader) {
     let (writer, reader) = byte_channel(NonZeroUsize::new(256).unwrap());
 
     let framed_writer = FramedWrite::new(writer, RawRequestMessageEncoder);
-    let framed_reader = FramedRead::new(reader, AgentMessageDecoder::new(Value::make_recognizer()));
+    let framed_reader =
+        FramedRead::new(reader, RequestMessageDecoder::new(Value::make_recognizer()));
 
     (framed_writer, framed_reader)
 }
@@ -188,7 +189,10 @@ async fn write(mut writers: Vec<Writer>, message_count: usize, writers_order: Wr
                     for i in 0..message_count {
                         let msg: RequestMessage<String, Bytes> = RequestMessage {
                             origin: Uuid::from_u128(i as u128),
-                            path: Path::new(format!("node_{}", i), format!("lane_{}", i)),
+                            path: RelativeAddress::new(
+                                format!("node_{}", i),
+                                format!("lane_{}", i),
+                            ),
                             envelope: Operation::Link,
                         };
                         writer.send(msg).await.unwrap();
@@ -204,7 +208,7 @@ async fn write(mut writers: Vec<Writer>, message_count: usize, writers_order: Wr
         for writer in &mut writers {
             let msg: RequestMessage<String, Bytes> = RequestMessage {
                 origin: Uuid::from_u128(i as u128),
-                path: Path::new(format!("node_{}", i), format!("lane_{}", i)),
+                path: RelativeAddress::new(format!("node_{}", i), format!("lane_{}", i)),
                 envelope: Operation::Link,
             };
             writer.send(msg).await.unwrap();

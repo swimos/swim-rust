@@ -19,7 +19,8 @@ use crate::{
         task::{external_links, AdHocChannelRequest, ExternalLinkRequest},
         CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest,
     },
-    downlink::{DownlinkOptions, Io},
+    downlink::DownlinkOptions,
+    Io,
 };
 use bytes::Bytes;
 use futures::{
@@ -28,26 +29,22 @@ use futures::{
     Future, SinkExt, Stream, StreamExt, TryStreamExt,
 };
 use rand::Rng;
+use swimos_agent_protocol::encoding::ad_hoc::AdHocCommandEncoder;
+use swimos_agent_protocol::AdHocCommand;
 use swimos_api::{
-    downlink::DownlinkKind,
-    error::{DownlinkFailureReason, DownlinkRuntimeError},
-    net::SchemeHostPort,
-    protocol::{
-        agent::{AdHocCommand, AdHocCommandEncoder},
-        WithLenReconEncoder,
-    },
-};
-use swimos_form::structural::write::StructuralWritable;
-use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
-use swimos_model::{
     address::{Address, RelativeAddress},
-    BytesStr,
+    agent::DownlinkKind,
+    error::{DownlinkFailureReason, DownlinkRuntimeError},
 };
-use swimos_recon::printer::print_recon_compact;
+use swimos_form::write::StructuralWritable;
+use swimos_messages::protocol::{Operation, RawRequestMessageDecoder, RequestMessage};
+use swimos_recon::print_recon_compact;
+use swimos_remote::SchemeHostPort;
 use swimos_utilities::{
+    byte_channel::{self, ByteReader, ByteWriter},
+    encoding::BytesStr,
     errors::Recoverable,
-    future::retryable::{Quantity, RetryStrategy},
-    io::byte_channel::{self, ByteReader, ByteWriter},
+    future::{Quantity, RetryStrategy},
     non_zero_usize, trigger,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -171,7 +168,7 @@ async fn replace_channel() {
     }
 }
 
-type CommandSender = FramedWrite<ByteWriter, AdHocCommandEncoder<WithLenReconEncoder>>;
+type CommandSender = FramedWrite<ByteWriter, AdHocCommandEncoder>;
 
 const ADDRS: &[(Option<&str>, &str, &str)] = &[
     (Some("ws://localhost:8080"), "/node", "lane"),

@@ -14,10 +14,10 @@
 
 use std::marker::PhantomData;
 
-use swimos_api::handlers::{FnHandler, NoHandler};
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{ActionContext, EventHandlerError, GetFn, HandlerAction, StepResult},
     lanes::http::Response,
     meta::AgentMetadata,
@@ -31,7 +31,7 @@ pub trait OnGet<T, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `http_context` - Metadata associated with the HTTP request.
     fn on_get(&self, http_context: HttpRequestContext) -> Self::OnGetHandler<'_>;
 }
@@ -44,7 +44,7 @@ pub trait OnGetShared<T, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `http_context` - Metadata associated with the HTTP request.

@@ -36,7 +36,7 @@ impl UiConfig {
 
 /// Trivial web server to present the app UI.
 ///
-/// #Arguments
+/// # Arguments
 /// * `port` - The port that the swimos server is listening on.
 pub fn ui_server_router(port: u16) -> Router {
     Router::new()

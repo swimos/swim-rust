@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_api::handlers::{FnHandler, NoHandler};
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{ConstHandler, CueFn1, HandlerAction},
 };
 
@@ -25,7 +25,7 @@ pub trait OnCueKey<K, V, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `key` - The key to cue.
     fn on_cue_key(&self, key: K) -> Self::OnCueKeyHandler<'_>;
 }
@@ -38,7 +38,7 @@ pub trait OnCueKeyShared<K, V, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `key` - The key to cue.

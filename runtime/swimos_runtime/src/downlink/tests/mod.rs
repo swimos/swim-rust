@@ -15,15 +15,16 @@
 use std::{convert::Infallible, num::NonZeroUsize, time::Duration};
 
 use futures_util::{future::join, SinkExt, StreamExt};
-use swimos_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
+use swimos_agent_protocol::encoding::downlink::{
+    DownlinkOperationEncoder, ValueNotificationDecoder,
 };
+use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
+use swimos_api::address::RelativeAddress;
 use swimos_messages::protocol::{
-    Operation, Path, RawRequestMessageDecoder, RawResponseMessageEncoder, RequestMessage,
-    ResponseMessage,
+    Operation, RawRequestMessageDecoder, RawResponseMessageEncoder, RequestMessage, ResponseMessage,
 };
-use swimos_model::{address::RelativeAddress, Text};
-use swimos_utilities::{io::byte_channel::byte_channel, non_zero_usize};
+use swimos_model::Text;
+use swimos_utilities::{byte_channel::byte_channel, non_zero_usize};
 use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
@@ -139,7 +140,7 @@ async fn read_task_rescinds_vote_to_stop() {
         msg_sender
             .send(ResponseMessage::<_, String, String>::linked(
                 REMOTE_ADDR,
-                Path::new(REMOTE_NODE, REMOTE_LANE),
+                RelativeAddress::new(REMOTE_NODE, REMOTE_LANE),
             ))
             .await
             .expect("Send failed.");
@@ -238,7 +239,7 @@ async fn write_task_rescinds_stop_vote() {
             .send((rx, DownlinkOptions::empty()))
             .await
             .expect("Send failed.");
-        let mut sender = FramedWrite::new(tx, DownlinkOperationEncoder);
+        let mut sender = FramedWrite::new(tx, DownlinkOperationEncoder::default());
         sender
             .send(DownlinkOperation::new("a".to_string()))
             .await

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_form::structural::write::StructuralWritable;
-use swimos_model::address::Address;
+use swimos_api::address::Address;
+use swimos_form::write::StructuralWritable;
 
 use crate::meta::AgentMetadata;
 
@@ -22,12 +22,19 @@ use super::{ActionContext, HandlerAction, StepResult};
 #[cfg(test)]
 mod tests;
 
+///  An [event handler](crate::event_handler::EventHandler) that will send a command to a remote lane.
 pub struct SendCommand<S, T> {
     body: Option<Body<S, T>>,
     overwrite_permitted: bool,
 }
 
 impl<S, T> SendCommand<S, T> {
+    /// # Arguments
+    /// * `address` - The address of the remote lane.
+    /// * `command` - The body of the command.
+    /// * `overwrite_permitted` - Whether to enable back-pressure relief for the command. If this is set to true,
+    /// and this command has not been sent when another command is sent to the same destination, it will be
+    /// overwritten.
     pub fn new(address: Address<S>, command: T, overwrite_permitted: bool) -> Self {
         SendCommand {
             body: Some(Body {

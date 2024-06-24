@@ -14,9 +14,9 @@
 
 use std::{borrow::Borrow, marker::PhantomData};
 
-use swimos_api::handlers::{BorrowHandler, NoHandler};
+use swimos_utilities::handlers::{BorrowHandler, NoHandler};
 
-use crate::agent_lifecycle::utility::HandlerContext;
+use crate::agent_lifecycle::HandlerContext;
 
 use self::{
     on_event::{OnEvent, OnEventShared},
@@ -28,7 +28,7 @@ pub mod on_set;
 
 /// Trait for the lifecycle of a value lane.
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `T` - The type of the state of the lane.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 pub trait ValueLaneLifecycle<T, Context>: OnEvent<T, Context> + OnSet<T, Context> {}
@@ -36,7 +36,7 @@ pub trait ValueLaneLifecycle<T, Context>: OnEvent<T, Context> + OnSet<T, Context
 /// Trait for the lifecycle of a value lane where the lifecycle has access to some shared state (shared
 /// with all other lifecycles in the agent).
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `T` - The type of the state of the lane.
 /// * `Context` - The context within which the event handlers execute (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
@@ -57,7 +57,7 @@ impl<L, T, Context, Shared> ValueLaneLifecycleShared<T, Context, Shared> for L w
 
 /// A lifecycle for a value lane with some shared state (shard with other lifecycles in the same agent).
 ///
-/// #Type Parameters
+/// # Type Parameters
 /// * `Context` - The context for the event handlers (providing access to the agent lanes).
 /// * `Shared` - The shared state to which the lifecycle has access.
 /// * `FEv` - The `on_event` event handler.

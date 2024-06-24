@@ -16,10 +16,12 @@ use std::{num::NonZeroUsize, time::Duration};
 
 use bytes::{Bytes, BytesMut};
 use futures::StreamExt;
-use swimos_messages::protocol::{BytesResponseMessage, Path, RawResponseMessageDecoder};
-use swimos_model::{BytesStr, Text};
+use swimos_api::address::RelativeAddress;
+use swimos_messages::protocol::{BytesResponseMessage, RawResponseMessageDecoder};
+use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{byte_channel, ByteReader},
+    byte_channel::{byte_channel, ByteReader},
+    encoding::BytesStr,
     non_zero_usize,
     trigger::promise,
 };
@@ -41,8 +43,8 @@ const ADDR: Uuid = Uuid::from_u128(1);
 const NODE: &str = "/node";
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
-fn make_path() -> Path<BytesStr> {
-    Path::new(BytesStr::from(NODE), BytesStr::from(LANE))
+fn make_path() -> RelativeAddress<BytesStr> {
+    RelativeAddress::new(BytesStr::from(NODE), BytesStr::from(LANE))
 }
 
 #[test]
@@ -238,5 +240,5 @@ async fn remove_remote() {
         .expect("Timed out.")
         .expect("Reason promised dropped.");
 
-    assert_eq!(*result, DisconnectionReason::RemoteTimedOut);
+    assert_eq!(result, DisconnectionReason::RemoteTimedOut);
 }

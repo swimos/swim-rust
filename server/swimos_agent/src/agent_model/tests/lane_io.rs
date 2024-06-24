@@ -15,25 +15,24 @@
 use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
 use std::fmt::Write;
-use swimos_api::protocol::{
-    agent::{
-        LaneRequest, LaneRequestEncoder, LaneResponse, MapLaneResponse, MapLaneResponseDecoder,
-        ValueLaneResponseDecoder,
+use swimos_agent_protocol::{
+    encoding::lane::{
+        MapLaneRequestEncoder, RawMapLaneResponseDecoder, RawValueLaneRequestEncoder,
+        RawValueLaneResponseDecoder,
     },
-    map::{MapMessage, MapMessageEncoder, MapOperation, MapOperationEncoder},
-    WithLengthBytesCodec,
+    LaneRequest, LaneResponse, MapLaneResponse, MapMessage, MapOperation,
 };
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
 pub struct ValueLaneSender {
     buffer: BytesMut,
-    inner: FramedWrite<ByteWriter, LaneRequestEncoder<WithLengthBytesCodec>>,
+    inner: FramedWrite<ByteWriter, RawValueLaneRequestEncoder>,
 }
 
 pub struct ValueLaneReceiver {
-    inner: FramedRead<ByteReader, ValueLaneResponseDecoder>,
+    inner: FramedRead<ByteReader, RawValueLaneResponseDecoder>,
 }
 
 impl ValueLaneSender {
@@ -116,14 +115,12 @@ fn read_int(bytes: impl AsRef<[u8]>) -> i32 {
         .expect("Invalid integer.")
 }
 
-type MapEncoder = LaneRequestEncoder<MapMessageEncoder<MapOperationEncoder>>;
-
 pub struct MapLaneSender {
-    inner: FramedWrite<ByteWriter, MapEncoder>,
+    inner: FramedWrite<ByteWriter, MapLaneRequestEncoder>,
 }
 
 pub struct MapLaneReceiver {
-    inner: FramedRead<ByteReader, MapLaneResponseDecoder>,
+    inner: FramedRead<ByteReader, RawMapLaneResponseDecoder>,
 }
 
 impl MapLaneSender {

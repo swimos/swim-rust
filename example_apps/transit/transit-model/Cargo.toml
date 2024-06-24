@@ -7,6 +7,6 @@ edition = "2021"
 swimos = { path = "../../../swimos" }
 swimos_form = { path = "../../../api/swimos_form" }
 serde = { workspace = true, features = ["derive"] }
-quick-xml = { version = "0.30", features = ["serialize", "serde-types"] }
+quick-xml = { workspace = true, features = ["serialize", "serde-types"] }
 percent-encoding = { workspace = true }
 thiserror = { workspace = true }

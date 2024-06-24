@@ -14,24 +14,22 @@
 
 use bytes::Bytes;
 use futures::SinkExt;
-use swimos_api::{
-    agent::UplinkKind,
-    protocol::{
-        agent::{LaneRequest, LaneRequestEncoder},
-        map::{extract_header, MapMessage, MapMessageEncoder, RawMapOperationEncoder},
-        WithLengthBytesCodec,
-    },
+use swimos_agent_protocol::{
+    encoding::lane::{RawMapLaneRequestEncoder, RawValueLaneRequestEncoder},
+    peeling::extract_header,
+    LaneRequest, MapMessage,
 };
+use swimos_api::agent::UplinkKind;
 use swimos_recon::parser::MessageExtractError;
-use swimos_utilities::io::byte_channel::ByteWriter;
+use swimos_utilities::byte_channel::ByteWriter;
 use thiserror::Error;
 use tokio_util::codec::{Encoder, FramedWrite};
 use uuid::Uuid;
 
 use crate::agent::reporting::UplinkReporter;
 
-type ValueLaneEncoder = LaneRequestEncoder<WithLengthBytesCodec>;
-type MapLaneEncoder = LaneRequestEncoder<MapMessageEncoder<RawMapOperationEncoder>>;
+type ValueLaneEncoder = RawValueLaneRequestEncoder;
+type MapLaneEncoder = RawMapLaneRequestEncoder;
 
 /// Type of errors that can occur attempting to forward an incoming message to a lane.
 #[derive(Debug, Error)]
@@ -64,10 +62,10 @@ impl LaneSender {
     pub fn new(tx: ByteWriter, kind: UplinkKind, reporter: Option<UplinkReporter>) -> Self {
         let writer = match kind {
             UplinkKind::Value | UplinkKind::Supply => LaneSenderWriter::Value {
-                sender: FramedWrite::new(tx, LaneRequestEncoder::value()),
+                sender: FramedWrite::new(tx, RawValueLaneRequestEncoder::default()),
             },
             UplinkKind::Map => LaneSenderWriter::Map {
-                sender: FramedWrite::new(tx, LaneRequestEncoder::map()),
+                sender: FramedWrite::new(tx, RawMapLaneRequestEncoder::default()),
             },
         };
         LaneSender { writer, reporter }

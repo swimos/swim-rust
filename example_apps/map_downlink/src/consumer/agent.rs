@@ -14,7 +14,7 @@
 
 use example_util::format_map;
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     agent_model::downlink::hosted::MapDownlinkHandle,
     event_handler::{EventHandler, HandlerAction, HandlerActionExt},
     lanes::{CommandLane, ValueLane},
@@ -105,14 +105,14 @@ impl ConsumerLifecycle {
                     ),
                 })
                 .discard()
-                .boxed(),
+                .boxed_local(),
             Instruction::CloseLink => handle
                 .with_mut(|h| {
                     if let Some(h) = h.as_mut() {
                         h.stop();
                     }
                 })
-                .boxed(),
+                .boxed_local(),
             Instruction::Send(n) => handle
                 .with_mut(move |h| {
                     if let Some(handle) = h.as_mut() {
@@ -121,8 +121,8 @@ impl ConsumerLifecycle {
                         }
                     }
                 })
-                .boxed(),
-            Instruction::Stop => context.stop().boxed(),
+                .boxed_local(),
+            Instruction::Stop => context.stop().boxed_local(),
         };
         context
             .effect(move || println!("{}", msg))

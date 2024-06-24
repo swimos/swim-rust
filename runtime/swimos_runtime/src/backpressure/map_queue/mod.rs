@@ -18,11 +18,9 @@ use std::{
 };
 
 use bytes::{BufMut, BytesMut};
-use swimos_api::protocol::map::{MapOperation, RawMapOperation, RawMapOperationMut};
+use swimos_agent_protocol::MapOperation;
 
-use crate::error::InvalidKey;
-
-use super::key::ReconKey;
+use super::{key::ReconKey, InvalidKey, RawMapOperation, RawMapOperationMut};
 
 #[cfg(test)]
 mod tests;

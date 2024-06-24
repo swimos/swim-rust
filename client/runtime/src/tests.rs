@@ -26,7 +26,9 @@ use futures_util::FutureExt;
 use ratchet::{
     Message, NegotiatedExtension, NoExt, NoExtProvider, Role, WebSocket, WebSocketConfig,
 };
-use swimos_api::net::{Scheme, SchemeHostPort};
+use swimos_agent_protocol::MapMessage;
+use swimos_messages::remote_protocol::AttachClient;
+use swimos_remote::{Scheme, SchemeHostPort};
 use tokio::io::{duplex, AsyncWriteExt};
 use tokio::spawn;
 use tokio::sync::mpsc::unbounded_channel;
@@ -37,9 +39,12 @@ use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
 use fixture::{MockClientConnections, MockWs, Server, WsAction};
-use swimos_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
-use swimos_api::error::DownlinkTaskError;
-use swimos_api::protocol::map::MapMessage;
+use swimos_api::{
+    address::{Address, RelativeAddress},
+    agent::DownlinkKind,
+    error::DownlinkTaskError,
+};
+use swimos_client_api::{Downlink, DownlinkConfig};
 use swimos_downlink::lifecycle::{
     BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle, MapDownlinkLifecycle,
     ValueDownlinkLifecycle,
@@ -49,12 +54,10 @@ use swimos_downlink::{
 };
 use swimos_form::Form;
 use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
-use swimos_model::address::{Address, RelativeAddress};
 use swimos_model::Text;
-use swimos_remote::ws::RatchetError;
-use swimos_remote::AttachClient;
+use swimos_remote::websocket::RatchetError;
 use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
-use swimos_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swimos_utilities::trigger::{promise, trigger};
 use swimos_utilities::{non_zero_usize, trigger};
 
@@ -384,7 +387,7 @@ struct ValueDownlinkContext {
     stopped: Arc<Notify>,
     handle_tx: mpsc::Sender<ValueDownlinkSet<i32>>,
     server: Server,
-    promise: promise::Receiver<Result<(), DownlinkRuntimeError>>,
+    promise: promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>>,
     stop_tx: trigger::Sender,
 }
 
@@ -581,7 +584,7 @@ where
     let downlink = TrackingMapDownlink::new(
         spawned.clone(),
         stopped.clone(),
-        MapDownlinkModel::new(set_rx, lifecycle, false),
+        MapDownlinkModel::new(set_rx, lifecycle),
     );
 
     let promise = handle
@@ -607,14 +610,14 @@ struct TrackingValueContext {
     spawned: Arc<Notify>,
     stopped: Arc<Notify>,
     handle_tx: mpsc::Sender<ValueDownlinkSet<i32>>,
-    promise: promise::Receiver<Result<(), DownlinkRuntimeError>>,
+    promise: promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>>,
 }
 
 struct TrackingMapContext {
     spawned: Arc<Notify>,
     stopped: Arc<Notify>,
     tx: MapDownlinkHandle<i32, i32>,
-    promise: promise::Receiver<Result<(), DownlinkRuntimeError>>,
+    promise: promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>>,
 }
 
 #[tokio::test]

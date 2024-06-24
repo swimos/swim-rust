@@ -1,9 +1,4 @@
-use std::{
-    collections::HashSet,
-    pin::Pin,
-    task::{Context, Poll},
-};
-
+use base64::{engine::general_purpose::STANDARD, Engine};
 use bytes::{Bytes, BytesMut};
 use futures::{ready, Future, FutureExt};
 use http::{header::HeaderName, HeaderMap, HeaderValue, Method};
@@ -17,6 +12,11 @@ use ratchet::{
     WebSocketStream,
 };
 use sha1::{Digest, Sha1};
+use std::{
+    collections::HashSet,
+    pin::Pin,
+    task::{Context, Poll},
+};
 use thiserror::Error;
 
 const UPGRADE_STR: &str = "Upgrade";
@@ -34,6 +34,11 @@ pub struct Negotiated<'a, Ext> {
 
 /// Attempt to negotiate a websocket upgrade on a hyper request. If [`Ok(None)`] is returned,
 /// no upgrade was requested. If an error is returned an upgrade was requested but it failed.
+///
+/// # Arguments
+/// * `request` - The HTTP request.
+/// * `protocols` - The supported protocols for the negotiation.
+/// * `extension_provider` - The extension provider (for example compression support).
 pub fn negotiate_upgrade<'a, T, E>(
     request: &Request<T>,
     protocols: &'a HashSet<&str>,
@@ -95,7 +100,7 @@ pub fn fail_upgrade<ExtErr: std::error::Error>(error: UpgradeError<ExtErr>) -> R
 
 /// Upgrade a hyper request to a websocket, based on a successful negotiation.
 ///
-/// #Arguments
+/// # Arguments
 /// * `request` - The hyper HTTP request.
 /// * `negotiated` - Negotiated parameters for the websocket connection.
 /// * `config` - Websocket configuration parameters.
@@ -120,7 +125,7 @@ where
     Digest::update(&mut digest, key);
     Digest::update(&mut digest, ACCEPT_KEY);
 
-    let sec_websocket_accept = base64::encode(digest.finalize());
+    let sec_websocket_accept = STANDARD.encode(digest.finalize());
     let mut builder = Response::builder()
         .status(http::StatusCode::SWITCHING_PROTOCOLS)
         .header(http::header::SEC_WEBSOCKET_ACCEPT, sec_websocket_accept)
@@ -185,10 +190,13 @@ fn trim(bytes: &[u8]) -> &[u8] {
 /// Reasons that a websocket upgrade request could fail.
 #[derive(Debug, Error, Clone, Copy)]
 pub enum UpgradeError<ExtErr: std::error::Error> {
+    /// An invalid websocket version was specified.
     #[error("Invalid websocket version specified.")]
     InvalidWebsocketVersion,
+    /// No websocket key was provided.
     #[error("No websocket key provided.")]
     NoKey,
+    /// The headers provided for the websocket extension were not valid.
     #[error("Invalid extension headers: {0}")]
     ExtensionError(ExtErr),
 }

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{join3, EventHandler, HandlerActionExt},
     lanes::{CommandLane, ValueLane},
     lifecycle, projections, AgentLaneModel,
@@ -23,7 +23,7 @@ use swimos::agent::{
 #[projections]
 pub struct ExampleAgent {
     value: ValueLane<i32>,
-    #[lane(transient)]
+    #[item(transient)]
     temporary: ValueLane<i32>,
     stop: CommandLane<()>,
 }

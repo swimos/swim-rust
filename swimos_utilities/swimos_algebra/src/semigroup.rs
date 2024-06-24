@@ -15,7 +15,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 
-/// Trait for types with an associative binary operator. Implementors are responsible for ensuring
+/// Trait for types with an associative binary operator. Implementers are responsible for ensuring
 /// that the operation is associative.
 pub trait Semigroup: Sized {
     fn op(mut left: Self, right: Self) -> Self {

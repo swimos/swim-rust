@@ -24,13 +24,12 @@ use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use ratchet::{
     ExtensionProvider, NegotiatedExtension, Role, WebSocket, WebSocketConfig, WebSocketStream,
 };
-use swimos_api::net::Scheme;
-use swimos_remote::net::dns::{DnsFut, DnsResolver};
-use swimos_remote::net::{
-    ConnectionError, ExternalConnections, Listener, ListenerError, ListenerResult,
+use swimos_messages::remote_protocol::FindNode;
+use swimos_remote::dns::{DnsFut, DnsResolver};
+use swimos_remote::websocket::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
+use swimos_remote::{
+    ConnectionError, ExternalConnections, Listener, ListenerError, ListenerResult, Scheme,
 };
-use swimos_remote::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
-use swimos_remote::FindNode;
 use tokio::{
     io::{self, DuplexStream},
     sync::{mpsc, oneshot},
@@ -38,6 +37,7 @@ use tokio::{
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 enum ConnReq {
     Remote(
         Scheme,
@@ -209,7 +209,7 @@ impl ExternalConnections for TestConnections {
         self.resolve(host, port)
     }
 
-    fn dns_resolver(&self) -> swimos_remote::net::dns::BoxDnsResolver {
+    fn dns_resolver(&self) -> swimos_remote::dns::BoxDnsResolver {
         Box::new(self.clone())
     }
 }
