@@ -5,6 +5,6 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-swimos_model = { path = "../swimos_model" }
-swimos_form = { path = "../swimos_form" }
-swimos_api = { path = "../swimos_api" }
+swimos_model = { path = "../swimos_model", version = "0.1.0" }
+swimos_form = { path = "../swimos_form", version = "0.1.0" }
+swimos_api = { path = "../swimos_api", version = "0.1.0" }

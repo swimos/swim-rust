@@ -13,9 +13,11 @@
 // limitations under the License.
 
 use bitflags::bitflags;
-use macro_utilities::{attributes::consume_attributes, NameTransform, TypeLevelNameTransform};
 use proc_macro2::Literal;
 use std::{collections::HashSet, hash::Hash};
+use swimos_macro_utilities::{
+    attributes::consume_attributes, NameTransform, TypeLevelNameTransform,
+};
 use swimos_utilities::{
     errors::{Errors, Validation, ValidationItExt},
     format::comma_sep,

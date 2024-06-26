@@ -22,14 +22,14 @@ use crate::structural::model::field::{
 };
 use crate::structural::model::StructLike;
 use crate::SynValidation;
-use macro_utilities::attr_names::FORM_NAME;
-use macro_utilities::attributes::consume_attributes;
-use macro_utilities::CompoundTypeKind;
-use macro_utilities::FieldKind;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::collections::HashSet;
 use std::ops::Add;
+use swimos_macro_utilities::attr_names::FORM_NAME;
+use swimos_macro_utilities::attributes::consume_attributes;
+use swimos_macro_utilities::CompoundTypeKind;
+use swimos_macro_utilities::FieldKind;
 use swimos_utilities::errors::Errors;
 use swimos_utilities::errors::{validate2, Validation, ValidationItExt};
 use swimos_utilities::format::comma_sep;

@@ -5,9 +5,9 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-swimos_utilities = { path = "../../swimos_utilities", features = ["text", "future"] }
-swimos_form_derive = { path = "../swimos_form_derive" }
-swimos_model = { path = "../swimos_model" }
+swimos_utilities = { path = "../../swimos_utilities", features = ["text", "future"], version = "0.1.0" }
+swimos_form_derive = { path = "../swimos_form_derive", version = "0.1.0" }
+swimos_model = { path = "../swimos_model", version = "0.1.0" }
 chrono = { workspace = true }
 either = { workspace = true }
 num-traits = { workspace = true }

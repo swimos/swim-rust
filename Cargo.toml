@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-    "client/*",
+    "swimos_client",
     "swimos",
     "api/swimos_*",
     "api/formats/swimos_*",
-    "macro_utilities",
+    "swimos_macro_utilities",
     "runtime/swimos_*",
     "swimos_utilities",
     "swimos_utilities/swimos_*",
@@ -42,10 +42,6 @@ members = [
     "example_apps/time_series",
     "example_apps/devguide/2_2/*",
     "example_apps/devguide/2_3/*",
-]
-
-exclude = [
-    "cookbook"
 ]
 
 [profile.release]

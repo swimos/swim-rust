@@ -2,9 +2,10 @@
 name = "tutorial-app-generator"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 [dependencies]
 tutorial-app-model = { path = "../model" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 rand = { workspace = true }
-swimos_client = { path = "../../../client/swimos_client" }
+swimos_client = { path = "../../../swimos_client" }

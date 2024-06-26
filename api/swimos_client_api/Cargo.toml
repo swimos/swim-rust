@@ -6,11 +6,11 @@ edition = "2021"
 
 [dependencies]
 futures = { workspace = true }
-swimos_utilities = { path = "../../swimos_utilities", features = ["io"] }
-swimos_model = { path = "../swimos_model" }
-swimos_form = { path = "../swimos_form" }
-swimos_recon = { path = "../formats/swimos_recon" }
-swimos_api = { path = "../swimos_api" }
+swimos_utilities = { path = "../../swimos_utilities", features = ["io"], version = "0.1.0" }
+swimos_model = { path = "../swimos_model", version = "0.1.0" }
+swimos_form = { path = "../swimos_form", version = "0.1.0" }
+swimos_recon = { path = "../formats/swimos_recon", version = "0.1.0" }
+swimos_api = { path = "../swimos_api", version = "0.1.0" }
 thiserror = { workspace = true }
 static_assertions = { workspace = true }
 

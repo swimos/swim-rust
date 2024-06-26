@@ -15,25 +15,25 @@ aws_lc_rs_provider = ["swimos_remote/aws_lc_rs_provider"]
 [dependencies]
 futures = { workspace = true }
 ratchet = { workspace = true, features = ["deflate", "split"] }
-swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "text", "time"] }
-swimos_runtime = { path = "../../runtime/swimos_runtime" }
-swimos_messages = { path = "../../runtime/swimos_messages" }
-swimos_http = { path = "../../runtime/swimos_http" }
-swimos_introspection = { path = "../swimos_introspection" }
-swimos_remote = { path = "../../runtime/swimos_remote", features = ["tls"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "text", "time"], version = "0.1.0" }
+swimos_runtime = { path = "../../runtime/swimos_runtime", version = "0.1.0" }
+swimos_messages = { path = "../../runtime/swimos_messages", version = "0.1.0" }
+swimos_http = { path = "../../runtime/swimos_http", version = "0.1.0" }
+swimos_introspection = { path = "../swimos_introspection", version = "0.1.0" }
+swimos_remote = { path = "../../runtime/swimos_remote", features = ["tls"], version = "0.1.0" }
 bytes = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tokio-util = { workspace = true, features = ["codec"] }
-swimos_model = { path = "../../api/swimos_model" }
-swimos_api = { path = "../../api/swimos_api" }
-swimos_agent_protocol = { path = "../../api/swimos_agent_protocol" }
+swimos_model = { path = "../../api/swimos_model", version = "0.1.0" }
+swimos_api = { path = "../../api/swimos_api", version = "0.1.0" }
+swimos_agent_protocol = { path = "../../api/swimos_agent_protocol", version = "0.1.0" }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
 rand = { workspace = true }
 url = { workspace = true }
-swimos_rocks_store = { path = "../../runtime/swimos_rocks_store", optional = true }
+swimos_rocks_store = { path = "../../runtime/swimos_rocks_store", optional = true, version = "0.1.0" }
 parking_lot = { workspace = true }
 hyper = { workspace = true, features = ["server", "runtime", "tcp", "http1", "backports"] }
 pin-project = { workspace = true }

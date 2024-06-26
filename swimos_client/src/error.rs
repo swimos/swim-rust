@@ -40,9 +40,6 @@ pub enum DownlinkErrorKind {
     RemoteStopped,
     Timeout,
     Terminated,
-    /// Error propagated from user-code, such as a Java exception cause through the FFI
-    // todo: this can be removed?
-    User,
 }
 
 impl Display for DownlinkErrorKind {
@@ -65,12 +62,6 @@ impl Display for DownlinkErrorKind {
             }
             DownlinkErrorKind::Terminated => {
                 write!(f, "Terminated")
-            }
-            DownlinkErrorKind::User => {
-                write!(
-                    f,
-                    "Error produced during downlink lifecycle callback invocation"
-                )
             }
         }
     }

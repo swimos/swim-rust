@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use frunk::hlist;
-use macro_utilities::{
+use swimos_macro_utilities::{
     attributes::NestedMetaConsumer, CaseConvention, NameTransform, NameTransformConsumer,
     Transformation, TypeLevelNameTransformConsumer,
 };
