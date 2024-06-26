@@ -33,7 +33,8 @@ use crate::item::AgentItem;
 use crate::lanes::join::test_util::{TestDlContextInner, TestDownlinkContext};
 use crate::lanes::join_map::default_lifecycle::DefaultJoinMapLifecycle;
 use crate::lanes::join_map::{
-    AddDownlinkAction, JoinMapAddDownlink, JoinMapLaneGet, JoinMapLaneGetMap, JoinMapRemoveDownlink,
+    AddDownlinkAction, JoinMapAddDownlink, JoinMapLaneGet, JoinMapLaneGetMap, JoinMapLaneWithEntry,
+    JoinMapRemoveDownlink,
 };
 use crate::test_context::{dummy_context, run_event_handlers, run_with_futures};
 use crate::{event_handler::StepResult, item::MapItem, meta::AgentMetadata};
@@ -325,6 +326,55 @@ async fn open_downlink_from_registered() {
     .await;
 
     assert_eq!(count.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn join_map_lane_with_entry_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler =
+        JoinMapLaneWithEntry::new(TestAgent::LANE, K1, |v: Option<&str>| v.map(str::to_owned));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(Some(V1.to_string())));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    let mut handler = JoinMapLaneWithEntry::new(TestAgent::LANE, ABSENT, |v: Option<&str>| {
+        v.map(str::to_owned)
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(None));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
 }
 
 #[tokio::test]
