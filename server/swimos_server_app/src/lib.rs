@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -61,12 +61,15 @@ mod util;
 
 pub use self::{
     config::{RemoteConnectionsConfig, SwimServerConfig},
-    server::{BoxServer, Server, ServerBuilder, ServerHandle},
+    server::{BoxServer, Server, ServerBuilder, ServerHandle, UnresolvableRoute},
     util::AgentExt,
 };
 
+#[cfg(feature = "signal")]
+pub use server::wait::{until_termination, RegistrationFailed};
+
 pub use error::{AmbiguousRoutes, ServerBuilderError, ServerError};
-pub use ratchet::deflate::DeflateConfig;
+pub use ratchet::deflate::{DeflateConfig, WindowBits};
 pub use swimos_introspection::IntrospectionConfig;
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 

@@ -77,7 +77,7 @@ the agent at `"/node"` on the host `"swim://example.remote:8080"`. Here `OpenVal
 a `HandlerAction` that results in a value of type:
 
 ```rust
-swimos::agent::agent_model::downlink::hosted::ValueDownlinkHandle
+swimos::agent::agent_model::downlink::ValueDownlinkHandle
 ```
 
 This handle can be used to set the value of the remote lane, through the downlink.

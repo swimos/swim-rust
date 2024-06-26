@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ pub mod agent_lifecycle;
 /// and stores.
 pub mod agent_model;
 
-/// Configuration types for downlinks started from agent lifecycles.
+/// Configuration types for downlinks that are started from agent lifecycles.
 pub mod config;
 
 /// Traits and builders for constructing downlink lifecycles for downlinks started from agent lifecycles.
