@@ -68,7 +68,7 @@ const DEFAULT_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct WebSocketConfig {
     pub max_message_size: usize,
     #[cfg(feature = "deflate")]
-    pub deflate_config: Option<ratchet::DeflateConfig>,
+    pub deflate_config: Option<ratchet::deflate::DeflateConfig>,
 }
 
 impl Default for WebSocketConfig {
@@ -134,7 +134,7 @@ impl SwimClientBuilder {
 
     /// Sets the deflate extension configuration for WebSocket connections.
     #[cfg(feature = "deflate")]
-    pub fn set_deflate_config(mut self, to: ratchet::DeflateConfig) -> SwimClientBuilder {
+    pub fn set_deflate_config(mut self, to: ratchet::deflate::DeflateConfig) -> SwimClientBuilder {
         self.client_config.websocket.deflate_config = Some(to);
         self
     }
@@ -226,7 +226,7 @@ where
                 max_message_size: websocket.max_message_size,
             });
 
-            let provider = ratchet::DeflateExtProvider::with_config(
+            let provider = ratchet::deflate::DeflateExtProvider::with_config(
                 websocket.deflate_config.unwrap_or_default(),
             );
 
