@@ -12,101 +12,191 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(not(feature = "deflate"))]
-use ratchet::NoExtProvider;
-use ratchet::WebSocketStream;
-use std::marker::PhantomData;
-use std::num::NonZeroUsize;
-use swimos_remote::websocket::RatchetClient;
+use std::time::Duration;
+use std::{marker::PhantomData, num::NonZeroUsize, sync::Arc};
 
 use futures_util::future::BoxFuture;
-#[cfg(feature = "deflate")]
-use ratchet::deflate::{DeflateConfig, DeflateExtProvider};
-use runtime::{
-    start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, Transport, WebSocketConfig,
+use ratchet::{
+    deflate::{DeflateConfig, DeflateExtProvider},
+    WebSocketStream,
 };
-pub use runtime::{CommandError, Commander, RemotePath};
-use std::sync::Arc;
+use rustls::crypto::CryptoProvider;
+
+pub use commander::{CommandError, Commander};
 pub use swimos_client_api::DownlinkConfig;
-pub use swimos_downlink::lifecycle::{
-    BasicEventDownlinkLifecycle, BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle,
-    EventDownlinkLifecycle, MapDownlinkLifecycle, ValueDownlinkLifecycle,
+pub use swimos_downlink::{
+    lifecycle::BasicEventDownlinkLifecycle, lifecycle::BasicMapDownlinkLifecycle,
+    lifecycle::BasicValueDownlinkLifecycle, lifecycle::EventDownlinkLifecycle,
+    lifecycle::MapDownlinkLifecycle, lifecycle::ValueDownlinkLifecycle,
 };
 use swimos_downlink::{
     ChannelError, DownlinkTask, EventDownlinkModel, MapDownlinkHandle, MapDownlinkModel, MapKey,
     MapValue, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkSet,
 };
 use swimos_form::Form;
-use swimos_remote::dns::Resolver;
-use swimos_remote::plain::TokioPlainTextNetworking;
-#[cfg(feature = "tls")]
-use swimos_remote::tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
-use swimos_remote::ClientConnections;
+use swimos_remote::{
+    dns::Resolver,
+    plain::TokioPlainTextNetworking,
+    tls::CryptoProviderConfig,
+    tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError},
+    websocket::RatchetClient,
+    ClientConnections,
+};
 use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
-use swimos_utilities::trigger;
-use swimos_utilities::trigger::promise;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::oneshot::error::RecvError;
+use swimos_utilities::{non_zero_usize, trigger, trigger::promise};
+use tokio::{sync::mpsc, sync::mpsc::error::SendError, sync::oneshot::error::RecvError};
 pub use url::Url;
+
+pub use crate::models::RemotePath;
+use crate::{
+    error::DownlinkRuntimeError, runtime::start_runtime, runtime::RawHandle, transport::Transport,
+};
+
+#[cfg(test)]
+mod tests;
+
+mod commander;
+mod error;
+mod models;
+mod pending;
+mod runtime;
+mod transport;
 
 pub type DownlinkOperationResult<T> = Result<T, DownlinkRuntimeError>;
 
+const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
+const DEFAULT_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Debug)]
+pub struct WebSocketConfig {
+    pub max_message_size: usize,
+    #[cfg(feature = "deflate")]
+    pub deflate_config: Option<DeflateConfig>,
+}
+
+impl Default for WebSocketConfig {
+    fn default() -> Self {
+        WebSocketConfig {
+            max_message_size: 64 << 20,
+            #[cfg(feature = "deflate")]
+            deflate_config: None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ClientConfig {
+    pub websocket: WebSocketConfig,
+    pub remote_buffer_size: NonZeroUsize,
+    pub transport_buffer_size: NonZeroUsize,
+    pub registration_buffer_size: NonZeroUsize,
+    pub close_timeout: Duration,
+    pub interpret_frame_data: bool,
+}
+
+impl Default for ClientConfig {
+    fn default() -> Self {
+        ClientConfig {
+            websocket: WebSocketConfig::default(),
+            remote_buffer_size: non_zero_usize!(4096),
+            transport_buffer_size: DEFAULT_BUFFER_SIZE,
+            registration_buffer_size: DEFAULT_BUFFER_SIZE,
+            close_timeout: DEFAULT_CLOSE_TIMEOUT,
+            interpret_frame_data: true,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct SwimClientBuilder {
-    config: ClientConfig,
+    client_config: ClientConfig,
 }
 
 impl SwimClientBuilder {
-    pub fn new(config: ClientConfig) -> SwimClientBuilder {
-        SwimClientBuilder { config }
+    pub fn new(client_config: ClientConfig) -> SwimClientBuilder {
+        SwimClientBuilder { client_config }
     }
 
     /// Sets the websocket configuration.
     pub fn set_websocket_config(mut self, to: WebSocketConfig) -> SwimClientBuilder {
-        self.config.websocket = to;
+        self.client_config.websocket = to;
         self
     }
 
     /// Size of the buffers to communicate with the socket.
     pub fn set_remote_buffer_size(mut self, to: NonZeroUsize) -> SwimClientBuilder {
-        self.config.remote_buffer_size = to;
+        self.client_config.remote_buffer_size = to;
         self
     }
 
     /// Sets the buffer size between the runtime and transport tasks.
     pub fn set_transport_buffer_size(mut self, to: NonZeroUsize) -> SwimClientBuilder {
-        self.config.transport_buffer_size = to;
+        self.client_config.transport_buffer_size = to;
         self
     }
 
     /// Sets the deflate extension configuration for WebSocket connections.
     #[cfg(feature = "deflate")]
     pub fn set_deflate_config(mut self, to: DeflateConfig) -> SwimClientBuilder {
-        self.config.websocket.deflate_config = Some(to);
+        self.client_config.websocket.deflate_config = Some(to);
         self
+    }
+
+    /// Enables TLS support.
+    pub fn set_tls_config(self, tls_config: TlsConfig) -> SwimClientTlsBuilder {
+        SwimClientTlsBuilder {
+            client_config: self.client_config,
+            tls_config,
+            crypto_provider: Default::default(),
+        }
     }
 
     /// Builds the client.
     pub async fn build(self) -> (SwimClient, BoxFuture<'static, ()>) {
-        let SwimClientBuilder { config } = self;
+        let SwimClientBuilder { client_config } = self;
         open_client(
-            config,
+            client_config,
             TokioPlainTextNetworking::new(Arc::new(Resolver::new().await)),
         )
         .await
     }
+}
+
+pub struct SwimClientTlsBuilder {
+    client_config: ClientConfig,
+    tls_config: TlsConfig,
+    crypto_provider: CryptoProviderConfig,
+}
+
+impl SwimClientTlsBuilder {
+    /// Uses the process-default [`CryptoProvider`] for any TLS connections.
+    ///
+    /// This is only used if the TLS configuration has been set.
+    pub fn with_default_crypto_provider(mut self) -> Self {
+        self.crypto_provider = CryptoProviderConfig::ProcessDefault;
+        self
+    }
+
+    /// Uses the provided [`CryptoProvider`] for any TLS connections.
+    pub fn with_crypto_provider(mut self, provider: Arc<CryptoProvider>) -> Self {
+        self.crypto_provider = CryptoProviderConfig::Provided(provider);
+        self
+    }
 
     /// Builds the client using the provided TLS configuration.
-    #[cfg(feature = "tls")]
-    pub async fn build_tls(
-        self,
-        tls_config: TlsConfig,
-    ) -> Result<(SwimClient, BoxFuture<'static, ()>), TlsError> {
-        let SwimClientBuilder { config } = self;
+    pub async fn build(self) -> Result<(SwimClient, BoxFuture<'static, ()>), TlsError> {
+        let SwimClientTlsBuilder {
+            client_config,
+            tls_config,
+            crypto_provider,
+        } = self;
         Ok(open_client(
-            config,
-            RustlsClientNetworking::try_from_config(Arc::new(Resolver::new().await), tls_config)?,
+            client_config,
+            RustlsClientNetworking::build(
+                Arc::new(Resolver::new().await),
+                tls_config,
+                crypto_provider.try_build()?,
+            )?,
         )
         .await)
     }

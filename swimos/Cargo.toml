@@ -5,22 +5,24 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [features]
-default = []
+default = ["aws_lc_rs_provider"]
 all = ["server", "agent", "json"]
 server = ["dep:swimos_server_app", "dep:swimos_remote"]
 agent = ["dep:swimos_agent", "dep:swimos_agent_derive"]
 json = ["agent", "swimos_agent/json"]
+ring_provider = ["swimos_server_app/ring_provider"]
+aws_lc_rs_provider = ["swimos_server_app/aws_lc_rs_provider"]
 
 [dependencies]
-swimos_utilities = { path = "../swimos_utilities", features = ["io", "text"] }
-swimos_api = { path = "../api/swimos_api" }
-swimos_model = { path = "../api/swimos_model" }
-swimos_recon = { path = "../api/formats/swimos_recon" }
-swimos_server_app = { path = "../server/swimos_server_app", optional = true, features = ["signal"]}
-swimos_agent = { path = "../server/swimos_agent", optional = true }
-swimos_agent_derive = { path = "../server/swimos_agent_derive", optional = true }
-swimos_remote = { path = "../runtime/swimos_remote", optional = true}
-swimos_form = { path = "../api/swimos_form" }
+swimos_utilities = { path = "../swimos_utilities", features = ["io", "text"], version = "0.1.0" }
+swimos_api = { path = "../api/swimos_api", version = "0.1.0" }
+swimos_model = { path = "../api/swimos_model", version = "0.1.0" }
+swimos_recon = { path = "../api/formats/swimos_recon", version = "0.1.0" }
+swimos_server_app = { path = "../server/swimos_server_app", optional = true, features = ["signal"], version = "0.1.0" }
+swimos_agent = { path = "../server/swimos_agent", optional = true, version = "0.1.0" }
+swimos_agent_derive = { path = "../server/swimos_agent_derive", optional = true, version = "0.1.0" }
+swimos_remote = { path = "../runtime/swimos_remote", optional = true, version = "0.1.0" }
+swimos_form = { path = "../api/swimos_form", version = "0.1.0" }
 
 [dev-dependencies]
 parking_lot = { workspace = true }

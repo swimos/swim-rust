@@ -20,7 +20,7 @@ use lane_projections::ProjectionsImpl;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 
-use macro_utilities::{attributes::consume_attributes, to_compile_errors};
+use swimos_macro_utilities::{attributes::consume_attributes, to_compile_errors};
 use swimos_utilities::errors::{Errors, Validation};
 use syn::{parse_macro_input, parse_quote, AttributeArgs, DeriveInput, Item};
 

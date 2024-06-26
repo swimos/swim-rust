@@ -18,6 +18,7 @@ use std::{
     cell::RefCell,
     collections::{hash_map::Entry, BTreeSet, HashMap, HashSet},
     hash::Hash,
+    marker::PhantomData,
 };
 
 use bytes::BytesMut;
@@ -38,7 +39,7 @@ use crate::{
     event_handler::{
         ActionContext, EventHandler, EventHandlerError, HandlerAction, Modification, StepResult,
     },
-    item::{AgentItem, MapItem, MapLikeItem},
+    item::{AgentItem, InspectableMapLikeItem, MapItem, MapLikeItem},
     lanes::{
         join_map::default_lifecycle::DefaultJoinMapLifecycle, map::MapLaneEvent, LaneItem, MapLane,
     },
@@ -685,6 +686,55 @@ where
     }
 }
 
+/// A [`HandlerAction`] that will produce a value by applying a closure to a reference to
+/// and entry in the lane.
+pub struct JoinMapLaneWithEntry<C, L, K, V, F, B: ?Sized> {
+    projection: for<'a> fn(&'a C) -> &'a JoinMapLane<L, K, V>,
+    key: K,
+    f: Option<F>,
+    _type: PhantomData<fn(&B)>,
+}
+
+impl<C, L, K, V, F, B: ?Sized> JoinMapLaneWithEntry<C, L, K, V, F, B> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the lane.
+    /// * `key` - Key of the entry.
+    /// * `f` - The closure to apply to the entry.
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a JoinMapLane<L, K, V>, key: K, f: F) -> Self {
+        JoinMapLaneWithEntry {
+            projection,
+            key,
+            f: Some(f),
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<'a, C, L, K, V, F, B, U> HandlerAction<C> for JoinMapLaneWithEntry<C, L, K, V, F, B>
+where
+    K: Eq + Hash + 'static,
+    C: 'a,
+    B: ?Sized + 'static,
+    V: Borrow<B>,
+    F: FnOnce(Option<&B>) -> U + Send + 'a,
+{
+    type Completion = U;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        if let Some(f) = self.f.take() {
+            let item = (self.projection)(context);
+            StepResult::done(item.inner.with_entry(&self.key, f))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
 impl<L, K, V> MapLikeItem<K, V> for JoinMapLane<L, K, V>
 where
     L: Send + 'static,
@@ -705,6 +755,36 @@ where
 
     fn get_map_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetMapHandler<C> {
         JoinMapLaneGetMap::new(projection)
+    }
+}
+
+impl<L, K, V> InspectableMapLikeItem<K, V> for JoinMapLane<L, K, V>
+where
+    L: Send + 'static,
+    K: Clone + Eq + Hash + Send + 'static,
+    V: Send + 'static,
+{
+    type WithEntryHandler<'a, C, F, B, U> = JoinMapLaneWithEntry<C, L, K, V, F, B>
+    where
+        Self: 'static,
+        C: 'a,
+        B: ?Sized + 'static,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U + Send + 'a;
+
+    fn with_entry_handler<'a, C, F, B, U>(
+        projection: fn(&C) -> &Self,
+        key: K,
+        f: F,
+    ) -> Self::WithEntryHandler<'a, C, F, B, U>
+    where
+        Self: 'static,
+        C: 'a,
+        B: ?Sized + 'static,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U + Send + 'a,
+    {
+        JoinMapLaneWithEntry::new(projection, key, f)
     }
 }
 

@@ -2,10 +2,12 @@
 name = "transit"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 [dependencies]
 swimos = { path = "../../swimos", features = ["server", "agent"] }
 swimos_form = { path = "../../api/swimos_form" }
+swimos_utilities = { path = "../../swimos_utilities", features = ["trigger"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "io-util", "fs"] }
 tokio-stream = { workspace = true, features = ["io-util"] }
 tokio-util = { workspace = true, features = ["io"] }

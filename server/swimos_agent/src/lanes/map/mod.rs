@@ -34,8 +34,8 @@ use crate::{
         ActionContext, AndThen, EventHandlerError, HandlerAction, HandlerActionExt, HandlerTrans,
         Modification, StepResult,
     },
-    item::{AgentItem, MapItem, MapLikeItem, MutableMapLikeItem, TransformableMapLikeItem},
-    map_storage::{MapStoreInner, WithEntryResult},
+    item::{AgentItem, InspectableMapLikeItem, MapItem, MapLikeItem, MutableMapLikeItem},
+    map_storage::{MapStoreInner, TransformEntryResult},
     meta::AgentMetadata,
 };
 
@@ -104,12 +104,11 @@ where
     }
 
     /// Transform the value associated with a key.
-    pub(crate) fn with_entry<F>(&self, key: K, f: F) -> WithEntryResult
+    pub fn transform_entry<F>(&self, key: K, f: F) -> TransformEntryResult
     where
-        V: Clone,
-        F: FnOnce(Option<V>) -> Option<V>,
+        F: FnOnce(Option<&V>) -> Option<V>,
     {
-        self.inner.borrow_mut().with_entry(key, f)
+        self.inner.borrow_mut().transform_entry(key, f)
     }
 
     /// Remove and entry from the map.
@@ -129,7 +128,7 @@ where
         Q: Hash + Eq,
         F: FnOnce(Option<&V>) -> R,
     {
-        self.inner.borrow().get(key, f)
+        self.inner.borrow().with_entry(key, f)
     }
 
     /// Read the complete state of the map.
@@ -144,6 +143,20 @@ where
     pub(crate) fn sync(&self, id: Uuid) {
         let keys = self.get_map(|content| content.keys().cloned().collect());
         self.inner.borrow_mut().queue().sync(id, keys);
+    }
+}
+
+impl<K, V> MapLane<K, V>
+where
+    K: Eq + Hash,
+{
+    pub fn with_entry<F, B, U>(&self, key: &K, f: F) -> U
+    where
+        B: ?Sized,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U,
+    {
+        self.inner.borrow().with_entry(key, f)
     }
 }
 
@@ -381,6 +394,56 @@ where
     }
 }
 
+impl<C, K, V, F, B, U> HandlerAction<C> for MapLaneWithEntry<C, K, V, F, B>
+where
+    K: Eq + Hash,
+    B: ?Sized,
+    V: Borrow<B>,
+    F: FnOnce(Option<&B>) -> U,
+{
+    type Completion = U;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapLaneWithEntry {
+            projection,
+            key_and_f,
+            ..
+        } = self;
+        if let Some((key, f)) = key_and_f.take() {
+            let lane = projection(context);
+            StepResult::done(lane.with_entry(&key, f))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+///  An [event handler](crate::event_handler::EventHandler)`] that will alter an entry in the map.
+pub struct MapLaneWithEntry<C, K, V, F, B: ?Sized> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+    key_and_f: Option<(K, F)>,
+    _type: PhantomData<fn(&B)>,
+}
+
+impl<C, K, V, F, B: ?Sized> MapLaneWithEntry<C, K, V, F, B> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the lane.
+    /// * `key` - Key of the entry.
+    /// * `f` - The closure to apply to the entry.
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K, f: F) -> Self {
+        MapLaneWithEntry {
+            projection,
+            key_and_f: Some((key, f)),
+            _type: PhantomData,
+        }
+    }
+}
+
 ///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
 pub struct MapLaneSync<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
@@ -528,26 +591,25 @@ where
     decode.and_then(ProjTransform::new(projection))
 }
 
-///  An [event handler](crate::event_handler::EventHandler)`] that will alter an entry in the map.
-pub struct MapLaneWithEntry<C, K, V, F> {
+/// An (event handler)[`crate::event_handler::EventHandler`] that will alter an entry in the map.
+pub struct MapLaneTransformEntry<C, K, V, F> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     key_and_f: Option<(K, F)>,
 }
 
-impl<C, K, V, F> MapLaneWithEntry<C, K, V, F> {
+impl<C, K, V, F> MapLaneTransformEntry<C, K, V, F> {
     pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K, f: F) -> Self {
-        MapLaneWithEntry {
+        MapLaneTransformEntry {
             projection,
             key_and_f: Some((key, f)),
         }
     }
 }
 
-impl<C, K, V, F> HandlerAction<C> for MapLaneWithEntry<C, K, V, F>
+impl<C, K, V, F> HandlerAction<C> for MapLaneTransformEntry<C, K, V, F>
 where
     K: Clone + Eq + Hash,
-    V: Clone,
-    F: FnOnce(Option<V>) -> Option<V>,
+    F: FnOnce(Option<&V>) -> Option<V>,
 {
     type Completion = ();
 
@@ -557,13 +619,13 @@ where
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
-        let MapLaneWithEntry {
+        let MapLaneTransformEntry {
             projection,
             key_and_f,
         } = self;
         if let Some((key, f)) = key_and_f.take() {
             let lane = projection(context);
-            if matches!(lane.with_entry(key, f), WithEntryResult::NoChange) {
+            if matches!(lane.transform_entry(key, f), TransformEntryResult::NoChange) {
                 StepResult::done(())
             } else {
                 StepResult::Complete {
@@ -599,6 +661,35 @@ where
     }
 }
 
+impl<K, V> InspectableMapLikeItem<K, V> for MapLane<K, V>
+where
+    K: Eq + Hash + Send + 'static,
+    V: 'static,
+{
+    type WithEntryHandler<'a, C, F, B, U> = MapLaneWithEntry<C, K, V, F, B>
+    where
+        Self: 'static,
+        C: 'a,
+        B: ?Sized +'static,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U + Send + 'a;
+
+    fn with_entry_handler<'a, C, F, B, U>(
+        projection: fn(&C) -> &Self,
+        key: K,
+        f: F,
+    ) -> Self::WithEntryHandler<'a, C, F, B, U>
+    where
+        Self: 'static,
+        C: 'a,
+        B: ?Sized + 'static,
+        V: Borrow<B>,
+        F: FnOnce(Option<&B>) -> U + Send + 'a,
+    {
+        MapLaneWithEntry::new(projection, key, f)
+    }
+}
+
 impl<K, V> MutableMapLikeItem<K, V> for MapLane<K, V>
 where
     K: Clone + Eq + Hash + Send + 'static,
@@ -631,29 +722,23 @@ where
     fn clear_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::ClearHandler<C> {
         MapLaneClear::new(projection)
     }
-}
 
-impl<K, V> TransformableMapLikeItem<K, V> for MapLane<K, V>
-where
-    K: Clone + Eq + Hash + Send + 'static,
-    V: Clone + Send + 'static,
-{
-    type WithEntryHandler<'a, C, F> = MapLaneWithEntry<C, K, V, F>
+    type TransformEntryHandler<'a, C, F> = MapLaneTransformEntry<C, K, V, F>
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'a;
+        F: FnOnce(Option<&V>) -> Option<V> + Send + 'a;
 
-    fn with_handler<'a, C, F>(
+    fn transform_entry_handler<'a, C, F>(
         projection: fn(&C) -> &Self,
         key: K,
         f: F,
-    ) -> Self::WithEntryHandler<'a, C, F>
+    ) -> Self::TransformEntryHandler<'a, C, F>
     where
         Self: 'static,
         C: 'a,
-        F: FnOnce(Option<V>) -> Option<V> + Send + 'a,
+        F: FnOnce(Option<&V>) -> Option<V> + Send + 'a,
     {
-        MapLaneWithEntry::new(projection, key, f)
+        MapLaneTransformEntry::new(projection, key, f)
     }
 }

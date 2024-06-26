@@ -12,9 +12,9 @@ proc-macro = true
 proc-macro2 = { workspace = true }
 syn = { workspace = true, features = ["full", "extra-traits"] }
 quote = { workspace = true }
-swimos_utilities = { path = "../../swimos_utilities", features = ["errors", "text"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["errors", "text"], version = "0.1.0" }
 bitflags = { workspace = true }
-macro_utilities = { path = "../../macro_utilities" }
+swimos_macro_utilities = { path = "../../swimos_macro_utilities", version = "0.1.0" }
 frunk = { workspace = true }
 
 [dev-dependencies]

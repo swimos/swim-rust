@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-    "client/*",
+    "swimos_client",
     "swimos",
     "api/swimos_*",
     "api/formats/swimos_*",
-    "macro_utilities",
+    "swimos_macro_utilities",
     "runtime/swimos_*",
     "swimos_utilities",
     "swimos_utilities/swimos_*",
@@ -42,10 +42,6 @@ members = [
     "example_apps/time_series",
     "example_apps/devguide/2_2/*",
     "example_apps/devguide/2_3/*",
-]
-
-exclude = [
-    "cookbook"
 ]
 
 [profile.release]
@@ -124,7 +120,7 @@ duration-str = "0.11.2"
 quick-xml = "0.34.0"
 csv = "1.2"
 serde-xml-rs = "0.6"
-axum = "0.6.20"
+axum = "0.7.5"
 hyper-staticfile = "0.9"
 httparse = "1.8"
 sha-1 = "0.10.1"

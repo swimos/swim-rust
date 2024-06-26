@@ -21,6 +21,8 @@ use ratchet::{
     deflate::{DeflateConfig, DeflateExtProvider},
     NoExtProvider, WebSocketStream,
 };
+use rustls::crypto::CryptoProvider;
+
 use swimos_api::{
     agent::Agent,
     error::StoreError,
@@ -29,7 +31,8 @@ use swimos_api::{
 use swimos_remote::dns::Resolver;
 use swimos_remote::plain::TokioPlainTextNetworking;
 use swimos_remote::tls::{
-    ClientConfig, RustlsClientNetworking, RustlsNetworking, RustlsServerNetworking, TlsConfig,
+    ClientConfig, CryptoProviderConfig, RustlsClientNetworking, RustlsNetworking,
+    RustlsServerNetworking, TlsConfig,
 };
 use swimos_remote::ExternalConnections;
 use swimos_utilities::routing::RoutePattern;
@@ -57,6 +60,7 @@ pub struct ServerBuilder {
     config: SwimServerConfig,
     store_options: StoreConfig,
     introspection: Option<IntrospectionConfig>,
+    crypto_provider: CryptoProviderConfig,
 }
 
 #[non_exhaustive]
@@ -84,6 +88,7 @@ impl ServerBuilder {
             config: Default::default(),
             store_options: Default::default(),
             introspection: Default::default(),
+            crypto_provider: CryptoProviderConfig::default(),
         }
     }
 
@@ -159,6 +164,18 @@ impl ServerBuilder {
         self
     }
 
+    /// Uses the process-default [`CryptoProvider`] for any TLS connections.
+    pub fn with_default_crypto_provider(mut self) -> Self {
+        self.crypto_provider = CryptoProviderConfig::ProcessDefault;
+        self
+    }
+
+    /// Uses the provided [`CryptoProvider`] for any TLS connections.
+    pub fn with_crypto_provider(mut self, provider: Arc<CryptoProvider>) -> Self {
+        self.crypto_provider = CryptoProviderConfig::Provided(provider);
+        self
+    }
+
     /// Attempt to make a server instance. This will fail if the routes specified for the
     /// agents are ambiguous.
     pub async fn build(self) -> Result<BoxServer, ServerBuilderError> {
@@ -170,6 +187,7 @@ impl ServerBuilder {
             config,
             store_options,
             introspection,
+            crypto_provider,
         } = self;
         let routes = plane.build()?;
         if introspection.is_some() {
@@ -182,14 +200,20 @@ impl ServerBuilder {
             deflate,
             introspection,
         };
+        let crypto_provider = crypto_provider.try_build()?;
+
         if let Some(tls_conf) = tls_config {
-            let client = RustlsClientNetworking::try_from_config(resolver, tls_conf.client)?;
-            let server = RustlsServerNetworking::try_from(tls_conf.server)?;
+            let client =
+                RustlsClientNetworking::build(resolver, tls_conf.client, crypto_provider.clone())?;
+            let server = RustlsServerNetworking::build(tls_conf.server, crypto_provider)?;
             let networking = RustlsNetworking::new_tls(client, server);
             Ok(with_store(bind_to, routes, networking, config)?)
         } else {
-            let client =
-                RustlsClientNetworking::try_from_config(resolver.clone(), ClientConfig::default())?;
+            let client = RustlsClientNetworking::build(
+                resolver.clone(),
+                ClientConfig::new(Default::default()),
+                crypto_provider,
+            )?;
             let server = TokioPlainTextNetworking::new(resolver);
             let networking = RustlsNetworking::new_plain_text(client, server);
             Ok(with_store(bind_to, routes, networking, config)?)

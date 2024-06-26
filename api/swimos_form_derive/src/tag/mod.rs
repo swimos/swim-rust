@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use crate::quote::TokenStreamExt;
-use macro_utilities::attr_names::{CONV_NAME, FORM_NAME, TAG_NAME};
-use macro_utilities::attributes::consume_attributes;
-use macro_utilities::{combine_name_transform, NameTransform, NameTransformConsumer};
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use std::fmt::{Display, Formatter};
+use swimos_macro_utilities::attr_names::{CONV_NAME, FORM_NAME, TAG_NAME};
+use swimos_macro_utilities::attributes::consume_attributes;
+use swimos_macro_utilities::{combine_name_transform, NameTransform, NameTransformConsumer};
 use swimos_utilities::errors::Errors;
 use swimos_utilities::errors::{Validation, ValidationItExt};
 
