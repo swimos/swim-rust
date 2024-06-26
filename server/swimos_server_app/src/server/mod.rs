@@ -151,7 +151,6 @@ pub mod wait {
         mut handle: ServerHandle,
         bound: Option<Box<dyn FnOnce(SocketAddr) + Send>>,
     ) -> Result<(), RegistrationFailed> {
-        
         let wait_for_ctrl_c = async move {
             let mut result = Ok(());
             let mut shutdown_hook = Box::pin(async { tokio::signal::ctrl_c().await });

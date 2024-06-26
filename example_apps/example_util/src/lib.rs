@@ -23,7 +23,9 @@ use tokio::{select, sync::oneshot};
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
 pub async fn manage_handle(handle: ServerHandle) {
-    until_termination(handle, None).await.expect("Failed to register interrupt handler.");
+    until_termination(handle, None)
+        .await
+        .expect("Failed to register interrupt handler.");
 }
 pub async fn manage_handle_report(
     handle: ServerHandle,
@@ -35,7 +37,9 @@ pub async fn manage_handle_report(
         });
         g
     });
-    until_termination(handle, f).await.expect("Failed to register interrupt handler.");
+    until_termination(handle, f)
+        .await
+        .expect("Failed to register interrupt handler.");
 }
 
 struct FormatMap<'a, K, V>(&'a HashMap<K, V>);
