@@ -10,15 +10,15 @@ json = ["dep:serde", "dep:serde_json"]
 
 [dependencies]
 futures = { workspace = true }
-swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "circular_buffer", "encoding"] }
-swimos_model = { path = "../../api/swimos_model" }
-swimos_form = { path = "../../api/swimos_form" }
-swimos_recon = { path = "../../api/formats/swimos_recon" }
+swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "circular_buffer", "encoding"], version = "0.1.0" }
+swimos_model = { path = "../../api/swimos_model", version = "0.1.0" }
+swimos_form = { path = "../../api/swimos_form", version = "0.1.0" }
+swimos_recon = { path = "../../api/formats/swimos_recon", version = "0.1.0" }
 bytes = { workspace = true }
 tokio = { workspace = true, features = ["macros", "time"] }
 tokio-util = { workspace = true, features = ["codec"] }
-swimos_api = { path = "../../api/swimos_api" }
-swimos_agent_protocol = { path = "../../api/swimos_agent_protocol" }
+swimos_api = { path = "../../api/swimos_api", version = "0.1.0" }
+swimos_agent_protocol = { path = "../../api/swimos_agent_protocol", version = "0.1.0" }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
 frunk = { workspace = true }
@@ -35,4 +35,4 @@ serde_json = { workspace = true, optional = true }
 swimos_recon = { path = "../../api/formats/swimos_recon" }
 tokio = { workspace = true, features = ["rt", "test-util", "time"] }
 parking_lot = { workspace = true }
-swimos_agent_derive = { path = "../swimos_agent_derive"}
+swimos_agent_derive = { path = "../swimos_agent_derive" }

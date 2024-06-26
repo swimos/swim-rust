@@ -7,13 +7,13 @@ edition = "2021"
 [dependencies]
 bytes = { workspace = true }
 futures = { workspace = true }
-tokio = { workspace = true, features = ["sync"]}
+tokio = { workspace = true, features = ["sync"] }
 tokio-util = { workspace = true, features = ["codec"] }
-swimos_model = { path = "../../api/swimos_model" }
-swimos_api = { path = "../../api/swimos_api" }
-swimos_form = { path = "../../api/swimos_form" }
-swimos_recon = { path = "../../api/formats/swimos_recon" }
-swimos_utilities = { path = "../../swimos_utilities", features = ["algebra"] }
+swimos_model = { path = "../../api/swimos_model", version = "0.1.0" }
+swimos_api = { path = "../../api/swimos_api", version = "0.1.0" }
+swimos_form = { path = "../../api/swimos_form", version = "0.1.0" }
+swimos_recon = { path = "../../api/formats/swimos_recon", version = "0.1.0" }
+swimos_utilities = { path = "../../swimos_utilities", features = ["algebra"], version = "0.1.0" }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 smallvec = { workspace = true }
@@ -21,5 +21,5 @@ smallvec = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
 uuid = { workspace = true, features = ["v4"] }
-swimos_utilities = { path = "../../swimos_utilities", features = ["buf_channel"] }
+swimos_utilities = { path = "../../swimos_utilities", features = ["buf_channel"], version = "0.1.0" }
 rand = { workspace = true }
