@@ -26,6 +26,7 @@ pub use client::RustlsClientNetworking;
 use futures::future::Either;
 use futures::TryFutureExt;
 use futures::{future::BoxFuture, FutureExt};
+use rustls::pki_types::CertificateDer;
 pub use server::{RustlsListener, RustlsServerNetworking};
 
 use crate::tls::{
@@ -36,16 +37,17 @@ use crate::tls::{
 
 use self::server::MaybeRustTlsListener;
 
-fn load_cert_file(file: CertificateFile) -> Result<Vec<rustls::Certificate>, TlsError> {
+fn load_cert_file(file: CertificateFile) -> Result<Vec<CertificateDer<'static>>, TlsError> {
     let CertificateFile { format, body } = file;
-    let certs = match format {
+    match format {
         CertFormat::Pem => {
             let mut body_ref = body.as_ref();
-            rustls_pemfile::certs(&mut body_ref).map_err(TlsError::InvalidPem)?
+            rustls_pemfile::certs(&mut body_ref)
+                .map(|r| r.map_err(TlsError::InvalidPem))
+                .collect()
         }
-        CertFormat::Der => vec![body],
-    };
-    Ok(certs.into_iter().map(rustls::Certificate).collect())
+        CertFormat::Der => Ok(vec![CertificateDer::from(body)]),
+    }
 }
 
 /// Combined implementation of [`ClientConnections`] and [`ServerConnections`] that wraps

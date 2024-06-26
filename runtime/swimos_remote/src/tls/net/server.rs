@@ -22,6 +22,7 @@ use futures::{
     stream::{unfold, BoxStream, FuturesUnordered},
     Future, FutureExt, Stream, StreamExt, TryStreamExt,
 };
+use rustls::pki_types::PrivateKeyDer;
 use rustls::KeyLogFile;
 use rustls_pemfile::Item;
 use tokio::net::{TcpListener, TcpStream};
@@ -73,6 +74,7 @@ impl TryFrom<ServerConfig> for RustlsServerNetworking {
             chain: CertChain(certs),
             key,
             enable_log_file,
+            provider,
         } = config;
 
         let mut chain = vec![];
@@ -85,19 +87,19 @@ impl TryFrom<ServerConfig> for RustlsServerNetworking {
             CertFormat::Pem => {
                 let mut body_ref = body.as_ref();
                 match rustls_pemfile::read_one(&mut body_ref).map_err(TlsError::InvalidPem)? {
-                    Some(Item::ECKey(body) | Item::PKCS8Key(body) | Item::RSAKey(body)) => {
-                        rustls::PrivateKey(body)
-                    }
-                    _ => {
-                        return Err(TlsError::InvalidPrivateKey);
-                    }
+                    Some(Item::Sec1Key(body)) => PrivateKeyDer::from(body),
+                    Some(Item::Pkcs8Key(body)) => PrivateKeyDer::from(body),
+                    Some(Item::Pkcs1Key(body)) => PrivateKeyDer::from(body),
+                    _ => return Err(TlsError::InvalidPrivateKey),
                 }
             }
-            CertFormat::Der => rustls::PrivateKey(body),
+            CertFormat::Der => {
+                PrivateKeyDer::try_from(body).map_err(|_| TlsError::InvalidPrivateKey)?
+            }
         };
 
-        let mut config = rustls::ServerConfig::builder()
-            .with_safe_defaults()
+        let mut config = rustls::ServerConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()?
             .with_no_client_auth()
             .with_single_cert(chain, server_key)
             .expect("Invalid certs or private key.");
