@@ -5,10 +5,12 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [features]
-default = ["signal"]
+default = ["aws_lc_rs_provider", "signal"]
 rocks_store = ["swimos_rocks_store"]
 trust_dns = ["swimos_runtime/trust_dns"]
 signal = ["tokio/signal"]
+ring_provider = ["swimos_remote/ring_provider"]
+aws_lc_rs_provider = ["swimos_remote/aws_lc_rs_provider"]
 
 [dependencies]
 futures = { workspace = true }
@@ -36,6 +38,7 @@ parking_lot = { workspace = true }
 hyper = { workspace = true, features = ["server", "runtime", "tcp", "http1", "backports"] }
 pin-project = { workspace = true }
 percent-encoding = { workspace = true }
+rustls = { workspace = true }
 
 [dev-dependencies]
 swimos_recon = { path = "../../api/formats/swimos_recon" }

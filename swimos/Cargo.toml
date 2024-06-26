@@ -5,11 +5,13 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [features]
-default = []
+default = ["aws_lc_rs_provider"]
 all = ["server", "agent", "json"]
 server = ["dep:swimos_server_app", "dep:swimos_remote"]
 agent = ["dep:swimos_agent", "dep:swimos_agent_derive"]
 json = ["agent", "swimos_agent/json"]
+ring_provider = ["swimos_server_app/ring_provider"]
+aws_lc_rs_provider = ["swimos_server_app/aws_lc_rs_provider"]
 
 [dependencies]
 swimos_utilities = { path = "../swimos_utilities", features = ["io", "text"], version = "0.1.0" }

@@ -22,6 +22,7 @@ use futures::{
     stream::{unfold, BoxStream, FuturesUnordered},
     Future, FutureExt, Stream, StreamExt, TryStreamExt,
 };
+use rustls::crypto::CryptoProvider;
 use rustls::pki_types::PrivateKeyDer;
 use rustls::KeyLogFile;
 use rustls_pemfile::Item;
@@ -64,17 +65,15 @@ impl RustlsServerNetworking {
     pub fn new(acceptor: TlsAcceptor) -> Self {
         RustlsServerNetworking { acceptor }
     }
-}
 
-impl TryFrom<ServerConfig> for RustlsServerNetworking {
-    type Error = TlsError;
-
-    fn try_from(config: ServerConfig) -> Result<Self, Self::Error> {
+    pub fn build(
+        config: ServerConfig,
+        provider: Arc<CryptoProvider>,
+    ) -> Result<RustlsServerNetworking, TlsError> {
         let ServerConfig {
             chain: CertChain(certs),
             key,
             enable_log_file,
-            provider,
         } = config;
 
         let mut chain = vec![];

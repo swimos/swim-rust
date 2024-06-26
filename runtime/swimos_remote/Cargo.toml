@@ -7,6 +7,8 @@ edition = "2021"
 [features]
 default = []
 tls = ["rustls", "webpki", "webpki-roots", "tokio-rustls", "rustls-pemfile"]
+ring_provider = []
+aws_lc_rs_provider = []
 
 [dependencies]
 ratchet = { workspace = true, features = ["deflate", "split"] }
