@@ -462,8 +462,7 @@ where
         http_lane_endpoints,
         store_endpoints,
     } = endpoints;
-    let mut initializers: FuturesUnordered<ItemInitTask<'_, Store::StoreId>> =
-        FuturesUnordered::new();
+    let mut initializers: FuturesUnordered<ItemInitTask<'_>> = FuturesUnordered::new();
     loop {
         let event = tokio::select! {
             Some(item_init_done) = initializers.next(), if !initializers.is_empty() => Either::Left(item_init_done),
@@ -502,7 +501,10 @@ where
                     if let Some(init) =
                         initialization.add_lane(store, name.clone(), kind, config, promise)
                     {
-                        initializers.push(init.map_ok(Into::into).boxed());
+                        initializers.push(
+                            init.map_ok(|(endpoint, _)| ItemEndpoint::Lane { endpoint })
+                                .boxed(),
+                        );
                     }
                 }
                 AgentRuntimeRequest::AddStore(StoreRuntimeSpec {
@@ -515,7 +517,10 @@ where
                     if let Some(init) =
                         initialization.add_store(store, name.clone(), kind, config, promise)?
                     {
-                        initializers.push(init.map_ok(Into::into).boxed());
+                        initializers.push(
+                            init.map_ok(|(endpoint, _)| ItemEndpoint::Store { endpoint })
+                                .boxed(),
+                        );
                     }
                 }
                 AgentRuntimeRequest::OpenDownlink(request) => {

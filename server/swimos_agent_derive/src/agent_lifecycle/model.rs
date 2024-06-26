@@ -289,18 +289,18 @@ fn validate_method_as<'a>(
                 })
             }
             HandlerKind::Command => Validation::join(acc, validate_typed_sig(sig, 1, true))
-                .and_then(|(mut acc, t)| {
+                .and_then(|(mut acc, _t)| {
                     for target in targets {
-                        if let Err(e) = acc.add_on_command(target, t, &sig.ident) {
+                        if let Err(e) = acc.add_on_command(target, &sig.ident) {
                             return Validation::Validated(acc, Errors::of(e));
                         }
                     }
                     Validation::valid(acc)
                 }),
             HandlerKind::Cue => {
-                Validation::join(acc, validate_cue_sig(sig)).and_then(|(mut acc, t)| {
+                Validation::join(acc, validate_cue_sig(sig)).and_then(|(mut acc, _t)| {
                     for target in targets {
-                        if let Err(e) = acc.add_on_cue(target, t, &sig.ident) {
+                        if let Err(e) = acc.add_on_cue(target, &sig.ident) {
                             return Validation::Validated(acc, Errors::of(e));
                         }
                     }
@@ -384,9 +384,9 @@ fn validate_method_as<'a>(
                 Validation::valid(acc)
             }),
             HandlerKind::JoinMap => Validation::join(acc, validate_join_map_lifecycle_sig(sig))
-                .and_then(|(mut acc, (l, k, v))| {
+                .and_then(|(mut acc, (_l, k, v))| {
                     for target in targets {
-                        if let Err(e) = acc.add_join_map_lifecycle(target, l, k, v, &sig.ident) {
+                        if let Err(e) = acc.add_join_map_lifecycle(target, k, v, &sig.ident) {
                             return Validation::Validated(acc, Errors::of(e));
                         }
                     }
@@ -1205,7 +1205,7 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
                 )),
                 ItemLifecycle::Map(MapLifecycleDescriptor {
                     name,
-                    join_lifecycle: JoinLifecycle::JoinMap(_, join_lc),
+                    join_lifecycle: JoinLifecycle::JoinMap(join_lc),
                     ..
                 }) => Some(JoinLaneInit::new(name.clone(), JoinLaneKind::Map, join_lc)),
                 _ => None,
@@ -1247,7 +1247,6 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
     pub fn add_join_map_lifecycle(
         &mut self,
         name: String,
-        link_key_type: &'a Type,
         key_type: &'a Type,
         value_type: &'a Type,
         method: &'a Ident,
@@ -1257,14 +1256,13 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
         } = self;
         match lane_lifecycles.get_mut(&name) {
             Some(ItemLifecycle::Map(desc)) => {
-                desc.add_join_map_lifecycle(link_key_type, key_type, value_type, method)
+                desc.add_join_map_lifecycle(key_type, value_type, method)
             }
             None => {
                 lane_lifecycles.insert(
                     name.clone(),
                     ItemLifecycle::Map(MapLifecycleDescriptor::new_join_map_lifecycle(
                         name,
-                        link_key_type,
                         (key_type, value_type),
                         method,
                     )),
@@ -1316,12 +1314,7 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
         }
     }
 
-    pub fn add_on_command(
-        &mut self,
-        name: String,
-        handler_type: &'a Type,
-        method: &'a Ident,
-    ) -> Result<(), syn::Error> {
+    pub fn add_on_command(&mut self, name: String, method: &'a Ident) -> Result<(), syn::Error> {
         let AgentLifecycleDescriptorBuilder {
             lane_lifecycles, ..
         } = self;
@@ -1368,23 +1361,14 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             _ => {
                 lane_lifecycles.insert(
                     name.clone(),
-                    ItemLifecycle::Command(CommandLifecycleDescriptor::new(
-                        name,
-                        handler_type,
-                        method,
-                    )),
+                    ItemLifecycle::Command(CommandLifecycleDescriptor::new(name, method)),
                 );
                 Ok(())
             }
         }
     }
 
-    pub fn add_on_cue(
-        &mut self,
-        name: String,
-        handler_type: Option<&'a Type>,
-        method: &'a Ident,
-    ) -> Result<(), syn::Error> {
+    pub fn add_on_cue(&mut self, name: String, method: &'a Ident) -> Result<(), syn::Error> {
         let AgentLifecycleDescriptorBuilder {
             lane_lifecycles, ..
         } = self;
@@ -1431,11 +1415,7 @@ impl<'a> AgentLifecycleDescriptorBuilder<'a> {
             _ => {
                 lane_lifecycles.insert(
                     name.clone(),
-                    ItemLifecycle::Demand(DemandLifecycleDescriptor::new(
-                        name,
-                        handler_type,
-                        method,
-                    )),
+                    ItemLifecycle::Demand(DemandLifecycleDescriptor::new(name, method)),
                 );
                 Ok(())
             }
@@ -2208,39 +2188,29 @@ impl<'a> ValueLifecycleDescriptor<'a> {
 
 pub struct CommandLifecycleDescriptor<'a> {
     pub name: String, //The name of the lane.
-    pub primary_lane_type: &'a Type,
     pub on_command: &'a Ident,
 }
 
 impl<'a> CommandLifecycleDescriptor<'a> {
-    pub fn new(name: String, primary_lane_type: &'a Type, on_command: &'a Ident) -> Self {
-        CommandLifecycleDescriptor {
-            name,
-            primary_lane_type,
-            on_command,
-        }
+    pub fn new(name: String, on_command: &'a Ident) -> Self {
+        CommandLifecycleDescriptor { name, on_command }
     }
 }
 
 pub struct DemandLifecycleDescriptor<'a> {
     pub name: String, //The name of the lane.
-    pub primary_lane_type: Option<&'a Type>,
     pub on_cue: &'a Ident,
 }
 
 impl<'a> DemandLifecycleDescriptor<'a> {
-    pub fn new(name: String, primary_lane_type: Option<&'a Type>, on_cue: &'a Ident) -> Self {
-        DemandLifecycleDescriptor {
-            name,
-            primary_lane_type,
-            on_cue,
-        }
+    pub fn new(name: String, on_cue: &'a Ident) -> Self {
+        DemandLifecycleDescriptor { name, on_cue }
     }
 }
 
 pub enum JoinLifecycle<'a> {
     None,
-    JoinMap(&'a Type, &'a Ident),
+    JoinMap(&'a Ident),
     JoinValue(&'a Ident),
 }
 
@@ -2427,7 +2397,6 @@ impl<'a> MapLifecycleDescriptor<'a> {
 
     pub fn new_join_map_lifecycle(
         name: String,
-        link_key_type: &'a Type,
         map_type: (&'a Type, &'a Type),
         join_lifecycle: &'a Ident,
     ) -> Self {
@@ -2438,7 +2407,7 @@ impl<'a> MapLifecycleDescriptor<'a> {
             on_update: None,
             on_remove: None,
             on_clear: None,
-            join_lifecycle: JoinLifecycle::JoinMap(link_key_type, join_lifecycle),
+            join_lifecycle: JoinLifecycle::JoinMap(join_lifecycle),
         }
     }
 
@@ -2557,7 +2526,6 @@ impl<'a> MapLifecycleDescriptor<'a> {
 
     pub fn add_join_map_lifecycle(
         &mut self,
-        link_key_type: &'a Type,
         key_type: &'a Type,
         value_type: &'a Type,
         method: &'a Ident,
@@ -2572,7 +2540,7 @@ impl<'a> MapLifecycleDescriptor<'a> {
         let map_type = (key_type, value_type);
         match join_lifecycle {
             JoinLifecycle::None => {
-                *join_lifecycle = JoinLifecycle::JoinMap(link_key_type, method);
+                *join_lifecycle = JoinLifecycle::JoinMap(method);
                 if map_type != *primary_lane_type {
                     alternative_lane_types.insert(map_type);
                 }
