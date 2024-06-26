@@ -5,6 +5,7 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 description = "SwimOS Metadata API"
 license = "Apache-2.0"
+repository = "https://github.com/swimos/swim-rust/"
 
 [dependencies]
 swimos_model = { path = "../swimos_model", version = "0.1.0" }

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "SwimOS RocksDB Persistence"
 license = "Apache-2.0"
+repository = "https://github.com/swimos/swim-rust/"
 
 [dependencies]
 swimos_api = { path = "../../api/swimos_api", version = "0.1.0" }
