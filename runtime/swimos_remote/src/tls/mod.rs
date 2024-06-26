@@ -38,11 +38,7 @@ impl CryptoProviderConfig {
     pub fn try_build(self) -> Result<Arc<CryptoProvider>, TlsError> {
         match self {
             CryptoProviderConfig::ProcessDefault => CryptoProvider::get_default()
-                .ok_or_else(|| {
-                    TlsError::InvalidCryptoProvider(
-                        "No default cryptographic provider specified".to_string(),
-                    )
-                })
+                .ok_or(TlsError::NoCryptoProviderInstalled)
                 .cloned(),
             CryptoProviderConfig::FromFeatureFlags => {
                 #[cfg(all(feature = "ring_provider", not(feature = "aws_lc_rs_provider")))]
@@ -57,7 +53,7 @@ impl CryptoProviderConfig {
 
                 #[allow(unreachable_code)]
                 {
-                    Err(TlsError::InvalidCryptoProvider("Ambiguous cryptographic provider feature flags specified. Only \"ring_provider\" or \"aws_lc_rs_provider\" may be specified".to_string()))
+                    Err(TlsError::InvalidCryptoProvider)
                 }
             }
             CryptoProviderConfig::Provided(provider) => Ok(provider),
