@@ -42,7 +42,8 @@ use crate::event_handler::{
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
 use crate::item::{
-    InspectableMapLikeItem, JoinLikeItem, MapLikeItem, MutableMapLikeItem, MutableValueLikeItem, ValueLikeItem
+    InspectableMapLikeItem, JoinLikeItem, MapLikeItem, MutableMapLikeItem, MutableValueLikeItem,
+    ValueLikeItem,
 };
 use crate::lanes::command::{CommandLane, DoCommand};
 use crate::lanes::demand::{Cue, DemandLane};

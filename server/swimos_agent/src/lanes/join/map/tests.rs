@@ -33,7 +33,8 @@ use crate::item::AgentItem;
 use crate::lanes::join::test_util::{TestDlContextInner, TestDownlinkContext};
 use crate::lanes::join_map::default_lifecycle::DefaultJoinMapLifecycle;
 use crate::lanes::join_map::{
-    AddDownlinkAction, JoinMapAddDownlink, JoinMapLaneGet, JoinMapLaneGetMap, JoinMapLaneWithEntry, JoinMapRemoveDownlink,
+    AddDownlinkAction, JoinMapAddDownlink, JoinMapLaneGet, JoinMapLaneGetMap, JoinMapLaneWithEntry,
+    JoinMapRemoveDownlink,
 };
 use crate::test_context::{dummy_context, run_event_handlers, run_with_futures};
 use crate::{event_handler::StepResult, item::MapItem, meta::AgentMetadata};
