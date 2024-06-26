@@ -591,7 +591,7 @@ where
     decode.and_then(ProjTransform::new(projection))
 }
 
-/// An [`EventHandler`] that will alter an entry in the map.
+/// An (event handler)[`crate::event_handler::EventHandler`] that will alter an entry in the map.
 pub struct MapLaneTransformEntry<C, K, V, F> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     key_and_f: Option<(K, F)>,
