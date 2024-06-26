@@ -123,8 +123,6 @@ impl SwimClientTlsBuilder {
     }
 
     /// Uses the provided [`CryptoProvider`] for any TLS connections.
-    ///
-    /// This is only used if the TLS configuration has been set.
     pub fn with_crypto_provider(mut self, provider: Arc<CryptoProvider>) -> Self {
         self.crypto_provider = CryptoProviderConfig::Provided(provider);
         self
