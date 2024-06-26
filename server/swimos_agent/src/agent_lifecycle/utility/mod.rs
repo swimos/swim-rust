@@ -274,7 +274,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
     }
 
     /// Create an event handler that will transform the value in an entry of a map lane or store of the agent.
-    /// If map contains an entry with that key, it will be updated (or removed) based on the result of the calling
+    /// If the map contains an entry with that key, it will be updated (or removed) based on the result of the calling
     /// the closure on it. If the map does not contain an entry with that key, the closure will be called with [`None`]
     /// and an entry will be inserted if it returns a value.
     ///
