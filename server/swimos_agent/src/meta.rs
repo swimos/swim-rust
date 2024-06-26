@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 
 use swimos_api::agent::AgentConfig;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 /// Metadata to describe a running agent instance.
 #[derive(Clone, Copy, Debug)]

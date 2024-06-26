@@ -16,8 +16,8 @@ use bytes::BytesMut;
 use frunk::{Coprod, Coproduct};
 use static_assertions::assert_impl_all;
 use std::{borrow::Borrow, cell::RefCell, collections::HashMap, hash::Hash, marker::PhantomData};
-use swimos_api::protocol::{agent::MapLaneResponseEncoder, map::MapMessage};
-use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
+use swimos_agent_protocol::{encoding::lane::MapLaneResponseEncoder, MapMessage};
+use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_recon::parser::RecognizerDecoder;
 use tokio_util::codec::{Decoder, Encoder};
 use uuid::Uuid;
@@ -61,7 +61,7 @@ pub struct MapLane<K, V> {
 assert_impl_all!(MapLane<(), ()>: Send);
 
 impl<K, V> MapLane<K, V> {
-    /// #Arguments
+    /// # Arguments
     /// * `id` - The ID of the lane. This should be unique within an agent.
     /// * `init` - The initial contents of the map.
     pub fn new(id: u64, init: HashMap<K, V>) -> Self {
@@ -99,7 +99,7 @@ where
     K: Clone + Eq + Hash,
 {
     /// Update the value associated with a key.
-    pub fn update(&self, key: K, value: V) {
+    pub(crate) fn update(&self, key: K, value: V) {
         self.inner.borrow_mut().update(key, value)
     }
 
@@ -112,12 +112,12 @@ where
     }
 
     /// Remove and entry from the map.
-    pub fn remove(&self, key: &K) {
+    pub(crate) fn remove(&self, key: &K) {
         self.inner.borrow_mut().remove(key)
     }
 
     /// Clear the map.
-    pub fn clear(&self) {
+    pub(crate) fn clear(&self) {
         self.inner.borrow_mut().clear()
     }
 
@@ -140,7 +140,7 @@ where
     }
 
     /// Start a sync operation from the lane to the specified remote.
-    pub fn sync(&self, id: Uuid) {
+    pub(crate) fn sync(&self, id: Uuid) {
         let keys = self.get_map(|content| content.keys().cloned().collect());
         self.inner.borrow_mut().queue().sync(id, keys);
     }
@@ -183,7 +183,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will update the value of an entry in the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will update the value of an entry in the map.
 pub struct MapLaneUpdate<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     key_value: Option<(K, V)>,
@@ -227,7 +227,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will remove an entry from the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will remove an entry from the map.
 pub struct MapLaneRemove<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     key: Option<K>,
@@ -268,7 +268,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will clear the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will clear the map.
 pub struct MapLaneClear<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     done: bool,
@@ -310,7 +310,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will get an entry from the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
 pub struct MapLaneGet<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     key: K,
@@ -355,7 +355,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will read the entire state of a map lane.
+///  An [event handler](crate::event_handler::EventHandler)`] that will read the entire state of a map lane.
 pub struct MapLaneGetMap<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     done: bool,
@@ -394,28 +394,6 @@ where
     }
 }
 
-/// A [`HandlerAction`] that will produce a value by applying a closure to a reference to
-/// and entry in the lane.
-pub struct MapLaneWithEntry<C, K, V, F, B: ?Sized> {
-    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
-    key_and_f: Option<(K, F)>,
-    _type: PhantomData<fn(&B)>,
-}
-
-impl<C, K, V, F, B: ?Sized> MapLaneWithEntry<C, K, V, F, B> {
-    /// #Arguments
-    /// * `projection` - Projection from the agent context to the lane.
-    /// * `key` - Key of the entry.
-    /// * `f` - The closure to apply to the entry.
-    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K, f: F) -> Self {
-        MapLaneWithEntry {
-            projection,
-            key_and_f: Some((key, f)),
-            _type: PhantomData,
-        }
-    }
-}
-
 impl<C, K, V, F, B, U> HandlerAction<C> for MapLaneWithEntry<C, K, V, F, B>
 where
     K: Eq + Hash,
@@ -445,7 +423,28 @@ where
     }
 }
 
-/// An [`EventHandler`] that will request a sync from the lane.
+///  An [event handler](crate::event_handler::EventHandler)`] that will alter an entry in the map.
+pub struct MapLaneWithEntry<C, K, V, F, B: ?Sized> {
+    projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
+    key_and_f: Option<(K, F)>,
+    _type: PhantomData<fn(&B)>,
+}
+
+impl<C, K, V, F, B: ?Sized> MapLaneWithEntry<C, K, V, F, B> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the lane.
+    /// * `key` - Key of the entry.
+    /// * `f` - The closure to apply to the entry.
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>, key: K, f: F) -> Self {
+        MapLaneWithEntry {
+            projection,
+            key_and_f: Some((key, f)),
+            _type: PhantomData,
+        }
+    }
+}
+
+///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
 pub struct MapLaneSync<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a MapLane<K, V>,
     id: Option<Uuid>,

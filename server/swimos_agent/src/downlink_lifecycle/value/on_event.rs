@@ -14,10 +14,10 @@
 
 use std::borrow::Borrow;
 
-use swimos_api::handlers::{BorrowHandler, FnHandler, NoHandler};
+use swimos_utilities::handlers::{BorrowHandler, FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{EventFn, EventHandler, UnitHandler},
     lifecycle_fn::{LiftShared, WithHandlerContext, WithHandlerContextBorrow},
 };
@@ -28,7 +28,7 @@ pub trait OnDownlinkEvent<T, Context>: Send {
     where
         Self: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `value` - The event value.
     fn on_event(&self, value: &T) -> Self::OnEventHandler<'_>;
 }
@@ -41,7 +41,7 @@ pub trait OnDownlinkEventShared<T, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     /// * `value` - The event value.

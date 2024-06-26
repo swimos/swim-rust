@@ -14,7 +14,7 @@
 
 use futures::future::{ready, Ready};
 use std::future::Future;
-use swimos_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
+use swimos_utilities::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
 use super::{SetFn, SharedSetFn};
 
@@ -25,7 +25,7 @@ pub trait OnSet<T>: Send {
         Self: 'a,
         T: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `existing` - The existing value, if it is defined.
     /// * `new_value` - The replacement value.
     fn on_set<'a>(&'a mut self, existing: Option<&'a T>, new_value: &'a T) -> Self::OnSetFut<'a>;
@@ -40,7 +40,7 @@ pub trait OnSetShared<T, Shared>: Send {
         T: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `existing` - The existing value, if it is defined.
     /// * `new_value` - The replacement value.

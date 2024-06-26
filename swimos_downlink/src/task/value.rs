@@ -14,6 +14,7 @@
 
 use either::Either;
 use std::fmt::Display;
+use swimos_client_api::DownlinkConfig;
 
 use futures::{Sink, SinkExt, StreamExt};
 use tokio::sync::mpsc;
@@ -21,18 +22,17 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{info_span, trace, Instrument};
 
-use swimos_api::downlink::DownlinkConfig;
-use swimos_api::error::DownlinkTaskError;
-use swimos_api::protocol::downlink::{
-    DownlinkNotification, DownlinkOperation, DownlinkOperationEncoder, ValueNotificationDecoder,
+use swimos_agent_protocol::encoding::downlink::{
+    DownlinkOperationEncoder, ValueNotificationDecoder,
 };
-use swimos_form::structural::write::StructuralWritable;
+use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
+use swimos_api::{address::Address, error::DownlinkTaskError};
+use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
-use swimos_model::address::Address;
 use swimos_model::Text;
-use swimos_recon::printer::print_recon;
+use swimos_recon::print_recon;
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::future::{immediate_or_join, race};
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 
 use crate::model::lifecycle::ValueDownlinkLifecycle;
 use crate::model::ValueDownlinkSet;
@@ -40,7 +40,7 @@ use crate::ValueDownlinkModel;
 
 /// Task to drive a value downlink, calling lifecyle events at appropriate points.
 ///
-/// #Arguments
+/// # Arguments
 ///
 /// * `model` - The downlink model, providing the lifecycle and a stream of values to set.
 /// * `path` - The path of the lane to which the downlink is attached.
@@ -64,7 +64,7 @@ where
         input,
         lifecycle,
         handle,
-        FramedWrite::new(output, DownlinkOperationEncoder),
+        FramedWrite::new(output, DownlinkOperationEncoder::default()),
     )
     .instrument(info_span!("Downlink io task.", %path))
     .await

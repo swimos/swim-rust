@@ -16,14 +16,12 @@ use std::{collections::HashMap, sync::Arc};
 
 use bytes::BytesMut;
 use parking_lot::Mutex;
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::agent::{LaneResponse, ValueLaneResponseDecoder},
-};
-use swimos_form::structural::write::StructuralWritable;
+use swimos_agent_protocol::{encoding::lane::RawValueLaneResponseDecoder, LaneResponse};
+use swimos_api::agent::AgentConfig;
+use swimos_form::write::StructuralWritable;
 use swimos_model::Text;
-use swimos_recon::printer::print_recon_compact;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_recon::print_recon_compact;
+use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 
 use crate::{
@@ -183,7 +181,7 @@ where
     let mut buffer = BytesMut::new();
     assert_eq!(lane.write_to_buffer(&mut buffer), WriteResult::Done);
 
-    let mut decoder = ValueLaneResponseDecoder::default();
+    let mut decoder = RawValueLaneResponseDecoder::default();
     let msg = decoder
         .decode(&mut buffer)
         .expect("Decode failed.")

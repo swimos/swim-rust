@@ -28,7 +28,7 @@ pub use immediate_or::{
     immediate_or_join, immediate_or_start, ImmediateOrJoin, ImmediateOrStart, SecondaryResult,
 };
 
-pub use race::{race, race3, Either3, Race2, Race3};
+pub use race::{race, Race2};
 
 /// A stream that runs another stream of [`Result`]s until it produces an error and then
 /// terminates.
@@ -66,6 +66,7 @@ impl<Str: TryStream> Stream for StopAfterError<Str> {
     }
 }
 
+/// A future that will trigger a notification whenever the future it wraps returns [`Poll::Pending`].
 #[pin_project]
 pub struct NotifyOnBlocked<F> {
     #[pin]
@@ -74,6 +75,9 @@ pub struct NotifyOnBlocked<F> {
 }
 
 impl<F> NotifyOnBlocked<F> {
+    /// # Arguments
+    /// * `inner` - The future to wrap.
+    /// * `notify`- This will be notified whenever the wrapped future returns [`Poll::Pending`].
     pub fn new(inner: F, notify: Arc<Notify>) -> NotifyOnBlocked<F> {
         NotifyOnBlocked { inner, notify }
     }

@@ -14,10 +14,11 @@
 
 use bytes::BytesMut;
 use futures::SinkExt;
+use swimos_api::address::RelativeAddress;
 use swimos_messages::protocol::RawResponseMessageEncoder;
-use swimos_messages::protocol::{Notification, Path, ResponseMessage};
+use swimos_messages::protocol::{Notification, ResponseMessage};
 use swimos_model::Text;
-use swimos_utilities::io::byte_channel::ByteWriter;
+use swimos_utilities::byte_channel::ByteWriter;
 use tokio_util::codec::FramedWrite;
 use tracing::trace;
 use uuid::Uuid;
@@ -36,7 +37,7 @@ pub struct RemoteSender {
 }
 
 impl RemoteSender {
-    /// #Arguments
+    /// # Arguments
     /// * `writer` - The underlying byte channel.
     /// * `identity` - Routing address of the agent.
     /// * `remote_id` - Routing ID of the remote.
@@ -59,7 +60,7 @@ impl RemoteSender {
     /// the actual write to avoid needing to move a copy of the name into the future that performs
     /// the write.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `lane_name` - The name of the lane.
     pub fn update_lane(&mut self, lane_name: &str) {
         let RemoteSender { lane, .. } = self;
@@ -70,7 +71,7 @@ impl RemoteSender {
     /// Construct a [`ResponseMessage`] for the provided notification and send it on the
     /// channel.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `notification` - The content of the frame.
     pub async fn send_notification(
         &mut self,
@@ -89,7 +90,7 @@ impl RemoteSender {
 
         let message: ResponseMessage<&str, &BytesMut, &[u8]> = ResponseMessage {
             origin: *identity,
-            path: Path::new(node.as_str(), lane.as_str()),
+            path: RelativeAddress::new(node.as_str(), lane.as_str()),
             envelope: notification,
         };
         sender.send(message).await?;

@@ -4,19 +4,22 @@ version = "0.1.0"
 authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
+[features]
+default = []
+tls = ["rustls", "webpki", "webpki-roots", "tokio-rustls", "rustls-pemfile"]
+
 [dependencies]
 ratchet = { workspace = true, features = ["deflate", "split"] }
-ratchet_fixture = { workspace = true }
 bytes = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["sync", "macros"] }
 tokio-util = { workspace = true, features = ["codec"] }
 swimos_utilities = { path = "../../swimos_utilities", features = ["io", "buf_channel", "multi_reader"] }
 swimos_api = { path = "../../api/swimos_api" }
 swimos_model = { path = "../../api/swimos_model" }
-swimos_recon = { path = "../../api/formats/swimos_recon", features = ["async_parser"] }
+swimos_recon = { path = "../../api/formats/swimos_recon" }
 swimos_messages = { path = "../swimos_messages" }
 tracing = { workspace = true }
 thiserror = { workspace = true }
@@ -27,7 +30,12 @@ either = { workspace = true }
 smallvec = { workspace = true }
 url = { workspace = true }
 pin-project = { workspace = true }
-lazy_static = { workspace = true }
+
+rustls = { workspace = true, optional = true }
+webpki = { workspace = true, optional = true }
+webpki-roots = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true }
+rustls-pemfile = { workspace = true, optional = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["rt"] }

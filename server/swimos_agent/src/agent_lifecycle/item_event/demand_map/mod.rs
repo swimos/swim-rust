@@ -15,7 +15,7 @@
 use futures::future::Either;
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     lanes::{
         demand_map::{
             demand_map_handler, demand_map_handler_shared,

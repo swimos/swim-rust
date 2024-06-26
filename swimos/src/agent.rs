@@ -54,7 +54,7 @@
 //!
 //!  ```no_run
 //! use swimos::agent::{AgentLaneModel, lifecycle};
-//! use swimos::agent::agent_lifecycle::utility::HandlerContext;
+//! use swimos::agent::agent_lifecycle::HandlerContext;
 //! use swimos::agent::event_handler::EventHandler;
 //! use swimos::agent::lanes::ValueLane;
 //!
@@ -139,9 +139,9 @@ pub use swimos_agent_derive::{lifecycle, projections, AgentLaneModel};
 /// 6. [`crate::agent::lanes::HttpLane`] (or [`crate::agent::lanes::SimpleHttpLane`])
 ///
 /// For [`crate::agent::lanes::ValueLane`] and [`crate::agent::lanes::CommandLane`], the type parameter
-/// must implement the [`crate::form::Form`] trait (used for serialization and deserialization). For
+/// must implement the [`Form`](https://docs.rs/swimos_form/latest/swimos_form/trait.Form.html) trait (used for serialization and deserialization). For
 /// [`crate::agent::lanes::MapLane`], [`crate::agent::lanes::JoinValueLane`] and [`crate::agent::lanes::JoinMapLane`],
-/// both parameters must implement [`crate::form::Form`] and additionally, the key type `K` must additionally
+/// both parameters must implement [`Form`](https://docs.rs/swimos_form/latest/swimos_form/trait.Form.html) and additionally, the key type `K` must additionally
 /// satisfy `K: Hash + Eq + Ord + Clone`.
 ///
 /// Additionally, for [`crate::agent::lanes::JoinMapLane`], the link key type `L` must satisfy`L: Hash + Eq + Clone`.
@@ -156,7 +156,7 @@ pub use swimos_agent_derive::{lifecycle, projections, AgentLaneModel};
 /// For [`crate::agent::lanes::HttpLane`], the constraints on the type parameters are determined by the
 /// codec that is selected for the lane (using the appropriate type parameter). By default, this is the
 /// [`crate::agent::lanes::http::DefaultCodec`]. This codec always requires that type parameters implement
-/// [`crate::form::Form`] and, if the 'json' feature is active, that the they are Serde serializable.
+/// [`Form`](https://docs.rs/swimos_form/latest/swimos_form/trait.Form.html) and, if the 'json' feature is active, that they are Serde serializable.
 ///
 /// The supported store types are:
 ///
@@ -192,7 +192,7 @@ pub use swimos_agent_derive::{lifecycle, projections, AgentLaneModel};
 /// stores types) will persist their state (where the server has a persistence store). To disable this, the lane
 /// field may be marked as transient with an attribute:
 ///
-/// / ```no_run
+/// ```no_run
 /// use swimos::agent::AgentLaneModel;
 /// use swimos::agent::lanes::ValueLane;
 ///
@@ -224,13 +224,11 @@ pub mod agent_model {
         MapLaneInitializer, MapStoreInitializer, ValueLaneInitializer, ValueStoreInitializer,
         WriteResult,
     };
-    pub use swimos_api::lane::WarpLaneKind;
-    pub use swimos_api::meta::lane::LaneKind;
-    pub use swimos_api::store::StoreKind;
+    pub use swimos_api::agent::{LaneKind, StoreKind, WarpLaneKind};
 
     pub mod downlink {
         pub mod hosted {
-            pub use swimos_agent::agent_model::downlink::hosted::{
+            pub use swimos_agent::agent_model::downlink::{
                 EventDownlinkHandle, MapDownlinkHandle, ValueDownlinkHandle,
             };
         }
@@ -238,7 +236,7 @@ pub mod agent_model {
 }
 
 pub mod item {
-    pub use swimos_agent::item::AgentItem;
+    pub use swimos_agent::AgentItem;
 }
 
 pub mod lanes {

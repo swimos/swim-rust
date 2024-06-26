@@ -24,7 +24,7 @@ pub use on_set::{OnSet, OnSetShared};
 pub use on_synced::{OnSynced, OnSyncedShared};
 pub use on_unlinked::{OnUnlinked, OnUnlinkedShared};
 pub use on_update::{OnUpdate, OnUpdateShared};
-use swimos_api::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
+use swimos_utilities::handlers::{BlockingHandler, FnMutHandler, NoHandler, WithShared};
 
 mod handler_fn;
 mod on_clear;

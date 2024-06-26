@@ -24,14 +24,15 @@ use static_assertions::assert_obj_safe;
 use crate::meta::AgentMetadata;
 
 use super::{
-    ActionContext, BoxEventHandler, EventHandler, HandlerAction, HandlerActionExt, StepResult,
+    ActionContext, EventHandler, HandlerAction, HandlerActionExt, LocalBoxEventHandler, StepResult,
     UnitHandler,
 };
 
 #[cfg(test)]
 mod tests;
 
-pub type HandlerFuture<Context> = BoxFuture<'static, BoxEventHandler<'static, Context>>;
+/// A [`Future`] that results in an [`EventHandler`].
+pub type HandlerFuture<Context> = BoxFuture<'static, LocalBoxEventHandler<'static, Context>>;
 
 /// Trait for suspend handler futures into the task for an agent.
 pub trait Spawner<Context> {
@@ -64,7 +65,7 @@ pub struct Suspend<Fut> {
 }
 
 impl<F> Suspend<F> {
-    /// #Arguments
+    /// # Arguments
     /// * `future` - The future to be suspended.
     pub fn new(future: F) -> Self {
         Suspend {
@@ -91,7 +92,7 @@ where
             action_context.spawn_suspend(
                 future
                     .map(|h| {
-                        let boxed: BoxEventHandler<Context> = Box::new(h);
+                        let boxed: LocalBoxEventHandler<Context> = Box::new(h);
                         boxed
                     })
                     .boxed(),
@@ -103,6 +104,16 @@ where
     }
 }
 
+/// Suspend an [`EventHandler`] to be executed after a fixed duration.
+///
+/// # Note
+///
+/// Suspended handlers must be [`Send`] as the task running the agent maybe moved to a different thread
+/// before the handler is executed.
+///
+/// # Arguments
+/// * `delay` - The duration to wait.
+/// * `handler` - The handler to run after the delay.
 pub fn run_after<Context, H>(
     delay: Duration,
     handler: H,
@@ -114,6 +125,17 @@ where
     Suspend::new(fut)
 }
 
+/// Schedule a sequence of [`EventHandler`]s to run on a schedule. For each pair of a delay and and
+/// [`EventHandler`] returned by the provided iterator, the handler is scheduled to run after the delay.
+/// The handlers are scheduled sequentially, not simultaneously.
+///
+/// # Note
+///
+/// Both the iterator and the handlers must be [`Send`] as the task running the agent could be moved while
+/// they are still in use.
+///
+/// # Arguments
+/// * `schedule` - An iterator returning a sequence of pairs of delays and handlers.
 pub fn run_schedule<Context, I, H>(schedule: I) -> impl EventHandler<Context> + Send + 'static
 where
     Context: 'static,
@@ -133,6 +155,16 @@ where
     }
 }
 
+/// Schedule a async stream of [`EventHandler`]s to run. The handlers are scheduled sequentially,
+/// not simultaneously.
+///
+/// # Note
+///
+/// Both the stream and the handlers must be [`Send`] as the task running the agent could be moved while
+/// they are still in use.
+///
+/// # Arguments
+/// * `schedule` - A asynchronous stream returning a sequence of handlers.
 pub fn run_schedule_async<Context, S, H>(
     mut schedule: S,
 ) -> impl EventHandler<Context> + Send + 'static
@@ -143,7 +175,7 @@ where
 {
     Suspend::new(async move {
         match schedule.next().await {
-            Some(h) => Either::Left(run_schedule_async(schedule).boxed().followed_by(h)),
+            Some(h) => Either::Left(run_schedule_async(schedule).boxed_local().followed_by(h)),
             None => Either::Right(UnitHandler::default()),
         }
     })

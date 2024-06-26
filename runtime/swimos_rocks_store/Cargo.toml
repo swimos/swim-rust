@@ -1,0 +1,21 @@
+[package]
+name = "swimos_rocks_store"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+swimos_api = { path = "../../api/swimos_api" }
+swimos_model = { path = "../../api/swimos_model" }
+rocksdb = { workspace = true }
+futures = { workspace = true }
+swimos_utilities = { path = "../../swimos_utilities", features = ["io", "circular_buffer", "future"] }
+swimos_form = { path = "../../api/swimos_form" }
+tokio = { workspace = true, features = ["sync"] }
+futures-util = { workspace = true }
+bytes = { workspace = true }
+integer-encoding = { workspace = true }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+tempdir = { workspace = true }
+integer-encoding = { workspace = true }

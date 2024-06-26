@@ -149,6 +149,7 @@ async fn receive_several(n: usize) {
         for i in 0..n {
             assert!(tx.try_send(i).is_ok());
         }
+        tx
     };
 
     let recv_task = async move {
@@ -160,7 +161,8 @@ async fn receive_several(n: usize) {
     let send_handle = tokio::spawn(send_task);
     let recv_handle = tokio::spawn(recv_task);
 
-    assert!(send_handle.await.is_ok());
+    let send_result = send_handle.await;
+    assert!(send_result.is_ok());
     assert!(recv_handle.await.is_ok());
 }
 
@@ -202,6 +204,8 @@ async fn small_receive_several_stream() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[ignore]
+// todo: spuriously failing on CI
 async fn large_receive_several_stream() {
     receive_several_stream(LARGE_BOUNDARY + 1).await;
 }

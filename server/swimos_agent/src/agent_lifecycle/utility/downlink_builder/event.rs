@@ -14,23 +14,18 @@
 
 use std::marker::PhantomData;
 
-use swimos_api::handlers::FnHandler;
-use swimos_form::structural::read::recognizer::RecognizerReadable;
-use swimos_model::{address::Address, Text};
+use swimos_api::address::Address;
+use swimos_form::read::RecognizerReadable;
+use swimos_model::Text;
+use swimos_utilities::handlers::FnHandler;
 
 use crate::{
-    agent_model::downlink::{hosted::EventDownlinkHandle, OpenEventDownlinkAction},
+    agent_model::downlink::{EventDownlinkHandle, OpenEventDownlinkAction},
     config::SimpleDownlinkConfig,
     downlink_lifecycle::{
-        event::{
-            on_event::{OnConsumeEvent, OnConsumeEventShared},
-            StatefulEventDownlinkLifecycle, StatefulEventLifecycle,
-            StatelessEventDownlinkLifecycle, StatelessEventLifecycle,
-        },
-        on_failed::{OnFailed, OnFailedShared},
-        on_linked::{OnLinked, OnLinkedShared},
-        on_synced::{OnSynced, OnSyncedShared},
-        on_unlinked::{OnUnlinked, OnUnlinkedShared},
+        OnConsumeEvent, OnConsumeEventShared, OnFailed, OnFailedShared, OnLinked, OnLinkedShared,
+        OnSynced, OnSyncedShared, OnUnlinked, OnUnlinkedShared, StatefulEventDownlinkLifecycle,
+        StatefulEventLifecycle, StatelessEventDownlinkLifecycle, StatelessEventLifecycle,
     },
     event_handler::HandlerAction,
     lifecycle_fn::WithHandlerContext,
@@ -89,6 +84,10 @@ impl<Context, T, LC> StatelessEventDownlinkBuilder<Context, T, LC>
 where
     LC: StatelessEventLifecycle<Context, T>,
 {
+    /// Specify a handler for the `on_linked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
         handler: F,
@@ -110,6 +109,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_synced` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_synced<F>(
         self,
         handler: F,
@@ -131,6 +134,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_unlinked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
         handler: F,
@@ -152,6 +159,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_failed<F>(
         self,
         handler: F,
@@ -173,6 +184,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_event` event, called when the downlink receives a new value.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_event<F>(
         self,
         handler: F,
@@ -194,6 +209,10 @@ where
         }
     }
 
+    /// Augment the lifecycle with some state that is shared between the event handlers.
+    ///
+    /// # Arguments
+    /// * `shared` - The shared state.
     pub fn with_shared_state<Shared: Send>(
         self,
         shared: Shared,
@@ -239,6 +258,10 @@ impl<Context, T, State, LC> StatefulEventDownlinkBuilder<Context, T, State, LC>
 where
     LC: StatefulEventLifecycle<Context, State, T>,
 {
+    /// Specify a handler for the `on_linked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_linked<F>(
         self,
         handler: F,
@@ -260,6 +283,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_synced` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_synced<F>(
         self,
         handler: F,
@@ -281,6 +308,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_unlinked` event.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_unlinked<F>(
         self,
         handler: F,
@@ -302,6 +333,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_failed` event (called if the downlink terminates with an error).
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_failed<F>(
         self,
         handler: F,
@@ -323,6 +358,10 @@ where
         }
     }
 
+    /// Specify a handler for the `on_event` event, called when then downlink receives a new value.
+    ///
+    /// # Arguments
+    /// * `handler` - The event handler.
     pub fn on_event<F>(
         self,
         handler: F,

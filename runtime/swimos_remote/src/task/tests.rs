@@ -23,14 +23,21 @@ use ratchet::{
     CloseCode, CloseReason, Message, NegotiatedExtension, NoExt, NoExtDecoder, Receiver, Role,
     WebSocket, WebSocketConfig,
 };
-use swimos_messages::protocol::{
-    path_from_static_strs, BytesRequestMessage, BytesResponseMessage, Notification, Operation,
-    Path, RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
-    RawResponseMessageEncoder, RequestMessage, ResponseMessage,
+use swimos_api::address::RelativeAddress;
+use swimos_messages::{
+    protocol::{
+        BytesRequestMessage, BytesResponseMessage, Notification, Operation,
+        RawRequestMessageDecoder, RawRequestMessageEncoder, RawResponseMessageDecoder,
+        RawResponseMessageEncoder, RequestMessage, ResponseMessage,
+    },
+    remote_protocol::{
+        AgentResolutionError, AttachClient, FindNode, NoSuchAgent, NodeConnectionRequest,
+    },
 };
-use swimos_model::{address::RelativeAddress, BytesStr, Text};
+use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{self, byte_channel, ByteReader, ByteWriter},
+    byte_channel::{self, byte_channel, ByteReader, ByteWriter},
+    encoding::BytesStr,
     non_zero_usize, trigger,
 };
 use tokio::{
@@ -41,10 +48,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use uuid::Uuid;
 
-use crate::{
-    error::AgentResolutionError, task::OutgoingKind, AttachClient, FindNode, NoSuchAgent,
-    NodeConnectionRequest,
-};
+use crate::task::OutgoingKind;
 
 use super::{InputError, OutgoingTaskMessage, RegisterIncoming};
 
@@ -60,11 +64,18 @@ const LANE: &str = "lane";
 const DL_NODE: &str = "/remote";
 const DL_LANE: &str = "remote_lane";
 
-fn agent_path() -> Path<BytesStr> {
+fn path_from_static_strs(node: &'static str, lane: &'static str) -> RelativeAddress<BytesStr> {
+    RelativeAddress {
+        node: BytesStr::from_static_str(node),
+        lane: BytesStr::from_static_str(lane),
+    }
+}
+
+fn agent_path() -> RelativeAddress<BytesStr> {
     path_from_static_strs(NODE, LANE)
 }
 
-fn dl_path() -> Path<BytesStr> {
+fn dl_path() -> RelativeAddress<BytesStr> {
     path_from_static_strs(DL_NODE, DL_LANE)
 }
 
@@ -812,7 +823,11 @@ impl DlSender {
 
     async fn send(&mut self, node: &str, lane: &str, body: &str) {
         self.0
-            .send(RequestMessage::command(DL_ID, Path::new(node, lane), body))
+            .send(RequestMessage::command(
+                DL_ID,
+                RelativeAddress::new(node, lane),
+                body,
+            ))
             .await
             .expect("Send failed.");
     }
@@ -827,7 +842,7 @@ impl AgentSender {
         self.0
             .send(ResponseMessage::<_, _, &[u8]>::event(
                 AGENT_ID,
-                Path::new(node, lane),
+                RelativeAddress::new(node, lane),
                 body,
             ))
             .await

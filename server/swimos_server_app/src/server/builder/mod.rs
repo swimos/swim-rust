@@ -21,25 +21,30 @@ use ratchet::{
     deflate::{DeflateConfig, DeflateExtProvider},
     NoExtProvider, WebSocketStream,
 };
-use swimos_api::{agent::Agent, error::StoreError, store::StoreDisabled};
-use swimos_remote::net::plain::TokioPlainTextNetworking;
-use swimos_remote::net::{dns::Resolver, ExternalConnections};
-use swimos_tls::{
+use swimos_api::{
+    agent::Agent,
+    error::StoreError,
+    persistence::{ServerPersistence, StoreDisabled},
+};
+use swimos_remote::dns::Resolver;
+use swimos_remote::plain::TokioPlainTextNetworking;
+use swimos_remote::tls::{
     ClientConfig, RustlsClientNetworking, RustlsNetworking, RustlsServerNetworking, TlsConfig,
 };
-use swimos_utilities::routing::route_pattern::RoutePattern;
+use swimos_remote::ExternalConnections;
+use swimos_utilities::routing::RoutePattern;
 
 use crate::{
     config::SwimServerConfig,
     error::ServerBuilderError,
-    introspection::IntrospectionConfig,
     plane::{PlaneBuilder, PlaneModel},
+    IntrospectionConfig,
 };
 
 use super::{
     http::HyperWebsockets,
     runtime::{SwimServer, Transport},
-    store::{in_memory::InMemoryPersistence, ServerPersistence},
+    store::in_memory::InMemoryPersistence,
     BoxServer,
 };
 
@@ -63,7 +68,7 @@ enum StoreConfig {
     #[cfg(feature = "rocks_store")]
     RockStore {
         path: Option<std::path::PathBuf>,
-        options: crate::RocksOpts,
+        options: swimos_rocks_store::RocksOpts,
     },
 }
 
@@ -82,7 +87,7 @@ impl ServerBuilder {
         }
     }
 
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `addr` - The address to which the server will bind (default: 0.0.0.0:8080).
     pub fn set_bind_addr(mut self, addr: SocketAddr) -> Self {
@@ -92,7 +97,7 @@ impl ServerBuilder {
 
     /// Add a new route to the plane that the server will run.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `pattern` - The route pattern against which to match incoming envelopes.
     /// * `agent` - The agent definition.
@@ -114,7 +119,7 @@ impl ServerBuilder {
 
     /// Enable the deflate extension for websocket connections.
     ///  
-    /// #Arguments
+    /// # Arguments
     /// * `config` - Configuration parameters for the compression.
     pub fn configure_deflate_support(mut self, config: DeflateConfig) -> Self {
         self.deflate = Some(config);
@@ -140,7 +145,7 @@ impl ServerBuilder {
     }
 
     /// Configure the introspection system (this implicitly enables introspection).
-    /// #Arguments
+    /// # Arguments
     /// * `config` - Configuration parameters for the introspection system.
     pub fn configure_introspection(mut self, config: IntrospectionConfig) -> Self {
         self.introspection = Some(config);
@@ -213,7 +218,7 @@ where
     match store_config {
         #[cfg(feature = "rocks_store")]
         StoreConfig::RockStore { path, options } => {
-            let store = super::store::rocks::create_rocks_store(path, options)?;
+            let store = swimos_rocks_store::open_rocks_store(path, options)?;
             Ok(with_websockets(bind_to, routes, networking, config, store))
         }
         StoreConfig::InMemory => Ok(with_websockets(
@@ -278,7 +283,7 @@ where
 
 #[cfg(feature = "rocks_store")]
 const _: () = {
-    use swimos_persistence::rocks::default_db_opts;
+    use swimos_rocks_store::{default_db_opts, RocksOpts};
     impl ServerBuilder {
         pub fn enable_rocks_store(mut self) -> Self {
             self.store_options = StoreConfig::RockStore {
@@ -304,7 +309,7 @@ const _: () = {
             self
         }
 
-        pub fn modify_rocks_opts<F: FnOnce(&mut crate::RocksOpts)>(mut self, f: F) -> Self {
+        pub fn modify_rocks_opts<F: FnOnce(&mut RocksOpts)>(mut self, f: F) -> Self {
             match &mut self.store_options {
                 StoreConfig::RockStore { options, .. } => {
                     f(options);

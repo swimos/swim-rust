@@ -20,23 +20,20 @@ use std::{
 
 use bytes::{BufMut, BytesMut};
 use futures::{stream::FuturesUnordered, Future, StreamExt};
+use swimos_agent_protocol::encoding::ad_hoc::RawAdHocCommandDecoder;
+use swimos_agent_protocol::AdHocCommand;
 use swimos_api::{
+    address::{Address, RelativeAddress},
     error::{AgentRuntimeError, DownlinkRuntimeError},
-    net::SchemeHostPort,
-    protocol::{
-        agent::{AdHocCommand, AdHocCommandDecoder},
-        WithLengthBytesCodec,
-    },
 };
 use swimos_messages::protocol::{RawRequestMessageEncoder, RequestMessage};
-use swimos_model::{
-    address::{Address, RelativeAddress},
-    BytesStr, Text,
-};
+use swimos_model::Text;
+use swimos_remote::SchemeHostPort;
 use swimos_utilities::{
+    byte_channel::{byte_channel, ByteReader, ByteWriter},
+    encoding::BytesStr,
     errors::Recoverable,
-    future::{retryable::RetryStrategy, UnionFuture4},
-    io::byte_channel::{byte_channel, ByteReader, ByteWriter},
+    future::{RetryStrategy, UnionFuture4},
 };
 use tokio::{
     io::AsyncWriteExt,
@@ -49,7 +46,7 @@ use uuid::Uuid;
 
 use crate::{
     agent::{CommanderKey, CommanderRequest, DownlinkRequest, LinkRequest},
-    downlink::Io,
+    Io,
 };
 
 use super::{AdHocChannelRequest, ExternalLinkRequest};
@@ -272,7 +269,7 @@ impl AdHocOutput {
     }
 }
 
-type AdHocReader = FramedRead<ByteReader, AdHocCommandDecoder<BytesStr, WithLengthBytesCodec>>;
+type AdHocReader = FramedRead<ByteReader, RawAdHocCommandDecoder<BytesStr>>;
 
 #[derive(Debug)]
 enum LinksTaskEvent {
@@ -335,7 +332,7 @@ impl ReportFailed for NoReport {
 /// A task that manages the external links opened by the agent, including the establishment of
 /// downlinks and sending of ad hoc commands.
 ///
-/// #Arguments
+/// # Arguments
 /// * `identity` - The unique ID of this agent instance.
 /// * `open_requests` - Requests for the agent implementation to create a channel for sending ad-hoc commands.
 /// * `state` - The state of the task. For agent initialization this should be empty. This is then passed from

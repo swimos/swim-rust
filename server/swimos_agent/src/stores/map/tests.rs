@@ -16,16 +16,13 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use bytes::BytesMut;
-use swimos_api::{
-    agent::AgentConfig,
-    protocol::{
-        agent::{MapStoreResponse, MapStoreResponseDecoder},
-        map::MapOperation,
-    },
+use swimos_agent_protocol::{
+    encoding::store::RawMapStoreResponseDecoder, MapOperation, MapStoreResponse,
 };
+use swimos_api::agent::AgentConfig;
 use swimos_model::Text;
-use swimos_recon::parser::{parse_recognize, Span};
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_recon::parser::parse_recognize;
+use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 
 use crate::{
@@ -151,7 +148,7 @@ fn write_to_buffer_one_update() {
     let result = store.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapStoreResponseDecoder::default();
+    let mut decoder = RawMapStoreResponseDecoder::default();
     let MapStoreResponse { message } = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -179,7 +176,7 @@ fn write_to_buffer_one_remove() {
     let result = store.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapStoreResponseDecoder::default();
+    let mut decoder = RawMapStoreResponseDecoder::default();
     let MapStoreResponse { message } = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -206,7 +203,7 @@ fn write_to_buffer_clear() {
     let result = store.write_to_buffer(&mut buffer);
     assert_eq!(result, WriteResult::Done);
 
-    let mut decoder = MapStoreResponseDecoder::default();
+    let mut decoder = RawMapStoreResponseDecoder::default();
     let MapStoreResponse { message } = decoder
         .decode(&mut buffer)
         .expect("Invalid frame.")
@@ -223,7 +220,7 @@ struct Operations {
 fn consume_events(store: &MapStore<i32, Text>) -> Operations {
     let mut events = vec![];
 
-    let mut decoder = MapStoreResponseDecoder::default();
+    let mut decoder = RawMapStoreResponseDecoder::default();
     let mut buffer = BytesMut::new();
 
     loop {
@@ -253,14 +250,13 @@ fn interpret(op: MapOperation<BytesMut, BytesMut>) -> MapOperation<i32, Text> {
         MapOperation::Update { key, value } => {
             let key_str = std::str::from_utf8(key.as_ref()).expect("Bad key bytes.");
             let val_str = std::str::from_utf8(value.as_ref()).expect("Bad value bytes.");
-            let key = parse_recognize::<i32>(Span::new(key_str), false).expect("Bad key recon.");
-            let value =
-                parse_recognize::<Text>(Span::new(val_str), false).expect("Bad value recon.");
+            let key = parse_recognize::<i32>(key_str, false).expect("Bad key recon.");
+            let value = parse_recognize::<Text>(val_str, false).expect("Bad value recon.");
             MapOperation::Update { key, value }
         }
         MapOperation::Remove { key } => {
             let key_str = std::str::from_utf8(key.as_ref()).expect("Bad key bytes.");
-            let key = parse_recognize::<i32>(Span::new(key_str), false).expect("Bad key recon.");
+            let key = parse_recognize::<i32>(key_str, false).expect("Bad key recon.");
             MapOperation::Remove { key }
         }
         MapOperation::Clear => MapOperation::Clear,

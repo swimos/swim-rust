@@ -15,8 +15,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::hash::Hash;
 
-use swimos_api::protocol::agent::LaneResponse;
-use swimos_api::protocol::map::MapOperation;
+use swimos_agent_protocol::{LaneResponse, MapOperation};
 use uuid::Uuid;
 
 use crate::event_queue::{to_operation, EventQueue};
@@ -201,10 +200,6 @@ where
 
     fn push(&mut self, action: MapOperation<K, ()>) {
         self.push_operation(action)
-    }
-
-    fn is_empty(&self) -> bool {
-        WriteQueues::is_empty(self)
     }
 
     fn pop<'a>(&mut self, content: &'a HashMap<K, V>) -> Option<Self::Output<'a>> {

@@ -16,26 +16,34 @@
 mod tests;
 
 use base64::display::Base64Display;
+use base64::engine::general_purpose::STANDARD;
 use std::borrow::Cow;
 use std::fmt::{Debug, Display, Formatter};
-use swimos_form::structural::write::{
+use swimos_form::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
-use swimos_model::bigint::{BigInt, BigUint};
-use swimos_model::write_string_literal;
+use swimos_model::literal::write_string_literal;
+use swimos_model::{BigInt, BigUint};
 
 /// Print an inline Recon representation of [`StructuralWritable`] value.
+///
+/// # Arguments
+/// * `value` - The value to print.
 pub fn print_recon<T: StructuralWritable>(value: &T) -> impl Display + '_ {
     ReconPrint(value, StandardPrint)
 }
 
-/// Print a compact Recon representation of [`StructuralWritable`] value.
+/// Print a compact Recon representation of [`StructuralWritable`] value. The compact representation omits all possible spaces.
+/// # Arguments
+/// * `value` - The value to print.
 pub fn print_recon_compact<T: StructuralWritable>(value: &T) -> impl Display + '_ {
     ReconPrint(value, CompactPrint)
 }
 
-/// Print a pretty Recon representation of [`StructuralWritable`] value.
+/// Print a pretty Recon representation of [`StructuralWritable`] value. The pretty representation splits records over lines and indents their items.
+/// # Arguments
+/// * `value` - The value to print.
 pub fn print_recon_pretty<T: StructuralWritable>(value: &T) -> impl Display + '_ {
     ReconPrint(value, PrettyPrint::new())
 }
@@ -50,7 +58,7 @@ impl<'a, T: StructuralWritable, S: PrintStrategy + Copy> Display for ReconPrint<
     }
 }
 
-pub struct StructurePrinter<'a, 'b, S> {
+struct StructurePrinter<'a, 'b, S> {
     strategy: S,
     fmt: &'a mut Formatter<'b>,
     has_attr: bool,
@@ -74,7 +82,7 @@ impl<'a, 'b, S: Debug> Debug for StructurePrinter<'a, 'b, S> {
 }
 
 impl<'a, 'b, S> StructurePrinter<'a, 'b, S> {
-    pub fn new(fmt: &'a mut Formatter<'b>, strategy: S) -> Self {
+    fn new(fmt: &'a mut Formatter<'b>, strategy: S) -> Self {
         StructurePrinter {
             fmt,
             has_attr: false,
@@ -217,34 +225,18 @@ where
     fn write_blob_vec(self, blob: Vec<u8>) -> Result<Self::Repr, Self::Error> {
         let StructurePrinter { fmt, has_attr, .. } = self;
         if has_attr {
-            write!(
-                fmt,
-                " %{}",
-                Base64Display::with_config(blob.as_slice(), base64::STANDARD)
-            )
+            write!(fmt, " %{}", Base64Display::new(blob.as_slice(), &STANDARD))
         } else {
-            write!(
-                fmt,
-                "%{}",
-                Base64Display::with_config(blob.as_slice(), base64::STANDARD)
-            )
+            write!(fmt, "%{}", Base64Display::new(blob.as_slice(), &STANDARD))
         }
     }
 
     fn write_blob(self, value: &[u8]) -> Result<Self::Repr, Self::Error> {
         let StructurePrinter { fmt, has_attr, .. } = self;
         if has_attr {
-            write!(
-                fmt,
-                " %{}",
-                Base64Display::with_config(value, base64::STANDARD)
-            )
+            write!(fmt, " %{}", Base64Display::new(value, &STANDARD))
         } else {
-            write!(
-                fmt,
-                "%{}",
-                Base64Display::with_config(value, base64::STANDARD)
-            )
+            write!(fmt, "%{}", Base64Display::new(value, &STANDARD))
         }
     }
 }
@@ -605,7 +597,7 @@ where
             strategy,
             ..
         } = self;
-        let rep = Base64Display::with_config(blob.as_slice(), base64::STANDARD);
+        let rep = Base64Display::new(blob.as_slice(), &STANDARD);
         if delegated {
             if has_attr {
                 write!(fmt, " %{}{})", &rep, strategy.attr_body_padding())
@@ -631,7 +623,7 @@ where
             strategy,
             ..
         } = self;
-        let rep = Base64Display::with_config(value, base64::STANDARD);
+        let rep = Base64Display::new(value, &STANDARD);
         if delegated {
             if has_attr {
                 write!(fmt, " %{}{})", &rep, strategy.attr_body_padding())
@@ -839,7 +831,7 @@ where
 }
 
 /// Padding used by the print strategies to customise the output format of Recon.
-pub enum Padding<'a> {
+enum Padding<'a> {
     /// Simple padding that writes only a string slice.
     Simple(&'a str),
     /// Complex padding that writes a string slice as a prefix followed by `n`
@@ -876,7 +868,7 @@ impl<'a> Display for Padding<'a> {
     }
 }
 
-pub trait PrintStrategy: Debug {
+trait PrintStrategy: Debug {
     fn attr_padding(&self) -> Padding;
 
     fn attr_body_padding(&self) -> Padding;

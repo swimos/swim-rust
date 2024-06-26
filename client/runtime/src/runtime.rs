@@ -24,7 +24,8 @@ use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use swimos_remote::ws::WebsocketClient;
+use swimos_messages::remote_protocol::AttachClient;
+use swimos_remote::{websocket::WebsocketClient, Scheme, SchemeHostPort};
 use tokio::sync::{mpsc, oneshot, Notify};
 use tokio::task::{JoinError, JoinHandle};
 use tracing::{debug, error, info, trace};
@@ -34,22 +35,19 @@ use crate::error::{DownlinkErrorKind, DownlinkRuntimeError};
 use crate::models::{DownlinkRuntime, IdIssuer, Key, Peer, RemotePath};
 use crate::pending::{PendingConnections, PendingDownlink, Waiting};
 use crate::transport::{Transport, TransportHandle};
-use swimos_api::downlink::{Downlink, DownlinkConfig, DownlinkKind};
-use swimos_api::error::DownlinkFailureReason;
-use swimos_api::net::{Scheme, SchemeHostPort};
-use swimos_model::address::Address;
+use swimos_api::{address::Address, agent::DownlinkKind, error::DownlinkFailureReason};
+use swimos_client_api::{Downlink, DownlinkConfig};
 use swimos_model::Text;
-use swimos_remote::net::ClientConnections;
-use swimos_remote::AttachClient;
+use swimos_remote::ClientConnections;
 use swimos_runtime::downlink::{AttachAction, DownlinkOptions, DownlinkRuntimeConfig};
-use swimos_utilities::io::byte_channel::{byte_channel, ByteReader, ByteWriter};
+use swimos_utilities::byte_channel::{byte_channel, ByteReader, ByteWriter};
 use swimos_utilities::trigger;
 use swimos_utilities::trigger::promise;
 
 pub type BoxedDownlink = Box<dyn Downlink + Send + Sync + 'static>;
 type ByteChannel = (ByteWriter, ByteReader);
 type CallbackResult =
-    Result<promise::Receiver<Result<(), DownlinkRuntimeError>>, Arc<DownlinkRuntimeError>>;
+    Result<promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>>, Arc<DownlinkRuntimeError>>;
 pub type DownlinkCallback = oneshot::Sender<CallbackResult>;
 
 impl Debug for DownlinkRegistrationRequest {
@@ -173,7 +171,7 @@ enum RuntimeEvent {
         kind: DownlinkKind,
         address: RemotePath,
         result: Result<(), DownlinkRuntimeError>,
-        tx: promise::Sender<Result<(), DownlinkRuntimeError>>,
+        tx: promise::Sender<Result<(), Arc<DownlinkRuntimeError>>>,
     },
     /// A downlink runtime has completed.
     DownlinkRuntimeComplete {
@@ -446,7 +444,7 @@ async fn runtime_task<Net, Ws, Provider>(
                 host,
                 result: Ok((addr, attach)),
             } => {
-                assert!(peers.get(&addr).is_none());
+                assert!(!peers.contains_key(&addr));
                 let peer = Peer::new(attach);
 
                 for (key, pending_downlink) in pending.drain_connection_queue(host.clone()) {
@@ -663,7 +661,7 @@ async fn runtime_task<Net, Ws, Provider>(
                     }
                 }
 
-                let _r = tx.provide(result);
+                let _r = tx.provide(result.map_err(Arc::new));
             }
             RuntimeEvent::Shutdown => {
                 for peer in peers.values_mut() {
@@ -734,7 +732,7 @@ async fn attach_downlink(
     let (in_tx, in_rx) = byte_channel(pending.runtime_config.downlink_buffer_size);
     let (out_tx, out_rx) = byte_channel(pending.runtime_config.downlink_buffer_size);
     let result = attach
-        .send(AttachAction::new(out_rx, in_tx, pending.options))
+        .send(AttachAction::new((in_tx, out_rx), pending.options))
         .await
         .map(move |_| (out_tx, in_rx))
         .map_err(|_| DownlinkRuntimeError::new(DownlinkErrorKind::Terminated));

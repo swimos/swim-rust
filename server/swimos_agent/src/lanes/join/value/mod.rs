@@ -20,16 +20,16 @@ use std::marker::PhantomData;
 use std::{cell::RefCell, collections::HashMap};
 
 use bytes::BytesMut;
-use swimos_form::structural::write::StructuralWritable;
+use swimos_api::address::Address;
+use swimos_form::write::StructuralWritable;
 use swimos_form::Form;
-use swimos_model::address::Address;
 use swimos_model::Text;
 use uuid::Uuid;
 
 use crate::agent_model::downlink::OpenEventDownlinkAction;
 use crate::config::SimpleDownlinkConfig;
 use crate::event_handler::{EventHandler, EventHandlerError, Modification};
-use crate::item::{InspectableMapLikeItem, MapLikeItem};
+use crate::item::{InspectableMapLikeItem, JoinLikeItem, MapLikeItem};
 use crate::{
     agent_model::WriteResult,
     event_handler::{ActionContext, HandlerAction, StepResult},
@@ -53,8 +53,9 @@ mod tests;
 
 pub use downlink::{AfterClosed, JoinValueLaneUpdate};
 pub use init::LifecycleInitializer;
+use swimos_utilities::trigger;
 
-/// Model of a join value lane. This is conceptually similar to a [`super::super::MapLane`] only, rather
+/// Model of a join value lane. This is conceptually similar to a [map lane](`super::super::MapLane`) only, rather
 /// than the state being modified directly, it is populated through a series of downlinks associated with
 /// each key. Hence it maintains a view of the state of a number of remote values as a single map. In all
 /// other respects, it behaves as a read only map lane, having the same event handlers.
@@ -64,7 +65,26 @@ pub use init::LifecycleInitializer;
 #[derive(Debug)]
 pub struct JoinValueLane<K, V> {
     inner: MapLane<K, V>,
-    keys: RefCell<HashMap<K, DownlinkStatus>>,
+    keys: RefCell<HashMap<K, Link>>,
+}
+
+#[derive(Debug)]
+struct Link {
+    status: DownlinkStatus,
+    stop_tx: Option<trigger::Sender>,
+}
+
+impl Link {
+    fn new(status: DownlinkStatus) -> Link {
+        Link {
+            status,
+            stop_tx: None,
+        }
+    }
+
+    fn set_stop_tx(&mut self, stop_tx: Option<trigger::Sender>) {
+        self.stop_tx = stop_tx;
+    }
 }
 
 impl<K, V> JoinValueLane<K, V> {
@@ -118,7 +138,8 @@ where
 /// [`HandlerAction`] that attempts to add a new downlink to a [`JoinValueLane`].
 struct AddDownlinkAction<Context, K, V, LC> {
     projection: fn(&Context) -> &JoinValueLane<K, V>,
-    key: Option<K>,
+    key: K,
+    started: bool,
     inner: Option<OpenEventDownlinkAction<V, JoinValueDownlink<K, V, LC, Context>>>,
 }
 
@@ -133,7 +154,7 @@ where
         lifecycle: LC,
     ) -> Self {
         let dl_lifecycle = JoinValueDownlink::new(projection, key.clone(), lane.clone(), lifecycle);
-        let inner = OpenEventDownlinkAction::new(
+        let action = OpenEventDownlinkAction::new(
             lane,
             dl_lifecycle,
             SimpleDownlinkConfig {
@@ -144,8 +165,9 @@ where
         );
         AddDownlinkAction {
             projection,
-            key: Some(key),
-            inner: Some(inner),
+            key,
+            started: false,
+            inner: Some(action),
         }
     }
 }
@@ -169,21 +191,32 @@ where
         let AddDownlinkAction {
             projection,
             key,
+            started,
             inner,
         } = self;
+
         if let Some(inner) = inner {
-            if let Some(key) = key.take() {
-                let lane = projection(context);
-                let mut guard = lane.keys.borrow_mut();
-                if let Entry::Vacant(e) = guard.entry(key) {
-                    e.insert(DownlinkStatus::Pending);
-                    inner.step(action_context, meta, context).map(|_| ())
+            let lane = projection(context);
+            let mut guard = lane.keys.borrow_mut();
+
+            if !*started {
+                if let Entry::Vacant(entry) = guard.entry(key.clone()) {
+                    *started = true;
+
+                    let link = entry.insert(Link::new(DownlinkStatus::Pending));
+                    inner.step(action_context, meta, context).map(|handle| {
+                        link.set_stop_tx(handle.into_stop_rx());
+                    })
                 } else {
                     self.inner = None;
                     StepResult::done(())
                 }
             } else {
-                inner.step(action_context, meta, context).map(|_| ())
+                inner.step(action_context, meta, context).map(|handle| {
+                    if let Some(link) = guard.get_mut(key) {
+                        link.set_stop_tx(handle.into_stop_rx())
+                    }
+                })
             }
         } else {
             StepResult::after_done()
@@ -207,7 +240,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will get an entry from the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
 pub struct JoinValueLaneGet<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a JoinValueLane<K, V>,
     key: K,
@@ -252,7 +285,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will get an entry from the map.
+///  An [event handler](crate::event_handler::EventHandler)`] that will get an entry from the map.
 pub struct JoinValueLaneGetMap<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a JoinValueLane<K, V>,
     done: bool,
@@ -291,7 +324,7 @@ where
     }
 }
 
-/// An [`EventHandler`] that will request a sync from the lane.
+///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
 pub struct JoinValueLaneSync<C, K, V> {
     projection: for<'a> fn(&'a C) -> &'a JoinValueLane<K, V>,
     id: Option<Uuid>,
@@ -525,5 +558,75 @@ where
         F: FnOnce(Option<&B>) -> U + Send + 'a,
     {
         JoinValueLaneWithEntry::new(projection, key, f)
+    }
+}
+
+/// An [`EventHandler`] that will remove a downlink from the lane.
+pub struct JoinValueRemoveDownlink<C, K, V> {
+    projection: fn(&C) -> &JoinValueLane<K, V>,
+    key: Option<K>,
+}
+
+impl<C, K, V> JoinValueRemoveDownlink<C, K, V> {
+    pub fn new(
+        projection: fn(&C) -> &JoinValueLane<K, V>,
+        key: K,
+    ) -> JoinValueRemoveDownlink<C, K, V> {
+        JoinValueRemoveDownlink {
+            projection,
+            key: Some(key),
+        }
+    }
+}
+
+impl<C, K, V> HandlerAction<C> for JoinValueRemoveDownlink<C, K, V>
+where
+    C: 'static,
+    K: Clone + Send + Eq + PartialEq + Hash + 'static,
+    V: 'static,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let JoinValueRemoveDownlink { projection, key } = self;
+
+        match key.take() {
+            Some(key) => {
+                let lane = projection(context);
+                let mut key_guard = lane.keys.borrow_mut();
+                let trigger = key_guard
+                    .remove(&key)
+                    .and_then(|mut state| state.stop_tx.take());
+                if let Some(trigger) = trigger {
+                    lane.inner.remove(&key);
+                    trigger.trigger();
+                }
+
+                StepResult::done(())
+            }
+            None => StepResult::after_done(),
+        }
+    }
+}
+
+impl<K, V> JoinLikeItem<K> for JoinValueLane<K, V>
+where
+    K: Clone + Send + Eq + PartialEq + Hash + 'static,
+    V: 'static,
+{
+    type RemoveDownlinkHandler<C> = JoinValueRemoveDownlink<C, K, V>
+    where
+        C: 'static;
+
+    fn remove_downlink_handler<C: 'static>(
+        projection: fn(&C) -> &Self,
+        link_key: K,
+    ) -> Self::RemoveDownlinkHandler<C> {
+        JoinValueRemoveDownlink::new(projection, link_key)
     }
 }

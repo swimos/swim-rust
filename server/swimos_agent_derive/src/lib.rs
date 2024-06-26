@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Derivation macros for the structure and lifecycle of agents.
+
 use agent_lifecycle::ImplAgentLifecycle;
 use lane_model_derive::{combine_agent_attrs, make_agent_attr_consumer, DeriveAgentLaneModel};
 use lane_projections::ProjectionsImpl;
@@ -19,7 +21,7 @@ use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 
 use macro_utilities::{attributes::consume_attributes, to_compile_errors};
-use swimos_utilities::errors::{validation::Validation, Errors};
+use swimos_utilities::errors::{Errors, Validation};
 use syn::{parse_macro_input, parse_quote, AttributeArgs, DeriveInput, Item};
 
 mod agent_lifecycle;
@@ -32,6 +34,7 @@ fn default_root() -> syn::Path {
 
 const AGENT_TAG: &str = "agent";
 
+/// Derives an agent implementation of an agent from a struct that lists its lanes and stores as fields.
 #[proc_macro_derive(AgentLaneModel, attributes(agent, item))]
 pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -49,6 +52,7 @@ pub fn derive_agent_lane_model(input: TokenStream) -> TokenStream {
         .into()
 }
 
+/// Derives projection functions from a struct to its fields. This is to help make agent lifecycles less verbose.
 #[proc_macro_attribute]
 pub fn projections(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attr_params = if attr.is_empty() {
@@ -70,6 +74,8 @@ pub fn projections(attr: TokenStream, item: TokenStream) -> TokenStream {
         .into()
 }
 
+/// Derives the agent lifecycle trait for type. This is applied to an `impl` block for the type and uses
+/// annotated event handlers in the block to generate the lifecycle.
 #[proc_macro_attribute]
 pub fn lifecycle(attr: TokenStream, item: TokenStream) -> TokenStream {
     let meta = parse_macro_input!(attr as AttributeArgs);

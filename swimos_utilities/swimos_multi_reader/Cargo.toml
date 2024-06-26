@@ -5,12 +5,12 @@ edition = "2021"
 
 [dependencies]
 bytes = { workspace = true }
-byte_channel = { path = "../byte_channel" }
+swimos_byte_channel = { path = "../swimos_byte_channel" }
 parking_lot = { workspace = true }
-waker-fn = "1.1.0"
+waker-fn = { workspace = true }
 slab = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
-futures-util = { workspace = true }
+futures = { workspace = true }
 smallvec = { workspace = true }
 
 [dev-dependencies]

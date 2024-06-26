@@ -14,10 +14,10 @@
 
 use std::marker::PhantomData;
 
-use swimos_api::handlers::{FnHandler, NoHandler};
+use swimos_utilities::handlers::{FnHandler, NoHandler};
 
 use crate::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{ActionContext, CueFn0, EventHandlerError, HandlerAction, StepResult},
     meta::AgentMetadata,
 };
@@ -39,7 +39,7 @@ pub trait OnCueShared<T, Context, Shared>: Send {
         Self: 'a,
         Shared: 'a;
 
-    /// #Arguments
+    /// # Arguments
     /// * `shared` - The shared state.
     /// * `handler_context` - Utility for constructing event handlers.
     fn on_cue<'a>(

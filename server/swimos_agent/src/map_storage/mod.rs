@@ -14,7 +14,7 @@
 
 use std::{borrow::Borrow, collections::HashMap, hash::Hash};
 
-use swimos_api::protocol::map::MapOperation;
+use swimos_agent_protocol::MapOperation;
 
 use crate::lanes::map::MapLaneEvent;
 
@@ -36,8 +36,6 @@ pub trait MapEventQueue<K, V>: Default {
         Self: 'a;
 
     fn push(&mut self, action: MapOperation<K, ()>);
-
-    fn is_empty(&self) -> bool;
 
     fn pop<'a>(&mut self, content: &'a HashMap<K, V>) -> Option<Self::Output<'a>>;
 }

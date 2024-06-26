@@ -19,16 +19,15 @@ use futures::{
     stream::FuturesUnordered,
     Future, FutureExt, Stream, StreamExt, TryFutureExt,
 };
+use swimos_agent_protocol::encoding::store::StoreInitializedCodec;
 use swimos_api::{
-    agent::{LaneConfig, StoreConfig, UplinkKind},
+    agent::{LaneConfig, StoreConfig, StoreKind, UplinkKind, WarpLaneKind},
     error::{AgentRuntimeError, OpenStoreError, StoreError},
-    lane::WarpLaneKind,
-    protocol::agent::StoreInitializedCodec,
-    store::{StoreDisabled, StoreKind},
+    persistence::StoreDisabled,
 };
 use swimos_model::Text;
 use swimos_utilities::{
-    io::byte_channel::{self, ByteReader, ByteWriter},
+    byte_channel::{self, ByteReader, ByteWriter},
     trigger,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -77,7 +76,7 @@ pub struct InitTaskConfig {
 }
 
 impl AgentInitTask {
-    /// #Arguments
+    /// # Arguments
     /// * `identity` - Unique ID of the agent.
     /// * `requests` - Channel for requests to open new lanes and downlinks.
     /// * `link_requests` - Channel for request to the runtime to open new external links.
@@ -108,7 +107,7 @@ impl<Store> AgentInitTask<Store>
 where
     Store: AgentPersistence + Send + Sync,
 {
-    /// #Arguments
+    /// # Arguments
     /// * `identity` - Unique ID of the agent.
     /// * `requests` - Channel for requests to open new lanes and downlinks.
     /// * `link_requests` - Channel for request to the runtime to open external links.

@@ -1,0 +1,12 @@
+[package]
+name = "swimos_encoding"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["coop"]
+coop = []
+
+[dependencies]
+bytes = { workspace = true }
+tokio-util = { workspace = true, features = ["codec"] }

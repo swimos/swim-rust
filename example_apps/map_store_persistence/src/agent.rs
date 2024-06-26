@@ -14,7 +14,7 @@
 
 use example_util::format_map;
 use swimos::agent::{
-    agent_lifecycle::utility::HandlerContext,
+    agent_lifecycle::HandlerContext,
     event_handler::{join3, EventHandler, HandlerActionExt, UnitHandler},
     lanes::CommandLane,
     lifecycle, projections,
@@ -89,14 +89,14 @@ impl ExampleLifecycle {
         cmd: &Instruction,
     ) -> impl EventHandler<ExampleAgent> {
         match cmd {
-            Instruction::Wake => UnitHandler::default().boxed(),
+            Instruction::Wake => UnitHandler::default().boxed_local(),
             Instruction::SetValue { key, value } => context
                 .update(ExampleAgent::VALUE, key.clone(), *value)
-                .boxed(),
+                .boxed_local(),
             Instruction::SetTemp { key, value } => context
                 .update(ExampleAgent::TEMPORARY, key.clone(), *value)
-                .boxed(),
-            Instruction::Stop => context.stop().boxed(),
+                .boxed_local(),
+            Instruction::Stop => context.stop().boxed_local(),
         }
     }
 }

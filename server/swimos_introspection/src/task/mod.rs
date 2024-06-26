@@ -12,30 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::forest::UriForest;
+use crate::meta_agent::lane::LaneMetaAgent;
+use crate::meta_agent::node::NodeMetaAgent;
+use crate::meta_mesh::MetaMeshAgent;
+use crate::route::{lane_pattern, mesh_pattern, node_pattern};
 use std::sync::Arc;
 use std::{collections::HashMap, num::NonZeroUsize};
 
 use futures::StreamExt;
 use futures::{stream::select, Future};
 use parking_lot::RwLock;
-use swimos_api::error::introspection::{
-    IntrospectionStopped, LaneIntrospectionError, NodeIntrospectionError,
-};
-use swimos_api::meta::lane::LaneKind;
-use swimos_model::time::Timestamp;
-use swimos_model::Text;
+use swimos_api::agent::{Agent, LaneKind};
+use swimos_api::error::{IntrospectionStopped, LaneIntrospectionError, NodeIntrospectionError};
+use swimos_model::{Text, Timestamp};
 use swimos_runtime::agent::{
     reporting::{UplinkReportReader, UplinkReporter},
     NodeReporting, UplinkReporterRegistration,
 };
-use swimos_utilities::uri_forest::UriForest;
-use swimos_utilities::{routing::route_uri::RouteUri, trigger};
+use swimos_utilities::routing::RoutePattern;
+use swimos_utilities::{routing::RouteUri, trigger};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
 use tracing::info;
 use uuid::Uuid;
 
 use crate::model::{AgentIntrospectionHandle, AgentIntrospectionUpdater, LaneView};
+use crate::IntrospectionConfig;
 
 /// Requests that can be made by to the introspection task.
 pub enum IntrospectionMessage {
@@ -89,25 +92,67 @@ impl From<UplinkReporterRegistration> for IntrospectionMessage {
 
 /// Create an additional task to run within a Swim server that maintains a registry of [`AgentIntrospectionUpdater`]s
 /// for all running agents. When a new introspection meta-agent starts it will make a request to this registry
-/// to obtain an introspecton handle for an agent or lane.
+/// to obtain an introspection handle for an agent or lane.
 ///
 /// Returns the task and a resolver used to interact with it externally.
 ///
-/// #Arguments
+/// # Arguments
 /// * `stopping` - Signal that the server is stopping.
 /// * `channel_size` - Size of the channel use to register new lanes.
-pub fn init_introspection(
+fn init_introspection(
     stopping: trigger::Receiver,
     channel_size: NonZeroUsize,
-    agents: Arc<RwLock<UriForest<AgentMeta>>>,
+) -> (
+    IntrospectionResolver,
+    MetaMeshAgent,
+    impl Future<Output = ()> + Send + 'static,
+) {
+    let agents = Arc::new(RwLock::new(UriForest::new()));
+    let (msg_tx, msg_rx) = mpsc::unbounded_channel();
+    let (reg_tx, reg_rx) = mpsc::channel(channel_size.get());
+    let task = introspection_task(stopping, msg_rx, reg_rx, agents.clone());
+    let meta_agent = MetaMeshAgent::new(agents);
+    let resolver = IntrospectionResolver::new(msg_tx, reg_tx);
+    (resolver, meta_agent, task)
+}
+
+/// Trait for routing tables with which the introspection agents can be registered.
+pub trait AgentRegistration {
+    /// Register an agent type.
+    ///
+    /// # Arguments
+    /// * `pattern` - The route pattern at which the agent will be loaded.
+    /// * `agent` - The agent to register.
+    fn register<A: Agent + Send + 'static>(&mut self, pattern: RoutePattern, agent: A);
+}
+
+/// Register the introspection agent types with the server. This returns the [`IntrospectionResolver`] used to
+/// register new agents with the introspection system and an asynchronous task to run the introspection system.
+/// This task must be run in parallel with the rest of the server for the introspection system to work.
+///
+/// # Arguments
+/// * `stopping` - Signal that the server is stopping.
+/// * `config` - Configuration parameters for the introspection agents.
+/// * `registration` - Registration context to register the introspection agent routes.
+pub fn register_introspection<R>(
+    stopping: trigger::Receiver,
+    config: IntrospectionConfig,
+    registration: &mut R,
 ) -> (
     IntrospectionResolver,
     impl Future<Output = ()> + Send + 'static,
-) {
-    let (msg_tx, msg_rx) = mpsc::unbounded_channel();
-    let (reg_tx, reg_rx) = mpsc::channel(channel_size.get());
-    let task = introspection_task(stopping, msg_rx, reg_rx, agents);
-    let resolver = IntrospectionResolver::new(msg_tx, reg_tx);
+)
+where
+    R: AgentRegistration,
+{
+    let (resolver, mesh_meta, task) =
+        init_introspection(stopping, config.registration_channel_size);
+    let node_meta = NodeMetaAgent::new(config, resolver.clone());
+    let lane_meta = LaneMetaAgent::new(config, resolver.clone());
+
+    registration.register(mesh_pattern(), mesh_meta);
+    registration.register(node_pattern(), node_meta);
+    registration.register(lane_pattern(), lane_meta);
     (resolver, task)
 }
 
@@ -308,7 +353,7 @@ impl IntrospectionResolver {
 
     /// Register a new agent instance for introspection.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `agent_id` - The unique ID of the agent.
     /// * `route_uri` - The node URI of the agent.
     /// * `name` - The name of the agent; usually the struct name.
@@ -340,7 +385,7 @@ impl IntrospectionResolver {
 
     /// Remove a stopped agent from the intorspectio registry.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `agent_id` - The unique ID of the agent.
     pub fn close_agent(&self, agent_id: Uuid) -> Result<(), IntrospectionStopped> {
         let IntrospectionResolver { queries, .. } = self;
@@ -356,7 +401,7 @@ impl IntrospectionResolver {
 
     /// Attempt to resolve an introspection handle for a running agent instance.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `node_uri` - The node URI of the agent.
     pub async fn resolve_agent(
         &self,
@@ -373,7 +418,7 @@ impl IntrospectionResolver {
 
     /// Attempt to resolve an introspection view of a lane of a running agent instance.
     ///
-    /// #Arguments
+    /// # Arguments
     ///
     /// * `node_uri` - The node URI of the host agent.
     /// * `lane_name` - The name of the lane.

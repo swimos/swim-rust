@@ -14,7 +14,7 @@
 
 use std::cell::RefCell;
 
-use swimos::agent::agent_lifecycle::utility::HandlerContext;
+use swimos::agent::agent_lifecycle::HandlerContext;
 use swimos::agent::agent_model::AgentModel;
 use swimos::agent::event_handler::{EventHandler, HandlerActionExt};
 use swimos::agent::lanes::ValueLane;

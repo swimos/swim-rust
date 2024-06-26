@@ -18,23 +18,26 @@ use std::time::Duration;
 
 use crate::downlink::failure::BadFrameResponse;
 use crate::timeout_coord::{VoteResult, Voter};
+use crate::Io;
 use backpressure::DownlinkBackpressure;
 use bitflags::bitflags;
 use bytes::{Bytes, BytesMut};
 use futures::future::{join, select, Either};
 use futures::stream::SelectAll;
 use futures::{Future, FutureExt, Sink, SinkExt, Stream, StreamExt};
-pub use interpretation::MapInterpretation;
-pub use interpretation::NoInterpretation;
-use swimos_api::protocol::downlink::{DownlinkNotification, DownlinkNotificationEncoder};
+use interpretation::MapInterpretation;
+use swimos_agent_protocol::{
+    encoding::downlink::DownlinkNotificationEncoder, DownlinkNotification,
+};
+use swimos_api::address::RelativeAddress;
 use swimos_messages::protocol::{
-    Notification, Operation, Path, RawRequestMessage, RawRequestMessageEncoder,
+    Notification, Operation, RawRequestMessage, RawRequestMessageEncoder,
     RawResponseMessageDecoder, ResponseMessage,
 };
-use swimos_model::address::RelativeAddress;
-use swimos_model::{BytesStr, Text};
+use swimos_model::Text;
+use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::encoding::BytesStr;
 use swimos_utilities::future::{immediate_or_join, immediate_or_start, SecondaryResult};
-use swimos_utilities::io::byte_channel::{ByteReader, ByteWriter};
 use swimos_utilities::trigger;
 use tokio::sync::mpsc;
 use tokio::time::{timeout, Instant};
@@ -43,7 +46,10 @@ use tokio_util::codec::{Decoder, Encoder, FramedRead, FramedWrite};
 use tracing::{error, info, info_span, trace, warn, Instrument};
 use uuid::Uuid;
 
+pub use interpretation::NoInterpretation;
+
 mod backpressure;
+/// Strategies for handling invalid envelopes.
 pub mod failure;
 mod interpretation;
 #[cfg(test)]
@@ -52,13 +58,15 @@ mod tests;
 bitflags! {
     /// Flags that a downlink consumer can set to instruct the downlink runtime how it wishes
     /// to be driven.
+    #[derive(Debug, Copy, Clone)]
     pub struct DownlinkOptions: u8 {
         /// The consumer needs to be synchronized with the remote lane.
         const SYNC = 0b01;
         /// If the connection fails, it should be restarted and the consumer passed to the new
         /// connection.
         const KEEP_LINKED = 0b10;
-        const DEFAULT = Self::SYNC.bits | Self::KEEP_LINKED.bits;
+        /// By default, all options are enabled.
+        const DEFAULT = Self::SYNC.bits() | Self::KEEP_LINKED.bits();
     }
 }
 
@@ -70,14 +78,15 @@ bitflags! {
         /// A new consumer that needs to be synced has joined why a write was pending.
         const NEEDS_SYNC = 0b10;
         /// When the task starts it does not need to be flushed.
-        const INIT = Self::FLUSHED.bits;
+        const INIT = Self::FLUSHED.bits();
     }
 }
 
-pub type Io = (ByteWriter, ByteReader);
-
 impl WriteTaskState {
     /// If a new consumer needs to be synced, set the appropriate state bit.
+    ///
+    /// # Arguments
+    /// * `options` - The option flags.
     pub fn set_needs_sync(&mut self, options: DownlinkOptions) {
         if options.contains(DownlinkOptions::SYNC) {
             *self |= WriteTaskState::NEEDS_SYNC;
@@ -87,18 +96,16 @@ impl WriteTaskState {
 
 /// A request to attach a new consumer to the downlink runtime.
 pub struct AttachAction {
-    input: ByteReader,
-    output: ByteWriter,
+    io: Io,
     options: DownlinkOptions,
 }
 
 impl AttachAction {
-    pub fn new(input: ByteReader, output: ByteWriter, options: DownlinkOptions) -> Self {
-        AttachAction {
-            input,
-            output,
-            options,
-        }
+    /// # Arguments
+    /// * `io` - Bidirectional channel to communicate with the downlink runtime.
+    /// * `options` - Option flags for the downlink.
+    pub fn new(io: Io, options: DownlinkOptions) -> Self {
+        AttachAction { io, options }
     }
 }
 
@@ -176,7 +183,7 @@ where
 }
 
 impl ValueDownlinkRuntime {
-    /// #Arguments
+    /// # Arguments
     /// * `requests` - The channel through which new consumers connect to the runtime.
     /// * `io` - Byte channels through which messages are received from and sent to the remote lane.
     /// * `stopping` - Trigger to instruct the runtime to stop.
@@ -206,6 +213,7 @@ impl ValueDownlinkRuntime {
         }
     }
 
+    /// Run the downlink task.
     pub async fn run(self) {
         let ValueDownlinkRuntime {
             requests,
@@ -238,7 +246,7 @@ impl ValueDownlinkRuntime {
             output,
             producer_rx,
             identity,
-            Path::new(path.node.clone(), path.lane.clone()),
+            RelativeAddress::new(path.node.clone(), path.lane.clone()),
             config,
             ValueBackpressure::default(),
             write_vote,
@@ -255,7 +263,7 @@ impl ValueDownlinkRuntime {
 }
 
 impl<H> MapDownlinkRuntime<H, MapInterpretation> {
-    /// #Arguments
+    /// # Arguments
     /// * `requests` - The channel through which new consumers connect to the runtime.
     /// * `io` - Byte channels through which messages are received from and sent to the remote lane.
     /// * `stopping` - Trigger to instruct the runtime to stop.
@@ -292,7 +300,7 @@ impl<H> MapDownlinkRuntime<H, MapInterpretation> {
 }
 
 impl<I, H> MapDownlinkRuntime<H, I> {
-    /// #Arguments
+    /// # Arguments
     /// * `requests` - The channel through which new consumers connect to the runtime.
     /// * `io` - Byte channels through which messages are received from and sent to the remote lane.
     /// * `stopping` - Trigger to instruct the runtime to stop.
@@ -331,8 +339,11 @@ impl<I, H> MapDownlinkRuntime<H, I> {
     }
 }
 
+/// Identity labels for a downlink runtime.
 pub struct IdentifiedAddress {
+    /// The unique routing ID of the downlink.
     pub identity: Uuid,
+    /// The address to which the downlink is attached.
     pub address: RelativeAddress<Text>,
 }
 
@@ -341,6 +352,7 @@ where
     I: DownlinkInterpretation,
     H: BadFrameStrategy<I::Error>,
 {
+    /// Run the downlink runtime task.
     pub async fn run(self) {
         let MapDownlinkRuntime {
             requests,
@@ -375,7 +387,7 @@ where
             output,
             producer_rx,
             identity,
-            Path::new(path.node.clone(), path.lane.clone()),
+            RelativeAddress::new(path.node.clone(), path.lane.clone()),
             config,
             MapBackpressure::default(),
             write_vote,
@@ -405,8 +417,7 @@ async fn attach_task<F>(
 {
     let mut stream = ReceiverStream::new(rx).take_until(combined_stop);
     while let Some(AttachAction {
-        input,
-        output,
+        io: (output, input),
         options,
     }) = stream.next().await
     {
@@ -555,6 +566,10 @@ where
     let mut awaiting_synced: Vec<DownlinkSender> = vec![];
     let mut awaiting_linked: Vec<DownlinkSender> = vec![];
     let mut registered: Vec<DownlinkSender> = vec![];
+    // Track whether any events have been received while syncing the downlink. While this isn't the
+    // nicest thing to have, it's required to distinguish between communicating with a stateless
+    // lane and a downlink syncing with a lane that has a type which may be optional.
+    let mut sync_event = false;
 
     let result: Result<(), H::Report> = loop {
         let (event, is_active) = match task_state.as_mut().as_pin_mut() {
@@ -653,7 +668,17 @@ where
                     trace!("Entering Synced state.");
                     dl_state = ReadTaskDlState::Synced;
                     if is_active {
-                        if I::SINGLE_FRAME_STATE {
+                        // `sync_event` will be false if we're communicating with a stateless lane
+                        // as no event envelope will have been sent. However, it's valid Recon for
+                        // an empty event envelope to be sent (consider Option::None) and this must
+                        // still be sent to the downlink task.
+                        //
+                        // If we're linked to a stateless lane, then `sync_current` cannot be used
+                        // as we will not have received an event envelope as it will dispatch one
+                        // with the empty buffer and this may cause the downlink task's decoder to
+                        // fail due to reading an extant read event. Therefore, delegate the operation to
+                        // `sync_only` which will not send an event notification.
+                        if I::SINGLE_FRAME_STATE && sync_event {
                             sync_current(&mut awaiting_synced, &mut registered, &current).await;
                         } else {
                             sync_only(&mut awaiting_synced, &mut registered).await;
@@ -669,8 +694,11 @@ where
                     break Ok(());
                 }
                 Notification::Event(bytes) => {
+                    sync_event = true;
+
                     trace!("Updating the current value.");
                     current.clear();
+
                     if let Err(e) = interpretation.interpret_frame_data(bytes, &mut current) {
                         if let BadFrameResponse::Abort(report) = failure_handler.failed_with(e) {
                             break Err(report);
@@ -832,11 +860,11 @@ async fn flush_all(senders: &mut Vec<DownlinkSender>) {
 struct RequestSender {
     sender: FramedWrite<ByteWriter, RawRequestMessageEncoder>,
     identity: Uuid,
-    path: Path<Text>,
+    path: RelativeAddress<Text>,
 }
 
 impl RequestSender {
-    fn new(writer: ByteWriter, identity: Uuid, path: Path<Text>) -> Self {
+    fn new(writer: ByteWriter, identity: Uuid, path: RelativeAddress<Text>) -> Self {
         RequestSender {
             sender: FramedWrite::new(writer, RawRequestMessageEncoder),
             identity,
@@ -926,7 +954,7 @@ async fn write_task<B: DownlinkBackpressure>(
     output: ByteWriter,
     producers: mpsc::Receiver<(ByteReader, DownlinkOptions)>,
     identity: Uuid,
-    path: Path<Text>,
+    path: RelativeAddress<Text>,
     config: DownlinkRuntimeConfig,
     mut backpressure: B,
     stop_voter: Voter,

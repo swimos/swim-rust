@@ -21,25 +21,15 @@ use bytes::BytesMut;
 use parking_lot::Mutex;
 use swimos_api::agent::AgentConfig;
 use swimos_model::Text;
-use swimos_utilities::routing::route_uri::RouteUri;
+use swimos_utilities::routing::RouteUri;
 
 use crate::{
     agent_lifecycle::item_event::ItemEvent,
     agent_model::run_handler,
-    event_handler::{
-        ActionContext, HandlerAction, HandlerFuture, Modification, Spawner, StepResult,
-    },
+    event_handler::{ActionContext, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
     test_context::dummy_context,
 };
-
-struct NoSpawn;
-
-impl<Context> Spawner<Context> for NoSpawn {
-    fn spawn_suspend(&self, _: HandlerFuture<Context>) {
-        panic!("No suspended futures expected.");
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Lane {

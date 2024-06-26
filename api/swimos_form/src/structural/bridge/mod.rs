@@ -15,15 +15,15 @@
 #[cfg(test)]
 mod tests;
 
-use crate::structural::read::event::{NumericValue, ReadEvent};
-use crate::structural::read::recognizer::Recognizer;
 use crate::structural::read::ReadError;
+use crate::structural::read::Recognizer;
+use crate::structural::read::{NumericValue, ReadEvent};
 use crate::structural::write::{
     BodyWriter, HeaderWriter, Label, PrimitiveWriter, RecordBodyKind, StructuralWritable,
     StructuralWriter,
 };
 use std::borrow::Cow;
-use swimos_model::bigint::{BigInt, BigUint};
+use swimos_model::{BigInt, BigUint};
 
 /// Bridge to forward writes to a [`StructuralWriter`] instance to the builder methods
 /// on a [`StructuralReadable`] type.

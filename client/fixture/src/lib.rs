@@ -13,17 +13,16 @@ use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::ops::DerefMut;
 use std::sync::Arc;
-use swimos_api::net::Scheme;
 use swimos_form::Form;
+use swimos_messages::remote_protocol::FindNode;
 use swimos_model::{Text, Value};
-use swimos_recon::parser::{parse_recognize, Span};
-use swimos_recon::printer::print_recon;
-use swimos_remote::net::dns::{BoxDnsResolver, DnsResolver};
-use swimos_remote::net::{
-    ClientConnections, ConnResult, ConnectionError, IoResult, Listener, ListenerError,
+use swimos_recon::parser::parse_recognize;
+use swimos_recon::print_recon;
+use swimos_remote::dns::{BoxDnsResolver, DnsResolver};
+use swimos_remote::websocket::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
+use swimos_remote::{
+    ClientConnections, ConnectionError, ConnectionResult, Listener, ListenerError, Scheme,
 };
-use swimos_remote::ws::{RatchetError, WebsocketClient, WebsocketServer, WsOpenFuture};
-use swimos_remote::FindNode;
 use tokio::io::{AsyncRead, AsyncWrite, DuplexStream};
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
@@ -72,7 +71,7 @@ impl ClientConnections for MockClientConnections {
         _scheme: Scheme,
         _host: Option<&str>,
         addr: SocketAddr,
-    ) -> BoxFuture<'_, ConnResult<Self::ClientSocket>> {
+    ) -> BoxFuture<'_, ConnectionResult<Self::ClientSocket>> {
         async move {
             self.inner
                 .lock()
@@ -88,7 +87,11 @@ impl ClientConnections for MockClientConnections {
         Box::new(self.clone())
     }
 
-    fn lookup(&self, host: String, port: u16) -> BoxFuture<'static, IoResult<Vec<SocketAddr>>> {
+    fn lookup(
+        &self,
+        host: String,
+        port: u16,
+    ) -> BoxFuture<'static, std::io::Result<Vec<SocketAddr>>> {
         self.resolve(host, port).boxed()
     }
 }
@@ -286,7 +289,7 @@ impl Lane {
         let read = String::from_utf8(buf.to_vec()).unwrap();
         buf.clear();
 
-        parse_recognize::<Envelope>(Span::new(&read), false).unwrap()
+        parse_recognize::<Envelope>(read.as_str(), false).unwrap()
     }
 
     pub async fn write(&mut self, env: Envelope) {

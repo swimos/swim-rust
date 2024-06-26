@@ -15,9 +15,9 @@
 use std::collections::HashSet;
 
 use swimos_api::agent::{Agent, BoxAgent};
-use swimos_introspection::route::{lane_pattern, node_pattern};
+use swimos_introspection::{lane_pattern, node_pattern};
 use swimos_model::Text;
-use swimos_utilities::routing::route_pattern::RoutePattern;
+use swimos_utilities::routing::RoutePattern;
 
 use crate::{error::AmbiguousRoutes, util::AgentExt};
 
@@ -119,7 +119,7 @@ impl PlaneBuilder {
     /// Add a new route to the builder. This does not check that the route is not ambiguous
     /// with respect to the already added routes.
     ///
-    /// #Arguments
+    /// # Arguments
     /// * `pattern` - The route pattern for matching the node URI of incoming envelopes.
     /// * `agent` - The agent type to be started each time the route matches.
     pub fn add_route<A: Agent + Send + 'static>(&mut self, pattern: RoutePattern, agent: A) {
@@ -133,7 +133,7 @@ mod tests {
 
     use futures::future::BoxFuture;
     use swimos_api::agent::{Agent, AgentConfig, AgentContext, AgentInitResult};
-    use swimos_utilities::routing::{route_pattern::RoutePattern, route_uri::RouteUri};
+    use swimos_utilities::routing::{RoutePattern, RouteUri};
 
     use crate::error::AmbiguousRoutes;
 

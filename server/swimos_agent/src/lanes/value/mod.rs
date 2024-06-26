@@ -21,8 +21,8 @@ use std::{borrow::Borrow, cell::RefCell, collections::VecDeque, marker::PhantomD
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
-use swimos_api::protocol::agent::{LaneResponse, ValueLaneResponseEncoder};
-use swimos_form::structural::{read::recognizer::RecognizerReadable, write::StructuralWritable};
+use swimos_agent_protocol::{encoding::lane::ValueLaneResponseEncoder, LaneResponse};
+use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use tokio_util::codec::Encoder;
 use uuid::Uuid;
 
@@ -50,7 +50,7 @@ pub struct ValueLane<T> {
 assert_impl_all!(ValueLane<()>: Send);
 
 impl<T> ValueLane<T> {
-    /// #Arguments
+    /// # Arguments
     /// * `id` - The ID of the lane. This should be unique in an agent.
     /// * `init` - The initial value of the lane.
     pub fn new(id: u64, init: T) -> Self {
@@ -69,11 +69,11 @@ impl<T> ValueLane<T> {
     }
 
     /// Update the state of the lane.
-    pub fn set(&self, value: T) {
+    pub(crate) fn set(&self, value: T) {
         self.store.set(value)
     }
 
-    pub fn sync(&self, id: Uuid) {
+    pub(crate) fn sync(&self, id: Uuid) {
         let ValueLane { sync_queue, .. } = self;
         sync_queue.borrow_mut().push_back(id);
     }
@@ -154,14 +154,14 @@ impl<T> ValueItem<T> for ValueLane<T> {
     }
 }
 
-/// An [`EventHandler`] that will get the value of a value lane.
+///  An [event handler](crate::event_handler::EventHandler)`] that will get the value of a value lane.
 pub struct ValueLaneGet<C, T> {
     projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
     done: bool,
 }
 
 impl<C, T> ValueLaneGet<C, T> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent context to the lane.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>) -> Self {
         ValueLaneGet {
@@ -171,20 +171,20 @@ impl<C, T> ValueLaneGet<C, T> {
     }
 }
 
-/// An [`EventHandler`] that will set the value of a value lane.
+///  An [event handler](crate::event_handler::EventHandler)`] that will set the value of a value lane.
 pub struct ValueLaneSet<C, T> {
     projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
     value: Option<T>,
 }
 
-/// An [`EventHandler`] that will request a sync from the lane.
+///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
 pub struct ValueLaneSync<C, T> {
     projection: for<'b> fn(&'b C) -> &'b ValueLane<T>,
     id: Option<Uuid>,
 }
 
 impl<C, T> ValueLaneSet<C, T> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent context to the lane.
     /// * `value` - The new value for the lane.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>, value: T) -> Self {
@@ -196,7 +196,7 @@ impl<C, T> ValueLaneSet<C, T> {
 }
 
 impl<C, T> ValueLaneSync<C, T> {
-    /// #Arguments
+    /// # Arguments
     /// * `projection` - Projection from the agent context to the lane.
     /// * `id` - The ID of the remote that requested the sync.
     pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>, id: Uuid) -> Self {

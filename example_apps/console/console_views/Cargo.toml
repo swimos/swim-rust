@@ -5,5 +5,5 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [dependencies]
-cursive = { version = "0.20", default-features = false }
+cursive = { workspace = true }
 
