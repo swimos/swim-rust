@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 use example_util::format_map;
 use swimos::agent::{
     agent_lifecycle::HandlerContext,
-    agent_model::downlink::hosted::MapDownlinkHandle,
+    agent_model::downlink::MapDownlinkHandle,
     event_handler::{EventHandler, HandlerAction, HandlerActionExt},
     lanes::{CommandLane, ValueLane},
     lifecycle, projections,

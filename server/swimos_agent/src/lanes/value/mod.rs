@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
-use std::{cell::RefCell, collections::VecDeque};
+use std::{borrow::Borrow, cell::RefCell, collections::VecDeque, marker::PhantomData};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
@@ -76,6 +76,23 @@ impl<T> ValueLane<T> {
     pub(crate) fn sync(&self, id: Uuid) {
         let ValueLane { sync_queue, .. } = self;
         sync_queue.borrow_mut().push_back(id);
+    }
+
+    /// Replace the contents of the lane.
+    pub fn replace<F>(&self, f: F)
+    where
+        F: FnOnce(&T) -> T,
+    {
+        self.store.replace(f);
+    }
+
+    pub(crate) fn with<F, B, U>(&self, f: F) -> U
+    where
+        B: ?Sized,
+        T: Borrow<B>,
+        F: FnOnce(&B) -> U,
+    {
+        self.store.with(f)
     }
 }
 
@@ -257,6 +274,49 @@ impl<C, T> HandlerAction<C> for ValueLaneSync<C, T> {
     }
 }
 
+/// An [`HandlerAction`] that will produce a value from a reference to the contents of the lane.
+pub struct ValueLaneWithValue<C, T, F, B: ?Sized> {
+    projection: for<'a> fn(&'a C) -> &'a ValueLane<T>,
+    f: Option<F>,
+    _type: PhantomData<fn(&B)>,
+}
+
+impl<C, T, F, B: ?Sized> ValueLaneWithValue<C, T, F, B> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the lane.
+    /// * `f` - Closure to apply to the value of the lane.
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueLane<T>, f: F) -> Self {
+        ValueLaneWithValue {
+            projection,
+            f: Some(f),
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<C, T, F, B, U> HandlerAction<C> for ValueLaneWithValue<C, T, F, B>
+where
+    B: ?Sized,
+    T: Borrow<B>,
+    F: FnOnce(&B) -> U,
+{
+    type Completion = U;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        if let Some(f) = self.f.take() {
+            let lane = (self.projection)(context);
+            StepResult::done(lane.with(f))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
 impl<C, T> HandlerTrans<T> for ProjTransform<C, ValueLane<T>> {
     type Out = ValueLaneSet<C, T>;
 
@@ -286,8 +346,29 @@ where
     where
         C: 'static;
 
+    type WithValueHandler<'a, C, F, B, U> = ValueLaneWithValue<C, T, F, B>
+    where
+        Self: 'static,
+        C: 'a,
+        T: Borrow<B>,
+        B: ?Sized + 'static,
+        F: FnOnce(&B) -> U + Send + 'a;
+
     fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C> {
         ValueLaneGet::new(projection)
+    }
+
+    fn with_value_handler<'a, Item, C, F, B, U>(
+        projection: fn(&C) -> &Self,
+        f: F,
+    ) -> Self::WithValueHandler<'a, C, F, B, U>
+    where
+        C: 'a,
+        T: Borrow<B>,
+        B: ?Sized + 'static,
+        F: FnOnce(&B) -> U + Send + 'a,
+    {
+        ValueLaneWithValue::new(projection, f)
     }
 }
 

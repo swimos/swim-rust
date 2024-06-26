@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ impl<K, V, Q: Default> MapStoreInner<K, V, Q> {
     }
 }
 
-pub enum WithEntryResult {
+pub enum TransformEntryResult {
     NoChange,
     Update,
     Remove,
@@ -76,10 +76,9 @@ where
         queue.push(MapOperation::Update { key, value: () });
     }
 
-    pub fn with_entry<F>(&mut self, key: K, f: F) -> WithEntryResult
+    pub fn transform_entry<F>(&mut self, key: K, f: F) -> TransformEntryResult
     where
-        V: Clone,
-        F: FnOnce(Option<V>) -> Option<V>,
+        F: FnOnce(Option<&V>) -> Option<V>,
     {
         let MapStoreInner {
             content,
@@ -87,17 +86,17 @@ where
             queue,
         } = self;
         match content.remove(&key) {
-            Some(v) => match f(Some(v.clone())) {
+            Some(v) => match f(Some(&v)) {
                 Some(v2) => {
                     content.insert(key.clone(), v2);
                     *previous = Some(MapLaneEvent::Update(key.clone(), Some(v)));
                     queue.push(MapOperation::Update { key, value: () });
-                    WithEntryResult::Update
+                    TransformEntryResult::Update
                 }
                 _ => {
                     *previous = Some(MapLaneEvent::Remove(key.clone(), v));
                     queue.push(MapOperation::Remove { key: key.clone() });
-                    WithEntryResult::Remove
+                    TransformEntryResult::Remove
                 }
             },
             _ => match f(None) {
@@ -105,9 +104,9 @@ where
                     content.insert(key.clone(), v2);
                     *previous = Some(MapLaneEvent::Update(key.clone(), None));
                     queue.push(MapOperation::Update { key, value: () });
-                    WithEntryResult::Update
+                    TransformEntryResult::Update
                 }
-                _ => WithEntryResult::NoChange,
+                _ => TransformEntryResult::NoChange,
             },
         }
     }
@@ -135,16 +134,6 @@ where
         queue.push(MapOperation::Clear);
     }
 
-    pub fn get<B, F, R>(&self, key: &B, f: F) -> R
-    where
-        K: Borrow<B>,
-        B: Hash + Eq,
-        F: FnOnce(Option<&V>) -> R,
-    {
-        let MapStoreInner { content, .. } = self;
-        f(content.get(key))
-    }
-
     pub fn get_map<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&HashMap<K, V>) -> R,
@@ -170,5 +159,23 @@ where
     pub fn pop_operation(&mut self) -> Option<Q::Output<'_>> {
         let MapStoreInner { content, queue, .. } = self;
         queue.pop(content)
+    }
+}
+
+impl<K, V, Q> MapStoreInner<K, V, Q>
+where
+    K: Eq + Hash,
+{
+    pub fn with_entry<B1, B2, F, R>(&self, key: &B1, f: F) -> R
+    where
+        B1: ?Sized,
+        B2: ?Sized,
+        K: Borrow<B1>,
+        V: Borrow<B2>,
+        B1: Hash + Eq,
+        F: FnOnce(Option<&B2>) -> R,
+    {
+        let MapStoreInner { content, .. } = self;
+        f(content.get(key).map(Borrow::borrow))
     }
 }

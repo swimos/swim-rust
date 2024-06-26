@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,8 +33,8 @@ use crate::{
     meta::AgentMetadata,
     stores::{
         map::{
-            MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreUpdate,
-            MapStoreWithEntry,
+            MapStoreClear, MapStoreGet, MapStoreGetMap, MapStoreRemove, MapStoreTransformEntry,
+            MapStoreUpdate, MapStoreWithEntry,
         },
         MapStore, StoreItem,
     },
@@ -573,7 +573,7 @@ fn map_store_with_event_handler_update() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = MapStoreWithEntry::new(TestAgent::STORE, K1, |maybe: Option<Text>| {
+    let mut handler = MapStoreTransformEntry::new(TestAgent::STORE, K1, |maybe: Option<&Text>| {
         maybe.map(|v| Text::from(v.as_str().to_uppercase()))
     });
 
@@ -612,7 +612,7 @@ fn map_lane_with_event_handler_remove() {
     let meta = make_meta(&uri, &route_params);
     let agent = TestAgent::with_init();
 
-    let mut handler = MapStoreWithEntry::new(TestAgent::STORE, K1, |_: Option<Text>| None);
+    let mut handler = MapStoreTransformEntry::new(TestAgent::STORE, K1, |_: Option<&Text>| None);
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
@@ -639,4 +639,42 @@ fn map_lane_with_event_handler_remove() {
 
     let event = agent.store.read_with_prev(|event, _| event);
     assert_eq!(event, Some(MapLaneEvent::Remove(K1, Text::new(V1))));
+}
+
+#[test]
+fn map_lane_with_entry_handler_absent() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapStoreWithEntry::new(TestAgent::STORE, ABSENT, |maybe_v: Option<&str>| {
+        maybe_v.map(str::to_owned)
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(None));
+}
+
+#[test]
+fn map_lane_with_entry_handler_present() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapStoreWithEntry::new(TestAgent::STORE, K1, |maybe_v: Option<&str>| {
+        maybe_v.map(str::to_owned)
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(Some(V1.to_owned())));
 }

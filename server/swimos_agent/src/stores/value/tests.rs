@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ use crate::{
     event_handler::{EventHandlerError, HandlerAction, Modification, StepResult},
     meta::AgentMetadata,
     stores::{
-        value::{ValueStore, ValueStoreGet, ValueStoreSet},
+        value::{ValueStore, ValueStoreGet, ValueStoreSet, ValueStoreWithValue},
         StoreItem,
     },
     test_context::dummy_context,
@@ -114,23 +114,28 @@ fn make_meta<'a>(
 
 struct TestAgent {
     store: ValueStore<i32>,
+    str_store: ValueStore<String>,
 }
 
 const STORE_ID: u64 = 9;
+const STR_STORE_ID: u64 = 3;
 
 impl Default for TestAgent {
     fn default() -> Self {
         Self {
             store: ValueStore::new(STORE_ID, 0),
+            str_store: ValueStore::new(STR_STORE_ID, "world".to_owned()),
         }
     }
 }
 
 impl TestAgent {
     const STORE: fn(&TestAgent) -> &ValueStore<i32> = |agent| &agent.store;
+    const STR_STORE: fn(&TestAgent) -> &ValueStore<String> = |agent| &agent.str_store;
 }
 
-fn check_result<T: Eq + Debug>(
+fn check_result_for<T: Eq + Debug>(
+    store_id: u64,
     result: StepResult<T>,
     written: bool,
     trigger_handler: bool,
@@ -138,9 +143,9 @@ fn check_result<T: Eq + Debug>(
 ) {
     let expected_mod = if written {
         if trigger_handler {
-            Some(Modification::of(STORE_ID))
+            Some(Modification::of(store_id))
         } else {
-            Some(Modification::no_trigger(STORE_ID))
+            Some(Modification::no_trigger(store_id))
         }
     } else {
         None
@@ -163,6 +168,15 @@ fn check_result<T: Eq + Debug>(
             panic!("Unexpected result: {:?}", ow);
         }
     }
+}
+
+fn check_result<T: Eq + Debug>(
+    result: StepResult<T>,
+    written: bool,
+    trigger_handler: bool,
+    complete: Option<T>,
+) {
+    check_result_for(STORE_ID, result, written, trigger_handler, complete)
 }
 
 #[test]
@@ -210,6 +224,33 @@ fn value_store_get_event_handler() {
         &agent,
     );
     check_result(result, false, false, Some(0));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn value_store_with_value_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+
+    let mut handler = ValueStoreWithValue::new(TestAgent::STR_STORE, |s: &str| s.len());
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(5));
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),

@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cell::{Cell, RefCell};
+use std::{
+    borrow::Borrow,
+    cell::{Cell, RefCell},
+    marker::PhantomData,
+};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
@@ -119,6 +123,31 @@ impl<T> ValueStore<T> {
         } else {
             false
         }
+    }
+
+    pub(crate) fn replace<F>(&self, f: F)
+    where
+        F: FnOnce(&T) -> T,
+    {
+        let ValueStore { inner, dirty, .. } = self;
+        let mut guard = inner.borrow_mut();
+        let Inner { content, previous } = &mut *guard;
+        let new_value = f(content);
+        let prev = std::mem::replace(content, new_value);
+        *previous = Some(prev);
+        dirty.replace(true);
+    }
+
+    pub(crate) fn with<F, B, U>(&self, f: F) -> U
+    where
+        B: ?Sized,
+        T: Borrow<B>,
+        F: FnOnce(&B) -> U,
+    {
+        let ValueStore { inner, .. } = self;
+        let guard = inner.borrow();
+        let Inner { content, .. } = &*guard;
+        f(content.borrow())
     }
 }
 
@@ -247,6 +276,49 @@ impl<C, T> HandlerAction<C> for ValueStoreSet<C, T> {
     }
 }
 
+/// An [`HandlerAction`] that will produce a value from a reference to the contents of the store.
+pub struct ValueStoreWithValue<C, T, F, B: ?Sized> {
+    projection: for<'a> fn(&'a C) -> &'a ValueStore<T>,
+    f: Option<F>,
+    _type: PhantomData<fn(&B)>,
+}
+
+impl<C, T, F, B: ?Sized> ValueStoreWithValue<C, T, F, B> {
+    /// #Arguments
+    /// * `projection` - Projection from the agent context to the store.
+    /// * `f` - Closure to apply to the value of the store.
+    pub fn new(projection: for<'a> fn(&'a C) -> &'a ValueStore<T>, f: F) -> Self {
+        ValueStoreWithValue {
+            projection,
+            f: Some(f),
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<C, T, F, B, U> HandlerAction<C> for ValueStoreWithValue<C, T, F, B>
+where
+    T: Borrow<B>,
+    B: ?Sized,
+    F: FnOnce(&B) -> U,
+{
+    type Completion = U;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        if let Some(f) = self.f.take() {
+            let store = (self.projection)(context);
+            StepResult::done(store.with(f))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
 impl<T> ValueLikeItem<T> for ValueStore<T>
 where
     T: Clone + Send + 'static,
@@ -255,8 +327,29 @@ where
     where
         C: 'static;
 
+    type WithValueHandler<'a, C, F, B, U> = ValueStoreWithValue<C, T, F, B>
+    where
+        Self: 'static,
+        C: 'a,
+        T: Borrow<B>,
+        B: ?Sized + 'static,
+        F: FnOnce(&B) -> U + Send + 'a;
+
     fn get_handler<C: 'static>(projection: fn(&C) -> &Self) -> Self::GetHandler<C> {
         ValueStoreGet::new(projection)
+    }
+
+    fn with_value_handler<'a, Item, C, F, B, U>(
+        projection: fn(&C) -> &Self,
+        f: F,
+    ) -> Self::WithValueHandler<'a, C, F, B, U>
+    where
+        C: 'a,
+        T: Borrow<B>,
+        B: ?Sized + 'static,
+        F: FnOnce(&B) -> U + Send + 'a,
+    {
+        ValueStoreWithValue::new(projection, f)
     }
 }
 

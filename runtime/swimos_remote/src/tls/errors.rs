@@ -1,4 +1,4 @@
-// Copyright 2015-2023 Swim Inc.
+// Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,4 +32,10 @@ pub enum TlsError {
     /// Performing the TLS handshake failed.
     #[error("TLS handshake failed: {0}")]
     HandshakeFailed(std::io::Error),
+    /// User specified that a cryptographic provider had been installed but none was found.
+    #[error("No default cryptographic provider has been installed")]
+    NoCryptoProviderInstalled,
+    /// User specified more than one cryptographic provider feature flag. Only one may be specified.
+    #[error("Ambiguous cryptographic provider feature flags specified. Only \"ring_provider\" or \"aws_lc_rs_provider\" may be specified")]
+    InvalidCryptoProvider,
 }
