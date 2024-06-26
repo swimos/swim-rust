@@ -3,6 +3,8 @@ name = "swimos_api"
 version = "0.1.0"
 authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
+description = "SwimOS API"
+license = "Apache-2.0"
 
 [dependencies]
 futures = { workspace = true }

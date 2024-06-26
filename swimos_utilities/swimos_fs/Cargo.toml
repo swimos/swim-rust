@@ -2,6 +2,8 @@
 name = "swimos_fs"
 version = "0.1.0"
 edition = "2021"
+description = "SwimOS filesystem utilities"
+license = "Apache-2.0"
 
 [dependencies]
 tempdir = { workspace = true }

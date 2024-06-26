@@ -3,6 +3,8 @@ name = "swimos_meta"
 version = "0.1.0"
 authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
+description = "SwimOS meta APIs"
+license = "Apache-2.0"
 
 [dependencies]
 swimos_model = { path = "../swimos_model", version = "0.1.0" }
