@@ -23,3 +23,40 @@ pub use config::{
 pub use errors::TlsError;
 pub use maybe::MaybeTlsStream;
 pub use net::{RustlsClientNetworking, RustlsListener, RustlsNetworking, RustlsServerNetworking};
+use rustls::crypto::CryptoProvider;
+use std::sync::Arc;
+
+#[derive(Default)]
+pub enum CryptoProviderConfig {
+    ProcessDefault,
+    #[default]
+    FromFeatureFlags,
+    Provided(Arc<CryptoProvider>),
+}
+
+impl CryptoProviderConfig {
+    pub fn build(self) -> Arc<CryptoProvider> {
+        match self {
+            CryptoProviderConfig::ProcessDefault => CryptoProvider::get_default()
+                .expect("No default cryptographic provider specified")
+                .clone(),
+            CryptoProviderConfig::FromFeatureFlags => {
+                #[cfg(all(feature = "ring_provider", not(feature = "aws_lc_rs_provider")))]
+                {
+                    return Arc::new(rustls::crypto::ring::default_provider());
+                }
+
+                #[cfg(all(feature = "aws_lc_rs_provider", not(feature = "ring_provider")))]
+                {
+                    return Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+                }
+
+                #[allow(unreachable_code)]
+                {
+                    panic!("Ambiguous cryptographic provider feature flags specified. Only \"ring_provider\" or \"aws_lc_rs_provider\" may be specified")
+                }
+            }
+            CryptoProviderConfig::Provided(provider) => provider,
+        }
+    }
+}

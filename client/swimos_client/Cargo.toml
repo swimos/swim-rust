@@ -5,9 +5,10 @@ edition = "2021"
 
 [features]
 default = []
-tls = ["swimos_remote/tls"]
 deflate = ["runtime/deflate"]
 trust_dns = ["swimos_runtime/trust_dns"]
+ring_provider = ["swimos_remote/ring_provider"]
+aws_lc_rs_provider = ["swimos_remote/aws_lc_rs_provider"]
 
 [dependencies]
 runtime = { path = "../runtime" }
@@ -25,4 +26,4 @@ tokio = { workspace = true, features = ["sync"] }
 futures = { workspace = true }
 futures-util = { workspace = true }
 tracing = { workspace = true }
-
+rustls = { workspace = true }

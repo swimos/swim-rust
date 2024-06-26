@@ -21,7 +21,8 @@ use ratchet::{
     deflate::{DeflateConfig, DeflateExtProvider},
     NoExtProvider, WebSocketStream,
 };
-use rustls::crypto::aws_lc_rs;
+use rustls::crypto::CryptoProvider;
+
 use swimos_api::{
     agent::Agent,
     error::StoreError,
@@ -49,6 +50,41 @@ use super::{
     BoxServer,
 };
 
+#[derive(Default)]
+enum CryptoProviderConfig {
+    ProcessDefault,
+    #[default]
+    FromFeatureFlags,
+    Provided(Arc<CryptoProvider>),
+}
+
+impl CryptoProviderConfig {
+    fn build(self) -> Arc<CryptoProvider> {
+        match self {
+            CryptoProviderConfig::ProcessDefault => CryptoProvider::get_default()
+                .expect("No default cryptographic provider specified")
+                .clone(),
+            CryptoProviderConfig::FromFeatureFlags => {
+                #[cfg(all(feature = "ring_provider", not(feature = "aws_lc_rs_provider")))]
+                {
+                    return Arc::new(rustls::crypto::ring::default_provider());
+                }
+
+                #[cfg(all(feature = "aws_lc_rs_provider", not(feature = "ring_provider")))]
+                {
+                    return Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+                }
+
+                #[allow(unreachable_code)]
+                {
+                    panic!("Ambiguous cryptographic provider feature flags specified. Only \"ring_provider\" or \"aws_lc_rs_provider\" may be specified")
+                }
+            }
+            CryptoProviderConfig::Provided(provider) => provider,
+        }
+    }
+}
+
 /// Builder for a swimos server that will listen on a socket and run a suite of agents.
 pub struct ServerBuilder {
     bind_to: SocketAddr,
@@ -58,6 +94,7 @@ pub struct ServerBuilder {
     config: SwimServerConfig,
     store_options: StoreConfig,
     introspection: Option<IntrospectionConfig>,
+    crypto_provider: CryptoProviderConfig,
 }
 
 #[non_exhaustive]
@@ -85,6 +122,7 @@ impl ServerBuilder {
             config: Default::default(),
             store_options: Default::default(),
             introspection: Default::default(),
+            crypto_provider: CryptoProviderConfig::default(),
         }
     }
 
@@ -160,6 +198,18 @@ impl ServerBuilder {
         self
     }
 
+    /// Uses the process-default [`CryptoProvider`] for any TLS connections.
+    pub fn with_default_crypto_provider(mut self) -> Self {
+        self.crypto_provider = CryptoProviderConfig::ProcessDefault;
+        self
+    }
+
+    /// Uses the provided [`CryptoProvider`] for any TLS connections.
+    pub fn with_crypto_provider(mut self, provider: Arc<CryptoProvider>) -> Self {
+        self.crypto_provider = CryptoProviderConfig::Provided(provider);
+        self
+    }
+
     /// Attempt to make a server instance. This will fail if the routes specified for the
     /// agents are ambiguous.
     pub async fn build(self) -> Result<BoxServer, ServerBuilderError> {
@@ -171,6 +221,7 @@ impl ServerBuilder {
             config,
             store_options,
             introspection,
+            crypto_provider,
         } = self;
         let routes = plane.build()?;
         if introspection.is_some() {
@@ -183,16 +234,19 @@ impl ServerBuilder {
             deflate,
             introspection,
         };
+        let crypto_provider = crypto_provider.build();
+
         if let Some(tls_conf) = tls_config {
-            let client = RustlsClientNetworking::try_from_config(resolver, tls_conf.client)?;
-            let server = RustlsServerNetworking::try_from(tls_conf.server)?;
+            let client =
+                RustlsClientNetworking::build(resolver, tls_conf.client, crypto_provider.clone())?;
+            let server = RustlsServerNetworking::build(tls_conf.server, crypto_provider)?;
             let networking = RustlsNetworking::new_tls(client, server);
             Ok(with_store(bind_to, routes, networking, config)?)
         } else {
-            let provider = Arc::new(aws_lc_rs::default_provider());
-            let client = RustlsClientNetworking::try_from_config(
+            let client = RustlsClientNetworking::build(
                 resolver.clone(),
-                ClientConfig::new(Default::default(), provider),
+                ClientConfig::new(Default::default()),
+                crypto_provider,
             )?;
             let server = TokioPlainTextNetworking::new(resolver);
             let networking = RustlsNetworking::new_plain_text(client, server);

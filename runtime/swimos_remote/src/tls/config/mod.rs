@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use rustls::crypto::CryptoProvider;
-use std::sync::Arc;
-
 /// Supported certificate formats for TLS connections.
 pub enum CertFormat {
     Pem,
@@ -87,17 +84,14 @@ pub struct ServerConfig {
     /// `SSLKEYLOGFILE` environment variable, and writes keys into it. While this may be enabled,
     /// if `SSLKEYLOGFILE` is not set, it will do nothing.
     pub enable_log_file: bool,
-    /// [`CryptoProvider`] to use when building the [`rustls::ServerConfig`].
-    pub provider: Arc<CryptoProvider>,
 }
 
 impl ServerConfig {
-    pub fn new(chain: CertChain, key: PrivateKey, provider: Arc<CryptoProvider>) -> Self {
+    pub fn new(chain: CertChain, key: PrivateKey) -> Self {
         ServerConfig {
             chain,
             key,
             enable_log_file: false,
-            provider,
         }
     }
 }
@@ -106,15 +100,13 @@ impl ServerConfig {
 pub struct ClientConfig {
     pub use_webpki_roots: bool,
     pub custom_roots: Vec<CertificateFile>,
-    pub provider: Arc<CryptoProvider>,
 }
 
 impl ClientConfig {
-    pub fn new(custom_roots: Vec<CertificateFile>, provider: Arc<CryptoProvider>) -> Self {
+    pub fn new(custom_roots: Vec<CertificateFile>) -> Self {
         ClientConfig {
             use_webpki_roots: true,
             custom_roots,
-            provider,
         }
     }
 }

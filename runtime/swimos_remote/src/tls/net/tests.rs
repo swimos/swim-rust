@@ -52,7 +52,6 @@ fn make_server_config() -> ServerConfig {
         chain,
         key,
         enable_log_file: false,
-        provider: Arc::new(aws_lc_rs::default_provider()),
     }
 }
 
@@ -62,17 +61,18 @@ fn make_client_config() -> ClientConfig {
     ClientConfig {
         use_webpki_roots: true,
         custom_roots: vec![CertificateFile::der(ca_cert)],
-        provider: Arc::new(aws_lc_rs::default_provider()),
     }
 }
 
 #[tokio::test]
 async fn perform_handshake() {
-    let server_net =
-        RustlsServerNetworking::try_from(make_server_config()).expect("Invalid server config.");
-    let client_net = RustlsClientNetworking::try_from_config(
+    let crypto_provider = Arc::new(aws_lc_rs::default_provider());
+    let server_net = RustlsServerNetworking::build(make_server_config(), crypto_provider.clone())
+        .expect("Invalid server config.");
+    let client_net = RustlsClientNetworking::build(
         Arc::new(Resolver::new().await),
         make_client_config(),
+        crypto_provider,
     )
     .expect("Invalid client config.");
 

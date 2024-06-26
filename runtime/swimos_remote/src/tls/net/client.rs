@@ -15,6 +15,7 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use futures::{future::BoxFuture, FutureExt};
+use rustls::crypto::CryptoProvider;
 use rustls::pki_types::ServerName;
 use rustls::RootCertStore;
 
@@ -40,14 +41,14 @@ impl RustlsClientNetworking {
         }
     }
 
-    pub fn try_from_config(
+    pub fn build(
         resolver: Arc<Resolver>,
         config: ClientConfig,
+        provider: Arc<CryptoProvider>,
     ) -> Result<Self, TlsError> {
         let ClientConfig {
             use_webpki_roots,
             custom_roots,
-            provider,
         } = config;
         let mut root_store = RootCertStore::empty();
         if use_webpki_roots {
