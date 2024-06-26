@@ -3,6 +3,9 @@ name = "swimos_agent_derive"
 version = "0.1.0"
 authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
+description = "SwimOS Agent Derive Macros"
+license = "Apache-2.0"
+repository = "https://github.com/swimos/swim-rust/"
 
 [lib]
 name = "swimos_agent_derive"
