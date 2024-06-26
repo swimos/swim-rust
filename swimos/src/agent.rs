@@ -142,13 +142,16 @@ pub use swimos_agent_derive::AgentLaneModel;
 /// 3. [Map Lanes](`lanes::MapLane`)
 /// 4. [Join-Value Lanes](`lanes::JoinValueLane`)
 /// 5. [Join-Map Lanes](`lanes::JoinMapLane`)
-/// 6. [HTTP Lanes](`lanes::HttpLane`) (or [Simple HTTP Lanes](`lanes::SimpleHttpLane`))
+/// 6. [Demand Lanes](`lanes::DemandLane`)
+/// 7. [Demand-Map Lanes](`lanes::DemandMapLane`)
+/// 8. [Supply Lanes](`lanes::SupplyLane`)
+/// 9. [HTTP Lanes](`lanes::HttpLane`) (or [Simple HTTP Lanes](`lanes::SimpleHttpLane`))
 ///
-/// For [Value Lanes](`lanes::ValueLane`) and [Map Lanes](`lanes::CommandLane`), the type parameter
-/// must implement the [`swimos_form::Form`] trait (used for serialization and deserialization). For
-/// [Map Lanes](`lanes::MapLane`), [Join-Value Lanes](`lanes::JoinValueLane`) and [Join-Map Lanes](`lanes::JoinMapLane`),
-/// both parameters must implement [`swimos_form::Form`] and additionally, the key type `K` must additionally
-/// satisfy `K: Hash + Eq + Ord + Clone`.
+/// For [Value Lanes](`lanes::ValueLane`), [Command Lanes](`lanes::CommandLane`), [Demand Lanes](`lanes::DemandLane`) and
+/// [Supply Lanes](`lanes::SupplyLane`), the type parameter must implement the [`swimos_form::Form`] trait (used for serialization
+///  and deserialization). For [Map Lanes](`lanes::MapLane`), [Demand-Map Lanes](`lanes::MapLane`),
+///  [Join-Value Lanes](`lanes::JoinValueLane`) and [Join-Map Lanes](`lanes::JoinMapLane`), both parameters must implement
+/// [`swimos_form::Form`] and additionally, the key type `K` must additionally satisfy `K: Hash + Eq + Ord + Clone`.
 ///
 /// Additionally, for [Join-Map Lanes](`lanes::JoinMapLane`), the link key type `L` must satisfy`L: Hash + Eq + Clone`.
 ///
@@ -163,8 +166,8 @@ pub use swimos_agent_derive::AgentLaneModel;
 /// codec that is selected for the lane (using the appropriate type parameter). By default, this is the
 /// [Default Codec](`lanes::http::DefaultCodec`). This codec always requires that type parameters implement
 /// [`swimos_form::Form`] and, if the `json` feature is active, that they are Serde serializable.
-/// [`crate::agent::lanes::http::DefaultCodec`]. 
-/// 
+/// [`crate::agent::lanes::http::DefaultCodec`].
+///
 /// The supported store types are:
 ///
 /// 1. [`crate::agent::stores::ValueStore`]
@@ -176,14 +179,21 @@ pub use swimos_agent_derive::AgentLaneModel;
 ///
 /// ```no_run
 /// use swimos::agent::AgentLaneModel;
-/// use swimos::agent::lanes::{ValueLane, CommandLane, MapLane, JoinValueLane, JoinMapLane, SimpleHttpLane};
+/// use swimos::agent::lanes::{
+///     ValueLane, CommandLane, DemandLane,
+///     DemandMapLane, MapLane, JoinValueLane,
+///     JoinMapLane, SimpleHttpLane, SupplyLane
+/// };
 /// use swimos::agent::stores::{ValueStore, MapStore};
 ///
 /// #[derive(AgentLaneModel)]
 /// struct ExampleAgent {
 ///     value_lane: ValueLane<i32>,
 ///     command_lane: CommandLane<String>,
+///     demand_lane: DemandLane<String>,
+///     supply_lane: SupplyLane<i32>,
 ///     map_lane: MapLane<String, i64>,
+///     demand_map_lane: DemandMapLane<i32, i32>,
 ///     value_store: ValueStore<i32>,
 ///     map_store: MapStore<String, i64>,
 ///     join_value: JoinValueLane<String, i64>,
