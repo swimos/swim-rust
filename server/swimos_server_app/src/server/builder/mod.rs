@@ -31,7 +31,8 @@ use swimos_api::{
 use swimos_remote::dns::Resolver;
 use swimos_remote::plain::TokioPlainTextNetworking;
 use swimos_remote::tls::{
-    ClientConfig, RustlsClientNetworking, RustlsNetworking, RustlsServerNetworking, TlsConfig,
+    ClientConfig, CryptoProviderConfig, RustlsClientNetworking, RustlsNetworking,
+    RustlsServerNetworking, TlsConfig,
 };
 use swimos_remote::ExternalConnections;
 use swimos_utilities::routing::RoutePattern;
@@ -49,41 +50,6 @@ use super::{
     store::in_memory::InMemoryPersistence,
     BoxServer,
 };
-
-#[derive(Default)]
-enum CryptoProviderConfig {
-    ProcessDefault,
-    #[default]
-    FromFeatureFlags,
-    Provided(Arc<CryptoProvider>),
-}
-
-impl CryptoProviderConfig {
-    fn build(self) -> Arc<CryptoProvider> {
-        match self {
-            CryptoProviderConfig::ProcessDefault => CryptoProvider::get_default()
-                .expect("No default cryptographic provider specified")
-                .clone(),
-            CryptoProviderConfig::FromFeatureFlags => {
-                #[cfg(all(feature = "ring_provider", not(feature = "aws_lc_rs_provider")))]
-                {
-                    return Arc::new(rustls::crypto::ring::default_provider());
-                }
-
-                #[cfg(all(feature = "aws_lc_rs_provider", not(feature = "ring_provider")))]
-                {
-                    return Arc::new(rustls::crypto::aws_lc_rs::default_provider());
-                }
-
-                #[allow(unreachable_code)]
-                {
-                    panic!("Ambiguous cryptographic provider feature flags specified. Only \"ring_provider\" or \"aws_lc_rs_provider\" may be specified")
-                }
-            }
-            CryptoProviderConfig::Provided(provider) => provider,
-        }
-    }
-}
 
 /// Builder for a swimos server that will listen on a socket and run a suite of agents.
 pub struct ServerBuilder {
