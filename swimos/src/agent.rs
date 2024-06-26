@@ -163,6 +163,14 @@ pub use swimos_agent_derive::AgentLaneModel;
 /// codec that is selected for the lane (using the appropriate type parameter). By default, this is the
 /// [Default Codec](`lanes::http::DefaultCodec`). This codec always requires that type parameters implement
 /// [`swimos_form::Form`] and, if the `json` feature is active, that they are Serde serializable.
+/// [`crate::agent::lanes::http::DefaultCodec`]. 
+/// 
+/// The supported store types are:
+///
+/// 1. [`crate::agent::stores::ValueStore`]
+/// 2. [`crate::agent::stores::MapStore`]
+///
+/// These have exactly the same restrictions on their type parameters as the corresponding lane types.
 ///
 /// As an example, the following is a valid agent type defining items of each supported kind:
 ///
