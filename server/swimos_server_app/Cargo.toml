@@ -5,9 +5,10 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [features]
-default = ["aws_lc_rs_provider"]
+default = ["aws_lc_rs_provider", "signal"]
 rocks_store = ["swimos_rocks_store"]
 trust_dns = ["swimos_runtime/trust_dns"]
+signal = ["tokio/signal"]
 ring_provider = ["swimos_remote/ring_provider"]
 aws_lc_rs_provider = ["swimos_remote/aws_lc_rs_provider"]
 
