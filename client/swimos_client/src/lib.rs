@@ -140,7 +140,7 @@ impl SwimClientTlsBuilder {
             RustlsClientNetworking::build(
                 Arc::new(Resolver::new().await),
                 tls_config,
-                crypto_provider.build(),
+                crypto_provider.try_build()?,
             )?,
         )
         .await)

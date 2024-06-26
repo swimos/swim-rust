@@ -200,7 +200,7 @@ impl ServerBuilder {
             deflate,
             introspection,
         };
-        let crypto_provider = crypto_provider.build();
+        let crypto_provider = crypto_provider.try_build()?;
 
         if let Some(tls_conf) = tls_config {
             let client =

@@ -32,4 +32,6 @@ pub enum TlsError {
     /// Performing the TLS handshake failed.
     #[error("TLS handshake failed: {0}")]
     HandshakeFailed(std::io::Error),
+    #[error("Invalid cryptographic provider configured: {0}")]
+    InvalidCryptoProvider(String),
 }
