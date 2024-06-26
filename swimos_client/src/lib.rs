@@ -16,10 +16,7 @@ use std::time::Duration;
 use std::{marker::PhantomData, num::NonZeroUsize, sync::Arc};
 
 use futures_util::future::BoxFuture;
-use ratchet::{
-    deflate::{DeflateConfig, DeflateExtProvider},
-    WebSocketStream,
-};
+use ratchet::WebSocketStream;
 use rustls::crypto::CryptoProvider;
 
 pub use commander::{CommandError, Commander};
@@ -71,7 +68,7 @@ const DEFAULT_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct WebSocketConfig {
     pub max_message_size: usize,
     #[cfg(feature = "deflate")]
-    pub deflate_config: Option<DeflateConfig>,
+    pub deflate_config: Option<ratchet::DeflateConfig>,
 }
 
 impl Default for WebSocketConfig {
@@ -137,7 +134,7 @@ impl SwimClientBuilder {
 
     /// Sets the deflate extension configuration for WebSocket connections.
     #[cfg(feature = "deflate")]
-    pub fn set_deflate_config(mut self, to: DeflateConfig) -> SwimClientBuilder {
+    pub fn set_deflate_config(mut self, to: ratchet::DeflateConfig) -> SwimClientBuilder {
         self.client_config.websocket.deflate_config = Some(to);
         self
     }
@@ -229,8 +226,9 @@ where
                 max_message_size: websocket.max_message_size,
             });
 
-            let provider =
-                DeflateExtProvider::with_config(websocket.deflate_config.unwrap_or_default());
+            let provider = ratchet::DeflateExtProvider::with_config(
+                websocket.deflate_config.unwrap_or_default(),
+            );
 
             start_runtime(
                 registration_buffer_size,
@@ -258,7 +256,7 @@ where
                 Transport::new(
                     networking,
                     websockets,
-                    NoExtProvider,
+                    ratchet::NoExtProvider,
                     remote_buffer_size,
                     close_timeout,
                 ),
