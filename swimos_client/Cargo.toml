@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = []
-tls = ["swimos_remote/tls"]
+default = ["aws_lc_rs_provider"]
 deflate = ["ratchet/deflate"]
 trust_dns = ["swimos_runtime/trust_dns"]
+ring_provider = ["swimos_remote/ring_provider"]
+aws_lc_rs_provider = ["swimos_remote/aws_lc_rs_provider"]
 
 [dependencies]
 swimos_agent_protocol = { path = "../api/swimos_agent_protocol", version = "0.1.0" }
@@ -32,3 +33,4 @@ bytes = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "sync"] }
 tokio-util = { workspace = true, features = ["codec"] }
 thiserror = { workspace = true }
+rustls = { workspace = true }

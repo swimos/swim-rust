@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::time::Duration;
 use std::{marker::PhantomData, num::NonZeroUsize, sync::Arc};
 
 use futures_util::future::BoxFuture;
@@ -20,13 +21,8 @@ use ratchet::{
     WebSocketStream,
 };
 use rustls::crypto::CryptoProvider;
-use tokio::{sync::mpsc, sync::mpsc::error::SendError, sync::oneshot::error::RecvError};
-pub use url::Url;
 
-use runtime::{
-    start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, Transport, WebSocketConfig,
-};
-pub use runtime::{CommandError, Commander, RemotePath};
+pub use commander::{CommandError, Commander};
 pub use swimos_client_api::DownlinkConfig;
 pub use swimos_downlink::{
     lifecycle::BasicEventDownlinkLifecycle, lifecycle::BasicMapDownlinkLifecycle,
@@ -38,33 +34,22 @@ use swimos_downlink::{
     MapValue, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkSet,
 };
 use swimos_form::Form;
-pub use swimos_remote::tls::ClientConfig as TlsConfig;
-use swimos_remote::tls::TlsError;
 use swimos_remote::{
     dns::Resolver,
     plain::TokioPlainTextNetworking,
-    tls::{CryptoProviderConfig, RustlsClientNetworking},
-    websocket::RatchetClient,
-    ClientConnections,
-};
-use swimos_remote::{
-    dns::Resolver,
-    plain::TokioPlainTextNetworking,
+    tls::CryptoProviderConfig,
     tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError},
     websocket::RatchetClient,
     ClientConnections,
 };
 use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
-use swimos_utilities::{trigger, trigger::promise};
 use swimos_utilities::{non_zero_usize, trigger, trigger::promise};
 use tokio::{sync::mpsc, sync::mpsc::error::SendError, sync::oneshot::error::RecvError};
 pub use url::Url;
 
 pub use crate::models::RemotePath;
 use crate::{
-    error::DownlinkRuntimeError,
-    runtime::{start_runtime, RawHandle},
-    transport::Transport,
+    error::DownlinkRuntimeError, runtime::start_runtime, runtime::RawHandle, transport::Transport,
 };
 
 #[cfg(test)]
@@ -79,7 +64,6 @@ mod transport;
 
 pub type DownlinkOperationResult<T> = Result<T, DownlinkRuntimeError>;
 
-#[derive(Default)]
 const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
 const DEFAULT_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 
