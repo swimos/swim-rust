@@ -626,7 +626,7 @@ fn annotated() {
     let ex = ExampleAnnotated::A {
         count: 1033,
         name: String::from("bob"),
-        age: i32::max_value(),
+        age: i32::MAX,
     };
 
     let expected = Value::Record(

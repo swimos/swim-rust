@@ -1108,27 +1108,9 @@ struct InactiveTimeout<'a> {
     enabled: bool,
 }
 
-pub enum ItemEndpoint<I> {
-    Lane {
-        endpoint: LaneEndpoint<Io>,
-        store_id: Option<I>,
-    },
-    Store {
-        endpoint: StoreEndpoint,
-        store_id: I,
-    },
-}
-
-impl<I> From<(LaneEndpoint<Io>, Option<I>)> for ItemEndpoint<I> {
-    fn from((endpoint, store_id): (LaneEndpoint<Io>, Option<I>)) -> Self {
-        ItemEndpoint::Lane { endpoint, store_id }
-    }
-}
-
-impl<I> From<(StoreEndpoint, I)> for ItemEndpoint<I> {
-    fn from((endpoint, store_id): (StoreEndpoint, I)) -> Self {
-        ItemEndpoint::Store { endpoint, store_id }
-    }
+pub enum ItemEndpoint {
+    Lane { endpoint: LaneEndpoint<Io> },
+    Store { endpoint: StoreEndpoint },
 }
 
 type InitResult<T> = Result<T, AgentItemInitError>;
@@ -1136,7 +1118,7 @@ type InitResult<T> = Result<T, AgentItemInitError>;
 type LaneResult<I> = InitResult<(LaneEndpoint<Io>, Option<I>)>;
 type StoreResult<I> = InitResult<(StoreEndpoint, I)>;
 
-type ItemInitTask<'a, I> = BoxFuture<'a, InitResult<ItemEndpoint<I>>>;
+type ItemInitTask<'a> = BoxFuture<'a, InitResult<ItemEndpoint>>;
 
 /// Aggregates all of the streams of events for the write task.
 #[derive(Debug)]

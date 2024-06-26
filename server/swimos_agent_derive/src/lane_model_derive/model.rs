@@ -197,13 +197,12 @@ impl<'a> ItemModel<'a> {
         let ItemModel {
             name,
             kind,
-            flags,
             transform,
+            ..
         } = self;
         kind.lane().map(move |kind| WarpLaneModel {
             name,
             kind,
-            flags: *flags,
             transform: transform.clone(),
         })
     }
@@ -232,7 +231,7 @@ impl<'a> ItemModel<'a> {
 pub struct WarpLaneModel<'a> {
     pub name: &'a Ident,
     pub kind: WarpLaneSpec<'a>,
-    pub flags: ItemFlags,
+    //pub flags: ItemFlags,
     pub transform: NameTransform,
 }
 
