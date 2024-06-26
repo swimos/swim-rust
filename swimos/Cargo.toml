@@ -3,7 +3,7 @@ name = "swimos"
 version = "0.1.0"
 authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
-description = "SwimOS server framework"
+description = "SwimOS"
 license = "Apache-2.0"
 
 [features]

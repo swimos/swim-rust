@@ -2,7 +2,7 @@
 name = "swimos_client"
 version = "0.1.0"
 edition = "2021"
-description = "SwimOS client application"
+description = "SwimOS Client"
 license = "Apache-2.0"
 
 [features]

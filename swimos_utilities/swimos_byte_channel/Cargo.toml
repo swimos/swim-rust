@@ -2,7 +2,7 @@
 name = "swimos_byte_channel"
 version = "0.1.0"
 edition = "2021"
-description = "SwimOS byte chanel"
+description = "SwimOS Byte Channel"
 license = "Apache-2.0"
 
 [features]
