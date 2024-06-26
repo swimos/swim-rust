@@ -5,9 +5,10 @@ authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
 
 [features]
-default = []
+default = ["signal"]
 rocks_store = ["swimos_rocks_store"]
 trust_dns = ["swimos_runtime/trust_dns"]
+signal = ["tokio/signal"]
 
 [dependencies]
 futures = { workspace = true }
