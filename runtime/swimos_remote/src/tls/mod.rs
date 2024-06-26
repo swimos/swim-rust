@@ -43,12 +43,12 @@ impl CryptoProviderConfig {
             CryptoProviderConfig::FromFeatureFlags => {
                 #[cfg(all(feature = "ring_provider", not(feature = "aws_lc_rs_provider")))]
                 {
-                    return Arc::new(rustls::crypto::ring::default_provider());
+                    return Ok(Arc::new(rustls::crypto::ring::default_provider()));
                 }
 
                 #[cfg(all(feature = "aws_lc_rs_provider", not(feature = "ring_provider")))]
                 {
-                    return Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+                    return Ok(Arc::new(rustls::crypto::aws_lc_rs::default_provider()));
                 }
 
                 #[allow(unreachable_code)]
