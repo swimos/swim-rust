@@ -153,8 +153,8 @@ fn update_histogram(
     item: HistoryItem,
 ) -> impl EventHandler<UnitAgent> {
     let bucket = bucket_of(&item.timestamp);
-    context.with_entry(UnitAgent::HISTOGRAM, bucket, |maybe| {
-        let mut counter = maybe.unwrap_or_default();
+    context.transform_entry(UnitAgent::HISTOGRAM, bucket, |maybe| {
+        let mut counter = maybe.copied().unwrap_or_default();
         counter.count += rand::thread_rng().gen_range(0..20);
         Some(counter)
     })

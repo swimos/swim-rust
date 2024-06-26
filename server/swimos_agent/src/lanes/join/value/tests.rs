@@ -39,7 +39,7 @@ use crate::{
         join::test_util::{TestDlContextInner, TestDownlinkContext},
         join_value::{
             default_lifecycle::DefaultJoinValueLifecycle, AddDownlinkAction, JoinValueLaneGet,
-            JoinValueLaneGetMap,
+            JoinValueLaneGetMap, JoinValueLaneWithEntry,
         },
     },
     meta::AgentMetadata,
@@ -172,6 +172,55 @@ fn join_value_lane_get_event_handler() {
     check_result(result, false, false, Some(Some(V1.to_string())));
 
     let mut handler = JoinValueLaneGet::new(TestAgent::LANE, ABSENT);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(None));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn join_value_lane_with_entry_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler =
+        JoinValueLaneWithEntry::new(TestAgent::LANE, K1, |v: Option<&str>| v.map(str::to_owned));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, false, false, Some(Some(V1.to_string())));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    let mut handler = JoinValueLaneWithEntry::new(TestAgent::LANE, ABSENT, |v: Option<&str>| {
+        v.map(str::to_owned)
+    });
 
     let result = handler.step(
         &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
