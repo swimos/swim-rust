@@ -12,21 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#[cfg(not(feature = "deflate"))]
-use ratchet::NoExtProvider;
-use ratchet::WebSocketStream;
-use std::marker::PhantomData;
-use std::num::NonZeroUsize;
-use swimos_remote::websocket::RatchetClient;
+use std::{marker::PhantomData, num::NonZeroUsize, sync::Arc, time::Duration};
 
+pub use commander::{CommandError, Commander};
 use futures_util::future::BoxFuture;
-#[cfg(feature = "deflate")]
-use ratchet::deflate::{DeflateConfig, DeflateExtProvider};
-use runtime::{
-    start_runtime, ClientConfig, DownlinkRuntimeError, RawHandle, Transport, WebSocketConfig,
-};
-pub use runtime::{CommandError, Commander, RemotePath};
-use std::sync::Arc;
+use ratchet::{deflate::DeflateConfig, deflate::DeflateExtProvider, WebSocketStream};
 pub use swimos_client_api::DownlinkConfig;
 pub use swimos_downlink::lifecycle::{
     BasicEventDownlinkLifecycle, BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle,
@@ -37,20 +27,79 @@ use swimos_downlink::{
     MapValue, NotYetSyncedError, ValueDownlinkModel, ValueDownlinkSet,
 };
 use swimos_form::Form;
-use swimos_remote::dns::Resolver;
-use swimos_remote::plain::TokioPlainTextNetworking;
-#[cfg(feature = "tls")]
-use swimos_remote::tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError};
-use swimos_remote::ClientConnections;
+use swimos_remote::{
+    dns::Resolver,
+    plain::TokioPlainTextNetworking,
+    tls::{ClientConfig as TlsConfig, RustlsClientNetworking, TlsError},
+    websocket::RatchetClient,
+    ClientConnections,
+};
 use swimos_runtime::downlink::{DownlinkOptions, DownlinkRuntimeConfig};
-use swimos_utilities::trigger;
-use swimos_utilities::trigger::promise;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::SendError;
-use tokio::sync::oneshot::error::RecvError;
+use swimos_utilities::{non_zero_usize, trigger, trigger::promise};
+use tokio::{sync::mpsc, sync::mpsc::error::SendError, sync::oneshot::error::RecvError};
 pub use url::Url;
 
+pub use crate::models::RemotePath;
+use crate::{
+    error::DownlinkRuntimeError,
+    runtime::{start_runtime, RawHandle},
+    transport::Transport,
+};
+
+#[cfg(test)]
+mod tests;
+
+mod commander;
+mod error;
+mod models;
+mod pending;
+mod runtime;
+mod transport;
+
 pub type DownlinkOperationResult<T> = Result<T, DownlinkRuntimeError>;
+
+const DEFAULT_BUFFER_SIZE: NonZeroUsize = non_zero_usize!(32);
+const DEFAULT_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Debug)]
+pub struct WebSocketConfig {
+    pub max_message_size: usize,
+    #[cfg(feature = "deflate")]
+    pub deflate_config: Option<DeflateConfig>,
+}
+
+impl Default for WebSocketConfig {
+    fn default() -> Self {
+        WebSocketConfig {
+            max_message_size: 64 << 20,
+            #[cfg(feature = "deflate")]
+            deflate_config: None,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ClientConfig {
+    pub websocket: WebSocketConfig,
+    pub remote_buffer_size: NonZeroUsize,
+    pub transport_buffer_size: NonZeroUsize,
+    pub registration_buffer_size: NonZeroUsize,
+    pub close_timeout: Duration,
+    pub interpret_frame_data: bool,
+}
+
+impl Default for ClientConfig {
+    fn default() -> Self {
+        ClientConfig {
+            websocket: WebSocketConfig::default(),
+            remote_buffer_size: non_zero_usize!(4096),
+            transport_buffer_size: DEFAULT_BUFFER_SIZE,
+            registration_buffer_size: DEFAULT_BUFFER_SIZE,
+            close_timeout: DEFAULT_CLOSE_TIMEOUT,
+            interpret_frame_data: true,
+        }
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct SwimClientBuilder {

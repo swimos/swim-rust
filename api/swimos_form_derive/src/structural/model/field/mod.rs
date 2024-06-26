@@ -13,16 +13,18 @@
 // limitations under the License.
 
 use crate::SynValidation;
-use macro_utilities::attr_names::{
-    ATTR_PATH, BODY_PATH, CONV_NAME, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_NAME,
-    SCHEMA_NAME, SKIP_PATH, SLOT_PATH, TAG_PATH,
-};
-use macro_utilities::attributes::NestedMetaConsumer;
-use macro_utilities::{FieldKind, NameTransform, NameTransformConsumer, Symbol, Transformation};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, TokenStreamExt};
 use std::borrow::Cow;
 use std::ops::Add;
+use swimos_macro_utilities::attr_names::{
+    ATTR_PATH, BODY_PATH, CONV_NAME, FORM_PATH, HEADER_BODY_PATH, HEADER_PATH, NAME_NAME,
+    SCHEMA_NAME, SKIP_PATH, SLOT_PATH, TAG_PATH,
+};
+use swimos_macro_utilities::attributes::NestedMetaConsumer;
+use swimos_macro_utilities::{
+    FieldKind, NameTransform, NameTransformConsumer, Symbol, Transformation,
+};
 use swimos_utilities::errors::Validation;
 use syn::{Field, Ident, Meta, NestedMeta, Type};
 

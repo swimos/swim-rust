@@ -14,13 +14,15 @@
 
 use crate::structural::model::field::FieldSelector;
 use crate::SynValidation;
-use macro_utilities::attr_names::{CONV_NAME, FIELDS_NAME, NEWTYPE_PATH, SCHEMA_NAME, TAG_NAME};
-use macro_utilities::attributes::{IgnoreConsumer, NestedMetaConsumer};
-use macro_utilities::{
+use quote::ToTokens;
+use swimos_macro_utilities::attr_names::{
+    CONV_NAME, FIELDS_NAME, NEWTYPE_PATH, SCHEMA_NAME, TAG_NAME,
+};
+use swimos_macro_utilities::attributes::{IgnoreConsumer, NestedMetaConsumer};
+use swimos_macro_utilities::{
     CaseConvention, NameTransform, NameTransformConsumer, Symbol, Transformation,
     TypeLevelNameTransform, TypeLevelNameTransformConsumer,
 };
-use quote::ToTokens;
 use swimos_utilities::errors::Errors;
 use swimos_utilities::errors::{Validation, ValidationItExt};
 

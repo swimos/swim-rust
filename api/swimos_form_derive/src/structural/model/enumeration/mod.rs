@@ -16,10 +16,10 @@ use crate::modifiers::{combine_enum_trans_parts, EnumPartConsumer, StructTransfo
 use crate::structural::model::record::{SegregatedStructModel, StructDef, StructModel};
 use crate::structural::model::ValidateFrom;
 use crate::SynValidation;
-use macro_utilities::attr_names::FORM_NAME;
-use macro_utilities::attributes::consume_attributes;
 use quote::ToTokens;
 use std::collections::HashSet;
+use swimos_macro_utilities::attr_names::FORM_NAME;
+use swimos_macro_utilities::attributes::consume_attributes;
 use swimos_utilities::errors::Errors;
 use swimos_utilities::errors::{Validation, ValidationItExt};
 use syn::{Attribute, DataEnum, Ident};

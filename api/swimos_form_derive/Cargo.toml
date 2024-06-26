@@ -11,7 +11,7 @@ proc-macro = true
 [dependencies]
 either = { workspace = true }
 swimos_utilities = { path = "../../swimos_utilities", features = ["errors", "text"] }
-macro_utilities = { path = "../../macro_utilities" }
+swimos_macro_utilities = { path = "../../swimos_macro_utilities" }
 proc-macro2 = { workspace = true }
 syn = { workspace = true, features = ["full"] }
 quote = { workspace = true }

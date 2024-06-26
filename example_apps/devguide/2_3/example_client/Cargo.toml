@@ -2,8 +2,9 @@
 name = "example_client_2_3"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 [dependencies]
 tokio = { workspace = true, features = ["full"] }
-swimos_client = { path = "../../../../client/swimos_client" }
+swimos_client = { path = "../../../../swimos_client" }
 swimos_form = { path = "../../../../api/swimos_form" }

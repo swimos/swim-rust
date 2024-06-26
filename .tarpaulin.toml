@@ -31,7 +31,7 @@ exclude = [
     "time_series",
     "swimos_form_derive",
     "swimos_agent_derive",
-    "macro_utilities",
+    "swimos_macro_utilities",
     "example_client_2_2",
     "example_server_2_2",
     "example_client_2_3",

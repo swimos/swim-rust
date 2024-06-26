@@ -14,7 +14,7 @@ syn = { workspace = true, features = ["full", "extra-traits"] }
 quote = { workspace = true }
 swimos_utilities = { path = "../../swimos_utilities", features = ["errors", "text"] }
 bitflags = { workspace = true }
-macro_utilities = { path = "../../macro_utilities" }
+swimos_macro_utilities = { path = "../../swimos_macro_utilities" }
 frunk = { workspace = true }
 
 [dev-dependencies]

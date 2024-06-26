@@ -1,0 +1,34 @@
+[package]
+name = "swimos_client"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+tls = ["swimos_remote/tls"]
+deflate = ["ratchet/deflate"]
+trust_dns = ["swimos_runtime/trust_dns"]
+
+[dependencies]
+swimos_agent_protocol = { path = "../api/swimos_agent_protocol" }
+swimos_recon = { path = "../api/formats/swimos_recon" }
+swimos_messages = { path = "../runtime/swimos_messages" }
+swimos_utilities = { path = "../swimos_utilities", features = ["trigger"] }
+swimos_downlink = { path = "../swimos_downlink" }
+swimos_api = { path = "../api/swimos_api" }
+swimos_client_api = { path = "../api/swimos_client_api" }
+swimos_model = { path = "../api/swimos_model" }
+swimos_form = { path = "../api/swimos_form" }
+swimos_runtime = { path = "../runtime/swimos_runtime" }
+swimos_remote = { path = "../runtime/swimos_remote" }
+ratchet = { workspace = true }
+url = { workspace = true }
+tracing = { workspace = true }
+fnv = { workspace = true }
+uuid = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+bytes = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "sync"] }
+tokio-util = { workspace = true, features = ["codec"] }
+thiserror = { workspace = true }
