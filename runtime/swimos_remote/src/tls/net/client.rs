@@ -15,7 +15,8 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use futures::{future::BoxFuture, FutureExt};
-use rustls::{OwnedTrustAnchor, RootCertStore, ServerName};
+use rustls::pki_types::ServerName;
+use rustls::RootCertStore;
 
 use crate::dns::{BoxDnsResolver, DnsResolver, Resolver};
 use crate::net::{ClientConnections, ConnectionError, ConnectionResult, Scheme};
@@ -49,25 +50,16 @@ impl RustlsClientNetworking {
         } = config;
         let mut root_store = RootCertStore::empty();
         if use_webpki_roots {
-            root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(
-                |ta| {
-                    OwnedTrustAnchor::from_subject_spki_name_constraints(
-                        ta.subject,
-                        ta.spki,
-                        ta.name_constraints,
-                    )
-                },
-            ));
+            root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned())
         }
 
         for cert in custom_roots {
             for c in super::load_cert_file(cert)? {
-                root_store.add(&c)?;
+                root_store.add(c)?;
             }
         }
 
         let config = rustls::ClientConfig::builder()
-            .with_safe_defaults()
             .with_root_certificates(root_store)
             .with_no_client_auth();
 
@@ -93,10 +85,10 @@ impl ClientConnections for RustlsClientNetworking {
             .boxed(),
             Scheme::Wss => {
                 let domain = if let Some(host_name) = host {
-                    ServerName::try_from(host_name)
+                    ServerName::try_from(host_name.to_string())
                         .map_err(|err| ConnectionError::BadParameter(err.to_string()))
                 } else {
-                    Ok(ServerName::IpAddress(addr.ip()))
+                    Ok(ServerName::IpAddress(addr.ip().into()))
                 };
                 async move {
                     let stream = TcpStream::connect(addr).await?;

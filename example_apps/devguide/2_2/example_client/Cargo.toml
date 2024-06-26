@@ -1,0 +1,9 @@
+[package]
+name = "example_client_2_2"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true, features = ["full"] }
+swimos_client = { path = "../../../../client/swimos_client" }
+swimos_form = { path = "../../../../api/swimos_form" }
