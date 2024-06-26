@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = []
+default = ["aws_lc_rs_provider"]
 deflate = ["runtime/deflate"]
 trust_dns = ["swimos_runtime/trust_dns"]
 ring_provider = ["swimos_remote/ring_provider"]
