@@ -61,12 +61,12 @@ mod util;
 
 pub use self::{
     config::{RemoteConnectionsConfig, SwimServerConfig},
-    server::{BoxServer, Server, ServerBuilder, ServerHandle},
+    server::{BoxServer, Server, ServerBuilder, ServerHandle, UnresolvableRoute},
     util::AgentExt,
 };
 
 pub use error::{AmbiguousRoutes, ServerBuilderError, ServerError};
-pub use ratchet::deflate::DeflateConfig;
+pub use ratchet::deflate::{DeflateConfig, WindowBits};
 pub use swimos_introspection::IntrospectionConfig;
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 

@@ -14,7 +14,7 @@
 
 use swimos::agent::{
     agent_lifecycle::HandlerContext,
-    agent_model::downlink::hosted::EventDownlinkHandle,
+    agent_model::downlink::EventDownlinkHandle,
     event_handler::{EventHandler, HandlerAction, HandlerActionExt},
     lanes::{CommandLane, ValueLane},
     lifecycle, projections,
