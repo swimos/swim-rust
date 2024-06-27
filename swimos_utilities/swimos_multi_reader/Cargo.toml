@@ -8,7 +8,7 @@ repository = "https://github.com/swimos/swim-rust/"
 
 [dependencies]
 bytes = { workspace = true }
-swimos_byte_channel = { path = "../swimos_byte_channel" }
+swimos_byte_channel = { path = "../swimos_byte_channel", version = "0.1.0" }
 parking_lot = { workspace = true }
 waker-fn = { workspace = true }
 slab = { workspace = true }

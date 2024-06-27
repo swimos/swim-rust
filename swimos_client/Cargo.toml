@@ -24,7 +24,7 @@ swimos_client_api = { path = "../api/swimos_client_api", version = "0.1.0" }
 swimos_model = { path = "../api/swimos_model", version = "0.1.0" }
 swimos_form = { path = "../api/swimos_form", version = "0.1.0" }
 swimos_runtime = { path = "../runtime/swimos_runtime", version = "0.1.0" }
-swimos_remote = { path = "../runtime/swimos_remote", version = "0.1.0" }
+swimos_remote = { path = "../runtime/swimos_remote", version = "0.1.0", features = ["tls"] }
 ratchet = { workspace = true }
 url = { workspace = true }
 tracing = { workspace = true }

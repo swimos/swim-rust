@@ -9,17 +9,17 @@ repository = "https://github.com/swimos/swim-rust/"
 
 [dependencies]
 futures = { workspace = true }
-swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "text", "encoding"] }
-swimos_runtime = { path = "../../runtime/swimos_runtime" }
+swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "text", "encoding"], version = "0.1.0" }
+swimos_runtime = { path = "../../runtime/swimos_runtime", version = "0.1.0" }
 bytes = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }
 tokio-util = { workspace = true, features = ["codec"] }
-swimos_model = { path = "../../api/swimos_model" }
-swimos_recon = { path = "../../api/formats/swimos_recon" }
-swimos_api = { path = "../../api/swimos_api" }
-swimos_agent_protocol = { path = "../../api/swimos_agent_protocol" }
-swimos_meta = { path = "../../api/swimos_meta" }
-swimos_form = { path = "../../api/swimos_form" }
+swimos_model = { path = "../../api/swimos_model", version = "0.1.0" }
+swimos_recon = { path = "../../api/formats/swimos_recon", version = "0.1.0" }
+swimos_api = { path = "../../api/swimos_api", version = "0.1.0" }
+swimos_agent_protocol = { path = "../../api/swimos_agent_protocol", version = "0.1.0" }
+swimos_meta = { path = "../../api/swimos_meta", version = "0.1.0" }
+swimos_form = { path = "../../api/swimos_form", version = "0.1.0" }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }

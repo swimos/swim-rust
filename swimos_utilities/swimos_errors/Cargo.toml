@@ -8,6 +8,6 @@ license = "Apache-2.0"
 repository = "https://github.com/swimos/swim-rust/"
 
 [dependencies]
-swimos_algebra = { path = "../swimos_algebra" }
+swimos_algebra = { path = "../swimos_algebra", version = "0.1.0" }
 
 [dev-dependencies]
