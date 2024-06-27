@@ -3,6 +3,9 @@ name = "swimos_sync"
 version = "0.1.0"
 authors = ["Swim Inc. developers info@swim.ai"]
 edition = "2021"
+description = "SwimOS Synchronization Channels"
+license = "Apache-2.0"
+repository = "https://github.com/swimos/swim-rust/"
 
 [dependencies]
 crossbeam-queue = { workspace = true }
