@@ -1,10 +1,11 @@
 [package]
 name = "swimos_byte_channel"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 description = "SwimOS Byte Channel"
-license = "Apache-2.0"
-repository = "https://github.com/swimos/swim-rust/"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/swimos_utilities/swimos_byte_channel"
+homepage.workspace = true
 
 [features]
 default = ["coop"]

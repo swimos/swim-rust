@@ -1,14 +1,15 @@
 [package]
 name = "swimos_multi_reader"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 description = "SwimOS Stream Aggregator"
-license = "Apache-2.0"
-repository = "https://github.com/swimos/swim-rust/"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/swimos_utilities/swimos_multi_reader"
+homepage.workspace = true
 
 [dependencies]
 bytes = { workspace = true }
-swimos_byte_channel = { path = "../swimos_byte_channel" }
+swimos_byte_channel = { workspace = true }
 parking_lot = { workspace = true }
 waker-fn = { workspace = true }
 slab = { workspace = true }
@@ -24,8 +25,8 @@ rand = { workspace = true }
 swimos_api = { path = "../../api/swimos_api" }
 swimos_runtime = { path = "../../runtime/swimos_runtime" }
 swimos_messages = { path = "../../runtime/swimos_messages" }
-swimos_model = { path = "../../api/swimos_model" }
-swimos_form = { path = "../../api/swimos_form" }
+swimos_model = { workspace = true }
+swimos_form = { workspace = true }
 uuid = { workspace = true }
 
 [[bench]]

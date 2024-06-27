@@ -1,11 +1,12 @@
 [package]
 name = "swimos_http"
-version = "0.1.0"
-authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 description = "SwimOS Ratchet Hyper Integration"
-license = "Apache-2.0"
-repository = "https://github.com/swimos/swim-rust/"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/runtime/swimos_http"
+homepage.workspace = true
 
 [dependencies]
 futures = { workspace = true }
