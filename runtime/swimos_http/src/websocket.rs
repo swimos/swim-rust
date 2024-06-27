@@ -1,22 +1,25 @@
-use base64::{engine::general_purpose::STANDARD, Engine};
-use bytes::{Bytes, BytesMut};
-use futures::{ready, Future, FutureExt};
-use http::{header::HeaderName, HeaderMap, HeaderValue, Method};
-use httparse::Header;
-use hyper::{
-    upgrade::{OnUpgrade, Upgraded},
-    Body, Request, Response,
-};
-use ratchet::{
-    Extension, ExtensionProvider, NegotiatedExtension, Role, WebSocket, WebSocketConfig,
-    WebSocketStream,
-};
-use sha1::{Digest, Sha1};
 use std::{
     collections::HashSet,
     pin::Pin,
     task::{Context, Poll},
 };
+
+use base64::{engine::general_purpose::STANDARD, Engine};
+use bytes::{Bytes, BytesMut};
+use futures::{ready, Future, FutureExt};
+use http::{header::HeaderName, HeaderMap, HeaderValue, Method};
+use http_body_util::Full;
+use httparse::Header;
+use hyper::body::Incoming;
+use hyper::{
+    upgrade::{OnUpgrade, Upgraded},
+    Request, Response,
+};
+use hyper_util::rt::TokioIo;
+use ratchet::{
+    Extension, ExtensionProvider, NegotiatedExtension, Role, WebSocket, WebSocketConfig,
+};
+use sha1::{Digest, Sha1};
 use thiserror::Error;
 
 const UPGRADE_STR: &str = "Upgrade";
@@ -91,10 +94,12 @@ where
 }
 
 /// Produce a bad request response for a bad websocket upgrade request.
-pub fn fail_upgrade<ExtErr: std::error::Error>(error: UpgradeError<ExtErr>) -> Response<Body> {
+pub fn fail_upgrade<ExtErr: std::error::Error>(
+    error: UpgradeError<ExtErr>,
+) -> Response<Full<Bytes>> {
     Response::builder()
         .status(http::StatusCode::BAD_REQUEST)
-        .body(Body::from(error.to_string()))
+        .body(Full::from(error.to_string()))
         .expect(FAILED_RESPONSE)
 }
 
@@ -107,13 +112,12 @@ pub fn fail_upgrade<ExtErr: std::error::Error>(error: UpgradeError<ExtErr>) -> R
 /// * `unwrap_fn` - Used to unwrap the underlying socket type from the opaque [`Upgraded`] socket
 /// provided by hyper.
 pub fn upgrade<Ext, U>(
-    request: Request<Body>,
+    request: Request<Incoming>,
     negotiated: Negotiated<'_, Ext>,
     config: Option<WebSocketConfig>,
     unwrap_fn: U,
-) -> (Response<Body>, UpgradeFuture<Ext, U>)
+) -> (Response<Full<Bytes>>, UpgradeFuture<Ext, U>)
 where
-    U: SockUnwrap,
     Ext: Extension + Send,
 {
     let Negotiated {
@@ -149,7 +153,7 @@ where
         unwrap_fn,
     };
 
-    let response = builder.body(Body::empty()).expect(FAILED_RESPONSE);
+    let response = builder.body(Full::default()).expect(FAILED_RESPONSE);
     (response, fut)
 }
 
@@ -211,7 +215,7 @@ impl<ExtErr: std::error::Error> From<ExtErr> for UpgradeError<ExtErr> {
 /// The caller will generally know the real underlying type and this allows for that type to be
 /// restored.
 pub trait SockUnwrap {
-    type Sock: WebSocketStream;
+    type Sock;
 
     /// Unwrap the socket (returning the underlying socket and a buffer containing any bytes
     /// that have already been read).
@@ -222,15 +226,15 @@ pub trait SockUnwrap {
 pub struct NoUnwrap;
 
 impl SockUnwrap for NoUnwrap {
-    type Sock = Upgraded;
+    type Sock = TokioIo<Upgraded>;
 
     fn unwrap_sock(&self, upgraded: Upgraded) -> (Self::Sock, BytesMut) {
-        (upgraded, BytesMut::new())
+        (TokioIo::new(upgraded), BytesMut::new())
     }
 }
 
 /// A future that performs a websocket upgrade, unwraps the upgraded socket and
-/// creates a ratchet websocket from form it.
+/// creates a ratchet websocket from it.
 #[derive(Debug)]
 pub struct UpgradeFuture<Ext, U> {
     upgrade: OnUpgrade,

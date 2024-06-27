@@ -36,6 +36,7 @@ either = { workspace = true }
 smallvec = { workspace = true }
 url = { workspace = true }
 pin-project = { workspace = true }
+hyper = { workspace = true }
 
 rustls = { workspace = true, optional = true }
 webpki = { workspace = true, optional = true }

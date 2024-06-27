@@ -26,9 +26,10 @@ use futures::{
     stream::{BoxStream, FuturesUnordered, SelectAll},
     Future, StreamExt,
 };
-use hyper::{
-    body::to_bytes, client::conn::http1, header::HeaderValue, Body, Request, Response, Uri,
-};
+use http_body_util::{BodyExt, Full};
+use hyper::body::Incoming;
+use hyper::{client::conn::http1, header::HeaderValue, Request, Response, Uri};
+use hyper_util::rt::TokioIo;
 use ratchet::{CloseReason, Message, NoExt, NoExtProvider, WebSocket, WebSocketConfig};
 use swimos_api::{
     agent::{HttpLaneRequest, RawHttpLaneResponse},
@@ -355,15 +356,15 @@ fn setup_responses() -> HashMap<Text, FindResponse> {
     .collect()
 }
 
-async fn http_client(tx: mpsc::Sender<DuplexStream>, node: &str, lane: &str) -> Response<Body> {
+async fn http_client(tx: mpsc::Sender<DuplexStream>, node: &str, lane: &str) -> Response<Incoming> {
     let (client, server) = tokio::io::duplex(BUFFER_SIZE);
     tx.send(server).await.expect("Failed to open channel.");
-    let (mut sender, connection) = http1::handshake(client)
+    let (mut sender, connection) = http1::handshake(TokioIo::new(client))
         .await
         .expect("HTTP handshake failed.");
 
     let send = async move {
-        let mut request = Request::<Body>::default();
+        let mut request = Request::<Full<Bytes>>::default();
         let uri =
             Uri::try_from(format!("http://example:8080/{}?lane={}", node, lane)).expect("Bad URI.");
         *request.method_mut() = hyper::Method::GET;
@@ -400,11 +401,14 @@ async fn good_http_request() {
         let responses = setup_responses();
         let agent = fake_plane(responses, find_rx);
         let client = http_client(tx, "node", "name");
-        let (_, mut response, _) = join3(server, client, agent).await;
+        let (_, response, _) = join3(server, client, agent).await;
         assert_eq!(response.status(), hyper::StatusCode::OK);
-        let body = std::mem::take(response.body_mut());
-        let body_bytes = to_bytes(body).await.expect("Failed to read body.");
-        assert_eq!(body_bytes.as_ref(), b"Response");
+        let body = response
+            .collect()
+            .await
+            .expect("Failed to read body.")
+            .to_bytes();
+        assert_eq!(body.as_ref(), b"Response");
     })
     .await
 }

@@ -12,6 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use bytes::{Bytes, BytesMut};
+use futures::{
+    future::BoxFuture,
+    ready,
+    stream::{BoxStream, FuturesUnordered},
+    Future, FutureExt, Stream, StreamExt,
+};
+use http_body_util::BodyExt;
+use http_body_util::Full;
+use hyper::body::Incoming;
+use hyper::{
+    header::CONTENT_LENGTH,
+    server::conn::http1,
+    service::Service,
+    upgrade::{Parts, Upgraded},
+    Request, Response, StatusCode,
+};
+use hyper_util::rt::TokioIo;
+use parking_lot::Mutex;
+use pin_project::pin_project;
+use ratchet::{
+    Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream,
+};
 use std::{
     collections::HashSet,
     marker::PhantomData,
@@ -20,26 +43,6 @@ use std::{
     sync::{Arc, OnceLock},
     task::{Context, Poll},
     time::{Duration, Instant},
-};
-
-use bytes::{Bytes, BytesMut};
-use futures::{
-    future::BoxFuture,
-    ready,
-    stream::{BoxStream, FuturesUnordered},
-    Future, FutureExt, Stream, StreamExt,
-};
-use hyper::{
-    body::to_bytes,
-    header::CONTENT_LENGTH,
-    server::conn::http1,
-    service::Service,
-    upgrade::{Parts, Upgraded},
-    Body, Request, Response, StatusCode,
-};
-use pin_project::pin_project;
-use ratchet::{
-    Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream,
 };
 use swimos_api::{agent::HttpLaneRequest, http::HttpRequest};
 use swimos_http::{Negotiated, SockUnwrap, UpgradeError, UpgradeFuture};
@@ -84,7 +87,7 @@ pub fn hyper_http_server<Sock, L, Ext>(
 where
     Sock: Unpin + Send + Sync + AsyncRead + AsyncWrite + 'static,
     L: Listener<Sock> + Send,
-    Ext: ExtensionProvider + Send + Sync + 'static,
+    Ext: ExtensionProvider + Send + Sync + Unpin + 'static,
     Ext::Extension: Send + Unpin,
 {
     let resolver = Resolver::new(find, config.resolver_timeout);
@@ -93,12 +96,15 @@ where
         extension_provider,
         resolver,
         config,
-        |sock, mut svc| async move {
+        |sock, svc, upgrade_state| async move {
             let result = http1::Builder::new()
-                .serve_connection(sock, &mut svc)
+                .serve_connection(TokioIo::new(sock), svc)
                 .with_upgrades()
                 .await;
-            result.map(move |_| svc.into_upgrade_fut())
+            result.map(move |_| {
+                let inner = &mut *upgrade_state.lock();
+                inner.take()
+            })
         },
     );
 
@@ -117,7 +123,7 @@ enum TaskResult<Ext, Sock> {
 #[pin_project(project = TaskFutureProj)]
 enum TaskFuture<Sock, Ext, Con>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send,
 {
@@ -127,7 +133,7 @@ where
 
 impl<Sock, Ext, Con> Future for TaskFuture<Sock, Ext, Con>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send + Unpin,
     Con: Future<Output = Result<Option<UpgradeFutureWithSock<Ext::Extension, Sock>>, hyper::Error>>,
@@ -162,7 +168,7 @@ where
 /// give a name to the type of an async function).
 struct HttpServerState<L, Sock, Ext, Con, FC>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send,
 {
@@ -177,10 +183,13 @@ where
 
 impl<L, Sock, Ext, Con, FC> HttpServerState<L, Sock, Ext, Con, FC>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
-    Ext: ExtensionProvider + Send + Sync,
-    Ext::Extension: Send,
-    FC: Fn(Sock, UpgradeService<Ext, Sock>) -> Con + Copy + Send + 'static,
+    Sock: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    Ext: ExtensionProvider + Unpin + Send + Sync,
+    Ext::Extension: Send + Unpin,
+    FC: Fn(Sock, UpgradeService<Ext, Sock>, UpgradeFutureState<Ext::Extension, Sock>) -> Con
+        + Copy
+        + Send
+        + 'static,
 {
     /// # Arguments
     /// * `listener_stream` - A listener that produced a stream of incoming connections.
@@ -224,12 +233,15 @@ enum Event<Sock, Ext> {
 
 impl<L, Sock, Ext, Con, FC> HttpServerState<L, Sock, Ext, Con, FC>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     L: Stream<Item = ListenerResult<(Sock, Scheme, SocketAddr)>> + Send + Unpin,
-    Ext: ExtensionProvider + Send + Sync,
+    Ext: ExtensionProvider + Send + Unpin + Sync,
     Ext::Extension: Send + Unpin,
     Con: Future<Output = Result<Option<UpgradeFutureWithSock<Ext::Extension, Sock>>, hyper::Error>>,
-    FC: Fn(Sock, UpgradeService<Ext, Sock>) -> Con + Copy + Send + 'static,
+    FC: Fn(Sock, UpgradeService<Ext, Sock>, UpgradeFutureState<Ext::Extension, Sock>) -> Con
+        + Copy
+        + Send
+        + 'static,
 {
     async fn next(&mut self) -> Option<ListenResult<Ext::Extension, Sock>> {
         let HttpServerState {
@@ -308,8 +320,13 @@ where
                     break Some(Err(ListenerError::NegotiationFailed(Box::new(err))));
                 }
                 Event::Incoming(sock, scheme, addr) => {
-                    let svc = upgrader.make_service(scheme, addr);
-                    connection_tasks.push(TaskFuture::Connection(connect_fn(sock, svc)));
+                    let upgrade_future_state = Arc::new(Mutex::default());
+                    let svc = upgrader.make_service(scheme, addr, upgrade_future_state.clone());
+                    connection_tasks.push(TaskFuture::Connection(connect_fn(
+                        sock,
+                        svc,
+                        upgrade_future_state,
+                    )));
                     continue;
                 }
                 Event::IncomingFailed(err) => break Some(Err(err)),
@@ -330,15 +347,15 @@ where
 
 /// Perform the websocket negotiation and assign the upgrade future to the target parameter.
 fn perform_upgrade<Ext, Sock, Err>(
-    request: Request<Body>,
+    request: Request<Incoming>,
     config: WebSocketConfig,
     result: Result<Negotiated<'_, Ext>, UpgradeError<Err>>,
-    target: &mut Option<UpgradeFutureWithSock<Ext, Sock>>,
+    upgrade_state: &UpgradeFutureState<Ext, Sock>,
     scheme: Scheme,
     addr: SocketAddr,
-) -> Result<Response<Body>, hyper::Error>
+) -> Result<Response<Full<Bytes>>, hyper::Error>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: Send + 'static,
     Ext: Extension + Send,
     Err: std::error::Error + Send,
 {
@@ -350,7 +367,8 @@ where
                 Some(config),
                 ReclaimSock::<Sock>::default(),
             );
-            *target = Some(UpgradeFutureWithSock::new(upgrade_fut, scheme, addr));
+            let inner = &mut *upgrade_state.lock();
+            *inner = Some(UpgradeFutureWithSock::new(upgrade_fut, scheme, addr));
             Ok(response)
         }
         Err(err) => Ok(swimos_http::fail_upgrade(err)),
@@ -388,7 +406,12 @@ where
         self.resolver.check_access_times()
     }
 
-    fn make_service<Sock>(&self, scheme: Scheme, addr: SocketAddr) -> UpgradeService<Ext, Sock>
+    fn make_service<Sock>(
+        &self,
+        scheme: Scheme,
+        addr: SocketAddr,
+        upgrade_fut: UpgradeFutureState<Ext::Extension, Sock>,
+    ) -> UpgradeService<Ext, Sock>
     where
         Sock: AsyncRead + AsyncWrite + Unpin + 'static,
     {
@@ -405,16 +428,19 @@ where
             scheme,
             addr,
             *request_timeout,
+            upgrade_fut,
         )
     }
 }
+
+type UpgradeFutureState<Ext, Sock> = Arc<Mutex<Option<UpgradeFutureWithSock<Ext, Sock>>>>;
 
 /// A hyper service that will attempt to upgrade the connection to a websocket and can then
 /// be decomposed to extract the upgrade future.
 struct UpgradeService<Ext: ExtensionProvider, Sock> {
     extension_provider: Arc<Ext>,
     resolver: resolver::Resolver,
-    upgrade_fut: Option<UpgradeFutureWithSock<Ext::Extension, Sock>>,
+    upgrade_fut: UpgradeFutureState<Ext::Extension, Sock>,
     config: WebSocketConfig,
     scheme: Scheme,
     addr: SocketAddr,
@@ -432,20 +458,17 @@ where
         scheme: Scheme,
         addr: SocketAddr,
         request_timeout: Duration,
+        upgrade_fut: UpgradeFutureState<Ext::Extension, Sock>,
     ) -> Self {
         UpgradeService {
             extension_provider,
             resolver,
-            upgrade_fut: None,
+            upgrade_fut,
             config,
             scheme,
             addr,
             request_timeout,
         }
-    }
-
-    fn into_upgrade_fut(self) -> Option<UpgradeFutureWithSock<Ext::Extension, Sock>> {
-        self.upgrade_fut
     }
 }
 
@@ -459,23 +482,19 @@ fn warp_protocol() -> &'static HashSet<&'static str> {
     })
 }
 
-impl<Ext, Sock> Service<Request<Body>> for UpgradeService<Ext, Sock>
+impl<Ext, Sock> Service<Request<Incoming>> for UpgradeService<Ext, Sock>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send,
 {
-    type Response = Response<Body>;
+    type Response = Response<Full<Bytes>>;
 
     type Error = hyper::Error;
 
-    type Future = BoxFuture<'static, Result<Response<Body>, hyper::Error>>;
+    type Future = BoxFuture<'static, Result<Response<Full<Bytes>>, hyper::Error>>;
 
-    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, request: Request<Body>) -> Self::Future {
+    fn call(&self, request: Request<Incoming>) -> Self::Future {
         let UpgradeService {
             extension_provider,
             upgrade_fut,
@@ -514,15 +533,15 @@ impl<Sock> Default for ReclaimSock<Sock> {
 
 impl<Sock> SockUnwrap for ReclaimSock<Sock>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     type Sock = Sock;
 
     fn unwrap_sock(&self, upgraded: Upgraded) -> (Self::Sock, BytesMut) {
         let Parts { io, read_buf, .. } = upgraded
-            .downcast::<Sock>()
+            .downcast::<TokioIo<Sock>>()
             .expect("Hyper should not alter underlying socket type.");
-        (io, BytesMut::from(read_buf.as_ref()))
+        (io.into_inner(), BytesMut::from(read_buf.as_ref()))
     }
 }
 
@@ -549,7 +568,7 @@ impl<Ext, Sock> UpgradeFutureWithSock<Ext, Sock> {
 
 impl<Ext, Sock> Future for UpgradeFutureWithSock<Ext, Sock>
 where
-    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
+    Sock: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     Ext: Extension + Unpin,
 {
     type Output = Result<(WebSocket<Sock, Ext>, Scheme, SocketAddr), hyper::Error>;
@@ -631,7 +650,7 @@ impl WebsocketClient for HyperWebsockets {
 }
 
 /// Produce a bad request response for an request that we cannot route correctly.
-fn bad_request(msg: String) -> Response<Body> {
+fn bad_request(msg: String) -> Response<Full<Bytes>> {
     let mut response = Response::default();
     let payload = Bytes::from(msg);
     *response.status_mut() = StatusCode::BAD_REQUEST;
@@ -643,7 +662,7 @@ fn bad_request(msg: String) -> Response<Body> {
 }
 
 /// Produce an error response if the agent sends back invalid data.
-fn error(msg: &'static str) -> Response<Body> {
+fn error(msg: &'static str) -> Response<Full<Bytes>> {
     let mut response = Response::default();
     let payload = Bytes::from_static(msg.as_bytes());
     *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
@@ -655,7 +674,7 @@ fn error(msg: &'static str) -> Response<Body> {
 }
 
 /// Produce a timeout response for when the agent does not respond in time.
-fn req_timeout() -> Response<Body> {
+fn req_timeout() -> Response<Full<Bytes>> {
     let mut response = Response::default();
     let payload = Bytes::from("The agent failed to respond.".to_string());
     *response.status_mut() = StatusCode::REQUEST_TIMEOUT;
@@ -668,7 +687,7 @@ fn req_timeout() -> Response<Body> {
 
 /// Produce a not found response for the case where an agent does not exist (the agent is responsible
 /// for sending this if the lane does not exist).
-fn not_found(node: &str) -> Response<Body> {
+fn not_found(node: &str) -> Response<Full<Bytes>> {
     let mut response = Response::default();
     let payload = Bytes::from(format!("No agent at '{}'", node));
     *response.status_mut() = StatusCode::NOT_FOUND;
@@ -680,7 +699,7 @@ fn not_found(node: &str) -> Response<Body> {
 }
 
 /// Produce a response to send if the server is already stopping.
-fn unavailable() -> Response<Body> {
+fn unavailable() -> Response<Full<Bytes>> {
     let mut response = Response::default();
     let payload = Bytes::from_static(b"The server is stopping.");
     *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
@@ -698,14 +717,16 @@ fn unavailable() -> Response<Body> {
 /// * `timeout` - Timeout the request if the agent does not produce a response within this duration.
 /// * `resolver` - Resolver to find the agent to handle the request.
 async fn serve_request(
-    request: Request<Body>,
+    request: Request<Incoming>,
     timeout: Duration,
     resolver: Resolver,
-) -> Response<Body> {
+) -> Response<Full<Bytes>> {
     let http_request = match HttpRequest::try_from(request) {
         Ok(req) => req,
         Err(err) => return bad_request(err.to_string()),
     };
+    let to_bytes =
+        |incoming: Incoming| async move { incoming.collect().await.map(|r| r.to_bytes()) };
     let bytes_request = match http_request.try_transform(to_bytes).await {
         Ok(req) => req,
         Err(err) => return bad_request(err.to_string()),
