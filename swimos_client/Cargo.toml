@@ -1,10 +1,11 @@
 [package]
 name = "swimos_client"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 description = "SwimOS Client"
-license = "Apache-2.0"
-repository = "https://github.com/swimos/swim-rust/"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/swimos_client"
+homepage.workspace = true
 
 [features]
 default = ["aws_lc_rs_provider"]
@@ -14,17 +15,17 @@ ring_provider = ["swimos_remote/ring_provider"]
 aws_lc_rs_provider = ["swimos_remote/aws_lc_rs_provider"]
 
 [dependencies]
-swimos_agent_protocol = { path = "../api/swimos_agent_protocol", version = "0.1.0" }
-swimos_recon = { path = "../api/formats/swimos_recon", version = "0.1.0" }
-swimos_messages = { path = "../runtime/swimos_messages", version = "0.1.0" }
-swimos_utilities = { path = "../swimos_utilities", features = ["trigger"], version = "0.1.0" }
-swimos_downlink = { path = "../swimos_downlink", version = "0.1.0" }
-swimos_api = { path = "../api/swimos_api", version = "0.1.0" }
-swimos_client_api = { path = "../api/swimos_client_api", version = "0.1.0" }
-swimos_model = { path = "../api/swimos_model", version = "0.1.0" }
-swimos_form = { path = "../api/swimos_form", version = "0.1.0" }
-swimos_runtime = { path = "../runtime/swimos_runtime", version = "0.1.0" }
-swimos_remote = { path = "../runtime/swimos_remote", version = "0.1.0", features = ["tls"] }
+swimos_agent_protocol = { workspace = true }
+swimos_recon = { workspace = true }
+swimos_messages = { workspace = true }
+swimos_utilities = { workspace = true, features = ["trigger"] }
+swimos_downlink = { workspace = true }
+swimos_api = { workspace = true }
+swimos_client_api = { workspace = true }
+swimos_model = { workspace = true }
+swimos_form = { workspace = true }
+swimos_runtime = { workspace = true }
+swimos_remote = { workspace = true, features = ["tls"] }
 ratchet = { workspace = true }
 url = { workspace = true }
 tracing = { workspace = true }
