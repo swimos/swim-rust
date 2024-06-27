@@ -1,11 +1,12 @@
 [package]
 name = "swimos_form_derive"
-version = "0.1.0"
-authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 description = "SwimOS Serialization and Deserialization Derive Macros"
-license = "Apache-2.0"
-repository = "https://github.com/swimos/swim-rust/"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/api/swimos_form_derive"
+homepage.workspace = true
 
 [lib]
 name = "swimos_form_derive"
@@ -13,8 +14,8 @@ proc-macro = true
 
 [dependencies]
 either = { workspace = true }
-swimos_utilities = { path = "../../swimos_utilities", features = ["errors", "text"], version = "0.1.0" }
-swimos_macro_utilities = { path = "../../swimos_macro_utilities", version = "0.1.0" }
+swimos_utilities = { workspace = true, features = ["errors", "text"] }
+swimos_macro_utilities = { workspace = true }
 proc-macro2 = { workspace = true }
 syn = { workspace = true, features = ["full"] }
 quote = { workspace = true }

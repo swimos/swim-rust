@@ -1,25 +1,26 @@
 [package]
 name = "swimos_introspection"
-version = "0.1.0"
-authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 description = "SwimOS Agent Introspection"
-license = "Apache-2.0"
-repository = "https://github.com/swimos/swim-rust/"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_introspection"
+homepage.workspace = true
 
 [dependencies]
 futures = { workspace = true }
-swimos_utilities = { path = "../../swimos_utilities", features = ["io", "trigger", "text", "encoding"] }
-swimos_runtime = { path = "../../runtime/swimos_runtime" }
+swimos_utilities = { workspace = true, features = ["io", "trigger", "text", "encoding"] }
+swimos_runtime = { workspace = true }
 bytes = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }
 tokio-util = { workspace = true, features = ["codec"] }
-swimos_model = { path = "../../api/swimos_model" }
-swimos_recon = { path = "../../api/formats/swimos_recon" }
-swimos_api = { path = "../../api/swimos_api" }
-swimos_agent_protocol = { path = "../../api/swimos_agent_protocol" }
-swimos_meta = { path = "../../api/swimos_meta" }
-swimos_form = { path = "../../api/swimos_form" }
+swimos_model = { workspace = true }
+swimos_recon = { workspace = true }
+swimos_api = { workspace = true }
+swimos_agent_protocol = { workspace = true }
+swimos_meta = { workspace = true }
+swimos_form = { workspace = true }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }

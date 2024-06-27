@@ -1,18 +1,19 @@
 [package]
 name = "swimos_rocks_store"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 description = "SwimOS RocksDB Persistence"
-license = "Apache-2.0"
-repository = "https://github.com/swimos/swim-rust/"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/runtime/swimos_rocks_store"
+homepage.workspace = true
 
 [dependencies]
-swimos_api = { path = "../../api/swimos_api", version = "0.1.0" }
-swimos_model = { path = "../../api/swimos_model", version = "0.1.0" }
+swimos_api = { workspace = true }
+swimos_model = { workspace = true }
 rocksdb = { workspace = true }
 futures = { workspace = true }
-swimos_utilities = { path = "../../swimos_utilities", features = ["io", "circular_buffer", "future"], version = "0.1.0" }
-swimos_form = { path = "../../api/swimos_form", version = "0.1.0" }
+swimos_utilities = { workspace = true, features = ["io", "circular_buffer", "future"] }
+swimos_form = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 futures-util = { workspace = true }
 bytes = { workspace = true }

@@ -1,18 +1,19 @@
 [package]
 name = "swimos_api"
-version = "0.1.0"
-authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 description = "SwimOS API"
-license = "Apache-2.0"
-repository = "https://github.com/swimos/swim-rust/"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/api/swimos_api"
+homepage.workspace = true
 
 [dependencies]
 futures = { workspace = true }
-swimos_utilities = { path = "../../swimos_utilities", features = ["io", "errors", "trigger"], version = "0.1.0" }
-swimos_model = { path = "../swimos_model", version = "0.1.0" }
-swimos_form = { path = "../swimos_form", version = "0.1.0" }
-swimos_recon = { path = "../formats/swimos_recon", version = "0.1.0" }
+swimos_utilities = { workspace = true, features = ["io", "errors", "trigger"] }
+swimos_model = { workspace = true }
+swimos_form = { workspace = true }
+swimos_recon = { workspace = true }
 thiserror = { workspace = true }
 bytes = { workspace = true }
 tokio = { workspace = true }

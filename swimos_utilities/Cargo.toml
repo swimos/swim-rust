@@ -1,11 +1,12 @@
 [package]
 name = "swimos_utilities"
-version = "0.1.0"
-authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 description = "SwimOS Time Utilities"
-license = "Apache-2.0"
-repository = "https://github.com/swimos/swim-rust/"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/swimos_utilities"
+homepage.workspace = true
 
 [features]
 default = []
@@ -26,18 +27,18 @@ trigger = ["swimos_trigger"]
 encoding = ["swimos_encoding"]
 
 [dependencies]
-swimos_byte_channel = { path = "./swimos_byte_channel", optional = true }
-swimos_multi_reader = { path = "./swimos_multi_reader", optional = true }
-swimos_algebra = { path = "./swimos_algebra", optional = true }
-swimos_num = { path = "./swimos_num" }
-swimos_errors = { path = "./swimos_errors", optional = true }
-swimos_format = { path = "./swimos_format", optional = true }
-swimos_trigger = { path = "./swimos_trigger", optional = true }
-swimos_future = { path = "./swimos_future", optional = true }
-swimos_fs = { path = "./swimos_fs", optional = true }
-swimos_route = { path = "./swimos_route", optional = true }
-swimos_rtree = { path = "./swimos_rtree", optional = true }
-swimos_sync = { path = "./swimos_sync", optional = true }
-swimos_time = { path = "./swimos_time", optional = true }
-swimos_encoding = { path = "./swimos_encoding", optional = true }
+swimos_byte_channel = { workspace = true, optional = true }
+swimos_multi_reader = { workspace = true, optional = true }
+swimos_algebra = { workspace = true, optional = true }
+swimos_num = { workspace = true }
+swimos_errors = { workspace = true, optional = true }
+swimos_format = { workspace = true, optional = true }
+swimos_trigger = { workspace = true, optional = true }
+swimos_future = { workspace = true, optional = true }
+swimos_fs = { workspace = true, optional = true }
+swimos_route = { workspace = true, optional = true }
+swimos_rtree = { workspace = true, optional = true }
+swimos_sync = { workspace = true, optional = true }
+swimos_time = { workspace = true, optional = true }
+swimos_encoding = { workspace = true, optional = true }
 

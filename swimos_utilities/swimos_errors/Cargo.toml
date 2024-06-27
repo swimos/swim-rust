@@ -1,13 +1,14 @@
 [package]
 name = "swimos_errors"
-version = "0.1.0"
-authors = ["Swim Inc. developers info@swim.ai"]
-edition = "2021"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 description = "SwimOS Error Utilties"
-license = "Apache-2.0"
-repository = "https://github.com/swimos/swim-rust/"
+license.workspace = true
+repository = "https://github.com/swimos/swim-rust/tree/main/swimos_utilities/swimos_errors"
+homepage.workspace = true
 
 [dependencies]
-swimos_algebra = { path = "../swimos_algebra" }
+swimos_algebra = { workspace = true }
 
 [dev-dependencies]
