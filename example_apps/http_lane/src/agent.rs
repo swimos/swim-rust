@@ -88,6 +88,7 @@ impl ExampleLifecycle {
         _http_context: HttpRequestContext,
         value: i32,
     ) -> impl HandlerAction<ExampleAgent, Completion = UnitResponse> + '_ {
+        println!("Put");
         context
             .set_value(ExampleAgent::VALUE_LANE, value)
             .followed_by(context.value(UnitResponse::default()))

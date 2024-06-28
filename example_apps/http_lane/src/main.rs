@@ -35,6 +35,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let agent = AgentModel::new(ExampleAgent::default, lifecycle.into_lifecycle());
 
     let server = ServerBuilder::with_plane_name("Example Plane")
+        .set_bind_addr("127.0.0.1:8080".parse()?)
         .add_route(route, agent)
         .update_config(|config| {
             config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);

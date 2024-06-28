@@ -8,3 +8,9 @@ publish = false
 swimos = { workspace = true, features = ["server", "agent"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 example-util = { path = "../example_util" }
+
+[dev-dependencies]
+reqwest = { workspace = true }
+
+[[example]]
+name = "http_client"
