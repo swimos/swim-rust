@@ -30,7 +30,6 @@ use hyper::{
     Request, Response, StatusCode,
 };
 use hyper_util::rt::TokioIo;
-use parking_lot::Mutex;
 use pin_project::pin_project;
 use ratchet::{
     Extension, ExtensionProvider, ProtocolRegistry, WebSocket, WebSocketConfig, WebSocketStream,
@@ -40,7 +39,10 @@ use std::{
     marker::PhantomData,
     net::SocketAddr,
     pin::Pin,
-    sync::{Arc, OnceLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, OnceLock,
+    },
     task::{Context, Poll},
     time::{Duration, Instant},
 };
@@ -96,27 +98,36 @@ where
         extension_provider,
         resolver,
         config,
-        |sock, svc, upgrade_state| async move {
+        |sock, svc| async move {
             let result = http1::Builder::new()
-                .serve_connection(TokioIo::new(sock), svc)
+                .serve_connection(TokioIo::new(sock), &svc)
                 .with_upgrades()
                 .await;
+            let did_upgrade = svc.did_upgrade.load(Ordering::Acquire);
             result.map(move |_| {
-                let inner = &mut *upgrade_state.lock();
-                inner.take()
+                if did_upgrade {
+                    ConnKind::Websocket
+                } else {
+                    ConnKind::NoUpgrade
+                }
             })
         },
     );
 
     futures::stream::unfold(state, |mut state| async move {
-        state.next().await.map(move |result| (result, state))
+        state.next_res().await.map(move |result| (result, state))
     })
 }
 
 type WebsocketParts<Sock, Ext> = (WebSocket<Sock, Ext>, Scheme, SocketAddr);
 
+enum ConnKind {
+    NoUpgrade,
+    Websocket,
+}
+
 enum TaskResult<Ext, Sock> {
-    ConnectionComplete(Result<Option<UpgradeFutureWithSock<Ext, Sock>>, hyper::Error>),
+    ConnectionComplete(Result<ConnKind, hyper::Error>),
     UpgradeComplete(Result<Box<WebsocketParts<Sock, Ext>>, hyper::Error>),
 }
 
@@ -136,7 +147,7 @@ where
     Sock: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     Ext: ExtensionProvider,
     Ext::Extension: Send + Unpin,
-    Con: Future<Output = Result<Option<UpgradeFutureWithSock<Ext::Extension, Sock>>, hyper::Error>>,
+    Con: Future<Output = Result<ConnKind, hyper::Error>>,
 {
     type Output = TaskResult<Ext::Extension, Sock>;
 
@@ -174,7 +185,8 @@ where
 {
     listener_stream: L,
     connection_tasks: FuturesUnordered<TaskFuture<Sock, Ext, Con>>,
-    upgrader: Upgrader<Ext>,
+    upgrader: Upgrader<Ext, Sock>,
+    upgrade_rx: mpsc::Receiver<UpgradeFutureWithSock<Ext::Extension, Sock>>,
     connect_fn: FC,
     max_pending: usize,
     timeout: Pin<Box<Sleep>>,
@@ -186,10 +198,7 @@ where
     Sock: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     Ext: ExtensionProvider + Unpin + Send + Sync,
     Ext::Extension: Send + Unpin,
-    FC: Fn(Sock, UpgradeService<Ext, Sock>, UpgradeFutureState<Ext::Extension, Sock>) -> Con
-        + Copy
-        + Send
-        + 'static,
+    FC: Fn(Sock, UpgradeService<Ext, Sock>) -> Con + Copy + Send + 'static,
 {
     /// # Arguments
     /// * `listener_stream` - A listener that produced a stream of incoming connections.
@@ -205,6 +214,9 @@ where
         connect_fn: FC,
     ) -> Self {
         let connection_tasks = FuturesUnordered::new();
+        let max_pending = config.max_http_requests.get();
+        let (upgrade_tx, upgrade_rx) =
+            mpsc::channel::<UpgradeFutureWithSock<Ext::Extension, Sock>>(max_pending);
         HttpServerState {
             listener_stream,
             connection_tasks,
@@ -213,9 +225,11 @@ where
                 resolver,
                 config.websockets,
                 config.http_request_timeout,
+                upgrade_tx,
             ),
+            upgrade_rx,
             connect_fn,
-            max_pending: config.max_http_requests.get(),
+            max_pending,
             timeout: Box::pin(sleep(config.resolver_timeout)),
             timeout_enabled: false,
         }
@@ -226,6 +240,7 @@ enum Event<Sock, Ext> {
     TaskComplete(TaskResult<Ext, Sock>),
     Incoming(Sock, Scheme, SocketAddr),
     IncomingFailed(ListenerError),
+    NewUpgrade(UpgradeFutureWithSock<Ext, Sock>),
     Timeout,
     Continue,
     Stop,
@@ -237,17 +252,15 @@ where
     L: Stream<Item = ListenerResult<(Sock, Scheme, SocketAddr)>> + Send + Unpin,
     Ext: ExtensionProvider + Send + Unpin + Sync,
     Ext::Extension: Send + Unpin,
-    Con: Future<Output = Result<Option<UpgradeFutureWithSock<Ext::Extension, Sock>>, hyper::Error>>,
-    FC: Fn(Sock, UpgradeService<Ext, Sock>, UpgradeFutureState<Ext::Extension, Sock>) -> Con
-        + Copy
-        + Send
-        + 'static,
+    Con: Future<Output = Result<ConnKind, hyper::Error>>,
+    FC: Fn(Sock, UpgradeService<Ext, Sock>) -> Con + Copy + Send + 'static,
 {
-    async fn next(&mut self) -> Option<ListenResult<Ext::Extension, Sock>> {
+    async fn next_res(&mut self) -> Option<ListenResult<Ext::Extension, Sock>> {
         let HttpServerState {
             listener_stream,
             connection_tasks,
             upgrader,
+            upgrade_rx,
             connect_fn,
             max_pending,
             timeout,
@@ -255,11 +268,18 @@ where
         } = self;
 
         loop {
-            let event = if connection_tasks.len() < *max_pending {
+            let event: Event<_, Ext::Extension> = if connection_tasks.len() < *max_pending {
                 // We have capacity so we can wait for new incoming connections.
                 tokio::select! {
                     biased;
                     _ = &mut *timeout, if *timeout_enabled => Event::Timeout,
+                    maybe_upgrade = upgrade_rx.recv() => {
+                        if let Some(upgrade) = maybe_upgrade {
+                            Event::NewUpgrade(upgrade)
+                        } else {
+                            Event::Continue
+                        }
+                    }
                     maybe_event = connection_tasks.next(), if !connection_tasks.is_empty() => {
                         // An HTTP request or upgrade has completed.
                         if let Some(ev) = maybe_event {
@@ -288,6 +308,13 @@ where
                 tokio::select! {
                     biased;
                     _ = &mut*timeout, if *timeout_enabled => Event::Timeout,
+                    maybe_upgrade = upgrade_rx.recv() => {
+                        if let Some(upgrade) = maybe_upgrade {
+                            Event::NewUpgrade(upgrade)
+                        } else {
+                            Event::Continue
+                        }
+                    }
                     some_ev = connection_tasks.next() => {
                         if let Some(ev) = some_ev {
                             Event::TaskComplete(ev)
@@ -301,10 +328,10 @@ where
                 Event::TaskComplete(TaskResult::ConnectionComplete(Err(err))) => {
                     break Some(Err(ListenerError::NegotiationFailed(Box::new(err))));
                 }
-                Event::TaskComplete(TaskResult::ConnectionComplete(Ok(Some(fut)))) => {
-                    connection_tasks.push(TaskFuture::Upgrade(fut));
+                Event::TaskComplete(TaskResult::ConnectionComplete(Ok(ConnKind::Websocket))) => {
+                    continue;
                 }
-                Event::TaskComplete(TaskResult::ConnectionComplete(Ok(_))) => {
+                Event::TaskComplete(TaskResult::ConnectionComplete(Ok(ConnKind::NoUpgrade))) => {
                     if !*timeout_enabled {
                         if let Some(t) = upgrader.resolver_cleanup() {
                             *timeout_enabled = true;
@@ -313,6 +340,9 @@ where
                     }
                     continue;
                 }
+                Event::NewUpgrade(fut) => {
+                    connection_tasks.push(TaskFuture::Upgrade(fut));
+                }
                 Event::TaskComplete(TaskResult::UpgradeComplete(Ok(parts))) => {
                     break Some(Ok(*parts));
                 }
@@ -320,13 +350,8 @@ where
                     break Some(Err(ListenerError::NegotiationFailed(Box::new(err))));
                 }
                 Event::Incoming(sock, scheme, addr) => {
-                    let upgrade_future_state = Arc::new(Mutex::default());
-                    let svc = upgrader.make_service(scheme, addr, upgrade_future_state.clone());
-                    connection_tasks.push(TaskFuture::Connection(connect_fn(
-                        sock,
-                        svc,
-                        upgrade_future_state,
-                    )));
+                    let svc = upgrader.make_service(scheme, addr);
+                    connection_tasks.push(TaskFuture::Connection(connect_fn(sock, svc)));
                     continue;
                 }
                 Event::IncomingFailed(err) => break Some(Err(err)),
@@ -345,15 +370,16 @@ where
     }
 }
 
+type BytesHyperResult = Result<Response<Full<Bytes>>, hyper::Error>;
+
 /// Perform the websocket negotiation and assign the upgrade future to the target parameter.
 fn perform_upgrade<Ext, Sock, Err>(
     request: Request<Incoming>,
     config: WebSocketConfig,
     result: Result<Negotiated<'_, Ext>, UpgradeError<Err>>,
-    upgrade_state: &UpgradeFutureState<Ext, Sock>,
     scheme: Scheme,
     addr: SocketAddr,
-) -> Result<Response<Full<Bytes>>, hyper::Error>
+) -> (BytesHyperResult, Option<UpgradeFutureWithSock<Ext, Sock>>)
 where
     Sock: Send + 'static,
     Ext: Extension + Send,
@@ -367,38 +393,43 @@ where
                 Some(config),
                 ReclaimSock::<Sock>::default(),
             );
-            let inner = &mut *upgrade_state.lock();
-            *inner = Some(UpgradeFutureWithSock::new(upgrade_fut, scheme, addr));
-            Ok(response)
+            (
+                Ok(response),
+                Some(UpgradeFutureWithSock::new(upgrade_fut, scheme, addr)),
+            )
         }
-        Err(err) => Ok(swimos_http::fail_upgrade(err)),
+        Err(err) => (Ok(swimos_http::fail_upgrade(err)), None),
     }
 }
 
 /// A factory for hyper services that perform websocket upgrades or forward the request on to
 /// an HTTP lane on an agent.
-struct Upgrader<Ext: ExtensionProvider> {
+struct Upgrader<Ext: ExtensionProvider, Sock> {
     extension_provider: Arc<Ext>,
     resolver: resolver::Resolver,
     config: WebSocketConfig,
     request_timeout: Duration,
+    upgrade_tx: mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>,
 }
 
-impl<Ext> Upgrader<Ext>
+impl<Ext, Sock> Upgrader<Ext, Sock>
 where
     Ext: ExtensionProvider + Send + Sync,
+    Sock: AsyncRead + AsyncWrite + Unpin + 'static,
 {
     fn new(
         extension_provider: Ext,
         resolver: resolver::Resolver,
         config: WebSocketConfig,
         request_timeout: Duration,
+        upgrade_tx: mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>,
     ) -> Self {
         Upgrader {
             extension_provider: Arc::new(extension_provider),
             resolver,
             config,
             request_timeout,
+            upgrade_tx,
         }
     }
 
@@ -406,20 +437,13 @@ where
         self.resolver.check_access_times()
     }
 
-    fn make_service<Sock>(
-        &self,
-        scheme: Scheme,
-        addr: SocketAddr,
-        upgrade_fut: UpgradeFutureState<Ext::Extension, Sock>,
-    ) -> UpgradeService<Ext, Sock>
-    where
-        Sock: AsyncRead + AsyncWrite + Unpin + 'static,
-    {
+    fn make_service(&self, scheme: Scheme, addr: SocketAddr) -> UpgradeService<Ext, Sock> {
         let Upgrader {
             extension_provider,
             resolver,
             config,
             request_timeout,
+            upgrade_tx,
         } = self;
         UpgradeService::new(
             extension_provider.clone(),
@@ -428,23 +452,22 @@ where
             scheme,
             addr,
             *request_timeout,
-            upgrade_fut,
+            upgrade_tx.clone(),
         )
     }
 }
-
-type UpgradeFutureState<Ext, Sock> = Arc<Mutex<Option<UpgradeFutureWithSock<Ext, Sock>>>>;
 
 /// A hyper service that will attempt to upgrade the connection to a websocket and can then
 /// be decomposed to extract the upgrade future.
 struct UpgradeService<Ext: ExtensionProvider, Sock> {
     extension_provider: Arc<Ext>,
     resolver: resolver::Resolver,
-    upgrade_fut: UpgradeFutureState<Ext::Extension, Sock>,
+    upgrade_tx: mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>,
     config: WebSocketConfig,
     scheme: Scheme,
     addr: SocketAddr,
     request_timeout: Duration,
+    did_upgrade: AtomicBool,
 }
 
 impl<Ext: ExtensionProvider, Sock> UpgradeService<Ext, Sock>
@@ -458,16 +481,17 @@ where
         scheme: Scheme,
         addr: SocketAddr,
         request_timeout: Duration,
-        upgrade_fut: UpgradeFutureState<Ext::Extension, Sock>,
+        upgrade_tx: mpsc::Sender<UpgradeFutureWithSock<Ext::Extension, Sock>>,
     ) -> Self {
         UpgradeService {
             extension_provider,
             resolver,
-            upgrade_fut,
+            upgrade_tx,
             config,
             scheme,
             addr,
             request_timeout,
+            did_upgrade: AtomicBool::new(false),
         }
     }
 }
@@ -482,11 +506,11 @@ fn warp_protocol() -> &'static HashSet<&'static str> {
     })
 }
 
-impl<Ext, Sock> Service<Request<Incoming>> for UpgradeService<Ext, Sock>
+impl<'a, Ext, Sock> Service<Request<Incoming>> for &'a UpgradeService<Ext, Sock>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     Ext: ExtensionProvider,
-    Ext::Extension: Send,
+    Ext::Extension: Send + 'static,
 {
     type Response = Response<Full<Bytes>>;
 
@@ -497,22 +521,34 @@ where
     fn call(&self, request: Request<Incoming>) -> Self::Future {
         let UpgradeService {
             extension_provider,
-            upgrade_fut,
+            upgrade_tx,
             config,
             scheme,
             addr,
             resolver,
             request_timeout,
-        } = self;
+            did_upgrade,
+        } = *self;
         let result =
             swimos_http::negotiate_upgrade(&request, warp_protocol(), extension_provider.as_ref())
                 .transpose();
         // If the request in a websocket upgrade, perform the upgrade, otherwise attempt to delegate
         // the request to an HTTP lane on an agent.
         if let Some(result) = result {
-            let upgrade_result =
-                perform_upgrade(request, *config, result, upgrade_fut, *scheme, *addr);
-            async move { upgrade_result }.boxed()
+            let (upgrade_result, maybe_fut) =
+                perform_upgrade(request, *config, result, *scheme, *addr);
+            did_upgrade.store(true, Ordering::Release);
+            if let Some(upgrade_fut) = maybe_fut {
+                let tx = upgrade_tx.clone();
+                async move {
+                    // This can only fail if the server is no longer running, in which case it is irrelevant.
+                    let _ = tx.send(upgrade_fut).await;
+                    upgrade_result
+                }
+                .boxed()
+            } else {
+                async move { upgrade_result }.boxed()
+            }
         } else {
             serve_request(request, *request_timeout, resolver.clone())
                 .map(Ok)
