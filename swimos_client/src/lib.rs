@@ -443,9 +443,11 @@ impl<'h, L> ValueDownlinkBuilder<'h, L> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ValueDownlinkOperationError {
+    #[error("Downlink has not yet synced")]
     NotYetSynced,
+    #[error("Downlink terminated")]
     DownlinkStopped,
 }
 

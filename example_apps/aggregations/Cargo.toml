@@ -14,4 +14,4 @@ rand = { workspace = true }
 futures-util = { workspace = true }
 
 [[example]]
-name = "client"
+name = "aggregations_client"
