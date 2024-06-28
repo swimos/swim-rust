@@ -103,6 +103,7 @@ where
 /// Provides all networking functionality required for a Warp client (DNS resolution and opening sockets).
 pub trait ClientConnections: Clone + Send + Sync + 'static {
     type ClientSocket: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static;
+
     fn try_open(
         &self,
         scheme: Scheme,
@@ -111,6 +112,7 @@ pub trait ClientConnections: Clone + Send + Sync + 'static {
     ) -> BoxFuture<'_, ConnectionResult<Self::ClientSocket>>;
 
     fn dns_resolver(&self) -> BoxDnsResolver;
+
     fn lookup(
         &self,
         host: String,

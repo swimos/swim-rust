@@ -19,7 +19,9 @@ sha-1 = { workspace = true }
 base64 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+http-body-util = { workspace = true }
+hyper-util = { workspace = true, features = ["server-graceful", "http1", "server-auto"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros", "time"] }
-hyper = { workspace = true, features = ["server", "tcp", "http1"] }
+hyper = { workspace = true, features = ["server", "http1"] }

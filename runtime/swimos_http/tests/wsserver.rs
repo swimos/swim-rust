@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use bytes::BytesMut;
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{upgrade::Upgraded, Body, Request, Response, Server};
+use bytes::{Bytes, BytesMut};
+use hyper::service::service_fn;
+use hyper::{upgrade::Upgraded, Request, Response};
 use std::{
     error::Error,
-    net::{Ipv4Addr, SocketAddr, TcpListener},
+    net::{Ipv4Addr, SocketAddr},
     pin::pin,
     sync::Arc,
     time::Duration,
@@ -29,42 +29,48 @@ use futures::{
     future::{join, select, Either},
     Future,
 };
+use http_body_util::Full;
+use hyper::body::Incoming;
+use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::server::conn::auto::Builder;
+use hyper_util::server::graceful::GracefulShutdown;
 use ratchet::{CloseCode, CloseReason, Message, NoExt, NoExtProvider, PayloadType, WebSocket};
 use thiserror::Error;
+use tokio::net::TcpListener;
 use tokio::{net::TcpSocket, sync::Notify};
 
 async fn run_server(
     bound_to: oneshot::Sender<SocketAddr>,
     done: Arc<Notify>,
 ) -> Result<(), Box<dyn Error>> {
-    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
     let bound = listener.local_addr()?;
     let _ = bound_to.send(bound);
 
-    let service = make_service_fn(|_| async { Ok::<_, hyper::Error>(service_fn(upgrade_server)) });
+    let (io, _) = listener.accept().await?;
+    let builder = Builder::new(TokioExecutor::new());
+    let connection =
+        builder.serve_connection_with_upgrades(TokioIo::new(io), service_fn(upgrade_server));
+    let shutdown = GracefulShutdown::new();
 
-    let shutdown = Arc::new(Notify::new());
-    let shutdown_cpy = shutdown.clone();
-
-    let server = pin!(Server::from_tcp(listener)?
-        .serve(service)
-        .with_graceful_shutdown(async move {
-            shutdown_cpy.notified().await;
-        }));
-
+    let server = pin!(shutdown.watch(connection));
     let stop = pin!(done.notified());
+
     match select(server, stop).await {
-        Either::Left((result, _)) => result?,
-        Either::Right((_, server)) => {
-            shutdown.notify_one();
-            tokio::time::timeout(Duration::from_secs(2), server).await??;
+        Either::Left((result, _)) => match result {
+            Ok(()) => Ok(()),
+            Err(e) => Err(e),
+        },
+        Either::Right((_, _server)) => {
+            tokio::time::timeout(Duration::from_secs(2), shutdown.shutdown()).await?;
+            Ok(())
         }
     }
-
-    Ok(())
 }
 
-async fn upgrade_server(request: Request<Body>) -> Result<Response<Body>, hyper::http::Error> {
+async fn upgrade_server(
+    request: Request<Incoming>,
+) -> Result<Response<Full<Bytes>>, hyper::http::Error> {
     let protocols = ["warp0"].into_iter().collect();
     match swimos_http::negotiate_upgrade(&request, &protocols, &NoExtProvider) {
         Ok(Some(negotiated)) => {
@@ -72,14 +78,14 @@ async fn upgrade_server(request: Request<Body>) -> Result<Response<Body>, hyper:
             tokio::spawn(run_websocket(upgraded));
             Ok(response)
         }
-        Ok(None) => Response::builder().body(Body::from("Success")),
+        Ok(None) => Response::builder().body(Full::from("Success")),
         Err(err) => Ok(swimos_http::fail_upgrade(err)),
     }
 }
 
 async fn run_websocket<F>(upgrade_fut: F)
 where
-    F: Future<Output = Result<WebSocket<Upgraded, NoExt>, hyper::Error>> + Send,
+    F: Future<Output = Result<WebSocket<TokioIo<Upgraded>, NoExt>, hyper::Error>> + Send,
 {
     match upgrade_fut.await {
         Ok(mut websocket) => {

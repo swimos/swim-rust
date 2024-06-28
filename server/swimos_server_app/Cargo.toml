@@ -39,10 +39,12 @@ rand = { workspace = true }
 url = { workspace = true }
 swimos_rocks_store = { workspace = true, optional = true }
 parking_lot = { workspace = true }
-hyper = { workspace = true, features = ["server", "runtime", "tcp", "http1", "backports"] }
+hyper = { workspace = true, features = ["server", "http1"] }
 pin-project = { workspace = true }
 percent-encoding = { workspace = true }
 rustls = { workspace = true }
+http-body-util = { workspace = true }
+hyper-util = { workspace = true }
 
 [dev-dependencies]
 swimos_recon = { workspace = true }
