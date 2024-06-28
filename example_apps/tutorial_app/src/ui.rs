@@ -73,13 +73,14 @@ where
 
     loop {
         let (stream, _) = select! {
-            result = listener.accept() => result?,
+            biased;
             _ = &mut shutdown => {
-                 tokio::time::timeout(Duration::from_secs(2), shutdown_handle.shutdown())
-                    .await
-                    .map_err(|_| TimeoutError)?;
-                return Ok(());
+                tokio::time::timeout(Duration::from_secs(2), shutdown_handle.shutdown())
+                   .await
+                   .map_err(|_| TimeoutError)?;
+               return Ok(());
             }
+            result = listener.accept() => result?,
         };
 
         let conn = Builder::new().serve_connection(TokioIo::new(stream), make_svc.clone());
