@@ -65,6 +65,7 @@ fn methods() -> &'static HashMap<http::Method, Method> {
         m.insert(http::Method::GET, Method::GET);
         m.insert(http::Method::HEAD, Method::HEAD);
         m.insert(http::Method::POST, Method::POST);
+        m.insert(http::Method::PUT, Method::PUT);
         m.insert(http::Method::DELETE, Method::DELETE);
         m.insert(http::Method::CONNECT, Method::CONNECT);
         m.insert(http::Method::OPTIONS, Method::OPTIONS);
