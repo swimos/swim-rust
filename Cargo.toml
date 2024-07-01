@@ -129,7 +129,7 @@ url = "2.1.1"
 chrono = "0.4.31"
 trybuild = "1.0.65"
 proc-macro2 = "1.0"
-syn = "1.0"
+syn = "2.0"
 quote = "1.0.3"
 num-bigint = "0.4"
 ratchet = { package = "ratchet_rs", version = "1.0" }
