@@ -33,7 +33,7 @@ async fn main() {
     //
     // This operation may fail if there is a connection issue.
     let state_downlink = handle
-        .value_downlink::<i32>(state_path)
+        .value_downlink::<usize>(state_path)
         .lifecycle(lifecycle)
         .downlink_config(DownlinkConfig::default())
         .open()
