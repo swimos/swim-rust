@@ -375,7 +375,6 @@ impl<'h, L> ValueDownlinkBuilder<'h, L> {
     /// Sets a new lifecycle that to be used.
     pub fn lifecycle<NL, T>(self, lifecycle: NL) -> ValueDownlinkBuilder<'h, NL>
     where
-        L: ValueDownlinkLifecycle<T>,
         NL: ValueDownlinkLifecycle<T>,
     {
         let ValueDownlinkBuilder {
@@ -503,7 +502,6 @@ impl<'h, L> MapDownlinkBuilder<'h, L> {
     /// Sets a new lifecycle that to be used.
     pub fn lifecycle<K, V, NL>(self, lifecycle: NL) -> MapDownlinkBuilder<'h, NL>
     where
-        L: MapDownlinkLifecycle<K, V>,
         NL: MapDownlinkLifecycle<K, V>,
     {
         let MapDownlinkBuilder {
@@ -629,7 +627,6 @@ impl<'h, L> EventDownlinkBuilder<'h, L> {
     /// Sets a new lifecycle that to be used.
     pub fn lifecycle<T, NL>(self, lifecycle: NL) -> EventDownlinkBuilder<'h, NL>
     where
-        L: EventDownlinkLifecycle<T>,
         NL: EventDownlinkLifecycle<T>,
     {
         let EventDownlinkBuilder {
