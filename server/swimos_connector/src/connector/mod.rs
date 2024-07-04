@@ -23,8 +23,8 @@ pub trait Connector {
 
     fn connector_stream(&mut self) -> impl Stream<Item = Self::ConnectorData> + Send + 'static;
 
-    fn on_start(&mut self) -> impl EventHandler<GenericConnectorAgent> + '_;
-    fn on_stop(&mut self) -> impl EventHandler<GenericConnectorAgent> + '_;
-    fn on_data(&mut self, data: Self::ConnectorData) -> impl EventHandler<GenericConnectorAgent> + '_;
+    fn on_start(&self) -> impl EventHandler<GenericConnectorAgent> + '_;
+    fn on_stop(&self) -> impl EventHandler<GenericConnectorAgent> + '_;
+    fn on_data(&self, data: Self::ConnectorData) -> impl EventHandler<GenericConnectorAgent> + Send + 'static;
 
 }

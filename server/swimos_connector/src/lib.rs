@@ -13,6 +13,9 @@
 // limitations under the License.
 
 mod connector;
-pub mod generic;
+mod generic;
+mod lifecycle;
 pub mod kafka;
 pub use connector::*;
+pub use generic::*;
+pub use lifecycle::*;
