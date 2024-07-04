@@ -51,7 +51,8 @@ use crate::lanes::demand_map::CueKey;
 use crate::lanes::join_map::JoinMapAddDownlink;
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
 use crate::lanes::supply::{Supply, SupplyLane};
-use crate::lanes::{DemandMapLane, JoinMapLane};
+use crate::lanes::value::ValueLaneSelectSet;
+use crate::lanes::{DemandMapLane, JoinMapLane, SelectorFn, ValueLane};
 
 pub use self::downlink_builder::event::{
     StatefulEventDownlinkBuilder, StatelessEventDownlinkBuilder,
@@ -916,4 +917,25 @@ where
     pub fn builder(&self) -> StatelessJoinMapLifecycleBuilder<Agent, L, K, V> {
         StatelessJoinMapLifecycleBuilder::default()
     }
+}
+
+pub struct ConnectorContext<Connector> {
+    _connector_type: PhantomData<fn(&Connector)>,
+}
+
+impl<Connector: 'static> ConnectorContext<Connector> {
+
+    pub fn set_value<T, F>(
+        &self,
+        item: F,
+        value: T,
+    ) -> impl HandlerAction<Connector, Completion = ()> + Send + 'static
+    where
+
+        F: SelectorFn<Connector, Target = ValueLane<T>> + Send + 'static,
+        T: Send + 'static,
+    {
+        ValueLaneSelectSet::new(item, value)
+    }
+
 }

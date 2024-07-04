@@ -39,7 +39,7 @@ use crate::{
     meta::AgentMetadata,
 };
 
-use super::queues::WriteQueues;
+use super::{queues::WriteQueues, Selector, SelectorFn};
 
 pub use event::MapLaneEvent;
 
@@ -740,5 +740,292 @@ where
         F: FnOnce(Option<&V>) -> Option<V> + Send + 'a,
     {
         MapLaneTransformEntry::new(projection, key, f)
+    }
+}
+
+pub struct MapLaneSelectUpdate<C, K, V, F> {
+    _type: PhantomData<fn(&C)>,
+    projection_key_value: Option<(F, K, V)>,
+}
+
+impl<C, K, V, F> MapLaneSelectUpdate<C, K, V, F> {
+    pub fn new(projection: F, key: K, value: V) -> Self {
+        MapLaneSelectUpdate {
+            _type: PhantomData,
+            projection_key_value: Some((projection, key, value)),
+        }
+    }
+}
+
+impl<C, K, V, F> HandlerAction<C> for MapLaneSelectUpdate<C, K, V, F>
+where
+    K: Clone + Eq + Hash,
+    F: SelectorFn<C, Target = MapLane<K, V>>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapLaneSelectUpdate {
+            projection_key_value,
+            ..
+        } = self;
+        if let Some((projection, key, value)) = projection_key_value.take() {
+            let selector = projection.selector(context);
+            if let Some(lane) = selector.select() {
+                lane.update(key, value);
+                StepResult::Complete {
+                    modified_item: Some(Modification::of(lane.id)),
+                    result: (),
+                }
+            } else {
+                StepResult::Fail(EventHandlerError::LaneNotFound(selector.name().to_string()))
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+pub struct MapLaneSelectRemove<C, K, V, F> {
+    _type: PhantomData<fn(&C, &V)>,
+    projection_key: Option<(F, K)>,
+}
+
+impl<C, K, V, F> MapLaneSelectRemove<C, K, V, F> {
+    pub fn new(projection: F, key: K) -> Self {
+        MapLaneSelectRemove {
+            _type: PhantomData,
+            projection_key: Some((projection, key)),
+        }
+    }
+}
+
+impl<C, K, V, F> HandlerAction<C> for MapLaneSelectRemove<C, K, V, F>
+where
+    K: Clone + Eq + Hash,
+    F: SelectorFn<C, Target = MapLane<K, V>>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapLaneSelectRemove {
+            projection_key,
+            ..
+        } = self;
+        if let Some((projection, key)) = projection_key.take() {
+            let selector = projection.selector(context);
+            if let Some(lane) = selector.select() {
+                lane.remove(&key);
+                StepResult::Complete {
+                    modified_item: Some(Modification::of(lane.id)),
+                    result: (),
+                }
+            } else {
+                StepResult::Fail(EventHandlerError::LaneNotFound(selector.name().to_string()))
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+pub struct MapLaneSelectClear<C, K, V, F> {
+    _type: PhantomData<fn(&C, &K, &V)>,
+    projection: Option<F>,
+}
+
+impl<C, K, V, F> MapLaneSelectClear<C, K, V, F> {
+    pub fn new(projection: F) -> Self {
+        MapLaneSelectClear {
+            _type: PhantomData,
+            projection: Some(projection)
+        }
+    }
+}
+
+impl<C, K, V, F> HandlerAction<C> for MapLaneSelectClear<C, K, V, F>
+where
+    K: Clone + Eq + Hash,
+    F: SelectorFn<C, Target = MapLane<K, V>>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapLaneSelectClear {
+            projection,
+            ..
+        } = self;
+        if let Some(projection) = projection.take() {
+            let selector = projection.selector(context);
+            if let Some(lane) = selector.select() {
+                lane.clear();
+                StepResult::Complete {
+                    modified_item: Some(Modification::of(lane.id)),
+                    result: (),
+                }
+            } else {
+                StepResult::Fail(EventHandlerError::LaneNotFound(selector.name().to_string()))
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
+
+#[derive(Default)]
+pub enum DecodeAndSelectApply<C, K, V, F> {
+    Decoding(DecodeMapMessage<K, V>, F),
+    Updating(MapLaneSelectUpdate<C, K, V, F>),
+    Removing(MapLaneSelectRemove<C, K, V, F>),
+    Clearing(MapLaneSelectClear<C, K, V, F>),
+    #[default]
+    Done
+}
+
+impl<C, K, V, F> HandlerAction<C> for DecodeAndSelectApply<C, K, V, F>
+where 
+    K: RecognizerReadable + Clone + Eq + Hash,
+    V: RecognizerReadable,
+    F: SelectorFn<C, Target = MapLane<K, V>>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<C>,
+        meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        match std::mem::take(self) {
+            DecodeAndSelectApply::Decoding(mut decoding, selector) => {
+                match decoding.step(action_context, meta, context) {
+                    StepResult::Continue { modified_item } => {
+                        *self = DecodeAndSelectApply::Decoding(decoding, selector);
+                        StepResult::Continue { modified_item }
+                    },
+                    StepResult::Fail(err) => StepResult::Fail(err),
+                    StepResult::Complete { modified_item, result } => {
+                        match result {
+                            MapMessage::Update { key, value } => {
+                                *self = DecodeAndSelectApply::Updating(MapLaneSelectUpdate::new(selector, key, value));
+                            },
+                            MapMessage::Remove { key } => {
+                                *self = DecodeAndSelectApply::Removing(MapLaneSelectRemove::new(selector, key));
+                            },
+                            MapMessage::Clear => {
+                                *self = DecodeAndSelectApply::Clearing(MapLaneSelectClear::new(selector));
+                            },
+                            _ => {
+                                todo!("Drop and take not yet implemented.")
+                            }
+                        }
+                        
+                        StepResult::Continue { modified_item }
+                    },
+                }
+            },
+            DecodeAndSelectApply::Updating(mut selector) => {
+                let result = selector.step(action_context, meta, context);
+                if !result.is_cont() {
+                    *self = DecodeAndSelectApply::Done;
+                }
+                result
+            },
+            DecodeAndSelectApply::Removing(mut selector) => {
+                let result = selector.step(action_context, meta, context);
+                if !result.is_cont() {
+                    *self = DecodeAndSelectApply::Done;
+                }
+                result
+            },
+            DecodeAndSelectApply::Clearing(mut selector) => {
+                let result = selector.step(action_context, meta, context);
+                if !result.is_cont() {
+                    *self = DecodeAndSelectApply::Done;
+                }
+                result
+            },
+            DecodeAndSelectApply::Done => StepResult::after_done(),
+        }
+    }
+}
+
+/// Create an event handler that will decode an incoming map message and apply the value into a map lane.
+pub fn decode_and_select_apply<C, K, V, F>(
+    message: MapMessage<BytesMut, BytesMut>,
+    projection: F,
+) -> DecodeAndSelectApply<C, K, V, F>
+where
+    K: Clone + Eq + Hash + RecognizerReadable,
+    V: RecognizerReadable,
+    F: SelectorFn<C, Target = MapLane<K, V>>,
+{
+    let decode: DecodeMapMessage<K, V> = DecodeMapMessage::new(message);
+    DecodeAndSelectApply::Decoding(decode, projection)
+}
+
+type SelectType<C, K, V> = fn(&C) -> (&K, &V);
+///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
+pub struct MapLaneSelectSync<C, K, V, F> {
+    _type: PhantomData<SelectType<C, K, V>>,
+    projection_id: Option<(F, Uuid)>,
+}
+
+
+impl<C, K, V, F> MapLaneSelectSync<C, K, V, F> {
+    /// # Arguments
+    /// * `projection` - Projection from the agent context to the lane.
+    /// * `id` - The ID of the remote that requested the sync.
+    pub fn new(projection: F, id: Uuid) -> Self {
+        MapLaneSelectSync {
+            _type: PhantomData,
+            projection_id: Some((projection, id)),
+        }
+    }
+}
+
+impl<C, K, V, F> HandlerAction<C> for MapLaneSelectSync<C, K, V, F>
+where
+    K: Clone + Eq + Hash,
+    F: SelectorFn<C, Target = MapLane<K, V>>,
+ {
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let MapLaneSelectSync { projection_id, .. } = self;
+        if let Some((projection, id)) = projection_id.take() {
+            let selector = projection.selector(context);
+            if let Some(lane) = selector.select() {
+                lane.sync(id);
+                StepResult::Complete {
+                    modified_item: Some(Modification::no_trigger(lane.id())),
+                    result: (),
+                }
+            } else {
+                StepResult::Fail(EventHandlerError::LaneNotFound(selector.name().to_string()))
+            }
+        } else {
+            StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+        }
     }
 }

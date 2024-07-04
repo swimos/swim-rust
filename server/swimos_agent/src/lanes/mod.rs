@@ -69,3 +69,21 @@ pub trait LaneItem: AgentItem {
     /// If the state of the lane has changed, write an event into the buffer.
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult;
 }
+
+pub trait Selector {
+
+    type Target: ?Sized;
+
+    fn select(&self) -> Option<&Self::Target>;
+
+    fn name(&self) -> &str;
+
+}
+
+pub trait SelectorFn<C> {
+
+    type Target: ?Sized;
+
+    fn selector(self, context: &C) -> impl Selector<Target = Self::Target> + '_;
+
+}

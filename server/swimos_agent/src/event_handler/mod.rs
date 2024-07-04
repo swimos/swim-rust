@@ -373,6 +373,9 @@ pub enum EventHandlerError {
     /// terminate the agent but will cause an error HTTP response to be sent).
     #[error("No GET handler was defined for an HTTP lane.")]
     HttpGetUndefined,
+    /// An executing handler attempted to target a lane that does not exist.
+    #[error("A command was received for a lane that does not exist: '{0}'")]
+    LaneNotFound(String),
     /// The event handler has explicitly requested that the agent stop.
     #[error("The event handler has instructed the agent to stop.")]
     StopInstructed,

@@ -164,9 +164,12 @@ impl ItemSpec {
     }
 }
 
-type MapLikeInitializer<T> =
+#[doc(hidden)]
+pub type MapLikeInitializer<T> =
     Box<dyn ItemInitializer<T, MapMessage<BytesMut, BytesMut>> + Send + 'static>;
-type ValueLikeInitializer<T> = Box<dyn ItemInitializer<T, BytesMut> + Send + 'static>;
+
+#[doc(hidden)]
+pub type ValueLikeInitializer<T> = Box<dyn ItemInitializer<T, BytesMut> + Send + 'static>;
 
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
