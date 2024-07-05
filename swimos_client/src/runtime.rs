@@ -516,7 +516,7 @@ async fn runtime_task<Net, Ws, Provider>(
                             .boxed(),
                     );
 
-                    for (_key, pending_downlink) in pending.drain_runtime_queue(sock) {
+                    for pending_downlink in pending.drain_runtime_queue(sock, &peer_key) {
                         attachment_tasks
                             .push(attach_downlink(attach.clone(), pending_downlink).boxed());
                     }
@@ -526,7 +526,7 @@ async fn runtime_task<Net, Ws, Provider>(
                 None => {
                     let error =
                         Err(DownlinkRuntimeError::new(DownlinkErrorKind::RemoteStopped).shared());
-                    for (_key, pending_downlink) in pending.drain_runtime_queue(sock) {
+                    for pending_downlink in pending.drain_runtime_queue(sock, &key) {
                         let PendingDownlink {
                             callback,
                             address,
@@ -543,7 +543,7 @@ async fn runtime_task<Net, Ws, Provider>(
             RuntimeEvent::DownlinkRuntimeStarted {
                 sock,
                 result: Err((cause, host)),
-                ..
+                key,
             } => {
                 error!(error = %cause, host = %host, "Failed to start a downlink runtime to host: ");
 
@@ -552,7 +552,7 @@ async fn runtime_task<Net, Ws, Provider>(
                     cause,
                 )
                 .shared());
-                for (_key, pending_downlink) in pending.drain_runtime_queue(sock) {
+                for pending_downlink in pending.drain_runtime_queue(sock, &key) {
                     let PendingDownlink {
                         callback,
                         address,
