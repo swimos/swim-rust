@@ -12,14 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_agent::{agent_lifecycle::{on_init::OnInit, on_start::OnStart, on_stop::OnStop, item_event::ItemEvent}, event_handler::{ActionContext, UnitHandler}, AgentMetadata};
+use swimos_agent::{
+    agent_lifecycle::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop},
+    event_handler::{run_schedule_async, ActionContext, EventHandler, HandlerActionExt, UnitHandler},
+    AgentMetadata,
+};
 
 use crate::{Connector, GenericConnectorAgent};
 
 pub struct ConnectorLifecycle<C>(C);
 
 impl<C> OnInit<GenericConnectorAgent> for ConnectorLifecycle<C>
-where 
+where
     C: Connector + Send,
 {
     fn initialize(
@@ -28,38 +32,34 @@ where
         _meta: AgentMetadata,
         _context: &GenericConnectorAgent,
     ) {
-       
     }
 }
 
 impl<C> OnStart<GenericConnectorAgent> for ConnectorLifecycle<C>
-where 
+where
     C: Connector + Send,
 {
-    type OnStartHandler<'a> = UnitHandler
-    where
-        Self: 'a;
-
-    fn on_start(&self) -> Self::OnStartHandler<'_> {
-        todo!()
+    fn on_start(&self) -> impl EventHandler<GenericConnectorAgent> + '_ {
+        let ConnectorLifecycle(connector) = self;
+        connector
+            .on_start()
+            .followed_by(run_schedule_async::<GenericConnectorAgent, _, _>(
+                connector.connector_stream(),
+            ))
     }
 }
 
 impl<C> OnStop<GenericConnectorAgent> for ConnectorLifecycle<C>
-where 
+where
     C: Connector + Send,
 {
-    type OnStopHandler<'a> = UnitHandler
-    where
-        Self: 'a;
-
-    fn on_stop(&self) -> Self::OnStopHandler<'_> {
-        todo!()
+    fn on_stop(&self) -> impl EventHandler<GenericConnectorAgent> + '_ {
+        self.0.on_stop()
     }
 }
 
 impl<C> ItemEvent<GenericConnectorAgent> for ConnectorLifecycle<C>
-where 
+where
     C: Connector,
 {
     type ItemEventHandler<'a> = UnitHandler

@@ -19,12 +19,9 @@ use crate::generic::GenericConnectorAgent;
 
 pub trait Connector {
 
-    type ConnectorData;
-
-    fn connector_stream(&mut self) -> impl Stream<Item = Self::ConnectorData> + Send + 'static;
+    fn connector_stream(&self) -> impl Stream<Item = impl EventHandler<GenericConnectorAgent> + Send + 'static> + Unpin + Send + 'static;
 
     fn on_start(&self) -> impl EventHandler<GenericConnectorAgent> + '_;
     fn on_stop(&self) -> impl EventHandler<GenericConnectorAgent> + '_;
-    fn on_data(&self, data: Self::ConnectorData) -> impl EventHandler<GenericConnectorAgent> + Send + 'static;
-
+    
 }
