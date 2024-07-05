@@ -8,8 +8,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     client.put(lane).body("13").send().await?;
 
     let response = client.get(lane).send().await?;
-    let response_bytes = response.bytes().await?;
-    println!("{:?}", response_bytes);
+    let body = response.bytes().await?;
+
+    let num = std::str::from_utf8(body.as_ref())?.parse::<i32>()?;
+    assert_eq!(13, num);
 
     Ok(())
 }

@@ -113,11 +113,11 @@ impl<'f> PendingConnections<'f> {
         Self::map_waiters(self.waiters.remove(&WaiterKey::Connection(host)))
     }
 
-    pub fn drain_runtime_queue(
-        &mut self,
-        addr: SocketAddr,
-    ) -> impl Iterator<Item = (Key, PendingDownlink)> {
-        Self::map_waiters(self.waiters.remove(&WaiterKey::Runtime(addr)))
+    pub fn drain_runtime_queue(&mut self, addr: SocketAddr, key: &Key) -> Vec<PendingDownlink> {
+        match self.waiters.get_mut(&WaiterKey::Runtime(addr)) {
+            Some(waiters) => waiters.remove(key).unwrap_or_default(),
+            None => Vec::new(),
+        }
     }
 
     pub fn waiting_on(&self, addr: SocketAddr, key: &Key) -> bool {

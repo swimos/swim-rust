@@ -318,6 +318,8 @@ async fn runtime_task<Net, Ws, Provider>(
                     runtime_config,
                     downlink_config,
                 } = request;
+                trace!(%path, "Received downlink registration request");
+
                 let RemotePath { host, node, lane } = path;
                 let shp = match host.as_str().parse::<SchemeHostPort>() {
                     Ok(shp) => shp,
@@ -361,15 +363,20 @@ async fn runtime_task<Net, Ws, Provider>(
                 host,
                 result: Ok(addrs),
             } => {
+                trace!(?scheme, ?host, "Resolved host");
+                println!("Peers: {:?}", peers);
                 match addrs
                     .iter()
                     .find_map(|sock| peers.get(sock).map(|peer| (peer, sock)))
                 {
                     Some((peer, sock)) => {
+                        trace!("Draining connection queue");
                         for (key, pending_downlink) in pending.drain_connection_queue(host.clone())
                         {
                             match peer.get_view(key.borrow()) {
                                 Some(view) => {
+                                    trace!(?key, "Found matching runtime for key");
+
                                     attachment_tasks.push(
                                         attach_downlink(view.attach(), pending_downlink).boxed(),
                                     );
@@ -504,6 +511,8 @@ async fn runtime_task<Net, Ws, Provider>(
                 result: Ok((attach, runtime)),
             } => match peers.get_mut(&sock) {
                 Some(peer) => {
+                    debug_assert!(peer.get_view(&key).is_none());
+                    trace!(?key, "Downlink runtime started");
                     let (runtime_stop_tx, runtime_stop_rx) = trigger::trigger();
                     let peer_key = key.clone();
                     downlinks.push(
@@ -516,7 +525,7 @@ async fn runtime_task<Net, Ws, Provider>(
                             .boxed(),
                     );
 
-                    for (_key, pending_downlink) in pending.drain_runtime_queue(sock) {
+                    for pending_downlink in pending.drain_runtime_queue(sock, &peer_key) {
                         attachment_tasks
                             .push(attach_downlink(attach.clone(), pending_downlink).boxed());
                     }
@@ -526,7 +535,7 @@ async fn runtime_task<Net, Ws, Provider>(
                 None => {
                     let error =
                         Err(DownlinkRuntimeError::new(DownlinkErrorKind::RemoteStopped).shared());
-                    for (_key, pending_downlink) in pending.drain_runtime_queue(sock) {
+                    for pending_downlink in pending.drain_runtime_queue(sock, &key) {
                         let PendingDownlink {
                             callback,
                             address,
@@ -543,7 +552,7 @@ async fn runtime_task<Net, Ws, Provider>(
             RuntimeEvent::DownlinkRuntimeStarted {
                 sock,
                 result: Err((cause, host)),
-                ..
+                key,
             } => {
                 error!(error = %cause, host = %host, "Failed to start a downlink runtime to host: ");
 
@@ -552,7 +561,7 @@ async fn runtime_task<Net, Ws, Provider>(
                     cause,
                 )
                 .shared());
-                for (_key, pending_downlink) in pending.drain_runtime_queue(sock) {
+                for pending_downlink in pending.drain_runtime_queue(sock, &key) {
                     let PendingDownlink {
                         callback,
                         address,
@@ -576,6 +585,7 @@ async fn runtime_task<Net, Ws, Provider>(
                     downlink_config,
                     ..
                 } = pending;
+                trace!(?address, "Downlink runtime attached");
                 let kind = downlink.kind();
                 let (promise_tx, promise_rx) = promise::promise();
                 let task = tokio::spawn(downlink.run_boxed(
@@ -643,6 +653,7 @@ async fn runtime_task<Net, Ws, Provider>(
                 result,
                 tx,
             } => {
+                trace!(?address, "Downlink runtime complete");
                 match &result {
                     Ok(()) => {
                         info!(
@@ -671,9 +682,8 @@ async fn runtime_task<Net, Ws, Provider>(
                 break;
             }
         }
-
-        debug!("Runtime task completed");
     }
+    debug!("Runtime task completed");
 }
 
 async fn start_downlink_runtime(
@@ -688,6 +698,8 @@ async fn start_downlink_runtime(
     let (in_tx, in_rx) = byte_channel(config.remote_buffer_size);
     let (out_tx, out_rx) = byte_channel(config.remote_buffer_size);
     let (done_tx, done_rx) = oneshot::channel();
+
+    trace!(?rel_addr, "Resolving attach handle");
 
     let request = AttachClient::AttachDownlink {
         downlink_id: identity,
@@ -729,6 +741,10 @@ async fn attach_downlink(
     attach: mpsc::Sender<AttachAction>,
     pending: PendingDownlink,
 ) -> RuntimeEvent {
+    {
+        let path = &pending.address;
+        trace!(?path, "Attaching downlink");
+    }
     let (in_tx, in_rx) = byte_channel(pending.runtime_config.downlink_buffer_size);
     let (out_tx, out_rx) = byte_channel(pending.runtime_config.downlink_buffer_size);
     let result = attach
