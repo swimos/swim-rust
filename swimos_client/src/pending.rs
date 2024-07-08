@@ -79,14 +79,6 @@ impl<'f> PendingConnections<'f> {
         )
     }
 
-    fn map_waiters(
-        col: Option<FnvHashMap<Key, Vec<PendingDownlink>>>,
-    ) -> impl Iterator<Item = (Key, PendingDownlink)> {
-        col.unwrap_or_default()
-            .into_iter()
-            .flat_map(|(key, downlinks)| downlinks.into_iter().map(move |dl| (key.clone(), dl)))
-    }
-
     pub fn feed_task(&self, task: BoxFuture<'f, Either<PendingDns, PendingHandshake>>) {
         self.tasks.push(task)
     }
@@ -110,7 +102,11 @@ impl<'f> PendingConnections<'f> {
         &mut self,
         host: Text,
     ) -> impl Iterator<Item = (Key, PendingDownlink)> {
-        Self::map_waiters(self.waiters.remove(&WaiterKey::Connection(host)))
+        self.waiters
+            .remove(&WaiterKey::Connection(host))
+            .unwrap_or_default()
+            .into_iter()
+            .flat_map(|(key, downlinks)| downlinks.into_iter().map(move |dl| (key.clone(), dl)))
     }
 
     pub fn drain_runtime_queue(&mut self, addr: SocketAddr, key: &Key) -> Vec<PendingDownlink> {
