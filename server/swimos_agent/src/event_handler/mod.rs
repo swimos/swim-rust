@@ -58,8 +58,10 @@ mod register_downlink;
 mod suspend;
 #[cfg(test)]
 mod tests;
+mod try_handler;
 
 pub use suspend::{run_after, run_schedule, run_schedule_async, HandlerFuture, Spawner, Suspend};
+pub use try_handler::{TryHandler, TryHandlerAction, TrayHandlerActionExt};
 
 pub use command::SendCommand;
 #[doc(hidden)]
@@ -376,6 +378,9 @@ pub enum EventHandlerError {
     /// An executing handler attempted to target a lane that does not exist.
     #[error("A command was received for a lane that does not exist: '{0}'")]
     LaneNotFound(String),
+    /// An event handler failed in a user specified effect.
+    #[error("An error occurred in a user specified effect: {0}")]
+    EffectError(Box<dyn std::error::Error + Send>),
     /// The event handler has explicitly requested that the agent stop.
     #[error("The event handler has instructed the agent to stop.")]
     StopInstructed,
