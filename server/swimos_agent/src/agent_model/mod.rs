@@ -1006,6 +1006,15 @@ where
             lane_readers.push(LaneReader::http(id, rx));
         }
 
+        // We need to check if anything has been written into the command buffer as the agent
+        // initialisation process called lifecycle::on_start and that may have sent commands.
+        check_cmds(
+            &mut ad_hoc_buffer,
+            &mut cmd_writer,
+            &mut cmd_send_fut,
+            CommandWriter::write,
+        );
+
         // This set keeps track of which items have data to be written (according to executed event handlers).
         let mut dirty_items: HashSet<u64> = HashSet::new();
 
