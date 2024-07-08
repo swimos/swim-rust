@@ -923,6 +923,12 @@ pub struct ConnectorContext<Connector> {
     _connector_type: PhantomData<fn(&Connector)>,
 }
 
+impl<Connector> Default for ConnectorContext<Connector> {
+    fn default() -> Self {
+        Self { _connector_type: Default::default() }
+    }
+}
+
 impl<Connector: 'static> ConnectorContext<Connector> {
 
     pub fn set_value<T, F>(

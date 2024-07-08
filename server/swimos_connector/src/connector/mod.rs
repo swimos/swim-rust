@@ -12,16 +12,63 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use futures::Stream;
-use swimos_agent::event_handler::EventHandler;
+use std::error::Error;
+
+use futures::{Future, FutureExt};
+use swimos_agent::{
+    agent_lifecycle::HandlerContext,
+    event_handler::{EventHandler, HandlerAction, HandlerActionExt, TryHandlerActionExt},
+};
 
 use crate::generic::GenericConnectorAgent;
 
 pub trait Connector {
+    type StreamError: Error + Send + 'static;
+    type ConnectorState: ConnectorNext<Self::StreamError> + Send + 'static;
 
-    fn connector_stream(&self) -> impl Stream<Item = impl EventHandler<GenericConnectorAgent> + Send + 'static> + Unpin + Send + 'static;
+    fn create_state(&self) -> Result<Self::ConnectorState, Self::StreamError>;
 
     fn on_start(&self) -> impl EventHandler<GenericConnectorAgent> + '_;
     fn on_stop(&self) -> impl EventHandler<GenericConnectorAgent> + '_;
-    
+}
+
+pub trait ConnectorNext<Err>: Sized {
+    fn next_state(
+        self,
+    ) -> impl Future<
+        Output: HandlerAction<GenericConnectorAgent, Completion = Option<Result<Self, Err>>>
+                    + Send
+                    + 'static,
+    > + Send
+           + 'static;
+
+    fn commit(
+        self,
+    ) -> Result<
+        impl Future<
+                Output: HandlerAction<GenericConnectorAgent, Completion = Result<Self, Err>>
+                            + Send
+                            + 'static,
+            > + Send
+            + 'static,
+        Self,
+    >;
+}
+
+pub fn suspend_connector<E, C>(
+    next: C,
+) -> impl HandlerAction<GenericConnectorAgent, Completion = ()> + Send + 'static
+where
+    C: ConnectorNext<E> + Send + 'static,
+    E: std::error::Error + Send + 'static,
+{
+    let context: HandlerContext<GenericConnectorAgent> = HandlerContext::default();
+    context.suspend(next.next_state().map(move |handler| {
+        handler
+            .map(|opt: Option<_>| opt.transpose())
+            .try_handler()
+            .and_then(|maybe_connector: Option<_>| maybe_connector.map(suspend_connector))
+            .discard()
+            .boxed_local()
+    }))
 }

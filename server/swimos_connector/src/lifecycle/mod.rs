@@ -13,12 +13,12 @@
 // limitations under the License.
 
 use swimos_agent::{
-    agent_lifecycle::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop},
-    event_handler::{run_schedule_async, ActionContext, EventHandler, HandlerActionExt, UnitHandler},
+    agent_lifecycle::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop, HandlerContext},
+    event_handler::{ActionContext, EventHandler, HandlerActionExt, TryHandlerActionExt, UnitHandler},
     AgentMetadata,
 };
 
-use crate::{Connector, GenericConnectorAgent};
+use crate::{suspend_connector, Connector, ConnectorNext, GenericConnectorAgent};
 
 pub struct ConnectorLifecycle<C>(C);
 
@@ -41,13 +41,13 @@ where
 {
     fn on_start(&self) -> impl EventHandler<GenericConnectorAgent> + '_ {
         let ConnectorLifecycle(connector) = self;
-        connector
-            .on_start()
-            .followed_by(run_schedule_async::<GenericConnectorAgent, _, _>(
-                connector.connector_stream(),
-            ))
+        let handler_context: HandlerContext<GenericConnectorAgent> = HandlerContext::default();
+        let suspend = handler_context.effect(|| connector.create_state()).try_handler()
+            .and_then(suspend_connector);
+        connector.on_start().followed_by(suspend)
     }
 }
+
 
 impl<C> OnStop<GenericConnectorAgent> for ConnectorLifecycle<C>
 where

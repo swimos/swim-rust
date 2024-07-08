@@ -33,7 +33,7 @@ pub trait TryHandlerAction<Context>: HandlerAction<Context> {
     ) -> StepResult<Result<Self::Ok, Self::Error>>;
 }
 
-pub trait TrayHandlerActionExt<Context>: TryHandlerAction<Context> {
+pub trait TryHandlerActionExt<Context>: TryHandlerAction<Context> {
 
     /// Create a handler that passes any errors up to the agent and continues only if
     /// the result is [`Ok`].
@@ -43,6 +43,17 @@ pub trait TrayHandlerActionExt<Context>: TryHandlerAction<Context> {
         Self::Error: std::error::Error + Send + 'static,
     {
         TryHandler::new(self)
+    }
+
+    /// Create a new handler which applies a function to the Ok result of this handler and then executes
+    /// an additional handler returned by the function.
+    fn and_then_ok<F, H2>(self, f: F) -> AndThenOk<Self, H2, F>
+    where 
+        Self: Sized,
+        F: FnOnce(Self::Ok) -> H2,
+        H2: HandlerAction<Context>,
+    {
+        AndThenOk::First { first: self, next: f }
     }
 
 }
@@ -66,7 +77,7 @@ where
 
 }
 
-impl<Context, H> TrayHandlerActionExt<Context> for H
+impl<Context, H> TryHandlerActionExt<Context> for H
 where 
     H: TryHandlerAction<Context>,
 {}
@@ -98,6 +109,75 @@ where
             StepResult::Fail(err) => StepResult::Fail(err),
             StepResult::Complete { modified_item, result: Ok(value) } => StepResult::Complete { modified_item, result: value },
             StepResult::Complete { result: Err(error), .. } => StepResult::Fail(EventHandlerError::EffectError(Box::new(error))),
+        }
+    }
+}
+
+/// Type that is returned by the `and_then_ok` method on the [`TryHandlerActionExt`] trait.
+#[derive(Debug, Default)]
+#[doc(hidden)]
+pub enum AndThenOk<H1, H2, F> {
+    First {
+        first: H1,
+        next: F,
+    },
+    Second(H2),
+    #[default]
+    Done,
+}
+
+impl<C, H1, H2, F> HandlerAction<C> for AndThenOk<H1, H2, F>
+where
+    H1: TryHandlerAction<C, Ok = H2>,
+    H2: HandlerAction<C>,
+    F: FnOnce(H1::Ok, H2),
+{
+    type Completion = Result<H2::Completion, H1::Error>;
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<C>,
+        meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        match std::mem::take(self) {
+            AndThenOk::First { mut first, next } => {
+                match first.try_step(action_context, meta, context) {
+                    StepResult::Continue { modified_item } => {
+                        *self = AndThenOk::First { first, next };
+                        StepResult::Continue { modified_item }
+                    },
+                    StepResult::Fail(err) => {
+                        *self = AndThenOk::Done;
+                        StepResult::Fail(err)
+                    },
+                    StepResult::Complete { modified_item, result: Ok(result) } => {
+                        *self = AndThenOk::Second(result);
+                        StepResult::Continue { modified_item }
+                    },
+                    StepResult::Complete { modified_item, result: Err(error) } => {
+                        *self = AndThenOk::Done;
+                        StepResult::Complete { modified_item, result: Err(error) }
+                    },
+                }
+            },
+            AndThenOk::Second(mut second) => {
+                match second.step(action_context, meta, context) {
+                    StepResult::Continue { modified_item } => {
+                        *self = AndThenOk::Second(second);
+                        StepResult::Continue { modified_item }
+                    },
+                    StepResult::Fail(err) => {
+                        *self = AndThenOk::Done;
+                        StepResult::Fail(err)
+                    },
+                    StepResult::Complete { modified_item, result } => {
+                        *self = AndThenOk::Done;
+                        StepResult::Complete { modified_item, result: Ok(result) }
+                    },
+                }
+            },
+            AndThenOk::Done => StepResult::after_done(),
         }
     }
 }

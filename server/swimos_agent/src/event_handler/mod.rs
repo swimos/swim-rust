@@ -61,7 +61,7 @@ mod tests;
 mod try_handler;
 
 pub use suspend::{run_after, run_schedule, run_schedule_async, HandlerFuture, Spawner, Suspend};
-pub use try_handler::{TryHandler, TryHandlerAction, TrayHandlerActionExt};
+pub use try_handler::{TryHandlerActionExt, TryHandler, TryHandlerAction};
 
 pub use command::SendCommand;
 #[doc(hidden)]

@@ -166,7 +166,7 @@ pub struct ValueLaneSelectorFn {
 }
 
 impl ValueLaneSelectorFn {
-    fn new(name: String) -> Self {
+    pub fn new(name: String) -> Self {
         ValueLaneSelectorFn { name }
     }
 }
@@ -189,7 +189,7 @@ pub struct MapLaneSelectorFn {
 }
 
 impl MapLaneSelectorFn {
-    fn new(name: String) -> Self {
+    pub fn new(name: String) -> Self {
         MapLaneSelectorFn { name }
     }
 }
