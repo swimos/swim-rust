@@ -599,16 +599,6 @@ impl<K, V> MapDownlinkView<K, V> {
         self.inner.clear().await
     }
 
-    /// Retains the last `n` elements in the map.
-    pub async fn take(&self, n: u64) -> Result<(), ChannelError> {
-        self.inner.take(n).await
-    }
-
-    /// Retains the first `n` elements in the map.
-    pub async fn drop(&self, n: u64) -> Result<(), ChannelError> {
-        self.inner.drop(n).await
-    }
-
     /// Returns a receiver that completes with the result of downlink's internal task.
     pub fn stop_notification(&self) -> promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>> {
         self.stop_rx.clone()

@@ -16,7 +16,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::marker::PhantomData;
 
-use swimos_agent_protocol::MapMessage;
+use swimos_agent_protocol::MapOperation;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::model::lifecycle::{BasicMapDownlinkLifecycle, MapDownlinkLifecycle};
@@ -62,13 +62,13 @@ impl<T, LC> EventDownlinkModel<T, LC> {
 }
 
 pub struct MapDownlinkModel<K, V, LC> {
-    pub actions: mpsc::Receiver<MapMessage<K, V>>,
+    pub actions: mpsc::Receiver<MapOperation<K, V>>,
     pub lifecycle: LC,
 }
 
 impl<K, V, LC> MapDownlinkModel<K, V, LC> {
     pub fn new(
-        actions: mpsc::Receiver<MapMessage<K, V>>,
+        actions: mpsc::Receiver<MapOperation<K, V>>,
         lifecycle: LC,
     ) -> MapDownlinkModel<K, V, LC> {
         MapDownlinkModel { actions, lifecycle }
@@ -98,7 +98,7 @@ pub fn event_downlink<T>() -> DefaultEventDownlinkModel<T> {
 }
 
 pub fn map_downlink<K, V>(
-    actions: mpsc::Receiver<MapMessage<K, V>>,
+    actions: mpsc::Receiver<MapOperation<K, V>>,
 ) -> DefaultMapDownlinkModel<K, V> {
     MapDownlinkModel::new(actions, Default::default())
 }
@@ -129,37 +129,27 @@ impl From<oneshot::error::RecvError> for ChannelError {
 /// A map downlink handle.
 #[derive(Debug, Clone)]
 pub struct MapDownlinkHandle<K, V> {
-    inner: mpsc::Sender<MapMessage<K, V>>,
+    inner: mpsc::Sender<MapOperation<K, V>>,
 }
 
 impl<K, V> MapDownlinkHandle<K, V> {
-    pub fn new(inner: mpsc::Sender<MapMessage<K, V>>) -> MapDownlinkHandle<K, V> {
+    pub fn new(inner: mpsc::Sender<MapOperation<K, V>>) -> MapDownlinkHandle<K, V> {
         MapDownlinkHandle { inner }
     }
 
     /// Updates or inserts the key-value pair into the map.
     pub async fn update(&self, key: K, value: V) -> Result<(), ChannelError> {
-        Ok(self.inner.send(MapMessage::Update { key, value }).await?)
+        Ok(self.inner.send(MapOperation::Update { key, value }).await?)
     }
 
     /// Removes the value corresponding to the key.
     pub async fn remove(&self, key: K) -> Result<(), ChannelError> {
-        Ok(self.inner.send(MapMessage::Remove { key }).await?)
+        Ok(self.inner.send(MapOperation::Remove { key }).await?)
     }
 
     /// Clears the map, removing all of the elements.
     pub async fn clear(&self) -> Result<(), ChannelError> {
-        Ok(self.inner.send(MapMessage::Clear).await?)
-    }
-
-    /// Retains the last `n` elements in the map.
-    pub async fn take(&self, n: u64) -> Result<(), ChannelError> {
-        Ok(self.inner.send(MapMessage::Take(n)).await?)
-    }
-
-    /// Retains the first `n` elements in the map.
-    pub async fn drop(&self, n: u64) -> Result<(), ChannelError> {
-        Ok(self.inner.send(MapMessage::Drop(n)).await?)
+        Ok(self.inner.send(MapOperation::Clear).await?)
     }
 
     /// Completes when the downlink closes; a downlink closes when the connection closes or an

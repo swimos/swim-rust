@@ -364,19 +364,15 @@ async fn runtime_task<Net, Ws, Provider>(
                 result: Ok(addrs),
             } => {
                 trace!(?scheme, ?host, "Resolved host");
-                println!("Peers: {:?}", peers);
                 match addrs
                     .iter()
                     .find_map(|sock| peers.get(sock).map(|peer| (peer, sock)))
                 {
                     Some((peer, sock)) => {
-                        trace!("Draining connection queue");
                         for (key, pending_downlink) in pending.drain_connection_queue(host.clone())
                         {
                             match peer.get_view(key.borrow()) {
                                 Some(view) => {
-                                    trace!(?key, "Found matching runtime for key");
-
                                     attachment_tasks.push(
                                         attach_downlink(view.attach(), pending_downlink).boxed(),
                                     );
@@ -741,10 +737,6 @@ async fn attach_downlink(
     attach: mpsc::Sender<AttachAction>,
     pending: PendingDownlink,
 ) -> RuntimeEvent {
-    {
-        let path = &pending.address;
-        trace!(?path, "Attaching downlink");
-    }
     let (in_tx, in_rx) = byte_channel(pending.runtime_config.downlink_buffer_size);
     let (out_tx, out_rx) = byte_channel(pending.runtime_config.downlink_buffer_size);
     let result = attach

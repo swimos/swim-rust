@@ -12,7 +12,6 @@ example-util = { path = "../example_util" }
 
 [dev-dependencies]
 rand.workspace = true
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [[example]]
 name = "join_value_client"

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::collections::HashSet;
+use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
@@ -510,10 +511,10 @@ impl<D: Decoder> DownlinkReceiver<D> {
     }
 }
 
-struct Failed(u64);
+struct Failed<E>(u64, E);
 
 impl<D: Decoder> Stream for DownlinkReceiver<D> {
-    type Item = Result<D::Item, Failed>;
+    type Item = Result<D::Item, Failed<D::Error>>;
 
     fn poll_next(
         self: std::pin::Pin<&mut Self>,
@@ -525,7 +526,7 @@ impl<D: Decoder> Stream for DownlinkReceiver<D> {
         } else {
             this.receiver
                 .poll_next_unpin(cx)
-                .map_err(|_| Failed(this.id))
+                .map_err(|e| Failed(this.id, e))
         }
     }
 }
@@ -958,7 +959,9 @@ async fn write_task<B: DownlinkBackpressure>(
     config: DownlinkRuntimeConfig,
     mut backpressure: B,
     stop_voter: Voter,
-) {
+) where
+    <<B as DownlinkBackpressure>::Dec as Decoder>::Error: Debug,
+{
     let mut message_writer = RequestSender::new(output, identity, path);
     if message_writer.send_link().await.is_err() {
         return;
@@ -1173,8 +1176,8 @@ async fn write_task<B: DownlinkBackpressure>(
                             }
                         },
                         Either::Right(ow) => {
-                            if let Some(Err(Failed(id))) = ow {
-                                trace!("Removing a failed subscriber");
+                            if let Some(Err(Failed(id, error))) = ow {
+                                trace!(?error, "Removing a failed subscriber");
                                 if let Some(rx) = registered.iter_mut().find(|rx| rx.id == id) {
                                     rx.terminate();
                                 }
@@ -1249,11 +1252,14 @@ async fn write_task<B: DownlinkBackpressure>(
                             // Writing is currently blocked so overwrite the next value to be sent.
                             trace!("Over-writing the current event buffer.");
                             if let Err(err) = backpressure.push_operation(op) {
-                                error!("Failed to process downlink operaton: {error}", error = err);
+                                error!(
+                                    "Failed to process downlink operation: {error}",
+                                    error = err
+                                );
                             };
                         }
-                        SuspendedResult::NextRecord(Some(Err(Failed(id)))) => {
-                            trace!("Removing a failed subscriber.");
+                        SuspendedResult::NextRecord(Some(Err(Failed(id, error)))) => {
+                            trace!(?error, "Removing a failed subscriber.");
                             if let Some(rx) = registered.iter_mut().find(|rx| rx.id == id) {
                                 rx.terminate();
                             }

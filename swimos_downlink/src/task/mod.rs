@@ -119,6 +119,7 @@ pub trait MapKey:
     Clone + Form + Send + Sync + Eq + Hash + Ord + RecognizerReadable + 'static
 {
 }
+
 impl<T> MapKey for T where
     T: Clone + Form + Send + Sync + Eq + Hash + Ord + RecognizerReadable + 'static
 {

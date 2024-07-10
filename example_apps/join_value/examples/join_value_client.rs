@@ -4,19 +4,9 @@ use std::time::Duration;
 use swimos_client::{
     BasicMapDownlinkLifecycle, BasicValueDownlinkLifecycle, RemotePath, SwimClientBuilder,
 };
-use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let filter = EnvFilter::new("")
-        .add_directive("swimos_client=trace".parse()?)
-        .add_directive("swimos_server_app=trace".parse()?)
-        .add_directive("swimos_runtime=trace".parse()?)
-        .add_directive("swimos_agent=trace".parse()?)
-        .add_directive("swimos_messages=trace".parse()?)
-        .add_directive("swimos_remote=trace".parse()?);
-    tracing_subscriber::fmt().with_env_filter(filter).init();
-
     let host = "ws://127.0.0.1:8080";
 
     let (client, task) = SwimClientBuilder::default().build().await;
