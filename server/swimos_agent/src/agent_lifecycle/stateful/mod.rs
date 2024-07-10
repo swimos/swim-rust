@@ -15,7 +15,11 @@
 use static_assertions::assert_impl_all;
 use swimos_utilities::handlers::{FnHandler, NoHandler};
 
-use crate::{agent_lifecycle::AgentLifecycle, event_handler::{ActionContext, EventHandler}, meta::AgentMetadata};
+use crate::{
+    agent_lifecycle::AgentLifecycle,
+    event_handler::{ActionContext, EventHandler},
+    meta::AgentMetadata,
+};
 
 use super::{
     item_event::{ItemEvent, ItemEventShared},
@@ -110,8 +114,7 @@ where
     FStop: Send,
     ItemEv: Send,
 {
-
-    fn on_start(&self) -> impl EventHandler<Context> + '_  {
+    fn on_start(&self) -> impl EventHandler<Context> + '_ {
         let StatefulAgentLifecycle {
             state,
             handler_context,

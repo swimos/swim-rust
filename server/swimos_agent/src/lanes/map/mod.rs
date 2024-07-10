@@ -818,10 +818,7 @@ where
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
-        let MapLaneSelectRemove {
-            projection_key,
-            ..
-        } = self;
+        let MapLaneSelectRemove { projection_key, .. } = self;
         if let Some((projection, key)) = projection_key.take() {
             let selector = projection.selector(context);
             if let Some(lane) = selector.select() {
@@ -848,7 +845,7 @@ impl<C, K, V, F> MapLaneSelectClear<C, K, V, F> {
     pub fn new(projection: F) -> Self {
         MapLaneSelectClear {
             _type: PhantomData,
-            projection: Some(projection)
+            projection: Some(projection),
         }
     }
 }
@@ -866,10 +863,7 @@ where
         _meta: AgentMetadata,
         context: &C,
     ) -> StepResult<Self::Completion> {
-        let MapLaneSelectClear {
-            projection,
-            ..
-        } = self;
+        let MapLaneSelectClear { projection, .. } = self;
         if let Some(projection) = projection.take() {
             let selector = projection.selector(context);
             if let Some(lane) = selector.select() {
@@ -894,11 +888,11 @@ pub enum DecodeAndSelectApply<C, K, V, F> {
     Removing(MapLaneSelectRemove<C, K, V, F>),
     Clearing(MapLaneSelectClear<C, K, V, F>),
     #[default]
-    Done
+    Done,
 }
 
 impl<C, K, V, F> HandlerAction<C> for DecodeAndSelectApply<C, K, V, F>
-where 
+where
     K: RecognizerReadable + Clone + Eq + Hash,
     V: RecognizerReadable,
     F: SelectorFn<C, Target = MapLane<K, V>>,
@@ -917,49 +911,58 @@ where
                     StepResult::Continue { modified_item } => {
                         *self = DecodeAndSelectApply::Decoding(decoding, selector);
                         StepResult::Continue { modified_item }
-                    },
+                    }
                     StepResult::Fail(err) => StepResult::Fail(err),
-                    StepResult::Complete { modified_item, result } => {
+                    StepResult::Complete {
+                        modified_item,
+                        result,
+                    } => {
                         match result {
                             MapMessage::Update { key, value } => {
-                                *self = DecodeAndSelectApply::Updating(MapLaneSelectUpdate::new(selector, key, value));
-                            },
+                                *self = DecodeAndSelectApply::Updating(MapLaneSelectUpdate::new(
+                                    selector, key, value,
+                                ));
+                            }
                             MapMessage::Remove { key } => {
-                                *self = DecodeAndSelectApply::Removing(MapLaneSelectRemove::new(selector, key));
-                            },
+                                *self = DecodeAndSelectApply::Removing(MapLaneSelectRemove::new(
+                                    selector, key,
+                                ));
+                            }
                             MapMessage::Clear => {
-                                *self = DecodeAndSelectApply::Clearing(MapLaneSelectClear::new(selector));
-                            },
+                                *self = DecodeAndSelectApply::Clearing(MapLaneSelectClear::new(
+                                    selector,
+                                ));
+                            }
                             _ => {
                                 todo!("Drop and take not yet implemented.")
                             }
                         }
-                        
+
                         StepResult::Continue { modified_item }
-                    },
+                    }
                 }
-            },
+            }
             DecodeAndSelectApply::Updating(mut selector) => {
                 let result = selector.step(action_context, meta, context);
                 if !result.is_cont() {
                     *self = DecodeAndSelectApply::Done;
                 }
                 result
-            },
+            }
             DecodeAndSelectApply::Removing(mut selector) => {
                 let result = selector.step(action_context, meta, context);
                 if !result.is_cont() {
                     *self = DecodeAndSelectApply::Done;
                 }
                 result
-            },
+            }
             DecodeAndSelectApply::Clearing(mut selector) => {
                 let result = selector.step(action_context, meta, context);
                 if !result.is_cont() {
                     *self = DecodeAndSelectApply::Done;
                 }
                 result
-            },
+            }
             DecodeAndSelectApply::Done => StepResult::after_done(),
         }
     }
@@ -986,7 +989,6 @@ pub struct MapLaneSelectSync<C, K, V, F> {
     projection_id: Option<(F, Uuid)>,
 }
 
-
 impl<C, K, V, F> MapLaneSelectSync<C, K, V, F> {
     /// # Arguments
     /// * `projection` - Projection from the agent context to the lane.
@@ -1003,7 +1005,7 @@ impl<C, K, V, F> HandlerAction<C> for MapLaneSelectSync<C, K, V, F>
 where
     K: Clone + Eq + Hash,
     F: SelectorFn<C, Target = MapLane<K, V>>,
- {
+{
     type Completion = ();
 
     fn step(

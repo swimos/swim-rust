@@ -20,7 +20,8 @@ use tokio::sync::mpsc;
 use crate::{
     agent_lifecycle::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop},
     event_handler::{
-        ActionContext, EventHandler, HandlerAction, LocalBoxEventHandler, SideEffect, Spawner, StepResult
+        ActionContext, EventHandler, HandlerAction, LocalBoxEventHandler, SideEffect, Spawner,
+        StepResult,
     },
     meta::AgentMetadata,
 };
@@ -74,14 +75,12 @@ impl OnInit<TestAgent> for TestLifecycle {
 }
 
 impl OnStart<TestAgent> for TestLifecycle {
-
-    fn on_start(&self) -> impl EventHandler<TestAgent> + '_  {
+    fn on_start(&self) -> impl EventHandler<TestAgent> + '_ {
         self.make_handler(LifecycleEvent::Start)
     }
 }
 
 impl OnStop<TestAgent> for TestLifecycle {
-   
     fn on_stop(&self) -> impl EventHandler<TestAgent> + '_ {
         self.make_handler(LifecycleEvent::Stop)
     }

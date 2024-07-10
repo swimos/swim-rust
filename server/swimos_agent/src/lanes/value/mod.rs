@@ -391,11 +391,12 @@ pub struct ValueLaneSelectSet<C, T, F> {
 }
 
 impl<C, T, F> ValueLaneSelectSet<C, T, F> {
-
     pub fn new(projection: F, value: T) -> Self {
-        ValueLaneSelectSet { _type: PhantomData, projection_value: Some((projection, value)) }
+        ValueLaneSelectSet {
+            _type: PhantomData,
+            projection_value: Some((projection, value)),
+        }
     }
-
 }
 
 impl<C, T, F> HandlerAction<C> for ValueLaneSelectSet<C, T, F>
@@ -434,11 +435,11 @@ pub enum DecodeAndSelectSet<C, T, F> {
     Decoding(Decode<T>, F),
     Selecting(ValueLaneSelectSet<C, T, F>),
     #[default]
-    Done
+    Done,
 }
 
 impl<C, T, F> HandlerAction<C> for DecodeAndSelectSet<C, T, F>
-where 
+where
     T: RecognizerReadable,
     F: SelectorFn<C, Target = ValueLane<T>>,
 {
@@ -456,21 +457,26 @@ where
                     StepResult::Continue { modified_item } => {
                         *self = DecodeAndSelectSet::Decoding(decoding, selector);
                         StepResult::Continue { modified_item }
-                    },
+                    }
                     StepResult::Fail(err) => StepResult::Fail(err),
-                    StepResult::Complete { modified_item, result } => {
-                        *self = DecodeAndSelectSet::Selecting(ValueLaneSelectSet::new(selector, result));
+                    StepResult::Complete {
+                        modified_item,
+                        result,
+                    } => {
+                        *self = DecodeAndSelectSet::Selecting(ValueLaneSelectSet::new(
+                            selector, result,
+                        ));
                         StepResult::Continue { modified_item }
-                    },
+                    }
                 }
-            },
+            }
             DecodeAndSelectSet::Selecting(mut selector) => {
                 let result = selector.step(action_context, meta, context);
                 if !result.is_cont() {
                     *self = DecodeAndSelectSet::Done;
                 }
                 result
-            },
+            }
             DecodeAndSelectSet::Done => StepResult::after_done(),
         }
     }
@@ -480,8 +486,8 @@ where
 pub fn decode_and_select_set<C, T, F>(
     buffer: BytesMut,
     projection: F,
-) -> DecodeAndSelectSet<C, T, F> 
-where 
+) -> DecodeAndSelectSet<C, T, F>
+where
     T: RecognizerReadable,
     F: SelectorFn<C, Target = ValueLane<T>>,
 {
@@ -494,7 +500,6 @@ pub struct ValueLaneSelectSync<C, T, F> {
     _type: PhantomData<fn(&C) -> &T>,
     projection_id: Option<(F, Uuid)>,
 }
-
 
 impl<C, T, F> ValueLaneSelectSync<C, T, F> {
     /// # Arguments
@@ -511,7 +516,7 @@ impl<C, T, F> ValueLaneSelectSync<C, T, F> {
 impl<C, T, F> HandlerAction<C> for ValueLaneSelectSync<C, T, F>
 where
     F: SelectorFn<C, Target = ValueLane<T>>,
- {
+{
     type Completion = ();
 
     fn step(

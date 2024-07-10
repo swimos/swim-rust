@@ -24,6 +24,7 @@ use swimos_utilities::{errors::Recoverable, routing::UnapplyError, trigger::prom
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot, watch};
 
+use crate::agent::WarpLaneKind;
 use crate::{address::RelativeAddress, agent::StoreKind};
 
 mod introspection;
@@ -125,6 +126,30 @@ pub enum OpenStoreError {
         requested: StoreKind,
         actual: StoreKind,
     },
+}
+
+#[derive(Clone, Debug, Error)]
+pub enum DynamicRegistrationError {
+    #[error("This agent does not support dynamically registered items.")]
+    DynamicRegistrationsNotSupported,
+    #[error("This agent only supports dynamic registration during initialization.")]
+    AfterInitialization,
+    #[error("The requested item name '{0}' is already in use.")]
+    DuplicateName(String),
+    #[error("This agent does not support dynamically adding lanes of type: {0}")]
+    LaneKindUnsupported(WarpLaneKind),
+    #[error("This agent does not support dynamically adding stores of type: {0}")]
+    StoreKindUnsupported(StoreKind),
+    #[error("This agent does not support dynamically adding HTTP lanes.")]
+    HttpLanesUnsupported,
+}
+
+#[derive(Clone, Debug, Error)]
+pub enum LaneSpawnError {
+    #[error(transparent)]
+    Runtime(#[from] AgentRuntimeError),
+    #[error(transparent)]
+    Registration(#[from] DynamicRegistrationError),
 }
 
 impl<T> From<mpsc::error::SendError<T>> for AgentRuntimeError {
@@ -235,6 +260,8 @@ pub enum AgentInitError {
     UserCodeError(Box<dyn std::error::Error + Send>),
     #[error("Initializing the state of an agent lane failed: {0}")]
     LaneInitializationFailure(FrameIoError),
+    #[error("Attempting to dynamically register a lane failed: {0}")]
+    RegistrationFailure(#[from] DynamicRegistrationError),
     #[error(
         "Requested a store of kind {requested} for item {name} but store was of kind {actual}."
     )]

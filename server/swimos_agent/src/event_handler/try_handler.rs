@@ -20,7 +20,6 @@ use super::{ActionContext, EventHandlerError, HandlerAction, StepResult};
 /// convenience that makes type inference easier for combinators that rely on
 /// the structure of the result (for example, handling the error).
 pub trait TryHandlerAction<Context>: HandlerAction<Context> {
-    
     type Ok;
     type Error;
 
@@ -34,11 +33,10 @@ pub trait TryHandlerAction<Context>: HandlerAction<Context> {
 }
 
 pub trait TryHandlerActionExt<Context>: TryHandlerAction<Context> {
-
     /// Create a handler that passes any errors up to the agent and continues only if
     /// the result is [`Ok`].
     fn try_handler(self) -> TryHandler<Self>
-    where 
+    where
         Self: Sized,
         Self::Error: std::error::Error + Send + 'static,
     {
@@ -48,18 +46,20 @@ pub trait TryHandlerActionExt<Context>: TryHandlerAction<Context> {
     /// Create a new handler which applies a function to the Ok result of this handler and then executes
     /// an additional handler returned by the function.
     fn and_then_ok<F, H2>(self, f: F) -> AndThenOk<Self, H2, F>
-    where 
+    where
         Self: Sized,
         F: FnOnce(Self::Ok) -> H2,
         H2: HandlerAction<Context>,
     {
-        AndThenOk::First { first: self, next: f }
+        AndThenOk::First {
+            first: self,
+            next: f,
+        }
     }
-
 }
 
 impl<Context, H, Ok, Error> TryHandlerAction<Context> for H
-where 
+where
     H: HandlerAction<Context, Completion = Result<Ok, Error>>,
 {
     type Ok = Ok;
@@ -74,13 +74,9 @@ where
     ) -> StepResult<Result<Self::Ok, Self::Error>> {
         self.step(action_context, meta, context)
     }
-
 }
 
-impl<Context, H> TryHandlerActionExt<Context> for H
-where 
-    H: TryHandlerAction<Context>,
-{}
+impl<Context, H> TryHandlerActionExt<Context> for H where H: TryHandlerAction<Context> {}
 
 #[doc(hidden)]
 pub struct TryHandler<H>(H);
@@ -92,7 +88,7 @@ impl<H> TryHandler<H> {
 }
 
 impl<Context, H> HandlerAction<Context> for TryHandler<H>
-where 
+where
     H: TryHandlerAction<Context>,
     H::Error: std::error::Error + Send + 'static,
 {
@@ -107,8 +103,16 @@ where
         match self.0.try_step(action_context, meta, context) {
             StepResult::Continue { modified_item } => StepResult::Continue { modified_item },
             StepResult::Fail(err) => StepResult::Fail(err),
-            StepResult::Complete { modified_item, result: Ok(value) } => StepResult::Complete { modified_item, result: value },
-            StepResult::Complete { result: Err(error), .. } => StepResult::Fail(EventHandlerError::EffectError(Box::new(error))),
+            StepResult::Complete {
+                modified_item,
+                result: Ok(value),
+            } => StepResult::Complete {
+                modified_item,
+                result: value,
+            },
+            StepResult::Complete {
+                result: Err(error), ..
+            } => StepResult::Fail(EventHandlerError::EffectError(Box::new(error))),
         }
     }
 }
@@ -146,35 +150,48 @@ where
                     StepResult::Continue { modified_item } => {
                         *self = AndThenOk::First { first, next };
                         StepResult::Continue { modified_item }
-                    },
+                    }
                     StepResult::Fail(err) => {
                         *self = AndThenOk::Done;
                         StepResult::Fail(err)
-                    },
-                    StepResult::Complete { modified_item, result: Ok(result) } => {
+                    }
+                    StepResult::Complete {
+                        modified_item,
+                        result: Ok(result),
+                    } => {
                         *self = AndThenOk::Second(result);
                         StepResult::Continue { modified_item }
-                    },
-                    StepResult::Complete { modified_item, result: Err(error) } => {
+                    }
+                    StepResult::Complete {
+                        modified_item,
+                        result: Err(error),
+                    } => {
                         *self = AndThenOk::Done;
-                        StepResult::Complete { modified_item, result: Err(error) }
-                    },
+                        StepResult::Complete {
+                            modified_item,
+                            result: Err(error),
+                        }
+                    }
                 }
-            },
-            AndThenOk::Second(mut second) => {
-                match second.step(action_context, meta, context) {
-                    StepResult::Continue { modified_item } => {
-                        *self = AndThenOk::Second(second);
-                        StepResult::Continue { modified_item }
-                    },
-                    StepResult::Fail(err) => {
-                        *self = AndThenOk::Done;
-                        StepResult::Fail(err)
-                    },
-                    StepResult::Complete { modified_item, result } => {
-                        *self = AndThenOk::Done;
-                        StepResult::Complete { modified_item, result: Ok(result) }
-                    },
+            }
+            AndThenOk::Second(mut second) => match second.step(action_context, meta, context) {
+                StepResult::Continue { modified_item } => {
+                    *self = AndThenOk::Second(second);
+                    StepResult::Continue { modified_item }
+                }
+                StepResult::Fail(err) => {
+                    *self = AndThenOk::Done;
+                    StepResult::Fail(err)
+                }
+                StepResult::Complete {
+                    modified_item,
+                    result,
+                } => {
+                    *self = AndThenOk::Done;
+                    StepResult::Complete {
+                        modified_item,
+                        result: Ok(result),
+                    }
                 }
             },
             AndThenOk::Done => StepResult::after_done(),

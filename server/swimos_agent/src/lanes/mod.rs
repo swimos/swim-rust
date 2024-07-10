@@ -33,10 +33,17 @@ pub use join::map as join_map;
 #[doc(hidden)]
 pub use join::value as join_value;
 pub use join::LinkClosedResponse;
+use swimos_api::error::LaneSpawnError;
 
-use bytes::BytesMut;
-
+use crate::event_handler::ActionContext;
+use crate::event_handler::EventHandler;
+use crate::event_handler::EventHandlerError;
+use crate::event_handler::HandlerAction;
+use crate::event_handler::StepResult;
+use crate::AgentMetadata;
 use crate::{agent_model::WriteResult, item::AgentItem};
+use bytes::BytesMut;
+use swimos_api::agent::WarpLaneKind;
 
 #[doc(inline)]
 pub use self::{
@@ -71,19 +78,60 @@ pub trait LaneItem: AgentItem {
 }
 
 pub trait Selector {
-
     type Target: ?Sized;
 
     fn select(&self) -> Option<&Self::Target>;
 
     fn name(&self) -> &str;
-
 }
 
 pub trait SelectorFn<C> {
-
     type Target: ?Sized;
 
     fn selector(self, context: &C) -> impl Selector<Target = Self::Target> + '_;
+}
 
+pub struct OpenLane<OnDone> {
+    name: String,
+    kind: WarpLaneKind,
+    on_done: Option<OnDone>,
+}
+
+impl<OnDone> OpenLane<OnDone> {
+    pub fn new(name: String, kind: WarpLaneKind, on_done: OnDone) -> Self {
+        OpenLane {
+            name,
+            kind,
+            on_done: Some(on_done),
+        }
+    }
+}
+
+impl<Context, OnDone, H> HandlerAction<Context> for OpenLane<OnDone>
+where
+    OnDone: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
+    H: EventHandler<Context> + Send + 'static,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        let OpenLane {
+            name,
+            kind,
+            on_done,
+        } = self;
+        if let Some(on_done) = on_done.take() {
+            match action_context.open_lane(name, *kind, on_done) {
+                Ok(_) => StepResult::done(()),
+                Err(err) => StepResult::Fail(EventHandlerError::FailedRegistration(err)),
+            }
+        } else {
+            StepResult::after_done()
+        }
+    }
 }

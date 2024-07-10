@@ -13,14 +13,16 @@
 // limitations under the License.
 
 use std::{
-    cell::{Ref, RefCell},
+    cell::{Cell, Ref, RefCell},
     collections::HashMap,
 };
 
 use bytes::BytesMut;
 use frunk::Coprod;
 use swimos_agent::{
-    agent_model::{AgentSpec, ItemSpec, MapLikeInitializer, ValueLikeInitializer, WriteResult},
+    agent_model::{
+        AgentSpec, ItemDescriptor, ItemSpec, MapLikeInitializer, ValueLikeInitializer, WriteResult,
+    },
     event_handler::UnitHandler,
     lanes::{
         map::{decode_and_select_apply, DecodeAndSelectApply, MapLaneSelectSync},
@@ -29,7 +31,10 @@ use swimos_agent::{
     },
 };
 use swimos_agent_protocol::MapMessage;
-use swimos_api::agent::HttpLaneRequest;
+use swimos_api::{
+    agent::{HttpLaneRequest, WarpLaneKind},
+    error::DynamicRegistrationError,
+};
 use swimos_model::Value;
 
 type GenericValueLane = ValueLane<Value>;
@@ -37,6 +42,7 @@ type GenericMapLane = MapLane<Value, Value>;
 
 #[derive(Default, Debug)]
 pub struct GenericConnectorAgent {
+    id_counter: Cell<u64>,
     value_lanes: RefCell<HashMap<String, GenericValueLane>>,
     map_lanes: RefCell<HashMap<String, GenericMapLane>>,
 }
@@ -135,6 +141,52 @@ impl AgentSpec for GenericConnectorAgent {
                     .map(|lane| lane.write_to_buffer(buffer))
             })
     }
+
+    fn register_dynamic_item(
+        &self,
+        name: &str,
+        descriptor: ItemDescriptor,
+    ) -> Result<u64, DynamicRegistrationError> {
+        match descriptor {
+            ItemDescriptor::WarpLane {
+                kind: WarpLaneKind::Value,
+                ..
+            } => {
+                let mut guard = self.value_lanes.borrow_mut();
+                if guard.contains_key(name) || self.map_lanes.borrow().contains_key(name) {
+                    Err(DynamicRegistrationError::DuplicateName(name.to_string()))
+                } else {
+                    let id = self.id_counter.get();
+                    self.id_counter.set(id + 1);
+                    let lane = GenericValueLane::new(id, Value::Extant);
+                    guard.insert(name.to_string(), lane);
+                    Ok(id)
+                }
+            }
+            ItemDescriptor::WarpLane {
+                kind: WarpLaneKind::Map,
+                ..
+            } => {
+                let mut guard = self.map_lanes.borrow_mut();
+                if guard.contains_key(name) || self.value_lanes.borrow().contains_key(name) {
+                    Err(DynamicRegistrationError::DuplicateName(name.to_string()))
+                } else {
+                    let id = self.id_counter.get();
+                    self.id_counter.set(id + 1);
+                    let lane = GenericMapLane::new(id, Default::default());
+                    guard.insert(name.to_string(), lane);
+                    Ok(id)
+                }
+            }
+            ItemDescriptor::WarpLane { kind, .. } => {
+                Err(DynamicRegistrationError::LaneKindUnsupported(kind))
+            }
+            ItemDescriptor::Store { kind, .. } => {
+                Err(DynamicRegistrationError::StoreKindUnsupported(kind))
+            }
+            ItemDescriptor::Http => Err(DynamicRegistrationError::HttpLanesUnsupported),
+        }
+    }
 }
 
 struct LaneSelector<'a, L> {
@@ -155,7 +207,7 @@ impl<'a, L> Selector for LaneSelector<'a, L> {
         let LaneSelector { map, name } = self;
         map.get(name.as_str())
     }
-    
+
     fn name(&self) -> &str {
         self.name.as_str()
     }

@@ -20,7 +20,6 @@ use super::utility::HandlerContext;
 
 /// Lifecycle event for the `on_stop` event of an agent.
 pub trait OnStop<Context>: Send {
-    
     fn on_stop(&self) -> impl EventHandler<Context> + '_;
 }
 
@@ -43,7 +42,6 @@ pub trait OnStopShared<Context, Shared>: Send {
 }
 
 impl<Context> OnStop<Context> for NoHandler {
-
     fn on_stop(&self) -> impl EventHandler<Context> + '_ {
         UnitHandler::default()
     }
@@ -69,7 +67,6 @@ where
     F: Fn() -> H + Send,
     H: EventHandler<Context> + 'static,
 {
-    
     fn on_stop(&self) -> impl EventHandler<Context> + '_ {
         let FnHandler(f) = self;
         f()

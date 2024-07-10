@@ -26,8 +26,8 @@ use static_assertions::assert_obj_safe;
 use swimos_agent_protocol::{encoding::ad_hoc::AdHocCommandEncoder, AdHocCommand};
 use swimos_api::{
     address::Address,
-    agent::{AgentContext, DownlinkKind},
-    error::{AgentRuntimeError, DownlinkRuntimeError},
+    agent::{AgentContext, DownlinkKind, WarpLaneKind},
+    error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, LaneSpawnError},
 };
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
@@ -61,7 +61,7 @@ mod tests;
 mod try_handler;
 
 pub use suspend::{run_after, run_schedule, run_schedule_async, HandlerFuture, Spawner, Suspend};
-pub use try_handler::{TryHandlerActionExt, TryHandler, TryHandlerAction};
+pub use try_handler::{TryHandler, TryHandlerAction, TryHandlerActionExt};
 
 pub use command::SendCommand;
 #[doc(hidden)]
@@ -106,6 +106,48 @@ where
     }
 }
 
+pub type LaneSpawnHandler<Context> = Box<dyn EventHandler<Context> + Send + 'static>;
+pub type LaneSpawnOnDone<Context> =
+    Box<dyn FnOnce(Result<u64, LaneSpawnError>) -> LaneSpawnHandler<Context> + Send + 'static>;
+
+/// Trait for contexts that can spawn a new lane into the agent task.
+pub trait LaneSpawner<Context> {
+    /// Spawn a new WARP lane into the agent task.
+    ///
+    /// # Arguments
+    /// * `io` - IO channels, for the lane, connected to the runtime.
+    /// * `kind` - The kind of the lane.
+    fn spawn_warp_lane(
+        &self,
+        name: &str,
+        kind: WarpLaneKind,
+        on_done: LaneSpawnOnDone<Context>,
+    ) -> Result<(), DynamicRegistrationError>;
+}
+
+#[doc(hidden)]
+pub struct LaneSpawnRequest<Context> {
+    pub name: String,
+    pub kind: WarpLaneKind,
+    pub on_done: LaneSpawnOnDone<Context>,
+}
+
+impl<Context> LaneSpawner<Context> for RefCell<Vec<LaneSpawnRequest<Context>>> {
+    fn spawn_warp_lane(
+        &self,
+        name: &str,
+        kind: WarpLaneKind,
+        on_done: LaneSpawnOnDone<Context>,
+    ) -> Result<(), DynamicRegistrationError> {
+        self.borrow_mut().push(LaneSpawnRequest {
+            name: name.to_string(),
+            kind,
+            on_done,
+        });
+        Ok(())
+    }
+}
+
 /// The context type passed to every call to [`HandlerAction::step`] that provides access to the
 /// underlying. Some of the methods on this type are not intended for use in user supplied handler
 /// implementations and so can only be used from this crate.
@@ -113,6 +155,7 @@ pub struct ActionContext<'a, Context> {
     spawner: &'a dyn Spawner<Context>,
     agent_context: &'a dyn AgentContext,
     downlink: &'a dyn DownlinkSpawner<Context>,
+    lanes: &'a dyn LaneSpawner<Context>,
     join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
     ad_hoc_buffer: &'a mut BytesMut,
 }
@@ -137,6 +180,7 @@ impl<'a, Context> ActionContext<'a, Context> {
         spawner: &'a dyn Spawner<Context>,
         agent_context: &'a dyn AgentContext,
         downlink: &'a dyn DownlinkSpawner<Context>,
+        lanes: &'a dyn LaneSpawner<Context>,
         join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
         ad_hoc_buffer: &'a mut BytesMut,
     ) -> Self {
@@ -144,6 +188,7 @@ impl<'a, Context> ActionContext<'a, Context> {
             spawner,
             agent_context,
             downlink,
+            lanes,
             join_lane_init,
             ad_hoc_buffer,
         }
@@ -216,6 +261,20 @@ impl<'a, Context> ActionContext<'a, Context> {
         self.spawn_suspend(fut);
     }
 
+    pub(crate) fn open_lane<F, H>(
+        &self,
+        name: &str,
+        kind: WarpLaneKind,
+        on_opened: F,
+    ) -> Result<(), DynamicRegistrationError>
+    where
+        F: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
+        H: EventHandler<Context> + Send + 'static,
+    {
+        let f = move |result| wrap(on_opened, result);
+        self.lanes.spawn_warp_lane(name, kind, Box::new(f))
+    }
+
     /// Send an ad-hoc command message to a remote lane.
     ///
     /// # Arguments
@@ -240,6 +299,14 @@ impl<'a, Context> ActionContext<'a, Context> {
             .encode(cmd, ad_hoc_buffer)
             .expect("Encoding should be infallible.")
     }
+}
+
+fn wrap<Context, F, H>(f: F, result: Result<u64, LaneSpawnError>) -> LaneSpawnHandler<Context>
+where
+    F: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
+    H: EventHandler<Context> + Send + 'static,
+{
+    Box::new(f(result.map(|_| ())))
 }
 
 struct ConstructDownlink<F> {
@@ -377,7 +444,10 @@ pub enum EventHandlerError {
     HttpGetUndefined,
     /// An executing handler attempted to target a lane that does not exist.
     #[error("A command was received for a lane that does not exist: '{0}'")]
+    /// Failed to register a dynamic lane.
     LaneNotFound(String),
+    #[error("An attempt to register a dynamic lane failed: {0}")]
+    FailedRegistration(DynamicRegistrationError),
     /// An event handler failed in a user specified effect.
     #[error("An error occurred in a user specified effect: {0}")]
     EffectError(Box<dyn std::error::Error + Send>),

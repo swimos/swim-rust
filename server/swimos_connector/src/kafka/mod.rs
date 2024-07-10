@@ -16,9 +16,18 @@ use std::collections::HashMap;
 
 use futures::Future;
 use rdkafka::{
-    config::RDKafkaLogLevel, consumer::{ConsumerContext, Rebalance, StreamConsumer}, error::{KafkaError, KafkaResult}, ClientConfig, ClientContext, Message, Statistics, TopicPartitionList
+    config::RDKafkaLogLevel,
+    consumer::{ConsumerContext, Rebalance, StreamConsumer},
+    error::{KafkaError, KafkaResult},
+    ClientConfig, ClientContext, Message, Statistics, TopicPartitionList,
 };
-use swimos_agent::{agent_lifecycle::{ConnectorContext, HandlerContext}, event_handler::{ConstHandler, EventHandler, HandlerAction, HandlerActionExt, TryHandlerActionExt, UnitHandler}};
+use swimos_agent::{
+    agent_lifecycle::{ConnectorContext, HandlerContext},
+    event_handler::{
+        ConstHandler, EventHandler, HandlerAction, HandlerActionExt, TryHandlerActionExt,
+        UnitHandler,
+    },
+};
 use swimos_model::Value;
 use tracing::{debug, error, info, warn};
 
@@ -39,7 +48,6 @@ impl KafkaConnector {
 type LoggingConsumer = StreamConsumer<KafkaClientContext>;
 
 impl Connector for KafkaConnector {
-
     type StreamError = KafkaError;
 
     fn on_start(&self) -> impl EventHandler<crate::GenericConnectorAgent> + '_ {
@@ -49,9 +57,9 @@ impl Connector for KafkaConnector {
     fn on_stop(&self) -> impl EventHandler<crate::GenericConnectorAgent> + '_ {
         UnitHandler::default()
     }
-    
+
     type ConnectorState = Consumer;
-    
+
     fn create_state(&self) -> Result<Self::ConnectorState, Self::StreamError> {
         let KafkaConnector { configuration } = self;
         let mut client_builder = ClientConfig::new();
@@ -63,7 +71,6 @@ impl Connector for KafkaConnector {
             .create_with_context::<_, LoggingConsumer>(KafkaClientContext)?;
         Ok(Consumer::new(consumer))
     }
-    
 }
 
 pub struct Consumer {
@@ -79,31 +86,40 @@ impl Consumer {
 }
 
 impl ConnectorNext<KafkaError> for Consumer {
-    fn next_state(mut self) -> impl Future<Output: HandlerAction<GenericConnectorAgent, Completion = Option<Result<Self, KafkaError>>> + Send + 'static> + Send + 'static {
+    fn next_state(
+        mut self,
+    ) -> impl Future<
+        Output: HandlerAction<
+            GenericConnectorAgent,
+            Completion = Option<Result<Self, KafkaError>>,
+        > + Send
+                    + 'static,
+    > + Send
+           + 'static {
         async move {
             let handler_context: ConContext = ConContext::default();
             if let Some(consumer) = &mut self.consumer {
-                
-                
                 Some(handler_context.value(Ok(self)))
             } else {
                 None
             }
         }
     }
-    
+
     fn commit(
         self,
     ) -> Result<
         impl Future<
-                Output: HandlerAction<GenericConnectorAgent, Completion = Result<Self, KafkaError>>
-                            + Send
+                Output: HandlerAction<
+                    GenericConnectorAgent,
+                    Completion = Result<Self, KafkaError>,
+                > + Send
                             + 'static,
             > + Send
             + 'static,
         Self,
     > {
-        Ok(async move {ConstHandler::from(Ok(self))})
+        Ok(async move { ConstHandler::from(Ok(self)) })
     }
 }
 
@@ -164,16 +180,24 @@ impl ConsumerContext for KafkaClientContext {
 
 const BODY_LANE: &str = "body";
 
-async fn consume_record(consumer: &LoggingConsumer) -> impl HandlerAction<GenericConnectorAgent, Completion = Result<(), KafkaError>> + Send + 'static {
+async fn consume_record(
+    consumer: &LoggingConsumer,
+) -> impl HandlerAction<GenericConnectorAgent, Completion = Result<(), KafkaError>> + Send + 'static
+{
     let handler_context: ConContext = ConContext::default();
-    handler_context.value(consumer.recv().await).and_then_ok(|msg| {
-        let context: ConnectorContext<GenericConnectorAgent> = ConnectorContext::default();
-        let set_body = if let Some(Ok(body)) =  msg.payload_view::<str>() {
-            Some(context.set_value(ValueLaneSelectorFn::new(BODY_LANE.to_string()), Value::from(body)))
-        } else {
-            None
-        };
-        set_body.discard()
-    });
+    handler_context
+        .value(consumer.recv().await)
+        .and_then_ok(|msg| {
+            let context: ConnectorContext<GenericConnectorAgent> = ConnectorContext::default();
+            let set_body = if let Some(Ok(body)) = msg.payload_view::<str>() {
+                Some(context.set_value(
+                    ValueLaneSelectorFn::new(BODY_LANE.to_string()),
+                    Value::from(body),
+                ))
+            } else {
+                None
+            };
+            set_body.discard()
+        });
     ConstHandler::from(Ok(()))
 }

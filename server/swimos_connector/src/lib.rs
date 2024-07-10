@@ -14,8 +14,8 @@
 
 mod connector;
 mod generic;
-mod lifecycle;
 pub mod kafka;
+mod lifecycle;
 pub use connector::*;
 pub use generic::*;
 pub use lifecycle::*;

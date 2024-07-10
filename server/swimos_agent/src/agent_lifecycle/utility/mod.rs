@@ -925,23 +925,22 @@ pub struct ConnectorContext<Connector> {
 
 impl<Connector> Default for ConnectorContext<Connector> {
     fn default() -> Self {
-        Self { _connector_type: Default::default() }
+        Self {
+            _connector_type: Default::default(),
+        }
     }
 }
 
 impl<Connector: 'static> ConnectorContext<Connector> {
-
     pub fn set_value<T, F>(
         &self,
         item: F,
         value: T,
     ) -> impl HandlerAction<Connector, Completion = ()> + Send + 'static
     where
-
         F: SelectorFn<Connector, Target = ValueLane<T>> + Send + 'static,
         T: Send + 'static,
     {
         ValueLaneSelectSet::new(item, value)
     }
-
 }
