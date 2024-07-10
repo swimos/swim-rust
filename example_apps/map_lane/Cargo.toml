@@ -10,9 +10,5 @@ swimos_client = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 example-util = { path = "../example_util" }
 
-[dev-dependencies]
-rand.workspace = true
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
-
 [[example]]
 name = "map_client"

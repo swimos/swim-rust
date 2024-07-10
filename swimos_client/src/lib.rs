@@ -619,6 +619,7 @@ impl<'h, L> EventDownlinkBuilder<'h, L> {
     /// Sets a new lifecycle that to be used.
     pub fn lifecycle<T, NL>(self, lifecycle: NL) -> EventDownlinkBuilder<'h, NL>
     where
+        L: EventDownlinkLifecycle<T>,
         NL: EventDownlinkLifecycle<T>,
     {
         let EventDownlinkBuilder {
