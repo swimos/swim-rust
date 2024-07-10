@@ -64,7 +64,7 @@ where
         config,
         input,
         lifecycle,
-        FramedWrite::new(output, MapOperationEncoder::default()),
+        FramedWrite::new(output, MapOperationEncoder),
         actions,
         MapNotificationDecoder::default(),
     )

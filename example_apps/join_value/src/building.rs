@@ -41,10 +41,10 @@ impl BuildingLifecycle {
     pub fn register_room(
         &self,
         context: HandlerContext<BuildingAgent>,
-        room_id: &String,
+        room_id: &str,
     ) -> impl EventHandler<BuildingAgent> {
-        let downlink_room_id = room_id.clone();
-        let handler_room_id = room_id.clone();
+        let downlink_room_id = room_id.to_string();
+        let handler_room_id = room_id.to_string();
         context
             .get_parameter("name")
             .and_then(move |building_name: Option<String>| {

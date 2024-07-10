@@ -44,18 +44,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     .lifecycle(building_lifecycle)
                     .open()
                     .await
-                    .expect(format!("Failed to open downlink to {node_address}").as_str());
+                    .unwrap_or_else(|_| panic!("Failed to open downlink to {node_address}"));
 
-                let mut rng = rand::rngs::OsRng::default();
-                // loop {
-                let state = rng.gen_bool(0.5);
-                building_view
-                    .set(state)
-                    .await
-                    .expect("Failed to set downlink");
+                let mut rng = rand::rngs::OsRng;
+                loop {
+                    let state = rng.gen_bool(0.5);
+                    building_view
+                        .set(state)
+                        .await
+                        .expect("Failed to set downlink");
 
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                // }
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
             };
             tokio::spawn(task);
         }
