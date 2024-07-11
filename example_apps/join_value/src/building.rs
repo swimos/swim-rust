@@ -8,8 +8,8 @@ use swimos::agent::{lifecycle, AgentLaneModel};
 #[derive(AgentLaneModel)]
 #[projections]
 pub struct BuildingAgent {
-    lights: JoinValueLane<u64, bool>,
-    register_room: CommandLane<u64>,
+    lights: JoinValueLane<String, bool>,
+    register_room: CommandLane<String>,
 }
 
 #[derive(Clone)]
@@ -41,30 +41,32 @@ impl BuildingLifecycle {
     pub fn register_room(
         &self,
         context: HandlerContext<BuildingAgent>,
-        room_id: &u64,
+        room_id: &str,
     ) -> impl EventHandler<BuildingAgent> {
-        let room_id = *room_id;
+        let downlink_room_id = room_id.to_string();
+        let handler_room_id = room_id.to_string();
         context
             .get_parameter("name")
             .and_then(move |building_name: Option<String>| {
                 let building_name = building_name.expect("Missing building name URI parameter");
+                let node = format!("/rooms/{building_name}/{downlink_room_id}");
                 context.add_downlink(
                     BuildingAgent::LIGHTS,
-                    room_id,
+                    downlink_room_id,
                     None,
-                    format!("/rooms/{building_name}/{room_id}").as_str(),
+                    node.as_str(),
                     "lights",
                 )
             })
-            .followed_by(context.effect(move || println!("Registered room: {room_id}")))
+            .followed_by(context.effect(move || println!("Registered room: {handler_room_id}")))
     }
 
     #[on_update(lights)]
     fn lights(
         &self,
         context: HandlerContext<BuildingAgent>,
-        _map: &HashMap<u64, bool>,
-        key: u64,
+        _map: &HashMap<String, bool>,
+        key: String,
         prev: Option<bool>,
         new_value: &bool,
     ) -> impl EventHandler<BuildingAgent> {

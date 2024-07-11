@@ -19,9 +19,10 @@ use futures::{FutureExt, Sink, SinkExt, StreamExt};
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
 use std::mem;
-use swimos_agent_protocol::encoding::downlink::{DownlinkOperationEncoder, MapNotificationDecoder};
-use swimos_agent_protocol::MapMessage;
-use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
+use swimos_agent_protocol::encoding::downlink::MapNotificationDecoder;
+use swimos_agent_protocol::encoding::map::MapOperationEncoder;
+use swimos_agent_protocol::DownlinkNotification;
+use swimos_agent_protocol::{MapMessage, MapOperation};
 use swimos_api::{address::Address, error::DownlinkTaskError};
 use swimos_client_api::DownlinkConfig;
 use swimos_form::write::StructuralWritable;
@@ -63,7 +64,7 @@ where
         config,
         input,
         lifecycle,
-        FramedWrite::new(output, DownlinkOperationEncoder::default()),
+        FramedWrite::new(output, MapOperationEncoder),
         actions,
         MapNotificationDecoder::default(),
     )
@@ -97,7 +98,7 @@ where
 
 enum IoEvent<K, V> {
     Read(DownlinkNotification<MapMessage<K, V>>),
-    Write(Option<MapMessage<K, V>>),
+    Write(Option<MapOperation<K, V>>),
 }
 
 /// The current IO mode. Defaults to read/write and once the writer channel is dropped, the IO loop
@@ -112,7 +113,7 @@ async fn run_io<K, V, LC, Snk, D, E>(
     input: ByteReader,
     mut lifecycle: LC,
     mut framed: Snk,
-    actions: mpsc::Receiver<MapMessage<K, V>>,
+    actions: mpsc::Receiver<MapOperation<K, V>>,
     decoder: D,
 ) -> Result<(), DownlinkTaskError>
 where
@@ -120,7 +121,7 @@ where
     V: MapValue,
     V::Rec: Send,
     LC: MapDownlinkLifecycle<K, V>,
-    Snk: Sink<DownlinkOperation<MapMessage<K, V>>> + Unpin,
+    Snk: Sink<MapOperation<K, V>> + Unpin,
     Snk::Error: Debug,
     D: Decoder<Item = DownlinkNotification<MapMessage<K, V>>, Error = E>,
     DownlinkTaskError: From<E>,
@@ -151,31 +152,18 @@ where
 
                         match &mut state {
                             State::Synced(map) | State::Linked(map) => match &message {
-                                MapMessage::Update { key, value } => {
+                                MapOperation::Update { key, value } => {
                                     map.insert(K::clone(key), V::clone(value));
                                 }
-                                MapMessage::Remove { key } => {
+                                MapOperation::Remove { key } => {
                                     map.remove(key);
                                 }
-                                MapMessage::Clear => map.clear(),
-                                MapMessage::Take(cnt) => {
-                                    let mut it = mem::take(map).into_iter();
-                                    for (key, value) in (&mut it).take(*cnt as usize) {
-                                        map.insert(key, value);
-                                    }
-                                }
-                                MapMessage::Drop(cnt) => {
-                                    let it = mem::take(map).into_iter().skip(*cnt as usize);
-                                    for (key, value) in it {
-                                        map.insert(key, value);
-                                    }
-                                }
+                                MapOperation::Clear => map.clear(),
                             },
                             State::Unlinked => {}
                         }
 
-                        let op = DownlinkOperation::new(message);
-                        if let Err(e) = framed.feed(op).await {
+                        if let Err(e) = framed.feed(message).await {
                             error!(error = ?e, "Failed to feed downlink frame. Transitioning to read-only mode");
                         }
                     }

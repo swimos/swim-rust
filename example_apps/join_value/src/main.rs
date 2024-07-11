@@ -38,6 +38,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let room_agent = AgentModel::new(RoomAgent::default, RoomLifecycle.into_lifecycle());
 
     let server = ServerBuilder::with_plane_name("Building Plane")
+        .set_bind_addr("127.0.0.1:8080".parse()?)
         .add_route(building_route, building_agent)
         .add_route(room_route, room_agent)
         .update_config(|config| {

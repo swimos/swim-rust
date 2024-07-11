@@ -17,17 +17,14 @@ use std::num::NonZeroUsize;
 
 use futures::future::join;
 use futures::{SinkExt, StreamExt};
-use swimos_client_api::{Downlink, DownlinkConfig};
 use tokio::time::{timeout, Duration};
-use tokio_util::codec::{FramedRead, FramedWrite};
+use tokio_util::codec::{Decoder, FramedRead, FramedWrite};
 
-use swimos_agent_protocol::encoding::downlink::{
-    DownlinkNotificationEncoder, DownlinkOperationDecoder,
-};
-use swimos_agent_protocol::{DownlinkNotification, DownlinkOperation};
+use swimos_agent_protocol::encoding::downlink::DownlinkNotificationEncoder;
+use swimos_agent_protocol::DownlinkNotification;
 use swimos_api::{address::Address, error::DownlinkTaskError};
-use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
-use swimos_recon::parser::parse_recognize;
+use swimos_client_api::{Downlink, DownlinkConfig};
+use swimos_form::write::StructuralWritable;
 use swimos_recon::print_recon_compact;
 use swimos_utilities::{
     byte_channel::{byte_channel, ByteReader, ByteWriter},
@@ -49,11 +46,12 @@ impl TestValueWriter {
     }
 }
 
-struct TestReader(FramedRead<ByteReader, DownlinkOperationDecoder>);
+//FramedRead<ByteReader, DownlinkOperationDecoder>
+struct TestReader(ByteReader);
 
 impl TestReader {
     fn new(rx: ByteReader) -> Self {
-        TestReader(FramedRead::new(rx, DownlinkOperationDecoder))
+        TestReader(rx)
     }
 }
 
@@ -73,19 +71,13 @@ impl From<std::str::Utf8Error> for ReadFailed {
 }
 
 impl TestReader {
-    async fn recv<T: RecognizerReadable>(&mut self) -> Result<Option<T>, ReadFailed> {
+    async fn decode<D>(&mut self, dec: D) -> Result<Option<D::Item>, ReadFailed>
+    where
+        D: Decoder,
+    {
         let TestReader(inner) = self;
-        let op = inner.next().await.transpose()?;
-        if let Some(DownlinkOperation { body }) = op {
-            let body_str = std::str::from_utf8(body.as_ref())?;
-            if let Ok(v) = parse_recognize(body_str, false) {
-                Ok(Some(v))
-            } else {
-                Err(ReadFailed)
-            }
-        } else {
-            Ok(None)
-        }
+        let mut dec = FramedRead::new(inner, dec);
+        dec.next().await.transpose().map_err(|_| ReadFailed)
     }
 }
 

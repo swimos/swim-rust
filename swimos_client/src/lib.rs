@@ -373,7 +373,11 @@ pub struct ValueDownlinkBuilder<'h, L> {
 
 impl<'h, L> ValueDownlinkBuilder<'h, L> {
     /// Sets a new lifecycle that to be used.
-    pub fn lifecycle<NL>(self, lifecycle: NL) -> ValueDownlinkBuilder<'h, NL> {
+    pub fn lifecycle<NL, T>(self, lifecycle: NL) -> ValueDownlinkBuilder<'h, NL>
+    where
+        L: ValueDownlinkLifecycle<T>,
+        NL: ValueDownlinkLifecycle<T>,
+    {
         let ValueDownlinkBuilder {
             handle,
             path,
@@ -439,9 +443,11 @@ impl<'h, L> ValueDownlinkBuilder<'h, L> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ValueDownlinkOperationError {
+    #[error("Downlink has not yet synced")]
     NotYetSynced,
+    #[error("Downlink terminated")]
     DownlinkStopped,
 }
 
@@ -495,7 +501,11 @@ pub struct MapDownlinkBuilder<'h, L> {
 
 impl<'h, L> MapDownlinkBuilder<'h, L> {
     /// Sets a new lifecycle that to be used.
-    pub fn lifecycle<NL>(self, lifecycle: NL) -> MapDownlinkBuilder<'h, NL> {
+    pub fn lifecycle<K, V, NL>(self, lifecycle: NL) -> MapDownlinkBuilder<'h, NL>
+    where
+        L: MapDownlinkLifecycle<K, V>,
+        NL: MapDownlinkLifecycle<K, V>,
+    {
         let MapDownlinkBuilder {
             handle,
             path,
@@ -589,16 +599,6 @@ impl<K, V> MapDownlinkView<K, V> {
         self.inner.clear().await
     }
 
-    /// Retains the last `n` elements in the map.
-    pub async fn take(&self, n: u64) -> Result<(), ChannelError> {
-        self.inner.take(n).await
-    }
-
-    /// Retains the first `n` elements in the map.
-    pub async fn drop(&self, n: u64) -> Result<(), ChannelError> {
-        self.inner.drop(n).await
-    }
-
     /// Returns a receiver that completes with the result of downlink's internal task.
     pub fn stop_notification(&self) -> promise::Receiver<Result<(), Arc<DownlinkRuntimeError>>> {
         self.stop_rx.clone()
@@ -617,7 +617,11 @@ pub struct EventDownlinkBuilder<'h, L> {
 
 impl<'h, L> EventDownlinkBuilder<'h, L> {
     /// Sets a new lifecycle that to be used.
-    pub fn lifecycle<NL>(self, lifecycle: NL) -> EventDownlinkBuilder<'h, NL> {
+    pub fn lifecycle<T, NL>(self, lifecycle: NL) -> EventDownlinkBuilder<'h, NL>
+    where
+        L: EventDownlinkLifecycle<T>,
+        NL: EventDownlinkLifecycle<T>,
+    {
         let EventDownlinkBuilder {
             handle,
             path,

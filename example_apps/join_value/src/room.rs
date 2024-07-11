@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use swimos::agent::agent_lifecycle::HandlerContext;
 use swimos::agent::event_handler::{EventHandler, HandlerActionExt};
 use swimos::agent::lanes::ValueLane;
@@ -29,14 +28,12 @@ impl RoomLifecycle {
                             let building_name =
                                 building_name.expect("Missing building URI parameter");
                             let room_id_str = room_id.expect("Missing room ID URI parameter");
-                            let room_id = u64::from_str(room_id_str.as_str())
-                                .expect("Expected a u64 room ID");
 
                             context.send_command(
                                 None,
                                 format!("/buildings/{building_name}"),
                                 "register_room".to_string(),
-                                room_id,
+                                room_id_str,
                             )
                         })
                 },
