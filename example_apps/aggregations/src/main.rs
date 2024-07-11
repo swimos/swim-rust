@@ -49,6 +49,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let aggregate_agent = AgentModel::new(CityAgent::default, CityLifecycle.into_lifecycle());
 
     let mut builder = ServerBuilder::with_plane_name("Example Plane")
+        .set_bind_addr("127.0.0.1:8080".parse()?)
         .add_route(RoutePattern::parse_str("/cars/:car_id")?, car_agent)
         .add_route(RoutePattern::parse_str("/city")?, aggregate_agent)
         .update_config(|config| {
