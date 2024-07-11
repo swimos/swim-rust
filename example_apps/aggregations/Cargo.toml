@@ -13,5 +13,5 @@ example-util = { path = "../example_util" }
 rand = { workspace = true }
 futures-util = { workspace = true }
 
-[[example]]
+[[bin]]
 name = "aggregations_client"

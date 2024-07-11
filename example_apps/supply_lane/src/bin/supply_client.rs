@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let doubled_lifecycle = BasicEventDownlinkLifecycle::default().on_event_blocking(|event| {
         println!("{event:?}");
     });
-    let _doubled_view = client_handle
+    client_handle
         .event_downlink::<i32>(RemotePath::new(host, "/example/1", "supply"))
         .lifecycle(doubled_lifecycle)
         .open()

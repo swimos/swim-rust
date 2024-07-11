@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let demand_lifecycle =
         BasicValueDownlinkLifecycle::default().on_event_blocking(|state| println!("{state}"));
-    let _demand_view = client_handle
+    client_handle
         .value_downlink::<i32>(RemotePath::new(host, "/example/1", "demand"))
         .lifecycle(demand_lifecycle)
         .open()

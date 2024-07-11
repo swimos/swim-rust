@@ -9,9 +9,7 @@ swimos = { workspace = true, features = ["server", "agent"] }
 swimos_client = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 example-util = { path = "../example_util" }
+rand = { workspace = true }
 
-[dev-dependencies]
-rand.workspace = true
-
-[[example]]
+[[bin]]
 name = "join_value_client"

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::collections::HashSet;
+use std::error::Error;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 use std::time::Duration;
@@ -511,10 +512,13 @@ impl<D: Decoder> DownlinkReceiver<D> {
     }
 }
 
-struct Failed<E>(u64, E);
+struct Failed(u64, Box<dyn Error + 'static>);
 
-impl<D: Decoder> Stream for DownlinkReceiver<D> {
-    type Item = Result<D::Item, Failed<D::Error>>;
+impl<D: Decoder> Stream for DownlinkReceiver<D>
+where
+    D::Error: Error + 'static,
+{
+    type Item = Result<D::Item, Failed>;
 
     fn poll_next(
         self: std::pin::Pin<&mut Self>,
@@ -526,7 +530,7 @@ impl<D: Decoder> Stream for DownlinkReceiver<D> {
         } else {
             this.receiver
                 .poll_next_unpin(cx)
-                .map_err(|e| Failed(this.id, e))
+                .map_err(|e| Failed(this.id, Box::new(e)))
         }
     }
 }
@@ -960,7 +964,7 @@ async fn write_task<B: DownlinkBackpressure>(
     mut backpressure: B,
     stop_voter: Voter,
 ) where
-    <<B as DownlinkBackpressure>::Dec as Decoder>::Error: Debug,
+    <<B as DownlinkBackpressure>::Dec as Decoder>::Error: Error + 'static,
 {
     let mut message_writer = RequestSender::new(output, identity, path);
     if message_writer.send_link().await.is_err() {

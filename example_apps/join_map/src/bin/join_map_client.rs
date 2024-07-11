@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let aggregated_lifecycle = BasicMapDownlinkLifecycle::default()
         .on_update_blocking(|key, _map, _old_state, new_state| println!("{key} -> {new_state}"));
-    let _aggregated_view = client_handle
+    client_handle
         .map_downlink::<String, u64>(RemotePath::new(host, "/join/state/example", "streets"))
         .lifecycle(aggregated_lifecycle)
         .open()

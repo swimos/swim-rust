@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let demand_lifecycle = BasicMapDownlinkLifecycle::default()
         .on_update_blocking(|key, _map, _old_state, new_state| println!("{key} -> {new_state}"));
-    let _demand_map_view = client_handle
+    client_handle
         .map_downlink::<String, i32>(RemotePath::new(host, "/example/1", "demand_map"))
         .lifecycle(demand_lifecycle)
         .open()

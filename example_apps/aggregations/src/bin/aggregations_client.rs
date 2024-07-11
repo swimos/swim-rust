@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let car_lifecycle = BasicValueDownlinkLifecycle::default()
         .on_event_blocking(|speed| println!("/cars/1 speed: {speed}"));
-    let _car_view = client_handle
+    client_handle
         .value_downlink::<u64>(RemotePath::new(host, "/cars/1", "speed"))
         .lifecycle(car_lifecycle)
         .open()
@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let area_lifecycle = BasicValueDownlinkLifecycle::default()
         .on_event_blocking(|speed| println!("/area/arbury average speed: {speed}"));
-    let _area_view = client_handle
+    client_handle
         .value_downlink::<f64>(RemotePath::new(host, "/area/arbury", "average_speed"))
         .lifecycle(area_lifecycle)
         .open()
@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let city_lifecycle = BasicValueDownlinkLifecycle::default()
         .on_event_blocking(|speed| println!("/city average speed: {speed}"));
-    let _city_view = client_handle
+    client_handle
         .value_downlink::<f64>(RemotePath::new(host, "/city", "average_speed"))
         .lifecycle(city_lifecycle)
         .open()

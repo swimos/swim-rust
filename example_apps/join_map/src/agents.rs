@@ -34,8 +34,6 @@ impl AggregatedLifecycle {
         &self,
         context: HandlerContext<AggregatedStatisticsAgent>,
     ) -> impl EventHandler<AggregatedStatisticsAgent> {
-        println!("Start agg");
-
         let california_downlink = context.add_map_downlink(
             AggregatedStatisticsAgent::STREETS,
             "california".to_string(),

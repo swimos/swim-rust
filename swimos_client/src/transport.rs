@@ -32,7 +32,7 @@ use swimos_utilities::trigger;
 use tokio::select;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinError;
-use tracing::{debug, error, trace};
+use tracing::{debug, error};
 
 type AttachCallback =
     oneshot::Sender<Result<(SocketAddr, mpsc::Sender<AttachClient>), DownlinkRuntimeError>>;
@@ -189,7 +189,6 @@ where
 
             match event {
                 TransportEvent::Request(TransportRequest::Resolve(shp, callback)) => {
-                    trace!(%shp, "Resolving host");
                     let shared_networking = &networking;
                     let resolve_fut = async move {
                         let result = shared_networking
@@ -206,17 +205,14 @@ where
                     addrs,
                     callback,
                 }) => {
-                    trace!(?host, ?scheme, "Resolving connection");
                     let peer = addrs
                         .iter()
                         .find_map(|sock| peers.get(sock).map(|tx| (sock, tx)));
                     match peer {
                         Some((sock, peer)) => {
-                            trace!("Found peer");
                             let _r = callback.send(Ok((*sock, peer.clone())));
                         }
                         None => {
-                            trace!("No peer found");
                             let shared_networking = &networking;
                             events.push(
                                 async move {
@@ -250,7 +246,6 @@ where
                     socket,
                     addr,
                 } => {
-                    trace!(?host, "Opening connection");
                     let shared_ws = &websockets;
                     let provider = &ext_provider;
                     let handshake_fut = async move {
@@ -281,7 +276,6 @@ where
                     callback,
                     websocket,
                 } => {
-                    trace!(?host, "Starting remote task");
                     let (attach_tx, attach_rx) = mpsc::channel(buffer_size.get());
                     let remote = RemoteTask::new(
                         remote_issuer.next_id(),
