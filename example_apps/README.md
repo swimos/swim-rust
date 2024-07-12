@@ -1,7 +1,7 @@
 # Applications
 
 This directory contains a number of example applications for building SwimOS applications and also contains example
-binaries for their corresponding client applications.
+binaries for their corresponding client applications. Each directory contains details about running the binaries.
 
 - [aggregations](aggregations): Reference code for
   the [Group and Aggregate Agents](https://www.swimos.org/server/rust/aggregations/) guide.
