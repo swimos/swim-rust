@@ -1,5 +1,3 @@
-use std::{collections::HashMap, io::ErrorKind, sync::Arc, time::Duration};
-
 // Copyright 2015-2024 Swim Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +19,7 @@ use futures::{
     Future, FutureExt, StreamExt,
 };
 use parking_lot::Mutex;
+use std::{collections::HashMap, io::ErrorKind, sync::Arc, time::Duration};
 use swimos_agent_protocol::{
     encoding::ad_hoc::AdHocCommandDecoder, AdHocCommand, MapMessage, MapOperation,
 };
