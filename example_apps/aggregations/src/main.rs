@@ -16,7 +16,7 @@
 //!
 //! Run this example using the following:
 //! ```text
-//! $ cargo run aggregations
+//! $ cargo run --bin aggregations
 //! ```
 
 use std::error::Error;
