@@ -1,18 +1,30 @@
+use std::{error::Error, time::Duration};
+
+use swimos::agent::event_handler::HandlerActionExt;
+use swimos::agent::lanes::CommandLane;
 use swimos::{
     agent::{
         agent_lifecycle::HandlerContext, agent_model::AgentModel, event_handler::EventHandler,
         lanes::ValueLane, lifecycle, projections, AgentLaneModel,
     },
     route::RoutePattern,
-    server::{Server, ServerBuilder, ServerHandle},
+    server::{Server, ServerBuilder},
 };
+use swimos_form::Form;
 
-use std::{error::Error, time::Duration};
+// Note how as this is a custom type we need to derive `Form` for it.
+// For most types, simply adding the derive attribute will suffice.
+#[derive(Debug, Form, Copy, Clone)]
+pub enum Operation {
+    Add(i32),
+    Sub(i32),
+}
 
 #[derive(AgentLaneModel)]
 #[projections]
 pub struct ExampleAgent {
     state: ValueLane<i32>,
+    exec: CommandLane<Operation>,
 }
 
 #[derive(Clone)]
@@ -52,6 +64,28 @@ impl ExampleLifecycle {
             println!("Setting value to: {}", n);
         })
     }
+
+    #[on_command(exec)]
+    pub fn on_command(
+        &self,
+        context: HandlerContext<ExampleAgent>,
+        // Notice a reference to the deserialized command envelope is provided.
+        operation: &Operation,
+    ) -> impl EventHandler<ExampleAgent> {
+        let operation = *operation;
+        context
+            // Get the current state of our `state` lane.
+            .get_value(ExampleAgent::STATE)
+            .and_then(move |state| {
+                // Calculate the new state.
+                let new_state = match operation {
+                    Operation::Add(val) => state + val,
+                    Operation::Sub(val) => state - val,
+                };
+                // Return a event handler which updates the state of the `state` lane.
+                context.set_value(ExampleAgent::STATE, new_state)
+            })
+    }
 }
 
 #[tokio::main]
@@ -81,24 +115,8 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     // Run the server. A tuple of the server's runtime
     // future and a handle to the runtime is returned.
-    let (task, handle) = server.run();
-    // Watch for ctrl+c signals
-    let shutdown = manage_handle(handle);
+    let (task, _handle) = server.run();
+    task.await?;
 
-    // Join on the server and ctrl+c futures.
-    let (_, result) = tokio::join!(shutdown, task);
-
-    result?;
-    println!("Server stopped successfully.");
     Ok(())
-}
-
-// Utility function for awaiting a stop signal in the terminal.
-async fn manage_handle(mut handle: ServerHandle) {
-    tokio::signal::ctrl_c()
-        .await
-        .expect("Failed to register interrupt handler.");
-
-    println!("Stopping server.");
-    handle.stop();
 }
