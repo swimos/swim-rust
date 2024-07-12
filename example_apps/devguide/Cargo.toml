@@ -1,0 +1,17 @@
+[package]
+name = "devguide2"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+publish = false
+
+[dependencies]
+swimos = { workspace = true, features = ["server", "agent"] }
+swimos_client = { workspace = true }
+swimos_form = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
+[[bin]]
+name = "devguide_client"

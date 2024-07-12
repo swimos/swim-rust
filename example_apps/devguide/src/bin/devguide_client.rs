@@ -1,4 +1,5 @@
-use swimos_client::{BasicValueDownlinkLifecycle, DownlinkConfig, RemotePath, SwimClientBuilder};
+use std::error::Error;
+use swimos_client::{BasicValueDownlinkLifecycle, RemotePath, SwimClientBuilder};
 use swimos_form::Form;
 
 #[derive(Debug, Form, Copy, Clone)]
@@ -8,12 +9,12 @@ pub enum Operation {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn Error>> {
     // Build a Swim Client using the default configuration.
     // The `build` method returns a `SwimClient` instance and its internal
     // runtime future that is spawned below.
     let (client, task) = SwimClientBuilder::default().build().await;
-    let _client_task = tokio::spawn(task);
+    let client_task = tokio::spawn(task);
     let handle = client.handle();
 
     // Build a path the downlink.
@@ -28,24 +29,14 @@ async fn main() {
     );
 
     let lifecycle = BasicValueDownlinkLifecycle::<usize>::default()
-        // Register an event handler that is invoked when the downlink connects to the agent.
-        .on_linked_blocking(|| println!("Downlink linked"))
-        // Register an event handler that is invoked when the downlink synchronises its state.
-        // with the agent.
-        .on_synced_blocking(|value| println!("Downlink synced with: {value:?}"))
         // Register an event handler that is invoked when the downlink receives an event.
         .on_event_blocking(|value| println!("Downlink event: {value:?}"));
 
-    // Build our downlink.
-    //
-    // This operation may fail if there is a connection issue.
-    let _state_downlink = handle
+    handle
         .value_downlink::<usize>(state_path)
         .lifecycle(lifecycle)
-        .downlink_config(DownlinkConfig::default())
         .open()
-        .await
-        .expect("Failed to open downlink");
+        .await?;
 
     let exec_path = RemotePath::new(
         // The host address
@@ -57,17 +48,11 @@ async fn main() {
         "exec",
     );
 
-    let exec_downlink = handle
-        .value_downlink::<Operation>(exec_path)
-        .downlink_config(DownlinkConfig::default())
-        .open()
-        .await
-        .expect("Failed to open exec downlink");
+    let exec_downlink = handle.value_downlink::<Operation>(exec_path).open().await?;
 
-    exec_downlink.set(Operation::Add(1000)).await.unwrap();
-    exec_downlink.set(Operation::Sub(13)).await.unwrap();
+    exec_downlink.set(Operation::Add(1000)).await?;
+    exec_downlink.set(Operation::Sub(13)).await?;
 
-    tokio::signal::ctrl_c()
-        .await
-        .expect("Failed to listen for ctrl-c.");
+    client_task.await?;
+    Ok(())
 }
