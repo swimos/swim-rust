@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Reference code for the [Group and Aggregate Agents](https://www.swimos.org/server/rust/aggregations/) guide.
+//!
+//! Run this example using the following:
+//! ```text
+//! $ cargo run aggregations
+//! ```
+
 use std::error::Error;
 use std::str::FromStr;
 use std::time::Duration;

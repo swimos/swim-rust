@@ -1,3 +1,15 @@
+//! Reference code for the [Developer Guide](https://www.swimos.org/server/rust/developer-guide/).
+//!
+//! Run the server using the following:
+//! ```text
+//! $ cargo run --bin devguide
+//! ```
+//!
+//! And run the client with the following:
+//! ```text
+//! $ cargo run --bin devguide_client
+//! ```
+
 use std::{error::Error, time::Duration};
 
 use swimos::agent::event_handler::HandlerActionExt;

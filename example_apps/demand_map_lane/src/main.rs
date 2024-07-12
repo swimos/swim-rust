@@ -12,6 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! An example demonstrating Demand Map Lanes.
+//!
+//! Run the server using the following:
+//! ```text
+//! $ cargo run --bin demand-map-lane
+//! ```
+//!
+//! And run the client with the following:
+//! ```text
+//! $ cargo run --bin demand_map_client
+//! ```
+
 use std::{error::Error, time::Duration};
 
 use example_util::{example_logging, manage_handle};

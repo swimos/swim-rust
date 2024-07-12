@@ -12,6 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Rust port of the [Transit](https://github.com/swimos/transit) application.
+//!
+//! Run the server using the following:
+//! ```text
+//! $ cargo run --bin transit -- --port 8001 --include-ui --ui-port 8002
+//! ```
+//!
+//! The web UI can then be found at:
+//!
+//! ```
+//! http://127.0.0.1:8002/index.html
+//! ```
+
 use std::future::IntoFuture;
 use std::{error::Error, net::SocketAddr, pin::pin, sync::Arc, time::Duration};
 
