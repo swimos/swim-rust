@@ -10,7 +10,7 @@ homepage.workspace = true
 
 [features]
 default = []
-trust_dns = ["trust-dns-resolver"]
+trust_dns = ["swimos_remote/trust_dns"]
 
 [dependencies]
 bitflags = { workspace = true }
@@ -36,7 +36,6 @@ thiserror = { workspace = true }
 tokio-stream = { workspace = true, features = ["sync"] }
 uuid = { workspace = true }
 static_assertions = { workspace = true }
-trust-dns-resolver = { workspace = true, optional = true }
 nom = { workspace = true }
 percent-encoding = { workspace = true }
 

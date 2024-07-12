@@ -10,12 +10,13 @@ homepage.workspace = true
 
 [features]
 default = ["aws_lc_rs_provider"]
-all = ["server", "agent", "json"]
+all = ["server", "agent", "json", "trust_dns"]
 server = ["dep:swimos_server_app", "dep:swimos_remote"]
 agent = ["dep:swimos_agent", "dep:swimos_agent_derive"]
 json = ["agent", "swimos_agent/json"]
 ring_provider = ["swimos_server_app/ring_provider"]
 aws_lc_rs_provider = ["swimos_server_app/aws_lc_rs_provider"]
+trust_dns = ["swimos_server_app/trust_dns"]
 
 [dependencies]
 swimos_utilities = { workspace = true, features = ["io", "text"] }

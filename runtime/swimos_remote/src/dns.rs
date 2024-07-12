@@ -75,25 +75,25 @@ impl DnsResolver for GetAddressInfoResolver {
     }
 }
 
-/// The default DNS resolver. If the `trust-dns` feature flag is enabled, this will use the `trust_dns`
+/// The default DNS resolver. If the `trust_dns` feature flag is enabled, this will use the `trust_dns`
 /// implementation, otherwise it will use the operating system's built-in DNS support.
 #[derive(Debug, Clone)]
 pub struct Resolver {
-    #[cfg(not(feature = "trust-dns"))]
+    #[cfg(not(feature = "trust_dns"))]
     inner: GetAddressInfoResolver,
-    #[cfg(feature = "trust-dns")]
+    #[cfg(feature = "trust_dns")]
     inner: trust_dns_impl::TrustDnsResolver,
 }
 
 impl Resolver {
-    #[cfg(feature = "trust-dns")]
+    #[cfg(feature = "trust_dns")]
     pub async fn new() -> Resolver {
         Resolver {
             inner: trust_dns_impl::TrustDnsResolver::new().await,
         }
     }
 
-    #[cfg(not(feature = "trust-dns"))]
+    #[cfg(not(feature = "trust_dns"))]
     pub async fn new() -> Resolver {
         Resolver {
             inner: GetAddressInfoResolver,
@@ -109,9 +109,9 @@ impl DnsResolver for Resolver {
     }
 }
 
-#[cfg(feature = "trust-dns")]
+#[cfg(feature = "trust_dns")]
 mod trust_dns_impl {
-    use crate::net::dns::DnsResolver;
+    use crate::dns::DnsResolver;
     use futures::future::BoxFuture;
     use std::io;
     use std::net::{SocketAddr, ToSocketAddrs};
@@ -127,9 +127,9 @@ mod trust_dns_impl {
         pub async fn new() -> TrustDnsResolver {
             let (config, opts) = system_conf::read_system_conf()
                 .expect("Failed to retrieve host system configuration file for Trust DNS resolver");
-            let resolver = TokioAsyncResolver::tokio(config, opts).unwrap();
-
-            TrustDnsResolver { inner: resolver }
+            TrustDnsResolver {
+                inner: TokioAsyncResolver::tokio(config, opts),
+            }
         }
     }
 
