@@ -12,6 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! An example demonstrating Command Lanes.
+//!
+//! Run the server using the following:
+//! ```text
+//! $ cargo run --bin command-lane
+//! ```
+//!
+//! And run the client with the following:
+//! ```text
+//! $ cargo run --bin command_client
+//! ```
+
 use std::{error::Error, time::Duration};
 
 use example_util::{example_logging, manage_handle};

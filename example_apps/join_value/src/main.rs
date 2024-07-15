@@ -12,6 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! An example demonstrating Join Map Lanes.
+//!
+//! Run the server using the following:
+//! ```text
+//! $ cargo run --bin join_value
+//! ```
+//!
+//! And run the client with the following:
+//! ```text
+//! $ cargo run --bin join_value_client
+//! ```
+
 use std::{error::Error, time::Duration};
 
 use crate::{

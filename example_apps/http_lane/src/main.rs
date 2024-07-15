@@ -12,6 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! An example demonstrating HTTP Lanes.
+//!
+//! Run the server using the following:
+//! ```text
+//! $ cargo run --bin http-lane
+//! ```
+//!
+//! And run the client with the following:
+//! ```text
+//! $ cargo run --bin http_client
+//! ```
+
 use std::{error::Error, time::Duration};
 
 use example_util::{example_logging, manage_handle};
