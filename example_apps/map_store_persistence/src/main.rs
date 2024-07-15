@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! An example demonstrating Map Stores with persistence.
+//!
+//! Run the server using the following:
+//! ```text
+//! $ cargo run --bin map-store-persistence
+//! ```
+
 use std::{error::Error, time::Duration};
 
 use example_util::{example_logging, manage_handle};

@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! An example demonstrating downlinks.
+//!
+//! Run the server using the following:
+//! ```text
+//! $ cargo run --bin event-downlink
+//! ```
+
 use std::error::Error;
 
 use example_util::{example_logging, manage_producer_and_consumer, StartDependent};

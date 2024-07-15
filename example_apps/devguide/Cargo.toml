@@ -1,5 +1,5 @@
 [package]
-name = "devguide2"
+name = "devguide"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
