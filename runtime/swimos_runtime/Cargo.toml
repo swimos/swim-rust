@@ -10,7 +10,7 @@ homepage.workspace = true
 
 [features]
 default = []
-trust_dns = ["swimos_remote/trust_dns"]
+hickory_dns = ["swimos_remote/hickory_dns"]
 
 [dependencies]
 bitflags = { workspace = true }

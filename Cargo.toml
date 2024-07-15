@@ -142,7 +142,7 @@ webpki = "0.22"
 webpki-roots = "0.26.3"
 tokio-rustls = "0.26"
 rustls-pemfile = "2.1.2"
-trust-dns-resolver = "0.23.2"
+hickory-resolver = "0.24.1"
 clap = "4.1"
 crossbeam-queue = { version = "0.3" }
 crossbeam-channel = { version = "0.5" }
