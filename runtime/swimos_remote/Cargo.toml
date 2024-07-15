@@ -13,6 +13,7 @@ default = []
 tls = ["rustls", "webpki", "webpki-roots", "tokio-rustls", "rustls-pemfile"]
 ring_provider = []
 aws_lc_rs_provider = []
+hickory_dns = ["hickory-resolver"]
 
 [dependencies]
 ratchet = { workspace = true, features = ["deflate", "split"] }
@@ -37,6 +38,7 @@ smallvec = { workspace = true }
 url = { workspace = true }
 pin-project = { workspace = true }
 hyper = { workspace = true }
+hickory-resolver = { workspace = true, optional = true }
 
 rustls = { workspace = true, optional = true }
 webpki = { workspace = true, optional = true }
