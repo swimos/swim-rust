@@ -98,7 +98,7 @@ pub struct OpenLane<OnDone> {
 }
 
 impl<OnDone> OpenLane<OnDone> {
-    pub fn new(name: String, kind: WarpLaneKind, on_done: OnDone) -> Self {
+    pub(crate) fn new(name: String, kind: WarpLaneKind, on_done: OnDone) -> Self {
         OpenLane {
             name,
             kind,

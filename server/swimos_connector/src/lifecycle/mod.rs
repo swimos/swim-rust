@@ -21,6 +21,7 @@ use swimos_agent::{
     },
     AgentMetadata,
 };
+use swimos_utilities::trigger;
 
 use crate::{suspend_connector, Connector, GenericConnectorAgent};
 
@@ -46,11 +47,18 @@ where
     fn on_start(&self) -> impl EventHandler<GenericConnectorAgent> + '_ {
         let ConnectorLifecycle(connector) = self;
         let handler_context: HandlerContext<GenericConnectorAgent> = HandlerContext::default();
+        let (tx, rx) = trigger::trigger();
         let suspend = handler_context
-            .effect(|| connector.create_state())
+            .effect(|| connector.create_stream())
             .try_handler()
-            .and_then(suspend_connector);
-        connector.on_start().followed_by(suspend)
+            .and_then(move |stream| {
+                handler_context.suspend(async move {
+                    handler_context.value(rx.await)
+                        .try_handler() //TODO Make this a more informative error.
+                        .followed_by(suspend_connector(stream))
+                })
+            });
+        connector.on_start(tx).followed_by(suspend)
     }
 }
 

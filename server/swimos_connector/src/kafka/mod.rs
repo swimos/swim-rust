@@ -14,26 +14,32 @@
 
 use std::collections::HashMap;
 
-use futures::Future;
+use futures::{stream::unfold, Future};
 use rdkafka::{
     config::RDKafkaLogLevel,
-    consumer::{ConsumerContext, Rebalance, StreamConsumer},
+    consumer::{CommitMode, Consumer, ConsumerContext, Rebalance, StreamConsumer},
     error::{KafkaError, KafkaResult},
+    message::BorrowedMessage,
     ClientConfig, ClientContext, Message, Statistics, TopicPartitionList,
 };
 use swimos_agent::{
     agent_lifecycle::{ConnectorContext, HandlerContext},
     event_handler::{
-        ConstHandler, EventHandler, HandlerAction, HandlerActionExt, TryHandlerActionExt,
+        EventHandler, HandlerActionExt, TryHandlerActionExt,
         UnitHandler,
     },
 };
 use swimos_model::Value;
+use swimos_utilities::trigger;
+use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
-use crate::{Connector, ConnectorNext, GenericConnectorAgent, ValueLaneSelectorFn};
+use crate::{
+    Connector, ConnectorStream, GenericConnectorAgent, ValueLaneSelectorFn,
+};
 
-type ConContext = HandlerContext<GenericConnectorAgent>;
+type ConnHandlerContext = HandlerContext<GenericConnectorAgent>;
+type ConnContext = ConnectorContext<GenericConnectorAgent>;
 
 pub struct KafkaConnector {
     configuration: KafkaConnectorConfiguration,
@@ -50,76 +56,43 @@ type LoggingConsumer = StreamConsumer<KafkaClientContext>;
 impl Connector for KafkaConnector {
     type StreamError = KafkaError;
 
-    fn on_start(&self) -> impl EventHandler<crate::GenericConnectorAgent> + '_ {
-        UnitHandler::default()
-    }
+    fn on_start(
+        &self,
+        init_complete: trigger::Sender,
+    ) -> impl EventHandler<GenericConnectorAgent> + '_ {
+        let context: ConnContext = ConnContext::default();
 
-    fn on_stop(&self) -> impl EventHandler<crate::GenericConnectorAgent> + '_ {
-        UnitHandler::default()
-    }
-
-    type ConnectorState = Consumer;
-
-    fn create_state(&self) -> Result<Self::ConnectorState, Self::StreamError> {
-        let KafkaConnector { configuration } = self;
-        let mut client_builder = ClientConfig::new();
-        configuration.properties.iter().for_each(|(k, v)| {
-            client_builder.set(k, v);
+        context.open_value_lane(BODY_LANE, |result| {
+            let handler_context = ConnHandlerContext::default();
+            handler_context
+                .value(result)
+                .try_handler()
+                .followed_by(handler_context.effect(move || {
+                    init_complete.trigger();
+                }))
         });
-        let consumer = client_builder
-            .set_log_level(configuration.log_level)
-            .create_with_context::<_, LoggingConsumer>(KafkaClientContext)?;
-        Ok(Consumer::new(consumer))
-    }
-}
-
-pub struct Consumer {
-    consumer: Option<LoggingConsumer>,
-}
-
-impl Consumer {
-    fn new(inner: LoggingConsumer) -> Self {
-        Consumer {
-            consumer: Some(inner),
-        }
-    }
-}
-
-impl ConnectorNext<KafkaError> for Consumer {
-    fn next_state(
-        mut self,
-    ) -> impl Future<
-        Output: HandlerAction<
-            GenericConnectorAgent,
-            Completion = Option<Result<Self, KafkaError>>,
-        > + Send
-                    + 'static,
-    > + Send
-           + 'static {
-        async move {
-            let handler_context: ConContext = ConContext::default();
-            if let Some(consumer) = &mut self.consumer {
-                Some(handler_context.value(Ok(self)))
-            } else {
-                None
-            }
-        }
+        UnitHandler::default()
     }
 
-    fn commit(
-        self,
-    ) -> Result<
-        impl Future<
-                Output: HandlerAction<
-                    GenericConnectorAgent,
-                    Completion = Result<Self, KafkaError>,
-                > + Send
-                            + 'static,
-            > + Send
-            + 'static,
-        Self,
-    > {
-        Ok(async move { ConstHandler::from(Ok(self)) })
+    fn on_stop(&self) -> impl EventHandler<GenericConnectorAgent> + '_ {
+        UnitHandler::default()
+    }
+
+    fn create_stream(&self) -> Result<impl ConnectorStream<KafkaError>, Self::StreamError> {
+
+        let KafkaConnector { configuration } = self;
+               let mut client_builder = ClientConfig::new();
+               configuration.properties.iter().for_each(|(k, v)| {
+                   client_builder.set(k, v);
+               });
+               let consumer = client_builder
+                   .set_log_level(configuration.log_level)
+                   .create_with_context::<_, LoggingConsumer>(KafkaClientContext)?;
+        let (tx, rx) = mpsc::channel(1);
+        let state = MessageState::new(consumer, message_to_handler, tx);
+        let consumer_task = Box::pin(state.consume_messages());
+        let stream_src = MessageTasks::new(consumer_task, rx);
+        Ok(stream_src.into_stream())
     }
 }
 
@@ -180,24 +153,116 @@ impl ConsumerContext for KafkaClientContext {
 
 const BODY_LANE: &str = "body";
 
-async fn consume_record(
-    consumer: &LoggingConsumer,
-) -> impl HandlerAction<GenericConnectorAgent, Completion = Result<(), KafkaError>> + Send + 'static
+fn message_to_handler<'a>(
+    message: &'a BorrowedMessage<'a>,
+    trigger_tx: trigger::Sender,
+) -> impl EventHandler<GenericConnectorAgent> + Send + 'static {
+    let context: ConnectorContext<GenericConnectorAgent> = ConnectorContext::default();
+    let handler_context: HandlerContext<GenericConnectorAgent> = HandlerContext::default();
+    let set_body = if let Some(Ok(body)) = message.payload_view::<str>() {
+        Some(context.set_value(
+            ValueLaneSelectorFn::new(BODY_LANE.to_string()),
+            Value::from(body),
+        ))
+    } else {
+        None
+    };
+    set_body.followed_by(handler_context.effect(move || {
+        trigger_tx.trigger();
+    }))
+}
+
+struct MessageState<F, H> {
+    consumer: LoggingConsumer,
+    to_handler: F,
+    tx: mpsc::Sender<H>,
+}
+
+impl<F, H> MessageState<F, H> {
+
+    fn new(consumer: LoggingConsumer,
+        to_handler: F,
+        tx: mpsc::Sender<H>) -> Self {
+            MessageState { consumer, to_handler, tx }
+        }
+
+}
+
+impl<F, H> MessageState<F, H>
+where
+    F: for<'a> Fn(&'a BorrowedMessage<'a>, trigger::Sender) -> H + Send + Sync + 'static,
+    H: EventHandler<GenericConnectorAgent> + Send + 'static,
 {
-    let handler_context: ConContext = ConContext::default();
-    handler_context
-        .value(consumer.recv().await)
-        .and_then_ok(|msg| {
-            let context: ConnectorContext<GenericConnectorAgent> = ConnectorContext::default();
-            let set_body = if let Some(Ok(body)) = msg.payload_view::<str>() {
-                Some(context.set_value(
-                    ValueLaneSelectorFn::new(BODY_LANE.to_string()),
-                    Value::from(body),
-                ))
+    async fn consume_messages(self) -> Result<(), KafkaError> {
+        let MessageState {
+            consumer,
+            to_handler,
+            tx,
+        } = &self;
+        loop {
+            let reservation = if let Ok(res) = tx.reserve().await {
+                res
             } else {
-                None
+                break;
             };
-            set_body.discard()
-        });
-    ConstHandler::from(Ok(()))
+            let message = consumer.recv().await?;
+            let (trigger_tx, trigger_rx) = trigger::trigger();
+            let handler = to_handler(&message, trigger_tx);
+            reservation.send(handler);
+            let _ = trigger_rx.await;
+            consumer.commit_message(&message, CommitMode::Async)?;
+        }
+        Ok(())
+    }
+}
+
+struct MessageTasks<F, H> {
+    consume_fut: Option<F>,
+    rx: mpsc::Receiver<H>,
+}
+
+impl<F, H> MessageTasks<F, H> {
+
+    pub fn new(consume_fut: F,
+        rx: mpsc::Receiver<H>) -> Self {
+MessageTasks { consume_fut: Some(consume_fut), rx }
+        }
+
+}
+
+impl<F, H> MessageTasks<F, H>
+where
+    F: Future<Output = Result<(), KafkaError>> + Send + Unpin + 'static,
+    H: EventHandler<GenericConnectorAgent> + Send + 'static,
+{
+    fn into_stream(self) -> impl ConnectorStream<KafkaError> {
+        Box::pin(unfold(self, |s| s.next_handler()))
+    }
+
+    async fn next_handler(mut self) -> Option<(Result<H, KafkaError>, Self)> {
+        let MessageTasks { consume_fut, rx } = &mut self;
+        if let Some(fut) = consume_fut {
+            tokio::select! {
+                biased;
+                end_result = fut => {
+                    *consume_fut = None;
+                    if let Err(e) = end_result {
+                        Some((Err(e), self))
+                    } else {
+                        None
+                    }
+                },
+                next = rx.recv() => {
+                    if next.is_none() {
+                        *consume_fut = None;
+                        None
+                    } else {
+                        next.map(move |h| (Ok(h), self))
+                    }
+                },
+            }
+        } else {
+            None
+        }
+    }
 }

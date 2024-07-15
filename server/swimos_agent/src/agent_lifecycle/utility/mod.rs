@@ -21,6 +21,8 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use futures::stream::unfold;
 use futures::{Future, FutureExt, Stream, StreamExt};
+use swimos_api::agent::WarpLaneKind;
+use swimos_api::error::LaneSpawnError;
 use tokio::time::Instant;
 
 use swimos_api::address::Address;
@@ -52,7 +54,7 @@ use crate::lanes::join_map::JoinMapAddDownlink;
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
 use crate::lanes::supply::{Supply, SupplyLane};
 use crate::lanes::value::ValueLaneSelectSet;
-use crate::lanes::{DemandMapLane, JoinMapLane, SelectorFn, ValueLane};
+use crate::lanes::{DemandMapLane, JoinMapLane, OpenLane, SelectorFn, ValueLane};
 
 pub use self::downlink_builder::event::{
     StatefulEventDownlinkBuilder, StatelessEventDownlinkBuilder,
@@ -932,11 +934,20 @@ impl<Connector> Default for ConnectorContext<Connector> {
 }
 
 impl<Connector: 'static> ConnectorContext<Connector> {
+
+    pub fn open_value_lane<OnDone, H>(&self, name: &str, on_done: OnDone) -> impl EventHandler<Connector> + Send + 'static
+    where 
+        OnDone: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
+        H: EventHandler<Connector> + Send + 'static,
+    {
+        OpenLane::new(name.to_string(), WarpLaneKind::Value, on_done)
+    }
+
     pub fn set_value<T, F>(
         &self,
         item: F,
         value: T,
-    ) -> impl HandlerAction<Connector, Completion = ()> + Send + 'static
+    ) -> impl EventHandler<Connector> + Send + 'static
     where
         F: SelectorFn<Connector, Target = ValueLane<T>> + Send + 'static,
         T: Send + 'static,

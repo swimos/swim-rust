@@ -14,61 +14,64 @@
 
 use std::error::Error;
 
-use futures::{Future, FutureExt};
+use futures::{TryStream, TryStreamExt};
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
     event_handler::{EventHandler, HandlerAction, HandlerActionExt, TryHandlerActionExt},
 };
+use swimos_utilities::trigger;
 
 use crate::generic::GenericConnectorAgent;
 
 pub trait Connector {
     type StreamError: Error + Send + 'static;
-    type ConnectorState: ConnectorNext<Self::StreamError> + Send + 'static;
 
-    fn create_state(&self) -> Result<Self::ConnectorState, Self::StreamError>;
+    fn create_stream(&self) -> Result<impl ConnectorStream<Self::StreamError>, Self::StreamError>;
 
-    fn on_start(&self) -> impl EventHandler<GenericConnectorAgent> + '_;
+    fn on_start(
+        &self,
+        init_complete: trigger::Sender,
+    ) -> impl EventHandler<GenericConnectorAgent> + '_;
     fn on_stop(&self) -> impl EventHandler<GenericConnectorAgent> + '_;
 }
 
-pub trait ConnectorNext<Err>: Sized {
-    fn next_state(
-        self,
-    ) -> impl Future<
-        Output: HandlerAction<GenericConnectorAgent, Completion = Option<Result<Self, Err>>>
-                    + Send
-                    + 'static,
-    > + Send
-           + 'static;
+pub trait ConnectorHandler: EventHandler<GenericConnectorAgent> + Send + 'static {
 
-    fn commit(
-        self,
-    ) -> Result<
-        impl Future<
-                Output: HandlerAction<GenericConnectorAgent, Completion = Result<Self, Err>>
-                            + Send
-                            + 'static,
-            > + Send
-            + 'static,
-        Self,
-    >;
 }
 
+impl<H> ConnectorHandler for H
+where 
+    H: EventHandler<GenericConnectorAgent> + Send + 'static,
+{}
+
+pub trait ConnectorStream<E>: TryStream<Ok: ConnectorHandler, Error = E> + Send + Unpin + 'static {
+
+}
+
+impl<S, E> ConnectorStream<E> for S
+where 
+    S: TryStream<Ok: ConnectorHandler, Error = E> + Send + Unpin + 'static,
+{}
+
 pub fn suspend_connector<E, C>(
-    next: C,
+    mut next: C,
 ) -> impl HandlerAction<GenericConnectorAgent, Completion = ()> + Send + 'static
 where
-    C: ConnectorNext<E> + Send + 'static,
+    C: ConnectorStream<E> + Send + Unpin + 'static,
     E: std::error::Error + Send + 'static,
 {
     let context: HandlerContext<GenericConnectorAgent> = HandlerContext::default();
-    context.suspend(next.next_state().map(move |handler| {
-        handler
-            .map(|opt: Option<_>| opt.transpose())
-            .try_handler()
-            .and_then(|maybe_connector: Option<_>| maybe_connector.map(suspend_connector))
+    let fut = async move {
+        let maybe_result = next.try_next().await.transpose();
+        maybe_result
+            .map(move |result| {
+                let h = context
+                    .value(result)
+                    .try_handler();
+                h.followed_by(suspend_connector(next))
+            })
             .discard()
             .boxed_local()
-    }))
+    };
+    context.suspend(fut)
 }
