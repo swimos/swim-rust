@@ -17,7 +17,18 @@ will also allow the subscriber to request changes to the state (for lane kinds t
 operate over a web-socket connection and are multiplexed, meaning that links to multiple lanes on the same
 host can share a single web-socket connection.
 
-![SwimOS Crates.io Version](https://img.shields.io/crates/v/swimos?label=swimos) ![SwimOS Form Crates.io Version](https://img.shields.io/crates/v/swimos_form?label=swimos_form) ![SwimOS Client Crates.io Version](https://img.shields.io/crates/v/swimos_client?label=swimos_client)
+[![SwimOS Crates.io Version][swimos-badge]][swimos-crate]
+[![SwimOS Client Crates.io Version][swimos-client-badge]][swimos-client-crate]
+[![SwimOS Form Crates.io Version][swimos-form-badge]][swimos-form-crate]
+
+[swimos-badge]: https://img.shields.io/crates/v/swimos?label=swimos
+[swimos-crate]: https://crates.io/crates/swimos
+
+[swimos-form-badge]: https://img.shields.io/crates/v/swimos?label=swimos_form
+[swimos-form-crate]: https://crates.io/crates/swimos_form
+
+[swimos-client-badge]: https://img.shields.io/crates/v/swimos?label=swimos_client
+[swimos-client-crate]: https://crates.io/crates/swimos_client
 
 [Website](https://swimos.org/) | [Developer Guide](https://www.swimos.org/server/rust/developer-guide/) | [Server API Docs](https://docs.rs/swimos/latest/swimos/) | [Client API Docs](https://docs.rs/swimos_client/latest/swimos_client/)
 
