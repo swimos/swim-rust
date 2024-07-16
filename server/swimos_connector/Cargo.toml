@@ -27,6 +27,8 @@ uuid = { workspace = true }
 rdkafka = { workspace = true, features = ["cmake-build"] }
 serde_json = { workspace = true }
 apache-avro = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "test-util", "time"] }
