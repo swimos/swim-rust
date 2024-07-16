@@ -24,7 +24,9 @@ tokio-stream = { workspace = true }
 tracing = { workspace = true }
 frunk = { workspace = true }
 uuid = { workspace = true }
-rdkafka = { version = "0.25", features = ["cmake-build"] }
+rdkafka = { workspace = true, features = ["cmake-build"] }
+serde_json = { workspace = true }
+apache-avro = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "test-util", "time"] }

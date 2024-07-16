@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod deser;
+
 use std::collections::HashMap;
 
 use futures::{stream::unfold, Future};
