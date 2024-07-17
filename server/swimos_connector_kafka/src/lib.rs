@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod deser;
-mod selector;
+pub mod deser;
+pub mod selector;
 
 use std::collections::HashMap;
 
@@ -37,7 +37,7 @@ use swimos_utilities::trigger;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
-use crate::{
+use swimos_connector::{
     Connector, ConnectorStream, GenericConnectorAgent, ValueLaneSelectorFn,
 };
 
