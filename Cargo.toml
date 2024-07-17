@@ -40,7 +40,7 @@ members = [
     "example_apps/join_value",
     "example_apps/aggregations",
     "example_apps/time_series",
-    "example_apps/devguide",
+    "example_apps/devguide", "example_apps/ripple",
 ]
 
 [workspace.package]

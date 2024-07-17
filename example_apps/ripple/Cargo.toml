@@ -1,0 +1,19 @@
+[package]
+name = "ripple"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+publish = false
+
+[dependencies]
+swimos = { workspace = true, features = ["server", "agent"] }
+swimos_form = { workspace = true }
+example-util = { path = "../example_util" }
+swimos_utilities = { workspace = true, features = ["trigger"] }
+axum = { workspace = true, features = ["tokio", "http1"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "io-util", "fs"] }
+tokio-util = { workspace = true }
