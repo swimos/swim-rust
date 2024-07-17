@@ -24,6 +24,7 @@ apache-avro = { workspace = true }
 chrono = { workspace = true }
 thiserror = { workspace = true }
 swimos_connector = { workspace = true }
+regex = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt"] }
