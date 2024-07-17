@@ -22,7 +22,7 @@
 //! The web UI can then be found at:
 //!
 //! ```
-//! http://127.0.0.1:9001/ui/index.html
+//! http://127.0.0.1:9002/ui/index.html
 //! ```
 
 use axum::body::Body;
@@ -31,6 +31,8 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
 use futures::future::{select, Either};
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use std::convert::Infallible;
 use std::future::IntoFuture;
 use std::{error::Error, net::SocketAddr, pin::pin, sync::Arc, time::Duration};
@@ -73,7 +75,7 @@ async fn ui_server(
     shutdown_timeout: Duration,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let app = ui_server_router();
-    let bind_to: SocketAddr = "0.0.0.0:9001".parse()?;
+    let bind_to: SocketAddr = "0.0.0.0:9002".parse()?;
     let (stop_tx, stop_rx) = trigger();
     let listener = TcpListener::bind(bind_to).await?;
 
@@ -96,19 +98,22 @@ async fn ui_server(
 }
 
 async fn run_swim_server() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let mirror_agent = AgentModel::new(MirrorAgent::default, MirrorLifecycle.into_lifecycle());
+    let mirror_agent = AgentModel::from_fn(MirrorAgent::default, || {
+        MirrorLifecycle::new(StdRng::from_entropy()).into_lifecycle()
+    });
     let swim_server = ServerBuilder::with_plane_name("Ripple Plane")
         .set_bind_addr("0.0.0.0:9001".parse().unwrap())
-        .add_route(RoutePattern::parse_str("/mirror/:id")?, mirror_agent)
+        .add_route(RoutePattern::parse_str("mirror/:id")?, mirror_agent)
         .update_config(|config| {
             config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
         })
         .build()
         .await?;
 
-    let (task, _) = swim_server.run();
+    let (task, _handle) = swim_server.run();
     task.await?;
-    println!("Server stopped successfully.");
+
+    println!("Server stopped");
 
     Ok(())
 }
