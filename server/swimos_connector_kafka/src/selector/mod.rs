@@ -21,17 +21,12 @@ use thiserror::Error;
 use super::MessagePart;
 
 pub trait Deferred<'a> {
-
     fn get(&'a mut self) -> &'a Value;
-
 }
 
 pub trait Selector {
-
     fn select<'a>(&self, value: &'a Value) -> Option<&'a Value>;
-
 }
-
 
 struct Immediate {
     inner: Value,
@@ -69,18 +64,17 @@ struct RecordSelector<S> {
 }
 
 impl<S: Selector> RecordSelector<S> {
-    
     pub fn select<'a, K, V>(&self, key: &'a mut K, value: &'a mut V) -> Option<&'a Value>
     where
         K: Deferred<'a> + 'a,
-        V: Deferred<'a> + 'a {
+        V: Deferred<'a> + 'a,
+    {
         let RecordSelector { part, selector } = self;
         match part {
             MessagePart::Key => selector.select(key.get()),
             MessagePart::Value => selector.select(value.get()),
         }
     }
-
 }
 
 pub struct IdentitySelector;
@@ -96,26 +90,22 @@ pub struct AttrSelector {
 }
 
 impl AttrSelector {
-
     fn new(name: String) -> Self {
         AttrSelector { select_name: name }
     }
-
 }
 
 impl Selector for AttrSelector {
     fn select<'a>(&self, value: &'a Value) -> Option<&'a Value> {
         let AttrSelector { select_name } = self;
         match value {
-            Value::Record(attrs, _) => {
-                attrs.iter().find_map(|Attr { name, value }: &Attr| {
-                    if name.as_str() == select_name.as_str() {
-                        Some(value)
-                    } else {
-                        None
-                    }
-                })
-            },
+            Value::Record(attrs, _) => attrs.iter().find_map(|Attr { name, value }: &Attr| {
+                if name.as_str() == select_name.as_str() {
+                    Some(value)
+                } else {
+                    None
+                }
+            }),
             _ => None,
         }
     }
@@ -126,29 +116,25 @@ pub struct SlotSelector {
 }
 
 impl SlotSelector {
-
     pub fn new(key: Value) -> Self {
         SlotSelector { select_key: key }
     }
 
     pub fn for_field(name: impl Into<Text>) -> Self {
-        SlotSelector { select_key: Value::text(name) }
+        SlotSelector {
+            select_key: Value::text(name),
+        }
     }
-
 }
 
 impl Selector for SlotSelector {
     fn select<'a>(&self, value: &'a Value) -> Option<&'a Value> {
         let SlotSelector { select_key } = self;
         match value {
-            Value::Record(_, items) => {
-                items.iter().find_map(|item: &Item| {
-                    match item {
-                        Item::Slot(key, value) if key == select_key => Some(value),
-                        _ => None,
-                    }
-                })
-            },
+            Value::Record(_, items) => items.iter().find_map(|item: &Item| match item {
+                Item::Slot(key, value) if key == select_key => Some(value),
+                _ => None,
+            }),
             _ => None,
         }
     }
@@ -159,11 +145,9 @@ pub struct IndexSelector {
 }
 
 impl IndexSelector {
-
     pub fn new(index: usize) -> Self {
         IndexSelector { index }
     }
-
 }
 
 impl Selector for IndexSelector {
@@ -216,7 +200,6 @@ impl Selector for BasicSelector {
 pub struct ChainSelector(Vec<BasicSelector>);
 
 impl ChainSelector {
-
     pub fn new(selectors: Vec<BasicSelector>) -> Self {
         ChainSelector(selectors)
     }
@@ -224,7 +207,6 @@ impl ChainSelector {
     pub fn push(&mut self, selector: impl Into<BasicSelector>) {
         self.0.push(selector.into())
     }
-
 }
 
 impl Selector for ChainSelector {
@@ -268,12 +250,24 @@ fn create_field_regex() -> Result<Regex, regex::Error> {
     Regex::new("\\A(\\@?(?:\\w+))(?:\\[(\\d+)])?\\z")
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SelectorComponent<'a> {
     is_attr: bool,
     name: &'a str,
     index: Option<usize>,
 }
 
+impl<'a> SelectorComponent<'a> {
+    pub fn new(is_attr: bool, name: &'a str, index: Option<usize>) -> Self {
+        SelectorComponent {
+            is_attr,
+            name,
+            index,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SelectorDescriptor<'a> {
     part: MessagePart,
     index: Option<usize>,
@@ -281,13 +275,30 @@ pub struct SelectorDescriptor<'a> {
 }
 
 impl<'a> SelectorDescriptor<'a> {
+    pub fn new(part: MessagePart, index: Option<usize>) -> Self {
+        SelectorDescriptor {
+            part,
+            index,
+            components: vec![],
+        }
+    }
 
+    pub fn push(&mut self, component: SelectorComponent<'a>) {
+        self.components.push(component)
+    }
+}
+
+impl<'a> SelectorDescriptor<'a> {
     pub fn part(&self) -> MessagePart {
         self.part
     }
 
     pub fn suggested_name(&self) -> Option<&'a str> {
-        let SelectorDescriptor { index, components, part } = self;
+        let SelectorDescriptor {
+            index,
+            components,
+            part,
+        } = self;
         if let Some(SelectorComponent { name, index, .. }) = components.last() {
             if index.is_none() {
                 Some(*name)
@@ -305,12 +316,19 @@ impl<'a> SelectorDescriptor<'a> {
     }
 
     pub fn selector(&self) -> ChainSelector {
-        let SelectorDescriptor { index, components, .. } = self;
+        let SelectorDescriptor {
+            index, components, ..
+        } = self;
         let mut links = vec![];
         if let Some(n) = index {
             links.push(BasicSelector::Index(IndexSelector::new(*n)));
         }
-        for SelectorComponent { is_attr, name, index } in components {
+        for SelectorComponent {
+            is_attr,
+            name,
+            index,
+        } in components
+        {
             links.push(if *is_attr {
                 BasicSelector::Attr(AttrSelector::new(name.to_string()))
             } else {
@@ -322,7 +340,6 @@ impl<'a> SelectorDescriptor<'a> {
         }
         ChainSelector::new(links)
     }
-
 }
 
 #[derive(Clone, Copy, Error, Debug)]
@@ -333,7 +350,9 @@ pub enum BadSelector {
     EmptyComponent,
     #[error("Invalid root selector (must be one of '$key' or '$value' with an optional index).")]
     InvalidRoot,
-    #[error("Invalid component selector (must be an attribute or slot name with an optional index).")]
+    #[error(
+        "Invalid component selector (must be an attribute or slot name with an optional index)."
+    )]
     InvalidComponent,
     #[error("An index specified was not a valid usize.")]
     IndexOutOfRange,
@@ -347,7 +366,7 @@ impl From<ParseIntError> for BadSelector {
 
 pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSelector> {
     if (descriptor.is_empty()) {
-        return Err(BadSelector::EmptySelector)
+        return Err(BadSelector::EmptySelector);
     }
     let mut it = descriptor.split('.');
     let (part, index) = match it.next() {
@@ -387,17 +406,27 @@ pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSel
             } else {
                 None
             };
-            components.push(SelectorComponent { is_attr, name, index });
+            components.push(SelectorComponent {
+                is_attr,
+                name,
+                index,
+            });
         } else {
             return Err(BadSelector::InvalidRoot);
         }
     }
-    
-    Ok(SelectorDescriptor { part, index, components })
+
+    Ok(SelectorDescriptor {
+        part,
+        index,
+        components,
+    })
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::selector::{SelectorComponent, SelectorDescriptor};
+    use crate::MessagePart;
 
     #[test]
     fn init_regex_creation() {
@@ -508,4 +537,49 @@ mod tests {
         }
     }
 
+    #[test]
+    fn parse_simple() {
+        let key = super::parse_selector("$key").expect("Parse failed.");
+        assert_eq!(key, SelectorDescriptor::new(MessagePart::Key, None));
+
+        let value = super::parse_selector("$value").expect("Parse failed.");
+        assert_eq!(value, SelectorDescriptor::new(MessagePart::Value, None));
+
+        let indexed = super::parse_selector("$key[2]").expect("Parse failed.");
+        assert_eq!(indexed, SelectorDescriptor::new(MessagePart::Key, Some(2)));
+    }
+
+    #[test]
+    fn parse_one_component() {
+        let first = super::parse_selector("$key.@attr").expect("Parse failed.");
+        let mut expected_first = SelectorDescriptor::new(MessagePart::Key, None);
+        expected_first.push(SelectorComponent::new(true, "attr", None));
+        assert_eq!(first, expected_first);
+
+        let second = super::parse_selector("$value.slot").expect("Parse failed.");
+        let mut expected_second = SelectorDescriptor::new(MessagePart::Value, None);
+        expected_second.push(SelectorComponent::new(false, "slot", None));
+        assert_eq!(second, expected_second);
+
+        let third = super::parse_selector("$key.@attr[3]").expect("Parse failed.");
+        let mut expected_third = SelectorDescriptor::new(MessagePart::Key, None);
+        expected_third.push(SelectorComponent::new(true, "attr", Some(3)));
+        assert_eq!(third, expected_third);
+
+        let fourth = super::parse_selector("$value[6].slot[8]").expect("Parse failed.");
+        let mut expected_fourth = SelectorDescriptor::new(MessagePart::Value, Some(6));
+        expected_fourth.push(SelectorComponent::new(false, "slot", Some(8)));
+        assert_eq!(fourth, expected_fourth);
+
+    }
+
+    #[test]
+    fn multi_component_selector() {
+        let selector = super::parse_selector("$value.red.@green[7].blue").expect("Parse failed.");
+        let mut expected = SelectorDescriptor::new(MessagePart::Value, None);
+        expected.push(SelectorComponent::new(false, "red", None));
+        expected.push(SelectorComponent::new(true, "green", Some(7)));
+        expected.push(SelectorComponent::new(false, "blue", None));
+        assert_eq!(selector, expected);
+    }
 }
