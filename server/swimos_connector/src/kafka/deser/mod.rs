@@ -21,11 +21,6 @@ use swimos_form::Form;
 use swimos_model::{BigInt, Blob, Item, Timestamp, Value};
 use swimos_recon::parser::{parse_recognize, AsyncParseError, ParseError};
 
-#[derive(Clone, Copy)]
-pub enum MessagePart {
-    Key,
-    Value,
-}
 
 pub trait MessageDeserializer {
 
@@ -127,6 +122,8 @@ impl MessageDeserializer for JsonDeserializer {
 
 use apache_avro::{types::Value as AvroValue, Schema};
 use thiserror::Error;
+
+use super::MessagePart;
 
 #[derive(Error, Debug)]
 pub enum AvroError {

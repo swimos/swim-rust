@@ -13,6 +13,7 @@
 // limitations under the License.
 
 mod deser;
+mod selector;
 
 use std::collections::HashMap;
 
@@ -267,4 +268,10 @@ where
             None
         }
     }
+}
+
+#[derive(Clone, Copy)]
+pub enum MessagePart {
+    Key,
+    Value,
 }
