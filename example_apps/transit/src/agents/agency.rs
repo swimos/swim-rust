@@ -38,8 +38,8 @@ use self::statistics::Statistics;
 mod statistics;
 
 /// Agency representing a transit agency (and its current state).
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 #[agent(transient, convention = "camel")]
 pub struct AgencyAgent {
     // Vehicles currently associated with the agency (keys are the IDs used by the service.).

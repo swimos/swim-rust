@@ -26,8 +26,8 @@ use swimos::{
 };
 use tutorial_app_model::{Counter, HistoryItem, Message};
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct UnitAgent {
     publish: CommandLane<Message>,
     history: MapLane<usize, HistoryItem>,

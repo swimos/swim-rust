@@ -30,8 +30,8 @@ use crate::model::{agency::Agency, counts::Count};
 use super::join_value_logging_lifecycle;
 
 /// An agent with country level aggregate information.
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 #[agent(transient, convention = "camel")]
 pub struct CountryAgent {
     // Count of the number of vehicles within the country.

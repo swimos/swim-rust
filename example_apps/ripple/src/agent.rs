@@ -80,8 +80,8 @@ impl Default for Config {
 }
 
 /// Web Agent for mirroring ripples.
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct MirrorAgent {
     /// The current configuration for the universe.
     mode: ValueLane<Config>,

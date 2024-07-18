@@ -19,8 +19,8 @@ use swimos::agent::{
     lifecycle, projections, AgentLaneModel,
 };
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct ProducerAgent {
     lane: ValueLane<i32>,
 }

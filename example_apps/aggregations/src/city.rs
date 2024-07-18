@@ -22,8 +22,8 @@ use swimos::{
     agent::{lifecycle, projections},
 };
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct CityAgent {
     aggregated: JoinValueLane<String, f64>,
     average_speed: ValueLane<f64>,

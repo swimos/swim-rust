@@ -20,8 +20,8 @@ use swimos::agent::{
     lifecycle, projections, AgentLaneModel,
 };
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct ExampleAgent {
     map: MapLane<String, i32>,
     #[item(transient)]

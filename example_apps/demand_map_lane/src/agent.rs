@@ -21,8 +21,8 @@ use swimos::agent::{
     lifecycle, projections, AgentLaneModel,
 };
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct ExampleAgent {
     command: CommandLane<String>,
     demand_map: DemandMapLane<String, i32>,

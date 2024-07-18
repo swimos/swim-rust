@@ -24,8 +24,8 @@ use swimos::agent::{
 
 use super::model::Instruction;
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct ConsumerAgent {
     lane: ValueLane<i32>,
     instruct: CommandLane<Instruction>,
