@@ -15,7 +15,7 @@ $ cargo run --bin ripple
 ```
 
 Internally, this will spawn two servers: the Swim server which is running at localhost:9001 and a UI server running
-at http://localhost:9002/index.html. Using your browser, navigate to http://localhost:9002/index.html and randomly click
+at http://localhost:9002. Using your browser, navigate to http://localhost:9002/index.html and randomly click
 on the screen to generate 'ripples'. These ripples are propagated to all users which are connected to the Swim server.
 You may also hold your mouse's left button down to generate a 'charge' which is denoted by a larger circle displayed on
 the screen.

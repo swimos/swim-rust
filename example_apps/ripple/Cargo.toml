@@ -21,4 +21,3 @@ tokio-util = { workspace = true }
 rand = { workspace = true }
 parking_lot = { workspace = true, features = ["send_guard"] }
 chrono = { workspace = true }
-swimos_recon = { workspace = true }

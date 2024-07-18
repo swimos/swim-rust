@@ -25,32 +25,27 @@
 //! http://127.0.0.1:9002/index.html
 //! ```
 
+use std::convert::Infallible;
+use std::{error::Error, net::SocketAddr, time::Duration};
+
 use axum::body::Body;
 use axum::http::{header, HeaderValue};
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
-use futures::future::{select, Either};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use std::convert::Infallible;
-use std::future::IntoFuture;
-use std::{error::Error, net::SocketAddr, pin::pin, sync::Arc, time::Duration};
 use tokio::net::TcpListener;
-use tokio::sync::Notify;
 use tracing_subscriber::filter::LevelFilter;
 
 use swimos::agent::agent_model::AgentModel;
 use swimos::server::{Server, ServerBuilder};
 use swimos_utilities::routing::RoutePattern;
-use swimos_utilities::trigger::trigger;
 
 use crate::agent::{MirrorAgent, MirrorLifecycle};
 
 mod agent;
-mod util;
 
-const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 static HTML: HeaderValue = HeaderValue::from_static("text/html; charset=utf-8");
 const INDEX: &[u8] = include_bytes!("../ui/index.html");
 const RIPPLE: &[u8] = include_bytes!("../ui/swim-ripple.js");
@@ -60,11 +55,8 @@ const RIPPLE_MAP: &[u8] = include_bytes!("../ui/swim-ripple.js.map");
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     example_logging()?;
 
-    let shutdown_tx = Arc::new(Notify::new());
-    let shutdown_rx = shutdown_tx.clone();
-
     let server_task = tokio::spawn(run_swim_server());
-    let ui_task = tokio::spawn(ui_server(shutdown_rx, SHUTDOWN_TIMEOUT));
+    let ui_task = tokio::spawn(ui_server());
     ui_task.await??;
     server_task.await??;
 
@@ -72,33 +64,12 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 }
 
 /// Spawns the UI server on 0.0.0.0:9002.
-///
-/// # Arguments:
-/// * `shutdown_signal` - Future which completes when the server should terminate.
-/// * `shutdown_timeout` - How long to wait for the UI server to terminate before returning.
-async fn ui_server(
-    shutdown_signal: Arc<Notify>,
-    shutdown_timeout: Duration,
-) -> Result<(), Box<dyn Error + Send + Sync>> {
+async fn ui_server() -> Result<(), Box<dyn Error + Send + Sync>> {
     let app = ui_server_router();
     let bind_to: SocketAddr = "0.0.0.0:9002".parse()?;
-    let (stop_tx, stop_rx) = trigger();
     let listener = TcpListener::bind(bind_to).await?;
 
-    let server =
-        axum::serve(listener, app.into_make_service()).with_graceful_shutdown(async move {
-            let _ = stop_rx.await;
-        });
-
-    let server_task = pin!(server.into_future());
-    let shutdown_notified = pin!(shutdown_signal.notified());
-    match select(server_task, shutdown_notified).await {
-        Either::Left((result, _)) => result?,
-        Either::Right((_, server)) => {
-            assert!(stop_tx.trigger());
-            tokio::time::timeout(shutdown_timeout, server).await??;
-        }
-    }
+    axum::serve(listener, app.into_make_service()).await?;
 
     Ok(())
 }

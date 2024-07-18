@@ -728,7 +728,7 @@
             var r = charge.chargeRadius.state / 2;
             var color = charge.chargeColor.state.toString();
             var command = structure.Record.create(6)
-                .attr("Remove")
+                .attr("Create")
                 .slot("id", id)
                 .slot("x", x)
                 .slot("y", y)
