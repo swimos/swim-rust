@@ -19,6 +19,7 @@ binaries for their corresponding client applications. Each directory contains de
 - [map_lane_persistence](map_lane_persistence): Application demonstrating Map Lanes with persistence.
 - [map_store](map_store): Application demonstrating Map Stores.
 - [map_store_persistence](map_store_persistence): Application demonstrating Map Stores with persistence.
+- [ripple](ripple): Real-time synchronous shared multiplayer experience.
 - [supply_lane](supply_lane): Application demonstrating Supply Lanes.
 - [time_series](time_series): Reference code for the [Time Series](https://www.swimos.org/server/rust/time-series/)
   guide.
