@@ -35,23 +35,19 @@ pub trait Connector {
     fn on_stop(&self) -> impl EventHandler<GenericConnectorAgent> + '_;
 }
 
-pub trait ConnectorHandler: EventHandler<GenericConnectorAgent> + Send + 'static {
+pub trait ConnectorHandler: EventHandler<GenericConnectorAgent> + Send + 'static {}
 
+impl<H> ConnectorHandler for H where H: EventHandler<GenericConnectorAgent> + Send + 'static {}
+
+pub trait ConnectorStream<E>:
+    TryStream<Ok: ConnectorHandler, Error = E> + Send + Unpin + 'static
+{
 }
 
-impl<H> ConnectorHandler for H
-where 
-    H: EventHandler<GenericConnectorAgent> + Send + 'static,
-{}
-
-pub trait ConnectorStream<E>: TryStream<Ok: ConnectorHandler, Error = E> + Send + Unpin + 'static {
-
+impl<S, E> ConnectorStream<E> for S where
+    S: TryStream<Ok: ConnectorHandler, Error = E> + Send + Unpin + 'static
+{
 }
-
-impl<S, E> ConnectorStream<E> for S
-where 
-    S: TryStream<Ok: ConnectorHandler, Error = E> + Send + Unpin + 'static,
-{}
 
 pub fn suspend_connector<E, C>(
     mut next: C,
@@ -65,9 +61,7 @@ where
         let maybe_result = next.try_next().await.transpose();
         maybe_result
             .map(move |result| {
-                let h = context
-                    .value(result)
-                    .try_handler();
+                let h = context.value(result).try_handler();
                 h.followed_by(suspend_connector(next))
             })
             .discard()

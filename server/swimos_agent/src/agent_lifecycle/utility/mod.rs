@@ -934,9 +934,12 @@ impl<Connector> Default for ConnectorContext<Connector> {
 }
 
 impl<Connector: 'static> ConnectorContext<Connector> {
-
-    pub fn open_value_lane<OnDone, H>(&self, name: &str, on_done: OnDone) -> impl EventHandler<Connector> + Send + 'static
-    where 
+    pub fn open_value_lane<OnDone, H>(
+        &self,
+        name: &str,
+        on_done: OnDone,
+    ) -> impl EventHandler<Connector> + Send + 'static
+    where
         OnDone: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
         H: EventHandler<Connector> + Send + 'static,
     {

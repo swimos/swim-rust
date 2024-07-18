@@ -18,7 +18,23 @@ use regex::Regex;
 use swimos_model::{Attr, Item, Text, Value};
 use thiserror::Error;
 
-use super::MessagePart;
+use crate::MessagePart;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MessageField {
+    Key,
+    Value,
+    Topic,
+}
+
+impl From<MessagePart> for MessageField {
+    fn from(value: MessagePart) -> Self {
+        match value {
+            MessagePart::Key => MessageField::Key,
+            MessagePart::Value => MessageField::Value,
+        }
+    }
+}
 
 pub trait Deferred<'a> {
     fn get(&'a mut self) -> &'a Value;
@@ -59,20 +75,26 @@ where
 }
 
 struct RecordSelector<S> {
-    part: MessagePart,
+    part: MessageField,
     selector: S,
 }
 
 impl<S: Selector> RecordSelector<S> {
-    pub fn select<'a, K, V>(&self, key: &'a mut K, value: &'a mut V) -> Option<&'a Value>
+    pub fn select<'a, K, V>(
+        &self,
+        topic: &'a Value,
+        key: &'a mut K,
+        value: &'a mut V,
+    ) -> Option<&'a Value>
     where
         K: Deferred<'a> + 'a,
         V: Deferred<'a> + 'a,
     {
         let RecordSelector { part, selector } = self;
         match part {
-            MessagePart::Key => selector.select(key.get()),
-            MessagePart::Value => selector.select(value.get()),
+            MessageField::Key => selector.select(key.get()),
+            MessageField::Value => selector.select(value.get()),
+            MessageField::Topic => Some(topic),
         }
     }
 }
@@ -243,7 +265,7 @@ fn field_regex() -> &'static Regex {
 }
 
 fn create_init_regex() -> Result<Regex, regex::Error> {
-    Regex::new("\\A(\\$(?:key|value))(?:\\[(\\d+)])?\\z")
+    Regex::new("\\A(\\$(?:key|value|topic))(?:\\[(\\d+)])?\\z")
 }
 
 fn create_field_regex() -> Result<Regex, regex::Error> {
@@ -268,15 +290,18 @@ impl<'a> SelectorComponent<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SelectorDescriptor<'a> {
-    part: MessagePart,
-    index: Option<usize>,
-    components: Vec<SelectorComponent<'a>>,
+pub enum SelectorDescriptor<'a> {
+    Part {
+        part: MessagePart,
+        index: Option<usize>,
+        components: Vec<SelectorComponent<'a>>,
+    },
+    Topic,
 }
 
 impl<'a> SelectorDescriptor<'a> {
-    pub fn new(part: MessagePart, index: Option<usize>) -> Self {
-        SelectorDescriptor {
+    pub fn for_part(part: MessagePart, index: Option<usize>) -> Self {
+        SelectorDescriptor::Part {
             part,
             index,
             components: vec![],
@@ -284,71 +309,84 @@ impl<'a> SelectorDescriptor<'a> {
     }
 
     pub fn push(&mut self, component: SelectorComponent<'a>) {
-        self.components.push(component)
+        if let Self::Part { components, .. } = self {
+            components.push(component);
+        }
     }
 }
 
 impl<'a> SelectorDescriptor<'a> {
-    pub fn part(&self) -> MessagePart {
-        self.part
+    pub fn field(&self) -> MessageField {
+        match self {
+            SelectorDescriptor::Part { part, .. } => (*part).into(),
+            SelectorDescriptor::Topic => MessageField::Topic,
+        }
     }
 
     pub fn suggested_name(&self) -> Option<&'a str> {
-        let SelectorDescriptor {
-            index,
-            components,
-            part,
-        } = self;
-        if let Some(SelectorComponent { name, index, .. }) = components.last() {
-            if index.is_none() {
-                Some(*name)
-            } else {
-                None
+        match self {
+            SelectorDescriptor::Part {
+                part,
+                index,
+                components,
+            } => {
+                if let Some(SelectorComponent { name, index, .. }) = components.last() {
+                    if index.is_none() {
+                        Some(*name)
+                    } else {
+                        None
+                    }
+                } else if index.is_none() {
+                    Some(match part {
+                        MessagePart::Key => "key",
+                        MessagePart::Value => "value",
+                    })
+                } else {
+                    None
+                }
             }
-        } else if index.is_none() {
-            Some(match part {
-                MessagePart::Key => "key",
-                MessagePart::Value => "value",
-            })
-        } else {
-            None
+            SelectorDescriptor::Topic => Some("topic"),
         }
     }
 
-    pub fn selector(&self) -> ChainSelector {
-        let SelectorDescriptor {
-            index, components, ..
-        } = self;
-        let mut links = vec![];
-        if let Some(n) = index {
-            links.push(BasicSelector::Index(IndexSelector::new(*n)));
-        }
-        for SelectorComponent {
-            is_attr,
-            name,
-            index,
-        } in components
-        {
-            links.push(if *is_attr {
-                BasicSelector::Attr(AttrSelector::new(name.to_string()))
-            } else {
-                BasicSelector::Slot(SlotSelector::for_field(*name))
-            });
-            if let Some(n) = index {
-                links.push(BasicSelector::Index(IndexSelector::new(*n)));
+    pub fn selector(&self) -> Option<ChainSelector> {
+        match self {
+            SelectorDescriptor::Part {
+                index, components, ..
+            } => {
+                let mut links = vec![];
+                if let Some(n) = index {
+                    links.push(BasicSelector::Index(IndexSelector::new(*n)));
+                }
+                for SelectorComponent {
+                    is_attr,
+                    name,
+                    index,
+                } in components
+                {
+                    links.push(if *is_attr {
+                        BasicSelector::Attr(AttrSelector::new(name.to_string()))
+                    } else {
+                        BasicSelector::Slot(SlotSelector::for_field(*name))
+                    });
+                    if let Some(n) = index {
+                        links.push(BasicSelector::Index(IndexSelector::new(*n)));
+                    }
+                }
+                Some(ChainSelector::new(links))
             }
+            SelectorDescriptor::Topic => None,
         }
-        ChainSelector::new(links)
     }
 }
 
-#[derive(Clone, Copy, Error, Debug)]
+#[derive(Clone, Copy, Error, Debug, PartialEq, Eq)]
 pub enum BadSelector {
     #[error("Selector strings cannot be empty.")]
     EmptySelector,
     #[error("Selector components cannot be empty.")]
     EmptyComponent,
-    #[error("Invalid root selector (must be one of '$key' or '$value' with an optional index).")]
+    #[error("Invalid root selector (must be one of '$key' or '$value' with an optional index or '$topic').")]
     InvalidRoot,
     #[error(
         "Invalid component selector (must be an attribute or slot name with an optional index)."
@@ -356,6 +394,8 @@ pub enum BadSelector {
     InvalidComponent,
     #[error("An index specified was not a valid usize.")]
     IndexOutOfRange,
+    #[error("The topic does not have components.")]
+    TopicWithComponent,
 }
 
 impl From<ParseIntError> for BadSelector {
@@ -365,24 +405,29 @@ impl From<ParseIntError> for BadSelector {
 }
 
 pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSelector> {
-    if (descriptor.is_empty()) {
+    if descriptor.is_empty() {
         return Err(BadSelector::EmptySelector);
     }
     let mut it = descriptor.split('.');
-    let (part, index) = match it.next() {
+    let (field, index) = match it.next() {
         Some(root) if !root.is_empty() => {
             if let Some(captures) = init_regex().captures(root) {
-                let part = match captures.get(1) {
-                    Some(kind) if kind.as_str() == "$key" => MessagePart::Key,
-                    Some(kind) if kind.as_str() == "$value" => MessagePart::Value,
+                let field = match captures.get(1) {
+                    Some(kind) if kind.as_str() == "$key" => MessageField::Key,
+                    Some(kind) if kind.as_str() == "$value" => MessageField::Value,
+                    Some(kind) if kind.as_str() == "$topic" => MessageField::Topic,
                     _ => return Err(BadSelector::InvalidRoot),
                 };
                 let index = if let Some(index_match) = captures.get(2) {
-                    Some(index_match.as_str().parse::<usize>()?)
+                    if field != MessageField::Topic {
+                        Some(index_match.as_str().parse::<usize>()?)
+                    } else {
+                        return Err(BadSelector::InvalidRoot);
+                    }
                 } else {
                     None
                 };
-                (part, index)
+                (field, index)
             } else {
                 return Err(BadSelector::InvalidRoot);
             }
@@ -416,7 +461,19 @@ pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSel
         }
     }
 
-    Ok(SelectorDescriptor {
+    let part = match field {
+        MessageField::Key => MessagePart::Key,
+        MessageField::Value => MessagePart::Value,
+        MessageField::Topic => {
+            if components.is_empty() {
+                return Ok(SelectorDescriptor::Topic);
+            } else {
+                return Err(BadSelector::TopicWithComponent);
+            }
+        }
+    };
+
+    Ok(SelectorDescriptor::Part {
         part,
         index,
         components,
@@ -425,7 +482,7 @@ pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSel
 
 #[cfg(test)]
 mod tests {
-    use crate::selector::{SelectorComponent, SelectorDescriptor};
+    use crate::selector::{BadSelector, SelectorComponent, SelectorDescriptor};
     use crate::MessagePart;
 
     #[test]
@@ -450,6 +507,17 @@ mod tests {
             let kind = captures.get(1).expect("Missing capture.");
             assert!(captures.get(2).is_none());
             assert_eq!(kind.as_str(), "$value");
+        } else {
+            panic!("Did not match.");
+        }
+    }
+
+    #[test]
+    fn match_topic() {
+        if let Some(captures) = super::init_regex().captures("$topic") {
+            let kind = captures.get(1).expect("Missing capture.");
+            assert!(captures.get(2).is_none());
+            assert_eq!(kind.as_str(), "$topic");
         } else {
             panic!("Did not match.");
         }
@@ -540,43 +608,63 @@ mod tests {
     #[test]
     fn parse_simple() {
         let key = super::parse_selector("$key").expect("Parse failed.");
-        assert_eq!(key, SelectorDescriptor::new(MessagePart::Key, None));
+        assert_eq!(key, SelectorDescriptor::for_part(MessagePart::Key, None));
 
         let value = super::parse_selector("$value").expect("Parse failed.");
-        assert_eq!(value, SelectorDescriptor::new(MessagePart::Value, None));
+        assert_eq!(
+            value,
+            SelectorDescriptor::for_part(MessagePart::Value, None)
+        );
 
         let indexed = super::parse_selector("$key[2]").expect("Parse failed.");
-        assert_eq!(indexed, SelectorDescriptor::new(MessagePart::Key, Some(2)));
+        assert_eq!(
+            indexed,
+            SelectorDescriptor::for_part(MessagePart::Key, Some(2))
+        );
+    }
+
+    #[test]
+    fn parse_topic() {
+        let topic = super::parse_selector("$topic").expect("Parse failed.");
+        assert_eq!(topic, SelectorDescriptor::Topic);
+
+        assert_eq!(
+            super::parse_selector("$topic[0]"),
+            Err(BadSelector::InvalidRoot)
+        );
+        assert_eq!(
+            super::parse_selector("$topic.slot"),
+            Err(BadSelector::TopicWithComponent)
+        );
     }
 
     #[test]
     fn parse_one_component() {
         let first = super::parse_selector("$key.@attr").expect("Parse failed.");
-        let mut expected_first = SelectorDescriptor::new(MessagePart::Key, None);
+        let mut expected_first = SelectorDescriptor::for_part(MessagePart::Key, None);
         expected_first.push(SelectorComponent::new(true, "attr", None));
         assert_eq!(first, expected_first);
 
         let second = super::parse_selector("$value.slot").expect("Parse failed.");
-        let mut expected_second = SelectorDescriptor::new(MessagePart::Value, None);
+        let mut expected_second = SelectorDescriptor::for_part(MessagePart::Value, None);
         expected_second.push(SelectorComponent::new(false, "slot", None));
         assert_eq!(second, expected_second);
 
         let third = super::parse_selector("$key.@attr[3]").expect("Parse failed.");
-        let mut expected_third = SelectorDescriptor::new(MessagePart::Key, None);
+        let mut expected_third = SelectorDescriptor::for_part(MessagePart::Key, None);
         expected_third.push(SelectorComponent::new(true, "attr", Some(3)));
         assert_eq!(third, expected_third);
 
         let fourth = super::parse_selector("$value[6].slot[8]").expect("Parse failed.");
-        let mut expected_fourth = SelectorDescriptor::new(MessagePart::Value, Some(6));
+        let mut expected_fourth = SelectorDescriptor::for_part(MessagePart::Value, Some(6));
         expected_fourth.push(SelectorComponent::new(false, "slot", Some(8)));
         assert_eq!(fourth, expected_fourth);
-
     }
 
     #[test]
     fn multi_component_selector() {
         let selector = super::parse_selector("$value.red.@green[7].blue").expect("Parse failed.");
-        let mut expected = SelectorDescriptor::new(MessagePart::Value, None);
+        let mut expected = SelectorDescriptor::for_part(MessagePart::Value, None);
         expected.push(SelectorComponent::new(false, "red", None));
         expected.push(SelectorComponent::new(true, "green", Some(7)));
         expected.push(SelectorComponent::new(false, "blue", None));

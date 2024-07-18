@@ -53,7 +53,8 @@ where
             .try_handler()
             .and_then(move |stream| {
                 handler_context.suspend(async move {
-                    handler_context.value(rx.await)
+                    handler_context
+                        .value(rx.await)
                         .try_handler() //TODO Make this a more informative error.
                         .followed_by(suspend_connector(stream))
                 })

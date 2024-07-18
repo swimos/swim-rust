@@ -27,19 +27,14 @@ use rdkafka::{
 };
 use swimos_agent::{
     agent_lifecycle::{ConnectorContext, HandlerContext},
-    event_handler::{
-        EventHandler, HandlerActionExt, TryHandlerActionExt,
-        UnitHandler,
-    },
+    event_handler::{EventHandler, HandlerActionExt, TryHandlerActionExt, UnitHandler},
 };
 use swimos_model::Value;
 use swimos_utilities::trigger;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
-use swimos_connector::{
-    Connector, ConnectorStream, GenericConnectorAgent, ValueLaneSelectorFn,
-};
+use swimos_connector::{Connector, ConnectorStream, GenericConnectorAgent, ValueLaneSelectorFn};
 
 type ConnHandlerContext = HandlerContext<GenericConnectorAgent>;
 type ConnContext = ConnectorContext<GenericConnectorAgent>;
@@ -82,15 +77,14 @@ impl Connector for KafkaConnector {
     }
 
     fn create_stream(&self) -> Result<impl ConnectorStream<KafkaError>, Self::StreamError> {
-
         let KafkaConnector { configuration } = self;
-               let mut client_builder = ClientConfig::new();
-               configuration.properties.iter().for_each(|(k, v)| {
-                   client_builder.set(k, v);
-               });
-               let consumer = client_builder
-                   .set_log_level(configuration.log_level)
-                   .create_with_context::<_, LoggingConsumer>(KafkaClientContext)?;
+        let mut client_builder = ClientConfig::new();
+        configuration.properties.iter().for_each(|(k, v)| {
+            client_builder.set(k, v);
+        });
+        let consumer = client_builder
+            .set_log_level(configuration.log_level)
+            .create_with_context::<_, LoggingConsumer>(KafkaClientContext)?;
         let (tx, rx) = mpsc::channel(1);
         let state = MessageState::new(consumer, message_to_handler, tx);
         let consumer_task = Box::pin(state.consume_messages());
@@ -182,13 +176,13 @@ struct MessageState<F, H> {
 }
 
 impl<F, H> MessageState<F, H> {
-
-    fn new(consumer: LoggingConsumer,
-        to_handler: F,
-        tx: mpsc::Sender<H>) -> Self {
-            MessageState { consumer, to_handler, tx }
+    fn new(consumer: LoggingConsumer, to_handler: F, tx: mpsc::Sender<H>) -> Self {
+        MessageState {
+            consumer,
+            to_handler,
+            tx,
         }
-
+    }
 }
 
 impl<F, H> MessageState<F, H>
@@ -225,12 +219,12 @@ struct MessageTasks<F, H> {
 }
 
 impl<F, H> MessageTasks<F, H> {
-
-    pub fn new(consume_fut: F,
-        rx: mpsc::Receiver<H>) -> Self {
-MessageTasks { consume_fut: Some(consume_fut), rx }
+    pub fn new(consume_fut: F, rx: mpsc::Receiver<H>) -> Self {
+        MessageTasks {
+            consume_fut: Some(consume_fut),
+            rx,
         }
-
+    }
 }
 
 impl<F, H> MessageTasks<F, H>

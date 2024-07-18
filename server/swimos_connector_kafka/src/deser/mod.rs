@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{convert::Infallible, io::Cursor, time::Duration};
+use std::{array::TryFromSliceError, convert::Infallible, io::Cursor, time::Duration};
 
 use chrono::{DateTime, Local, NaiveDateTime, TimeDelta, Utc};
 use rdkafka::{message::BorrowedMessage, Message};
@@ -20,13 +20,14 @@ use swimos_form::Form;
 use swimos_model::{BigInt, Blob, Item, Timestamp, Value};
 use swimos_recon::parser::{parse_recognize, AsyncParseError};
 
-
 pub trait MessageDeserializer {
-
     type Error: std::error::Error;
 
-    fn deserialize<'a>(&self, message: &'a BorrowedMessage<'a>, part: MessagePart) -> Result<Value, Self::Error>;
-
+    fn deserialize<'a>(
+        &self,
+        message: &'a BorrowedMessage<'a>,
+        part: MessagePart,
+    ) -> Result<Value, Self::Error>;
 }
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -39,19 +40,29 @@ pub struct ReconDeserializer;
 impl MessageDeserializer for StringDeserializer {
     type Error = std::str::Utf8Error;
 
-    fn deserialize<'a>(&self, message: &'a BorrowedMessage<'a>, part: MessagePart) -> Result<Value, Self::Error> {
+    fn deserialize<'a>(
+        &self,
+        message: &'a BorrowedMessage<'a>,
+        part: MessagePart,
+    ) -> Result<Value, Self::Error> {
         let payload = match part {
             MessagePart::Key => message.key_view::<str>(),
             MessagePart::Value => message.payload_view::<str>(),
         };
-        payload.transpose().map(|opt| Value::text(opt.unwrap_or_default()))
+        payload
+            .transpose()
+            .map(|opt| Value::text(opt.unwrap_or_default()))
     }
 }
 
 impl MessageDeserializer for BytesDeserializer {
     type Error = Infallible;
 
-    fn deserialize<'a>(&self, message: &'a BorrowedMessage<'a>, part: MessagePart) -> Result<Value, Self::Error> {
+    fn deserialize<'a>(
+        &self,
+        message: &'a BorrowedMessage<'a>,
+        part: MessagePart,
+    ) -> Result<Value, Self::Error> {
         let payload = match part {
             MessagePart::Key => message.key(),
             MessagePart::Value => message.payload(),
@@ -64,7 +75,11 @@ impl MessageDeserializer for BytesDeserializer {
 impl MessageDeserializer for ReconDeserializer {
     type Error = AsyncParseError;
 
-    fn deserialize<'a>(&self, message: &'a BorrowedMessage<'a>, part: MessagePart) -> Result<Value, Self::Error> {
+    fn deserialize<'a>(
+        &self,
+        message: &'a BorrowedMessage<'a>,
+        part: MessagePart,
+    ) -> Result<Value, Self::Error> {
         let payload = match part {
             MessagePart::Key => message.key_view::<str>(),
             MessagePart::Value => message.payload_view::<str>(),
@@ -91,14 +106,18 @@ fn convert_json_value(input: JsonValue) -> Value {
             } else {
                 Value::Float64Value(n.as_f64().unwrap_or(f64::NAN))
             }
-        },
+        }
         JsonValue::String(s) => Value::Text(s.into()),
-        JsonValue::Array(arr) => {
-            Value::record(arr.into_iter().map(|v| Item::ValueItem(convert_json_value(v))).collect())
-        },
-        JsonValue::Object(obj) => {
-            Value::record(obj.into_iter().map(|(k, v)| Item::Slot(Value::Text(k.into()), convert_json_value(v))).collect())
-        },
+        JsonValue::Array(arr) => Value::record(
+            arr.into_iter()
+                .map(|v| Item::ValueItem(convert_json_value(v)))
+                .collect(),
+        ),
+        JsonValue::Object(obj) => Value::record(
+            obj.into_iter()
+                .map(|(k, v)| Item::Slot(Value::Text(k.into()), convert_json_value(v)))
+                .collect(),
+        ),
     }
 }
 
@@ -108,7 +127,11 @@ pub struct JsonDeserializer;
 impl MessageDeserializer for JsonDeserializer {
     type Error = serde_json::Error;
 
-    fn deserialize<'a>(&self, message: &'a BorrowedMessage<'a>, part: MessagePart) -> Result<Value, Self::Error> {
+    fn deserialize<'a>(
+        &self,
+        message: &'a BorrowedMessage<'a>,
+        part: MessagePart,
+    ) -> Result<Value, Self::Error> {
         let payload = match part {
             MessagePart::Key => message.key(),
             MessagePart::Value => message.payload(),
@@ -144,50 +167,75 @@ fn convert_avro_value(value: AvroValue) -> Result<Value, AvroError> {
         AvroValue::String(s) => Value::Text(s.into()),
         AvroValue::Enum(_, name) => Value::of_attr(name),
         AvroValue::Union(_, v) => convert_avro_value(*v)?,
-        AvroValue::Array(arr) => {
-            Value::record(arr.into_iter().map(|v| convert_avro_value(v).map(Item::ValueItem)).collect::<Result<Vec<_>, _>>()?)
-        },
-        AvroValue::Map(obj) => {
-            Value::record(obj.into_iter().map(|(k, v)| convert_avro_value(v).map(move |v| Item::Slot(Value::Text(k.into()), v))).collect::<Result<Vec<_>, _>>()?)
-        },
-        AvroValue::Record(obj) => {
-            Value::record(obj.into_iter().map(|(k, v)| convert_avro_value(v).map(move |v| Item::Slot(Value::Text(k.into()), v))).collect::<Result<Vec<_>, _>>()?)
-        },
+        AvroValue::Array(arr) => Value::record(
+            arr.into_iter()
+                .map(|v| convert_avro_value(v).map(Item::ValueItem))
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+        AvroValue::Map(obj) => Value::record(
+            obj.into_iter()
+                .map(|(k, v)| {
+                    convert_avro_value(v).map(move |v| Item::Slot(Value::Text(k.into()), v))
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
+        AvroValue::Record(obj) => Value::record(
+            obj.into_iter()
+                .map(|(k, v)| {
+                    convert_avro_value(v).map(move |v| Item::Slot(Value::Text(k.into()), v))
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        ),
         AvroValue::Date(offset) => {
-            let utc_dt = DateTime::from_timestamp(offset as i64 * 86400, 0).unwrap_or(DateTime::<Utc>::MAX_UTC);
+            let utc_dt = DateTime::from_timestamp(offset as i64 * 86400, 0)
+                .unwrap_or(DateTime::<Utc>::MAX_UTC);
             let ts = Timestamp::from(utc_dt);
             ts.into_value()
-        },
+        }
         AvroValue::Decimal(d) => {
             let n = BigInt::from(d);
             Value::BigInt(n)
-        },
+        }
         AvroValue::TimeMillis(n) => Duration::from_millis(n as u64).into_value(),
         AvroValue::TimeMicros(n) => Duration::from_micros(n as u64).into_value(),
         AvroValue::TimestampMillis(offset) => {
-            let utc_dt = DateTime::from_timestamp_millis(offset).unwrap_or(DateTime::<Utc>::MAX_UTC);
+            let utc_dt =
+                DateTime::from_timestamp_millis(offset).unwrap_or(DateTime::<Utc>::MAX_UTC);
             let ts = Timestamp::from(utc_dt);
             ts.into_value()
-        },
+        }
         AvroValue::TimestampMicros(offset) => {
-            let utc_dt = DateTime::from_timestamp_micros(offset).unwrap_or(DateTime::<Utc>::MAX_UTC);
+            let utc_dt =
+                DateTime::from_timestamp_micros(offset).unwrap_or(DateTime::<Utc>::MAX_UTC);
             let ts = Timestamp::from(utc_dt);
             ts.into_value()
-        },
+        }
         AvroValue::LocalTimestampMillis(n) => {
-            let def = if n <= 0 { NaiveDateTime::MIN } else { NaiveDateTime::MAX };
-            let local_time = NaiveDateTime::UNIX_EPOCH.checked_add_signed(TimeDelta::milliseconds(n)).unwrap_or(def);
+            let def = if n <= 0 {
+                NaiveDateTime::MIN
+            } else {
+                NaiveDateTime::MAX
+            };
+            let local_time = NaiveDateTime::UNIX_EPOCH
+                .checked_add_signed(TimeDelta::milliseconds(n))
+                .unwrap_or(def);
             let dt = local_time.and_local_timezone(Local).unwrap();
             let ts = Timestamp::from(dt);
             ts.into_value()
-        },
+        }
         AvroValue::LocalTimestampMicros(n) => {
-            let def = if n <= 0 { NaiveDateTime::MIN } else { NaiveDateTime::MAX };
-            let local_time = NaiveDateTime::UNIX_EPOCH.checked_add_signed(TimeDelta::microseconds(n)).unwrap_or(def);
+            let def = if n <= 0 {
+                NaiveDateTime::MIN
+            } else {
+                NaiveDateTime::MAX
+            };
+            let local_time = NaiveDateTime::UNIX_EPOCH
+                .checked_add_signed(TimeDelta::microseconds(n))
+                .unwrap_or(def);
             let dt = local_time.and_local_timezone(Local).unwrap();
             let ts = Timestamp::from(dt);
             ts.into_value()
-        },
+        }
         AvroValue::Duration(_) => return Err(AvroError::UnsupportedAvroKind),
         AvroValue::Uuid(id) => Value::BigInt(id.as_u128().into()),
     };
@@ -200,11 +248,11 @@ pub struct AvroDeserializer {
 }
 
 impl AvroDeserializer {
-
     pub fn new(schema: Schema) -> Self {
-        AvroDeserializer { schema: Some(schema) }
+        AvroDeserializer {
+            schema: Some(schema),
+        }
     }
-
 }
 
 #[derive(Default)]
@@ -216,15 +264,16 @@ enum ValueAcc {
 }
 
 impl ValueAcc {
-
     fn push(&mut self, value: Value) {
         match std::mem::take(self) {
             ValueAcc::Empty => *self = ValueAcc::Single(value),
-            ValueAcc::Single(v) => *self = ValueAcc::Record(vec![Item::ValueItem(v), Item::ValueItem(value)]),
+            ValueAcc::Single(v) => {
+                *self = ValueAcc::Record(vec![Item::ValueItem(v), Item::ValueItem(value)])
+            }
             ValueAcc::Record(mut vs) => {
                 vs.push(Item::ValueItem(value));
                 *self = ValueAcc::Record(vs);
-            },
+            }
         }
     }
 
@@ -240,7 +289,11 @@ impl ValueAcc {
 impl MessageDeserializer for AvroDeserializer {
     type Error = AvroError;
 
-    fn deserialize<'a>(&self, message: &'a BorrowedMessage<'a>, part: MessagePart) -> Result<Value, Self::Error> {
+    fn deserialize<'a>(
+        &self,
+        message: &'a BorrowedMessage<'a>,
+        part: MessagePart,
+    ) -> Result<Value, Self::Error> {
         let AvroDeserializer { schema } = self;
         let payload = match part {
             MessagePart::Key => message.key(),
@@ -258,5 +311,75 @@ impl MessageDeserializer for AvroDeserializer {
             acc.push(v);
         }
         Ok(acc.done())
+    }
+}
+
+#[derive(Clone, Copy, Default, Debug)]
+pub enum Endianness {
+    #[default]
+    LittleEndian,
+    BigEndian,
+}
+
+macro_rules! num_deser {
+    ($deser:ident, $numt:ty, $variant:ident) => {
+        #[derive(Clone, Copy, Default, Debug)]
+        pub struct $deser(Endianness);
+
+        impl $deser {
+            pub fn new(endianness: Endianness) -> Self {
+                Self(endianness)
+            }
+        }
+
+        impl MessageDeserializer for $deser {
+            type Error = TryFromSliceError;
+
+            fn deserialize<'a>(
+                &self,
+                message: &'a BorrowedMessage<'a>,
+                part: MessagePart,
+            ) -> Result<Value, Self::Error> {
+                let $deser(endianness) = self;
+                let payload = match part {
+                    MessagePart::Key => message.key(),
+                    MessagePart::Value => message.payload(),
+                }
+                .unwrap_or_default();
+                let x = match endianness {
+                    Endianness::LittleEndian => <$numt>::from_le_bytes(payload.try_into()?),
+                    Endianness::BigEndian => <$numt>::from_be_bytes(payload.try_into()?),
+                };
+                Ok(Value::$variant(x.into()))
+            }
+        }
+    };
+}
+
+num_deser!(I32Deserializer, i32, Int32Value);
+num_deser!(I64Deserializer, i64, Int64Value);
+num_deser!(U32Deserializer, u32, UInt32Value);
+num_deser!(U64Deserializer, u64, UInt64Value);
+num_deser!(F64Deserializer, f64, Float64Value);
+num_deser!(F32Deserializer, f32, Float64Value);
+
+#[derive(Clone, Copy, Default, Debug)]
+pub struct UuidDeserializer;
+
+impl MessageDeserializer for UuidDeserializer {
+    type Error = TryFromSliceError;
+
+    fn deserialize<'a>(
+        &self,
+        message: &'a BorrowedMessage<'a>,
+        part: MessagePart,
+    ) -> Result<Value, Self::Error> {
+        let payload = match part {
+            MessagePart::Key => message.key(),
+            MessagePart::Value => message.payload(),
+        }
+        .unwrap_or_default();
+        let x = u128::from_be_bytes(payload.try_into()?);
+        Ok(Value::BigInt(x.into()))
     }
 }
