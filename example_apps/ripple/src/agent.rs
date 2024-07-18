@@ -14,16 +14,14 @@
 
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
-use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
 use futures::stream::unfold;
 use futures::StreamExt;
-use parking_lot::Mutex;
-use rand::rngs::StdRng;
+use rand::rngs::ThreadRng;
 use rand::seq::SliceRandom;
-use rand::{Rng, SeedableRng};
+use rand::Rng;
 use swimos::agent::agent_lifecycle::HandlerContext;
 use swimos::agent::event_handler::{EventHandler, HandlerActionExt, Sequentially};
 use swimos::agent::lanes::{CommandLane, MapLane, ValueLane};
@@ -35,7 +33,6 @@ use tokio::time::sleep;
 use tracing::{info, trace};
 
 const TAG: &str = "swim0";
-type Rand = Arc<Mutex<StdRng>>;
 
 /// Ripple identifier.
 #[derive(Clone, Debug, Form, Eq, Hash, PartialEq, PartialOrd, Ord)]
@@ -164,19 +161,7 @@ pub enum ChargeAction {
 
 /// The agent's lifecycle.
 #[derive(Clone)]
-pub struct MirrorLifecycle {
-    /// The random number generator to use.
-    rng: Arc<Mutex<StdRng>>,
-}
-
-impl MirrorLifecycle {
-    /// Creates a new lifecycle which will use `rng` when generating events.
-    pub fn new(rng: StdRng) -> MirrorLifecycle {
-        MirrorLifecycle {
-            rng: Arc::new(Mutex::new(rng)),
-        }
-    }
-}
+pub struct MirrorLifecycle;
 
 #[lifecycle(MirrorAgent)]
 impl MirrorLifecycle {
@@ -185,18 +170,15 @@ impl MirrorLifecycle {
     /// The handler will spawn a stream which will generate random ripples and prune charges.
     #[on_start]
     pub fn on_start(&self, context: HandlerContext<MirrorAgent>) -> impl EventHandler<MirrorAgent> {
-        let rng = self.rng.clone();
-        let stream = unfold((rng, Duration::default()), move |(rng, delay)| async move {
+        let stream = unfold(Duration::default(), move |delay| async move {
             sleep(delay).await;
 
-            let handler =
-                generate_ripple(context, rng.clone()).followed_by(cleanup_charges(context));
-            let next_delay = {
-                let rng = &mut *rng.lock();
-                Duration::from_millis(rng.gen_range(Config::MIN_DELAY..=Config::MAX_DELAY))
-            };
+            let mut rng = ThreadRng::default();
+            let handler = generate_ripple(context).followed_by(cleanup_charges(context));
+            let next_delay =
+                Duration::from_millis(rng.gen_range(Config::MIN_DELAY..=Config::MAX_DELAY));
 
-            Some((handler, (rng, next_delay)))
+            Some((handler, next_delay))
         });
         context
             .get_agent_uri()
@@ -309,11 +291,7 @@ pub struct Ripple {
 
 impl Default for Ripple {
     fn default() -> Self {
-        Ripple::random(
-            &mut StdRng::from_entropy(),
-            Config::MIN_PHASES,
-            Config::MAX_PHASES,
-        )
+        Ripple::random(Config::MIN_PHASES, Config::MAX_PHASES)
     }
 }
 
@@ -321,10 +299,10 @@ impl Ripple {
     /// Generate a random ripple.
     ///
     /// # Arguments:
-    /// * `rng` - The random number generator to use.
     /// * `min_phases` - The minimum number of phases that this ripple will have.
     /// * `rng` - The maximum number of phases that this ripple will have.
-    fn random(rng: &mut StdRng, min_phases: usize, max_phases: usize) -> Ripple {
+    fn random(min_phases: usize, max_phases: usize) -> Ripple {
+        let mut rng = ThreadRng::default();
         let phases = (0..rng.gen_range(min_phases..max_phases))
             .map(|_| rng.gen::<f64>())
             .collect();
@@ -333,7 +311,7 @@ impl Ripple {
             x: rng.gen::<f64>(),
             y: rng.gen::<f64>(),
             phases,
-            color: Color::select_random(rng).to_string(),
+            color: Color::select_random(&mut rng).to_string(),
         }
     }
 }
@@ -361,7 +339,7 @@ impl Display for Color {
 
 impl Color {
     /// Returns a random color generated using `rng`.
-    fn select_random(rng: &mut StdRng) -> Color {
+    fn select_random(rng: &mut ThreadRng) -> Color {
         [Color::Green, Color::Magenta, Color::Cyan]
             .choose(rng)
             .copied()
@@ -371,15 +349,11 @@ impl Color {
 
 /// Returns an event handler which will generate a random ripple and set the state of the "ripples"
 /// lane to it.
-fn generate_ripple(
-    context: HandlerContext<MirrorAgent>,
-    rng: Rand,
-) -> impl EventHandler<MirrorAgent> {
+fn generate_ripple(context: HandlerContext<MirrorAgent>) -> impl EventHandler<MirrorAgent> {
     context
         .get_value(MirrorAgent::MODE)
         .and_then(move |mode: Config| {
-            let rng = &mut *rng.lock();
-            let ripple = Ripple::random(rng, mode.min_phases, mode.max_phases);
+            let ripple = Ripple::random(mode.min_phases, mode.max_phases);
             context.set_value(MirrorAgent::RIPPLES, ripple)
         })
 }

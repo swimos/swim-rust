@@ -19,5 +19,4 @@ futures = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "io-util", "fs"] }
 tokio-util = { workspace = true }
 rand = { workspace = true }
-parking_lot = { workspace = true, features = ["send_guard"] }
 chrono = { workspace = true }

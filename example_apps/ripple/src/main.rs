@@ -33,8 +33,6 @@ use axum::http::{header, HeaderValue};
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 use tokio::net::TcpListener;
 use tracing_subscriber::filter::LevelFilter;
 
@@ -76,9 +74,7 @@ async fn ui_server() -> Result<(), Box<dyn Error + Send + Sync>> {
 
 /// Spawns the Swim server on 0.0.0.0:9001.
 async fn run_swim_server() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let mirror_agent = AgentModel::from_fn(MirrorAgent::default, || {
-        MirrorLifecycle::new(StdRng::from_entropy()).into_lifecycle()
-    });
+    let mirror_agent = AgentModel::new(MirrorAgent::default, MirrorLifecycle.into_lifecycle());
     let swim_server = ServerBuilder::with_plane_name("Ripple Plane")
         .set_bind_addr("0.0.0.0:9001".parse().unwrap())
         .add_route(RoutePattern::parse_str("mirror/:id")?, mirror_agent)
