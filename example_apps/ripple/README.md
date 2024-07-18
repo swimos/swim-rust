@@ -1,4 +1,4 @@
-# [Ripple](ripple)
+# Ripple
 
 ![Ripple](assets/ripple.png "Ripple")
 
