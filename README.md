@@ -22,12 +22,15 @@ host can share a single web-socket connection.
 [![SwimOS Form Crates.io Version][swimos-form-badge]][swimos-form-crate]
 
 [swimos-badge]: https://img.shields.io/crates/v/swimos?label=swimos
+
 [swimos-crate]: https://crates.io/crates/swimos
 
 [swimos-form-badge]: https://img.shields.io/crates/v/swimos?label=swimos_form
+
 [swimos-form-crate]: https://crates.io/crates/swimos_form
 
 [swimos-client-badge]: https://img.shields.io/crates/v/swimos?label=swimos_client
+
 [swimos-client-crate]: https://crates.io/crates/swimos_client
 
 [Website](https://swimos.org/) | [Developer Guide](https://www.swimos.org/server/rust/developer-guide/) | [Server API Docs](https://docs.rs/swimos/latest/swimos/) | [Client API Docs](https://docs.rs/swimos_client/latest/swimos_client/)
@@ -122,6 +125,9 @@ lane will then be set to `5` and the following will be printed on the console:
 ```
 Received value: 5 for 'lane' on agent at URI: /examples/name.
 ```
+
+A number of example applications are available in the [example_apps](example_apps) directory which demonstrate
+individual features as well as more comprehensive applications.
 
 ## Development
 
