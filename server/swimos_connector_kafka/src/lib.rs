@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod config;
 pub mod deser;
 pub mod selector;
 
 use std::collections::HashMap;
 
+use config::KafkaConnectorConfiguration;
 use futures::{stream::unfold, Future};
 use rdkafka::{
     config::RDKafkaLogLevel,
@@ -91,12 +93,6 @@ impl Connector for KafkaConnector {
         let stream_src = MessageTasks::new(consumer_task, rx);
         Ok(stream_src.into_stream())
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct KafkaConnectorConfiguration {
-    properties: HashMap<String, String>,
-    log_level: RDKafkaLogLevel,
 }
 
 struct KafkaClientContext;

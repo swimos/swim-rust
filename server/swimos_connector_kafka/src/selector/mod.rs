@@ -14,11 +14,20 @@
 
 use std::{num::ParseIntError, sync::OnceLock};
 
+use frunk::Coproduct;
 use regex::Regex;
+use swimos_agent::{
+    agent_lifecycle::ConnectorContext,
+    event_handler::{EventHandler, HandlerActionExt, UnitHandler},
+};
+use swimos_connector::{GenericConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 use swimos_model::{Attr, Item, Text, Value};
 use thiserror::Error;
 
-use crate::MessagePart;
+use crate::{
+    config::{MapLaneSpec, ValueLaneSpec},
+    MessagePart,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageField {
@@ -74,12 +83,23 @@ where
     }
 }
 
-struct RecordSelector<S> {
-    part: MessageField,
-    selector: S,
+pub enum LaneSelector {
+    Topic,
+    Key(BoxSelector),
+    Value(BoxSelector),
 }
 
-impl<S: Selector> RecordSelector<S> {
+impl<'a> From<SelectorDescriptor<'a>> for LaneSelector {
+    fn from(value: SelectorDescriptor<'a>) -> Self {
+        match (value.field(), value.selector()) {
+            (MessageField::Key, Some(selector)) => LaneSelector::Key(Box::new(selector)),
+            (MessageField::Value, Some(selector)) => LaneSelector::Value(Box::new(selector)),
+            _ => LaneSelector::Topic,
+        }
+    }
+}
+
+impl LaneSelector {
     pub fn select<'a, K, V>(
         &self,
         topic: &'a Value,
@@ -90,11 +110,10 @@ impl<S: Selector> RecordSelector<S> {
         K: Deferred<'a> + 'a,
         V: Deferred<'a> + 'a,
     {
-        let RecordSelector { part, selector } = self;
-        match part {
-            MessageField::Key => selector.select(key.get()),
-            MessageField::Value => selector.select(value.get()),
-            MessageField::Topic => Some(topic),
+        match self {
+            LaneSelector::Topic => Some(topic),
+            LaneSelector::Key(selector) => selector.select(key.get()),
+            LaneSelector::Value(selector) => selector.select(value.get()),
         }
     }
 }
@@ -247,7 +266,9 @@ impl Selector for ChainSelector {
     }
 }
 
-impl Selector for Box<dyn Selector + Send> {
+pub type BoxSelector = Box<dyn Selector + Send + 'static>;
+
+impl Selector for BoxSelector {
     fn select<'a>(&self, value: &'a Value) -> Option<&'a Value> {
         (**self).select(value)
     }
@@ -669,5 +690,149 @@ mod tests {
         expected.push(SelectorComponent::new(true, "green", Some(7)));
         expected.push(SelectorComponent::new(false, "blue", None));
         assert_eq!(selector, expected);
+    }
+}
+
+pub struct ValueLaneSelector {
+    name: String,
+    selector: LaneSelector,
+    required: bool,
+}
+
+pub struct MapLaneSelector {
+    name: String,
+    key_selector: LaneSelector,
+    value_selector: LaneSelector,
+    required: bool,
+    remove_when_no_value: bool,
+}
+
+#[derive(Clone, Copy, Debug, Error)]
+pub enum InvalidLaneSpec {
+    #[error(transparent)]
+    Selector(#[from] BadSelector),
+    #[error("No name provided and it cannot be inferred from the selector.")]
+    NameCannotBeInferred,
+}
+
+impl TryFrom<ValueLaneSpec> for ValueLaneSelector {
+    type Error = InvalidLaneSpec;
+
+    fn try_from(value: ValueLaneSpec) -> Result<Self, Self::Error> {
+        let ValueLaneSpec {
+            name,
+            selector,
+            required,
+        } = value;
+        let parsed = parse_selector(&selector)?;
+        if let Some(lane_name) = name.or_else(|| parsed.suggested_name().map(|s| s.to_owned())) {
+            Ok(ValueLaneSelector {
+                name: lane_name,
+                selector: parsed.into(),
+                required,
+            })
+        } else {
+            Err(InvalidLaneSpec::NameCannotBeInferred)
+        }
+    }
+}
+
+impl TryFrom<MapLaneSpec> for MapLaneSelector {
+    type Error = InvalidLaneSpec;
+
+    fn try_from(value: MapLaneSpec) -> Result<Self, Self::Error> {
+        let MapLaneSpec {
+            name,
+            key_selector,
+            value_selector,
+            remove_when_no_value,
+            required,
+        } = value;
+        let key = LaneSelector::from(parse_selector(&key_selector)?);
+        let value = LaneSelector::from(parse_selector(&value_selector)?);
+        Ok(MapLaneSelector {
+            name,
+            key_selector: key,
+            value_selector: value,
+            required,
+            remove_when_no_value,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Error)]
+#[error("The field '{0}' is required but did not occur in a message.")]
+pub struct MissingRequiredField(String);
+
+impl ValueLaneSelector {
+    pub fn select_handler<K, V>(
+        &self,
+        topic: &Value,
+        key: &mut K,
+        value: &mut V,
+    ) -> Result<impl EventHandler<GenericConnectorAgent> + Send + 'static, MissingRequiredField>
+    where
+        K: for<'a> Deferred<'a>,
+        V: for<'a> Deferred<'a>,
+    {
+        let ValueLaneSelector {
+            name,
+            selector,
+            required,
+        } = self;
+        let context: ConnectorContext<GenericConnectorAgent> = Default::default();
+        let maybe_value = selector.select(topic, key, value);
+        let handler = match maybe_value {
+            Some(value) => {
+                let select_lane = ValueLaneSelectorFn::new(name.clone());
+                Some(context.set_value(select_lane, value.clone()))
+            }
+            None => {
+                if *required {
+                    return Err(MissingRequiredField(name.clone()));
+                } else {
+                    None
+                }
+            }
+        };
+        Ok(handler.discard())
+    }
+}
+
+impl MapLaneSelector {
+    pub fn select_handler<K, V>(
+        &self,
+        topic: &Value,
+        key: &mut K,
+        value: &mut V,
+    ) -> Result<impl EventHandler<GenericConnectorAgent> + Send + 'static, MissingRequiredField>
+    where
+        K: for<'a> Deferred<'a>,
+        V: for<'a> Deferred<'a>,
+    {
+        let MapLaneSelector {
+            name,
+            key_selector,
+            value_selector,
+            required,
+            remove_when_no_value,
+        } = self;
+        let context: ConnectorContext<GenericConnectorAgent> = Default::default();
+        let maybe_key: Option<Value> = key_selector.select(topic, key, value).cloned();
+        let maybe_value = value_selector.select(topic, key, value);
+        let select_lane = MapLaneSelectorFn::new(name.clone());
+        let handler = match (maybe_key, maybe_value) {
+            (None, _) if *required => return Err(MissingRequiredField(name.clone())),
+            (Some(key), None) if *remove_when_no_value => {
+                Some(Coproduct::Inr(context.remove(select_lane, key)))
+            }
+            (Some(key), Some(value)) => Some(Coproduct::Inl(context.update(
+                select_lane,
+                key,
+                value.clone(),
+            ))),
+            _ => None,
+        };
+        Ok(handler.discard())
     }
 }
