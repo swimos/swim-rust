@@ -20,8 +20,8 @@ use swimos::{
     agent::{lifecycle, AgentLaneModel},
 };
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct StreetStatisticsAgent {
     state: MapLane<String, u64>,
 }
@@ -32,8 +32,8 @@ pub struct StreetStatisticsLifecycle;
 #[lifecycle(StreetStatisticsAgent)]
 impl StreetStatisticsLifecycle {}
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct AggregatedStatisticsAgent {
     streets: JoinMapLane<String, String, u64>,
 }

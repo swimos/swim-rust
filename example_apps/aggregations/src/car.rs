@@ -27,8 +27,8 @@ use swimos::{
 
 use crate::area::{Action, Area};
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct CarAgent {
     speed: ValueLane<u64>,
     #[item(transient)]

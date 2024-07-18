@@ -27,8 +27,8 @@ use swimos::{
     },
 };
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct TimeAgent {
     history: MapLane<u64, String>,
     add: CommandLane<String>,
