@@ -1,8 +1,9 @@
 (function (global, factory) {
     typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('@swim/util'), require('@swim/color'), require('@swim/structure'), require('@swim/interpolate'), require('@swim/view'), require('@swim/transition'), require('@swim/recon')) :
-    typeof define === 'function' && define.amd ? define(['exports', '@swim/util', '@swim/color', '@swim/structure', '@swim/interpolate', '@swim/view', '@swim/transition', '@swim/recon'], factory) :
-    (global = global || self, factory(global.swim = global.swim || {}, global.swim, global.swim, global.swim, global.swim, global.swim, global.swim, global.swim));
-}(this, function (exports, util, color, structure, interpolate, view, transition, recon) { 'use strict';
+        typeof define === 'function' && define.amd ? define(['exports', '@swim/util', '@swim/color', '@swim/structure', '@swim/interpolate', '@swim/view', '@swim/transition', '@swim/recon'], factory) :
+            (global = global || self, factory(global.swim = global.swim || {}, global.swim, global.swim, global.swim, global.swim, global.swim, global.swim, global.swim));
+}(this, function (exports, util, color, structure, interpolate, view, transition, recon) {
+    'use strict';
 
     /*! *****************************************************************************
     Copyright (c) Microsoft Corporation.
@@ -20,21 +21,30 @@
     ***************************************************************************** */
     /* global Reflect, Promise */
 
-    var extendStatics = function(d, b) {
+    var extendStatics = function (d, b) {
         extendStatics = Object.setPrototypeOf ||
-            ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
-            function (d, b) { for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]; };
+            ({__proto__: []} instanceof Array && function (d, b) {
+                d.__proto__ = b;
+            }) ||
+            function (d, b) {
+                for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+            };
         return extendStatics(d, b);
     };
 
     function __extends(d, b) {
         extendStatics(d, b);
-        function __() { this.constructor = d; }
+
+        function __() {
+            this.constructor = d;
+        }
+
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
     }
 
     function __decorate(decorators, target, key, desc) {
-        var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+        var c = arguments.length,
+            r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
         if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
         else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
         return c > 3 && r && Object.defineProperty(target, key, r), r;
@@ -50,8 +60,11 @@
     };
     var MirrorView = (function (_super) {
         __extends(MirrorView, _super);
+
         function MirrorView(id, mode) {
-            if (mode === void 0) { mode = MirrorMode.default; }
+            if (mode === void 0) {
+                mode = MirrorMode.default;
+            }
             var _this = _super.call(this) || this;
             if (id === void 0) {
                 id = structure.Text.from(structure.Data.random(6).toBase64());
@@ -71,6 +84,7 @@
             _this._presses = {};
             return _this;
         }
+
         Object.defineProperty(MirrorView.prototype, "viewController", {
             get: function () {
                 return this._viewController;
@@ -84,8 +98,7 @@
                 while (parentView) {
                     if (parentView instanceof view.CanvasView) {
                         return parentView;
-                    }
-                    else {
+                    } else {
                         parentView = parentView.parentView;
                     }
                 }
@@ -183,8 +196,7 @@
                 var childView = childViews[i];
                 if (childView instanceof MirrorView.ChargeView && !childView.isActive() && !childView.isPressed()) {
                     this.removeChildView(childView);
-                }
-                else {
+                } else {
                     i += 1;
                 }
             }
@@ -273,7 +285,7 @@
             }
             document.body.addEventListener("mousemove", this.onMouseMove);
             document.body.addEventListener("mouseup", this.onMouseUp);
-            var charge = this.createCharge(structure.Record.of(this.id, "mouse"), Date.now(), event.clientX, event.clientY);
+            var charge = this.createCharge(structure.Record.of(structure.Attr.of("User"), this.id, "mouse"), Date.now(), event.clientX, event.clientY);
             this._presses["mouse"] = charge;
             this.appendChildView(charge);
             this.onPressDown(charge);
@@ -309,7 +321,7 @@
                         canvasView.on("touchcancel", this.onTouchCancel);
                         canvasView.on("touchend", this.onTouchEnd);
                     }
-                    charge = this.createCharge(structure.Record.of(this.id, pressId), Date.now(), touch.clientX, touch.clientY);
+                    charge = this.createCharge(structure.Record.of(structure.Attr.of("User"), this.id, pressId), Date.now(), touch.clientX, touch.clientY);
                     this._presses[pressId] = charge;
                     this._touchCount += 1;
                     this.appendChildView(charge);
@@ -372,9 +384,11 @@
 
     var MirrorViewController = (function (_super) {
         __extends(MirrorViewController, _super);
+
         function MirrorViewController() {
             return _super !== null && _super.apply(this, arguments) || this;
         }
+
         MirrorViewController.prototype.mirrorDidPressDown = function (charge, view) {
         };
         MirrorViewController.prototype.mirrorDidPressHold = function (charge, view) {
@@ -388,17 +402,39 @@
 
     var ChargeMode = {
         from: function (chargeColor, chargeOpacity, chargeDarken, chargeRadius, chargeJitterRadius, rippleColor, rippleOpacity, rippleDarken, rippleDuration, rippleSpread, pressDelay) {
-            if (chargeColor === void 0) { chargeColor = color.Color.rgb("#80dc1a"); }
-            if (chargeOpacity === void 0) { chargeOpacity = 1; }
-            if (chargeDarken === void 0) { chargeDarken = 0; }
-            if (chargeRadius === void 0) { chargeRadius = 40; }
-            if (chargeJitterRadius === void 0) { chargeJitterRadius = 4; }
-            if (rippleColor === void 0) { rippleColor = color.Color.rgb("#80dc1a"); }
-            if (rippleOpacity === void 0) { rippleOpacity = 1; }
-            if (rippleDarken === void 0) { rippleDarken = 0; }
-            if (rippleDuration === void 0) { rippleDuration = 5000; }
-            if (rippleSpread === void 0) { rippleSpread = 300; }
-            if (pressDelay === void 0) { pressDelay = 500; }
+            if (chargeColor === void 0) {
+                chargeColor = color.Color.rgb("#80dc1a");
+            }
+            if (chargeOpacity === void 0) {
+                chargeOpacity = 1;
+            }
+            if (chargeDarken === void 0) {
+                chargeDarken = 0;
+            }
+            if (chargeRadius === void 0) {
+                chargeRadius = 40;
+            }
+            if (chargeJitterRadius === void 0) {
+                chargeJitterRadius = 4;
+            }
+            if (rippleColor === void 0) {
+                rippleColor = color.Color.rgb("#80dc1a");
+            }
+            if (rippleOpacity === void 0) {
+                rippleOpacity = 1;
+            }
+            if (rippleDarken === void 0) {
+                rippleDarken = 0;
+            }
+            if (rippleDuration === void 0) {
+                rippleDuration = 5000;
+            }
+            if (rippleSpread === void 0) {
+                rippleSpread = 300;
+            }
+            if (pressDelay === void 0) {
+                pressDelay = 500;
+            }
             return {
                 chargeColor: chargeColor,
                 chargeOpacity: chargeOpacity,
@@ -417,8 +453,11 @@
     MirrorView.ChargeMode = ChargeMode;
     var ChargeView = (function (_super) {
         __extends(ChargeView, _super);
+
         function ChargeView(id, t0, originX, originY, phases, mode) {
-            if (mode === void 0) { mode = ChargeMode.from(); }
+            if (mode === void 0) {
+                mode = ChargeMode.from();
+            }
             var _this = _super.call(this) || this;
             _this.onPressDown = _this.onPressDown.bind(_this);
             _this.onChargeJitter = _this.onChargeJitter.bind(_this);
@@ -457,18 +496,17 @@
             if (mode.pressDelay > 0) {
                 _this._pressed = false;
                 _this._pressTimer = setTimeout(_this.onPressDown, mode.pressDelay);
-            }
-            else if (mode.pressDelay === 0) {
+            } else if (mode.pressDelay === 0) {
                 _this._pressed = true;
                 _this._pressTimer = 0;
                 _this.onChargeJitter();
-            }
-            else {
+            } else {
                 _this._pressed = false;
                 _this._pressTimer = 0;
             }
             return _this;
         }
+
         Object.defineProperty(ChargeView.prototype, "viewController", {
             get: function () {
                 return this._viewController;
@@ -555,8 +593,7 @@
                     context.strokeStyle = rippleColor.darker(rippleDarken).alpha(rippleOpacity - rippleOpacity * phase).toString();
                     context.lineWidth = 1;
                     context.stroke();
-                }
-                else if (phase >= 1) {
+                } else if (phase >= 1) {
                     ripples.splice(i, 1);
                     continue;
                 }
@@ -635,6 +672,7 @@
 
     var SwimMirrorViewController = (function (_super) {
         __extends(SwimMirrorViewController, _super);
+
         function SwimMirrorViewController(nodeRef) {
             var _this = _super.call(this) || this;
             _this.nodeRef = nodeRef;
@@ -642,6 +680,7 @@
             _this.chargesDownlink = null;
             return _this;
         }
+
         SwimMirrorViewController.prototype.viewDidMount = function (view) {
             this.ripplesDownlink = this.nodeRef.downlink()
                 .laneUri("ripples")
@@ -674,6 +713,7 @@
             }
             var color = charge.chargeColor.state.toString();
             var command = structure.Record.create(5)
+                .attr("Ripple")
                 .slot("id", id)
                 .slot("x", x)
                 .slot("y", y)
@@ -688,7 +728,7 @@
             var r = charge.chargeRadius.state / 2;
             var color = charge.chargeColor.state.toString();
             var command = structure.Record.create(6)
-                .attr("hold")
+                .attr("Remove")
                 .slot("id", id)
                 .slot("x", x)
                 .slot("y", y)
@@ -703,7 +743,7 @@
             var r = charge.chargeRadius.state / 2;
             var color = charge.chargeColor.state.toString();
             var command = structure.Record.create(6)
-                .attr("move")
+                .attr("Move")
                 .slot("id", id)
                 .slot("x", x)
                 .slot("y", y)
@@ -714,7 +754,7 @@
         SwimMirrorViewController.prototype.mirrorDidPressUp = function (charge, view) {
             var id = charge.id;
             var command = structure.Record.create(2)
-                .attr("up")
+                .attr("Remove")
                 .slot("id", id);
             this.nodeRef.command("charge", command);
         };
@@ -769,8 +809,7 @@
                 charge.chargeColor(color, tween)
                     .chargeRadius(chargeRadius, tween)
                     .rippleColor(color, tween);
-            }
-            else {
+            } else {
                 var mode = ChargeMode.from();
                 mode.chargeRadius = 0;
                 mode.chargeColor = color;
@@ -839,7 +878,7 @@
     exports.MirrorViewController = MirrorViewController;
     exports.SwimMirrorViewController = SwimMirrorViewController;
 
-    Object.defineProperty(exports, '__esModule', { value: true });
+    Object.defineProperty(exports, '__esModule', {value: true});
 
 }));
 //# sourceMappingURL=swim-ripple.js.map

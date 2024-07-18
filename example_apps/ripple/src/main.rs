@@ -22,7 +22,7 @@
 //! The web UI can then be found at:
 //!
 //! ```
-//! http://127.0.0.1:9002/ui/index.html
+//! http://127.0.0.1:9002/index.html
 //! ```
 
 use axum::body::Body;
@@ -48,12 +48,13 @@ use swimos_utilities::trigger::trigger;
 use crate::agent::{MirrorAgent, MirrorLifecycle};
 
 mod agent;
+mod util;
 
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 static HTML: HeaderValue = HeaderValue::from_static("text/html; charset=utf-8");
-const INDEX: &'static [u8] = include_bytes!("../ui/index.html");
-const RIPPLE: &'static [u8] = include_bytes!("../ui/swim-ripple.js");
-const RIPPLE_MAP: &'static [u8] = include_bytes!("../ui/swim-ripple.js.map");
+const INDEX: &[u8] = include_bytes!("../ui/index.html");
+const RIPPLE: &[u8] = include_bytes!("../ui/swim-ripple.js");
+const RIPPLE_MAP: &[u8] = include_bytes!("../ui/swim-ripple.js.map");
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -70,6 +71,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     Ok(())
 }
 
+/// Spawns the UI server on 0.0.0.0:9002.
+///
+/// # Arguments:
+/// * `shutdown_signal` - Future which completes when the server should terminate.
+/// * `shutdown_timeout` - How long to wait for the UI server to terminate before returning.
 async fn ui_server(
     shutdown_signal: Arc<Notify>,
     shutdown_timeout: Duration,
@@ -97,6 +103,7 @@ async fn ui_server(
     Ok(())
 }
 
+/// Spawns the Swim server on 0.0.0.0:9001.
 async fn run_swim_server() -> Result<(), Box<dyn Error + Send + Sync>> {
     let mirror_agent = AgentModel::from_fn(MirrorAgent::default, || {
         MirrorLifecycle::new(StdRng::from_entropy()).into_lifecycle()
@@ -118,15 +125,19 @@ async fn run_swim_server() -> Result<(), Box<dyn Error + Send + Sync>> {
     Ok(())
 }
 
+/// Enables logging if `--enable-logging` was provided.
 fn example_logging() -> Result<(), Box<dyn Error + Send + Sync>> {
     let args = std::env::args().collect::<Vec<_>>();
     if args.get(1).map(String::as_str) == Some("--enable-logging") {
-        let filter = example_util::example_filter()?.add_directive(LevelFilter::WARN.into());
+        let filter = example_util::example_filter()?
+            .add_directive("ripple=trace".parse()?)
+            .add_directive(LevelFilter::WARN.into());
         tracing_subscriber::fmt().with_env_filter(filter).init();
     }
     Ok(())
 }
 
+/// Builds the Axum router for serving the UI.
 pub fn ui_server_router() -> Router {
     Router::new()
         .route("/index.html", get(|| response(INDEX)))
@@ -137,6 +148,7 @@ pub fn ui_server_router() -> Router {
         )
 }
 
+/// Axum method router handler which returns `bytes` as the response body.
 async fn response(bytes: &'static [u8]) -> impl IntoResponse {
     let headers = [
         (header::CONTENT_TYPE, HTML.clone()),

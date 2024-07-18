@@ -13,7 +13,6 @@
 // limitations under the License.
 
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -22,104 +21,155 @@ use futures::stream::unfold;
 use futures::StreamExt;
 use parking_lot::Mutex;
 use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
-use tokio::time::sleep;
-
 use swimos::agent::agent_lifecycle::HandlerContext;
 use swimos::agent::event_handler::{EventHandler, HandlerActionExt, Sequentially};
 use swimos::agent::lanes::{CommandLane, MapLane, ValueLane};
 use swimos::agent::{lifecycle, projections, AgentLaneModel};
-use swimos::model::{Text, Timestamp, ValueKind};
-use swimos_form::read::{
-    ExpectedEvent, ReadError, ReadEvent, Recognizer, RecognizerReadable, SimpleAttrBody,
-    SimpleRecBody,
-};
-use swimos_form::write::{PrimitiveWriter, StructuralWritable, StructuralWriter};
+use swimos::model::Timestamp;
+
 use swimos_form::Form;
+use tokio::time::sleep;
+use tracing::{info, trace};
 
 const TAG: &str = "swim0";
-type Id = String;
 type Rand = Arc<Mutex<StdRng>>;
 
-#[derive(Clone, Debug, Form)]
+/// Ripple identifier.
+#[derive(Clone, Debug, Form, Eq, Hash, PartialEq, PartialOrd, Ord)]
+pub enum Id {
+    /// System-generated event.
+    System(String),
+    /// User-generated event. Tuple of a base64 encoded byte array and a string containing "mouse".
+    User(String, String),
+}
+
+/// Ripple configuration.
+#[derive(Copy, Clone, Debug, Form)]
 #[form(fields_convention = "camel")]
 pub struct Config {
-    min_ripples: usize,
-    max_ripples: usize,
+    /// The minimum number of ripples to generate for an event.
+    min_phases: usize,
+    /// The maximum number of ripples to generate for an event.
+    max_phases: usize,
+    /// The maximum time that a ripple should stay in the UI.
     ripple_duration: usize,
+    /// Ripple ease time.
     ripple_spread: usize,
 }
 
 impl Config {
-    pub const MIN_RIPPLES: usize = 2;
-    pub const MAX_RIPPLES: usize = 5;
+    /// Default minimum number of phases to generate for a ripple.
+    pub const MIN_PHASES: usize = 2;
+    /// Default maximum number of phases to generate for a ripple.
+    pub const MAX_PHASES: usize = 5;
+    /// Minimum delay to wait between generating ripples.
+    pub const MIN_DELAY: u64 = 500;
+    /// Maximum delay to wait between generating ripples.
+    pub const MAX_DELAY: u64 = 2000;
 }
 
 impl Default for Config {
     fn default() -> Self {
         Config {
-            min_ripples: Self::MIN_RIPPLES,
-            max_ripples: Self::MAX_RIPPLES,
+            min_phases: Self::MIN_PHASES,
+            max_phases: Self::MAX_PHASES,
             ripple_duration: 5000,
             ripple_spread: 3000,
         }
     }
 }
 
+/// Web Agent for mirroring ripples.
 #[derive(AgentLaneModel)]
 #[projections]
 pub struct MirrorAgent {
+    /// The current configuration for the universe.
     mode: ValueLane<Config>,
+    /// Lane for receiving commands to publish new ripples.
     ripple: CommandLane<Ripple>,
+    /// Lane for propagating the most recent ripple.
     ripples: ValueLane<Ripple>,
+    /// Lane for receiving commands to publish new charges.
     charge: CommandLane<ChargeAction>,
+    /// Lane for propagating charges.
     charges: MapLane<Id, Charge>,
 }
 
+/// A charge model.
+///
+/// A charge is an event generated when a user is holding their left mouse button down and moving it
+/// around the screen.
 #[derive(Debug, Form, Clone)]
 pub struct Charge {
+    /// The ID of the user which is generating the charge.
     id: Id,
+    /// The charge's current X position.
     x: f64,
+    /// The charge's current Y position.
     y: f64,
+    /// The color of the charge.
     color: Color,
+    /// The radius of the charge.
     #[form(name = "r")]
     radius: i32,
+    /// The time which the charge was created.
     #[form(name = "t0")]
     created: Timestamp,
+    /// The time which the charge was last updated.
     #[form(name = "t")]
     updated: Timestamp,
 }
 
+/// A charge event action.
 #[derive(Debug, Form, Clone)]
 pub enum ChargeAction {
-    Hold {
+    /// Create a new charge event.
+    Create {
+        /// The ID of the user which is generating the charge.
         id: Id,
+        /// The charge's current X position.
         x: f64,
+        /// The charge's current Y position.
         y: f64,
+        /// The color of the charge.
         color: Color,
+        /// The radius of the charge.
         #[form(name = "r")]
         radius: i32,
     },
+    /// Move the charge to the new position. Updating the last updated timestamp to ensure that it
+    /// is not pruned.
     Move {
+        /// The ID of the user which is generating the charge.
         id: Id,
+        /// The charge's current X position.
         x: f64,
+        /// The charge's current Y position.
         y: f64,
+        /// The color of the charge.
         color: Color,
+        /// The radius of the charge.
         #[form(name = "r")]
         radius: i32,
     },
-    // todo: weird name?
-    Up {
+    /// Remove the charge.
+    Remove {
+        /// The ID of the charge to remove.
         id: Id,
     },
 }
 
+/// The agent's lifecycle.
 #[derive(Clone)]
 pub struct MirrorLifecycle {
+    /// The random number generator to use.
     rng: Arc<Mutex<StdRng>>,
 }
 
 impl MirrorLifecycle {
+    /// Creates a new lifecycle which will use `rng` when generating events.
     pub fn new(rng: StdRng) -> MirrorLifecycle {
         MirrorLifecycle {
             rng: Arc::new(Mutex::new(rng)),
@@ -127,253 +177,189 @@ impl MirrorLifecycle {
     }
 }
 
-const MIN_DELAY: u64 = 500;
-const MAX_DELAY: u64 = 2000;
-
 #[lifecycle(MirrorAgent)]
 impl MirrorLifecycle {
+    /// Lifecycle event handler which is invoked exactly once when the agent starts.
+    ///
+    /// The handler will spawn a stream which will generate random ripples and prune charges.
     #[on_start]
     pub fn on_start(&self, context: HandlerContext<MirrorAgent>) -> impl EventHandler<MirrorAgent> {
-        println!("Started agent");
         let rng = self.rng.clone();
         let stream = unfold((rng, Duration::default()), move |(rng, delay)| async move {
             sleep(delay).await;
 
             let handler =
-                generate_ripple(context, rng.clone()).followed_by(cleanup_ripples(context));
+                generate_ripple(context, rng.clone()).followed_by(cleanup_charges(context));
             let next_delay = {
                 let rng = &mut *rng.lock();
-                Duration::from_millis(rng.gen_range(MIN_DELAY..=MAX_DELAY))
+                Duration::from_millis(rng.gen_range(Config::MIN_DELAY..=Config::MAX_DELAY))
             };
 
             Some((handler, (rng, next_delay)))
         });
-        context.suspend_schedule(stream.boxed())
+        context
+            .get_agent_uri()
+            .and_then(move |uri| context.effect(move || info!(%uri, "Started agent")))
+            .followed_by(context.suspend_schedule(stream.boxed()))
     }
 
-    #[on_event(ripples)]
-    pub fn on_event(
-        &self,
-        context: HandlerContext<MirrorAgent>,
-        ripple: &Ripple,
-    ) -> impl EventHandler<MirrorAgent> {
-        let dbg = format!("{ripple:?}");
-        context.effect(move || {
-            println!("Latest ripple: {dbg}");
-        })
-    }
-
+    /// Lifecycle event handler which is invoked exactly once when a new ripple has been received by
+    /// the "ripple" lane. This handler will set the state of the "ripples" lane to the received
+    /// `ripple`.
     #[on_command(ripple)]
     pub fn on_ripple(
         &self,
         context: HandlerContext<MirrorAgent>,
         ripple: &Ripple,
     ) -> impl EventHandler<MirrorAgent> {
+        trace!(?ripple, "New ripple");
         context.set_value(MirrorAgent::RIPPLES, ripple.clone())
     }
 
+    /// Lifecycle event handler which is invoked exactly once when a new charge action has been
+    /// received by the "charge" lane.
     #[on_command(charge)]
     pub fn on_charge_action(
         &self,
         context: HandlerContext<MirrorAgent>,
         action: &ChargeAction,
     ) -> impl EventHandler<MirrorAgent> {
+        trace!(?action, "New charge action");
         match action.clone() {
-            ChargeAction::Hold {
+            ChargeAction::Create {
                 id,
                 x,
                 y,
                 color,
                 radius,
-            } => context
-                .update(
-                    MirrorAgent::CHARGES,
-                    id.clone(),
-                    Charge {
-                        id,
-                        x,
-                        y,
-                        color,
-                        radius,
-                        created: Timestamp::now(),
-                        updated: Timestamp::now(),
-                    },
-                )
-                .boxed(),
+            } => {
+                // Create a new charge
+                context
+                    .update(
+                        MirrorAgent::CHARGES,
+                        id.clone(),
+                        Charge {
+                            id,
+                            x,
+                            y,
+                            color,
+                            radius,
+                            created: Timestamp::now(),
+                            updated: Timestamp::now(),
+                        },
+                    )
+                    .boxed()
+            }
             ChargeAction::Move {
                 id,
                 x,
                 y,
                 color,
                 radius,
-            } => context
-                .get_entry(MirrorAgent::CHARGES, id.clone())
-                .and_then(move |entry: Option<Charge>| {
-                    let handler = match entry {
-                        Some(charge) => {
-                            let Charge { id, created, .. } = charge;
-                            let updated = Charge {
-                                id: id.clone(),
-                                x,
-                                y,
-                                color,
-                                radius,
-                                created,
-                                updated: Timestamp::now(),
-                            };
-                            Some(context.update(MirrorAgent::CHARGES, id, updated))
-                        }
-                        None => None,
-                    };
-                    handler.discard()
-                })
-                .boxed(),
-            ChargeAction::Up { id } => context.remove(MirrorAgent::CHARGES, id).boxed(),
+            } => {
+                // A 'charge' has moved, so we need to update its current state.
+                context
+                    .get_entry(MirrorAgent::CHARGES, id.clone())
+                    .and_then(move |entry: Option<Charge>| {
+                        let handler = match entry {
+                            Some(charge) => {
+                                let Charge { id, created, .. } = charge;
+                                let updated = Charge {
+                                    id: id.clone(),
+                                    x,
+                                    y,
+                                    color,
+                                    radius,
+                                    created,
+                                    // Update the timestamp to ensure that this charge isn't pruned
+                                    // by the 'cleanup_charges` function.
+                                    updated: Timestamp::now(),
+                                };
+                                Some(context.update(MirrorAgent::CHARGES, id, updated))
+                            }
+                            None => None,
+                        };
+                        handler.discard()
+                    })
+                    .boxed()
+            }
+            ChargeAction::Remove { id } => {
+                // A charge has ended so remove the corresponding entry.
+                context.remove(MirrorAgent::CHARGES, id).boxed()
+            }
         }
     }
 }
 
+/// A model of a ripple.
 #[derive(Debug, Form, Clone)]
 pub struct Ripple {
+    /// The ID of the user which is generated the ripple.
     id: Id,
+    /// The ripple's X position.
     x: f64,
+    /// The ripple's Y position.
     y: f64,
-    phases: Option<Vec<f64>>,
+    /// Phases are the subsequent ripples that are generated by a ripple.
+    phases: Vec<f64>,
+    /// The color of the charge.
     color: Color,
 }
 
 impl Default for Ripple {
     fn default() -> Self {
-        Ripple::from_color(
+        Ripple::random(
             &mut StdRng::from_entropy(),
-            Color::Green,
-            Config::MIN_RIPPLES,
-            Config::MAX_RIPPLES,
+            Config::MIN_PHASES,
+            Config::MAX_PHASES,
         )
     }
 }
 
 impl Ripple {
-    fn from_color(
-        rng: &mut StdRng,
-        color: Color,
-        min_ripples: usize,
-        max_ripples: usize,
-    ) -> Ripple {
-        let phases = (0..rng.gen_range(min_ripples..max_ripples))
+    /// Generate a random ripple.
+    ///
+    /// # Arguments:
+    /// * `rng` - The random number generator to use.
+    /// * `min_phases` - The minimum number of phases that this ripple will have.
+    /// * `rng` - The maximum number of phases that this ripple will have.
+    fn random(rng: &mut StdRng, min_phases: usize, max_phases: usize) -> Ripple {
+        let phases = (0..rng.gen_range(min_phases..max_phases))
             .map(|_| rng.gen::<f64>())
             .collect();
         Ripple {
-            id: TAG.to_string(),
+            id: Id::System(TAG.to_string()),
             x: rng.gen::<f64>(),
             y: rng.gen::<f64>(),
-            phases: Some(phases),
-            color,
+            phases,
+            color: Color::select_random(rng),
         }
     }
 }
 
+/// A color which is associated with a ripple or charge.
 #[derive(Debug, Copy, Clone)]
 pub enum Color {
+    /// #80dc1a.
     Green,
+    /// #c200fa.
     Magenta,
+    /// #56dbb6.
     Cyan,
 }
 
-impl RecognizerReadable for Color {
-    type Rec = ColorRecognizer;
-    type AttrRec = SimpleAttrBody<Self::Rec>;
-    type BodyRec = SimpleRecBody<Self::Rec>;
-
-    fn make_recognizer() -> Self::Rec {
-        ColorRecognizer
-    }
-
-    fn make_attr_recognizer() -> Self::AttrRec {
-        SimpleAttrBody::new(ColorRecognizer)
-    }
-
-    fn make_body_recognizer() -> Self::BodyRec {
-        SimpleRecBody::new(ColorRecognizer)
+impl Color {
+    /// Returns a random color generated using `rng`.
+    fn select_random(rng: &mut StdRng) -> Color {
+        [Color::Green, Color::Magenta, Color::Cyan]
+            .choose(rng)
+            .copied()
+            .expect("Slice was not empty")
     }
 }
 
-impl StructuralWritable for Color {
-    fn write_with<W: StructuralWriter>(
-        &self,
-        writer: W,
-    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        writer.write_text(self.as_ref())
-    }
-
-    fn write_into<W: StructuralWriter>(
-        self,
-        writer: W,
-    ) -> Result<<W as PrimitiveWriter>::Repr, <W as PrimitiveWriter>::Error> {
-        writer.write_text(self.as_ref())
-    }
-
-    fn num_attributes(&self) -> usize {
-        0
-    }
-}
-
-#[doc(hidden)]
-pub struct ColorRecognizer;
-
-impl Recognizer for ColorRecognizer {
-    type Target = Color;
-
-    fn feed_event(&mut self, input: ReadEvent<'_>) -> Option<Result<Self::Target, ReadError>> {
-        match input {
-            ReadEvent::TextValue(txt) => {
-                Some(
-                    Color::try_from(txt.as_ref()).map_err(|_| ReadError::Malformatted {
-                        text: txt.into(),
-                        message: Text::new("Not a valid color."),
-                    }),
-                )
-            }
-            ow => Some(Err(
-                ow.kind_error(ExpectedEvent::ValueEvent(ValueKind::Text))
-            )),
-        }
-    }
-
-    fn reset(&mut self) {}
-}
-
-impl Display for Color {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_ref())
-    }
-}
-
-impl AsRef<str> for Color {
-    fn as_ref(&self) -> &str {
-        match self {
-            Color::Green => "#00a6ed",
-            Color::Magenta => "#c200fa",
-            Color::Cyan => "#56dbb6",
-        }
-    }
-}
-
-pub struct ColorParseErr;
-
-impl TryFrom<&str> for Color {
-    type Error = ColorParseErr;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "#00a6ed" => Ok(Color::Green),
-            "#c200fa" => Ok(Color::Magenta),
-            "#56dbb6" => Ok(Color::Cyan),
-            _ => Err(ColorParseErr),
-        }
-    }
-}
-
+/// Returns an event handler which will generate a random ripple and set the state of the "ripples"
+/// lane to it.
 fn generate_ripple(
     context: HandlerContext<MirrorAgent>,
     rng: Rand,
@@ -381,14 +367,16 @@ fn generate_ripple(
     context
         .get_value(MirrorAgent::MODE)
         .and_then(move |mode: Config| {
-            let mut rng = &mut *rng.lock();
-            let ripple =
-                Ripple::from_color(&mut rng, Color::Green, mode.min_ripples, mode.max_ripples);
+            let rng = &mut *rng.lock();
+            let ripple = Ripple::random(rng, mode.min_phases, mode.max_phases);
             context.set_value(MirrorAgent::RIPPLES, ripple)
         })
 }
 
-fn cleanup_ripples(context: HandlerContext<MirrorAgent>) -> impl EventHandler<MirrorAgent> {
+/// Returns an event handler which will clean up any old charges which were not removed by the UI
+/// automatically. This may happen if the user's browser suddenly closes and a `ChargeAction::Remove`
+/// was not sent.
+fn cleanup_charges(context: HandlerContext<MirrorAgent>) -> impl EventHandler<MirrorAgent> {
     context
         .get_map(MirrorAgent::CHARGES)
         .and_then(move |charges: HashMap<Id, Charge>| {
@@ -396,11 +384,11 @@ fn cleanup_ripples(context: HandlerContext<MirrorAgent>) -> impl EventHandler<Mi
             let to_remove = charges
                 .values()
                 .filter_map(move |charge| {
-                    //
                     let diff = now - charge.updated.as_ref().time();
-                    if diff.num_hours() < 1 {
+                    if diff.num_minutes() < 1 {
                         None
                     } else {
+                        trace!("Removing charge: {:?}", charge.id);
                         Some(context.remove(MirrorAgent::CHARGES, charge.id.clone()))
                     }
                 })
