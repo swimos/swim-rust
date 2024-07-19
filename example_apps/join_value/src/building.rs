@@ -19,8 +19,8 @@ use swimos::agent::lanes::{CommandLane, JoinValueLane};
 use swimos::agent::projections;
 use swimos::agent::{lifecycle, AgentLaneModel};
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct BuildingAgent {
     lights: JoinValueLane<String, bool>,
     register_room: CommandLane<String>,

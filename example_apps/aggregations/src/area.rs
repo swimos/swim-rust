@@ -99,8 +99,8 @@ pub enum Action {
     Deregister(u64),
 }
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct AreaAgent {
     registrations: CommandLane<Action>,
     cars: JoinValueLane<u64, u64>,
@@ -146,6 +146,7 @@ impl AreaLifecycle {
                 .boxed_local(),
         }
     }
+
     #[on_update(cars)]
     fn cars(
         &self,

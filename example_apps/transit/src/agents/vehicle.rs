@@ -29,8 +29,8 @@ use tracing::{debug, info};
 use crate::model::vehicle::Vehicle;
 
 /// A agent representing the current state of a vehicle.
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 #[agent(transient, convention = "camel")]
 pub struct VehicleAgent {
     // Description of the vehicle.

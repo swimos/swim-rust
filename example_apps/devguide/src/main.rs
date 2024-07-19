@@ -46,8 +46,8 @@ pub enum Operation {
     Sub(i32),
 }
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct ExampleAgent {
     state: ValueLane<i32>,
     exec: CommandLane<Operation>,

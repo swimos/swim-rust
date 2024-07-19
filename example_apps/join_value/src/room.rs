@@ -18,8 +18,8 @@ use swimos::agent::lanes::ValueLane;
 use swimos::agent::projections;
 use swimos::agent::{lifecycle, AgentLaneModel};
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct RoomAgent {
     lights: ValueLane<bool>,
 }
