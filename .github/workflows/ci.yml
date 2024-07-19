@@ -152,11 +152,9 @@ jobs:
           - path: "stocks_simulated/ui"
             cmd: "npm install && npm run build"
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
       - name: Build UI
         run: |
-          ls -a -l
-          ls -a -l ${PWD}/example_apps/
-          ls -a -l ${PWD}/example_apps/stocks_simulated
-          ls -a -l ${PWD}/example_apps/stocks_simulated/ui
           cd ${PWD}/example_apps/${{ matrix.path }}/
           ${{ matrix.cmd }}
