@@ -5,5 +5,11 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
-#    ignore:
-#      - dependency-name: ""
+    reviewers:
+      - "SirCipher"
+      - "horned-sphere"
+  - package-ecosystem: "npm"
+    open-pull-requests-limit: 0
+    reviewers:
+      - "SirCipher"
+      - "horned-sphere"
