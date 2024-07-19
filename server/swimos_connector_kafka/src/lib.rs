@@ -16,7 +16,7 @@ pub mod config;
 pub mod deser;
 pub mod selector;
 
-use std::collections::HashMap;
+use std::{cell::RefCell, sync::Arc};
 
 use config::KafkaConnectorConfiguration;
 use futures::{stream::unfold, Future};
@@ -27,13 +27,18 @@ use rdkafka::{
     message::BorrowedMessage,
     ClientConfig, ClientContext, Message, Statistics, TopicPartitionList,
 };
+use selector::{Computed, InvalidLaneSpec, MapLaneSelector, ValueLaneSelector};
 use swimos_agent::{
     agent_lifecycle::{ConnectorContext, HandlerContext},
-    event_handler::{EventHandler, HandlerActionExt, TryHandlerActionExt, UnitHandler},
+    event_handler::{
+        EventHandler, HandlerActionExt, Sequentially, TryHandlerActionExt,
+        UnitHandler,
+    },
 };
 use swimos_model::Value;
 use swimos_utilities::trigger;
-use tokio::sync::mpsc;
+use thiserror::Error;
+use tokio::sync::{mpsc, Barrier, Semaphore};
 use tracing::{debug, error, info, warn};
 
 use swimos_connector::{Connector, ConnectorStream, GenericConnectorAgent, ValueLaneSelectorFn};
@@ -43,11 +48,15 @@ type ConnContext = ConnectorContext<GenericConnectorAgent>;
 
 pub struct KafkaConnector {
     configuration: KafkaConnectorConfiguration,
+    lanes: RefCell<Lanes>,
 }
 
 impl KafkaConnector {
     pub fn new(configuration: KafkaConnectorConfiguration) -> Self {
-        KafkaConnector { configuration }
+        KafkaConnector {
+            configuration,
+            lanes: Default::default(),
+        }
     }
 }
 
@@ -60,18 +69,22 @@ impl Connector for KafkaConnector {
         &self,
         init_complete: trigger::Sender,
     ) -> impl EventHandler<GenericConnectorAgent> + '_ {
-        let context: ConnContext = ConnContext::default();
+        let handler_context = ConnHandlerContext::default();
+        let KafkaConnector {
+            configuration,
+            lanes,
+        } = self;
+        let result = Lanes::try_from(configuration);
+        let handler = handler_context
+            .value(result)
+            .try_handler()
+            .and_then(|l: Lanes| {
+                let open_handler = l.open_lanes(init_complete);
+                *lanes.borrow_mut() = l;
+                open_handler
+            });
 
-        context.open_value_lane(BODY_LANE, |result| {
-            let handler_context = ConnHandlerContext::default();
-            handler_context
-                .value(result)
-                .try_handler()
-                .followed_by(handler_context.effect(move || {
-                    init_complete.trigger();
-                }))
-        });
-        UnitHandler::default()
+        handler
     }
 
     fn on_stop(&self) -> impl EventHandler<GenericConnectorAgent> + '_ {
@@ -79,7 +92,7 @@ impl Connector for KafkaConnector {
     }
 
     fn create_stream(&self) -> Result<impl ConnectorStream<KafkaError>, Self::StreamError> {
-        let KafkaConnector { configuration } = self;
+        let KafkaConnector { configuration, .. } = self;
         let mut client_builder = ClientConfig::new();
         configuration.properties.iter().for_each(|(k, v)| {
             client_builder.set(k, v);
@@ -145,6 +158,7 @@ impl ConsumerContext for KafkaClientContext {
 }
 
 const BODY_LANE: &str = "body";
+
 
 fn message_to_handler<'a>(
     message: &'a BorrowedMessage<'a>,
@@ -264,4 +278,111 @@ where
 pub enum MessagePart {
     Key,
     Value,
+}
+
+#[derive(Debug, Default)]
+struct Lanes {
+    total_lanes: u32,
+    value_lanes: Vec<ValueLaneSelector>,
+    map_lanes: Vec<MapLaneSelector>,
+}
+
+#[derive(Clone, Debug, Error)]
+enum InvalidLanes {
+    #[error(transparent)]
+    Spec(#[from] InvalidLaneSpec),
+    #[error("The connector has {0} lanes which cannot fit in a u32.")]
+    TooManyLanes(usize),
+}
+
+impl TryFrom<&KafkaConnectorConfiguration> for Lanes {
+    type Error = InvalidLanes;
+
+    fn try_from(value: &KafkaConnectorConfiguration) -> Result<Self, Self::Error> {
+        let KafkaConnectorConfiguration {
+            value_lanes,
+            map_lanes,
+            ..
+        } = value;
+        let value_selectors = value_lanes
+            .iter()
+            .map(ValueLaneSelector::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+        let map_selectors = map_lanes
+            .iter()
+            .map(MapLaneSelector::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+        let total = value_selectors.len() + map_selectors.len();
+        let total_lanes = if let Ok(n) = u32::try_from(total) {
+            n
+        } else {
+            return Err(InvalidLanes::TooManyLanes(total));
+        };
+        Ok(Lanes {
+            value_lanes: value_selectors,
+            map_lanes: map_selectors,
+            total_lanes,
+        })
+    }
+}
+
+impl Lanes {
+    fn open_lanes(
+        &self,
+        init_complete: trigger::Sender,
+    ) -> impl EventHandler<GenericConnectorAgent> + 'static {
+        let handler_context: HandlerContext<GenericConnectorAgent> = HandlerContext::default();
+        let context: ConnectorContext<GenericConnectorAgent> = ConnectorContext::default();
+        let Lanes {
+            value_lanes,
+            map_lanes,
+            total_lanes,
+        } = self;
+
+        let semaphore = Arc::new(Semaphore::new(0));
+
+        let wait_handle = semaphore.clone();
+        let total = *total_lanes;
+        let await_done = async move {
+            let result = wait_handle.acquire_many(total).await.map(|_| ());
+            handler_context
+                .value(result)
+                .try_handler()
+                .followed_by(handler_context.effect(|| {
+                    let _ = init_complete.trigger();
+                }))
+        };
+
+        let mut open_value_lanes = Vec::with_capacity(value_lanes.len());
+        let mut open_map_lanes = Vec::with_capacity(map_lanes.len());
+
+        for selector in value_lanes {
+            let sem_cpy = semaphore.clone();
+            open_value_lanes.push(context.open_value_lane(selector.name(), move |_| {
+                handler_context.effect(move || sem_cpy.add_permits(1))
+            }));
+        }
+
+        for selector in map_lanes {
+            let sem_cpy = semaphore.clone();
+            open_map_lanes.push(context.open_map_lane(selector.name(), move |_| {
+                handler_context.effect(move || sem_cpy.add_permits(1))
+            }));
+        }
+
+        handler_context
+            .suspend(await_done)
+            .followed_by(Sequentially::new(open_value_lanes))
+            .followed_by(Sequentially::new(open_map_lanes))
+            .discard()
+    }
+
+    fn handle_message(message: &BorrowedMessage<'_>, on_done: trigger::Sender) -> impl EventHandler<GenericConnectorAgent> + Send + Sync + 'static {
+
+        let topic = Value::text(message.topic());
+        let mut key = Computed::new(|| {
+            Value::Extant
+        });
+        UnitHandler::default()
+    }
 }

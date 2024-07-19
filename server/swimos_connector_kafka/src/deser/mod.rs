@@ -28,6 +28,14 @@ pub trait MessageDeserializer {
         message: &'a BorrowedMessage<'a>,
         part: MessagePart,
     ) -> Result<Value, Self::Error>;
+
+    fn boxed(self) -> BoxMessageDeserializer
+    where
+        Self: Sized + Send + 'static,
+        Self::Error: Send + 'static,
+    {
+        Box::new(BoxErrorDeserializer { inner: self })
+    }
 }
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -144,6 +152,8 @@ impl MessageDeserializer for JsonDeserializer {
 
 use apache_avro::{types::Value as AvroValue, Schema};
 use thiserror::Error;
+
+use crate::selector::DeserializationError;
 
 use super::MessagePart;
 
@@ -381,5 +391,45 @@ impl MessageDeserializer for UuidDeserializer {
         .unwrap_or_default();
         let x = u128::from_be_bytes(payload.try_into()?);
         Ok(Value::BigInt(x.into()))
+    }
+}
+
+pub struct BoxErrorDeserializer<D> {
+    inner: D,
+}
+
+impl<D: MessageDeserializer> MessageDeserializer for BoxErrorDeserializer<D>
+where
+    D::Error: Send + 'static {
+    type Error = DeserializationError;
+
+    fn deserialize<'a>(
+        &self,
+        message: &'a BorrowedMessage<'a>,
+        part: MessagePart,
+    ) -> Result<Value, Self::Error> {
+        self.inner.deserialize(message, part).map_err(DeserializationError::new)
+    }
+}
+
+pub type BoxMessageDeserializer = Box<dyn MessageDeserializer<Error = DeserializationError> + Send + 'static>;
+
+impl MessageDeserializer for BoxMessageDeserializer {
+    type Error = DeserializationError;
+
+    fn deserialize<'a>(
+        &self,
+        message: &'a BorrowedMessage<'a>,
+        part: MessagePart,
+    ) -> Result<Value, Self::Error> {
+        (**self).deserialize(message, part)
+    }
+
+    fn boxed(self) -> BoxMessageDeserializer
+    where
+        Self: Sized + Send + 'static,
+        Self::Error: Send + 'static,
+    {
+        self
     }
 }

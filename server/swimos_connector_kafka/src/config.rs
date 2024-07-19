@@ -15,9 +15,8 @@
 use std::collections::HashMap;
 
 use rdkafka::config::RDKafkaLogLevel;
-use thiserror::Error;
 
-use crate::selector::{parse_selector, BadSelector, LaneSelector};
+use crate::deser::BoxMessageDeserializer;
 
 #[derive(Clone, Debug)]
 pub struct KafkaConnectorConfiguration {
@@ -25,6 +24,8 @@ pub struct KafkaConnectorConfiguration {
     pub log_level: RDKafkaLogLevel,
     pub value_lanes: Vec<ValueLaneSpec>,
     pub map_lanes: Vec<MapLaneSpec>,
+    pub key_deserializer: fn() -> BoxMessageDeserializer,
+    pub value_deserializer: fn() -> BoxMessageDeserializer,
 }
 
 #[derive(Clone, Debug)]
