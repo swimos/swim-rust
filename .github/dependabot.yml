@@ -9,6 +9,7 @@ updates:
       - "SirCipher"
       - "horned-sphere"
   - package-ecosystem: "npm"
+    directory: "/"
     schedule:
       interval: "daily"
     open-pull-requests-limit: 0
