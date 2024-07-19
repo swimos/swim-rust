@@ -9,6 +9,8 @@ updates:
       - "SirCipher"
       - "horned-sphere"
   - package-ecosystem: "npm"
+    schedule:
+      interval: "daily"
     open-pull-requests-limit: 0
     reviewers:
       - "SirCipher"
