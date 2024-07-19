@@ -154,5 +154,5 @@ jobs:
     steps:
       - name: Build UI
         run: |
-          cd example_apps/${{ matrix.path }}
+          cd ${PWD}/example_apps/${{ matrix.path }}
           ${{ matrix.cmd }}
