@@ -21,6 +21,7 @@ binaries for their corresponding client applications. Each directory contains de
 - [map_store_persistence](map_store_persistence): Application demonstrating Map Stores with persistence.
 - [ripple](ripple): Real-time synchronous shared multiplayer experience.
 - [supply_lane](supply_lane): Application demonstrating Supply Lanes.
+- [stocks_simulated](stocks_simulated): Application demonstrating simulated stock market data.
 - [time_series](time_series): Reference code for the [Time Series](https://www.swimos.org/server/rust/time-series/)
   guide.
 - [transit](transit): Rust port of the [Transit](https://github.com/swimos/transit) application.
