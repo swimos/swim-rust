@@ -148,7 +148,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        includes:
+        include:
           - path: "stocks_simulated/ui"
             cmd: "npm install && npm run build"
     steps:
