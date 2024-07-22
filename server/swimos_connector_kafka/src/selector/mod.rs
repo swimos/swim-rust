@@ -14,11 +14,11 @@
 
 use std::{fmt::Debug, num::ParseIntError, sync::OnceLock};
 
-use frunk::Coproduct;
+use frunk::Coprod;
 use regex::Regex;
 use swimos_agent::{
     agent_lifecycle::ConnectorContext,
-    event_handler::{EventHandler, HandlerActionExt},
+    event_handler::{Discard, EventHandler, HandlerActionExt},
 };
 use swimos_connector::{GenericConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 use swimos_model::{Attr, Item, Text, Value};
@@ -28,6 +28,7 @@ use crate::{
     config::{MapLaneSpec, ValueLaneSpec},
     MessagePart,
 };
+use swimos_agent::lanes::{MapLaneSelectRemove, MapLaneSelectUpdate, ValueLaneSelectSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageField {
@@ -50,33 +51,20 @@ impl From<MessagePart> for MessageField {
 pub struct DeserializationError(Box<dyn std::error::Error + Send + 'static>);
 
 impl DeserializationError {
-
     pub fn new<E>(error: E) -> Self
-    where 
+    where
         E: std::error::Error + Send + 'static,
     {
         DeserializationError(Box::new(error))
     }
-
 }
 
-
-pub trait Deferred<'a> {
-    fn get(&'a mut self) -> Result<&'a Value, DeserializationError>;
+pub trait Deferred {
+    fn get(&mut self) -> Result<&Value, DeserializationError>;
 }
 
 pub trait Selector: Debug {
     fn select<'a>(&self, value: &'a Value) -> Option<&'a Value>;
-}
-
-struct Immediate {
-    inner: Value,
-}
-
-impl<'a> Deferred<'a> for Immediate {
-    fn get(&'a mut self) -> Result<&'a Value, DeserializationError> {
-        Ok(&self.inner)
-    }
 }
 
 pub struct Computed<F> {
@@ -84,19 +72,20 @@ pub struct Computed<F> {
     f: F,
 }
 
-impl<F> Computed<F> {
-
-    pub fn new(f: F) -> Self {
-        Computed { inner: None, f}
-    }
-
-}
-
-impl<'a, F> Deferred<'a> for Computed<F>
+impl<F> Computed<F>
 where
     F: Fn() -> Result<Value, DeserializationError>,
 {
-    fn get(&'a mut self) -> Result<&'a Value, DeserializationError> {
+    pub fn new(f: F) -> Self {
+        Computed { inner: None, f }
+    }
+}
+
+impl<F> Deferred for Computed<F>
+where
+    F: Fn() -> Result<Value, DeserializationError>,
+{
+    fn get(&mut self) -> Result<&Value, DeserializationError> {
         let Computed { inner, f } = self;
         if let Some(v) = inner {
             Ok(v)
@@ -132,8 +121,8 @@ impl LaneSelector {
         value: &'a mut V,
     ) -> Result<Option<&'a Value>, DeserializationError>
     where
-        K: Deferred<'a> + 'a,
-        V: Deferred<'a> + 'a,
+        K: Deferred + 'a,
+        V: Deferred + 'a,
     {
         Ok(match self {
             LaneSelector::Topic => Some(topic),
@@ -297,7 +286,7 @@ impl Selector for ChainSelector {
     }
 }
 
-pub type BoxSelector = Box<dyn Selector + Send + 'static>;
+pub type BoxSelector = Box<dyn Selector + Send + Sync + 'static>;
 
 impl Selector for BoxSelector {
     fn select<'a>(&self, value: &'a Value) -> Option<&'a Value> {
@@ -805,8 +794,12 @@ pub enum LaneSelectorError {
     DeserializationFailed(#[from] DeserializationError),
 }
 
-impl ValueLaneSelector {
+pub type Urg = Box<dyn EventHandler<GenericConnectorAgent> + Send + Sync + 'static>;
 
+pub type GenericValueLaneSet =
+    Discard<Option<ValueLaneSelectSet<GenericConnectorAgent, Value, ValueLaneSelectorFn>>>;
+
+impl ValueLaneSelector {
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -816,22 +809,21 @@ impl ValueLaneSelector {
         topic: &Value,
         key: &mut K,
         value: &mut V,
-    ) -> Result<impl EventHandler<GenericConnectorAgent> + Send + 'static, LaneSelectorError>
+    ) -> Result<GenericValueLaneSet, LaneSelectorError>
     where
-        K: for<'a> Deferred<'a>,
-        V: for<'a> Deferred<'a>,
+        K: Deferred,
+        V: Deferred,
     {
         let ValueLaneSelector {
             name,
             selector,
             required,
         } = self;
-        let context: ConnectorContext<GenericConnectorAgent> = Default::default();
         let maybe_value = selector.select(topic, key, value)?;
         let handler = match maybe_value {
             Some(value) => {
                 let select_lane = ValueLaneSelectorFn::new(name.clone());
-                Some(context.set_value(select_lane, value.clone()))
+                Some(ValueLaneSelectSet::new(select_lane, value.clone()))
             }
             None => {
                 if *required {
@@ -845,8 +837,15 @@ impl ValueLaneSelector {
     }
 }
 
-impl MapLaneSelector {
+pub type MapLaneUpdate =
+    MapLaneSelectUpdate<GenericConnectorAgent, Value, Value, MapLaneSelectorFn>;
+pub type MapLaneRemove =
+    MapLaneSelectRemove<GenericConnectorAgent, Value, Value, MapLaneSelectorFn>;
+pub type MapLaneOp = Coprod!(MapLaneUpdate, MapLaneRemove);
 
+pub type GenericMapLaneOp = Discard<Option<MapLaneOp>>;
+
+impl MapLaneSelector {
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -856,10 +855,10 @@ impl MapLaneSelector {
         topic: &Value,
         key: &mut K,
         value: &mut V,
-    ) -> Result<impl EventHandler<GenericConnectorAgent> + Send + 'static, LaneSelectorError>
+    ) -> Result<GenericMapLaneOp, LaneSelectorError>
     where
-        K: for<'a> Deferred<'a>,
-        V: for<'a> Deferred<'a>,
+        K: Deferred,
+        V: Deferred,
     {
         let MapLaneSelector {
             name,
@@ -872,12 +871,14 @@ impl MapLaneSelector {
         let maybe_key: Option<Value> = key_selector.select(topic, key, value)?.cloned();
         let maybe_value = value_selector.select(topic, key, value)?;
         let select_lane = MapLaneSelectorFn::new(name.clone());
-        let handler = match (maybe_key, maybe_value) {
-            (None, _) if *required => return Err(LaneSelectorError::MissingRequiredField(name.clone())),
-            (Some(key), None) if *remove_when_no_value => {
-                Some(Coproduct::Inr(context.remove(select_lane, key)))
+        let handler: Option<MapLaneOp> = match (maybe_key, maybe_value) {
+            (None, _) if *required => {
+                return Err(LaneSelectorError::MissingRequiredField(name.clone()))
             }
-            (Some(key), Some(value)) => Some(Coproduct::Inl(context.update(
+            (Some(key), None) if *remove_when_no_value => {
+                Some(MapLaneOp::inject(context.remove(select_lane, key)))
+            }
+            (Some(key), Some(value)) => Some(MapLaneOp::inject(context.update(
                 select_lane,
                 key,
                 value.clone(),

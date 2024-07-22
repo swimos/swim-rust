@@ -19,6 +19,7 @@ pub mod selector;
 use std::{cell::RefCell, sync::Arc};
 
 use config::KafkaConnectorConfiguration;
+use deser::BoxMessageDeserializer;
 use futures::{stream::unfold, Future};
 use rdkafka::{
     config::RDKafkaLogLevel,
@@ -27,21 +28,20 @@ use rdkafka::{
     message::BorrowedMessage,
     ClientConfig, ClientContext, Message, Statistics, TopicPartitionList,
 };
-use selector::{Computed, InvalidLaneSpec, MapLaneSelector, ValueLaneSelector};
+use selector::{Computed, InvalidLaneSpec, LaneSelectorError, MapLaneSelector, ValueLaneSelector};
 use swimos_agent::{
     agent_lifecycle::{ConnectorContext, HandlerContext},
     event_handler::{
-        EventHandler, HandlerActionExt, Sequentially, TryHandlerActionExt,
-        UnitHandler,
+        EventHandler, HandlerActionExt, Sequentially, TryHandlerActionExt, UnitHandler,
     },
 };
 use swimos_model::Value;
 use swimos_utilities::trigger;
 use thiserror::Error;
-use tokio::sync::{mpsc, Barrier, Semaphore};
+use tokio::sync::{mpsc, Semaphore};
 use tracing::{debug, error, info, warn};
 
-use swimos_connector::{Connector, ConnectorStream, GenericConnectorAgent, ValueLaneSelectorFn};
+use swimos_connector::{Connector, ConnectorStream, GenericConnectorAgent};
 
 type ConnHandlerContext = HandlerContext<GenericConnectorAgent>;
 type ConnContext = ConnectorContext<GenericConnectorAgent>;
@@ -62,8 +62,16 @@ impl KafkaConnector {
 
 type LoggingConsumer = StreamConsumer<KafkaClientContext>;
 
+#[derive(Debug, Error)]
+pub enum KafkaConnectorError {
+    #[error(transparent)]
+    Kafka(#[from] KafkaError),
+    #[error(transparent)]
+    Lane(#[from] LaneSelectorError),
+}
+
 impl Connector for KafkaConnector {
-    type StreamError = KafkaError;
+    type StreamError = KafkaConnectorError;
 
     fn on_start(
         &self,
@@ -91,8 +99,19 @@ impl Connector for KafkaConnector {
         UnitHandler::default()
     }
 
-    fn create_stream(&self) -> Result<impl ConnectorStream<KafkaError>, Self::StreamError> {
-        let KafkaConnector { configuration, .. } = self;
+    fn create_stream(
+        &self,
+    ) -> Result<impl ConnectorStream<KafkaConnectorError>, Self::StreamError> {
+        let KafkaConnector {
+            configuration,
+            lanes,
+        } = self;
+        let selector = MessageSelector::new(
+            (configuration.key_deserializer)(),
+            (configuration.value_deserializer)(),
+            lanes.take(),
+        );
+
         let mut client_builder = ClientConfig::new();
         configuration.properties.iter().for_each(|(k, v)| {
             client_builder.set(k, v);
@@ -101,7 +120,8 @@ impl Connector for KafkaConnector {
             .set_log_level(configuration.log_level)
             .create_with_context::<_, LoggingConsumer>(KafkaClientContext)?;
         let (tx, rx) = mpsc::channel(1);
-        let state = MessageState::new(consumer, message_to_handler, tx);
+
+        let state = MessageState::new(consumer, selector, message_to_handler, tx);
         let consumer_task = Box::pin(state.consume_messages());
         let stream_src = MessageTasks::new(consumer_task, rx);
         Ok(stream_src.into_stream())
@@ -157,52 +177,50 @@ impl ConsumerContext for KafkaClientContext {
     }
 }
 
-const BODY_LANE: &str = "body";
-
-
 fn message_to_handler<'a>(
+    selector: &'a MessageSelector,
     message: &'a BorrowedMessage<'a>,
     trigger_tx: trigger::Sender,
-) -> impl EventHandler<GenericConnectorAgent> + Send + 'static {
-    let context: ConnectorContext<GenericConnectorAgent> = ConnectorContext::default();
-    let handler_context: HandlerContext<GenericConnectorAgent> = HandlerContext::default();
-    let set_body = if let Some(Ok(body)) = message.payload_view::<str>() {
-        Some(context.set_value(
-            ValueLaneSelectorFn::new(BODY_LANE.to_string()),
-            Value::from(body),
-        ))
-    } else {
-        None
-    };
-    set_body.followed_by(handler_context.effect(move || {
-        trigger_tx.trigger();
-    }))
+) -> Result<impl EventHandler<GenericConnectorAgent> + Send + 'static, LaneSelectorError> {
+    selector.handle_message(message, trigger_tx)
 }
 
 struct MessageState<F, H> {
     consumer: LoggingConsumer,
+    selector: MessageSelector,
     to_handler: F,
     tx: mpsc::Sender<H>,
 }
 
-impl<F, H> MessageState<F, H> {
-    fn new(consumer: LoggingConsumer, to_handler: F, tx: mpsc::Sender<H>) -> Self {
+impl<F, H> MessageState<F, H>
+where
+    F: for<'a> Fn(
+            &'a MessageSelector,
+            &'a BorrowedMessage<'a>,
+            trigger::Sender,
+        ) -> Result<H, LaneSelectorError>
+        + Send
+        + 'static,
+    H: EventHandler<GenericConnectorAgent> + Send + 'static,
+{
+    fn new(
+        consumer: LoggingConsumer,
+        selector: MessageSelector,
+        to_handler: F,
+        tx: mpsc::Sender<H>,
+    ) -> Self {
         MessageState {
             consumer,
+            selector,
             to_handler,
             tx,
         }
     }
-}
 
-impl<F, H> MessageState<F, H>
-where
-    F: for<'a> Fn(&'a BorrowedMessage<'a>, trigger::Sender) -> H + Send + Sync + 'static,
-    H: EventHandler<GenericConnectorAgent> + Send + 'static,
-{
-    async fn consume_messages(self) -> Result<(), KafkaError> {
+    async fn consume_messages(self) -> Result<(), KafkaConnectorError> {
         let MessageState {
             consumer,
+            selector,
             to_handler,
             tx,
         } = &self;
@@ -214,7 +232,7 @@ where
             };
             let message = consumer.recv().await?;
             let (trigger_tx, trigger_rx) = trigger::trigger();
-            let handler = to_handler(&message, trigger_tx);
+            let handler = to_handler(selector, &message, trigger_tx)?;
             reservation.send(handler);
             let _ = trigger_rx.await;
             consumer.commit_message(&message, CommitMode::Async)?;
@@ -239,14 +257,14 @@ impl<F, H> MessageTasks<F, H> {
 
 impl<F, H> MessageTasks<F, H>
 where
-    F: Future<Output = Result<(), KafkaError>> + Send + Unpin + 'static,
+    F: Future<Output = Result<(), KafkaConnectorError>> + Send + Unpin + 'static,
     H: EventHandler<GenericConnectorAgent> + Send + 'static,
 {
-    fn into_stream(self) -> impl ConnectorStream<KafkaError> {
+    fn into_stream(self) -> impl ConnectorStream<KafkaConnectorError> {
         Box::pin(unfold(self, |s| s.next_handler()))
     }
 
-    async fn next_handler(mut self) -> Option<(Result<H, KafkaError>, Self)> {
+    async fn next_handler(mut self) -> Option<(Result<H, KafkaConnectorError>, Self)> {
         let MessageTasks { consume_fut, rx } = &mut self;
         if let Some(fut) = consume_fut {
             tokio::select! {
@@ -331,8 +349,8 @@ impl Lanes {
         &self,
         init_complete: trigger::Sender,
     ) -> impl EventHandler<GenericConnectorAgent> + 'static {
-        let handler_context: HandlerContext<GenericConnectorAgent> = HandlerContext::default();
-        let context: ConnectorContext<GenericConnectorAgent> = ConnectorContext::default();
+        let handler_context = ConnHandlerContext::default();
+        let context: ConnContext = ConnContext::default();
         let Lanes {
             value_lanes,
             map_lanes,
@@ -376,13 +394,62 @@ impl Lanes {
             .followed_by(Sequentially::new(open_map_lanes))
             .discard()
     }
+}
 
-    fn handle_message(message: &BorrowedMessage<'_>, on_done: trigger::Sender) -> impl EventHandler<GenericConnectorAgent> + Send + Sync + 'static {
+struct MessageSelector {
+    key_deserializer: BoxMessageDeserializer,
+    value_deserializer: BoxMessageDeserializer,
+    lanes: Lanes,
+}
 
-        let topic = Value::text(message.topic());
-        let mut key = Computed::new(|| {
-            Value::Extant
-        });
-        UnitHandler::default()
+impl MessageSelector {
+    pub fn new(
+        key_deserializer: BoxMessageDeserializer,
+        value_deserializer: BoxMessageDeserializer,
+        lanes: Lanes,
+    ) -> Self {
+        MessageSelector {
+            key_deserializer,
+            value_deserializer,
+            lanes,
+        }
+    }
+
+    fn handle_message<'a>(
+        &self,
+        message: &'a BorrowedMessage<'a>,
+        on_done: trigger::Sender,
+    ) -> Result<impl EventHandler<GenericConnectorAgent> + Send + 'static, LaneSelectorError> {
+        let MessageSelector {
+            key_deserializer,
+            value_deserializer,
+            lanes,
+        } = self;
+        let Lanes {
+            value_lanes,
+            map_lanes,
+            ..
+        } = lanes;
+        let mut value_lane_handlers = Vec::with_capacity(value_lanes.len());
+        let mut map_lane_handlers = Vec::with_capacity(map_lanes.len());
+        {
+            let topic = Value::text(message.topic());
+            let mut key = Computed::new(|| key_deserializer.deserialize(message, MessagePart::Key));
+            let mut value =
+                Computed::new(|| value_deserializer.deserialize(message, MessagePart::Value));
+
+            for value_lane in value_lanes {
+                value_lane_handlers.push(value_lane.select_handler(&topic, &mut key, &mut value)?);
+            }
+            for map_lane in map_lanes {
+                map_lane_handlers.push(map_lane.select_handler(&topic, &mut key, &mut value)?);
+            }
+        }
+        let handler_context = ConnHandlerContext::default();
+        Ok(Sequentially::new(value_lane_handlers)
+            .followed_by(Sequentially::new(map_lane_handlers))
+            .followed_by(handler_context.effect(move || {
+                let _ = on_done.trigger();
+            })))
     }
 }

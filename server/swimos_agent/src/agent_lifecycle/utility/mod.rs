@@ -935,6 +935,7 @@ impl<Connector> Default for ConnectorContext<Connector> {
 }
 
 impl<Connector: 'static> ConnectorContext<Connector> {
+    
     pub fn open_value_lane<OnDone, H>(
         &self,
         name: &str,
@@ -976,7 +977,7 @@ impl<Connector: 'static> ConnectorContext<Connector> {
         item: F,
         key: K,
         value: V,
-    ) -> impl EventHandler<Connector> + Send + 'static
+    ) -> MapLaneSelectUpdate<Connector, K, V, F>
     where
         F: SelectorFn<Connector, Target = MapLane<K, V>> + Send + 'static,
         K: Send + Clone + Eq + Hash + 'static,
@@ -985,7 +986,7 @@ impl<Connector: 'static> ConnectorContext<Connector> {
         MapLaneSelectUpdate::new(item, key, value)
     }
 
-    pub fn remove<K, V, F>(&self, item: F, key: K) -> impl EventHandler<Connector> + Send + 'static
+    pub fn remove<K, V, F>(&self, item: F, key: K) -> MapLaneSelectRemove<Connector, K, V, F>
     where
         F: SelectorFn<Connector, Target = MapLane<K, V>> + Send + 'static,
         K: Send + Clone + Eq + Hash + 'static,
@@ -994,7 +995,7 @@ impl<Connector: 'static> ConnectorContext<Connector> {
         MapLaneSelectRemove::new(item, key)
     }
 
-    pub fn clear<K, V, F>(&self, item: F) -> impl EventHandler<Connector> + Send + 'static
+    pub fn clear<K, V, F>(&self, item: F) -> MapLaneSelectClear<Connector, K, V, F>
     where
         F: SelectorFn<Connector, Target = MapLane<K, V>> + Send + 'static,
         K: Send + Clone + Eq + Hash + 'static,

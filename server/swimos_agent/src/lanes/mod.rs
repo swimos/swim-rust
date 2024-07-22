@@ -59,6 +59,12 @@ pub use self::{
     value::ValueLane,
 };
 
+#[doc(hidden)]
+pub use {
+    map::{MapLaneSelectClear, MapLaneSelectRemove, MapLaneSelectUpdate},
+    value::ValueLaneSelectSet,
+};
+
 /// Wrapper to allow projection function pointers to be exposed as event handler transforms
 /// for different types of lanes.
 pub struct ProjTransform<C, L> {

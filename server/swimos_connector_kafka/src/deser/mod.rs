@@ -24,14 +24,14 @@ pub trait MessageDeserializer {
     type Error: std::error::Error;
 
     fn deserialize<'a>(
-        &self,
-        message: &'a BorrowedMessage<'a>,
+        &'a self,
+        message: &'a BorrowedMessage<'_>,
         part: MessagePart,
     ) -> Result<Value, Self::Error>;
 
     fn boxed(self) -> BoxMessageDeserializer
     where
-        Self: Sized + Send + 'static,
+        Self: Sized + Send + Sync + 'static,
         Self::Error: Send + 'static,
     {
         Box::new(BoxErrorDeserializer { inner: self })
@@ -400,7 +400,8 @@ pub struct BoxErrorDeserializer<D> {
 
 impl<D: MessageDeserializer> MessageDeserializer for BoxErrorDeserializer<D>
 where
-    D::Error: Send + 'static {
+    D::Error: Send + 'static,
+{
     type Error = DeserializationError;
 
     fn deserialize<'a>(
@@ -408,11 +409,14 @@ where
         message: &'a BorrowedMessage<'a>,
         part: MessagePart,
     ) -> Result<Value, Self::Error> {
-        self.inner.deserialize(message, part).map_err(DeserializationError::new)
+        self.inner
+            .deserialize(message, part)
+            .map_err(DeserializationError::new)
     }
 }
 
-pub type BoxMessageDeserializer = Box<dyn MessageDeserializer<Error = DeserializationError> + Send + 'static>;
+pub type BoxMessageDeserializer =
+    Box<dyn MessageDeserializer<Error = DeserializationError> + Send + Sync + 'static>;
 
 impl MessageDeserializer for BoxMessageDeserializer {
     type Error = DeserializationError;
@@ -427,7 +431,7 @@ impl MessageDeserializer for BoxMessageDeserializer {
 
     fn boxed(self) -> BoxMessageDeserializer
     where
-        Self: Sized + Send + 'static,
+        Self: Sized + Send + Sync + 'static,
         Self::Error: Send + 'static,
     {
         self
