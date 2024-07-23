@@ -34,7 +34,8 @@ use crate::{
             MapLane, MapLaneClear, MapLaneEvent, MapLaneGet, MapLaneGetMap, MapLaneRemove,
             MapLaneSync, MapLaneTransformEntry, MapLaneUpdate,
         },
-        LaneItem,
+        LaneItem, MapLaneSelectClear, MapLaneSelectRemove, MapLaneSelectUpdate, Selector,
+        SelectorFn,
     },
     meta::AgentMetadata,
     test_context::dummy_context,
@@ -839,4 +840,199 @@ fn map_lane_with_entry_handler_present() {
         &agent,
     );
     check_result(result, false, false, Some(Some(V1.to_owned())));
+}
+
+struct TestSelectorFn(bool);
+
+impl SelectorFn<TestAgent> for TestSelectorFn {
+    type Target = MapLane<i32, String>;
+
+    fn selector(self, context: &TestAgent) -> impl Selector<Target = Self::Target> + '_ {
+        TestSelector(context, self.0)
+    }
+}
+
+struct TestSelector<'a>(&'a TestAgent, bool);
+
+impl<'a> Selector for TestSelector<'a> {
+    type Target = MapLane<i32, String>;
+
+    fn select(&self) -> Option<&Self::Target> {
+        let TestSelector(agent, good) = self;
+        if *good {
+            Some(&agent.lane)
+        } else {
+            None
+        }
+    }
+
+    fn name(&self) -> &str {
+        if self.1 {
+            "lane"
+        } else {
+            "other"
+        }
+    }
+}
+
+#[test]
+fn map_lane_select_update_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+
+    let mut handler = MapLaneSelectUpdate::new(TestSelectorFn(true), K1, V1.to_owned());
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, true, Some(()));
+
+    agent.lane.get_map(|map| {
+        assert_eq!(map.len(), 1);
+        assert_eq!(map.get(&K1).map(String::as_str), Some(V1));
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn map_lane_select_update_event_handler_missing() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+
+    let mut handler = MapLaneSelectUpdate::new(TestSelectorFn(false), K1, V1.to_owned());
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+
+    if let StepResult::Fail(EventHandlerError::LaneNotFound(name)) = result {
+        assert_eq!(name, "other");
+    } else {
+        panic!("Lane not found error expected.");
+    }
+}
+
+#[test]
+fn map_lane_select_remove_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneSelectRemove::new(TestSelectorFn(true), K1);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, true, Some(()));
+
+    agent.lane.get_map(|map| {
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get(&K2).map(String::as_str), Some(V2));
+        assert_eq!(map.get(&K3).map(String::as_str), Some(V3));
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn map_lane_select_remove_event_handler_missing() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneSelectRemove::new(TestSelectorFn(false), K1);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+
+    if let StepResult::Fail(EventHandlerError::LaneNotFound(name)) = result {
+        assert_eq!(name, "other");
+    } else {
+        panic!("Lane not found error expected.");
+    }
+}
+
+#[test]
+fn map_lane_select_clear_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneSelectClear::new(TestSelectorFn(true));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, true, Some(()));
+
+    agent.lane.get_map(|map| {
+        assert!(map.is_empty());
+    });
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn map_lane_select_clear_event_handler_missing() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneSelectClear::new(TestSelectorFn(false));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+
+    if let StepResult::Fail(EventHandlerError::LaneNotFound(name)) = result {
+        assert_eq!(name, "other");
+    } else {
+        panic!("Lane not found error expected.");
+    }
 }
