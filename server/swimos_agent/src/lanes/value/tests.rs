@@ -27,7 +27,7 @@ use crate::{
     item::ValueItem,
     lanes::{
         value::{ValueLaneGet, ValueLaneSync, ValueLaneWithValue},
-        LaneItem,
+        LaneItem, Selector, SelectorFn, ValueLaneSelectSet,
     },
     meta::AgentMetadata,
     test_context::dummy_context,
@@ -466,4 +466,91 @@ fn value_lane_with_value_event_handler() {
         result,
         StepResult::Fail(EventHandlerError::SteppedAfterComplete)
     ));
+}
+
+struct TestSelectorFn(bool);
+
+impl SelectorFn<TestAgent> for TestSelectorFn {
+    type Target = ValueLane<i32>;
+
+    fn selector(self, context: &TestAgent) -> impl Selector<Target = Self::Target> + '_ {
+        TestSelector(context, self.0)
+    }
+}
+
+struct TestSelector<'a>(&'a TestAgent, bool);
+
+impl<'a> Selector for TestSelector<'a> {
+    type Target = ValueLane<i32>;
+
+    fn select(&self) -> Option<&Self::Target> {
+        let TestSelector(agent, good) = self;
+        if *good {
+            Some(&agent.lane)
+        } else {
+            None
+        }
+    }
+
+    fn name(&self) -> &str {
+        if self.1 {
+            "lane"
+        } else {
+            "other"
+        }
+    }
+}
+
+#[test]
+fn value_lane_select_set_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+
+    let mut handler = ValueLaneSelectSet::new(TestSelectorFn(true), 5);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, true, Some(()));
+
+    assert!(agent.lane.store.has_data_to_write());
+    assert_eq!(agent.lane.read(|n| *n), 5);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+}
+
+#[test]
+fn value_lane_select_set_event_handler_missing() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::default();
+
+    let mut handler = ValueLaneSelectSet::new(TestSelectorFn(false), 5);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+
+    if let StepResult::Fail(EventHandlerError::LaneNotFound(name)) = result {
+        assert_eq!(name, "other");
+    } else {
+        panic!("Lane not found error expected.");
+    }
+
+    assert!(!agent.lane.store.has_data_to_write());
 }

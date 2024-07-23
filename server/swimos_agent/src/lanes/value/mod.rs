@@ -415,14 +415,15 @@ where
             projection_value, ..
         } = self;
         if let Some((projection, value)) = projection_value.take() {
-            if let Some(lane) = projection.selector(context).select() {
+            let selector = projection.selector(context);
+            if let Some(lane) = selector.select() {
                 lane.set(value);
                 StepResult::Complete {
                     modified_item: Some(Modification::of(lane.id())),
                     result: (),
                 }
             } else {
-                todo!()
+                StepResult::Fail(EventHandlerError::LaneNotFound(selector.name().to_string()))
             }
         } else {
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)
