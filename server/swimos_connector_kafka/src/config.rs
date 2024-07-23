@@ -26,17 +26,18 @@ use crate::deser::{
     ReconDeserializer, StringDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Form)]
+#[form(tag = "kafka")]
 pub struct KafkaConnectorConfiguration {
     pub properties: HashMap<String, String>,
-    pub log_level: RDKafkaLogLevel,
+    pub log_level: KafkaLogLevel,
     pub value_lanes: Vec<ValueLaneSpec>,
     pub map_lanes: Vec<MapLaneSpec>,
     pub key_deserializer: DeserializationFormat,
     pub value_deserializer: DeserializationFormat,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Form)]
 pub struct ValueLaneSpec {
     pub name: Option<String>,
     pub selector: String,
@@ -53,7 +54,7 @@ impl ValueLaneSpec {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Form)]
 pub struct MapLaneSpec {
     pub name: String,
     pub key_selector: String,
@@ -142,6 +143,33 @@ impl DeserializationFormat {
                     Ok(AvroDeserializer::default().boxed())
                 }
             }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Form)]
+pub enum KafkaLogLevel {
+    Emerg,
+    Alert,
+    Critical,
+    Error,
+    Warning,
+    Notice,
+    Info,
+    Debug,
+}
+
+impl From<KafkaLogLevel> for RDKafkaLogLevel {
+    fn from(value: KafkaLogLevel) -> Self {
+        match value {
+            KafkaLogLevel::Emerg => RDKafkaLogLevel::Emerg,
+            KafkaLogLevel::Alert => RDKafkaLogLevel::Alert,
+            KafkaLogLevel::Critical => RDKafkaLogLevel::Critical,
+            KafkaLogLevel::Error => RDKafkaLogLevel::Error,
+            KafkaLogLevel::Warning => RDKafkaLogLevel::Warning,
+            KafkaLogLevel::Notice => RDKafkaLogLevel::Notice,
+            KafkaLogLevel::Info => RDKafkaLogLevel::Info,
+            KafkaLogLevel::Debug => RDKafkaLogLevel::Debug,
         }
     }
 }

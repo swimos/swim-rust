@@ -114,7 +114,7 @@ impl Connector for KafkaConnector {
             client_builder.set(k, v);
         });
         let consumer = client_builder
-            .set_log_level(configuration.log_level)
+            .set_log_level(configuration.log_level.into())
             .create_with_context::<_, LoggingConsumer>(KafkaClientContext)?;
         let (tx, rx) = mpsc::channel(1);
 
