@@ -26,6 +26,8 @@ pub mod map;
 mod queues;
 #[doc(hidden)]
 pub mod supply;
+#[cfg(test)]
+mod tests;
 #[doc(hidden)]
 pub mod value;
 #[doc(hidden)]
