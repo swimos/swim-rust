@@ -15,6 +15,7 @@ use std::{collections::HashMap, io::ErrorKind, sync::Arc, time::Duration};
 // limitations under the License.
 
 use bytes::Bytes;
+use fake_lifecycle::AddLane;
 use futures::{
     future::{join, ready, BoxFuture},
     stream::BoxStream,
@@ -86,11 +87,14 @@ const VAL_ID: u64 = 0;
 const MAP_ID: u64 = 1;
 const CMD_ID: u64 = 2;
 const HTTP_ID: u64 = 3;
+const FIRST_DYN_ID: u64 = 4;
 
 const VAL_LANE: &str = "first";
 const MAP_LANE: &str = "second";
 const CMD_LANE: &str = "third";
 const HTTP_LANE: &str = "fourth";
+const DYN_VAL_LANE: &str = "first_dynamic";
+const DYN_MAP_LANE: &str = "second_dynamic";
 const HTTP_LANE_URI: &str = "http://example/node?lane=fourth";
 
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
@@ -149,14 +153,17 @@ impl Fac {
     }
 }
 
-async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) {
+async fn init_agent_with_dyn_lanes(
+    context: Box<TestAgentContext>,
+    add_lanes: Vec<AddLane>,
+) -> (AgentTask, TestContext) {
     let mut agent = TestAgent::default();
     let test_event_rx = agent.take_receiver();
     let http_req_rx = agent.take_http_receiver();
     let lane_model_fac = Fac::new(agent);
 
     let (lc_event_tx, lc_event_rx) = mpsc::unbounded_channel();
-    let lifecycle = TestLifecycle::new(lc_event_tx);
+    let lifecycle = TestLifecycle::new(lc_event_tx, add_lanes);
 
     let model = AgentModel::<TestAgent, TestLifecycle>::new(lane_model_fac, lifecycle);
 
@@ -194,6 +201,10 @@ async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) 
             http_lane_tx: http_tx,
         },
     )
+}
+
+async fn init_agent(context: Box<TestAgentContext>) -> (AgentTask, TestContext) {
+    init_agent_with_dyn_lanes(context, vec![]).await
 }
 
 #[tokio::test]

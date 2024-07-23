@@ -13,15 +13,18 @@
 // limitations under the License.
 
 use futures::FutureExt;
-use swimos_api::address::Address;
+use swimos_api::{address::Address, agent::WarpLaneKind, error::LaneSpawnError};
 use swimos_model::Text;
 use tokio::sync::mpsc;
 
 use crate::{
-    agent_lifecycle::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop},
+    agent_lifecycle::{
+        item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop,
+        ConnectorContext, HandlerContext,
+    },
     event_handler::{
-        ActionContext, EventHandler, HandlerAction, LocalBoxEventHandler, SideEffect, Spawner,
-        StepResult,
+        ActionContext, EventHandler, HandlerAction, HandlerActionExt, LocalBoxEventHandler,
+        Sequentially, SideEffect, Spawner, StepResult,
     },
     meta::AgentMetadata,
 };
@@ -35,6 +38,7 @@ pub enum LifecycleEvent {
     Lane(Text),
     RanSuspended(i32),
     RanSuspendedConsequence,
+    DynLane(Result<(), LaneSpawnError>),
     Stop,
 }
 
@@ -44,13 +48,35 @@ pub struct LifecycleHandler {
 }
 
 #[derive(Clone)]
+pub struct AddLane {
+    name: String,
+    kind: WarpLaneKind,
+}
+
+impl AddLane {
+    pub fn new(name: &str, kind: WarpLaneKind) -> Self {
+        AddLane {
+            name: name.to_string(),
+            kind,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct TestLifecycle {
     sender: mpsc::UnboundedSender<LifecycleEvent>,
+    add_lanes: Vec<AddLane>,
 }
 
 impl TestLifecycle {
-    pub fn new(tx: mpsc::UnboundedSender<LifecycleEvent>) -> TestLifecycle {
-        TestLifecycle { sender: tx }
+    pub fn new(
+        tx: mpsc::UnboundedSender<LifecycleEvent>,
+        add_lanes: Vec<AddLane>,
+    ) -> TestLifecycle {
+        TestLifecycle {
+            sender: tx,
+            add_lanes,
+        }
     }
 }
 
@@ -76,7 +102,28 @@ impl OnInit<TestAgent> for TestLifecycle {
 
 impl OnStart<TestAgent> for TestLifecycle {
     fn on_start(&self) -> impl EventHandler<TestAgent> + '_ {
+        let TestLifecycle { add_lanes, sender } = self;
+        let handler_context: HandlerContext<TestAgent> = Default::default();
+        let conn_context: ConnectorContext<TestAgent> = Default::default();
+        let add_lane_handlers: Vec<_> = add_lanes
+            .iter()
+            .map(move |AddLane { name, kind }| {
+                let tx = sender.clone();
+                let cb = move |result| {
+                    handler_context.effect(move || {
+                        tx.send(LifecycleEvent::DynLane(result))
+                            .expect("Channel closed.");
+                    })
+                };
+                match kind {
+                    WarpLaneKind::Map => conn_context.open_map_lane(name, cb).boxed(),
+                    WarpLaneKind::Value => conn_context.open_value_lane(name, cb).boxed(),
+                    _ => panic!("Unsupported dynamic lane kind."),
+                }
+            })
+            .collect();
         self.make_handler(LifecycleEvent::Start)
+            .followed_by(Sequentially::new(add_lane_handlers))
     }
 }
 

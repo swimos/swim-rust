@@ -14,7 +14,8 @@
 
 use std::{
     cell::RefCell,
-    collections::{HashMap, VecDeque},
+    collections::{hash_map::Entry, HashMap, VecDeque},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use bytes::{Bytes, BytesMut};
@@ -24,6 +25,7 @@ use swimos_agent_protocol::{
 };
 use swimos_api::{
     agent::{HttpLaneRequest, WarpLaneKind},
+    error::DynamicRegistrationError,
     http::{HttpRequest, HttpResponse, StatusCode, SupportedMethod, Version},
 };
 use tokio::sync::mpsc;
@@ -38,7 +40,8 @@ use crate::{
 };
 
 use super::{
-    TestEvent, CMD_ID, CMD_LANE, HTTP_ID, HTTP_LANE, MAP_ID, MAP_LANE, SYNC_VALUE, VAL_ID, VAL_LANE,
+    TestEvent, CMD_ID, CMD_LANE, FIRST_DYN_ID, HTTP_ID, HTTP_LANE, MAP_ID, MAP_LANE, SYNC_VALUE,
+    VAL_ID, VAL_LANE,
 };
 
 #[derive(Debug)]
@@ -52,6 +55,8 @@ pub struct TestAgent {
     sync_ids: RefCell<VecDeque<Uuid>>,
     cmd: RefCell<Option<i32>>,
     http_requests: RefCell<Vec<HttpLaneRequest>>,
+    dyn_lanes: RefCell<HashMap<String, ItemDescriptor>>,
+    dyn_id: AtomicU64,
 }
 
 impl Default for TestAgent {
@@ -68,6 +73,8 @@ impl Default for TestAgent {
             sync_ids: Default::default(),
             cmd: Default::default(),
             http_requests: Default::default(),
+            dyn_lanes: Default::default(),
+            dyn_id: AtomicU64::new(FIRST_DYN_ID),
         }
     }
 }
@@ -303,6 +310,21 @@ impl AgentSpec for TestAgent {
             })
         } else {
             Err(request)
+        }
+    }
+
+    fn register_dynamic_item(
+        &self,
+        name: &str,
+        descriptor: ItemDescriptor,
+    ) -> Result<u64, DynamicRegistrationError> {
+        let mut guard = self.dyn_lanes.borrow_mut();
+        if let Entry::Vacant(entry) = guard.entry(name.to_string()) {
+            entry.insert(descriptor);
+            let id = self.dyn_id.fetch_add(1, Ordering::SeqCst);
+            Ok(id)
+        } else {
+            Err(DynamicRegistrationError::DuplicateName(name.to_string()))
         }
     }
 }

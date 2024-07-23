@@ -128,7 +128,7 @@ pub enum OpenStoreError {
     },
 }
 
-#[derive(Clone, Debug, Error)]
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum DynamicRegistrationError {
     #[error("This agent does not support dynamically registered items.")]
     DynamicRegistrationsNotSupported,
@@ -144,7 +144,7 @@ pub enum DynamicRegistrationError {
     HttpLanesUnsupported,
 }
 
-#[derive(Clone, Debug, Error)]
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum LaneSpawnError {
     #[error(transparent)]
     Runtime(#[from] AgentRuntimeError),
