@@ -935,7 +935,6 @@ impl<Connector> Default for ConnectorContext<Connector> {
 }
 
 impl<Connector: 'static> ConnectorContext<Connector> {
-    
     pub fn open_value_lane<OnDone, H>(
         &self,
         name: &str,

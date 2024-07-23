@@ -14,9 +14,17 @@
 
 use std::collections::HashMap;
 
+use apache_avro::Schema;
 use rdkafka::config::RDKafkaLogLevel;
+use swimos_form::Form;
+use thiserror::Error;
+use tokio::{fs::File, io::AsyncReadExt};
 
-use crate::deser::BoxMessageDeserializer;
+use crate::deser::{
+    AvroDeserializer, BoxMessageDeserializer, BytesDeserializer, Endianness, F32Deserializer,
+    F64Deserializer, I32Deserializer, I64Deserializer, JsonDeserializer, MessageDeserializer,
+    ReconDeserializer, StringDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
+};
 
 #[derive(Clone, Debug)]
 pub struct KafkaConnectorConfiguration {
@@ -24,8 +32,8 @@ pub struct KafkaConnectorConfiguration {
     pub log_level: RDKafkaLogLevel,
     pub value_lanes: Vec<ValueLaneSpec>,
     pub map_lanes: Vec<MapLaneSpec>,
-    pub key_deserializer: fn() -> BoxMessageDeserializer,
-    pub value_deserializer: fn() -> BoxMessageDeserializer,
+    pub key_deserializer: DeserializationFormat,
+    pub value_deserializer: DeserializationFormat,
 }
 
 #[derive(Clone, Debug)]
@@ -68,6 +76,72 @@ impl MapLaneSpec {
             value_selector,
             remove_when_no_value,
             required,
+        }
+    }
+}
+
+#[derive(Clone, Form, Debug)]
+pub enum DeserializationFormat {
+    Bytes,
+    String,
+    Int32(Endianness),
+    Int64(Endianness),
+    UInt32(Endianness),
+    UInt64(Endianness),
+    Float32(Endianness),
+    Float64(Endianness),
+    Uuid,
+    Recon,
+    Json,
+    Avro { schema_path: Option<String> },
+}
+
+#[derive(Debug, Error)]
+pub enum DerserializerLoadError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    InvalidDescriptor(#[from] Box<dyn std::error::Error + Send + 'static>),
+}
+
+impl DeserializationFormat {
+    pub async fn load(&self) -> Result<BoxMessageDeserializer, DerserializerLoadError> {
+        match self {
+            DeserializationFormat::Bytes => Ok(BytesDeserializer.boxed()),
+            DeserializationFormat::String => Ok(StringDeserializer.boxed()),
+            DeserializationFormat::Int32(endianness) => {
+                Ok(I32Deserializer::new(*endianness).boxed())
+            }
+            DeserializationFormat::Int64(endianness) => {
+                Ok(I64Deserializer::new(*endianness).boxed())
+            }
+            DeserializationFormat::UInt32(endianness) => {
+                Ok(U32Deserializer::new(*endianness).boxed())
+            }
+            DeserializationFormat::UInt64(endianness) => {
+                Ok(U64Deserializer::new(*endianness).boxed())
+            }
+            DeserializationFormat::Float32(endianness) => {
+                Ok(F32Deserializer::new(*endianness).boxed())
+            }
+            DeserializationFormat::Float64(endianness) => {
+                Ok(F64Deserializer::new(*endianness).boxed())
+            }
+            DeserializationFormat::Uuid => Ok(UuidDeserializer.boxed()),
+            DeserializationFormat::Recon => Ok(ReconDeserializer.boxed()),
+            DeserializationFormat::Json => Ok(JsonDeserializer.boxed()),
+            DeserializationFormat::Avro { schema_path } => {
+                if let Some(path) = schema_path {
+                    let mut file = File::open(path).await?;
+                    let mut contents = String::new();
+                    file.read_to_string(&mut contents).await?;
+                    let schema = Schema::parse_str(&contents)
+                        .map_err(|e| DerserializerLoadError::InvalidDescriptor(Box::new(e)))?;
+                    Ok(AvroDeserializer::new(schema).boxed())
+                } else {
+                    Ok(AvroDeserializer::default().boxed())
+                }
+            }
         }
     }
 }

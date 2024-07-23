@@ -324,7 +324,7 @@ impl MessageDeserializer for AvroDeserializer {
     }
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, Form)]
 pub enum Endianness {
     #[default]
     LittleEndian,

@@ -18,7 +18,7 @@ pub mod selector;
 
 use std::{cell::RefCell, sync::Arc};
 
-use config::KafkaConnectorConfiguration;
+use config::{DerserializerLoadError, KafkaConnectorConfiguration};
 use deser::BoxMessageDeserializer;
 use futures::{stream::unfold, Future};
 use rdkafka::{
@@ -65,6 +65,8 @@ type LoggingConsumer = StreamConsumer<KafkaClientContext>;
 #[derive(Debug, Error)]
 pub enum KafkaConnectorError {
     #[error(transparent)]
+    Configuration(#[from] DerserializerLoadError),
+    #[error(transparent)]
     Kafka(#[from] KafkaError),
     #[error(transparent)]
     Lane(#[from] LaneSelectorError),
@@ -106,11 +108,6 @@ impl Connector for KafkaConnector {
             configuration,
             lanes,
         } = self;
-        let selector = MessageSelector::new(
-            (configuration.key_deserializer)(),
-            (configuration.value_deserializer)(),
-            lanes.take(),
-        );
 
         let mut client_builder = ClientConfig::new();
         configuration.properties.iter().for_each(|(k, v)| {
@@ -121,8 +118,17 @@ impl Connector for KafkaConnector {
             .create_with_context::<_, LoggingConsumer>(KafkaClientContext)?;
         let (tx, rx) = mpsc::channel(1);
 
-        let state = MessageState::new(consumer, selector, message_to_handler, tx);
-        let consumer_task = Box::pin(state.consume_messages());
+        let key_deser_cpy = configuration.key_deserializer.clone();
+        let val_deser_cpy = configuration.value_deserializer.clone();
+        let lanes = lanes.take();
+        let consumer_task = Box::pin(async move {
+            let key_deser = key_deser_cpy.load().await?;
+            let val_deser = val_deser_cpy.load().await?;
+            let selector = MessageSelector::new(key_deser, val_deser, lanes);
+            let state = MessageState::new(consumer, selector, message_to_handler, tx);
+            state.consume_messages().await
+        });
+
         let stream_src = MessageTasks::new(consumer_task, rx);
         Ok(stream_src.into_stream())
     }
