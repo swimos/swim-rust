@@ -21,24 +21,21 @@ use swimos_agent::{
 };
 use swimos_utilities::trigger;
 
-use crate::generic::GenericConnectorAgent;
+use crate::generic::ConnectorAgent;
 
 pub trait Connector {
     type StreamError: Error + Send + 'static;
 
     fn create_stream(&self) -> Result<impl ConnectorStream<Self::StreamError>, Self::StreamError>;
 
-    fn on_start(
-        &self,
-        init_complete: trigger::Sender,
-    ) -> impl EventHandler<GenericConnectorAgent> + '_;
+    fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_;
 
-    fn on_stop(&self) -> impl EventHandler<GenericConnectorAgent> + '_;
+    fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_;
 }
 
-pub trait ConnectorHandler: EventHandler<GenericConnectorAgent> + Send + 'static {}
+pub trait ConnectorHandler: EventHandler<ConnectorAgent> + Send + 'static {}
 
-impl<H> ConnectorHandler for H where H: EventHandler<GenericConnectorAgent> + Send + 'static {}
+impl<H> ConnectorHandler for H where H: EventHandler<ConnectorAgent> + Send + 'static {}
 
 pub trait ConnectorStream<E>:
     TryStream<Ok: ConnectorHandler, Error = E> + Send + Unpin + 'static
@@ -52,12 +49,12 @@ impl<S, E> ConnectorStream<E> for S where
 
 pub fn suspend_connector<E, C>(
     mut next: C,
-) -> impl HandlerAction<GenericConnectorAgent, Completion = ()> + Send + 'static
+) -> impl HandlerAction<ConnectorAgent, Completion = ()> + Send + 'static
 where
     C: ConnectorStream<E> + Send + Unpin + 'static,
     E: std::error::Error + Send + 'static,
 {
-    let context: HandlerContext<GenericConnectorAgent> = HandlerContext::default();
+    let context: HandlerContext<ConnectorAgent> = HandlerContext::default();
     let fut = async move {
         let maybe_result = next.try_next().await.transpose();
         maybe_result

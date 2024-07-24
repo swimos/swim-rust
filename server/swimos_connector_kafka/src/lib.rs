@@ -41,10 +41,10 @@ use thiserror::Error;
 use tokio::sync::{mpsc, Semaphore};
 use tracing::{debug, error, info, warn};
 
-use swimos_connector::{Connector, ConnectorStream, GenericConnectorAgent};
+use swimos_connector::{Connector, ConnectorAgent, ConnectorStream};
 
-type ConnHandlerContext = HandlerContext<GenericConnectorAgent>;
-type ConnContext = ConnectorContext<GenericConnectorAgent>;
+type ConnHandlerContext = HandlerContext<ConnectorAgent>;
+type ConnContext = ConnectorContext<ConnectorAgent>;
 
 pub struct KafkaConnector {
     configuration: KafkaConnectorConfiguration,
@@ -75,10 +75,7 @@ pub enum KafkaConnectorError {
 impl Connector for KafkaConnector {
     type StreamError = KafkaConnectorError;
 
-    fn on_start(
-        &self,
-        init_complete: trigger::Sender,
-    ) -> impl EventHandler<GenericConnectorAgent> + '_ {
+    fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
         let handler_context = ConnHandlerContext::default();
         let KafkaConnector {
             configuration,
@@ -97,7 +94,7 @@ impl Connector for KafkaConnector {
         handler
     }
 
-    fn on_stop(&self) -> impl EventHandler<GenericConnectorAgent> + '_ {
+    fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
         UnitHandler::default()
     }
 
@@ -187,7 +184,7 @@ fn message_to_handler<'a>(
     selector: &'a MessageSelector,
     message: &'a BorrowedMessage<'a>,
     trigger_tx: trigger::Sender,
-) -> Result<impl EventHandler<GenericConnectorAgent> + Send + 'static, LaneSelectorError> {
+) -> Result<impl EventHandler<ConnectorAgent> + Send + 'static, LaneSelectorError> {
     selector.handle_message(message, trigger_tx)
 }
 
@@ -207,7 +204,7 @@ where
         ) -> Result<H, LaneSelectorError>
         + Send
         + 'static,
-    H: EventHandler<GenericConnectorAgent> + Send + 'static,
+    H: EventHandler<ConnectorAgent> + Send + 'static,
 {
     fn new(
         consumer: LoggingConsumer,
@@ -264,7 +261,7 @@ impl<F, H> MessageTasks<F, H> {
 impl<F, H> MessageTasks<F, H>
 where
     F: Future<Output = Result<(), KafkaConnectorError>> + Send + Unpin + 'static,
-    H: EventHandler<GenericConnectorAgent> + Send + 'static,
+    H: EventHandler<ConnectorAgent> + Send + 'static,
 {
     fn into_stream(self) -> impl ConnectorStream<KafkaConnectorError> {
         Box::pin(unfold(self, |s| s.next_handler()))
@@ -354,7 +351,7 @@ impl Lanes {
     fn open_lanes(
         &self,
         init_complete: trigger::Sender,
-    ) -> impl EventHandler<GenericConnectorAgent> + 'static {
+    ) -> impl EventHandler<ConnectorAgent> + 'static {
         let handler_context = ConnHandlerContext::default();
         let context: ConnContext = ConnContext::default();
         let Lanes {
@@ -425,7 +422,7 @@ impl MessageSelector {
         &self,
         message: &'a BorrowedMessage<'a>,
         on_done: trigger::Sender,
-    ) -> Result<impl EventHandler<GenericConnectorAgent> + Send + 'static, LaneSelectorError> {
+    ) -> Result<impl EventHandler<ConnectorAgent> + Send + 'static, LaneSelectorError> {
         let MessageSelector {
             key_deserializer,
             value_deserializer,

@@ -41,18 +41,18 @@ type GenericValueLane = ValueLane<Value>;
 type GenericMapLane = MapLane<Value, Value>;
 
 #[derive(Default, Debug)]
-pub struct GenericConnectorAgent {
+pub struct ConnectorAgent {
     id_counter: Cell<u64>,
     value_lanes: RefCell<HashMap<String, GenericValueLane>>,
     map_lanes: RefCell<HashMap<String, GenericMapLane>>,
 }
 
-type ValueHandler = DecodeAndSelectSet<GenericConnectorAgent, Value, ValueLaneSelectorFn>;
-type MapHandler = DecodeAndSelectApply<GenericConnectorAgent, Value, Value, MapLaneSelectorFn>;
-type ValueSync = ValueLaneSelectSync<GenericConnectorAgent, Value, ValueLaneSelectorFn>;
-type MapSync = MapLaneSelectSync<GenericConnectorAgent, Value, Value, MapLaneSelectorFn>;
+type ValueHandler = DecodeAndSelectSet<ConnectorAgent, Value, ValueLaneSelectorFn>;
+type MapHandler = DecodeAndSelectApply<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
+type ValueSync = ValueLaneSelectSync<ConnectorAgent, Value, ValueLaneSelectorFn>;
+type MapSync = MapLaneSelectSync<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
 
-impl AgentSpec for GenericConnectorAgent {
+impl AgentSpec for ConnectorAgent {
     type ValCommandHandler = ValueHandler;
 
     type MapCommandHandler = MapHandler;
@@ -223,14 +223,11 @@ impl ValueLaneSelectorFn {
     }
 }
 
-impl SelectorFn<GenericConnectorAgent> for ValueLaneSelectorFn {
+impl SelectorFn<ConnectorAgent> for ValueLaneSelectorFn {
     type Target = GenericValueLane;
 
-    fn selector(
-        self,
-        context: &GenericConnectorAgent,
-    ) -> impl Selector<Target = Self::Target> + '_ {
-        let GenericConnectorAgent { value_lanes, .. } = context;
+    fn selector(self, context: &ConnectorAgent) -> impl Selector<Target = Self::Target> + '_ {
+        let ConnectorAgent { value_lanes, .. } = context;
         let map = value_lanes.borrow();
         LaneSelector::new(map, self.name)
     }
@@ -246,14 +243,11 @@ impl MapLaneSelectorFn {
     }
 }
 
-impl SelectorFn<GenericConnectorAgent> for MapLaneSelectorFn {
+impl SelectorFn<ConnectorAgent> for MapLaneSelectorFn {
     type Target = GenericMapLane;
 
-    fn selector(
-        self,
-        context: &GenericConnectorAgent,
-    ) -> impl Selector<Target = Self::Target> + '_ {
-        let GenericConnectorAgent { map_lanes, .. } = context;
+    fn selector(self, context: &ConnectorAgent) -> impl Selector<Target = Self::Target> + '_ {
+        let ConnectorAgent { map_lanes, .. } = context;
         let map = map_lanes.borrow();
         LaneSelector::new(map, self.name)
     }

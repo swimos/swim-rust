@@ -20,7 +20,7 @@ use swimos_agent::{
     agent_lifecycle::ConnectorContext,
     event_handler::{Discard, EventHandler, HandlerActionExt},
 };
-use swimos_connector::{GenericConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
+use swimos_connector::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 use swimos_model::{Attr, Item, Text, Value};
 use thiserror::Error;
 
@@ -794,10 +794,10 @@ pub enum LaneSelectorError {
     DeserializationFailed(#[from] DeserializationError),
 }
 
-pub type Urg = Box<dyn EventHandler<GenericConnectorAgent> + Send + Sync + 'static>;
+pub type Urg = Box<dyn EventHandler<ConnectorAgent> + Send + Sync + 'static>;
 
 pub type GenericValueLaneSet =
-    Discard<Option<ValueLaneSelectSet<GenericConnectorAgent, Value, ValueLaneSelectorFn>>>;
+    Discard<Option<ValueLaneSelectSet<ConnectorAgent, Value, ValueLaneSelectorFn>>>;
 
 impl ValueLaneSelector {
     pub fn name(&self) -> &str {
@@ -837,10 +837,8 @@ impl ValueLaneSelector {
     }
 }
 
-pub type MapLaneUpdate =
-    MapLaneSelectUpdate<GenericConnectorAgent, Value, Value, MapLaneSelectorFn>;
-pub type MapLaneRemove =
-    MapLaneSelectRemove<GenericConnectorAgent, Value, Value, MapLaneSelectorFn>;
+pub type MapLaneUpdate = MapLaneSelectUpdate<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
+pub type MapLaneRemove = MapLaneSelectRemove<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
 pub type MapLaneOp = Coprod!(MapLaneUpdate, MapLaneRemove);
 
 pub type GenericMapLaneOp = Discard<Option<MapLaneOp>>;
@@ -867,7 +865,7 @@ impl MapLaneSelector {
             required,
             remove_when_no_value,
         } = self;
-        let context: ConnectorContext<GenericConnectorAgent> = Default::default();
+        let context: ConnectorContext<ConnectorAgent> = Default::default();
         let maybe_key: Option<Value> = key_selector.select(topic, key, value)?.cloned();
         let maybe_value = value_selector.select(topic, key, value)?;
         let select_lane = MapLaneSelectorFn::new(name.clone());

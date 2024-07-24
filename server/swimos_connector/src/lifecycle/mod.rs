@@ -23,30 +23,30 @@ use swimos_agent::{
 };
 use swimos_utilities::trigger;
 
-use crate::{suspend_connector, Connector, GenericConnectorAgent};
+use crate::{suspend_connector, Connector, ConnectorAgent};
 
 pub struct ConnectorLifecycle<C>(C);
 
-impl<C> OnInit<GenericConnectorAgent> for ConnectorLifecycle<C>
+impl<C> OnInit<ConnectorAgent> for ConnectorLifecycle<C>
 where
     C: Connector + Send,
 {
     fn initialize(
         &self,
-        _action_context: &mut ActionContext<GenericConnectorAgent>,
+        _action_context: &mut ActionContext<ConnectorAgent>,
         _meta: AgentMetadata,
-        _context: &GenericConnectorAgent,
+        _context: &ConnectorAgent,
     ) {
     }
 }
 
-impl<C> OnStart<GenericConnectorAgent> for ConnectorLifecycle<C>
+impl<C> OnStart<ConnectorAgent> for ConnectorLifecycle<C>
 where
     C: Connector + Send,
 {
-    fn on_start(&self) -> impl EventHandler<GenericConnectorAgent> + '_ {
+    fn on_start(&self) -> impl EventHandler<ConnectorAgent> + '_ {
         let ConnectorLifecycle(connector) = self;
-        let handler_context: HandlerContext<GenericConnectorAgent> = HandlerContext::default();
+        let handler_context: HandlerContext<ConnectorAgent> = HandlerContext::default();
         let (tx, rx) = trigger::trigger();
         let suspend = handler_context
             .effect(|| connector.create_stream())
@@ -63,16 +63,16 @@ where
     }
 }
 
-impl<C> OnStop<GenericConnectorAgent> for ConnectorLifecycle<C>
+impl<C> OnStop<ConnectorAgent> for ConnectorLifecycle<C>
 where
     C: Connector + Send,
 {
-    fn on_stop(&self) -> impl EventHandler<GenericConnectorAgent> + '_ {
+    fn on_stop(&self) -> impl EventHandler<ConnectorAgent> + '_ {
         self.0.on_stop()
     }
 }
 
-impl<C> ItemEvent<GenericConnectorAgent> for ConnectorLifecycle<C>
+impl<C> ItemEvent<ConnectorAgent> for ConnectorLifecycle<C>
 where
     C: Connector,
 {
@@ -82,7 +82,7 @@ where
 
     fn item_event<'a>(
         &'a self,
-        _context: &GenericConnectorAgent,
+        _context: &ConnectorAgent,
         _item_name: &str,
     ) -> Option<Self::ItemEventHandler<'a>> {
         None
