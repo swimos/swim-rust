@@ -32,6 +32,7 @@ pub trait Connector {
         &self,
         init_complete: trigger::Sender,
     ) -> impl EventHandler<GenericConnectorAgent> + '_;
+
     fn on_stop(&self) -> impl EventHandler<GenericConnectorAgent> + '_;
 }
 

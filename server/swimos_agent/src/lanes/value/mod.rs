@@ -528,14 +528,15 @@ where
     ) -> StepResult<Self::Completion> {
         let ValueLaneSelectSync { projection_id, .. } = self;
         if let Some((projection, id)) = projection_id.take() {
-            if let Some(lane) = projection.selector(context).select() {
+            let selector = projection.selector(context);
+            if let Some(lane) = selector.select() {
                 lane.sync(id);
                 StepResult::Complete {
                     modified_item: Some(Modification::no_trigger(lane.id())),
                     result: (),
                 }
             } else {
-                todo!()
+                StepResult::Fail(EventHandlerError::LaneNotFound(selector.name().to_string()))
             }
         } else {
             StepResult::Fail(EventHandlerError::SteppedAfterComplete)
