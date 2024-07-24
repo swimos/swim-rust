@@ -32,7 +32,7 @@ use crate::{
     lanes::{
         map::{
             MapLane, MapLaneClear, MapLaneEvent, MapLaneGet, MapLaneGetMap, MapLaneRemove,
-            MapLaneSync, MapLaneTransformEntry, MapLaneUpdate,
+            MapLaneSelectSync, MapLaneSync, MapLaneTransformEntry, MapLaneUpdate,
         },
         LaneItem, MapLaneSelectClear, MapLaneSelectRemove, MapLaneSelectUpdate, Selector,
         SelectorFn,
@@ -1030,6 +1030,67 @@ fn map_lane_select_clear_event_handler_missing() {
         &agent,
     );
 
+    if let StepResult::Fail(EventHandlerError::LaneNotFound(name)) = result {
+        assert_eq!(name, "other");
+    } else {
+        panic!("Lane not found error expected.");
+    }
+}
+
+#[test]
+fn map_lane_select_sync_event_handler() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneSelectSync::new(TestSelectorFn(true), SYNC_ID1);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    check_result(result, true, false, Some(()));
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
+    assert!(matches!(
+        result,
+        StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+    ));
+
+    let Operations { events, sync } = consume_events(&agent.lane);
+
+    assert!(events.is_empty());
+    assert_eq!(sync.len(), 1);
+
+    let sync_map = to_updates(sync.get(&SYNC_ID1).expect("Incorrect Sync ID."));
+
+    let expected: HashMap<_, _> = [(K1, V1), (K2, V2), (K3, V3)]
+        .into_iter()
+        .map(|(k, v)| (k, v.to_owned()))
+        .collect();
+    assert_eq!(sync_map, expected);
+}
+
+#[test]
+fn map_lane_select_sync_event_handler_missing() {
+    let uri = make_uri();
+    let route_params = HashMap::new();
+    let meta = make_meta(&uri, &route_params);
+    let agent = TestAgent::with_init();
+
+    let mut handler = MapLaneSelectSync::new(TestSelectorFn(false), SYNC_ID1);
+
+    let result = handler.step(
+        &mut dummy_context(&mut HashMap::new(), &mut BytesMut::new()),
+        meta,
+        &agent,
+    );
     if let StepResult::Fail(EventHandlerError::LaneNotFound(name)) = result {
         assert_eq!(name, "other");
     } else {
