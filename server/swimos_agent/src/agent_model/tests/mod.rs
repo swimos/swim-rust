@@ -91,6 +91,10 @@ pub enum TestEvent {
     Map {
         body: MapMessage<i32, i32>,
     },
+    DynMap {
+        id: u64,
+        body: MapMessage<i32, i32>,
+    },
     Sync {
         id: Uuid,
     },
@@ -907,6 +911,117 @@ async fn command_to_map_lane() {
 
             drop(sender);
             drop(val_lane_io);
+            drop(cmd_lane_io);
+            drop(http_lane_tx);
+            (test_event_rx, lc_event_rx)
+        };
+
+        let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
+        assert!(result.is_ok());
+
+        let events = lc_event_rx.collect::<Vec<_>>().await;
+
+        //Check that the `on_stop` event fired.
+        assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+
+        let lane_events = test_event_rx.collect::<Vec<_>>().await;
+        assert!(lane_events.is_empty());
+    })
+    .await
+}
+
+#[tokio::test]
+async fn command_to_dynamic_map_lane() {
+    with_timeout(async {
+        let context = Box::<TestAgentContext>::default();
+        let dyn_lanes = vec![AddLane::new(DYN_MAP_LANE, WarpLaneKind::Map)];
+        let (
+            task,
+            TestContext {
+                mut test_event_rx,
+                http_request_rx: _http_request_rx,
+                mut lc_event_rx,
+                val_lane_io,
+                map_lane_io,
+                cmd_lane_io,
+                dyn_val_lane_io,
+                dyn_map_lane_io,
+                http_lane_tx,
+            },
+        ) = init_agent_with_dyn_lanes(context, dyn_lanes).await;
+
+        assert!(dyn_val_lane_io.is_none());
+        let dyn_map_lane = dyn_map_lane_io.expect("Expected lane to be registered.");
+
+        let test_case = async move {
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected init event."),
+                LifecycleEvent::Init
+            );
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected start event."),
+                LifecycleEvent::Start
+            );
+            assert_eq!(
+                lc_event_rx
+                    .next()
+                    .await
+                    .expect("Expected lane registration."),
+                LifecycleEvent::dyn_lane(DYN_MAP_LANE, WarpLaneKind::Map, Ok(()))
+            );
+
+            if let Some(TestEvent::LaneRegistration {
+                id,
+                name,
+                descriptor,
+            }) = test_event_rx.next().await
+            {
+                assert_eq!(id, FIRST_DYN_ID);
+                assert_eq!(name, DYN_MAP_LANE);
+                assert_eq!(
+                    descriptor,
+                    ItemDescriptor::WarpLane {
+                        kind: WarpLaneKind::Map,
+                        flags: ItemFlags::TRANSIENT
+                    }
+                );
+            } else {
+                panic!("Expected lane registration.");
+            }
+
+            let (mut sender, mut receiver) = dyn_map_lane;
+
+            sender.command(83, 9282).await;
+
+            // The agent should receive the command...
+            assert_eq!(
+                test_event_rx.next().await.expect("Expected command event."),
+                TestEvent::DynMap {
+                    id: FIRST_DYN_ID,
+                    body: MapMessage::Update {
+                        key: 83,
+                        value: 9282
+                    }
+                }
+            );
+
+            //... ,trigger the `on_command` event...
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected command event."),
+                LifecycleEvent::Lane(Text::new(DYN_MAP_LANE))
+            );
+
+            //... and then generate an outgoing event.
+            receiver
+                .expect_event(MapOperation::Update {
+                    key: 83,
+                    value: 9282,
+                })
+                .await;
+
+            drop(sender);
+            drop(val_lane_io);
+            drop(map_lane_io);
             drop(cmd_lane_io);
             drop(http_lane_tx);
             (test_event_rx, lc_event_rx)

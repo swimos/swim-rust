@@ -40,8 +40,8 @@ use crate::{
 };
 
 use super::{
-    TestEvent, CMD_ID, CMD_LANE, DYN_VAL_LANE, FIRST_DYN_ID, HTTP_ID, HTTP_LANE, MAP_ID, MAP_LANE,
-    SYNC_VALUE, VAL_ID, VAL_LANE,
+    TestEvent, CMD_ID, CMD_LANE, DYN_MAP_LANE, DYN_VAL_LANE, FIRST_DYN_ID, HTTP_ID, HTTP_LANE,
+    MAP_ID, MAP_LANE, SYNC_VALUE, VAL_ID, VAL_LANE,
 };
 
 #[derive(Debug)]
@@ -53,6 +53,7 @@ pub struct TestAgent {
     staged_value: RefCell<Option<i32>>,
     staged_dyn_value: RefCell<Option<i32>>,
     staged_map: RefCell<Option<MapOperation<i32, i32>>>,
+    staged_dyn_map: RefCell<Option<MapOperation<i32, i32>>>,
     sync_ids: RefCell<VecDeque<Uuid>>,
     cmd: RefCell<Option<i32>>,
     http_requests: RefCell<Vec<HttpLaneRequest>>,
@@ -72,6 +73,7 @@ impl Default for TestAgent {
             staged_value: Default::default(),
             staged_dyn_value: Default::default(),
             staged_map: Default::default(),
+            staged_dyn_map: Default::default(),
             sync_ids: Default::default(),
             cmd: Default::default(),
             http_requests: Default::default(),
@@ -105,6 +107,10 @@ impl TestAgent {
 
     pub fn stage_map(&self, op: MapOperation<i32, i32>) {
         self.staged_map.borrow_mut().replace(op);
+    }
+
+    pub fn stage_dyn_map(&self, op: MapOperation<i32, i32>) {
+        self.staged_dyn_map.borrow_mut().replace(op);
     }
 
     pub fn add_sync(&self, id: Uuid) {
@@ -250,15 +256,27 @@ impl AgentSpec for TestAgent {
         lane: &str,
         body: MapMessage<BytesMut, BytesMut>,
     ) -> Option<Self::MapCommandHandler> {
-        if lane == MAP_LANE {
-            Some(
+        match lane {
+            MAP_LANE => Some(
                 TestEvent::Map {
                     body: interpret_map_op(body),
                 }
                 .into(),
-            )
-        } else {
-            None
+            ),
+            DYN_MAP_LANE if self.dyn_lanes.borrow().contains_key(DYN_MAP_LANE) => {
+                if let Some((id, _)) = self.dyn_lanes.borrow().get(DYN_MAP_LANE) {
+                    Some(
+                        TestEvent::DynMap {
+                            id: *id,
+                            body: interpret_map_op(body),
+                        }
+                        .into(),
+                    )
+                } else {
+                    None
+                }
+            }
+            _ => None,
         }
     }
 
@@ -343,6 +361,19 @@ impl AgentSpec for TestAgent {
                     Some(WriteResult::NoData)
                 }
             }
+            DYN_MAP_LANE => {
+                let mut guard = self.staged_dyn_map.borrow_mut();
+                if let Some(body) = guard.take() {
+                    let mut encoder = MapLaneResponseEncoder::default();
+                    let response = MapLaneResponse::event(body);
+                    encoder
+                        .encode(response, buffer)
+                        .expect("Serialization failed.");
+                    Some(WriteResult::Done)
+                } else {
+                    Some(WriteResult::NoData)
+                }
+            }
             _ => None,
         }
     }
@@ -412,6 +443,10 @@ impl HandlerAction<TestAgent> for TestHandler {
                 TestEvent::Map { body } => {
                     context.stage_map(to_op(*body));
                     Some(Modification::of(MAP_ID))
+                }
+                TestEvent::DynMap { id, body } => {
+                    context.stage_dyn_map(to_op(*body));
+                    Some(Modification::of(*id))
                 }
                 TestEvent::Sync { id } => {
                     context.add_sync(*id);
