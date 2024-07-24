@@ -38,8 +38,22 @@ pub enum LifecycleEvent {
     Lane(Text),
     RanSuspended(i32),
     RanSuspendedConsequence,
-    DynLane(Result<(), LaneSpawnError>),
+    DynLane {
+        name: String,
+        kind: WarpLaneKind,
+        result: Result<(), LaneSpawnError>,
+    },
     Stop,
+}
+
+impl LifecycleEvent {
+    pub fn dyn_lane(name: &str, kind: WarpLaneKind, result: Result<(), LaneSpawnError>) -> Self {
+        LifecycleEvent::DynLane {
+            name: name.to_string(),
+            kind,
+            result,
+        }
+    }
 }
 
 pub struct LifecycleHandler {
@@ -109,10 +123,16 @@ impl OnStart<TestAgent> for TestLifecycle {
             .iter()
             .map(move |AddLane { name, kind }| {
                 let tx = sender.clone();
+                let name_cpy = name.clone();
+                let k = *kind;
                 let cb = move |result| {
                     handler_context.effect(move || {
-                        tx.send(LifecycleEvent::DynLane(result))
-                            .expect("Channel closed.");
+                        tx.send(LifecycleEvent::DynLane {
+                            name: name_cpy,
+                            kind: k,
+                            result,
+                        })
+                        .expect("Channel closed.");
                     })
                 };
                 match kind {

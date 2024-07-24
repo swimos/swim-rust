@@ -322,6 +322,13 @@ impl AgentSpec for TestAgent {
         if let Entry::Vacant(entry) = guard.entry(name.to_string()) {
             entry.insert(descriptor);
             let id = self.dyn_id.fetch_add(1, Ordering::SeqCst);
+            self.sender
+                .send(TestEvent::LaneRegistration {
+                    id,
+                    name: name.to_string(),
+                    descriptor,
+                })
+                .expect("Channel closed.");
             Ok(id)
         } else {
             Err(DynamicRegistrationError::DuplicateName(name.to_string()))
@@ -358,6 +365,7 @@ impl HandlerAction<TestAgent> for TestHandler {
                     context.add_sync(*id);
                     Some(Modification::no_trigger(VAL_ID))
                 }
+                TestEvent::LaneRegistration { .. } => None,
             };
             context.sender.send(event).expect("Receiver dropped.");
             StepResult::Complete {

@@ -51,16 +51,32 @@ impl TestAgentContext {
     }
 }
 
+pub struct LaneIo {
+    pub value_lane: Option<Io>,
+    pub map_lane: Option<Io>,
+    pub cmd_lane: Option<Io>,
+    pub dyn_value_lane: Option<Io>,
+    pub dyn_map_lane: Option<Io>,
+}
+
 impl TestAgentContext {
-    pub fn take_lane_io(&self) -> (Option<Io>, Option<Io>, Option<Io>) {
+    pub fn take_lane_io(&self) -> LaneIo {
         let mut guard = self.inner.lock();
         let Inner {
             value_lane_io,
             map_lane_io,
             cmd_lane_io,
+            dyn_value_lane_io,
+            dyn_map_lane_io,
             ..
         } = &mut *guard;
-        (value_lane_io.take(), map_lane_io.take(), cmd_lane_io.take())
+        LaneIo {
+            value_lane: value_lane_io.take(),
+            map_lane: map_lane_io.take(),
+            cmd_lane: cmd_lane_io.take(),
+            dyn_map_lane: dyn_map_lane_io.take(),
+            dyn_value_lane: dyn_value_lane_io.take(),
+        }
     }
 
     pub fn take_http_io(&self) -> Option<mpsc::Sender<HttpLaneRequest>> {
