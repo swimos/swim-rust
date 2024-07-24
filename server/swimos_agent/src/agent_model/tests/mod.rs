@@ -81,6 +81,10 @@ pub enum TestEvent {
     Value {
         body: i32,
     },
+    DynValue {
+        id: u64,
+        body: i32,
+    },
     Cmd {
         body: i32,
     },
@@ -562,6 +566,109 @@ async fn command_to_value_lane() {
             receiver.expect_event(56).await;
 
             drop(sender);
+            drop(map_lane_io);
+            drop(cmd_lane_io);
+            drop(http_lane_tx);
+            (test_event_rx, lc_event_rx)
+        };
+
+        let (result, (test_event_rx, lc_event_rx)) = join(task, test_case).await;
+        assert!(result.is_ok());
+
+        let events = lc_event_rx.collect::<Vec<_>>().await;
+
+        //Check that the `on_stop` event fired.
+        assert!(matches!(events.as_slice(), [LifecycleEvent::Stop]));
+
+        let lane_events = test_event_rx.collect::<Vec<_>>().await;
+        assert!(lane_events.is_empty());
+    })
+    .await
+}
+
+#[tokio::test]
+async fn command_to_dynamic_lane() {
+    with_timeout(async {
+        let context = Box::<TestAgentContext>::default();
+        let dyn_lanes = vec![AddLane::new(DYN_VAL_LANE, WarpLaneKind::Value)];
+        let (
+            task,
+            TestContext {
+                mut test_event_rx,
+                http_request_rx: _http_request_rx,
+                mut lc_event_rx,
+                val_lane_io,
+                map_lane_io,
+                cmd_lane_io,
+                dyn_val_lane_io,
+                dyn_map_lane_io,
+                http_lane_tx,
+            },
+        ) = init_agent_with_dyn_lanes(context, dyn_lanes).await;
+
+        let dyn_value_lane = dyn_val_lane_io.expect("Expected lane to be registered.");
+        assert!(dyn_map_lane_io.is_none());
+
+        let test_case = async move {
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected init event."),
+                LifecycleEvent::Init
+            );
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected start event."),
+                LifecycleEvent::Start
+            );
+            assert_eq!(
+                lc_event_rx
+                    .next()
+                    .await
+                    .expect("Expected lane registration."),
+                LifecycleEvent::dyn_lane(DYN_VAL_LANE, WarpLaneKind::Value, Ok(()))
+            );
+
+            if let Some(TestEvent::LaneRegistration {
+                id,
+                name,
+                descriptor,
+            }) = test_event_rx.next().await
+            {
+                assert_eq!(id, FIRST_DYN_ID);
+                assert_eq!(name, DYN_VAL_LANE);
+                assert_eq!(
+                    descriptor,
+                    ItemDescriptor::WarpLane {
+                        kind: WarpLaneKind::Value,
+                        flags: ItemFlags::TRANSIENT
+                    }
+                );
+            } else {
+                panic!("Expected lane registration.");
+            }
+
+            let (mut sender, mut receiver) = dyn_value_lane;
+
+            sender.command(56).await;
+
+            // The agent should receive the command...
+            assert_eq!(
+                test_event_rx.next().await.expect("Expected command event."),
+                TestEvent::DynValue {
+                    id: FIRST_DYN_ID,
+                    body: 56
+                }
+            );
+
+            //... ,trigger the `on_command` event...
+            assert_eq!(
+                lc_event_rx.next().await.expect("Expected command event."),
+                LifecycleEvent::Lane(Text::new(DYN_VAL_LANE))
+            );
+
+            //... and then generate an outgoing event.
+            receiver.expect_event(56).await;
+
+            drop(sender);
+            drop(val_lane_io);
             drop(map_lane_io);
             drop(cmd_lane_io);
             drop(http_lane_tx);

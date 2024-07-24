@@ -40,8 +40,8 @@ use crate::{
 };
 
 use super::{
-    TestEvent, CMD_ID, CMD_LANE, FIRST_DYN_ID, HTTP_ID, HTTP_LANE, MAP_ID, MAP_LANE, SYNC_VALUE,
-    VAL_ID, VAL_LANE,
+    TestEvent, CMD_ID, CMD_LANE, DYN_VAL_LANE, FIRST_DYN_ID, HTTP_ID, HTTP_LANE, MAP_ID, MAP_LANE,
+    SYNC_VALUE, VAL_ID, VAL_LANE,
 };
 
 #[derive(Debug)]
@@ -51,11 +51,12 @@ pub struct TestAgent {
     sender: mpsc::UnboundedSender<TestEvent>,
     http_sender: mpsc::UnboundedSender<HttpRequest<Bytes>>,
     staged_value: RefCell<Option<i32>>,
+    staged_dyn_value: RefCell<Option<i32>>,
     staged_map: RefCell<Option<MapOperation<i32, i32>>>,
     sync_ids: RefCell<VecDeque<Uuid>>,
     cmd: RefCell<Option<i32>>,
     http_requests: RefCell<Vec<HttpLaneRequest>>,
-    dyn_lanes: RefCell<HashMap<String, ItemDescriptor>>,
+    dyn_lanes: RefCell<HashMap<String, (u64, ItemDescriptor)>>,
     dyn_id: AtomicU64,
 }
 
@@ -69,6 +70,7 @@ impl Default for TestAgent {
             sender: tx,
             http_sender: http_tx,
             staged_value: Default::default(),
+            staged_dyn_value: Default::default(),
             staged_map: Default::default(),
             sync_ids: Default::default(),
             cmd: Default::default(),
@@ -95,6 +97,10 @@ impl TestAgent {
 
     pub fn stage_value(&self, n: i32) {
         self.staged_value.borrow_mut().replace(n);
+    }
+
+    pub fn stage_dyn_value(&self, n: i32) {
+        self.staged_dyn_value.borrow_mut().replace(n);
     }
 
     pub fn stage_map(&self, op: MapOperation<i32, i32>) {
@@ -208,6 +214,19 @@ impl AgentSpec for TestAgent {
                 }
                 .into(),
             ),
+            DYN_VAL_LANE if self.dyn_lanes.borrow().contains_key(DYN_VAL_LANE) => {
+                if let Some((id, _)) = self.dyn_lanes.borrow().get(DYN_VAL_LANE) {
+                    Some(
+                        TestEvent::DynValue {
+                            id: *id,
+                            body: bytes_to_i32(body),
+                        }
+                        .into(),
+                    )
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }
@@ -282,6 +301,35 @@ impl AgentSpec for TestAgent {
                     }
                 }
             }
+            DYN_VAL_LANE => {
+                let mut encoder = ValueLaneResponseEncoder::default();
+                if let Some(id) = self.sync_ids.borrow_mut().pop_front() {
+                    let sync_message = LaneResponse::sync_event(id, SYNC_VALUE);
+                    let synced_message = LaneResponse::<i32>::Synced(id);
+                    encoder
+                        .encode(sync_message, buffer)
+                        .expect("Serialization failed.");
+                    encoder
+                        .encode(synced_message, buffer)
+                        .expect("Serialization failed.");
+                    if self.staged_dyn_value.borrow().is_some() {
+                        Some(WriteResult::DataStillAvailable)
+                    } else {
+                        Some(WriteResult::Done)
+                    }
+                } else {
+                    let mut guard = self.staged_dyn_value.borrow_mut();
+                    if let Some(body) = guard.take() {
+                        let response = LaneResponse::event(body);
+                        encoder
+                            .encode(response, buffer)
+                            .expect("Serialization failed.");
+                        Some(WriteResult::Done)
+                    } else {
+                        Some(WriteResult::NoData)
+                    }
+                }
+            }
             MAP_LANE => {
                 let mut guard = self.staged_map.borrow_mut();
                 if let Some(body) = guard.take() {
@@ -320,8 +368,8 @@ impl AgentSpec for TestAgent {
     ) -> Result<u64, DynamicRegistrationError> {
         let mut guard = self.dyn_lanes.borrow_mut();
         if let Entry::Vacant(entry) = guard.entry(name.to_string()) {
-            entry.insert(descriptor);
             let id = self.dyn_id.fetch_add(1, Ordering::SeqCst);
+            entry.insert((id, descriptor));
             self.sender
                 .send(TestEvent::LaneRegistration {
                     id,
@@ -351,6 +399,10 @@ impl HandlerAction<TestAgent> for TestHandler {
                 TestEvent::Value { body } => {
                     context.stage_value(*body);
                     Some(Modification::of(VAL_ID))
+                }
+                TestEvent::DynValue { id, body } => {
+                    context.stage_dyn_value(*body);
+                    Some(Modification::of(*id))
                 }
                 TestEvent::Cmd { body } => {
                     let mut cmd = context.cmd.borrow_mut();

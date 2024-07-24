@@ -626,12 +626,12 @@ where
         let mut http_lane_rxs = HashMap::new();
 
         let item_specs = ItemModel::item_specs();
-        let lifecycle_item_ids = item_specs
+        let mut lifecycle_item_ids: HashMap<u64, Text> = item_specs
             .values()
             .map(|spec| (spec.id, Text::new(spec.lifecycle_name)))
             .collect();
 
-        let external_item_ids = item_specs
+        let mut external_item_ids: HashMap<Text, u64> = item_specs
             .iter()
             .map(|(name, spec)| (Text::new(name), spec.id))
             .collect();
@@ -775,8 +775,10 @@ where
                             flags: ItemFlags::TRANSIENT,
                         };
                         let result = item_model.register_dynamic_item(&name, descriptor);
-                        if result.is_ok() {
+                        if let Ok(id) = result {
                             entry.insert(io);
+                            external_item_ids.insert(Text::new(&name), id);
+                            lifecycle_item_ids.insert(id, Text::new(&name));
                         }
                         dyn_lane_handlers.push(on_done(result.map_err(Into::into)));
                     } else {
