@@ -142,3 +142,19 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
+
+  build_uis:
+    name: Build Example Application UIs
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - path: "stocks_simulated/ui"
+            cmd: "npm install && npm run build"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Build UI
+        run: |
+          cd ${PWD}/example_apps/${{ matrix.path }}/
+          ${{ matrix.cmd }}
