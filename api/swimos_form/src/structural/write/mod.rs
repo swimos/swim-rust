@@ -216,9 +216,9 @@ pub trait HeaderWriter: Sized {
     ///
     /// # Arguments
     /// * `kind` - Description of the contents of the body. If an incorrect value is provided,
-    /// implementations may return an error but should not panic.
+    ///   implementations may return an error but should not panic.
     /// * `num_items` - The number of items in the record. If an incorrect number is provided,
-    /// implementations may return an error but should not panic.
+    ///   implementations may return an error but should not panic.
     fn complete_header(
         self,
         kind: RecordBodyKind,

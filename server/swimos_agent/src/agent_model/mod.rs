@@ -1548,12 +1548,12 @@ impl IdCollector for HashSet<u64> {
 ///
 /// * `meta` - Agent instance metadata (which can be requested by the event handler).
 /// * `context` - The context within which the event handler is running. This provides access to the lanes of the
-/// agent (typically it will be an instance of a struct where the fields are lane instances).
+///    agent (typically it will be an instance of a struct where the fields are lane instances).
 /// * `lifecycle` - The agent lifecycle which provides event handlers for state changes for each lane.
 /// * `handler` - The initial event handler that starts the chain. This could be a lifecycle event or triggered
-/// by an incoming message from the runtime.
+///     by an incoming message from the runtime.
 /// * `items` - Mapping between item IDs (returned by the handler to indicate that it has changed the state of
-/// an item) and the item names (which are used by the lifecycle to identify the items).
+///    an item) and the item names (which are used by the lifecycle to identify the items).
 /// * `collector` - Collects the IDs of lanes with state changes.
 fn run_handler<Context, Lifecycle, Handler, Collector>(
     action_context: &mut ActionContext<Context>,

@@ -55,7 +55,7 @@ extern crate swimos_form_derive;
 ///
 /// ## Container attributes
 /// - `#[form(tag = "name")]` on `struct`ures will transmute the structure to a value with the
-/// provided tag name.
+///   provided tag name.
 ///
 /// ```
 /// use swimos_model::{Attr, Item, Value};
