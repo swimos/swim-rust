@@ -23,7 +23,7 @@ use swimos_agent::{
 };
 use swimos_utilities::trigger;
 
-use crate::{suspend_connector, Connector, ConnectorAgent};
+use crate::{connector::suspend_connector, error::ConnectorInitError, Connector, ConnectorAgent};
 
 pub struct ConnectorLifecycle<C>(C);
 
@@ -54,8 +54,8 @@ where
             .and_then(move |stream| {
                 handler_context.suspend(async move {
                     handler_context
-                        .value(rx.await)
-                        .try_handler() //TODO Make this a more informative error.
+                        .value(rx.await.map_err(|_| ConnectorInitError))
+                        .try_handler()
                         .followed_by(suspend_connector(stream))
                 })
             });

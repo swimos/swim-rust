@@ -12,11 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-mod connector;
-mod error;
-mod generic;
-mod lifecycle;
-pub use connector::{Connector, ConnectorHandler, ConnectorStream};
-pub use error::ConnectorInitError;
-pub use generic::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
-pub use lifecycle::ConnectorLifecycle;
+use thiserror::Error;
+
+#[derive(Clone, Copy, Default, Debug, Error)]
+#[error("The connector initialization failed to complete.")]
+pub struct ConnectorInitError;
