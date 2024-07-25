@@ -1,0 +1,17 @@
+[package]
+name = "stocks_simulated"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+
+[dependencies]
+swimos = { workspace = true, features = ["server", "agent"] }
+swimos_form = { workspace = true }
+example-util = { path = "../example_util" }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+rand = { workspace = true }
