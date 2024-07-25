@@ -457,7 +457,7 @@ pub enum EventHandlerError {
 }
 
 bitflags! {
-    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
     #[doc(hidden)]
     pub(crate) struct ModificationFlags: u8 {
         /// The lane has data to write.
@@ -470,7 +470,7 @@ bitflags! {
 
 /// When a handler completes or suspends it can indicate that is has modified the
 /// state of an item.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct Modification {
     /// The ID of the item.
     pub(crate) item_id: u64,
@@ -498,6 +498,10 @@ impl Modification {
             item_id,
             flags: ModificationFlags::TRIGGER_HANDLER,
         }
+    }
+
+    pub fn id(&self) -> u64 {
+        self.item_id
     }
 }
 
