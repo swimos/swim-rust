@@ -199,7 +199,7 @@ pub trait AgentContext: Sync {
     /// # Arguments
     /// * `name` - The name of the lane.
     /// * `land_kind` - Kind of the lane, determining the protocol that the runtime uses
-    /// to communicate with the lane.
+    ///   to communicate with the lane.
     /// * `config` - Configuration parameters for the lane.
     fn add_lane(
         &self,
@@ -275,7 +275,7 @@ pub trait Agent {
     /// * `route_params` - Parameters extracted from the route URI.
     /// * `config` - Configuration parameters for the agent.
     /// * `context` - Context through which the agent can interact with the runtime. If this is
-    /// dropped, then the agent will be terminated.
+    ///   dropped, then the agent will be terminated.
     fn run(
         &self,
         route: RouteUri,

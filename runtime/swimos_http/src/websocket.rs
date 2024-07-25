@@ -124,7 +124,7 @@ pub fn fail_upgrade<ExtErr: std::error::Error>(
 /// * `negotiated` - Negotiated parameters for the websocket connection.
 /// * `config` - Websocket configuration parameters.
 /// * `unwrap_fn` - Used to unwrap the underlying socket type from the opaque [`Upgraded`] socket
-/// provided by hyper.
+///    provided by hyper.
 pub fn upgrade<Ext, U>(
     request: Request<Incoming>,
     negotiated: Negotiated<'_, Ext>,

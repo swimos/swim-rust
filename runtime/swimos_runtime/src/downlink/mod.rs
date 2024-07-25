@@ -273,7 +273,7 @@ impl<H> MapDownlinkRuntime<H, MapInterpretation> {
     /// * `path` - The path to the remote lane.
     /// * `config` - Configuration parameters for the runtime.
     /// * `failure_handler` - Handler for event frames that do no contain valid map
-    /// messages.
+    ///    messages.
     pub fn new(
         requests: mpsc::Receiver<AttachAction>,
         io: Io,
@@ -310,9 +310,9 @@ impl<I, H> MapDownlinkRuntime<H, I> {
     /// * `path` - The path to the remote lane.
     /// * `config` - Configuration parameters for the runtime.
     /// * `failure_handler` - Handler for event frames that do no contain valid map
-    /// messages.
+    ///    messages.
     /// * `interpretation` - A transformation to apply to an incoming event body, before passing it
-    /// on to the downlink implementation.
+    ///    on to the downlink implementation.
     pub fn with_interpretation(
         requests: mpsc::Receiver<AttachAction>,
         io: Io,
