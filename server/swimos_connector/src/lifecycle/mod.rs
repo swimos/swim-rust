@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use swimos_agent::{
     agent_lifecycle::{
         item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop, HandlerContext,
@@ -26,6 +29,12 @@ use swimos_utilities::trigger;
 use crate::{connector::suspend_connector, error::ConnectorInitError, Connector, ConnectorAgent};
 
 pub struct ConnectorLifecycle<C>(C);
+
+impl<C> ConnectorLifecycle<C> {
+    pub fn new(connector: C) -> Self {
+        ConnectorLifecycle(connector)
+    }
+}
 
 impl<C> OnInit<ConnectorAgent> for ConnectorLifecycle<C>
 where

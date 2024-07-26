@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use std::error::Error;
 
 use futures::{TryStream, TryStreamExt};
@@ -59,11 +62,12 @@ where
         let maybe_result = next.try_next().await.transpose();
         maybe_result
             .map(move |result| {
-                let h = context.value(result).try_handler();
-                h.followed_by(suspend_connector(next))
+                context
+                    .value(result)
+                    .try_handler()
+                    .and_then(|h: C::Ok| h.followed_by(suspend_connector(next)).boxed_local())
             })
             .discard()
-            .boxed_local()
     };
     context.suspend(fut)
 }

@@ -28,3 +28,4 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "test-util", "time"] }
+parking_lot = { workspace = true }

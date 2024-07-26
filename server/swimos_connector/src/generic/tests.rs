@@ -16,7 +16,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use bytes::BytesMut;
-use futures::future::BoxFuture;
 use swimos_agent::agent_model::downlink::BoxDownlinkChannel;
 use swimos_agent::event_handler::{
     ActionContext, DownlinkSpawner, HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner,
@@ -26,25 +25,21 @@ use swimos_agent::lanes::LaneItem;
 use swimos_agent::{
     agent_model::{AgentSpec, ItemDescriptor, ItemFlags, WriteResult},
     event_handler::EventHandler,
-    AgentItem, AgentMetadata,
+    AgentItem,
 };
 use swimos_agent_protocol::encoding::lane::{MapLaneResponseDecoder, ValueLaneResponseDecoder};
 use swimos_agent_protocol::{LaneResponse, MapMessage, MapOperation};
-use swimos_api::agent::{
-    AgentConfig, AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig,
-};
-use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
+use swimos_api::error::DownlinkRuntimeError;
 use swimos_api::{
     agent::{StoreKind, WarpLaneKind},
     error::DynamicRegistrationError,
 };
 use swimos_model::Value;
 use swimos_recon::print_recon_compact;
-use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
-use swimos_utilities::routing::RouteUri;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
+use crate::test_support::{make_meta, make_uri, TestContext};
 use crate::ConnectorAgent;
 
 use super::{GenericMapLane, GenericValueLane};
@@ -386,20 +381,6 @@ fn map_lane_sync() {
     });
 }
 
-const CONFIG: AgentConfig = AgentConfig::DEFAULT;
-const NODE_URI: &str = "/node";
-
-fn make_uri() -> RouteUri {
-    RouteUri::try_from(NODE_URI).expect("Bad URI.")
-}
-
-fn make_meta<'a>(
-    uri: &'a RouteUri,
-    route_params: &'a HashMap<String, String>,
-) -> AgentMetadata<'a> {
-    AgentMetadata::new(uri, route_params, &CONFIG)
-}
-
 struct NoSpawn;
 
 impl Spawner<ConnectorAgent> for NoSpawn {
@@ -425,48 +406,6 @@ impl LaneSpawner<ConnectorAgent> for NoSpawn {
         _on_done: LaneSpawnOnDone<ConnectorAgent>,
     ) -> Result<(), DynamicRegistrationError> {
         panic!("Spawning lanes not supported.");
-    }
-}
-
-struct TestContext;
-
-impl AgentContext for TestContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
-        panic!("Ad hoc commands not supported.");
-    }
-
-    fn add_lane(
-        &self,
-        _name: &str,
-        _lane_kind: WarpLaneKind,
-        _config: LaneConfig,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
-        panic!("Adding lanes not supported.");
-    }
-
-    fn add_http_lane(
-        &self,
-        _name: &str,
-    ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
-        panic!("Adding lanes not supported.");
-    }
-
-    fn open_downlink(
-        &self,
-        _host: Option<&str>,
-        _node: &str,
-        _lane: &str,
-        _kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
-        panic!("Opening downlinks not supported.");
-    }
-
-    fn add_store(
-        &self,
-        _name: &str,
-        _kind: StoreKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
-        panic!("Opening stores not supported.");
     }
 }
 

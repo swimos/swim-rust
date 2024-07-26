@@ -1645,3 +1645,38 @@ where
         }
     }
 }
+
+/// An event handler that fails with the provided error.
+pub struct Fail<T, E> {
+    error: Option<E>,
+    _type: PhantomData<T>,
+}
+
+impl<T, E> Fail<T, E> {
+    pub fn new(error: E) -> Self {
+        Fail {
+            error: Some(error),
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<Context, T, E> HandlerAction<Context> for Fail<T, E>
+where
+    E: std::error::Error + Send + 'static,
+{
+    type Completion = T;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        if let Some(e) = self.error.take() {
+            StepResult::Fail(EventHandlerError::EffectError(Box::new(e)))
+        } else {
+            StepResult::after_done()
+        }
+    }
+}
