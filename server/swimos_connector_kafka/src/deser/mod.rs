@@ -155,7 +155,7 @@ use thiserror::Error;
 
 use crate::selector::DeserializationError;
 
-use super::MessagePart;
+use crate::connector::MessagePart;
 
 #[derive(Error, Debug)]
 pub enum AvroError {

@@ -18,7 +18,7 @@ use frunk::Coprod;
 use regex::Regex;
 use swimos_agent::{
     agent_lifecycle::ConnectorContext,
-    event_handler::{Discard, EventHandler, HandlerActionExt},
+    event_handler::{Discard, HandlerActionExt},
 };
 use swimos_connector::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 use swimos_model::{Attr, Item, Text, Value};
@@ -26,7 +26,7 @@ use thiserror::Error;
 
 use crate::{
     config::{MapLaneSpec, ValueLaneSpec},
-    MessagePart,
+    connector::MessagePart,
 };
 use swimos_agent::lanes::{MapLaneSelectRemove, MapLaneSelectUpdate, ValueLaneSelectSet};
 
@@ -174,10 +174,6 @@ pub struct SlotSelector {
 }
 
 impl SlotSelector {
-    pub fn new(key: Value) -> Self {
-        SlotSelector { select_key: key }
-    }
-
     pub fn for_field(name: impl Into<Text>) -> Self {
         SlotSelector {
             select_key: Value::text(name),
@@ -264,10 +260,6 @@ impl ChainSelector {
     pub fn new(selectors: Vec<BasicSelector>) -> Self {
         ChainSelector(selectors)
     }
-
-    pub fn push(&mut self, selector: impl Into<BasicSelector>) {
-        self.0.push(selector.into())
-    }
 }
 
 impl Selector for ChainSelector {
@@ -338,22 +330,6 @@ pub enum SelectorDescriptor<'a> {
         components: Vec<SelectorComponent<'a>>,
     },
     Topic,
-}
-
-impl<'a> SelectorDescriptor<'a> {
-    pub fn for_part(part: MessagePart, index: Option<usize>) -> Self {
-        SelectorDescriptor::Part {
-            part,
-            index,
-            components: vec![],
-        }
-    }
-
-    pub fn push(&mut self, component: SelectorComponent<'a>) {
-        if let Self::Part { components, .. } = self {
-            components.push(component);
-        }
-    }
 }
 
 impl<'a> SelectorDescriptor<'a> {
@@ -492,11 +468,7 @@ pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSel
             } else {
                 None
             };
-            components.push(SelectorComponent {
-                is_attr,
-                name,
-                index,
-            });
+            components.push(SelectorComponent::new(is_attr, name, index));
         } else {
             return Err(BadSelector::InvalidRoot);
         }
@@ -523,8 +495,8 @@ pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSel
 
 #[cfg(test)]
 mod tests {
+    use crate::connector::MessagePart;
     use crate::selector::{BadSelector, SelectorComponent, SelectorDescriptor};
-    use crate::MessagePart;
 
     #[test]
     fn init_regex_creation() {
@@ -643,6 +615,22 @@ mod tests {
             assert_eq!(index.as_str(), "123");
         } else {
             panic!("Did not match.");
+        }
+    }
+
+    impl<'a> SelectorDescriptor<'a> {
+        pub fn for_part(part: MessagePart, index: Option<usize>) -> Self {
+            SelectorDescriptor::Part {
+                part,
+                index,
+                components: vec![],
+            }
+        }
+
+        pub fn push(&mut self, component: SelectorComponent<'a>) {
+            if let Self::Part { components, .. } = self {
+                components.push(component);
+            }
         }
     }
 
@@ -793,8 +781,6 @@ pub enum LaneSelectorError {
     #[error("Deserializing the content of a Kafka message failed: {0}")]
     DeserializationFailed(#[from] DeserializationError),
 }
-
-pub type Urg = Box<dyn EventHandler<ConnectorAgent> + Send + Sync + 'static>;
 
 pub type GenericValueLaneSet =
     Discard<Option<ValueLaneSelectSet<ConnectorAgent, Value, ValueLaneSelectorFn>>>;
