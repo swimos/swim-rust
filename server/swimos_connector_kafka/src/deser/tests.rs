@@ -18,15 +18,15 @@ use uuid::Uuid;
 use crate::{
     connector::MessagePart,
     deser::{
-        F32Deserializer, F64Deserializer, I32Deserializer, I64Deserializer, JsonDeserializer,
-        ReconDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
+        F32Deserializer, F64Deserializer, I32Deserializer, I64Deserializer, ReconDeserializer,
+        U32Deserializer, U64Deserializer, UuidDeserializer,
     },
     Endianness,
 };
 
 use super::{MessageDeserializer, MessageView, StringDeserializer};
 
-fn view_of(bytes: &[u8], part: MessagePart) -> MessageView<'_> {
+pub fn view_of(bytes: &[u8], part: MessagePart) -> MessageView<'_> {
     match part {
         MessagePart::Key => MessageView {
             topic: "",
@@ -341,30 +341,6 @@ fn recon_deserializer() {
         vec![Attr::from("record")],
         vec![Item::slot("a", 1), Item::slot("b", 2)],
     );
-
-    let view = view_of(bytes, MessagePart::Key);
-    assert_eq!(
-        deserializer
-            .deserialize(&view, MessagePart::Key)
-            .expect("Failed."),
-        expected
-    );
-
-    let view = view_of(bytes, MessagePart::Payload);
-    assert_eq!(
-        deserializer
-            .deserialize(&view, MessagePart::Payload)
-            .expect("Failed."),
-        expected
-    );
-}
-
-#[test]
-fn json_deserializer() {
-    let deserializer = JsonDeserializer;
-
-    let bytes: &[u8] = "{ \"a\": 1, \"b\": true}".as_bytes();
-    let expected = Value::Record(vec![], vec![Item::slot("a", 1), Item::slot("b", true)]);
 
     let view = view_of(bytes, MessagePart::Key);
     assert_eq!(

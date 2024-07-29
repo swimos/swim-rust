@@ -12,15 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(feature = "avro")]
+mod avro;
+#[cfg(feature = "json")]
+mod json;
+
 #[cfg(test)]
-mod tests;
+pub mod tests;
 
-use std::{array::TryFromSliceError, convert::Infallible, io::Cursor, time::Duration};
+#[cfg(feature = "json")]
+pub use json::JsonDeserializer;
 
-use chrono::{DateTime, Local, NaiveDateTime, TimeDelta, Utc};
+#[cfg(feature = "avro")]
+pub use avro::AvroDeserializer;
+
+use std::{array::TryFromSliceError, convert::Infallible};
+
 use swimos_form::Form;
-use swimos_model::{BigInt, Blob, Item, Timestamp, Value};
+use swimos_model::{Blob, Value};
 use swimos_recon::parser::{parse_recognize, AsyncParseError};
+
+use uuid::Uuid;
+
+use crate::selector::DeserializationError;
+
+use crate::connector::MessagePart;
 
 pub struct MessageView<'a> {
     pub topic: &'a str,
@@ -124,230 +140,6 @@ impl MessageDeserializer for ReconDeserializer {
             Err(err) => return Err(AsyncParseError::BadUtf8(err)),
         };
         parse_recognize::<Value>(payload_str, true).map_err(AsyncParseError::Parser)
-    }
-}
-
-use serde_json::Value as JsonValue;
-
-fn convert_json_value(input: JsonValue) -> Value {
-    match input {
-        JsonValue::Null => Value::Extant,
-        JsonValue::Bool(p) => Value::BooleanValue(p),
-        JsonValue::Number(n) => {
-            if let Some(i) = n.as_u64() {
-                Value::UInt64Value(i)
-            } else if let Some(i) = n.as_i64() {
-                Value::Int64Value(i)
-            } else {
-                Value::Float64Value(n.as_f64().unwrap_or(f64::NAN))
-            }
-        }
-        JsonValue::String(s) => Value::Text(s.into()),
-        JsonValue::Array(arr) => Value::record(
-            arr.into_iter()
-                .map(|v| Item::ValueItem(convert_json_value(v)))
-                .collect(),
-        ),
-        JsonValue::Object(obj) => Value::record(
-            obj.into_iter()
-                .map(|(k, v)| Item::Slot(Value::Text(k.into()), convert_json_value(v)))
-                .collect(),
-        ),
-    }
-}
-
-#[derive(Clone, Copy, Default, Debug)]
-pub struct JsonDeserializer;
-
-impl MessageDeserializer for JsonDeserializer {
-    type Error = serde_json::Error;
-
-    fn deserialize<'a>(
-        &self,
-        message: &'a MessageView<'a>,
-        part: MessagePart,
-    ) -> Result<Value, Self::Error> {
-        let payload = match part {
-            MessagePart::Key => message.key(),
-            MessagePart::Payload => message.payload(),
-        };
-        let v: serde_json::Value = serde_json::from_slice(payload)?;
-        Ok(convert_json_value(v))
-    }
-}
-
-use apache_avro::{types::Value as AvroValue, Schema};
-use thiserror::Error;
-use uuid::Uuid;
-
-use crate::selector::DeserializationError;
-
-use crate::connector::MessagePart;
-
-#[derive(Error, Debug)]
-pub enum AvroError {
-    #[error("Failed to read Avro record: {0}")]
-    Avro(#[from] apache_avro::Error),
-    #[error("Unsupported Avro kind in record.")]
-    UnsupportedAvroKind,
-}
-
-fn convert_avro_value(value: AvroValue) -> Result<Value, AvroError> {
-    let v = match value {
-        AvroValue::Null => Value::Extant,
-        AvroValue::Boolean(p) => Value::BooleanValue(p),
-        AvroValue::Int(n) => Value::Int32Value(n),
-        AvroValue::Long(n) => Value::Int64Value(n),
-        AvroValue::Float(x) => Value::Float64Value(x.into()),
-        AvroValue::Double(x) => Value::Float64Value(x),
-        AvroValue::Bytes(v) | AvroValue::Fixed(_, v) => Value::Data(Blob::from_vec(v)),
-        AvroValue::String(s) => Value::Text(s.into()),
-        AvroValue::Enum(_, name) => Value::of_attr(name),
-        AvroValue::Union(_, v) => convert_avro_value(*v)?,
-        AvroValue::Array(arr) => Value::record(
-            arr.into_iter()
-                .map(|v| convert_avro_value(v).map(Item::ValueItem))
-                .collect::<Result<Vec<_>, _>>()?,
-        ),
-        AvroValue::Map(obj) => Value::record(
-            obj.into_iter()
-                .map(|(k, v)| {
-                    convert_avro_value(v).map(move |v| Item::Slot(Value::Text(k.into()), v))
-                })
-                .collect::<Result<Vec<_>, _>>()?,
-        ),
-        AvroValue::Record(obj) => Value::record(
-            obj.into_iter()
-                .map(|(k, v)| {
-                    convert_avro_value(v).map(move |v| Item::Slot(Value::Text(k.into()), v))
-                })
-                .collect::<Result<Vec<_>, _>>()?,
-        ),
-        AvroValue::Date(offset) => {
-            let utc_dt = DateTime::from_timestamp(offset as i64 * 86400, 0)
-                .unwrap_or(DateTime::<Utc>::MAX_UTC);
-            let ts = Timestamp::from(utc_dt);
-            ts.into_value()
-        }
-        AvroValue::Decimal(d) => {
-            let n = BigInt::from(d);
-            Value::BigInt(n)
-        }
-        AvroValue::TimeMillis(n) => Duration::from_millis(n as u64).into_value(),
-        AvroValue::TimeMicros(n) => Duration::from_micros(n as u64).into_value(),
-        AvroValue::TimestampMillis(offset) => {
-            let utc_dt =
-                DateTime::from_timestamp_millis(offset).unwrap_or(DateTime::<Utc>::MAX_UTC);
-            let ts = Timestamp::from(utc_dt);
-            ts.into_value()
-        }
-        AvroValue::TimestampMicros(offset) => {
-            let utc_dt =
-                DateTime::from_timestamp_micros(offset).unwrap_or(DateTime::<Utc>::MAX_UTC);
-            let ts = Timestamp::from(utc_dt);
-            ts.into_value()
-        }
-        AvroValue::LocalTimestampMillis(n) => {
-            let def = if n <= 0 {
-                NaiveDateTime::MIN
-            } else {
-                NaiveDateTime::MAX
-            };
-            let local_time = NaiveDateTime::UNIX_EPOCH
-                .checked_add_signed(TimeDelta::milliseconds(n))
-                .unwrap_or(def);
-            let dt = local_time.and_local_timezone(Local).unwrap();
-            let ts = Timestamp::from(dt);
-            ts.into_value()
-        }
-        AvroValue::LocalTimestampMicros(n) => {
-            let def = if n <= 0 {
-                NaiveDateTime::MIN
-            } else {
-                NaiveDateTime::MAX
-            };
-            let local_time = NaiveDateTime::UNIX_EPOCH
-                .checked_add_signed(TimeDelta::microseconds(n))
-                .unwrap_or(def);
-            let dt = local_time.and_local_timezone(Local).unwrap();
-            let ts = Timestamp::from(dt);
-            ts.into_value()
-        }
-        AvroValue::Duration(_) => return Err(AvroError::UnsupportedAvroKind),
-        AvroValue::Uuid(id) => Value::BigInt(id.as_u128().into()),
-    };
-    Ok(v)
-}
-
-#[derive(Default, Clone, Debug)]
-pub struct AvroDeserializer {
-    schema: Option<Schema>,
-}
-
-impl AvroDeserializer {
-    pub fn new(schema: Schema) -> Self {
-        AvroDeserializer {
-            schema: Some(schema),
-        }
-    }
-}
-
-#[derive(Default)]
-enum ValueAcc {
-    #[default]
-    Empty,
-    Single(Value),
-    Record(Vec<Item>),
-}
-
-impl ValueAcc {
-    fn push(&mut self, value: Value) {
-        match std::mem::take(self) {
-            ValueAcc::Empty => *self = ValueAcc::Single(value),
-            ValueAcc::Single(v) => {
-                *self = ValueAcc::Record(vec![Item::ValueItem(v), Item::ValueItem(value)])
-            }
-            ValueAcc::Record(mut vs) => {
-                vs.push(Item::ValueItem(value));
-                *self = ValueAcc::Record(vs);
-            }
-        }
-    }
-
-    fn done(self) -> Value {
-        match self {
-            ValueAcc::Empty => Value::Extant,
-            ValueAcc::Single(v) => v,
-            ValueAcc::Record(vs) => Value::record(vs),
-        }
-    }
-}
-
-impl MessageDeserializer for AvroDeserializer {
-    type Error = AvroError;
-
-    fn deserialize<'a>(
-        &self,
-        message: &'a MessageView<'a>,
-        part: MessagePart,
-    ) -> Result<Value, Self::Error> {
-        let AvroDeserializer { schema } = self;
-        let payload = match part {
-            MessagePart::Key => message.key(),
-            MessagePart::Payload => message.payload(),
-        };
-        let cursor = Cursor::new(payload);
-        let reader = if let Some(schema) = schema {
-            apache_avro::Reader::with_schema(schema, cursor)
-        } else {
-            apache_avro::Reader::new(cursor)
-        }?;
-        let mut acc = ValueAcc::Empty;
-        for avro_value in reader {
-            let v = convert_avro_value(avro_value?)?;
-            acc.push(v);
-        }
-        Ok(acc.done())
     }
 }
 

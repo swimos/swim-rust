@@ -14,16 +14,14 @@
 
 use std::collections::HashMap;
 
-use apache_avro::Schema;
 use rdkafka::config::RDKafkaLogLevel;
 use swimos_form::Form;
 use thiserror::Error;
-use tokio::{fs::File, io::AsyncReadExt};
 
 use crate::deser::{
-    AvroDeserializer, BoxMessageDeserializer, BytesDeserializer, Endianness, F32Deserializer,
-    F64Deserializer, I32Deserializer, I64Deserializer, JsonDeserializer, MessageDeserializer,
-    ReconDeserializer, StringDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
+    BoxMessageDeserializer, BytesDeserializer, Endianness, F32Deserializer, F64Deserializer,
+    I32Deserializer, I64Deserializer, MessageDeserializer, ReconDeserializer, StringDeserializer,
+    U32Deserializer, U64Deserializer, UuidDeserializer,
 };
 
 #[derive(Clone, Debug, Form)]
@@ -93,8 +91,12 @@ pub enum DeserializationFormat {
     Float64(Endianness),
     Uuid,
     Recon,
+    #[cfg(feature = "json")]
     Json,
-    Avro { schema_path: Option<String> },
+    #[cfg(feature = "avro")]
+    Avro {
+        schema_path: Option<String>,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -130,17 +132,20 @@ impl DeserializationFormat {
             }
             DeserializationFormat::Uuid => Ok(UuidDeserializer.boxed()),
             DeserializationFormat::Recon => Ok(ReconDeserializer.boxed()),
-            DeserializationFormat::Json => Ok(JsonDeserializer.boxed()),
+            #[cfg(feature = "json")]
+            DeserializationFormat::Json => Ok(crate::deser::JsonDeserializer.boxed()),
+            #[cfg(feature = "avro")]
             DeserializationFormat::Avro { schema_path } => {
+                use tokio::{fs::File, io::AsyncReadExt};
                 if let Some(path) = schema_path {
                     let mut file = File::open(path).await?;
                     let mut contents = String::new();
                     file.read_to_string(&mut contents).await?;
-                    let schema = Schema::parse_str(&contents)
+                    let schema = apache_avro::Schema::parse_str(&contents)
                         .map_err(|e| DerserializerLoadError::InvalidDescriptor(Box::new(e)))?;
-                    Ok(AvroDeserializer::new(schema).boxed())
+                    Ok(crate::deser::AvroDeserializer::new(schema).boxed())
                 } else {
-                    Ok(AvroDeserializer::default().boxed())
+                    Ok(crate::deser::AvroDeserializer::default().boxed())
                 }
             }
         }

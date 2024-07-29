@@ -8,6 +8,11 @@ license.workspace = true
 repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connector_kafka"
 homepage.workspace = true
 
+[features]
+default = []
+json = ["dep:serde_json"]
+avro = ["dep:apache-avro", "dep:chrono"]
+
 [dependencies]
 futures = { workspace = true }
 swimos_utilities = { workspace = true }
@@ -19,9 +24,9 @@ swimos_agent = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 rdkafka = { workspace = true, features = ["cmake-build"] }
-serde_json = { workspace = true }
-apache-avro = { workspace = true }
-chrono = { workspace = true }
+serde_json = { workspace = true, optional = true }
+apache-avro = { workspace = true, optional = true}
+chrono = { workspace = true, optional = true }
 thiserror = { workspace = true }
 swimos_connector = { workspace = true }
 regex = { workspace = true }
