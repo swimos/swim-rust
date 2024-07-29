@@ -72,10 +72,6 @@ pub use swimos_trigger as trigger;
 #[doc(inline)]
 pub use swimos_sync as circular_buffer;
 
-#[cfg(feature = "test-util")]
-#[doc(inline)]
-pub use swimos_test_util as test_util;
-
 #[doc(inline)]
 pub use swimos_num::non_zero_usize;
 

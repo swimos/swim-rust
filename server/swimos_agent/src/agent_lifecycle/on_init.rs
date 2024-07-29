@@ -184,7 +184,7 @@ impl<Context, Shared, K, V, F> RegisterJoinValue<Context, Shared, K, V, F> {
     /// # Arguments
     /// * `projection` - Projection from the agent type to the lane.
     /// * `lifecycle_fac` - A factory that will create lifecycle instances for each key of the
-    /// join value lane.
+    ///   join value lane.
     pub fn new(projection: fn(&Context) -> &JoinValueLane<K, V>, lifecycle_fac: F) -> Self {
         RegisterJoinValue {
             _type: PhantomData,
@@ -249,7 +249,7 @@ impl<Context, Shared, L, K, V, F> RegisterJoinMap<Context, Shared, L, K, V, F> {
     /// # Arguments
     /// * `projection` - Projection from the agent type to the lane.
     /// * `lifecycle_fac` - A factory that will create lifecycle instances for each key of the
-    /// join map lane.
+    ///   join map lane.
     pub fn new(projection: fn(&Context) -> &JoinMapLane<L, K, V>, lifecycle_fac: F) -> Self {
         RegisterJoinMap {
             _type: PhantomData,

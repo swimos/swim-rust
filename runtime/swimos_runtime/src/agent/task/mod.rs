@@ -612,8 +612,8 @@ impl WriteTaskMessage {
 /// * `http_tx` - Channel to the HTTP lane task.
 /// * `ext_link_tx` - Channel to communicate with the external links task.
 /// * `combined_stop` - The task will stop when this future completes. This should combined the overall
-/// shutdown-signal with latch that ensures this task will stop if the read/write tasks stop (to avoid
-/// deadlocks).
+///    shutdown-signal with latch that ensures this task will stop if the read/write tasks stop (to avoid
+///    deadlocks).
 async fn attachment_task<F>(
     mut runtime: mpsc::Receiver<AgentRuntimeRequest>,
     mut attachment: mpsc::Receiver<AgentAttachmentRequest>,
@@ -1139,9 +1139,9 @@ where
     /// * `inactive_timeout` - Time after which the task will vote to stop due to inactivity.
     /// * `remote_timeout` - Time after which a task with no links and no activity should be removed.
     /// * `timeout_delay` - Timer for the agent timeout (held on the stack of the write task to avoid
-    /// having it in a separate allocation).
+    ///    having it in a separate allocation).
     /// * `prune_delay` - Timer for pruning inactive remotes (held on the stack of the write task to
-    /// avoid having it in a separte allocation).
+    ///    avoid having it in a separte allocation).
     /// * `message_stream` - Stream of messages from the attachment and read tasks.
     fn new(
         inactive_timeout: Duration,
@@ -1703,7 +1703,7 @@ impl WriteTaskEndpoints {
 /// * `configuration` - Configuration parameters for the task.
 /// * `initial_endpoints` - Initial lane and store endpoints that were created in the agent initialization phase.
 /// * `message_stream` - Channel for messages from the read and coordination tasks. This will terminate when the agent
-/// runtime is stopping.
+///    runtime is stopping.
 /// * `read_task_tx` - Channel to communicate with the read task (after initializing new lanes).
 /// * `stop_voter` - Votes to stop if this task becomes inactive (unanimity with the write task is required).
 /// * `reporting` - Introspection reporting context for the agent (if introspection is enabled).

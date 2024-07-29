@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@swim/client": "4.0.0",
-    "ag-grid-react": "31.0.3",
-    "ag-grid-community": "31.0.3",
+    "ag-grid-react": "32.0.2",
+    "ag-grid-community": "32.0.2",
     "lodash-es": "^4.17.21",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

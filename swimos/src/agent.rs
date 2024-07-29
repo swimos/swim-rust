@@ -16,12 +16,12 @@
 //! traits are:
 //!
 //! 1. [`AgentLaneModel`] - This defines the structure of the agent as a fixed collection
-//! of typed lanes. This trait has a derive macro which can be applied to any struct with named fields
-//! where each field is a lane type. See the documentation for the trait for instructions on how to use
-//! the derive macro.
+//!    of typed lanes. This trait has a derive macro which can be applied to any struct with named fields
+//!    where each field is a lane type. See the documentation for the trait for instructions on how to use
+//!    the derive macro.
 //! 2. [`agent_lifecycle::AgentLifecycle`] - The trait defines custom behaviour that can be
-//! attached to an agent. An agent, and its lanes have associated lifecycle events (for example, the
-//! `on_start` event that triggers when an instance of the agent starts.)
+//!    attached to an agent. An agent, and its lanes have associated lifecycle events (for example, the
+//!    `on_start` event that triggers when an instance of the agent starts.)
 //!
 //! It also provides attribute macros to generate agent lifecycles:
 //!

@@ -22,7 +22,7 @@
 //!
 //! - A type to represent a [route URI](`RouteUri`).
 //! - [Route patterns](`RoutePattern`) that can be used to extract components from the path of a
-//! route URI.
+//!   route URI.
 
 mod route_pattern;
 mod route_uri;
