@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use swimos_model::Value;
+use swimos_model::{Attr, Item, Value};
 use uuid::Uuid;
 
 use crate::{
     connector::MessagePart,
     deser::{
-        F32Deserializer, F64Deserializer, I32Deserializer, I64Deserializer, U32Deserializer,
-        U64Deserializer, UuidDeserializer,
+        F32Deserializer, F64Deserializer, I32Deserializer, I64Deserializer, JsonDeserializer,
+        ReconDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
     },
     Endianness,
 };
@@ -314,6 +314,57 @@ fn uuid_deserializer() {
     let expected = Value::BigInt(id.as_u128().into());
 
     let bytes: &[u8] = id.as_bytes();
+
+    let view = view_of(bytes, MessagePart::Key);
+    assert_eq!(
+        deserializer
+            .deserialize(&view, MessagePart::Key)
+            .expect("Failed."),
+        expected
+    );
+
+    let view = view_of(bytes, MessagePart::Payload);
+    assert_eq!(
+        deserializer
+            .deserialize(&view, MessagePart::Payload)
+            .expect("Failed."),
+        expected
+    );
+}
+
+#[test]
+fn recon_deserializer() {
+    let deserializer = ReconDeserializer;
+
+    let bytes: &[u8] = "@record { a: 1, b: 2}".as_bytes();
+    let expected = Value::Record(
+        vec![Attr::from("record")],
+        vec![Item::slot("a", 1), Item::slot("b", 2)],
+    );
+
+    let view = view_of(bytes, MessagePart::Key);
+    assert_eq!(
+        deserializer
+            .deserialize(&view, MessagePart::Key)
+            .expect("Failed."),
+        expected
+    );
+
+    let view = view_of(bytes, MessagePart::Payload);
+    assert_eq!(
+        deserializer
+            .deserialize(&view, MessagePart::Payload)
+            .expect("Failed."),
+        expected
+    );
+}
+
+#[test]
+fn json_deserializer() {
+    let deserializer = JsonDeserializer;
+
+    let bytes: &[u8] = "{ \"a\": 1, \"b\": true}".as_bytes();
+    let expected = Value::Record(vec![], vec![Item::slot("a", 1), Item::slot("b", true)]);
 
     let view = view_of(bytes, MessagePart::Key);
     assert_eq!(
