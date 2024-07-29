@@ -15,18 +15,13 @@
 use std::{cell::RefCell, sync::Arc};
 
 use crate::config::{DerserializerLoadError, KafkaConnectorConfiguration};
-use crate::deser::BoxMessageDeserializer;
+use crate::deser::{BoxMessageDeserializer, MessageView};
+use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaMessage};
 use crate::selector::{
     Computed, InvalidLaneSpec, LaneSelectorError, MapLaneSelector, ValueLaneSelector,
 };
 use futures::{stream::unfold, Future};
-use rdkafka::{
-    config::RDKafkaLogLevel,
-    consumer::{CommitMode, Consumer, ConsumerContext, Rebalance, StreamConsumer},
-    error::{KafkaError, KafkaResult},
-    message::BorrowedMessage,
-    ClientConfig, ClientContext, Message, Statistics, TopicPartitionList,
-};
+use rdkafka::error::KafkaError;
 use swimos_agent::{
     agent_lifecycle::{ConnectorContext, HandlerContext},
     event_handler::{
@@ -37,28 +32,28 @@ use swimos_model::Value;
 use swimos_utilities::trigger;
 use thiserror::Error;
 use tokio::sync::{mpsc, Semaphore};
-use tracing::{debug, error, info, warn};
+use tracing::error;
 
 use swimos_connector::{Connector, ConnectorAgent, ConnectorStream};
 
 type ConnHandlerContext = HandlerContext<ConnectorAgent>;
 type ConnContext = ConnectorContext<ConnectorAgent>;
 
-pub struct KafkaConnector {
+pub struct KafkaConnector<F> {
+    factory: F,
     configuration: KafkaConnectorConfiguration,
     lanes: RefCell<Lanes>,
 }
 
-impl KafkaConnector {
-    pub fn new(configuration: KafkaConnectorConfiguration) -> Self {
+impl<F> KafkaConnector<F> {
+    pub fn new(factory: F, configuration: KafkaConnectorConfiguration) -> Self {
         KafkaConnector {
+            factory,
             configuration,
             lanes: Default::default(),
         }
     }
 }
-
-type LoggingConsumer = StreamConsumer<KafkaClientContext>;
 
 #[derive(Debug, Error)]
 pub enum KafkaConnectorError {
@@ -70,7 +65,10 @@ pub enum KafkaConnectorError {
     Lane(#[from] LaneSelectorError),
 }
 
-impl Connector for KafkaConnector {
+impl<F> Connector for KafkaConnector<F>
+where
+    F: ConsumerFactory + Send + 'static,
+{
     type StreamError = KafkaConnectorError;
 
     fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_ {
@@ -78,6 +76,7 @@ impl Connector for KafkaConnector {
         let KafkaConnector {
             configuration,
             lanes,
+            ..
         } = self;
         let result = Lanes::try_from(configuration);
         let handler = handler_context
@@ -100,17 +99,12 @@ impl Connector for KafkaConnector {
         &self,
     ) -> Result<impl ConnectorStream<KafkaConnectorError>, Self::StreamError> {
         let KafkaConnector {
+            factory,
             configuration,
             lanes,
         } = self;
 
-        let mut client_builder = ClientConfig::new();
-        configuration.properties.iter().for_each(|(k, v)| {
-            client_builder.set(k, v);
-        });
-        let consumer = client_builder
-            .set_log_level(configuration.log_level.into())
-            .create_with_context::<_, LoggingConsumer>(KafkaClientContext)?;
+        let consumer = factory.create(&configuration.properties, configuration.log_level)?;
         let (tx, rx) = mpsc::channel(1);
 
         let key_deser_cpy = configuration.key_deserializer.clone();
@@ -129,87 +123,34 @@ impl Connector for KafkaConnector {
     }
 }
 
-struct KafkaClientContext;
-
-impl ClientContext for KafkaClientContext {
-    fn log(&self, level: RDKafkaLogLevel, fac: &str, log_message: &str) {
-        match level {
-            RDKafkaLogLevel::Emerg
-            | RDKafkaLogLevel::Alert
-            | RDKafkaLogLevel::Critical
-            | RDKafkaLogLevel::Error => {
-                error!("Kafka Connector: {} {}", fac, log_message)
-            }
-            RDKafkaLogLevel::Warning => {
-                warn!("Kafka Connector: {} {}", fac, log_message)
-            }
-            RDKafkaLogLevel::Notice => {
-                info!("Kafka Connector: {} {}", fac, log_message)
-            }
-            RDKafkaLogLevel::Info => {
-                info!("Kafka Connector: {} {}", fac, log_message)
-            }
-            RDKafkaLogLevel::Debug => {
-                debug!("Kafka Connector: {} {}", fac, log_message)
-            }
-        }
-    }
-
-    fn stats(&self, statistics: Statistics) {
-        info!("Kafka Connector Statistics: {:?}", statistics);
-    }
-
-    fn error(&self, error: KafkaError, reason: &str) {
-        error!("Kafka Connector: {}: {}", error, reason);
-    }
-}
-
-impl ConsumerContext for KafkaClientContext {
-    fn pre_rebalance(&self, rebalance: &Rebalance) {
-        info!("Pre rebalance {:?}", rebalance);
-    }
-
-    fn post_rebalance(&self, rebalance: &Rebalance) {
-        info!("Post rebalance {:?}", rebalance);
-    }
-
-    fn commit_callback(&self, result: KafkaResult<()>, _offsets: &TopicPartitionList) {
-        info!("Committing offsets: {:?}", result);
-    }
-}
-
 fn message_to_handler<'a>(
     selector: &'a MessageSelector,
-    message: &'a BorrowedMessage<'a>,
+    message: &'a MessageView<'a>,
     trigger_tx: trigger::Sender,
 ) -> Result<impl EventHandler<ConnectorAgent> + Send + 'static, LaneSelectorError> {
     selector.handle_message(message, trigger_tx)
 }
 
-struct MessageState<F, H> {
-    consumer: LoggingConsumer,
+struct MessageState<C, F, H> {
+    consumer: C,
     selector: MessageSelector,
     to_handler: F,
     tx: mpsc::Sender<H>,
 }
 
-impl<F, H> MessageState<F, H>
+impl<C, F, H> MessageState<C, F, H>
 where
+    C: KafkaConsumer + Send + 'static,
     F: for<'a> Fn(
             &'a MessageSelector,
-            &'a BorrowedMessage<'a>,
+            &'a MessageView<'a>,
             trigger::Sender,
         ) -> Result<H, LaneSelectorError>
         + Send
         + 'static,
     H: EventHandler<ConnectorAgent> + Send + 'static,
 {
-    fn new(
-        consumer: LoggingConsumer,
-        selector: MessageSelector,
-        to_handler: F,
-        tx: mpsc::Sender<H>,
-    ) -> Self {
+    fn new(consumer: C, selector: MessageSelector, to_handler: F, tx: mpsc::Sender<H>) -> Self {
         MessageState {
             consumer,
             selector,
@@ -232,11 +173,12 @@ where
                 break;
             };
             let message = consumer.recv().await?;
+            let view = message.view();
             let (trigger_tx, trigger_rx) = trigger::trigger();
-            let handler = to_handler(selector, &message, trigger_tx)?;
+            let handler = to_handler(selector, &view, trigger_tx)?;
             reservation.send(handler);
             let _ = trigger_rx.await;
-            consumer.commit_message(&message, CommitMode::Async)?;
+            consumer.commit(message)?;
         }
         Ok(())
     }
@@ -418,7 +360,7 @@ impl MessageSelector {
 
     fn handle_message<'a>(
         &self,
-        message: &'a BorrowedMessage<'a>,
+        message: &'a MessageView<'a>,
         on_done: trigger::Sender,
     ) -> Result<impl EventHandler<ConnectorAgent> + Send + 'static, LaneSelectorError> {
         let MessageSelector {

@@ -15,17 +15,44 @@
 use std::{array::TryFromSliceError, convert::Infallible, io::Cursor, time::Duration};
 
 use chrono::{DateTime, Local, NaiveDateTime, TimeDelta, Utc};
-use rdkafka::{message::BorrowedMessage, Message};
 use swimos_form::Form;
 use swimos_model::{BigInt, Blob, Item, Timestamp, Value};
 use swimos_recon::parser::{parse_recognize, AsyncParseError};
+
+pub struct MessageView<'a> {
+    pub topic: &'a str,
+    pub key: &'a [u8],
+    pub payload: &'a [u8],
+}
+
+impl<'a> MessageView<'a> {
+    pub fn topic(&self) -> &'a str {
+        self.topic
+    }
+
+    pub fn key(&self) -> &'a [u8] {
+        self.key
+    }
+
+    pub fn payload(&self) -> &'a [u8] {
+        self.payload
+    }
+
+    pub fn key_str(&self) -> Result<&'a str, std::str::Utf8Error> {
+        std::str::from_utf8(self.key)
+    }
+
+    pub fn payload_str(&self) -> Result<&'a str, std::str::Utf8Error> {
+        std::str::from_utf8(self.payload)
+    }
+}
 
 pub trait MessageDeserializer {
     type Error: std::error::Error;
 
     fn deserialize<'a>(
         &'a self,
-        message: &'a BorrowedMessage<'_>,
+        message: &'a MessageView<'a>,
         part: MessagePart,
     ) -> Result<Value, Self::Error>;
 
@@ -50,16 +77,14 @@ impl MessageDeserializer for StringDeserializer {
 
     fn deserialize<'a>(
         &self,
-        message: &'a BorrowedMessage<'a>,
+        message: &'a MessageView<'a>,
         part: MessagePart,
     ) -> Result<Value, Self::Error> {
         let payload = match part {
-            MessagePart::Key => message.key_view::<str>(),
-            MessagePart::Value => message.payload_view::<str>(),
+            MessagePart::Key => message.key_str(),
+            MessagePart::Value => message.payload_str(),
         };
-        payload
-            .transpose()
-            .map(|opt| Value::text(opt.unwrap_or_default()))
+        payload.map(Value::text)
     }
 }
 
@@ -68,15 +93,14 @@ impl MessageDeserializer for BytesDeserializer {
 
     fn deserialize<'a>(
         &self,
-        message: &'a BorrowedMessage<'a>,
+        message: &'a MessageView<'a>,
         part: MessagePart,
     ) -> Result<Value, Self::Error> {
         let payload = match part {
             MessagePart::Key => message.key(),
             MessagePart::Value => message.payload(),
         };
-        let bytes = payload.unwrap_or(&[]);
-        Ok(Value::Data(Blob::from_vec(bytes.to_vec())))
+        Ok(Value::Data(Blob::from_vec(payload.to_vec())))
     }
 }
 
@@ -85,15 +109,15 @@ impl MessageDeserializer for ReconDeserializer {
 
     fn deserialize<'a>(
         &self,
-        message: &'a BorrowedMessage<'a>,
+        message: &'a MessageView<'a>,
         part: MessagePart,
     ) -> Result<Value, Self::Error> {
         let payload = match part {
-            MessagePart::Key => message.key_view::<str>(),
-            MessagePart::Value => message.payload_view::<str>(),
+            MessagePart::Key => message.key_str(),
+            MessagePart::Value => message.payload_str(),
         };
-        let payload_str = match payload.transpose() {
-            Ok(string) => string.unwrap_or_default(),
+        let payload_str = match payload {
+            Ok(string) => string,
             Err(err) => return Err(AsyncParseError::BadUtf8(err)),
         };
         parse_recognize::<Value>(payload_str, true).map_err(AsyncParseError::Parser)
@@ -137,15 +161,14 @@ impl MessageDeserializer for JsonDeserializer {
 
     fn deserialize<'a>(
         &self,
-        message: &'a BorrowedMessage<'a>,
+        message: &'a MessageView<'a>,
         part: MessagePart,
     ) -> Result<Value, Self::Error> {
         let payload = match part {
             MessagePart::Key => message.key(),
             MessagePart::Value => message.payload(),
         };
-        let bytes = payload.unwrap_or(&[]);
-        let v: serde_json::Value = serde_json::from_slice(bytes)?;
+        let v: serde_json::Value = serde_json::from_slice(payload)?;
         Ok(convert_json_value(v))
     }
 }
@@ -301,7 +324,7 @@ impl MessageDeserializer for AvroDeserializer {
 
     fn deserialize<'a>(
         &self,
-        message: &'a BorrowedMessage<'a>,
+        message: &'a MessageView<'a>,
         part: MessagePart,
     ) -> Result<Value, Self::Error> {
         let AvroDeserializer { schema } = self;
@@ -309,7 +332,7 @@ impl MessageDeserializer for AvroDeserializer {
             MessagePart::Key => message.key(),
             MessagePart::Value => message.payload(),
         };
-        let cursor = Cursor::new(payload.unwrap_or_default());
+        let cursor = Cursor::new(payload);
         let reader = if let Some(schema) = schema {
             apache_avro::Reader::with_schema(schema, cursor)
         } else {
@@ -347,15 +370,14 @@ macro_rules! num_deser {
 
             fn deserialize<'a>(
                 &self,
-                message: &'a BorrowedMessage<'a>,
+                message: &'a MessageView<'a>,
                 part: MessagePart,
             ) -> Result<Value, Self::Error> {
                 let $deser(endianness) = self;
                 let payload = match part {
                     MessagePart::Key => message.key(),
                     MessagePart::Value => message.payload(),
-                }
-                .unwrap_or_default();
+                };
                 let x = match endianness {
                     Endianness::LittleEndian => <$numt>::from_le_bytes(payload.try_into()?),
                     Endianness::BigEndian => <$numt>::from_be_bytes(payload.try_into()?),
@@ -381,14 +403,13 @@ impl MessageDeserializer for UuidDeserializer {
 
     fn deserialize<'a>(
         &self,
-        message: &'a BorrowedMessage<'a>,
+        message: &'a MessageView<'a>,
         part: MessagePart,
     ) -> Result<Value, Self::Error> {
         let payload = match part {
             MessagePart::Key => message.key(),
             MessagePart::Value => message.payload(),
-        }
-        .unwrap_or_default();
+        };
         let x = u128::from_be_bytes(payload.try_into()?);
         Ok(Value::BigInt(x.into()))
     }
@@ -406,7 +427,7 @@ where
 
     fn deserialize<'a>(
         &self,
-        message: &'a BorrowedMessage<'a>,
+        message: &'a MessageView<'a>,
         part: MessagePart,
     ) -> Result<Value, Self::Error> {
         self.inner
@@ -423,7 +444,7 @@ impl MessageDeserializer for BoxMessageDeserializer {
 
     fn deserialize<'a>(
         &self,
-        message: &'a BorrowedMessage<'a>,
+        message: &'a MessageView<'a>,
         part: MessagePart,
     ) -> Result<Value, Self::Error> {
         (**self).deserialize(message, part)

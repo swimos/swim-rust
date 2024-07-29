@@ -15,6 +15,7 @@
 mod config;
 mod connector;
 mod deser;
+mod facade;
 mod selector;
 
 pub use config::{DeserializationFormat, KafkaConnectorConfiguration, MapLaneSpec, ValueLaneSpec};
