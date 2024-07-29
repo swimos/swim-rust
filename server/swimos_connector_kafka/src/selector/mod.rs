@@ -41,7 +41,7 @@ impl From<MessagePart> for MessageField {
     fn from(value: MessagePart) -> Self {
         match value {
             MessagePart::Key => MessageField::Key,
-            MessagePart::Value => MessageField::Value,
+            MessagePart::Payload => MessageField::Value,
         }
     }
 }
@@ -356,7 +356,7 @@ impl<'a> SelectorDescriptor<'a> {
                 } else if index.is_none() {
                     Some(match part {
                         MessagePart::Key => "key",
-                        MessagePart::Value => "value",
+                        MessagePart::Payload => "value",
                     })
                 } else {
                     None
@@ -476,7 +476,7 @@ pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSel
 
     let part = match field {
         MessageField::Key => MessagePart::Key,
-        MessageField::Value => MessagePart::Value,
+        MessageField::Value => MessagePart::Payload,
         MessageField::Topic => {
             if components.is_empty() {
                 return Ok(SelectorDescriptor::Topic);
@@ -642,7 +642,7 @@ mod tests {
         let value = super::parse_selector("$value").expect("Parse failed.");
         assert_eq!(
             value,
-            SelectorDescriptor::for_part(MessagePart::Value, None)
+            SelectorDescriptor::for_part(MessagePart::Payload, None)
         );
 
         let indexed = super::parse_selector("$key[2]").expect("Parse failed.");
@@ -675,7 +675,7 @@ mod tests {
         assert_eq!(first, expected_first);
 
         let second = super::parse_selector("$value.slot").expect("Parse failed.");
-        let mut expected_second = SelectorDescriptor::for_part(MessagePart::Value, None);
+        let mut expected_second = SelectorDescriptor::for_part(MessagePart::Payload, None);
         expected_second.push(SelectorComponent::new(false, "slot", None));
         assert_eq!(second, expected_second);
 
@@ -685,7 +685,7 @@ mod tests {
         assert_eq!(third, expected_third);
 
         let fourth = super::parse_selector("$value[6].slot[8]").expect("Parse failed.");
-        let mut expected_fourth = SelectorDescriptor::for_part(MessagePart::Value, Some(6));
+        let mut expected_fourth = SelectorDescriptor::for_part(MessagePart::Payload, Some(6));
         expected_fourth.push(SelectorComponent::new(false, "slot", Some(8)));
         assert_eq!(fourth, expected_fourth);
     }
@@ -693,7 +693,7 @@ mod tests {
     #[test]
     fn multi_component_selector() {
         let selector = super::parse_selector("$value.red.@green[7].blue").expect("Parse failed.");
-        let mut expected = SelectorDescriptor::for_part(MessagePart::Value, None);
+        let mut expected = SelectorDescriptor::for_part(MessagePart::Payload, None);
         expected.push(SelectorComponent::new(false, "red", None));
         expected.push(SelectorComponent::new(true, "green", Some(7)));
         expected.push(SelectorComponent::new(false, "blue", None));

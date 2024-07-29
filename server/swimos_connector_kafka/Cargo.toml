@@ -29,3 +29,4 @@ frunk = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt"] }
+uuid = { workspace = true, features = ["v4"]}

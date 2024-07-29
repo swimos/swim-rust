@@ -238,7 +238,7 @@ where
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessagePart {
     Key,
-    Value,
+    Payload,
 }
 
 #[derive(Debug, Default)]
@@ -379,7 +379,7 @@ impl MessageSelector {
             let topic = Value::text(message.topic());
             let mut key = Computed::new(|| key_deserializer.deserialize(message, MessagePart::Key));
             let mut value =
-                Computed::new(|| value_deserializer.deserialize(message, MessagePart::Value));
+                Computed::new(|| value_deserializer.deserialize(message, MessagePart::Payload));
 
             for value_lane in value_lanes {
                 value_lane_handlers.push(value_lane.select_handler(&topic, &mut key, &mut value)?);

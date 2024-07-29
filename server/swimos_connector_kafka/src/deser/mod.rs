@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
 use std::{array::TryFromSliceError, convert::Infallible, io::Cursor, time::Duration};
 
 use chrono::{DateTime, Local, NaiveDateTime, TimeDelta, Utc};
@@ -82,7 +85,7 @@ impl MessageDeserializer for StringDeserializer {
     ) -> Result<Value, Self::Error> {
         let payload = match part {
             MessagePart::Key => message.key_str(),
-            MessagePart::Value => message.payload_str(),
+            MessagePart::Payload => message.payload_str(),
         };
         payload.map(Value::text)
     }
@@ -98,7 +101,7 @@ impl MessageDeserializer for BytesDeserializer {
     ) -> Result<Value, Self::Error> {
         let payload = match part {
             MessagePart::Key => message.key(),
-            MessagePart::Value => message.payload(),
+            MessagePart::Payload => message.payload(),
         };
         Ok(Value::Data(Blob::from_vec(payload.to_vec())))
     }
@@ -114,7 +117,7 @@ impl MessageDeserializer for ReconDeserializer {
     ) -> Result<Value, Self::Error> {
         let payload = match part {
             MessagePart::Key => message.key_str(),
-            MessagePart::Value => message.payload_str(),
+            MessagePart::Payload => message.payload_str(),
         };
         let payload_str = match payload {
             Ok(string) => string,
@@ -166,7 +169,7 @@ impl MessageDeserializer for JsonDeserializer {
     ) -> Result<Value, Self::Error> {
         let payload = match part {
             MessagePart::Key => message.key(),
-            MessagePart::Value => message.payload(),
+            MessagePart::Payload => message.payload(),
         };
         let v: serde_json::Value = serde_json::from_slice(payload)?;
         Ok(convert_json_value(v))
@@ -175,6 +178,7 @@ impl MessageDeserializer for JsonDeserializer {
 
 use apache_avro::{types::Value as AvroValue, Schema};
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::selector::DeserializationError;
 
@@ -330,7 +334,7 @@ impl MessageDeserializer for AvroDeserializer {
         let AvroDeserializer { schema } = self;
         let payload = match part {
             MessagePart::Key => message.key(),
-            MessagePart::Value => message.payload(),
+            MessagePart::Payload => message.payload(),
         };
         let cursor = Cursor::new(payload);
         let reader = if let Some(schema) = schema {
@@ -376,7 +380,7 @@ macro_rules! num_deser {
                 let $deser(endianness) = self;
                 let payload = match part {
                     MessagePart::Key => message.key(),
-                    MessagePart::Value => message.payload(),
+                    MessagePart::Payload => message.payload(),
                 };
                 let x = match endianness {
                     Endianness::LittleEndian => <$numt>::from_le_bytes(payload.try_into()?),
@@ -408,10 +412,10 @@ impl MessageDeserializer for UuidDeserializer {
     ) -> Result<Value, Self::Error> {
         let payload = match part {
             MessagePart::Key => message.key(),
-            MessagePart::Value => message.payload(),
+            MessagePart::Payload => message.payload(),
         };
-        let x = u128::from_be_bytes(payload.try_into()?);
-        Ok(Value::BigInt(x.into()))
+        let x = Uuid::from_bytes(payload.try_into()?);
+        Ok(Value::BigInt(x.as_u128().into()))
     }
 }
 
