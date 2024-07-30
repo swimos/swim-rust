@@ -12,8 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use swimos_model::{Attr, Item, Value};
+
 use crate::connector::MessagePart;
 use crate::selector::{BadSelector, SelectorComponent, SelectorDescriptor};
+
+use super::{
+    AttrSelector, BasicSelector, ChainSelector, IdentitySelector, IndexSelector, Selector,
+    SlotSelector,
+};
 
 #[test]
 fn init_regex_creation() {
@@ -215,4 +222,92 @@ fn multi_component_selector() {
     expected.push(SelectorComponent::new(true, "green", Some(7)));
     expected.push(SelectorComponent::new(false, "blue", None));
     assert_eq!(selector, expected);
+}
+
+fn test_value() -> Value {
+    let inner = Value::Record(
+        vec![],
+        vec![
+            Item::slot("red", 56),
+            Item::slot("green", 5),
+            Item::slot("blue", Value::Extant),
+        ],
+    );
+    Value::Record(
+        vec![Attr::from("attr1"), Attr::from(("attr2", 5))],
+        vec![
+            Item::from(3),
+            Item::from("a"),
+            Item::slot("name", true),
+            Item::slot("inner", inner),
+        ],
+    )
+}
+
+#[test]
+fn identity_selector() {
+    let selector = IdentitySelector;
+    let value = test_value();
+    let selected = selector.select(&value);
+    assert_eq!(selected, Some(&value));
+}
+
+#[test]
+fn attr_selector() {
+    let value = test_value();
+
+    let selector1 = AttrSelector::new("attr1".to_string());
+    let selector2 = AttrSelector::new("attr2".to_string());
+    let selector3 = AttrSelector::new("other".to_string());
+
+    assert_eq!(selector1.select(&value), Some(&Value::Extant));
+    assert_eq!(selector2.select(&value), Some(&Value::from(5)));
+    assert!(selector3.select(&value).is_none());
+}
+
+#[test]
+fn slot_selector() {
+    let value = test_value();
+
+    let selector1 = SlotSelector::for_field("name");
+    let selector2 = SlotSelector::for_field("a");
+    let selector3 = SlotSelector::for_field("other");
+
+    assert_eq!(selector1.select(&value), Some(&Value::from(true)));
+    assert!(selector2.select(&value).is_none());
+    assert!(selector3.select(&value).is_none());
+}
+
+#[test]
+fn index_selector() {
+    let value = test_value();
+
+    let selector1 = IndexSelector::new(0);
+    let selector2 = IndexSelector::new(2);
+    let selector3 = IndexSelector::new(4);
+
+    assert_eq!(selector1.select(&value), Some(&Value::from(3)));
+    assert_eq!(selector2.select(&value), Some(&Value::from(true)));
+    assert!(selector3.select(&value).is_none());
+}
+
+#[test]
+fn chain_selector() {
+    let value = test_value();
+
+    let selector1 = ChainSelector::new(vec![]);
+    let selector2 = ChainSelector::new(vec![BasicSelector::Slot(SlotSelector::for_field("name"))]);
+    let selector3 = ChainSelector::new(vec![
+        BasicSelector::Slot(SlotSelector::for_field("inner")),
+        BasicSelector::Slot(SlotSelector::for_field("green")),
+    ]);
+    let selector4 = ChainSelector::new(vec![
+        BasicSelector::Slot(SlotSelector::for_field("name")),
+        BasicSelector::Slot(SlotSelector::for_field("green")),
+    ]);
+
+    assert_eq!(selector1.select(&value), Some(&value));
+    assert_eq!(selector2.select(&value), Some(&Value::from(true)));
+    assert_eq!(selector3.select(&value), Some(&Value::from(5)));
+    assert!(selector4.select(&value).is_none());
 }
