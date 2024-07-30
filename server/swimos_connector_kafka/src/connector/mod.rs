@@ -14,14 +14,12 @@
 
 use std::{cell::RefCell, sync::Arc};
 
-use crate::config::{DerserializerLoadError, KafkaConnectorConfiguration};
+use crate::config::KafkaConnectorConfiguration;
 use crate::deser::{BoxMessageDeserializer, MessageView};
+use crate::error::{KafkaConnectorError, LaneSelectorError};
 use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaMessage};
-use crate::selector::{
-    Computed, InvalidLaneSpec, LaneSelectorError, MapLaneSelector, ValueLaneSelector,
-};
+use crate::selector::{Computed, InvalidLaneSpec, MapLaneSelector, ValueLaneSelector};
 use futures::{stream::unfold, Future};
-use rdkafka::error::KafkaError;
 use swimos_agent::{
     agent_lifecycle::{ConnectorContext, HandlerContext},
     event_handler::{
@@ -53,16 +51,6 @@ impl<F> KafkaConnector<F> {
             lanes: Default::default(),
         }
     }
-}
-
-#[derive(Debug, Error)]
-pub enum KafkaConnectorError {
-    #[error(transparent)]
-    Configuration(#[from] DerserializerLoadError),
-    #[error(transparent)]
-    Kafka(#[from] KafkaError),
-    #[error(transparent)]
-    Lane(#[from] LaneSelectorError),
 }
 
 impl<F> Connector for KafkaConnector<F>

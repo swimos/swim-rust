@@ -34,9 +34,7 @@ use swimos_recon::parser::{parse_recognize, AsyncParseError};
 
 use uuid::Uuid;
 
-use crate::selector::DeserializationError;
-
-use crate::connector::MessagePart;
+use crate::{connector::MessagePart, error::DeserializationError};
 
 pub struct MessageView<'a> {
     pub topic: &'a str,

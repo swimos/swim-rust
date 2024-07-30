@@ -16,12 +16,14 @@ use std::collections::HashMap;
 
 use rdkafka::config::RDKafkaLogLevel;
 use swimos_form::Form;
-use thiserror::Error;
 
-use crate::deser::{
-    BoxMessageDeserializer, BytesDeserializer, Endianness, F32Deserializer, F64Deserializer,
-    I32Deserializer, I64Deserializer, MessageDeserializer, ReconDeserializer, StringDeserializer,
-    U32Deserializer, U64Deserializer, UuidDeserializer,
+use crate::{
+    deser::{
+        BoxMessageDeserializer, BytesDeserializer, Endianness, F32Deserializer, F64Deserializer,
+        I32Deserializer, I64Deserializer, MessageDeserializer, ReconDeserializer,
+        StringDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
+    },
+    error::DerserializerLoadError,
 };
 
 #[derive(Clone, Debug, Form)]
@@ -97,14 +99,6 @@ pub enum DeserializationFormat {
     Avro {
         schema_path: Option<String>,
     },
-}
-
-#[derive(Debug, Error)]
-pub enum DerserializerLoadError {
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-    #[error(transparent)]
-    InvalidDescriptor(#[from] Box<dyn std::error::Error + Send + 'static>),
 }
 
 impl DeserializationFormat {

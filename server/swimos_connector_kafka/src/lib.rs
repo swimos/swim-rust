@@ -15,9 +15,10 @@
 mod config;
 mod connector;
 mod deser;
+mod error;
 mod facade;
 mod selector;
 
 pub use config::{DeserializationFormat, KafkaConnectorConfiguration, MapLaneSpec, ValueLaneSpec};
-pub use connector::{KafkaConnector, KafkaConnectorError};
+pub use connector::KafkaConnector;
 pub use deser::Endianness;
