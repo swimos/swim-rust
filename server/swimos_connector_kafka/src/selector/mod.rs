@@ -91,14 +91,14 @@ where
 pub enum LaneSelector {
     Topic,
     Key(BoxSelector),
-    Value(BoxSelector),
+    Payload(BoxSelector),
 }
 
 impl<'a> From<SelectorDescriptor<'a>> for LaneSelector {
     fn from(value: SelectorDescriptor<'a>) -> Self {
         match (value.field(), value.selector()) {
             (MessageField::Key, Some(selector)) => LaneSelector::Key(Box::new(selector)),
-            (MessageField::Value, Some(selector)) => LaneSelector::Value(Box::new(selector)),
+            (MessageField::Value, Some(selector)) => LaneSelector::Payload(Box::new(selector)),
             _ => LaneSelector::Topic,
         }
     }
@@ -109,7 +109,7 @@ impl LaneSelector {
         &self,
         topic: &'a Value,
         key: &'a mut K,
-        value: &'a mut V,
+        payload: &'a mut V,
     ) -> Result<Option<&'a Value>, DeserializationError>
     where
         K: Deferred + 'a,
@@ -118,7 +118,7 @@ impl LaneSelector {
         Ok(match self {
             LaneSelector::Topic => Some(topic),
             LaneSelector::Key(selector) => selector.select(key.get()?),
-            LaneSelector::Value(selector) => selector.select(value.get()?),
+            LaneSelector::Payload(selector) => selector.select(payload.get()?),
         })
     }
 }
@@ -598,9 +598,9 @@ impl ValueLaneSelector {
     }
 }
 
-pub type MapLaneUpdate = MapLaneSelectUpdate<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
-pub type MapLaneRemove = MapLaneSelectRemove<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
-pub type MapLaneOp = Coprod!(MapLaneUpdate, MapLaneRemove);
+type MapLaneUpdate = MapLaneSelectUpdate<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
+type MapLaneRemove = MapLaneSelectRemove<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
+type MapLaneOp = Coprod!(MapLaneUpdate, MapLaneRemove);
 
 pub type GenericMapLaneOp = Discard<Option<MapLaneOp>>;
 

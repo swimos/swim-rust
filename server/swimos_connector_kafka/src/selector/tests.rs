@@ -15,11 +15,12 @@
 use swimos_model::{Attr, Item, Value};
 
 use crate::connector::MessagePart;
+use crate::error::DeserializationError;
 use crate::selector::{BadSelector, SelectorComponent, SelectorDescriptor};
 
 use super::{
-    AttrSelector, BasicSelector, ChainSelector, IdentitySelector, IndexSelector, Selector,
-    SlotSelector,
+    AttrSelector, BasicSelector, ChainSelector, Deferred, IdentitySelector, IndexSelector,
+    LaneSelector, Selector, SlotSelector,
 };
 
 #[test]
@@ -310,4 +311,88 @@ fn chain_selector() {
     assert_eq!(selector2.select(&value), Some(&Value::from(true)));
     assert_eq!(selector3.select(&value), Some(&Value::from(5)));
     assert!(selector4.select(&value).is_none());
+}
+
+struct TestDeferred {
+    value: Value,
+    called: bool,
+}
+
+impl TestDeferred {
+    fn new(value: Value) -> Self {
+        TestDeferred {
+            value,
+            called: false,
+        }
+    }
+
+    fn was_called(&self) -> bool {
+        self.called
+    }
+}
+
+impl Deferred for TestDeferred {
+    fn get(&mut self) -> Result<&Value, DeserializationError> {
+        let TestDeferred { value, called } = self;
+        *called = true;
+        Ok(value)
+    }
+}
+
+#[test]
+fn select_topic() {
+    let selector = LaneSelector::Topic;
+
+    let topic = Value::text("topic_name");
+    let mut key = TestDeferred::new(Value::Extant);
+    let mut payload = TestDeferred::new(Value::Extant);
+
+    let selected = selector
+        .select(&topic, &mut key, &mut payload)
+        .expect("Failed.");
+    assert_eq!(selected, Some(&topic));
+    assert!(!key.was_called());
+    assert!(!payload.was_called());
+}
+
+#[test]
+fn select_key() {
+    let selector = ChainSelector::new(vec![
+        BasicSelector::Slot(SlotSelector::for_field("inner")),
+        BasicSelector::Slot(SlotSelector::for_field("green")),
+    ]);
+
+    let lane_selector = LaneSelector::Key(Box::new(selector));
+
+    let topic = Value::text("topic_name");
+    let mut key = TestDeferred::new(test_value());
+    let mut payload = TestDeferred::new(Value::Extant);
+
+    let selected = lane_selector
+        .select(&topic, &mut key, &mut payload)
+        .expect("Failed.");
+    assert_eq!(selected, Some(&Value::from(5)));
+    assert!(key.was_called());
+    assert!(!payload.was_called());
+}
+
+#[test]
+fn select_payload() {
+    let selector = ChainSelector::new(vec![
+        BasicSelector::Slot(SlotSelector::for_field("inner")),
+        BasicSelector::Slot(SlotSelector::for_field("green")),
+    ]);
+
+    let lane_selector = LaneSelector::Payload(Box::new(selector));
+
+    let topic = Value::text("topic_name");
+    let mut key = TestDeferred::new(Value::Extant);
+    let mut payload = TestDeferred::new(test_value());
+
+    let selected = lane_selector
+        .select(&topic, &mut key, &mut payload)
+        .expect("Failed.");
+    assert_eq!(selected, Some(&Value::from(5)));
+    assert!(!key.was_called());
+    assert!(payload.was_called());
 }
