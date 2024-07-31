@@ -37,7 +37,7 @@ use swimos_agent::lanes::{MapLaneSelectRemove, MapLaneSelectUpdate, ValueLaneSel
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageField {
     Key,
-    Value,
+    Payload,
     Topic,
 }
 
@@ -45,7 +45,7 @@ impl From<MessagePart> for MessageField {
     fn from(value: MessagePart) -> Self {
         match value {
             MessagePart::Key => MessageField::Key,
-            MessagePart::Payload => MessageField::Value,
+            MessagePart::Payload => MessageField::Payload,
         }
     }
 }
@@ -98,7 +98,7 @@ impl<'a> From<SelectorDescriptor<'a>> for LaneSelector {
     fn from(value: SelectorDescriptor<'a>) -> Self {
         match (value.field(), value.selector()) {
             (MessageField::Key, Some(selector)) => LaneSelector::Key(Box::new(selector)),
-            (MessageField::Value, Some(selector)) => LaneSelector::Payload(Box::new(selector)),
+            (MessageField::Payload, Some(selector)) => LaneSelector::Payload(Box::new(selector)),
             _ => LaneSelector::Topic,
         }
     }
@@ -132,7 +132,7 @@ impl Selector for IdentitySelector {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttrSelector {
     select_name: String,
 }
@@ -159,7 +159,7 @@ impl Selector for AttrSelector {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SlotSelector {
     select_key: Value,
 }
@@ -185,7 +185,7 @@ impl Selector for SlotSelector {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IndexSelector {
     index: usize,
 }
@@ -209,7 +209,7 @@ impl Selector for IndexSelector {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BasicSelector {
     Attr(AttrSelector),
     Slot(SlotSelector),
@@ -244,7 +244,7 @@ impl Selector for BasicSelector {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainSelector(Vec<BasicSelector>);
 
 impl ChainSelector {
@@ -289,7 +289,7 @@ fn field_regex() -> &'static Regex {
 }
 
 fn create_init_regex() -> Result<Regex, regex::Error> {
-    Regex::new("\\A(\\$(?:key|value|topic))(?:\\[(\\d+)])?\\z")
+    Regex::new("\\A(\\$(?:key|payload|topic))(?:\\[(\\d+)])?\\z")
 }
 
 fn create_field_regex() -> Result<Regex, regex::Error> {
@@ -347,7 +347,7 @@ impl<'a> SelectorDescriptor<'a> {
                 } else if index.is_none() {
                     Some(match part {
                         MessagePart::Key => "key",
-                        MessagePart::Payload => "value",
+                        MessagePart::Payload => "payload",
                     })
                 } else {
                     None
@@ -394,7 +394,7 @@ pub enum BadSelector {
     EmptySelector,
     #[error("Selector components cannot be empty.")]
     EmptyComponent,
-    #[error("Invalid root selector (must be one of '$key' or '$value' with an optional index or '$topic').")]
+    #[error("Invalid root selector (must be one of '$key' or '$payload' with an optional index or '$topic').")]
     InvalidRoot,
     #[error(
         "Invalid component selector (must be an attribute or slot name with an optional index)."
@@ -422,7 +422,7 @@ pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSel
             if let Some(captures) = init_regex().captures(root) {
                 let field = match captures.get(1) {
                     Some(kind) if kind.as_str() == "$key" => MessageField::Key,
-                    Some(kind) if kind.as_str() == "$value" => MessageField::Value,
+                    Some(kind) if kind.as_str() == "$payload" => MessageField::Payload,
                     Some(kind) if kind.as_str() == "$topic" => MessageField::Topic,
                     _ => return Err(BadSelector::InvalidRoot),
                 };
@@ -467,7 +467,7 @@ pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSel
 
     let part = match field {
         MessageField::Key => MessagePart::Key,
-        MessageField::Value => MessagePart::Payload,
+        MessageField::Payload => MessagePart::Payload,
         MessageField::Topic => {
             if components.is_empty() {
                 return Ok(SelectorDescriptor::Topic);

@@ -16,7 +16,7 @@ use swimos_model::{Attr, Item, Value};
 
 use crate::connector::MessagePart;
 use crate::error::DeserializationError;
-use crate::selector::{BadSelector, SelectorComponent, SelectorDescriptor};
+use crate::selector::{BadSelector, MessageField, SelectorComponent, SelectorDescriptor};
 
 use super::{
     AttrSelector, BasicSelector, ChainSelector, Deferred, IdentitySelector, IndexSelector,
@@ -40,11 +40,11 @@ fn match_key() {
 }
 
 #[test]
-fn match_value() {
-    if let Some(captures) = super::init_regex().captures("$value") {
+fn match_payload() {
+    if let Some(captures) = super::init_regex().captures("$payload") {
         let kind = captures.get(1).expect("Missing capture.");
         assert!(captures.get(2).is_none());
-        assert_eq!(kind.as_str(), "$value");
+        assert_eq!(kind.as_str(), "$payload");
     } else {
         panic!("Did not match.");
     }
@@ -74,11 +74,11 @@ fn match_key_indexed() {
 }
 
 #[test]
-fn match_value_indexed() {
-    if let Some(captures) = super::init_regex().captures("$value[0]") {
+fn match_payload_indexed() {
+    if let Some(captures) = super::init_regex().captures("$payload[0]") {
         let kind = captures.get(1).expect("Missing capture.");
         let index = captures.get(2).expect("Missing capture.");
-        assert_eq!(kind.as_str(), "$value");
+        assert_eq!(kind.as_str(), "$payload");
         assert_eq!(index.as_str(), "0");
     } else {
         panic!("Did not match.");
@@ -164,9 +164,9 @@ fn parse_simple() {
     let key = super::parse_selector("$key").expect("Parse failed.");
     assert_eq!(key, SelectorDescriptor::for_part(MessagePart::Key, None));
 
-    let value = super::parse_selector("$value").expect("Parse failed.");
+    let payload = super::parse_selector("$payload").expect("Parse failed.");
     assert_eq!(
-        value,
+        payload,
         SelectorDescriptor::for_part(MessagePart::Payload, None)
     );
 
@@ -199,7 +199,7 @@ fn parse_one_component() {
     expected_first.push(SelectorComponent::new(true, "attr", None));
     assert_eq!(first, expected_first);
 
-    let second = super::parse_selector("$value.slot").expect("Parse failed.");
+    let second = super::parse_selector("$payload.slot").expect("Parse failed.");
     let mut expected_second = SelectorDescriptor::for_part(MessagePart::Payload, None);
     expected_second.push(SelectorComponent::new(false, "slot", None));
     assert_eq!(second, expected_second);
@@ -209,7 +209,7 @@ fn parse_one_component() {
     expected_third.push(SelectorComponent::new(true, "attr", Some(3)));
     assert_eq!(third, expected_third);
 
-    let fourth = super::parse_selector("$value[6].slot[8]").expect("Parse failed.");
+    let fourth = super::parse_selector("$payload[6].slot[8]").expect("Parse failed.");
     let mut expected_fourth = SelectorDescriptor::for_part(MessagePart::Payload, Some(6));
     expected_fourth.push(SelectorComponent::new(false, "slot", Some(8)));
     assert_eq!(fourth, expected_fourth);
@@ -217,7 +217,7 @@ fn parse_one_component() {
 
 #[test]
 fn multi_component_selector() {
-    let selector = super::parse_selector("$value.red.@green[7].blue").expect("Parse failed.");
+    let selector = super::parse_selector("$payload.red.@green[7].blue").expect("Parse failed.");
     let mut expected = SelectorDescriptor::for_part(MessagePart::Payload, None);
     expected.push(SelectorComponent::new(false, "red", None));
     expected.push(SelectorComponent::new(true, "green", Some(7)));
@@ -395,4 +395,98 @@ fn select_payload() {
     assert_eq!(selected, Some(&Value::from(5)));
     assert!(!key.was_called());
     assert!(payload.was_called());
+}
+
+#[test]
+fn topic_selector_descriptor() {
+    let selector = super::parse_selector("$topic").expect("Invalid selector.");
+    assert_eq!(selector.field(), MessageField::Topic);
+    assert!(selector.selector().is_none());
+    assert_eq!(selector.suggested_name(), Some("topic"));
+}
+
+#[test]
+fn key_selector_descriptor() {
+    let selector = super::parse_selector("$key").expect("Invalid selector.");
+    assert_eq!(selector.field(), MessageField::Key);
+    assert_eq!(selector.selector(), Some(ChainSelector::new(vec![])));
+    assert_eq!(selector.suggested_name(), Some("key"));
+}
+
+#[test]
+fn payload_selector_descriptor() {
+    let selector = super::parse_selector("$payload").expect("Invalid selector.");
+    assert_eq!(selector.field(), MessageField::Payload);
+    assert_eq!(selector.selector(), Some(ChainSelector::new(vec![])));
+    assert_eq!(selector.suggested_name(), Some("payload"));
+}
+
+#[test]
+fn indexed_selector_descriptor() {
+    let selector = super::parse_selector("$payload[1]").expect("Invalid selector.");
+    assert_eq!(selector.field(), MessageField::Payload);
+    assert_eq!(
+        selector.selector(),
+        Some(ChainSelector::new(vec![BasicSelector::Index(
+            IndexSelector::new(1)
+        )]))
+    );
+    assert!(selector.suggested_name().is_none());
+}
+
+#[test]
+fn attr_selector_descriptor() {
+    let selector = super::parse_selector("$payload.@attr").expect("Invalid selector.");
+    assert_eq!(selector.field(), MessageField::Payload);
+    assert_eq!(
+        selector.selector(),
+        Some(ChainSelector::new(vec![BasicSelector::Attr(
+            AttrSelector::new("attr".to_string())
+        )]))
+    );
+    assert_eq!(selector.suggested_name(), Some("attr"));
+}
+
+#[test]
+fn slot_selector_descriptor() {
+    let selector = super::parse_selector("$payload.slot").expect("Invalid selector.");
+    assert_eq!(selector.field(), MessageField::Payload);
+    assert_eq!(
+        selector.selector(),
+        Some(ChainSelector::new(vec![BasicSelector::Slot(
+            SlotSelector::for_field("slot")
+        )]))
+    );
+    assert_eq!(selector.suggested_name(), Some("slot"));
+}
+
+#[test]
+fn complex_selector_descriptor_named() {
+    let selector = super::parse_selector("$payload.@attr[3].inner").expect("Invalid selector.");
+    assert_eq!(selector.field(), MessageField::Payload);
+    assert_eq!(
+        selector.selector(),
+        Some(ChainSelector::new(vec![
+            BasicSelector::Attr(AttrSelector::new("attr".to_string())),
+            BasicSelector::Index(IndexSelector::new(3)),
+            BasicSelector::Slot(SlotSelector::for_field("inner"))
+        ]))
+    );
+    assert_eq!(selector.suggested_name(), Some("inner"));
+}
+
+#[test]
+fn complex_selector_descriptor_unnamed() {
+    let selector = super::parse_selector("$payload.@attr[3].inner[0]").expect("Invalid selector.");
+    assert_eq!(selector.field(), MessageField::Payload);
+    assert_eq!(
+        selector.selector(),
+        Some(ChainSelector::new(vec![
+            BasicSelector::Attr(AttrSelector::new("attr".to_string())),
+            BasicSelector::Index(IndexSelector::new(3)),
+            BasicSelector::Slot(SlotSelector::for_field("inner")),
+            BasicSelector::Index(IndexSelector::new(0)),
+        ]))
+    );
+    assert!(selector.suggested_name().is_none());
 }
