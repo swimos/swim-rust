@@ -42,6 +42,7 @@ use swimos_api::{
 };
 use swimos_connector::ConnectorAgent;
 use swimos_model::{Item, Value};
+use swimos_recon::print_recon_compact;
 use swimos_utilities::{
     byte_channel::{ByteReader, ByteWriter},
     routing::RouteUri,
@@ -51,7 +52,8 @@ use tokio::time::timeout;
 
 use crate::{
     config::KafkaLogLevel,
-    connector::InvalidLanes,
+    connector::{InvalidLanes, MessageSelector},
+    deser::{MessageDeserializer, MessageView, ReconDeserializer},
     error::{DeserializationError, LaneSelectorError},
     selector::{
         BasicSelector, ChainSelector, Deferred, LaneSelector, MapLaneSelector, SlotSelector,
@@ -610,4 +612,116 @@ fn map_lane_selector_remove() {
     lane.get_map(|m| {
         assert!(m.is_empty());
     });
+}
+
+#[tokio::test]
+async fn handle_message() {
+    let value_specs = vec![ValueLaneSpec::new(None, "$key", true)];
+    let map_specs = vec![MapLaneSpec::new(
+        "map",
+        "$payload.key",
+        "$payload.value",
+        true,
+        true,
+    )];
+    let lanes =
+        Lanes::try_from_lane_specs(&value_specs, &map_specs).expect("Invalid specifications.");
+
+    let (agent, ids) = setup_agent();
+
+    let selector =
+        MessageSelector::new(ReconDeserializer.boxed(), ReconDeserializer.boxed(), lanes);
+
+    let key = Value::from(3);
+    let payload = make_key_value("ab", 67);
+    let key_str = format!("{}", print_recon_compact(&key));
+    let payload_str = format!("{}", print_recon_compact(&payload));
+
+    let message = MessageView {
+        topic: "topic_name",
+        key: key_str.as_bytes(),
+        payload: payload_str.as_bytes(),
+    };
+
+    let (tx, rx) = trigger::trigger();
+
+    let handler = selector
+        .handle_message(&message, tx)
+        .expect("Selector failed.");
+
+    let handler_task = run_handler_with_futures(&agent, handler);
+
+    let (modified, done_result) = timeout(TEST_TIMEOUT, join(handler_task, rx))
+        .await
+        .expect("Test timed out.");
+
+    assert!(done_result.is_ok());
+    assert_eq!(modified, ids.values().copied().collect::<HashSet<_>>());
+}
+
+#[tokio::test]
+async fn handle_message_missing_field() {
+    let value_specs = vec![ValueLaneSpec::new(None, "$key", true)];
+    let map_specs = vec![MapLaneSpec::new(
+        "map",
+        "$payload.key",
+        "$payload.value",
+        true,
+        true,
+    )];
+    let lanes =
+        Lanes::try_from_lane_specs(&value_specs, &map_specs).expect("Invalid specifications.");
+
+    let selector =
+        MessageSelector::new(ReconDeserializer.boxed(), ReconDeserializer.boxed(), lanes);
+
+    let key = Value::from(3);
+    let payload = Value::text("word");
+    let key_str = format!("{}", print_recon_compact(&key));
+    let payload_str = format!("{}", print_recon_compact(&payload));
+
+    let message = MessageView {
+        topic: "topic_name",
+        key: key_str.as_bytes(),
+        payload: payload_str.as_bytes(),
+    };
+
+    let (tx, _rx) = trigger::trigger();
+
+    let result = selector.handle_message(&message, tx);
+    assert!(matches!(result, Err(LaneSelectorError::MissingRequiredLane(name)) if name == "map"));
+}
+
+#[tokio::test]
+async fn handle_message_bad_data() {
+    let value_specs = vec![ValueLaneSpec::new(None, "$key", true)];
+    let map_specs = vec![MapLaneSpec::new(
+        "map",
+        "$payload.key",
+        "$payload.value",
+        true,
+        true,
+    )];
+    let lanes =
+        Lanes::try_from_lane_specs(&value_specs, &map_specs).expect("Invalid specifications.");
+
+    let selector =
+        MessageSelector::new(ReconDeserializer.boxed(), ReconDeserializer.boxed(), lanes);
+
+    let key = Value::from(3);
+    let key_str = format!("{}", print_recon_compact(&key));
+
+    let message = MessageView {
+        topic: "topic_name",
+        key: key_str.as_bytes(),
+        payload: b"^*$&@*@",
+    };
+
+    let (tx, _rx) = trigger::trigger();
+
+    let result = selector.handle_message(&message, tx);
+    assert!(matches!(
+        result,
+        Err(LaneSelectorError::DeserializationFailed(_))
+    ));
 }
