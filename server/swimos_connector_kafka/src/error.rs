@@ -48,8 +48,8 @@ pub enum KafkaConnectorError {
 
 #[derive(Debug, Error)]
 pub enum LaneSelectorError {
-    #[error("The field '{0}' is required but did not occur in a message.")]
-    MissingRequiredField(String),
+    #[error("The lane '{0}' is required but did not occur in a message.")]
+    MissingRequiredLane(String),
     #[error("Deserializing the content of a Kafka message failed: {0}")]
     DeserializationFailed(#[from] DeserializationError),
 }

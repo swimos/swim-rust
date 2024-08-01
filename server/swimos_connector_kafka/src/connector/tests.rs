@@ -30,7 +30,7 @@ use swimos_agent::{
     },
     event_handler::{
         ActionContext, DownlinkSpawner, EventHandler, HandlerFuture, LaneSpawnOnDone, LaneSpawner,
-        Modification, Spawner, StepResult,
+        Spawner, StepResult,
     },
     AgentMetadata,
 };
@@ -41,6 +41,7 @@ use swimos_api::{
     error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, OpenStoreError},
 };
 use swimos_connector::ConnectorAgent;
+use swimos_model::{Item, Value};
 use swimos_utilities::{
     byte_channel::{ByteReader, ByteWriter},
     routing::RouteUri,
@@ -51,6 +52,11 @@ use tokio::time::timeout;
 use crate::{
     config::KafkaLogLevel,
     connector::InvalidLanes,
+    error::{DeserializationError, LaneSelectorError},
+    selector::{
+        BasicSelector, ChainSelector, Deferred, LaneSelector, MapLaneSelector, SlotSelector,
+        ValueLaneSelector,
+    },
     DeserializationFormat, KafkaConnectorConfiguration, MapLaneSpec, ValueLaneSpec,
 };
 
@@ -173,7 +179,7 @@ fn make_meta<'a>(
 async fn run_handler_with_futures<H: EventHandler<ConnectorAgent>>(
     agent: &ConnectorAgent,
     handler: H,
-) -> HashSet<Modification> {
+) -> HashSet<u64> {
     let mut spawner = TestSpawner::default();
     let mut modified = run_handler(agent, &spawner, handler);
     let mut handlers = vec![];
@@ -220,7 +226,7 @@ fn run_handler<H: EventHandler<ConnectorAgent>>(
     agent: &ConnectorAgent,
     spawner: &TestSpawner,
     mut handler: H,
-) -> HashSet<Modification> {
+) -> HashSet<u64> {
     let route_params = HashMap::new();
     let uri = make_uri();
     let meta = make_meta(&uri, &route_params);
@@ -243,13 +249,13 @@ fn run_handler<H: EventHandler<ConnectorAgent>>(
         match handler.step(&mut action_context, meta, agent) {
             StepResult::Continue { modified_item } => {
                 if let Some(m) = modified_item {
-                    modified.insert(m);
+                    modified.insert(m.id());
                 }
             }
             StepResult::Fail(err) => panic!("Handler Failed: {}", err),
             StepResult::Complete { modified_item, .. } => {
                 if let Some(m) = modified_item {
-                    modified.insert(m);
+                    modified.insert(m.id());
                 }
                 break modified;
             }
@@ -361,4 +367,247 @@ async fn open_lanes() {
 
     assert_eq!(agent.value_lanes(), expected_value_lanes);
     assert_eq!(agent.map_lanes(), expected_map_lanes);
+}
+
+fn setup_agent() -> (ConnectorAgent, HashMap<String, u64>) {
+    let agent = ConnectorAgent::default();
+    let mut ids = HashMap::new();
+    let id1 = agent
+        .register_dynamic_item(
+            "key",
+            ItemDescriptor::WarpLane {
+                kind: WarpLaneKind::Value,
+                flags: ItemFlags::TRANSIENT,
+            },
+        )
+        .expect("Registration failed.");
+    let id2 = agent
+        .register_dynamic_item(
+            "map",
+            ItemDescriptor::WarpLane {
+                kind: WarpLaneKind::Map,
+                flags: ItemFlags::TRANSIENT,
+            },
+        )
+        .expect("Registration failed.");
+    ids.insert("key".to_string(), id1);
+    ids.insert("map".to_string(), id2);
+    (agent, ids)
+}
+
+struct TestDeferred {
+    value: Value,
+}
+
+impl From<Value> for TestDeferred {
+    fn from(value: Value) -> Self {
+        TestDeferred { value }
+    }
+}
+
+impl Deferred for TestDeferred {
+    fn get(&mut self) -> Result<&Value, DeserializationError> {
+        Ok(&self.value)
+    }
+}
+
+fn make_key_value(key: impl Into<Value>, value: impl Into<Value>) -> Value {
+    Value::record(vec![Item::slot("key", key), Item::slot("value", value)])
+}
+
+fn make_key_only(key: impl Into<Value>) -> Value {
+    Value::record(vec![Item::slot("key", key)])
+}
+
+#[test]
+fn value_lane_selector_handler() {
+    let (mut agent, ids) = setup_agent();
+
+    let selector = ValueLaneSelector::new(
+        "key".to_string(),
+        LaneSelector::Key(ChainSelector::default()),
+        true,
+    );
+
+    let topic = Value::text("topic_name");
+    let mut key = TestDeferred::from(Value::from(3));
+    let mut value = TestDeferred::from(make_key_value("a", 7));
+
+    let handler = selector
+        .select_handler(&topic, &mut key, &mut value)
+        .expect("Selector failed.");
+    let spawner = TestSpawner::default();
+    let modified = run_handler(&agent, &spawner, handler);
+
+    assert_eq!(modified, [ids["key"]].into_iter().collect::<HashSet<_>>());
+    let lane = agent.value_lane("key").expect("Lane missing.");
+    lane.read(|v| assert_eq!(v, &Value::from(3)));
+}
+
+#[test]
+fn value_lane_selector_handler_optional_field() {
+    let (agent, _) = setup_agent();
+
+    let selector = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+        SlotSelector::for_field("other"),
+    )]));
+
+    let selector = ValueLaneSelector::new("other".to_string(), selector, false);
+
+    let topic = Value::text("topic_name");
+    let mut key = TestDeferred::from(Value::from(3));
+    let mut value = TestDeferred::from(make_key_value("a", 7));
+
+    let handler = selector
+        .select_handler(&topic, &mut key, &mut value)
+        .expect("Selector failed.");
+    let spawner = TestSpawner::default();
+    let modified = run_handler(&agent, &spawner, handler);
+
+    assert!(modified.is_empty());
+}
+
+#[test]
+fn value_lane_selector_handler_missing_field() {
+    let selector = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+        SlotSelector::for_field("other"),
+    )]));
+
+    let selector = ValueLaneSelector::new("other".to_string(), selector, true);
+
+    let topic = Value::text("topic_name");
+    let mut key = TestDeferred::from(Value::from(3));
+    let mut value = TestDeferred::from(make_key_value("a", 7));
+
+    let error = selector
+        .select_handler(&topic, &mut key, &mut value)
+        .expect_err("Should fail.");
+    assert!(matches!(error, LaneSelectorError::MissingRequiredLane(name) if &name == "other"));
+}
+
+#[test]
+fn map_lane_selector_handler() {
+    let (mut agent, ids) = setup_agent();
+
+    let key = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+        SlotSelector::for_field("key"),
+    )]));
+    let value = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+        SlotSelector::for_field("value"),
+    )]));
+
+    let selector = MapLaneSelector::new("map".to_string(), key, value, true, false);
+
+    let topic = Value::text("topic_name");
+    let mut key = TestDeferred::from(Value::from(3));
+    let mut value = TestDeferred::from(make_key_value("a", 7));
+
+    let handler = selector
+        .select_handler(&topic, &mut key, &mut value)
+        .expect("Selector failed.");
+    let spawner = TestSpawner::default();
+    let modified = run_handler(&agent, &spawner, handler);
+
+    assert_eq!(modified, [ids["map"]].into_iter().collect::<HashSet<_>>());
+    let lane = agent.map_lane("map").expect("Lane missing.");
+    lane.get_map(|m| {
+        let expected = [(Value::text("a"), Value::from(7))]
+            .into_iter()
+            .collect::<HashMap<_, _>>();
+        assert_eq!(m, &expected);
+    });
+}
+
+#[test]
+fn map_lane_selector_handler_optional_field() {
+    let (agent, _) = setup_agent();
+
+    let key = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+        SlotSelector::for_field("key"),
+    )]));
+    let value = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+        SlotSelector::for_field("value"),
+    )]));
+
+    let selector = MapLaneSelector::new("map".to_string(), key, value, false, false);
+
+    let topic = Value::text("topic_name");
+    let mut key = TestDeferred::from(Value::from(3));
+    let mut value = TestDeferred::from(Value::Extant);
+
+    let handler = selector
+        .select_handler(&topic, &mut key, &mut value)
+        .expect("Selector failed.");
+    let spawner = TestSpawner::default();
+    let modified = run_handler(&agent, &spawner, handler);
+
+    assert!(modified.is_empty());
+}
+
+#[test]
+fn map_lane_selector_handler_missing_field() {
+    let key = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+        SlotSelector::for_field("key"),
+    )]));
+    let value = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+        SlotSelector::for_field("value"),
+    )]));
+
+    let selector = MapLaneSelector::new("map".to_string(), key, value, true, false);
+
+    let topic = Value::text("topic_name");
+    let mut key = TestDeferred::from(Value::from(3));
+    let mut value = TestDeferred::from(Value::Extant);
+
+    let error = selector
+        .select_handler(&topic, &mut key, &mut value)
+        .expect_err("Should fail.");
+    assert!(matches!(error, LaneSelectorError::MissingRequiredLane(name) if &name == "map"));
+}
+
+#[test]
+fn map_lane_selector_remove() {
+    let (mut agent, ids) = setup_agent();
+
+    let key = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+        SlotSelector::for_field("key"),
+    )]));
+    let value = LaneSelector::Payload(ChainSelector::new(vec![BasicSelector::Slot(
+        SlotSelector::for_field("value"),
+    )]));
+
+    let selector = MapLaneSelector::new("map".to_string(), key, value, true, true);
+
+    let topic = Value::text("topic_name");
+    let mut key = TestDeferred::from(Value::from(3));
+    let mut value = TestDeferred::from(make_key_value("a", 7));
+
+    let update_handler = selector
+        .select_handler(&topic, &mut key, &mut value)
+        .expect("Selector failed.");
+    let spawner = TestSpawner::default();
+    let modified = run_handler(&agent, &spawner, update_handler);
+
+    assert_eq!(modified, [ids["map"]].into_iter().collect::<HashSet<_>>());
+    let lane = agent.map_lane("map").expect("Lane missing.");
+    lane.get_map(|m| {
+        let expected = [(Value::text("a"), Value::from(7))]
+            .into_iter()
+            .collect::<HashMap<_, _>>();
+        assert_eq!(m, &expected);
+    });
+
+    drop(lane);
+
+    let mut value2 = TestDeferred::from(make_key_only("a"));
+    let remove_handler = selector
+        .select_handler(&topic, &mut key, &mut value2)
+        .expect("Selector failed.");
+    let modified = run_handler(&agent, &spawner, remove_handler);
+
+    assert_eq!(modified, [ids["map"]].into_iter().collect::<HashSet<_>>());
+    let lane = agent.map_lane("map").expect("Lane missing.");
+    lane.get_map(|m| {
+        assert!(m.is_empty());
+    });
 }

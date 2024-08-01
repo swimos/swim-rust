@@ -18,6 +18,7 @@ mod tests;
 use std::{
     cell::{Cell, Ref, RefCell},
     collections::{HashMap, HashSet},
+    ops::Deref,
 };
 
 use bytes::BytesMut;
@@ -56,7 +57,6 @@ type ValueSync = ValueLaneSelectSync<ConnectorAgent, Value, ValueLaneSelectorFn>
 type MapSync = MapLaneSelectSync<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
 
 impl ConnectorAgent {
-
     pub fn value_lanes(&self) -> HashSet<String> {
         self.value_lanes.borrow().keys().cloned().collect()
     }
@@ -65,6 +65,46 @@ impl ConnectorAgent {
         self.map_lanes.borrow().keys().cloned().collect()
     }
 
+    pub fn value_lane<'a>(
+        &'a mut self,
+        name: &'a str,
+    ) -> Option<impl Deref<Target = GenericValueLane> + 'a> {
+        if self.value_lanes.borrow().contains_key(name) {
+            Some(LaneRef {
+                map: self.value_lanes.borrow(),
+                key: name,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn map_lane<'a>(
+        &'a mut self,
+        name: &'a str,
+    ) -> Option<impl Deref<Target = GenericMapLane> + 'a> {
+        if self.map_lanes.borrow().contains_key(name) {
+            Some(LaneRef {
+                map: self.map_lanes.borrow(),
+                key: name,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+struct LaneRef<'a, L> {
+    map: Ref<'a, HashMap<String, L>>,
+    key: &'a str,
+}
+
+impl<'a, L> Deref for LaneRef<'a, L> {
+    type Target = L;
+
+    fn deref(&self) -> &Self::Target {
+        &self.map[self.key]
+    }
 }
 
 impl AgentSpec for ConnectorAgent {
@@ -228,6 +268,7 @@ impl<'a, L> Selector for LaneSelector<'a, L> {
     }
 }
 
+#[derive(Debug)]
 pub struct ValueLaneSelectorFn {
     name: String,
 }
@@ -248,6 +289,7 @@ impl SelectorFn<ConnectorAgent> for ValueLaneSelectorFn {
     }
 }
 
+#[derive(Debug)]
 pub struct MapLaneSelectorFn {
     name: String,
 }

@@ -17,7 +17,7 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
-use std::{borrow::Borrow, cell::RefCell, collections::VecDeque, marker::PhantomData};
+use std::{borrow::Borrow, cell::RefCell, collections::VecDeque, fmt::Debug, marker::PhantomData};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
@@ -388,6 +388,14 @@ where
 pub struct ValueLaneSelectSet<C, T, F> {
     _type: PhantomData<fn(&C)>,
     projection_value: Option<(F, T)>,
+}
+
+impl<C, T: Debug, F: Debug> Debug for ValueLaneSelectSet<C, T, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ValueLaneSelectSet")
+            .field("projection_value", &self.projection_value)
+            .finish()
+    }
 }
 
 impl<C, T, F> ValueLaneSelectSet<C, T, F> {

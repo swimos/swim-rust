@@ -15,7 +15,10 @@
 use bytes::BytesMut;
 use frunk::{Coprod, Coproduct};
 use static_assertions::assert_impl_all;
-use std::{borrow::Borrow, cell::RefCell, collections::HashMap, hash::Hash, marker::PhantomData};
+use std::{
+    borrow::Borrow, cell::RefCell, collections::HashMap, fmt::Debug, hash::Hash,
+    marker::PhantomData,
+};
 use swimos_agent_protocol::{encoding::lane::MapLaneResponseEncoder, MapMessage};
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_recon::parser::RecognizerDecoder;
@@ -748,6 +751,14 @@ pub struct MapLaneSelectUpdate<C, K, V, F> {
     projection_key_value: Option<(F, K, V)>,
 }
 
+impl<C, K: Debug, V: Debug, F: Debug> Debug for MapLaneSelectUpdate<C, K, V, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MapLaneSelectUpdate")
+            .field("projection_key_value", &self.projection_key_value)
+            .finish()
+    }
+}
+
 impl<C, K, V, F> MapLaneSelectUpdate<C, K, V, F> {
     pub fn new(projection: F, key: K, value: V) -> Self {
         MapLaneSelectUpdate {
@@ -796,6 +807,14 @@ pub struct MapLaneSelectRemove<C, K, V, F> {
     projection_key: Option<(F, K)>,
 }
 
+impl<C, K: Debug, V: Debug, F: Debug> Debug for MapLaneSelectRemove<C, K, V, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MapLaneSelectRemove")
+            .field("projection_key", &self.projection_key)
+            .finish()
+    }
+}
+
 impl<C, K, V, F> MapLaneSelectRemove<C, K, V, F> {
     pub fn new(projection: F, key: K) -> Self {
         MapLaneSelectRemove {
@@ -839,6 +858,14 @@ where
 pub struct MapLaneSelectClear<C, K, V, F> {
     _type: PhantomData<fn(&C, &K, &V)>,
     projection: Option<F>,
+}
+
+impl<C, K, V, F: Debug> Debug for MapLaneSelectClear<C, K, V, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MapLaneSelectClear")
+            .field("projection", &self.projection)
+            .finish()
+    }
 }
 
 impl<C, K, V, F> MapLaneSelectClear<C, K, V, F> {

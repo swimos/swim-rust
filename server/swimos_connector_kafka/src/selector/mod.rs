@@ -510,6 +510,24 @@ pub struct MapLaneSelector {
     remove_when_no_value: bool,
 }
 
+impl MapLaneSelector {
+    pub fn new(
+        name: String,
+        key_selector: LaneSelector,
+        value_selector: LaneSelector,
+        required: bool,
+        remove_when_no_value: bool,
+    ) -> Self {
+        MapLaneSelector {
+            name,
+            key_selector,
+            value_selector,
+            required,
+            remove_when_no_value,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
 pub enum InvalidLaneSpec {
     #[error(transparent)]
@@ -553,13 +571,13 @@ impl TryFrom<&MapLaneSpec> for MapLaneSelector {
         } = value;
         let key = LaneSelector::from(parse_selector(key_selector.as_str())?);
         let value = LaneSelector::from(parse_selector(value_selector.as_str())?);
-        Ok(MapLaneSelector {
-            name: name.clone(),
-            key_selector: key,
-            value_selector: value,
-            required: *required,
-            remove_when_no_value: *remove_when_no_value,
-        })
+        Ok(MapLaneSelector::new(
+            name.clone(),
+            key,
+            value,
+            *required,
+            *remove_when_no_value,
+        ))
     }
 }
 
@@ -594,7 +612,7 @@ impl ValueLaneSelector {
             }
             None => {
                 if *required {
-                    return Err(LaneSelectorError::MissingRequiredField(name.clone()));
+                    return Err(LaneSelectorError::MissingRequiredLane(name.clone()));
                 } else {
                     None
                 }
@@ -638,7 +656,7 @@ impl MapLaneSelector {
         let select_lane = MapLaneSelectorFn::new(name.clone());
         let handler: Option<MapLaneOp> = match (maybe_key, maybe_value) {
             (None, _) if *required => {
-                return Err(LaneSelectorError::MissingRequiredField(name.clone()))
+                return Err(LaneSelectorError::MissingRequiredLane(name.clone()))
             }
             (Some(key), None) if *remove_when_no_value => {
                 Some(MapLaneOp::inject(context.remove(select_lane, key)))

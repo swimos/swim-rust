@@ -1349,6 +1349,7 @@ where
 }
 
 /// Event handler that runs another handler and discards its result.
+#[derive(Debug)]
 pub struct Discard<H>(H);
 
 impl<H> Discard<H> {
