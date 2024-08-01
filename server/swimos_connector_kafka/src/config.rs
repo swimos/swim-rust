@@ -45,10 +45,10 @@ pub struct ValueLaneSpec {
 }
 
 impl ValueLaneSpec {
-    pub fn new(name: Option<String>, selector: String, required: bool) -> Self {
+    pub fn new<S: Into<String>>(name: Option<S>, selector: S, required: bool) -> Self {
         ValueLaneSpec {
-            name,
-            selector,
+            name: name.map(Into::into),
+            selector: selector.into(),
             required,
         }
     }
@@ -64,17 +64,17 @@ pub struct MapLaneSpec {
 }
 
 impl MapLaneSpec {
-    pub fn new(
-        name: String,
-        key_selector: String,
-        value_selector: String,
+    pub fn new<S: Into<String>>(
+        name: S,
+        key_selector: S,
+        value_selector: S,
         remove_when_no_value: bool,
         required: bool,
     ) -> Self {
         MapLaneSpec {
-            name,
-            key_selector,
-            value_selector,
+            name: name.into(),
+            key_selector: key_selector.into(),
+            value_selector: value_selector.into(),
             remove_when_no_value,
             required,
         }

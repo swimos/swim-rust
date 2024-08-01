@@ -87,18 +87,18 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum LaneSelector {
     Topic,
-    Key(BoxSelector),
-    Payload(BoxSelector),
+    Key(ChainSelector),
+    Payload(ChainSelector),
 }
 
 impl<'a> From<SelectorDescriptor<'a>> for LaneSelector {
     fn from(value: SelectorDescriptor<'a>) -> Self {
         match (value.field(), value.selector()) {
-            (MessageField::Key, Some(selector)) => LaneSelector::Key(Box::new(selector)),
-            (MessageField::Payload, Some(selector)) => LaneSelector::Payload(Box::new(selector)),
+            (MessageField::Key, Some(selector)) => LaneSelector::Key(selector),
+            (MessageField::Payload, Some(selector)) => LaneSelector::Payload(selector),
             _ => LaneSelector::Topic,
         }
     }
@@ -244,7 +244,7 @@ impl Selector for BasicSelector {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct ChainSelector(Vec<BasicSelector>);
 
 impl ChainSelector {
@@ -491,6 +491,16 @@ pub struct ValueLaneSelector {
     required: bool,
 }
 
+impl ValueLaneSelector {
+    pub fn new(name: String, selector: LaneSelector, required: bool) -> Self {
+        ValueLaneSelector {
+            name,
+            selector,
+            required,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct MapLaneSelector {
     name: String,
@@ -500,7 +510,7 @@ pub struct MapLaneSelector {
     remove_when_no_value: bool,
 }
 
-#[derive(Clone, Copy, Debug, Error)]
+#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
 pub enum InvalidLaneSpec {
     #[error(transparent)]
     Selector(#[from] BadSelector),
@@ -523,11 +533,7 @@ impl TryFrom<&ValueLaneSpec> for ValueLaneSelector {
             .cloned()
             .or_else(|| parsed.suggested_name().map(|s| s.to_owned()))
         {
-            Ok(ValueLaneSelector {
-                name: lane_name,
-                selector: parsed.into(),
-                required: *required,
-            })
+            Ok(ValueLaneSelector::new(lane_name, parsed.into(), *required))
         } else {
             Err(InvalidLaneSpec::NameCannotBeInferred)
         }

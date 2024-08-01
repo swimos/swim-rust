@@ -15,6 +15,7 @@ avro = ["dep:apache-avro", "dep:chrono"]
 
 [dependencies]
 futures = { workspace = true }
+swimos_api = { workspace = true }
 swimos_utilities = { workspace = true }
 swimos_model = { workspace = true }
 swimos_form = { workspace = true }
@@ -34,4 +35,5 @@ frunk = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt"] }
-uuid = { workspace = true, features = ["v4"]}
+uuid = { workspace = true, features = ["v4"] }
+bytes = { workspace = true }

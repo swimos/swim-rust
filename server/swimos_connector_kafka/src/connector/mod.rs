@@ -12,6 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#[cfg(test)]
+mod tests;
+
+use std::collections::HashSet;
 use std::{cell::RefCell, sync::Arc};
 
 use crate::config::KafkaConnectorConfiguration;
@@ -19,6 +23,7 @@ use crate::deser::{BoxMessageDeserializer, MessageView};
 use crate::error::{KafkaConnectorError, LaneSelectorError};
 use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaMessage};
 use crate::selector::{Computed, InvalidLaneSpec, MapLaneSelector, ValueLaneSelector};
+use crate::{MapLaneSpec, ValueLaneSpec};
 use futures::{stream::unfold, Future};
 use swimos_agent::{
     agent_lifecycle::{ConnectorContext, HandlerContext},
@@ -236,12 +241,14 @@ struct Lanes {
     map_lanes: Vec<MapLaneSelector>,
 }
 
-#[derive(Clone, Debug, Error)]
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
 enum InvalidLanes {
     #[error(transparent)]
     Spec(#[from] InvalidLaneSpec),
     #[error("The connector has {0} lanes which cannot fit in a u32.")]
     TooManyLanes(usize),
+    #[error("The lane name {0} occurs more than once.")]
+    NameCollision(String),
 }
 
 impl TryFrom<&KafkaConnectorConfiguration> for Lanes {
@@ -253,6 +260,15 @@ impl TryFrom<&KafkaConnectorConfiguration> for Lanes {
             map_lanes,
             ..
         } = value;
+        Lanes::try_from_lane_specs(value_lanes, map_lanes)
+    }
+}
+
+impl Lanes {
+    fn try_from_lane_specs(
+        value_lanes: &[ValueLaneSpec],
+        map_lanes: &[MapLaneSpec],
+    ) -> Result<Self, InvalidLanes> {
         let value_selectors = value_lanes
             .iter()
             .map(ValueLaneSelector::try_from)
@@ -267,15 +283,14 @@ impl TryFrom<&KafkaConnectorConfiguration> for Lanes {
         } else {
             return Err(InvalidLanes::TooManyLanes(total));
         };
+        check_selectors(&value_selectors, &map_selectors)?;
         Ok(Lanes {
             value_lanes: value_selectors,
             map_lanes: map_selectors,
             total_lanes,
         })
     }
-}
 
-impl Lanes {
     fn open_lanes(
         &self,
         init_complete: trigger::Sender,
@@ -325,6 +340,30 @@ impl Lanes {
             .followed_by(Sequentially::new(open_map_lanes))
             .discard()
     }
+}
+
+fn check_selectors(
+    value_selectors: &[ValueLaneSelector],
+    map_selectors: &[MapLaneSelector],
+) -> Result<(), InvalidLanes> {
+    let mut names = HashSet::new();
+    for value_selector in value_selectors {
+        let name = value_selector.name();
+        if names.contains(name) {
+            return Err(InvalidLanes::NameCollision(name.to_string()));
+        } else {
+            names.insert(name);
+        }
+    }
+    for map_selector in map_selectors {
+        let name = map_selector.name();
+        if names.contains(name) {
+            return Err(InvalidLanes::NameCollision(name.to_string()));
+        } else {
+            names.insert(name);
+        }
+    }
+    Ok(())
 }
 
 struct MessageSelector {
