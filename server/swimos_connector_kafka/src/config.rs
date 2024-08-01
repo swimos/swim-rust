@@ -81,8 +81,9 @@ impl MapLaneSpec {
     }
 }
 
-#[derive(Clone, Form, Debug)]
+#[derive(Clone, Form, Debug, Default)]
 pub enum DeserializationFormat {
+    #[default]
     Bytes,
     String,
     Int32(Endianness),

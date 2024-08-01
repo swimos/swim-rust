@@ -15,10 +15,15 @@
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
+    time::Duration,
 };
 
 use bytes::BytesMut;
-use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
+use futures::{
+    future::{join, BoxFuture},
+    stream::FuturesUnordered,
+    StreamExt,
+};
 use swimos_agent::{
     agent_model::{
         downlink::BoxDownlinkChannel, AgentSpec, ItemDescriptor, ItemFlags, WarpLaneKind,
@@ -39,12 +44,14 @@ use swimos_connector::ConnectorAgent;
 use swimos_utilities::{
     byte_channel::{ByteReader, ByteWriter},
     routing::RouteUri,
+    trigger,
 };
+use tokio::time::timeout;
 
 use crate::{
+    config::KafkaLogLevel,
     connector::InvalidLanes,
-    selector::{LaneSelector, ValueLaneSelector},
-    MapLaneSpec, ValueLaneSpec,
+    DeserializationFormat, KafkaConnectorConfiguration, MapLaneSpec, ValueLaneSpec,
 };
 
 use super::Lanes;
@@ -83,7 +90,7 @@ impl AgentContext for TestContext {
 
     fn add_http_lane(
         &self,
-        name: &str,
+        _name: &str,
     ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
         panic!("Unexpected call.");
     }
@@ -301,4 +308,57 @@ fn value_map_lane_collision() {
     let map_lanes = vec![MapLaneSpec::new("field", "$key", "$payload", true, false)];
     let err = Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect_err("Should fail.");
     assert_eq!(err, InvalidLanes::NameCollision("field".to_string()))
+}
+
+fn make_config() -> KafkaConnectorConfiguration {
+    KafkaConnectorConfiguration {
+        properties: HashMap::new(),
+        log_level: KafkaLogLevel::Warning,
+        value_lanes: vec![ValueLaneSpec::new(None, "$key", true)],
+        map_lanes: vec![MapLaneSpec::new(
+            "map",
+            "$payload.key",
+            "$payload.value",
+            true,
+            true,
+        )],
+        key_deserializer: DeserializationFormat::Recon,
+        value_deserializer: DeserializationFormat::Recon,
+    }
+}
+
+const TEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[tokio::test]
+async fn open_lanes() {
+    let value_specs = vec![ValueLaneSpec::new(None, "$key", true)];
+    let map_specs = vec![MapLaneSpec::new(
+        "map",
+        "$payload.key",
+        "$payload.value",
+        true,
+        true,
+    )];
+    let lanes =
+        Lanes::try_from_lane_specs(&value_specs, &map_specs).expect("Invalid specifications.");
+
+    let (tx, rx) = trigger::trigger();
+
+    let handler = lanes.open_lanes(tx);
+    let agent = ConnectorAgent::default();
+
+    let handler_task = run_handler_with_futures(&agent, handler);
+
+    let (modified, done_result) = timeout(TEST_TIMEOUT, join(handler_task, rx))
+        .await
+        .expect("Test timed out.");
+
+    assert!(modified.is_empty());
+    assert!(done_result.is_ok());
+
+    let expected_value_lanes = ["key".to_string()].into_iter().collect::<HashSet<_>>();
+    let expected_map_lanes = ["map".to_string()].into_iter().collect::<HashSet<_>>();
+
+    assert_eq!(agent.value_lanes(), expected_value_lanes);
+    assert_eq!(agent.map_lanes(), expected_map_lanes);
 }

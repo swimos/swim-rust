@@ -17,7 +17,7 @@ mod tests;
 
 use std::{
     cell::{Cell, Ref, RefCell},
-    collections::HashMap,
+    collections::{HashMap, HashSet},
 };
 
 use bytes::BytesMut;
@@ -54,6 +54,18 @@ type ValueHandler = DecodeAndSelectSet<ConnectorAgent, Value, ValueLaneSelectorF
 type MapHandler = DecodeAndSelectApply<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
 type ValueSync = ValueLaneSelectSync<ConnectorAgent, Value, ValueLaneSelectorFn>;
 type MapSync = MapLaneSelectSync<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
+
+impl ConnectorAgent {
+
+    pub fn value_lanes(&self) -> HashSet<String> {
+        self.value_lanes.borrow().keys().cloned().collect()
+    }
+
+    pub fn map_lanes(&self) -> HashSet<String> {
+        self.map_lanes.borrow().keys().cloned().collect()
+    }
+
+}
 
 impl AgentSpec for ConnectorAgent {
     type ValCommandHandler = ValueHandler;
