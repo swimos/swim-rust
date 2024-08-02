@@ -108,7 +108,7 @@ where
             let val_deser = val_deser_cpy.load().await?;
             let selector = MessageSelector::new(key_deser, val_deser, lanes);
             let state = MessageState::new(consumer, selector, message_to_handler, tx);
-            state.consume_messages().await
+            state.consume_messages(None).await
         });
 
         let stream_src = MessageTasks::new(consumer_task, rx);
@@ -152,7 +152,10 @@ where
         }
     }
 
-    async fn consume_messages(self) -> Result<(), KafkaConnectorError> {
+    async fn consume_messages(
+        self,
+        mut stop_rx: Option<trigger::Receiver>,
+    ) -> Result<(), KafkaConnectorError> {
         let MessageState {
             consumer,
             selector,
@@ -160,11 +163,23 @@ where
             tx,
         } = &self;
         loop {
-            let reservation = if let Ok(res) = tx.reserve().await {
+            let reservation = if let Some(rx) = stop_rx.as_mut() {
+                let result = tokio::select! {
+                    biased;
+                    _ = rx => break,
+                    result = tx.reserve() => result,
+                };
+                if let Ok(res) = result {
+                    res
+                } else {
+                    break;
+                }
+            } else if let Ok(res) = tx.reserve().await {
                 res
             } else {
                 break;
             };
+
             let message = consumer.recv().await?;
             let view = message.view();
             let (trigger_tx, trigger_rx) = trigger::trigger();

@@ -37,3 +37,5 @@ frunk = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 uuid = { workspace = true, features = ["v4"] }
 bytes = { workspace = true }
+parking_lot = { workspace = true }
+rand = { workspace = true }

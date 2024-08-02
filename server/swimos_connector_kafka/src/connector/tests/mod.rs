@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod integration;
+
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
@@ -51,7 +53,6 @@ use swimos_utilities::{
 use tokio::time::timeout;
 
 use crate::{
-    config::KafkaLogLevel,
     connector::{InvalidLanes, MessageSelector},
     deser::{MessageDeserializer, MessageView, ReconDeserializer},
     error::{DeserializationError, LaneSelectorError},
@@ -59,7 +60,7 @@ use crate::{
         BasicSelector, ChainSelector, Deferred, LaneSelector, MapLaneSelector, SlotSelector,
         ValueLaneSelector,
     },
-    DeserializationFormat, KafkaConnectorConfiguration, MapLaneSpec, ValueLaneSpec,
+    MapLaneSpec, ValueLaneSpec,
 };
 
 use super::Lanes;
@@ -316,23 +317,6 @@ fn value_map_lane_collision() {
     let map_lanes = vec![MapLaneSpec::new("field", "$key", "$payload", true, false)];
     let err = Lanes::try_from_lane_specs(&value_lanes, &map_lanes).expect_err("Should fail.");
     assert_eq!(err, InvalidLanes::NameCollision("field".to_string()))
-}
-
-fn make_config() -> KafkaConnectorConfiguration {
-    KafkaConnectorConfiguration {
-        properties: HashMap::new(),
-        log_level: KafkaLogLevel::Warning,
-        value_lanes: vec![ValueLaneSpec::new(None, "$key", true)],
-        map_lanes: vec![MapLaneSpec::new(
-            "map",
-            "$payload.key",
-            "$payload.value",
-            true,
-            true,
-        )],
-        key_deserializer: DeserializationFormat::Recon,
-        value_deserializer: DeserializationFormat::Recon,
-    }
 }
 
 const TEST_TIMEOUT: Duration = Duration::from_secs(5);
