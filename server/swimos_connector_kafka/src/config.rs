@@ -147,7 +147,7 @@ impl DeserializationFormat {
     }
 }
 
-#[derive(Clone, Copy, Debug, Form)]
+#[derive(Clone, Copy, Debug, Form, PartialEq, Eq)]
 pub enum KafkaLogLevel {
     Emerg,
     Alert,

@@ -15,13 +15,14 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
+    time::Duration,
 };
 
-use futures::future::join;
+use futures::{future::join, TryStreamExt};
 use parking_lot::Mutex;
 use rand::{rngs::ThreadRng, Rng};
 use rdkafka::error::KafkaError;
-use swimos_connector::ConnectorAgent;
+use swimos_connector::{Connector, ConnectorAgent};
 use swimos_model::{Item, Value};
 use swimos_recon::print_recon_compact;
 use swimos_utilities::trigger;
@@ -29,17 +30,24 @@ use tokio::sync::mpsc;
 
 use crate::{
     config::KafkaLogLevel,
-    connector::{message_to_handler, Lanes, MessageSelector, MessageState},
+    connector::{message_to_handler, Lanes, MessageSelector, MessageState, MessageTasks},
     deser::{MessageDeserializer, MessageView, ReconDeserializer},
-    facade::{KafkaConsumer, KafkaMessage},
-    DeserializationFormat, KafkaConnectorConfiguration, MapLaneSpec, ValueLaneSpec,
+    error::KafkaConnectorError,
+    facade::{ConsumerFactory, KafkaConsumer, KafkaMessage},
+    DeserializationFormat, KafkaConnector, KafkaConnectorConfiguration, MapLaneSpec, ValueLaneSpec,
 };
 
 use super::{run_handler_with_futures, setup_agent};
 
+fn props() -> HashMap<String, String> {
+    [("key".to_string(), "value".to_string())]
+        .into_iter()
+        .collect()
+}
+
 fn make_config() -> KafkaConnectorConfiguration {
     KafkaConnectorConfiguration {
-        properties: HashMap::new(),
+        properties: props(),
         log_level: KafkaLogLevel::Warning,
         value_lanes: vec![ValueLaneSpec::new(None, "$key", true)],
         map_lanes: vec![MapLaneSpec::new(
@@ -113,6 +121,45 @@ impl MockConsumer {
         MockConsumer {
             inner: Arc::new(Mutex::new(inner)),
         }
+    }
+}
+
+struct MockConsumerFactory {
+    messages: Result<Vec<MockMessage>, KafkaError>,
+    expected_props: HashMap<String, String>,
+    expected_log_level: KafkaLogLevel,
+}
+
+impl MockConsumerFactory {
+    fn new(
+        messages: Result<Vec<MockMessage>, KafkaError>,
+        expected_props: HashMap<String, String>,
+        expected_log_level: KafkaLogLevel,
+    ) -> Self {
+        MockConsumerFactory {
+            messages,
+            expected_props,
+            expected_log_level,
+        }
+    }
+}
+
+impl ConsumerFactory for MockConsumerFactory {
+    type Consumer = MockConsumer;
+
+    fn create(
+        &self,
+        properties: &HashMap<String, String>,
+        log_level: KafkaLogLevel,
+    ) -> Result<Self::Consumer, KafkaError> {
+        let MockConsumerFactory {
+            messages,
+            expected_props,
+            expected_log_level,
+        } = self;
+        assert_eq!(properties, expected_props);
+        assert_eq!(log_level, *expected_log_level);
+        messages.clone().map(MockConsumer::new)
     }
 }
 
@@ -271,4 +318,146 @@ impl MessageChecker {
             assert_eq!(map, expected_map);
         });
     }
+}
+
+const TEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[tokio::test]
+async fn message_tasks_stream() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let num_messages = 3;
+        let messages = generate_messages(num_messages, "topic_name");
+        let mock_consumer = MockConsumer::new(messages.clone());
+
+        let (mut agent, ids) = setup_agent();
+        let id_set = ids.values().copied().collect::<HashSet<_>>();
+        let value_specs = vec![ValueLaneSpec::new(None, "$key", true)];
+        let map_specs = vec![MapLaneSpec::new(
+            "map",
+            "$payload.key",
+            "$payload.value",
+            true,
+            true,
+        )];
+        let lanes =
+            Lanes::try_from_lane_specs(&value_specs, &map_specs).expect("Invalid specifications.");
+
+        let selector =
+            MessageSelector::new(ReconDeserializer.boxed(), ReconDeserializer.boxed(), lanes);
+
+        let (tx, rx) = mpsc::channel(1);
+        let message_state = MessageState::new(mock_consumer, selector, message_to_handler, tx);
+
+        let consume_task = Box::pin(message_state.consume_messages(None));
+
+        let message_tasks = MessageTasks::new(consume_task, rx);
+        let mut stream = message_tasks.into_stream();
+
+        let mut checker = MessageChecker::default();
+        for message in &messages {
+            let handler = stream
+                .try_next()
+                .await
+                .expect("Consumer failed.")
+                .expect("Consumer terminated.");
+            let modifications = run_handler_with_futures(&agent, handler).await;
+            assert_eq!(modifications, id_set);
+            checker.check_message(&mut agent, message);
+        }
+    })
+    .await
+    .expect("Test timed out.");
+}
+
+#[tokio::test]
+async fn connector_on_start() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let num_messages = 3;
+        let messages = generate_messages(num_messages, "topic_name");
+        let config = make_config();
+        let factory = MockConsumerFactory::new(Ok(messages), props(), KafkaLogLevel::Warning);
+        let connector = KafkaConnector::new(factory, config);
+
+        let (tx, rx) = trigger::trigger();
+        let handler = connector.on_start(tx);
+
+        let agent = ConnectorAgent::default();
+        let start_task = run_handler_with_futures(&agent, handler);
+
+        let (modified, result) = join(start_task, rx).await;
+        assert!(result.is_ok());
+        assert!(modified.is_empty());
+
+        let expected_value_lanes = ["key".to_string()].into_iter().collect::<HashSet<_>>();
+        let expected_map_lanes = ["map".to_string()].into_iter().collect::<HashSet<_>>();
+
+        assert_eq!(agent.value_lanes(), expected_value_lanes);
+        assert_eq!(agent.map_lanes(), expected_map_lanes);
+    })
+    .await
+    .expect("Test timed out.");
+}
+
+#[tokio::test]
+async fn connector_stream() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let num_messages = 3;
+        let messages = generate_messages(num_messages, "topic_name");
+        let config = make_config();
+        let factory =
+            MockConsumerFactory::new(Ok(messages.clone()), props(), KafkaLogLevel::Warning);
+        let connector = KafkaConnector::new(factory, config);
+
+        let (tx, rx) = trigger::trigger();
+        let handler = connector.on_start(tx);
+
+        let mut agent = ConnectorAgent::default();
+        let start_task = run_handler_with_futures(&agent, handler);
+
+        let (_, result) = join(start_task, rx).await;
+        assert!(result.is_ok());
+
+        let mut stream = connector.create_stream().expect("Connector failed.");
+
+        let mut checker = MessageChecker::default();
+        for message in &messages {
+            let handler = stream
+                .try_next()
+                .await
+                .expect("Consumer failed.")
+                .expect("Consumer terminated.");
+            run_handler_with_futures(&agent, handler).await;
+            checker.check_message(&mut agent, message);
+        }
+    })
+    .await
+    .expect("Test timed out.");
+}
+
+#[tokio::test]
+async fn failed_connector_stream_start() {
+    tokio::time::timeout(TEST_TIMEOUT, async {
+        let config = make_config();
+        let factory =
+            MockConsumerFactory::new(Err(KafkaError::Canceled), props(), KafkaLogLevel::Warning);
+        let connector = KafkaConnector::new(factory, config);
+
+        let (tx, rx) = trigger::trigger();
+        let handler = connector.on_start(tx);
+
+        let agent = ConnectorAgent::default();
+        let start_task = run_handler_with_futures(&agent, handler);
+
+        let (_, result) = join(start_task, rx).await;
+        assert!(result.is_ok());
+
+        let result = connector.create_stream();
+
+        assert!(matches!(
+            result,
+            Err(KafkaConnectorError::Kafka(KafkaError::Canceled))
+        ));
+    })
+    .await
+    .expect("Test timed out.");
 }
