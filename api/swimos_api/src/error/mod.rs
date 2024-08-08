@@ -128,6 +128,7 @@ pub enum OpenStoreError {
     },
 }
 
+/// Error type for requests to a running agent to register a new lane.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum DynamicRegistrationError {
     #[error("This agent does not support dynamically registered items.")]
@@ -144,10 +145,13 @@ pub enum DynamicRegistrationError {
     HttpLanesUnsupported,
 }
 
+/// Error type for an operation to add a new lane to a running agent.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum LaneSpawnError {
+    /// The agent runtime stopped before the request could be completed,
     #[error(transparent)]
     Runtime(#[from] AgentRuntimeError),
+    /// The agent refused to register the lane.
     #[error(transparent)]
     Registration(#[from] DynamicRegistrationError),
 }
