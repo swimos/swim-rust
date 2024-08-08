@@ -140,8 +140,8 @@ This could be applied to the previous example as follows:
 ```rust
 use swimos::agent::{AgentLaneModel, projections};
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 struct Example {
     name: ValueLane<String>
 }

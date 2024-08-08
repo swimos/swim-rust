@@ -75,25 +75,25 @@ impl DnsResolver for GetAddressInfoResolver {
     }
 }
 
-/// The default DNS resolver. If the `trust-dns` feature flag is enabled, this will use the `trust_dns`
+/// The default DNS resolver. If the `hickory_dns` feature flag is enabled, this will use the `hickory_dns`
 /// implementation, otherwise it will use the operating system's built-in DNS support.
 #[derive(Debug, Clone)]
 pub struct Resolver {
-    #[cfg(not(feature = "trust-dns"))]
+    #[cfg(not(feature = "hickory_dns"))]
     inner: GetAddressInfoResolver,
-    #[cfg(feature = "trust-dns")]
-    inner: trust_dns_impl::TrustDnsResolver,
+    #[cfg(feature = "hickory_dns")]
+    inner: hickory_dns_impl::HickoryDnsResolver,
 }
 
 impl Resolver {
-    #[cfg(feature = "trust-dns")]
+    #[cfg(feature = "hickory_dns")]
     pub async fn new() -> Resolver {
         Resolver {
-            inner: trust_dns_impl::TrustDnsResolver::new().await,
+            inner: hickory_dns_impl::HickoryDnsResolver::new().await,
         }
     }
 
-    #[cfg(not(feature = "trust-dns"))]
+    #[cfg(not(feature = "hickory_dns"))]
     pub async fn new() -> Resolver {
         Resolver {
             inner: GetAddressInfoResolver,
@@ -109,31 +109,32 @@ impl DnsResolver for Resolver {
     }
 }
 
-#[cfg(feature = "trust-dns")]
-mod trust_dns_impl {
-    use crate::net::dns::DnsResolver;
+#[cfg(feature = "hickory_dns")]
+mod hickory_dns_impl {
+    use crate::dns::DnsResolver;
     use futures::future::BoxFuture;
+    use hickory_resolver::{system_conf, TokioAsyncResolver};
     use std::io;
     use std::net::{SocketAddr, ToSocketAddrs};
-    use trust_dns_resolver::{system_conf, TokioAsyncResolver};
 
-    /// A DNS resolver built using the Trust-DNS Proto library.
+    /// A DNS resolver built using the Hickory-DNS Proto library.
     #[derive(Clone, Debug)]
-    pub struct TrustDnsResolver {
+    pub struct HickoryDnsResolver {
         inner: TokioAsyncResolver,
     }
 
-    impl TrustDnsResolver {
-        pub async fn new() -> TrustDnsResolver {
-            let (config, opts) = system_conf::read_system_conf()
-                .expect("Failed to retrieve host system configuration file for Trust DNS resolver");
-            let resolver = TokioAsyncResolver::tokio(config, opts).unwrap();
-
-            TrustDnsResolver { inner: resolver }
+    impl HickoryDnsResolver {
+        pub async fn new() -> HickoryDnsResolver {
+            let (config, opts) = system_conf::read_system_conf().expect(
+                "Failed to retrieve host system configuration file for Hickory DNS resolver",
+            );
+            HickoryDnsResolver {
+                inner: TokioAsyncResolver::tokio(config, opts),
+            }
         }
     }
 
-    impl DnsResolver for TrustDnsResolver {
+    impl DnsResolver for HickoryDnsResolver {
         type ResolveFuture = BoxFuture<'static, io::Result<Vec<SocketAddr>>>;
 
         fn resolve(&self, host: String, port: u16) -> Self::ResolveFuture {

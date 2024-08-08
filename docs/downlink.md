@@ -36,8 +36,8 @@ In this section, we will construct a lifecycle for a value downlink that does no
 We will assume an agent with the following definitions:
 
 ```rust
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 struct ExampleAgent {
     received: ValueLane<String>,
 }

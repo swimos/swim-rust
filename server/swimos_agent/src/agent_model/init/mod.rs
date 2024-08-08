@@ -112,7 +112,7 @@ impl<'a, Agent> InitializedItem<'a, Agent> {
 /// * `name` - The name of the lane.
 /// * `io` - Channels for communication with the runtime.
 /// * `decoder` - Decoder to interpret the command messages from the runtime, during the
-/// initialization process.
+///    initialization process.
 /// * `init` - Initializer to consume the incoming command and assemble the initial state of the lane.
 pub async fn run_item_initializer<'a, Agent, D, M>(
     item_kind: ItemKind,

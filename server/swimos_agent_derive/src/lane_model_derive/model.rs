@@ -39,7 +39,7 @@ impl<'a> LanesModel<'a> {
     /// # Arguments
     /// * `agent_type` - The name of the target of the derive macro.
     /// * `lanes` - Description of each lane in the agent (the name of the corresponding field
-    /// and the lane kind with types).
+    ///    and the lane kind with types).
     fn new(agent_type: &'a Ident, lanes: Vec<ItemModel<'a>>) -> Self {
         LanesModel { agent_type, lanes }
     }

@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Reference code for the [Time Series](https://www.swimos.org/server/rust/time-series/) guide.
+//!
+//! Run the server using the following:
+//! ```text
+//! $ cargo run --bin time_series
+//! ```
+
 use std::{error::Error, time::Duration};
 
 use example_util::{example_logging, manage_handle};

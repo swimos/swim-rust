@@ -336,7 +336,7 @@ impl ReportFailed for NoReport {
 /// * `identity` - The unique ID of this agent instance.
 /// * `open_requests` - Requests for the agent implementation to create a channel for sending ad-hoc commands.
 /// * `state` - The state of the task. For agent initialization this should be empty. This is then passed from
-/// the initialization task to the runtime task.
+///    the initialization task to the runtime task.
 /// * `config` - Configuration parameters for the task.
 /// * `report_failed` - Callback to report commands that were still pending when an output channel failed.
 pub async fn external_links_task<F: ReportFailed>(

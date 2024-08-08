@@ -343,7 +343,7 @@ where
 ///
 /// # Type Parameters
 /// * `Context` - The context within which the handler executes. Typically, this will be a struct type where
-/// each field is a lane of an agent.
+///    each field is a lane of an agent.
 pub trait HandlerAction<Context> {
     /// The result of executing the handler to completion.
     type Completion;
@@ -353,7 +353,7 @@ pub trait HandlerAction<Context> {
     ///
     /// # Arguments
     /// * `suspend` - Allows for futures to be suspended into the agent task. The future will result in another event handler
-    /// which will be executed by the agent task upon completion.
+    ///    which will be executed by the agent task upon completion.
     /// * `meta` - Provides access to agent instance metadata.
     /// * `context` - The execution context of the handler (providing access to the lanes of the agent).
     fn step(

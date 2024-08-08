@@ -42,11 +42,11 @@ mod tests;
 /// MessagePack string and bin values. Records have the following encoding.
 ///
 /// - Attributes are written as MessagePack map where the keys are strings. If there are no
-/// attributes an empty map value is still required.
+///   attributes an empty map value is still required.
 /// - The items in the body follow the attributes immediately. If the body consists entirely of
-/// slots it is written as a map. If the body consists of all value items or a mix of value items
-/// and slots it is written as an array. When a slot occurs in an array body it is written as
-/// an array of size two.
+///   slots it is written as a map. If the body consists of all value items or a mix of value items
+///   and slots it is written as an array. When a slot occurs in an array body it is written as
+///   an array of size two.
 ///
 /// # Type Parameters
 ///

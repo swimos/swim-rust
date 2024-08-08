@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! An example demonstrating Value Downlinks.
+//!
+//! Run the server using the following:
+//! ```text
+//! $ cargo run --bin value-downlink
+//! ```
+
 use std::error::Error;
 
 use example_util::{example_logging, manage_producer_and_consumer, StartDependent};

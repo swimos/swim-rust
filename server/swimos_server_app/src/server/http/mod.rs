@@ -174,9 +174,9 @@ where
 /// * `Sock` - The type of the connections produced by the listener.
 /// * `Ext` - The websocket extension provider for negotiating connections.
 /// * `Con` - The type of the future that handles an HTTP connection (this parameter exists to
-/// give a name to the return type of an async function).
+///   give a name to the return type of an async function).
 /// * `FC` - A function to produce the future to handle an HTTP connection (this parameter exists to
-/// give a name to the type of an async function).
+///   give a name to the type of an async function).
 struct HttpServerState<L, Sock, Ext, Con, FC>
 where
     Sock: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -630,7 +630,6 @@ impl HyperWebsockets {
     /// # Arguments
     ///
     /// * `config` - HTTP server configuration.
-    /// will handle concurrently.
     pub fn new(config: HttpConfig) -> Self {
         HyperWebsockets { config }
     }

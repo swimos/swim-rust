@@ -12,6 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! An example demonstrating Join Map Lanes.
+//!
+//! Run the server using the following:
+//! ```text
+//! $ cargo run --bin join_map
+//! ```
+//!
+//! And run the client with the following:
+//! ```text
+//! $ cargo run --bin join_map_client
+//! ```
+
 mod agents;
 
 use crate::agents::{
@@ -41,6 +53,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     );
 
     let server = ServerBuilder::with_plane_name("Statistics Plane")
+        .set_bind_addr("127.0.0.1:8080".parse()?)
         .add_route(street_route, street_agent)
         .add_route(aggregated_route, aggregated_agent)
         .update_config(|config| {

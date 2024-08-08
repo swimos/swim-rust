@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --app-bg: #FCFCFC;
+  --app-bg-dark: #181818;
+  --row-bg-secondary: #ECECEC;
+  --row-bg-secondary-dark: #242424;
+  --green-alert: #469546;
+  --red-alert: rgba(232, 61, 61, 1);
+}
+
+* {
+  margin: 0px;
+  padding: 0px;
+}
+
+/* AG Grid header cell override */
+.ag-header-cell-label {
+  justify-content: center;
+}
+
+@layer utilities {}

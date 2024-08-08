@@ -23,8 +23,8 @@ use swimos::agent::{
 
 use crate::model::Instruction;
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct ExampleAgent {
     value: ValueStore<i32>,
     #[item(transient)]

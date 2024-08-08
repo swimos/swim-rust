@@ -38,8 +38,8 @@ fn make_agent() -> impl Agent + Send {
  * with a real example) after the macro crate is added.
  */
 
-#[derive(Debug, AgentLaneModel)]
 #[projections]
+#[derive(Debug, AgentLaneModel)]
 pub struct MyAgent {
     first: ValueLane<i32>,
     second: ValueLane<Text>,

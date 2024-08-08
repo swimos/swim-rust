@@ -12,6 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//! Reference code for the [Group and Aggregate Agents](https://www.swimos.org/server/rust/aggregations/) guide.
+//!
+//! Run this example using the following:
+//! ```text
+//! $ cargo run --bin aggregations
+//! ```
+
 use std::error::Error;
 use std::str::FromStr;
 use std::time::Duration;
@@ -49,6 +56,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let aggregate_agent = AgentModel::new(CityAgent::default, CityLifecycle.into_lifecycle());
 
     let mut builder = ServerBuilder::with_plane_name("Example Plane")
+        .set_bind_addr("127.0.0.1:8080".parse()?)
         .add_route(RoutePattern::parse_str("/cars/:car_id")?, car_agent)
         .add_route(RoutePattern::parse_str("/city")?, aggregate_agent)
         .update_config(|config| {

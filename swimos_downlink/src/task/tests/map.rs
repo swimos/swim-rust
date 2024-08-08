@@ -18,11 +18,11 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::hash::Hash;
 use std::num::NonZeroUsize;
-use swimos_agent_protocol::MapMessage;
+use swimos_agent_protocol::{MapMessage, MapOperation};
 use swimos_client_api::{Downlink, DownlinkConfig};
 
 use swimos_agent_protocol::encoding::downlink::DownlinkNotificationEncoder;
-use swimos_agent_protocol::encoding::map::MapMessageEncoder;
+use swimos_agent_protocol::encoding::map::{MapMessageEncoder, MapOperationDecoder};
 use swimos_agent_protocol::DownlinkNotification;
 use swimos_api::error::{DownlinkTaskError, FrameIoError, InvalidFrame};
 use swimos_form::write::StructuralWritable;
@@ -558,12 +558,12 @@ async fn send_on_downlink() {
         |writer, mut reader| async move {
             let _writer = writer;
             assert!(set_tx
-                .send(MapMessage::Update { key: 1, value: 1 })
+                .send(MapOperation::Update { key: 1, value: 1 })
                 .await
                 .is_ok());
             assert_eq!(
-                reader.recv::<MapMessage<i32, i32>>().await,
-                Ok(Some(MapMessage::Update { key: 1, value: 1 }))
+                reader.decode(MapOperationDecoder::default()).await,
+                Ok(Some(MapOperation::Update { key: 1, value: 1 }))
             );
         },
     )
@@ -719,58 +719,6 @@ async fn rx_take_elem_downlink() {
 }
 
 #[tokio::test]
-async fn handle_take_elem_downlink() {
-    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
-    let (set_tx, set_rx) = mpsc::channel(16);
-    let handle = MapDownlinkHandle::new(set_tx);
-    let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
-
-    let config = DownlinkConfig {
-        events_when_not_synced: false,
-        terminate_on_unlinked: true,
-        buffer_size: DEFAULT_BUFFER_SIZE,
-    };
-
-    let result = run_map_downlink_task(
-        DownlinkTask::new(model),
-        config,
-        |mut writer, mut reader| async move {
-            writer
-                .send_message::<i32, i32>(DownlinkNotification::Linked)
-                .await;
-
-            for i in 0..5 {
-                writer
-                    .send_message::<i32, i32>(DownlinkNotification::Event {
-                        body: MapMessage::Update { key: i, value: i },
-                    })
-                    .await;
-            }
-
-            writer
-                .send_message::<i32, i32>(DownlinkNotification::Synced)
-                .await;
-            expect_event(&mut event_rx, TestMessage::Linked).await;
-
-            let state = (0..5).map(|i| (i, i)).collect::<BTreeMap<i32, i32>>();
-            expect_event(&mut event_rx, TestMessage::Synced(state)).await;
-
-            assert!(handle.take(2).await.is_ok());
-            assert_eq!(
-                reader.recv::<MapMessage<i32, i32>>().await,
-                Ok(Some(MapMessage::Take(2)))
-            );
-
-            event_rx
-        },
-    )
-    .await;
-    assert!(result.is_ok());
-    assert!(result.unwrap().recv().await.is_none());
-}
-
-#[tokio::test]
 async fn rx_drop_elem_downlink() {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
     let (_set_tx, set_rx) = mpsc::channel(16);
@@ -824,59 +772,6 @@ async fn rx_drop_elem_downlink() {
                 TestMessage::Event(MapMessage::Remove { key: 1 }),
             )
             .await;
-
-            event_rx
-        },
-    )
-    .await;
-    assert!(result.is_ok());
-    assert!(result.unwrap().recv().await.is_none());
-}
-
-#[tokio::test]
-async fn handle_drop_elem_downlink() {
-    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<TestMessage<i32, i32>>();
-    let (set_tx, set_rx) = mpsc::channel(16);
-    let handle = MapDownlinkHandle::new(set_tx);
-    let lifecycle = make_lifecycle(event_tx);
-    let model = MapDownlinkModel::new(set_rx, lifecycle);
-
-    let config = DownlinkConfig {
-        events_when_not_synced: false,
-        terminate_on_unlinked: true,
-        buffer_size: DEFAULT_BUFFER_SIZE,
-    };
-
-    let result = run_map_downlink_task(
-        DownlinkTask::new(model),
-        config,
-        |mut writer, mut reader| async move {
-            writer
-                .send_message::<i32, i32>(DownlinkNotification::Linked)
-                .await;
-
-            for i in 0..5 {
-                writer
-                    .send_message::<i32, i32>(DownlinkNotification::Event {
-                        body: MapMessage::Update { key: i, value: i },
-                    })
-                    .await;
-            }
-
-            writer
-                .send_message::<i32, i32>(DownlinkNotification::Synced)
-                .await;
-            expect_event(&mut event_rx, TestMessage::Linked).await;
-
-            let state = (0..5).map(|i| (i, i)).collect::<BTreeMap<i32, i32>>();
-            expect_event(&mut event_rx, TestMessage::Synced(state)).await;
-
-            assert!(handle.drop(2).await.is_ok());
-
-            assert_eq!(
-                reader.recv::<MapMessage<i32, i32>>().await,
-                Ok(Some(MapMessage::Drop(2)))
-            );
 
             event_rx
         },

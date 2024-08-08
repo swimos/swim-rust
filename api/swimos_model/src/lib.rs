@@ -30,7 +30,7 @@
 //!  4. UTF-8 Strings, represented as [`Value::Text`].
 //!  5. Arrays of bytes (represented as [`Value::Data`]).
 //! - A record consisting of an list of attributes ([`Attr`]) and  and list of items ([`Item`]). This is
-//! represented as [`Value::Record`].
+//!   represented as [`Value::Record`].
 //!
 //! An attribute is a labelled (with a UTF-8 String) [`Value`].
 //!
@@ -38,7 +38,7 @@
 //!
 //! - A value item which is an instance of [`Value`]. This is represented as [`Item::ValueItem`].
 //! - A slot item which is a pair of two [`Value`]s, the first of which is interpreted as a key. This
-//! is represented as [`Item::Slot`].
+//!   is represented as [`Item::Slot`].
 //!
 //! Note that the attributes and items of a record are always ordered, although the order may not always be
 //! significant, for example if a record, consisting only of slots, is used to represent a map.

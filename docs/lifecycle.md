@@ -18,8 +18,8 @@ All further examples in this chapter will use the following agent definition:
 ```rust
 use swimos::agent::{AgentLaneModel, projections};
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 struct ExampleAgent {
     example_command: CommandLane<i32>,
     example_demand: DemandLane<i32>,

@@ -1,5 +1,3 @@
-[![Build Status](https://dev.azure.com/swimai-build/swim-rust/_apis/build/status/swimos.swim-rust?branchName=main)](https://dev.azure.com/swimai-build/swim-rust/_build/latest?definitionId=1&branchName=main)
-[![codecov](https://codecov.io/gh/swimos/swim-rust/branch/main/graph/badge.svg?token=IVWBLXCGW8)](https://codecov.io/gh/swimos/swim-rust)
 <a href="https://www.swimos.org"><img src="https://docs.swimos.org/readme/marlin-blue.svg" align="left"></a>
 <br><br><br><br>
 
@@ -19,17 +17,42 @@ will also allow the subscriber to request changes to the state (for lane kinds t
 operate over a web-socket connection and are multiplexed, meaning that links to multiple lanes on the same
 host can share a single web-socket connection.
 
+[![SwimOS Crates.io Version][swimos-badge]][swimos-crate]
+[![SwimOS Client Crates.io Version][swimos-client-badge]][swimos-client-crate]
+[![SwimOS Form Crates.io Version][swimos-form-badge]][swimos-form-crate]
+
+[swimos-badge]: https://img.shields.io/crates/v/swimos?label=swimos
+
+[swimos-crate]: https://crates.io/crates/swimos
+
+[swimos-form-badge]: https://img.shields.io/crates/v/swimos?label=swimos_form
+
+[swimos-form-crate]: https://crates.io/crates/swimos_form
+
+[swimos-client-badge]: https://img.shields.io/crates/v/swimos?label=swimos_client
+
+[swimos-client-crate]: https://crates.io/crates/swimos_client
+
+[Website](https://swimos.org/) | [Developer Guide](https://www.swimos.org/server/rust/developer-guide/) | [Server API Docs](https://docs.rs/swimos/latest/swimos/) | [Client API Docs](https://docs.rs/swimos_client/latest/swimos_client/)
+
 ## Usage Guides
 
 [Implementing Swim Agents in Rust](docs/agent.md)
 
 [Building a Swim Server Application](docs/server.md)
 
+[Reference Documentation](https://www.swimos.org/server/rust/)
+
 ## Examples
 
 The following example application runs a SwimOS server that hosts a single agent route where each agent instance
 has single lane, called `lane`. Each time a changes is made to the lane, it will be printed on the console by the
 server.
+
+```toml
+[dependencies]
+swimos = { version = "0.1.0", features = ["server", "agent"] }
+```
 
 ```rust
 use swimos::{
@@ -46,7 +69,6 @@ use swimos::{
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    
     // An agent route consists of the agent definition and a lifecycle.
     let model = AgentModel::new(ExampleAgent::default, ExampleLifecycle.into_lifecycle());
 
@@ -80,7 +102,6 @@ struct ExampleLifecycle;
 // annotated event handlers methods in the block.
 #[lifecycle(ExampleAgent)]
 impl ExampleLifecycle {
-    
     #[on_event(lane)]
     fn lane_event(
         &self,
@@ -94,18 +115,24 @@ impl ExampleLifecycle {
             })
         })
     }
-
 }
 ```
 
-For example, if a Swim client sends an update, with the value `5`, to the agent at the URI `/examples/name` for the 
-lane `lane`, an instance of `ExampleAgent`, using `ExampleLifecycle`, will be started by the server. The value of the 
+For example, if a Swim client sends an update, with the value `5`, to the agent at the URI `/examples/name` for the
+lane `lane`, an instance of `ExampleAgent`, using `ExampleLifecycle`, will be started by the server. The value of the
 lane will then be set to `5` and the following will be printed on the console:
 
 ```
 Received value: 5 for 'lane' on agent at URI: /examples/name.
 ```
 
+A number of example applications are available in the [example_apps](example_apps) directory which demonstrate
+individual features as well as more comprehensive applications.
+
 ## Development
 
 See the [development guide](DEVELOPMENT.md).
+
+## License
+
+This project is licensed under the [Apache 2.0 License](LICENSE).

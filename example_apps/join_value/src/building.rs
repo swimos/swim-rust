@@ -1,3 +1,17 @@
+// Copyright 2015-2024 Swim Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use std::collections::HashMap;
 use swimos::agent::agent_lifecycle::HandlerContext;
 use swimos::agent::event_handler::{EventHandler, HandlerActionExt};
@@ -5,11 +19,11 @@ use swimos::agent::lanes::{CommandLane, JoinValueLane};
 use swimos::agent::projections;
 use swimos::agent::{lifecycle, AgentLaneModel};
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct BuildingAgent {
-    lights: JoinValueLane<u64, bool>,
-    register_room: CommandLane<u64>,
+    lights: JoinValueLane<String, bool>,
+    register_room: CommandLane<String>,
 }
 
 #[derive(Clone)]
@@ -41,30 +55,32 @@ impl BuildingLifecycle {
     pub fn register_room(
         &self,
         context: HandlerContext<BuildingAgent>,
-        room_id: &u64,
+        room_id: &str,
     ) -> impl EventHandler<BuildingAgent> {
-        let room_id = *room_id;
+        let downlink_room_id = room_id.to_string();
+        let handler_room_id = room_id.to_string();
         context
             .get_parameter("name")
             .and_then(move |building_name: Option<String>| {
                 let building_name = building_name.expect("Missing building name URI parameter");
+                let node = format!("/rooms/{building_name}/{downlink_room_id}");
                 context.add_downlink(
                     BuildingAgent::LIGHTS,
-                    room_id,
+                    downlink_room_id,
                     None,
-                    format!("/rooms/{building_name}/{room_id}").as_str(),
+                    node.as_str(),
                     "lights",
                 )
             })
-            .followed_by(context.effect(move || println!("Registered room: {room_id}")))
+            .followed_by(context.effect(move || println!("Registered room: {handler_room_id}")))
     }
 
     #[on_update(lights)]
     fn lights(
         &self,
         context: HandlerContext<BuildingAgent>,
-        _map: &HashMap<u64, bool>,
-        key: u64,
+        _map: &HashMap<String, bool>,
+        key: String,
         prev: Option<bool>,
         new_value: &bool,
     ) -> impl EventHandler<BuildingAgent> {

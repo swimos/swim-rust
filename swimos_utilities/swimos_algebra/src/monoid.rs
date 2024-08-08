@@ -18,7 +18,7 @@ use crate::{Semigroup, Zero};
 /// responsible for ensuring that:
 /// * The operation is associatve.
 /// * Applying the operator to some value `v` of the type and the zero element (in both directions)
-/// results in a value that is identical to `v`.
+///   results in a value that is identical to `v`.
 pub trait Monoid: Zero + Semigroup {}
 
 impl<T: Zero + Semigroup> Monoid for T {}

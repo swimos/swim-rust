@@ -21,8 +21,8 @@ use swimos::agent::{
     lifecycle, projections, AgentLaneModel,
 };
 
-#[derive(AgentLaneModel)]
 #[projections]
+#[derive(AgentLaneModel)]
 pub struct ExampleAgent {
     lane: ValueLane<i32>,
     demand: DemandLane<i32>,
@@ -31,7 +31,7 @@ pub struct ExampleAgent {
 #[derive(Clone)]
 pub struct ExampleLifecycle;
 
-const CUE_PERIOD: Duration = Duration::from_secs(5);
+const CUE_PERIOD: Duration = Duration::from_secs(1);
 
 #[lifecycle(ExampleAgent)]
 impl ExampleLifecycle {

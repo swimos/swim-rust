@@ -159,9 +159,9 @@ impl<S, T> AdHocCommand<S, T> {
     /// * `address` - The target lane for the command.
     /// * `command` - The body of the command message.
     /// * `overwrite_permitted` - Controls the behaviour of command handling in the case of back-pressure.
-    /// If this is true, the command maybe be overwritten by a subsequent command to the same target (and so
-    /// will never be sent). If false, the command will be queued instead. This is a user specifiable parameter
-    /// in the API.
+    ///   If this is true, the command maybe be overwritten by a subsequent command to the same target (and so
+    ///   will never be sent). If false, the command will be queued instead. This is a user specifiable parameter
+    ///   in the API.
     pub fn new(address: Address<S>, command: T, overwrite_permitted: bool) -> Self {
         AdHocCommand {
             address,
