@@ -20,15 +20,15 @@ use swimos_api::{
     agent::{
         AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
     },
-    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, OpenStoreError},
 };
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 
 use crate::{
     agent_model::downlink::BoxDownlinkChannel,
     event_handler::{
-        ActionContext, BoxJoinLaneInit, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner,
-        StepResult,
+        ActionContext, BoxJoinLaneInit, DownlinkSpawner, HandlerAction, HandlerFuture,
+        LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
     },
     meta::AgentMetadata,
 };
@@ -42,6 +42,20 @@ pub fn no_downlink<Context>(_dl: BoxDownlinkChannel<Context>) -> Result<(), Down
 
 const NO_SPAWN: NoSpawn = NoSpawn;
 const NO_AGENT: DummyAgentContext = DummyAgentContext;
+pub const NO_DYN_LANES: NoDynamicLanes = NoDynamicLanes;
+
+pub struct NoDynamicLanes;
+
+impl<Context> LaneSpawner<Context> for NoDynamicLanes {
+    fn spawn_warp_lane(
+        &self,
+        _name: &str,
+        _kind: WarpLaneKind,
+        _on_done: LaneSpawnOnDone<Context>,
+    ) -> Result<(), DynamicRegistrationError> {
+        panic!("Spawning dynamic lanes not supported.");
+    }
+}
 
 pub fn dummy_context<'a, Context>(
     join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
@@ -51,6 +65,7 @@ pub fn dummy_context<'a, Context>(
         &NO_SPAWN,
         &NO_AGENT,
         &no_downlink,
+        &NO_DYN_LANES,
         join_lane_init,
         ad_hoc_buffer,
     )
@@ -102,9 +117,11 @@ impl AgentContext for DummyAgentContext {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_with_futures<H, Agent>(
     agent_context: &dyn AgentContext,
     downlink_spawner: &dyn DownlinkSpawner<Agent>,
+    lane_spawner: &dyn LaneSpawner<Agent>,
     agent: &Agent,
     meta: AgentMetadata<'_>,
     inits: &mut HashMap<u64, BoxJoinLaneInit<'static, Agent>>,
@@ -121,6 +138,7 @@ where
             &pending,
             agent_context,
             downlink_spawner,
+            lane_spawner,
             inits,
             ad_hoc_buffer,
         );
@@ -136,6 +154,7 @@ where
     run_event_handlers(
         agent_context,
         downlink_spawner,
+        lane_spawner,
         agent,
         meta,
         inits,
@@ -147,9 +166,11 @@ where
     result
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_event_handlers<'a, Agent>(
     agent_context: &dyn AgentContext,
     downlink_spawner: &dyn DownlinkSpawner<Agent>,
+    lane_spawner: &dyn LaneSpawner<Agent>,
     agent: &Agent,
     meta: AgentMetadata<'_>,
     inits: &mut HashMap<u64, BoxJoinLaneInit<'static, Agent>>,
@@ -163,6 +184,7 @@ pub async fn run_event_handlers<'a, Agent>(
                     &handlers,
                     agent_context,
                     downlink_spawner,
+                    lane_spawner,
                     inits,
                     ad_hoc_buffer,
                 );

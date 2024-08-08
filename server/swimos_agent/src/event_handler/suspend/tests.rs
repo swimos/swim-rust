@@ -19,7 +19,7 @@ use crate::{
         ActionContext, EventHandler, EventHandlerError, HandlerAction, SideEffect, StepResult,
     },
     meta::AgentMetadata,
-    test_context::{no_downlink, DummyAgentContext},
+    test_context::{no_downlink, DummyAgentContext, NO_DYN_LANES},
 };
 use bytes::BytesMut;
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -71,6 +71,7 @@ async fn suspend_future() {
             &spawner,
             &DummyAgentContext,
             &no_downlink,
+            &NO_DYN_LANES,
             &mut join_lane_init,
             &mut ad_hoc_buffer,
         ),
@@ -97,6 +98,7 @@ async fn suspend_future() {
                 &spawner,
                 &DummyAgentContext,
                 &no_downlink,
+                &NO_DYN_LANES,
                 &mut join_lane_init,
                 &mut ad_hoc_buffer,
             ),
@@ -118,6 +120,7 @@ async fn suspend_future() {
                 &spawner,
                 &DummyAgentContext,
                 &no_downlink,
+                &NO_DYN_LANES,
                 &mut join_lane_init,
                 &mut ad_hoc_buffer,
             ),
@@ -149,6 +152,7 @@ where
         spawner,
         &DummyAgentContext,
         &no_downlink,
+        &NO_DYN_LANES,
         &mut join_lane_init,
         &mut ad_hoc_buffer,
     );

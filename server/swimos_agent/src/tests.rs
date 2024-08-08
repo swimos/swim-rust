@@ -45,6 +45,7 @@ use crate::model::MapMessage;
 use crate::reexport::bytes::BytesMut;
 use crate::reexport::uuid::Uuid;
 use crate::stores::{MapStore, ValueStore};
+use crate::test_context::NO_DYN_LANES;
 use parking_lot::Mutex;
 use swimos_agent_derive::{lifecycle, AgentLaneModel};
 use swimos_api::agent::DownlinkKind;
@@ -83,6 +84,7 @@ pub fn dummy_context<'a, Context>(
         &NO_SPAWN,
         &NO_AGENT,
         &no_downlink,
+        &NO_DYN_LANES,
         join_lane_init,
         ad_hoc_buffer,
     )

@@ -23,11 +23,11 @@ use futures::{
 use parking_lot::Mutex;
 use swimos_api::{
     address::Address,
-    agent::DownlinkKind,
     agent::{
-        AgentConfig, AgentContext, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
+        AgentConfig, AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind,
+        WarpLaneKind,
     },
-    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, OpenStoreError},
 };
 use swimos_model::Text;
 use swimos_utilities::{
@@ -40,8 +40,8 @@ use crate::{
     config::{MapDownlinkConfig, SimpleDownlinkConfig},
     downlink_lifecycle::{StatefulMapDownlinkLifecycle, StatefulValueDownlinkLifecycle},
     event_handler::{
-        ActionContext, BoxJoinLaneInit, DownlinkSpawner, HandlerAction, HandlerFuture, Spawner,
-        StepResult,
+        ActionContext, BoxJoinLaneInit, DownlinkSpawner, HandlerAction, HandlerFuture,
+        LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
     },
     meta::AgentMetadata,
 };
@@ -94,6 +94,17 @@ impl DownlinkSpawner<TestAgent> for TestSpawner {
         assert!(guard.downlink.is_none());
         guard.downlink = Some(dl_channel);
         Ok(())
+    }
+}
+
+impl<Context> LaneSpawner<Context> for TestSpawner {
+    fn spawn_warp_lane(
+        &self,
+        _name: &str,
+        _kind: WarpLaneKind,
+        _on_done: LaneSpawnOnDone<Context>,
+    ) -> Result<(), DynamicRegistrationError> {
+        panic!("Spawning dynamic lanes not supported.");
     }
 }
 
@@ -175,6 +186,7 @@ async fn run_all_and_check(
             &spawner,
             &context,
             &spawner,
+            &spawner,
             join_lane_init,
             &mut ad_hoc_buffer,
         );
@@ -241,6 +253,7 @@ async fn open_value_downlink() {
         &spawner,
         &context,
         &spawner,
+        &spawner,
         &mut join_lane_init,
         &mut ad_hoc_buffer,
     );
@@ -273,6 +286,7 @@ async fn open_map_downlink() {
     let mut action_context = ActionContext::new(
         &spawner,
         &context,
+        &spawner,
         &spawner,
         &mut join_lane_init,
         &mut ad_hoc_buffer,

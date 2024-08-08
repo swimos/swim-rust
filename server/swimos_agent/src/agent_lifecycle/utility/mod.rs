@@ -21,6 +21,8 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use futures::stream::unfold;
 use futures::{Future, FutureExt, Stream, StreamExt};
+use swimos_api::agent::WarpLaneKind;
+use swimos_api::error::LaneSpawnError;
 use tokio::time::Instant;
 
 use swimos_api::address::Address;
@@ -37,7 +39,7 @@ use crate::config::{MapDownlinkConfig, SimpleDownlinkConfig};
 use crate::downlink_lifecycle::ValueDownlinkLifecycle;
 use crate::downlink_lifecycle::{EventDownlinkLifecycle, MapDownlinkLifecycle};
 use crate::event_handler::{
-    run_after, run_schedule, run_schedule_async, ConstHandler, EventHandler, GetParameter,
+    run_after, run_schedule, run_schedule_async, ConstHandler, EventHandler, Fail, GetParameter,
     HandlerActionExt, SendCommand, Sequentially, Stop, Suspend, UnitHandler,
 };
 use crate::event_handler::{GetAgentUri, HandlerAction, SideEffect};
@@ -50,8 +52,10 @@ use crate::lanes::demand::{Cue, DemandLane};
 use crate::lanes::demand_map::CueKey;
 use crate::lanes::join_map::JoinMapAddDownlink;
 use crate::lanes::join_value::{JoinValueAddDownlink, JoinValueLane};
+use crate::lanes::map::{MapLaneSelectClear, MapLaneSelectRemove, MapLaneSelectUpdate};
 use crate::lanes::supply::{Supply, SupplyLane};
-use crate::lanes::{DemandMapLane, JoinMapLane};
+use crate::lanes::value::ValueLaneSelectSet;
+use crate::lanes::{DemandMapLane, JoinMapLane, MapLane, OpenLane, SelectorFn, ValueLane};
 
 pub use self::downlink_builder::event::{
     StatefulEventDownlinkBuilder, StatelessEventDownlinkBuilder,
@@ -862,6 +866,18 @@ impl<Agent: 'static> HandlerContext<Agent> {
     pub fn stop(&self) -> impl EventHandler<Agent> + Send + 'static {
         HandlerActionExt::<Agent>::discard(Stop)
     }
+
+    /// Create a handler that will fail with the provided error.
+    ///
+    /// # Arguments
+    /// * `error` - The error.
+    pub fn fail<T, E>(&self, error: E) -> impl HandlerAction<Agent, Completion = T> + Send + 'static
+    where
+        T: Send + 'static,
+        E: std::error::Error + Send + 'static,
+    {
+        Fail::<T, E>::new(error)
+    }
 }
 
 /// Context passed to agent methods used to construct lifecycles for [`JoinValueLane`]s.
@@ -915,5 +931,87 @@ where
     /// Creates a builder to construct a lifecycle for the downlinks of a [`JoinMapLane`].
     pub fn builder(&self) -> StatelessJoinMapLifecycleBuilder<Agent, L, K, V> {
         StatelessJoinMapLifecycleBuilder::default()
+    }
+}
+
+pub struct ConnectorContext<Connector> {
+    _connector_type: PhantomData<fn(&Connector)>,
+}
+
+impl<Connector> Default for ConnectorContext<Connector> {
+    fn default() -> Self {
+        Self {
+            _connector_type: Default::default(),
+        }
+    }
+}
+
+impl<Connector: 'static> ConnectorContext<Connector> {
+    pub fn open_value_lane<OnDone, H>(
+        &self,
+        name: &str,
+        on_done: OnDone,
+    ) -> impl EventHandler<Connector> + Send + 'static
+    where
+        OnDone: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
+        H: EventHandler<Connector> + Send + 'static,
+    {
+        OpenLane::new(name.to_string(), WarpLaneKind::Value, on_done)
+    }
+
+    pub fn open_map_lane<OnDone, H>(
+        &self,
+        name: &str,
+        on_done: OnDone,
+    ) -> impl EventHandler<Connector> + Send + 'static
+    where
+        OnDone: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
+        H: EventHandler<Connector> + Send + 'static,
+    {
+        OpenLane::new(name.to_string(), WarpLaneKind::Map, on_done)
+    }
+
+    pub fn set_value<T, F>(
+        &self,
+        item: F,
+        value: T,
+    ) -> impl EventHandler<Connector> + Send + 'static
+    where
+        F: SelectorFn<Connector, Target = ValueLane<T>> + Send + 'static,
+        T: Send + 'static,
+    {
+        ValueLaneSelectSet::new(item, value)
+    }
+
+    pub fn update<K, V, F>(
+        &self,
+        item: F,
+        key: K,
+        value: V,
+    ) -> MapLaneSelectUpdate<Connector, K, V, F>
+    where
+        F: SelectorFn<Connector, Target = MapLane<K, V>> + Send + 'static,
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Send + 'static,
+    {
+        MapLaneSelectUpdate::new(item, key, value)
+    }
+
+    pub fn remove<K, V, F>(&self, item: F, key: K) -> MapLaneSelectRemove<Connector, K, V, F>
+    where
+        F: SelectorFn<Connector, Target = MapLane<K, V>> + Send + 'static,
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Send + 'static,
+    {
+        MapLaneSelectRemove::new(item, key)
+    }
+
+    pub fn clear<K, V, F>(&self, item: F) -> MapLaneSelectClear<Connector, K, V, F>
+    where
+        F: SelectorFn<Connector, Target = MapLane<K, V>> + Send + 'static,
+        K: Send + Clone + Eq + Hash + 'static,
+        V: Send + 'static,
+    {
+        MapLaneSelectClear::new(item)
     }
 }

@@ -75,6 +75,9 @@ pub use agent_model::AgentSpec;
 pub use item::AgentItem;
 
 #[doc(hidden)]
+pub use meta::AgentMetadata;
+
+#[doc(hidden)]
 pub mod model {
     pub use swimos_agent_protocol::{MapMessage, MapOperation};
     pub use swimos_api::agent::HttpLaneRequest;

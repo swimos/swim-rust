@@ -21,7 +21,7 @@ use swimos_api::{
     agent::{
         AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
     },
-    error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError},
+    error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, OpenStoreError},
 };
 use swimos_model::Text;
 use swimos_utilities::{
@@ -29,7 +29,10 @@ use swimos_utilities::{
     non_zero_usize,
 };
 
-use crate::{agent_model::downlink::BoxDownlinkChannel, event_handler::DownlinkSpawner};
+use crate::{
+    agent_model::downlink::BoxDownlinkChannel,
+    event_handler::{DownlinkSpawner, LaneSpawnOnDone, LaneSpawner},
+};
 
 const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
 
@@ -97,6 +100,17 @@ impl<Agent> DownlinkSpawner<Agent> for TestDownlinkContext<Agent> {
     ) -> Result<(), DownlinkRuntimeError> {
         self.push_dl(dl_channel);
         Ok(())
+    }
+}
+
+impl<Agent> LaneSpawner<Agent> for TestDownlinkContext<Agent> {
+    fn spawn_warp_lane(
+        &self,
+        _name: &str,
+        _kind: WarpLaneKind,
+        _on_done: LaneSpawnOnDone<Agent>,
+    ) -> Result<(), DynamicRegistrationError> {
+        panic!("Spawning dynamic lanes not supported.");
     }
 }
 

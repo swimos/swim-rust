@@ -33,7 +33,7 @@ use swimos_utilities::{
 };
 use tokio::sync::{mpsc, oneshot};
 
-use super::{CMD_LANE, HTTP_LANE, MAP_LANE, VAL_LANE};
+use super::{CMD_LANE, DYN_MAP_LANE, DYN_VAL_LANE, HTTP_LANE, MAP_LANE, VAL_LANE};
 
 #[derive(Debug, Default, Clone)]
 pub struct TestAgentContext {
@@ -51,16 +51,32 @@ impl TestAgentContext {
     }
 }
 
+pub struct LaneIo {
+    pub value_lane: Option<Io>,
+    pub map_lane: Option<Io>,
+    pub cmd_lane: Option<Io>,
+    pub dyn_value_lane: Option<Io>,
+    pub dyn_map_lane: Option<Io>,
+}
+
 impl TestAgentContext {
-    pub fn take_lane_io(&self) -> (Option<Io>, Option<Io>, Option<Io>) {
+    pub fn take_lane_io(&self) -> LaneIo {
         let mut guard = self.inner.lock();
         let Inner {
             value_lane_io,
             map_lane_io,
             cmd_lane_io,
+            dyn_value_lane_io,
+            dyn_map_lane_io,
             ..
         } = &mut *guard;
-        (value_lane_io.take(), map_lane_io.take(), cmd_lane_io.take())
+        LaneIo {
+            value_lane: value_lane_io.take(),
+            map_lane: map_lane_io.take(),
+            cmd_lane: cmd_lane_io.take(),
+            dyn_map_lane: dyn_map_lane_io.take(),
+            dyn_value_lane: dyn_value_lane_io.take(),
+        }
     }
 
     pub fn take_http_io(&self) -> Option<mpsc::Sender<HttpLaneRequest>> {
@@ -75,6 +91,8 @@ struct Inner {
     value_lane_io: Option<Io>,
     map_lane_io: Option<Io>,
     cmd_lane_io: Option<Io>,
+    dyn_value_lane_io: Option<Io>,
+    dyn_map_lane_io: Option<Io>,
     http_sender: Option<mpsc::Sender<HttpLaneRequest>>,
     ad_hoc_consumer: Option<oneshot::Sender<ByteReader>>,
     ad_hoc_rx: Option<ByteReader>,
@@ -121,6 +139,20 @@ impl AgentContext for TestAgentContext {
                 let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
                 let mut guard = self.inner.lock();
                 guard.cmd_lane_io = Some((tx_in, rx_out));
+                ready(Ok((tx_out, rx_in))).boxed()
+            }
+            (DYN_VAL_LANE, UplinkKind::Value) => {
+                let (tx_in, rx_in) = byte_channel(BUFFER_SIZE);
+                let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
+                let mut guard = self.inner.lock();
+                guard.dyn_value_lane_io = Some((tx_in, rx_out));
+                ready(Ok((tx_out, rx_in))).boxed()
+            }
+            (DYN_MAP_LANE, UplinkKind::Map) => {
+                let (tx_in, rx_in) = byte_channel(BUFFER_SIZE);
+                let (tx_out, rx_out) = byte_channel(BUFFER_SIZE);
+                let mut guard = self.inner.lock();
+                guard.dyn_map_lane_io = Some((tx_in, rx_out));
                 ready(Ok((tx_out, rx_in))).boxed()
             }
             ow => panic!("Unexpected lane registration: {:?}", ow),
