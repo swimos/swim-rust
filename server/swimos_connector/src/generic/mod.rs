@@ -40,6 +40,7 @@ use swimos_api::{
     error::DynamicRegistrationError,
 };
 use swimos_model::Value;
+use tracing::info;
 
 type GenericValueLane = ValueLane<Value>;
 type GenericMapLane = MapLane<Value, Value>;
@@ -212,6 +213,7 @@ impl AgentSpec for ConnectorAgent {
                     Err(DynamicRegistrationError::DuplicateName(name.to_string()))
                 } else {
                     let id = self.id_counter.get();
+                    info!(name = %name, id = %id, "Registering value lane.");
                     self.id_counter.set(id + 1);
                     let lane = GenericValueLane::new(id, Value::Extant);
                     guard.insert(name.to_string(), lane);
