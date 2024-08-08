@@ -19,8 +19,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     agent_lifecycle::{
-        item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop,
-        ConnectorContext, HandlerContext,
+        item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop, HandlerContext,
     },
     event_handler::{
         ActionContext, EventHandler, HandlerAction, HandlerActionExt, LocalBoxEventHandler,
@@ -118,7 +117,6 @@ impl OnStart<TestAgent> for TestLifecycle {
     fn on_start(&self) -> impl EventHandler<TestAgent> + '_ {
         let TestLifecycle { add_lanes, sender } = self;
         let handler_context: HandlerContext<TestAgent> = Default::default();
-        let conn_context: ConnectorContext<TestAgent> = Default::default();
         let add_lane_handlers: Vec<_> = add_lanes
             .iter()
             .map(move |AddLane { name, kind }| {
@@ -136,8 +134,8 @@ impl OnStart<TestAgent> for TestLifecycle {
                     })
                 };
                 match kind {
-                    WarpLaneKind::Map => conn_context.open_map_lane(name, cb).boxed(),
-                    WarpLaneKind::Value => conn_context.open_value_lane(name, cb).boxed(),
+                    WarpLaneKind::Map => handler_context.open_map_lane(name, cb).boxed(),
+                    WarpLaneKind::Value => handler_context.open_value_lane(name, cb).boxed(),
                     _ => panic!("Unsupported dynamic lane kind."),
                 }
             })

@@ -19,10 +19,7 @@ use std::{fmt::Debug, num::ParseIntError, sync::OnceLock};
 
 use frunk::Coprod;
 use regex::Regex;
-use swimos_agent::{
-    agent_lifecycle::ConnectorContext,
-    event_handler::{Discard, HandlerActionExt},
-};
+use swimos_agent::event_handler::{Discard, HandlerActionExt};
 use swimos_connector::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 use swimos_model::{Attr, Item, Text, Value};
 use thiserror::Error;
@@ -653,7 +650,6 @@ impl MapLaneSelector {
             required,
             remove_when_no_value,
         } = self;
-        let context: ConnectorContext<ConnectorAgent> = Default::default();
         let maybe_key: Option<Value> = key_selector.select(topic, key, value)?.cloned();
         let maybe_value = value_selector.select(topic, key, value)?;
         let select_lane = MapLaneSelectorFn::new(name.clone());
@@ -667,15 +663,13 @@ impl MapLaneSelector {
             }
             (Some(key), None) if *remove_when_no_value => {
                 trace!(name, key = %key, "Removing an entry from a map lane with a key extracted from a Kafka message.");
-                Some(MapLaneOp::inject(context.remove(select_lane, key)))
+                let remove = MapLaneSelectRemove::new(select_lane, key);
+                Some(MapLaneOp::inject(remove))
             }
             (Some(key), Some(value)) => {
                 trace!(name, key = %key, value = %value, "Updating a map lane with an entry extracted from a Kafka message.");
-                Some(MapLaneOp::inject(context.update(
-                    select_lane,
-                    key,
-                    value.clone(),
-                )))
+                let update = MapLaneSelectUpdate::new(select_lane, key, value.clone());
+                Some(MapLaneOp::inject(update))
             }
             _ => None,
         };

@@ -26,7 +26,7 @@ use crate::selector::{Computed, InvalidLaneSpec, MapLaneSelector, ValueLaneSelec
 use crate::{MapLaneSpec, ValueLaneSpec};
 use futures::{stream::unfold, Future};
 use swimos_agent::{
-    agent_lifecycle::{ConnectorContext, HandlerContext},
+    agent_lifecycle::HandlerContext,
     event_handler::{
         EventHandler, HandlerActionExt, Sequentially, TryHandlerActionExt, UnitHandler,
     },
@@ -40,7 +40,6 @@ use tracing::{debug, error, info, trace};
 use swimos_connector::{Connector, ConnectorAgent, ConnectorStream};
 
 type ConnHandlerContext = HandlerContext<ConnectorAgent>;
-type ConnContext = ConnectorContext<ConnectorAgent>;
 
 pub struct KafkaConnector<F> {
     factory: F,
@@ -330,7 +329,6 @@ impl Lanes {
         init_complete: trigger::Sender,
     ) -> impl EventHandler<ConnectorAgent> + 'static {
         let handler_context = ConnHandlerContext::default();
-        let context: ConnContext = ConnContext::default();
         let Lanes {
             value_lanes,
             map_lanes,
@@ -356,14 +354,14 @@ impl Lanes {
 
         for selector in value_lanes {
             let sem_cpy = semaphore.clone();
-            open_value_lanes.push(context.open_value_lane(selector.name(), move |_| {
+            open_value_lanes.push(handler_context.open_value_lane(selector.name(), move |_| {
                 handler_context.effect(move || sem_cpy.add_permits(1))
             }));
         }
 
         for selector in map_lanes {
             let sem_cpy = semaphore.clone();
-            open_map_lanes.push(context.open_map_lane(selector.name(), move |_| {
+            open_map_lanes.push(handler_context.open_map_lane(selector.name(), move |_| {
                 handler_context.effect(move || sem_cpy.add_permits(1))
             }));
         }
