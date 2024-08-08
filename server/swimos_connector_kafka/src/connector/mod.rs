@@ -21,7 +21,7 @@ use std::{cell::RefCell, sync::Arc};
 use crate::config::KafkaConnectorConfiguration;
 use crate::deser::{BoxMessageDeserializer, MessageView};
 use crate::error::{KafkaConnectorError, LaneSelectorError};
-use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaMessage};
+use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaConsumerFactory, KafkaMessage};
 use crate::selector::{Computed, InvalidLaneSpec, MapLaneSelector, ValueLaneSelector};
 use crate::{MapLaneSpec, ValueLaneSpec};
 use futures::{stream::unfold, Future};
@@ -35,7 +35,7 @@ use swimos_model::Value;
 use swimos_utilities::trigger;
 use thiserror::Error;
 use tokio::sync::{mpsc, Semaphore};
-use tracing::error;
+use tracing::{debug, error, info, trace};
 
 use swimos_connector::{Connector, ConnectorAgent, ConnectorStream};
 
@@ -49,12 +49,18 @@ pub struct KafkaConnector<F> {
 }
 
 impl<F> KafkaConnector<F> {
-    pub fn new(factory: F, configuration: KafkaConnectorConfiguration) -> Self {
+    fn new(factory: F, configuration: KafkaConnectorConfiguration) -> Self {
         KafkaConnector {
             factory,
             configuration,
             lanes: Default::default(),
         }
+    }
+}
+
+impl KafkaConnector<KafkaConsumerFactory> {
+    pub fn for_config(configuration: KafkaConnectorConfiguration) -> Self {
+        Self::new(KafkaConsumerFactory, configuration)
     }
 }
 
@@ -72,11 +78,15 @@ where
             ..
         } = self;
         let result = Lanes::try_from(configuration);
+        if let Err(err) = &result {
+            error!(error = %err, "Failed to create lanes for a Kafka connector.");
+        }
         let handler = handler_context
             .value(result)
             .try_handler()
             .and_then(|l: Lanes| {
                 let open_handler = l.open_lanes(init_complete);
+                debug!("Successfully created lanes for a Kafka connector.");
                 *lanes.borrow_mut() = l;
                 open_handler
             });
@@ -97,16 +107,18 @@ where
             lanes,
         } = self;
 
+        info!(properties = ?{&configuration.properties}, "Opening a kafka consumer.");
         let consumer = factory.create(&configuration.properties, configuration.log_level)?;
         let (tx, rx) = mpsc::channel(1);
 
         let key_deser_cpy = configuration.key_deserializer.clone();
-        let val_deser_cpy = configuration.value_deserializer.clone();
+        let payload_deser_cpy = configuration.payload_deserializer.clone();
         let lanes = lanes.take();
         let consumer_task = Box::pin(async move {
+            debug!(key = ?key_deser_cpy, payload = ?payload_deser_cpy, "Attempting to load message deserializers.");
             let key_deser = key_deser_cpy.load().await?;
-            let val_deser = val_deser_cpy.load().await?;
-            let selector = MessageSelector::new(key_deser, val_deser, lanes);
+            let payload_deser = payload_deser_cpy.load().await?;
+            let selector = MessageSelector::new(key_deser, payload_deser, lanes);
             let state = MessageState::new(consumer, selector, message_to_handler, tx);
             state.consume_messages(None).await
         });
@@ -223,6 +235,7 @@ where
                 end_result = fut => {
                     *consume_fut = None;
                     if let Err(e) = end_result {
+                        error!(error = %e, "The consumer task failed with an error.");
                         Some((Err(e), self))
                     } else {
                         None
@@ -415,6 +428,7 @@ impl MessageSelector {
             map_lanes,
             ..
         } = lanes;
+        trace!(topic = { message.topic() }, "Handling a Kafka message.");
         let mut value_lane_handlers = Vec::with_capacity(value_lanes.len());
         let mut map_lane_handlers = Vec::with_capacity(map_lanes.len());
         {

@@ -19,6 +19,17 @@ mod error;
 mod facade;
 mod selector;
 
-pub use config::{DeserializationFormat, KafkaConnectorConfiguration, MapLaneSpec, ValueLaneSpec};
-pub use connector::KafkaConnector;
-pub use deser::Endianness;
+pub use config::{
+    DeserializationFormat, KafkaConnectorConfiguration, KafkaLogLevel, MapLaneSpec, ValueLaneSpec,
+};
+pub use connector::{KafkaConnector, MessagePart};
+#[cfg(feature = "avro")]
+pub use deser::AvroDeserializer;
+#[cfg(feature = "json")]
+pub use deser::JsonDeserializer;
+pub use deser::{
+    BoxErrorDeserializer, BoxMessageDeserializer, BytesDeserializer, Endianness, F32Deserializer,
+    F64Deserializer, I32Deserializer, I64Deserializer, MessageDeserializer, MessageView,
+    ReconDeserializer, StringDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
+};
+pub use error::KafkaConnectorError;

@@ -58,7 +58,7 @@ fn make_config() -> KafkaConnectorConfiguration {
             true,
         )],
         key_deserializer: DeserializationFormat::Recon,
-        value_deserializer: DeserializationFormat::Recon,
+        payload_deserializer: DeserializationFormat::Recon,
     }
 }
 

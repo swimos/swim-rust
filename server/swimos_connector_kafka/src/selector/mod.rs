@@ -26,6 +26,7 @@ use swimos_agent::{
 use swimos_connector::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 use swimos_model::{Attr, Item, Text, Value};
 use thiserror::Error;
+use tracing::{error, trace};
 
 use crate::{
     config::{MapLaneSpec, ValueLaneSpec},
@@ -607,11 +608,13 @@ impl ValueLaneSelector {
         let maybe_value = selector.select(topic, key, value)?;
         let handler = match maybe_value {
             Some(value) => {
+                trace!(name, value = %value, "Setting a value extracted from a Kafka message to a value lane.");
                 let select_lane = ValueLaneSelectorFn::new(name.clone());
                 Some(ValueLaneSelectSet::new(select_lane, value.clone()))
             }
             None => {
                 if *required {
+                    error!(name, "A Kafka message did not contain a required value.");
                     return Err(LaneSelectorError::MissingRequiredLane(name.clone()));
                 } else {
                     None
@@ -656,16 +659,24 @@ impl MapLaneSelector {
         let select_lane = MapLaneSelectorFn::new(name.clone());
         let handler: Option<MapLaneOp> = match (maybe_key, maybe_value) {
             (None, _) if *required => {
-                return Err(LaneSelectorError::MissingRequiredLane(name.clone()))
+                error!(
+                    name,
+                    "A Kafka message did not contain a required map lane update/removal."
+                );
+                return Err(LaneSelectorError::MissingRequiredLane(name.clone()));
             }
             (Some(key), None) if *remove_when_no_value => {
+                trace!(name, key = %key, "Removing an entry from a map lane with a key extracted from a Kafka message.");
                 Some(MapLaneOp::inject(context.remove(select_lane, key)))
             }
-            (Some(key), Some(value)) => Some(MapLaneOp::inject(context.update(
-                select_lane,
-                key,
-                value.clone(),
-            ))),
+            (Some(key), Some(value)) => {
+                trace!(name, key = %key, value = %value, "Updating a map lane with an entry extracted from a Kafka message.");
+                Some(MapLaneOp::inject(context.update(
+                    select_lane,
+                    key,
+                    value.clone(),
+                )))
+            }
             _ => None,
         };
         Ok(handler.discard())

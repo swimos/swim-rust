@@ -9,7 +9,7 @@ repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connec
 homepage.workspace = true
 
 [features]
-default = []
+default = ["json"]
 json = ["dep:serde_json"]
 avro = ["dep:apache-avro", "dep:chrono"]
 
@@ -34,7 +34,7 @@ regex = { workspace = true }
 frunk = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "signal"] }
 uuid = { workspace = true, features = ["v4"] }
 bytes = { workspace = true }
 parking_lot = { workspace = true }

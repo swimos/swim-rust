@@ -40,7 +40,7 @@ use swimos_api::{
     error::DynamicRegistrationError,
 };
 use swimos_model::Value;
-use tracing::info;
+use tracing::{error, info};
 
 type GenericValueLane = ValueLane<Value>;
 type GenericMapLane = MapLane<Value, Value>;
@@ -210,10 +210,11 @@ impl AgentSpec for ConnectorAgent {
             } => {
                 let mut guard = self.value_lanes.borrow_mut();
                 if guard.contains_key(name) || self.map_lanes.borrow().contains_key(name) {
+                    error!(name, "Duplicate lane name.");
                     Err(DynamicRegistrationError::DuplicateName(name.to_string()))
                 } else {
                     let id = self.id_counter.get();
-                    info!(name = %name, id = %id, "Registering value lane.");
+                    info!(name, id, "Registering value lane.");
                     self.id_counter.set(id + 1);
                     let lane = GenericValueLane::new(id, Value::Extant);
                     guard.insert(name.to_string(), lane);
@@ -226,9 +227,11 @@ impl AgentSpec for ConnectorAgent {
             } => {
                 let mut guard = self.map_lanes.borrow_mut();
                 if guard.contains_key(name) || self.value_lanes.borrow().contains_key(name) {
+                    error!(name, "Duplicate lane name.");
                     Err(DynamicRegistrationError::DuplicateName(name.to_string()))
                 } else {
                     let id = self.id_counter.get();
+                    info!(name, id, "Registering map lane.");
                     self.id_counter.set(id + 1);
                     let lane = GenericMapLane::new(id, Default::default());
                     guard.insert(name.to_string(), lane);
@@ -236,12 +239,17 @@ impl AgentSpec for ConnectorAgent {
                 }
             }
             ItemDescriptor::WarpLane { kind, .. } => {
+                error!(name, kind = %kind, "Dynamic registration for unsupported lane kind.");
                 Err(DynamicRegistrationError::LaneKindUnsupported(kind))
             }
             ItemDescriptor::Store { kind, .. } => {
+                error!(name, kind = %kind, "Dynamic registration for unsupported store kind.");
                 Err(DynamicRegistrationError::StoreKindUnsupported(kind))
             }
-            ItemDescriptor::Http => Err(DynamicRegistrationError::HttpLanesUnsupported),
+            ItemDescriptor::Http => {
+                error!(name, "Dynamic HTTP lanes are not supported.");
+                Err(DynamicRegistrationError::HttpLanesUnsupported)
+            }
         }
     }
 }
