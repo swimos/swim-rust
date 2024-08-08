@@ -35,6 +35,7 @@ pub struct KafkaConnectorConfiguration {
     pub map_lanes: Vec<MapLaneSpec>,
     pub key_deserializer: DeserializationFormat,
     pub payload_deserializer: DeserializationFormat,
+    pub topics: Vec<String>,
 }
 
 #[derive(Clone, Debug, Form)]

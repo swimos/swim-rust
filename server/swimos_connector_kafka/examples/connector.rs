@@ -68,6 +68,7 @@ fn make_config() -> KafkaConnectorConfiguration {
         )],
         key_deserializer: DeserializationFormat::Int32(Endianness::LittleEndian),
         payload_deserializer: DeserializationFormat::Json,
+        topics: vec!["cellular-integer-json".to_string()],
     }
 }
 

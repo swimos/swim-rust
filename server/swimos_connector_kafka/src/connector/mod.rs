@@ -108,7 +108,13 @@ where
         } = self;
 
         info!(properties = ?{&configuration.properties}, "Opening a kafka consumer.");
-        let consumer = factory.create(&configuration.properties, configuration.log_level)?;
+        let topics = configuration
+            .topics
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>();
+        let consumer =
+            factory.create(&configuration.properties, configuration.log_level, &topics)?;
         let (tx, rx) = mpsc::channel(1);
 
         let key_deser_cpy = configuration.key_deserializer.clone();

@@ -59,6 +59,7 @@ fn make_config() -> KafkaConnectorConfiguration {
         )],
         key_deserializer: DeserializationFormat::Recon,
         payload_deserializer: DeserializationFormat::Recon,
+        topics: vec!["topic".to_string()],
     }
 }
 
@@ -151,6 +152,7 @@ impl ConsumerFactory for MockConsumerFactory {
         &self,
         properties: &HashMap<String, String>,
         log_level: KafkaLogLevel,
+        topics: &[&str],
     ) -> Result<Self::Consumer, KafkaError> {
         let MockConsumerFactory {
             messages,
@@ -159,6 +161,7 @@ impl ConsumerFactory for MockConsumerFactory {
         } = self;
         assert_eq!(properties, expected_props);
         assert_eq!(log_level, *expected_log_level);
+        assert_eq!(topics, &["topic"]);
         messages.clone().map(MockConsumer::new)
     }
 }

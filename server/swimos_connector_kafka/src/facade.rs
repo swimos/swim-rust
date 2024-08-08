@@ -76,6 +76,7 @@ pub trait ConsumerFactory {
         &self,
         properties: &HashMap<String, String>,
         log_level: KafkaLogLevel,
+        topics: &[&str],
     ) -> Result<Self::Consumer, KafkaError>;
 }
 
@@ -89,14 +90,17 @@ impl ConsumerFactory for KafkaConsumerFactory {
         &self,
         properties: &HashMap<String, String>,
         log_level: KafkaLogLevel,
+        topics: &[&str],
     ) -> Result<Self::Consumer, KafkaError> {
         let mut client_builder = ClientConfig::new();
         properties.iter().for_each(|(k, v)| {
             client_builder.set(k, v);
         });
-        client_builder
+        let consumer = client_builder
             .set_log_level(log_level.into())
-            .create_with_context::<_, LoggingConsumer>(KafkaClientContext)
+            .create_with_context::<_, LoggingConsumer>(KafkaClientContext)?;
+        consumer.subscribe(topics)?;
+        Ok(consumer)
     }
 }
 
