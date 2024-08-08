@@ -69,6 +69,7 @@ pub mod stores;
 mod test_context;
 #[cfg(test)]
 mod tests;
+
 #[cfg(test)]
 pub use agent_model::AgentSpec;
 

@@ -106,7 +106,8 @@ where
     }
 }
 
-pub type LaneSpawnHandler<Context> = Box<dyn EventHandler<Context> + Send + 'static>;
+type LaneSpawnHandler<Context> = Box<dyn EventHandler<Context> + Send + 'static>;
+#[doc(hidden)]
 pub type LaneSpawnOnDone<Context> =
     Box<dyn FnOnce(Result<u64, LaneSpawnError>) -> LaneSpawnHandler<Context> + Send + 'static>;
 
@@ -123,29 +124,6 @@ pub trait LaneSpawner<Context> {
         kind: WarpLaneKind,
         on_done: LaneSpawnOnDone<Context>,
     ) -> Result<(), DynamicRegistrationError>;
-}
-
-#[doc(hidden)]
-pub struct LaneSpawnRequest<Context> {
-    pub name: String,
-    pub kind: WarpLaneKind,
-    pub on_done: LaneSpawnOnDone<Context>,
-}
-
-impl<Context> LaneSpawner<Context> for RefCell<Vec<LaneSpawnRequest<Context>>> {
-    fn spawn_warp_lane(
-        &self,
-        name: &str,
-        kind: WarpLaneKind,
-        on_done: LaneSpawnOnDone<Context>,
-    ) -> Result<(), DynamicRegistrationError> {
-        self.borrow_mut().push(LaneSpawnRequest {
-            name: name.to_string(),
-            kind,
-            on_done,
-        });
-        Ok(())
-    }
 }
 
 /// The context type passed to every call to [`HandlerAction::step`] that provides access to the

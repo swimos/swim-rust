@@ -53,7 +53,7 @@ use uuid::Uuid;
 use crate::agent_lifecycle::item_event::ItemEvent;
 use crate::agent_model::io::LaneReadEvent;
 use crate::event_handler::{
-    ActionContext, BoxJoinLaneInit, HandlerFuture, LaneSpawnOnDone, LaneSpawnRequest, LaneSpawner,
+    ActionContext, BoxJoinLaneInit, HandlerFuture, LaneSpawnOnDone, LaneSpawner,
     LocalBoxEventHandler, ModificationFlags, Sequentially,
 };
 use crate::{
@@ -1793,5 +1793,28 @@ fn check_cmds<Fut>(
             let fut = write(writer, ad_hoc_buffer);
             cmd_send_fut.set(Some(fut.fuse()).into());
         }
+    }
+}
+
+/// A request to the agent to open a new lane.
+struct LaneSpawnRequest<Context> {
+    name: String,
+    kind: WarpLaneKind,
+    on_done: LaneSpawnOnDone<Context>,
+}
+
+impl<Context> LaneSpawner<Context> for RefCell<Vec<LaneSpawnRequest<Context>>> {
+    fn spawn_warp_lane(
+        &self,
+        name: &str,
+        kind: WarpLaneKind,
+        on_done: LaneSpawnOnDone<Context>,
+    ) -> Result<(), DynamicRegistrationError> {
+        self.borrow_mut().push(LaneSpawnRequest {
+            name: name.to_string(),
+            kind,
+            on_done,
+        });
+        Ok(())
     }
 }
