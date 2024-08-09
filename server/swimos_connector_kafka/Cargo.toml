@@ -9,7 +9,7 @@ repository = "https://github.com/swimos/swim-rust/tree/main/server/swimos_connec
 homepage.workspace = true
 
 [features]
-default = ["json"]
+default = []
 json = ["dep:serde_json"]
 avro = ["dep:apache-avro", "dep:chrono"]
 

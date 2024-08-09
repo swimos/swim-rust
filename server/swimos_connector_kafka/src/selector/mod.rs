@@ -15,23 +15,24 @@
 #[cfg(test)]
 mod tests;
 
-use std::{fmt::Debug, num::ParseIntError, sync::OnceLock};
+use std::{fmt::Debug, sync::OnceLock};
 
 use frunk::Coprod;
 use regex::Regex;
 use swimos_agent::event_handler::{Discard, HandlerActionExt};
 use swimos_connector::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 use swimos_model::{Attr, Item, Text, Value};
-use thiserror::Error;
 use tracing::{error, trace};
 
 use crate::{
     config::{MapLaneSpec, ValueLaneSpec},
-    connector::MessagePart,
+    deser::MessagePart,
     error::{DeserializationError, LaneSelectorError},
+    BadSelector, InvalidLaneSpec,
 };
 use swimos_agent::lanes::{MapLaneSelectRemove, MapLaneSelectUpdate, ValueLaneSelectSet};
 
+/// Enumeration of the components of a Kafka message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MessageField {
     Key,
@@ -48,14 +49,21 @@ impl From<MessagePart> for MessageField {
     }
 }
 
+/// A lazy loader fro a component of a Kafka messages. This ensures that deserializers are only run if a selector
+/// refers to a component.
 pub trait Deferred {
+    /// Get the deserialized component (computing it on the first call).
     fn get(&mut self) -> Result<&Value, DeserializationError>;
 }
 
+/// A selector attempts to choose some sub-component of a [`Value`], matching against a pattern, returning
+/// nothing if the pattern does not match.
 pub trait Selector: Debug {
+    /// Attempt to select some sub-component of the provided [`Value`].
     fn select<'a>(&self, value: &'a Value) -> Option<&'a Value>;
 }
 
+/// Canonical implementation of [`Deferred`].
 pub struct Computed<F> {
     inner: Option<Value>,
     f: F,
@@ -85,10 +93,15 @@ where
     }
 }
 
+/// A lane selector attempts to extract a value from a Kafka message to use as a new value for a value lane
+/// or an update for a map lane.
 #[derive(Debug, PartialEq, Eq)]
 pub enum LaneSelector {
+    /// Select the topic from the message.
     Topic,
+    /// Use a selector to select a sub-component of the key of the message.
     Key(ChainSelector),
+    /// Use a selector to select a sub-component of the payload of the message.
     Payload(ChainSelector),
 }
 
@@ -103,6 +116,12 @@ impl<'a> From<SelectorDescriptor<'a>> for LaneSelector {
 }
 
 impl LaneSelector {
+    /// Attempt to select a sub-component from a Kafka message.
+    ///
+    /// # Arguments
+    /// * `topic` - The topic of the message.
+    /// * `key` - Lazily deserialized message key.
+    /// * `payload` - Lazily deserialized message payload.
     pub fn select<'a, K, V>(
         &self,
         topic: &'a Value,
@@ -121,6 +140,7 @@ impl LaneSelector {
     }
 }
 
+/// Trivial selector that chooses the entire input value.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct IdentitySelector;
 
@@ -130,12 +150,15 @@ impl Selector for IdentitySelector {
     }
 }
 
+/// A selector that chooses the value of a named attribute if the value is a record and that attribute exists.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttrSelector {
     select_name: String,
 }
 
 impl AttrSelector {
+    /// # Arguments
+    /// * `name` - The name of the attribute.
     fn new(name: String) -> Self {
         AttrSelector { select_name: name }
     }
@@ -157,12 +180,17 @@ impl Selector for AttrSelector {
     }
 }
 
+/// A selector that chooses the value of a slot if the value is a record and that slot exists.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SlotSelector {
     select_key: Value,
 }
 
 impl SlotSelector {
+    /// Construct a slot selector for a named field.
+    ///
+    /// # Arguments
+    /// * `name` - The name of the field.
     pub fn for_field(name: impl Into<Text>) -> Self {
         SlotSelector {
             select_key: Value::text(name),
@@ -183,12 +211,16 @@ impl Selector for SlotSelector {
     }
 }
 
+/// A selector that chooses an item by index if the value is a record and has a sufficient number of items. If
+/// the selected item is a slot, its value is selected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IndexSelector {
     index: usize,
 }
 
 impl IndexSelector {
+    /// # Arguments
+    /// * `index` - The index in the record to select.
     pub fn new(index: usize) -> Self {
         IndexSelector { index }
     }
@@ -207,6 +239,7 @@ impl Selector for IndexSelector {
     }
 }
 
+/// One of an [`AttrSelector`], [`SlotSelector`] or [`IndexSelector`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BasicSelector {
     Attr(AttrSelector),
@@ -242,10 +275,13 @@ impl Selector for BasicSelector {
     }
 }
 
+/// A selector that applies a sequence of simpler selectors, in order, passing the result of one selector to the next.
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct ChainSelector(Vec<BasicSelector>);
 
 impl ChainSelector {
+    /// # Arguments
+    /// * `selector` - A chain of simpler selectors.
     pub fn new(selectors: Vec<BasicSelector>) -> Self {
         ChainSelector(selectors)
     }
@@ -267,21 +303,15 @@ impl Selector for ChainSelector {
     }
 }
 
-pub type BoxSelector = Box<dyn Selector + Send + Sync + 'static>;
-
-impl Selector for BoxSelector {
-    fn select<'a>(&self, value: &'a Value) -> Option<&'a Value> {
-        (**self).select(value)
-    }
-}
-
 static INIT_REGEX: OnceLock<Regex> = OnceLock::new();
 static FIELD_REGEX: OnceLock<Regex> = OnceLock::new();
 
+/// Regular expression matching the base selectors for topic, key and payload components.
 fn init_regex() -> &'static Regex {
     INIT_REGEX.get_or_init(|| create_init_regex().expect("Invalid regex."))
 }
 
+/// Regular expression matching the description of a [`BasicSelector`].
 fn field_regex() -> &'static Regex {
     FIELD_REGEX.get_or_init(|| create_field_regex().expect("Invalid regex."))
 }
@@ -295,7 +325,7 @@ fn create_field_regex() -> Result<Regex, regex::Error> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SelectorComponent<'a> {
+struct SelectorComponent<'a> {
     is_attr: bool,
     name: &'a str,
     index: Option<usize>,
@@ -312,7 +342,7 @@ impl<'a> SelectorComponent<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SelectorDescriptor<'a> {
+enum SelectorDescriptor<'a> {
     Part {
         part: MessagePart,
         index: Option<usize>,
@@ -386,31 +416,8 @@ impl<'a> SelectorDescriptor<'a> {
     }
 }
 
-#[derive(Clone, Copy, Error, Debug, PartialEq, Eq)]
-pub enum BadSelector {
-    #[error("Selector strings cannot be empty.")]
-    EmptySelector,
-    #[error("Selector components cannot be empty.")]
-    EmptyComponent,
-    #[error("Invalid root selector (must be one of '$key' or '$payload' with an optional index or '$topic').")]
-    InvalidRoot,
-    #[error(
-        "Invalid component selector (must be an attribute or slot name with an optional index)."
-    )]
-    InvalidComponent,
-    #[error("An index specified was not a valid usize.")]
-    IndexOutOfRange,
-    #[error("The topic does not have components.")]
-    TopicWithComponent,
-}
-
-impl From<ParseIntError> for BadSelector {
-    fn from(_value: ParseIntError) -> Self {
-        BadSelector::IndexOutOfRange
-    }
-}
-
-pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSelector> {
+/// Attempt to parse a descriptor for a selector from a string.
+fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSelector> {
     if descriptor.is_empty() {
         return Err(BadSelector::EmptySelector);
     }
@@ -482,6 +489,7 @@ pub fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSel
     })
 }
 
+/// A value lane selector generates event handlers from Kafka messages to update the state of a value lane.
 #[derive(Debug)]
 pub struct ValueLaneSelector {
     name: String,
@@ -490,6 +498,10 @@ pub struct ValueLaneSelector {
 }
 
 impl ValueLaneSelector {
+    /// # Arguments
+    /// * `name` - The name of the lane.
+    /// * `selector` - Selects a component from the message.
+    /// * `required` - If this is required and the selector does not return a result, an error will be generated.
     pub fn new(name: String, selector: LaneSelector, required: bool) -> Self {
         ValueLaneSelector {
             name,
@@ -499,6 +511,7 @@ impl ValueLaneSelector {
     }
 }
 
+/// A value lane selector generates event handlers from Kafka messages to update the state of a map lane.
 #[derive(Debug)]
 pub struct MapLaneSelector {
     name: String,
@@ -509,6 +522,13 @@ pub struct MapLaneSelector {
 }
 
 impl MapLaneSelector {
+    /// # Arguments
+    /// * `name` - The name of the lane.
+    /// * `key_selector` - Selects a component from the message for the map key.
+    /// * `value_selector` - Selects a component from the message for the map value.
+    /// * `required` - If this is required and the selectors do not return a result, an error will be generated.
+    /// * `remove_when_no_value` - If a key is selected but no value is selected, the corresponding entry will be
+    /// removed from the map.
     pub fn new(
         name: String,
         key_selector: LaneSelector,
@@ -524,14 +544,6 @@ impl MapLaneSelector {
             remove_when_no_value,
         }
     }
-}
-
-#[derive(Clone, Copy, Debug, Error, PartialEq, Eq)]
-pub enum InvalidLaneSpec {
-    #[error(transparent)]
-    Selector(#[from] BadSelector),
-    #[error("No name provided and it cannot be inferred from the selector.")]
-    NameCannotBeInferred,
 }
 
 impl TryFrom<&ValueLaneSpec> for ValueLaneSelector {
@@ -579,7 +591,7 @@ impl TryFrom<&MapLaneSpec> for MapLaneSelector {
     }
 }
 
-pub type GenericValueLaneSet =
+type GenericValueLaneSet =
     Discard<Option<ValueLaneSelectSet<ConnectorAgent, Value, ValueLaneSelectorFn>>>;
 
 impl ValueLaneSelector {
@@ -626,7 +638,7 @@ type MapLaneUpdate = MapLaneSelectUpdate<ConnectorAgent, Value, Value, MapLaneSe
 type MapLaneRemove = MapLaneSelectRemove<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
 type MapLaneOp = Coprod!(MapLaneUpdate, MapLaneRemove);
 
-pub type GenericMapLaneOp = Discard<Option<MapLaneOp>>;
+type GenericMapLaneOp = Discard<Option<MapLaneOp>>;
 
 impl MapLaneSelector {
     pub fn name(&self) -> &str {

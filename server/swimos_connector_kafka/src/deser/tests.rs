@@ -16,10 +16,9 @@ use swimos_model::{Attr, Item, Value};
 use uuid::Uuid;
 
 use crate::{
-    connector::MessagePart,
     deser::{
-        F32Deserializer, F64Deserializer, I32Deserializer, I64Deserializer, ReconDeserializer,
-        U32Deserializer, U64Deserializer, UuidDeserializer,
+        F32Deserializer, F64Deserializer, I32Deserializer, I64Deserializer, MessagePart,
+        ReconDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
     },
     Endianness,
 };

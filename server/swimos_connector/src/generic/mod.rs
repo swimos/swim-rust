@@ -45,6 +45,10 @@ use tracing::{error, info};
 type GenericValueLane = ValueLane<Value>;
 type GenericMapLane = MapLane<Value, Value>;
 
+/// A generic agent type to be used by implementations of [`crate::Connector`]. By default, a [`ConnectorAgent`] does
+/// not define any lanes or stores and these most be opened dynamically by the agent lifecycle (which is determined by
+/// the [`crate::Connector`] implementation). Only value and map lanes are supported and an attempt to open any other
+/// kind of lane or store will result in the agent terminating with an error.
 #[derive(Default, Debug)]
 pub struct ConnectorAgent {
     id_counter: Cell<u64>,
@@ -58,14 +62,20 @@ type ValueSync = ValueLaneSelectSync<ConnectorAgent, Value, ValueLaneSelectorFn>
 type MapSync = MapLaneSelectSync<ConnectorAgent, Value, Value, MapLaneSelectorFn>;
 
 impl ConnectorAgent {
+    /// Get a set of the names of the value lanes that have been registered.
     pub fn value_lanes(&self) -> HashSet<String> {
         self.value_lanes.borrow().keys().cloned().collect()
     }
 
+    /// Get a set of the names of the map lanes that have been registered.
     pub fn map_lanes(&self) -> HashSet<String> {
         self.map_lanes.borrow().keys().cloned().collect()
     }
 
+    /// Attempt to borrow a value lane from the agent.
+    ///
+    /// # Arguments
+    /// * `name` - The name of the lane.
     pub fn value_lane<'a>(
         &'a mut self,
         name: &'a str,
@@ -80,6 +90,10 @@ impl ConnectorAgent {
         }
     }
 
+    /// Attempt to borrow a map lane from the agent.
+    ///
+    /// # Arguments
+    /// * `name` - The name of the lane.
     pub fn map_lane<'a>(
         &'a mut self,
         name: &'a str,
@@ -278,12 +292,15 @@ impl<'a, L> Selector for LaneSelector<'a, L> {
     }
 }
 
+/// An implementation of [`SelectorFn`] that will attempt to select a [`ValueLane`] from a [`ConnectorAgent`].
 #[derive(Debug)]
 pub struct ValueLaneSelectorFn {
     name: String,
 }
 
 impl ValueLaneSelectorFn {
+    /// # Arguments
+    /// * `name` - The name of the lane to select.
     pub fn new(name: String) -> Self {
         ValueLaneSelectorFn { name }
     }
@@ -299,12 +316,15 @@ impl SelectorFn<ConnectorAgent> for ValueLaneSelectorFn {
     }
 }
 
+/// An implementation of [`SelectorFn`] that will attempt to select a [`MapLane`] from a [`ConnectorAgent`].
 #[derive(Debug)]
 pub struct MapLaneSelectorFn {
     name: String,
 }
 
 impl MapLaneSelectorFn {
+    /// # Arguments
+    /// * `name` - The name of the lane to select.
     pub fn new(name: String) -> Self {
         MapLaneSelectorFn { name }
     }

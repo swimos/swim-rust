@@ -34,8 +34,9 @@ use swimos_recon::parser::{parse_recognize, AsyncParseError};
 
 use uuid::Uuid;
 
-use crate::{connector::MessagePart, error::DeserializationError};
+use crate::error::DeserializationError;
 
+/// An uninterpreted view of the components of a Kafka message.
 pub struct MessageView<'a> {
     pub topic: &'a str,
     pub key: &'a [u8],
@@ -64,6 +65,13 @@ impl<'a> MessageView<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MessagePart {
+    Key,
+    Payload,
+}
+
+/// A deserializer that will attempt to produce a [value](Value) from a component of a Kafka messsage.
 pub trait MessageDeserializer {
     type Error: std::error::Error;
 
@@ -82,10 +90,15 @@ pub trait MessageDeserializer {
     }
 }
 
+/// Interprets the bytes as a UTF8 string.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct StringDeserializer;
+
+/// Does not interpret the bytes at all.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct BytesDeserializer;
+
+/// Interpret the bytes as a UTF8 string, containing Recon.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct ReconDeserializer;
 
@@ -141,6 +154,7 @@ impl MessageDeserializer for ReconDeserializer {
     }
 }
 
+/// Endianness for numeric deserializers.
 #[derive(Clone, Copy, Default, Debug, Form)]
 pub enum Endianness {
     #[default]
@@ -189,6 +203,7 @@ num_deser!(U64Deserializer, u64, UInt64Value);
 num_deser!(F64Deserializer, f64, Float64Value);
 num_deser!(F32Deserializer, f32, Float64Value);
 
+/// Interpret the bytes as a UUID.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct UuidDeserializer;
 

@@ -19,11 +19,11 @@ use std::collections::HashSet;
 use std::{cell::RefCell, sync::Arc};
 
 use crate::config::KafkaConnectorConfiguration;
-use crate::deser::{BoxMessageDeserializer, MessageView};
+use crate::deser::{BoxMessageDeserializer, MessagePart, MessageView};
 use crate::error::{KafkaConnectorError, LaneSelectorError};
 use crate::facade::{ConsumerFactory, KafkaConsumer, KafkaConsumerFactory, KafkaMessage};
-use crate::selector::{Computed, InvalidLaneSpec, MapLaneSelector, ValueLaneSelector};
-use crate::{MapLaneSpec, ValueLaneSpec};
+use crate::selector::{Computed, MapLaneSelector, ValueLaneSelector};
+use crate::{InvalidLanes, MapLaneSpec, ValueLaneSpec};
 use futures::{stream::unfold, Future};
 use swimos_agent::{
     agent_lifecycle::HandlerContext,
@@ -33,7 +33,6 @@ use swimos_agent::{
 };
 use swimos_model::Value;
 use swimos_utilities::trigger;
-use thiserror::Error;
 use tokio::sync::{mpsc, Semaphore};
 use tracing::{debug, error, info, trace};
 
@@ -41,6 +40,18 @@ use swimos_connector::{Connector, ConnectorAgent, ConnectorStream};
 
 type ConnHandlerContext = HandlerContext<ConnectorAgent>;
 
+/// A [connector](Connector) to ingest a stream of Kafka messages into a Swim application. This should be used to
+/// provide a lifecycle for a [connector agent](ConnectorAgent).
+///
+/// The details of the Kafka brokers and the topics to subscribe to are provided through the
+/// [configuration](KafkaConnectorConfiguration) which also includes descriptors of the lanes that the agent should
+/// expose. When the agent starts, the connector will register all of the lanes specified in the configuration and
+/// then attempt to open a Kafka consumer which will be spawned into the agent's own task. Each time a Kafka message
+/// is received, an event handler will be executed in the agent which updates the states of the lanes, according
+/// th the specification provided in the configuration.
+///
+/// If a message is received that is invalid with respect to the configuration, the entire agent will fail with an
+/// error.
 pub struct KafkaConnector<F> {
     factory: F,
     configuration: KafkaConnectorConfiguration,
@@ -58,6 +69,12 @@ impl<F> KafkaConnector<F> {
 }
 
 impl KafkaConnector<KafkaConsumerFactory> {
+    /// Create a [`KafkaConnector`] with the provided configuration. The configuration is only validated when
+    /// the agent attempts to start so this will never fail.
+    ///
+    /// # Arguments
+    /// * `configuration` - The connector configuration, specifying the connection details for the Kafka consumer
+    /// an the lanes that the connector agent should expose.
     pub fn for_config(configuration: KafkaConnectorConfiguration) -> Self {
         Self::new(KafkaConsumerFactory, configuration)
     }
@@ -141,6 +158,7 @@ fn message_to_handler<'a>(
     selector.handle_message(message, trigger_tx)
 }
 
+// Consumes the Kafka messages and converts them into event handlers.
 struct MessageState<C, F, H> {
     consumer: C,
     selector: MessageSelector,
@@ -169,9 +187,11 @@ where
         }
     }
 
+    // A task that consumes Kafka messages from the consumer and convert them to event handlers that are
+    // send out via an MPSC channel
     async fn consume_messages(
         self,
-        mut stop_rx: Option<trigger::Receiver>,
+        mut stop_rx: Option<trigger::Receiver>, // Can be used to stop the task prematurely.
     ) -> Result<(), KafkaConnectorError> {
         let MessageState {
             consumer,
@@ -200,9 +220,17 @@ where
             let message = consumer.recv().await?;
             let view = message.view();
             let (trigger_tx, trigger_rx) = trigger::trigger();
+            // We need to keep a borrow on the receiver in order to be bale to commit it. However, we don't want
+            // to do this until after we know the handler has been run. The handler cannot be executed within the
+            // as it requires access to the agent state. Therefore, we send it out via an MPSC channel and
+            // wait for a signal to indicate that it has been handled.
             let handler = to_handler(selector, &view, trigger_tx)?;
             reservation.send(handler);
-            let _ = trigger_rx.await;
+            if trigger_rx.await.is_err() {
+                // If the trigger is dropped, we cannot know that the message has been handled and so we should
+                // not commit it.
+                return Err(KafkaConnectorError::MessageNotHandled);
+            }
             consumer.commit(message)?;
         }
         Ok(())
@@ -233,6 +261,15 @@ where
     }
 
     async fn next_handler(mut self) -> Option<(Result<H, KafkaConnectorError>, Self)> {
+        // The `consume_fut` future is that task that is consuming the Kafka messages. It needs to hold
+        // a reference to the Kafka message while it is being handled in a different task so the consumer
+        // cannot be held directly by the stream (as it is self referential) without using unsafe code.
+        // This task will only end when the Kafka consumer terminates. It passes out the event handlers
+        // using and MPSC channel (of which `rx` is the receiving end).
+        //
+        // Each handler contains a trigger that is executed when the handler completes and the consumer
+        // task will suspend until this trigger is completed. Therefore, polling the consumer task will
+        // never block the executor as the MPSC channel that is uses takes part in the Tokio coop mechanism.
         let MessageTasks { consume_fut, rx } = &mut self;
         if let Some(fut) = consume_fut {
             tokio::select! {
@@ -261,27 +298,13 @@ where
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MessagePart {
-    Key,
-    Payload,
-}
-
+// Information about the lanes of the connector. These are computed from the configuration in the `on_start` handler
+// and stored in the lifecycle to be used to start the consumer stream.
 #[derive(Debug, Default)]
 struct Lanes {
     total_lanes: u32,
     value_lanes: Vec<ValueLaneSelector>,
     map_lanes: Vec<MapLaneSelector>,
-}
-
-#[derive(Clone, Debug, Error, PartialEq, Eq)]
-enum InvalidLanes {
-    #[error(transparent)]
-    Spec(#[from] InvalidLaneSpec),
-    #[error("The connector has {0} lanes which cannot fit in a u32.")]
-    TooManyLanes(usize),
-    #[error("The lane name {0} occurs more than once.")]
-    NameCollision(String),
 }
 
 impl TryFrom<&KafkaConnectorConfiguration> for Lanes {
@@ -324,6 +347,7 @@ impl Lanes {
         })
     }
 
+    // Opens the lanes that are defined in the configuration.
     fn open_lanes(
         &self,
         init_complete: trigger::Sender,
@@ -398,6 +422,7 @@ fn check_selectors(
     Ok(())
 }
 
+// Uses the information about the lanes of the agent to convert Kafka messages into event handlers that update the lanes.
 struct MessageSelector {
     key_deserializer: BoxMessageDeserializer,
     value_deserializer: BoxMessageDeserializer,

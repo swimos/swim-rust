@@ -14,7 +14,7 @@
 
 use swimos_model::{Attr, Item, Value};
 
-use crate::connector::MessagePart;
+use crate::deser::MessagePart;
 use crate::error::DeserializationError;
 use crate::selector::{
     BadSelector, InvalidLaneSpec, MessageField, SelectorComponent, SelectorDescriptor,

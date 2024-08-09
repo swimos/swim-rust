@@ -26,6 +26,7 @@ use crate::connector::MessagePart;
 
 use super::{MessageDeserializer, MessageView};
 
+/// Error type for the Avro deserializer.
 #[derive(Error, Debug)]
 pub enum AvroError {
     #[error("Failed to read Avro record: {0}")]
@@ -121,6 +122,7 @@ fn convert_avro_value(value: AvroValue) -> Result<Value, AvroError> {
     Ok(v)
 }
 
+/// Interpret the bytes as Avro encoded data.
 #[derive(Default, Clone, Debug)]
 pub struct AvroDeserializer {
     schema: Option<Schema>,

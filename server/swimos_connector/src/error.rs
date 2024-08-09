@@ -14,6 +14,8 @@
 
 use thiserror::Error;
 
+/// An error type that is produced by the [`crate::ConnectorLifecycle`] if the [`crate::Connector`] that it wraps
+/// fails to complete the initialization phase correctly.
 #[derive(Clone, Copy, Default, Debug, Error)]
 #[error("The connector initialization failed to complete.")]
 pub struct ConnectorInitError;

@@ -49,6 +49,7 @@ fn convert_json_value(input: JsonValue) -> Value {
     }
 }
 
+/// Interpret the bytes as a UTF8 string, containing JSON data.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct JsonDeserializer;
 

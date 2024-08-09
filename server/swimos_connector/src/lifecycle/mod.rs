@@ -28,6 +28,8 @@ use swimos_utilities::trigger;
 
 use crate::{connector::suspend_connector, error::ConnectorInitError, Connector, ConnectorAgent};
 
+/// An [agent lifecycle](swimos_agent::agent_lifecycle::AgentLifecycle) implementation that serves as an adapter for
+/// a [connector](Connector).
 pub struct ConnectorLifecycle<C>(C);
 
 impl<C> ConnectorLifecycle<C> {
