@@ -746,6 +746,8 @@ where
     }
 }
 
+/// An [event handler](crate::event_handler::EventHandler) that attempts to update an entry in a map lane, if
+/// that lane exists.
 pub struct MapLaneSelectUpdate<C, K, V, F> {
     _type: PhantomData<fn(&C)>,
     projection_key_value: Option<(F, K, V)>,
@@ -760,6 +762,10 @@ impl<C, K: Debug, V: Debug, F: Debug> Debug for MapLaneSelectUpdate<C, K, V, F> 
 }
 
 impl<C, K, V, F> MapLaneSelectUpdate<C, K, V, F> {
+    /// # Arguments
+    /// * `projection` - A projection from the agent type onto an (optional) map lane.
+    /// * `key` - The key of the entry to update.
+    /// * `value` - The new value for the entry.
     pub fn new(projection: F, key: K, value: V) -> Self {
         MapLaneSelectUpdate {
             _type: PhantomData,
@@ -802,6 +808,8 @@ where
     }
 }
 
+/// An [event handler](crate::event_handler::EventHandler) that attempts to remove an entry from a map lane, if
+/// that lane exists.
 pub struct MapLaneSelectRemove<C, K, V, F> {
     _type: PhantomData<fn(&C, &V)>,
     projection_key: Option<(F, K)>,
@@ -816,6 +824,9 @@ impl<C, K: Debug, V: Debug, F: Debug> Debug for MapLaneSelectRemove<C, K, V, F> 
 }
 
 impl<C, K, V, F> MapLaneSelectRemove<C, K, V, F> {
+    /// # Arguments
+    /// * `projection` - A projection from the agent type onto an (optional) map lane.
+    /// * `key` - The key of the entry to remove.
     pub fn new(projection: F, key: K) -> Self {
         MapLaneSelectRemove {
             _type: PhantomData,
@@ -855,6 +866,8 @@ where
     }
 }
 
+/// An [event handler](crate::event_handler::EventHandler) that attempts to clear a map lane, if
+/// that lane exists.
 pub struct MapLaneSelectClear<C, K, V, F> {
     _type: PhantomData<fn(&C, &K, &V)>,
     projection: Option<F>,
@@ -869,6 +882,8 @@ impl<C, K, V, F: Debug> Debug for MapLaneSelectClear<C, K, V, F> {
 }
 
 impl<C, K, V, F> MapLaneSelectClear<C, K, V, F> {
+    /// #Arguments
+    /// * `projection` - A projection from the agent type onto an (optional) map lane.
     pub fn new(projection: F) -> Self {
         MapLaneSelectClear {
             _type: PhantomData,
@@ -909,6 +924,7 @@ where
 }
 
 #[derive(Default)]
+#[doc(hidden)]
 pub enum DecodeAndSelectApply<C, K, V, F> {
     Decoding(DecodeMapMessage<K, V>, F),
     Updating(MapLaneSelectUpdate<C, K, V, F>),
@@ -1010,7 +1026,9 @@ where
 }
 
 type SelectType<C, K, V> = fn(&C) -> (&K, &V);
-///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
+
+/// An [event handler](crate::event_handler::EventHandler) that will request a sync from a map lane
+/// that might not exist.
 pub struct MapLaneSelectSync<C, K, V, F> {
     _type: PhantomData<SelectType<C, K, V>>,
     projection_id: Option<(F, Uuid)>,

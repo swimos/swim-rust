@@ -385,6 +385,8 @@ where
     }
 }
 
+/// An [event handler](crate::event_handler::EventHandler) that attempts to set to a value lane, if
+/// that lane exists.
 pub struct ValueLaneSelectSet<C, T, F> {
     _type: PhantomData<fn(&C)>,
     projection_value: Option<(F, T)>,
@@ -399,6 +401,9 @@ impl<C, T: Debug, F: Debug> Debug for ValueLaneSelectSet<C, T, F> {
 }
 
 impl<C, T, F> ValueLaneSelectSet<C, T, F> {
+    /// # Arguments
+    /// * `projection` - A projection from the agent type onto an (optional) value lane.
+    /// * `value` - The value to set.
     pub fn new(projection: F, value: T) -> Self {
         ValueLaneSelectSet {
             _type: PhantomData,
@@ -440,6 +445,7 @@ where
 }
 
 #[derive(Default)]
+#[doc(hidden)]
 pub enum DecodeAndSelectSet<C, T, F> {
     Decoding(Decode<T>, F),
     Selecting(ValueLaneSelectSet<C, T, F>),

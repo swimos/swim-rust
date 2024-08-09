@@ -239,6 +239,14 @@ impl<'a, Context> ActionContext<'a, Context> {
         self.spawn_suspend(fut);
     }
 
+    /// Attempt to attach a new lane to the agent runtime.
+    ///
+    /// # Arguments
+    /// * `name` - The name of the lane.
+    /// * `kind` - The kind of the lane.
+    /// * `on_opened` - Callback providing an event handler to be executed by the agent when the request
+    /// has completed.
+    #[doc(hidden)]
     pub(crate) fn open_lane<F, H>(
         &self,
         name: &str,

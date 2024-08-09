@@ -85,20 +85,32 @@ pub trait LaneItem: AgentItem {
     fn write_to_buffer(&self, buffer: &mut BytesMut) -> WriteResult;
 }
 
+/// A selector borrows a (potentially absent) named component from its type.
 pub trait Selector {
+    /// The type of the component.
     type Target: ?Sized;
 
+    /// Borrow the component, if it exists.
     fn select(&self) -> Option<&Self::Target>;
 
+    /// The name of the component.
     fn name(&self) -> &str;
 }
 
+/// A projection function that binds a [`Selector`] to a component of a context type `C`.
 pub trait SelectorFn<C> {
+    /// The type of the component chosen by the [`Selector`].
     type Target: ?Sized;
 
+    /// Bind the selector.
+    ///
+    /// #Arguments
+    /// * `context` - The context form the the [`Selector`] will attempt to select its component.
     fn selector(self, context: &C) -> impl Selector<Target = Self::Target> + '_;
 }
 
+/// An [event handler](crate::event_handler::EventHandler) that attempts to open a new lane for the
+/// agent (note that the [agent specification](crate::AgentSpec) must support this.)
 pub struct OpenLane<OnDone> {
     name: String,
     kind: WarpLaneKind,
@@ -106,6 +118,10 @@ pub struct OpenLane<OnDone> {
 }
 
 impl<OnDone> OpenLane<OnDone> {
+    /// # Arguments
+    /// * `name` - The name of the new lane.
+    /// * `kind` - The kind of the new lane.
+    /// * `on_done` - A callback tht produces an event handler that will be executed after the request completes.
     pub(crate) fn new(name: String, kind: WarpLaneKind, on_done: OnDone) -> Self {
         OpenLane {
             name,
