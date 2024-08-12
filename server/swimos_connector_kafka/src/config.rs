@@ -124,12 +124,12 @@ pub enum DeserializationFormat {
     #[default]
     Bytes,
     String,
-    Int32(Endianness),
-    Int64(Endianness),
-    UInt32(Endianness),
-    UInt64(Endianness),
-    Float32(Endianness),
-    Float64(Endianness),
+    Int32(#[form(header_body)] Endianness),
+    Int64(#[form(header_body)] Endianness),
+    UInt32(#[form(header_body)] Endianness),
+    UInt64(#[form(header_body)] Endianness),
+    Float32(#[form(header_body)] Endianness),
+    Float64(#[form(header_body)] Endianness),
     Uuid,
     Recon,
     #[cfg(feature = "json")]
