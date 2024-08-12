@@ -126,9 +126,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: Install Clang
+      - name: Install Clang & cmake
         # Required for rocksdb
-        run: apt-get update && apt-get install -y llvm llvm-dev clang
+        run: apt-get update && apt-get install -y llvm llvm-dev clang cmake
 
       - name: Set libclang path
         run: echo "LIBCLANG_PATH=$(llvm-config --libdir)" >> $GITHUB_ENV
