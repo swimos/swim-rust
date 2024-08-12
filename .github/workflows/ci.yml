@@ -127,7 +127,7 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Install Clang & cmake
-        # Required for rocksdb
+        # Required for rocksdb and libdkafka
         run: apt-get update && apt-get install -y llvm llvm-dev clang cmake
 
       - name: Set libclang path
