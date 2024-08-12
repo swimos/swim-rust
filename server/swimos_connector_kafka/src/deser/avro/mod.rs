@@ -22,9 +22,7 @@ use chrono::{DateTime, Local, NaiveDateTime, TimeDelta, Utc};
 use swimos_form::Form;
 use swimos_model::{BigInt, Blob, Timestamp};
 
-use crate::connector::MessagePart;
-
-use super::{MessageDeserializer, MessageView};
+use super::{MessageDeserializer, MessagePart, MessageView};
 
 /// Error type for the Avro deserializer.
 #[derive(Error, Debug)]

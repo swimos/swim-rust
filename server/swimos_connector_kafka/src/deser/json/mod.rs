@@ -18,9 +18,7 @@ mod tests;
 use serde_json::Value as JsonValue;
 use swimos_model::{Item, Value};
 
-use crate::connector::MessagePart;
-
-use super::{MessageDeserializer, MessageView};
+use super::{MessageDeserializer, MessagePart, MessageView};
 
 fn convert_json_value(input: JsonValue) -> Value {
     match input {

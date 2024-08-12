@@ -14,10 +14,7 @@
 
 use swimos_model::{Item, Value};
 
-use crate::{
-    connector::MessagePart,
-    deser::{tests::view_of, JsonDeserializer, MessageDeserializer},
-};
+use crate::deser::{tests::view_of, JsonDeserializer, MessageDeserializer, MessagePart};
 
 #[test]
 fn json_deserializer() {
