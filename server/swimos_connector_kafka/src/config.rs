@@ -129,7 +129,7 @@ pub enum DeserializationFormat {
     UInt32(#[form(header_body)] Endianness),
     UInt64(#[form(header_body)] Endianness),
     Float32(#[form(header_body)] Endianness),
-    Float64(#[form(header_body)]Endianness),
+    Float64(#[form(header_body)] Endianness),
     Uuid,
     Recon,
     #[cfg(feature = "json")]
