@@ -110,7 +110,7 @@ pub trait SelectorFn<C> {
 }
 
 /// An [event handler](crate::event_handler::EventHandler) that attempts to open a new lane for the
-/// agent (note that the [agent specification](crate::AgentSpec) must support this.)
+/// agent (note that the agent specification must support this.)
 pub struct OpenLane<OnDone> {
     name: String,
     kind: WarpLaneKind,

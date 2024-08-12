@@ -877,7 +877,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         Fail::<T, E>::new(error)
     }
 
-    /// Attempt to open a new value lane on this agent. Note that the implementation of [`crate::AgentSpec`]
+    /// Attempt to open a new value lane on this agent. Note that the implementation of the underlying agent
     /// used must support this.
     ///
     /// #Arguments
@@ -896,7 +896,7 @@ impl<Agent: 'static> HandlerContext<Agent> {
         OpenLane::new(name.to_string(), WarpLaneKind::Value, on_done)
     }
 
-    /// Attempt to open a new map lane on this agent. Note that the implementation of [`crate::AgentSpec`]
+    /// Attempt to open a new map lane on this agent. Note that the implementation of the underlying agent
     /// used must support this.
     ///
     /// #Arguments
