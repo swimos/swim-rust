@@ -95,7 +95,7 @@ where
 
 /// A lane selector attempts to extract a value from a Kafka message to use as a new value for a value lane
 /// or an update for a map lane.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LaneSelector {
     /// Select the topic from the message.
     Topic,
@@ -490,7 +490,7 @@ fn parse_selector(descriptor: &str) -> Result<SelectorDescriptor<'_>, BadSelecto
 }
 
 /// A value lane selector generates event handlers from Kafka messages to update the state of a value lane.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValueLaneSelector {
     name: String,
     selector: LaneSelector,
@@ -512,7 +512,7 @@ impl ValueLaneSelector {
 }
 
 /// A value lane selector generates event handlers from Kafka messages to update the state of a map lane.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MapLaneSelector {
     name: String,
     key_selector: LaneSelector,

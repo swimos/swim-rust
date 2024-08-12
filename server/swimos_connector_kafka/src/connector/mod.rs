@@ -52,6 +52,7 @@ type ConnHandlerContext = HandlerContext<ConnectorAgent>;
 ///
 /// If a message is received that is invalid with respect to the configuration, the entire agent will fail with an
 /// error.
+#[derive(Debug, Clone)]
 pub struct KafkaConnector<F> {
     factory: F,
     configuration: KafkaConnectorConfiguration,
@@ -300,7 +301,7 @@ where
 
 // Information about the lanes of the connector. These are computed from the configuration in the `on_start` handler
 // and stored in the lifecycle to be used to start the consumer stream.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct Lanes {
     total_lanes: u32,
     value_lanes: Vec<ValueLaneSelector>,

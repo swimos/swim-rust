@@ -16,9 +16,12 @@ mod connector;
 mod error;
 mod generic;
 mod lifecycle;
+mod route;
+
 #[cfg(test)]
 mod test_support;
 pub use connector::{Connector, ConnectorHandler, ConnectorStream};
 pub use error::ConnectorInitError;
 pub use generic::{ConnectorAgent, MapLaneSelectorFn, ValueLaneSelectorFn};
 pub use lifecycle::ConnectorLifecycle;
+pub use route::ConnectorModel;

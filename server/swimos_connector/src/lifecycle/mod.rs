@@ -30,6 +30,7 @@ use crate::{connector::suspend_connector, error::ConnectorInitError, Connector, 
 
 /// An [agent lifecycle](swimos_agent::agent_lifecycle::AgentLifecycle) implementation that serves as an adapter for
 /// a [connector](Connector).
+#[derive(Debug, Clone, Copy)]
 pub struct ConnectorLifecycle<C>(C);
 
 impl<C> ConnectorLifecycle<C> {
