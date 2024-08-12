@@ -528,7 +528,7 @@ impl MapLaneSelector {
     /// * `value_selector` - Selects a component from the message for the map value.
     /// * `required` - If this is required and the selectors do not return a result, an error will be generated.
     /// * `remove_when_no_value` - If a key is selected but no value is selected, the corresponding entry will be
-    /// removed from the map.
+    ///   removed from the map.
     pub fn new(
         name: String,
         key_selector: LaneSelector,

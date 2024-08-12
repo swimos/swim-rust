@@ -65,7 +65,7 @@ impl ValueLaneSpec {
     /// * `name` - A name to use for the lane. If not specified the connector will attempt to infer a name from the selector.
     /// * `selector` - String representation of the selector to extract values from the Kafka message.
     /// * `required` - Whether the lane is required. If this is `true` and the selector returns nothing for a Kafka Message, the
-    /// connector will fail with an error.
+    ///   connector will fail with an error.
     pub fn new<S: Into<String>>(name: Option<S>, selector: S, required: bool) -> Self {
         ValueLaneSpec {
             name: name.map(Into::into),
@@ -98,9 +98,9 @@ impl MapLaneSpec {
     /// * `key_selector` - String representation of a selector to extract the map keys from the Kafka messages.
     /// * `value_selector` - String representation of a selector to extract the map values from the Kafka messages.
     /// * `remove_when_no_value` - Whether to remove an entry from the map if the value selector does not return a value. Otherwise, missing
-    /// values will be treated as a failed extraction from the message.
+    ///   values will be treated as a failed extraction from the message.
     /// * `required` - Whether the lane is required. If this is `true` and the selector returns nothing for a Kafka Message, the
-    /// connector will fail with an error.
+    ///   connector will fail with an error.
     pub fn new<S: Into<String>>(
         name: S,
         key_selector: S,

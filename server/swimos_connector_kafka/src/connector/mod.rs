@@ -75,7 +75,7 @@ impl KafkaConnector<KafkaConsumerFactory> {
     ///
     /// # Arguments
     /// * `configuration` - The connector configuration, specifying the connection details for the Kafka consumer
-    /// an the lanes that the connector agent should expose.
+    ///   an the lanes that the connector agent should expose.
     pub fn for_config(configuration: KafkaConnectorConfiguration) -> Self {
         Self::new(KafkaConsumerFactory, configuration)
     }
