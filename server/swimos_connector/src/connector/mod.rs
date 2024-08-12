@@ -50,7 +50,7 @@ pub trait Connector {
     /// Initialize the connector. All required lanes should be created by this handler.
     ///
     /// # Arguments
-    /// * `init_complete` - The provided handler must trigger this when the initialization is complete. The connector stream will only 
+    /// * `init_complete` - The provided handler must trigger this when the initialization is complete. The connector stream will only
     ///   be started after this happens. If this is dropped, the connector will fail with an error.
     fn on_start(&self, init_complete: trigger::Sender) -> impl EventHandler<ConnectorAgent> + '_;
 
