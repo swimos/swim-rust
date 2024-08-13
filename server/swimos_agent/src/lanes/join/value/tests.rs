@@ -293,8 +293,14 @@ async fn join_value_lane_add_downlinks_event_handler() {
     let mut inits = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
 
-    let mut action_context =
-        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
+    let mut action_context = ActionContext::new(
+        &spawner,
+        &context,
+        &context,
+        &context,
+        &mut inits,
+        &mut ad_hoc_buffer,
+    );
     let result = handler.step(&mut action_context, meta, &agent);
     check_result(result, false, false, Some(()));
 
@@ -305,6 +311,7 @@ async fn join_value_lane_add_downlinks_event_handler() {
     ));
 
     run_event_handlers(
+        &context,
         &context,
         &context,
         &agent,
@@ -364,12 +371,19 @@ async fn open_downlink_from_registered() {
     let count = Arc::new(AtomicUsize::new(0));
 
     let spawner = FuturesUnordered::new();
-    let mut action_context =
-        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
+    let mut action_context = ActionContext::new(
+        &spawner,
+        &context,
+        &context,
+        &context,
+        &mut inits,
+        &mut ad_hoc_buffer,
+    );
     register_lifecycle(&mut action_context, &agent, count.clone());
     assert!(spawner.is_empty());
 
     run_with_futures(
+        &context,
         &context,
         &context,
         &agent,
@@ -401,12 +415,19 @@ async fn stop_downlink() {
     let count = Arc::new(AtomicUsize::new(0));
 
     let spawner = FuturesUnordered::new();
-    let mut action_context =
-        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
+    let mut action_context = ActionContext::new(
+        &spawner,
+        &context,
+        &context,
+        &context,
+        &mut inits,
+        &mut ad_hoc_buffer,
+    );
     register_lifecycle(&mut action_context, &agent, count.clone());
     assert!(spawner.is_empty());
 
     run_with_futures(
+        &context,
         &context,
         &context,
         &agent,

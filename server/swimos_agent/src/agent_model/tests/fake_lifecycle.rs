@@ -13,14 +13,17 @@
 // limitations under the License.
 
 use futures::FutureExt;
-use swimos_api::address::Address;
+use swimos_api::{address::Address, agent::WarpLaneKind, error::LaneSpawnError};
 use swimos_model::Text;
 use tokio::sync::mpsc;
 
 use crate::{
-    agent_lifecycle::{item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop},
+    agent_lifecycle::{
+        item_event::ItemEvent, on_init::OnInit, on_start::OnStart, on_stop::OnStop, HandlerContext,
+    },
     event_handler::{
-        ActionContext, HandlerAction, LocalBoxEventHandler, SideEffect, Spawner, StepResult,
+        ActionContext, EventHandler, HandlerAction, HandlerActionExt, LocalBoxEventHandler,
+        Sequentially, SideEffect, Spawner, StepResult,
     },
     meta::AgentMetadata,
 };
@@ -34,7 +37,22 @@ pub enum LifecycleEvent {
     Lane(Text),
     RanSuspended(i32),
     RanSuspendedConsequence,
+    DynLane {
+        name: String,
+        kind: WarpLaneKind,
+        result: Result<(), LaneSpawnError>,
+    },
     Stop,
+}
+
+impl LifecycleEvent {
+    pub fn dyn_lane(name: &str, kind: WarpLaneKind, result: Result<(), LaneSpawnError>) -> Self {
+        LifecycleEvent::DynLane {
+            name: name.to_string(),
+            kind,
+            result,
+        }
+    }
 }
 
 pub struct LifecycleHandler {
@@ -43,13 +61,35 @@ pub struct LifecycleHandler {
 }
 
 #[derive(Clone)]
+pub struct AddLane {
+    name: String,
+    kind: WarpLaneKind,
+}
+
+impl AddLane {
+    pub fn new(name: &str, kind: WarpLaneKind) -> Self {
+        AddLane {
+            name: name.to_string(),
+            kind,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct TestLifecycle {
     sender: mpsc::UnboundedSender<LifecycleEvent>,
+    add_lanes: Vec<AddLane>,
 }
 
 impl TestLifecycle {
-    pub fn new(tx: mpsc::UnboundedSender<LifecycleEvent>) -> TestLifecycle {
-        TestLifecycle { sender: tx }
+    pub fn new(
+        tx: mpsc::UnboundedSender<LifecycleEvent>,
+        add_lanes: Vec<AddLane>,
+    ) -> TestLifecycle {
+        TestLifecycle {
+            sender: tx,
+            add_lanes,
+        }
     }
 }
 
@@ -74,19 +114,39 @@ impl OnInit<TestAgent> for TestLifecycle {
 }
 
 impl OnStart<TestAgent> for TestLifecycle {
-    type OnStartHandler<'a> = LifecycleHandler where Self: 'a;
-
-    fn on_start(&self) -> Self::OnStartHandler<'_> {
+    fn on_start(&self) -> impl EventHandler<TestAgent> + '_ {
+        let TestLifecycle { add_lanes, sender } = self;
+        let handler_context: HandlerContext<TestAgent> = Default::default();
+        let add_lane_handlers: Vec<_> = add_lanes
+            .iter()
+            .map(move |AddLane { name, kind }| {
+                let tx = sender.clone();
+                let name_cpy = name.clone();
+                let k = *kind;
+                let cb = move |result| {
+                    handler_context.effect(move || {
+                        tx.send(LifecycleEvent::DynLane {
+                            name: name_cpy,
+                            kind: k,
+                            result,
+                        })
+                        .expect("Channel closed.");
+                    })
+                };
+                match kind {
+                    WarpLaneKind::Map => handler_context.open_map_lane(name, cb).boxed(),
+                    WarpLaneKind::Value => handler_context.open_value_lane(name, cb).boxed(),
+                    _ => panic!("Unsupported dynamic lane kind."),
+                }
+            })
+            .collect();
         self.make_handler(LifecycleEvent::Start)
+            .followed_by(Sequentially::new(add_lane_handlers))
     }
 }
 
 impl OnStop<TestAgent> for TestLifecycle {
-    type OnStopHandler<'a> = LifecycleHandler
-    where
-        Self: 'a;
-
-    fn on_stop(&self) -> Self::OnStopHandler<'_> {
+    fn on_stop(&self) -> impl EventHandler<TestAgent> + '_ {
         self.make_handler(LifecycleEvent::Stop)
     }
 }

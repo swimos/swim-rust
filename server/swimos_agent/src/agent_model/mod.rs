@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use std::cell::RefCell;
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::pin::{pin, Pin};
@@ -30,7 +31,10 @@ use swimos_agent_protocol::encoding::store::{RawMapStoreInitDecoder, RawValueSto
 use swimos_agent_protocol::{LaneRequest, MapMessage};
 use swimos_api::agent::DownlinkKind;
 use swimos_api::agent::{HttpLaneRequest, LaneConfig, RawHttpLaneResponse};
-use swimos_api::error::{AgentRuntimeError, DownlinkRuntimeError, OpenStoreError};
+use swimos_api::error::{
+    AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, LaneSpawnError,
+    OpenStoreError,
+};
 use swimos_api::{
     address::Address,
     agent::{Agent, AgentConfig, AgentContext, AgentInitResult},
@@ -49,7 +53,8 @@ use uuid::Uuid;
 use crate::agent_lifecycle::item_event::ItemEvent;
 use crate::agent_model::io::LaneReadEvent;
 use crate::event_handler::{
-    ActionContext, BoxJoinLaneInit, HandlerFuture, LocalBoxEventHandler, ModificationFlags,
+    ActionContext, BoxJoinLaneInit, HandlerFuture, LaneSpawnOnDone, LaneSpawner,
+    LocalBoxEventHandler, ModificationFlags, Sequentially,
 };
 use crate::{
     agent_lifecycle::AgentLifecycle,
@@ -95,6 +100,15 @@ pub enum WriteResult {
 pub enum ItemKind {
     Lane(WarpLaneKind),
     Store(StoreKind),
+}
+
+impl std::fmt::Display for ItemKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ItemKind::Lane(k) => write!(f, "{}", k),
+            ItemKind::Store(k) => write!(f, "{}", k),
+        }
+    }
 }
 
 impl ItemKind {
@@ -164,9 +178,12 @@ impl ItemSpec {
     }
 }
 
-type MapLikeInitializer<T> =
+#[doc(hidden)]
+pub type MapLikeInitializer<T> =
     Box<dyn ItemInitializer<T, MapMessage<BytesMut, BytesMut>> + Send + 'static>;
-type ValueLikeInitializer<T> = Box<dyn ItemInitializer<T, BytesMut> + Send + 'static>;
+
+#[doc(hidden)]
+pub type ValueLikeInitializer<T> = Box<dyn ItemInitializer<T, BytesMut> + Send + 'static>;
 
 /// A trait which describes the lanes of an agent which can be run as a task attached to an
 /// [`AgentContext`]. A type implementing this trait is sufficient to produce a functional agent
@@ -249,6 +266,19 @@ pub trait AgentSpec: Sized + Send {
     /// indicate if data was written and if the lane has more data to write. There will be
     /// no result if the lane does not exist.
     fn write_event(&self, lane: &str, buffer: &mut BytesMut) -> Option<WriteResult>;
+
+    /// Register a dynamically created item with the agent. The returned value is the unique ID of the item.
+    ///
+    /// # Arguments
+    /// * `_name` - The name of the item.
+    /// * `_descriptor` - The kind of the item and any flags.
+    fn register_dynamic_item(
+        &self,
+        _name: &str,
+        _descriptor: ItemDescriptor,
+    ) -> Result<u64, DynamicRegistrationError> {
+        Err(DynamicRegistrationError::DynamicRegistrationsNotSupported)
+    }
 }
 
 /// A factory to create agent lane model instances.
@@ -600,26 +630,27 @@ where
         let mut http_lane_rxs = HashMap::new();
 
         let item_specs = ItemModel::item_specs();
-        let lifecycle_item_ids = item_specs
+        let mut lifecycle_item_ids: HashMap<u64, Text> = item_specs
             .values()
             .map(|spec| (spec.id, Text::new(spec.lifecycle_name)))
             .collect();
 
-        let external_item_ids = item_specs
+        let mut external_item_ids: HashMap<Text, u64> = item_specs
             .iter()
             .map(|(name, spec)| (Text::new(name), spec.id))
             .collect();
 
         let suspended = FuturesUnordered::new();
         let downlink_channels = RefCell::new(vec![]);
+        let mut dynamic_lanes = RefCell::new(vec![]);
         let mut join_lane_init = HashMap::new();
         let mut ad_hoc_buffer = BytesMut::new();
 
         let item_model = item_model_fac.create();
+        let default_lane_config = config.default_lane_config.unwrap_or_default();
 
         {
             let mut lane_init_tasks = FuturesUnordered::new();
-            let default_lane_config = config.default_lane_config.unwrap_or_default();
             macro_rules! with_init {
                 ($init:ident => $body:block) => {{
                     let mut $init = InitContext::new(&mut lane_io, &item_model, &lane_init_tasks);
@@ -627,12 +658,11 @@ where
                     $body
                 }};
             }
-
             for (name, spec) in item_specs {
                 match spec.descriptor {
                     ItemDescriptor::WarpLane { kind, flags } => {
+                        let key = (Text::new(name), kind);
                         if kind.map_like() {
-                            let key = (Text::new(name), kind);
                             if lane_io.contains_key(&key) {
                                 return Err(AgentInitError::DuplicateLane(key.0));
                             }
@@ -642,9 +672,12 @@ where
                             }
                             let io = context.add_lane(name, kind, lane_conf).await?;
                             with_init!(init => {
-                                init.init_map_lane(name, kind,lane_conf, io);
+                                init.init_map_lane(name, kind, lane_conf, io);
                             })
                         } else {
+                            if lane_io.contains_key(&key) {
+                                return Err(AgentInitError::DuplicateLane(key.0));
+                            }
                             let mut lane_conf = default_lane_config;
                             if flags.contains(ItemFlags::TRANSIENT) {
                                 lane_conf.transient = true;
@@ -718,12 +751,57 @@ where
                 &suspended,
                 &*context,
                 &downlink_channels,
+                &dynamic_lanes,
                 &mut join_lane_init,
                 &mut ad_hoc_buffer,
             ),
             meta,
             &item_model,
         );
+
+        let mut dyn_lane_handlers = vec![];
+
+        // This handles any requests that have been received to open dynamic lanes. Due to complex, interleaved
+        // borrows of non-send variables, it is impractical to extract this out as a function. This macro is a
+        // compromise to avoid duplicating the block of code.
+        macro_rules! handle_dyn_lanes {
+            () => {
+                for LaneSpawnRequest {
+                    name,
+                    kind,
+                    on_done,
+                } in dynamic_lanes.get_mut().drain(..)
+                {
+                    let key = (Text::new(&name), kind);
+                    if let Entry::Vacant(entry) = lane_io.entry(key) {
+                        let mut lane_conf = default_lane_config;
+                        lane_conf.transient = true;
+                        let io = context.add_lane(&name, kind, lane_conf).await?;
+                        let descriptor = ItemDescriptor::WarpLane {
+                            kind,
+                            flags: ItemFlags::TRANSIENT, // For now, all dynamic lanes are transient.
+                        };
+                        let result = item_model.register_dynamic_item(&name, descriptor);
+                        if let Ok(id) = result {
+                            entry.insert(io);
+                            external_item_ids.insert(Text::new(&name), id);
+                            lifecycle_item_ids.insert(id, Text::new(&name));
+                        }
+                        dyn_lane_handlers.push(on_done(result.map_err(Into::into)));
+                    } else {
+                        let handler = on_done(Err(LaneSpawnError::Registration(
+                            DynamicRegistrationError::DuplicateName(name),
+                        )));
+                        dyn_lane_handlers.push(handler);
+                    }
+                }
+            };
+        }
+
+        // Handle any dynamic lane requests received in the `on_init` event. We don't trigger the
+        // corresponding event handlers yet to respect the contract that `on_start` is the first
+        // event handler to be run in the agent.
+        handle_dyn_lanes!();
 
         // Run the agent's `on_start` event handler.
         let on_start_handler = lifecycle.on_start();
@@ -733,6 +811,7 @@ where
                 &suspended,
                 &*context,
                 &downlink_channels,
+                &dynamic_lanes,
                 &mut join_lane_init,
                 &mut ad_hoc_buffer,
             ),
@@ -747,6 +826,33 @@ where
             Err(e) => return Err(AgentInitError::UserCodeError(Box::new(e))),
             Ok(_) => {}
         }
+
+        // Handle any dynamic lane requests received in the `on_start` event.
+        handle_dyn_lanes!();
+
+        // Run all of the event handlers associated with requests for dynamic lanes. These could have bee
+        // generated by either (or both) of the `on_init` and `on_start` events.
+        match run_handler(
+            &mut ActionContext::new(
+                &suspended,
+                &*context,
+                &downlink_channels,
+                &dynamic_lanes,
+                &mut join_lane_init,
+                &mut ad_hoc_buffer,
+            ),
+            meta,
+            &item_model,
+            &lifecycle,
+            Sequentially::new(dyn_lane_handlers),
+            &lifecycle_item_ids,
+            &mut Discard,
+        ) {
+            Err(EventHandlerError::StopInstructed) => return Err(AgentInitError::FailedToStart),
+            Err(e) => return Err(AgentInitError::UserCodeError(Box::new(e))),
+            Ok(_) => {}
+        }
+
         let agent_task = AgentTask {
             item_model,
             lifecycle,
@@ -1078,6 +1184,7 @@ where
                 downlinks.push(Either::Left(dl.wait_on_downlink()));
                 Ok(())
             };
+            let add_lane = NoDynLanes;
             match task_event {
                 TaskEvent::WriteComplete { writer, result } => {
                     match result {
@@ -1091,6 +1198,7 @@ where
                                         &suspended,
                                         &*context,
                                         &add_downlink,
+                                        &add_lane,
                                         &mut join_lane_init,
                                         &mut ad_hoc_buffer,
                                     ),
@@ -1125,6 +1233,7 @@ where
                             &suspended,
                             &*context,
                             &add_downlink,
+                            &add_lane,
                             &mut join_lane_init,
                             &mut ad_hoc_buffer,
                         ),
@@ -1171,6 +1280,7 @@ where
                                     &suspended,
                                     &*context,
                                     &add_downlink,
+                                    &add_lane,
                                     &mut join_lane_init,
                                     &mut ad_hoc_buffer,
                                 ),
@@ -1238,6 +1348,7 @@ where
                                         &suspended,
                                         &*context,
                                         &add_downlink,
+                                        &add_lane,
                                         &mut join_lane_init,
                                         &mut ad_hoc_buffer,
                                     ),
@@ -1279,6 +1390,7 @@ where
                                         &suspended,
                                         &*context,
                                         &add_downlink,
+                                        &add_lane,
                                         &mut join_lane_init,
                                         &mut ad_hoc_buffer,
                                     ),
@@ -1316,6 +1428,7 @@ where
                                         &suspended,
                                         &*context,
                                         &add_downlink,
+                                        &add_lane,
                                         &mut join_lane_init,
                                         &mut ad_hoc_buffer,
                                     ),
@@ -1357,6 +1470,7 @@ where
                                         &suspended,
                                         &*context,
                                         &add_downlink,
+                                        &add_lane,
                                         &mut join_lane_init,
                                         &mut ad_hoc_buffer,
                                     ),
@@ -1393,6 +1507,7 @@ where
                                     &suspended,
                                     &*context,
                                     &add_downlink,
+                                    &add_lane,
                                     &mut join_lane_init,
                                     &mut ad_hoc_buffer,
                                 ),
@@ -1464,11 +1579,13 @@ where
                 AgentRuntimeError::Stopping,
             ))
         };
+        let add_lane = NoDynLanes;
         match run_handler(
             &mut ActionContext::new(
                 &suspended,
                 &*context,
                 &discard,
+                &add_lane,
                 &mut join_lane_init,
                 &mut ad_hoc_buffer,
             ),
@@ -1482,6 +1599,19 @@ where
             Ok(_) | Err(EventHandlerError::StopInstructed) => Ok(()),
             Err(e) => Err(AgentTaskError::UserCodeError(Box::new(e))),
         }
+    }
+}
+
+struct NoDynLanes;
+
+impl<Context> LaneSpawner<Context> for NoDynLanes {
+    fn spawn_warp_lane(
+        &self,
+        _name: &str,
+        _kind: WarpLaneKind,
+        _on_done: LaneSpawnOnDone<Context>,
+    ) -> Result<(), DynamicRegistrationError> {
+        Err(DynamicRegistrationError::AfterInitialization)
     }
 }
 
@@ -1676,5 +1806,28 @@ fn check_cmds<Fut>(
             let fut = write(writer, ad_hoc_buffer);
             cmd_send_fut.set(Some(fut.fuse()).into());
         }
+    }
+}
+
+/// A request to the agent to open a new lane.
+struct LaneSpawnRequest<Context> {
+    name: String,
+    kind: WarpLaneKind,
+    on_done: LaneSpawnOnDone<Context>,
+}
+
+impl<Context> LaneSpawner<Context> for RefCell<Vec<LaneSpawnRequest<Context>>> {
+    fn spawn_warp_lane(
+        &self,
+        name: &str,
+        kind: WarpLaneKind,
+        on_done: LaneSpawnOnDone<Context>,
+    ) -> Result<(), DynamicRegistrationError> {
+        self.borrow_mut().push(LaneSpawnRequest {
+            name: name.to_string(),
+            kind,
+            on_done,
+        });
+        Ok(())
     }
 }

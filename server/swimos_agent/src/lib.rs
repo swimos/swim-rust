@@ -69,10 +69,14 @@ pub mod stores;
 mod test_context;
 #[cfg(test)]
 mod tests;
+
 #[cfg(test)]
 pub use agent_model::AgentSpec;
 
 pub use item::AgentItem;
+
+#[doc(hidden)]
+pub use meta::AgentMetadata;
 
 #[doc(hidden)]
 pub mod model {

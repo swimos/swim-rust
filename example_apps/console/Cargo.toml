@@ -22,6 +22,7 @@ console-views = { path = "console_views" }
 http = { workspace = true }
 rand = { workspace = true }
 duration-str = { workspace = true }
+time = { workspace = true }
 thiserror = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]

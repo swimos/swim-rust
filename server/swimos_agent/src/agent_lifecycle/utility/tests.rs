@@ -23,7 +23,7 @@ use swimos_utilities::routing::RouteUri;
 use crate::{
     event_handler::{ActionContext, HandlerAction, LocalBoxEventHandler, StepResult},
     meta::AgentMetadata,
-    test_context::{no_downlink, DummyAgentContext},
+    test_context::{no_downlink, DummyAgentContext, NO_DYN_LANES},
 };
 
 use super::HandlerContext;
@@ -103,6 +103,7 @@ async fn suspend_repeatedly() {
                     &spawner,
                     &DummyAgentContext,
                     &no_downlink,
+                    &NO_DYN_LANES,
                     &mut join_lane_init,
                     &mut ad_hoc_buffer,
                 ),

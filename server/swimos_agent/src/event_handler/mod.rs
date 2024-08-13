@@ -26,8 +26,8 @@ use static_assertions::assert_obj_safe;
 use swimos_agent_protocol::{encoding::ad_hoc::AdHocCommandEncoder, AdHocCommand};
 use swimos_api::{
     address::Address,
-    agent::{AgentContext, DownlinkKind},
-    error::{AgentRuntimeError, DownlinkRuntimeError},
+    agent::{AgentContext, DownlinkKind, WarpLaneKind},
+    error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, LaneSpawnError},
 };
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
 use swimos_model::Text;
@@ -58,8 +58,10 @@ mod register_downlink;
 mod suspend;
 #[cfg(test)]
 mod tests;
+mod try_handler;
 
 pub use suspend::{run_after, run_schedule, run_schedule_async, HandlerFuture, Spawner, Suspend};
+pub use try_handler::{TryHandler, TryHandlerAction, TryHandlerActionExt};
 
 pub use command::SendCommand;
 #[doc(hidden)]
@@ -104,6 +106,27 @@ where
     }
 }
 
+type LaneSpawnHandler<Context> = Box<dyn EventHandler<Context> + Send + 'static>;
+#[doc(hidden)]
+pub type LaneSpawnOnDone<Context> =
+    Box<dyn FnOnce(Result<u64, LaneSpawnError>) -> LaneSpawnHandler<Context> + Send + 'static>;
+
+/// Trait for contexts that can spawn a new lane into the agent task.
+pub trait LaneSpawner<Context> {
+    /// Spawn a new WARP lane into the agent task.
+    ///
+    /// # Arguments
+    /// * `io` - IO channels, for the lane, connected to the runtime.
+    /// * `kind` - The kind of the lane.
+    /// * `on_done` - A callback that produces an event handler that will be executed after the lane is registered.
+    fn spawn_warp_lane(
+        &self,
+        name: &str,
+        kind: WarpLaneKind,
+        on_done: LaneSpawnOnDone<Context>,
+    ) -> Result<(), DynamicRegistrationError>;
+}
+
 /// The context type passed to every call to [`HandlerAction::step`] that provides access to the
 /// underlying. Some of the methods on this type are not intended for use in user supplied handler
 /// implementations and so can only be used from this crate.
@@ -111,6 +134,7 @@ pub struct ActionContext<'a, Context> {
     spawner: &'a dyn Spawner<Context>,
     agent_context: &'a dyn AgentContext,
     downlink: &'a dyn DownlinkSpawner<Context>,
+    lanes: &'a dyn LaneSpawner<Context>,
     join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
     ad_hoc_buffer: &'a mut BytesMut,
 }
@@ -135,6 +159,7 @@ impl<'a, Context> ActionContext<'a, Context> {
         spawner: &'a dyn Spawner<Context>,
         agent_context: &'a dyn AgentContext,
         downlink: &'a dyn DownlinkSpawner<Context>,
+        lanes: &'a dyn LaneSpawner<Context>,
         join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
         ad_hoc_buffer: &'a mut BytesMut,
     ) -> Self {
@@ -142,6 +167,7 @@ impl<'a, Context> ActionContext<'a, Context> {
             spawner,
             agent_context,
             downlink,
+            lanes,
             join_lane_init,
             ad_hoc_buffer,
         }
@@ -214,6 +240,28 @@ impl<'a, Context> ActionContext<'a, Context> {
         self.spawn_suspend(fut);
     }
 
+    /// Attempt to attach a new lane to the agent runtime.
+    ///
+    /// # Arguments
+    /// * `name` - The name of the lane.
+    /// * `kind` - The kind of the lane.
+    /// * `on_opened` - Callback providing an event handler to be executed by the agent when the request
+    /// has completed.
+    #[doc(hidden)]
+    pub(crate) fn open_lane<F, H>(
+        &self,
+        name: &str,
+        kind: WarpLaneKind,
+        on_opened: F,
+    ) -> Result<(), DynamicRegistrationError>
+    where
+        F: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
+        H: EventHandler<Context> + Send + 'static,
+    {
+        let f = move |result| wrap(on_opened, result);
+        self.lanes.spawn_warp_lane(name, kind, Box::new(f))
+    }
+
     /// Send an ad-hoc command message to a remote lane.
     ///
     /// # Arguments
@@ -238,6 +286,14 @@ impl<'a, Context> ActionContext<'a, Context> {
             .encode(cmd, ad_hoc_buffer)
             .expect("Encoding should be infallible.")
     }
+}
+
+fn wrap<Context, F, H>(f: F, result: Result<u64, LaneSpawnError>) -> LaneSpawnHandler<Context>
+where
+    F: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
+    H: EventHandler<Context> + Send + 'static,
+{
+    Box::new(f(result.map(|_| ())))
 }
 
 struct ConstructDownlink<F> {
@@ -373,13 +429,22 @@ pub enum EventHandlerError {
     /// terminate the agent but will cause an error HTTP response to be sent).
     #[error("No GET handler was defined for an HTTP lane.")]
     HttpGetUndefined,
+    /// An executing handler attempted to target a lane that does not exist.
+    #[error("A command was received for a lane that does not exist: '{0}'")]
+    /// Failed to register a dynamic lane.
+    LaneNotFound(String),
+    #[error("An attempt to register a dynamic lane failed: {0}")]
+    FailedRegistration(DynamicRegistrationError),
+    /// An event handler failed in a user specified effect.
+    #[error("An error occurred in a user specified effect: {0}")]
+    EffectError(Box<dyn std::error::Error + Send>),
     /// The event handler has explicitly requested that the agent stop.
     #[error("The event handler has instructed the agent to stop.")]
     StopInstructed,
 }
 
 bitflags! {
-    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
     #[doc(hidden)]
     pub(crate) struct ModificationFlags: u8 {
         /// The lane has data to write.
@@ -392,7 +457,7 @@ bitflags! {
 
 /// When a handler completes or suspends it can indicate that is has modified the
 /// state of an item.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct Modification {
     /// The ID of the item.
     pub(crate) item_id: u64,
@@ -420,6 +485,10 @@ impl Modification {
             item_id,
             flags: ModificationFlags::TRIGGER_HANDLER,
         }
+    }
+
+    pub fn id(&self) -> u64 {
+        self.item_id
     }
 }
 
@@ -1267,6 +1336,7 @@ where
 }
 
 /// Event handler that runs another handler and discards its result.
+#[derive(Debug)]
 pub struct Discard<H>(H);
 
 impl<H> Discard<H> {
@@ -1560,6 +1630,41 @@ where
                 }
             }
             Join3State::AfterDone => StepResult::after_done(),
+        }
+    }
+}
+
+/// An event handler that fails with the provided error.
+pub struct Fail<T, E> {
+    error: Option<E>,
+    _type: PhantomData<T>,
+}
+
+impl<T, E> Fail<T, E> {
+    pub fn new(error: E) -> Self {
+        Fail {
+            error: Some(error),
+            _type: PhantomData,
+        }
+    }
+}
+
+impl<Context, T, E> HandlerAction<Context> for Fail<T, E>
+where
+    E: std::error::Error + Send + 'static,
+{
+    type Completion = T;
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<Context>,
+        _meta: AgentMetadata,
+        _context: &Context,
+    ) -> StepResult<Self::Completion> {
+        if let Some(e) = self.error.take() {
+            StepResult::Fail(EventHandlerError::EffectError(Box::new(e)))
+        } else {
+            StepResult::after_done()
         }
     }
 }

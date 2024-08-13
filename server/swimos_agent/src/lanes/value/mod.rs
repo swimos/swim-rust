@@ -17,7 +17,7 @@ pub mod lifecycle;
 #[cfg(test)]
 mod tests;
 
-use std::{borrow::Borrow, cell::RefCell, collections::VecDeque, marker::PhantomData};
+use std::{borrow::Borrow, cell::RefCell, collections::VecDeque, fmt::Debug, marker::PhantomData};
 
 use bytes::BytesMut;
 use static_assertions::assert_impl_all;
@@ -37,7 +37,7 @@ use crate::{
     stores::value::ValueStore,
 };
 
-use super::{LaneItem, ProjTransform};
+use super::{LaneItem, ProjTransform, Selector, SelectorFn};
 
 /// Model of a value lane. This maintains a state and triggers an event each time this state is updated.
 /// Updates may come from external commands or from an action performed by an event handler on the agent.
@@ -382,5 +382,178 @@ where
 
     fn set_handler<C: 'static>(projection: fn(&C) -> &Self, value: T) -> Self::SetHandler<C> {
         ValueLaneSet::new(projection, value)
+    }
+}
+
+/// An [event handler](crate::event_handler::EventHandler) that attempts to set to a value lane, if
+/// that lane exists.
+pub struct ValueLaneSelectSet<C, T, F> {
+    _type: PhantomData<fn(&C)>,
+    projection_value: Option<(F, T)>,
+}
+
+impl<C, T: Debug, F: Debug> Debug for ValueLaneSelectSet<C, T, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ValueLaneSelectSet")
+            .field("projection_value", &self.projection_value)
+            .finish()
+    }
+}
+
+impl<C, T, F> ValueLaneSelectSet<C, T, F> {
+    /// # Arguments
+    /// * `projection` - A projection from the agent type onto an (optional) value lane.
+    /// * `value` - The value to set.
+    pub fn new(projection: F, value: T) -> Self {
+        ValueLaneSelectSet {
+            _type: PhantomData,
+            projection_value: Some((projection, value)),
+        }
+    }
+}
+
+impl<C, T, F> HandlerAction<C> for ValueLaneSelectSet<C, T, F>
+where
+    F: SelectorFn<C, Target = ValueLane<T>>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let ValueLaneSelectSet {
+            projection_value, ..
+        } = self;
+        if let Some((projection, value)) = projection_value.take() {
+            let selector = projection.selector(context);
+            if let Some(lane) = selector.select() {
+                lane.set(value);
+                StepResult::Complete {
+                    modified_item: Some(Modification::of(lane.id())),
+                    result: (),
+                }
+            } else {
+                StepResult::Fail(EventHandlerError::LaneNotFound(selector.name().to_string()))
+            }
+        } else {
+            StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+        }
+    }
+}
+
+#[derive(Default)]
+#[doc(hidden)]
+pub enum DecodeAndSelectSet<C, T, F> {
+    Decoding(Decode<T>, F),
+    Selecting(ValueLaneSelectSet<C, T, F>),
+    #[default]
+    Done,
+}
+
+impl<C, T, F> HandlerAction<C> for DecodeAndSelectSet<C, T, F>
+where
+    T: RecognizerReadable,
+    F: SelectorFn<C, Target = ValueLane<T>>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        action_context: &mut ActionContext<C>,
+        meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        match std::mem::take(self) {
+            DecodeAndSelectSet::Decoding(mut decoding, selector) => {
+                match decoding.step(action_context, meta, context) {
+                    StepResult::Continue { modified_item } => {
+                        *self = DecodeAndSelectSet::Decoding(decoding, selector);
+                        StepResult::Continue { modified_item }
+                    }
+                    StepResult::Fail(err) => StepResult::Fail(err),
+                    StepResult::Complete {
+                        modified_item,
+                        result,
+                    } => {
+                        *self = DecodeAndSelectSet::Selecting(ValueLaneSelectSet::new(
+                            selector, result,
+                        ));
+                        StepResult::Continue { modified_item }
+                    }
+                }
+            }
+            DecodeAndSelectSet::Selecting(mut selector) => {
+                let result = selector.step(action_context, meta, context);
+                if !result.is_cont() {
+                    *self = DecodeAndSelectSet::Done;
+                }
+                result
+            }
+            DecodeAndSelectSet::Done => StepResult::after_done(),
+        }
+    }
+}
+
+/// Create an event handler that will decode an incoming command and set the value into a value lane.
+pub fn decode_and_select_set<C, T, F>(
+    buffer: BytesMut,
+    projection: F,
+) -> DecodeAndSelectSet<C, T, F>
+where
+    T: RecognizerReadable,
+    F: SelectorFn<C, Target = ValueLane<T>>,
+{
+    let decode: Decode<T> = Decode::new(buffer);
+    DecodeAndSelectSet::Decoding(decode, projection)
+}
+
+///  An [event handler](crate::event_handler::EventHandler)`] that will request a sync from the lane.
+pub struct ValueLaneSelectSync<C, T, F> {
+    _type: PhantomData<fn(&C) -> &T>,
+    projection_id: Option<(F, Uuid)>,
+}
+
+impl<C, T, F> ValueLaneSelectSync<C, T, F> {
+    /// # Arguments
+    /// * `projection` - Projection from the agent context to the lane.
+    /// * `id` - The ID of the remote that requested the sync.
+    pub fn new(projection: F, id: Uuid) -> Self {
+        ValueLaneSelectSync {
+            _type: PhantomData,
+            projection_id: Some((projection, id)),
+        }
+    }
+}
+
+impl<C, T, F> HandlerAction<C> for ValueLaneSelectSync<C, T, F>
+where
+    F: SelectorFn<C, Target = ValueLane<T>>,
+{
+    type Completion = ();
+
+    fn step(
+        &mut self,
+        _action_context: &mut ActionContext<C>,
+        _meta: AgentMetadata,
+        context: &C,
+    ) -> StepResult<Self::Completion> {
+        let ValueLaneSelectSync { projection_id, .. } = self;
+        if let Some((projection, id)) = projection_id.take() {
+            let selector = projection.selector(context);
+            if let Some(lane) = selector.select() {
+                lane.sync(id);
+                StepResult::Complete {
+                    modified_item: Some(Modification::no_trigger(lane.id())),
+                    result: (),
+                }
+            } else {
+                StepResult::Fail(EventHandlerError::LaneNotFound(selector.name().to_string()))
+            }
+        } else {
+            StepResult::Fail(EventHandlerError::SteppedAfterComplete)
+        }
     }
 }
