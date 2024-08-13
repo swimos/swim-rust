@@ -26,31 +26,35 @@
 
 use std::{error::Error, time::Duration};
 
+use clap::Parser;
 use example_util::{example_logging, manage_handle};
 use swimos::{
-    agent::agent_model::AgentModel,
     route::RoutePattern,
     server::{Server, ServerBuilder},
 };
-use swimos_connector_kafka::{DeserializationFormat, Endianness, KafkaConnectorConfiguration, KafkaLogLevel, MapLaneSpec, ValueLaneSpec};
-use swimos_recon::print_recon_pretty;
+use swimos_connector::ConnectorModel;
+use swimos_connector_kafka::{KafkaConnector, KafkaConnectorConfiguration};
+use swimos_recon::parser::parse_recognize;
 
-use crate::agent::{ExampleAgent, ExampleLifecycle};
+mod params;
 
-mod agent;
+use params::Params;
 
-//#[tokio::main]
-async fn main2() -> Result<(), Box<dyn Error + Send + Sync>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let Params { config } = Params::parse();
     example_logging()?;
 
-    let route = RoutePattern::parse_str("/example/:name}")?;
+    let connector_config = load_config(config).await?;
 
-    let lifecycle = ExampleLifecycle;
-    let agent = AgentModel::new(ExampleAgent::default, lifecycle.into_lifecycle());
+    let route = RoutePattern::parse_str("/kafka}")?;
+
+    let connector_agent =
+        ConnectorModel::for_fn(move || KafkaConnector::for_config(connector_config.clone()));
 
     let server = ServerBuilder::with_plane_name("Example Plane")
         .set_bind_addr("127.0.0.1:8080".parse()?)
-        .add_route(route, agent)
+        .add_route(route, connector_agent)
         .update_config(|config| {
             config.agent_runtime.inactive_timeout = Duration::from_secs(5 * 60);
         })
@@ -68,42 +72,18 @@ async fn main2() -> Result<(), Box<dyn Error + Send + Sync>> {
     Ok(())
 }
 
-use std::{
-    fs::File,
-    io::{BufWriter, Write},
-};
+const CONNECTOR_CONFIG: &str = include_str!("kafka_connector.recon");
 
-//#[tokio::main]
-fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let config = make_config();
-    let mut file = File::create("/Users/greg/kafka_connector.recon")?;
-    let mut writer = BufWriter::new(&mut file);
-    write!(writer, "{}", print_recon_pretty(&config))?;
-    Ok(())
-}
-
-fn make_config() -> KafkaConnectorConfiguration {
-    KafkaConnectorConfiguration {
-        properties: [
-            ("bootstrap.servers", "datagen.nstream.cloud:9092"),
-            ("message.timeout.ms", "5000"),
-            ("group.id", "rust-consumer-test"),
-            ("auto.offset.reset", "smallest"),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect(),
-        log_level: KafkaLogLevel::Debug,
-        value_lanes: vec![ValueLaneSpec::new(Some("latest_key"), "$key", true)],
-        map_lanes: vec![MapLaneSpec::new(
-            "times",
-            "$payload.ranLatest.mean_ul_sinr",
-            "$payload.ranLatest.recorded_time",
-            false,
-            true,
-        )],
-        key_deserializer: DeserializationFormat::Int32(Endianness::LittleEndian),
-        payload_deserializer: DeserializationFormat::Json,
-        topics: vec!["cellular-integer-json".to_string()],
-    }
+async fn load_config(
+    path: Option<String>,
+) -> Result<KafkaConnectorConfiguration, Box<dyn Error + Send + Sync>> {
+    let content: String;
+    let recon = if let Some(path) = path {
+        content = tokio::fs::read_to_string(path).await?;
+        &content
+    } else {
+        CONNECTOR_CONFIG
+    };
+    let config = parse_recognize::<KafkaConnectorConfiguration>(recon, true)?;
+    Ok(config)
 }

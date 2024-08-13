@@ -27,17 +27,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         BasicValueDownlinkLifecycle::default().on_set_blocking(|old_value, new_value| {
             println!("'{old_value:?}' -> '{new_value:?}'");
         });
-    let view = client_handle
-        .value_downlink::<i32>(RemotePath::new(host, "/example/1", "lane"))
+    let _view = client_handle
+        .value_downlink::<i32>(RemotePath::new(host, "/kafka", "latest_key"))
         .lifecycle(lifecycle)
         .open()
         .await?;
-
-    let values = [1, 2, 3, 4, 5];
-
-    for value in values {
-        view.set(value).await?;
-    }
 
     task_handle.await?;
     Ok(())

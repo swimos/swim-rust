@@ -7,11 +7,12 @@ publish = false
 [dependencies]
 swimos = { workspace = true, features = ["server", "agent"] }
 swimos_client = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "fs"] }
 example-util = { path = "../example_util" }
 swimos_connector = { workspace = true }
 swimos_connector_kafka = { workspace = true, features = ["json"] }
 swimos_recon = { workspace = true }
+clap = { workspace = true }
 
 [[bin]]
 name = "kafka_connector_client"
