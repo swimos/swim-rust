@@ -23,7 +23,7 @@ use crate::{
         I32Deserializer, I64Deserializer, MessageDeserializer, ReconDeserializer,
         StringDeserializer, U32Deserializer, U64Deserializer, UuidDeserializer,
     },
-    error::DerserializerLoadError,
+    error::DeserializerLoadError,
 };
 
 /// Configuration parameters for the Kafka connector.
@@ -143,7 +143,7 @@ pub enum DeserializationFormat {
 
 impl DeserializationFormat {
     /// Attempt to load a deserializer based on the format descriptor.
-    pub async fn load(&self) -> Result<BoxMessageDeserializer, DerserializerLoadError> {
+    pub async fn load(&self) -> Result<BoxMessageDeserializer, DeserializerLoadError> {
         match self {
             DeserializationFormat::Bytes => Ok(BytesDeserializer.boxed()),
             DeserializationFormat::String => Ok(StringDeserializer.boxed()),
@@ -177,7 +177,7 @@ impl DeserializationFormat {
                     let mut contents = String::new();
                     file.read_to_string(&mut contents).await?;
                     let schema = apache_avro::Schema::parse_str(&contents)
-                        .map_err(|e| DerserializerLoadError::InvalidDescriptor(Box::new(e)))?;
+                        .map_err(|e| DeserializerLoadError::InvalidDescriptor(Box::new(e)))?;
                     Ok(crate::deser::AvroDeserializer::new(schema).boxed())
                 } else {
                     Ok(crate::deser::AvroDeserializer::default().boxed())
