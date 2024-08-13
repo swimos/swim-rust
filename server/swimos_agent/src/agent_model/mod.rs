@@ -267,7 +267,11 @@ pub trait AgentSpec: Sized + Send {
     /// no result if the lane does not exist.
     fn write_event(&self, lane: &str, buffer: &mut BytesMut) -> Option<WriteResult>;
 
-    /// Register a dynamically created item with the agent. The returned value is the unique ID of the
+    /// Register a dynamically created item with the agent. The returned value is the unique ID of the item.
+    ///
+    /// # Arguments
+    /// * `_name` - The name of the item.
+    /// * `_descriptor` - The kind of the item and any flags.
     fn register_dynamic_item(
         &self,
         _name: &str,

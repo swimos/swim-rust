@@ -118,6 +118,7 @@ pub trait LaneSpawner<Context> {
     /// # Arguments
     /// * `io` - IO channels, for the lane, connected to the runtime.
     /// * `kind` - The kind of the lane.
+    /// * `on_done` - A callback that produces an event handler that will be executed after the lane is registered.
     fn spawn_warp_lane(
         &self,
         name: &str,
