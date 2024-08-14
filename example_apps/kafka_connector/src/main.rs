@@ -24,12 +24,12 @@
 //! $ cargo run --bin value_client
 //! ```
 
-use std::{error::Error, time::Duration};
+use std::{error::Error, str::FromStr, time::Duration};
 
 use clap::Parser;
-use example_util::{example_logging, manage_handle};
+use example_util::{example_filter, manage_handle};
 use swimos::{
-    route::RoutePattern,
+    route::{RoutePattern, RouteUri},
     server::{Server, ServerBuilder},
 };
 use swimos_connector::ConnectorModel;
@@ -39,15 +39,22 @@ use swimos_recon::parser::parse_recognize;
 mod params;
 
 use params::Params;
+use tracing::error;
+use tracing_subscriber::filter::LevelFilter;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let Params { config } = Params::parse();
-    example_logging()?;
+    let Params {
+        config,
+        enable_logging,
+    } = Params::parse();
+    if enable_logging {
+        setup_logging()?;
+    }
 
     let connector_config = load_config(config).await?;
 
-    let route = RoutePattern::parse_str("/kafka}")?;
+    let route = RoutePattern::parse_str("/kafka")?;
 
     let connector_agent =
         ConnectorModel::for_fn(move || KafkaConnector::for_config(connector_config.clone()));
@@ -63,7 +70,14 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let (task, handle) = server.run();
 
-    let shutdown = manage_handle(handle);
+    let uri = RouteUri::from_str("/kafka")?;
+
+    let shutdown = async move {
+        if let Err(error) = handle.start_agent(uri).await {
+            error!(error = %error, "Failed to start connector agent.");
+        }
+        manage_handle(handle).await
+    };
 
     let (_, result) = tokio::join!(shutdown, task);
 
@@ -86,4 +100,10 @@ async fn load_config(
     };
     let config = parse_recognize::<KafkaConnectorConfiguration>(recon, true)?;
     Ok(config)
+}
+
+pub fn setup_logging() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let filter = example_filter()?.add_directive(LevelFilter::INFO.into());
+    tracing_subscriber::fmt().with_env_filter(filter).init();
+    Ok(())
 }

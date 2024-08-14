@@ -20,4 +20,7 @@ pub struct Params {
     /// Specify a Recon configuration file for the connector.
     #[arg(long)]
     pub config: Option<String>,
+    #[arg(long, default_value = "false")]
+    /// Specify that logging should be enabled.
+    pub enable_logging: bool,
 }

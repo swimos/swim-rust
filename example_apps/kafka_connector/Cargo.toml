@@ -12,7 +12,9 @@ example-util = { path = "../example_util" }
 swimos_connector = { workspace = true }
 swimos_connector_kafka = { workspace = true, features = ["json"] }
 swimos_recon = { workspace = true }
-clap = { workspace = true }
+clap = { workspace = true, features = ["derive"]}
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [[bin]]
 name = "kafka_connector_client"
