@@ -25,6 +25,6 @@ pub use config::{
 pub use connector::KafkaConnector;
 pub use deser::Endianness;
 pub use error::{
-    BadSelector, DerserializerLoadError, DeserializationError, InvalidLaneSpec, InvalidLanes,
+    BadSelector, DeserializationError, DeserializerLoadError, InvalidLaneSpec, InvalidLanes,
     KafkaConnectorError, LaneSelectorError,
 };

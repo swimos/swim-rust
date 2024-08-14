@@ -49,7 +49,7 @@ impl From<MessagePart> for MessageField {
     }
 }
 
-/// A lazy loader fro a component of a Kafka messages. This ensures that deserializers are only run if a selector
+/// A lazy loader for a component of a Kafka messages. This ensures that deserializers are only run if a selector
 /// refers to a component.
 pub trait Deferred {
     /// Get the deserialized component (computing it on the first call).
@@ -87,8 +87,7 @@ where
         if let Some(v) = inner {
             Ok(v)
         } else {
-            *inner = Some(f()?);
-            Ok(inner.as_ref().expect("Should be defined."))
+            Ok(inner.insert(f()?))
         }
     }
 }

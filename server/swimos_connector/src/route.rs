@@ -26,6 +26,7 @@ pub struct ConnectorModel<F> {
     connector_fac: F,
 }
 
+/// Trait for factory types that create a connector.
 pub trait ConnectorFactory {
     type ConnectorType: Connector + Send + 'static;
 
@@ -62,6 +63,7 @@ impl<C> ConnectorModel<CloneFactory<C>>
 where
     C: Connector + Clone + Send + Sync + 'static,
 {
+    /// Create a connector agent model for a connector that can be cloned and shared between threads.
     pub fn new(connector: C) -> Self {
         ConnectorModel {
             connector_fac: CloneFactory(connector),
@@ -74,6 +76,8 @@ where
     C: Connector + Send + 'static,
     F: Fn() -> C + Send + Sync + 'static,
 {
+    /// Create a connector agent model for a factory that will create the connector lifecycle. This
+    /// is required for the case where the connector itself is not [`Sync`].
     pub fn for_fn(connector_fac: F) -> Self {
         ConnectorModel { connector_fac }
     }
