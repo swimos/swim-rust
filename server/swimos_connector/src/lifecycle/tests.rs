@@ -22,23 +22,25 @@ use futures::{
 use parking_lot::Mutex;
 use swimos_agent::{
     agent_lifecycle::{on_start::OnStart, on_stop::OnStop},
-    agent_model::downlink::BoxDownlinkChannel,
+    agent_model::downlink::BoxDownlinkChannelFactory,
     event_handler::{
-        ActionContext, DownlinkSpawner, EventHandler, EventHandlerError, HandlerAction,
-        HandlerActionExt, HandlerFuture, LaneSpawnOnDone, LaneSpawner, SideEffect, Spawner,
-        StepResult,
+        ActionContext, DownlinkSpawnOnDone, DownlinkSpawner, EventHandler, EventHandlerError,
+        HandlerAction, HandlerActionExt, HandlerFuture, LaneSpawnOnDone, LaneSpawner, SideEffect,
+        Spawner, StepResult,
     },
     AgentMetadata,
 };
 use swimos_api::{
-    agent::WarpLaneKind,
-    error::{DownlinkRuntimeError, DynamicRegistrationError},
+    address::Address,
+    agent::{DownlinkKind, WarpLaneKind},
+    error::DynamicRegistrationError,
 };
+use swimos_model::Text;
 use swimos_utilities::trigger;
 use thiserror::Error;
 
 use crate::{
-    test_support::{make_meta, make_uri, TestContext},
+    test_support::{make_meta, make_uri},
     Connector, ConnectorAgent, ConnectorInitError, ConnectorLifecycle, ConnectorStream,
 };
 
@@ -56,8 +58,11 @@ impl Spawner<ConnectorAgent> for TestSpawner {
 impl DownlinkSpawner<ConnectorAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
-        _dl_channel: BoxDownlinkChannel<ConnectorAgent>,
-    ) -> Result<(), DownlinkRuntimeError> {
+        _path: Address<Text>,
+        _kind: DownlinkKind,
+        _make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
+        _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
+    ) {
         panic!("Spawning downlinks not supported.");
     }
 }
@@ -105,13 +110,11 @@ where
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
 
-    let context = TestContext;
     let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
 
     let mut action_context = ActionContext::new(
         spawner,
-        &context,
         spawner,
         spawner,
         &mut join_lane_init,

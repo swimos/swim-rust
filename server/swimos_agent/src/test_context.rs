@@ -17,32 +17,44 @@ use std::collections::HashMap;
 use bytes::BytesMut;
 use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use swimos_api::{
+    address::Address,
     agent::{
         AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind, WarpLaneKind,
     },
     error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, OpenStoreError},
 };
+use swimos_model::Text;
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
 
 use crate::{
-    agent_model::downlink::BoxDownlinkChannel,
+    agent_model::downlink::BoxDownlinkChannelFactory,
     event_handler::{
-        ActionContext, BoxJoinLaneInit, DownlinkSpawner, HandlerAction, HandlerFuture,
-        LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
+        ActionContext, BoxJoinLaneInit, DownlinkSpawnOnDone, DownlinkSpawner, EventHandler,
+        HandlerAction, HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
     },
     meta::AgentMetadata,
+    test_util::TestDownlinkContext,
 };
 
 struct NoSpawn;
+pub struct NoDownlinks;
 pub struct DummyAgentContext;
 
-pub fn no_downlink<Context>(_dl: BoxDownlinkChannel<Context>) -> Result<(), DownlinkRuntimeError> {
-    panic!("Launching downlinks no supported.");
-}
-
 const NO_SPAWN: NoSpawn = NoSpawn;
-const NO_AGENT: DummyAgentContext = DummyAgentContext;
 pub const NO_DYN_LANES: NoDynamicLanes = NoDynamicLanes;
+pub const NO_DOWNLINKS: NoDownlinks = NoDownlinks;
+
+impl<Context> DownlinkSpawner<Context> for NoDownlinks {
+    fn spawn_downlink(
+        &self,
+        _path: Address<Text>,
+        _kind: DownlinkKind,
+        _make_channel: BoxDownlinkChannelFactory<Context>,
+        _on_done: DownlinkSpawnOnDone<Context>,
+    ) {
+        panic!("Opening downlinks not supported.")
+    }
+}
 
 pub struct NoDynamicLanes;
 
@@ -63,8 +75,7 @@ pub fn dummy_context<'a, Context>(
 ) -> ActionContext<'a, Context> {
     ActionContext::new(
         &NO_SPAWN,
-        &NO_AGENT,
-        &no_downlink,
+        &NO_DOWNLINKS,
         &NO_DYN_LANES,
         join_lane_init,
         ad_hoc_buffer,
@@ -117,11 +128,8 @@ impl AgentContext for DummyAgentContext {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run_with_futures<H, Agent>(
-    agent_context: &dyn AgentContext,
-    downlink_spawner: &dyn DownlinkSpawner<Agent>,
-    lane_spawner: &dyn LaneSpawner<Agent>,
+    context: &TestDownlinkContext<Agent>,
     agent: &Agent,
     meta: AgentMetadata<'_>,
     inits: &mut HashMap<u64, BoxJoinLaneInit<'static, Agent>>,
@@ -134,14 +142,8 @@ where
     let pending = FuturesUnordered::new();
 
     let result = loop {
-        let mut action_context = ActionContext::new(
-            &pending,
-            agent_context,
-            downlink_spawner,
-            lane_spawner,
-            inits,
-            ad_hoc_buffer,
-        );
+        let mut action_context =
+            ActionContext::new(&pending, context, context, inits, ad_hoc_buffer);
         match handler.step(&mut action_context, meta, agent) {
             StepResult::Continue { .. } => {}
             StepResult::Fail(err) => panic!("Handler failed: {:?}", err),
@@ -151,26 +153,13 @@ where
         };
     };
 
-    run_event_handlers(
-        agent_context,
-        downlink_spawner,
-        lane_spawner,
-        agent,
-        meta,
-        inits,
-        ad_hoc_buffer,
-        pending,
-    )
-    .await;
+    run_event_handlers(context, agent, meta, inits, ad_hoc_buffer, pending).await;
 
     result
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn run_event_handlers<'a, Agent>(
-    agent_context: &dyn AgentContext,
-    downlink_spawner: &dyn DownlinkSpawner<Agent>,
-    lane_spawner: &dyn LaneSpawner<Agent>,
+    context: &TestDownlinkContext<Agent>,
     agent: &Agent,
     meta: AgentMetadata<'_>,
     inits: &mut HashMap<u64, BoxJoinLaneInit<'static, Agent>>,
@@ -178,22 +167,37 @@ pub async fn run_event_handlers<'a, Agent>(
     mut handlers: FuturesUnordered<HandlerFuture<Agent>>,
 ) {
     if !handlers.is_empty() {
-        while let Some(mut h) = handlers.next().await {
-            loop {
-                let mut action_context = ActionContext::new(
-                    &handlers,
-                    agent_context,
-                    downlink_spawner,
-                    lane_spawner,
-                    inits,
-                    ad_hoc_buffer,
-                );
-                match h.step(&mut action_context, meta, agent) {
-                    StepResult::Continue { .. } => {}
-                    StepResult::Fail(err) => panic!("Handler failed: {:?}", err),
-                    StepResult::Complete { .. } => break,
-                };
+        while let Some(h) = handlers.next().await {
+            let mut dl_handlers = vec![];
+            run_event_handler(context, agent, meta, inits, ad_hoc_buffer, &handlers, h);
+            dl_handlers.extend(context.handle_dl_requests(agent));
+
+            while let Some(h) = dl_handlers.pop() {
+                run_event_handler(context, agent, meta, inits, ad_hoc_buffer, &handlers, h);
+                dl_handlers.extend(context.handle_dl_requests(agent));
             }
         }
+    }
+}
+
+fn run_event_handler<Agent, H>(
+    context: &TestDownlinkContext<Agent>,
+    agent: &Agent,
+    meta: AgentMetadata<'_>,
+    inits: &mut HashMap<u64, BoxJoinLaneInit<'static, Agent>>,
+    ad_hoc_buffer: &mut BytesMut,
+    handlers: &FuturesUnordered<HandlerFuture<Agent>>,
+    mut handler: H,
+) where
+    H: EventHandler<Agent>,
+{
+    loop {
+        let mut action_context =
+            ActionContext::new(handlers, context, context, inits, ad_hoc_buffer);
+        match handler.step(&mut action_context, meta, agent) {
+            StepResult::Continue { .. } => {}
+            StepResult::Fail(err) => panic!("Handler failed: {:?}", err),
+            StepResult::Complete { .. } => break,
+        };
     }
 }

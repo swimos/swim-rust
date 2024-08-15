@@ -45,7 +45,7 @@ use tokio::sync::mpsc;
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::{debug, error, info, trace};
 
-use crate::event_handler::LocalBoxEventHandler;
+use crate::{agent_model::downlink::DownlinkChannelFactory, event_handler::LocalBoxEventHandler};
 use crate::{
     agent_model::downlink::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
@@ -273,15 +273,25 @@ where
         }
     }
 
-    pub fn create<Context>(
+    pub fn dl_state(&self) -> &Arc<AtomicU8> {
+        &self.dl_state
+    }
+}
+
+impl<K, V, LC, Context> DownlinkChannelFactory<Context> for MapDownlinkFactory<K, V, LC>
+where
+    K: Hash + Eq + Ord + Clone + Form + Send + 'static,
+    V: Form + Send + 'static,
+    K::Rec: Send,
+    V::Rec: Send,
+    LC: MapDownlinkLifecycle<K, V, Context> + 'static,
+{
+    fn create(
         self,
         context: &Context,
         sender: ByteWriter,
         receiver: ByteReader,
-    ) -> BoxDownlinkChannel<Context>
-    where
-        LC: MapDownlinkLifecycle<K, V, Context> + 'static,
-    {
+    ) -> BoxDownlinkChannel<Context> {
         let MapDownlinkFactory {
             address,
             state,
@@ -306,8 +316,13 @@ where
         Box::new(chan)
     }
 
-    pub fn dl_state(&self) -> &Arc<AtomicU8> {
-        &self.dl_state
+    fn create_box(
+        self: Box<Self>,
+        context: &Context,
+        tx: ByteWriter,
+        rx: ByteReader,
+    ) -> BoxDownlinkChannel<Context> {
+        (*self).create(context, tx, rx)
     }
 }
 

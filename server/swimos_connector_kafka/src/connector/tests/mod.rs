@@ -23,35 +23,26 @@ use std::{
 };
 
 use bytes::BytesMut;
-use futures::{
-    future::{join, BoxFuture},
-    stream::FuturesUnordered,
-    StreamExt,
-};
+use futures::{future::join, stream::FuturesUnordered, StreamExt};
 use swimos_agent::{
     agent_model::{
-        downlink::BoxDownlinkChannel, AgentSpec, ItemDescriptor, ItemFlags, WarpLaneKind,
+        downlink::BoxDownlinkChannelFactory, AgentSpec, ItemDescriptor, ItemFlags, WarpLaneKind,
     },
     event_handler::{
-        ActionContext, DownlinkSpawner, EventHandler, HandlerFuture, LaneSpawnOnDone, LaneSpawner,
-        Spawner, StepResult,
+        ActionContext, DownlinkSpawnOnDone, DownlinkSpawner, EventHandler, HandlerFuture,
+        LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
     },
     AgentMetadata,
 };
 use swimos_api::{
-    agent::{
-        AgentConfig, AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind,
-    },
-    error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, OpenStoreError},
+    address::Address,
+    agent::{AgentConfig, DownlinkKind},
+    error::DynamicRegistrationError,
 };
 use swimos_connector::ConnectorAgent;
-use swimos_model::{Item, Value};
+use swimos_model::{Item, Text, Value};
 use swimos_recon::print_recon_compact;
-use swimos_utilities::{
-    byte_channel::{ByteReader, ByteWriter},
-    routing::RouteUri,
-    trigger,
-};
+use swimos_utilities::{routing::RouteUri, trigger};
 use tokio::time::timeout;
 
 use crate::{
@@ -83,48 +74,6 @@ impl std::fmt::Debug for LaneRequest {
     }
 }
 
-struct TestContext;
-
-impl AgentContext for TestContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
-        panic!("Unexpected call.");
-    }
-
-    fn add_lane(
-        &self,
-        _name: &str,
-        _lane_kind: WarpLaneKind,
-        _config: LaneConfig,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
-        panic!("Unexpected call.");
-    }
-
-    fn add_http_lane(
-        &self,
-        _name: &str,
-    ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
-        panic!("Unexpected call.");
-    }
-
-    fn open_downlink(
-        &self,
-        _host: Option<&str>,
-        _node: &str,
-        _lane: &str,
-        _kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
-        panic!("Unexpected call.");
-    }
-
-    fn add_store(
-        &self,
-        _name: &str,
-        _kind: StoreKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
-        panic!("Unexpected call.");
-    }
-}
-
 #[derive(Default, Debug)]
 struct TestSpawner {
     suspended: FuturesUnordered<HandlerFuture<ConnectorAgent>>,
@@ -140,8 +89,11 @@ impl Spawner<ConnectorAgent> for TestSpawner {
 impl DownlinkSpawner<ConnectorAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
-        _dl_channel: BoxDownlinkChannel<ConnectorAgent>,
-    ) -> Result<(), DownlinkRuntimeError> {
+        _path: Address<Text>,
+        _kind: DownlinkKind,
+        _make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
+        _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
+    ) {
         panic!("Opening downlinks not supported.");
     }
 }
@@ -237,11 +189,9 @@ fn run_handler<H: EventHandler<ConnectorAgent>>(
     let meta = make_meta(&uri, &route_params);
     let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
-    let agent_context = TestContext;
 
     let mut action_context = ActionContext::new(
         spawner,
-        &agent_context,
         spawner,
         spawner,
         &mut join_lane_init,

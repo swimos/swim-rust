@@ -16,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use bytes::BytesMut;
-use swimos_agent::agent_model::downlink::BoxDownlinkChannel;
+use swimos_agent::agent_model::downlink::BoxDownlinkChannelFactory;
 use swimos_agent::event_handler::{
     ActionContext, DownlinkSpawner, HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner,
     StepResult,
@@ -24,22 +24,23 @@ use swimos_agent::event_handler::{
 use swimos_agent::lanes::LaneItem;
 use swimos_agent::{
     agent_model::{AgentSpec, ItemDescriptor, ItemFlags, WriteResult},
-    event_handler::EventHandler,
+    event_handler::{DownlinkSpawnOnDone, EventHandler},
     AgentItem,
 };
 use swimos_agent_protocol::encoding::lane::{MapLaneResponseDecoder, ValueLaneResponseDecoder};
 use swimos_agent_protocol::{LaneResponse, MapMessage, MapOperation};
-use swimos_api::error::DownlinkRuntimeError;
+use swimos_api::address::Address;
+use swimos_api::agent::DownlinkKind;
 use swimos_api::{
     agent::{StoreKind, WarpLaneKind},
     error::DynamicRegistrationError,
 };
-use swimos_model::Value;
+use swimos_model::{Text, Value};
 use swimos_recon::print_recon_compact;
 use tokio_util::codec::Decoder;
 use uuid::Uuid;
 
-use crate::test_support::{make_meta, make_uri, TestContext};
+use crate::test_support::{make_meta, make_uri};
 use crate::ConnectorAgent;
 
 use super::{GenericMapLane, GenericValueLane};
@@ -392,8 +393,11 @@ impl Spawner<ConnectorAgent> for NoSpawn {
 impl DownlinkSpawner<ConnectorAgent> for NoSpawn {
     fn spawn_downlink(
         &self,
-        _dl_channel: BoxDownlinkChannel<ConnectorAgent>,
-    ) -> Result<(), DownlinkRuntimeError> {
+        _path: Address<Text>,
+        _kind: DownlinkKind,
+        _make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
+        _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
+    ) {
         panic!("Spawning downlinks not supported.");
     }
 }
@@ -418,13 +422,11 @@ where
     let meta = make_meta(&uri, &route_params);
 
     let no_spawn = NoSpawn;
-    let context = TestContext;
     let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
 
     let mut action_context = ActionContext::new(
         &no_spawn,
-        &context,
         &no_spawn,
         &no_spawn,
         &mut join_lane_init,

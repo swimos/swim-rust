@@ -43,6 +43,7 @@ use tracing::{debug, error, info, trace};
 use crate::{
     agent_model::downlink::{
         BoxDownlinkChannel, DownlinkChannel, DownlinkChannelError, DownlinkChannelEvent,
+        DownlinkChannelFactory,
     },
     config::SimpleDownlinkConfig,
     downlink_lifecycle::ValueDownlinkLifecycle,
@@ -120,16 +121,24 @@ where
         }
     }
 
-    pub fn create<Context>(
+    pub fn dl_state(&self) -> &Arc<AtomicU8> {
+        &self.dl_state
+    }
+}
+
+impl<T, LC, State, Context> DownlinkChannelFactory<Context> for ValueDownlinkFactory<T, LC, State>
+where
+    T: Form + Send + 'static,
+    T::Rec: Send,
+    State: ValueDlState<T> + Send + 'static,
+    LC: ValueDownlinkLifecycle<T, Context> + 'static,
+{
+    fn create(
         self,
         context: &Context,
         sender: ByteWriter,
         receiver: ByteReader,
-    ) -> BoxDownlinkChannel<Context>
-    where
-        State: ValueDlState<T> + Send + 'static,
-        LC: ValueDownlinkLifecycle<T, Context> + 'static,
-    {
+    ) -> BoxDownlinkChannel<Context> {
         let ValueDownlinkFactory {
             address,
             state,
@@ -154,8 +163,13 @@ where
         Box::new(chan)
     }
 
-    pub fn dl_state(&self) -> &Arc<AtomicU8> {
-        &self.dl_state
+    fn create_box(
+        self: Box<Self>,
+        context: &Context,
+        tx: ByteWriter,
+        rx: ByteReader,
+    ) -> BoxDownlinkChannel<Context> {
+        (*self).create(context, tx, rx)
     }
 }
 

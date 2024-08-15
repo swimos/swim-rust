@@ -139,17 +139,12 @@ where
                 ValueDownlinkFactory::new(path.clone(), lifecycle, state, config, stop_rx, rx);
             let handle = ValueDownlinkHandle::new(path.clone(), tx, stop_tx, fac.dl_state());
 
-            action_context.start_downlink(
-                path,
-                DownlinkKind::Value,
-                move |con, writer, reader| fac.create(con, writer, reader),
-                |result| {
-                    if let Err(err) = result {
-                        error!(error = %err, "Registering value downlink failed.");
-                    }
-                    UnitHandler::default()
-                },
-            );
+            action_context.start_downlink(path, DownlinkKind::Value, fac, |result| {
+                if let Err(err) = result {
+                    error!(error = %err, "Registering value downlink failed.");
+                }
+                UnitHandler::default()
+            });
 
             StepResult::done(handle)
         } else {
@@ -191,17 +186,12 @@ where
             } else {
                 DownlinkKind::Event
             };
-            action_context.start_downlink(
-                address,
-                kind,
-                move |_con, _writer, receiver| fac.create(receiver),
-                |result| {
-                    if let Err(err) = result {
-                        error!(error = %err, "Registering event downlink failed.");
-                    }
-                    UnitHandler::default()
-                },
-            );
+            action_context.start_downlink(address, kind, fac, |result| {
+                if let Err(err) = result {
+                    error!(error = %err, "Registering event downlink failed.");
+                }
+                UnitHandler::default()
+            });
             StepResult::done(handle)
         } else {
             StepResult::after_done()
@@ -234,17 +224,12 @@ where
             let fac = MapDownlinkFactory::new(address.clone(), lifecycle, config, stop_rx, rx);
             let handle = MapDownlinkHandle::new(address.clone(), tx, stop_tx, fac.dl_state());
 
-            action_context.start_downlink(
-                address,
-                DownlinkKind::Map,
-                move |con, writer, reader| fac.create(con, writer, reader),
-                |result| {
-                    if let Err(err) = result {
-                        error!(error = %err, "Registering map downlink failed.");
-                    }
-                    UnitHandler::default()
-                },
-            );
+            action_context.start_downlink(address, DownlinkKind::Map, fac, |result| {
+                if let Err(err) = result {
+                    error!(error = %err, "Registering map downlink failed.");
+                }
+                UnitHandler::default()
+            });
 
             StepResult::done(handle)
         } else {
@@ -322,3 +307,22 @@ pub trait DownlinkChannel<Context> {
 /// A downlink channel that can be used by dynamic dispatch. As the agent task cannot know about the
 /// specific type of any opened downlinks, it views them through this interface.
 pub type BoxDownlinkChannel<Context> = Box<dyn DownlinkChannel<Context> + Send>;
+
+pub trait DownlinkChannelFactory<Context> {
+    fn create(
+        self,
+        context: &Context,
+        tx: ByteWriter,
+        rx: ByteReader,
+    ) -> BoxDownlinkChannel<Context>;
+
+    fn create_box(
+        self: Box<Self>,
+        context: &Context,
+        tx: ByteWriter,
+        rx: ByteReader,
+    ) -> BoxDownlinkChannel<Context>;
+}
+
+pub type BoxDownlinkChannelFactory<Context> =
+    Box<dyn DownlinkChannelFactory<Context> + Send + 'static>;

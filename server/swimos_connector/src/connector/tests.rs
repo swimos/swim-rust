@@ -18,16 +18,18 @@ use futures::StreamExt;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::{convert::Infallible, sync::Arc};
-use swimos_agent::agent_model::downlink::BoxDownlinkChannel;
+use swimos_agent::agent_model::downlink::BoxDownlinkChannelFactory;
 use swimos_agent::event_handler::{
-    ActionContext, DownlinkSpawner, EventHandler, HandlerAction, HandlerFuture, LaneSpawnOnDone,
-    LaneSpawner, Spawner, StepResult,
+    ActionContext, DownlinkSpawnOnDone, DownlinkSpawner, EventHandler, HandlerAction,
+    HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
 };
 use swimos_agent::AgentMetadata;
-use swimos_api::agent::WarpLaneKind;
-use swimos_api::error::{DownlinkRuntimeError, DynamicRegistrationError};
+use swimos_api::address::Address;
+use swimos_api::agent::{DownlinkKind, WarpLaneKind};
+use swimos_api::error::DynamicRegistrationError;
+use swimos_model::Text;
 
-use crate::test_support::{make_meta, make_uri, TestContext};
+use crate::test_support::{make_meta, make_uri};
 use crate::{ConnectorAgent, ConnectorStream};
 
 #[derive(Debug)]
@@ -103,8 +105,11 @@ impl Spawner<ConnectorAgent> for TestSpawner {
 impl DownlinkSpawner<ConnectorAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
-        _dl_channel: BoxDownlinkChannel<ConnectorAgent>,
-    ) -> Result<(), DownlinkRuntimeError> {
+        _path: Address<Text>,
+        _kind: DownlinkKind,
+        _make_channel: BoxDownlinkChannelFactory<ConnectorAgent>,
+        _on_done: DownlinkSpawnOnDone<ConnectorAgent>,
+    ) {
         panic!("Spawning downlinks not supported.");
     }
 }
@@ -128,13 +133,11 @@ where
     let route_params = HashMap::new();
     let meta = make_meta(&uri, &route_params);
 
-    let context = TestContext;
     let mut join_lane_init = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
 
     let mut action_context = ActionContext::new(
         spawner,
-        &context,
         spawner,
         spawner,
         &mut join_lane_init,

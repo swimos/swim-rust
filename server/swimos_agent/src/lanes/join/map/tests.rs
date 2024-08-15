@@ -30,13 +30,13 @@ use crate::event_handler::{
     ActionContext, BoxJoinLaneInit, EventHandlerError, HandlerAction, Modification,
 };
 use crate::item::AgentItem;
-use crate::lanes::join::test_util::{TestDlContextInner, TestDownlinkContext};
 use crate::lanes::join_map::default_lifecycle::DefaultJoinMapLifecycle;
 use crate::lanes::join_map::{
     AddDownlinkAction, JoinMapAddDownlink, JoinMapLaneGet, JoinMapLaneGetMap, JoinMapLaneWithEntry,
     JoinMapRemoveDownlink,
 };
 use crate::test_context::{dummy_context, run_event_handlers, run_with_futures};
+use crate::test_util::{TestDlContextInner, TestDownlinkContext};
 use crate::{event_handler::StepResult, item::MapItem, meta::AgentMetadata};
 
 use super::{JoinMapLane, LifecycleInitializer};
@@ -238,14 +238,8 @@ async fn join_map_lane_add_downlinks_event_handler() {
     let mut inits = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
 
-    let mut action_context = ActionContext::new(
-        &spawner,
-        &context,
-        &context,
-        &context,
-        &mut inits,
-        &mut ad_hoc_buffer,
-    );
+    let mut action_context =
+        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
     let result = handler.step(&mut action_context, meta, &agent);
     check_result(result, false, false, Some(()));
 
@@ -256,8 +250,6 @@ async fn join_map_lane_add_downlinks_event_handler() {
     ));
 
     run_event_handlers(
-        &context,
-        &context,
         &context,
         &agent,
         meta,
@@ -271,7 +263,9 @@ async fn join_map_lane_add_downlinks_event_handler() {
     let TestDlContextInner {
         downlink_channels,
         downlinks,
+        requests,
     } = &*guard;
+    assert!(requests.is_empty());
     assert_eq!(downlink_channels.len(), 1);
     assert!(downlink_channels.contains_key(&address));
     match downlinks.as_slice() {
@@ -316,20 +310,12 @@ async fn open_downlink_from_registered() {
     let count = Arc::new(AtomicUsize::new(0));
 
     let spawner = FuturesUnordered::new();
-    let mut action_context = ActionContext::new(
-        &spawner,
-        &context,
-        &context,
-        &context,
-        &mut inits,
-        &mut ad_hoc_buffer,
-    );
+    let mut action_context =
+        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
     register_lifecycle(&mut action_context, &agent, count.clone());
     assert!(spawner.is_empty());
 
     run_with_futures(
-        &context,
-        &context,
         &context,
         &agent,
         meta,
@@ -409,20 +395,12 @@ async fn stop_downlink() {
     let count = Arc::new(AtomicUsize::new(0));
 
     let spawner = FuturesUnordered::new();
-    let mut action_context = ActionContext::new(
-        &spawner,
-        &context,
-        &context,
-        &context,
-        &mut inits,
-        &mut ad_hoc_buffer,
-    );
+    let mut action_context =
+        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
     register_lifecycle(&mut action_context, &agent, count.clone());
     assert!(spawner.is_empty());
 
     run_with_futures(
-        &context,
-        &context,
         &context,
         &agent,
         meta,

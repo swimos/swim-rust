@@ -29,21 +29,21 @@ use swimos_api::{
 };
 use swimos_utilities::routing::RouteUri;
 
-use crate::lanes::join_value::JoinValueRemoveDownlink;
 use crate::{
     event_handler::{
         ActionContext, BoxJoinLaneInit, EventHandlerError, HandlerAction, Modification, StepResult,
     },
     item::{AgentItem, MapItem},
-    lanes::{
-        join::test_util::{TestDlContextInner, TestDownlinkContext},
-        join_value::{
-            default_lifecycle::DefaultJoinValueLifecycle, AddDownlinkAction, JoinValueLaneGet,
-            JoinValueLaneGetMap, JoinValueLaneWithEntry,
-        },
+    lanes::join_value::{
+        default_lifecycle::DefaultJoinValueLifecycle, AddDownlinkAction, JoinValueLaneGet,
+        JoinValueLaneGetMap, JoinValueLaneWithEntry,
     },
     meta::AgentMetadata,
     test_context::{dummy_context, run_event_handlers, run_with_futures},
+};
+use crate::{
+    lanes::join_value::JoinValueRemoveDownlink,
+    test_util::{TestDlContextInner, TestDownlinkContext},
 };
 
 use super::{JoinValueAddDownlink, JoinValueLane, LifecycleInitializer};
@@ -293,14 +293,8 @@ async fn join_value_lane_add_downlinks_event_handler() {
     let mut inits = HashMap::new();
     let mut ad_hoc_buffer = BytesMut::new();
 
-    let mut action_context = ActionContext::new(
-        &spawner,
-        &context,
-        &context,
-        &context,
-        &mut inits,
-        &mut ad_hoc_buffer,
-    );
+    let mut action_context =
+        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
     let result = handler.step(&mut action_context, meta, &agent);
     check_result(result, false, false, Some(()));
 
@@ -311,8 +305,6 @@ async fn join_value_lane_add_downlinks_event_handler() {
     ));
 
     run_event_handlers(
-        &context,
-        &context,
         &context,
         &agent,
         meta,
@@ -326,9 +318,11 @@ async fn join_value_lane_add_downlinks_event_handler() {
     let TestDlContextInner {
         downlink_channels,
         downlinks,
+        requests,
     } = &*guard;
     assert_eq!(downlink_channels.len(), 1);
     assert!(downlink_channels.contains_key(&address));
+    assert!(requests.is_empty());
     match downlinks.as_slice() {
         [channel] => {
             assert_eq!(channel.kind(), DownlinkKind::Event);
@@ -371,20 +365,12 @@ async fn open_downlink_from_registered() {
     let count = Arc::new(AtomicUsize::new(0));
 
     let spawner = FuturesUnordered::new();
-    let mut action_context = ActionContext::new(
-        &spawner,
-        &context,
-        &context,
-        &context,
-        &mut inits,
-        &mut ad_hoc_buffer,
-    );
+    let mut action_context =
+        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
     register_lifecycle(&mut action_context, &agent, count.clone());
     assert!(spawner.is_empty());
 
     run_with_futures(
-        &context,
-        &context,
         &context,
         &agent,
         meta,
@@ -415,20 +401,12 @@ async fn stop_downlink() {
     let count = Arc::new(AtomicUsize::new(0));
 
     let spawner = FuturesUnordered::new();
-    let mut action_context = ActionContext::new(
-        &spawner,
-        &context,
-        &context,
-        &context,
-        &mut inits,
-        &mut ad_hoc_buffer,
-    );
+    let mut action_context =
+        ActionContext::new(&spawner, &context, &context, &mut inits, &mut ad_hoc_buffer);
     register_lifecycle(&mut action_context, &agent, count.clone());
     assert!(spawner.is_empty());
 
     run_with_futures(
-        &context,
-        &context,
         &context,
         &agent,
         meta,

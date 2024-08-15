@@ -14,19 +14,17 @@
 
 use std::{
     any::{Any, TypeId},
-    cell::RefCell,
     collections::HashMap,
     marker::PhantomData,
 };
 
 use bytes::BytesMut;
 use frunk::{coproduct::CNil, Coproduct};
-use futures::FutureExt;
 use static_assertions::assert_obj_safe;
 use swimos_agent_protocol::{encoding::ad_hoc::AdHocCommandEncoder, AdHocCommand};
 use swimos_api::{
     address::Address,
-    agent::{AgentContext, DownlinkKind, WarpLaneKind},
+    agent::{DownlinkKind, WarpLaneKind},
     error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, LaneSpawnError},
 };
 use swimos_form::{read::RecognizerReadable, write::StructuralWritable};
@@ -41,7 +39,10 @@ use thiserror::Error;
 use tokio_util::codec::{Decoder, Encoder};
 
 use crate::{
-    agent_model::downlink::{BoxDownlinkChannel, MapDownlinkHandle, ValueDownlinkHandle},
+    agent_model::downlink::{
+        BoxDownlinkChannel, BoxDownlinkChannelFactory, DownlinkChannelFactory, MapDownlinkHandle,
+        ValueDownlinkHandle,
+    },
     lanes::JoinLaneKind,
     meta::AgentMetadata,
 };
@@ -54,7 +55,6 @@ pub use futures::future::Either;
 pub(crate) mod check_step;
 mod command;
 mod handler_fn;
-mod register_downlink;
 mod suspend;
 #[cfg(test)]
 mod tests;
@@ -70,46 +70,25 @@ pub use handler_fn::{
     MapUpdateFn, RequestFn0, RequestFn1, TakeFn, UpdateBorrowFn, UpdateFn,
 };
 
-use self::register_downlink::RegisterHostedDownlink;
-
-/// Trait for contexts that can spawn a new task into the agent runtime to run the lifecycle for a downlink.
 pub trait DownlinkSpawner<Context> {
-    /// Spawn a new downlink runtime task into the agent runtime.
-    ///
-    /// # Arguments
-    /// * `dl_channel` - The downlink task.
     fn spawn_downlink(
         &self,
-        dl_channel: BoxDownlinkChannel<Context>,
-    ) -> Result<(), DownlinkRuntimeError>;
+        path: Address<Text>,
+        kind: DownlinkKind,
+        make_channel: BoxDownlinkChannelFactory<Context>,
+        on_done: DownlinkSpawnOnDone<Context>,
+    );
 }
 
-impl<Context> DownlinkSpawner<Context> for RefCell<Vec<BoxDownlinkChannel<Context>>> {
-    fn spawn_downlink(
-        &self,
-        dl_channel: BoxDownlinkChannel<Context>,
-    ) -> Result<(), DownlinkRuntimeError> {
-        self.borrow_mut().push(dl_channel);
-        Ok(())
-    }
-}
+type SpawnHandler<Context> = Box<dyn EventHandler<Context> + Send + 'static>;
 
-impl<F, Context> DownlinkSpawner<Context> for F
-where
-    F: Fn(BoxDownlinkChannel<Context>) -> Result<(), DownlinkRuntimeError>,
-{
-    fn spawn_downlink(
-        &self,
-        dl_channel: BoxDownlinkChannel<Context>,
-    ) -> Result<(), DownlinkRuntimeError> {
-        (*self)(dl_channel)
-    }
-}
-
-type LaneSpawnHandler<Context> = Box<dyn EventHandler<Context> + Send + 'static>;
 #[doc(hidden)]
 pub type LaneSpawnOnDone<Context> =
-    Box<dyn FnOnce(Result<u64, LaneSpawnError>) -> LaneSpawnHandler<Context> + Send + 'static>;
+    Box<dyn FnOnce(Result<u64, LaneSpawnError>) -> SpawnHandler<Context> + Send + 'static>;
+
+#[doc(hidden)]
+pub type DownlinkSpawnOnDone<Context> =
+    Box<dyn FnOnce(Result<(), DownlinkRuntimeError>) -> SpawnHandler<Context> + Send + 'static>;
 
 /// Trait for contexts that can spawn a new lane into the agent task.
 pub trait LaneSpawner<Context> {
@@ -132,7 +111,6 @@ pub trait LaneSpawner<Context> {
 /// implementations and so can only be used from this crate.
 pub struct ActionContext<'a, Context> {
     spawner: &'a dyn Spawner<Context>,
-    agent_context: &'a dyn AgentContext,
     downlink: &'a dyn DownlinkSpawner<Context>,
     lanes: &'a dyn LaneSpawner<Context>,
     join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
@@ -145,19 +123,9 @@ impl<'a, Context> Spawner<Context> for ActionContext<'a, Context> {
     }
 }
 
-impl<'a, Context> DownlinkSpawner<Context> for ActionContext<'a, Context> {
-    fn spawn_downlink(
-        &self,
-        dl_channel: BoxDownlinkChannel<Context>,
-    ) -> Result<(), DownlinkRuntimeError> {
-        self.downlink.spawn_downlink(dl_channel)
-    }
-}
-
 impl<'a, Context> ActionContext<'a, Context> {
     pub fn new(
         spawner: &'a dyn Spawner<Context>,
-        agent_context: &'a dyn AgentContext,
         downlink: &'a dyn DownlinkSpawner<Context>,
         lanes: &'a dyn LaneSpawner<Context>,
         join_lane_init: &'a mut HashMap<u64, BoxJoinLaneInit<'static, Context>>,
@@ -165,7 +133,6 @@ impl<'a, Context> ActionContext<'a, Context> {
     ) -> Self {
         ActionContext {
             spawner,
-            agent_context,
             downlink,
             lanes,
             join_lane_init,
@@ -206,38 +173,25 @@ impl<'a, Context> ActionContext<'a, Context> {
     /// downlink lifecycle.
     /// * `on_done` - A callback that will be executed when the downlink has started (or failed to start).
     #[doc(hidden)]
-    pub(crate) fn start_downlink<S, F, OnDone, H>(
+    pub(crate) fn start_downlink<F, OnDone, H>(
         &self,
-        path: Address<S>,
+        path: Address<Text>,
         kind: DownlinkKind,
         make_channel: F,
         on_done: OnDone,
     ) where
         Context: 'static,
-        S: AsRef<str>,
-        F: FnOnce(&Context, ByteWriter, ByteReader) -> BoxDownlinkChannel<Context> + Send + 'static,
+        F: DownlinkChannelFactory<Context> + Send + 'static,
         OnDone: FnOnce(Result<(), DownlinkRuntimeError>) -> H + Send + 'static,
         H: EventHandler<Context> + Send + 'static,
     {
-        let Address { host, node, lane } = path;
-        let external = self.agent_context.open_downlink(
-            host.as_ref().map(AsRef::as_ref),
-            node.as_ref(),
-            lane.as_ref(),
-            kind,
-        );
-        let fut = external
-            .map(move |result| match result {
-                Ok((writer, reader)) => {
-                    let con = ConstructDownlink {
-                        inner: Some((writer, reader, make_channel)),
-                    };
-                    Box::new(con.and_then(RegisterHostedDownlink::new).and_then(on_done))
-                }
-                Err(e) => on_done(Err(e)).boxed_local(),
-            })
-            .boxed();
-        self.spawn_suspend(fut);
+        let on_done_boxed = move |result| {
+            let event_handler: SpawnHandler<Context> = Box::new(on_done(result));
+            event_handler
+        };
+        let handler: DownlinkSpawnOnDone<Context> = Box::new(on_done_boxed);
+        self.downlink
+            .spawn_downlink(path, kind, Box::new(make_channel), handler)
     }
 
     /// Attempt to attach a new lane to the agent runtime.
@@ -288,7 +242,7 @@ impl<'a, Context> ActionContext<'a, Context> {
     }
 }
 
-fn wrap<Context, F, H>(f: F, result: Result<u64, LaneSpawnError>) -> LaneSpawnHandler<Context>
+fn wrap<Context, F, H>(f: F, result: Result<u64, LaneSpawnError>) -> SpawnHandler<Context>
 where
     F: FnOnce(Result<(), LaneSpawnError>) -> H + Send + 'static,
     H: EventHandler<Context> + Send + 'static,

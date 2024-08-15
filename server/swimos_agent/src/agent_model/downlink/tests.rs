@@ -12,71 +12,43 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use bytes::BytesMut;
-use futures::{
-    future::{ready, BoxFuture},
-    stream::FuturesUnordered,
-    FutureExt, StreamExt,
-};
+use futures::{stream::FuturesUnordered, StreamExt};
 use parking_lot::Mutex;
 use swimos_api::{
     address::Address,
-    agent::{
-        AgentConfig, AgentContext, DownlinkKind, HttpLaneRequestChannel, LaneConfig, StoreKind,
-        WarpLaneKind,
-    },
-    error::{AgentRuntimeError, DownlinkRuntimeError, DynamicRegistrationError, OpenStoreError},
+    agent::{AgentConfig, DownlinkKind, WarpLaneKind},
+    error::DynamicRegistrationError,
 };
 use swimos_model::Text;
-use swimos_utilities::{
-    byte_channel::{byte_channel, ByteReader, ByteWriter},
-    non_zero_usize,
-    routing::RouteUri,
-};
+use swimos_utilities::routing::RouteUri;
 
 use crate::{
+    agent_model::DownlinkSpawnRequest,
     config::{MapDownlinkConfig, SimpleDownlinkConfig},
     downlink_lifecycle::{StatefulMapDownlinkLifecycle, StatefulValueDownlinkLifecycle},
     event_handler::{
-        ActionContext, BoxJoinLaneInit, DownlinkSpawner, HandlerAction, HandlerFuture,
-        LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
+        ActionContext, BoxJoinLaneInit, DownlinkSpawnOnDone, DownlinkSpawner, HandlerAction,
+        HandlerFuture, LaneSpawnOnDone, LaneSpawner, Spawner, StepResult,
     },
     meta::AgentMetadata,
 };
 
-use super::{BoxDownlinkChannel, OpenMapDownlinkAction, OpenValueDownlinkAction};
+use super::{BoxDownlinkChannelFactory, OpenMapDownlinkAction, OpenValueDownlinkAction};
 
 struct TestAgent;
 
 #[derive(Default)]
 struct SpawnerInner {
-    downlink: Option<BoxDownlinkChannel<TestAgent>>,
+    downlink: Option<DownlinkSpawnRequest<TestAgent>>,
 }
 
 #[derive(Default)]
 struct TestSpawner {
     futures: FuturesUnordered<HandlerFuture<TestAgent>>,
     inner: Arc<Mutex<SpawnerInner>>,
-}
-
-struct ContextInner {
-    io: Option<(ByteWriter, ByteReader)>,
-}
-
-struct TestContext {
-    expected_kind: DownlinkKind,
-    inner: Arc<Mutex<ContextInner>>,
-}
-
-impl TestContext {
-    fn new(expected_kind: DownlinkKind, io: (ByteWriter, ByteReader)) -> Self {
-        TestContext {
-            expected_kind,
-            inner: Arc::new(Mutex::new(ContextInner { io: Some(io) })),
-        }
-    }
 }
 
 impl Spawner<TestAgent> for TestSpawner {
@@ -88,12 +60,19 @@ impl Spawner<TestAgent> for TestSpawner {
 impl DownlinkSpawner<TestAgent> for TestSpawner {
     fn spawn_downlink(
         &self,
-        dl_channel: BoxDownlinkChannel<TestAgent>,
-    ) -> Result<(), DownlinkRuntimeError> {
+        path: Address<Text>,
+        kind: DownlinkKind,
+        make_channel: BoxDownlinkChannelFactory<TestAgent>,
+        on_done: DownlinkSpawnOnDone<TestAgent>,
+    ) {
         let mut guard = self.inner.lock();
         assert!(guard.downlink.is_none());
-        guard.downlink = Some(dl_channel);
-        Ok(())
+        guard.downlink = Some(DownlinkSpawnRequest {
+            path,
+            kind,
+            make_channel,
+            on_done,
+        });
     }
 }
 
@@ -112,53 +91,6 @@ const HOST: &str = "localhost";
 const NODE: &str = "/node";
 const LANE: &str = "lane";
 
-impl AgentContext for TestContext {
-    fn ad_hoc_commands(&self) -> BoxFuture<'static, Result<ByteWriter, DownlinkRuntimeError>> {
-        panic!("Unexpected request for ad-hoc channel.");
-    }
-
-    fn add_lane(
-        &self,
-        _name: &str,
-        _lane_kind: WarpLaneKind,
-        _config: LaneConfig,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), AgentRuntimeError>> {
-        panic!("Unexpected request to open a lane.")
-    }
-
-    fn open_downlink(
-        &self,
-        host: Option<&str>,
-        node: &str,
-        lane: &str,
-        kind: DownlinkKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
-        assert_eq!(host, Some(HOST));
-        assert_eq!(node, NODE);
-        assert_eq!(lane, LANE);
-        assert_eq!(kind, self.expected_kind);
-        let io = self.inner.lock().io.take().expect("IO taken twice.");
-        ready(Ok(io)).boxed()
-    }
-
-    fn add_store(
-        &self,
-        _name: &str,
-        _kind: StoreKind,
-    ) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), OpenStoreError>> {
-        ready(Err(OpenStoreError::StoresNotSupported)).boxed()
-    }
-
-    fn add_http_lane(
-        &self,
-        _name: &str,
-    ) -> BoxFuture<'static, Result<HttpLaneRequestChannel, AgentRuntimeError>> {
-        panic!("Unexpected request to open an HTTP lane.")
-    }
-}
-
-const BUFFER_SIZE: NonZeroUsize = non_zero_usize!(4096);
-
 const CONFIG: AgentConfig = AgentConfig::DEFAULT;
 const NODE_URI: &str = "/node";
 
@@ -175,7 +107,6 @@ fn make_meta<'a>(
 
 async fn run_all_and_check(
     mut spawner: TestSpawner,
-    context: TestContext,
     meta: AgentMetadata<'_>,
     join_lane_init: &mut HashMap<u64, BoxJoinLaneInit<'static, TestAgent>>,
     agent: &TestAgent,
@@ -184,7 +115,6 @@ async fn run_all_and_check(
     while let Some(handler) = spawner.futures.next().await {
         let mut action_context = ActionContext::new(
             &spawner,
-            &context,
             &spawner,
             &spawner,
             join_lane_init,
@@ -244,14 +174,10 @@ async fn open_value_downlink() {
     );
 
     let spawner = TestSpawner::default();
-    let (in_tx, _in_rx) = byte_channel(BUFFER_SIZE);
-    let (_out_tx, out_rx) = byte_channel(BUFFER_SIZE);
-    let context = TestContext::new(DownlinkKind::Value, (in_tx, out_rx));
 
     let agent = TestAgent;
     let mut action_context = ActionContext::new(
         &spawner,
-        &context,
         &spawner,
         &spawner,
         &mut join_lane_init,
@@ -259,7 +185,7 @@ async fn open_value_downlink() {
     );
     let _handle = run_handler(handler, &mut action_context, &agent, meta);
 
-    run_all_and_check(spawner, context, meta, &mut join_lane_init, &agent).await;
+    run_all_and_check(spawner, meta, &mut join_lane_init, &agent).await;
 }
 
 #[tokio::test]
@@ -278,14 +204,10 @@ async fn open_map_downlink() {
     );
 
     let spawner = TestSpawner::default();
-    let (in_tx, _in_rx) = byte_channel(BUFFER_SIZE);
-    let (_out_tx, out_rx) = byte_channel(BUFFER_SIZE);
-    let context = TestContext::new(DownlinkKind::Map, (in_tx, out_rx));
 
     let agent = TestAgent;
     let mut action_context = ActionContext::new(
         &spawner,
-        &context,
         &spawner,
         &spawner,
         &mut join_lane_init,
@@ -293,5 +215,5 @@ async fn open_map_downlink() {
     );
     let _handle = run_handler(handler, &mut action_context, &agent, meta);
 
-    run_all_and_check(spawner, context, meta, &mut join_lane_init, &agent).await;
+    run_all_and_check(spawner, meta, &mut join_lane_init, &agent).await;
 }

@@ -49,7 +49,7 @@ use super::{SimpleDownlinkConfig, ValueDownlinkFactory};
 use crate::{
     agent_model::downlink::{
         hosted::{value::ValueWriteStream, ValueDownlinkHandle},
-        BoxDownlinkChannel, DownlinkChannelEvent,
+        BoxDownlinkChannel, DownlinkChannelEvent, DownlinkChannelFactory,
     },
     downlink_lifecycle::{
         OnDownlinkEvent, OnDownlinkSet, OnFailed, OnLinked, OnSynced, OnUnlinked,
