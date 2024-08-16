@@ -1188,48 +1188,10 @@ where
                 downlinks.push(DownlinkFuture::Opening(Some(request), fut));
             };
             let add_lane = NoDynLanes;
-            match task_event {
-                TaskEvent::WriteComplete { writer, result } => {
-                    match result {
-                        Ok(true) => {
-                            // The event handler for the item needs to be executed.
-                            let lane = &lifecycle_item_ids[&writer.lane_id()];
-                            if let Some(handler) = lifecycle.item_event(&item_model, lane.as_str())
-                            {
-                                match run_handler(
-                                    &mut ActionContext::new(
-                                        &suspended,
-                                        &add_downlink,
-                                        &add_lane,
-                                        &mut join_lane_init,
-                                        &mut ad_hoc_buffer,
-                                    ),
-                                    meta,
-                                    &item_model,
-                                    &lifecycle,
-                                    handler,
-                                    &lifecycle_item_ids,
-                                    &mut dirty_items,
-                                ) {
-                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
-                                    Err(e) => {
-                                        break Err(AgentTaskError::UserCodeError(Box::new(e)))
-                                    }
-                                    Ok(_) => check_cmds(
-                                        &mut ad_hoc_buffer,
-                                        &mut cmd_writer,
-                                        &mut cmd_send_fut,
-                                        CommandWriter::write,
-                                    ),
-                                }
-                            }
-                        }
-                        Err(_) => break Ok(()), //Failing to write indicates that the runtime has stopped so we can exit without an error.
-                        _ => {}
-                    }
-                    item_writers.insert(writer.lane_id(), writer);
-                }
-                TaskEvent::SuspendedComplete { handler } => {
+
+            // Calling run_handler is very verbose so is pulled out into this macro to make the code easier to read.
+            macro_rules! exec_handler {
+                ($handler:expr) => {
                     match run_handler(
                         &mut ActionContext::new(
                             &suspended,
@@ -1241,7 +1203,7 @@ where
                         meta,
                         &item_model,
                         &lifecycle,
-                        handler,
+                        $handler,
                         &lifecycle_item_ids,
                         &mut dirty_items,
                     ) {
@@ -1254,6 +1216,27 @@ where
                             CommandWriter::write,
                         ),
                     }
+                };
+            }
+
+            match task_event {
+                TaskEvent::WriteComplete { writer, result } => {
+                    match result {
+                        Ok(true) => {
+                            // The event handler for the item needs to be executed.
+                            let lane = &lifecycle_item_ids[&writer.lane_id()];
+                            if let Some(handler) = lifecycle.item_event(&item_model, lane.as_str())
+                            {
+                                exec_handler!(handler);
+                            }
+                        }
+                        Err(_) => break Ok(()), //Failing to write indicates that the runtime has stopped so we can exit without an error.
+                        _ => {}
+                    }
+                    item_writers.insert(writer.lane_id(), writer);
+                }
+                TaskEvent::SuspendedComplete { handler } => {
+                    exec_handler!(handler);
                 }
                 TaskEvent::DownlinkReady {
                     downlink_event: DownlinksEvent::Opened { request, result },
@@ -1268,30 +1251,7 @@ where
                         let downlink = HostedDownlink::new(channel);
                         downlinks.push(DownlinkFuture::Running(downlink.wait_on_downlink()));
                         let handler = on_done(Ok(()));
-                        match run_handler(
-                            &mut ActionContext::new(
-                                &suspended,
-                                &add_downlink,
-                                &add_lane,
-                                &mut join_lane_init,
-                                &mut ad_hoc_buffer,
-                            ),
-                            meta,
-                            &item_model,
-                            &lifecycle,
-                            handler,
-                            &lifecycle_item_ids,
-                            &mut dirty_items,
-                        ) {
-                            Err(EventHandlerError::StopInstructed) => break Ok(()),
-                            Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
-                            Ok(_) => check_cmds(
-                                &mut ad_hoc_buffer,
-                                &mut cmd_writer,
-                                &mut cmd_send_fut,
-                                CommandWriter::write,
-                            ),
-                        }
+                        exec_handler!(handler);
                     }
                     OpenDownlinkResult::Failed(error, retry) => {
                         if error.is_fatal() {
@@ -1317,30 +1277,7 @@ where
                         } = request;
                         error!(address = %path, kind = ?kind, error = %error, "A downlink could not be established.");
                         let handler = on_done(Err(error));
-                        match run_handler(
-                            &mut ActionContext::new(
-                                &suspended,
-                                &add_downlink,
-                                &add_lane,
-                                &mut join_lane_init,
-                                &mut ad_hoc_buffer,
-                            ),
-                            meta,
-                            &item_model,
-                            &lifecycle,
-                            handler,
-                            &lifecycle_item_ids,
-                            &mut dirty_items,
-                        ) {
-                            Err(EventHandlerError::StopInstructed) => break Ok(()),
-                            Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
-                            Ok(_) => check_cmds(
-                                &mut ad_hoc_buffer,
-                                &mut cmd_writer,
-                                &mut cmd_send_fut,
-                                CommandWriter::write,
-                            ),
-                        }
+                        exec_handler!(handler);
                     }
                 },
                 TaskEvent::DownlinkReady {
@@ -1369,30 +1306,7 @@ where
                     }
                     HostedDownlinkEvent::HandlerReady { failed } => {
                         if let Some(handler) = downlink.next_event(&item_model) {
-                            match run_handler(
-                                &mut ActionContext::new(
-                                    &suspended,
-                                    &add_downlink,
-                                    &add_lane,
-                                    &mut join_lane_init,
-                                    &mut ad_hoc_buffer,
-                                ),
-                                meta,
-                                &item_model,
-                                &lifecycle,
-                                handler,
-                                &lifecycle_item_ids,
-                                &mut dirty_items,
-                            ) {
-                                Err(EventHandlerError::StopInstructed) => break Ok(()),
-                                Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
-                                Ok(_) => check_cmds(
-                                    &mut ad_hoc_buffer,
-                                    &mut cmd_writer,
-                                    &mut cmd_send_fut,
-                                    CommandWriter::write,
-                                ),
-                            }
+                            exec_handler!(handler);
                         }
                         if failed {
                             error!("Reading from a downlink failed.");
@@ -1483,32 +1397,7 @@ where
                         LaneRequest::Sync(remote_id) => {
                             trace!(name = %name, remote_id = %remote_id, "Received a sync request for a value-like lane.");
                             if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
-                                match run_handler(
-                                    &mut ActionContext::new(
-                                        &suspended,
-                                        &add_downlink,
-                                        &add_lane,
-                                        &mut join_lane_init,
-                                        &mut ad_hoc_buffer,
-                                    ),
-                                    meta,
-                                    &item_model,
-                                    &lifecycle,
-                                    handler,
-                                    &lifecycle_item_ids,
-                                    &mut dirty_items,
-                                ) {
-                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
-                                    Err(e) => {
-                                        break Err(AgentTaskError::UserCodeError(Box::new(e)))
-                                    }
-                                    Ok(_) => check_cmds(
-                                        &mut ad_hoc_buffer,
-                                        &mut cmd_writer,
-                                        &mut cmd_send_fut,
-                                        CommandWriter::write,
-                                    ),
-                                }
+                                exec_handler!(handler);
                             }
                         }
                         LaneRequest::InitComplete => {}
@@ -1561,32 +1450,7 @@ where
                         LaneRequest::Sync(remote_id) => {
                             trace!(name = %name, remote_id = %remote_id, "Received a sync request for a map-like lane.");
                             if let Some(handler) = item_model.on_sync(name.as_str(), remote_id) {
-                                match run_handler(
-                                    &mut ActionContext::new(
-                                        &suspended,
-                                        &add_downlink,
-                                        &add_lane,
-                                        &mut join_lane_init,
-                                        &mut ad_hoc_buffer,
-                                    ),
-                                    meta,
-                                    &item_model,
-                                    &lifecycle,
-                                    handler,
-                                    &lifecycle_item_ids,
-                                    &mut dirty_items,
-                                ) {
-                                    Err(EventHandlerError::StopInstructed) => break Ok(()),
-                                    Err(e) => {
-                                        break Err(AgentTaskError::UserCodeError(Box::new(e)))
-                                    }
-                                    Ok(_) => check_cmds(
-                                        &mut ad_hoc_buffer,
-                                        &mut cmd_writer,
-                                        &mut cmd_send_fut,
-                                        CommandWriter::write,
-                                    ),
-                                }
+                                exec_handler!(handler);
                             }
                         }
                         LaneRequest::InitComplete => {}
@@ -1597,30 +1461,7 @@ where
                     trace!(name = %name, "Received an HTTP request for a lane.");
                     match item_model.on_http_request(name.as_str(), request) {
                         Ok(handler) => {
-                            match run_handler(
-                                &mut ActionContext::new(
-                                    &suspended,
-                                    &add_downlink,
-                                    &add_lane,
-                                    &mut join_lane_init,
-                                    &mut ad_hoc_buffer,
-                                ),
-                                meta,
-                                &item_model,
-                                &lifecycle,
-                                handler,
-                                &lifecycle_item_ids,
-                                &mut dirty_items,
-                            ) {
-                                Err(EventHandlerError::StopInstructed) => break Ok(()),
-                                Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
-                                Ok(_) => check_cmds(
-                                    &mut ad_hoc_buffer,
-                                    &mut cmd_writer,
-                                    &mut cmd_send_fut,
-                                    CommandWriter::write,
-                                ),
-                            }
+                            exec_handler!(handler);
                         }
                         Err(request) => not_found(name.as_str(), request),
                     }
