@@ -45,6 +45,7 @@ use swimos_api::{
 };
 use swimos_model::Text;
 use swimos_utilities::byte_channel::{ByteReader, ByteWriter};
+use swimos_utilities::errors::Recoverable;
 use swimos_utilities::future::RetryStrategy;
 use swimos_utilities::routing::RouteUri;
 use tokio::io::AsyncWriteExt;
@@ -1177,7 +1178,13 @@ where
                 }
             };
             let add_downlink = |request: DownlinkSpawnRequest<ItemModel>| {
-                let fut = open_new_downlink(&*context, &request.path, request.kind);
+                let fut = open_new_downlink(
+                    &*context,
+                    &request.path,
+                    request.kind,
+                    config.keep_linked_retry,
+                    None,
+                );
                 downlinks.push(DownlinkFuture::Opening(Some(request), fut));
             };
             let add_lane = NoDynLanes;
@@ -1251,7 +1258,7 @@ where
                 TaskEvent::DownlinkReady {
                     downlink_event: DownlinksEvent::Opened { request, result },
                 } => match result {
-                    Ok((tx, rx)) => {
+                    OpenDownlinkResult::Success(tx, rx) => {
                         let DownlinkSpawnRequest {
                             make_channel,
                             on_done,
@@ -1286,8 +1293,54 @@ where
                             ),
                         }
                     }
-                    Err(error) => {
-                        todo!()
+                    OpenDownlinkResult::Failed(error, retry) => {
+                        if error.is_fatal() {
+                            error!(error = %error, address = %{request.path}, kind = ?{request.kind}, "Start a downlink failed with a fatal error.");
+                        } else {
+                            error!(address = %{&request.path}, kind = ?{request.kind}, error = %error, "Starting a downlink failed. Attempting to retry.");
+                            let fut = open_new_downlink(
+                                &*context,
+                                &request.path,
+                                request.kind,
+                                retry,
+                                Some(error),
+                            );
+                            downlinks.push(DownlinkFuture::Opening(Some(request), fut));
+                        }
+                    }
+                    OpenDownlinkResult::RetriesExpired(error) => {
+                        let DownlinkSpawnRequest {
+                            path,
+                            kind,
+                            on_done,
+                            ..
+                        } = request;
+                        error!(address = %path, kind = ?kind, error = %error, "A downlink could not be established.");
+                        let handler = on_done(Err(error));
+                        match run_handler(
+                            &mut ActionContext::new(
+                                &suspended,
+                                &add_downlink,
+                                &add_lane,
+                                &mut join_lane_init,
+                                &mut ad_hoc_buffer,
+                            ),
+                            meta,
+                            &item_model,
+                            &lifecycle,
+                            handler,
+                            &lifecycle_item_ids,
+                            &mut dirty_items,
+                        ) {
+                            Err(EventHandlerError::StopInstructed) => break Ok(()),
+                            Err(e) => break Err(AgentTaskError::UserCodeError(Box::new(e))),
+                            Ok(_) => check_cmds(
+                                &mut ad_hoc_buffer,
+                                &mut cmd_writer,
+                                &mut cmd_send_fut,
+                                CommandWriter::write,
+                            ),
+                        }
                     }
                 },
                 TaskEvent::DownlinkReady {
@@ -1358,10 +1411,14 @@ where
                         downlinks.push(DownlinkFuture::Running(downlink.wait_on_downlink()));
                     }
                     HostedDownlinkEvent::ReconnectFailed { error, retry } => {
-                        error!(error = %error, address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect downlink failed.");
-                        downlinks.push(DownlinkFuture::Reconnecting(
-                            downlink.reconnect(&*context, retry, false),
-                        ));
+                        if error.is_fatal() {
+                            error!(error = %error, address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect a downlink failed with a fatal error.");
+                        } else {
+                            error!(error = %error, address = %downlink.address(), kind = ?downlink.kind(), "Attempting to reconnect a downlink failed; attempting again.");
+                            downlinks.push(DownlinkFuture::Reconnecting(
+                                downlink.reconnect(&*context, retry, false),
+                            ));
+                        }
                     }
                     HostedDownlinkEvent::Stopped => {
                         downlinks.push(DownlinkFuture::Reconnecting(downlink.reconnect(
@@ -1911,7 +1968,7 @@ where
 enum DownlinksEvent<Context> {
     Opened {
         request: DownlinkSpawnRequest<Context>,
-        result: Result<(ByteWriter, ByteReader), DownlinkRuntimeError>,
+        result: OpenDownlinkResult,
     },
     Event {
         downlink: HostedDownlink<Context>,
@@ -1928,7 +1985,7 @@ enum DownlinkFuture<Context, F1, F2, F3> {
 
 impl<Context, F1, F2, F3> Future for DownlinkFuture<Context, F1, F2, F3>
 where
-    F1: Future<Output = Result<(ByteWriter, ByteReader), DownlinkRuntimeError>>,
+    F1: Future<Output = OpenDownlinkResult>,
     F2: Future<Output = (HostedDownlink<Context>, HostedDownlinkEvent)>,
     F3: Future<Output = (HostedDownlink<Context>, HostedDownlinkEvent)>,
 {
@@ -1961,16 +2018,47 @@ where
     }
 }
 
+enum OpenDownlinkResult {
+    Success(ByteWriter, ByteReader),
+    Failed(DownlinkRuntimeError, RetryStrategy),
+    RetriesExpired(DownlinkRuntimeError),
+}
+
 fn open_new_downlink(
     agent_context: &dyn AgentContext,
     path: &Address<Text>,
     kind: DownlinkKind,
-) -> BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>> {
+    retry: RetryStrategy,
+    last_error: Option<DownlinkRuntimeError>,
+) -> impl Future<Output = OpenDownlinkResult> + Send + 'static {
     let Address { host, node, lane } = path;
-    agent_context.open_downlink(
+    let open_fut = agent_context.open_downlink(
         host.as_ref().map(AsRef::as_ref),
         node.as_ref(),
         lane.as_ref(),
         kind,
-    )
+    );
+    open_with_retry(open_fut, retry, last_error)
+}
+
+async fn open_with_retry(
+    open_fut: BoxFuture<'static, Result<(ByteWriter, ByteReader), DownlinkRuntimeError>>,
+    mut retry: RetryStrategy,
+    last_error: Option<DownlinkRuntimeError>,
+) -> OpenDownlinkResult {
+    let delay = if let Some(error) = last_error {
+        match retry.next() {
+            Some(delay) => delay,
+            None => return OpenDownlinkResult::RetriesExpired(error),
+        }
+    } else {
+        None
+    };
+    if let Some(t) = delay {
+        tokio::time::sleep(t).await;
+    }
+    match open_fut.await {
+        Ok((tx, rx)) => OpenDownlinkResult::Success(tx, rx),
+        Err(err) => OpenDownlinkResult::Failed(err, retry),
+    }
 }
