@@ -166,17 +166,17 @@ pub async fn run_event_handlers<'a, Agent>(
     ad_hoc_buffer: &mut BytesMut,
     mut handlers: FuturesUnordered<HandlerFuture<Agent>>,
 ) {
-    if !handlers.is_empty() {
-        while let Some(h) = handlers.next().await {
-            let mut dl_handlers = vec![];
+    let mut dl_handlers = context.handle_dl_requests(agent);
+    while !dl_handlers.is_empty() || !handlers.is_empty() {
+        for h in dl_handlers.drain(..) {
             run_event_handler(context, agent, meta, inits, ad_hoc_buffer, &handlers, h);
-            dl_handlers.extend(context.handle_dl_requests(agent));
-
-            while let Some(h) = dl_handlers.pop() {
+        }
+        if !handlers.is_empty() {
+            while let Some(h) = handlers.next().await {
                 run_event_handler(context, agent, meta, inits, ad_hoc_buffer, &handlers, h);
-                dl_handlers.extend(context.handle_dl_requests(agent));
             }
         }
+        dl_handlers.extend(context.handle_dl_requests(agent));
     }
 }
 
